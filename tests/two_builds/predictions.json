@@ -1,0 +1,26 @@
+{
+  "written": "2026-11-08, committed before any gate of S-F0-1 ran (the commit that adds this file is the timestamp): the two-builds check, the run-constant seam, the MRS held matrix's compared values as leaves, the hull's search values as leaves",
+  "bits": {
+    "cases": "every separated-quadrature MRS case and every hull contact whose derived hash moves: mrs_free_space, mrs_solids, mrs_tube, rigid_explicit, lab_bead, hull_contact, hull_contact_looped, bound_robot_with_parts, script A (its contact holds the hull), the screw-in-tube example; float64 and float32; the history run (MADDENING's scan, the step making the held matrix itself), the chunked run with flags (MIME's scan, the seam) and a batch of one",
+    "prediction": "every array np.array_equal to the tip's (b0e017c) on the same machine at one usable CPU count and one BLAS thread: the held matrix is the same array selected outside the loop instead of inside it, and the hull's three values are the same numbers in the run's dtype as arguments instead of literals"
+  },
+  "trace_form_walk": {
+    "prediction": "on the registry walk's cases (each document float moved by 1e-6), the trace form fires on no pair: the 21 held_or_made literals and the hull's 5 bakes the first step found are arguments now; value-keyed shapes do not cross at 1e-6",
+    "control": "the leaves closed over (the step's default parameters): fires on every pair whose leaves move, every run"
+  },
+  "plants": {
+    "prediction": "the spike's toy plants (a Python float, a NumPy array, a JAX array, a term of share 1e-6, S7's eta; 29 perturbations each from 1e-1 to one ulp) caught by the trace form at every perturbation (145 of 145); twins 0 of 116; same-value rebuilds 0; the MRS viscosity plant (30 percent of the viscosity from the build) caught at every perturbation 1e-1 to 1e-15 (8 of 8), its twin quiet",
+    "run_form": "with the line k times the measured resolution (one ulp of what moved), the run form catches every plant the 64-ulp line caught (104 of 145 toy, 6 of 8 MRS) and no twin; the first step's two mrs_tube fires (356 and 791 ulps on the tip, the held matrix made in the program against the one made at build) fall under the line, their ratio to the resolution below k: the made matrix's rounding through the wall's solve is the program's own sensitivity, which one ulp of the radius or the blob also shows. If a plant falls under the line, it is reported before k is chosen."
+  },
+  "seam": {
+    "prediction": "on FL-9 in free space (222 force points, float64): the reverse-mode gradient of a loss of the final pose in the shape's radius through the chunked run (the seam) equals the one through MADDENING's scan (the step's own held_or_made, its remake at every step) to 1e-12 of its size at 20 and 40 steps; the compiled backward program holds the 666-wide LU outside the scan's loop only, and its backward step time falls at least 10 times",
+    "control": "a loop-variant plant (the radius plus 1e-300 times the pose in the step, the same value) puts the LU inside the loop on every run"
+  },
+  "unit_fields": {
+    "prediction": "a stand-in node's unit field, a run-constant made from its declared viscosity, is batched (per member) in a viscosity sweep and unbatched (once) in an amplitude sweep, read in the batched program; members equal their own runs within gate 1's tolerance",
+    "control": "the viscosity forced shared across a viscosity sweep's members (in_axes None): members differ from their own runs beyond gate 1's tolerance on every run"
+  },
+  "held_once": {
+    "prediction": "#201's guarantees hold with the second key gone: the nudged pass makes each drag's held matrix once (counted), the recorded resolution and reference bit for bit those of the step making it at every nudged step, the stale-matrix control fails on every run; a step given every body leaf at the rerun's values with the build's matrix and its leaves makes the matrix (the old limit unreachable)"
+  }
+}

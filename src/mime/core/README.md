@@ -153,6 +153,16 @@ Also:
   graph's live leaves over the constructor's; a node writes its step as `advance(p, state, inputs, dt)`, and
   `update` runs it compiled once per node, so the verification battery's eager calls are one call each and the
   graph's trace inlines it; `node_input` declares an input with its units; `run_dtype` and `as_run_array`;
+- **run-constants** (`MimeNode.run_constants`): quantities a node makes from its leaves that are constant over a run
+  (the MRS drag's held body-frame matrix; a one-way field solved once per run; a precomputed operator), each in place
+  of a leaf of its own of the same shape and dtype. MIME's chunked runs make them once per chunk inside the compiled
+  program, before the step loop (`mime.build._maddening.with_run_constants`, `chunk_function`), so that reverse mode
+  derives each once per chunk rather than at every step; inside the loop the step's constants hold
+  `RUN_CONSTANTS_GIVEN` (`run_constants_given(p)`; set by `run_constants_made` around the loop's trace, part of the
+  node's compiled step's cache key) and the step reads them as given. Called otherwise (MADDENING's own scan,
+  `graph.step`) the step makes them itself. A held value's pattern: the value made at build as a `trainable=False`
+  leaf, the leaves it was made at beside it, and `held_or_made` choosing between them in the program, never a value
+  compared with a constant;
 - **`quaternion`**: products, rotation matrices and `exponential`, whose value and derivatives are finite at a zero
   rotation (0.2 divided by `|omega|` and differentiated to NaN at rest);
 - **shapes** (`Shape`, the protocol a geometry kind's surfaces are evaluated with: signed distance, outward normal,
