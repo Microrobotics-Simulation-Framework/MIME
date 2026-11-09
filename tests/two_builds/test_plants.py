@@ -41,7 +41,7 @@ from mime.build import ArgumentRefused
 from mime.build._maddening import chunk_step, fed_inputs, full_state, graph_params
 from mime.nodes.hydro.mrs import _node as mrs_node
 from mime.testing import TwoBuilds, run_form, two_builds_of
-from mime.testing._two_builds import nested_program, programs_differ, step_program
+from mime.testing._two_builds import FieldGap, RunForm, nested_program, programs_differ, step_program
 from mime.testing.toys._experiments import ADD_BATH, ADD_PROBE, toy_experiment
 from mime.units import N, kg, kg_m2, m, m_per_s, mm, mPa_s, rad_per_s
 
@@ -119,18 +119,42 @@ def test_the_run_form_catches_every_plant_in_its_band_four_lines_up(pairs: Pairs
                            f"seed {SEED}")
 
 
+def probe_numbers(runs: list[RunForm]) -> tuple[int, int, int, float]:
+    """How many of the probed runs the line of k resolutions catches, how many of them stand on a field whose
+    resolution measured zero (their line is "any difference", the ratio infinite), and the least ratio among the
+    finite ones (above 1 fires; ``nan`` where none is finite)."""
+    ratios = [run.ratio for run in runs]
+    finite = [ratio for ratio in ratios if math.isfinite(ratio)]
+    return (sum(ratio > 1.0 for ratio in ratios), sum(math.isinf(ratio) for ratio in ratios),
+            len(ratios), min(finite, default=float("nan")))
+
+
+def test_probe_numbers_count_a_field_whose_resolution_measured_zero_as_caught_and_infinite():
+    """A field that differs and whose one-ulp nudge changed nothing (seed 2010's plant at k 2.27, the spring's load)
+    has the infinite ratio: caught, and not a ratio to take the least of."""
+    zero = RunForm((FieldGap("spring.load", 9.2e-8, 0.0, 1.0),))
+    one = RunForm((FieldGap("spring.load", 9.2e-8, 1.1e-16, 1.0),))
+    assert zero.worst is not None and zero.worst.resolution == 0.0
+    assert probe_numbers([zero, one]) == (2, 1, 2, one.ratio)
+    assert math.isnan(probe_numbers([zero])[3])
+
+
 def test_probe_the_plants_just_above_the_old_line(pairs: Pairs, record_property: Any):
     """Reported, not a gate: of the plants under the band that the spike's 64-ulp line catches, how many the line of
-    k resolutions catches too, and the least ratio among them (above 1 fires), by kind. Each is measured against a
-    resolution the run found, so the ratios are numbers."""
+    k resolutions catches too, how many of those stand on a field whose resolution measured zero (the line is then
+    "any difference", the ratio infinite: ``FieldGap``'s quantised resolution), and the least finite ratio among them
+    (above 1 fires), by kind. A plant is probed only where a run found a differing field; a resolution of zero is a
+    measurement, never a failure."""
     for kind in BAKED:
-        probed = [found for _, move, found in pairs[kind] if move != 0.0 and not gated(move) and old_line(found)]
-        assert all(found.run is not None and found.run.worst is not None and found.run.worst.resolution > 0.0
-                   for found in probed), kind
-        ratios = [found.run.ratio for found in probed if found.run is not None]
-        record_property(f"probe_{kind}_over_old_line", len(ratios))
-        record_property(f"probe_{kind}_caught_by_new_line", sum(ratio > 1.0 for ratio in ratios))
-        record_property(f"probe_{kind}_least_ratio", min(ratios, default=float("nan")))
+        probed = [(k, move, found) for k, move, found in pairs[kind]
+                  if move != 0.0 and not gated(move) and old_line(found)]
+        broken = [(k, move, found.run) for k, move, found in probed if found.run is None or found.run.worst is None]
+        assert not broken, (kind, broken, f"seed {SEED}")
+        caught, at_zero, over, least = probe_numbers([found.run for _, _, found in probed if found.run is not None])
+        record_property(f"probe_{kind}_over_old_line", over)
+        record_property(f"probe_{kind}_caught_by_new_line", caught)
+        record_property(f"probe_{kind}_on_zero_resolution", at_zero)
+        record_property(f"probe_{kind}_least_ratio", least)
 
 
 def test_no_twin_fires_either_form(pairs: Pairs):
