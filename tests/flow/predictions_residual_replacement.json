@@ -50,5 +50,52 @@
    "gate": "released programs (probe): script_a, hull_contact, coupled_toy, dynamic_rpm, periodic_tube_flow, steady_tube_flow and rk3_tube_flow, 20 ms, every recorded field at every step, float64 and float32, this branch against the release tip on the same cores",
    "prediction": "every array bit-identical in both dtypes: the dev1 programs and RK3 run no CG, and the tube flows' solves end within 5 iterations"
   }
- ]
+ ],
+ "amended": {
+  "written": "2026-11-09 ~17:10 CET, in the commit that holds it, after the first gate runs under the rule above and before any gate ran under the rule below",
+  "what_the_first_runs_showed": [
+   "gates run under 'keep every 100': the bit-for-bit gate passed (20 draws, both dtypes); the planted stall at D/h 8 passed (20 draws); the wrong replacement, the sign flipped at every 100, was flagged but its answer within 2.3e-7 of the right one (the solve returns its best checked iterate, taken before the plant acted), so the plant moved nothing: replanted at every check (20 iterations) it moves the answer; the derivative gate at the centred D/h 16 stenosis gave a NaN tangent (the distance's derivative 0/0 on faces on the axis), and at the shifted one (0.3, 0.2 cells) the float32 primal and transpose solves stayed stagnated under the rule (8.4e-5, 5.3e-5)",
+   "so the forms probe over draws (narrowing 0.4 to 0.6, offsets and tilts drawn; the shipped stop): float32 D/h 16, 16 draws: none stalled 16 of 16; keep every 100 stalled 13 of 16; keep every 200 none of 16; restart every 100 none of 16 (412 to 649 iterations); restart every 200 none of 16 (291 to 452); float32 D/h 8, 20 draws: none 20 stalled, keep 100 none (141 to 175), keep 200 all 20, restart 100 none (102 to 171), restart 200 none (201 to 203); float64 D/h 16, 8 draws, none stalled under any rule, mean iterations none 450, keep 100 461, keep 200 457, restart 100 639, restart 200 500",
+   "the keep form's outcome turns on where its replacements fall against the stall; the restart broke every stall drawn at both periods"
+  ],
+  "rule": "restart from the true residual every 100 iterations (r and z from the true residual, the direction z: the CG's own restart where its recursive residual falls under the tolerance first), in float32 by default (Stopping.restart_every; RESTARTED_BY_DEFAULT); float64 does not restart by default (no float64 draw stalled; restarting costs it 1.4 times the iterations)",
+  "gates": [
+   {
+    "gate": "the stall the case plants (test_control_a_float32_stall_the_restart_breaks_on_every_draw): 200 draws by probe, 20 Hypothesis draws",
+    "prediction": "without the restart stagnated above max(1e-5, its floor) on 200 of 200; with float32's default restart converged, unflagged, on 200 of 200, under 200 iterations"
+   },
+   {
+    "gate": "the wrong restart, the residual's sign flipped at every check (test_control_a_wrong_restart_moves_the_answer_and_is_flagged_on_every_draw), both dtypes, 200 draws by probe",
+    "prediction": "flagged on 200 of 200 in each dtype, its answer more than 10 times the tolerance from the right one on 200 of 200"
+   },
+   {
+    "gate": "the derivative solves at the shifted D/h 16 0.01h stenosis (test_the_derivative_solves_converge_with_the_primal_through_the_report_block)",
+    "prediction": "float32 under its default restart: the primal, tangent and transpose reports unflagged, both derivatives within 1e-4 of float64's; float64 (no restart) unflagged; float64 asked to restart every 100 moves neither derivative by more than 1e-8 relative"
+   },
+   {
+    "gate": "the stenosis at D/h 64, steady, both interiors (probe)",
+    "prediction": "float32 0.1h: flagged without the restart, unflagged with it; float32 0.01h: flagged without; with the restart flagged as well (the limit at D/h 32 extends) with 60 % confidence; float64 unchanged by default; float64 asked to restart converges, its flux within 1e-9 relative"
+   },
+   {
+    "gate": "the genuine floor, the open tube at D/h 64 with 0.01h (unchanged test)",
+    "prediction": "passes: it stops within 100 iterations; its control (1e-5 given) still stagnates, flagged"
+   },
+   {
+    "gate": "the interior spike's D/h 16 stall through the shipped stop (test_a_float32_stall_above_the_floor_is_broken_by_the_restart)",
+    "prediction": "converges unflagged, flux float64's within 1e-5; without the restart it stagnates"
+   },
+   {
+    "gate": "a solve ending within 100 iterations (test_a_solve_ending_before_its_first_restart_is_the_cg_without_it)",
+    "prediction": "bit for bit on every draw, both dtypes"
+   },
+   {
+    "gate": "the stiff interior at D/h 32 (unchanged test)",
+    "prediction": "passes in both dtypes; float64 bit for bit (no restart); its old-rule control still stagnates a step"
+   },
+   {
+    "gate": "released programs (probe) and the saved goldens",
+    "prediction": "every array bit-identical in both dtypes (float64 never restarts; the float32 tube flows end within 5 iterations)"
+   }
+  ]
+ }
 }
