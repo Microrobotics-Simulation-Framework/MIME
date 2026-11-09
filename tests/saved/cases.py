@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_plane, mrs_solids, mrs_tube
+from rft_cases import rft_free_space, rft_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, swing_magnet, tracked_rpm
 from hull_cases import hull_contact
 from robot_asset import bound_robot, bound_robot_with_parts
@@ -300,6 +301,12 @@ CASES = (
     Case("rigid_explicit", rigid_explicit),
     # Script A with its frequency ramped and its phase lag observed: the ramp's and the lag's golden outputs.
     Case("script_a_ramped", script_a_ramped),
+    # The drag's rft rung in an unbounded medium, on each kind with a centreline: a helix, a capsule and a prolate
+    # ellipsoid, each moving and turning; the helix's golden output comes from it.
+    Case("rft_free_space", rft_free_space),
+    # The same rung with the tube wall kind, on a helix small against its tube (definite with the wall): it reads the
+    # corrected table, the asset unit_tube_R0.997.
+    Case("rft_tube", rft_tube),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),

@@ -421,6 +421,10 @@ def _floating_leaves(name: str, value: object) -> dict[str, Any]:
             if jnp.issubdtype(leaf.dtype, jnp.floating)}
 
 
+#: The pytree helpers a node holding a wall's table reads its leaves with, for a node that holds one too.
+array_tree, path_name, floating_leaves = _array_tree, _path_name, _floating_leaves
+
+
 @dataclasses.dataclass(frozen=True)
 class Body:
     """A body's discretisation in its own frame, on a separated quadrature: its force points, its quadrature's points
@@ -1262,6 +1266,7 @@ class MRSDragNode(MimeNode):
 __all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
            "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
            "WALL_CELL_SHARE", "WALL_REACH",
-           "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged",
+           "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",
+           "floating_leaves", "judged", "path_name",
            "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",
            "reach_weight", "run_gib", "stops_where"]

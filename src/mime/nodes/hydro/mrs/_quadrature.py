@@ -282,6 +282,35 @@ def scaled_least_eigenvalue(found: Array) -> Array:
     return jnp.linalg.eigvalsh(symmetric / (scale[:, None] * scale[None, :]))[0]
 
 
+#: The floor of a semidefinite resistance's check (:func:`floored_least_eigenvalue`), in units in the last place of the
+#: run's dtype: a declaration, ten times the largest a straight rod's resistance by a line model reads at a turned pose
+#: (its spin about its own axis meets none, so its least eigenvalue is that spin's rounding: at most 5.8 units in
+#: float64 and 3.5 in float32 over 50 random turns, measured when the rung was built), rounded up to a power of two.
+SEMIDEFINITE_FLOOR_ULPS = 64.0
+#: How small a diagonal entry may be against its block's largest before it is scaled by that floor instead: a zero
+#: diagonal (a line model's spin about its own axis) then scales to a zero row, not to NaN.
+DIAGONAL_FLOOR = 1e-12
+
+
+def floored_least_eigenvalue(found: Array) -> Array:
+    """The least eigenvalue of a resistance's symmetric part with each row and column scaled by the square root of
+    the larger of its diagonal entry's magnitude and :data:`DIAGONAL_FLOOR` times its block's largest (the forces',
+    the torques'): a congruence, so its sign is the resistance's, finite where a diagonal entry is zero. A semidefinite
+    resistance (a line model's, which no spin about a straight centreline resists) reads its null direction's rounding,
+    and is judged against minus :data:`SEMIDEFINITE_FLOOR_ULPS` units in the last place, not against zero."""
+    symmetric = (found + found.T) / 2.0
+    diagonal = jnp.abs(jnp.diag(symmetric))
+    largest = jnp.concatenate([jnp.broadcast_to(jnp.max(diagonal[:3]), (3,)), jnp.broadcast_to(jnp.max(diagonal[3:]),
+                                                                                                 (3,))])
+    scale = jnp.sqrt(jnp.maximum(diagonal, DIAGONAL_FLOOR * largest))
+    return jnp.linalg.eigvalsh(symmetric / (scale[:, None] * scale[None, :]))[0]
+
+
+def semidefinite_floor(dtype: Any) -> float:
+    """The floor a semidefinite resistance's least eigenvalue is judged against in ``dtype``."""
+    return SEMIDEFINITE_FLOOR_ULPS * float(jnp.finfo(dtype).eps)
+
+
 def asymmetry(found: Array) -> Array:
     """``|R - R^T| / |R|`` (Frobenius) of a resistance, the part its symmetric part drops, with each row and column
     scaled by the square root of its diagonal entry, so that a force and a torque are compared on one scale."""
@@ -290,6 +319,6 @@ def asymmetry(found: Array) -> Array:
     return jnp.linalg.norm(unit - unit.T) / jnp.linalg.norm(unit)
 
 
-__all__ = ["CHUNK_BYTES", "Chunks", "Kernel", "asymmetry", "capped_cells", "cell_integrated", "cell_moments", "empty_cells",
-           "held_or_made", "padded", "regularised_stokeslet", "scaled_least_eigenvalue", "separated_matrix", "separated_resistance", "turned", "turned_resistance",
+__all__ = ["CHUNK_BYTES", "DIAGONAL_FLOOR", "SEMIDEFINITE_FLOOR_ULPS", "Chunks", "Kernel", "asymmetry", "capped_cells", "cell_integrated", "cell_moments", "empty_cells",
+           "floored_least_eigenvalue", "held_or_made", "padded", "regularised_stokeslet", "scaled_least_eigenvalue", "semidefinite_floor", "separated_matrix", "separated_resistance", "turned", "turned_resistance",
            "unchanged"]

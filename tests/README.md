@@ -10,11 +10,15 @@
   the OpenMaterica-`main` lane must have OpenMaterica from git, not PyPI. A lane that doesn't name itself fails, so no
   lane can skip the check. The test also runs its own control: claims meant for other lanes must fail in this one.
 - `test_ci_wiring.py`: CI runs the checks it must, read from `.github/workflows/`. Each job name the development
-  branch's protection requires is made by one job, of a workflow run on a pull request into `release/v0.3.0` and a push
-  to it, and skipped by nothing but the schedule; no workflow names the branch's old name, `v0.3`; the default lane's
+  branch's protection requires (four) is made by one job, of a workflow run on a pull request into `release/v0.3.0` and a push
+  to it (by `release/**`), and skipped by nothing but the schedule; the three lanes that are not required keep the same
+  wiring and start where the count job says; no workflow names the branch's old name, `v0.3`; the default lane's
   `mime docs check --base origin/release/v0.3.0` (which fails where that branch cannot be read) and the `confidential` job's
   scan, with the key's secret, `--messages`, `--diffs` and `--ref-name`, keep their exit status, read by running each
   step's script in bash with its commands stubbed. Each control plants one break in a copy of the workflows.
+- `test_ci_boundary.py`: which lanes a pull request runs. The paths of `scripts/ci_boundary.py` (pins, CI, the adapters to MADDENING
+  and OpenMaterica) against the repository, the scripts the workflows call against the scripts the filter names, and the three
+  lanes' lack of a compilation cache. `test_ci_nightly.py`: the nightly dispatch, its job's script run with `gh` stubbed.
 - `test_ci_docs_artifact.py` (N6): the workflow builds the documentation pages, scans the built directory and uploads
   it, in that order, in one job, over one directory; the scan's failure fails the job; the upload runs only after
   every earlier step succeeded; and the scan step's own script, run in bash on a directory, exits non-zero on a planted
@@ -27,7 +31,7 @@
   `PYTHONIOENCODING`. `platforms/test_smoke.py` is the smoke's own: the console script through pipes, and a save and
   a run read as bytes. What each platform supports is in [`docs/platforms.md`](../docs/platforms.md).
 - `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
-  proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
+  proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 95 s and 6 s, which the
   time budget must fail and warn on; one with `plant_completion_failure` set fails the shell-completion tests job of every
   lane (the planted test is in `cli/test_completion.py`), and each lane's required check must go red (`test_completion_job.py`).
 - `conftest.py`: each test's own CPU time and its children's, written into the JUnit XML for the durations report;
@@ -560,9 +564,12 @@ MADDENING's, read from each test's wall time (setup, call and teardown) in the J
 | 1 to 5 s | The watch list: optimise it when you are in the file. |
 | over 5 s | Mark it `slow`, make it much faster, or keep it on every push by listing it in `duration_allowlist.txt` as `<node id> # kept: <why>`. |
 
-An unlisted test over 5 s gets a warning annotation on the run. An unlisted test over 20 s is re-run once, alone, and
-fails the job if it is over 20 s again. An allowlisted test over 20 s passes with a warning, since the allowlist has
-no ceiling. Each lane's `Test durations` step (`scripts/report_test_durations.py`, a copy of MADDENING's) writes the
+An unlisted test over 5 s gets a warning annotation on the run. An unlisted test over 30 s is re-run once, alone, and
+fails the job if it is over 30 s again, on a push whatever the diff, and on a pull request when it is the change's own
+(its file is in the diff, or its node id is new on the base); on a pull request any other unlisted test fails only over a
+flat 90 s. An allowlisted test over 30 s passes with a warning, and over its ceiling (the larger of 3 times its median
+and 1.2 times its 95th percentile, at least 60 s, `duration_ceilings.json`, written by `scripts/duration_triage.py`)
+fails a push and warns a pull request (CONTRIBUTING.md, "CI: the duration gate"; the rule of 2026-11-09). Each lane's `Test durations` step (`scripts/report_test_durations.py`, a copy of MADDENING's) writes the
 bands, the slowest tests and files, and the totals of wall time and CPU time to the run page. `conftest.py` records
 each test's own CPU time and that of the processes it starts, since the xdist workers share the runner's cores and a
 test's wall time partly measures the others.
@@ -571,6 +578,8 @@ test's wall time partly measures the others.
 slow-marked property is checked nowhere. It goes on the allowlist with its reason instead.
 
 The controls are in `test_report_test_durations.py` (the gate on hand-written reports, and the check that every lane
-writes its report and lets the gate fail the job, with a mutation per way it could stop) and in a planted CI run: the
-`plant_slow_tests` input makes the two planted tests in `test_canary.py` take 21 s and 6 s, and every lane must fail
-on the first and warn on the second.
+writes its report and lets the gate fail the job, with a mutation per way it could stop), in `test_duration_rule.py` (each
+branch of the 30 s, 90 s and ceiling rule on a pull request and on a push, each with a control that fails the other way,
+the check that every gate step applies it, and the weekly triage) and in a planted CI run: the `plant_slow_tests` input
+makes the two planted tests in `test_canary.py` take 95 s and 6 s, and every lane must fail on the first (95 s is over the flat 90 s, which a test no change owns must pass; a test pins
+that) and warn on the second.
