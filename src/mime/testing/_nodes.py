@@ -133,8 +133,16 @@ def node_results(node: SimulationNode, options: Mapping[str, Any] | None = None,
     declared order with no ladder to measure it fails: a claim nothing measures is not verified. The battery draws
     in the dtype the node computes in (:func:`computing_dtype`) unless ``options`` name one: a float32 draw of a node
     that computes in float64 measures the promotion, not the node. ``jumps`` replaces the battery's jit consistency
-    with :func:`jit_consistent_off_switches`, under the same name."""
+    with :func:`jit_consistent_off_switches`, under the same name, and an option ``jit_consistent_of`` (``node ->
+    predicate(state_in, state_out, inputs, dt)``) with the case's own."""
     given: dict[str, Any] = {"dtype": computing_dtype(node), **dict(options or {})}
+    consistent_of = given.pop("jit_consistent_of", None)
+    if consistent_of is not None:
+        # A node whose case judges its jit consistency itself (a report read at a solve's rounding floor): its own
+        # predicate, made for the node, under the battery's name.
+        checks = [name for name in given.pop("checks", verification.DEFAULT_CHECKS) if name != "jit_consistent"]
+        given = {**given, "checks": checks,
+                 "invariants": {**given.get("invariants", {}), "jit_consistent": consistent_of(node)}}
     if jumps is not None:
         checks = [name for name in given.pop("checks", verification.DEFAULT_CHECKS) if name != "jit_consistent"]
         invariants: dict[str, Any] = {**given.get("invariants", {}),

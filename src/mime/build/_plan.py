@@ -49,7 +49,7 @@ from mime.build._refusals import (
     entry_defect,
 )
 from mime.build._report import BuildReport, OrientationLine, RunStructure
-from mime.build._steps import whole_runs_either_side, whole_steps
+from mime.build._steps import auto_step, whole_runs_either_side, whole_steps
 from mime.build._watch import WATCHED_FAMILY, ContainmentPlan, UnwatchedContainment, Watched, WatchPlan
 from mime.core import VELOCITY_RULES, jnp, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
@@ -69,6 +69,7 @@ from mime.registry import (
     Delivery,
     Direction,
     Drive,
+    DriveQuery,
     Dynamics,
     Entry,
     EntryKind,
@@ -88,6 +89,8 @@ from mime.registry import (
     RoleKind,
     Segment,
     Solid,
+    StepQuery,
+    StepRule,
     Tensor,
     Value,
     implements,
@@ -364,6 +367,19 @@ class ResolvedRegistration:
     returns: Mapping[str, ResolvedTarget]
 
 
+def _plain_settings(entry: Entry, si_settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+    """An entry's settings as a step rule reads them: each dimensioned one in SI, each plain number or tuple of numbers
+    as written (a unit direction, a phase in radians)."""
+    held: dict[str, Magnitude] = {}
+    for item in dataclasses.fields(cast(Any, entry)):
+        value = getattr(entry, item.name)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            held[item.name] = float(value)
+        elif isinstance(value, tuple) and all(isinstance(v, (int, float)) for v in cast(tuple[object, ...], value)):
+            held[item.name] = tuple(float(cast(float, v)) for v in cast(tuple[object, ...], value))
+    return {**held, **si_settings}
+
+
 @dataclass
 class EntryPlan:
     """One declared entry, resolved: who it is, what it was bound to, which nodes it will add and at what rate."""
@@ -599,6 +615,12 @@ class _Planner:
         self.fills: dict[str, str] = {}
         self.values: dict[str, materials.Declared] = {}
         self.dt = 0.0
+        #: Whether the experiment asked for ``dt="auto"``: the base step is then chosen once every dynamics is planned
+        #: (:meth:`plan_steps`), the largest its step rules take.
+        self.dt_auto = False
+        #: Under ``dt="auto"``, the entries' declared rates, planned before the base step is chosen: each is made a
+        #: whole multiple of the chosen step once it is (:meth:`plan_steps`), or refused as any rate is.
+        self.deferred_rates: list[tuple[EntryPlan, Any, str]] = []
         self.frame: WorldFrame | None = None
         self.units = ""
         self.meters_per_unit = 1.0
@@ -678,6 +700,7 @@ class _Planner:
         self.check_ids()
         self.check_bodies_start_inside()
         self.resolve_values()
+        self.plan_steps()
         self.plan_confinements()
         self.plan_lubrication()
         self.share_uniform_reads()
@@ -1012,10 +1035,15 @@ class _Planner:
             self.refuse(code, RefusalClass.USER, message, action)
         self.frame = frame
         dt = self.settings.dt
+        if isinstance(dt, str) and dt == "auto":
+            self.dt_auto = True
+            self.check_seed()
+            return
         if dt is None:
             self.refuse("run.dt-missing", RefusalClass.USER,
                         "dt, the base step, has no default: every node's timestep is a whole multiple of it",
-                        "pass dt as a time to Experiment, such as dt=ms(1)")
+                        "pass dt as a time to Experiment, such as dt=ms(1), or dt='auto' where a field chooses its own "
+                        "step")
             return
         try:
             value = si(dt, TIME, what="dt")
@@ -1028,9 +1056,99 @@ class _Planner:
             return
         self.dt = value
         self.plan_duration(value)
+        self.check_seed()
+
+    def check_seed(self) -> None:
         if not isinstance(self.settings.seed, int) or isinstance(self.settings.seed, bool):
             self.refuse("run.seed", RefusalClass.USER, f"seed={self.settings.seed!r} is not an integer",
                         "pass an integer seed: Experiment(..., seed=0)")
+
+    def plan_steps(self) -> None:
+        """Each dynamics' own bound on its step (``Dynamics.time_step``), from its region, its values and the laws that
+        drive its thing, judged at the step its node takes (the base step times its ``rate=``'s whole number): with
+        ``dt="auto"`` the base step is the largest every rule takes (dividing a periodic drive's period, and a declared
+        duration, into whole steps), and a given or chosen step is checked against each rule before any step is taken,
+        its lines shown in the build report."""
+        rules: list[tuple[EntryPlan, StepRule]] = []
+        unpredicted = False
+        for plan in self.dynamics.values():
+            dynamics = cast(Dynamics, plan.entry)
+            drives = tuple(DriveQuery(reader.registered.cls.name, _plain_settings(reader.entry, reader.settings))
+                           for reader in self.readers
+                           if reader.section is Section.INTERACTION and plan.thing is not None
+                           and plan.thing in reader.bindings.values())
+            values = {label: float(value.value) for label, value in plan.values.items()
+                      if isinstance(value.value, (int, float))}
+            try:
+                rule = dynamics.time_step(StepQuery(plan.regions.get("medium"), values, dict(plan.settings), drives))
+            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                self.defect(type(dynamics), f"time_step() raised {error!r}", error)
+                continue
+            if rule is None:
+                continue
+            for problem in rule.refusals:
+                self.refuse(problem.code, RefusalClass.USER, f"{plan.thing!r}'s {plan.registered.cls.label()}: "
+                                                             f"{problem.message}", problem.action)
+            unpredicted = unpredicted or bool(rule.refusals)
+            if not rule.refusals:
+                rules.append((plan, rule))
+        if self.dt_auto:
+            bounded = [(plan, rule) for plan, rule in rules if rule.largest is not None]
+            for plan, _ in bounded:
+                rate = getattr(plan.entry, "rate", None)
+                if rate is not None:
+                    self.refuse("run.dt-auto-rate", RefusalClass.USER,
+                                f"{plan.thing!r}'s {plan.registered.cls.label()} declares rate={rate}, and dt='auto' "
+                                f"chooses that field's own step from its step rule: the two would set one step",
+                                "drop rate= from the field (dt='auto' then steps it at its largest stable step), or "
+                                "pass dt as a time to Experiment, such as dt=ms(1)")
+            if any(getattr(plan.entry, "rate", None) is not None for plan, _ in bounded):
+                return
+            if not bounded:
+                if not unpredicted:
+                    self.refuse("run.dt-auto-unset", RefusalClass.USER,
+                                "dt='auto' takes the base step from a field that bounds its own (a flow field with "
+                                "convection, or an explicit scheme), and nothing in this experiment does",
+                                "pass dt as a time to Experiment, such as dt=ms(1)")
+                return
+            largest = min(cast(float, rule.largest) for _, rule in bounded)
+            periods = {rule.period for _, rule in bounded if rule.period}
+            period, duration = (periods.pop() if len(periods) == 1 else None), self.declared_seconds()
+            self.dt = auto_step(largest, period, duration)
+            self.plan_duration(self.dt)
+            divides = " and ".join(what for what, span in (("the drive's period", period),
+                                                           ("the declared duration", duration)) if span)
+            for plan, _ in bounded:
+                self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), f"dt='auto': the base step "
+                                            f"{self.dt:.6g} s, at most the {largest:.6g} s every field's step rule "
+                                            f"takes" + (f", dividing {divides} into whole steps" if divides else ""))
+            for plan, rate, what in self.deferred_rates:
+                plan.divider = self.divider(rate, what)
+        if not self.dt:
+            return
+        for plan, rule in rules:
+            step = self.dt * plan.divider
+            for problem in rule.problems(step, plan.divider):
+                self.refuse(problem.code, RefusalClass.USER, f"{plan.thing!r}'s {plan.registered.cls.label()}: "
+                                                             f"{problem.message}", problem.action)
+            lines = rule.report(step, plan.divider)
+            if lines:
+                self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), *lines)
+
+    def defer_rate(self, plan: EntryPlan, rate: Any, what: str) -> EntryPlan:
+        """``plan``, its declared rate kept to be made a whole multiple of ``dt="auto"``'s step once it is chosen."""
+        if rate is not None and self.dt_auto and not self.dt:
+            self.deferred_rates.append((plan, rate, what))
+        return plan
+
+    def declared_seconds(self) -> float | None:
+        """The declared duration in seconds where it is one finite time above zero (:meth:`plan_duration` refuses
+        any other)."""
+        try:
+            seconds = si(self.settings.duration, TIME, what="duration") if self.settings.duration is not None else None
+        except UnitError:
+            return None
+        return seconds if isinstance(seconds, float) and math.isfinite(seconds) and seconds > 0.0 else None
 
     def plan_duration(self, dt: float) -> None:
         """The run length the experiment declares, if it does: a finite time above zero, a whole number of base steps
@@ -1507,6 +1625,11 @@ class _Planner:
                                            self.records, store, self.work.judge, self.apparatus_materials)
 
     def plan_thing(self, thing: Thing, index: int) -> None:
+        if isinstance(thing, Medium) and thing.fills is not None:
+            # Before its dynamics: a medium's flow reads the region it fills when planned.
+            region = self.geometry_part(thing.fills, RegionPath, "regions", f"medium {thing.name!r}: fills=")
+            if region is not None:
+                self.fills[thing.name] = region
         if thing.dynamics is not None:
             self.plan_dynamics(thing, thing.dynamics, index)
         if isinstance(thing, Apparatus):
@@ -1519,10 +1642,6 @@ class _Planner:
                             "name the field otherwise: Apparatus(..., fields={'magnetic': ...})")
             for field_name, provider in thing.fields.items():
                 self.plan_provider(thing.name, field_name, provider, index)
-        if isinstance(thing, Medium) and thing.fills is not None:
-            region = self.geometry_part(thing.fills, RegionPath, "regions", f"medium {thing.name!r}: fills=")
-            if region is not None:
-                self.fills[thing.name] = region
 
     def plan_geometry(self, structure: Structure) -> None:
         geometry = structure.geometry
@@ -1719,13 +1838,26 @@ class _Planner:
             self.defect(cls, f"capabilities() raised {error!r}", error)
             return
         owner = f"{thing.name}.flow" if thing.kind is ThingKind.MEDIUM else thing.name
-        plan = EntryPlan(Section.DYNAMICS, owner, dynamics, record, tuple(cls.nodes),
-                         self.divider(dynamics.rate, f"{where}'s dynamics"), index, thing=thing.name,
-                         thing_kind=thing.kind, record=capabilities,
-                         settings=self.settings_in_si(dynamics, record, f"{where}'s dynamics"))
+        plan = self.defer_rate(EntryPlan(Section.DYNAMICS, owner, dynamics, record, tuple(cls.nodes),
+                                    self.divider(dynamics.rate, f"{where}'s dynamics"), index, thing=thing.name,
+                                    thing_kind=thing.kind, record=capabilities,
+                                    settings=self.settings_in_si(dynamics, record, f"{where}'s dynamics")),
+                          dynamics.rate, f"{where}'s dynamics")
         if not self.check_locals(cls, plan.nodes):
             return
         self.setting_problems(dynamics, plan.settings, f"{where}'s dynamics")
+        if thing.kind is ThingKind.MEDIUM:
+            region = self.region_of(thing.name)
+            if region is not None:
+                plan.regions = {"medium": region}
+            try:
+                region_problems = dynamics.region_problems(region)
+            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                self.defect(cls, f"region_problems() raised {error!r}", error)
+                region_problems = []
+            for problem in region_problems:
+                self.refuse(problem.code, RefusalClass.USER, f"{where}'s {cls.label()}: {problem.message}",
+                            problem.action)
         if isinstance(thing, Body):
             plan.initial = self.initial_state(thing, cls)
             if set(plan.initial) == set(cls.initial_state):
@@ -1849,10 +1981,11 @@ class _Planner:
             self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}", problem.action)
         if made.problems:
             return None
-        plan = EntryPlan(Section.DYNAMICS, f"{apparatus.name}.{local}", segment, record, tuple(cls.nodes),
-                         self.divider(segment.rate, f"{where}'s dynamics"), index, thing=apparatus.name,
-                         thing_kind=ThingKind.APPARATUS, record=capabilities, settings=settings, position=position,
-                         segment=made)
+        plan = self.defer_rate(EntryPlan(Section.DYNAMICS, f"{apparatus.name}.{local}", segment, record,
+                                    tuple(cls.nodes), self.divider(segment.rate, f"{where}'s dynamics"), index,
+                                    thing=apparatus.name, thing_kind=ThingKind.APPARATUS, record=capabilities,
+                                    settings=settings, position=position, segment=made),
+                          segment.rate, f"{where}'s dynamics")
         if not self.check_locals(cls, plan.nodes) or not self.placement_holds(segment.orientation, where):
             return None
         if previous is None:
@@ -2652,6 +2785,8 @@ class _Planner:
                         problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
                                plan=plan, settings=settings, regions=regions, hulls=hulls)
+        if section is Section.OBSERVATION:
+            self.defer_rate(entry_plan, getattr(entry, "rate", None), where)
         if section is Section.OBSERVATION and (plan.delivers or plan.registrations or plan.groups):
             self.defect(cls, "an observation reads only: it delivers into nothing, registers nothing and asks "
                              "for no coupling group")
@@ -3147,7 +3282,8 @@ class _Planner:
             self.defect(cls, f"value_problems() raised {error!r}", error)
             return
         for problem in problems:
-            self.refuse(problem.code, RefusalClass.USER, f"body {plan.thing!r}: {problem.message}", problem.action)
+            kind = plan.thing_kind.value if plan.thing_kind is not None else "body"
+            self.refuse(problem.code, RefusalClass.USER, f"{kind} {plan.thing!r}: {problem.message}", problem.action)
 
     def check_bodies_start_inside(self) -> None:
         """Each body an interaction binds to a medium that fills a region, refused once where its centre starts

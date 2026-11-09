@@ -3,8 +3,9 @@ Each case's document is written (beside its saved folder where it reads one: an 
 each float of it (settings, declared values, parts' settings, initial state, gravity; not the run's step, a quaternion,
 an integer or a zero) is moved by a relative 1e-6 in turn; the base and the moved document are each assembled as a
 study's point is (planned, the controller's law made, assembled, compiled by MADDENING) and the trace form compares
-their steps as MIME's chunked run executes them (``mime.testing.graph_program``). A move the build refuses (a rate no
-longer a multiple of the step) is skipped. On the tip before S-F0-1 the arm fired 21 times on the MRS drag's held
+their steps as MIME's chunked run executes them (``mime.testing.graph_program``, whose constants include those of every
+nested sub-program: an array a node's step holds as built is seen, not only a Python float). A move the build refuses
+(a rate no longer a multiple of the step) is skipped. On the tip before S-F0-1 the arm fired 21 times on the MRS drag's held
 matrix (``held_or_made`` compared the leaves with the build's values as constants) and 5 times on the hull's shape
 (Python floats made from it): the matrix's leaves and the hull's search values are arguments of the step now. What
 fires is pinned below, pair by pair (:data:`HELD`), and every such pair is ``held``: a moved leaf of it is one the step
@@ -13,7 +14,15 @@ MADDENING refuses to write into a built graph and a study refuses to vary. Any o
 
 The control, on the cases those fires came from: the same pairs traced with the parameters closed over (the step's
 default, MADDENING's compile-time snapshot), which makes every leaf a constant of the program, fire on every pair
-whose leaves move. So a quiet pair is the leaves being arguments, not a form that cannot see them."""
+whose leaves move. So a quiet pair is the leaves being arguments, not a form that cannot see them. On R1's merge the
+arm fired on `rft_tube`'s helix turns: the rft rung's measured family and gap, decided at build from leaves the step
+reads, which the step now judges from its leaves; its control plants them back as the build made them, and the same
+pair fires.
+
+**"The walk is quiet" bounds what it walked**: the trace form over the floats of these cases' documents, nonzero ones,
+each moved by 1e-6 in turn. It does not reach a node no case builds, a setting that is a direction, a count or a choice,
+a zero (skipped), the run form (not run over the walk: it compiles each build's chunk), a value that reaches the run
+only through a host callback or a derivative rule's lazily traced function, or float32 (the check refuses it)."""
 
 from __future__ import annotations
 
@@ -32,14 +41,15 @@ from robot_asset import bound_robot_with_parts
 
 from mime.build import BuildRefused, plan_experiment
 from mime.build._construct import assemble
-from mime.build._in_graph import program_of
 from mime.build._maddening import chunk_step, full_state, graph_params, parameter_leaves, unreadable_leaves
 from mime.control import law_and_models
 from mime.experiment import Experiment
+from mime.nodes.hydro import RFTDragNode
 from mime.saved import dump_document
 from mime.saved._pins import keeping_pins
 from mime.study import Study, grid
-from mime.testing._two_builds import graph_program, programs_differ
+from mime.testing import graph_program
+from mime.testing._two_builds import nested_program, programs_differ
 from mime.units import mm, mPa_s, ms, mT
 
 RELATIVE = 1e-6
@@ -134,7 +144,7 @@ def closed_program(graph: Any) -> tuple[str, list[np.ndarray]]:
     for node, field in external_inputs(graph):
         spec = inputs(graph.get_node(node))[field]
         fed.setdefault(node, {})[field] = np.zeros(tuple(spec.shape), dtype=np.dtype(spec.dtype or np.float64))
-    return program_of(jax.make_jaxpr(lambda s: step(s, fed, params))(state))
+    return nested_program(jax.make_jaxpr(lambda s: step(s, fed, params))(state))
 
 
 def walk(case: Any, folder: Path, control: bool = False) -> list[dict[str, Any]]:
@@ -221,3 +231,25 @@ def test_control_the_leaves_closed_over_fire_on_every_pair_whose_leaves_move(nam
     rows = [row for row in walk(case, tmp_path, control=True) if row.get("moved")]
     assert rows, "pairs whose leaves move"
     assert all(row["how"] for row in rows), [row["path"] for row in rows if not row["how"]]
+
+
+def test_control_the_rft_family_decided_at_build_fires_on_rft_tubes_helix_turns(monkeypatch: pytest.MonkeyPatch,
+                                                                                 tmp_path: Path):
+    """The rft rung's family and its measured gap, judged in the step from its leaves: planted back as R1 built them,
+    decided at build and held as constants of the step, they fire on rft_tube's helix turns, whose move crosses the
+    family's one measured slenderness (held to ``SHAPE_TOLERANCE``, a relative 1e-6 as the walk's move is); the
+    planted values are the step's own at the built leaves, so nothing else differs. So the quiet rft cases are the
+    family being judged in the step, not a walk that cannot see it."""
+    judged = RFTDragNode.measured_here
+
+    def at_build(self: RFTDragNode, p: Any) -> tuple[Any, Any]:
+        with jax.enable_x64(True), jax.ensure_compile_time_eval():
+            measured, gap = judged(self, self._built_leaves())  # noqa: SLF001 - the leaves as built
+            held = bool(measured), float(gap)
+        return jax.numpy.asarray(held[0]), jax.numpy.asarray(held[1], dtype=jax.numpy.asarray(p["viscosity"]).dtype)
+
+    monkeypatch.setattr(RFTDragNode, "measured_here", at_build)
+    case = next(case for case in CASES if case.name == "rft_tube")
+    rows = walk(case, tmp_path)
+    assert {"/".join(map(str, row["path"])) for row in rows if row.get("how")} == {
+        "things/helix/parts/shell/solid/settings/turns"}

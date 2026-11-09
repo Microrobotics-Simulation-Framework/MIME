@@ -60,6 +60,14 @@ UniformRotatingNode h  # the step's own timestep, which MADDENING hands the step
 IntegratingRotatingNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 PhaseLagNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 RampNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+BodyForceNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+ImplicitFlowNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+ExplicitFlowNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+ExplicitFlowNode k  # RK3's stage index in the stages' superscripts (the stage before is k-1), an index, which the check reads as one only in a braced subscript; route: the check reading a superscript's stage index as it reads a subscript's
+PrescribedFlowNode e  # Euler's number, a constant of the formula, held by no field; route: a row kind for mathematical constants
+PrescribedFlowNode i  # the imaginary unit, a constant of the formula, held by no field; route: a row kind for mathematical constants
+PrescribedFlowNode r  # the radial coordinate of the point read, an argument of the reading at points, held by no field; route: a row kind for a reading's coordinates
+PrescribedFlowNode t  # the time, the step count times the timestep, which no field holds in seconds; route: the row kind for the step's dt
 RFTDragNode B  # each point's local drag, its coefficients times its arc, defined in the equations, held by no field
 RFTDragNode G  # the wall's image at the points, the registered wall correction's output, held by no field
 RFTDragNode I  # the identity

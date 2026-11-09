@@ -18,8 +18,8 @@ reduction, a map); a square root, ``** 0.5`` or a power of 0.5, not of a ``domai
 name bound once to one or to a ``predicate``, cast to a number (``astype``, ``asarray``, ``array``, a dtype's
 constructor, ``convert_element_type``, a sum or mean) or in arithmetic; a floor division ``//`` (not of two numbers
 written out) or a value cast to an integer dtype (``astype``, a dtype's constructor, ``asarray``, ``array`` or
-``convert_element_type``), which truncates: the cell index of a uniform grid; ``stop_gradient``, ``custom_jvp`` and
-``custom_vjp``, as decorators, calls or through ``functools.partial``, in a function in scope or among the
+``convert_element_type``), which truncates: the cell index of a uniform grid; ``stop_gradient``, ``custom_jvp``, ``custom_vjp`` and
+``custom_linear_solve``, as decorators, calls or through ``functools.partial``, in a function in scope or among the
 module-level statements of a module that holds one. Names are resolved through the module's imports and aliases,
 MIME's re-exports followed, and through a function's own imports and its names bound once to a module or one of its
 attributes.
@@ -38,8 +38,8 @@ for the domain-guard test, which must reach each guard with its condition false 
 zero.
 
 Every hit not listed in ``docs/ratchets/raw_switches.txt`` fails, and so does a listed site that is no longer a hit.
-A listed ``stop_gradient``, ``custom_jvp`` or ``custom_vjp`` names the status it caps its entry at, or the standing
-test that shows the entry's status holds with it. JAX's source information is internal to it: the one function that
+A listed ``stop_gradient``, ``custom_jvp``, ``custom_vjp`` or ``custom_linear_solve`` names the status it caps its
+entry at, or the standing test that shows the entry's status holds with it. JAX's source information is internal to it: the one function that
 reads it is :func:`equation_frames`. A traced step with equations of which none has a frame means that information
 did not hold, and the scan says so before anything else."""
 
@@ -93,7 +93,10 @@ SQUARE_ROOTS = frozenset({"jax.numpy.sqrt", "jax.lax.sqrt"})
 #: Powers, a square root where the exponent is 0.5.
 POWERS = frozenset({"jax.numpy.power", "jax.numpy.float_power", "jax.lax.pow"})
 STOP_GRADIENTS = frozenset({"jax.lax.stop_gradient"})
-CUSTOM_RULES = {"jax.custom_jvp": "custom_jvp", "jax.custom_vjp": "custom_vjp"}
+#: The custom derivative rules: a custom JVP or VJP, and a linear solve whose derivative is the solve's own
+#: (``custom_linear_solve``: an iterative solve's derivative holds only to its tolerance, and its stops are its own).
+CUSTOM_RULES = {"jax.custom_jvp": "custom_jvp", "jax.custom_vjp": "custom_vjp",
+                "jax.lax.custom_linear_solve": "custom_linear_solve"}
 CASTS = frozenset({"astype"})
 #: The integer dtypes, by origin: a float cast to one is truncated, the cell index of a uniform grid.
 INTEGER_DTYPES = frozenset({f"{package}.{name}" for package in ("jax.numpy", "numpy")
@@ -114,7 +117,7 @@ GUARDS = {"mime.core.switch.domain_guard": "domain_guard", "mime.core.switch.non
 #: The name a hit among a module's own statements is listed under.
 MODULE_LEVEL = "<module>"
 #: The families whose listed site names the status it caps its entry at, or the test that clears it.
-CAPPING = frozenset({"stop_gradient", "custom_jvp", "custom_vjp"})
+CAPPING = frozenset({"stop_gradient", "custom_jvp", "custom_vjp", "custom_linear_solve"})
 #: The frames by which JAX's ``vmap`` calls the function it maps: rootward of a switch's frame, the switch is
 #: evaluated under ``vmap``, which no sub-jaxpr shows.
 VMAP_FRAMES = ("jax/_src/interpreters/batching.py", "jax/_src/api.py:vmap.")
@@ -918,7 +921,8 @@ def scan_problems(scan: SwitchScan, listed: RatchetList, declared: Mapping[str, 
                          f"entry at ('caps <kind> <name> <version> cut|unverified') or the test that clears it "
                          f"('cleared_by <test id>')")
         if matched["family"] not in CAPPING and (matched["status"] or matched["test"]):
-            found.append(f"{listed.path}:{line.number}: only a stop_gradient, custom_jvp or custom_vjp caps a status")
+            found.append(f"{listed.path}:{line.number}: only a stop_gradient, custom_jvp, custom_vjp or "
+                         f"custom_linear_solve caps a status")
         if matched["test"] is not None and tests is not None and not _test_exists(tests, matched["test"]):
             found.append(f"{listed.path}:{line.number}: {matched['test']} is no test of {tests}")
     for owner in sorted(set(scan.owners) - set(declared)):

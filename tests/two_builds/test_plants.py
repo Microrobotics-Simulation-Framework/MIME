@@ -18,6 +18,8 @@ plant at every move (145 of 145), no twin (0 of 116) and no same-value rebuild; 
 - the MRS drag with 30 % of its viscosity taken from the build's value at the trace (a plant in a real node) is caught
   by the trace form at every move from 1e-1 to 1e-15, and by the run form from 1e-1 to 1e-12 with the same margin
   (the smaller moves reported); its twin (the viscosity read live) quiet by both forms;
+- an array held as built inside a real node's step, which runs in a nested ``jit`` (a program text and top-level
+  constants that do not carry it), is in ``test_nested_bakes.py``;
 - conditions: the leaves closed over (the step's default parameters) make every twin fire; in float32 the check is
   refused, and so are a pair whose leaves differ in shape and a value with no relative move.
 """
@@ -25,6 +27,7 @@ plant at every move (145 of 145), no twin (0 of 116) and no same-value rebuild; 
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Iterator
 from typing import Any
 
@@ -35,11 +38,10 @@ from mrs_cases import BALL, free_space, mrs
 from plants import BAKED, NODES, TWINS, planted
 
 from mime.build import ArgumentRefused
-from mime.build._in_graph import program_of
 from mime.build._maddening import chunk_step, fed_inputs, full_state, graph_params
 from mime.nodes.hydro.mrs import _node as mrs_node
 from mime.testing import TwoBuilds, run_form, two_builds_of
-from mime.testing._two_builds import programs_differ, step_program
+from mime.testing._two_builds import FieldGap, RunForm, nested_program, programs_differ, step_program
 from mime.testing.toys._experiments import ADD_BATH, ADD_PROBE, toy_experiment
 from mime.units import N, kg, kg_m2, m, m_per_s, mm, mPa_s, rad_per_s
 
@@ -54,8 +56,13 @@ BAND = 1e-6
 MARGIN = 4.0
 
 
+#: The draws' seed: new on every run, printed with a failure so that its draws can be repeated (``MIME_PLANTS_SEED``
+#: writes it back); a reproduction aid, never a fixed seed in CI.
+SEED = int(os.environ.get("MIME_PLANTS_SEED") or np.random.SeedSequence().entropy or 0)
+
+
 def draws(count: int, smallest: float) -> list[tuple[float, float]]:
-    rng = np.random.default_rng()
+    rng = np.random.default_rng([SEED, count, int(-np.log10(smallest))])
     return [(float(np.exp(rng.uniform(np.log(0.5), np.log(3.0)))),
              float(np.exp(rng.uniform(np.log(smallest), np.log(1e-1)))) * float(rng.choice([-1.0, 1.0])))
             for _ in range(count)]
@@ -95,7 +102,7 @@ def test_the_trace_form_catches_every_plant_at_every_move(pairs: Pairs):
     for kind in BAKED:
         moved = [(k, move, found) for k, move, found in pairs[kind] if move != 0.0]
         assert len(moved) == len(LADDER) + 26
-        assert not [(k, move) for k, move, found in moved if found.verdict != "bake"], kind
+        assert not [(k, move) for k, move, found in moved if found.verdict != "bake"], (kind, f"seed {SEED}")
 
 
 def gated(move: float) -> bool:
@@ -108,33 +115,60 @@ def test_the_run_form_catches_every_plant_in_its_band_four_lines_up(pairs: Pairs
         assert len(band) >= 3 + 6
         short = [(k, move, found.run.ratio if found.run else None) for k, move, found in band
                  if found.run is None or found.run.ratio < MARGIN]
-        assert not short, f"{kind}: a gating plant stands less than four times k resolutions above the line: {short}"
+        assert not short, (f"{kind}: a gating plant stands less than four times k resolutions above the line: {short}; "
+                           f"seed {SEED}")
+
+
+def probe_numbers(runs: list[RunForm]) -> tuple[int, int, int, float]:
+    """How many of the probed runs the line of k resolutions catches, how many of them stand on a field whose
+    resolution measured zero (their line is "any difference", the ratio infinite), and the least ratio among the
+    finite ones (above 1 fires; ``nan`` where none is finite)."""
+    ratios = [run.ratio for run in runs]
+    finite = [ratio for ratio in ratios if math.isfinite(ratio)]
+    return (sum(ratio > 1.0 for ratio in ratios), sum(math.isinf(ratio) for ratio in ratios),
+            len(ratios), min(finite, default=float("nan")))
+
+
+def test_probe_numbers_count_a_field_whose_resolution_measured_zero_as_caught_and_infinite():
+    """A field that differs and whose one-ulp nudge changed nothing (seed 2010's plant at k 2.27, the spring's load)
+    has the infinite ratio: caught, and not a ratio to take the least of."""
+    zero = RunForm((FieldGap("spring.load", 9.2e-8, 0.0, 1.0),))
+    one = RunForm((FieldGap("spring.load", 9.2e-8, 1.1e-16, 1.0),))
+    assert zero.worst is not None and zero.worst.resolution == 0.0
+    assert probe_numbers([zero, one]) == (2, 1, 2, one.ratio)
+    assert math.isnan(probe_numbers([zero])[3])
 
 
 def test_probe_the_plants_just_above_the_old_line(pairs: Pairs, record_property: Any):
     """Reported, not a gate: of the plants under the band that the spike's 64-ulp line catches, how many the line of
-    k resolutions catches too, and the least ratio among them (above 1 fires), by kind. Each is measured against a
-    resolution the run found, so the ratios are numbers."""
+    k resolutions catches too, how many of those stand on a field whose resolution measured zero (the line is then
+    "any difference", the ratio infinite: ``FieldGap``'s quantised resolution), and the least finite ratio among them
+    (above 1 fires), by kind. A plant is probed only where a run found a differing field; a resolution of zero is a
+    measurement, never a failure."""
     for kind in BAKED:
-        probed = [found for _, move, found in pairs[kind] if move != 0.0 and not gated(move) and old_line(found)]
-        assert all(found.run is not None and found.run.worst is not None and found.run.worst.resolution > 0.0
-                   for found in probed), kind
-        ratios = [found.run.ratio for found in probed if found.run is not None]
-        record_property(f"probe_{kind}_over_old_line", len(ratios))
-        record_property(f"probe_{kind}_caught_by_new_line", sum(ratio > 1.0 for ratio in ratios))
-        record_property(f"probe_{kind}_least_ratio", min(ratios, default=float("nan")))
+        probed = [(k, move, found) for k, move, found in pairs[kind]
+                  if move != 0.0 and not gated(move) and old_line(found)]
+        broken = [(k, move, found.run) for k, move, found in probed if found.run is None or found.run.worst is None]
+        assert not broken, (kind, broken, f"seed {SEED}")
+        caught, at_zero, over, least = probe_numbers([found.run for _, _, found in probed if found.run is not None])
+        record_property(f"probe_{kind}_over_old_line", over)
+        record_property(f"probe_{kind}_caught_by_new_line", caught)
+        record_property(f"probe_{kind}_on_zero_resolution", at_zero)
+        record_property(f"probe_{kind}_least_ratio", least)
 
 
 def test_no_twin_fires_either_form(pairs: Pairs):
     for kind in TWINS:
-        assert not [(k, move, found.verdict) for k, move, found in pairs[kind] if found.verdict != "quiet"], kind
+        assert not [(k, move, found.verdict) for k, move, found in pairs[kind]
+                    if found.verdict != ("not-discriminating" if move == 0.0 else "quiet")], kind
         assert all(found.run is not None and found.run.ratio == 0.0 for _, _, found in pairs[kind]), kind
 
 
-def test_a_same_value_rebuild_is_quiet(pairs: Pairs):
+def test_a_same_value_rebuild_fires_neither_form_and_says_it_moved_nothing(pairs: Pairs):
     for kind in NODES:
         same = [found for _, move, found in pairs[kind] if move == 0.0]
-        assert len(same) == 1 and same[0].verdict == "quiet" and not same[0].moved, kind
+        assert len(same) == 1 and not same[0].fired and not same[0].moved, kind
+        assert same[0].verdict == "not-discriminating", kind
 
 
 def test_a_value_keyed_count_fires_as_a_shape_exactly_where_the_move_crosses(pairs: Pairs):
@@ -172,7 +206,7 @@ def closed(built: Any) -> tuple[str, list[np.ndarray]]:
     graph.reset_state()
     state = jax.tree_util.tree_map(lambda leaf: leaf, full_state(graph))
     fed, params = fed_inputs(graph, built.held_inputs()), graph_params(graph)
-    return program_of(jax.make_jaxpr(lambda s, e: step(s, e, params))(state, fed))
+    return nested_program(jax.make_jaxpr(lambda s, e: step(s, e, params))(state, fed))
 
 
 def test_condition_the_check_refuses_float32():

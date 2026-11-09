@@ -5,11 +5,11 @@ import json
 import math
 import re
 import weakref
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, Any, Literal, cast, override
 
 import numpy as np
 from maddening import GraphManager
@@ -51,7 +51,7 @@ from mime.build._refusals import (
     entry_defect,
 )
 from mime.build import StageBinding, stage_binding
-from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
+from mime.control import Chunk, ChunkedRun, ChunkHook, Progress, StopRequest, law_and_models
 from mime.build._maddening import (
     FlagTally,
     FlagTest,
@@ -132,6 +132,7 @@ from mime.vocabulary import JOINT_VELOCITIES
 
 if TYPE_CHECKING:
     from mime.cli._display import RunDisplay, Watch
+    from mime.registry import Problem
     from mime.live import LiveSession
     from mime.study._override import Overridden
     from mime.viz import RecordingSettings, StageSamples, WebPage
@@ -300,7 +301,7 @@ class Experiment:
     """
 
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
-                 dt: Quantity | None = None, seed: int = 0, up: Any = None,
+                 dt: Quantity | Literal["auto"] | None = None, seed: int = 0, up: Any = None,
                  conditions: Mapping[str, Condition] | None = None,
                  profile: str | Profile = DEFAULT_PROFILE.value, duration: Quantity | None = None) -> None:
         self.name = name
@@ -1287,6 +1288,7 @@ class BuiltExperiment:
                 "a hook needs chunks: it is called between them, and this run has none",
                 "pass chunk=, a whole number of base steps: run(..., hook=hook, chunk=ms(10))")])
         start = self._runs.steps
+        self._refuse_past_nodes_reach(start + steps)
         if self._runs.callback is not None:  # a run starts from the declared inputs: none a live session set
             self._runs.callback.live.clear()
         kept = history or bool(recorded)
@@ -1298,7 +1300,8 @@ class BuiltExperiment:
             for name in point.starting:
                 set_node_state(self._graph, name, point.point.state[name])
         final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep,
-                                        automatic=hook is None and self._runs.chunk is None, stop=stop,
+                                        automatic=hook is None and self._runs.chunk is None,
+                                        stop=self._stopped_by_nodes(stop),
                                         tests=self._flag_tests(), params=point.params if point is not None else None)
         taken = self._runs.steps - start
         why = self._runs.stopped
@@ -1306,13 +1309,58 @@ class BuiltExperiment:
                                 spacing, history=history,
                                 stopped=Stopped(why, steps) if why is not None else None, tally=self._runs.tally,
                                 point=point)
+        self._warn_raised(result)
         refusal = non_finite(final, stacked, self._report.nodes, start, self._plans.dt, kept_all=history,
                              already=self._non_finite)
         if refusal is not None:
             if self._non_finite is None:
                 self._non_finite = NonFinite(first_non_finite(refusal), start + taken)
             raise RunFailed(stopped_refusals(self._graph, final) or [refusal], result)
+        # A node that stops a run with its state finite (the flow's CFL check, which holds its state from the step
+        # past its line) names the step it stopped at in its state; the run ended at that chunk, and is refused.
+        stopped = stopped_refusals(self._graph, final)
+        if stopped:
+            raise RunFailed(stopped, result)
         return result
+
+    def _refuse_past_nodes_reach(self, end: int) -> None:
+        """Refuse, before it runs, a run that would take a node past the steps it was built to keep a record of
+        (``run_problem(end)``, where a node has one: the flow's per-step derivative reports), never clamped."""
+        found = [(name, problem) for name in self._graph.node_names
+                 if callable(check := getattr(self._graph.get_node(name), "run_problem", None))
+                 and (problem := cast("Callable[[int], Problem | None]", check)(end)) is not None]
+        if found:
+            raise ArgumentRefused([Refusal(problem.code, RefusalClass.USER, f"node {name}: {problem.message}",
+                                           problem.action) for name, problem in found])
+
+    def _stopped_by_nodes(self, asked: StopRequest | None) -> StopRequest | None:
+        """``asked``, and before it the nodes that stop a run (``STOP_FIELD``, a node's step count it stopped at, -1
+        until it has): a run one of them has stopped ends at the chunk the stop lies in. Only that field is read from
+        the device between chunks."""
+        from mime.build._maddening import node_state
+
+        watched = [(name, field) for name in self._graph.node_names
+                   if isinstance(field := getattr(self._graph.get_node(name), "STOP_FIELD", None), str)]
+        if not watched:
+            return asked
+
+        def stop(progress: Progress) -> str | None:
+            for name, field in watched:
+                at = int(np.asarray(node_state(self._graph, name)[field]))
+                if at >= 0:
+                    return f"node {name} stopped the run at its step {at}"
+            return asked(progress) if asked is not None else None
+
+        return stop
+
+    def _warn_raised(self, result: RunResult) -> None:
+        """A warning for each flag that warns (``Flag.warns``) and the run raised, with its count and where."""
+        warns = {f"{plan.node_name(flag.node)}.{flag.field}" for plan in self._plans.entries
+                 for flag in plan.registered.cls.raises
+                 if flag.warns and (flag.rung is None or flag.rung == getattr(plan.entry, "rung", None))}
+        for read in result.flags:
+            if read.path in warns and read.was_raised:
+                warn_at_script(f"{read.flag.owner} ({read.flag.entry}): {read.text(meaning=True)}", UserWarning)
 
     @property
     def declared(self) -> tuple[tuple[Declaration, ...] | None, RunSettings | None]:

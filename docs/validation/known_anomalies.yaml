@@ -611,7 +611,7 @@ anomalies:
     verification: []
     affected_components:
       - "MIME-NODE-020"
-      - "mime.nodes.environment.fvm.piso"
+      - "entry: dynamics fvm; the 0.2 line's mime.nodes.environment.fvm.piso, which 0.3's FVM replaces"
     affected_verification_ids:
       - "MIME-VER-030"
     workaround: >
@@ -634,8 +634,11 @@ anomalies:
       settle whether the cell-Pe trigger exists and where; (b) correct the two
       script docstrings.
 
-      0.3.0a1: the rewritten flow solver must pass MIME-VER-030's two arms again (the empty box
-      preserved in both fully-periodic and inhomogeneous-Dirichlet modes).
+      0.3.0 (dev2): the rewritten flow solver (the dynamics fvm) has no Dirichlet velocity face: its periodic box
+      has none, and its openings (F2b) are evolved half-cell faces whose pressure pins the flux, so the defect's
+      mechanism cannot recur in it. MIME-VER-030's fully periodic arm (an empty box keeps a uniform translation)
+      returns with it; its inhomogeneous-Dirichlet arm has no counterpart until a face takes a prescribed velocity,
+      which the design does not build.
 
   - anomaly_id: MIME-ANO-109
     title: "IBM analytical-wall bounds were calibrated against the diffuse band's UNDER-RESOLVED discretisation, not derived — the 3D pipe's 10% bound was unattainable and was met only by a three-way cancellation (test rewritten as MIME-VER-033; 2D channel bound still open)"
@@ -745,8 +748,7 @@ anomalies:
     affected_versions: ">=0.1.0"
     affected_components:
       - "MIME-NODE-020"
-      - "mime.nodes.environment.fvm.piso"
-      - "mime.nodes.environment.fvm.ibm"
+      - "entry: dynamics fvm; the 0.2 line's mime.nodes.environment.fvm.piso and .ibm, which 0.3's FVM replaces"
     affected_verification_ids:
       - "MIME-VER-033"
       - "MIME-VER-032"
@@ -772,7 +774,10 @@ anomalies:
       bound) or compare against the penalised problem's own solution. Do not
       calibrate a bound at eps = 1*dx and read it as physics.
     planned_resolution: >
-      0.3.0a1: the rewritten flow solver carries the IBM oracles as shape and position (MIME-VER-033's
+      0.3.0 (dev2): the rewritten flow solver (the dynamics fvm) judges its wall by oracles that remove the wall's
+      offset (Poiseuille's core curvature; the low-Womersley fit with a free radius) and the wall's own position
+      against the band's planar calibration, never a nominal-radius flux bound. Before: 0.3.0a1: the rewritten flow
+      solver carries the IBM oracles as shape and position (MIME-VER-033's
       form), never the 0.2 nominal-radius bounds.
 
       Earlier plan, from the 0.2 line:
@@ -1822,6 +1827,15 @@ anomalies:
       sizes, predicts all twelve depths measured (the rule is inference from Eigen's published blocking heuristic; the
       library inside jaxlib was not read). The rung's numbers are right to rounding either way; what failed is the
       promise that a run reproduces bit for bit.
+
+      **The rft rung (R1, unreleased) took its products whole again.** Its resistance, M^T f, summed the helix's 3n
+      unknowns in one product (282 on rft_free_space's helix, 279 on rft_tube's), and with a wall its block-diagonal
+      local drag entered B M and B G as dense products as long. The registry walk's round trip of rft_free_space then
+      failed on the hybrid laptop by where each process started (the coil's pose 6.8e-21 apart at its first step, on
+      #208's branch and on the release branch alone alike). Pinned there, the coil's product taken whole gave one bit
+      pattern on the larger cores and another on the smaller, three processes of each; summed by force_sums, one
+      pattern on both. Fixed before release: the node sums M^T f by force_sums and takes B M and B G point by point,
+      three terms a sum.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1835,12 +1849,16 @@ anomalies:
     affected_components:
       - "entry: interaction drag, rung mrs; mime.nodes.hydro.mrs.resistance's force sums"
       - "node: MRSDragNode"
+      - "entry: interaction drag, rung rft; mime.nodes.hydro._rft_drag.RFTDragNode.resistance_at's products"
+      - "node: RFTDragNode"
     verification:
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_mrs_step_sums_at_most_depth_terms"
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_resistance_sums_at_most_depth_terms"
       - "tests/oracles/test_mrs_force_sums.py::test_a_sum_no_longer_than_depth_is_the_product_it_was_bit_for_bit"
       - "tests/oracles/test_mrs_force_sums.py::test_a_longer_sum_equals_the_product_to_rounding"
       - "tests/oracles/test_mrs_force_sums.py::test_control_the_product_taken_whole_is_found_by_the_scan"
+      - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_rft_step_sums_at_most_depth_terms"
+      - "tests/oracles/test_mrs_force_sums.py::test_control_the_rft_steps_product_taken_whole_is_found_by_the_scan"
       - "tests/saved/test_registry_walk.py::test_every_case_round_trips_through_a_fresh_process"
     residual_risk: "CI's runners have one size of core, so no test there can show that two processes' bits differ; the tests hold the cause (no product in the compiled MRS step sums more than 248 terms), and the cure was measured on a hybrid laptop (50 of 50 fresh processes, and 5 pinned to each kind of core, bitwise equal on all three bodies; mrs_solids saved on one kind and loaded on the other 10 of 10). 248 is the block Eigen takes in float64 with AVX2 on a 32 KB L1d (in float32 its block is longer); a CPU whose smaller cores had a smaller L1d, or wider vectors on both kinds, would need a shorter piece. The other products in MIME that contract over both operands' first axis (a chain's links, a 3 x 3 frame) sum a few terms, surveyed and not tested"
     workaround: "Before the fix, pin a process to one kind of core (taskset) where its bits are compared with another's"
@@ -3314,8 +3332,9 @@ anomalies:
       by 1e-6, fires on no hull setting of hull_contact or hull_contact_looped. It fires on one pair of
       bound_robot_with_parts, the ellipsoid's semi-axes: the step holds the ellipsoid's points made from them as
       constants (a vector setting of the kind held as built; its leaf hull_shape_semi_axes is one the step does not read).
-      With the three values as leaves that pair's run still moves by 7.0e6 units in the last place over five steps, so
-      the spike's 1.6e-9 came from the semi-axes and not from these floats [measured, float64]. No run varies the
+      With the three values as leaves that pair's run still moves by 7.0e6 units in the last place over five steps
+      [measured, float64]: the semi-axes' points dominate that run. Whether the three floats contributed some part of
+      the spike's 1.6e-9 is not separated by that [estimate, not a bound]. No run varies the
       semi-axes: an override of them is refused (value.unknown) and a sweep over them refuses every point and its run, so
       a new value is a new build.
     severity: major
@@ -3388,7 +3407,7 @@ anomalies:
       - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[1e-06]"
       - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[1e-05]"
       - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[0.0001]"
-      - "tests/two_builds/test_outside_step.py::test_control_the_same_controller_built_twice_is_quiet"
+      - "tests/two_builds/test_outside_step.py::test_control_the_same_controller_built_twice_fires_neither_form"
     residual_risk: >
       One setting of one controller was measured; whether the controller's other settings (the axis, the up direction, the
       base) and the other controllers reach the run in the same way is not known. The size of the effect is the case's
@@ -3450,12 +3469,14 @@ anomalies:
       - "tests/two_builds/test_run_constant_seam.py::test_forward_the_seam_the_steps_own_comparison_and_the_literal_one_are_bit_for_bit[mrs_tube-float64]"
       - "tests/two_builds/test_run_constant_seam.py::test_forward_the_seam_the_steps_own_comparison_and_the_literal_one_are_bit_for_bit[mrs_tube-float32]"
     residual_risk: >
-      What the tests hold is where the LU sits in the compiled program, not the backward time: the time is the spike's
-      (0.50 s for the whole gradient of the derive-once form, against 471 ms a step), not measured again here. A gradient
+      What the tests hold is where the LU sits in the compiled program, not the backward time. The time was measured
+      twice, by scripts not kept in the repository: the spike's (0.50 s for the whole gradient of the derive-once form,
+      against 471 ms a step), and the build's, through the chunk against the per-step form, one CPU, float64, 222 force
+      points: 0.30 s and 0.33 s against 5.43 s and 10.24 s at 20 and 40 steps (17.9 and 30.9 times) [measured once]. A gradient
       taken through MADDENING's own scans (its run scan, its history scan, graph.step), which keep the step's own path,
       still makes the resistance again at every backward step; MIME's gradient path (lane S's S-F0-3) goes through the
       chunk. Measured at one size (222 force points), on one CPU.
-    workaround: "Differentiate through mime.build._maddening.chunk_function (MIME's chunk), not through MADDENING's scans."
+    workaround: "Differentiate through MIME's chunk, which the chunked runs (the flagged run, a study's batched run) already use, not through MADDENING's scans; the function that gives the chunk as a pure function, mime.build._maddening.chunk_function, is private until lane S's gradient phase names a public one."
     planned_resolution: "Done in lane S's S-F0-1: the run-constant seam; MIME's chunked runs make the resistance once per chunk, before the step loop."
 
   - anomaly_id: MIME-ANO-148
