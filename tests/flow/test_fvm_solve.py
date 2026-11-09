@@ -14,7 +14,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from mime.nodes.flow.fvm import Jacobi, Stopping, guarded_cg, projected_solve, scaling_start
-from mime.nodes.flow.fvm._solve import REPORT_FIELDS
+from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, REPORT_FIELDS
 
 AT_CAP, STAGNATED, NOT_FINITE, AT_ZERO = (REPORT_FIELDS.index(name) for name in
                                           ("at_cap", "stagnated", "not_finite", "accepted_at_zero"))
@@ -39,6 +39,7 @@ class Problem:
         self.sigma = self.node.resistivity(p, fields)
         self.shift = jnp.asarray(shift, dtype=dtype)
         self.apply = self.node.operator_of(p, self.grid, self.sigma)(self.shift)
+        self.magnitude = self.node.magnitude_of(p, self.grid, self.sigma)(self.shift)
         self.diagonal = self.node.diagonal_of(p, self.grid, self.sigma, self.shift)
         self.dtype = dtype
         self.compiled: dict = {}
@@ -83,7 +84,8 @@ class Problem:
             settings_ = {"tolerance": 1e-8 if self.dtype == "float64" else 1e-5, **stopping}
             chosen = self.precondition("jacobi" if precondition is None else precondition)
             self.compiled[key] = jax.jit(lambda bb, ss: guarded_cg(self.projected, bb, chosen, ss,
-                                                                   Stopping(**settings_), self.grid.inner))
+                                                                   Stopping(**settings_), self.grid.inner,
+                                                                   self.magnitude))
         return self.compiled[key](b, start)
 
 
@@ -146,6 +148,24 @@ def test_control_a_preconditioner_that_is_not_symmetric_fails_the_solve(seed):
             x, report = problem.cg(b, precondition="one_sided", cap=400)
             stopped = float(report[AT_CAP] + report[STAGNATED] + report[NOT_FINITE])
             assert stopped == 1.0 or problem.true_residual(x, b) > tolerance
+
+
+@settings(max_examples=10, deadline=None)
+@given(seed=st.integers(0, 2**31 - 1))
+def test_control_a_cap_and_a_plateau_still_stop_flagged_under_each_dtypes_default_stop(seed):
+    """Float32's default stop takes the solve's rounding floor where that is above its 1e-5: a planted stop must still
+    be flagged under it, in both dtypes (each under its own default: the floor in float32, the bare tolerance in
+    float64). The cap (3 iterations) stops at its cap; the one-sided preconditioner, whose residual no longer falls,
+    stops stagnated or at its cap; neither is accepted as converged."""
+    for dtype in ("float32", "float64"):
+        with in_dtype(dtype):
+            problem = problem_in(dtype)
+            b = problem.rhs(seed)
+            default = dtype in AT_FLOOR_BY_DEFAULT
+            _, capped = problem.cg(b, cap=3, at_floor=default)
+            assert float(capped[AT_CAP]) == 1.0 and int(capped[0]) == 3
+            _, plateau = problem.cg(b, precondition="one_sided", cap=400, at_floor=default)
+            assert float(plateau[AT_CAP] + plateau[STAGNATED]) == 1.0, plateau
 
 
 def test_a_warm_start_already_within_the_tolerance_takes_an_iteration(dtype):

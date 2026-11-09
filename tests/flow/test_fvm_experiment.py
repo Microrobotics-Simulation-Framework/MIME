@@ -22,6 +22,7 @@ from mime.dynamics.flow import IMEXEulerScheme
 from mime.experiment import Experiment
 from mime.interactions import BodyForce
 from mime.nodes.flow.fvm import Stopping
+from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, default_tolerance, rounding_floor
 from mime.scene import PeriodicBox, Scene, Tube, X, Z
 from mime.things import Medium, Structure
 from mime.units import kg_per_m3, m_per_s2, mm, mPa_s, ms
@@ -207,26 +208,68 @@ def test_a_nan_the_drive_delivers_at_one_step_is_refused_as_not_finite(dtype, st
     _nan_plant_refused(dtype, steady, body_force.BodyForceNode, "force_at", force_at, in_step=False)
 
 
+#: The stiff interior's case: the 0.01h interior at D/h 32, IMEX Euler under Stokes at dt 10 ms.
+STIFF = {"steady": False, "stokes": True, "dt": ms(10.0), "length": mm(0.125), "cells_across": 32,
+         "wall": Band(delta_in=0.01)}
+
+
+def step_floors(built: object, history: dict, dt: float) -> list[float]:
+    """Each step's rounding floor at its answer relative to its right-hand side, ``eps || |A| |x| + |b| || / ||b||``,
+    made outside the run from the node's own operator: what float32's default stop takes where it is above 1e-5."""
+    import jax.numpy as jnp
+
+    node = built.graph.get_node("water.flow")  # type: ignore[attr-defined]
+    p = node._step_constants(None)  # noqa: SLF001 - the step's own constants
+    grid = node.grid(p)
+    fields = node.fields(p, grid)
+    sigma = node.resistivity(p, fields)
+    magnitude = node.magnitude_of(p, grid, sigma)(1.0 / dt)
+    drive = node.drive(fields, jnp.asarray([0.0, 0.0, G], dtype=fields.chi[2].dtype))
+    velocities = [np.asarray(history[f"velocity_{c}"]) for c in "xyz"]
+    previous = grid.zeros(fields.chi[2].dtype)
+    floors = []
+    for k in range(len(velocities[0])):
+        b = grid.project(tuple(prior / dt + force for prior, force in zip(previous, drive, strict=True)))
+        solved = tuple(jnp.asarray(v[k]) for v in velocities)
+        floors.append(float(rounding_floor(b, magnitude, grid.inner)(solved) / jnp.sqrt(grid.inner(b, b))))
+        previous = solved
+    return floors
+
+
 def test_a_stiff_interior_at_d_h_32_converges_on_every_step(dtype):
     """M7: the 0.01h interior at D/h 32, IMEX Euler under Stokes at dt 10 ms, where the stagnation stop judged against
     the last check stopped 26 of 30 steps in float64 (29 in float32) short of a solve that converges: under the window
-    rule every step converges, unflagged. The controls: the same run under the rule before the fix (a window of one
-    check at 0.9, at least as strict as judging against the last check) stops a step stagnated; and at a tolerance
-    below rounding (the planted stall) every step stagnates, before its cap."""
+    rule every step converges, unflagged, at its tolerance, or in float32 (whose default stop takes the solve's rounding
+    floor where that is higher) at its floor, recomputed here from each step's answer; and float32's lumen flux is
+    float64's as closely as with the tolerance given (no floor), within the tolerance. The controls: the same run under
+    the rule before the fix (a window of one check at 0.9, at least as strict as judging against the last check) stops
+    a step stagnated; and at a tolerance below rounding (the planted stall) every step stagnates, before its cap."""
     import mime.nodes.flow.fvm._node as flow_node
 
+    tolerance = default_tolerance(dtype)
     for arm in ("window", "last_check", "planted"):
         with in_dtype(dtype), pytest.MonkeyPatch.context() as patch:
             if arm == "last_check":
                 patch.setattr(flow_node, "stagnation_window", lambda cells, every: 1)
                 patch.setattr(flow_node, "Stopping", functools.partial(Stopping, stagnation=0.9))
-            built = experiment(steady=False, stokes=True, dt=ms(10.0), length=mm(0.125), cells_across=32,
-                               wall=Band(delta_in=0.01), **({"tolerance": 1e-30} if arm == "planted" else {})).build()
+            built = experiment(**STIFF, **({"tolerance": 1e-30} if arm == "planted" else {})).build()
             result = built.run(ms(80.0), history=True)
-        report = np.asarray(result.history["water.flow"]["solve_report"])
+            history = result.history["water.flow"]
+            floors = step_floors(built, history, 0.01) if arm == "window" else []
+        report = np.asarray(history["solve_report"])
         if arm == "window":
             assert report[:, 2:5].sum() == 0.0, report[:, :4]
-            assert report[:, 1].max() <= (1e-8 if dtype == "float64" else 1e-5)
+            reached = [max(tolerance, floor) if dtype in AT_FLOOR_BY_DEFAULT else tolerance for floor in floors]
+            assert all(r <= line for r, line in zip(report[:, 1], reached, strict=True)), (report[:, 1], floors)
+            if dtype in AT_FLOOR_BY_DEFAULT:
+                fluxes = {"default": np.asarray(history["lumen_flux"], dtype=np.float64)}
+                for name, given in (("given", {"tolerance": tolerance}), ("float64", {})):
+                    with in_dtype("float64" if name == "float64" else dtype):
+                        held = experiment(**STIFF, **given).build().run(ms(80.0), history=True)
+                    fluxes[name] = np.asarray(held.history["water.flow"]["lumen_flux"], dtype=np.float64)
+                reference = fluxes["float64"]
+                apart = np.abs(fluxes["default"] - reference)
+                assert np.all(apart <= np.abs(fluxes["given"] - reference) + tolerance * np.abs(reference)), apart
         elif arm == "last_check":
             assert report[:, 3].sum() >= 1.0, report[:, :4]
         else:
