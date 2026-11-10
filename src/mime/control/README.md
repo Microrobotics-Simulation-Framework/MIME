@@ -60,8 +60,13 @@ The rigid-body maths a controller uses (forward and inverse kinematics, Jacobian
   declares `offset`, which moves the point it holds the magnet above along its axis.
 - **Classed reads.** Each read is the physics state ("ground truth, not deployable") or an observation's output. The
   build report and the lock list each with its class. `mime.build.refused_reads` is where a profile will judge them.
+- **Settings as leaves.** A setting a study's axis names (`controller.<setting>`, `mime.study`) and the law reads
+  through its context in its step is a leaf of the node inside the compiled step, the law made again from the leaves
+  inside the traced step; one read through `self` is refused for an axis (`controller.setting-unread`). A law's
+  context holds its bare numbers (a gain) beside its dimensioned settings in SI. In the callback mode the law is made
+  on the host from each run's own settings, and a derivative through it is cut.
 - **`ArmTracking`**, the arm-driven experiment's controller, ported from the v0.2 line: a magnet on an arm held above
-  a body as it swims. Its switches are written through `mime.core.switch` and declared, so inside the compiled step
+  a body as it swims. It reads its numbers (smoothing, gain, damping) through its context. Its switches are written through `mime.core.switch` and declared, so inside the compiled step
   its status is `piecewise_jump`; as a callback no derivative passes through it.
 
 ## Status

@@ -204,9 +204,9 @@ class ArmTracking(Controller):
         start = compose(base, frame_pose(tree, home, frame))
         home_turn = quaternion.rotation_matrix(start[3:])
         axis, up = jnp.asarray(self.axis, dtype=_F32), jnp.asarray(self.up, dtype=_F32)
-        low, high = ctx.vector("reach")
-        standoff, alpha, lookahead = ctx.scalar("standoff"), self.smoothing, ctx.scalar("lookahead")
-        gain, damping, feedback = _F32(self.gain), _F32(self.damping), self.orientation_feedback
+        low, high = (_single(value) for value in ctx.vector("reach"))
+        standoff, alpha, lookahead = (_single(ctx.scalar(name)) for name in ("standoff", "smoothing", "lookahead"))
+        gain, damping, feedback = _F32(ctx.scalar("gain")), _F32(ctx.scalar("damping")), self.orientation_feedback
 
         def turned_towards(body: Any, twist: Any, held: Any) -> Any:
             """The target's orientation moved towards one whose z is the body's, projected ahead, and whose x is the
@@ -260,6 +260,13 @@ class ArmTracking(Controller):
         compiled = _jit(step)
         return ControlLaw(state={"target_position": start[:3], "target_orientation": start[3:]},
                           held={"joint_positions": home}, step=compiled)
+
+
+def _single(value: Any) -> Any:
+    """A setting as the law computes with it: a number as it is, as it always was (a weakly typed constant, which
+    takes single precision from the arrays it meets); a traced leaf of the controller's node (a study's axis names
+    it) in single precision, so that the law computes in it whatever the run's precision."""
+    return value if isinstance(value, float) else jnp.asarray(value, dtype=_F32)
 
 
 def _outer(r: Any) -> Any:
