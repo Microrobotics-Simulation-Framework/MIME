@@ -385,10 +385,8 @@ class ImplicitFlowNode(MimeNode):
         from mime.scene import TubeTree
 
         c = self.constants()
-        points = np.asarray(c["tree_points"], dtype=np.float64)
-        radii = np.asarray(c["tree_radii"], dtype=np.float64)
-        return TubeTree(tuple((float(x), float(y), float(z)) for x, y, z in points), tuple(c["tree_segments"]),
-                        tuple((float(a), float(b)) for a, b in radii), float(c["tree_fillet"]))
+        return TubeTree.si(np.asarray(c["tree_points"], dtype=np.float64), tuple(c["tree_segments"]),
+                           np.asarray(c["tree_radii"], dtype=np.float64), float(c["tree_fillet"]))
 
     @cached_property
     def _held_faces(self) -> dict[str, tuple[Any, Any, tuple[float, float]]]:

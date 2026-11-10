@@ -51,7 +51,7 @@ def parameters_of(tree: TubeTree) -> dict[str, jnp.ndarray]:
 ])
 def test_a_malformed_tree_is_refused_with_its_code(points, segments, radii, fillet, said):
     with pytest.raises(ArgumentRefused) as raised:
-        TubeTree(tuple(map(tuple, points)), tuple(map(tuple, segments)), tuple(map(tuple, radii)), fillet)
+        TubeTree.si(points, tuple(map(tuple, segments)), radii, fillet)
     refusal = raised.value.refusals[0]
     assert refusal.code == "call.tube_tree" and said in refusal.message
 
@@ -72,7 +72,7 @@ def test_the_loops_junctions_and_its_tubes_that_meet_without_sharing_a_point():
 
 
 def test_tubes_far_apart_do_not_meet():
-    tree = TubeTree(((0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (0.0, 1e-3, 0.0), (1e-3, 1e-3, 0.0)), ((0, 1), (2, 3)),
+    tree = TubeTree.si(((0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (0.0, 1e-3, 0.0), (1e-3, 1e-3, 0.0)), ((0, 1), (2, 3)),
                     ((1e-4, 1e-4), (1e-4, 1e-4)))
     assert tree.meets() == ()
     assert tree.junctions == ()
@@ -85,7 +85,7 @@ def test_the_centreline_keeps_the_contract_through_its_junctions(tree):
 
 
 def test_the_centrelines_radius_is_linear_between_its_ends():
-    tree = TubeTree(((0.0, 0.0, 0.0), (2e-3, 0.0, 0.0)), ((0, 1),), ((0.4e-3, 0.3e-3),))
+    tree = TubeTree.si(((0.0, 0.0, 0.0), (2e-3, 0.0, 0.0)), ((0, 1),), ((0.4e-3, 0.3e-3),))
     segment = tree.centreline().segments[0]
     radius = np.asarray(segment.radius(parameters_of(tree), jnp.asarray([0.0, 1e-3, 2e-3])))
     assert radius == pytest.approx([0.4e-3, 0.35e-3, 0.3e-3], rel=1e-14)
@@ -99,7 +99,7 @@ def test_the_fillets_radius_is_its_share_of_the_smallest_radius_at_a_junction():
 
 def test_a_round_cone_is_the_union_of_its_balls():
     """A tapered segment's distance against the least over dense balls along it (its definition), outside it."""
-    tree = TubeTree(((0.0, 0.0, 0.0), (2e-3, 0.0, 0.0)), ((0, 1),), ((0.5e-3, 0.2e-3),))
+    tree = TubeTree.si(((0.0, 0.0, 0.0), (2e-3, 0.0, 0.0)), ((0, 1),), ((0.5e-3, 0.2e-3),))
     rng = np.random.default_rng(5)
     points = rng.uniform((-1e-3, -1e-3, -1e-3), (3e-3, 1e-3, 1e-3), (500, 3))
     found = np.asarray(tree.lumen().signed_distance(parameters_of(tree), jnp.asarray(points)).distance)
@@ -170,7 +170,7 @@ def test_a_study_that_brings_tubes_within_reach_is_counted(seed):
         lumen = dataclasses.replace(lumen, unplanned=lambda parameters: 0)
     assert lumen.meets == ((0, 1), (1, 2))
     held = parameters_of(tree)
-    middle = 0.25 * np.sum(np.asarray(tree.points), axis=0)
+    middle = 0.25 * np.sum(tree.parameters()["points"], axis=0)
     points = jnp.asarray(lattice(middle, 0.3 * D, D / 16.0))
     assert int(lumen.signed_distance(held, points).unplanned) == 0
     within = (D + wall) / (1.1 * D)
@@ -184,14 +184,14 @@ def test_the_report_names_tubes_the_fillet_joins():
     the narrowest solid is read between tubes sharing no point whether or not they meet (a wall of 0.12 D, which the
     fillet does not fill, is read too); the loop's island between its branches is solid, its touching ends' gap
     lumen."""
-    fused = hairpin_tree(0.06 * D, 0.1).features()
+    fused = hairpin_tree(0.06 * D, 0.1).wall_features()
     assert fused.fused == ((0, 2),) and fused.narrowest_solid == pytest.approx(0.06 * D, rel=1e-9)
     entries = wall_resolution(fused, D / 16.0).entries
     joined = next(entry for entry in entries if entry.name.startswith("solid the fillet fills"))
     assert joined.cells == pytest.approx(0.96, rel=1e-9) and "joins these tubes" in joined.text()
-    apart = hairpin_tree(0.12 * D, 0.1).features()
+    apart = hairpin_tree(0.12 * D, 0.1).wall_features()
     assert apart.fused == () and apart.narrowest_solid == pytest.approx(0.12 * D, rel=1e-9)
-    loop = loop_tree(0.1).features()
+    loop = loop_tree(0.1).wall_features()
     assert loop.fused == () and 0.0 < loop.narrowest_solid < 0.3 * D
 
 
@@ -216,17 +216,17 @@ def test_the_layer_lines_are_the_sweeps_worst_arm():
 
 def test_the_features_the_report_reads():
     tree = y_tree("asymmetric", 0.1)
-    features = tree.features()
+    features = tree.wall_features()
     assert features.smallest_radius == pytest.approx(0.03 * D)
     assert features.narrowest_lumen == pytest.approx(0.6 * D)
     assert features.narrowest_solid == math.inf
     assert features.sharpest_wedge == pytest.approx(60.0)
-    sharp = y_tree("asymmetric", 0.0).features()
+    sharp = y_tree("asymmetric", 0.0).wall_features()
     assert sharp.smallest_radius == 0.0
 
 
 def test_the_walls_resolution_report():
-    features = y_tree("asymmetric", 0.1).features()
+    features = y_tree("asymmetric", 0.1).wall_features()
     h = D / 16.0
     report = wall_resolution(features, h, layer=stokes_layer(0.5 * D, 3.0))
     assert report.entry("smallest wall radius").cells == pytest.approx(0.48)

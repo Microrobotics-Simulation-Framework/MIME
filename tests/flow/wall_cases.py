@@ -1,5 +1,4 @@
-"""The FVM on a general wall: the vessels its gates run on and the oracles that judge them (F2a's FA2 to FA8 and the
-interior ramp's gates, row #315). Units: the parent's diameter ``D = 1``, ``nu = rho = 1``, a body force ``G`` along
+"""The FVM on a general wall: the vessels its gates run on and the oracles that judge them (F2a's FA2 to FA8). Units: the parent's diameter ``D = 1``, ``nu = rho = 1``, a body force ``G`` along
 z on the fluid; every vessel periodic along z, steady Stokes, through the node's own step.
 
 **Vessels.** Tube trees (``mime.scene.TubeTree``) held in a periodic box along z (``periodic_tree_layout``): the
@@ -31,7 +30,6 @@ import numpy as np
 from fvm_cases import Waveform, driven, in_dtype, run
 from scipy.optimize import least_squares
 
-import mime.nodes.flow.fvm._band as band_module
 from mime.nodes.flow.fvm import ImplicitFlowNode, MACGrid
 from mime.nodes.flow.fvm._box import periodic_tree_layout
 
@@ -236,21 +234,6 @@ def references() -> dict[str, Any]:
     return json.loads(REFERENCES.read_text(encoding="utf-8")) if REFERENCES.exists() else {}
 
 
-# -- the old ramp, for the ramp's gates --------------------------------------------------------------------------
-class ramp_end:  # noqa: N801 - a context manager used as a phrase
-    """The interior ramp's end set to ``end`` cells for a block (a node traced inside it reads it), and restored."""
-
-    def __init__(self, end: float) -> None:
-        self.end = end
-
-    def __enter__(self) -> None:
-        self.held = band_module.INTERIOR_RAMP_END
-        band_module.INTERIOR_RAMP_END = self.end
-
-    def __exit__(self, *_: object) -> None:
-        band_module.INTERIOR_RAMP_END = self.held
-
-
 # -- the helical tube (FA2) ----------------------------------------------------------------------------------------
 @dataclasses.dataclass(frozen=True)
 class Helix:
@@ -426,5 +409,5 @@ def ellipse_fit(tube: EllipticTube, state: dict[str, Any], cells: tuple[int, int
 
 __all__ = ["G", "EllipticTube", "Helix", "Placed", "SolidFlowNode", "Tree", "box_flux", "cell_velocity", "dean_fit",
            "draw", "draw_seed", "ellipse_fit", "in_dtype", "loop", "lubrication_flux", "lubrication_sensitivity",
-           "mid_plane_split", "occlusion", "plant", "plant_value", "radius_along", "ramp_end", "references",
+           "mid_plane_split", "occlusion", "plant", "plant_value", "radius_along", "references",
            "seeds", "solid_node", "solved", "stenosis", "taper", "tree_node", "turned_about_z"]

@@ -4,10 +4,10 @@ the solid reaches the step through.
 **The band** (F0's B3). A solid's indicator rises from 0 in the fluid to 1 in the solid across a band ``W`` wide,
 centred on the wall, as a sine ramp in the signed distance; the penalty there is a resistivity ``nu / K`` with
 ``1 / K = chi / (delta h)^2``. Beyond the band a stiffer interior (``delta_in``) adds ``(delta / delta_in)^2`` times as
-much again, over a second ramp from the band's outer edge (``h`` into the solid) to ``INTERIOR_RAMP_END`` (1.5h), so the
-Darcy flow through the solid is ``(delta_in / delta)^2`` of the band's. The ramp ended at 3h until F2a measured the
-reshaped one (row #315): starting at the band's edge and ending at 1.5h, it cuts the bypass an open vessel leaks and
-leaves the wall's shift and the wall plant's detection where they were. Only smooth bands are registered (:data:`BANDS`): the wall's shift is then
+much again, over a second ramp from the band's outer edge (``h`` into the solid) to ``INTERIOR_RAMP_END`` (3h), so the
+Darcy flow through the solid is ``(delta_in / delta)^2`` of the band's. A ramp ending at 1.5h (row #315) was measured
+and not adopted: it halves the bypass at the 0.01h interior and an occlusion's leak falls, but through a 75 %
+stenosis at the 0.1h interior its bypass rose 2.3 % and its flux fell 0.44 %, past the gate's line. Only smooth bands are registered (:data:`BANDS`): the wall's shift is then
 smooth in the wall's sub-cell position, which the wall plant's control needs. The band is an accuracy-bearing
 numerical setting; its measured shift is its validity line.
 
@@ -70,8 +70,8 @@ DEFAULT_BAND = "smooth_2h_0.3h"
 INTERIORS = MappingProxyType({"0.1h": 0.1, "0.01h": 0.01})
 DEFAULT_INTERIOR = "0.1h"
 #: Where the stiff interior's ramp ends, in cells into the solid: it starts at the band's outer edge (half the band's
-#: width, h) and reaches the interior's full stiffness here (row #315; it ended at 3h before).
-INTERIOR_RAMP_END = 1.5
+#: width, h) and reaches the interior's full stiffness here.
+INTERIOR_RAMP_END = 3.0
 
 
 def band_named(name: str) -> Band:
@@ -229,15 +229,15 @@ def interior_ramp(phi: Array, band: Band, h: Any, end: float) -> Array:
 
 
 def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: Band, interior: float, dtype: Any,
-                offset: Callable[[Array], Array] | None = None, ramp_end: float | None = None) -> WallFields:
+                offset: Callable[[Array], Array] | None = None) -> WallFields:
     """Each solid's fields on ``grid``'s faces, the regions' resistivities added. The band's width and depth scale
     with the spacing; the interior adds ``(delta / delta_in)^2`` over a second ramp beyond the band, ending
-    ``ramp_end`` cells into the solid (:data:`INTERIOR_RAMP_END` unless given). A solid held per face set
-    (:class:`FacedSolid`, one a wall) gives its counts too."""
+    :data:`INTERIOR_RAMP_END` cells into the solid. A solid held per face set (:class:`FacedSolid`, one a wall) gives
+    its counts too."""
     h = grid.spacing
     width = band.width * h
     stiffening = (band.depth / interior) ** 2
-    end = INTERIOR_RAMP_END if ramp_end is None else ramp_end
+    end = INTERIOR_RAMP_END
     faces: list[Array] = []
     for component in range(3):
         points = grid.face_points(component, dtype)
