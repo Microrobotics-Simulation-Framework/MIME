@@ -68,3 +68,18 @@ def test_the_trees_free_ends_are_named_by_geometry():
              segments=((0, 1), (1, 2), (1, 3)), radii=mm((0.5, 0.5, 0.4, 0.4, 0.3, 0.3)))
     assert TubeTree(**y).end_names() == (("root", 0), ("end_0", 2), ("end_1", 3))
     assert TubeTree(**y, ends=("left", "right")).end_names() == (("root", 0), ("left", 2), ("right", 3))
+
+
+def test_each_free_end_is_a_surface_its_plane_facing_the_lumen():
+    """Each free end is a surface of the tree's own (``surface_names``), the plane normal to its segment at its point,
+    its normal into the segment: the root's along the parent, an end's back along its daughter."""
+    y = TubeTree(points=mm((0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 3.0, 0.0, 4.0, -3.0, 0.0, 4.0)),
+                 segments=((0, 1), (1, 2), (1, 3)), radii=mm((0.5, 0.5, 0.4, 0.4, 0.3, 0.3)), ends=("left", "right"))
+    assert y.surface_names() == {"root": "half_space", "left": "half_space", "right": "half_space"}
+    settings = {"points": y.points.value, "radii": y.radii.value}
+    root = y.surface_parameters("root", settings)
+    assert root["normal"] == pytest.approx((0.0, 0.0, 1.0)) and root["offset"] == pytest.approx(-3e-3)
+    left = y.surface_parameters("left", settings)
+    assert left["normal"] == pytest.approx((-0.6, 0.0, -0.8)) and left["offset"] == pytest.approx(-0.6 * 3e-3 - 0.8 * 4e-3)
+    with pytest.raises(KeyError):
+        y.surface_parameters("end_0", settings)

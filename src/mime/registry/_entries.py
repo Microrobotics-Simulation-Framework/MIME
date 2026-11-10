@@ -1348,6 +1348,11 @@ class Geometry(Entry):
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
 
+    def surface_names(self) -> Mapping[str, str]:
+        """Its surfaces by name, each mapped to the shape its free side is evaluated with: the class's ``surfaces``,
+        and for a kind whose settings name surfaces of their own (a tube tree's ends), those too."""
+        return self.surfaces
+
     def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         """The parameters of the shape ``region_shapes`` names for ``region``, in SI."""
         raise NotImplementedError

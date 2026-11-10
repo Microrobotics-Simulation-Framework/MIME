@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The FVM on a tube tree's wall** (F2a's second part). A medium filling a `TubeTree`'s lumen
+  (`Medium(fills=vessel.lumen)`) takes the FVM on a periodic box: the tree periodic along z with the box's period and
+  reaching past its two ends (`flow.tree-period` refuses one that does not repeat where the band reads it), held in its
+  box with its spacing from the narrowest lumen, stepped by IMEX Euler or its steady limit (RK3 on a tree is refused,
+  `flow.tree-scheme`). The node takes the tree as its leaves (`tree_points`, `tree_radii`, `tree_fillet`, with
+  `tree_segments` its structure) and makes its wall in the step: the union's exact distance (`ExactUnion`) on the faces
+  where the band reads it, which the build holds with the union's plan, and the plain minimum where every field is flat.
+  Its state reports where the distance is not exact (`wall_unrefined`, `wall_unconverged`, `wall_unplanned`, and the
+  warning flag `wall_inexact`); a straight tube's state and programs are unchanged. Gated through the node, steady
+  Stokes, every vessel turned about its period's axis at random and moved by a sub-cell offset: a helical tube's lumen
+  not displaced against Dean's first-order profile, an elliptic section's semi-axes, a taper against lubrication, a 75 %
+  stenosis and the split-and-merge loop's split at 30 degrees against Richardson references, the symmetric split a half,
+  and a daughter's flux's derivative in its radius against a central difference within one discretisation.
+- **`TubeTree` is the geometry kind `tube_tree`**: declared in quantities, `TubeTree(points=mm(...), segments=...,
+  radii=mm(...), fillet=0.1, ends=(...))`, three lengths a point and two radii a segment, flat (`TubeTree.si` takes them
+  in SI as nested tuples); its regions the `lumen` (the shape `tube_tree`) and the `wall`; its free ends named by
+  geometry, never by a law's role: `root` at the first segment's start, the others `end_0`, `end_1`, ... in the order of
+  their points or as `ends` names them (`TubeTree.end_names`). The round-trip case `tree_flow`.
+
 - **Composed walls in `mime.scene`: the seam-aware union, the fillet as its closing, the tube tree** (F2a's first
   part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
   or a lab's `Region`, by `mime.core.Shape`'s method names): the minimum, a check at each point of where it is exact (the deepest region's
@@ -692,6 +711,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `TubeTree.features()` is `TubeTree.wall_features()`: `features` is every geometry kind's surface features, which a
+  sampling grades towards.
+
 - **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
   interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its
   rounding floor (a 75 % stenosis at 16 cells across, 1e-4 against 4.8e-6), flagged. Now, where the stop would find a
@@ -975,6 +997,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **The union's derivative in reverse mode** (`ExactUnion`): on a batch of thousands of points it read 4 to 50 % off
+  forward mode and the central difference, where two tubes' distances tie exactly (a shared end ball): `jnp.min` and
+  `jnp.minimum` find the least's derivative by comparing it again with their operands, which XLA computed twice in
+  fusions that rounded them differently. The least is now selected by one comparison; a gate holds reverse to forward
+  mode on the node's held faces, with both the reduction and a reverse-only error planted as controls.
 
 - **The FVM's stall flag is set from clean runs, in the solve's tolerance, and stops firing on correct float32 runs.** The
   stall detector `|N_Krylov| / D_visc` (`stall_flagged`, with the energy ledger attached) was flagged above a fixed

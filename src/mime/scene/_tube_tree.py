@@ -252,6 +252,27 @@ class TubeTree(Geometry):
                 "radii": settings["radii"], "fillet": float(self.fillet)}
 
     @override
+    def surface_names(self) -> Mapping[str, str]:
+        """Its free ends (:meth:`end_names`), each the plane normal to its segment at its end, evaluated as the
+        half-space the lumen lies in."""
+        return {**self.surfaces, **{name: "half_space" for name, _ in self.end_names()}}
+
+    @override
+    def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        """A free end's plane: normal to its segment at the end's point, its normal into the segment (the half-space
+        the lumen lies in, ``x . n >= offset``)."""
+        ends = dict(self.end_names())
+        if surface not in ends:
+            raise KeyError(surface)
+        point = ends[surface]
+        points = np.asarray(settings["points"], dtype=np.float64).reshape(-1, 3)
+        start, end = next((a, b) for a, b in self.segments if point in (a, b))
+        inward = points[end] - points[start] if point == start else points[start] - points[end]
+        normal = inward / _norm(inward)
+        return {"normal": (float(normal[0]), float(normal[1]), float(normal[2])),
+                "offset": float(np.dot(normal, points[point]))}
+
+    @override
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
         """The hull query: the tubes' end balls' farthest reach along ``direction``, ``max(c . d + r |d|)`` (a round
         cone is the hull of its two end balls)."""
