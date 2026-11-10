@@ -89,7 +89,7 @@ solves them together, as one joint node for the medium (`near_field:<medium>`): 
 system (each body's own block as above; each pair coupled by the source's regularised Stokeslet, integrated over every
 cell where the pair is within a reach of each other, in the source's cells' own size, and taken at its force points
 beyond, since near contact the joint system amplifies the point kernel's error in any cell; the wall's image between
-them) and solves it once, densely, for the cluster's grand resistance. Each body is delivered its own coupled
+them) and solves it once for the cluster's grand resistance (below, the solve). Each body is delivered its own coupled
 resistance and, as its background load, the others' load on it at their velocities at the step's start: their steps
 are **lagged**, each body's own resistance implicit, the others' loads a step behind. That costs a first-order error in
 the step, and a step's delay after a sudden change. The node checks the lagged step's **gain** every step from each
@@ -127,11 +127,44 @@ measured on (MIME's sphere at its default count, free space, twelve cores, share
 The step compiles in about as long as one step takes, and holds under two hundred MiB of temporaries for the triangle and
 about a GiB for the cube in float64 (half that in float32): a thousand steps of the cube take about eleven hours.
 
-A body alone in its medium keeps its own node, step for step. The dense solve's memory grows as the square of the
-cluster's force points, so the build refuses a cluster past `DENSE_UNKNOWNS` unknowns (`drag.near-field-size`). A
-medium where two bodies or more join a near field beside a body on the kept 0.4.0 mrs rung is refused
-(`drag.near-field-mixed`: the one would see the others and not be seen); one body on 0.5.0 beside one on 0.4.0 forms
-no near field, so both are computed alone, and the build report says so.
+**The solve.** Up to the takeover line, `DENSE_UNKNOWNS` joint unknowns (three a force point over the cluster), the node
+solves the joint system by one dense LU, whose factors serve every body's six rigid motions at once. Past it the node
+solves it by GMRES on those right-hand sides together, each body's own free part's inverse (made once per build in its
+frame, as the free part is, and turned to its pose) its preconditioner. The line is a numerical setting,
+`Drag.MRS(near_field_dense_unknowns=...)` (zero for GMRES at every size), declared rather than fitted, its default
+pending the maintainer's re-decision: neither memory nor time places it as measured so far. Through the node GMRES holds
+more memory than the dense LU, not less (a tenth to a third more at every size measured, either dtype, a radius and a
+twentieth of one apart): both routes' peaks grow as about two joint matrices, and GMRES holds each body's inverse
+besides, so the bare solve's halving (the two methods timed on a matrix handed to them) does not carry to the node. In
+time, the bare solve on a quiet CPU in float64 had the dense LU faster or tied at three of its five sizes up to about
+eight thousand unknowns; through the node, on a laptop shared with other work (one run a case, so the load sets the
+ratios as much as the methods do), GMRES's step was the shorter at every size a radius apart, in either dtype, and near
+contact the dense route's mostly was. The build report says which route a cluster took.
+
+**Memory.** On either route the build estimates the run's peak memory past the process's fixed part, as so many of its
+joint matrices and of its members' held blocks, the counts measured through the node on a CPU (the drag's validity line
+says how), reports it, and refuses a cluster whose run would not fit in the memory a run can have
+(`drag.near-field-memory`): a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the
+control group the process runs in. The estimate is measured, not a bound, and a GPU's is not measured.
+
+**GMRES's stop.** Each GMRES solve stops on its true residual, recomputed from its answer at every restart, relative to
+its own right-hand side, at `near_field_tolerance` (`DEFAULT_TOLERANCE` by the run's dtype); the solves of a derivative
+stop relative to their own right-hand sides too, from a cold start, so a gradient does not depend on the loss's scale.
+Float32's tolerance sits above the floor float32's own arithmetic leaves a pair's residual at, down to the near-contact
+line, by a small margin there, so a denser cluster near contact may stop short (eight spheres in a line a twentieth of a
+radius apart did, in a few of their columns, flagged). Where the FVM's float32 default takes its solve's floor when its
+tolerance is out of reach, the near field keeps its tolerance and flags instead. A solve that stops short (at its cap,
+stagnated past the floor, or at a residual that is not a number) is never silent: it raises `solve_flagged` at that
+step, and the run warns with its count; each step's report, the FVM's (`solve_report`: iterations, the true relative
+residual, how it stopped), is a state field with its running sum, and the build report gives the starting step's. The
+reports of a derivative's solves come out as the derivative of the node's `solve_report` parameter, zeros a step reads,
+summed over the run (a row a step only on a node built by hand with `solve_report_rows=`): until a reader of them lands,
+a derivative solve that stops short shows only there, and nothing warns of it. The dense route raises no such flag: an
+LU stops at no tolerance.
+
+A body alone in its medium keeps its own node, step for step. A medium where two bodies or more join a near field beside
+a body on the kept 0.4.0 mrs rung is refused (`drag.near-field-mixed`: the one would see the others and not be seen);
+one body on 0.5.0 beside one on 0.4.0 forms no near field, so both are computed alone, and the build report says so.
 
 **The energy ledger beside a near field.** Each body's own resistance is its drag's law, and the cross loads are the
 near field's own law, `near_field:<medium>`, booked on each body by the one pairing rule and never judged on one body's
@@ -203,7 +236,8 @@ size of its vessel) can turn the resistance indefinite: the build refuses one at
 
 ## Versions
 
-Version 0.5.0 solves a medium's mrs bodies together, its near field; 0.4.0 (`UncoupledDrag`) stays registered so that a
+Version 0.5.0 solves a medium's mrs bodies together, its near field, by the dense LU or past its line by GMRES;
+0.4.0 (`UncoupledDrag`) stays registered so that a
 folder saved with it loads and reproduces, each body's drag computed alone. Version 0.4.0 separates the mrs rung's quadrature from its force points and chooses the rung's defaults
 again by measurement; its surrogate rung computes what 0.3.0's did. 0.3.0 stays registered so that a folder saved with
 it loads and reproduces (the frozen sim2real register's experiments build it): its mrs rung puts a point force at each
