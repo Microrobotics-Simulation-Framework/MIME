@@ -22,6 +22,7 @@ import numpy as np
 
 from mime.build import (
     Attachment,
+    ControllerDeclaration,
     Declaration,
     RangeDeclaration,
     RunSettings,
@@ -65,6 +66,7 @@ class AxisKind(Enum):
     SETTING = "setting"
     INITIAL = "initial"
     GEOMETRY = "geometry"
+    CONTROLLER = "controller"
     DT = "dt"
     PRECISION = "precision"
 
@@ -88,6 +90,14 @@ def _things(declarations: Sequence[Declaration]) -> dict[str, Any]:
     return {d.thing.name: d.thing for d in declarations if isinstance(d, ThingDeclaration)}
 
 
+#: The id a path names the experiment's controller by: ``controller.<setting>``.
+CONTROLLER = "controller"
+
+
+def _controller(declarations: Sequence[Declaration]) -> ControllerDeclaration | None:
+    return next((d for d in declarations if isinstance(d, ControllerDeclaration)), None)
+
+
 def _laws(declarations: Sequence[Declaration]) -> dict[str, Attachment]:
     return {entry_id(type(d.law), d.bindings): d for d in declarations if isinstance(d, Attachment)}
 
@@ -109,6 +119,9 @@ def candidates(declarations: Sequence[Declaration]) -> list[str]:
             found += [f"{name}.{setting}" for setting in _numbers(thing.geometry)]
     for law_id, attachment in _laws(declarations).items():
         found += [f"{law_id}.{field.name}" for field in dataclasses.fields(attachment.law)]
+    held = _controller(declarations)
+    if held is not None and CONTROLLER not in _things(declarations):
+        found += [f"{CONTROLLER}.{field.name}" for field in dataclasses.fields(held.controller)]
     return found
 
 
@@ -165,6 +178,8 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
     head, _, rest = path.partition(".")
     if not rest:
         raise _unknown(path, declarations, "an axis is a thing, a law or the run, and a name in it")
+    if head == CONTROLLER and head not in _things(declarations):
+        return _controller_setting(path, rest, declarations)
     if ":" in head:
         return _setting(path, head, rest, declarations)
     middle, _, last = rest.partition(".")
@@ -205,6 +220,17 @@ def _geometry(path: str, declarations: Sequence[Declaration]) -> Axis | None:
             f"make each value an experiment of its own, `Experiment.based_on(...)` with the kind written again; a "
             f"kind's number can be varied: {did_you_mean(path, candidates(declarations))}")])
     return Axis(path, AxisKind.GEOMETRY, head, rest)
+
+
+def _controller_setting(path: str, setting: str, declarations: Sequence[Declaration]) -> Axis:
+    """A setting of the experiment's controller (``controller.gain``): a study's point declares it, and where the
+    controller runs inside the compiled step and its step reads it, the setting is a leaf of its node, so a sweep of it
+    is one program."""
+    held = _controller(declarations)
+    if held is None or setting not in {field.name for field in dataclasses.fields(held.controller)}:
+        raise _unknown(path, declarations, "no controller is set with that setting" if held is not None else
+                       "the experiment sets no controller")
+    return Axis(path, AxisKind.CONTROLLER, CONTROLLER, setting)
 
 
 def _command(path: str, owner: str, command: str, declarations: Sequence[Declaration]) -> Axis:
@@ -322,6 +348,10 @@ def _replaced(declaration: Declaration, axis: Axis, value: object) -> Declaratio
     if axis.kind is AxisKind.GEOMETRY and isinstance(declaration, ThingDeclaration) and \
             declaration.thing.name == axis.owner:
         return ThingDeclaration(_with_geometry(declaration.thing, axis.name, value))
+    if axis.kind is AxisKind.CONTROLLER and isinstance(declaration, ControllerDeclaration):
+        return dataclasses.replace(declaration, controller=dataclasses.replace(declaration.controller,
+                                                                               **{axis.name: value}),
+                                   leaves=tuple(sorted({*declaration.leaves, axis.name})))
     if axis.kind is AxisKind.SETTING and isinstance(declaration, Attachment) and \
             entry_id(type(declaration.law), declaration.bindings) == axis.owner:
         return Attachment(_with_setting(declaration.law, axis.name.split("."), value), declaration.bindings)
@@ -384,6 +414,9 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
         return next((d.value for d in declarations if isinstance(d, ValueDeclaration) and str(d.path) == axis.path), None)
     if axis.kind is AxisKind.GEOMETRY:
         return geometry_value(axis, declarations)
+    if axis.kind is AxisKind.CONTROLLER:
+        declaration = _controller(declarations)
+        return getattr(declaration.controller, axis.name, None) if declaration is not None else None
     if axis.kind is AxisKind.SETTING:
         held: object = getattr(_laws(declarations).get(axis.owner), "law", None)
         for part in axis.name.split("."):
@@ -398,6 +431,6 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
     return None
 
 
-__all__ = ["DT", "OVERRIDE_REASON", "PRECISION", "PRECISIONS", "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath",
+__all__ = ["CONTROLLER", "DT", "OVERRIDE_REASON", "PRECISION", "PRECISIONS", "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath",
            "base_value", "candidates", "declared", "differ", "geometry_value", "outside_range", "range_of", "resolve",
            "value_text"]

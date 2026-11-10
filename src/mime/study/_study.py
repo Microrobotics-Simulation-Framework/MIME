@@ -44,6 +44,7 @@ from mime.validity import Profile
 if TYPE_CHECKING:
     from mime.experiment import BuiltExperiment, Experiment
     from mime.results import OutputRef
+    from mime.results._fit import FitResult
     from mime.results._gradient import GradientResult
     from mime.results._study import StudyResult
 
@@ -486,6 +487,26 @@ class Study:
 
         plan = self.plan()
         return gradient(self._experiment, plan, of, wrt, mode, acknowledged, self._reasons, self._protocol)
+
+    @public
+    def fit(self, residual: Callable[[Any], Any], *, start: Mapping[object, object], noise: object,
+            duration: Quantity, iterations: int = 20, bounds: Mapping[object, tuple[object, object]] | None = None,
+            tolerance: float = 1e-9, acknowledged: Mapping[str, str] | None = None) -> FitResult:
+        """The values of the axes ``start`` names (from those values) that make ``residual`` least: a ``jax.numpy``
+        function of a run's final state (by node and field) to an array, each entry over its declared ``noise`` (one
+        number, or one a residual entry), its loss half the sum of their squares, each run ``duration`` long. Damped
+        Gauss-Newton steps on the derivative a study's gradient path gives (forward mode), at most ``iterations``
+        iterates judged, under the fit-loop rule: each iterate planned again (every check its plan makes, at its
+        values) and run on the compiled program the start built; every validity line judged there (a refusal, a flag
+        its run raised, a node's stop, the Reynolds watch, the box) and given to the steps as a constraint with its
+        margin, an iterate past one not taken; the iterates kept inside each axis's declared range, its leaves'
+        bounds and ``bounds`` (by axis, low and high); and MADDENING's Fisher information of the residual with the
+        noise taken at the start, which names an axis the residual cannot see before the first step. Ends
+        ``converged`` (the step under ``tolerance`` of the values), ``at a line`` (naming it), or at ``iterations``.
+        A controller called on the host is refused (its path is cut); ``acknowledged`` as for :meth:`gradient`."""
+        from mime.study._fit import fit
+
+        return fit(self._experiment, residual, start, noise, duration, iterations, bounds, tolerance, acknowledged)
 
     @public
     def run_to(self, out: str | PathLike[str], *, shard: tuple[int, int] | None = None, pilot: bool = False,

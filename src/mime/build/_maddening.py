@@ -580,6 +580,25 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
     return run
 
 
+def live_inputs(jaxpr: Any) -> list[bool]:
+    """Which of a jaxpr's inputs its outputs depend on: walked back from the outputs, each equation that makes a
+    needed value needing all its inputs (a nested program as a whole), so that a value computed and never returned
+    (dead code a trace keeps) is not counted as read."""
+    needed = {id(var) for var in jaxpr.outvars}
+    for eqn in reversed(jaxpr.eqns):
+        if any(id(var) in needed for var in eqn.outvars):
+            needed.update(id(var) for var in eqn.invars)
+    return [id(var) in needed for var in jaxpr.invars]
+
+
+def fisher_information(residual: Callable[[dict[str, Any]], Any], params: Mapping[str, Any], noise: Any) -> Any:
+    """MADDENING's Fisher information (``maddening.sysid.fim``) of ``residual`` at ``params`` with the noise ``noise``
+    (a scalar or the residual's shape), each column scaled by its parameter's value: its ``FIMReport``."""
+    from maddening import sysid
+
+    return _held(sysid).fim(residual, dict(params), scale="relative", noise_std=noise)
+
+
 def ready(state: NodeFields) -> None:
     """Wait until ``state`` has been computed: a scan returns at once, with arrays still being filled, and a chunk's end
     is where its last array is."""

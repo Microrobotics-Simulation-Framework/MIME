@@ -5,6 +5,7 @@ them at. A per-chunk hook is called after every chunk with the chunk's end and t
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -138,12 +139,23 @@ class ReadModels(Mapping[str, Any]):
         return len(self._models)
 
 
-def control_context(plans: PlanSet) -> BuildContext:
-    """What a controller's law is made from: its settings in SI, the base step, its control period as
-    ``timestep``, and the built tree of each segment that carries mass, what is mounted on it grafted on (a
-    :class:`ReadModels`, which records the trees the law reads)."""
+def numeric_settings(entry: object) -> dict[str, float]:
+    """A controller's settings that are bare numbers (a gain, a smoothing), as its law may read them through its
+    context, beside its dimensioned settings in SI: an integer or a flag is a count or a switch, read as built."""
+    if not dataclasses.is_dataclass(entry):
+        return {}
+    return {field.name: float(value) for field in dataclasses.fields(entry)
+            if isinstance(value := getattr(entry, field.name), float)}
+
+
+def control_context(plans: PlanSet, given: Mapping[str, Any] | None = None) -> BuildContext:
+    """What a controller's law is made from: its settings in SI and its bare numbers (:func:`numeric_settings`), the
+    base step, its control period as ``timestep``, and the built tree of each segment that carries mass, what is
+    mounted on it grafted on (a :class:`ReadModels`, which records the trees the law reads). ``given`` replaces
+    settings by name: a setting held as a leaf of the controller's node, read inside its traced step."""
     plan = cast(ControllerPlan, plans.controller)
-    return BuildContext(plan.owner, plans.dt, plans.dt * plan.period, plan.owner, settings=dict(plan.settings),
+    settings = {**numeric_settings(plan.entry), **dict(plan.settings), **dict(given or {})}
+    return BuildContext(plan.owner, plans.dt, plans.dt * plan.period, plan.owner, settings=settings,
                         up=plans.frame.up, gravity=plans.frame.gravity, models=ReadModels(plans.models))
 
 
@@ -412,4 +424,4 @@ def _stacked(parts: list[History]) -> History:
 
 __all__ = ["HISTORY_BLOCK_BYTES", "MIN_CHUNK", "TARGET_CHUNKS", "Callback", "Chunk", "ChunkHook", "ChunkedRun",
            "ControllerError", "Progress", "ReadModels", "StopRequest", "automatic_chunks", "control_context", "law_and_models",
-           "make_law"]
+           "make_law", "numeric_settings"]

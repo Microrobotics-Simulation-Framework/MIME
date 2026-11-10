@@ -128,6 +128,9 @@ class ControllerPlan:
     latency: int
     reads: tuple[ClassedRead, ...]
     writes: tuple[ResolvedWrite, ...]
+    #: The settings a study's axis names, held as leaves of its node inside the compiled step where its step reads
+    #: them (``ControllerDeclaration.leaves``).
+    leaves: tuple[str, ...] = ()
 
     def inputs(self) -> tuple[str, ...]:
         """The external inputs its writes derive, as ``node.field``."""

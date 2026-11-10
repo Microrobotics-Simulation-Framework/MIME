@@ -110,6 +110,7 @@ controller.mode-unknown       user
 controller.more-than-one      user
 controller.read-refused       user
 controller.read-unknown       user
+controller.setting-unread     user
 controller.signal             user
 controller.unreached-read     user
 controller.untraceable        user
@@ -168,6 +169,10 @@ env.variant                   user
 error.uncoded                 internal
 error.unrecognised            unrecognised
 experiment.name               user
+fit.callback                  user
+fit.noise                     user
+fit.start                     user
+fit.value-keyed               user
 flow.box-axis                 user
 flow.box-margin               user
 flow.cfl-exceeded             user
@@ -205,6 +210,7 @@ gradient.mode                 user
 gradient.no-axis              user
 gradient.no-leaf              user
 gradient.not-a-number         user
+gradient.objective            user
 gradient.path-status          user
 gradient.probe-refused        user
 gradient.shape                user

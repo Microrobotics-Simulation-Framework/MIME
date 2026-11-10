@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The first fit: `Study.fit(residual, *, start, noise, duration, iterations=20, bounds=None, tolerance=1e-9,
+  acknowledged=None)`** (lane S's third PR, its second half), returning `mime.results.FitResult` (each `FitIterate`
+  with its `LineMargin`s, the Fisher information at the start). Damped Gauss-Newton steps on the gradient path's
+  derivative under the fit-loop rule: each iterate planned again through `build_point` and run on the start's
+  compiled program, every validity line judged there and given to the steps with its margin, the iterates clipped to
+  each axis's declared range and its leaves' bounds, MADDENING's `fim` with the declared noise at the start (an
+  insensitive axis named before the first step). On the gently pulled sphere the radius fits to a target inside its
+  range where the spike's rebuilt descent ended 0.79 % short; across a Reynolds line the fit ends on the line, naming
+  it, where `sysid.fit` on the built graph runs through it silently. **Controller settings as leaves**: a setting a
+  study's axis names (`controller.<setting>`) is a leaf of the controller's node inside the compiled step where its
+  step reads it (`controller.setting-unread` for one read through `self`); `ArmTracking` reads its smoothing, gain and
+  damping through its context; MIME-ANO-146 resolved (the callback mode stays outside `params` by design). Six refusal
+  codes (`fit.*`, `gradient.objective`, `controller.setting-unread`).
+
 - **A study's derivative: `Study.gradient(of, wrt=None, mode="auto", acknowledged=None)`** (lane S's third PR, the
   gradient path), returning `mime.results.GradientResult` (each member's `MemberGradient`: the objective, its
   derivative in each axis, the flags its run raised, its nodes' stops, its plan's extrapolated table reads, each

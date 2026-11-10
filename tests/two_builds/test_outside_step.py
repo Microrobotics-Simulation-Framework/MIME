@@ -3,8 +3,9 @@ reaches the run through the controller's held writes, the graph's external input
 parameters. The trace form sees the step only, so it is quiet; the run form, which writes the leaves that differ into
 the base's program but feeds it the base's own inputs, fires; and the check says where the value went
 (``inputs_moved``) and gives the verdict ``outside-step``. Its control: the same experiment built twice fires neither
-form (and says it moved nothing). The anomaly stays open: its resolution is controller settings as leaves (lane S's gradient phase); this is
-how the check reports it meanwhile, on every run.
+form (and says it moved nothing). The anomaly is resolved by controller settings as leaves where a study's axis names
+them (``tests/gradients/test_controller_leaves.py``); the callback mode stays outside the step's parameters by design,
+and this is how the check reports it, on every run.
 
 The ladder: ``home`` moved by a relative 1e-6 (the spike's), 1e-5 and 1e-4, every joint at once. The controller holds
 its pose in float32 (its writes are the arm's joint positions in float32), so a move below about 6e-8 does not reach

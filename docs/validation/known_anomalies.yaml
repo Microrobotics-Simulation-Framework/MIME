@@ -3399,8 +3399,9 @@ anomalies:
       study, a check or an override that assumes everything that moves a run is a params leaf: it would miss the home pose
       and report that two runs agree when they do not. Whether that matters depends on how a deployment varies the
       controller's settings.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev1"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1, <0.3.0.dev2"
+    resolution_version: "0.3.0.dev2"
     affected_components:
       - "entry: controller arm_tracking 0.1.0; the home setting and the controller's first write"
     verification:
@@ -3408,13 +3409,20 @@ anomalies:
       - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[1e-05]"
       - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[0.0001]"
       - "tests/two_builds/test_outside_step.py::test_control_the_same_controller_built_twice_fires_neither_form"
+      - "tests/gradients/test_controller_leaves.py::test_a_sweep_of_a_setting_the_step_reads_is_one_group_one_compile_and_each_member_its_own_build"
+      - "tests/gradients/test_controller_leaves.py::test_without_an_axis_the_controller_holds_no_leaf"
+      - "tests/gradients/test_controller_leaves.py::test_the_derivative_in_a_controller_setting_is_the_rebuilt_central_difference"
+      - "tests/gradients/test_controller_leaves.py::test_a_setting_only_the_start_reads_is_carried_by_each_points_start"
+      - "tests/gradients/test_controller_leaves.py::test_control_a_setting_read_through_self_is_refused_exactly"
+      - "tests/gradients/test_controller_leaves.py::test_the_tracking_controllers_numbers_read_through_its_context_sweep_as_one_group"
+      - "tests/gradients/test_path_and_refusals.py::test_a_callback_controllers_path_is_cut_refused_unless_acknowledged_and_never_silently_zero"
     residual_risk: >
       One setting of one controller was measured; whether the controller's other settings (the axis, the up direction, the
       base) and the other controllers reach the run in the same way is not known. The size of the effect is the case's
       (a 1e-6 relative change of the home pose moved the magnetic force by 1.3e10 units in the last place of its scale), not
       a bound.
-    workaround: "Build the experiment again for each home pose, and compare two builds with mime.testing.two_builds, whose run form and held inputs see the home pose, rather than the programs of two builds alone."
-    planned_resolution: "Open. Detected in lane S's S-F0-1 (the two-builds check's outside-step verdict, above); fixed in lane S's S-F0-3, which makes a controller's settings leaves."
+    workaround: "None needed. A study's point makes each member's own law and start, and a run's override of a callback controller's setting is refused (override.callback)."
+    planned_resolution: "Done in lane S's S-F0-3b, which makes a controller's settings leaves where a study's axis names them (controller.<setting>). Inside the compiled step (mode graph) a named setting the step reads is a leaf of the controller's node, its law made again from the leaves inside the traced step: a sweep of it is one program, an override runs as data, a derivative passes through it. A setting only the law's start reads reaches the run through each point's start, and one read through self is refused exactly (controller.setting-unread). A setting nothing names stays a constant, so released programs do not move. The callback mode stays outside params by design: the law is made on the host from each member's settings, an override is refused (override.callback), a derivative's path through it is cut (refused unless acknowledged, its writes then held as the forward run made them), and the two-builds check reports the home pose outside-step, as above. The alternative, every numeric setting of a controller inside the compiled step a leaf whether named or not, went to the maintainer with its cost: A0's graph-mode bits to measure."
 
   - anomaly_id: MIME-ANO-147
     title: "In reverse mode the MRS rung's held-or-made resistance is made again at every step of the backward loop, about 0.5 s a step on 222 force points, whether or not a setting moved"
