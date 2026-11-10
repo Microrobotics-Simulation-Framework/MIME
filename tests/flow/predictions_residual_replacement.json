@@ -146,5 +146,48 @@
     "prediction": "bit for bit in both dtypes"
    }
   ]
+ },
+ "fix_round": {
+  "written": "2026-11-10, in the commit that holds it, after CI's runs of 78eb319 and the refuting review, before any gate below runs on the fix's code",
+  "what_ci_and_the_review_showed": [
+   "the stall control's premise failed on CI (both default lanes and 8 of 20 stress runs): every falsifying draw was a centred, untilted stenosis (n, 0, 0, 0, 0), on which the CG without the restart converged; whether a float32 draw stalls is a rounding event that differs by CPU (0.59375 stalled here and converged on CI)",
+   "the stress run's draws replayed from its seeds (validated: run 18's replay holds CI's own failing shape): (0.4, 0, 0, 0, 0) is each run's first draw and stalled on 20 of 20 stress runners, (0.5, 0, 0, 0, 0) on 3 of 3, and every one of the 216 off-centre draws of the 12 passing runs stalled on its runner",
+   "two ratchet reds: the CG's int32 truncation not on raw_switches.txt, and 'later phase' in Gravity's texts",
+   "M1: float32's floor stop passed a singular system's growing iterate as converged (the review's six plants: 4.5 to 1280 times the right-hand side, 4 of 6 without the restart and 6 of 6 with it); the sweep over the plant (204 solves: inconsistent part 1e-6 to 100, 8, 16 and 32 cells a side, both arms, both dtypes, the floor on in float64 by hand) found such stops over the whole range, down to the genuine ones' order: in float32 from 2.6e-4 (16 cells, c = 1e-5) up, in float64 from 1.6e-4 up, not four orders above; genuine floor stops measured: 1.4e-5 to 1.6e-5 (D/h 32, 0.01h), 5.2e-5 and 5.5e-5 (D/h 64 stenosis, 0.01h and 0.1h), the open tube at D/h 64 at its floor (1.9e-4 to 2.1e-4)"
+  ],
+  "changes": [
+   "B1: the control split: over all draws, centred ones included, 'with the restart float32 converges, unflagged, at float64's answer within ANSWER_LINE'; 'without the restart it stalls' on fixed shapes measured to stall on CI's runners and here (STALLING); no draw derandomised or filtered",
+   "M1: the floor raises the tolerance at most FLOOR_STOP_TOLERANCES = 100 times (1e-3 in float32, 1e-6 in float64 with the floor on): a stop at the floor is accepted only where the true residual is that small; a solve the line refuses carries on and stops stagnated or at its cap, flagged. The line: above the largest genuine floor measured (the open tube at D/h 64, 2.1e-4) by about 5 (floors grow about 4 times a doubling of cells across, so about D/h 128 before it binds [inference]), below every spurious stop in the review's six and all but one of the sweep's float32 ones (2.6e-4, which sits among the genuine ones and no line on the residual can separate); in float64 below every spurious stop measured by over two orders"
+  ],
+  "gates": [
+   {
+    "gate": "B1's two tests (the gate over draws and the control on fixed shapes)",
+    "prediction": "written in the next amendment, once a probe of the stress run's 379 drawn shapes here sets ANSWER_LINE and STALLING, before either test runs"
+   },
+   {
+    "gate": "test_control_a_singular_system_is_flagged_with_and_without_the_restart (the review's six plants, both arms, both dtypes)",
+    "prediction": "24 of 24 flagged"
+   },
+   {
+    "gate": "test_control_without_the_line_a_singular_system_passes_as_converged",
+    "prediction": "with the line infinite, plants pass unflagged above the line in each dtype and arm (float32 4 of 6 without the restart and 6 of 6 with it, float64 5 of 6 and 6 of 6, as the sweep measured), on every run"
+   },
+   {
+    "gate": "the sweep under the line (probe)",
+    "prediction": "every float32 spurious stop above 1e-3 now ends flagged; the one at 2.6e-4 stays unflagged; every float64 one ends flagged; genuine convergences (true residual at most the tolerance) unchanged"
+   },
+   {
+    "gate": "genuine floor stops (probe, float32): the stenosis at D/h 64 with 0.01h and 0.1h, the open tube at D/h 64, the stenosis at D/h 32 (0.01h steady and IMEX Euler, 0.1h)",
+    "prediction": "each unflagged, its iterations, residual and flux as 78eb319 gave them (the line never binds: every floor under 1e-3)"
+   },
+   {
+    "gate": "bits (probe, E-cores)",
+    "prediction": "released programs 125 of 125 arrays bit for bit against beeae2e in both dtypes; the review's stenosis set (768 arrays) and experiment set (91 a dtype) bit for bit against 78eb319"
+   },
+   {
+    "gate": "the ratchet set, the changed test files, pyright, the docs check",
+    "prediction": "pass"
+   }
+  ]
  }
 }
