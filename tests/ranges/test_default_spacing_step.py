@@ -122,11 +122,6 @@ def held_off(law: Any, margin_mm: float) -> Any:
     return e
 
 
-def COARSE(**settings: Any) -> Any:  # noqa: N802 - a rung's alias, as Drag.MRS reads
-    """Drag 0.5.0's mrs rung with lubrication's hand-over off: its default spacing follows the closest approach."""
-    return Drag.MRS(lubrication=False, **settings)
-
-
 def planned_spacing_mm(law: Any, margin_mm: float) -> float:
     taken = {d.path: d.value for d in held_off(law, margin_mm).plan().profile.defaults}
     return float(taken["drag:body.spacing"].value) * 1e3
@@ -136,7 +131,7 @@ def test_the_confined_spacing_a_closest_approach_needs_steps_from_its_bound_on_0
     """A margin of 0.054978 mm is a bound of 0.09996 mm (a closest approach over CONFINED_GAP, 0.55), whose three
     figures, 0.100 mm, lie past it: 0.5.0 takes 0.0999 mm and 0.4.0, as released, 0.099 mm. A margin whose bound is not
     in the band (0.0549 mm, a bound of 0.09982 mm) gives 0.0998 mm on both."""
-    assert planned_spacing_mm(COARSE, 0.054978) == pytest.approx(0.0999, rel=1e-12)
+    assert planned_spacing_mm(Drag.MRS, 0.054978) == pytest.approx(0.0999, rel=1e-12)
     assert planned_spacing_mm(UncoupledDrag.MRS, 0.054978) == pytest.approx(0.099, rel=1e-12)
-    assert planned_spacing_mm(COARSE, 0.0549) == planned_spacing_mm(UncoupledDrag.MRS, 0.0549) == \
+    assert planned_spacing_mm(Drag.MRS, 0.0549) == planned_spacing_mm(UncoupledDrag.MRS, 0.0549) == \
         pytest.approx(0.0998, rel=1e-12)

@@ -3724,38 +3724,46 @@ anomalies:
     planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (the measured Navion_2 campaign, re-read with its script) would settle which side is flipped. This entry changes no code."
 
   - anomaly_id: MIME-ANO-154
-    title: "Below the hand-over gap the lift form over-counts the coupling of rotation and translation against its own size: a sphere spun on a plane translates 8 to 43 % too fast at gaps of 0.15 to 0.06 radii"
+    title: "Below the hand-over gap the lift form over-counts the coupling of rotation and translation against its own size, at every gap: a sphere spun on a plane translates up to 43 % too fast, the excess falling only as one over the logarithm of the gap"
     description: >
       Drag 0.5.0's lubrication hand-over (the lift form: the coarse MRS with the contact opened to the hand-over gap h_m,
       plus the thin film's increment TF(h) - TF(h_m)) holds every entry of a sphere's resistance above a plane within 7 % of
       the exact answer on the scale the entries are judged on (each diagonal against itself, the couplings on
-      sqrt(R_tt R_rr): W2a's gate 1, at force spacings of 0.15 and 0.2 radii, gaps 0.002 to 0.3 radii). Judged against
-      itself, the coupling is not: the translation of a force-free sphere spun on the wall per rotation, U / (a Omega),
-      reads +7.8 %, +28 %, +38 % and +43 % at gaps of 0.15, 0.1, 0.075 and 0.06 radii at a force spacing of 0.2 radii,
-      and -0.3 %, +9.6 %, +20 % and +27 % at 0.15 radii, against the method of fundamental solutions (resolved to 2e-4),
-      where the coarse MRS alone (lubrication=False) reads -12.3 to +1.1 % at every one of those gaps [measured: W2a's PR 1a,
-      float64, a sphere of 1 mm, blob 0.05].
+      sqrt(R_tt R_rr): W2a's gate 1, at force spacings of 0.15 and 0.2 radii, gaps 0.002 to 0.3 radii, but the normal at
+      0.06 radii at a spacing of 0.2, -6.7 to -7.4 % over orientations). Judged against itself, the coupling is not: the
+      translation of a force-free sphere spun on the wall per rotation, U / (a Omega), reads at a force spacing of 0.2
+      radii (h_m 0.15) +7.8 %, +28 %, +38 % and +43 % at gaps of 0.15, 0.1, 0.075 and 0.06 radii against the method of
+      fundamental solutions (resolved to 2e-4), and +41 %, +34 %, +28 % and +25 % at 0.01, 0.005, 0.002 and 0.001 radii
+      against Goldman, Cox and Brenner's lubrication asymptotes (whose own error there is under about 2 %); at a
+      spacing of 0.15 radii (h_m 0.1125) +9.6 %, +20 % and +27 % at 0.1, 0.075 and 0.06, and +33 %, +27 %, +23 % and
+      +20 % at 0.01 to 0.001. The coarse MRS alone (lubrication=False) reads -12.3 to +1.1 % at 0.06 to 0.15 radii
+      [measured: W2a's PR 1a and its fix round, float64, a sphere of 1 mm, blob 0.05, through the drag node].
 
-      The cause, measured: between the contact's gap and h_m (0.15 radii at a spacing of 0.2) the film's increment
-      carries 66 to 71 % of the exact increment of the force along the wall, 78 to 84 % of the normal's and 71 to 75 %
-      of the rotation's, and 1.8 to 1.9 times the exact increment of the coupling about the centre, at 65 and 129 grid
-      nodes alike (so not the film's grid). The coupling about the centre is the coupling about the contact less the arm
-      times the force along the wall, a small difference that a short force along the wall turns into a large excess. The
-      film's form is Reynolds' leading order in the gap over the radius, and at these gaps (0.06 to 0.15 of the radius)
-      its next order is not small [inference from the measurement, not separated].
+      The cause, measured: it is the film's form at the hand-over gap, not a defect. Between the contact's gap and h_m
+      (0.15 radii) the film's increment carries 0.69 to 0.71 of the exact increment of the force along the wall, 0.82
+      to 0.84 of the normal's and 0.73 to 0.75 of the rotation's, and 1.77 to 1.83 times the exact increment of the
+      coupling about the centre, the same at 65, 129 and 257 grid nodes; between two gaps below the hand-over gap
+      (0.001 to 0.005, 0.002 to 0.01 radii) every entry matches the asymptotes within 4 %, so the singular terms, the
+      frame, the arm and the sign are right, and the miss is a constant the film adds at h_m that does not cancel. The
+      film's width there, sqrt(2 a h_m), is about half the radius, where the gap is not small against the radius: the
+      increment depends at O(1) on how far the film's patch reaches, the coupling most (a small difference of the
+      contact's coupling and the arm times the force along the wall). The record's own form, the gap from both
+      surfaces' signed distances on a patch of one, two and three times the film's width at h_m, moves the coupling
+      at 0.01 radii from +48 % through -13 % to -54 % and puts the normal 7.9 to 14 % off at 0.06: no patch holds every
+      entry, so it was not taken.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
-      A body rolling on a wall by hydrodynamics alone (the rolling arm's stage 1) moves by this coupling: between the
-      hand-over gap and about half of it its speed per rotation is over-counted by up to 43 %. Below 0.06 radii no oracle
-      here resolves the coupling, so its error there is unknown, not bounded.
+      A body rolling on a wall by hydrodynamics alone (the rolling arm's stage 1) moves by this coupling: at every gap
+      below the hand-over gap its speed per rotation is over-counted, by up to 43 % at the window's widest spacing and
+      still by a fifth at a thousandth of the radius.
     resolution_status: open
     affected_versions: ">=0.3.0.dev2"
     affected_components:
-      - "entry: interaction drag 0.5.0, rung mrs; with lubrication, between the hand-over gap and about half of it"
+      - "entry: interaction drag 0.5.0, rung mrs; with lubrication, at every gap below the hand-over gap"
     residual_risk: >
-      The over-count is measured on a sphere above a plane at two spacings; an elongated contact, a tube and gaps below
-      0.06 radii are not measured. Each entry on its own scale (the per-entry line) is within 7 %, so a result that does not
+      Measured on a sphere above a plane at four spacings (0.1 to 0.2 radii); an elongated contact and a tube are not
+      measured for the coupling. Each entry on its own diagonal scale is within 7 % (gate 1), so a result that does not
       rest on the coupling against its own size is not affected beyond that.
-    workaround: "For rolling, read the speed per rotation from a ladder of force spacings (the over-count falls with the spacing: +43 % at 0.2 radii, +27 % at 0.15, at a gap of 0.06 radii), or compare with lubrication=False above about half the hand-over gap."
-    planned_resolution: "Open, in phase W2a (before W2b's rolling arm relies on the coupling): a smaller hand-over gap near a rolling contact, or the film's next order in the gap over the radius, measured against the same oracle; an oracle for the coupling below 0.06 radii (Goldman, Cox and Brenner's near-contact constants, sourced before use)."
+    workaround: "For rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
+    planned_resolution: "Open, for the maintainer's choice before W2b's rolling arm relies on the coupling (both routes measured in W2a's fix round): a smaller hand-over gap (its numbers in the workaround: the miss roughly halves from a spacing of 0.2 radii to 0.1, at six times the step), or the film's next order in the gap over the radius (not built; the miss is a constant at h_m, so an order that does not change the film's patch does not remove it)."

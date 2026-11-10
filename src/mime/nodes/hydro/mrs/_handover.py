@@ -73,9 +73,20 @@ FILM_RESIDUAL_ULPS = 1e4
 #: The radius of curvature the support's derivative is regularised by, a share of the body's size: a sharp edge's
 #: radius is then this small, and its film near zero.
 RADIUS_FLOOR = 1e-6
+#: The film's larger curvature is held at least this over the body's size (its reach from its own origin, traced from
+#: its shape's settings), so that a flat contact's film stays a contact's width: a floor no convex body's own larger
+#: curvature falls below where it is round (a sphere's is 1 over its reach, four times this), so that it binds only at
+#: a contact flatter than any round body's and never sits on the operating point of one.
+CURVATURE_FLOOR = 0.25
 #: A film reaching round the lumen: its patch's half-width along the gap's slower direction past this share of a
 #: quarter turn of the wall there (``film_annulus``).
 ANNULUS_SHARE = 1.0
+#: The share of a lumen's diameter the body's width across it (along the contact's normal) may fill before the opening
+#: by dilation moves the far side past the gates' line (``handover_far_side``): dilating the tube to open the near
+#: contact opens the far side as well, and the coarse MRS's worst entry (the axial) at the opened geometry, against the
+#: near contact opened with the far side kept, read -6.3 % at a/R 0.5 and -8.9 % at 0.55 for a sphere at the deepest
+#: opening the window allows (s/a 0.2, h_m 0.15 a), -18 % at 0.67 and -37 % at 0.8 [measured: W2a's fix round].
+FAR_SIDE_FILL = 0.5
 
 
 def roughness_cutoff(*roughness: Any) -> Any:
@@ -87,6 +98,45 @@ def roughness_cutoff(*roughness: Any) -> Any:
 def handover_gap(spacing: float) -> float:
     """The hand-over gap at the local force ``spacing`` (m)."""
     return HANDOVER_SPACINGS * spacing
+
+
+def least_radius(kind: Geometry, settings: Mapping[str, Any], spacing: float, patches: Sequence[str]) -> float:
+    """The body's least radius of curvature over its surface (m), as the step reads a contact's: the smaller of the two
+    radii the support's derivative gives along each sample's outward normal (``kind.support``), regularised by
+    :data:`RADIUS_FLOOR` of its size, the least over the kind's samples at ``spacing``; near zero at a sharp edge. At
+    the build, in float64: the radius the hand-over's window is judged against (:data:`WINDOW`), for any contact the
+    body can make whatever its pose."""
+    key = (kind.name, kind.version, repr(sorted(settings.items())), float(spacing), tuple(patches))
+    found = _least_radii.get(key)
+    if found is None:
+        found = _least_radius(kind, settings, spacing, patches)
+        _least_radii[key] = found
+    return found
+
+
+_least_radii: dict[tuple[Any, ...], float] = {}
+
+
+def _least_radius(kind: Geometry, settings: Mapping[str, Any], spacing: float, patches: Sequence[str]) -> float:
+    with cast(Any, jax).enable_x64(True):
+        sampling = kind.sampling(settings, spacing, tuple(patches))
+        parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
+                      for name, value in settings.items()}
+        samples = sampling.samples(kind, parameters)
+        points = jnp.asarray(samples.points, dtype=jnp.float64)
+        normals = jnp.asarray(samples.normals, dtype=jnp.float64)
+        jacobian = jnp.asarray(kind.support(parameters, normals, points).jacobian, dtype=jnp.float64)
+        across = jax.vmap(tangent_frame)(normals)
+        radii = jnp.linalg.eigvalsh(across @ (0.5 * (jacobian + jnp.swapaxes(jacobian, -1, -2)))
+                                    @ jnp.swapaxes(across, -1, -2))
+        size = float(jnp.max(jnp.sqrt(jnp.sum(points * points, axis=-1))))
+        return max(float(jnp.min(radii)), 0.0) + RADIUS_FLOOR * size
+
+
+def window_text(handover: float, radius: float) -> str:
+    """Where the hand-over gap ``handover`` lies against the film's window over the least ``radius`` of curvature."""
+    return (f"the hand-over gap {handover * 1e3:.4g} mm is {handover / radius:.4g} of the body's least radius of "
+            f"curvature, {radius * 1e3:.4g} mm")
 
 
 @dataclass(frozen=True)
@@ -132,7 +182,8 @@ def search_for(kind: Geometry, settings: Mapping[str, Any], points: np.ndarray, 
 class NearContact(NamedTuple):
     """The body's near contact with the wall, in the world frame: its nearest point (the body's), the wall's normal
     into the medium, the gap (m), the contact's frame (rows: the gap's faster and slower directions, the normal), the
-    gap's curvatures along them (1/m), and the wall's own curvature along the slower one (1/m)."""
+    gap's curvatures along them (1/m), the wall's own curvature along the slower one (1/m), and the body's width along
+    the normal (m)."""
 
     point: Array
     normal: Array
@@ -141,15 +192,17 @@ class NearContact(NamedTuple):
     k1: Array
     k2: Array
     wall_along: Array
+    width: Array
 
 
 def near_contact(search: Search, kind: Geometry, parameters: Mapping[str, Any], points: Array, pose: Array,
-                 region: Mapping[str, Any], leaves: Mapping[str, Any]) -> NearContact:
+                 region: Mapping[str, Any], leaves: Mapping[str, Any], reach: Array) -> NearContact:
     """The body's deepest point against the region's wall (``mime.nodes.body._contact``'s search, the margin zero):
     ``points`` the kind's force points in its own frame (traced, so that they move with its settings), ``parameters``
     the kind's settings, ``pose`` the body's, ``region`` the shape's parameters; ``leaves`` the search's held numbers
-    (``film_search_*``). The gap's curvature is the body's (the inverse of its support's derivative in the direction,
-    its radii of curvature, regularised by :data:`RADIUS_FLOOR`) less the wall's (its shape's)."""
+    (``film_search_*``); ``reach`` the body's size (traced). The gap's curvature is the body's (the inverse of its
+    support's derivative in the direction, its radii of curvature, regularised by :data:`RADIUS_FLOOR` of its size)
+    less the wall's (its shape's: :func:`relative_curvature`)."""
     dtype = pose.dtype
     shape = cast(Any, shape_named(search.shape))  # a shape that gives its curvature (Shape.curvature)
     rotation = quaternion.rotation_matrix(pose[3:])
@@ -168,11 +221,20 @@ def near_contact(search: Search, kind: Geometry, parameters: Mapping[str, Any], 
     support = kind.support(parameters, turn.T @ -normal, found.local[0])
     radii = turn @ support.jacobian @ turn.T
     tangent = tangent_frame(normal)
-    floor = RADIUS_FLOOR * leaves["film_reach"]
+    floor = RADIUS_FLOOR * reach
     body = jnp.linalg.inv(tangent @ radii @ tangent.T + floor * jnp.eye(2, dtype=dtype))
     wall = tangent @ shape.curvature(region, point) @ tangent.T
-    frame, k1, k2 = principal(body - wall, tangent, normal)
-    return NearContact(point, normal, gap, frame, k1, k2, frame[1] @ shape.curvature(region, point) @ frame[1])
+    frame, k1, k2 = principal(relative_curvature(body, wall), tangent, normal)
+    across = turn.T @ normal
+    width = kind.reach(parameters, across) + kind.reach(parameters, -across)
+    return NearContact(point, normal, gap, frame, k1, k2, frame[1] @ shape.curvature(region, point) @ frame[1], width)
+
+
+def relative_curvature(body: Array, wall: Array) -> Array:
+    """The gap's curvature: the body's less the wall's, each ``2 x 2`` in one tangent frame, the wall's positive where
+    it curves away from the medium (a tube's lumen curves towards the body, so its film is wider than a plane's). A
+    module attribute so that a control can plant the wrong sign."""
+    return body - wall
 
 
 class Increment(NamedTuple):
@@ -190,7 +252,7 @@ def increment(contact: NearContact, delta: Array, cutoff: Array, handover: Array
     width) so that both solves share it, and the film's O(1) part, which is not the body's, cancels between them."""
     dtype = contact.gap.dtype
     width = ROUGHNESS_WIDTH * cutoff
-    k1 = jnp.maximum(contact.k1, 1.0 / reach)
+    k1 = jnp.maximum(contact.k1, CURVATURE_FLOOR / reach)
     k2 = jnp.clip(contact.k2, 0.0, k1)
     cap_floor = 1.5 * (1.0 + LIFT_WIDTH) * handover
     near = film(smooth_floor(contact.gap, cutoff, width), k1, k2, reach, viscosity, cap_floor, nodes)
@@ -204,8 +266,9 @@ class Handover(NamedTuple):
     """A step's hand-over: the wall's constants opened, the film's increment (zero where the contact is beyond the
     lift), the contact, the hand-over gap, the opening and the cutoff, the film's residual, and the step's flags as
     0 or 1: ``window`` (the hand-over gap past :data:`WINDOW` of the contact's smaller radius), ``annulus`` (the film's
-    patch reaching round the lumen) and ``unsolved`` (the film not finite, or its residual past
-    :data:`FILM_RESIDUAL_ULPS`)."""
+    patch reaching round the lumen), ``unsolved`` (the film not finite, or its residual past
+    :data:`FILM_RESIDUAL_ULPS`) and ``far_side`` (a lumen opened by dilation about a body filling more than
+    :data:`FAR_SIDE_FILL` of its diameter)."""
 
     opened: dict[str, Any]
     increment: Array
@@ -217,6 +280,7 @@ class Handover(NamedTuple):
     window: Array
     annulus: Array
     unsolved: Array
+    far_side: Array
 
 
 def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], points: Array, pose: Array,
@@ -227,12 +291,12 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
     not evaluated; the two agree there in value and derivative, the lift being the identity)."""
     dtype = pose.dtype
     region = wall.region(constants)[1]
-    contact = near_contact(search, kind, parameters, points, pose, region, leaves)
+    reach = jnp.max(jnp.sqrt(jnp.sum(points * points, axis=-1)))
+    contact = near_contact(search, kind, parameters, points, pose, region, leaves, reach)
     handover = HANDOVER_SPACINGS * jnp.asarray(leaves["handover_spacing"], dtype=dtype)
     delta = smooth_floor(contact.gap, handover, LIFT_WIDTH * handover) - contact.gap
     cutoff = roughness_cutoff(jnp.asarray(leaves["roughness_body"], dtype=dtype),
                               jnp.asarray(leaves["roughness_wall"], dtype=dtype))
-    reach = jnp.asarray(leaves["film_reach"], dtype=dtype)
 
     def filmed() -> Increment:
         return increment(contact, delta, cutoff, handover, reach, viscosity, pose[:3], nodes)
@@ -243,16 +307,20 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
     found = _lax.cond(delta > 0.0, filmed, none)
     finite = jnp.all(jnp.isfinite(found.resistance))
     unsolved = jnp.logical_not(finite) | (found.residual > FILM_RESIDUAL_ULPS * jnp.finfo(dtype).eps)
-    k1 = jnp.maximum(contact.k1, 1.0 / reach)
+    k1 = jnp.maximum(contact.k1, CURVATURE_FLOOR / reach)
     window = handover * k1 > WINDOW
     # the film's patch along the gap's slower direction, sqrt(2 cap / k2), past a quarter turn of the wall there
     annulus = 2.0 * (0.5 / k1) * contact.wall_along ** 2 > (ANNULUS_SHARE * 0.5 * math.pi) ** 2 * \
         jnp.maximum(contact.k2, 0.0)
-    flags = _lax.stop_gradient(jnp.stack([window & (delta > 0.0), annulus & (delta > 0.0), unsolved]).astype(dtype))
+    lumen = region.get("radius")
+    far_side = jnp.asarray(False) if lumen is None else contact.width > FAR_SIDE_FILL * 2.0 * lumen
+    flags = _lax.stop_gradient(jnp.stack([window & (delta > 0.0), annulus & (delta > 0.0), unsolved,
+                                          far_side & (delta > 0.0)]).astype(dtype))
     return Handover(wall.opened(constants, delta), found.resistance, contact, handover, delta, cutoff,
-                    _lax.stop_gradient(found.residual), flags[0], flags[1], flags[2])
+                    _lax.stop_gradient(found.residual), flags[0], flags[1], flags[2], flags[3])
 
 
-__all__ = ["ANNULUS_SHARE", "DEFAULT_ROUGHNESS", "FILM_RESIDUAL_ULPS", "HANDOVER_SPACINGS", "LIFT_WIDTH",
-           "RADIUS_FLOOR", "ROUGHNESS_WIDTH", "WINDOW", "Handover", "Increment", "NearContact", "Search", "handed_over",
-           "handover_gap", "increment", "near_contact", "roughness_cutoff", "search_for"]
+__all__ = ["ANNULUS_SHARE", "CURVATURE_FLOOR", "FAR_SIDE_FILL", "DEFAULT_ROUGHNESS", "FILM_RESIDUAL_ULPS", "HANDOVER_SPACINGS",
+           "LIFT_WIDTH", "RADIUS_FLOOR", "ROUGHNESS_WIDTH", "WINDOW", "Handover", "Increment", "NearContact", "Search",
+           "handed_over", "handover_gap", "increment", "least_radius", "near_contact", "relative_curvature",
+           "roughness_cutoff", "search_for", "window_text"]

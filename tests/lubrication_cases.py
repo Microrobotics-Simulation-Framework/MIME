@@ -21,7 +21,7 @@ from mime.nodes.hydro import _film
 from mime.nodes.hydro.mrs import MRSDragNode, _handover
 from mime.scene import Plane, Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
-from mime.units import kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
+from mime.units import kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
 #: The sphere's radius (m), the medium's viscosity (Pa s), the tube's radius (m).
 RADIUS, VISCOSITY, TUBE = 1e-3, 1e-3, 2e-3
@@ -29,30 +29,36 @@ RADIUS, VISCOSITY, TUBE = 1e-3, 1e-3, 2e-3
 FINE = 1e-9
 
 
-def above_plane(spacing: float, *, blob: float | None = None, lubrication: bool = True, roughness: float = FINE,
-                kind: Any = None, name: str = "lubricated_sphere") -> Experiment:
+def above_plane(spacing: float, *, blob: float | None = None, lubrication: bool | None = True,
+                roughness: float = FINE, kind: Any = None, name: str = "lubricated_sphere",
+                wall_roughness: float | None = None) -> Experiment:
     """``kind`` (a sphere of ``RADIUS`` by default) a radius above the plane z = 0, the medium filling the half-space,
-    with ``Drag.MRS`` at ``spacing`` (of the radius) and the hand-over ``lubrication``, both surfaces' roughness
-    declared."""
+    with ``Drag.MRS`` at ``spacing`` (of the radius) and the hand-over ``lubrication`` (unwritten where ``None``: the
+    build's rule), both surfaces' roughness declared (the wall's ``wall_roughness`` where given)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=m(0.0))))
     experiment.add_medium(Medium("water", fills=floor.half_space))
     return _with_body(experiment, spacing, blob, lubrication, roughness, kind, (0.0, 0.0, 3.0 * RADIUS), "floor",
-                      "plane")
+                      "plane", wall_roughness)
 
 
-def in_tube(spacing: float, *, blob: float | None = None, lubrication: bool = True, roughness: float = FINE,
-            kind: Any = None, name: str = "lubricated_tube") -> Experiment:
-    """As :func:`above_plane`, in a straight tube of radius ``TUBE`` along z, the body on its axis."""
+def in_tube(spacing: float, *, blob: float | None = None, lubrication: bool | None = True, roughness: float = FINE,
+            kind: Any = None, name: str = "lubricated_tube", flow: Any = None) -> Experiment:
+    """As :func:`above_plane`, in a straight tube of radius ``TUBE`` along z, the body on its axis; the water carrying
+    ``flow`` where given (a field kind, its density declared)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=m(TUBE), wall=mm(0.5),
                                                              length=mm(200.0))))
-    experiment.add_medium(Medium("water", fills="tube.lumen"))
+    experiment.add_medium(Medium("water", fills="tube.lumen") if flow is None else
+                          Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    if flow is not None:
+        experiment.declare("water.density", kg_per_m3(1000.0), reason="water")
     return _with_body(experiment, spacing, blob, lubrication, roughness, kind, (0.0, 0.0, 0.0), "tube", "tube")
 
 
-def _with_body(experiment: Experiment, spacing: float, blob: float | None, lubrication: bool, roughness: float,
-               kind: Any, at: tuple[float, float, float], wall: str, wall_kind: str) -> Experiment:
+def _with_body(experiment: Experiment, spacing: float, blob: float | None, lubrication: bool | None,
+               roughness: float, kind: Any, at: tuple[float, float, float], wall: str, wall_kind: str,
+               wall_roughness: float | None = None) -> Experiment:
     experiment.declare("water.viscosity", mPa_s(VISCOSITY * 1e3), reason="water")
     experiment.add_body(Body("ball", dynamics=RigidInertial(),
                              parts={"shell": Part(kind if kind is not None else Sphere(radius=m(RADIUS)))},
@@ -62,8 +68,11 @@ def _with_body(experiment: Experiment, spacing: float, blob: float | None, lubri
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
     experiment.declare("ball.roughness", m(roughness), reason="the gate's declared roughness")
-    experiment.declare(f"{wall}.roughness", m(roughness), reason="the gate's declared roughness")
-    settings: dict[str, Any] = {"spacing": m(spacing * RADIUS), "wall_kind": wall_kind, "lubrication": lubrication}
+    experiment.declare(f"{wall}.roughness", m(roughness if wall_roughness is None else wall_roughness),
+                       reason="the gate's declared roughness")
+    settings: dict[str, Any] = {"spacing": m(spacing * RADIUS), "wall_kind": wall_kind}
+    if lubrication is not None:
+        settings["lubrication"] = lubrication
     if blob is not None:
         settings["blob"] = blob
     experiment.attach(Drag.MRS(**settings), body="ball", medium="water")
@@ -108,9 +117,11 @@ def translation_per_rotation(resistance: np.ndarray, radius: float = RADIUS) -> 
 
 #: The plants a gate's control switches on by ``W2A_PLANT``: the increment scaled, its coupling counted twice, its
 #: normal negated, the lift's floor without its derivative or a hard max, the film's elimination 1 % off, the cutoff
-#: from the body's roughness alone.
+#: from the body's roughness alone, the film's curvature floored at one over a held size (the floor the first build
+#: had), the wall's curvature added to the body's rather than taken from it, the body's size read from the search's
+#: build-time number (a constant of the program).
 PLANTS = ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite", "lift_stopped", "hard_max", "wrong_solve",
-          "cutoff_body_only")
+          "cutoff_body_only", "held_floor", "wall_sign", "baked_size")
 
 
 @contextmanager
@@ -121,7 +132,8 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
     if name is not None and name not in PLANTS:
         raise ValueError(f"no plant {name!r}; the plants are {PLANTS}")
     held = {"increment": _handover.increment, "smooth_floor": _handover.smooth_floor,
-            "roughness_cutoff": _handover.roughness_cutoff, "solve_film": _film.solve_film}
+            "roughness_cutoff": _handover.roughness_cutoff, "solve_film": _film.solve_film,
+            "relative_curvature": _handover.relative_curvature, "near_contact": _handover.near_contact}
     try:
         if name in ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite"):
             def increment(*arguments: Any, **settings: Any) -> Any:
@@ -146,14 +158,58 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
             _film.solve_film = lambda *arguments: 1.01 * held["solve_film"](*arguments)
         elif name == "cutoff_body_only":
             _handover.roughness_cutoff = lambda body, wall: 2.0 * body
+        elif name == "held_floor":
+            def floored(contact: Any, delta: Any, cutoff: Any, handover: Any, reach: Any, *rest: Any,
+                        **settings: Any) -> Any:
+                size = jax.lax.stop_gradient(reach)
+                return held["increment"](contact._replace(k1=jnp.maximum(contact.k1, 1.0 / size)), delta, cutoff,
+                                         handover, size, *rest, **settings)
+            _handover.increment = floored
+        elif name == "wall_sign":
+            _handover.relative_curvature = lambda body, wall: body + wall
+        elif name == "baked_size":
+            def baked(search: Any, *arguments: Any) -> Any:
+                return held["near_contact"](search, *arguments[:-1], jnp.asarray(search.size))
+            _handover.near_contact = baked
         yield name
     finally:
         _handover.increment = held["increment"]
         _handover.smooth_floor = held["smooth_floor"]
         _handover.roughness_cutoff = held["roughness_cutoff"]
         _film.solve_film = held["solve_film"]
+        _handover.relative_curvature = held["relative_curvature"]
+        _handover.near_contact = held["near_contact"]
 
 
 def turned(angle: float, axis: tuple[float, float, float]) -> tuple[float, float, float, float]:
     norm = math.sqrt(sum(c * c for c in axis))
     return (math.cos(angle / 2), *(math.sin(angle / 2) * c / norm for c in axis))
+
+
+def screw_in_tube(lubrication: bool | None = None, spacing: float | None = None) -> Experiment:
+    """FL-9 (``script_a.fl9``) on its tube's axis (script A's 1/4 in tube along x), with ``Drag.MRS`` at its defaults
+    but ``lubrication`` and ``spacing`` (m) where written: the record's case of a contact past the film's window."""
+    from script_a import fl9
+
+    experiment = Experiment("screw_in_tube", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(3.175),
+                                                             wall=mm(0.5), length=mm(100.0))))
+    experiment.add_medium(Medium("water", fills="tube.lumen"))
+    experiment.declare("water.viscosity", mPa_s(1.0), reason="water")
+    experiment.add_body(Body("ball", dynamics=RigidInertial(), parts={"shell": Part(fl9())}, initial=State(
+        position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
+    experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
+    settings: dict[str, Any] = {"wall_kind": "tube"}
+    if lubrication is not None:
+        settings["lubrication"] = lubrication
+    if spacing is not None:
+        settings["spacing"] = m(spacing)
+    experiment.attach(Drag.MRS(**settings), body="ball", medium="water")
+    return experiment
+
+
+def taken_default(experiment: Experiment, setting: str, owner: str = "drag:ball") -> object:
+    """The value the plan took for ``owner``'s ``setting`` by its default rule (``None`` where it took none)."""
+    return next((d.value for d in experiment.plan().profile.defaults if d.path == f"{owner}.{setting}"), None)

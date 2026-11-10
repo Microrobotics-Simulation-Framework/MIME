@@ -45,7 +45,7 @@ def lone(tube: bool) -> Experiment:
     experiment.declare("ball.mass", kg(4.19e-6), reason="a millimetre sphere")
     experiment.declare("ball.inertia", kg_m2((1.7e-12,) * 3), reason="a millimetre sphere")
     wall = "tube" if tube else "free_space"
-    experiment.attach(Drag.MRS(lubrication=False, spacing=mm(0.6), blob=0.5, wall_kind=wall), body="ball", medium="water")
+    experiment.attach(Drag.MRS(spacing=mm(0.6), blob=0.5, wall_kind=wall), body="ball", medium="water")
     return experiment
 
 

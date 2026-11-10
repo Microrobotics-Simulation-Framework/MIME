@@ -365,7 +365,7 @@ def channel_experiment(wall_kind: str):
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(lubrication=False, spacing=mm(0.3), blob=0.5, wall_kind=wall_kind), body="ball", medium="water")
+    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind=wall_kind), body="ball", medium="water")
     return experiment
 
 

@@ -21,7 +21,9 @@ the film's 6 x 6, the force the body exerts on the fluid (positive definite, the
 film past it is wide and inert, and each axis reaches where the paraboloid meets that cap, no farther than the body's
 own ``reach``. The film's form is right for the gap's singular terms (the sphere's ``a / h`` and its three logarithms,
 a line contact's ``h^-3/2``) and holds no O(1) part of its own: it is used only as an increment between two gaps,
-``TF(h) - TF(h')``, never alone.
+``TF(h) - TF(h')``, never alone. Its 6 x 6 is not exactly symmetric: the grid's error, about 2.5 % of the coupling at a
+gap of 0.002 of the radius and 4.4 % at 5e-4 on 65 nodes a side (1 % on 257), which the drag's node averages away when
+it symmetrises the resistance.
 
 **Its validity.** A smooth contact at gaps well below its smaller radius of curvature (C3); a sharp edge (a radius
 near zero) leaves a film near zero, and the MRS with its sampling carries the edge. Below the surfaces' roughness the

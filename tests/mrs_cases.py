@@ -146,7 +146,7 @@ def mrs_near_field_gmres() -> Experiment:
     return mrs_near_field("mrs_near_field_gmres", near_field_dense_unknowns=0)
 
 
-def mrs_tube(lubrication: bool | None = None) -> Experiment:
+def mrs_tube() -> Experiment:
     """The round-trip case of the tube wall kind: a ball a tenth of the tube's radius, moving along the tube's axis and
     turning, with the rung in a straight tube of 5 mm radius along z at its coarsest spacing that keeps every sample
     within the table's readable range. It reads the shipped table, so the asset ``unit_tube_R0.997`` must be fetched."""
@@ -161,9 +161,7 @@ def mrs_tube(lubrication: bool | None = None) -> Experiment:
                                            angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
     experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube",
-                               **({} if lubrication is None else {"lubrication": lubrication})), body="ball",
-                      medium="water")
+    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
     return experiment
 
 
