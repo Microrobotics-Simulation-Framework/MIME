@@ -160,11 +160,16 @@ reports of a derivative's solves come out as the derivative of the node's `solve
 summed over the run (a row a step only on a node built by hand with `solve_report_rows=`). A gradient study reads both:
 it warns of a solve that stopped short, forward or in the derivative, and rechecks the member, re-solving
 it with GMRES's cap lifted (to the larger of ten times itself and the FVM's `DEFAULT_CAP`) and its stall restarts raised, as the
-FVM's conjugate gradient is, each a stagnation that begins the solve's window again; the recheck names the stop's
-cause from its own solves, `cap-limited` (it converged, the change in the objective and the derivative is what the stop
-cost, or it stopped at the lifted cap again) or `floor-limited` (it stagnated again: float32's floor near contact,
-which no cap lifts, the route out being float64 or the dense route), never converged. The dense route raises no such flag: an
-LU stops at no tolerance.
+FVM's conjugate gradient is, each a stagnation that begins the solve's window again; past them a recheck's GMRES stops a
+stagnation only at its rounding floor (its least true residual within `FLOOR_MARGIN`, 4, of `eps || |A| |x| + |b| ||`:
+measured through the node, solves at their floor lay at 0.33 to 2.7 of it in either dtype, and stalls planted with a
+Krylov length of one at 6.7 and above), and above the floor runs on to the lifted cap. The recheck names each node's cause
+from its own solves and the member's: `floor-limited` where its solves stopped stagnated, at their floor, which no cap
+lifts (the route out, by the run's dtype: float64 in float32, a tolerance at or above the floor in float64, or the dense
+route); `stagnated` where the member's stopped at a stall above the floor, which the recheck ran past (converged, the
+change in the objective and the derivative is what the stall cost) or not (at the lifted cap), the route the dense one;
+`cap-limited` where a cap alone stopped them (it converged, or stopped at the lifted cap again); and `not-finite`. The
+dense route raises no such flag: an LU stops at no tolerance.
 
 A body alone in its medium keeps its own node, step for step. A medium where two bodies or more join a near field beside
 a body on the kept 0.4.0 mrs rung is refused (`drag.near-field-mixed`: the one would see the others and not be seen);

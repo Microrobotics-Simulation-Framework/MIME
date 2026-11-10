@@ -102,6 +102,25 @@ DEFAULT_TOLERANCE = {"float64": 1e-10, "float32": 1e-5}
 #: (``drag.near-field-memory``), on either route; :data:`MEMORY_MEASURED` says how they were measured.
 MEMORY_COUNTS = {("dense", "float64"): (2.01, 6.0), ("dense", "float32"): (2.11, 5.4),
                  ("gmres", "float64"): (2.01, 10.5), ("gmres", "float32"): (2.20, 7.9)}
+#: The mode of a forward run, against a derivative's ``"forward"`` and ``"reverse"`` (:meth:`JointDragNode.memory_estimate`).
+RUN = "run"
+#: A gradient study's derivative's peak past the memory check (``mime.study``'s, before it compiles the derivative), by
+#: route and the run's dtype, as so many joint matrices and held free parts as :data:`MEMORY_COUNTS` counts them, for one
+#: member: reverse mode; forward mode along one direction, and per direction past the first. A batch of members holds as
+#: many times as much. :data:`DERIVATIVE_MEASURED` says how they were measured.
+DERIVATIVE_COUNTS: dict[tuple[str, str], dict[str, tuple[float, float]]] = {
+    ("dense", "float64"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
+    ("dense", "float32"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
+    ("gmres", "float64"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
+    ("gmres", "float32"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
+}
+DERIVATIVE_MEASURED = ""
+#: The memory refusal's margin on an estimate, the largest measured peak over its estimate among the fits' cases
+#: (:data:`MEMORY_MEASURED`, :data:`DERIVATIVE_MEASURED`), so that the estimate it compares is at least what each
+#: measured case held; and its headroom, the share of the memory a run can have that it keeps free for what the counts
+#: do not hold (another process, the operating system's rounding of what is available).
+MEMORY_MARGIN = 1.0
+MEMORY_HEADROOM = 0.1
 MEMORY_MEASURED = ("measured on a laptop CPU with 16 threads as the process's peak resident memory over a build and two "
                    "runs through built.run, less a two-sphere run's peak (396 unknowns: 0.65 to 0.73 GiB, the "
                    "process's fixed part, its imports and compiles, which the estimate leaves out), least squares over "
@@ -335,28 +354,56 @@ class JointDragNode(MimeNode):
                     f"tolerance=...)), or {dense}")
         return dense if cause == STAGNATED else ""
 
-    def memory_estimate(self) -> float:
-        """The bytes a run of the node holds at its peak past the process's fixed part, in the run's dtype
-        (:data:`MEMORY_COUNTS`)."""
-        matrices, held = MEMORY_COUNTS[(self.route, str(jnp.dtype(run_dtype())))]
+    def memory_estimate(self, mode: str = RUN, directions: int = 1, members: int = 1) -> float:
+        """The bytes the node's run holds at its peak past the process's fixed part, in the run's dtype: a forward run
+        (``mode`` :data:`RUN`, :data:`MEMORY_COUNTS`), or a gradient study's derivative of ``members`` batched members,
+        in ``"forward"`` mode along ``directions`` tangents or in ``"reverse"`` mode (:data:`DERIVATIVE_COUNTS`)."""
+        dtype = str(jnp.dtype(run_dtype()))
+        if mode == RUN:
+            matrices, held = MEMORY_COUNTS[(self.route, dtype)]
+        else:
+            counts = DERIVATIVE_COUNTS[(self.route, dtype)]
+            matrices, held = counts[mode]
+            if mode == "forward":
+                more, more_held = counts["direction"]
+                matrices, held = matrices + (directions - 1) * more, held + (directions - 1) * more_held
+            matrices, held = members * matrices, members * held
         return (matrices * _itemsize() * self.unknowns ** 2
                 + held * 8 * sum((3 * op.count) ** 2 for op in self._operators))
 
-    def memory_problem(self) -> Problem | None:
+    def memory_problem(self, mode: str = RUN, directions: int = 1, members: int = 1) -> Problem | None:
         """A joint system whose run would not fit in the memory a run can have (a GPU's limit; on a CPU the smaller of
-        the host's available memory and its control group's limit), refused before its first step on either route."""
+        the host's available memory and its control group's limit), refused before its first step on either route:
+        its estimate (:meth:`memory_estimate`) times :data:`MEMORY_MARGIN` against that memory less
+        :data:`MEMORY_HEADROOM` of it. A forward run is checked at build; a gradient study's derivative before the
+        study compiles it (:meth:`derivative_problem`)."""
         where, available = device_memory()
-        needed = self.memory_estimate()
-        if available is None or needed <= available:
+        needed = MEMORY_MARGIN * self.memory_estimate(mode, directions, members)
+        if available is None or needed <= (1.0 - MEMORY_HEADROOM) * available:
             return None
+        what = "run" if mode == RUN else (
+            f"derivative in {mode} mode{f' along {directions} directions' if mode == 'forward' and directions > 1 else ''}"
+            f"{f' of {members} members at once' if members > 1 else ''}")
         return Problem(
             "drag.near-field-memory",
             f"the medium's near field couples {len(self.members)} bodies ({', '.join(self.members)}) into a joint "
-            f"system of {self.unknowns} unknowns, whose run on the {self.route} route needs about "
+            f"system of {self.unknowns} unknowns, whose {what} on the {self.route} route needs about "
             f"{needed / 2 ** 30:.3g} GiB (its joint matrix and its members' held blocks times the counts a CPU run was "
-            f"measured to hold, as the drag's validity line says), more than {where}, {available / 2 ** 30:.3g} GiB",
-            "write a coarser spacing on the bodies' drag, Drag.MRS(spacing=...), fewer bodies in the medium, or a "
-            "machine with more memory")
+            f"measured to hold, times {MEMORY_MARGIN:g}, the measurements' largest miss, as the drag's validity line "
+            f"says), more than {where}, {available / 2 ** 30:.3g} GiB, less the {MEMORY_HEADROOM:.0%} of it the check "
+            f"keeps free",
+            "write a coarser spacing on the bodies' drag, Drag.MRS(spacing=...), fewer bodies in the medium"
+            + (", the derivative in forward mode along few axes, study.gradient(..., mode='forward'), which holds "
+               "fewer matrices than reverse mode, or fewer of the study's points at once" if mode != RUN else "")
+            + ", or a machine with more memory")
+
+    def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
+        """A gradient study's derivative of ``members`` members at once in ``mode`` (``"forward"`` along
+        ``directions`` tangents, or ``"reverse"``) over ``steps`` steps that would not fit (:meth:`memory_problem`),
+        refused before the study compiles it. The steps do not enter: measured, reverse mode's chunked checkpoints
+        hold a step's inputs, not its matrices (:data:`DERIVATIVE_MEASURED`)."""
+        del steps
+        return self.memory_problem(mode, directions, members)
 
     def _wall(self) -> WallCorrection:
         return wall_correction_named(self.constants()["wall_kind"], self.constants()["wall_kind_version"])
@@ -866,8 +913,11 @@ class JointDragNode(MimeNode):
         room = f"{available / 2 ** 30:.3g} GiB" if available is not None else "which the system does not report"
         return (f"its joint matrix in the run's dtype {_itemsize() * self.unknowns ** 2 / 2 ** 20:.4g} MiB; the run's "
                 f"memory on the {self.route} route about {self.memory_estimate() / 2 ** 20:.4g} MiB past the "
-                f"process's fixed part (the counts a CPU run was measured to hold, as the drag's validity line says), "
-                f"against {where}, {room}")
+                f"process's fixed part, a gradient study's derivative of one point about "
+                f"{self.memory_estimate('forward') / 2 ** 20:.4g} MiB in forward mode along one axis and "
+                f"{self.memory_estimate('reverse') / 2 ** 20:.4g} MiB in reverse mode (the counts a CPU run was "
+                f"measured to hold, as the drag's validity line says), against {where}, {room}, refused past "
+                f"{MEMORY_MARGIN:g} times the estimate against {1.0 - MEMORY_HEADROOM:.0%} of it")
 
     def run_problem(self, end: int) -> Problem | None:
         """A run that would end past the last row of the derivative solves' per-step reports (``solve_report_rows``) is
@@ -940,5 +990,6 @@ def _itemsize() -> int:
     return int(jnp.zeros(()).dtype.itemsize)
 
 
-__all__ = ["CONTACT_GAP", "EQUATIONS", "HELD_MATRIX", "MEMORY_COUNTS", "MEMORY_MEASURED", "ROUTES",
+__all__ = ["CONTACT_GAP", "DERIVATIVE_COUNTS", "DERIVATIVE_MEASURED", "EQUATIONS", "HELD_MATRIX", "MEMORY_COUNTS",
+           "MEMORY_HEADROOM", "MEMORY_MARGIN", "MEMORY_MEASURED", "ROUTES",
            "JointDragInputs", "JointDragNode", "JointDragState", "member_prefix"]

@@ -268,9 +268,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CPU the smaller of the available memory and the control group's limit), so that no cluster that cannot fit runs, on
   either route. **A gradient study rechecks it** (design #337): the joint node declares `rechecks`, and a member whose
   solve stopped short is re-solved with GMRES's cap lifted and its stall restarts raised (`Stopping.stall_restarts`, new
-  for GMRES and none in a run: a stagnation begins the window again), by the FVM's CG's rule; the recheck names each
-  node's cause from its own solves, `cap-limited` or `floor-limited` (`Recheck.causes`, with the node's route out,
-  `MimeNode.floor_route`: float64, or the dense route), and `NO_RECHECK_REASON` no longer says a solve reads no cap.
+  for GMRES and none in a run: a stagnation begins the window again), by the FVM's CG's rule, and a stagnation past them
+  stopping a solve only at its rounding floor (`Stopping.floor_stop`: the least true residual within `FLOOR_MARGIN` of
+  `eps || |A| |x| + |b| ||`; above it the solve runs on to the lifted cap). The recheck names each node's cause from its
+  solves and the member's (`Recheck.causes`): `floor-limited` only where the recheck stopped at its floor and the node's
+  solve tests it (`MimeNode.floor_stops`), `stagnated` for a stall above it (or a stagnation the FVM's CG does not test),
+  `cap-limited` and `not-finite`, each with its node's route out by the run's dtype (`Recheck.routes`,
+  `MimeNode.recheck_route`); `NO_RECHECK_REASON` no longer says a solve reads no cap.
 
 - **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
   spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to

@@ -54,6 +54,7 @@ from mime.units import Quantity, unit_symbol
 
 if TYPE_CHECKING:
     from mime.experiment import BuiltExperiment, Experiment
+    from mime.registry import Problem
     from mime.study._study import Group, StudyPlan
 
 _jax: Any = jax
@@ -667,6 +668,10 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
             chosen = mode if mode != "auto" else ("forward" if scalars <= FORWARD_UP_TO else "reverse")
             callback = built.plans.controller is not None and built.plans.controller.mode is Mode.CALLBACK
             with precision(leader.declared.x64):
+                refused = derivative_refusals(built.graph, chosen, scalars,
+                                              len(indices) if group.batched and not callback else 1, group.steps)
+                if refused:
+                    raise BuildRefused(refused)
                 found = _group(plan, group, indices, built, writes, of, chosen, callback, settings, declarations,
                                acknowledged)
             for index, member, path in found:
@@ -675,6 +680,22 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
     return GradientResult(tuple(axis.path for axis in axes), chosen, composed(statuses.values()), statuses,
                           tuple(members), {owner: reason for owner, reason in acknowledged.items()
                                            if statuses.get(owner) in ACKNOWLEDGED_ONLY})
+
+
+def derivative_refusals(graph: Any, mode: str, directions: int, members: int, steps: int) -> list[Refusal]:
+    """Each node's refusal of the derivative a study would compile (``derivative_problem(mode, directions, members,
+    steps)``, where a node has one: the near field's memory in that mode, ``members`` points at once, forward mode along
+    ``directions`` tangents), before it is compiled, so that a derivative too large for the memory a run can have is a
+    refusal, not an out-of-memory error part way through."""
+    found: list[Refusal] = []
+    for name in graph.node_names:
+        check = getattr(graph.get_node(name), "derivative_problem", None)
+        if not callable(check):
+            continue
+        problem = cast("Callable[[str, int, int, int], Problem | None]", check)(mode, directions, members, steps)
+        if problem is not None:
+            found.append(Refusal(problem.code, RefusalClass.USER, f"node {name}: {problem.message}", problem.action))
+    return found
 
 
 def _group(plan: StudyPlan, group: Group, indices: Sequence[int], built: BuiltExperiment, writes: Sequence[Written],
@@ -856,6 +877,6 @@ def _floor_how(nodes: Iterable[MimeNode]) -> str:
             "on to the lifted cap" if any(type(node).floor_stops for node in nodes) else "")
 
 
-__all__ = ["CAP_LIMITED", "FLOOR_LIMITED", "FORWARD_UP_TO", "NOT_FINITE", "STAGNATED", "cause", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient",
+__all__ = ["CAP_LIMITED", "FLOOR_LIMITED", "FORWARD_UP_TO", "NOT_FINITE", "STAGNATED", "cause", "derivative_refusals", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient",
            "key", "final_state", "magnitude", "member_factor", "prepare", "stacked_members", "objective_nodes",
            "path_nodes", "path_statuses", "solving_nodes", "written"]

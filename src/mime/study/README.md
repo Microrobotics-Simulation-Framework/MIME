@@ -106,9 +106,12 @@
   in forward mode), a warning for each solve that stopped short and a recheck that re-solves the member with the cause
   removed (the cap lifted, the stall restarts raised, at the member's own tolerance, on a program traced for it; a
   solve that reached neither is unchanged), reporting the change in the objective and the derivative and each node's
-  cause from the recheck's own solves: `cap-limited` (converged, or at the lifted cap again) or `floor-limited`
-  (stagnated again, a floor no cap lifts, with the route out its node names); a non-finite residual, which neither
-  removes, and a node whose solve has no recheck are reported not rechecked, with the reason.
+  cause from the recheck's solves and the member's (`mime.study._gradient.cause`): `floor-limited` (the recheck's
+  solves stagnated again at their rounding floor, where the node's solve stops a recheck's stagnation only there,
+  `MimeNode.floor_stops`: the near field's GMRES), `stagnated` (a stall above the floor the recheck ran past, or a
+  stagnation whose floor the node's solve does not test: the FVM's CG), `cap-limited` (a cap alone) or `not-finite`,
+  each with the route out its node names by the run's dtype (`MimeNode.recheck_route`); a non-finite residual in the
+  member, which neither removes, and a node whose solve has no recheck are reported not rechecked, with the reason.
 
 - **A fit** (`_fit.py`): `Study(exp).fit(residual, start={...}, noise=..., duration=..., iterations=..., bounds=None,
   tolerance=...)`, `mime.results.FitResult`: the values of the axes `start` names that make `residual` (a `jax.numpy`
