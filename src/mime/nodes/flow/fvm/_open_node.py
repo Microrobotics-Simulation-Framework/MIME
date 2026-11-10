@@ -42,9 +42,9 @@ from mime.core import ledger as books
 from mime.core._node import rechecked
 from mime.core.ledger import TermOrder
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negative_resistivity
-from mime.nodes.flow.fvm._flags import OPEN_FLAGS
+from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._node import BYPASS_LINE, STALL_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
+from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
     FlowFields, FlowRecords, check_deliveries
 from mime.nodes.flow.fvm._open import OpenMACGrid
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, port_law_named, port_system, \
@@ -360,7 +360,8 @@ class OpenFlowNode(ImplicitFlowNode):
             energy = self.open_energy_terms(p, grid, velocity, stage, sigma, fields, dt, ports, flux, law_state,
                                             law_ended, parameters)
             stall = self.stall_ratio(energy)
-            held = {**held, "stall_ratio": stall, "stall_flagged": (stall > STALL_LINE).astype(dtype)}
+            line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
+            held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
         return held, StepParts(stage, fields, energy)
 
     def superposed_scale(self, grid: OpenMACGrid, ports: OpenPorts) -> Array:

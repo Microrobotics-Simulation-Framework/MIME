@@ -6,7 +6,9 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 **What each catches is what its plants showed**, not its name:
 
 - ``stall`` (``|N_Krylov| / D_visc``, the node's own ``stall_ratio``): a solve that stops short of its solution while
-  reporting arrival;
+  reporting arrival. **It does not catch every small stall in float32**: a solve stopped after two iterations reads
+  from 6e-4 to 4.5e-3 on seven of 50 draws, under the line, which sits twice the clean maximum (2.0e-3), so a stall
+  that small is inside float32's clean readings;
 - ``convection`` (``N_conv`` against its time level's own work, ``-dt rho <C(u), u' - u>``, over the magnitude of
   convection's product): convection doing work beyond its time level's. The divergence form is skew on a
   divergence-free field, so at one level it does no work and at IMEX Euler's mixed levels all its work is the
@@ -36,6 +38,24 @@ from mime.core import as_run_array, jnp
 from mime.core import ledger as books
 from mime.core.ledger import FlagEvidence, LedgerFlag
 from mime.nodes.flow.fvm._band import band_named
+from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE
+
+#: The stall detector's line, in the solve's tolerance: ``|N_Krylov| / D_visc`` above this many tolerances is a stall. **One
+#: number a dtype, read by the node's ``stall_flagged`` at the tolerance the run was built with and by the harness's stall
+#: flag at the default tolerance** (:data:`STALL_LINES`), so the two cannot disagree. The reading scales with the tolerance
+#: (:data:`STALL_MEASURED`), so a run that asks for a looser solve is judged against that solve, not the default one.
+STALL_PER_TOLERANCE = {"float64": 1000.0, "float32": 500.0}
+#: The run that measured the stall reading's clean maxima at the default tolerance and a tenfold tighter and looser one
+#: (200 drawn correct runs each, seeds 0 to 199 of ``tests/flow/flag_cases.py``, 60 steps, every step read), and what it
+#: showed: the worst reading over the tolerance 510 in float64 and 200 in float32 at the default, 391 and 479 at a tenfold
+#: tighter tolerance (float32's below its rounding floor at the worst draws), 329 and 245 at a tenfold looser one; a
+#: draw's reading moves with the tolerance by 0.106 and 9.6 times (float64) and 0.108 and 9.6 times (float32), medians.
+STALL_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42858484810"
+#: The run that repeated the clean draws against the node's own flag and measured the stall plants' rates (40 planted and
+#: 40 clean runs a chunk, five chunks of seeds from 1000 for the two tolerance plants, one for the two-iteration plant).
+STALL_RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42860952104"
+#: The line at the default tolerance, a dtype: the harness's.
+STALL_LINES = {name: STALL_PER_TOLERANCE[name] * DEFAULT_TOLERANCE[name] for name in STALL_PER_TOLERANCE}
 
 #: The interior's depth, in band widths from the wall, from which the solid is fully stiff (the band's half width and
 #: the stiffening ramp's whole width): what the leak flag counts as inside a solid.
@@ -142,6 +162,7 @@ _NEGATED = "the convective operator negated, still skew (an operator error: the 
 RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42771046829"
 _TOLERANCE = "a solve whose tolerance is 1e4 times its default, reporting arrival"
 _TWO = "a solve stopped after two iterations"
+_STOPS_SHORT = "a solve whose CG stops at 1e4 times the tolerance the node declares (its default), reporting arrival"
 _MASK = "the fluid's mask lost beyond the band (the drive acting in the solid)"
 _WEAK = "the solid's interior 1e3 times less stiff (its bypass flux rises; its loss inside falls)"
 
@@ -152,13 +173,20 @@ def _evidence(plant: str, caught: dict[str, tuple[int, int, int, int]], link: st
 
 #: The implicit node's flags (IMEX Euler and its steady limit). Each line is 2 to 4 times the worst clean reading (the
 #: stall 2 times, the leak 3.1, convection 4.1 and 3.8), on draws whose worst sits at the envelope's edge (float32's
-#: stall at tau/dt near 3e3): beyond the envelope a line is unvalidated.
+#: stall at tau/dt near 4e3): beyond the envelope a line is unvalidated.
 FLAGS: tuple[LedgerFlag, ...] = (
-    LedgerFlag("stall", "|N_Krylov| / D_visc", stall_reading, {"float64": 1e-5, "float32": 4e-3},
-               f"{_CLEAN}: worst 5.1e-6 (float64) and 2.0e-3 (float32), every step judged; float32's clean runs read "
-               f"up to twice the node's own stall line, 1e-3, at tau/dt near 3e3 (its tolerance against tau/dt)",
-               _evidence(_TOLERANCE, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)}, RATES_MEASURED)
-               + _evidence(_TWO, {"float64": (50, 50, 0, 50), "float32": (44, 50, 0, 50)}, RATES_MEASURED)),
+    LedgerFlag("stall", "|N_Krylov| / D_visc", stall_reading, STALL_LINES,
+               f"200 drawn correct runs a dtype and tolerance (a tenfold tighter and looser one and, in float32, the "
+               f"nominal one set explicitly; IMEX Euler, D/h 8 to 16, Re 1 to 200, tau/dt up to 4.1e3, "
+               f"tests/flow/flag_cases.py), 60 steps each: the reading over the run's tolerance at most 510 (float64) "
+               f"and 200 (float32) at the default, the line {STALL_PER_TOLERANCE['float64']:g} and "
+               f"{STALL_PER_TOLERANCE['float32']:g}, every step judged "
+               f"({STALL_MEASURED}); the node's own flag quiet on all of them ({STALL_RATES_MEASURED})",
+               _evidence(_TOLERANCE, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)},
+                         STALL_RATES_MEASURED)
+               + _evidence(_STOPS_SHORT, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)},
+                           STALL_RATES_MEASURED)
+               + _evidence(_TWO, {"float64": (50, 50, 0, 50), "float32": (43, 50, 0, 50)}, STALL_RATES_MEASURED)),
     LedgerFlag("convection", "|N_conv + dt rho <C(u), u' - u>| / (dt rho <|C(u)|, |u'|> + |N_conv|)",
                convection_reading, {"float64": 2e-9, "float32": 5e-5},
                f"200 drawn correct runs a dtype, as the others' ({CONVECTION_LINE_MEASURED}): worst 4.9e-10 (float64) "

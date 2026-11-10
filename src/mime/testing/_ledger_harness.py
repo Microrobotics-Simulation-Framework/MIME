@@ -233,7 +233,7 @@ class FlagReport:
     readings: tuple[FlagReading, ...]
     pending: Mapping[str, str] = field(default_factory=dict[str, str])
     silent: tuple[str, ...] = ()
-    unlined: tuple[str, ...] = ()
+    without_line: tuple[str, ...] = ()
 
     @property
     def checks(self) -> int:
@@ -241,12 +241,13 @@ class FlagReport:
 
     @property
     def passed(self) -> bool:
-        return bool(self.readings) and not self.unlined and all(reading.passed for reading in self.readings)
+        return bool(self.readings) and not self.without_line and all(reading.passed for reading in self.readings)
 
     def failures(self) -> list[str]:
         found = [] if self.readings else [f"no flag of {self.node} read anything: nothing was checked (silent: "
                                           f"{list(self.silent)}, pending: {sorted(self.pending)})"]
-        found += [f"{name} has no measured line in the run's dtype: it judged nothing" for name in self.unlined]
+        found += [f"{name} has no measured line in the run's dtype: it judged nothing"
+                  for name in self.without_line]
         return found + [f"{r.flag} read {r.worst:.3g} at step {r.step}, past its line {r.line:.3g}"
                         for r in self.readings if not r.passed]
 
@@ -259,10 +260,10 @@ def judge_flags(node: Any, readings: Mapping[str, Any], dtype: str,
     as one whose reading is not a number does, and one with no line in ``dtype``."""
     held: list[FlagReading] = []
     silent: list[str] = []
-    unlined: list[str] = []
+    without_line: list[str] = []
     for flag in active_flags(node) if flags is None else flags:
         if dtype not in flag.line:
-            unlined.append(flag.name)
+            without_line.append(flag.name)
             continue
         values = np.abs(np.asarray(readings.get(flag.name, np.full(1, np.nan)), dtype=np.float64))[flag.settle:]
         if values.size == 0 or not np.all(np.isfinite(values)):
@@ -275,7 +276,7 @@ def judge_flags(node: Any, readings: Mapping[str, Any], dtype: str,
         held.append(FlagReading(flag.name, float(values[at]), flag.line[dtype], at + flag.settle))
     pending = {flag.name: flag.pending for flag in declared_flags(node) if flag.pending}
     return FlagReport(str(getattr(node, "name", type(node).__name__)), tuple(held), pending, tuple(silent),
-                      tuple(unlined))
+                      tuple(without_line))
 
 
 # -- the order check ------------------------------------------------------------------------------------------------
