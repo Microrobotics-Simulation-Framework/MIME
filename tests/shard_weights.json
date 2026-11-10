@@ -1,5 +1,5 @@
 {
- "source": "CI run 42538025458 (a push at fe7c73f, every shard cold), the median over its five lanes; tests/oracles/test_lubrication.py added by hand, split by test (whole, it is heavier than a shard's mean): each test's median over the 20 stress runs of PR 234 at 12d42ce (run 42851252893), the file the sum, which had run shard 7 past its 30 minutes; tests/flow/test_fvm_open.py, tests/flow/test_field_suite.py and tests/flow/test_fvm_open_ledger.py added by hand, each its median over the four lanes that reported it on PR 235's run 42889431041 (the three, hashed together into shard 10 beside the switch harness, had run Python 3.12's shard 10 past its 30 minutes)",
+ "source": "CI run 42538025458 (a push at fe7c73f, every shard cold), the median over its five lanes; tests/oracles/test_lubrication.py added by hand, split by test (whole, it is heavier than a shard's mean): each test's median over the 20 stress runs of PR 234 at 12d42ce (run 42851252893), the file the sum, which had run shard 7 past its 30 minutes",
  "over": 1.0,
  "seconds": {
   "tests/assets/test_adapters.py": 3,
@@ -124,9 +124,6 @@
   "tests/families/test_hydrodynamic_family.py": 56,
   "tests/families/test_node_battery.py": 14,
   "tests/families/test_toy_family.py": 94,
-  "tests/flow/test_field_suite.py": 369,
-  "tests/flow/test_fvm_open.py": 532,
-  "tests/flow/test_fvm_open_ledger.py": 307,
   "tests/live/test_a0_live.py": 136,
   "tests/live/test_cleanup.py": 3,
   "tests/live/test_libzmq.py": 31,
