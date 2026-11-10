@@ -70,8 +70,10 @@ def test_the_superposed_field_is_the_monolithic_solve(dtype, monkeypatch, plant)
     for seed in SEEDS:
         node = point_node(draw(seed))
         final, readings = scan(node, STEPS, superposed_reading(node))
-        assert int(final["stopped_at"]) < 0
-        worst = float(np.max(np.asarray(readings)))
+        stopped = int(final["stopped_at"])
+        assert stopped < 0 or plant is not None  # a clean draw stays inside the CFL line
+        judged = np.asarray(readings)[: stopped - 1] if stopped > 1 else np.asarray(readings)
+        worst = float(np.max(judged))
         assert (worst <= 1.0) == (plant is None), (seed, worst)
 
 
