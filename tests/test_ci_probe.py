@@ -84,7 +84,11 @@ def probe_problems(root: Path, scratch: Path) -> list[str]:
     reference = ci["jobs"]["confidential"]["steps"]
     scan_step = [step for step in scan["steps"] if "check_confidential" in str(step.get("run"))]
     reference_step = [step for step in reference if "check_confidential" in str(step.get("run"))]
-    if scan_step != reference_step or len(scan_step) != 1:
+    # One line differs: a new branch's first push has no `before`, and the whole history (older commits CI never rescans)
+    # would be scanned; its range is what the development branch does not hold.
+    expected = [{**step, "run": str(step["run"]).replace('range="$PUSH_AFTER"', 'range="$dev..$PUSH_AFTER"')}
+                for step in reference_step]
+    if scan_step != expected or len(scan_step) != 1:
         found.append("the scan step is not ci.yml's `no private name or path` step")
     if [s for s in scan["steps"] if "checkout" in str(s.get("uses"))] != [s for s in reference if "checkout" in str(s.get("uses"))]:
         found.append("the scan's checkout is not ci.yml's (fetch-depth 0, no persisted credentials)")
@@ -171,6 +175,7 @@ PROBE_PLANTS = {
     "the probe not waiting on the scan": ("    needs: [scan, arms]\n", "    needs: [arms]\n", "does not wait on the scan"),
     "a changed scan step": ("python3 scripts/check_confidential.py ${range:+--messages", "python3 scripts/check_confidential.py ${range:+--diffs",
                             "is not ci.yml's"),
+    "a new branch scanned over the whole history": ('range="$dev..$PUSH_AFTER"', 'range="$PUSH_AFTER"', "is not ci.yml's"),
     "a shallow scan": ("          fetch-depth: 0\n          persist-credentials: false\n      - name: No private name",
                        "          fetch-depth: 1\n          persist-credentials: false\n      - name: No private name",
                        "scan's checkout is not ci.yml's"),

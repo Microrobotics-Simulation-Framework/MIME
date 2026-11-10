@@ -6,7 +6,8 @@ name: Probe
 # or a maintainer pushes one, reads its run's artifact and deletes the branch. How: .github/probe/README.md.
 #
 # Triggered by nothing else: no pull request, no `main` or `release/**` push, no schedule. The first job is the private-name
-# check, exactly the step ci.yml's `no private name or path` job runs, because a probe's logs are public; the probe waits for it.
+# check, the step ci.yml's `no private name or path` job runs but for one line (a new branch's first push scans what
+# release/v0.3.0 does not hold, not the whole history), because a probe's logs are public; the probe waits for it.
 # A probe job holds no secret. If the branch has `probe/arms.txt` (one arm name a line, each of letters, digits, `.`, `_`, `-`),
 # one job runs per arm with PROBE_ARM set, in parallel; otherwise one job runs, PROBE_ARM empty. What each uploads is
 # `probe/out/`, even when the script fails or times out. tests/test_ci_probe.py reads this file.
@@ -56,7 +57,8 @@ jobs:
           case "$EVENT" in
             pull_request) range="$PR_BASE..$PR_HEAD" ;;
             push)
-              range="$PUSH_AFTER"
+              # A new branch has no `before`: its range is what release/v0.3.0 does not hold, not the whole history.
+              range="$dev..$PUSH_AFTER"
               if git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then range="$PUSH_BEFORE..$PUSH_AFTER"; fi ;;
             *) range="HEAD"; public="$dev"; name="$REF_NAME" ;;
           esac
