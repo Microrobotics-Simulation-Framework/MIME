@@ -100,6 +100,41 @@ def test_a_cluster_whose_run_will_not_fit_is_refused_on_either_route(route, monk
         assert f"on the {route} route" in found[0].message
 
 
+@pytest.mark.parametrize(("route", "mode"), [("dense", "forward"), ("dense", "reverse"), ("gmres", "reverse")])
+def test_a_derivative_whose_memory_will_not_fit_is_refused_before_the_study_compiles_it(route, mode, monkeypatch):
+    """M3 of #240's review: the memory check covers a gradient study's derivative. With a planted memory the run fits
+    and the derivative's estimate (``DERIVATIVE_COUNTS``, times ``MEMORY_MARGIN``, against the memory less
+    ``MEMORY_HEADROOM``) does not, the build passes and ``Study.gradient`` is refused (``drag.near-field-memory``, the
+    mode named) before anything is compiled; a byte more than the derivative's line and the node admits it (the
+    control). A derivative holds more than its run, reverse mode more than forward."""
+    from mime.nodes.hydro.near_field import _node
+    from mime.study import Study, along
+    from mime.study import _gradient
+    from mime.units import mPa_s
+
+    law = mrs(SPACING, **({"near_field": NearField(solve="gmres")} if route == "gmres" else {}))
+    node = joint_node(cluster(2, law=law).build())
+    run, forward, reverse = (node.memory_estimate(each) for each in (_node.RUN, "forward", "reverse"))
+    assert 0.0 < run < forward < reverse
+    needed = _node.MEMORY_MARGIN * node.memory_estimate(mode)
+    line = int(needed / (1.0 - _node.MEMORY_HEADROOM))
+    monkeypatch.setattr(_node, "device_memory", lambda: ("a planted memory", line - 1))
+    experiment = cluster(2, law=law)
+    experiment.build()
+
+    def compiled(*_: object, **__: object) -> None:
+        raise AssertionError("the derivative was compiled")
+
+    monkeypatch.setattr(_gradient, "prepare", compiled)
+    with pytest.raises(BuildRefused) as refused:
+        Study(experiment).sweep(along({"water.viscosity": [mPa_s(1.0)]}), duration=ms(2.0)).gradient(
+            lambda final: final["s1"]["twist"][0], mode=mode)
+    found = [each for each in refused.value.refusals if each.code == "drag.near-field-memory"]
+    assert len(found) == 1 and f"derivative in {mode} mode" in found[0].message and "a planted memory" in found[0].message
+    monkeypatch.setattr(_node, "device_memory", lambda: ("a planted memory", line + 2))
+    assert node.derivative_problem(mode, 1, 1, 2) is None and node.memory_problem() is None
+
+
 #: The fit's own configuration, two of MIME's spheres at 882 force points each a radius apart (5,292 unknowns), and what
 #: its fit gave (:data:`MEMORY_COUNTS`) as the estimate in GiB, written out here rather than derived from the counts
 #: (a golden value: a count edited without a refit, or a term dropped, moves it), with the two peaks past the fixed part
