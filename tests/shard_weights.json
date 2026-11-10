@@ -1,5 +1,5 @@
 {
- "source": "CI run 42538025458 (a push at fe7c73f, every shard cold), the median over its five lanes",
+ "source": "CI run 42538025458 (a push at fe7c73f, every shard cold), the median over its five lanes; tests/oracles/test_lubrication.py added by hand, split by test (whole, it is heavier than a shard's mean): each test's median over the 20 stress runs of PR 234 at 12d42ce (run 42851252893), the file the sum, which had run shard 7 past its 30 minutes",
  "over": 1.0,
  "seconds": {
   "tests/assets/test_adapters.py": 3,
@@ -158,6 +158,7 @@
   "tests/oracles/test_integrator.py": 6,
   "tests/oracles/test_laws.py": 14,
   "tests/oracles/test_link_loads.py": 46,
+  "tests/oracles/test_lubrication.py": 2935,
   "tests/oracles/test_magnetic_force.py": 10,
   "tests/oracles/test_magnetic_pair_work.py": 25,
   "tests/oracles/test_mass_matrix.py": 1,
@@ -364,5 +365,45 @@
  },
  "alone": {
   "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one"
+ },
+ "split": {
+  "tests/oracles/test_lubrication.py": {
+   "test_a_body_past_the_films_window_is_the_coarse_mrss_by_the_builds_rule_and_reported": 17,
+   "test_bodies_sharing_a_medium_near_a_wall_are_refused_the_handover_until_they_write_it_off": 3,
+   "test_control_the_increment_x11_is_caught_in_the_band_and_between_deep_gaps": 38,
+   "test_gate10_float32_lies_within_its_line_of_float64": 97,
+   "test_gate11_a_wrong_film_solve_is_flagged_at_every_step_and_a_clean_one_never": 66,
+   "test_gate12_control_a_film_whose_cutoff_is_not_the_readers_is_caught": 73,
+   "test_gate12_the_film_is_continuous_in_value_and_slope_through_the_cutoff": 44,
+   "test_gate12_the_floored_normal_moves_with_the_walls_roughness_as_its_leading_order_predicts": 38,
+   "test_gate12_the_reader_gives_the_films_cutoff_and_the_film_stops_growing_below_it": 38,
+   "test_gate13_the_films_increment_in_the_spheres_radius_through_the_node_equals_two_builds_difference": 215,
+   "test_gate14_the_tubes_normal_tends_to_the_leading_order_for_the_contacts_relative_curvatures": 42,
+   "test_gate1_control_the_increment_x11_is_caught_where_its_tenth_exceeds_the_line": 89,
+   "test_gate1_control_the_lift_left_out_misses_at_every_gap_below_the_handover": 16,
+   "test_gate1_every_entry_within_its_line_of_the_exact_answer_at_every_gap_and_orientation[0.15]": 173,
+   "test_gate1_every_entry_within_its_line_of_the_exact_answer_at_every_gap_and_orientation[0.2]": 60,
+   "test_gate2_a_sphere_spun_on_the_wall_translates_at_the_exact_rate_per_rotation_or_its_pinned_miss[0.15]": 101,
+   "test_gate2_a_sphere_spun_on_the_wall_translates_at_the_exact_rate_per_rotation_or_its_pinned_miss[0.2]": 40,
+   "test_gate2_control_the_coupling_counted_twice_moves_it_past_its_pin": 83,
+   "test_gate3_the_film_on_a_line_contact_goes_as_the_gap_to_minus_three_halves": 3,
+   "test_gate3_the_sphere_normal_goes_as_one_over_the_gap_and_its_limit_is_one": 73,
+   "test_gate4_control_an_indefinite_increment_stops_the_run": 51,
+   "test_gate4_the_lift_form_is_definite_at_drawn_poses[ellipsoid above the plane]": 237,
+   "test_gate4_the_lift_form_is_definite_at_drawn_poses[sphere above the plane]": 50,
+   "test_gate4_the_lift_form_is_definite_at_drawn_poses[sphere in the tube]": 75,
+   "test_gate7_the_term_doubled_moves_the_speed_by_what_the_six_by_six_predicts": 80,
+   "test_gate8_controls_a_stopped_lift_and_a_hard_max": 245,
+   "test_gate8_forward_and_reverse_equal_the_difference_across_the_handover_and_the_cutoff[plane]": 150,
+   "test_gate8_forward_and_reverse_equal_the_difference_across_the_handover_and_the_cutoff[tube]": 223,
+   "test_gate9_control_the_bodys_size_baked_into_the_film_is_a_bake": 83,
+   "test_gate9_the_two_builds_check_is_quiet_on_the_lubricated_step[ball.parts.shell.radius]": 72,
+   "test_gate9_the_two_builds_check_is_quiet_on_the_lubricated_step[ball.roughness]": 72,
+   "test_gate9_the_two_builds_check_is_quiet_on_the_lubricated_step[floor.roughness]": 66,
+   "test_the_far_side_is_flagged_where_the_body_fills_more_than_its_share_of_the_lumen": 54,
+   "test_the_increment_judged_on_its_own_scale_in_the_band_and_between_deep_gaps": 38,
+   "test_the_report_says_where_the_roughness_floor_reaches_the_lifts_band": 67,
+   "test_the_tube_is_opened_by_dilation_and_its_contact_found_off_the_axis": 64
+  }
  }
 }
