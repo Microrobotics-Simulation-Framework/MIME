@@ -1,0 +1,23 @@
+{
+  "phase": "W3b, GMRES for the near field's joint solve",
+  "written": "2026-11-09 ~14:30, before the runs they are about (the probes before them: a random block system and three 128-point spheres at a quarter radius, one step)",
+  "labels": "each prediction is the builder's, from spike S3's measurements (float64, JAX's stock GMRES in a wrapper) and the two probes; none re-measured before it was written",
+  "takeover": {
+    "what": "a cluster's grand resistance (6K right-hand sides) by the dense LU against this GMRES (right-preconditioned by each body's held free part's inverse, the true-residual stop, cold starts, restart 30), one method and dtype a process; MIME's 1 mm sphere at 338 and 882 force points, one millimetre between enclosing spheres, point cross-blocks; a shared 24-thread laptop CPU, noisy",
+    "P-t1": "float64: GMRES within 1.5 times the dense LU's time at 6 and 8 spheres of 882 points (15,876 and 21,168 unknowns), and its peak resident memory at most 0.6 of the dense LU's there (W3a's measurement with JAX's stock GMRES: 19.9 against 20.6 s and 3.6 against 6.5 GiB at 15,876; 35 against 40 s and 5.5 against 11.0 GiB at 21,168)",
+    "P-t2": "the line stays at 16,000 unknowns: the time crossover lies within a factor of two of it, and memory, not time, sets it",
+    "P-t3": "every GMRES column converged at the default tolerances, its true relative residual at most the tolerance (by construction of the stop), in at most 60 iterations"
+  },
+  "g_float32": {
+    "what": "GMRES in float32 on the joint node's own matrix (pairs at 1, 0.25, 0.1 and 0.05 radii, a triangle at 0.1, a line of four at 0.25, eight in a cube at 0.25; MIME's sphere at its default count and at 0.15 and 0.4 mm spacings), an unreachable tolerance, no stagnation stop, against float64's answer rounded to float32 evaluated in float32 (the evaluation floor) and Oettli-Prager's componentwise floor",
+    "P-g1": "the true relative residual plateaus between 3e-7 and 5e-6 in every case, higher near contact",
+    "P-g2": "the plateau does not depend on the restart length (10, 30, 60) to within a factor of two, and lies within three times the evaluation floor: a floor, not a stall (each restart replaces the residual by the true one, so the recurrence's drift lasts at most one cycle)",
+    "P-g3": "at a tolerance of 1e-5 every case converges with no flag, and the float32 grand resistance lies within 1e-4 of float64's (each entry over its diagonal scale)"
+  },
+  "gates": {
+    "gate_2_iterative": "several bodies (pairs at 0.5 and 0.2 mm, three at 0.3 mm, 0.4 mm spacing): the iterative route's grand resistance within 1e-8 of the dense route's in float64 (tolerance 1e-10) and within 2e-4 of float64's dense in float32 (tolerance 1e-5), each entry over its diagonal scale",
+    "gate_5_f": "the wrapper: forward and reverse within ten times the central difference's resolution (and 1e-9 of each other and of the dense route's autodiff, relative) in separation and radius at gaps of 1 and 0.25 radii, linear in the loss's scale at 1e-12 and 1e6 to 1e-9; through run_scan of 5 and 10 steps within ten times the difference's resolution. Controls: JAX's stock GMRES in the wrapper's place off by more than 1 % at the 1e-12 scale (S3: an exact zero, 57 %) on every run; the stop_gradient on the radius where the cross-blocks see it off by more than 1 % on every run",
+    "gate_10": "a cap of one iteration: the primal report at the cap on every step, the transpose reports (a row a step) at the cap on every step, the tangent report at the cap, the run's flag raised on every step and warned of with its count; the default stop raises none",
+    "gate_11": "gates 1, 2, 6 and 7 on the iterative route hold in float32 at its default tolerance with the dense route's float32 decisions"
+  }
+}

@@ -131,9 +131,9 @@ def stepped(built: Any, inputs: Mapping[str, Any] | None = None, params: Mapping
     return {key: np.asarray(value) for key, value in out.items()}
 
 
-def single(node: MRSDragNode, name: str = "near_field:one") -> JointDragNode:
-    """A joint node of one member, built from that member's per-body node's own arguments: what gate 1 compares with
-    the per-body node."""
+def single(node: MRSDragNode, name: str = "near_field:one", **settings: Any) -> JointDragNode:
+    """A joint node of one member, built from that member's per-body node's own arguments (and the joint node's own
+    ``settings``, its route's): what gate 1 compares with the per-body node."""
     constants = dict(node.constants())
     common = {key: constants.pop(key) for key in ("viscosity", "wall_kind", "wall_kind_version")}
     from mime.nodes.hydro.mrs._walls import wall_correction_named
@@ -141,7 +141,7 @@ def single(node: MRSDragNode, name: str = "near_field:one") -> JointDragNode:
     walls = {f"wall_{p}" for p in wall_correction_named(common["wall_kind"], common["wall_kind_version"]).parameters}
     held = {f"{member_prefix(0)}{key}": value for key, value in constants.items() if key not in walls}
     return JointDragNode(name, float(node.delta_t), members=("one",), **common,
-                         **{key: constants[key] for key in walls}, **held)
+                         **{key: constants[key] for key in walls}, **settings, **held)
 
 
 def assembled(nodes: Sequence[MRSDragNode], bodies_named: Sequence[str], name: str = NODE, **settings: Any) -> JointDragNode:
