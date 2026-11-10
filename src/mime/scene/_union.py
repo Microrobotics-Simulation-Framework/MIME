@@ -22,7 +22,10 @@ two tubes side by side), the seam's projection from the point is singular and th
 from the point alone it never moves. Its projection also starts from four points about the point, a size away across
 the first wall's normal, and the march starts from the nearest point any of them reached on the seam. A planned point
 whose own seam (its deepest region's and the region its nearest wall point lies in) none of them reached is counted
-(``unconverged``) and keeps the minimum, never another candidate's depth.
+(``unconverged``) and keeps the minimum, never another candidate's depth. A corner's Gauss-Newton starts the same way,
+besides its walls' nearest points: from a point on a plane of symmetry (a planar Y's or loop's), or within about
+3e-5 of a diameter of it, the point's and its walls' nearest points' linearisations keep it on the plane, and the two
+corners lie one each side of it.
 
 **The fillet.** A fillet of radius ``r`` is the union's closing by a ball of radius ``r``: every edge the solid has
 between two walls is rounded to radius ``r`` (a carina, a daughter's root), and solid thinner than ``2 r`` between two
@@ -34,10 +37,10 @@ nearest point fits inside the widened union: always where that nearest point is 
 centre is then a point of the union), and at a seam unless the widened union is thinner than ``2 r`` across it (a
 neck: two regions that overlap only a little once widened, as tubes sharing no point whose wall is just under
 ``2 r``, ``2 (sqrt(R^2 + 2 R r) - R)`` to ``2 r`` for parallel tubes of radius ``R``; the far end of an acute
-junction's seam, where its tubes part, has the same form and is not measured). There it reads too near the fluid. Beyond ``r`` it is the distance to the union
-itself (the opening of the solid lies inside the solid, and the ball about the point inside the eroded solid grows by
-``r`` into it). So ``r`` is a parameter like any other: traced, ``r = 0`` the sharp union, its cost independent of
-it, and never set from a grid.
+junction's seam, where its tubes part, has the same form and is not measured). There it reads too near the fluid.
+Beyond ``r`` it is the distance to the union itself (the opening of the solid lies inside the solid, and the ball
+about the point inside the eroded solid grows by ``r`` into it). So ``r`` is a parameter like any other: traced,
+``r = 0`` the sharp union, its cost independent of it, and never set from a grid.
 
 **Derivatives.** The iteration counts are fixed. A seam's or a corner's point carries the implicit function theorem's
 derivative: one Newton step from the converged point with its Jacobian held, so its tangent is exact in the point and
@@ -467,7 +470,7 @@ class ExactUnion:
                      <= self._allowance(parameters, held_points, CONVERGED_ULPS))
         kept = converged & self._kept(parameters, reached[..., :3], (i, j), radius, slack)
         seam = jnp.where(kept[..., None], z[..., :3], held_points)
-        return Seam(jnp.where(kept, _length(points - seam), jnp.inf), converged, reached[..., :3], reached_seam)
+        return Seam(jnp.where(kept, _length(points - seam), jnp.inf), converged, reached_seam)
 
     def _seam_starts(self, parameters: Parameters, points: Array, i: int, size: Array) -> Array:
         """A seam's starts ``(5, M, 3)``: each point, and the four a ``size`` away along two directions across wall
@@ -478,11 +481,12 @@ class ExactUnion:
         second = jnp.cross(across_wall, first)
         return jnp.stack([points] + [points + sign * size * way for way in (first, second) for sign in (1.0, -1.0)])
 
-    def _corner_starts(self, points: Array, corner: tuple[int, int, int], feet: Sequence[Array],
-                       reached: Mapping[tuple[int, int], Array]) -> tuple[Array, ...]:
-        """A corner's starts: the point, its three walls' nearest points, and the points its three seams reached."""
+    def _corner_starts(self, parameters: Parameters, points: Array, corner: tuple[int, int, int],
+                       feet: Sequence[Array], size: Array) -> tuple[Array, ...]:
+        """A corner's starts: the point, its three walls' nearest points, and the four a ``size`` away across its first
+        wall's normal (:meth:`_seam_starts`)."""
         i, j, k = corner
-        return (points, feet[i], feet[j], feet[k], reached[(i, j)], reached[(i, k)], reached[(j, k)])
+        return (points, feet[i], feet[j], feet[k], *self._seam_starts(parameters, points, i, size)[1:])
 
     def _corner(self, parameters: Parameters, points: Array, corner: tuple[int, int, int], radius: Any,
                 start: Array) -> Array:
@@ -521,23 +525,20 @@ class ExactUnion:
                        ) -> tuple[Array, Array]:
         """The depth in the widened union at local ``points`` ``(M, 3)`` by every candidate (walls, seams, corners),
         and whether it stands: a candidate found, and the point's own seam (its ``deepest`` region's and the region
-        its nearest wall point lies ``inside``) reached. A corner's Gauss-Newton starts from the point, from its three
-        walls' nearest points and from the points its three seams reached: a Y's three walls meet at two corners, one
-        each side of its plane, and where a seam's nearest point lies past a corner the corner is the nearest point of
-        the boundary."""
+        its nearest wall point lies ``inside``) reached. A Y's three walls meet at two corners, one each side of its
+        plane, and where a seam's nearest point lies past a corner the corner is the nearest point of the boundary."""
         distances, normals, radius = self._widened(parameters, points)
         best = self._walls(parameters, points, distances, normals, radius)
         feet = [_stop(points - distances[k][:, None] * normals[k]) for k in range(len(self.regions))]
-        reached: dict[tuple[int, int], Array] = {}
+        size = _stop(self._size(parameters, points.dtype))
         stalled = jnp.zeros(points.shape[:-1], dtype=bool)
         for i, j in self.meets:
             seam = self._seam(parameters, points, i, j, radius)
             best = jnp.minimum(best, seam.distance)
-            reached[(i, j)] = seam.reached
             own = ((deepest == i) & (inside == j)) | ((deepest == j) & (inside == i))
             stalled = stalled | (own & ~seam.reached_seam)
         for corner in self.corners:
-            starts = self._corner_starts(points, corner, feet, reached)
+            starts = self._corner_starts(parameters, points, corner, feet, size)
             found = self._corner(parameters, jnp.concatenate([points] * len(starts)), corner, radius,
                                  jnp.concatenate(starts))
             best = jnp.minimum(best, jnp.min(found.reshape(len(starts), -1), axis=0))
@@ -593,11 +594,10 @@ class ExactUnion:
 
 class Seam(NamedTuple):
     """A seam's candidate at each point: its distance (infinite where it did not converge or lies inside a remaining
-    region), whether Newton converged, the point Newton reached, and whether any start reached the seam."""
+    region), whether Newton converged, and whether any start reached the seam."""
 
     distance: Array
     converged: Array
-    reached: Array
     reached_seam: Array
 
 

@@ -73,12 +73,13 @@ def drawn_y(kind: str, seed: int, cells: int) -> tuple[TubeTree, np.ndarray, flo
     return tree, points, h
 
 
-def drawn(kind: str, seed: int, cells: int, far: bool = False) -> tuple[TubeTree, np.ndarray, float, np.ndarray, float]:
+def drawn(kind: str, seed: int, cells: int, far: bool = False
+          ) -> tuple[TubeTree, np.ndarray, float, np.ndarray, float]:
     """A Y (``spike``, ``asymmetric``) or the split-and-merge ``loop``, turned at random about the world's origin and
     moved by a sub-cell offset of a lattice of ``D / cells``; the lattice's points within the gates' reach of its
     junctions (the middle of the loop's two), that middle and that reach. ``hairpin``: two legs overlapping by 0.05 to
-    0.15 D, turned by one of the rotations that keep the lattice's axes and moved by a sub-cell offset along the plane of
-    their axes, so lattice points lie on it (where the two walls' normals are opposed); its points about the legs'
+    0.15 D, turned by one of the rotations that keep the lattice's axes and moved by a sub-cell offset along the plane
+    of their axes, so lattice points lie on it (where the two walls' normals are opposed); its points about the legs'
     middle. ``far``: moved besides by 0.1 to 0.3 m along each axis, as a scanner's coordinates."""
     h = D / cells
     rng = np.random.default_rng(seed + 7919)
@@ -102,9 +103,10 @@ def drawn(kind: str, seed: int, cells: int, far: bool = False) -> tuple[TubeTree
 
 def planted(monkeypatch) -> None:
     """The fix round's plants (``MIME_PLANT_UNION``), each a fix reverted: ``point-start`` (a seam's projection from
-    the point alone, as before the starts across the wall), ``corner-starts`` (a corner's Gauss-Newton not started
-    from the points its seams reached), ``world-allowance`` (the rounding allowances scaled with the distance from the
-    world's origin), ``march-<n>`` (the march along a seam cut to ``n`` steps each way; ``march-0``, none)."""
+    the point alone, as before the starts across the wall), ``corner-starts`` (a corner's Gauss-Newton from the point
+    and its walls' nearest points alone, without the starts across the wall), ``world-allowance`` (the rounding
+    allowances scaled with the distance from the world's origin), ``march-<n>`` (the march along a seam cut to ``n``
+    steps each way; ``march-0``, none)."""
     if UNION_PLANT == "point-start":
         monkeypatch.setattr(ExactUnion, "_seam_starts", lambda self, parameters, points, i, size: points[None])
     elif UNION_PLANT == "corner-starts":
@@ -156,7 +158,8 @@ def test_the_union_is_exact_against_a_brute_force(kind, seed, dtype, monkeypatch
 
 #: A point of the split-and-merge loop's plane, in its own frame (D), whose nearest point of the filleted lumen's
 #: boundary is a corner of its second junction (two, one each side of the plane): the first round's defect, which gate
-#: 3's draw 31 crossed 1.6e-5 D from the plane.
+#: 3's draw 31 crossed 1.6e-5 D from the plane (and its draws 3016 and 3023 near it, under the fix round's first
+#: seam starts).
 MERGE_CORNER = np.asarray([-0.178, 0.0, 2.207])
 
 
@@ -165,8 +168,8 @@ def test_a_corner_off_the_loops_plane_is_found_from_it(seed, monkeypatch):
     """Points 1e-6 D either side of the filleted loop's plane about ``MERGE_CORNER`` (a patch of 0.04 D), the loop
     turned at random and moved by a sub-cell offset: against the filleted brute force (``filleted_distance``).
     Gauss-Newton from the point and from its walls' nearest points stays near the plane, where neither corner is (it
-    misses from 1e-9 to 3e-5 D off the plane at the patch's centre); a corner also starts from the points its seams
-    reached, which the march has carried off it. **Control** (``MIME_PLANT_UNION=corner-starts``): those starts left
+    misses from 1e-9 to 3e-5 D off the plane at the patch's centre); a corner also starts from four points a size away
+    across its first wall's normal, off the plane. **Control** (``MIME_PLANT_UNION=corner-starts``): those starts left
     out."""
     planted(monkeypatch)
     h = D / 8.0
@@ -337,7 +340,7 @@ def with_carina_seam_left_out(monkeypatch, pairs):
     def seam(self, parameters, points, i, j, radius):
         if (i, j) in pairs:
             return Seam(jnp.full(points.shape[:-1], jnp.inf, dtype=points.dtype),
-                        jnp.zeros(points.shape[:-1], dtype=bool), points, jnp.ones(points.shape[:-1], dtype=bool))
+                        jnp.zeros(points.shape[:-1], dtype=bool), jnp.ones(points.shape[:-1], dtype=bool))
         return held(self, parameters, points, i, j, radius)
 
     monkeypatch.setattr(ExactUnion, "_seam", seam)
