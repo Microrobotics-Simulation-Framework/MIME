@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import jax
 import numpy as np
@@ -31,6 +31,9 @@ from maddening.testing.verification import VerificationResult
 
 from mime.core import ledger
 from mime.core.ledger import LedgerFlag, TermOrder
+
+if TYPE_CHECKING:
+    from mime.results import EnergyAccount
 
 #: How far a refinement goes: the step and the tolerance are each halved.
 REFINEMENT = 2.0
@@ -98,9 +101,10 @@ def ledger_closes(books: Any, *, fed_unattributed: bool = False, grouped: bool =
         found = _record_failures(_records_of(cast(Mapping[str, Any], books)), fed_unattributed=fed_unattributed,
                                  grouped=grouped)
         return VerificationResult(_NAME, "FAIL" if found else "PASS", detail="; ".join(found))
-    account = books.energy
-    members = {member for group in (account.groups if account is not None else {}) for member in group.split("+")}
-    found = []
+    account = cast("EnergyAccount | None", books.energy)
+    groups: Mapping[str, str] = account.groups if account is not None else {}
+    members = {member for group in groups for member in group.split("+")}
+    found: list[str] = []
     metered = 0
     for name, state in cast(Mapping[str, Mapping[str, Any]], final).items():
         records = _records_of(state)
@@ -118,7 +122,8 @@ def ledger_closes(books: Any, *, fed_unattributed: bool = False, grouped: bool =
 # -- the ratio flags ------------------------------------------------------------------------------------------------
 
 def declared_flags(node: Any) -> tuple[LedgerFlag, ...]:
-    return tuple(getattr(type(node), "LEDGER_FLAGS", ()))
+    held: Any = node.__class__
+    return tuple(cast(tuple[LedgerFlag, ...], getattr(held, "LEDGER_FLAGS", ())))
 
 
 def active_flags(node: Any) -> tuple[LedgerFlag, ...]:
@@ -173,7 +178,11 @@ def run_flags(node: Any, step: Callable[[Mapping[str, Any]], Mapping[str, Any]],
         return ended, flag_readings(node, params, s, ended, flags)
 
     scan = cast(Any, jax).lax.scan
-    ended, readings = cast(Any, jax).jit(lambda s: scan(body, s, None, length=steps))(dict(state))
+
+    def run(s: Mapping[str, Any]) -> Any:
+        return scan(body, s, None, length=steps)
+
+    ended, readings = cast(Any, jax).jit(run)(dict(state))
     return dict(ended), {name: np.asarray(values, dtype=np.float64) for name, values in readings.items()}
 
 

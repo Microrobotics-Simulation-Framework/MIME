@@ -37,7 +37,8 @@ from fvm_cases import METERED, in_dtype, tube_node
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import SCHEMES, ImplicitFlowNode
-from mime.testing import expected_ratio, ledger_closes, term_orders
+from mime.testing import ledger_closes, term_orders
+from mime.testing._ledger_harness import expected_ratio
 
 #: The fixed time each term is summed over (D = 1, nu = 1: about a fifth of the swirl's decay time).
 TIME = 0.05

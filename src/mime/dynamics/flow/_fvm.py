@@ -237,14 +237,18 @@ class FVM(Dynamics):
         f"available memory and the limit of the control group the process runs in, where one is set",
         f"geometry: {GEOMETRY}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_LINE:g} (stall_flagged), is written with the "
-        f"energy ledger attached (exp.observe(EnergyLedger())); a run without it has no stall report",
+        f"energy ledger attached (exp.observe(EnergyLedger())); a run without it has no stall report. Correct runs read "
+        f"up to 5.1e-6 in float64 and 2.0e-3 in float32 (its tolerance against tau/dt, near 3e3) [measured, 200 drawn "
+        f"runs a dtype], so in float32 the flag is raised on correct runs there; the ledger harness's stall flag "
+        f"judges at 1e-5 and 4e-3",
         "the energy ledger: IMEX Euler and its steady limit close the step identity to its rounding floor at every "
         "step; RK3 judges each step to have dissipated, and its drive's attribution (the work its stages applied "
         "against the law's own delivery at the stage instants) to the same floor. A gift a numerical term's own "
         "formula books is booked under that term, where the identity cannot see it (convection's, at mixed time "
         "levels): only the order tests of the terms, on their fixed case, see one, from about 0.1 of the term's own "
         "size on one seed of the three, and on all three from about 0.6 for N_BE (N_conv keeps one in its band "
-        "there) [measured]; no check of it runs in a user's run",
+        "there) [measured], and the ledger harness's convection flag, on drawn runs in CI, sees a convective term "
+        "not formed from the velocity it acts on (a stale level); no check of it runs in a user's run",
     )
     values = {"viscosity": "viscosity", "density": "density"}
     setting_roles = {

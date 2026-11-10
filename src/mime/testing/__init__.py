@@ -39,9 +39,8 @@ except ImportError as error:
 from mime.testing._adapters import HARNESS_TOKEN, AdapterReport, verify_adapter
 from mime.testing._energy import PORT_CASES, PORT_DRAWS, PortCase, dynamics_rig, fluid_rig, fluid_states, joint_rig, \
     joint_states, metered_twin, rigid_body_states, spinner_rig, spinner_states, step_identity
-from mime.testing._ledger_harness import ORDER_BAND, REFINEMENT, FlagReading, FlagReport, OrderCheck, OrderReport, \
-    active_flags, declared_flags, expected_ratio, flag_problems, flag_readings, judge_flags, ledger_closes, run_flags, \
-    term_orders
+from mime.testing._ledger_harness import FlagReading, FlagReport, OrderCheck, OrderReport, active_flags, flag_problems, \
+    flag_readings, judge_flags, ledger_closes, run_flags, term_orders
 from mime.testing._loopback import Certificates, ConnectProxy, LoopbackStore, Seen, certificates
 from mime.testing._families import (
     OUTWARD_SPEED,
@@ -197,15 +196,11 @@ from mime.testing._switches import (
 )
 
 __all__ = [
-    "ORDER_BAND",
-    "REFINEMENT",
     "FlagReading",
     "FlagReport",
     "OrderCheck",
     "OrderReport",
     "active_flags",
-    "declared_flags",
-    "expected_ratio",
     "flag_problems",
     "flag_readings",
     "judge_flags",

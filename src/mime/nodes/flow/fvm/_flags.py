@@ -18,7 +18,7 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from jax import Array
 
@@ -55,7 +55,8 @@ def convection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any
     vanishes, a straight tube's Poiseuille flow: there ``C`` is rounding, and so is the reading's every digit)."""
     grid = node.grid(p)
     started, ended = _velocity(before), _velocity(after)
-    term = after[f"{books.RECORDS}step_terms"][type(node).LEDGER_TERMS.index("convection")]
+    terms = cast(tuple[str, ...], node.LEDGER_TERMS)
+    term = after[f"{books.RECORDS}step_terms"][terms.index("convection")]
     if not node.constants()["convection"]:
         return jnp.zeros((), dtype=term.dtype)
     size = grid.inner_magnitude(grid.convection(started), ended)

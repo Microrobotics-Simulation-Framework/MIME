@@ -150,10 +150,11 @@ def settings_of(plant: str | None, dtype: str) -> dict[str, Any]:
     return {}
 
 
-def readings(point: Point, dtype: str, plant: str | None = None,
-             flags: Any = None) -> tuple[ImplicitFlowNode, dict[str, np.ndarray]]:
+def readings(point: Point, dtype: str, plant: str | None = None, flags: Any = None,
+             settings: dict[str, Any] | None = None) -> tuple[ImplicitFlowNode, dict[str, np.ndarray]]:
     """The point's node and its run (``plant`` applied already, by :data:`PLANTS`), each flag of the node (its active
-    ones, or ``flags``) read at every step: a row a step. The run's dtype is the caller's."""
+    ones, or ``flags``) read at every step: a row a step. ``settings`` override the node's (a plant's size). The
+    run's dtype is the caller's."""
     reynolds = point.reynolds
     drive = 16.0 * reynolds
     probe = tube_node(point.cells, g=drive, length_cells=4, dt=1e-3)
@@ -172,7 +173,7 @@ def readings(point: Point, dtype: str, plant: str | None = None,
     line = 0.4  # IMEX Euler's line, read before any plant lifts it
     dt = (4.0 if plant == "convection_past_the_line" else 1.0) * point.fraction * line * grid.spacing / peak
     node = tube_node(point.cells, g=drive, length_cells=4, dt=dt, convection=True, ledger=METERED, **start,
-                     **settings_of(plant, dtype))
+                     **{**settings_of(plant, dtype), **(settings or {})})
     _STARTED["velocity"] = tuple(jnp.asarray(start[f"initial_velocity_{x}"]) for x in "xyz")
     p = node._step_constants(None)  # noqa: SLF001
     held = books.deliveries(node.constants())

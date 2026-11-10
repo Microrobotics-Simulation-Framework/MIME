@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The energy ledger as a gate's tool, in `mime.testing`.** `ledger_closes(books)`, one check that a metered run's
+  books close at every step (a receiver's records or a run's result: the step identity within its floor, attribution,
+  no gift or indefinite step, route 1's every step dissipated, no unowned jump between steps, the balance), which
+  `step_identity`, SF-12's ledger case and the flow's metered gates now judge with; **ratio flags** a node declares
+  (`MimeNode.LEDGER_FLAGS`, `mime.core.ledger.LedgerFlag` with `FlagEvidence`), each a ratio of a metered step's terms
+  with its line measured on drawn correct runs and each planted bug's measured detection rate, read by `run_flags` and
+  `judge_flags`, a flag that cannot be gated yet declared pending and never counted (`flag_problems`); and the order
+  check `term_orders`, each numerical term against the order its scheme declares (`mime.core.ledger.TermOrder`, a
+  scheme's `ledger_orders`), dt and the tolerance halved apart. The flow declares its first: the stall (`|N_Krylov| /
+  D_visc`), a convective term not formed from the velocity it acts on (`|N_conv|` over its product's magnitude), the
+  drive reaching into a solid (the wall's loss inside the solid over its whole), and the openings' two pending; and
+  its terms' orders (`N_BE` and `N_conv` second in dt, `N_Krylov` at least first in the tolerance). Test-side: no
+  program changes.
+
 - **A medium's flow metered by the energy ledger: the `fluid` port kind, and the rule for a source.** With
   `exp.observe(EnergyLedger())` the build meters an FVM flow as a receiver of the new `fluid` port kind: its fluid's
   momentum (`flow.momentum`, kg m/s, over the fluid alone, as the drive acts on it alone) against the body force each
