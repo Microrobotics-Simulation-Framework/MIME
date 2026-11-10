@@ -124,11 +124,13 @@ def test_control_the_default_spacing_falls_as_the_body_grows_so_its_rule_samples
 
 
 def test_the_default_spacing_steps_ten_units_under_a_power_of_ten():
-    """The witness of the rounding: on the ball the bisection's boundary lies at 0.99953 mm at a radius of 3.977 mm,
+    """The witness of the rounding: on the ball the bisection's boundary lies at 0.99981 mm at a radius of 3.9785 mm,
     the spacing to three figures, 1.00 mm, gives 325 samples of the family's 338, and the rule steps a unit of its own
-    third figure down, to 0.99 mm, where the radius below gives 0.999 mm."""
+    third figure down, to 0.99 mm, where a radius of 3.976 mm (its boundary 0.99918 mm) gives 0.999 mm. The dip lies
+    where the boundary is in the last half unit under 1 mm: measured, 0.999 mm at 3.9772 mm and 0.99 mm from 3.9775
+    to 3.979 mm."""
     entry: Any = mrs(mm(0.6))
-    below, above = (entry._family_spacing(hull_of(BALL, radius=radius)) for radius in (3.976e-3, 3.977e-3))
+    below, above = (entry._family_spacing(hull_of(BALL, radius=radius)) for radius in (3.976e-3, 3.9785e-3))
     assert (below, above) == (0.999e-3, 0.99e-3)
 
 

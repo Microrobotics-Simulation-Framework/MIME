@@ -103,7 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not monotone (106 at 2.153 mm, 91 at 2.184 mm, at 1.5 mm). The default spacing is sampled at nine points in every
   number, since it falls as the body grows: over the screw's modulation (0.98 % finer inside a window than at its
   ends), and wherever its rounding to three figures steps under a power of ten (the ball's 0.999 mm at a radius of
-  3.976 mm, 0.99 mm at 3.977 mm: the step is a unit of the rounded value's third figure, ten of the value below it,
+  3.976 mm, 0.99 mm at 3.9785 mm: the step is a unit of the rounded value's third figure, ten of the value below it,
   which the default of an experiment with no range has as well; unchanged here). On the pulled sphere over [1.0, 1.15] mm at 0.6 mm: 91 force points at every member, against 66 at 1.0 mm
   alone. An experiment with no range builds as before, bit for bit.
 

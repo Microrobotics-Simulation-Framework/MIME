@@ -271,7 +271,7 @@ FORCE_POINTS_SAMPLED = ChoiceRule.Sampled(
 #: the kind gives the family's sample count, and it falls as the body grows in two ways, measured. Where the bisection's
 #: boundary lies in the last half unit under a power of ten, the rounded spacing (1.00 mm) gives too few samples and
 #: the rule steps a unit of its own third figure down, ten times the unit below it (0.99 mm, not 0.999: the ball at a
-#: radius of 3.977 mm, against 0.999 mm at 3.976); and over FL-9's modulation the boundary itself falls (0.817 to
+#: radius of 3.9785 mm, against 0.999 mm at 3.976); and over FL-9's modulation the boundary itself falls (0.817 to
 #: 0.809 mm as the modulation grows from 0.231 to 0.238; inside [0.231, 0.2504] 0.98 % finer than at its ends). A
 #: body inside a range whose own spacing lies in a dip the samples miss is refused as the rung's defect (its choice
 #: falls short), never run coarser.
