@@ -61,6 +61,34 @@ array, `numpy.array_equal` (`equal` also needs the same dtype and shape), the dt
 difference, and `all_equal` overall; `--strict` makes a difference exit 1. It fetches the base from `origin` if the checkout
 does not have it. `tests/test_probe_bit_compare.py` holds its controls.
 
+## How often a control catches its plant: `detection_rate.py`
+
+"A control must fail every run" is a rate, and a rate is measured. The target is a pytest node id or a script that reads an
+environment variable and plants its error when it is set (a test that the oracle flags the planted error; a script that
+runs the oracle over a planted draw and exits 1 when it flags it):
+
+```
+python .github/probe/detection_rate.py --node tests/<dir>/<file>.py::<test> --plant-var <NAME> --plant-value 1e-6 \
+    --runs 40 --output probe/out/detection_rate.json
+python .github/probe/detection_rate.py --script probe/oracle.py --plant-var <NAME> --runs 40 \
+    --output probe/out/detection_rate.json -- --size 3
+```
+
+Each run is a fresh process with its own seed in `DETECTION_SEED` (`--seed-var`; run i gets `--seed-base` plus i; a node
+also gets `--hypothesis-seed=<seed>` with `--hypothesis-seed`). The planted arm sets the variable; the clean arm, at the
+same seeds, removes it from the environment, so it says how often the control fires with nothing planted. **Caught** is
+exit 1 (and for a node, a test that failed), **not caught** is exit 0 with a test that passed, and everything else is
+**inconclusive** and counts against `caught/N`: a crash, a timeout, a collection or setup error, a node that was skipped or
+not collected (a test that did not run did not miss).
+
+The JSON holds `planted.caught_of_runs`, `detection_rate`, `missed_seeds` (reproduce a miss with its seed),
+`inconclusive_seeds`, `clean.flagged` and its seeds, the last lines of the output of each miss or false alarm, and
+`lower_bound_95`: the exact one-sided 95 % lower bound on the rate. It is the number to quote with the count: 40 catches in
+40 runs show a rate no lower than 0.93, not 1, and a control that misses one run in eight needs 23 runs to show a miss 95 %
+of the time (`1 - (7/8)^N`). `every_run` is true when all planted runs were caught and the clean arm was quiet; `--strict`
+exits 1 otherwise. Where the plant needs several runners, put the sizes or values in `probe/arms.txt` and read `PROBE_ARM`
+in the script. `tests/test_probe_detection_rate.py` holds its controls.
+
 ## What this does not tell
 
 A probe measures what its script measures on a shared runner: timings are noisy (other jobs share the host) and are not a
