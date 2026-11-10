@@ -35,6 +35,7 @@
   "gate_1_ledger_closes_sizes": "held: 1.5 floors 50/50 on the rigid body, the arm and the flow in both dtypes; 0.5 floors 0/50 on each; clean 0/50",
   "gate_2_convection_flag": "held: the stale level 200/200 in both dtypes, clean 0/200; the permuted field 50/50, the advective form 50/50, past the CFL line 0/50, both dtypes. The range (a stale level blended in at a share s, 20 draws a size): caught on every draw from s = 1e-5, the grid's smallest, in float64, and from about 7.5e-3 in float32 (0 false alarms)",
   "gate_3_orders": "held: every plant 50/50 in both dtypes, clean 0/50",
-  "after_the_runs": "the convection reading now reads zero on a step the CFL check held (the run is refused there); no drawn run reaches it, so the rates stand"
+  "after_the_runs": "the convection reading now reads zero on a step the CFL check held (the run is refused there); no drawn run reaches it, so the rates stand",
+  "on_the_merged_head": "after merging release/v0.3.0 at 49a413a (the CG's restart, #224), on fresh seeds (Actions run 42780710452): the stall's tolerance plant, the stale convection and the lost mask 50/50 each in both dtypes, clean 0/50; the order plants 50/50, but the order check's clean arm false-alarmed on 2 of 50 seeds (1053, 1055) in both dtypes: N_conv fell by 4.16 and 2.87 as dt halved (an order of 3.1 and 2.5), swirl phases where its leading coefficient nearly vanishes (it is the convection's work against the step's change, whose viscous and convective parts can cancel); 0 of 250 seeds elsewhere (stage A3's 200, round 2's 50). Not hidden by a wider band: a third order is what the band refuses. The CI test's seeds are fixed (0 to 2) and pass. Released programs: 16 programs, 534 arrays, all equal against 49a413a"
  }
 }
