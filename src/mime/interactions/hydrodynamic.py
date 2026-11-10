@@ -301,6 +301,14 @@ def spacing_rule(hull: Hull) -> ChoiceRule.Monotone | ChoiceRule.Sampled:
 
 
 @functools.lru_cache(maxsize=256)
+def _step_down(spacing: float, boundary: float, from_boundary: bool) -> float:
+    """``spacing``, rounded to three figures past ``boundary``, one unit of the third figure lower. The unit is the
+    boundary's (``from_boundary``: exact rounding-down) or the rounded value's (the released step, which within half a
+    unit below a power of ten takes the power's, ten times the true next value down)."""
+    unit = 10.0 ** (math.floor(math.log10(boundary if from_boundary else spacing)) - 2)
+    return float(f"{spacing - unit:.3g}")
+
+
 def _force_points(kind: Any, settings: tuple[tuple[str, Any], ...], spacing: float, patches: tuple[str, ...]) -> float:
     sampling = kind.sampling(dict(settings), spacing, patches)
     if sampling.chosen is not None:
@@ -330,7 +338,8 @@ class PointForceDrag(Interaction):
     declared values: its values lost ``helix_wavenumber``, ``length`` and ``radius``, its node gained the body's outer
     radius and the tube's shape, and a body with no helix for its hull was refused; version 0.2.0 moved the resistance
     to the centre; 0.1.0 delivered it about the end unshifted (MIME-ANO-112). A document naming either is refused at
-    load (``load.version``)."""
+    load (``load.version``). Its default spacing, within half a unit below a power of ten, steps to 0.99, not 0.999,
+    kept so released runs reproduce (``step_from_boundary``; 0.5.0's does not)."""
 
     name = "drag"
     version = "0.3.0"
@@ -439,6 +448,11 @@ class PointForceDrag(Interaction):
     #: Whether a spacing neither written nor given by its rule is left to the plan, which refuses it with its cause
     #: (no hull that samples, a body held on the wall), rather than refused as a setting with no value.
     unset_spacing_planned: ClassVar[bool] = False
+    #: Whether the default spacing's step below a rounding past its bound is sized from the bound (0.5.0: exact
+    #: rounding-down to three figures) or from the rounded value (0.3.0 and 0.4.0, kept so released runs reproduce: within
+    #: half a unit below a power of ten the rounded value is that power, and the step is ten times the true next value
+    #: down, 0.99 and not 0.999).
+    step_from_boundary: ClassVar[bool] = False
     rung: str | None = None
     weights: Asset | None = None
     lubrication: Lubrication | None = None
@@ -482,7 +496,7 @@ class PointForceDrag(Interaction):
             coarse, fine = (coarse, middle) if count(middle) >= target else (middle, fine)
         spacing = float(f"{fine:.3g}")
         if count(spacing) < target:  # rounded past the boundary: one unit of the third figure below it
-            spacing = float(f"{spacing - 10.0 ** (math.floor(math.log10(spacing)) - 2):.3g}")
+            spacing = _step_down(spacing, fine, self.step_from_boundary)
         return spacing
 
     def default_blob(self, ctx: PlanContext) -> float | None:
@@ -870,7 +884,9 @@ class UncoupledDrag(PointForceDrag):
 
     Version 0.4.0 separates the mrs rung's quadrature from its force points and chooses its defaults
     again; its surrogate rung is 0.3.0's. Version 0.3.0 (``PointForceDrag``, kept registered so that a folder saved
-    with it reproduces) put a point force at each sample."""
+    with it reproduces) put a point force at each sample. Its default spacing, like 0.3.0's, within half a unit below
+    a power of ten steps to 0.99, not 0.999, kept so released runs reproduce (``step_from_boundary``; 0.5.0's does
+    not)."""
 
     version = "0.4.0"
     setting_roles = {
@@ -1027,7 +1043,7 @@ class UncoupledDrag(PointForceDrag):
             return family
         spacing = float(f"{confined:.3g}")
         if spacing > confined:  # rounded up past the bound: one unit of the third figure below it
-            spacing = float(f"{spacing - 10.0 ** (math.floor(math.log10(spacing)) - 2):.3g}")
+            spacing = _step_down(spacing, confined, self.step_from_boundary)
         return m(spacing)
 
     def _rft_spacing(self, ctx: PlanContext) -> Quantity | None:
@@ -1289,6 +1305,11 @@ class Drag(UncoupledDrag):
     reported). A body alone in its medium keeps its own node, 0.4.0's, step for step. The joint system is solved
     dense, so the build refuses a cluster past ``DENSE_UNKNOWNS`` unknowns (``drag.near-field-size``).
 
+    Version 0.5.0 sizes the default spacing's step below a rounding past its bound from the bound
+    (``step_from_boundary``): exact rounding-down to three figures. Versions 0.3.0 and 0.4.0 size it from the rounded
+    value, so that within half a unit below a power of ten it steps to 0.99, not 0.999, kept so released runs
+    reproduce.
+
     Version 0.5.0 couples a medium's mrs bodies; version 0.4.0 (``UncoupledDrag``, kept registered) computed each
     body's drag alone, and its surrogate rung, like 0.5.0's, is 0.3.0's; its rft rung, added before 0.5.0, is 0.5.0's.
     Version 0.3.0 (``PointForceDrag``) put a point force at each sample.
@@ -1298,6 +1319,7 @@ class Drag(UncoupledDrag):
     programs keep their input hash (0.4.0's ``coefficients``), and 0.5.0 has no release before its settings."""
 
     version = "0.5.0"
+    step_from_boundary = True
     builds = {**UncoupledDrag.builds, "mrs": (MRSDragNode, JointDragNode)}
     setting_roles = {
         **UncoupledDrag.setting_roles,
