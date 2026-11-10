@@ -55,6 +55,16 @@ from mime.scene._sampling import (
     sampled_reach,
 )
 from mime.scene._centreline import polyline, straight
+from mime.scene._resolution import (
+    LAYER_LINES,
+    ResolutionEntry,
+    ResolutionReport,
+    steady_layer,
+    stokes_layer,
+    wall_resolution,
+)
+from mime.scene._tube_tree import FILLET_SHARE, TubeTree, WallFeatures
+from mime.scene._union import Ball, ExactUnion, Region, RoundCone, UnionDistance, UnionNormal
 from mime.scene._helix import Helix
 from mime.scene._screw import Screw
 from mime.scene._kinds import kind_frame, placed, shape_settings
@@ -106,6 +116,9 @@ __all__ = [
     "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
     "Helix", "polyline", "straight",
+    "Ball", "ExactUnion", "FILLET_SHARE", "LAYER_LINES", "Region", "ResolutionEntry", "ResolutionReport",
+    "RoundCone", "TubeTree", "UnionDistance", "UnionNormal", "WallFeatures", "steady_layer", "stokes_layer",
+    "wall_resolution",
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
     "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
     "VectorPrim", "VisualPins", "VisualPrim", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",

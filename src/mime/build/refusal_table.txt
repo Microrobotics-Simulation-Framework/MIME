@@ -52,6 +52,7 @@ bundle.unscannable            user
 call.missing-setting          user
 call.polyline                 user
 call.renamed                  user
+call.tube_tree                user
 call.units                    user
 call.unknown-name             user
 call.wrong-type               user
