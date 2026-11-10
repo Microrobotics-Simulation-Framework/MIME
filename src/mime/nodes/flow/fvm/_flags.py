@@ -221,18 +221,32 @@ PENDING: tuple[LedgerFlag, ...] = tuple(
     LedgerFlag(flag.name, flag.ratio, flag.reading, {}, "measured on IMEX Euler's drawn runs",
                pending="its line was measured on IMEX Euler's drawn runs, not RK3's") for flag in FLAGS)
 
+#: The run that measured the open box's lines and rates: 200 drawn open runs a dtype (``tests/flow/open_cases.py``,
+#: seeds 0 to 199, 60 steps each) and each plant on 40 fresh draws (seeds from 1000), the same draws clean.
+OPEN_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42844502732"
+_OPEN_CLEAN = (f"drawn open runs (an inflow and a Windkessel, IMEX Euler, D/h 8 to 16, Re 1 to 100 through a "
+               f"narrowing of up to 0.4, inside the CFL line; tests/flow/open_cases.py), 60 steps each, "
+               f"{OPEN_MEASURED}")
+_UNIFORM = "the planes' faces at full weight in the inner product (the projector not orthogonal under it)"
+
 #: The open box's flags (``OpenFlowNode``): its two own, and the periodic box's three, pending there.
 OPEN_FLAGS: tuple[LedgerFlag, ...] = (
-    LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading, {}, "not yet measured",
-               pending="its line and its plant's rate are measured on the open box's drawn runs"),
-    LedgerFlag("port_kinetic_flux", "|the booked kinetic-energy flux - the face formula's| over their size",
-               kinetic_flux_reading, {}, "not yet measured",
-               pending="its line and its plants' rates are measured on the open box's drawn runs"),
+    LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading,
+               {"float64": 2e-17, "float32": 1e-8},
+               f"200 {_OPEN_CLEAN}: worst 3.1e-18 (float64) and 2.4e-9 (float32), every step judged",
+               _evidence(_UNIFORM, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, OPEN_MEASURED)),
+    LedgerFlag("port_kinetic_flux", "|the booked kinetic-energy flux - the face formula's| over the face formula's "
+                                    "gross", kinetic_flux_reading, {}, "not a check",
+               pending="judged only where the planes' net kinetic-energy flux carries a tenth of their gross, which "
+                       "23 of 190 drawn open runs inside the CFL line reach in each dtype (in and out nearly cancel: "
+                       "the net is a median 0.035 of the gross), so a flux left inside N_conv is caught on those alone; "
+                       "a reading per plane needs the scheme's convective power split by plane, which is not built. "
+                       "Its judged clean readings were at most 0.013 in both dtypes (" + OPEN_MEASURED + ")"),
     *(LedgerFlag(flag.name, flag.ratio, flag.reading, {}, "measured on the periodic box",
                  pending="its line was measured on the periodic box's drawn runs, not on the open box's")
       for flag in FLAGS[:3]),
 )
 
-__all__ = ["CONVECTION_LINE_MEASURED", "NET_SHARE", "OPEN_FLAGS", "face_kinetic_flux", "kinetic_flux_reading", "projection_reading", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
+__all__ = ["CONVECTION_LINE_MEASURED", "NET_SHARE", "OPEN_FLAGS", "OPEN_MEASURED", "face_kinetic_flux", "kinetic_flux_reading", "projection_reading", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
            "OPERATOR_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
            "stall_reading"]

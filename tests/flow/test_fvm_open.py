@@ -37,7 +37,7 @@ def test_the_open_tube_is_the_periodic_tube(dtype, monkeypatch, plant):
 @pytest.mark.parametrize("plant", [None, "inflow_scaled"])
 def test_the_inflows_face_flux_is_its_waveform(dtype, monkeypatch, plant):
     """FB2: at every step the inlet's face flux is the inflow's waveform to 256 eps of the face's magnitude (the
-    prediction's 64 missed in float32 on 2 of 150 drawn runs); the control, a law that delivers 1e-3 more, is past
+    prediction's 64 missed in float32 on 2 of 190 drawn runs); the control, a law that delivers 1e-3 more, is past
     it."""
     planted(monkeypatch, plant)
     for seed in SEEDS:

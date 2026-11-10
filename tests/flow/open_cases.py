@@ -286,7 +286,7 @@ def _velocity(state: Any) -> Any:
     return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
 
 
-#: FB2's line, in units of the run's eps on the face's magnitude: the prediction's 64 missed in float32 on 2 of 150 clean
+#: FB2's line, in units of the run's eps on the face's magnitude: the prediction's 64 missed in float32 on 2 of 190 clean
 #: drawn runs (85 eps at worst; float64's worst 22), so the line is three times float32's worst.
 FB2_ULPS = 256.0
 
