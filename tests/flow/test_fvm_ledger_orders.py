@@ -207,13 +207,19 @@ def _laws(orders: dict[str, tuple[float, float]]):
 
 def test_the_harness_reads_the_fall_from_the_sum_over_cases():
     """One case whose term cancels (its sums 1000 times smaller, falling at third order) does not decide: the sum over
-    three falls at second order; alone it would fail."""
+    three falls at second order; alone it would fail. Wherever the cancelling case stands in the list (first, middle,
+    last): a harness that read only the first case, or only the last, would judge the cancelled one alone in one of
+    them."""
     from mime.core.ledger import TermOrder
 
     declared = {"a": TermOrder(dt=2)}
     cancelled = lambda dt, tol: {"a": 1e-3 * dt**2}  # noqa: E731
+    ordinary = _laws({"a": (2, 0)})
     assert not term_orders(cancelled, ["a"], declared).passed
-    assert term_orders([_laws({"a": (2, 0)}), cancelled, _laws({"a": (2, 0)})], ["a"], declared).passed
+    for place in range(3):
+        cases = [ordinary, ordinary]
+        cases.insert(place, cancelled)
+        assert term_orders(cases, ["a"], declared).passed, place
 
 
 def test_the_harness_passes_exact_orders_and_fails_one_off_and_an_undeclared_term():

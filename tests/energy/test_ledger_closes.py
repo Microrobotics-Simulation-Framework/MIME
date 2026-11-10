@@ -141,6 +141,24 @@ def test_the_floor_is_pinned_at_its_exact_value(dtype, field, route_one):
     assert ledger_closes(records).failed
 
 
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_the_balance_s_line_is_pinned_at_its_exact_value(dtype):
+    """As the identity's floor is pinned: books whose balance is exactly :func:`mime.core.ledger.balance_floor` pass,
+    and at the next number above it they fail (a balance judged at a multiple of its rounding passes the second)."""
+    with in_dtype(dtype):
+        records = _closed(dtype)
+        for name in ("work", "terms", "hosted", "storage_start"):
+            records[f"{books.RECORDS}{name}"] = np.zeros_like(records[f"{books.RECORDS}{name}"])
+        floor = np.asarray(books.balance_floor(records), dtype=dtype)
+        assert floor > 0.0
+        records[f"{books.RECORDS}storage"] = floor  # every other term is zero: the balance is the storage, exactly
+        assert float(abs(books.balance(records))) == float(floor)
+        assert ledger_closes(records).passed
+        records[f"{books.RECORDS}storage"] = np.nextafter(floor, np.asarray(np.inf, dtype=dtype))
+        result = ledger_closes(records)
+        assert result.failed and "balance" in result.detail, result
+
+
 def test_control_route_one_s_step_that_gave_energy_fails_and_its_balance_is_not_judged():
     records = _closed(route_one=True)
     records[f"{books.RECORDS}storage"] = np.asarray(2.5)  # route 1 leaves its scheme's dissipation in the balance
