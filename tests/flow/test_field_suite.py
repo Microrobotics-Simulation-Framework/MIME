@@ -91,10 +91,9 @@ def fvm_rig(scheme: str, dtype: str) -> tuple[object, FieldRig]:
 
     rig = FieldRig(node, p, state, {V: reading}, points, {V: exact}, 0.05, metered=metered,
                    steady=steady if scheme == "steady" else None)
-    from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM
-    from mime.registry import Port
+    from mime.dynamics import FVM
 
-    return _kind({FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform")}), rig
+    return _kind(dict(FVM.accepts)), rig
 
 
 def _arguments(node):

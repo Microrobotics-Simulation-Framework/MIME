@@ -26,7 +26,9 @@ with no fluid rotation read (the couple's exchange waits for the maintainer's wo
 
 **The exchange.** Lagged: the fluid's step takes the drag the body felt in the step before, ``f = R0 (V - u_d)``, at
 the body's position at this step's start, by the scatter's two edges a face set (``S f`` and ``L S (c6 f)``: the
-transpose of the reading's, so the pair is workless at one field). ``one_way`` delivers none and corrects for none.
+transpose of the reading's, so the pair is workless at one field). ``one_way`` delivers none and corrects for none;
+the field then takes nothing from the law, so the graph steps it first and the reading is the field the step has just
+made (two-way, the field at the step's start).
 
 **Its checks, each step** (each a flag; the build refuses what it can see at its own values): the coupled one-step
 margin ``(M0 + M_c - M_inf)/M0`` against the floor (``M_c`` the kernel's one-step self-response at the step's
@@ -48,7 +50,8 @@ from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input
-from mime.nodes.flow.fvm._exchange import faxen, kernel_spectrum, self_history, steady_response, step_response
+from mime.nodes.flow.fvm._exchange import HISTORY_MODES, faxen, kernel_spectrum, self_history, steady_response, \
+    step_response
 
 #: The coupled one-step margin a definite point body is held above (the floor sweep's knee: the one-step resistance
 #: within -0.42..+0.61 of the exact sphere's above it, growing as 1/margin below; F3's first step, proposed to the
@@ -173,7 +176,7 @@ class PointDragNode(MimeNode):
         zero = as_run_array(jnp.zeros(()))
         one = as_run_array(jnp.zeros(1))
         start = as_run_array(jnp.asarray(c["start"])) + as_run_array(jnp.asarray(c["origin"]))
-        modes = self.history_modes(c)
+        modes = HISTORY_MODES
         return node_fields(PointDragState(
             points=start[None, :], force_x=one, force_y=one, force_z=one, faxen_x=one, faxen_y=one, faxen_z=one,
             drag_reading=as_run_array(jnp.zeros(3)), clean_reading=as_run_array(jnp.zeros(3)),
@@ -182,13 +185,6 @@ class PointDragNode(MimeNode):
             added_load=as_run_array(jnp.zeros(6)), steps=zero, dissipated=zero, margin=zero, below_floor=zero,
             history_residual=zero, history_flagged=zero, wall_gap=zero, near_wall=zero, particle_reynolds=zero,
             reynolds_flagged=zero))
-
-    @staticmethod
-    def history_modes(c: Mapping[str, Any]) -> int:
-        from mime.nodes.flow.fvm._exchange import HISTORY_MODES
-
-        del c
-        return HISTORY_MODES
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:

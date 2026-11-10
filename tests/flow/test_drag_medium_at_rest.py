@@ -1,5 +1,5 @@
-"""Every drag rung assumes its medium at rest (it delivers no load from a flow), so until a rung reads a provided flow
-each is refused, coded ``drag.medium-flows`` and naming the field, wherever the region its medium fills carries a
+"""Every drag rung but the one that reads a provided flow (drag 0.5.0's stokes rung) assumes its medium at rest (it
+delivers no load from a flow), so each is refused, coded ``drag.medium-flows`` and naming the field, wherever the region its medium fills carries a
 field: every rung of every drag version the registry holds, under the prescribed flow (Womersley), and the mrs rung
 under the FVM too. The refusal fails closed: it holds for a flow kind that declares it provides a quantity other than
 the velocity, and for a flow another medium filling the same lumen carries. Each case's control is the same experiment
@@ -72,9 +72,12 @@ CASES: dict[str, Callable[[Any], Experiment]] = {
     "rft": lambda cls: helix_body("rft_tube", SMALL_HELIX, SMALL_SETTINGS, cls.RFT(wall_kind="tube"), tube=R6_TUBE,
                                   velocity=m_per_s((1e-3, 0.0, 0.0)), spin=rad_per_s((3.0, -1.0, 2.0))),
 }
+#: The rungs that read the flow a medium carries (drag 0.5.0's stokes rung, a point body exchanging with the FVM): the
+#: refusal is every other rung's (``tests/flow/test_point_bodies.py`` builds the stokes rung in a flowing medium).
+READS_FLOW = ("stokes",)
 DRAGS = [pytest.param(record.cls, rung, id=f"{rung}-{record.version}")
          for record in registered(EntryKind.INTERACTION) if record.name == "drag"
-         for rung in record.cls.rungs]  # type: ignore[attr-defined]
+         for rung in record.cls.rungs if rung not in READS_FLOW]  # type: ignore[attr-defined]
 #: The drag versions whose mrs rung joins a medium's near field.
 JOINING = [pytest.param(record.cls, id=record.version) for record in registered(EntryKind.INTERACTION)
            if record.name == "drag" and hasattr(record.cls, "joins_near_field")]

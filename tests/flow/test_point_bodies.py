@@ -324,10 +324,10 @@ def _refused(exp) -> set[str]:  # noqa: ANN001
 
 
 def test_the_stokes_rung_refuses_a_body_that_is_no_sphere_a_medium_with_no_grid_and_rk3(float64):
-    """The plan's refusals: a body whose hull is no sphere (drag.stokes-sphere), a medium whose flow is not solved on
-    a grid (drag.stokes-no-grid), and a flow stepped by RK3 (drag.stokes-scheme); the control, gate 3's experiment,
-    plans."""
+    """The plan's refusals: a body whose hull is no sphere (drag.stokes-sphere), a medium with no flow on a grid (the
+    rung's support row, support.unsupported), and a flow stepped by RK3 (drag.stokes-scheme); the control, gate 3's
+    experiment, plans."""
     assert "drag.stokes-sphere" in _refused(point_experiment(hull="capsule"))
-    assert "drag.stokes-no-grid" in _refused(point_experiment(flow=False))
+    assert "support.unsupported" in _refused(point_experiment(flow=False))
     assert "drag.stokes-scheme" in _refused(point_experiment(dt=1e-5, scheme="rk3"))
     point_experiment().build()

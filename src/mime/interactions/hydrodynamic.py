@@ -1627,12 +1627,7 @@ class Drag(UncoupledDrag):
             held = f"{body} has no hull" if hull is None else f"its hull is {hull.label()}"
             found.append(Problem("drag.stokes-sphere", f"the stokes rung is a point sphere's law, and {held}",
                                  f"give {body} one Sphere part at its origin, or use Drag.MRS(...) for its shape"))
-        if "medium" not in ctx.exchanges:
-            found.append(Problem("drag.stokes-no-grid", f"the stokes rung exchanges with a flow solved on a grid, and "
-                                                         f"medium {medium!r} carries none that takes exchange "
-                                                         f"deliveries",
-                                 f"give {medium!r} a solved flow, Medium({medium!r}, ..., fields={{\"flow\": "
-                                 f"FVM(...)}}), or use Drag.MRS(...) in a medium at rest"))
+        del medium  # a medium whose flow takes no exchange is refused by the rung's support row (support.unsupported)
         return found
 
     @override

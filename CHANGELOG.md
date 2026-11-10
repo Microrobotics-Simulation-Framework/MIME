@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fitted free-box impulse response); lagged, two-way by default, `one_way=True` the declared approximation. The build
   widens the kernel (`width=`, on a ladder at or above max(h, a/1.7)) until the coupled one-step margin clears its floor,
   and refuses a body none clears (`drag.stokes-floor`); a sphere only (`drag.stokes-sphere`), in a flow on a grid
-  (`drag.stokes-no-grid`), stepped by IMEX Euler or its steady limit (`drag.stokes-scheme`). The FVM takes exchange
+  stepped by IMEX Euler or its steady limit (`drag.stokes-scheme`). The FVM takes exchange
   partners (`flow.exchange_x`..`_z`, `flow.partners`), publishes its face sets (`flow.faces`) and books the exchange's
   work per law; the energy ledger books the Maxey-Riley part under its own row (`<id>.maxey_riley`).
 
