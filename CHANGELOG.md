@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with its line measured on drawn correct runs and each planted bug's measured detection rate, read by `run_flags` and
   `judge_flags`, a flag that cannot be gated yet declared pending and never counted (`flag_problems`); and the order
   check `term_orders`, each numerical term against the order its scheme declares (`mime.core.ledger.TermOrder`, a
-  scheme's `ledger_orders`), dt and the tolerance halved apart. The flow declares its first: the stall (`|N_Krylov| /
+  scheme's `ledger_orders`): dt halved and the tolerance a hundredfold looser, apart, the order its fall shows rounding
+  to the declared one. The flow declares its first: the stall (`|N_Krylov| /
   D_visc`), a convective term not formed from the velocity it acts on (`|N_conv|` over its product's magnitude), the
   drive reaching into a solid (the wall's loss inside the solid over its whole), and the openings' two pending; and
   its terms' orders (`N_BE` and `N_conv` second in dt, `N_Krylov` at least first in the tolerance). Test-side: no

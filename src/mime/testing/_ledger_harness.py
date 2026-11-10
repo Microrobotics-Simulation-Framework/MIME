@@ -13,14 +13,16 @@ solver, a grid or a fluid.
    gate's scan; :func:`run_flags` is that scan), :func:`judge_flags` holds each flag's worst reading over a run against
    its line in the run's dtype. A flag declared ``pending`` is listed apart, never counted as a check; a flag that is
    not pending and has no plant caught every run is coverage claimed, not shown, and :func:`flag_problems` names it.
-3. :func:`term_orders`: each numerical term against its declared order, from a rig's sums at the step and the
-   tolerance halved (each apart): a term of order ``p`` in dt, summed over a fixed time, falls by ``2^(p - 1)`` when dt
-   halves; one of order ``q`` in the tolerance, summed over a fixed count of steps, by ``2^q`` when it halves; each
-   within :data:`ORDER_BAND` of its expected ratio (1.6 to 2.4 for a second-order term), or at least its band's floor
-   where its order is declared a floor (``TermOrder.at_least``). A term declaring no order fails, naming it."""
+3. :func:`term_orders`: each numerical term against its declared order, from a rig's sums at its setting, with dt
+   halved and with the tolerance a hundred times looser (each apart): a term of order ``p`` in dt, summed over a fixed
+   time, falls by ``2^(p - 1)`` as dt halves; one of order ``q`` in the tolerance, summed over a fixed count of steps,
+   by ``100^q``. It passes where the order its fall shows rounds to the declared one (within
+   :data:`ORDER_HALF_WIDTH`), or reaches the declared order's floor where the order is a floor (``TermOrder.at_least``:
+   a residual a solve's stop bounds). A term declaring no order fails, naming it."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
@@ -35,10 +37,15 @@ from mime.core.ledger import LedgerFlag, TermOrder
 if TYPE_CHECKING:
     from mime.results import EnergyAccount
 
-#: How far a refinement goes: the step and the tolerance are each halved.
-REFINEMENT = 2.0
-#: A term's ratio passes within this share of its expected one either side: 1.6 to 2.4 for an expected 2 (#225's).
-ORDER_BAND = 0.2
+#: How far each argument is refined: dt halved; the tolerance a hundred times looser. A solve's stop bounds its residual
+#: by the tolerance, which it lands under by a varying share, so halving the tolerance often leaves the stop where it
+#: was (the flow's N_Krylov fell by 1.1 to 7.3 over a halving, 200 seeds a dtype): a hundredfold step, #225's, resolves
+#: it (20 to 1700).
+REFINEMENT = {"dt": 2.0, "tolerance": 100.0}
+#: A term passes where the order its fall shows is within this of its declared order: the ratio rounds to the declared
+#: order and to no neighbour. For a second order in dt, 1.41 to 2.83 (#225's 1.6 to 2.4 was narrower than N_conv's
+#: spread over drawn swirls, 1.66 to 2.53); for an order of at least one in the tolerance, at least 10 (#225's).
+ORDER_HALF_WIDTH = 0.5
 _NAME = "ledger closes"
 
 
@@ -244,13 +251,15 @@ def judge_flags(node: Any, readings: Mapping[str, Any], dtype: str,
 
 @dataclass(frozen=True)
 class OrderCheck:
-    """One term against its declared order in one argument (``"dt"`` or ``"tolerance"``): its sum at the rig's setting
-    over its sum with that argument halved, and the band its order puts the ratio in."""
+    """One term against its declared order in one argument (``"dt"`` or ``"tolerance"``): its sum at the coarser
+    setting over its sum at the finer (``ratio``), the order that ratio shows (``observed``), and the band of ratios
+    whose order rounds to the declared one (or reaches its floor, for an order declared ``at_least``)."""
 
     term: str
     argument: str
     order: int
     ratio: float
+    observed: float
     band: tuple[float, float]
 
     @property
@@ -273,24 +282,36 @@ class OrderReport:
 
     def failures(self) -> list[str]:
         found = [f"{term} declares no order" for term in self.undeclared]
-        return found + [f"{c.term}'s sum fell by {c.ratio:.4g} with the {c.argument} halved, outside "
-                        f"[{c.band[0]:.3g}, {c.band[1]:.3g}] for order {c.order}" for c in self.checks if not c.passed]
+        return found + [f"{c.term}'s sum fell by {c.ratio:.4g} over its {c.argument}'s refinement, order {c.observed:.3g}, "
+                        f"outside [{c.band[0]:.3g}, {c.band[1]:.3g}] for order {c.order}" for c in self.checks
+                        if not c.passed]
 
 
-def expected_ratio(argument: str, order: int) -> float:
-    """The ratio a term's sum falls by with ``argument`` halved: ``2^(p - 1)`` in dt (a fixed time's steps double),
-    ``2^q`` in the tolerance (a fixed count of steps)."""
-    return REFINEMENT ** (order - 1 if argument == "dt" else order)
+def observed_order(argument: str, ratio: float) -> float:
+    """The order a term's fall over its argument's refinement shows: ``1 + log2`` of it in dt (summed over a fixed
+    time, the steps double as dt halves), its log in the tolerance's own factor (a fixed count of steps)."""
+    shift = 1.0 if argument == "dt" else 0.0
+    return shift + math.log(ratio) / math.log(REFINEMENT[argument]) if ratio > 0.0 else float("-inf")
+
+
+def ratio_band(argument: str, order: int, at_least: bool) -> tuple[float, float]:
+    """The ratios whose order is within :data:`ORDER_HALF_WIDTH` of ``order`` (at least its floor, for an order
+    declared ``at_least``)."""
+    shift = 1.0 if argument == "dt" else 0.0
+    factor = REFINEMENT[argument]
+    low = factor ** (order - ORDER_HALF_WIDTH - shift)
+    return low, float("inf") if at_least else factor ** (order + ORDER_HALF_WIDTH - shift)
 
 
 def term_orders(sums: Callable[[float, float], Mapping[str, float]], terms: Sequence[str],
                 orders: Mapping[str, TermOrder]) -> OrderReport:
     """Each of ``terms`` against its order in ``orders`` (a scheme's declarations): ``sums(dt_scale,
     tolerance_scale)`` is each term's magnitude summed over a fixed time at the rig's step times ``dt_scale`` and its
-    tolerance times ``tolerance_scale``, called at the rig's setting and with each declared argument halved."""
+    tolerance times ``tolerance_scale``, called at the rig's setting, with dt halved and with the tolerance
+    :data:`REFINEMENT` times looser, each where some term declares an order in it."""
     undeclared = tuple(term for term in terms if term not in orders)
     base = sums(1.0, 1.0)
-    refined: dict[str, Mapping[str, float]] = {}
+    other: dict[str, Mapping[str, float]] = {}
     checks: list[OrderCheck] = []
     skipped: dict[str, str] = {}
     for term in terms:
@@ -301,15 +322,16 @@ def term_orders(sums: Callable[[float, float], Mapping[str, float]], terms: Sequ
             if declared is None:
                 skipped[f"{term} ({argument})"] = order.reason or "it declares no order in it"
                 continue
-            if argument not in refined:
-                refined[argument] = sums(1.0 / REFINEMENT, 1.0) if argument == "dt" else sums(1.0, 1.0 / REFINEMENT)
-            expected = expected_ratio(argument, declared)
-            ratio = float(base[term]) / float(refined[argument][term])
-            top = float("inf") if order.at_least else expected * (1.0 + ORDER_BAND)
-            checks.append(OrderCheck(term, argument, declared, ratio, (expected * (1.0 - ORDER_BAND), top)))
+            if argument not in other:
+                other[argument] = sums(1.0 / REFINEMENT["dt"], 1.0) if argument == "dt" else \
+                    sums(1.0, REFINEMENT["tolerance"])
+            coarse, fine = (base, other[argument]) if argument == "dt" else (other[argument], base)
+            ratio = float(coarse[term]) / float(fine[term])
+            checks.append(OrderCheck(term, argument, declared, ratio, observed_order(argument, ratio),
+                                     ratio_band(argument, declared, order.at_least)))
     return OrderReport(tuple(checks), skipped, undeclared)
 
 
-__all__ = ["ORDER_BAND", "REFINEMENT", "FlagReading", "FlagReport", "OrderCheck", "OrderReport", "active_flags",
-           "declared_flags", "expected_ratio", "flag_problems", "flag_readings", "judge_flags", "ledger_closes",
-           "run_flags", "term_orders"]
+__all__ = ["ORDER_HALF_WIDTH", "REFINEMENT", "FlagReading", "FlagReport", "OrderCheck", "OrderReport", "active_flags",
+           "declared_flags", "flag_problems", "flag_readings", "judge_flags", "ledger_closes", "observed_order",
+           "ratio_band", "run_flags", "term_orders"]

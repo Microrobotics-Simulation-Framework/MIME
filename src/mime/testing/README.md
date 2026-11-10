@@ -169,10 +169,11 @@ Also:
     acts on, the drive reaching into a solid; the openings' two pending;
   - `term_orders(sums, terms, orders)`: each numerical term against the order its scheme declares (a
     `mime.core.ledger.TermOrder` per term, in dt and in the solve's tolerance, or the reason it has none), from a rig's
-    sums at its step and tolerance and with each halved apart, within the harness's band of the ratio its order gives
-    (`ORDER_BAND`), or at least the band's floor where the order is a floor (`at_least`: a residual a solve's stop
-    bounds); a term declaring no order fails. A later kind (acoustics) declares its flags and orders and uses the same
-    harness.
+    sums at its setting, with dt halved and with the tolerance a hundredfold looser (`REFINEMENT`: a solve's stop
+    bounds its residual by the tolerance and lands under it by a varying share, which a halving does not resolve):
+    a term passes where the order its fall shows rounds to the declared one (`ORDER_HALF_WIDTH`), or reaches the
+    declared order's floor where the order is a floor (`at_least`); a term declaring no order fails. A later kind
+    (acoustics) declares its flags and orders and uses the same harness.
 
 Also:
 - **the closed-loop case** (`CaseKind.CLOSED_LOOP`), for a family whose laws together are the derivative of an energy in

@@ -1,11 +1,13 @@
 """The ledger harness's first rung (``mime.testing.ledger_closes``): one check that a metered run's books close at
 every step, which any gate of any dynamics or field kind uses: a receiver's records or a run's result.
 
-**Its resolution is the ledger's floor, in both dtypes, on every receiver kind**: a gift of 1.25 floors of each step's
+**Its resolution is the ledger's floor, in both dtypes, on every receiver kind**: a gift of 1.5 floors of each step's
 own scale (planted in the books every receiver's step writes, ``mime.core.ledger.recorded``, so its size is exact
 whatever the draw) is caught on every draw of a rigid body, a dynamic arm and a flow (``step_identity``'s draws,
-which judge with it), and one of 0.75 floors on none: the check is no looser and no tighter than its floor. The rate
-over independent runs is measured on Actions (the PR's table; ``test_detection_rate_target``).
+which judge with it), and one of 0.5 floors on none: the check is no looser and no tighter than its floor, within the
+step's own rounding, which reaches 0.27 floors on a rigid body's draws (0.10 on a flow's, 0.03 on an arm's; 500 to
+2000 draws a kind and dtype, the PR's table). So a gift between about 0.73 and 1.27 floors is caught on some draws and
+not others. The rate over independent runs is measured on Actions (``test_detection_rate_target``).
 
 **Each of its checks has a control on records** that fails it alone: the identity, unattributed work (and none where
 the gate fed some), a dissipative law's gift, an indefinite operator, a step that gave energy on route 1, a jump
@@ -49,7 +51,7 @@ def _dynamics(kind: str):
     return {"rigid_body": RigidInertial(), "joint": Arm.__new__(Arm), "fluid": FVM.__new__(FVM)}[kind]
 
 
-@pytest.mark.parametrize("floors", [1.25, 0.75])
+@pytest.mark.parametrize("floors", [1.5, 0.5])
 @pytest.mark.parametrize("kind", ["rigid_body", "joint", "fluid"])
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_a_gift_over_the_floor_is_caught_on_every_draw_and_one_under_it_on_none(dtype, kind, floors, monkeypatch):

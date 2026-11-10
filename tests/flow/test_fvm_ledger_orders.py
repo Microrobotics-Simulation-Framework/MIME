@@ -5,10 +5,13 @@ caught; and every scheme declares an order, or why it has none, for every term i
 
 On a smooth swirl in the periodic tube with its Poiseuille drive (IMEX Euler, convection on, D/h 8, a fixed time of
 0.05 in units of D and nu, the solve at each dtype's default tolerance), each term's magnitude summed over the run, at
-the rig's step and tolerance and with each halved apart: ``N_BE`` and ``N_conv``, declared second order in dt, fall by
-1.6 to 2.4 as dt halves (``2^(2 - 1)`` within the harness's band); ``N_Krylov``, declared at least first order in the
-tolerance (its stop bounds it), falls by at least 1.6 as the tolerance halves. The steady limit's two zero terms and
-RK3's convective power (zero to rounding on the box) declare no order, with their reasons.
+the rig's step and tolerance, with dt halved and with the tolerance a hundred times looser: ``N_BE`` and ``N_conv``,
+declared second order in dt, pass where the order their fall shows rounds to two (a ratio of 1.41 to 2.83);
+``N_Krylov``, declared at least first order in the tolerance (its stop bounds it), where it shows at least half an
+order (a fall of at least ten, #225's). The steady limit's two zero terms and RK3's convective power (zero to rounding
+on the box) declare no order, with their reasons. **Measured on 200 seeds a dtype** (the PR's table): ``N_BE`` falls by
+1.92 to 1.96 as dt halves, ``N_conv`` by 1.66 to 2.53 (#225's band, 1.6 to 2.4, was narrower than that), and
+``N_Krylov`` by 1.1 to 7.3 as the tolerance halves, so the tolerance's step is a hundredfold.
 
 Every arm starts from one warmed state (the swirl and its drive after a short run at a quarter of the step), so the
 stiff interior's start, damped in a step whatever the step, is not in the sums; and each arm's books close
@@ -16,14 +19,11 @@ stiff interior's start, damped in a step whatever the step, is not in the sums; 
 
 **The controls, each failing every seed**: ``N_BE`` and ``N_conv`` moved to the wrong order, each scaled by ``(dt /
 dt_rig)^k`` (``k = -1``: first order; ``k = +1``: third), the difference moved into the viscous row so the identity
-still closes; and the viscous loss written into ``N_Krylov`` (#225's control), of order zero in the tolerance. Over-budget
-cases go on the duration allowlist, never under ``slow``.
+still closes; and the viscous loss written into ``N_Krylov`` (#225's control), of order zero in the tolerance.
+Over-budget cases go on the duration allowlist, never under ``slow``.
 
-**The resolution** (#225's, on this rig, three seeds): a physical loss of ``k`` times the term's own coarse sum, moved
-from the viscous row into the term, leaves the band on one seed of the three from ``k = 0.1`` (``N_BE`` at 1.58,
-``N_conv`` at 1.45), which fails the test, and on all three from about 0.6 for ``N_BE``. **A gift a term's own formula
-books** (convection's, at mixed time levels) is booked under that term, where the step identity cannot see it: the
-order check and the convection flag (``mime.nodes.flow.fvm._flags``) are what see it."""
+**A gift a term's own formula books** (convection's, at mixed time levels) is booked under that term, where the step
+identity cannot see it: the order check and the convection flag (``mime.nodes.flow.fvm._flags``) are what see it."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ from fvm_cases import METERED, in_dtype, tube_node
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import SCHEMES, ImplicitFlowNode
 from mime.testing import ledger_closes, term_orders
-from mime.testing._ledger_harness import expected_ratio
+from mime.testing._ledger_harness import observed_order
 
 #: The fixed time each term is summed over (D = 1, nu = 1: about a fifth of the swirl's decay time).
 TIME = 0.05
@@ -164,7 +164,8 @@ PLANTS = [("backward_euler", "dt", -1), ("backward_euler", "dt", 1), ("convectio
                          ids=[f"{t}-{a}{'-loss' if p is None else f'{p:+d}'}" for t, a, p in PLANTS])
 def test_control_a_term_of_the_wrong_order_fails_on_every_seed(dtype, term, argument, power, monkeypatch):
     """The identity still closes with the term moved, and its check fails on every seed: at order 1 or 3 where 2 is
-    declared (ratios about 1 and 4 against 1.6 to 2.4), or near order 0 where at least 1 is."""
+    declared (ratios about 1 and 4 against 1.41 to 2.83), or near order 0 where at least 1 is (a fall of about 1
+    against at least 10)."""
     monkeypatch.setattr(ImplicitFlowNode, "energy_terms", wrong_order(term, argument, power))
     for seed in range(3):
         report, ended = _report(dtype, seed)
@@ -199,4 +200,4 @@ def test_the_harness_passes_exact_orders_and_fails_one_off_and_an_undeclared_ter
         assert not term_orders(_laws(wrong), ["a", "b", "c"], declared).passed
     report = term_orders(_laws({"a": (2, 0), "d": (2, 0)}), ["a", "d"], declared)
     assert report.undeclared == ("d",) and not report.passed
-    assert expected_ratio("dt", 2) == 2.0 and expected_ratio("tolerance", 1) == 2.0
+    assert observed_order("dt", 2.0) == 2.0 and observed_order("tolerance", 100.0) == 1.0

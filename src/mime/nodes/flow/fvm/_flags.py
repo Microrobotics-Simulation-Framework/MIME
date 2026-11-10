@@ -107,21 +107,43 @@ LINES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/act
 _CLEAN = (f"200 drawn correct runs a dtype (IMEX Euler, D/h 8 to 16, Re 1 to 200, CFL 0.04 to 0.4, tau/dt about 4 to "
           f"3e3; tests/flow/flag_cases.py), 60 steps each, {LINES_MEASURED}")
 
+#: The run that measured the convection reading's line (the reading as it now is: the first, ``|N_conv|`` over its
+#: product, caught a stale level on 186 of 200 runs, Actions run 42771046829).
+CONVECTION_LINE_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42775731499"
+#: The run that measured the stall's and the leak's rates: each plant on 200 (or 50) fresh draws a dtype, seeds from
+#: 1000, and the same draws clean.
+RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42771046829"
+_TOLERANCE = "a solve whose tolerance is 1e4 times its default, reporting arrival"
+_TWO = "a solve stopped after two iterations"
+_MASK = "the fluid's mask lost beyond the band (the drive acting in the solid)"
+_WEAK = "the solid's interior 1e3 times less stiff (its bypass flux rises; its loss inside falls)"
+
+
+def _evidence(plant: str, caught: dict[str, tuple[int, int, int, int]], link: str) -> tuple[FlagEvidence, ...]:
+    return tuple(FlagEvidence(plant, dtype, *counts, link) for dtype, counts in caught.items())
+
+
 #: The implicit node's flags (IMEX Euler and its steady limit). Each line is about twice the worst clean reading.
 FLAGS: tuple[LedgerFlag, ...] = (
     LedgerFlag("stall", "|N_Krylov| / D_visc", stall_reading, {"float64": 1e-5, "float32": 4e-3},
                f"{_CLEAN}: worst 5.1e-6 (float64) and 2.0e-3 (float32), every step judged; float32's clean runs read "
-               f"up to twice the node's own stall line, 1e-3, at tau/dt near 3e3 (its tolerance against tau/dt)", ()),
-    LedgerFlag("convection", "|N_conv| / (dt rho <|C(u)|, |u'|>)", convection_reading,
-               {"float64": 0.2, "float32": 0.2},
-               f"{_CLEAN}: worst 0.104 in both dtypes, every step judged (IMEX Euler's mixed time levels at the CFL "
-               f"line)", ()),
+               f"up to twice the node's own stall line, 1e-3, at tau/dt near 3e3 (its tolerance against tau/dt)",
+               _evidence(_TOLERANCE, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)}, RATES_MEASURED)
+               + _evidence(_TWO, {"float64": (50, 50, 0, 50), "float32": (44, 50, 0, 50)}, RATES_MEASURED)),
+    LedgerFlag("convection", "|N_conv + dt rho <C(u), u' - u>| / (dt rho <|C(u)|, |u'|> + |N_conv|)",
+               convection_reading, {"float64": 2e-9, "float32": 5e-5},
+               f"200 drawn correct runs a dtype, as the others' ({CONVECTION_LINE_MEASURED}): worst 4.9e-10 (float64) "
+               f"and 1.3e-5 (float32), every step judged: rounding, as a skew convection's whole work is its time "
+               f"level's", ()),
     LedgerFlag("leak", "the wall's penalty loss inside the solid / the wall's whole loss", leak_reading,
                {"float64": 4e-3, "float32": 4e-3},
                f"{_CLEAN}: worst 1.3e-3 in both dtypes after 30 steps (a drawn start's flow in the solid decays over "
-               f"them: 1.35e-2 at 10, 3.4e-3 at 20)", (), settle=30),
+               f"them: 1.35e-2 at 10, 3.4e-3 at 20)",
+               _evidence(_MASK, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)}, RATES_MEASURED)
+               + _evidence(_WEAK, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, RATES_MEASURED),
+               settle=30),
     *PENDING,
 )
 
-__all__ = ["FLAGS", "INSIDE", "LINES_MEASURED", "PENDING", "FlagEvidence", "convection_reading", "leak_reading",
+__all__ = ["CONVECTION_LINE_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
            "stall_reading"]

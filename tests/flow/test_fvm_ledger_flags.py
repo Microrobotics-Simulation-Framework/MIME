@@ -9,7 +9,8 @@ were measured on.
   check with no measured rate, and one pending with evidence, are each named.
 - **Quiet on correct runs**: each active flag's worst reading under its line, in both dtypes.
 - **Each flag's plant caught** (the control): a solve stopped at a tolerance 1e4 looser (the stall), a convective term
-  formed from the run's starting velocity (convection), the fluid's mask lost beyond the band (the leak)."""
+  formed from the run's starting velocity (convection), the fluid's mask lost beyond the band (the leak). The pending
+  openings' two are never counted."""
 
 from __future__ import annotations
 
