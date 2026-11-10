@@ -1,0 +1,41 @@
+{
+ "written": "2026-11-10, committed before the second round of the ledger harness's gates ran (the commit that adds this file is the timestamp): the gates redesigned after the first round's outcomes (predictions_ledger_harness.json, whose predictions stay as written)",
+ "phase": "the ledger harness (row #322), round 2: the convection flag's reading, the order check's rule and refinement, the gift's sizes",
+ "labels": "predictions by the builder (Opus) from the measurements below; every rate is predicted for seeds the measurements did not use",
+ "seen_before": [
+  "round 1's rates (Actions run 42771046829, seeds from 1000): the first convection reading (|N_conv| over its product's magnitude) caught a stale level on 186 of 200 runs a dtype, every miss with a swirl under 0.07 of U; the order check's clean arm failed 5 to 8 of 50 seeds a dtype (N_Krylov falling by 1.31 to 1.58 over a tolerance halved, under its floor 1.6; N_conv by 2.42 once, over 2.4); a gift of 0.75 floors was caught on 3 of 50 rigid-body runs in float64",
+  "stage A3 (Actions runs 42774940070 and 42775731499, seeds 0 to 199): the order rig's clean spread, N_BE's fall as dt halves 1.922 to 1.960 and N_conv's 1.662 to 2.529 in both dtypes, N_Krylov's as the tolerance halves 1.41 to 7.28 (float64) and 1.11 to 3.98 (float32), as it falls to a hundredth 33 to 1704 and 20 to 147; the step identity's own rounding over its floor on step_identity's draws, at most 0.268 (rigid body, float64, 2000 draws; 4 over 0.25), 0.242 (rigid body, float32), 0.101 and 0.055 (flow, 500), 0.023 and 0.026 (arm, 1000); the new convection reading on 200 clean draws a dtype at most 4.9e-10 (float64) and 1.3e-5 (float32), the stale level at least 0.254, the permuted field at least 0.159 after the first step, the advective form at least 9.4e-4, a step past the CFL line under the lines (median 6e-11 and 2.7e-6)",
+  "#225's measurement of the hundredfold tolerance step in the other direction (its loose arm, 1e-6 against 1e-8 and 1e-3 against 1e-5, three seeds): 89 to 442 (float64), 89 to 195 (float32)"
+ ],
+ "operating_point": "as predictions_ledger_harness.json's, rates on seeds from 1000 (orders: the cellular swirl's phase from the seed)",
+ "gate_1_ledger_closes_sizes": {
+  "claim": "a gift of 1.5 floors caught on every run and one of 0.5 on none, on a rigid body, a dynamic arm and a flow, both dtypes (the sizes CI's test now plants)",
+  "case": "tests/energy/test_ledger_closes.py::test_detection_rate_target[<kind>], 50 runs of 20 draws a kind, dtype and size",
+  "prediction": {"value": "1.5: 50/50 each; 0.5: 0/50 each; clean 0/50", "basis": "measured-before (the rounding's largest, 0.27 floors: 1.5 - 0.27 > 1 > 0.5 + 0.27)"}
+ },
+ "gate_2_convection_flag": {
+  "claim": "the convection flag, its reading the convective term's work against its time level's own: quiet on correct runs, and catching a convective term formed from a stale velocity, from the wrong field, or in the advective form; not a step past the CFL line, whose convection is formed as declared",
+  "line": {"float64": 2e-9, "float32": 5e-5},
+  "convection_stale": {"prediction": "200/200 both dtypes, clean 0/200", "basis": "measured-before (at least 0.254, five orders over the line)"},
+  "convection_permuted": {"prediction": "50/50 both dtypes", "basis": "measured-before (at least 0.159)"},
+  "convection_advective": {"prediction": "50/50 both dtypes", "basis": "measured-before (at least 9.4e-4, nineteen times the float32 line)"},
+  "convection_past_the_line": {"prediction": "0 to 2 of 50 both dtypes", "basis": "measured-before (its convection is formed as declared: the reading stays rounding)"},
+  "range": "discriminating_range.py on a stale level blended in at a share s: caught on every draw from s near 1e-3 or below (float64) and 1e-2 (float32) [guess from the stale plant's 0.25 at s = 1 and the lines]",
+  "if_wrong": "a clean false alarm means the rounding's tail is over the line: re-measured, never moved to pass"
+ },
+ "gate_3_orders": {
+  "claim": "the order check's rule: a term passes where the order its fall shows rounds to the declared one (within half an order), dt halved and the tolerance a hundredfold looser; every clean seed passes and each wrong order fails on every seed",
+  "case": "probe/order_rate.py on tests/flow/test_fvm_ledger_orders.py's rig, seeds 1000 to 1049 a plant and dtype",
+  "prediction": {"value": "every plant 50/50 in both dtypes; clean 0/50", "basis": "measured-before: clean N_BE 1.92 to 1.96 and N_conv 1.66 to 2.53 against 1.41 to 2.83; N_Krylov's hundredfold fall at least 20 against at least 10; the plants' ratios about half and twice N_conv's (0.83 to 1.27, 3.3 to 5.1) and about 1 for the loss in N_Krylov"},
+  "if_wrong": "a clean seed out of band, or a plant inside it, is reported with its ratio; the rule is not narrowed or widened to pass"
+ },
+ "outcomes": {
+  "written": "2026-11-10, after round 2's runs; the predictions above are as committed in 5fa60e6",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42776571840",
+  "gate_1_ledger_closes_sizes": "held: 1.5 floors 50/50 on the rigid body, the arm and the flow in both dtypes; 0.5 floors 0/50 on each; clean 0/50",
+  "gate_2_convection_flag": "held: the stale level 200/200 in both dtypes, clean 0/200; the permuted field 50/50, the advective form 50/50, past the CFL line 0/50, both dtypes. The range (a stale level blended in at a share s, 20 draws a size): caught on every draw from s = 1e-5, the grid's smallest, in float64, and from about 7.5e-3 in float32 (0 false alarms)",
+  "gate_3_orders": "held: every plant 50/50 in both dtypes, clean 0/50",
+  "after_the_runs": "the convection reading now reads zero on a step the CFL check held (the run is refused there); no drawn run reaches it, so the rates stand",
+  "on_the_merged_head": "after merging release/v0.3.0 at 49a413a (the CG's restart, #224), on fresh seeds (Actions run 42780710452): the stall's tolerance plant, the stale convection and the lost mask 50/50 each in both dtypes, clean 0/50; the order plants 50/50, but the order check's clean arm false-alarmed on 2 of 50 seeds (1053, 1055) in both dtypes: N_conv fell by 4.16 and 2.87 as dt halved (an order of 3.1 and 2.5), swirl phases where its leading coefficient nearly vanishes (it is the convection's work against the step's change, whose viscous and convective parts can cancel); 0 of 250 seeds elsewhere (stage A3's 200, round 2's 50). Not hidden by a wider band: a third order is what the band refuses. The CI test's seeds are fixed (0 to 2) and pass. Released programs: 16 programs, 534 arrays, all equal against 49a413a"
+ }
+}

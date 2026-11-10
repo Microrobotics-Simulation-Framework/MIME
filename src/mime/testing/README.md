@@ -150,6 +150,34 @@ Also:
   of a step's travel short of its stop on half the draws), and a dynamic motor on a host frame (`spinner_rig`,
   `spinner_states`), each metered for the laws it holds itself too.
   `tests/energy/test_metered_entries.py` walks every registered dynamics and interaction of MIME's through both.
+- **the energy ledger as a gate's tool** (`_ledger_harness.py`), general, each kind bringing only its declarations:
+  - `ledger_closes(books)`: one check that a metered run's books close at every step, on a receiver's records or a
+    run's result (each metered receiver, its coupling group's members as members, the account's findings): the step
+    identity within its floor (on route one, the part of the step booked by formula), nothing unattributed (or some,
+    where the gate fed it: `fed_unattributed`), no dissipative law's gift and no indefinite operator, route one's every
+    step dissipated, no jump between steps that no producer owns, a balance within its rounding where the identity is
+    claimed, every record finite. `step_identity` and the solved-field suite's ledger case judge with it. Its
+    resolution on drawn steps is the floor within the step's own rounding, so a gift near the floor is caught on some
+    draws and not others (the sizes CI plants and that band are in `tests/energy/test_ledger_closes.py`); the floor's
+    exact value is pinned on records there;
+  - **ratio flags** (`MimeNode.LEDGER_FLAGS`, each a `mime.core.ledger.LedgerFlag`): a ratio of a metered step's terms
+    that flags a bug the identity cannot see (a term books it by its own formula), with its line in each dtype, measured
+    on drawn correct runs, the steps a run's start is not judged over, and each planted bug with its measured rate and
+    the run that measured it (`FlagEvidence`). `run_flags` reads each active flag at every step of a gate's scan,
+    `judge_flags` holds the worst against the line; `flag_problems` names a flag declared a check with no plant caught
+    on every run (coverage claimed, not shown), and a flag that cannot be gated yet is declared `pending` and never
+    counted, and a run with no check does not pass. The flow's (`mime.nodes.flow.fvm._flags`): the stall, convection
+    doing work beyond its time level's (not an error in the operator that keeps it skew: the manufactured-solution
+    gate's), the drive reaching into a solid; the openings' two pending;
+  - `term_orders(sums, terms, orders)`: each numerical term against the order its scheme declares (a
+    `mime.core.ledger.TermOrder` per term, in dt and in the solve's tolerance, or the reason it has none), from a rig's
+    sums at its setting, with dt halved and with the tolerance a hundredfold looser (`REFINEMENT`: a solve's stop
+    bounds its residual by the tolerance and lands under it by a varying share, which a halving does not resolve):
+    a term passes where the order its fall shows rounds to the declared one (`ORDER_HALF_WIDTH`), or reaches the
+    declared order's floor where the order is a floor (`at_least`); a term declaring no order fails. The fall is read
+    from each term summed over the rig's drawn cases (one `sums` a case): on one case a term whose leading
+    coefficient cancels can fall at an order its scheme does not have. A later kind
+    (acoustics) declares its flags and orders and uses the same harness.
 
 Also:
 - **the closed-loop case** (`CaseKind.CLOSED_LOOP`), for a family whose laws together are the derivative of an energy in
