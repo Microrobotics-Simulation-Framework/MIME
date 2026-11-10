@@ -275,11 +275,18 @@ def test_control_the_fluid_case_fails_where_the_step_gives_energy(monkeypatch):
 
 # -- N_proj: the projection's term, zero to rounding on the periodic box (R5's C13, its second option) ----------------
 
-#: The control's plant: a gradient field of this share of the solution's size, added to it unprojected.
-PLANT = 1e-9
+#: Each arm, ``(scheme, dtype, tolerance, plant)``: the control's plant is a gradient field of ``plant`` times the
+#: solution's size, added to it unprojected, each measured above the floor on ten draws of ten at both tolerances:
+#: IMEX Euler in float64 at 1e-9 (14 to 224 floors), the steady limit in float64 at 1e-6 (2.0e4 to 2.2e4; at 1e-9 it
+#: reads 0.02) and in float32 at 1e-3 (38 to 40; at 1e-4 it reads 0.4). **No float32 arm for IMEX Euler**: there a
+#: plant of 1e-3 of the solution's size reads 0.07 to 0.52 floors, so float32's floor bounds ``N_proj`` only to about a
+#: hundredth of the solution there, and no plant at or under that discriminates.
+PROJECTION_ARMS = [("imex_euler", "float64", 1e-6, 1e-9), ("imex_euler", "float64", 1e-10, 1e-9),
+                   ("steady", "float64", 1e-6, 1e-6), ("steady", "float64", 1e-10, 1e-6),
+                   ("steady", "float32", 1e-4, 1e-3), ("steady", "float32", None, 1e-3)]
 
 
-def _projection_terms(node: ImplicitFlowNode, seeds: range) -> list[tuple[float, float, float]]:
+def _projection_terms(node: ImplicitFlowNode, seeds: range, plant_share: float) -> list[tuple[float, float, float]]:
     """For each seed, ``dt rho <p', D u'>`` of one step from a stirred start, ``p'`` the pressure recovered from the
     step's remainder (B2's ``pressure_of``); the same with the plant on the solution; and the step's scale. Compiled
     once."""
@@ -292,7 +299,7 @@ def _projection_terms(node: ImplicitFlowNode, seeds: range) -> list[tuple[float,
         size = jnp.sqrt(grid.inner(stage.solved, stage.solved) / grid.inner(bump, bump))
         sigma = node.resistivity(p, parts.fields)
         found = []
-        for plant in (0.0, PLANT):
+        for plant in (0.0, plant_share):
             solved = tuple(stage.solved[c] + plant * size * bump[c] for c in range(3))
             applied = node.operator_of(p, grid, sigma)(stage.shift)(solved)
             pressure = grid.pressure_of(tuple(stage.rhs[c] - applied[c] for c in range(3)))
@@ -310,13 +317,18 @@ def _projection_terms(node: ImplicitFlowNode, seeds: range) -> list[tuple[float,
     return held
 
 
-@pytest.mark.parametrize("tolerance", [1e-6, 1e-10])
-def test_the_projection_s_term_is_zero_to_rounding_at_two_tolerances(float64, tolerance):
+@pytest.mark.parametrize(("scheme", "dtype", "tolerance", "plant"), PROJECTION_ARMS,
+                         ids=[f"{a}-{d}-{t}" for a, d, t, _ in PROJECTION_ARMS])
+def test_the_projection_s_term_is_zero_to_rounding_at_two_tolerances(scheme, dtype, tolerance, plant):
     """``N_proj`` is not booked on the periodic box: the projected CG's answer passes through the grid's exact
     projector, so ``D u'`` is its rounding, at any tolerance; ``N_Krylov``'s unprojected remainder holds whatever is
-    left. Its control, the solution moved off the divergence-free fields by a gradient of 1e-9 of its size, puts the
-    term above the floor on every draw."""
-    node = tube_node(8, length_cells=4, dt=0.002, convection=True, tolerance=tolerance, ledger=METERED)
-    for term, planted, scale in _projection_terms(node, range(3)):
-        assert abs(term) <= books.IDENTITY_ULPS * eps("float64") * scale
-        assert abs(planted) > books.IDENTITY_ULPS * eps("float64") * scale
+    left. Its control, the solution moved off the divergence-free fields by a gradient of the arm's share of its size
+    (:data:`PROJECTION_ARMS`), puts the term above the floor on every draw."""
+    with in_dtype(dtype):
+        settings = {} if tolerance is None else {"tolerance": tolerance}
+        node = tube_node(8, length_cells=4, dt=0.002, convection=scheme != "steady", scheme=scheme, ledger=METERED,
+                         **settings)
+        found = _projection_terms(node, range(3), plant)
+    for term, planted, scale in found:
+        assert abs(term) <= books.IDENTITY_ULPS * eps(dtype) * scale
+        assert abs(planted) > books.IDENTITY_ULPS * eps(dtype) * scale

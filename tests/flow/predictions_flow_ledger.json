@@ -37,6 +37,7 @@
   "m2_plants": "the drive applied (1 + k) times what the law delivered, k = 1 and 1e-2, and each stage's drive read half a step late: caught by the claimed part every run in both dtypes (predicted 1e3 or more floors in float32 at k = 1e-2, far more in float64); k = 1e-6 caught in float64, not in float32 (its floor about 2e-6 of the magnitude); k = 1e-9 caught in float64 where the drive dominates the momentum's magnitude",
   "m2_account": "on the RK3 Womersley build with the drive applied 1 % larger: the run's findings name the drive's attribution on water.flow",
   "m4_scale": "the IMEX identity's scale without the drive counted twice: the identity's clean worst rises by at most the drive's share (predicted under 0.2 floors on gate 5 and Womersley), every control still caught",
-  "released_programs": "every recorded array of the released programs bit-identical to release/v0.3.0's tip (d7eeae9) in both dtypes, pinned to one core type: the changes reach the ledger-on path only (RK3's momenta and the fluid mask are made only where the flow is metered)"
+  "released_programs": "every recorded array of the released programs bit-identical to release/v0.3.0's tip (d7eeae9) in both dtypes, pinned to one core type: the changes reach the ledger-on path only (RK3's momenta and the fluid mask are made only where the flow is metered)",
+  "m3_projection_arms": "written after the measurement (probe/fix/nproj.py, ten seeds, both tolerances), not a prediction: the arms' plants were chosen from it (IMEX Euler float64 1e-9, the steady limit float64 1e-6 and float32 1e-3); float32 IMEX Euler has no discriminating plant at or under 1e-3 (0.07 to 0.52 floors), so it has no arm"
  }
 }
