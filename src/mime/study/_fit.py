@@ -273,7 +273,14 @@ def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[o
     theta = {axis: _si(starts[axis]) for axis in axes}
     boxes = {axis: _box(axis, write, run.leader, theta[axis], declarations, run.built, given.get(axis))
              for axis, write in zip(axes, run.writes, strict=True)}
-    theta = {axis: np.clip(value, *boxes[axis]) for axis, value in theta.items()}
+    outside = [axis.path for axis, value in theta.items() if not np.array_equal(np.clip(value, *boxes[axis]), value)]
+    if outside:
+        raise ArgumentRefused([Refusal(
+            "fit.start", RefusalClass.USER,
+            f"the fit starts {', '.join(outside)} outside its box (its declared range, its leaves' bounds and the "
+            f"bounds given), which its iterates are kept inside",
+            "start inside the box: `Study(exp).fit(..., start={...})` within the range `exp.declare_range(...)` "
+            "declares, or widen the range")])
     fim, insensitive = _fisher(run, theta)
     return _descend(run, axes, theta, boxes, iterations, tolerance, fim, insensitive)
 

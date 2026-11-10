@@ -127,3 +127,10 @@ def test_a_fit_with_no_start_or_a_noise_that_is_not_positive_is_refused():
         Study(gentle(1.05)).fit(lambda final: final["ball"]["pose"], start={RADIUS: mm(1.05)}, noise=-1.0,
                                 duration=ms(STEPS))
     assert [r.code for r in raised.value.refusals] == ["fit.noise"]
+
+
+def test_a_fit_starting_outside_its_range_is_refused():
+    with pytest.raises(ArgumentRefused) as raised:
+        Study(gentle(1.05)).fit(lambda final: final["ball"]["pose"], start={RADIUS: mm(1.2)}, noise=NOISE,
+                               duration=ms(STEPS))
+    assert [r.code for r in raised.value.refusals] == ["fit.start"]
