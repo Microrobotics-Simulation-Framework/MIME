@@ -18,11 +18,13 @@ The spacing is held as a value, not a Python constant of the operators, so it ma
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NamedTuple
 
 import numpy as np
 from jax import Array
+from jax import lax as _lax
 
 from mime.core import jnp
 
@@ -182,5 +184,47 @@ class MACGrid:
         not a state of the monolithic step; it is recovered by this one fast solve when an output needs it."""
         return self.poisson(self.divergence(remainder))
 
+    def exchange_stencil(self, component: int, points: Array, width_cells: float) -> ExchangeStencil:
+        """The exchange kernel's weights on the ``component``-th face set for each of ``points`` (``(n, 3)``, m, from
+        the box's corner): a Gaussian of width ``width_cells`` cells along each axis, sampled where the face set's
+        values sit and normalised to a discrete sum of one (``1/h`` per axis, so that ``h^3`` times the sum of their
+        product over the faces is one), truncated at :data:`TRUNCATION` widths, with one zero on each side for the
+        Laplacian's reach; its indices wrapped on the periodic axes (the grid kind's own: B2, C5 point 5)."""
+        h = self.spacing
+        reach = math.ceil(TRUNCATION * float(width_cells))
+        offsets = jnp.arange(-reach - 1, reach + 3)
+        core = (offsets >= -reach) & (offsets <= reach + 1)
+        indices: list[Array] = []
+        weights: list[Array] = []
+        for axis, count in enumerate(self.cells):
+            shift = 0.0 if axis == component else 0.5
+            scaled = points[:, axis] / h - shift
+            base = jnp.floor(_lax.stop_gradient(scaled)).astype(jnp.int32)
+            lattice = base[:, None] + offsets[None, :]
+            distance = lattice.astype(points.dtype) - scaled[:, None]
+            gaussian = jnp.where(core[None, :], jnp.exp(-0.5 * (distance / width_cells) ** 2), 0.0)
+            weights.append(gaussian / (jnp.sum(gaussian, axis=1, keepdims=True) * h))
+            indices.append(jnp.mod(lattice, count))
+        weight = jnp.stack(weights, axis=1)
+        padded = jnp.pad(weight, ((0, 0), (0, 0), (1, 1)))
+        curvature = (padded[:, :, 2:] + padded[:, :, :-2] - 2.0 * weight) / h ** 2
+        return ExchangeStencil(jnp.stack(indices, axis=1), weight, curvature)
 
-__all__ = ["MACGrid", "Velocity"]
+
+#: How far the exchange kernel reaches, in its widths: the weight beyond is under exp(-32) of its peak.
+TRUNCATION = 8.0
+
+
+class ExchangeStencil(NamedTuple):
+    """A point set's exchange weights on one face set: each axis's lattice indices ``(n, 3, m)``, its normalised 1-D
+    weights ``(n, 3, m)`` (per unit length) and their second differences ``(n, 3, m)`` (per unit length cubed), from
+    which the kernel's average (``w_x w_y w_z``) and its Laplacian (``L w``, a sum of three separable products) are
+    read: the seven-point Laplacian is self-adjoint, so a field's Laplacian read by the kernel is the field read by
+    the kernel's Laplacian."""
+
+    index: Array
+    weight: Array
+    curvature: Array
+
+
+__all__ = ["TRUNCATION", "ExchangeStencil", "MACGrid", "Velocity"]
