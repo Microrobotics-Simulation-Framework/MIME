@@ -50,7 +50,7 @@ from mime.registry._entries import (
 )
 from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
-from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of
+from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of, port_kind
 from mime.vocabulary import lookup as interface_named
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
@@ -375,19 +375,32 @@ def _reynolds_problems(cls: type[Entry]) -> list[str]:
 
 def _energy_problems(kind: EntryKind, held: Any) -> list[str]:
     """What is wrong with what an interaction or a dynamics says of itself for the energy ledger: an interaction's
-    class an ``EnergyClass`` or none, a dynamics' port kind a name, and either's reason for being unmetered a string,
-    stated only where it declares no class or port kind."""
+    class an ``EnergyClass`` or none, a dynamics' port kinds a tuple of names (no two of them pairing one interface: a
+    delivery is paired by the one kind whose deliveries name its interface), and either's reason for being unmetered a
+    string, stated only where it declares no class or port kind."""
     if kind not in (EntryKind.INTERACTION, EntryKind.DYNAMICS):
         return []
     found: list[str] = []
     reason: object = getattr(held, "unmetered", "")
     if not isinstance(reason, str):
         found.append("unmetered: the reason the energy ledger cannot meter it, a string")
-    declared: object = getattr(held, "energy_class" if kind is EntryKind.INTERACTION else "port", None)
+    declared: object = getattr(held, "energy_class" if kind is EntryKind.INTERACTION else "port_kinds", None)
     if kind is EntryKind.INTERACTION and declared is not None and not isinstance(declared, EnergyClass):
         found.append("energy_class: a mime.vocabulary.EnergyClass, or None for a law the energy ledger cannot meter")
-    if kind is EntryKind.DYNAMICS and not isinstance(declared, str):
-        found.append("port: the name of a registered port kind (mime.vocabulary.port_kinds), or empty")
+    if kind is EntryKind.DYNAMICS:
+        names = cast(tuple[object, ...], declared) if isinstance(declared, tuple) else None
+        if names is None or not all(isinstance(name, str) and name for name in names):
+            found.append("port_kinds: a tuple of the names of registered port kinds (mime.vocabulary.port_kinds), or "
+                         "empty")
+        else:
+            paired: dict[str, str] = {}
+            for name in cast(tuple[str, ...], names):
+                held_kind = port_kind(name)
+                for interface in held_kind.deliveries if held_kind is not None else ():
+                    if interface in paired:
+                        found.append(f"port_kinds: {paired[interface]!r} and {name!r} both pair {interface!r}; a "
+                                     f"delivery is paired by one kind")
+                    paired[interface] = name
     if declared and reason:
         found.append("unmetered states a reason for being unmetered, and it declares "
                      + ("its class" if kind is EntryKind.INTERACTION else "a port kind"))

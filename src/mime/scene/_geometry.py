@@ -57,6 +57,18 @@ def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, float,
     return (value[0], value[1], value[2])
 
 
+def _end_plane(settings: Mapping[str, Magnitude], inlet: bool) -> dict[str, Magnitude]:
+    """A tube's end as the half-space its lumen lies in: the plane normal to its axis at ``centre -+ (L/2) axis``, its
+    normal into the tube (``+axis`` at the inlet, ``-axis`` at the outlet)."""
+    axis = np.asarray(_vector(settings, "axis"), dtype=np.float64)
+    axis = axis / np.linalg.norm(axis)
+    sign = 1.0 if inlet else -1.0
+    end = np.asarray(_vector(settings, "centre"), dtype=np.float64) - sign * float(cast(float, settings["length"])) \
+        / 2.0 * axis
+    normal = sign * axis
+    return {"normal": (float(normal[0]), float(normal[1]), float(normal[2])), "offset": float(np.dot(normal, end))}
+
+
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Tube(Geometry):
@@ -65,8 +77,10 @@ class Tube(Geometry):
     faces the lumen and is evaluated as an unbounded cylinder, so a contact with it bounds a body radially and its
     ends bound nothing (a body past an end is outside the tube, which nothing checks yet); the lumen is that
     cylinder's inside, so a law reading the region a medium fills sees a uniform tube along its axis, with no ends;
-    ``axis`` is its direction. Its reach along ``d`` is the finite tube's, ``(r + wall) |d_across| + L |d . a| / 2``
-    from its centre.
+    ``axis`` is its direction. Its ``inlet`` and ``outlet`` are its two ends, the planes normal to its axis at
+    ``centre -+ (L/2) axis``, each facing the lumen (evaluated as the half-space the lumen lies in): a flow's openings
+    where the region it fills is cut at the vessel's own ends. Its reach along ``d`` is the finite tube's,
+    ``(r + wall) |d_across| + L |d . a| / 2`` from its centre.
 
     Its derivative is the cylinder's (its switches, ``cylinder.axis`` and ``cylinder.axis_norm``): a kink in the
     distance and a jump in the normal on the axis. Within the axis band (``AXIS_ULPS`` units in the last place of the
@@ -87,7 +101,7 @@ class Tube(Geometry):
     builds = {"": ()}
     regions = ("lumen", "wall")
     region_shapes = {"lumen": "cylinder"}
-    surfaces = {"inner_surface": "cylinder"}
+    surfaces = {"inner_surface": "cylinder", "inlet": "half_space", "outlet": "half_space"}
     directions = ("axis",)
     placement = {"centre": "origin", "axis": "z_axis"}
     axis: Annotated[DirectionLike, Direction]
@@ -110,6 +124,8 @@ class Tube(Geometry):
 
     @override
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        if surface in ("inlet", "outlet"):
+            return _end_plane(settings, surface == "inlet")
         if surface != "inner_surface":
             raise KeyError(surface)
         return {"centre": _vector(settings, "centre"), "axis": _vector(settings, "axis"),

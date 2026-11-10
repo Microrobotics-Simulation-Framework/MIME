@@ -19,7 +19,7 @@ from mime.scene._compose import (
     valid_prim_path,
     within,
 )
-from mime.scene._domains import PeriodicBox
+from mime.scene._domains import PeriodicBox, VesselRegion
 from mime.scene._derived import (
     DERIVED_FROM,
     DERIVED_HASH,
@@ -101,6 +101,7 @@ STAGE_FILE = "scene/scene.usda"
 
 __all__ = [
     "PeriodicBox",
+    "VesselRegion",
     "ARROW", "Asset", "Axis", "active_visual_pins", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
     "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
     "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",

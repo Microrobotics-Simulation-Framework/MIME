@@ -802,9 +802,10 @@ class Dynamics(Entry):
     A dynamics with ``rungs`` has a ``rung`` setting with no default, as an interaction has; ``reserved_rungs`` maps a
     rung whose name and meaning are fixed but which is not built to the reason, and the build refuses it with that
     reason. ``limits`` states what its model leaves out, each line naming the anomaly that records it; its capability
-    record carries them. ``port`` names the port kind (``mime.vocabulary.port_kind``) its node's accepted inputs are
-    paired by when the energy ledger is attached, its node writing its step identity; empty for a dynamics the ledger
-    does not meter, with ``unmetered`` its reason. A dynamics a medium carries is a field kind, and declares itself
+    record carries them. ``port_kinds`` names the port kinds (``mime.vocabulary.port_kind``) its node's accepted inputs
+    are paired by when the energy ledger is attached, its node writing its step identity, each delivery by the one kind
+    whose deliveries name its interface (a flow's ``("fluid", "opening")``); empty for a dynamics the ledger does not
+    meter, with ``unmetered`` its reason. A dynamics a medium carries is a field kind, and declares itself
     under the solved-field contract (:meth:`field_declarations`), what it provides among it.
     """
 
@@ -812,7 +813,7 @@ class Dynamics(Entry):
     flags: ClassVar[frozenset[Capability]] = frozenset()
     publishes: ClassVar[Mapping[str, Port]] = _EMPTY
     accepts: ClassVar[Mapping[str, Port]] = _EMPTY
-    port: ClassVar[str] = ""
+    port_kinds: ClassVar[tuple[str, ...]] = ()
     unmetered: ClassVar[str] = ""
     registration_kinds: ClassVar[frozenset[str]] = frozenset()
     initial_state: ClassVar[Mapping[str, Dimension]] = MappingProxyType({})
@@ -857,6 +858,13 @@ class Dynamics(Entry):
         """What is wrong with the region a medium's dynamics fills (``None``: it fills none with a shape), as
         refusals: a solved field's domain holds only the regions its kind supports. The region reaches the build as
         ``ctx.region("medium")``."""
+        return []
+
+    def registration_problems(self, registrations: Sequence[ResolvedRegistration],
+                              region: Region | None) -> list[Problem]:
+        """What the laws registered with it rule out together, refused when planned (a flow whose openings' rows
+        have no solution). None by default."""
+        del registrations, region
         return []
 
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:

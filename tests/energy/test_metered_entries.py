@@ -1,5 +1,5 @@
 """The registry walk's energy half (F0-1 M3, M6): every dynamics and every interaction of MIME's own (its toys
-included) declares what the energy ledger meters it by, a port kind (``Dynamics.port``) or a class
+included) declares what the energy ledger meters it by, its port kinds (``Dynamics.port_kinds``) or a class
 (``Interaction.energy_class``), or states why it is unmetered (``unmetered``); and every dynamics that names a port
 kind passes its step identity on drawn states (``mime.testing.step_identity``), every version kept. An entry
 registered with neither is caught by name. An entry outside MIME may declare nothing: the ledger then logs it under
@@ -63,7 +63,7 @@ def undeclared(keys: list[tuple[str, str, str]]) -> list[str]:
         cls = classes(key)
         if not cls.__module__.startswith("mime."):
             continue
-        declared = cls.port if issubclass(cls, Dynamics) else cls.energy_class
+        declared = cls.port_kinds if issubclass(cls, Dynamics) else cls.energy_class
         if not declared and not cls.unmetered:
             found.append(" ".join(key))
     return found
@@ -86,15 +86,15 @@ def test_an_entry_of_mime_s_that_says_neither_is_caught_by_name(registered, monk
     assert undeclared(registered) == ["interaction toy.spring 0.1.0"]
 
 
-METERED = sorted(key for key in installed_entries() if key[0] == "dynamics" and classes(key).port)
+METERED = sorted(key for key in installed_entries() if key[0] == "dynamics" and classes(key).port_kinds)
 
 
 @pytest.mark.parametrize("key", METERED, ids=" ".join)
 def test_every_metered_dynamics_passes_its_step_identity(key):
     cls = classes(key)
-    assert cls.port in PORT_DRAWS, "a new port kind brings its draws with it (mime.testing.PORT_DRAWS)"
+    assert cls.port_kinds[0] in PORT_DRAWS, "a new port kind brings its draws with it (mime.testing.PORT_DRAWS)"
     # A chain segment's and a flow's cases step their port kind's own rig, so they need no settings of the entry's.
-    result = step_identity(cls.__new__(cls) if cls.port in PORT_CASES else cls())
+    result = step_identity(cls.__new__(cls) if cls.port_kinds[0] in PORT_CASES else cls())
     print(f"\n{result}")
     assert result.passed, result
 
@@ -152,7 +152,7 @@ def test_work_booked_under_a_law_that_was_fed_to_the_unattributed_input_fails_it
 
 def test_a_dynamics_with_no_port_kind_passes_by_its_reason_and_fails_without_one(monkeypatch):
     toy = classes(("dynamics", "toy.body", "0.1.0"))
-    assert not toy.port and toy.unmetered
+    assert not toy.port_kinds and toy.unmetered
     assert step_identity(toy.__new__(toy)).passed
     monkeypatch.setattr(toy, "unmetered", "")
     assert step_identity(toy.__new__(toy)).failed

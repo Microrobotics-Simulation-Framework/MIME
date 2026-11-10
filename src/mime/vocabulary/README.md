@@ -83,7 +83,7 @@ its stage instants); `DeliveryKind`, `EnergyClass`,
 and pairs their units to watts; shape and sign live on the interface entries and are not compared, and an interface
 listed in `mapped` skips the unit pairing (its map is the receiver's own: a dynamic arm's Jacobian, a motor's
 axis, a flow's evaluation of a waveform). With the energy ledger attached the build reads a metered
-dynamics' kind (`Dynamics.port`) for how each delivery into it is paired, and the receiver's node refuses a delivery
+dynamics' kinds (`Dynamics.port_kinds`, each delivery paired by the one kind naming its interface) for how each delivery into it is paired, and the receiver's node refuses a delivery
 paired otherwise than it pairs that input; it reads each law's class and definiteness for its records and its run-time
 check. A declaration settles nothing by itself: each class is checked by an exact identity on the law alone (the energy
 case of its family's suite, `mime.testing`), and the registry walk requires every entry of MIME's to declare or state

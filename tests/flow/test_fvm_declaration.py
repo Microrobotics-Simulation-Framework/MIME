@@ -108,7 +108,7 @@ def test_the_run_meters_the_flow_and_names_nothing_unmetered(float64, ledger):
         exp.observe(EnergyLedger())
     built = exp.build()
     result = built.run(ms(40.0))
-    assert FVM.port == "fluid" and FVM.unmetered == ""
+    assert FVM.port_kinds == ("fluid", "opening") and FVM.unmetered == ""
     if not ledger:
         assert result.energy is None and "not metered" not in result.text()
         return

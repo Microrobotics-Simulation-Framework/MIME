@@ -168,6 +168,16 @@ class MimeNode(SimulationNode):
         what the step left for its books in ``parts``, and its own scheme's terms."""
         raise NotImplementedError(f"{type(self).__name__} writes no step identity")
 
+    def storing_laws(self) -> tuple[str, ...]:
+        """The laws the node holds that store energy of their own, by their ledger names: none by default."""
+        return ()
+
+    def law_storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array | None:
+        """The energy each law the node holds stores of its own at ``state`` (J), a row per law in its ledger's order
+        (a Windkessel's capacitor, held in a flow's step), zero for a law that stores nothing; ``None`` for a node
+        none of whose laws stores energy, which keeps no such records (``mime.core.ledger.law_records``)."""
+        return None
+
     def configuration(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array | None:
         """What a potential law's energy is evaluated at on this receiver (a body's pose), from its ``state``: what the
         ledger's records keep at the run's start, so that a potential's change over a run is taken from the run's two

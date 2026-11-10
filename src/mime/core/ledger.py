@@ -88,6 +88,12 @@ IDENTITY_ULPS, DEFINITE_ULPS = 16.0, 16.0
 PAIRED = ("work", "hosted", "terms", "unattributed", "between", "between_own")
 #: The suffix of a pair's second field.
 LOW = "_low"
+#: The columns of a storing law's own books (``StepAccount.stored``): its storage at the step's start and end, its loss
+#: and its own numerical term (J).
+LAW_BOOKS = ("storage_start", "storage_end", "loss", "numerical")
+#: The records a receiver adds where a law it holds stores energy of its own (:func:`law_records`).
+LAW_RECORDS = ("law_storage_start", "law_storage", "law_loss", f"law_loss{LOW}", "law_numerical",
+               f"law_numerical{LOW}", "law_identity_worst")
 #: What separates an encoded delivery's fields: no law id, input name or producer holds it.
 _SEPARATOR = "|"
 #: What joins a law's own input to the input it stands beside and its delivery's index.
@@ -280,7 +286,10 @@ class StepAccount:
     where the storage has such a part: the jump between steps they leave is the receiver's own state's, which no
     producer declares, and is judged (:func:`recorded`); where it has none they are the storage itself. ``claimed`` and
     ``claimed_scale`` are a route-1 receiver's claimed part, where it claims one (:func:`route_one_recorded`): the
-    residual of the part of its step it books by formula and the magnitude that residual is judged on."""
+    residual of the part of its step it books by formula and the magnitude that residual is judged on. ``stored``, a
+    row per law (``LAW_BOOKS``' columns), is the receiver's laws' own books where some law it holds stores energy of its
+    own (a Windkessel's capacitor, held in a flow's step): its storage at the step's start and end, its loss and its own
+    numerical term, none of which is the receiver's, so none enters its identity (:func:`recorded`)."""
 
     work: Array
     hosted: Array
@@ -294,6 +303,7 @@ class StepAccount:
     own_end: Array | None = None
     claimed: Array | None = None
     claimed_scale: Array | None = None
+    stored: Array | None = None
 
     def residual(self) -> Array:
         """``dH - W + N``: the change in storage less every paired work, the scheme's terms added back."""
@@ -366,8 +376,10 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     gifts = jnp.zeros_like(state[f"{RECORDS}gift_steps"])
     rows = laws(held)
     floor = IDENTITY_ULPS * jnp.finfo(dtype).eps * step.scale
+    # A law that stores energy of its own gives back what it stored, which is no gift: its loss is read net of it.
+    given = step.work if step.stored is None else step.work + step.stored[:, 1] - step.stored[:, 0]
     for row in sorted({rows.index(d.law) for d in held if d.energy_class == DISSIPATIVE and d.check != CHECK_CLUSTER}):
-        gave = (step.work[row] > floor) | (step.hosted[row, 0] < -floor)
+        gave = (given[row] > floor) | (step.hosted[row, 0] < -floor)
         gifts = gifts.at[row].set(gave.astype(dtype))
     r = RECORDS
     start = {key: state[key] for key in (f"{r}configuration_start",) if key in state}
@@ -376,6 +388,8 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     own_end = step.storage_end if step.own_end is None else step.own_end
     unexplained = own_start - state[f"{r}storage_own"]
     unexplained_relative = jnp.abs(unexplained) / scale_at_least
+    if step.stored is not None:
+        start = {**start, **law_recorded(state, step, scale_at_least)}
     return {
         **start,
         **summed_pair(state, "work", step.work), f"{r}step_work": step.work,
@@ -392,6 +406,34 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
         f"{r}indefinite_steps": state[f"{r}indefinite_steps"] + indefinite,
         f"{r}gift_steps": state[f"{r}gift_steps"] + gifts,
     }
+
+
+def law_records(storage: Any) -> dict[str, Array]:
+    """The records a receiver adds where a law it holds stores energy of its own, at the run's start: each law's
+    storage there and now (``storage``, a row per law, zero for a law that stores nothing), its loss and its own
+    numerical term summed (pairs, as :data:`PAIRED`'s), and the worst residual of its own identity."""
+    held = as_run_array(storage)
+    zero = jnp.zeros_like(held)
+    r = RECORDS
+    return {f"{r}law_storage_start": held, f"{r}law_storage": held, f"{r}law_loss": zero, f"{r}law_loss{LOW}": zero,
+            f"{r}law_numerical": zero, f"{r}law_numerical{LOW}": zero,
+            f"{r}law_identity_worst": as_run_array(jnp.zeros(()))}
+
+
+def law_recorded(state: Mapping[str, Array], step: StepAccount, scale: Array) -> dict[str, Array]:
+    """The storing laws' records after ``step``: each law's storage now, its loss and numerical term summed, and the
+    worst over the run of its own identity's residual over the step's scale, ``-W = dE + loss + N`` (the work it took
+    from the receiver, ``-W``, its storage's change, its loss, its numerical term), together with the jump of its
+    storage between steps (a law's state edited between steps is seen there, as a receiver's own is)."""
+    assert step.stored is not None
+    r = RECORDS
+    start, end, loss, numerical = (step.stored[:, column] for column in range(len(LAW_BOOKS)))
+    own = jnp.abs(-step.work - (end - start) - loss - numerical) + jnp.abs(start - state[f"{r}law_storage"])
+    stores = (start != 0.0) | (end != 0.0) | (loss != 0.0) | (numerical != 0.0)
+    worst = jnp.max(jnp.where(stores, own, 0.0)) / scale
+    return {f"{r}law_storage_start": state[f"{r}law_storage_start"], f"{r}law_storage": end,
+            **summed_pair(state, "law_loss", loss), **summed_pair(state, "law_numerical", numerical),
+            f"{r}law_identity_worst": jnp.maximum(state[f"{r}law_identity_worst"], worst)}
 
 
 def balance(records: Mapping[str, Any], *, grouped: bool = False) -> Any:
@@ -427,6 +469,8 @@ def losses(records: Mapping[str, Any], held: Sequence[LedgerDelivery]) -> Any:
     dissipative = jnp.asarray([any(d.law == law and d.energy_class == DISSIPATIVE for d in held) for law in rows])
     taken = (-records[f"{RECORDS}work"] + records[f"{RECORDS}hosted"][:, 0]
              + (-records[f"{RECORDS}work{LOW}"] + records[f"{RECORDS}hosted{LOW}"][:, 0]))
+    if f"{RECORDS}law_storage" in records:  # what a storing law holds at the run's end it has not lost
+        taken = taken - (records[f"{RECORDS}law_storage"] - records[f"{RECORDS}law_storage_start"])
     return jnp.where(dissipative, taken, jnp.zeros_like(taken))
 
 
@@ -455,7 +499,9 @@ def with_records(node: MimeNode, state: Mapping[str, Array]) -> dict[str, Array]
         return dict(state)
     terms = node.LEDGER_TERMS or ()
     p = node.constants()
-    return {**state, **initial_records(held, len(terms), node.storage(p, state), node.configuration(p, state))}
+    stored = node.law_storage(p, state)
+    return {**state, **initial_records(held, len(terms), node.storage(p, state), node.configuration(p, state)),
+            **(law_records(stored) if stored is not None else {})}
 
 
 Step = Callable[[Mapping[str, Any], Mapping[str, Array], Mapping[str, Array], float], tuple[dict[str, Array], Any]]
@@ -600,9 +646,9 @@ class LedgerFlag:
 
 __all__ = ["CHECK_CLUSTER", "CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES",
            "FLOW_IN", "HOSTED", "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS",
-           "ROUTE_ONE_FIELDS", "SOLVED", "UNMETERED", "WORKLESS", "FlagEvidence", "LedgerDelivery", "LedgerFlag",
+           "LAW_BOOKS", "LAW_RECORDS", "ROUTE_ONE_FIELDS", "SOLVED", "UNMETERED", "WORKLESS", "FlagEvidence", "LedgerDelivery", "LedgerFlag",
            "LedgerRecords", "StepAccount", "TermOrder",
            "balance", "balance_floor", "between_floors", "definite_at_floor", "deliveries", "initial_records",
-           "law_input", "laws", "losses", "magnitude", "metered_route_one_step", "metered_step", "own_input",
+           "law_input", "law_recorded", "law_records", "laws", "losses", "magnitude", "metered_route_one_step", "metered_step", "own_input",
            "paired_work", "recorded", "route_one_recorded", "route_one_records", "stored", "summed", "summed_pair",
            "unrecorded", "with_law_inputs", "with_records"]

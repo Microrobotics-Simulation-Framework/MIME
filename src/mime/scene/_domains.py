@@ -1,10 +1,15 @@
 """Domain kinds: where a medium's solved field lives, as scene geometry, field-agnostic (F0's B6 and B7, decision 1).
 Each field kind declares the domain kinds it supports, and the build refuses the others with the route.
 
-The **periodic box** is the first: a medium's vessel held in a box periodic on every axis, its period along the vessel's
+Two kinds. The **periodic box** is the first: a medium's vessel held in a box periodic on every axis, its period along the vessel's
 axis declared (``length``) and its other extents chosen by the field kind to hold the vessel with its images clear of
 each other. A periodic box has no openings: its flow is driven by a body force on the fluid, a law bound to the medium
-(``mime.interactions.BodyForce``), which stands in for the pressure drop a period of the vessel would carry."""
+(``mime.interactions.BodyForce``), which stands in for the pressure drop a period of the vessel would carry.
+
+The **vessel's region** is the second: the region of the vessel the medium fills, cut by planes, its openings named
+(decisions 1 and 2). F2b builds its first form, the vessel cut at its own two ends (a straight tube's ``inlet`` and
+``outlet``), each opening taking the law attached to it (``mime.interactions.Inflow``, ``Windkessel``); the cut
+planes the region builder places come later."""
 
 from __future__ import annotations
 
@@ -28,4 +33,16 @@ class PeriodicBox(SettingGroup):
     margin: int = 8
 
 
-__all__ = ["PeriodicBox"]
+@register_setting_group
+@dataclass(frozen=True, kw_only=True)
+class VesselRegion(SettingGroup):
+    """The region of the vessel the medium fills, cut at the vessel's own ends, each end an opening (a straight tube's
+    ``inlet`` and ``outlet``) whose law is attached there; ``margin``, the cells of solid kept across the box between
+    the vessel's band and its images."""
+
+    group = "vessel_region"
+    setting_roles = {"margin": convention(NUMERICAL, "eight cells of solid across the box between the vessel's images")}
+    margin: int = 8
+
+
+__all__ = ["PeriodicBox", "VesselRegion"]

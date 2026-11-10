@@ -22,9 +22,10 @@ With the ledger attached:
   law that declares one keeps it whatever its node reads (gravity without a couple reads nothing, and is a potential,
   its energy's change the components'). Nothing is declared;
 - **each law delivers into its own input on its receiver.** A receiver is a dynamics' node that writes its step
-  identity (``MimeNode.LEDGER_TERMS``) and names its port kind (``Dynamics.port``). Every delivery edge into it is moved
+  identity (``MimeNode.LEDGER_TERMS``) and names its port kinds (``Dynamics.port_kinds``). Every delivery edge into it is moved
   from the input it sums into (``applied_wrench``) to the law's own (``mime.core.ledger.law_input``), the summed input
-  kept for anything unattributed; each delivery is paired as its port kind says of the interface it is delivered into;
+  kept for anything unattributed; each delivery is paired as the one port kind naming the interface it is delivered
+  into says;
   a confinement is held in the receiver's step, under the confining law's id, and so is each law the receiver hosts
   itself (``MimeNode.hosted_laws``: a dynamic arm's weight, damping, stops and friction). What one chain segment hands
   the segment it is mounted on (its stator's reaction, its rotor's momentum and inertia) is booked under the output
@@ -213,13 +214,19 @@ def _paired_as(owners: Mapping[str, EntryPlan], node: str, field: str) -> Delive
     node is no dynamics', its dynamics names no port kind, or the kind does not pair that input."""
     plan = owners.get(node)
     dynamics = plan.entry if plan is not None and plan.section is Section.DYNAMICS else None
-    if plan is None or not isinstance(dynamics, Dynamics) or not dynamics.port:
+    if plan is None or not isinstance(dynamics, Dynamics) or not dynamics.port_kinds:
         return None
-    kind = port_kind(dynamics.port)
     local = node.removeprefix(plan.owner).removeprefix(".")
     interface = next((name for name, port in dynamics.capabilities().accepts.items()
                       if port.node == local and port.field == field), None)
-    return kind.deliveries.get(interface) if kind is not None and interface is not None else None
+    return _pairing(dynamics, interface) if interface is not None else None
+
+
+def _pairing(dynamics: Dynamics, interface: str) -> DeliveryKind | None:
+    """How the one port kind of ``dynamics`` whose deliveries name ``interface`` pairs a delivery into it, or ``None``
+    where none does (the registry refuses two kinds pairing one interface)."""
+    kinds = [kind for name in dynamics.port_kinds for kind in (port_kind(name),) if kind is not None]
+    return next((kind.deliveries[interface] for kind in kinds if interface in kind.deliveries), None)
 
 
 def _law_of(edge: EdgeDecl, laws: Mapping[str, EntryPlan], owners: Mapping[str, EntryPlan]) -> str:
@@ -258,16 +265,18 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
             into = sorted({(e.target[1], _law_of(e, laws, owners), e.carries) for e in edges
                            if e.target[0] == name and (e.carries in (DELIVERY, REACTION)
                                                        or (e.carries == COMMAND and e.target[1] in commands))})
-            if not any(carries != COMMAND for *_, carries in into) and not plan.confinements:
+            # Laws held in the step by registration (a flow's openings' laws) are metered as its deliveries are.
+            held_laws = bool(plan.registrations) and bool(dynamics.port_kinds)
+            if not any(carries != COMMAND for *_, carries in into) and not plan.confinements and not held_laws:
                 continue
-            if not dynamics.port or getattr(type(node), "LEDGER_TERMS", None) is None:
+            if not dynamics.port_kinds or getattr(type(node), "LEDGER_TERMS", None) is None:
                 reason = _unmetered_reason(dynamics)
                 unmetered[name] = reason or "its dynamics declares no port kind and states no reason"
                 lines.append(f"{name}: receives deliveries ({', '.join(dict.fromkeys(law for _, law, _ in into))}) "
                              f"and is not metered: {unmetered[name]}")
                 if refuses_unmetered(profile, reason):
                     refusals.append(_unmetered_refusal(plan.owner, f"the dynamics of {plan.owner} "
-                                                       f"({type(dynamics).label()})", "a port kind (Dynamics.port)"))
+                                                       f"({type(dynamics).label()})", "a port kind (Dynamics.port_kinds)"))
                 continue
             host = next((e.source[0] for e in edges if e.target[0] == name and e.target[1] == "mount_poses"), None)
             host_unit = units.get(host) if host is not None else None
@@ -323,9 +332,10 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
     """A metered receiver's deliveries, each law's in the order of its id within each input, then its hosted laws (a
     confinement's, then its own); and what keeps its port kind from pairing them. ``host`` is the unit of the segment
     it is mounted on where that is outside, which then supplies what the receiver's own laws exchange with it."""
-    kind = port_kind(dynamics.port)
-    if kind is None:
-        return (), [f"it names the port kind {dynamics.port!r}, which is not registered (mime.vocabulary.port_kinds)"]
+    unknown = [name for name in dynamics.port_kinds if port_kind(name) is None]
+    if unknown:
+        return (), [f"it names the port kinds {unknown}, which are not registered (mime.vocabulary.port_kinds)"]
+    named = " and ".join(repr(name) for name in dynamics.port_kinds)
     local = name.removeprefix(plan.owner).removeprefix(".")
     accepts = dynamics.capabilities().accepts
     interface_of = {port.field: interface for interface, port in accepts.items() if port.node == local}
@@ -338,9 +348,9 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
                                               writer if writer in outside else ""))
             continue
         interface = interface_of.get(field)
-        paired = kind.deliveries.get(interface) if interface is not None else None
+        paired = _pairing(dynamics, interface) if interface is not None else None
         if paired is None:
-            problems.append(f"its port kind {kind.name!r} does not say how {field!r} ({interface}) is paired, and "
+            problems.append(f"its port kinds {named} do not say how {field!r} ({interface}) is paired, and "
                             f"{by} delivers into it")
             continue
         law = laws[by].entry if by in laws else None
@@ -359,23 +369,27 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
             supplier = units.get(source, "") if units.get(source) in outside else ""
         held.append(ledger.LedgerDelivery(field, by, energy_class, paired.value, check, supplier))
     for confinement in plan.confinements:
-        if CONFINEMENT.name not in kind.deliveries:
-            problems.append(f"its port kind {kind.name!r} takes no confinement, and {confinement.id} confines it")
+        if _pairing(dynamics, CONFINEMENT.name) is None:
+            problems.append(f"its port kinds {named} take no confinement, and {confinement.id} confines it")
             continue
         law = laws[confinement.id].entry if confinement.id in laws else None
         held.append(ledger.LedgerDelivery("confinement", confinement.id,
                                           _class_line(law if isinstance(law, Interaction) else None), ledger.HOSTED))
     own = built[name]
+    # A law the receiver holds by its registration (a flow's opening's) that declares no class is a source: it reads
+    # no component's state and supplies its own work, as a class-less law's own node does (the source rule).
+    registered = {registration.id for registration in plan.registrations}
     for role, law_id, energy_class in getattr(own, "hosted_laws", lambda: ())():
         exchanged = host if role in getattr(type(own), "EXCHANGED", ()) else None
-        held.append(ledger.LedgerDelivery(role, law_id, energy_class, ledger.HOSTED, "", exchanged or ""))
+        source = law_id if law_id in registered and energy_class == ledger.UNMETERED else None
+        held.append(ledger.LedgerDelivery(role, law_id, energy_class, ledger.HOSTED, "", exchanged or source or ""))
     return tuple(held), problems
 
 
 def _receiver_lines(name: str, dynamics: Dynamics, held: Sequence[ledger.LedgerDelivery],
                     laws: Mapping[str, EntryPlan]) -> list[str]:
-    lines = [f"{name}: metered ({dynamics.port} port), its step identity and each law's paired work recorded in its "
-             f"step"]
+    lines = [f"{name}: metered ({' and '.join(dynamics.port_kinds)} port{'s' if len(dynamics.port_kinds) > 1 else ''}), "
+             f"its step identity and each law's paired work recorded in its step"]
     for law in ledger.laws(held):
         mine = [d for d in held if d.law == law]
         first = mine[0]
