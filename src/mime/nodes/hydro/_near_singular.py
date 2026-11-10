@@ -69,11 +69,12 @@ class PointBudget(NamedTuple):
     fits: Array
 
 
-def nearest_points(distance: Array, sizes: Array, budget: int) -> PointBudget:
+def nearest_points(distance: Array, counts: Any, budget: int) -> PointBudget:
     """Cells taken nearest first by ``distance`` (held out of every derivative by the caller) while their points
-    (``sizes``, each cell's count) fit ``budget`` slots."""
+    (``counts``, each cell's, fixed at build) fit ``budget`` slots."""
     cells = distance.shape[0]
     nearest = jnp.argsort(distance)
+    sizes = jnp.asarray(counts)
     filled = jnp.cumsum(sizes[nearest])
     fits = filled <= budget
     chosen = jnp.zeros(cells, dtype=bool).at[nearest].set(fits)

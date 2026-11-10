@@ -166,7 +166,7 @@ class MRSOperator:
         (each cell's least distance, held out of every derivative) chooses the cells. Short where a cell within the
         reach of the targets was left out."""
         cells = self.count
-        cell, within, valid, chosen = nearest_points(held, jnp.asarray(self.sizes), self.budget)
+        cell, within, valid, chosen = nearest_points(held, self.sizes, self.budget)
         index = jnp.asarray(self.order)[jnp.clip(jnp.asarray(self.starts)[cell] + within, 0, len(self.order) - 1)]
         weights = jnp.where(valid, quadrature.weights[index], 0.0)
         integrated = integrated_cells(targets, quadrature.points[index], weights, jnp.where(valid, cell, 0), cells,
