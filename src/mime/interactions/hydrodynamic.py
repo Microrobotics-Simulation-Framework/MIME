@@ -1552,7 +1552,7 @@ class Drag(UncoupledDrag):
     )
 
     near_field_share: float | None = None
-    lubrication: Lubrication | bool | None = None
+    lubrication: Lubrication | bool | None = None  # pyright: ignore[reportIncompatibleVariableOverride] - the mrs rung's hand-over is a switch, the surrogate's blend a group
     grading: str | None = None
     contact: tuple[float, float, float] | None = None
     contact_gap: Annotated[Quantity | None, Length] = None

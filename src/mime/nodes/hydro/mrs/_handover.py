@@ -46,8 +46,7 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp, quaternion, shape_named
-from mime.nodes.body._contact import START_APART, Hull, Pair, Wall, pair_contacts, search_tolerance, spacing_of, \
-    start_count
+from mime.nodes.body._contact import START_APART, Hull, Pair, Wall, pair_contacts, spacing_of, start_count
 from mime.nodes.hydro._film import FILM_NODES, about, film, principal, smooth_floor, tangent_frame
 from mime.registry import Geometry
 
@@ -152,12 +151,14 @@ def near_contact(search: Search, kind: Geometry, parameters: Mapping[str, Any], 
     (``film_search_*``). The gap's curvature is the body's (the inverse of its support's derivative in the direction,
     its radii of curvature, regularised by :data:`RADIUS_FLOOR`) less the wall's (its shape's)."""
     dtype = pose.dtype
-    shape = shape_named(search.shape)
+    shape = cast(Any, shape_named(search.shape))  # a shape that gives its curvature (Shape.curvature)
     rotation = quaternion.rotation_matrix(pose[3:])
     kind_pose = jnp.concatenate([pose[:3] + rotation @ jnp.asarray(search.centre, dtype=dtype),
                                  quaternion.multiply(pose[3:], jnp.asarray(search.turned, dtype=dtype))])
-    hull = Hull(points, search.groups, kind_pose, kind, parameters, search.places, leaves["film_search_apart_squared"],
-                leaves["film_search_shortfall"], leaves["film_search_tolerance"], search.starts)
+    # one start reads no separation, and the step keeps no shortfall (the contact's report): neither is then a leaf
+    apart = leaves["film_search_apart_squared"] if search.starts > 1 else jnp.zeros((), dtype=dtype)
+    hull = Hull(points, search.groups, kind_pose, kind, parameters, search.places, apart, jnp.zeros((), dtype=dtype),
+                leaves["film_search_tolerance"], search.starts)
     zero = jnp.zeros((), dtype=dtype)
     found = pair_contacts(Pair(hull, Wall(shape, region, zero), True), zero)
     point, normal, gap = found.points[0], found.rows[0, :3], found.gaps[0]
@@ -165,7 +166,7 @@ def near_contact(search: Search, kind: Geometry, parameters: Mapping[str, Any], 
     support = kind.support(parameters, turn.T @ -normal, found.local[0])
     radii = turn @ support.jacobian @ turn.T
     tangent = tangent_frame(normal)
-    floor = RADIUS_FLOOR * search.size
+    floor = RADIUS_FLOOR * leaves["film_reach"]
     body = jnp.linalg.inv(tangent @ radii @ tangent.T + floor * jnp.eye(2, dtype=dtype))
     wall = tangent @ shape.curvature(region, point) @ tangent.T
     frame, k1, k2 = principal(body - wall, tangent, normal)
@@ -245,7 +246,7 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
     # the film's patch along the gap's slower direction, sqrt(2 cap / k2), past a quarter turn of the wall there
     annulus = 2.0 * (0.5 / k1) * contact.wall_along ** 2 > (ANNULUS_SHARE * 0.5 * math.pi) ** 2 * \
         jnp.maximum(contact.k2, 0.0)
-    flags = _lax.stop_gradient(jnp.stack([window, annulus & (delta > 0.0), unsolved]).astype(dtype))
+    flags = _lax.stop_gradient(jnp.stack([window & (delta > 0.0), annulus & (delta > 0.0), unsolved]).astype(dtype))
     return Handover(wall.opened(constants, delta), found.resistance, contact, handover, delta, cutoff,
                     _lax.stop_gradient(found.residual), flags[0], flags[1], flags[2])
 

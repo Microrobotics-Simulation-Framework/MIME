@@ -264,7 +264,7 @@ def tube_distance_of(node: MRSDragNode, pose: np.ndarray) -> float:
 
 #: The generator's case (blob 0.5, the quadrature four times finer, 0.6 mm), as the PR's refusal test took it, with the
 #: wall's image at the force points, as the review measured it there.
-GENERATORS = Drag.MRS(spacing=mm(0.6), blob=0.5, quadrature_refinement=4, wall_refinement=1, wall_kind="tube")
+GENERATORS = Drag.MRS(lubrication=False, spacing=mm(0.6), blob=0.5, quadrature_refinement=4, wall_refinement=1, wall_kind="tube")
 
 
 def test_the_build_refuses_an_indefinite_resistance_at_the_generators_own_pose_its_reads_accepted(monkeypatch):
@@ -294,7 +294,7 @@ def test_control_the_mean_radius_pose_puts_the_body_through_the_wall_where_no_re
 
 def test_the_gap_the_node_reports_is_the_tube_wall_kinds_own_distance_at_its_quadrature(monkeypatch):
     offset = generators_pose(0.1e-3, math.pi / 8)
-    node = built_unchecked(tube_screw(Drag.MRS(spacing=mm(0.829), wall_kind="tube"), offset, math.pi / 8),
+    node = built_unchecked(tube_screw(Drag.MRS(lubrication=False, spacing=mm(0.829), wall_kind="tube"), offset, math.pi / 8),
                            monkeypatch)
     judged = node.judged_at(pose_at(offset, math.pi / 8))
     expected = tube_distance_of(node, pose_at(offset, math.pi / 8))
@@ -310,7 +310,7 @@ def test_control_a_distance_from_the_axis_in_the_walls_place_fails_the_gap(monke
         jnp.sum(points[:, 1:] ** 2, axis=-1)))
     monkeypatch.setitem(_walls._corrections, (TUBE_CORRECTION.name, TUBE_CORRECTION.version), planted)
     offset = generators_pose(0.1e-3, math.pi / 8)
-    node = built_unchecked(tube_screw(Drag.MRS(spacing=mm(0.829), wall_kind="tube"), offset, math.pi / 8),
+    node = built_unchecked(tube_screw(Drag.MRS(lubrication=False, spacing=mm(0.829), wall_kind="tube"), offset, math.pi / 8),
                            monkeypatch)
     judged = node.judged_at(pose_at(offset, math.pi / 8))
     assert judged.gap != pytest.approx(tube_distance_of(node, pose_at(offset, math.pi / 8)), rel=1e-3)
@@ -356,7 +356,7 @@ def test_the_tube_image_between_a_point_set_and_itself_is_the_tube_correction(mo
     from mime.nodes.hydro.mrs._tube import tube_correction, tube_image
 
     offset = generators_pose(0.3e-3)
-    node = built_unchecked(tube_screw(Drag.MRS(spacing=mm(0.829), wall_kind="tube"), offset), monkeypatch)
+    node = built_unchecked(tube_screw(Drag.MRS(lubrication=False, spacing=mm(0.829), wall_kind="tube"), offset), monkeypatch)
     parameters = wall_parameters(node)
     points = jnp.asarray(world_force_points(node, pose_at(offset))[::4])  # a quarter of them: every pair is read twice
     pairs = tube_image(points, points, parameters, 1e-3).matrix
@@ -460,7 +460,7 @@ def integrated_miss(node: MRSDragNode, pose: np.ndarray, most: int | None = None
 
 def coarse_screw_on_the_floor(monkeypatch) -> tuple[MRSDragNode, np.ndarray]:
     offset = generators_pose(0.2e-3, math.pi / 8)
-    law = Drag.MRS(spacing=mm(1.2), blob=0.5, quadrature_refinement=4, wall_refinement=2, wall_kind="tube")
+    law = Drag.MRS(lubrication=False, spacing=mm(1.2), blob=0.5, quadrature_refinement=4, wall_refinement=2, wall_kind="tube")
     return built_unchecked(tube_screw(law, offset, math.pi / 8), monkeypatch), pose_at(offset, math.pi / 8)
 
 
@@ -682,7 +682,7 @@ def test_at_its_gap_the_point_image_is_definite_at_every_roll_where_the_floor_of
     """FL-9 at the default's 0.829 mm with the image at the force points: every roll of eight definite with its nearest
     surface point :data:`CONFINED_GAP` force spacings from the wall, and the same node on the floor, 0.1 mm from it,
     indefinite at some roll (the control, the gap's whole effect: a resistance the gap makes definite)."""
-    node = built_unchecked(tube_screw(Drag.MRS(spacing=mm(0.829), wall_kind="tube"), generators_pose(0.5e-3)),
+    node = built_unchecked(tube_screw(Drag.MRS(lubrication=False, spacing=mm(0.829), wall_kind="tube"), generators_pose(0.5e-3)),
                            monkeypatch)
     assert node.wall_table is None, "the image at the force points"
 
@@ -778,7 +778,7 @@ def test_control_the_refusal_lifted_a_body_held_on_the_wall_plans_silently_on_it
 def test_a_report_given_a_closest_approach_of_0_says_no_force_spacing_clears_it(monkeypatch):
     """The build report's own reading of the closest approach (the dynamics' confinements, not the planner's) at 0:
     a line that no force spacing clears it, never a division by it."""
-    node = built_unchecked(tube_screw(Drag.MRS(spacing=mm(0.829), wall_kind="tube")), monkeypatch)
+    node = built_unchecked(tube_screw(Drag.MRS(lubrication=False, spacing=mm(0.829), wall_kind="tube")), monkeypatch)
     lines = node.built_lines({"pose": pose_at(0.0)}, 0.0)
     assert any("holds the body on the wall" in line and "no force spacing clears" in line for line in lines)
 
@@ -790,7 +790,7 @@ def test_the_build_report_states_the_wall_refinement_taken_and_says_where_it_is_
     """FL-9's grid at 1.2 mm leaves a cell with no wall point at wall_refinement 2 (as at the default's 0.829 mm), so
     the build takes the next finer that leaves none, 3, and the report's cost line says both; at 4, taken as written,
     it names 4 alone (the control: no promotion stated where there is none)."""
-    law = Drag.MRS(spacing=mm(1.2), blob=0.5, quadrature_refinement=4, wall_kind="tube", wall_refinement=written)
+    law = Drag.MRS(lubrication=False, spacing=mm(1.2), blob=0.5, quadrature_refinement=4, wall_kind="tube", wall_refinement=written)
     text = built_unchecked(tube_screw(law), monkeypatch)._wall_text()
     assert f"a wall quadrature {taken} times finer than the force spacing" in text
     assert (f"wall_refinement={written} written" in text) == (written != taken)

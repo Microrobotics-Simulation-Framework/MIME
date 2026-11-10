@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lubrication's hand-over on the MRS rung, body to wall: `Drag.MRS(lubrication=...)`** (drag 0.5.0, on by default
+  near a wall that opens, a plane or a tube, about a body whose hull kind has a support). The near-wall resistance is
+  the coarse MRS evaluated once with the body's near contact opened to the hand-over gap (`HANDOVER_SPACINGS`, 0.75, of
+  the force spacing; the finest graded spacing where graded), never closer, plus the thin film's increment between the
+  contact's gap and the opened one: Reynolds' equation on the gap's second-order form (the body's support curvature less
+  the wall's), solved by exact block-tridiagonal elimination (`mime.nodes.hydro._film`). It is the MRS's own completion in
+  the gap, not physics beyond Stokes flow; `lubrication=False` keeps the coarse MRS alone. The contact is opened by moving
+  the wall (`WallCorrection.opened`: the plane translated, the tube dilated), smoothly (a C2 lift, the identity beyond the
+  hand-over band, so a body farther off is the coarse MRS's, step for step). **Each surface's roughness** is a declared
+  length (`<body>.roughness`, `<structure>.roughness`, 1 um where none is declared, never fitted): below the pair's
+  composite roughness (`roughness_cutoff`, the root of the sum of squares) the film's gap is floored, so its resistance
+  stops growing and a contact carries the gap. The near-wall resistance owns every hydrodynamic coupling of rotation and
+  translation down to that cutoff, and the node reports the film's own share (`film_coupling`) and increment
+  (`film_increment`). With it, a compact body's default blob near a wall is 0.05 and the default force spacing no
+  longer follows a contact's margin, and a body held on the wall (a margin of 0) is no longer refused
+  (`drag.mrs-on-wall`). Flags: `handover_window` (the hand-over gap past 0.15 of the contact's smaller radius, outside the
+  measured reach), `film_annulus` (a body nearly filling a lumen, whose ring contact the point film does not cover) and
+  `film_unsolved` (warned of). Not yet: several contacts of one body, a ring's film, bodies sharing a medium (refused
+  with the hand-over on, `drag.lubrication-near-field`: write `lubrication=False` there) and a body between two walls;
+  the surrogate's blend (`Lubrication(epsilon=...)`) is unchanged. Released programs (drag 0.3.0 and 0.4.0) are
+  unchanged.
+
 - **A medium's flow metered by the energy ledger: the `fluid` port kind, and the rule for a source.** With
   `exp.observe(EnergyLedger())` the build meters an FVM flow as a receiver of the new `fluid` port kind: its fluid's
   momentum (`flow.momentum`, kg m/s, over the fluid alone, as the drive acts on it alone) against the body force each

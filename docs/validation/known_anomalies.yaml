@@ -3623,7 +3623,7 @@ anomalies:
       The size of the effect at A is unmeasured. The sphere's band does not carry over to FL-9's crest, whose cross radius is
       about the force spacing at A (0.178 mm), coarser than any configuration measured.
     workaround: "Treat a result at a gap below about one force spacing from a wall as unbounded in this respect, and read it from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing."
-    planned_resolution: "Open, in phase W2 of the dev2 plan (the lift form's lubrication hand-over, F0's decision C3). The case that decides it: FL-9 against a fine MRS with the cell-integrated image at A's floored gaps in its tube (the 0.1 mm margin); the sphere near a plane against its exact solutions at every gap; and M4's replaced control (MIME-ANO-151). Existing records that name the hand-over, MIME-ANO-114 and MIME-ANO-130, now name this phase. This entry changes no code."
+    planned_resolution: "Open, in phase W2a of the dev2 plan (the lift form's lubrication hand-over, F0's decision C3), in two pull requests. The first (1a) gives drag 0.5.0's mrs rung the hand-over (Drag.MRS(lubrication=), on by default near a plane or a tube) for one point contact a body, gated by the sphere near a plane against its exact solutions at every gap (tests/oracles/test_lubrication.py) and M4's replaced control (MIME-ANO-151); the margin no longer sets the force spacing there, and the roughness of each surface is where the film hands the gap to contact. The second (1b) runs the case that decides this entry: FL-9's several crests against a fine MRS with the cell-integrated image at A's floored gaps in its tube (the 0.1 mm margin), which measures M2's and M4's sign and size. Existing records that name the hand-over, MIME-ANO-114 and MIME-ANO-130, now name this phase."
 
   - anomaly_id: MIME-ANO-151
     title: "The lubrication is counted twice where the MRS rung already resolves part of the gap: the overlap is positive on the sphere and unmeasured on FL-9, and Drag.MRS cannot take the hand-over"
@@ -3657,7 +3657,7 @@ anomalies:
       FL-9's sign and size of the overlap are not measured; the sphere's over-count of 30 to 43 % is for spacings s/a 0.07 to
       0.2 on a sphere near a plane.
     workaround: "Keep the lubrication off (the baseline does, and the register's rows for M4 are against that baseline), and read a result with it on as carrying an overlap of unknown sign on a screw."
-    planned_resolution: "Open, in phase W2 of the dev2 plan (the lift form, F0's decision C3), with MIME-ANO-150: the case measures FL-9's sign and size, and M4's replaced control runs once Drag.MRS accepts the hand-over. This entry changes no code."
+    planned_resolution: "Open, in phase W2a of the dev2 plan (the lift form, F0's decision C3), with MIME-ANO-150. Its first pull request (1a) makes Drag.MRS take the hand-over (drag 0.5.0), so M4's replaced control runs: the film's term doubled moves the force-free speed by what the resistance and the reported increment predict (tests/oracles/test_lubrication.py, gate 7); and a second lubrication law beside it is refused (lubrication.twice). FL-9's sign and size, measured against a fine MRS in its tube, are the second pull request's (1b). The surrogate's blend (Lubrication(epsilon=...)) is unchanged until the maintainer rules on its retirement."
 
   - anomaly_id: MIME-ANO-152
     title: "Soft-wall lubrication is not modelled: the wall's compliance changes the film at the contact, and the near-contact part of the register's N4 is deferred to 0.4.0"
@@ -3722,3 +3722,40 @@ anomalies:
       would be an acceptance test of sign and frame against hardware, not an accuracy claim, and it is not run in 0.3.
     workaround: "Establish the sign convention on your own hardware (a measured field at a known current, read with a sensor of known orientation) before relying on the direction of rotation; nothing is needed for gradient pull on a field-aligned body."
     planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (the measured Navion_2 campaign, re-read with its script) would settle which side is flipped. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-154
+    title: "Below the hand-over gap the lift form over-counts the coupling of rotation and translation against its own size: a sphere spun on a plane translates 8 to 43 % too fast at gaps of 0.15 to 0.06 radii"
+    description: >
+      Drag 0.5.0's lubrication hand-over (the lift form: the coarse MRS with the contact opened to the hand-over gap h_m,
+      plus the thin film's increment TF(h) - TF(h_m)) holds every entry of a sphere's resistance above a plane within 7 % of
+      the exact answer on the scale the entries are judged on (each diagonal against itself, the couplings on
+      sqrt(R_tt R_rr): W2a's gate 1, at force spacings of 0.15 and 0.2 radii, gaps 0.002 to 0.3 radii). Judged against
+      itself, the coupling is not: the translation of a force-free sphere spun on the wall per rotation, U / (a Omega),
+      reads +7.8 %, +28 %, +38 % and +43 % at gaps of 0.15, 0.1, 0.075 and 0.06 radii at a force spacing of 0.2 radii,
+      and -0.3 %, +9.6 %, +20 % and +27 % at 0.15 radii, against the method of fundamental solutions (resolved to 2e-4),
+      where the coarse MRS alone (lubrication=False) reads -12.3 to +1.1 % at every one of those gaps [measured: W2a's PR 1a,
+      float64, a sphere of 1 mm, blob 0.05].
+
+      The cause, measured: between the contact's gap and h_m (0.15 radii at a spacing of 0.2) the film's increment
+      carries 66 to 71 % of the exact increment of the force along the wall, 78 to 84 % of the normal's and 71 to 75 %
+      of the rotation's, and 1.8 to 1.9 times the exact increment of the coupling about the centre, at 65 and 129 grid
+      nodes alike (so not the film's grid). The coupling about the centre is the coupling about the contact less the arm
+      times the force along the wall, a small difference that a short force along the wall turns into a large excess. The
+      film's form is Reynolds' leading order in the gap over the radius, and at these gaps (0.06 to 0.15 of the radius)
+      its next order is not small [inference from the measurement, not separated].
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A body rolling on a wall by hydrodynamics alone (the rolling arm's stage 1) moves by this coupling: between the
+      hand-over gap and about half of it its speed per rotation is over-counted by up to 43 %. Below 0.06 radii no oracle
+      here resolves the coupling, so its error there is unknown, not bounded.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "entry: interaction drag 0.5.0, rung mrs; with lubrication, between the hand-over gap and about half of it"
+    residual_risk: >
+      The over-count is measured on a sphere above a plane at two spacings; an elongated contact, a tube and gaps below
+      0.06 radii are not measured. Each entry on its own scale (the per-entry line) is within 7 %, so a result that does not
+      rest on the coupling against its own size is not affected beyond that.
+    workaround: "For rolling, read the speed per rotation from a ladder of force spacings (the over-count falls with the spacing: +43 % at 0.2 radii, +27 % at 0.15, at a gap of 0.06 radii), or compare with lubrication=False above about half the hand-over gap."
+    planned_resolution: "Open, in phase W2a (before W2b's rolling arm relies on the coupling): a smaller hand-over gap near a rolling contact, or the film's next order in the gap over the radius, measured against the same oracle; an oracle for the coupling below 0.06 radii (Goldman, Cox and Brenner's near-contact constants, sourced before use)."

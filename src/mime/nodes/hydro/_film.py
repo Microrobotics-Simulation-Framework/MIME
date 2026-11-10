@@ -93,6 +93,14 @@ def _block_tridiagonal(T: Array, W: Array, E: Array, r: Array) -> Array:
     return solved
 
 
+def _above(diagonal: Array) -> Array:
+    return jnp.diag(diagonal, 1)
+
+
+def _below(diagonal: Array) -> Array:
+    return jnp.diag(diagonal, -1)
+
+
 def _rigid(X: Array, Q: Array) -> Array:
     """``(..., 3, 6)``: the velocity at ``X`` per unit rigid mode about ``Q`` (three translations, three rotations)."""
     arm = X - Q
@@ -174,7 +182,7 @@ def film(gap: Array, k1: Array, k2: Array, reach: Array, viscosity: Array, cap_f
     south_i, north_i = conduct_north[inside, :-1], conduct_north[inside, 1:]
     across = -conduct_north[inside, 1:-1]
     T = (jax.vmap(jnp.diag)(west_i + east_i + south_i[:, :lines] + north_i[:, :lines])
-         + jax.vmap(lambda o: jnp.diag(o, 1))(across) + jax.vmap(lambda o: jnp.diag(o, -1))(across))
+         + jax.vmap(_above)(across) + jax.vmap(_below)(across))
     rhs = -source[inside, inside, :]
     interior = solve_film(T, west_i, east_i, rhs)
     padded = jnp.concatenate([jnp.zeros_like(interior[:1]), interior, jnp.zeros_like(interior[:1])])

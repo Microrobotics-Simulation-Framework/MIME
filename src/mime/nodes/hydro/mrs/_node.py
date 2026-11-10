@@ -274,17 +274,17 @@ class SeparatedDragState(TypedDict, closed=True):
     handover_window: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
     film_annulus: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
     film_unsolved: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    film_cutoff: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
 
 
 #: The leaves a node with lubrication's hand-over holds for its near contact's search, made when it is built from the
 #: hull's force points as built (``mime.nodes.hydro.mrs._handover.Search``), with their units: as the body's hull
 #: contact holds its own (``mime.nodes.body._rigid_inertial.SEARCH_LEAVES``), values of the step, not constants of its
 #: program; and the film's reach, the body's size.
-FILM_LEAVES = {"film_search_apart_squared": "m^2", "film_search_tolerance": "m", "film_search_shortfall": "m",
-               "film_reach": "m"}
+FILM_LEAVES = {"film_search_apart_squared": "m^2", "film_search_tolerance": "m", "film_reach": "m"}
 #: The state fields a node with the hand-over adds (zero where the film is not evaluated).
 FILM_FIELDS = ("film_increment", "film_coupling", "contact_gap", "film_residual", "handover_window", "film_annulus",
-               "film_unsolved")
+               "film_unsolved", "film_cutoff")
 
 
 def film_state(zero: Array) -> dict[str, Array]:
@@ -713,9 +713,9 @@ class MRSDragNode(MimeNode):
         from mime.nodes.body._contact import search_tolerance
 
         search = cast(Search, self._search)
-        return {"film_search_apart_squared": search.apart_squared,
-                "film_search_tolerance": search_tolerance(run_dtype(), search.size),
-                "film_search_shortfall": search.shortfall, "film_reach": search.size}
+        apart = {"film_search_apart_squared": search.apart_squared} if search.starts > 1 else {}
+        return {**apart, "film_search_tolerance": search_tolerance(run_dtype(), search.size),
+                "film_reach": search.size}
 
     @property
     def graded(self) -> bool:
@@ -752,10 +752,10 @@ class MRSDragNode(MimeNode):
                 f"numerical choice, measured)"))
             held["roughness_body"] = ParamSpec(units="m", description="the roughness of the body's surface, declared")
             held["roughness_wall"] = ParamSpec(units="m", description="the roughness of the wall's surface, declared")
-            held.update({key: ParamSpec(units=units, trainable=False, description=(
+            held.update({key: ParamSpec(units=FILM_LEAVES[key], trainable=False, description=(
                 "made when the node is built, from the hull's force points as built: where the near contact's search "
                 "starts and when it stops, and the film's reach; outside every derivative"))
-                for key, units in FILM_LEAVES.items()})
+                for key in self._film_values()})
         found = {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
                  "part_centre": ParamSpec(units="m", trainable=False, description=placed),
                  "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data,
@@ -1424,7 +1424,7 @@ class MRSDragNode(MimeNode):
             film = {"film_increment": handover.increment, "film_coupling": handover.increment[:3, 3:],
                     "contact_gap": _lax.stop_gradient(handover.contact.gap), "film_residual": handover.residual,
                     "handover_window": handover.window, "film_annulus": handover.annulus,
-                    "film_unsolved": handover.unsolved}
+                    "film_unsolved": handover.unsolved, "film_cutoff": _lax.stop_gradient(handover.cutoff)}
         else:
             found, accepted, gap, short, *outside = checkpoint(solved)(held, theta, viscosity, pose, parameters)
         fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
