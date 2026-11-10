@@ -126,6 +126,12 @@ description.missing           user
 description.refused           user
 drag.body-kind                user
 drag.empty-cell               user
+drag.grading-approach         user
+drag.grading-contact          user
+drag.grading-features         user
+drag.grading-gap              user
+drag.grading-kind             user
+drag.grading-near-field       user
 drag.medium-flows             user
 drag.mrs-indefinite           user
 drag.mrs-on-wall              user
