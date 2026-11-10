@@ -132,6 +132,7 @@ drag.grading-features         user
 drag.grading-gap              user
 drag.grading-kind             user
 drag.grading-near-field       user
+drag.lubrication-near-field   user
 drag.medium-flows             user
 drag.mrs-indefinite           user
 drag.mrs-on-wall              user

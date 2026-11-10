@@ -38,6 +38,13 @@ from mime.nodes.hydro.mrs._quadrature import (
 from mime.nodes.hydro._near_singular import blended, nearest_cells, smoothstep, within_reach
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, wall_correction_named
+from mime.nodes.hydro.mrs._handover import (
+    DEFAULT_ROUGHNESS,
+    HANDOVER_SPACINGS,
+    Search,
+    handed_over,
+    search_for,
+)
 from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.registry import Problem, Samples, Sampling
 
@@ -260,6 +267,30 @@ class SeparatedDragState(TypedDict, closed=True):
     stopped_pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
     stopped_gap: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
     stopped_least: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    film_increment: NotRequired[ReadOnly[Annotated[Float[Array, "6 6"], Units("N s/m; N s; N m s")]]]  # noqa: F722 - a jaxtyping shape
+    film_coupling: NotRequired[ReadOnly[Annotated[Float[Array, "3 3"], Units("N s")]]]  # noqa: F722 - a jaxtyping shape
+    contact_gap: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
+    film_residual: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    handover_window: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    film_annulus: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    film_unsolved: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+
+
+#: The leaves a node with lubrication's hand-over holds for its near contact's search, made when it is built from the
+#: hull's force points as built (``mime.nodes.hydro.mrs._handover.Search``), with their units: as the body's hull
+#: contact holds its own (``mime.nodes.body._rigid_inertial.SEARCH_LEAVES``), values of the step, not constants of its
+#: program; and the film's reach, the body's size.
+FILM_LEAVES = {"film_search_apart_squared": "m^2", "film_search_tolerance": "m", "film_search_shortfall": "m",
+               "film_reach": "m"}
+#: The state fields a node with the hand-over adds (zero where the film is not evaluated).
+FILM_FIELDS = ("film_increment", "film_coupling", "contact_gap", "film_residual", "handover_window", "film_annulus",
+               "film_unsolved")
+
+
+def film_state(zero: Array) -> dict[str, Array]:
+    """The hand-over's state fields at zero (:data:`FILM_FIELDS`)."""
+    return {"film_increment": jnp.zeros((6, 6), dtype=zero.dtype), "film_coupling": jnp.zeros((3, 3), dtype=zero.dtype),
+            **{key: zero for key in FILM_FIELDS[2:]}}
 
 
 def stops_where(accepted: Array, least: Array) -> Array:
@@ -549,6 +580,8 @@ class MRSDragNode(MimeNode):
                  wall_quadrature_owners: np.ndarray | None = None, wall_cells: int | None = None,
                  wall_refinement: int | None = None, wall_refinement_written: int | None = None,
                  graded_patch: np.ndarray | None = None, grading: str | None = None,
+                 lubrication: bool = False, handover_spacing: float | None = None,
+                 roughness_body: float | None = None, roughness_wall: float | None = None,
                  **constants: object) -> None:
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
@@ -624,6 +657,17 @@ class MRSDragNode(MimeNode):
             self._patch.flags.writeable = False
             separated["graded_patch"] = self._patch
             separated["grading"] = str(grading or "")
+        self._search: Search | None = None
+        if lubrication:
+            if quadrature_owners is None or handover_spacing is None:
+                raise ValueError("lubrication's hand-over runs on a separated quadrature (quadrature_owners) with the "
+                                 "force spacing it hands over at (handover_spacing)")
+            if wall.opened is None or wall.region is None:
+                raise ValueError(f"the wall kind {wall_kind} {wall_kind_version} gives no opening (WallCorrection."
+                                 f"opened, region), so lubrication's hand-over cannot open a contact with it")
+            separated.update(lubrication=True, handover_spacing=float(handover_spacing),
+                             roughness_body=float(DEFAULT_ROUGHNESS if roughness_body is None else roughness_body),
+                             roughness_wall=float(DEFAULT_ROUGHNESS if roughness_wall is None else roughness_wall))
         super().__init__(name, timestep, viscosity=viscosity, blob=blob, kind=kind, kind_version=kind_version,
                          patches=tuple(patches), counts=held_counts, part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), wall_kind=wall_kind,
@@ -634,6 +678,44 @@ class MRSDragNode(MimeNode):
         if self._patch is not None and self._owners is not None and self._patch.shape != self._owners.shape:
             raise ValueError(f"graded_patch names whether each of the {len(self._owners)} points of the separated "
                              f"quadrature lies in the graded patch; it has shape {self._patch.shape}")
+        if lubrication:
+            self._search = self._film_search(wall)
+
+    @property
+    def lubricated(self) -> bool:
+        """Whether the node hands its near contact over to the film (``lubrication``): the coarse MRS evaluated with
+        the contact opened to the hand-over gap, plus the film's increment (``mime.nodes.hydro.mrs._handover``)."""
+        return self._search is not None
+
+    def _kind_parameters(self, p: Mapping[str, Any]) -> dict[str, Any]:
+        """The kind's settings as its samples and support read them: each a leaf where it is a number, its directions
+        and integers held as built."""
+        constants = self.constants()
+        return {name: p[f"{SHAPE}{name}"] if name in self._traced else constants[f"{SHAPE}{name}"]
+                for name in (key.removeprefix(SHAPE) for key in constants if key.startswith(SHAPE))}
+
+    def _film_search(self, wall: WallCorrection) -> Search:
+        """The near contact's search, from the kind's force points in its own frame as built, in float64."""
+        constants = self.constants()
+        region = cast(Any, wall.region)
+        plain = self._kind_parameters(constants)
+        with cast(Any, jax).enable_x64(True):
+            settings = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
+                        for name, value in plain.items()}
+            points = np.asarray(self._sampling.samples(self._kind, settings).points, dtype=np.float64)
+        shape = region({name: constants[f"{WALL}{name}"] for name in wall.parameters})[0]
+        return search_for(self._kind, plain, points, self._sampling.patches, self._sampling.counts,
+                          constants["part_rotation"], constants["part_centre"], shape)
+
+    def _film_values(self) -> dict[str, float]:
+        """The search's leaves as the node was built (:data:`FILM_LEAVES`), the tolerance for the run's dtype."""
+        from mime.core import run_dtype
+        from mime.nodes.body._contact import search_tolerance
+
+        search = cast(Search, self._search)
+        return {"film_search_apart_squared": search.apart_squared,
+                "film_search_tolerance": search_tolerance(run_dtype(), search.size),
+                "film_search_shortfall": search.shortfall, "film_reach": search.size}
 
     @property
     def graded(self) -> bool:
@@ -663,6 +745,17 @@ class MRSDragNode(MimeNode):
             held["force_spacing"] = ParamSpec(units="m", trainable=False,
                                               description="held as built: the force spacing the step judges the body's "
                                                           "distance from the wall against (near_wall), a report")
+        if self.lubricated:
+            held["handover_spacing"] = ParamSpec(units="m", trainable=False, description=(
+                f"held as built: the force spacing at the near contact (the finest graded one where graded), whose "
+                f"{HANDOVER_SPACINGS:g} is the gap the contact is opened to before the coarse MRS is evaluated (a "
+                f"numerical choice, measured)"))
+            held["roughness_body"] = ParamSpec(units="m", description="the roughness of the body's surface, declared")
+            held["roughness_wall"] = ParamSpec(units="m", description="the roughness of the wall's surface, declared")
+            held.update({key: ParamSpec(units=units, trainable=False, description=(
+                "made when the node is built, from the hull's force points as built: where the near contact's search "
+                "starts and when it stops, and the film's reach; outside every derivative"))
+                for key, units in FILM_LEAVES.items()})
         found = {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
                  "part_centre": ParamSpec(units="m", trainable=False, description=placed),
                  "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data,
@@ -693,7 +786,8 @@ class MRSDragNode(MimeNode):
         held = {HELD: as_run_array(self.held_in_body_frame),
                 **{f"{HELD_FROM}{key}": leaves[key] for key in self.body_leaf_names()}} \
             if self._owners is not None else {}
-        return {**leaves, **self._wall_arguments(), **held}
+        film = {key: as_run_array(value) for key, value in self._film_values().items()} if self.lubricated else {}
+        return {**leaves, **self._wall_arguments(), **held, **film}
 
     @override
     def _step_constants(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -733,7 +827,8 @@ class MRSDragNode(MimeNode):
             return state | patch
         spaced = "force_spacing" in self.constants()
         return state | {"wall_gap": zero, "stopped_gap": zero} | ({"wall_gap_spacings": zero} if spaced else {}) | (
-            {"wall_cells_short": zero} if spaced and self._wall_quadrature is not None else {}) | patch
+            {"wall_cells_short": zero} if spaced and self._wall_quadrature is not None else {}) | patch | (
+            film_state(zero) if self.lubricated else {})
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -1280,7 +1375,10 @@ class MRSDragNode(MimeNode):
         own_size = graded and GRADED_WALL_MEASURE == "cell"
 
         def solved(held: Array, theta: Mapping[str, Any], viscosity: Array, pose: Array,
-                   parameters: Mapping[str, Any]) -> tuple[Array, ...]:
+                   parameters: Mapping[str, Any], actual: Mapping[str, Any] | None = None) -> tuple[Array, ...]:
+            # with the hand-over, ``parameters`` are the wall opened and ``actual`` the wall's own, which the body's
+            # distance from the wall is reported against
+            reported = parameters if actual is None else actual
             turn = quaternion.rotation_matrix(pose[3:])
             body = self.body(theta)
             force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
@@ -1305,19 +1403,32 @@ class MRSDragNode(MimeNode):
                                          pose[:3])
             points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
             if not graded:
-                gap = zero if distance is None else least_distance(distance(points, parameters))
+                gap = zero if distance is None else least_distance(distance(points, reported))
                 return found, image.accepted, gap, short
             if distance is None:
                 return found, image.accepted, zero, short, jnp.asarray(False)
-            away = distance(points, parameters)
+            away = distance(points, reported)
             least = least_distance(away)
             band = jnp.inf if spacing is None else OFF_PATCH_BAND * spacing
             outside = jnp.any(~jnp.asarray(in_patch) & (away <= least + band))
             return found, image.accepted, least, short, outside
 
-        found, accepted, gap, short, *outside = checkpoint(solved)(held, theta, viscosity, pose, parameters)
+        film: dict[str, Array] = {}
+        if self._search is not None:
+            handover = handed_over(self._search, self._kind, self._kind_parameters(p),
+                                   self._sampling.samples(self._kind, self._kind_parameters(p)).points.astype(dtype),
+                                   pose, wall, parameters, p, viscosity)
+            found, accepted, gap, short, *outside = checkpoint(solved)(held, theta, viscosity, pose, handover.opened,
+                                                                       parameters)
+            found = found + handover.increment
+            film = {"film_increment": handover.increment, "film_coupling": handover.increment[:3, 3:],
+                    "contact_gap": _lax.stop_gradient(handover.contact.gap), "film_residual": handover.residual,
+                    "handover_window": handover.window, "film_annulus": handover.annulus,
+                    "film_unsolved": handover.unsolved}
+        else:
+            found, accepted, gap, short, *outside = checkpoint(solved)(held, theta, viscosity, pose, parameters)
         fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
-                        state, pose)
+                        state, pose) | film
         if graded:
             within = jnp.asarray(False) if distance is None or spacing is None else gap < NEAR_WALL * spacing
             patch = {"off_patch": jnp.where(within & outside[0], jnp.ones((), dtype=dtype), zero)}

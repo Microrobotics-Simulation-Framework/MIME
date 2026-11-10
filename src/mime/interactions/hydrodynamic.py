@@ -591,9 +591,12 @@ class PointForceDrag(Interaction):
             found.append(f"lubrication epsilon is {epsilon!r} m, not a length above zero")
         return found
 
+    #: The settings only the surrogate rung reads, which the mrs rung refuses written.
+    surrogate_settings: ClassVar[tuple[str, ...]] = ("weights", "lubrication")
+
     def _mrs_setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         found = [f"{name}= is a setting of the surrogate rung, and the mrs rung reads none"
-                 for name in ("weights", "lubrication") if getattr(self, name) is not None]
+                 for name in self.surrogate_settings if getattr(self, name) is not None]
         spacing = settings.get("spacing")
         if spacing is None and self.spacing is None and self.unset_spacing_planned:
             pass
@@ -720,8 +723,14 @@ class PointForceDrag(Interaction):
             wall_quadrature_owners=wall_owners, wall_cells=None,
             wall_refinement=refinement,
             wall_refinement_written=None if refinement is None else cast(int, getattr(self, "wall_refinement")),
+            **self._handover_arguments(ctx, wall_spacing),
             **{f"{WALL}{name}": value for name, value in constants.items()},
             **{f"{SHAPE}{name}": value for name, value in settings.items()})
+
+    def _handover_arguments(self, ctx: BuildContext, spacing: float) -> dict[str, Any]:
+        """The node's arguments for lubrication's hand-over at the local force ``spacing`` (m): none here, where the
+        mrs rung takes none."""
+        return {}
 
     def _mrs_sampling(self, ctx: BuildContext, hull: Hull, spacing: float, patches: tuple[str, ...]) -> tuple[
             Sampling, float, GradedDensity | None]:
@@ -791,6 +800,11 @@ SEPARATED_SAMPLES: Mapping[str, int] = MappingProxyType({"sphere": 338, "screw":
 SEPARATED_COMPACT_SAMPLES = 338
 SEPARATED_BLOB: Mapping[str, float] = MappingProxyType({"sphere": 0.1, "screw": 0.25})
 SEPARATED_COMPACT_BLOB = 0.1
+#: A compact body's blob near a wall with lubrication's hand-over (drag 0.5.0): a labelled default, measured on a sphere
+#: above a plane through the drag's node (W2a's first step): the coarse MRS's worst entry at the hand-over gap, 3.5 to
+#: 4.2 % at this blob against 5.6 to 6.1 % at 0.1, at 1.3 to 2.4 times the build and the step (the quadrature's points
+#: grow as one over the blob squared, and the step rebuilds them).
+LUBRICATED_BLOB = 0.05
 #: The default quadrature's refinement is this over the blob, rounded up: the quadrature's spacing at most half the
 #: blob, at which the sphere's drag had converged to within 0.01% and FL-9's speed to within 0.16% (refinement 8 to 16
 #: at blob 0.25; measured, phase 7m-b and its review).
@@ -1413,6 +1427,14 @@ class Drag(UncoupledDrag):
                        "arithmetic leaves a pair's residual at down to the near-contact line, by a small margin there "
                        "(DEFAULT_TOLERANCE's measurement), so a denser cluster near contact may stop short, flagged "
                        "and warned of"),
+        "lubrication": determined(
+            NUMERICAL, "on the mrs rung, in a medium whose wall opens (a plane, a tube) about a body whose hull kind "
+                       "has a support: on, lubrication's hand-over, the MRS's own completion in the gap (the coarse MRS "
+                       "evaluated with the body's near contact opened to HANDOVER_SPACINGS of the force spacing, plus "
+                       "the thin film's increment); written False, the coarse MRS alone, a declared numerical choice "
+                       "whose validity line is its near-wall error; on the surrogate rung, none unless "
+                       "Lubrication(epsilon=...) is written (its blend)",
+            by="default_lubrication"),
     }
     mrs_settings = (
         *UncoupledDrag.mrs_settings,
@@ -1460,6 +1482,18 @@ class Drag(UncoupledDrag):
                           "the graded one's (on the gates' sphere it climbs towards the uniform sampling's as the "
                           "patch's edge nears the wall)",
              rung="mrs", group=False, written=("grading", "contact")),
+        Flag("handover_window", "with lubrication's hand-over, the hand-over gap lay past WINDOW of the contact's smaller "
+                                "radius of curvature: the film's form was measured within about 7 % up to it, 15 to 19 "
+                                "% at force spacings of 0.45 to 0.6 of the radius and about 30 % at 0.9 (a sphere and "
+                                "a spheroid), so the near-wall resistance there is outside the measured reach",
+             rung="mrs", group=False, written=("lubrication",)),
+        Flag("film_annulus", "with lubrication's hand-over and the contact opened, the film's patch reached round the "
+                             "lumen (a body nearly filling it): the contact is a ring, which the film's point form "
+                             "does not cover, so the film there is the point contact's and the axial resistance is "
+                             "not the ring's", rung="mrs", group=False, written=("lubrication",)),
+        Flag("film_unsolved", "with lubrication's hand-over, the film's solve was not finite or its residual lay past "
+                              "FILM_RESIDUAL_ULPS of the dtype's resolution: that step's film is not the thin film's "
+                              "to rounding", rung="mrs", group=False, warns=True, written=("lubrication",)),
     )
     validity = (
         *(line for line in UncoupledDrag.validity),
@@ -1498,9 +1532,27 @@ class Drag(UncoupledDrag):
         f"joint matrices and of its members' held blocks ({MEMORY_MEASURED}), reported at build and refused past the "
         f"memory a run can have (drag.near-field-memory): a GPU's limit, or on a CPU the smaller of the host's "
         f"available memory and the limit of the control group the process runs in, where one is set",
+        "mrs: with lubrication (on by default near a wall that opens), the near-wall resistance is the coarse MRS "
+        "evaluated once with the body's near contact opened to the hand-over gap (HANDOVER_SPACINGS of the force "
+        "spacing, the finest graded spacing where graded), never closer, plus the thin film's increment between the "
+        "contact's gap and the opened one (Reynolds' equation on the gap's second-order form): the MRS's own "
+        "completion in the gap, not physics beyond Stokes flow. Its reach, measured on a sphere and a spheroid "
+        "against exact answers: within about 7 % while the force spacing is at most 0.3 of the contact's smaller "
+        "radius of curvature, 15 to 19 % at 0.45 to 0.6, about 30 % at 0.9; the hand-over gap past WINDOW of that "
+        "radius raises handover_window. The coarse MRS's share at the hand-over gap, a sphere above a plane with the "
+        "image at the force points: 5.6 to 6.1 % at blob 0.1, 3.5 to 4.2 % at 0.05 (the default near a wall with "
+        "lubrication, at 1.3 to 2.4 times the build and step of 0.1), 2.6 to 3.4 % at 0.025",
+        "mrs: with lubrication, below the composite roughness of the body's and the wall's surfaces (each a declared "
+        "length, DEFAULT_ROUGHNESS where none is declared, never fitted) the film's gap is floored: its resistance "
+        "stops growing there and a contact carries the gap; the near-wall resistance owns every hydrodynamic coupling "
+        "of rotation and translation down to that cutoff (film_coupling reports the film's own share), a contact "
+        "none. One point contact a body (its deepest point against the wall); a lumen the body nearly fills is a ring "
+        "contact the point form does not cover (film_annulus); several contacts of one body, a ring's film, and a "
+        "body between two walls (no two-wall kind) are later items",
     )
 
     near_field_share: float | None = None
+    lubrication: Lubrication | bool | None = None
     grading: str | None = None
     contact: tuple[float, float, float] | None = None
     contact_gap: Annotated[Quantity | None, Length] = None
@@ -1515,6 +1567,14 @@ class Drag(UncoupledDrag):
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         found = super().setting_problems(settings)
+        written = cast(object, self.lubrication)
+        if self.rung == "mrs" and written is not None and not isinstance(written, bool):
+            found.append(f"lubrication={written!r} on the mrs rung: its lubrication is the hand-over to the thin film, "
+                         f"on by default near a wall that opens, so write lubrication=False to leave it out (a "
+                         f"Lubrication(epsilon=...) blend is the surrogate rung's)")
+        if self.rung != "mrs" and isinstance(written, bool):
+            found.append(f"lubrication={written!r} on the {self.rung} rung: True or False is the mrs rung's hand-over; "
+                         f"the surrogate's lubrication is its blend, lubrication=Lubrication(epsilon=mm(0.15))")
         if self.rung == "rft":
             found += [f"{name}= is a setting of the mrs rung's near field, and the rft rung reads none"
                       for name in ("near_field_share", "near_field_dense_unknowns", "near_field_tolerance")
@@ -1544,6 +1604,64 @@ class Drag(UncoupledDrag):
         if found is None or not self.graded():
             return found
         return max(found, math.ceil(QUADRATURE_PER_BLOB / FINEST - 1e-9))
+
+    surrogate_settings = ("weights",)
+
+    def default_lubrication(self, ctx: PlanContext) -> bool | None:
+        """On the mrs rung, on where the medium's wall opens (``WallCorrection.opened``: a plane, a tube) about a body
+        whose hull kind has a support (its curvature at the contact); none elsewhere, and on the surrogate rung."""
+        if self.rung != "mrs" or ctx.region("medium") is None:
+            return None
+        hull = ctx.geometry(of="body")
+        written = cast(object, self.wall_kind) if self.wall_kind is not None else self.default_wall_kind(ctx)
+        wall = _wall_kind(written)
+        if hull is None or isinstance(wall, str) or not implements(hull.kind, "support"):
+            return None
+        correction = wall_correction_named(wall.name, wall.version)
+        return True if correction.opened is not None and correction.region is not None else None
+
+    def lubricated(self, ctx: PlanContext) -> bool:
+        """Whether the mrs rung hands its near contact over to the film: ``lubrication`` written True, or not
+        written and its default on."""
+        if self.rung != "mrs":
+            return False
+        written = cast(object, self.lubrication)
+        return written is True if written is not None else self.default_lubrication(ctx) is True
+
+    @override
+    def includes_lubrication(self) -> bool:
+        """The mrs rung with its hand-over includes the near-wall film, as the surrogate with its blend does."""
+        if self.rung == "mrs":
+            return self.lubrication is True
+        return super().includes_lubrication()
+
+    @override
+    def default_blob(self, ctx: PlanContext) -> float | None:
+        """0.4.0's, and with lubrication a compact body's :data:`LUBRICATED_BLOB` (the hand-over gap's measured
+        share of the coarse MRS's error falls with the blob)."""
+        found = super().default_blob(ctx)
+        hull = ctx.geometry(of="body")
+        if found is None or hull is None or hull.kind.name in SEPARATED_BLOB and hull.kind.name != "sphere" \
+                or not self.lubricated(ctx):
+            return found
+        return min(found, LUBRICATED_BLOB)
+
+    @override
+    def default_spacing(self, ctx: PlanContext) -> Quantity | None:
+        """0.4.0's, but with lubrication the family's whatever the closest approach: the hand-over gap, not a
+        contact's margin, keeps the coarse MRS off the wall, so the margin no longer sets the force spacing."""
+        if self.lubricated(ctx):
+            return PointForceDrag.default_spacing(self, ctx)
+        return super().default_spacing(ctx)
+
+    @override
+    def _handover_arguments(self, ctx: BuildContext, spacing: float) -> dict[str, Any]:
+        """With lubrication on: the hand-over at the local force ``spacing`` and each surface's declared roughness
+        (``DEFAULT_ROUGHNESS`` where none is declared)."""
+        if self.rung != "mrs" or self.lubrication is not True:
+            return {}
+        return {"lubrication": True, "handover_spacing": float(spacing),
+                "roughness_body": ctx.values.get("roughness_body"), "roughness_wall": ctx.values.get("roughness_wall")}
 
     def joins_near_field(self) -> bool:
         """Whether this drag, with others of its version in its medium, is built as their joint near field: the mrs
@@ -1600,6 +1718,8 @@ class Drag(UncoupledDrag):
         (``drag.grading-kind``); a contact with no wall (``drag.grading-contact``), no closest approach to grade it
         for (``drag.grading-approach``), or a gap so wide that it grades nothing (``drag.grading-gap``)."""
         found = super()._mrs_problems(ctx)
+        if self.lubricated(ctx):
+            found = [problem for problem in found if problem.code != "drag.mrs-on-wall"]
         if not self.graded():
             return found
         body = ctx.bindings["body"]
@@ -1711,6 +1831,20 @@ class Drag(UncoupledDrag):
         return graded_density(hull.kind, hull.settings, spacing, features=self.grading == "features",
                               contact=contact)
 
+    @override
+    def plan(self, ctx: PlanContext) -> Plan:
+        """0.4.0's, and with lubrication the roughness of the body's surface and of the wall's, each read where the
+        experiment declares it (``<body>.roughness``, ``<structure>.roughness``; ``DEFAULT_ROUGHNESS`` otherwise)."""
+        found = super().plan(ctx)
+        if not self.lubricated(ctx):
+            return found
+        values = dict(found.values)
+        if ctx.value("body", "roughness") is not None:
+            values["roughness_body"] = Value("body", "roughness")
+        if ctx.value("medium", "wall.roughness") is not None:
+            values["roughness_wall"] = Value("medium", "roughness", wall=True)
+        return dataclasses.replace(found, values=values)
+
     def _build_near_field(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the
         wall's constants once; each body's pose, twist and mass matrix read, its resistance and background load
@@ -1729,6 +1863,8 @@ class Drag(UncoupledDrag):
             member = ctx.members[owner]
             entry = cast(UncoupledDrag, member.entry)
             arguments = entry._mrs_arguments(member)
+            for key in ("lubrication", "handover_spacing", "roughness_body", "roughness_wall"):
+                arguments.pop(key, None)  # no hand-over in a medium's near field yet (validity: W2a's PR 2)
             correction = wall_correction_named(arguments["wall_kind"], arguments["wall_kind_version"])
             names = {f"{WALL}{name}" for name in correction.parameters}
             shared = {key: arguments.pop(key) for key in ("viscosity", "wall_kind", "wall_kind_version")}
