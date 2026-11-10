@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **The first fit: `Study.fit(residual, *, start, noise, duration, iterations=20, bounds=None, tolerance=1e-9,
+- **The first fit: `Study.fit(residual, *, start, noise, duration, iterations=20, bounds=None, tolerance=None,
   acknowledged=None)`** (lane S's third PR, its second half), returning `mime.results.FitResult` (each `FitIterate`
   with its `LineMargin`s, the Fisher information at the start). Damped Gauss-Newton steps on the gradient path's
   derivative under the fit-loop rule: each iterate planned again through `build_point` and run on the start's
@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every insensitive axis named before the first step). On the gently pulled sphere the radius fits to a target inside
   its range where the spike's rebuilt descent ended 0.79 % short; across a Reynolds line the fit ends on the line,
   naming it (a fresh build at the radius it ended at reads the number within 1e-4 of the limit), where `sysid.fit` on
-  the built graph runs through it silently. A line that cannot be judged (no density declared) is never taken as
+  the built graph runs through it silently. The default `tolerance` is 1e-9 of the values, or ten times the run's machine epsilon where that is higher (float32:
+  1.2e-6); a fit whose loss does not fall in three iterates in a row, short of any line, ends `stagnated`. A line that
+  cannot be judged (no density declared) is never taken as
   inside: the start is refused (`fit.line-unjudged`) and a later iterate ends the fit `unjudged`; a range that pins
   the step ends it `at a line` (`box:<axis>`); an iterate that needs another compiled program refuses the fit
   (`fit.value-keyed`) with the iterates taken in the error's `partial`. **Controller settings as leaves**: a setting a

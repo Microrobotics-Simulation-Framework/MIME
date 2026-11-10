@@ -85,7 +85,7 @@ class FitResult:
     """A fit: the axes it fitted (``wrt``), the values it started from and ended at (SI), the loss there, where it
     ended (``ended``: ``converged``; ``at a line`` with the line's name in ``why`` (a refusal's code, a flag's path, a
     Reynolds line, ``box:<axis>`` where the range pins the step); ``unjudged`` where an iterate had a line that could not
-    be judged; ``iterations``; ``refused`` on the partial result of a refused fit), every
+    be judged; ``stagnated`` (the loss did not fall in three iterates in a row, short of any line); ``iterations``; ``refused`` on the partial result of a refused fit), every
     iterate it judged, the Fisher information of the scaled residual at the start (MADDENING's ``FIMReport``, with the
     declared noise) and the axes it names insensitive there, and the path's status as a study's derivative composes
     it."""

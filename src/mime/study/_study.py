@@ -491,7 +491,7 @@ class Study:
     @public
     def fit(self, residual: Callable[[Any], Any], *, start: Mapping[object, object], noise: object,
             duration: Quantity, iterations: int = 20, bounds: Mapping[object, tuple[object, object]] | None = None,
-            tolerance: float = 1e-9, acknowledged: Mapping[str, str] | None = None) -> FitResult:
+            tolerance: float | None = None, acknowledged: Mapping[str, str] | None = None) -> FitResult:
         """The values of the axes ``start`` names (from those values) that make ``residual`` least: a ``jax.numpy``
         function of a run's final state (by node and field) to an array, each entry over its declared ``noise`` (one
         number, or one a residual entry), its loss half the sum of their squares, each run ``duration`` long. Damped
@@ -504,8 +504,10 @@ class Study:
         noise (required) taken at the start, which names every axis the residual cannot see before the first step. A line
         that cannot be judged is never taken as inside (``fit.line-unjudged`` at the start; an iterate ends the fit
         ``unjudged``). Ends ``converged`` (the step under ``tolerance`` of the values), ``at a line`` (naming it: a
-        refusal's code, a flag, the Reynolds line, ``box:<axis>`` where the range pins the step), ``unjudged``, or at
-        ``iterations``. An iterate that needs another compiled program refuses the fit (``fit.value-keyed``), the
+        refusal's code, a flag, the Reynolds line, ``box:<axis>`` where the range pins the step), ``unjudged``, ``stagnated`` (the
+        loss did not fall in three iterates in a row, short of any line), or at ``iterations``. The default
+        ``tolerance`` is 1e-9 of the values, or ten times the run's machine epsilon where that is higher (float32:
+        1.2e-6, the arithmetic's floor). An iterate that needs another compiled program refuses the fit (``fit.value-keyed``), the
         iterates taken in the error's ``partial``. A controller called on the host is refused (its path is cut);
         ``acknowledged`` as for :meth:`gradient`."""
         from mime.study._fit import fit

@@ -130,7 +130,8 @@ def fit_plant(patch: pytest.MonkeyPatch, kind: str | None) -> None:
     derivative at half its value; ``fim_noise``, the Fisher information taken with a unit noise, not the declared one;
     ``no_limit``, the lines judged only after a step (no margin limits it); ``no_box``, the iterates not clipped to
     their box; ``no_judge_run``, no run line judged at an iterate; ``unjudged_taken``, a line that cannot be judged read
-    as judged (its NaN margin a pass)."""
+    as judged (its NaN margin a pass); ``unit_tolerance``, the default stop 1e-9 in every dtype (float32 spins to the
+    iteration limit); ``no_stagnation``, a loss that does not fall never ends the fit."""
     if kind is None:
         return
     if kind == "stale_watch":
@@ -159,11 +160,15 @@ def fit_plant(patch: pytest.MonkeyPatch, kind: str | None) -> None:
         patch.setattr(fit_module, "_box", unbounded)  # noqa: SLF001
     elif kind == "no_judge_run":
         patch.setattr(fit_module._Fit, "run_lines", lambda self, tally, final, watches: [])  # noqa: SLF001
+    elif kind == "unit_tolerance":
+        patch.setattr(fit_module, "default_tolerance", lambda x64: fit_module.TOLERANCE)
+    elif kind == "no_stagnation":
+        patch.setattr(fit_module, "STAGNATION", 10**9)
     elif kind == "unjudged_taken":
         patch.setattr(fit_module.LineMargin, "judged", property(lambda self: True))
     else:
-        raise ValueError(f"{FIT_LOOP} is stale_watch, jac_half, fim_noise, no_limit, no_box, no_judge_run or "
-                         f"unjudged_taken, not {kind!r}")
+        raise ValueError(f"{FIT_LOOP} is stale_watch, jac_half, fim_noise, no_limit, no_box, no_judge_run, "
+                         f"unjudged_taken, unit_tolerance or no_stagnation, not {kind!r}")
 
 
 @contextmanager

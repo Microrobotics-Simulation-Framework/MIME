@@ -53,6 +53,16 @@ HALVINGS = 30
 LINE_REACHED = 1e-4
 #: Where a step crossed a numbered line, the next try is this share of the way to the secant's crossing.
 INSIDE = 0.999
+#: The default stop of a step, relative to the values, is this many times the run's machine epsilon where that is above
+#: :data:`TOLERANCE`: float32's 1.2e-7 makes 1.2e-6, float64's 2.2e-16 leaves :data:`TOLERANCE`. Measured on the gently
+#: pulled sphere in float32 (one rig): the leaf's own spacing is one epsilon, the steps fall through 5.7e-7 of the value
+#: while the loss still moves by 4e-4 of itself, and under 1.2e-7 they move it by 2e-4 and go no nearer the target, so a
+#: stop below a few epsilons is a stop at the arithmetic's noise (the default 1e-9 spun to the iteration limit).
+FLOOR_EPSILONS = 10
+#: The default stop in float64, where the floor is far below it.
+TOLERANCE = 1e-9
+#: How many iterates in a row the loss may fail to fall, short of any line, before the fit ends ``stagnated``.
+STAGNATION = 3
 #: The damping's start and its factors on a step taken and on one that does not lower the loss.
 DAMPING, EASED, STIFFENED = 1e-3, 1.0 / 3.0, 4.0
 
@@ -278,7 +288,7 @@ class _Fit:
 
 def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[object, object], noise: object,
         duration: Quantity, iterations: int, bounds: Mapping[object, tuple[object, object]] | None,
-        tolerance: float, acknowledged: Mapping[str, str] | None) -> FitResult:
+        tolerance: float | None, acknowledged: Mapping[str, str] | None) -> FitResult:
     """``Study.fit``."""
     if not callable(residual):
         raise ArgumentRefused([Refusal("call.wrong-type", RefusalClass.USER,
@@ -312,7 +322,16 @@ def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[o
             "start inside the box: `Study(exp).fit(..., start={...})` within the range `exp.declare_range(...)` "
             "declares, or widen the range")])
     fim, insensitive = _fisher(run, theta)
-    return _descend(run, axes, theta, boxes, iterations, tolerance, fim, insensitive)
+    with precision(run.leader.declared.x64):  # the run's own dtype, which a process default can set
+        x64 = bool(_jnp.zeros(()).dtype == np.float64)
+    stop = tolerance if tolerance is not None else default_tolerance(x64)
+    return _descend(run, axes, theta, boxes, iterations, stop, fim, insensitive)
+
+
+def default_tolerance(x64: bool) -> float:
+    """The step's stop, relative to the values, where none is given: :data:`TOLERANCE`, or :data:`FLOOR_EPSILONS` times
+    the run's machine epsilon where that is higher (float32)."""
+    return max(TOLERANCE, FLOOR_EPSILONS * float(np.finfo(np.float64 if x64 else np.float32).eps))
 
 
 def _fisher(run: _Fit, theta: Mapping[Axis, np.ndarray]) -> tuple[Any, tuple[str, ...]]:
@@ -408,7 +427,7 @@ def _descend(run: _Fit, axes: Sequence[Axis], theta: dict[Axis, np.ndarray],
     damping, gain = DAMPING, 1.0
     ended, why = "iterations", f"{iterations} iterates judged"
     order = sorted(range(len(axes)), key=lambda i: axes[i].path)
-    stop = False
+    stop, rejected = False, 0
     while len(iterates) < iterations and not stop:
         scaled, twists = held
         gradient = jacobian.T @ scaled
@@ -445,13 +464,14 @@ def _descend(run: _Fit, axes: Sequence[Axis], theta: dict[Axis, np.ndarray],
                         gain = _measured_gain(current.lines, iterate.lines, line, predicted, gain)
                     theta, current, held, jacobian = values, iterate, candidate, candidate_jacobian
                     damping *= EASED
-                    taken = True
+                    taken, rejected = True, 0
                     break
                 if iterate.unjudged and not iterate.past:
                     ended, why, stop = "unjudged", "; ".join(line_.text() for line_ in iterate.unjudged), True
                     break
                 if not iterate.past or len(iterates) >= iterations:
                     damping *= STIFFENED
+                    rejected += 1
                     break
                 scale = _back_off(scale, current.lines, iterate.lines)
         except _Keyed as keyed:
@@ -469,6 +489,10 @@ def _descend(run: _Fit, axes: Sequence[Axis], theta: dict[Axis, np.ndarray],
                                       f"another compiled program", iterates, fim, insensitive)
             raise refused from None
         if stop:
+            break
+        if rejected >= STAGNATION and not taken:
+            ended, why = "stagnated", (f"the loss did not fall in {rejected} iterates in a row (damping {damping:.3g}), "
+                                       f"short of any line: the step is below what the arithmetic resolves")
             break
         if not taken and iterates[-1].past and len(iterates) < iterations:
             ended, why = "at a line", _past_names(iterates[-1])
@@ -573,4 +597,5 @@ def _result(run: _Fit, paths: Sequence[str], start: Mapping[str, np.ndarray], th
                      dict(run.path))
 
 
-__all__ = ["DAMPING", "HALVINGS", "INSIDE", "LINE_REACHED", "fit"]
+__all__ = ["DAMPING", "FLOOR_EPSILONS", "HALVINGS", "INSIDE", "LINE_REACHED", "STAGNATION", "TOLERANCE",
+           "default_tolerance", "fit"]

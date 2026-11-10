@@ -17,6 +17,10 @@
   ``unjudged``.
 - **The Fisher information at the start**: its scale is the declared noise's (its largest eigenvalue is the squared
   scaled derivative the fit's own steps use), and every axis the residual cannot see is named before the first step.
+- **The default stop follows the dtype**: float64's is 1e-9 of the values; float32's is ten times its machine epsilon
+  (1.2e-6), where the consumer's fit ends ``converged`` (at 1e-9 it spun to the iteration limit: its steps fall below
+  the arithmetic's resolution), and a stop asked for below the floor ends ``stagnated`` once the loss fails to fall in
+  three iterates in a row.
 - **The fit loop's clauses**, each broken in turn by ``MIME_PLANT_FIT_LOOP`` (``gradient_plants.fit_plant``): the whole
   file must fail on each (the kit's rate)."""
 
@@ -79,6 +83,35 @@ def test_the_fit_ends_on_a_target_inside_the_range(consumer):
     assert abs(float(consumer.values[RADIUS]) / (INTERIOR * 1e-3) - 1.0) < 1e-6
     assert all(line.judged for iterate in consumer.iterates for line in iterate.lines)
     assert int(consumer.fim.rank) == 1 and consumer.insensitive == ()
+
+
+def float32_fit(**given):
+    """The consumer's fit in float32 (the gradient gates run in float64; this one sets its own)."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    try:
+        return Study(gentle(1.0)).fit(pose_residual(pose_target(INTERIOR)), start={RADIUS: mm(1.0)}, noise=NOISE,
+                                      duration=ms(STEPS), **given)
+    finally:
+        jax.config.update("jax_enable_x64", held)
+
+
+def test_the_default_stop_follows_the_dtype_and_float32_converges_at_it_where_float64_keeps_its_own(consumer):
+    """float64: 1e-9, unchanged (the consumer's reason says so). float32: ten times its epsilon, 1.2e-6, derived from the
+    arithmetic's floor; the fit ends ``converged`` within 2e-3 of the target (measured 4.3e-4: the float32 run's own
+    rounding), where at 1e-9 it ended ``iterations`` after twenty."""
+    assert fit_module.default_tolerance(True) == 1e-9
+    assert fit_module.default_tolerance(False) == pytest.approx(10 * float(np.finfo(np.float32).eps))
+    assert "1e-09" in consumer.why
+    result = float32_fit()
+    assert result.ended == "converged", (result.ended, result.why, len(result.iterates))
+    assert abs(float(result.values[RADIUS]) / (INTERIOR * 1e-3) - 1.0) < 2e-3
+
+
+def test_a_stop_below_float32s_floor_ends_stagnated_not_iterations_after_spinning():
+    result = float32_fit(tolerance=1e-12, iterations=40)
+    assert result.ended == "stagnated" and "did not fall" in result.why
+    assert len(result.iterates) < 40 and not result.iterates[-1].taken
 
 
 def test_the_information_is_over_the_declared_noise(consumer):
