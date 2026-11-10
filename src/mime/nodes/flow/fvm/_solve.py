@@ -53,6 +53,7 @@ primal's scale. On the primal it is the best multiple of the plain warm start in
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -137,6 +138,19 @@ class Stopping:
 
 
 DEFAULT_TOLERANCE = {"float64": 1e-8, "float32": 1e-5}
+#: The cap the node declares by default, and how a recheck (a gradient study re-solving a member whose solve stopped
+#: short) lifts it: to the larger of this many times the cap it ran with and the default. A recheck also raises the stall
+#: restarts by :data:`STALL_RESTARTS`. Neither changes a solve that did not reach its cap or stall, so a recheck of a
+#: member moves only the solves that stopped short.
+DEFAULT_CAP = 5000
+RECHECK_CAP_FACTOR = 10
+
+
+def recheck_stopping(stopping: Stopping) -> Stopping:
+    """``stopping`` with the cause of a stop short removed, as a recheck re-solves a member: the cap lifted
+    (:data:`RECHECK_CAP_FACTOR`, :data:`DEFAULT_CAP`) and the stall restarts raised, at the same tolerance."""
+    return dataclasses.replace(stopping, cap=max(stopping.cap * RECHECK_CAP_FACTOR, DEFAULT_CAP),
+                               stall_restarts=stopping.stall_restarts + STALL_RESTARTS)
 
 
 def stagnation_window(cells: tuple[int, ...], check_every: int) -> int:
@@ -384,6 +398,13 @@ def scaling_start(guess: Velocity | None, b: Velocity, operator: Operator,
     return _scaled(unit, jnp.where(jnp.isfinite(alpha), alpha, 0.0))
 
 
+def transposed(stopping: Stopping) -> Stopping:
+    """The stopping of the transpose solves, which the derivative in reverse mode takes: the primal's, the very object
+    (so one program serves both, the operator symmetric). A seam: a test plants a cap on the transpose solves alone
+    here, through the solve the node runs, and the solve is then traced with its transpose given apart."""
+    return stopping
+
+
 def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Velocity, guess: Velocity | None,
                     stopping: Stopping, tap: Array, preconditioner: Preconditioner,
                     magnitude: Operator | None = None) -> tuple[Velocity, Array]:
@@ -405,28 +426,35 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
         y = project(apply(project(x)))
         return y, block + 0.0 * y[0][0, 0, 0]
 
-    def solve(operator: Callable[[tuple[Velocity, Array]], tuple[Velocity, Array]],
-              pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
-        b, block = pair
+    def solver(stops: Stopping) -> Callable[[Callable[[tuple[Velocity, Array]], tuple[Velocity, Array]],
+                                             tuple[Velocity, Array]], tuple[Velocity, Array]]:
+        def solve(operator: Callable[[tuple[Velocity, Array]], tuple[Velocity, Array]],
+                  pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
+            b, block = pair
 
-        def field_operator(x: Velocity) -> Velocity:
-            return operator((x, block))[0]
+            def field_operator(x: Velocity) -> Velocity:
+                return operator((x, block))[0]
 
-        b = project(b)
-        start = scaling_start(projected_guess, b, field_operator, inner)
-        x, report = guarded_cg(field_operator, b, precondition, start, stopping, inner, magnitude)
-        return project(x), report
+            b = project(b)
+            start = scaling_start(projected_guess, b, field_operator, inner)
+            x, report = guarded_cg(field_operator, b, precondition, start, stops, inner, magnitude)
+            return project(x), report
+
+        return solve
 
     coupled_rhs = _add(rhs, (tap[0], tap[0], tap[0]), 0.0)
     coupled_tap = tap + 0.0 * rhs[0][0, 0, 0]
-    solved, report = lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solve, symmetric=True)
+    other = transposed(stopping)
+    same = other is stopping
+    solved, report = lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solver(stopping),
+                                             transpose_solve=None if same else solver(other), symmetric=same)
     return solved, report
 
 
-__all__ = ["AT_FLOOR_BY_DEFAULT", "DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "FLOOR_MEASURED",
+__all__ = ["AT_FLOOR_BY_DEFAULT", "DEFAULT_CAP", "DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "RECHECK_CAP_FACTOR", "FLOOR_MEASURED",
            "FLOOR_STOP_MEASURED", "FLOOR_STOP_TOLERANCES", "STALL_RESTARTS", "STALL_RESTART_MEASURED",
            "STAGNATION_FACTOR",
            "STAGNATION_LEAST_WINDOW", "STAGNATION_MEASURED", "STAGNATION_SPAN", "STAGNATION_WINDOW",
            "stagnation_window", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "Jacobi", "Preconditioner",
            "Stopping", "default_tolerance", "guarded_cg", "preconditioner_named",
-           "projected_solve", "restarted", "rounding_floor", "scaling_start"]
+           "projected_solve", "recheck_stopping", "restarted", "rounding_floor", "scaling_start", "transposed"]
