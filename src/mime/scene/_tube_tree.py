@@ -44,6 +44,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, cast, override
 
+import jax
 import numpy as np
 
 from mime.core import jnp, register_shape
@@ -117,30 +118,33 @@ class WallFeatures:
 
 class TubeTreeShape:
     """The lumen of a tube tree as a registered shape (``tube_tree``): its union's exact signed distance and outward
-    normal (``ExactUnion``) at an array of points, its parameters the tree's in SI, ``segments`` among them (two indices
-    a segment, held as numbers), read when the shape is called, so the tree's structure is a value fixed at build. A
-    reader that steps the tree holds it whole (the FVM's wall), not through this shape."""
+    normal (``ExactUnion``, every point's candidates run) at an array of points, its parameters the tree's in SI, its
+    ``segments`` among them its structure (two indices a segment, integers, or numbers a region's parameters hold),
+    read when the shape is called and never traced. The tubes it holds as meeting are those sharing a point; a pair
+    that shares none and comes within reach is counted (``UnionDistance.unplanned``), where a tree built from its
+    values would hold it too. A reader that steps a tree holds the tree whole (the FVM's wall), not this shape."""
 
     parameter_names: tuple[str, ...] = ("points", "segments", "radii", "fillet")
     takes_many = True
 
     @staticmethod
-    def tree(parameters: Mapping[str, Any]) -> TubeTree:
-        segments = np.asarray(parameters["segments"], dtype=np.float64).reshape(-1, 2).astype(np.int64)
-        return TubeTree.si(np.asarray(parameters["points"], dtype=np.float64).reshape(-1, 3),
-                           tuple((int(a), int(b)) for a, b in segments),
-                           np.asarray(parameters["radii"], dtype=np.float64).reshape(-1, 2),
-                           float(np.asarray(parameters["fillet"])))
+    def union(parameters: Mapping[str, Any]) -> ExactUnion:
+        flat = [int(round(float(i))) for i in np.asarray(parameters["segments"], dtype=np.float64).reshape(-1)]
+        return _structural_lumen(tuple((flat[k], flat[k + 1]) for k in range(0, len(flat), 2)))
 
     def signed_distance(self, parameters: Mapping[str, Any], point: Any) -> Any:
-        tree = self.tree(parameters)
         held = jnp.asarray(point)
-        return tree.lumen().signed_distance(tree.parameters(), held.reshape(-1, 3)).distance.reshape(held.shape[:-1])
+        found = self.union(parameters).evaluate(parameters, held.reshape(-1, 3), None)
+        return found.distance.reshape(held.shape[:-1])
 
     def outward_normal(self, parameters: Mapping[str, Any], point: Any) -> Any:
-        tree = self.tree(parameters)
         held = jnp.asarray(point)
-        return tree.lumen().outward_normal(tree.parameters(), held.reshape(-1, 3)).normal.reshape(held.shape)
+        union = self.union(parameters)
+
+        def total(at: Any) -> Any:
+            return jnp.sum(union.evaluate(parameters, at, None).distance)
+
+        return cast(Any, jax).grad(total)(held.reshape(-1, 3)).reshape(held.shape)
 
     def axis(self, parameters: Mapping[str, Any]) -> Any:
         return None
@@ -499,6 +503,55 @@ def _lumen(tree: TubeTree) -> ExactUnion:
         for i, (a, b) in enumerate(tree.segments))
     return ExactUnion(regions, tree.meets(), size=lambda p: jnp.max(radii(p)), fillet=tree.fillet_radius,
                       origin=lambda p: jnp.mean(points(p), axis=0), unplanned=tree.unplanned)
+
+
+@functools.lru_cache(maxsize=64)
+def _structural_lumen(segments: tuple[tuple[int, int], ...]) -> ExactUnion:
+    """A tree's lumen from its structure alone (:class:`TubeTreeShape`'s): its tubes, those sharing a point held as
+    meeting, its fillet and its other pairs within reach counted, every value read from the parameters."""
+    def points(parameters: Parameters) -> Any:
+        return jnp.reshape(jnp.asarray(parameters["points"]), (-1, 3))
+
+    def radii(parameters: Parameters) -> Any:
+        return jnp.reshape(jnp.asarray(parameters["radii"]), (-1, 2))
+
+    def local(parameters: Parameters) -> Any:
+        held = points(parameters)
+        return held - jnp.mean(held, axis=0)
+
+    reached: dict[int, list[tuple[int, int]]] = {}
+    for index, (start, end) in enumerate(segments):
+        reached.setdefault(start, []).append((index, 0))
+        reached.setdefault(end, []).append((index, 1))
+    at_junctions = [end for held in reached.values() if len(held) >= 2 for end in held]
+    rows = np.asarray([k for k, _ in at_junctions], dtype=np.int64)
+    columns = np.asarray([e for _, e in at_junctions], dtype=np.int64)
+    pairs = [(i, j) for i in range(len(segments)) for j in range(i + 1, len(segments))]
+    shared = tuple(pair for pair in pairs if set(segments[pair[0]]) & set(segments[pair[1]]))
+    apart = [pair for pair in pairs if pair not in shared]
+
+    def fillet(parameters: Parameters) -> Any:
+        if not rows.size:
+            return 0.0 * jnp.asarray(parameters["fillet"])
+        held = radii(parameters)[rows, columns]
+        return jnp.asarray(parameters["fillet"]) * held[jnp.argmin(held)]
+
+    def unplanned(parameters: Parameters) -> Any:
+        if not apart:
+            return jnp.asarray(0)
+        first = np.asarray([segments[i] for i, _ in apart], dtype=np.int64)
+        second = np.asarray([segments[j] for _, j in apart], dtype=np.int64)
+        held, widest = points(parameters), jnp.max(radii(parameters), axis=1)
+        gap = _segments_apart(jnp, held[first[:, 0]], held[first[:, 1]], held[second[:, 0]], held[second[:, 1]])
+        index = np.asarray(apart, dtype=np.int64)
+        return jnp.sum(gap < widest[index[:, 0]] + widest[index[:, 1]] + 2.0 * fillet(parameters))
+
+    regions = tuple(
+        RoundCone(start=lambda p, a=a: local(p)[a], end=lambda p, b=b: local(p)[b],
+                  start_radius=lambda p, i=i: radii(p)[i, 0], end_radius=lambda p, i=i: radii(p)[i, 1])
+        for i, (a, b) in enumerate(segments))
+    return ExactUnion(regions, shared, size=lambda p: jnp.max(radii(p)), fillet=fillet,
+                      origin=lambda p: jnp.mean(points(p), axis=0), unplanned=unplanned)
 
 
 def _segments_apart(xp: Any, a: Any, b: Any, c: Any, d: Any) -> Any:

@@ -178,6 +178,7 @@ TYPICAL = {
     "half_space": {"normal": (1.0, 0.0, 0.0), "offset": 1e-3},
     "screw": {"centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
                       "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2},
+    "tube_tree": suite._tube_tree(5e-4, 0.1),  # noqa: SLF001 - the case's own Y
 }
 TURN = np.array([0.9, 0.3, -0.2, 0.25]) / np.linalg.norm([0.9, 0.3, -0.2, 0.25])
 DIRECTION = np.array([0.48, -0.6, 0.64])
