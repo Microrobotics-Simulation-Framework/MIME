@@ -27,9 +27,9 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
 from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, STALL_LINE, \
     STOKES_REYNOLDS
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, scheme_named
-from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, PRECONDITIONERS, \
-    STAGNATION_FACTOR, STAGNATION_LEAST_WINDOW, STAGNATION_MEASURED, STAGNATION_SPAN, STALL_RESTART_MEASURED, \
-    STALL_RESTARTS
+from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, \
+    FLOOR_STOP_MEASURED, FLOOR_STOP_TOLERANCES, PRECONDITIONERS, STAGNATION_FACTOR, STAGNATION_LEAST_WINDOW, \
+    STAGNATION_MEASURED, STAGNATION_SPAN, STALL_RESTART_MEASURED, STALL_RESTARTS
 from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Flag, GradientRecord, Port, Problem, Region, \
     SettingGroup, StepQuery, StepRule, convention, register_dynamics, register_setting_group
 from mime.dynamics.flow._fields import fvm_field
@@ -210,7 +210,9 @@ class FVM(Dynamics):
         "the stop: each step's solve stops at a true relative residual of its tolerance (by default "
         f"{DEFAULT_TOLERANCE['float64']:g} in float64; in float32 {DEFAULT_TOLERANCE['float32']:g}, or the solve's "
         "rounding floor eps || |A| |x| + |b| || / ||b|| where that is higher, made at each check from the iterate; a "
-        f"tolerance given is held as given; {FLOOR_MEASURED}), the step's values and gradients holding to about it; "
+        f"tolerance given is held as given; {FLOOR_MEASURED}), the floor counting only while it is under "
+        f"{FLOOR_STOP_TOLERANCES} times the tolerance, past which the tolerance holds ({FLOOR_STOP_MEASURED}), the "
+        "step's values and gradients holding to about it; "
         f"where the stop would find a stagnation the CG restarts from the true residual instead, up to "
         f"{STALL_RESTARTS} times, its window begun again ({STALL_RESTART_MEASURED}); a stagnation is no "
         "check of the true residual (one every 20 iterations) over a window of "

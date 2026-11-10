@@ -19,8 +19,9 @@ tolerance before the true one, and **where it would stop stagnated**: up to ``st
 in float32 the recurrence stalls far above the solve's rounding floor, and a restart at the stall breaks it
 (:data:`STALL_RESTART_MEASURED`); a restart every hundred iterations broke the small stalls too but crippled the large
 stiff solves it did not need to touch, and replacing the residual alone, the direction kept, was unreliable. A solve
-that never stagnates never restarts so, and its arithmetic is unchanged; the stop judges the true residual alone, so a
-wrong restart cannot pass as converged.
+that never stagnates never restarts so, and its arithmetic is unchanged. The stop judges the true residual alone,
+against a bar the iterate raises only while its rounding floor is under a line (below), so no restart passes as
+converged a solve whose true residual is above that line.
 
 **The report block** (``BACKWARD_DIAGNOSTICS``'s design, one for every iterative solve in MIME). The solve's
 right-hand side carries a block of :data:`REPORT_SIZE` numbers on which the operator is the identity, and the solve
@@ -31,13 +32,19 @@ step reads. The blocks are coupled to the field by exact zeros, so that each has
 in the solve is differentiated, and the report is always finite (a residual that is not is written as -1, with its
 count), so the zeros add nothing.
 
-**The rounding floor** (:func:`rounding_floor`). An iterate ``x`` stored and multiplied in the run's dtype cannot
-bring the true residual much below ``eps || |A| |x| + |b| ||``, the operator's and the right-hand side's own rounding
-against each other: the residual of an ``x`` that solves the system with each coefficient and each datum moved by one
-rounding unit (Oettli and Prager's componentwise backward error at ``eps``). On fine stiff solves float32's floor sits
-above its 1e-5 (:data:`FLOOR_MEASURED`), so float32's default tolerance is the larger of the two, made in the program at
-each check from the iterate; a tolerance given is held as given. A solve that stalls above the floor still stops
-stagnated, and is flagged.
+**The rounding floor** (:func:`rounding_floor`). An iterate ``x`` stored and multiplied in the run's dtype cannot bring
+the true residual much below ``eps || |A| |x| + |b| ||``, the operator's and the right-hand side's own rounding against
+each other: the residual of an ``x`` that solves the system with each coefficient and each datum moved by one rounding
+unit (Oettli and Prager's componentwise backward error at ``eps``). On fine stiff solves float32's floor sits above its
+1e-5 (:data:`FLOOR_MEASURED`), so float32's default tolerance is the larger of the two, made in the program at each
+check from the iterate; a tolerance given is held as given. A solve that stalls above the floor still stops stagnated,
+and is flagged. Made from the iterate, the floor rises with it: on a singular or inconsistent system the iterate grows
+without bound, and its true residual, even one worse than the zero start's, falls under its own floor. So the floor
+counts only while it is under a line, :data:`FLOOR_STOP_TOLERANCES` times the tolerance (1e-3 for float32's 1e-5;
+:data:`FLOOR_STOP_MEASURED`); past it the true residual cannot be read to the line, and the stop holds the tolerance. A
+stop at the floor is accepted only where the true relative residual is itself under the line, and a solve the line
+refuses carries on, to stop stagnated or at its cap, flagged. The line separates the genuine floor stops measured from
+most non-convergent ones, not from all: a singular system's growing iterate can still stop under it.
 
 **Starts that scale.** The start is made inside the solve from its own right-hand side, the Galerkin multiple of the
 previous solution ``x0 = alpha g``, ``alpha = <g, b> / <g, A g>``: linear in ``b``, so a tangent or transpose solve starts
@@ -96,15 +103,17 @@ STAGNATION_MEASURED = (
 #: measurements that chose a restart at the stall.
 STALL_RESTARTS = 3
 STALL_RESTART_MEASURED = (
-    "measured on the solid's interior spike's stenosis (75 %, two diameters long, the 0.01h interior, float32 under its "
-    "default stop): without a restart the recurrence stalls above the solve's floor, on every draw of its narrowing, "
-    "sub-cell offset and drive tilt (20 of 20 at D/h 8, 16 of 16 at D/h 16) and at D/h 32, steady and IMEX Euler; a "
-    "restart where the stop would find the stagnation breaks each (8 of 8 draws at D/h 8 at 342 to 383 iterations, 8 of "
-    "8 at D/h 16 at 657 to 686, at D/h 32 the steady solve at 1693 and its IMEX Euler steps at 1264 and 1240), one "
-    "restart sufficing every time; a restart every 100 iterations instead broke the small stalls, but at D/h 64 kept "
-    "the stiff solve from progressing (0.76 at 1540 iterations, its flux 3.7 % off, where the plain CG reached 2.0e-3) "
-    "and cost converging solves up to twice the iterations; replacing the residual alone every 100 iterations, the "
-    "direction kept, left 13 of 16 D/h 16 draws stalled")
+    "measured on the solid's interior spike's stenosis (75 %, two diameters long, the 0.01h interior, float32 under "
+    "its default stop): without a restart the recurrence stalls above the solve's floor on every off-centre draw of "
+    "its narrowing, sub-cell offset and drive tilt (344 of 344 at D/h 8 on two kinds of core, 206 of them stalling on "
+    "CI's runners too; 16 of 16 at D/h 16) and at D/h 32, steady and IMEX Euler, while a centred one stalls or not by "
+    "the CPU's rounding (14 of 22 at D/h 8 here); a restart where the stop would find the stagnation breaks each (379 "
+    "of 379 draws at D/h 8, at 102 to 390 iterations, within 5.4e-7 of float64's answer; 8 of 8 at D/h 16 at 657 to "
+    "686; at D/h 32 the steady solve at 1693 and its IMEX Euler steps at 1264 and 1240; at D/h 64 the steady solve at "
+    "its floor at 3522), one restart sufficing on every case counted; a restart every 100 iterations instead broke "
+    "the small stalls, but at D/h 64 kept the stiff solve from progressing (0.76 at 1540 iterations, its flux 3.7 % "
+    "off, where the plain CG reached 2.0e-3) and cost converging solves up to twice the iterations; replacing the "
+    "residual alone every 100 iterations, the direction kept, left 13 of 16 D/h 16 draws stalled")
 
 
 @dataclass(frozen=True)
@@ -150,6 +159,18 @@ FLOOR_MEASURED = (
     "interior; with the 0.01h interior in a flow with a pressure gradient (a 75 % stenosis) the CG's recurrence "
     "stalls far above it without a periodic restart (1.0e-4 at D/h 16 and 5.9e-4 at 32, against floors of 4.7e-6 and "
     "1.8e-5), its flux within 1e-7 of float64's: stalls, not floors, which a restart at the stall breaks")
+#: The line the rounding floor counts under, in tolerances: past it the stop holds the tolerance (module docstring);
+#: and the measurements that set it.
+FLOOR_STOP_TOLERANCES = 100
+FLOOR_STOP_MEASURED = (
+    "measured in float32: genuine floor stops at true residuals of 1.3e-5 to 1.6e-5 (the stenosis at D/h 32 with the "
+    "0.01h interior), 4.9e-5 to 5.6e-5 (at D/h 64, 0.01h and 0.1h) and 1.9e-4 (the open tube at D/h 64, under its "
+    "floor of 2.1e-4), floors growing about fourfold a doubling of cells across; a singular system (a periodic "
+    "Laplacian with no penalty, its inconsistent part 1e-6 to 100 of its range part, 8 to 32 cells a side, with and "
+    "without the restart, 102 solves a dtype) was passed as converged at true residuals of 2.6e-4 to 2.6e4 in float32 "
+    "(82 solves) and 1.6e-4 to 4e11 in float64 with its floor on (91); under the line 80 of the 82 and 91 of the 91 "
+    "end flagged, the 2 left (16 cells a side, the inconsistent part 1e-5) stopping at 2.6e-4, among the genuine "
+    "stops' residuals")
 
 
 def rounding_floor(b: Velocity, magnitude: Operator, inner: Callable[[Velocity, Velocity], Array]
@@ -251,9 +272,15 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
     norm_b = jnp.sqrt(inner(b, b))
     target = stopping.tolerance * norm_b
     floor = rounding_floor(b, magnitude, inner) if stopping.at_floor and magnitude is not None else None
+    # The floor counts only while it is under its line: an iterate that grows raises its own floor, and past the line
+    # the true residual cannot be read to it.
+    line = FLOOR_STOP_TOLERANCES * target
 
     def threshold_at(x: Velocity) -> Array:
-        return target if floor is None else jnp.maximum(target, floor(x))
+        if floor is None:
+            return target
+        held = floor(x)
+        return jnp.where(held <= line, jnp.maximum(target, held), target)
 
     threshold = threshold_at(start)
     r0, z0, rz0 = restarted(_add(b, operator(start), -1.0), precondition, inner)
@@ -396,7 +423,8 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
 
 
 __all__ = ["AT_FLOOR_BY_DEFAULT", "DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "FLOOR_MEASURED",
-           "STALL_RESTARTS", "STALL_RESTART_MEASURED", "STAGNATION_FACTOR",
+           "FLOOR_STOP_MEASURED", "FLOOR_STOP_TOLERANCES", "STALL_RESTARTS", "STALL_RESTART_MEASURED",
+           "STAGNATION_FACTOR",
            "STAGNATION_LEAST_WINDOW", "STAGNATION_MEASURED", "STAGNATION_SPAN", "STAGNATION_WINDOW",
            "stagnation_window", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "Jacobi", "Preconditioner",
            "Stopping", "default_tolerance", "guarded_cg", "preconditioner_named",

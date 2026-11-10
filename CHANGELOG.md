@@ -459,7 +459,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   21 for 22, 2.1 mm at 0.7 mm 3 for 4, 2.6 mm at 0.1 mm 26 for 27, 2.6 mm at 0.2 mm 13 for 14), and 0.3.0.dev2 refuses
   a folder saved by another release, so none is rebuilt with the moved count. No registered case's golden output and
   no released program's arrays moved (each compared bit for bit).
-
 - **Saved form 11: a medium's fields are written by role.** A medium's fields are saved under its own key `fields`
   (`fields: {flow: {name: fvm, ...}}`), as an apparatus's are, where form 10 wrote a medium's flow as a dynamics aspect
   (`dynamics: {flow: ...}`). A folder of form 10 or earlier loads as before: its medium's flow is read as `fields.flow`
@@ -494,7 +493,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   float64 is unchanged). On the empty tube at 64 cells across with `wall=Band(delta_in=0.01)` the solve that
   stagnated, flagged, after 1000 iterations now stops unflagged after 69, its flux within 1.3e-7 of float64's. A solve
   that stalls above the floor still stops stagnated and is flagged: with the 0.01h interior in a flow with a pressure
-  gradient, float32's conjugate gradient can stall well above it.
+  gradient, float32's conjugate gradient can stall well above it. The floor counts only while it is under a hundred
+  times the tolerance (1e-3 in float32), and past that the stop holds the tolerance: made from the iterate, the floor
+  rises with an iterate that grows, and a singular system's solve was passed as converged at a true residual up to
+  thousands of times the right-hand side's; such a solve now ends flagged. The line does not close that case entirely:
+  a growing iterate can still stop under it (measured in the entry's validity).
 
 - **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
   JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;

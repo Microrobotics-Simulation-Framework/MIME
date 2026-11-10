@@ -66,14 +66,15 @@ stopped, and a run that records every step (`history=True`) keeps each step's. A
 checks of the true residual, none fell below a share of the best before them (the entry's validity lists the window and
 the share). With no tolerance given, a float32 run's solve stops at its tolerance, or at its own rounding floor where
 that is higher (on a fine grid with a stiff interior): the residual an answer reaches when each of the operator's
-coefficients and the right-hand side is off by one rounding unit. A tolerance given is held as given. Where a solve
-would stop stagnated it first restarts from its true residual, a few times (the entry's validity gives how many): with
-the stiffer interior (`Band`'s smaller `delta_in`) in a flow with a pressure gradient, float32's conjugate gradient
-stalls well above its floor, and a restart there breaks the stall. A stall that outlasts the restarts is still
-flagged. A solve whose
-residual is not finite (a NaN in the step's drive or operator) returns NaN, never a velocity it did not solve for, so
-the run is refused for its state's not being finite, naming the flow (and, in a run that records every step, the step
-where it began).
+coefficients and the right-hand side is off by one rounding unit. A tolerance given is held as given. The floor counts
+only while it is small (the entry's validity gives the line; past it the tolerance holds): it is made from the answer,
+and an answer that grows without bound, as a singular system's does, raises its own floor, so a stop at the floor is
+taken only where the residual is itself small. Where a solve would stop stagnated it first restarts from its true
+residual, a few times (the entry's validity gives how many): with the stiffer interior (`Band`'s smaller `delta_in`) in
+a flow with a pressure gradient, float32's conjugate gradient stalls well above its floor, and a restart there breaks
+the stall. A stall that outlasts the restarts is still flagged. A solve whose residual is not finite (a NaN in the
+step's drive or operator) returns NaN, never a velocity it did not solve for, so the run is refused for its state's not
+being finite, naming the flow (and, in a run that records every step, the step where it began).
 
 With convection on, each step checks the flow's CFL number against the scheme's line along the vessel's axis, behind
 the build's prediction (for a state handed over mid-run, or a flow the prediction does not cover). At the first step
