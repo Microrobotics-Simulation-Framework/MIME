@@ -41,6 +41,7 @@ from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, w
 from mime.nodes.hydro.mrs._handover import (
     DEFAULT_ROUGHNESS,
     HANDOVER_SPACINGS,
+    WINDOW,
     Search,
     handed_over,
     search_for,
@@ -1169,7 +1170,7 @@ class MRSDragNode(MimeNode):
         experiment's closest approach needs (``closest_approach``, m: the margin a contact holds the body's hull off
         the wall by, ``None`` where nothing holds it off)."""
         spacing = self._force_spacing()
-        graded = self._graded_lines()
+        graded = self._graded_lines() + self._film_lines(start)
         if self._owners is None or self._free() or self._wall().distance is None or spacing is None or \
                 start is None or "pose" not in start:
             return graded
@@ -1217,6 +1218,39 @@ class MRSDragNode(MimeNode):
             lines.append(integrated)
         lines.append(self._image_text())
         return graded + lines
+
+    def _film_lines(self, start: Mapping[str, Any] | None) -> list[str]:
+        """What the build reports of lubrication's hand-over: the hand-over gap against the force spacing and, at the
+        start, against the near contact's smaller radius of curvature (the film's measured window), the roughness
+        cutoff, and who owns the coupling."""
+        if not self.lubricated or start is None or "pose" not in start:
+            return []
+        leaves = self.params_pytree()
+        spacing = float(leaves["handover_spacing"])
+        handover = HANDOVER_SPACINGS * spacing
+        with cast(Any, jax).ensure_compile_time_eval():
+            wall = self._wall()
+            found = handed_over(cast(Search, self._search), self._kind, self._kind_parameters(leaves),
+                                self._sampling.samples(self._kind, self._kind_parameters(leaves)).points,
+                                as_run_array(start["pose"]), wall,
+                                {name: leaves.get(f"{WALL}{name}", self.constants()[f"{WALL}{name}"])
+                                 for name in wall.parameters}, leaves, leaves["viscosity"])
+            radius = 1.0 / max(float(found.contact.k1), 1.0 / float(leaves["film_reach"]))
+            cutoff, gap = float(found.cutoff), float(found.contact.gap)
+        reach = ("within the film's measured window (about 7 %)" if handover <= WINDOW * radius else
+                 f"past the film's measured window, {WINDOW:g} of it (about 7 % within it, 15 to 19 % at force spacings "
+                 f"of 0.45 to 0.6 of the radius, about 30 % at 0.9): a step there raises handover_window")
+        return [f"lubrication's hand-over: the body's near contact is opened to {handover * 1e3:.4g} mm "
+                f"({HANDOVER_SPACINGS:g} of the force spacing, {spacing * 1e3:.4g} mm) before the coarse MRS is "
+                f"evaluated, plus the thin film's increment; at the start the contact's gap is {gap * 1e3:.4g} mm and "
+                f"its smaller radius of curvature {radius * 1e3:.4g} mm, so the hand-over gap is "
+                f"{handover / radius:.3g} of it, {reach}",
+                f"lubrication's roughness cutoff: {cutoff * 1e6:.4g} um, the root of the sum of the squares of the "
+                f"body's {float(leaves['roughness_body']) * 1e6:.4g} um and the wall's "
+                f"{float(leaves['roughness_wall']) * 1e6:.4g} um (each a declaration, never fitted): below it the "
+                f"film's gap is floored, its resistance stops growing and a contact carries the gap; the near-wall "
+                f"resistance owns the hydrodynamic coupling of rotation and translation down to it (film_coupling "
+                f"reports the film's share), a contact none"]
 
     def _graded_lines(self) -> list[str]:
         """What the build reports of a graded sampling: what it was graded towards, as the drag described it, the

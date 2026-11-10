@@ -160,7 +160,9 @@ def near_contact(search: Search, kind: Geometry, parameters: Mapping[str, Any], 
     hull = Hull(points, search.groups, kind_pose, kind, parameters, search.places, apart, jnp.zeros((), dtype=dtype),
                 leaves["film_search_tolerance"], search.starts)
     zero = jnp.zeros((), dtype=dtype)
-    found = pair_contacts(Pair(hull, Wall(shape, region, zero), True), zero)
+    # the search's Newton steps unrolled (the contact 0.4.0's program), so that every guard it reaches is evaluated
+    # on values where the switch harness reads it
+    found = pair_contacts(Pair(hull, Wall(shape, region, zero), False), zero)
     point, normal, gap = found.points[0], found.rows[0, :3], found.gaps[0]
     turn = quaternion.rotation_matrix(kind_pose[3:])
     support = kind.support(parameters, turn.T @ -normal, found.local[0])
