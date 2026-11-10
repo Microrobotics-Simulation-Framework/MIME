@@ -7,10 +7,11 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 
 - ``stall`` (``|N_Krylov| / D_visc``, the node's own ``stall_ratio``): a solve that stops short of its solution while
   reporting arrival;
-- ``convection`` (``|N_conv|`` over the magnitude of convection's own product, ``dt rho <|C(u)|, |u'|>``): a
-  convective term not formed from the velocity it acts on. The divergence form is skew on a divergence-free field, so
-  at one time level it does no work; at IMEX Euler's mixed levels its work is first order in the step's change,
-  ``|N_conv|`` a few hundredths of its magnitude at the CFL line;
+- ``convection`` (``N_conv`` against its time level's own work, ``-dt rho <C(u), u' - u>``, over the magnitude of
+  convection's product): convection doing work beyond its time level's. The divergence form is skew on a
+  divergence-free field, so at one level it does no work and at IMEX Euler's mixed levels all its work is the
+  level's (``N_conv``'s own order is the order check's); a convective term formed from another velocity, or not
+  skew, does more;
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
 - ``open_face_projection`` and ``port_kinetic_flux``: pending until a medium has openings (F2b's PR 2 gates them)."""
@@ -49,22 +50,28 @@ def stall_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], af
 
 
 def convection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:
-    """``|N_conv| / (dt rho <|C(u)|, |u'|>)``: the convective term's booked work over the magnitude of its product,
-    ``C`` the grid kind's convection at the step's starting velocity ``u``, ``u'`` its solution. Zero where the product
-    is under half the dtype's digits of its own natural size, ``(max|u| / h) <|u|, |u'|>`` (a flow whose convection
-    vanishes, a straight tube's Poiseuille flow: there ``C`` is rounding, and so is the reading's every digit)."""
+    """``|N_conv - N_level| / (dt rho <|C(u)|, |u'|> + |N_conv|)``: the convective term's booked work against its time
+    level's own, ``N_level = -dt rho <C(u), u' - u>``, ``C`` the grid kind's convection at the step's starting velocity
+    ``u`` and ``u'`` its solution. The divergence form is skew on a divergence-free field, ``<C(u), u> = 0``, so at
+    IMEX Euler's mixed levels its whole work is that level's and the difference is rounding; a convective term formed
+    from another velocity, or not skew, does work beyond it. Over the magnitude of the recomputed product and of what
+    was booked; zero where both are under half the dtype's digits of the product's natural size, ``(max|u| / h) <|u|,
+    |u'|>`` (a flow whose convection vanishes, a straight tube's Poiseuille flow: there every digit is rounding)."""
     grid = node.grid(p)
     started, ended = _velocity(before), _velocity(after)
     terms = cast(tuple[str, ...], node.LEDGER_TERMS)
     term = after[f"{books.RECORDS}step_terms"][terms.index("convection")]
     if not node.constants()["convection"]:
         return jnp.zeros((), dtype=term.dtype)
-    size = grid.inner_magnitude(grid.convection(started), ended)
+    convection = grid.convection(started)
+    change = (ended[0] - started[0], ended[1] - started[1], ended[2] - started[2])
+    weight = node.delta_t * as_run_array(p["density"])
+    level = -weight * grid.inner(convection, change)
+    size = weight * grid.inner_magnitude(convection, ended) + jnp.abs(term)
     speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in started]))
-    natural = speed / grid.spacing * grid.inner_magnitude(started, ended)
+    natural = weight * speed / grid.spacing * grid.inner_magnitude(started, ended)
     digits = jnp.sqrt(jnp.finfo(term.dtype).eps)
-    product = node.delta_t * as_run_array(p["density"]) * size
-    return jnp.where(size > digits * natural, _share(jnp.abs(term), product), 0.0)
+    return jnp.where(size > digits * natural, _share(jnp.abs(term - level), size), 0.0)
 
 
 def leak_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:

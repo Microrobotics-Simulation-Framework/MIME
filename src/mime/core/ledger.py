@@ -552,11 +552,12 @@ class TermOrder:
 
 @dataclass(frozen=True)
 class FlagEvidence:
-    """A flag's planted bug and its measured detection: ``caught`` of ``runs`` planted runs read past the flag's line,
-    ``false_alarms`` of ``clean_runs`` runs at the same draws without the plant, and ``evidence``, the measurement's
-    run (a link)."""
+    """A flag's planted bug and its measured detection in one dtype: ``caught`` of ``runs`` planted runs read past the
+    flag's line, ``false_alarms`` of ``clean_runs`` runs at the same draws without the plant, and ``evidence``, the
+    measurement's run (a link)."""
 
     plant: str
+    dtype: str
     caught: int
     runs: int
     false_alarms: int
@@ -575,8 +576,9 @@ class LedgerFlag:
     states either side of it, traced), ``line`` (by dtype, the largest reading a correct run gives, measured on drawn
     cases that ``clean`` states, the first ``settle`` steps of a run not judged: a state given from outside carries its
     own transient), ``evidence`` (each planted bug with its measured rate; a plant that is not caught every run says
-    what the flag does not catch). **A flag is a check only when some plant is caught every run**; one that cannot be
-    gated yet is declared ``pending`` with the reason and is never counted as a check."""
+    what the flag does not catch). **A flag is a check only when, in each dtype it has a line in, some plant is caught
+    every run with no false alarm**; one that cannot be gated yet is declared ``pending`` with the reason and is never
+    counted as a check."""
 
     name: str
     ratio: str
@@ -587,9 +589,13 @@ class LedgerFlag:
     settle: int = 0
     pending: str = ""
 
+    def shown(self, dtype: str) -> bool:
+        """Whether some plant is caught every run with no false alarm in ``dtype``."""
+        return any(e.every_run and e.dtype == dtype for e in self.evidence)
+
     @property
     def active(self) -> bool:
-        return not self.pending and any(e.every_run for e in self.evidence)
+        return not self.pending and bool(self.line) and all(self.shown(dtype) for dtype in self.line)
 
 
 __all__ = ["CHECK_CLUSTER", "CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES",

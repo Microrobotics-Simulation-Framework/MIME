@@ -151,9 +151,10 @@ def flag_problems(flags: Sequence[LedgerFlag]) -> list[str]:
             line = flag.line.get(dtype)
             if line is None or not np.isfinite(line) or line <= 0.0:
                 found.append(f"{flag.name} has no measured line in {dtype}")
-        if not any(item.every_run for item in flag.evidence):
-            found.append(f"{flag.name} is declared a check and no plant of it is caught every run with no false alarm: "
-                         f"coverage claimed, not shown (declare it pending, with the reason)")
+        for dtype in ("float32", "float64"):
+            if not flag.shown(dtype):
+                found.append(f"{flag.name} is declared a check and no plant of it is caught every run with no false "
+                             f"alarm in {dtype}: coverage claimed, not shown (declare it pending, with the reason)")
     return found
 
 
