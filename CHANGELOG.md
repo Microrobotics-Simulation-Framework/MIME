@@ -21,9 +21,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing of the components (every read it declares, the points a field is read at among them) and delivers only
   loads its receivers pair is outside**, and what it delivers is supplied work under its own name (a `BodyForce`
   driving a metered flow); a law that declares a class keeps it whatever its node reads (gravity reads nothing without
-  a couple, and stays a potential). A source that states no reason for declaring no class is still logged under exploratory and refused
-  under research (`ledger.unmetered`). The flow's reason for being unmetered is gone, and `mime.testing`'s port cases
-  gain the fluid's (`fluid_rig`, `fluid_states`).
+  a couple, and stays a potential). A source that states no reason for declaring no class is still logged under
+  exploratory and refused under research (`ledger.unmetered`). The flow's reason for being unmetered is gone, and
+  `mime.testing`'s port cases gain the fluid's (`fluid_rig`, `fluid_states`).
+
+- **The coil array returns: `mime.fields.CalibratedMultipole`** (`calibrated_multipole` 0.1.0, its node
+  `CalibratedMultipoleNode`), an electromagnet array whose coils are a calibrated multipole model of order one, from one of three packaged calibrations (ETH MSRL's published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME; not affiliated with or endorsed by the systems' makers), `asset("navion_2")`, `asset("octomag")` and `asset("cardiomag")`: Apache-2.0,
+  Multi-Scale Robotics Lab, ETH Zurich, byte for byte their upstreams' at pinned commits, each with its card
+  (`docs/assets/`). On `mime.fields.CoilArray`, the contract every kind of coil array keeps: the command `currents`, one
+  per coil, reaches the node as `delivered_currents`; the array is placed by `at` and `orientation`, one exact
+  transform; `background` is a uniform field in the world frame, zero unless declared (the calibrations are fitted to
+  the coil field alone; Earth's 50 uT is 0.1 to 1 % of a 5 to 50 mT field and has no gradient). The sources' positions,
+  directions and coefficients, the pose and the background are the node's leaves. It publishes the flux density and
+  its gradient at the reader's point or its magnet's centroid, so dev1's magnetic pair reads it; it raises
+  `outside_region` (outside the calibration's declared region, which is not a fit domain) and `near_source` (a coil's
+  gradient per unit current above 30 times its median over the region, which is a fitted source's own term;
+  `source_clearance` replaces the rule with a distance), and refuses float32 where the sources' cancellation puts its rounding above
+  1e-4 of the field (OctoMag; `setting.value`). `provider.actuation(point)` gives the field and gradient per unit
+  current at a point (`Actuation`, its `matrix()` the 8 x K actuation matrix), and `allocate(actuation, field=,
+  gradient=, limits=)` bounded least-squares currents within limits the user declares (`allocation.wanted` refuses a
+  wanted gradient that is not symmetric and trace-free, and limits that are not above zero). The units `T_per_m` and
+  `mT_per_m`, of the dimension `FIELD_GRADIENT`. Held to ETH's `mag_manip` 3.0.0 per system at 10 eps over the field's
+  cancellation (its archive's generator in `tests/oracles/`); its sign convention is mag_manip's, which no hardware
+  grounds here (MIME-ANO-153). Not returned from the 0.2 line's `CoilArrayFieldNode`: the sign setting (a validity line
+  and MIME-ANO-153 instead), S-MPEM saturation (no shipped calibration fits it; it makes the field nonlinear in
+  current), orders above one. CardioMag's file carries an `Offset` block of eight current-independent sources (about 1.5 mT at the
+  median over its region) that neither mag_manip nor this evaluates, stated on its card and in the validity lines; a
+  `Coil_List` that names the block is refused. No system ships a current limit: the figures published for each are cited
+  in its card and the validity lines (Navion_2 25 A an operating restriction and 45 A the hardware's, CardioMag 35 A a coil with its 15 kW cap not modelled, OctoMag 16 A), MIME's declarations with their sources and no maker's specification, and the previous line's unsourced 35 A and 20 A are dropped.
 
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
@@ -757,6 +782,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **`drag` 0.5.0's default MRS spacing steps one unit of the third figure below its bound, not ten units under a power
+  of ten.** The rule rounds the largest spacing that gives the family's sample count to three figures and, where that
+  lies past the bound, steps down one unit of the third figure, sized from the rounded value: where the bound is in the
+  last half unit under a power of ten (a ball of radius 3.9785 mm: bound 0.99953 mm) the rounded value is the power, and the
+  step went to 0.99 mm, not 0.999 mm, about 0.9 % finer spacing than needed, never coarser. 0.5.0 sizes the step
+  from the bound, so the spacing is the bound rounded down to three figures, in the family's path and in the confined
+  path alike (a closest approach over `CONFINED_GAP`). Drag 0.3.0 and 0.4.0 keep the released step (`step_from_boundary`),
+  so released programs keep their bits (measured, float32 and float64: the resolved spacing and the resistance's bits of
+  the ball, pill and FL-9 on both, and FL-9 confined on 0.4.0, equal to the tip's). Of 0.5.0's programs, only those whose
+  bound lies in that band move (the 1 mm ball, the pill and FL-9 at their defaults do not).
 
 - **The rft rung's resistance is the same bit for bit whichever kind of core a process started on** (MIME-ANO-125
   again; the rung is unreleased). R1's node summed `M^T f` over its 3n unknowns in one product (282 on

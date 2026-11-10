@@ -30,6 +30,8 @@ TRACKED = (WEIGHTS, "tests/differential/references/port_drag.npz", "tests/differ
            "tests/differential/references/port_table_axis_far_provenance.json",
            "tests/oracles/references/dejongh_mrs_offsets.npz",
            "tests/oracles/references/helix_fl9_free_space.json",
+           "tests/oracles/references/mpem_mag_manip.npz", "tests/oracles/references/mpem_mag_manip_provenance.json",
+           *(f"src/mime/data/emns_calibrations/{name}.yaml" for name in ("navion_2", "octomag", "cardiomag")),
            *(SCRIPT_A + name for name in ("f64_steady.json", "f64_provenance.json", "f32_steady.json",
                                           "f32_provenance.json", "f64_freq11hz_steady.json",
                                           "f64_freq11hz_provenance.json", "f64_trajectory_every_10th_step.npz",
@@ -50,6 +52,28 @@ def test_the_packaged_weights_exist_load_and_are_the_pinned_ones():
     assert asset("dejongh_mlp_v2").sha256 == PINNED and asset_bytes(asset("dejongh_mlp_v2")) == data
     network = read_cholesky_mlp(data)
     assert len(network.layers) == 4 and network.squared_features and network.reference_radius_mm == 1.56
+
+
+#: The three eMNS calibrations' pins: the sha256 of their upstreams' bytes, written out here rather than read from MIME.
+CALIBRATIONS = {"navion_2": "ea6eeb803b48d73551648e4df08116373a03fed4e871eb2b5c13706f57796b56",
+                "octomag": "d0d92541ea3669bb1c4d4daf4acd36b9d3100f728e6270e2aebac53906cc0ad0",
+                "cardiomag": "31bd9b234586497275c8abff6ff292ece7ed029be8b6077b027264870facd51c"}
+
+
+@pytest.mark.parametrize("name", sorted(CALIBRATIONS))
+def test_each_calibration_is_packaged_as_its_upstream_bytes_and_pinned(name):
+    data = (importlib.resources.files("mime.data") / PACKAGED[name].file).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == CALIBRATIONS[name] == asset(name).sha256
+    assert asset_bytes(asset(name)) == data
+
+
+def test_control_a_calibration_with_one_byte_changed_is_refused(monkeypatch):
+    from mime import data
+
+    held = data._contents(PACKAGED["navion_2"].file)[0]
+    monkeypatch.setattr(data, "_contents", lambda file: (held + b" ", hashlib.sha256(held + b" ").hexdigest()))
+    with pytest.raises(data.AssetError, match="other contents"):
+        asset_bytes(asset("navion_2"))
 
 
 def git(*args: str) -> subprocess.CompletedProcess[str]:

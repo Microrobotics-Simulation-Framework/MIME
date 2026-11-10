@@ -96,4 +96,6 @@ node_ids:
   - id: MIME-NODE-103
     node: CoilArrayFieldNode
     module: mime.nodes.actuation.coil_array_field
-    retired: no 0.3 counterpart
+    retired: changed in CalibratedMultipoleNode (input delivered_currents for coil_currents and the readers' points per
+      slot for one target position; outputs per reader slot; the array placed by a pose; no sign setting, no
+      saturation, order one only; the flags outside_region and near_source)
