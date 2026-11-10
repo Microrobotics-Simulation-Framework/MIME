@@ -1,0 +1,95 @@
+{
+  "written": "2026-11-10, committed before any gate of W2a's PR 1a ran (the commit that adds this file is the timestamp): lubrication's hand-over on the MRS rung, body to wall, one point contact (the lift form: the coarse MRS evaluated with the contact opened to h_m = 0.75 of the force spacing, plus the thin film's increment, the roughness cutoff below it)",
+  "phase": "W2a PR 1a: the film, the lift for point contacts on the plane and the tube, the roughness cutoff, the coupling report; gates 1-4 and 7-12",
+  "labels": "predictions by W2a's builder from F0's hand-over spike (plans' C3: the lift form within about 7 % to s/R 0.3, 15 to 19 % at 0.45 to 0.6), the first step's probe (run 42794134037: the coarse MRS's error at the hand-over gap by blob, the film's increment semidefinite in 2,000 draws, float32 within 5e-4 of the increment's scale) and one smoke run through the node (below, seen before)",
+  "seen_before": [
+    "first-step probe 42794134037 (GitHub runner, float64): the coarse MRS's normal entry at 0.75 force spacings 5.6-6.1 % (blob 0.1), 3.5-4.2 % (0.05), 2.6-3.4 % (0.025), point image; the film's increment 0 of 2,000 indefinite; float32 increment within 5.1e-4 of its diagonal scale; the film's elimination residual about 1e3 ulps in both dtypes (laptop)",
+    "one smoke run through the node (laptop, float64, sphere a = 1 mm above a plane, s/a 0.2, blob 0.1, lubrication on): the normal entry against Brenner +2.2 % (h/a 0.3), +2.5 % (0.15), -2.6 % (0.1), -6.4 % (0.05), -4.5 % (0.02), -2.7 % (0.01), -1.5 % (0.005); least scaled eigenvalue 0.83 to 0.97; residual 2e-13. The shear entries were not compared before this file"
+  ],
+  "operating_point": {
+    "dtype": ["float64 (oracles, gates 1-4, 7, 8, 12)", "float32 against float64 (gate 10)"],
+    "platform": "CPU: CI's default lane, and GitHub runners (4 vCPU) for the probes",
+    "sizes_and_parameters": "a sphere of radius a = 1 mm, water (1 mPa s), a plane wall z = 0 (and a straight tube of radius 2 mm for the tube arms); the drag's spacing s/a 0.15, 0.2 and 0.3, blob 0.05 (the lubricated default) unless stated; h_m = 0.75 s; roughness 1 nm on both surfaces for the oracle gates (cutoff 1.4 nm, far below every gap judged), the default 1 um for gate 12",
+    "seeds_and_draws": "gate 4: poses drawn at physical scales (gap 1e-3 to 1 radius, any orientation), 200 draws a body kind; controls' rates on Actions with .github/probe/detection_rate.py"
+  },
+  "gate_1_sphere_plane_exact": {
+    "claim": "the lubricated drag's 6 x 6 for a sphere above a plane lies within the stated line of the exact resistance at every gap judged",
+    "kind": "bounds (against exact answers: Brenner's series on the normal, the method of fundamental solutions on the rest)",
+    "case": "tests/oracles/test_lubrication.py::test_gate1_*, the drag node's own step at each gap",
+    "prediction": {
+      "band": [0.0, 0.07],
+      "unit": "relative error of each diagonal entry; couplings on sqrt(R_ii R_jj)",
+      "basis": "measured-before (the hand-over spike: within about 7 % to s/R 0.3) and the smoke run's normal entry",
+      "why": "the error is the coarse MRS's at h_m (3.5-4.2 % at blob 0.05) plus the film's form error at h_m / R (about 3 % at 0.1 R, 8 % at 0.2 R on the sphere): s/a 0.15 and 0.2 put h_m at 0.11 and 0.15 radii"
+    },
+    "lines": "s/a 0.15 and 0.2: 7 % per entry at every gap; s/a 0.3 (h_m 0.225 R, past WINDOW, handover_window raised): 12 %",
+    "metric": "per-entry relative error (the normal against Brenner at every gap, the shear entries against the MFS at h/a >= 0.06 where it resolves to 2e-4)",
+    "control": {
+      "plant": "(a) the lift omitted (lubrication=False, the coarse MRS alone); (b) the film's increment x1.1 (the dev2 plan's 'every log coefficient x1.1')",
+      "expected_rate": "(a) 1/1 at every gap below h_m (the coarse MRS alone 22 to 147 % off or indefinite there); (b) caught at the gaps where 10 % of the increment exceeds the line less the measured error: predicted h/a <= 0.02 on the normal, not at 0.05 on the rotation (S4's caveat), the range stated per entry",
+      "resolution": "the MFS's 2e-4; the gate is silent on (b) above the gaps where it does not catch it"
+    },
+    "cannot_discriminate_if": "a hard max in place of the smooth lift: equally accurate away from h_m; gate 8 carries it"
+  },
+  "gate_2_coupling": {
+    "claim": "a sphere spun on a flat wall in still fluid translates at the exact rate per rotation at every gap down to the cutoff (the hydrodynamic half of the rolling arm's stage 1)",
+    "kind": "bounds",
+    "case": "U / (a Omega) = -(R_FU^-1 R_FOmega) from the node's 6 x 6, against the MFS's at h/a >= 0.06",
+    "prediction": {"band": [0.0, 0.1], "unit": "relative error of the translation per rotation", "basis": "guess from gate 1's line: the coupling's error over the tangential's", "why": "the ratio of two entries each within gate 1's line"},
+    "control": {"plant": "the film's coupling block added twice (the double count M4's lesson names)", "expected_rate": "N/N at gaps where the film's coupling exceeds 10 % of the total's (predicted h/a <= 0.1)", "resolution": "the MFS's"}
+  },
+  "gate_3_form_oracles": {
+    "claim": "the film's form: the normal entry's local exponent in the gap is -1 for a sphere and -3/2 for a line contact; the h -> 0 limit of the sphere's normal R_zz h / (6 pi mu a^2) is 1",
+    "kind": "estimates (form oracles: O3's exponent, limit and windowed exponent)",
+    "case": "the node's normal entry at gaps 1e-3 to 1e-2 a (roughness 1 nm), and the film alone on a line contact (k2 = 0)",
+    "prediction": {"value": null, "band": [-1.05, -0.95], "unit": "exponent (sphere); -1.55 to -1.45 (line); limit 0.97 to 1.03", "basis": "derived (Reynolds on the paraboloid) and measured-before (the spike's 0.02 % on the normal, 0.2-0.5 % on the line contact)", "why": "the increment carries the leading singular term exactly; the coarse MRS's share is O(1)"},
+    "control": {"plant": "(a) a sphere law on a line contact (k2 = k1); (b) the radius off by two (curvatures halved)", "expected_rate": "(a) N/N by the exponent; (b) N/N by the limit (reads near 4); the windowed exponent's dev1-blend control is not run here: the blend is the surrogate's, not this rung's"}
+  },
+  "gate_4_definiteness": {
+    "claim": "the lift form is positive definite wherever the coarse MRS at the opened geometry is",
+    "kind": "estimates (a draw count)",
+    "case": "a sphere and an ellipsoid above a plane and in a tube, poses drawn (gap 1e-3 to 1 a, any orientation), the node's least scaled eigenvalue",
+    "prediction": {"value": 0, "unit": "indefinite draws", "basis": "measured-before (0 of 19,407 in the hand-over spike; the increment 0 of 2,000 in the first step)"},
+    "control": {"plant": "the increment's normal entry negated (an indefinite increment)", "expected_rate": "N/N: the node replaces the resistance by NaN and the run stops (drag.mrs-indefinite)"}
+  },
+  "gate_7_x2_control": {
+    "claim": "the register's M4 control: the lubrication term scaled x2 moves the body's speed by the amount the 6 x 6 predicts",
+    "kind": "equality (a linear algebra identity through the node, to rounding)",
+    "case": "a sphere settling towards the plane under a constant force: the speed with the increment x2 against (R_MRS(opened) + 2 dTF)^-1 F from the node's own reported film_increment and resistance",
+    "prediction": {"band": [0.0, 1e-9], "unit": "relative difference, float64", "basis": "derived"},
+    "control": {"plant": "the increment x2 not applied (x1)", "expected_rate": "N/N: the speed then misses the x2 prediction by the term's share"}
+  },
+  "gate_8_gradients": {
+    "claim": "forward and reverse derivatives agree with central differences across h = h_m and across the roughness cutoff, through the plane's offset, the tube's radius and the body's position, and through a run_scan of several steps",
+    "kind": "equality to the differences' resolution",
+    "prediction": {"band": [0.0, 1e-5], "unit": "relative, float64", "basis": "measured-before (the spikes: 5e-7 to 8e-6 at step 1e-5)"},
+    "control": {"plant": "(a) a stop_gradient on the opening's dependence on the gap; (b) a hard max in place of the smooth lift", "expected_rate": "(a) N/N at gaps below h_m; (b) the derivative jumps at h_m: N/N on a sweep through it"}
+  },
+  "gate_9_practical_differentiability": {
+    "claim": "the two-builds check is quiet on the lubricated step: no build-time number is baked into its program (the search's numbers and the hand-over spacing are leaves)",
+    "kind": "equality",
+    "control": {"plant": "the hand-over gap made a constant of the program", "expected_rate": "N/N"}
+  },
+  "gate_10_bits_dtypes": {
+    "claim": "every released program (drag 0.3.0, 0.4.0, and 0.5.0's surrogate) is bit for bit in both dtypes; the lubricated 6 x 6 in float32 lies within 1e-3 of float64's on its diagonal scale",
+    "kind": "equality (bits); bounds (float32)",
+    "prediction": {"band": [0.0, 0.001], "unit": "float32 against float64, on the diagonal scale", "basis": "measured-before (the film's increment 5e-4 worst; the coarse MRS 5e-6)"},
+    "bits": {"cases": "released programs through .github/probe/bit_compare.py, base 1ea44ea against the head, one CPU", "prediction": "every array np.array_equal"}
+  },
+  "gate_11_never_silent": {
+    "claim": "a film solve that is not finite or whose residual exceeds FILM_RESIDUAL_ULPS ulps is flagged (film_unsolved) on every step of every run, forward and in a gradient's forward pass",
+    "kind": "acceptance",
+    "control": {"plant": "the film's elimination scaled by 1.01 (a wrong solve, residual about 1e-2)", "expected_rate": "N/N runs, every step flagged; 0/N with nothing planted"}
+  },
+  "gate_12_cutoff_exposure": {
+    "claim": "roughness_cutoff (the public reader standing for W2b's traction law) returns the cutoff the film uses; moving a surface's roughness moves the film's normal force below the cutoff by the predicted ratio; the film is continuous in value and slope through the cutoff",
+    "kind": "equality (the reader), estimates (the ratio), equality to resolution (continuity)",
+    "prediction": {"band": [0.0, 0.02], "unit": "relative miss of the predicted ratio (the film's leading 1/h at the floored gap)", "basis": "derived"},
+    "control": {"plant": "the floor's gap taken from the body's roughness alone", "expected_rate": "N/N: the reader's value then differs from the film's"}
+  },
+  "costs": {
+    "prediction": "a lubricated step near the wall costs two film solves more than the coarse MRS's (about 5-6 ms each on a runner at 65 nodes) plus the contact's search; beyond h_m plus its width it costs only the search",
+    "measured_at": "the first-step probe's film-grid arm; the gate size is measured by node_measure.py through the node"
+  },
+  "outcomes": null
+}
