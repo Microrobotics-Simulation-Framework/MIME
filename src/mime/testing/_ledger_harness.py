@@ -18,7 +18,10 @@ solver, a grid or a fluid.
    time, falls by ``2^(p - 1)`` as dt halves; one of order ``q`` in the tolerance, summed over a fixed count of steps,
    by ``100^q``. It passes where the order its fall shows rounds to the declared one (within
    :data:`ORDER_HALF_WIDTH`), or reaches the declared order's floor where the order is a floor (``TermOrder.at_least``:
-   a residual a solve's stop bounds). A term declaring no order fails, naming it."""
+   a residual a solve's stop bounds). A term declaring no order fails, naming it. **The fall is read from each term
+   summed over the rig's drawn cases**, each weighing by its own size: on one drawn case a term whose leading
+   coefficient cancels shows an order its scheme does not have (a ratio of two small numbers), and a single case is
+   no judgement of an order."""
 
 from __future__ import annotations
 
@@ -43,8 +46,13 @@ if TYPE_CHECKING:
 #: it (20 to 1700).
 REFINEMENT = {"dt": 2.0, "tolerance": 100.0}
 #: A term passes where the order its fall shows is within this of its declared order: the ratio rounds to the declared
-#: order and to no neighbour. For a second order in dt, 1.41 to 2.83 (#225's 1.6 to 2.4 was narrower than N_conv's
-#: spread over drawn swirls, 1.66 to 2.53); for an order of at least one in the tolerance, at least 10 (#225's).
+#: order and to no neighbour. For a second order in dt, 1.41 to 2.83; for an order of at least one in the tolerance, a
+#: fall of at least 10 (#225's), so a residual falling as the tolerance's square root (a stop on a squared norm, order
+#: one half) passes: no plant of that order was measured. **On one drawn case this band false-alarms**: the flow's
+#: ``N_conv`` is the residual of products that cancel (its sum is 0.02 % to 79 % of their magnitudes), so where its
+#: leading coefficient nearly vanishes one swirl falls at an apparent order of 1 or 3.7 (ratios 1.01 to 6.59 over 400
+#: swirls a dtype, 2 out of the band, and the third-order plant missed on 1): the band is judged on the sum over
+#: drawn cases (:func:`term_orders`), never widened to pass a single case.
 ORDER_HALF_WIDTH = 0.5
 _NAME = "ledger closes"
 
@@ -211,11 +219,14 @@ class FlagReading:
 
 @dataclass(frozen=True)
 class FlagReport:
-    """A run's flags: each active flag's reading (the checks), and each pending flag with its reason (never a check)."""
+    """A run's flags: each active flag's reading (the checks), each pending flag with its reason, and each silent one
+    (it read exactly zero at every judged step: the run formed nothing it reads, as convection's flag where the node's
+    convection is off). Neither a pending nor a silent flag is a check, and a run with no check does not pass."""
 
     node: str
     readings: tuple[FlagReading, ...]
     pending: Mapping[str, str] = field(default_factory=dict[str, str])
+    silent: tuple[str, ...] = ()
 
     @property
     def checks(self) -> int:
@@ -223,28 +234,37 @@ class FlagReport:
 
     @property
     def passed(self) -> bool:
-        return all(reading.passed for reading in self.readings)
+        return bool(self.readings) and all(reading.passed for reading in self.readings)
 
     def failures(self) -> list[str]:
-        return [f"{r.flag} read {r.worst:.3g} at step {r.step}, past its line {r.line:.3g}" for r in self.readings
-                if not r.passed]
+        found = [] if self.readings else [f"no flag of {self.node} read anything: nothing was checked (silent: "
+                                          f"{list(self.silent)}, pending: {sorted(self.pending)})"]
+        return found + [f"{r.flag} read {r.worst:.3g} at step {r.step}, past its line {r.line:.3g}"
+                        for r in self.readings if not r.passed]
 
 
 def judge_flags(node: Any, readings: Mapping[str, Any], dtype: str,
                 flags: Sequence[LedgerFlag] | None = None) -> FlagReport:
     """Each active flag of ``node`` (or each of ``flags``) judged on its readings over a run (a row a step, from the
     run's start, as :func:`run_flags` gives them) against its line in ``dtype``; the pending ones listed with their
-    reasons. A flag whose readings are missing fails, as one whose reading is not a number does."""
+    reasons; one that read exactly zero at every judged step listed as silent. A flag whose readings are missing fails,
+    as one whose reading is not a number does; a flag with no line in ``dtype`` is refused."""
     held: list[FlagReading] = []
+    silent: list[str] = []
     for flag in active_flags(node) if flags is None else flags:
+        if dtype not in flag.line:
+            raise ValueError(f"the flag {flag.name!r} has no measured line in {dtype} (it has {sorted(flag.line)})")
         values = np.abs(np.asarray(readings.get(flag.name, np.full(1, np.nan)), dtype=np.float64))[flag.settle:]
         if values.size == 0 or not np.all(np.isfinite(values)):
             held.append(FlagReading(flag.name, float("nan"), flag.line[dtype], -1))
             continue
+        if not np.any(values):
+            silent.append(flag.name)
+            continue
         at = int(np.argmax(values))
         held.append(FlagReading(flag.name, float(values[at]), flag.line[dtype], at + flag.settle))
     pending = {flag.name: flag.pending for flag in declared_flags(node) if flag.pending}
-    return FlagReport(str(getattr(node, "name", type(node).__name__)), tuple(held), pending)
+    return FlagReport(str(getattr(node, "name", type(node).__name__)), tuple(held), pending, tuple(silent))
 
 
 # -- the order check ------------------------------------------------------------------------------------------------
@@ -303,14 +323,24 @@ def ratio_band(argument: str, order: int, at_least: bool) -> tuple[float, float]
     return low, float("inf") if at_least else factor ** (order + ORDER_HALF_WIDTH - shift)
 
 
-def term_orders(sums: Callable[[float, float], Mapping[str, float]], terms: Sequence[str],
-                orders: Mapping[str, TermOrder]) -> OrderReport:
+Sums = Callable[[float, float], Mapping[str, float]]
+
+
+def term_orders(sums: Sums | Sequence[Sums], terms: Sequence[str], orders: Mapping[str, TermOrder]) -> OrderReport:
     """Each of ``terms`` against its order in ``orders`` (a scheme's declarations): ``sums(dt_scale,
     tolerance_scale)`` is each term's magnitude summed over a fixed time at the rig's step times ``dt_scale`` and its
     tolerance times ``tolerance_scale``, called at the rig's setting, with dt halved and with the tolerance
-    :data:`REFINEMENT` times looser, each where some term declares an order in it."""
+    :data:`REFINEMENT` times looser, each where some term declares an order in it. ``sums`` is one per drawn case
+    (a sequence) or one for the whole rig: each term's fall is read from its sum over every case, so a case whose
+    term cancels weighs by its own small size (:data:`ORDER_HALF_WIDTH`)."""
+    cases: tuple[Sums, ...] = (sums,) if callable(sums) else tuple(sums)
+
+    def summed(dt_scale: float, tolerance_scale: float) -> dict[str, float]:
+        each = [case(dt_scale, tolerance_scale) for case in cases]
+        return {term: math.fsum(float(one[term]) for one in each) for term in terms if term in orders}
+
     undeclared = tuple(term for term in terms if term not in orders)
-    base = sums(1.0, 1.0)
+    base = summed(1.0, 1.0)
     other: dict[str, Mapping[str, float]] = {}
     checks: list[OrderCheck] = []
     skipped: dict[str, str] = {}
@@ -323,8 +353,8 @@ def term_orders(sums: Callable[[float, float], Mapping[str, float]], terms: Sequ
                 skipped[f"{term} ({argument})"] = order.reason or "it declares no order in it"
                 continue
             if argument not in other:
-                other[argument] = sums(1.0 / REFINEMENT["dt"], 1.0) if argument == "dt" else \
-                    sums(1.0, REFINEMENT["tolerance"])
+                other[argument] = summed(1.0 / REFINEMENT["dt"], 1.0) if argument == "dt" else \
+                    summed(1.0, REFINEMENT["tolerance"])
             coarse, fine = (base, other[argument]) if argument == "dt" else (other[argument], base)
             ratio = float(coarse[term]) / float(fine[term])
             checks.append(OrderCheck(term, argument, declared, ratio, observed_order(argument, ratio),
@@ -332,6 +362,6 @@ def term_orders(sums: Callable[[float, float], Mapping[str, float]], terms: Sequ
     return OrderReport(tuple(checks), skipped, undeclared)
 
 
-__all__ = ["ORDER_HALF_WIDTH", "REFINEMENT", "FlagReading", "FlagReport", "OrderCheck", "OrderReport", "active_flags",
+__all__ = ["ORDER_HALF_WIDTH", "REFINEMENT", "FlagReading", "FlagReport", "OrderCheck", "OrderReport", "Sums", "active_flags",
            "declared_flags", "flag_problems", "flag_readings", "judge_flags", "ledger_closes", "observed_order",
            "ratio_band", "run_flags", "term_orders"]

@@ -157,8 +157,10 @@ Also:
     where the gate fed it: `fed_unattributed`), no dissipative law's gift and no indefinite operator, route one's every
     step dissipated, no jump between steps that no producer owns, a balance within its rounding where the identity is
     claimed, every record finite. `step_identity` and the solved-field suite's ledger case judge with it. Its
-    resolution is the floor: a gift just over it is caught on every draw of a rigid body, a dynamic arm and a flow in
-    both dtypes, and one just under it on none (`tests/energy/test_ledger_closes.py`);
+    resolution on drawn steps is the floor within the step's own rounding: a gift of 1.5 floors is caught on every
+    draw of a rigid body, a dynamic arm and a flow in both dtypes, and one of 0.5 floors on none, while one between
+    about 0.73 and 1.27 floors is caught on some draws and not others; the floor's exact value is pinned on records
+    (`tests/energy/test_ledger_closes.py`);
   - **ratio flags** (`MimeNode.LEDGER_FLAGS`, each a `mime.core.ledger.LedgerFlag`): a ratio of a metered step's terms
     that flags a bug the identity cannot see (a term books it by its own formula), with its line in each dtype, measured
     on drawn correct runs, the steps a run's start is not judged over, and each planted bug with its measured rate and

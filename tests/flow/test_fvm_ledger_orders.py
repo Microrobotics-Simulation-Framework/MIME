@@ -3,26 +3,32 @@ term the flow's step identity books falls at the order its scheme declares (``Ti
 physical loss written into an ``N`` formula, which the identity books whatever it is called and closes all the same, is
 caught; and every scheme declares an order, or why it has none, for every term it books.
 
-On a smooth swirl in the periodic tube with its Poiseuille drive (IMEX Euler, convection on, D/h 8, a fixed time of
-0.05 in units of D and nu, the solve at each dtype's default tolerance), each term's magnitude summed over the run, at
-the rig's step and tolerance, with dt halved and with the tolerance a hundred times looser: ``N_BE`` and ``N_conv``,
-declared second order in dt, pass where the order their fall shows rounds to two (a ratio of 1.41 to 2.83);
-``N_Krylov``, declared at least first order in the tolerance (its stop bounds it), where it shows at least half an
-order (a fall of at least ten, #225's). The steady limit's two zero terms and RK3's convective power (zero to rounding
-on the box) declare no order, with their reasons. **Measured on 200 seeds a dtype** (the PR's table): ``N_BE`` falls by
-1.92 to 1.96 as dt halves, ``N_conv`` by 1.66 to 2.53 (#225's band, 1.6 to 2.4, was narrower than that), and
-``N_Krylov`` by 1.1 to 7.3 as the tolerance halves, so the tolerance's step is a hundredfold. On 2 of 300 drawn phases
-``N_conv``'s leading coefficient nearly vanishes (its work against the step's change, whose convective and viscous
-parts can cancel) and it falls at an apparent order of 3.1 and 2.5: the check false-alarms there, and is not widened to
-pass them, since a third order is what it refuses. The seeds here are fixed.
+On smooth swirls in the periodic tube with its Poiseuille drive (IMEX Euler, convection on, D/h 8, a fixed time of
+0.05 in units of D and nu, the solve at each dtype's default tolerance), each term's magnitude summed over the run and
+over the three swirls of one drawn ensemble, at the rig's step and tolerance, with dt halved and with the tolerance a
+hundred times looser: ``N_BE`` and ``N_conv``, declared second order in dt, pass where the order their fall shows
+rounds to two (a ratio of 1.41 to 2.83); ``N_Krylov``, declared at least first order in the tolerance (its stop
+bounds it), where it shows at least half an order (a fall of at least ten, #225's). The steady limit's two zero terms
+and RK3's convective power (zero to rounding on the box) declare no order, with their reasons.
+
+**Why three swirls summed, at a step of 0.00125.** ``N_conv`` is the residual of products that cancel (its sum is
+0.02 % to 79 % of their magnitudes), so on one swirl whose leading coefficient nearly vanishes it falls at an apparent
+order of 1 or 3.7, in both dtypes alike (a coefficient, not rounding): over 400 swirls a dtype (seeds 5000 to 5399) one
+swirl's ratio ran 1.01 to 6.59 at round 1's step, 0.0025, 2 out of the band and the third-order plant missed on 1, and
+1.13 to 2.46 at 0.00125, 1 out. Summed over three swirls, each weighs by its own size, and a ratio of two small numbers
+no longer decides: 1.60 to 2.30 over 2e5 triples of those swirls at 0.00125, none out, every plant out. ``N_BE`` falls
+by 1.96 to 1.98 there and ``N_Krylov`` by 38 to 980 over the hundredfold. **The rates on fresh ensembles** are the
+PR's table (``detection_rate.py`` on Actions). CI checks ensemble 0 (swirls 0, 1 and 2).
 
 Every arm starts from one warmed state (the swirl and its drive after a short run at a quarter of the step), so the
 stiff interior's start, damped in a step whatever the step, is not in the sums; and each arm's books close
 (``ledger_closes``).
 
-**The controls, each failing every seed**: ``N_BE`` and ``N_conv`` moved to the wrong order, each scaled by ``(dt /
-dt_rig)^k`` (``k = -1``: first order; ``k = +1``: third), the difference moved into the viscous row so the identity
-still closes; and the viscous loss written into ``N_Krylov`` (#225's control), of order zero in the tolerance.
+**The controls, each failing every ensemble**: ``N_BE`` and ``N_conv`` moved to the wrong order, each scaled by ``(dt
+/ dt_rig)^k`` (``k = -1``: first order; ``k = +1``: third), the difference moved into the viscous row so the identity
+still closes; and the viscous loss written into ``N_Krylov`` (#225's control), of order zero in the tolerance. A
+multiplicative plant is below any check's resolution on a swirl whose term cancels (on one such swirl the order-one
+plant turns a third-order fall into an exact second), which is a further reason the order is read from the sum.
 Over-budget cases go on the duration allowlist, never under ``slow``.
 
 **A gift a term's own formula books** (convection's, at mixed time levels) is booked under that term, where the step
@@ -43,11 +49,15 @@ from mime.nodes.flow.fvm import SCHEMES, ImplicitFlowNode
 from mime.testing import ledger_closes, term_orders
 from mime.testing._ledger_harness import observed_order
 
-#: The fixed time each term is summed over (D = 1, nu = 1: about a fifth of the swirl's decay time).
+#: The fixed time each term is summed over (D = 1, nu = 1: the swirl's change per step decays about 1.4-fold a step
+#: at 0.0025, so the run's first steps carry most of each sum).
 TIME = 0.05
-#: The step of the arms, and the warm-up's: a twentieth of the run at a quarter of the step, which the stiff interior
-#: and the drive's start settle in (the penalty damps the solid's start in a step whatever the step is).
-STEP, WARM_STEP, WARM_STEPS = 0.0025, 0.000625, 20
+#: The step of the arms (halved from round 1's 0.0025, where one swirl's sums are further from their asymptote), and
+#: the warm-up's: a quarter of the run at 0.000625, which the stiff interior and the drive's start settle in (the
+#: penalty damps the solid's start in a step whatever the step is).
+STEP, WARM_STEP, WARM_STEPS = 0.00125, 0.000625, 20
+#: The swirls each check sums its terms over: ensemble ``e`` is swirls ``3e`` to ``3e + 2``.
+SWIRLS = 3
 #: The rig's tolerance in each dtype: its default.
 TOLERANCE = {"float64": 1e-8, "float32": 1e-5}
 #: The drive, constant: the tube's Poiseuille body force.
@@ -140,22 +150,23 @@ def sums_of(dtype: str, seed: int) -> tuple[Any, list[Any]]:
     return sums, ended
 
 
-def _report(dtype: str, seed: int):
-    sums, ended = sums_of(dtype, seed)
+def _report(dtype: str, ensemble: int):
+    """The order check of the ensemble's three swirls summed, and every arm's ended state."""
+    rigs = [sums_of(dtype, seed) for seed in range(SWIRLS * ensemble, SWIRLS * (ensemble + 1))]
     scheme = SCHEMES["imex_euler"]
-    return term_orders(sums, scheme.ledger_terms, scheme.ledger_orders), ended
+    report = term_orders([sums for sums, _ in rigs], scheme.ledger_terms, scheme.ledger_orders)
+    return report, [state for _, ended in rigs for state in ended]
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_each_numerical_term_falls_at_its_declared_order(dtype):
-    for seed in range(3):
-        report, ended = _report(dtype, seed)
-        assert report.passed, (seed, report.failures(), report.checks)
-        assert [(c.term, c.argument) for c in report.checks] == [("backward_euler", "dt"), ("convection", "dt"),
-                                                                 ("krylov", "tolerance")]
-        for state in ended:
-            judged = ledger_closes(state)
-            assert judged.passed, judged.detail
+    report, ended = _report(dtype, 0)
+    assert report.passed, (report.failures(), report.checks)
+    assert [(c.term, c.argument) for c in report.checks] == [("backward_euler", "dt"), ("convection", "dt"),
+                                                             ("krylov", "tolerance")]
+    for state in ended:
+        judged = ledger_closes(state)
+        assert judged.passed, judged.detail
 
 
 PLANTS = [("backward_euler", "dt", -1), ("backward_euler", "dt", 1), ("convection", "dt", -1),
@@ -165,16 +176,15 @@ PLANTS = [("backward_euler", "dt", -1), ("backward_euler", "dt", 1), ("convectio
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 @pytest.mark.parametrize(("term", "argument", "power"), PLANTS,
                          ids=[f"{t}-{a}{'-loss' if p is None else f'{p:+d}'}" for t, a, p in PLANTS])
-def test_control_a_term_of_the_wrong_order_fails_on_every_seed(dtype, term, argument, power, monkeypatch):
-    """The identity still closes with the term moved, and its check fails on every seed: at order 1 or 3 where 2 is
-    declared (ratios about 1 and 4 against 1.41 to 2.83), or near order 0 where at least 1 is (a fall of about 1
-    against at least 10)."""
+def test_control_a_term_of_the_wrong_order_fails_on_every_ensemble(dtype, term, argument, power, monkeypatch):
+    """The identity still closes with the term moved, and its check fails: at order 1 or 3 where 2 is declared (ratios
+    about 1 and 4 against 1.41 to 2.83), or near order 0 where at least 1 is (a fall of about 1 against at least
+    10)."""
     monkeypatch.setattr(ImplicitFlowNode, "energy_terms", wrong_order(term, argument, power))
-    for seed in range(3):
-        report, ended = _report(dtype, seed)
-        failed = [check for check in report.checks if not check.passed]
-        assert [(c.term, c.argument) for c in failed] == [(term, argument)], (seed, report.checks)
-        assert all(ledger_closes(state).passed for state in ended)
+    report, ended = _report(dtype, 0)
+    failed = [check for check in report.checks if not check.passed]
+    assert [(c.term, c.argument) for c in failed] == [(term, argument)], report.checks
+    assert all(ledger_closes(state).passed for state in ended)
 
 
 def test_every_scheme_declares_an_order_or_its_reason_for_every_term_it_books():
@@ -190,6 +200,17 @@ def _laws(orders: dict[str, tuple[float, float]]):
     """``sums`` of terms whose sums are exact powers: ``(p, q)`` the dt and tolerance orders of each, summed over a
     fixed time (``dt^(p - 1)``) and a fixed count of steps (``tol^q``)."""
     return lambda dt, tol: {term: dt ** (p - 1) * tol ** q for term, (p, q) in orders.items()}
+
+
+def test_the_harness_reads_the_fall_from_the_sum_over_cases():
+    """One case whose term cancels (its sums 1000 times smaller, falling at third order) does not decide: the sum over
+    three falls at second order; alone it would fail."""
+    from mime.core.ledger import TermOrder
+
+    declared = {"a": TermOrder(dt=2)}
+    cancelled = lambda dt, tol: {"a": 1e-3 * dt**2}  # noqa: E731
+    assert not term_orders(cancelled, ["a"], declared).passed
+    assert term_orders([_laws({"a": (2, 0)}), cancelled, _laws({"a": (2, 0)})], ["a"], declared).passed
 
 
 def test_the_harness_passes_exact_orders_and_fails_one_off_and_an_undeclared_term():

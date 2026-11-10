@@ -73,6 +73,8 @@ def test_the_stall_detector_reads_a_transient_far_under_its_line(dtype):
         state = run(node, 20)
     assert 0.0 <= float(state["stall_ratio"]) < 1e-3
     assert float(state["stall_flagged"]) == 0.0
+    judged = ledger_closes(state)
+    assert judged.passed, judged.detail
 
 
 def test_the_stall_detector_is_zero_at_rest_with_no_drive(dtype):
@@ -80,6 +82,8 @@ def test_the_stall_detector_is_zero_at_rest_with_no_drive(dtype):
         node = tube_node(8, length_cells=2, dt=0.002, g=0.0, convection=False, ledger=METERED)
         state = run(node, 2)
     assert float(state["stall_ratio"]) == 0.0
+    judged = ledger_closes(state)
+    assert judged.passed, judged.detail
 
 
 def test_a_ledger_off_run_has_no_stall_report(dtype):

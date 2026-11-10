@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import dataclasses
 
+import numpy as np
 import pytest
 from flag_cases import PLANTS, draw, readings
 
 from mime.nodes.flow.fvm import ExplicitFlowNode, ImplicitFlowNode
-from mime.testing import active_flags, flag_problems, judge_flags
+from mime.testing import active_flags, flag_problems, judge_flags, ledger_closes
 
 #: Each active flag's plant caught on every run (its rate in its evidence).
 CAUGHT = {"stall": "solve_tolerance_1e4", "convection": "convection_stale", "leak": "leak_mask"}
@@ -41,6 +42,20 @@ def test_the_pending_flags_are_never_counted_as_checks():
     assert report.checks == len(CAUGHT)
 
 
+def test_a_run_with_no_check_does_not_pass_and_a_flag_that_read_nothing_is_silent():
+    """RK3 declares only the pending two: its report has no check and does not pass. A flag that read exactly zero at
+    every judged step (convection's where the node's convection is off) is listed as silent, not counted; a dtype with
+    no line is refused."""
+    explicit = judge_flags(ExplicitFlowNode.__new__(ExplicitFlowNode), {}, "float64")
+    assert explicit.checks == 0 and not explicit.passed and "nothing was checked" in explicit.failures()[0]
+    node = ImplicitFlowNode.__new__(ImplicitFlowNode)
+    quiet = {flag: np.full(40, 1e-12) for flag in CAUGHT}
+    report = judge_flags(node, {**quiet, "convection": np.zeros(40)}, "float64")
+    assert report.silent == ("convection",) and report.checks == len(CAUGHT) - 1 and report.passed
+    with pytest.raises(ValueError, match="no measured line in float16"):
+        judge_flags(node, quiet, "float16")
+
+
 def test_control_a_flag_claimed_without_its_measurement_is_named():
     stall = ImplicitFlowNode.LEDGER_FLAGS[0]
     unproven = dataclasses.replace(stall, evidence=())
@@ -55,9 +70,12 @@ def test_control_a_flag_claimed_without_its_measurement_is_named():
 
 @pytest.mark.parametrize("seed", SEEDS)
 def test_each_active_flag_is_quiet_on_a_correct_run(dtype, seed):
-    node, found = readings(draw(seed), dtype)
+    ended: list = []
+    node, found = readings(draw(seed), dtype, ended=ended)
     report = judge_flags(node, found, dtype)
     assert report.checks == len(CAUGHT) and report.passed, report.failures()
+    judged = ledger_closes(ended[0])
+    assert judged.passed, judged.detail
 
 
 @pytest.mark.parametrize("seed", SEEDS)

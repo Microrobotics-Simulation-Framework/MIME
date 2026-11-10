@@ -7,7 +7,9 @@ whatever the draw) is caught on every draw of a rigid body, a dynamic arm and a 
 which judge with it), and one of 0.5 floors on none: the check is no looser and no tighter than its floor, within the
 step's own rounding, which reaches 0.27 floors on a rigid body's draws (0.10 on a flow's, 0.03 on an arm's; 500 to
 2000 draws a kind and dtype, the PR's table). So a gift between about 0.73 and 1.27 floors is caught on some draws and
-not others. The rate over independent runs is measured on Actions (``test_detection_rate_target``).
+not others, and a floor loosened by 30 % passes these drawn gifts: **the floor's value is pinned on records** (no
+rounding: a worst step at exactly the floor passes, the next number above fails). The rate over independent runs is
+measured on Actions (``test_detection_rate_target``).
 
 **Each of its checks has a control on records** that fails it alone: the identity, unattributed work (and none where
 the gate fed some), a dissipative law's gift, an indefinite operator, a step that gave energy on route 1, a jump
@@ -122,6 +124,22 @@ def test_control_each_check_fails_its_plant_alone(dtype, plant):
     records[f"{books.RECORDS}{field}"] = np.asarray(scaled, dtype=dtype)
     result = ledger_closes(records)
     assert result.failed and words in result.detail, result
+
+
+@pytest.mark.parametrize("route_one", [False, True])
+@pytest.mark.parametrize("field", ["identity_worst", "between_worst"])
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_the_floor_is_pinned_at_its_exact_value(dtype, field, route_one):
+    """The drawn gifts above resolve the floor only to the step's rounding (0.73 to 1.27 floors), so a floor loosened
+    by 30 % passed them. Here on records, with no rounding: a worst step at exactly 16 units of the dtype's rounding
+    passes, and at the next number above it fails."""
+    assert books.IDENTITY_ULPS == 16.0
+    floor = np.asarray(16.0 * np.finfo(dtype).eps, dtype=dtype)
+    records = _closed(dtype, route_one=route_one)
+    records[f"{books.RECORDS}{field}"] = floor
+    assert ledger_closes(records).passed
+    records[f"{books.RECORDS}{field}"] = np.nextafter(floor, np.asarray(np.inf, dtype=dtype))
+    assert ledger_closes(records).failed
 
 
 def test_control_route_one_s_step_that_gave_energy_fails_and_its_balance_is_not_judged():

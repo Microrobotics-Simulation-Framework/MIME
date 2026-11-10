@@ -11,8 +11,9 @@ deliveries (``METERED``). Cell Reynolds numbers 0.06 to 25, CFL 0.04 to 0.4, tau
 **The plants** (:data:`PLANTS`, each applied by ``setattr`` so that pytest's ``monkeypatch`` and a probe's own process
 apply it alike): a solve stopped short (two iterations, or a tolerance 1e4 looser, each reporting arrival as its
 stopping rule allows); a convective term formed from the run's starting velocity (a stale level) or from the velocity's
-components permuted (the wrong field), in the advective form, or at four times the step with the CFL line lifted; and
-the fluid's mask lost beyond the band (the drive reaching into the solid) or the solid's interior a thousand times
+components permuted (the wrong field), in the advective form, or at four times the step with the CFL line lifted; the
+convective operator itself scaled by 1.5 or negated (still skew: an operator error); and the fluid's mask lost beyond
+the band (the drive reaching into the solid) or the solid's interior a thousand times
 less stiff."""
 
 from __future__ import annotations
@@ -82,6 +83,21 @@ def _permuted(setter: Setter) -> None:
     setter(MACGrid, "convection", lambda self, velocity: real(self, (velocity[1], velocity[2], velocity[0])))
 
 
+def _operator(factor: float) -> Callable[[Setter], None]:
+    """The convective operator times ``factor`` (1.5: scaled; -1: negated): still skew, an operator error."""
+
+    def planted(setter: Setter) -> None:
+        real = MACGrid.convection
+
+        def convection(self: Any, velocity: Any) -> Any:
+            c = real(self, velocity)
+            return (factor * c[0], factor * c[1], factor * c[2])
+
+        setter(MACGrid, "convection", convection)
+
+    return planted
+
+
 def _advective(setter: Setter) -> None:
     def advective(self: Any, velocity: Any) -> Any:
         """``-(u . grad) u`` on each face set, central differences and four-point averages: not skew."""
@@ -134,12 +150,14 @@ def _none(setter: Setter) -> None:
 PLANTS: dict[str, Callable[[Setter], None]] = {
     "solve_two_iterations": _none, "solve_tolerance_1e4": _none, "convection_stale": _stale,
     "convection_permuted": _permuted, "convection_advective": _advective, "convection_past_the_line": _past_the_line,
+    "convection_scaled": _operator(1.5), "convection_negated": _operator(-1.0),
     "leak_mask": _wall("mask"), "leak_weak_interior": _wall("weak"),
 }
 #: The flag each plant is aimed at.
 AIMED = {"solve_two_iterations": "stall", "solve_tolerance_1e4": "stall", "convection_stale": "convection",
          "convection_permuted": "convection", "convection_advective": "convection",
-         "convection_past_the_line": "convection", "leak_mask": "leak", "leak_weak_interior": "leak"}
+         "convection_past_the_line": "convection", "convection_scaled": "convection",
+         "convection_negated": "convection", "leak_mask": "leak", "leak_weak_interior": "leak"}
 
 
 def settings_of(plant: str | None, dtype: str) -> dict[str, Any]:
@@ -151,10 +169,11 @@ def settings_of(plant: str | None, dtype: str) -> dict[str, Any]:
 
 
 def readings(point: Point, dtype: str, plant: str | None = None, flags: Any = None,
-             settings: dict[str, Any] | None = None) -> tuple[ImplicitFlowNode, dict[str, np.ndarray]]:
+             settings: dict[str, Any] | None = None,
+             ended: list[Any] | None = None) -> tuple[ImplicitFlowNode, dict[str, np.ndarray]]:
     """The point's node and its run (``plant`` applied already, by :data:`PLANTS`), each flag of the node (its active
-    ones, or ``flags``) read at every step: a row a step. ``settings`` override the node's (a plant's size). The
-    run's dtype is the caller's."""
+    ones, or ``flags``) read at every step: a row a step. ``settings`` override the node's (a plant's size); the run's
+    ended state is appended to ``ended`` where given (its books). The run's dtype is the caller's."""
     reynolds = point.reynolds
     drive = 16.0 * reynolds
     probe = tube_node(point.cells, g=drive, length_cells=4, dt=1e-3)
@@ -179,7 +198,9 @@ def readings(point: Point, dtype: str, plant: str | None = None, flags: Any = No
     held = books.deliveries(node.constants())
     given = {books.law_input(d.field, i): jnp.asarray([0.0, 0.0, drive]) if d.field == "body_force"
              else jnp.zeros(7) for i, d in enumerate(held) if d.kind == books.LOAD}
-    _, found = run_flags(node, lambda s: node.advance(p, s, given, dt), node.initial_state(), STEPS, p, flags)
+    final, found = run_flags(node, lambda s: node.advance(p, s, given, dt), node.initial_state(), STEPS, p, flags)
+    if ended is not None:
+        ended.append(final)
     return node, found
 
 
