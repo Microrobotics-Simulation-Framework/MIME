@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from near_field_cases import NODE, bodies, joint_node, mrs, precision, spheres, stepped
+from near_field_cases import NODE, assembled, bodies, joint_node, line, mrs, precision, spheres, stepped
 
 from mime.build import BuildRefused
 from mime.experiment import Experiment
@@ -97,6 +97,41 @@ def test_a_cluster_whose_run_will_not_fit_is_refused_on_either_route(route, monk
         found = [each for each in refused.value.refusals if each.code == "drag.near-field-memory"]
         assert len(found) == 1 and "a planted memory" in found[0].message
         assert f"on the {route} route" in found[0].message
+
+
+#: The fit's own configuration, two of MIME's spheres at 882 force points each a radius apart (5,292 unknowns), and what
+#: its fit gave (:data:`MEMORY_COUNTS`) as the estimate in GiB, written out here rather than derived from the counts
+#: (a golden value: a count edited without a refit, or a term dropped, moves it), with the two peaks past the fixed part
+#: the fit's own runs measured there (a radius apart, then a twentieth of one, in the fix round's measurements).
+FITTED_ESTIMATE_GIB = {("dense", "float64"): 1.0454, ("gmres", "float64"): 1.5148,
+                       ("dense", "float32"): 0.7835, ("gmres", "float32"): 1.0537}
+MEASURED_PEAK_GIB = {("dense", "float64"): (1.048, 1.071), ("gmres", "float64"): (1.602, 1.492),
+                     ("dense", "float32"): (0.884, 0.760), ("gmres", "float32"): (1.143, 1.007)}
+#: The fit's residual band over its 882-point cases (the measured peak over the estimate: 0.92 to 1.13).
+FIT_BAND = (0.92, 1.13)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_the_memory_estimate_is_what_the_fit_measured_and_gmres_holds_the_inverses_besides(dtype):
+    """The estimate on the fit's own configuration, both routes: the golden value of the fit, the fit's measured peaks
+    inside its own residual band of it, and the GMRES route's estimate over the dense route's by at least the held
+    blocks' bytes (``8 sum (3 N)^2``, here counted from the bodies' force points). The refusal test above takes its
+    control from the estimate itself, so it cannot see the estimate move; this one can. Measured, not a bound: the
+    band is the fit's residual over that one configuration."""
+    with precision(dtype):
+        built = bodies("fit", line(1e-3, 2), UncoupledDrag.MRS(spacing=m(0.15e-3), wall_kind="free_space")).build()
+        names = ["s0", "s1"]
+        members = [built.graph.get_node(f"drag:{body}") for body in names]
+        estimate = {route: assembled(members, names, dense_unknowns=room).memory_estimate()
+                    for route, room in (("dense", 10 ** 9), ("gmres", 0))}
+        unknowns = assembled(members, names).unknowns
+    assert unknowns == 2 * 3 * 882
+    held_blocks = 8 * 2 * (3 * 882) ** 2
+    for route, needed in estimate.items():
+        assert needed / 2 ** 30 == pytest.approx(FITTED_ESTIMATE_GIB[(route, dtype)], rel=1e-3), (route, dtype)
+        for peak in MEASURED_PEAK_GIB[(route, dtype)]:
+            assert FIT_BAND[0] <= peak / (needed / 2 ** 30) <= FIT_BAND[1], (route, dtype, peak)
+    assert estimate["gmres"] - estimate["dense"] >= held_blocks
 
 
 def test_a_cluster_past_the_takeover_line_takes_the_iterative_route(monkeypatch):
