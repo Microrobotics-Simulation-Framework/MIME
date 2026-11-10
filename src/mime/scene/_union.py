@@ -570,10 +570,15 @@ class ExactUnion:
 
     def minimum(self, parameters: Parameters, points: Any) -> Array:
         """The plain minimum of the regions' distances, filleted the same way: exact outside the union, too shallow
-        inside it near every seam. The control the rule is measured against, kept for the tests; not a distance to
-        use."""
-        distances, _, radius = self._widened(parameters, self._local(parameters, points))
-        return jnp.min(distances, axis=0) + radius
+        inside it near every seam. The control the rule is measured against; and the distance away from the wall,
+        where a reader's fields are flat (the FVM's faces beyond its band), the regions' distances alone, one at a
+        time, so its memory is the points'."""
+        held = self._local(parameters, points)
+        radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
+        least = self.regions[0].signed_distance(parameters, held) - radius
+        for region in self.regions[1:]:
+            least = jnp.minimum(least, region.signed_distance(parameters, held) - radius)
+        return least + radius
 
 
 class Seam(NamedTuple):

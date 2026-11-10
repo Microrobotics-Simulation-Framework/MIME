@@ -3,8 +3,10 @@ stage kind (IMEX Euler, or its steady limit), with its wall, its drive, its solv
 its step identity.
 
 **What a step computes, all in the program from the step's parameters** (no value derived from a parameter is made at
-build: round 3, item 2): the tube's signed distance from its centre, axis and radius (data, item 3), the band's
-indicator and the regions' inverse permeability on each face set; the resistivity ``nu x sum(1/K)`` and Jacobi's
+build: round 3, item 2): the wall's signed distance, a straight tube's from its centre, axis and radius (data, item 3),
+or a tube tree's from its points, radii and fillet (``mime.nodes.flow.fvm.TreeSolid``: the union's exact distance on
+the faces near the wall, which the build holds with the plan of where its candidates run, as it holds the cell
+counts), the band's indicator and the regions' inverse permeability on each face set; the resistivity ``nu x sum(1/K)`` and Jacobi's
 diagonal from the viscosity; the body force on the fluid, ``g (1 - chi)``, ``g`` what the laws bound to the medium
 deliver for the step (the waveform is theirs); then the scheme's step.
 
@@ -18,7 +20,8 @@ of a run that is returned crosses the hold. ``stokes=True`` runs are exempt (the
 **The validity lines it flags each step** (the entry lists every line): a solve that stopped other than converging
 (``solve_flagged``); with ``stokes=True``, the lumen's Reynolds number past the declared Stokes line
 (``reynolds_flagged``, :data:`STOKES_REYNOLDS`); the solid's bypass flux past its declared line (``bypass_flagged``,
-:data:`BYPASS_LINE`). The resolution in cells and float32's rounding floor are fixed when the node is built, so the
+:data:`BYPASS_LINE`); with a tube tree's wall, its distance not exact somewhere (``wall_inexact``: the union's counts,
+``wall_unrefined``, ``wall_unconverged`` and ``wall_unplanned``, are each step's fields). The resolution in cells and float32's rounding floor are fixed when the node is built, so the
 build reports them (:meth:`built_lines`).
 
 **The report.** Each step's primal solve report (``mime.nodes.flow.fvm._solve``'s block) is a state field, with its
@@ -41,8 +44,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, ClassVar, NamedTuple, override
+from functools import cached_property
+from typing import Any, ClassVar, NamedTuple, cast, override
 
+import jax
 import numpy as np
 from jax import Array
 from jaxtyping import Float, Int
@@ -53,8 +58,8 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, run_dtype
 from mime.core import ledger as books
 from mime.core._node import rechecked
-from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, interior_depth, negative_resistivity, \
-    wall_fields
+from mime.nodes.flow.fvm._band import TreeSolid, TubeSolid, WallFields, band_named, held_faces, interior_depth, \
+    negative_resistivity, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
@@ -102,6 +107,10 @@ GEOMETRY = ("its derivative is unverified: the tube's radius, centre and axis ar
             "loss is to be the box's whole axial flux, since the lumen's mask moves with the radius); through the "
             "band a geometry derivative carries a ripple within a cell of about +-20 % at D/h 8 to 16 and +-10 % at "
             "32 (measured on a static tube)")
+#: The leaves a tube tree's wall is made from in the step, by the names its lumen reads them under.
+TREE_LEAVES = {"tree_points": "points", "tree_radii": "radii", "tree_fillet": "fillet"}
+#: A tube tree's report fields: the union's counts summed over the face sets (``mime.nodes.flow.fvm.TreeSolid``).
+WALL_COUNTS = ("wall_unrefined", "wall_unconverged", "wall_unplanned")
 #: The fields a held state still writes: the stop's own record.
 _STOP_RECORD = frozenset({STOP_FIELD, "stopped_cfl"})
 #: The hosted laws a metered node books, by the field their delivery names: the fluid's viscosity and the wall's band.
@@ -136,6 +145,21 @@ class FlowState(_FlowFields, closed=True):
     """The flow's state without the energy ledger."""
 
 
+class _WallCounts(TypedDict):
+    """A tube tree's wall's report: where its distance was not exact, counted over the face sets (faces whose candidates
+    were not planned, and those a moved wall brought into the band outside the held faces; planned faces whose
+    candidates did not stand; pairs of tubes within reach the union does not hold as meeting), and its flag."""
+
+    wall_unrefined: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    wall_unconverged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    wall_unplanned: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    wall_inexact: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+
+
+class TreeFlowState(_FlowFields, _WallCounts, closed=True):
+    """A flow walled by a tube tree, without the energy ledger: the flow's fields and the wall's report."""
+
+
 class _FlowRecords(books.LedgerRecords):
     """With the energy ledger attached: the stall detector, ``|N_Krylov| / D_visc``, and its flag, beside the ledger's
     records (``mime.core.ledger.LedgerRecords``)."""
@@ -146,6 +170,11 @@ class _FlowRecords(books.LedgerRecords):
 
 class MeteredFlowState(_FlowFields, _FlowRecords, closed=True):
     """A metered flow's state: the flow's fields, the stall detector and the ledger's records."""
+
+
+class MeteredTreeFlowState(_FlowFields, _WallCounts, _FlowRecords, closed=True):
+    """A metered flow walled by a tube tree: the flow's fields, the wall's report, the stall detector and the ledger's
+    records."""
 
 
 class FlowInputs(TypedDict, closed=True):
@@ -180,8 +209,10 @@ def _held_of(scheme_state: SchemeState) -> dict[str, Array]:
 
 
 class ImplicitFlowNode(MimeNode):
-    """The flow field of a medium on a periodic box holding a straight tube, stepped by a scheme of the monolithic
-    projected CG's stage kind (the module states the step)."""
+    """The flow field of a medium on a periodic box holding a straight tube (``tube_centre``, ``tube_axis``,
+    ``tube_radius``) or a tube tree periodic along z (``tree_points``, ``tree_radii``, ``tree_fillet``, its
+    ``tree_segments`` structural), stepped by a scheme of the monolithic projected CG's stage kind (the module states
+    the step)."""
 
     LEDGER_TERMS = ("backward_euler", "convection", "krylov")
     #: The stall, a convective term not formed from its velocity, the drive in a solid; and the openings' two, pending
@@ -224,8 +255,11 @@ class ImplicitFlowNode(MimeNode):
     )
 
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
-                 viscosity: float, density: float, tube_centre: Sequence[float], tube_axis: Sequence[float],
-                 tube_radius: float, scheme: str = "imex_euler", convection: bool = True, tolerance: float | None = None,
+                 viscosity: float, density: float, tube_centre: Sequence[float] | None = None,
+                 tube_axis: Sequence[float] | None = None, tube_radius: float | None = None, tree_points: Any = None,
+                 tree_radii: Any = None, tree_fillet: float | None = None,
+                 tree_segments: Sequence[Sequence[int]] | None = None, scheme: str = "imex_euler",
+                 convection: bool = True, tolerance: float | None = None,
                  at_floor: bool | None = None, cap: int = DEFAULT_CAP, check_every: int = 20, band: str = "smooth_2h_0.3h",
                  interior: str = "0.1h",
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
@@ -246,6 +280,23 @@ class ImplicitFlowNode(MimeNode):
         preconditioner_named(preconditioner)
         if periodic_images not in ("own", "transverse"):
             raise ValueError(f"periodic_images is 'own' (an aligned tube) or 'transverse', not {periodic_images!r}")
+        tube = [value is not None for value in (tube_centre, tube_axis, tube_radius)]
+        tree = [value is not None for value in (tree_points, tree_radii, tree_fillet, tree_segments)]
+        if not ((all(tube) and not any(tree)) or (all(tree) and not any(tube))):
+            raise ValueError("a flow's wall is a straight tube (tube_centre, tube_axis and tube_radius) or a tube tree "
+                             "(tree_points, tree_radii, tree_fillet and tree_segments), one of them whole")
+        if tree_points is not None and periodic_images != "own":
+            raise ValueError("a tube tree's box holds the tree with no transverse image (periodic_images='own')")
+        walled: dict[str, Any]
+        if tube_centre is not None:
+            assert tube_axis is not None and tube_radius is not None
+            walled = dict(tube_centre=tuple(float(c) for c in tube_centre),
+                          tube_axis=tuple(float(c) for c in tube_axis), tube_radius=float(tube_radius))
+        else:
+            assert tree_segments is not None and tree_fillet is not None
+            walled = dict(tree_points=np.asarray(tree_points, dtype=np.float64),
+                          tree_radii=np.asarray(tree_radii, dtype=np.float64), tree_fillet=float(tree_fillet),
+                          tree_segments=tuple((int(a), int(b)) for a, b in tree_segments))
         # A node made again from its own arguments (the ledger's wiring, a test's rebuild) carries the stop it was made
         # with; otherwise the stop at the floor is float32's default, where no tolerance is given. Its solve_report
         # parameter is zeros sized by solve_report_rows, made here again, so the one it is given back is not read.
@@ -260,9 +311,7 @@ class ImplicitFlowNode(MimeNode):
             if value is not None:
                 initial[key] = np.asarray(value)
         super().__init__(name, timestep, cells_x=int(cells_x), cells_y=int(cells_y), cells_z=int(cells_z),
-                         spacing=float(spacing), viscosity=float(viscosity), density=float(density),
-                         tube_centre=tuple(float(c) for c in tube_centre),
-                         tube_axis=tuple(float(c) for c in tube_axis), tube_radius=float(tube_radius),
+                         spacing=float(spacing), viscosity=float(viscosity), density=float(density), **walled,
                          scheme=str(scheme), convection=bool(convection), tolerance=float(tolerance),
                          at_floor=bool(at_floor), cap=int(cap),
                          check_every=int(check_every), band=str(band), interior=str(interior),
@@ -275,16 +324,24 @@ class ImplicitFlowNode(MimeNode):
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
         fixed = "a structural setting: the box's cells were chosen with it"
-        return {**super().param_specs(),
-                "spacing": ParamSpec(trainable=False, units="m", description=fixed),
-                "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None),
-                                       description="the fluid's dynamic viscosity, mu; the step uses mu / rho"),
-                "density": ParamSpec(units="kg/m^3", bounds=(0.0, None)),
-                "tube_centre": ParamSpec(units="m", description=f"the tube's axis passes through it; {GEOMETRY}"),
+        held = ("its faces near the wall and the union's plan were held at the values built (a wall moved past them "
+                "is counted, wall_unrefined); its derivative is FA8's to judge")
+        wall = {"tube_centre": ParamSpec(units="m", description=f"the tube's axis passes through it; {GEOMETRY}"),
                 "tube_axis": ParamSpec(units="1", description=f"the tube's direction, the lattice direction the box "
                                                               f"was built for; {GEOMETRY}"),
                 "tube_radius": ParamSpec(units="m", bounds=(0.0, None),
                                          description=f"the lumen's radius; {GEOMETRY}"),
+                "tree_points": ParamSpec(units="m", description=f"the tube tree's points, in the box's frame; {held}"),
+                "tree_radii": ParamSpec(units="m", bounds=(0.0, None),
+                                        description=f"each segment's radius at its start and its end; {held}"),
+                "tree_fillet": ParamSpec(units="1", bounds=(0.0, None),
+                                         description=f"the fillet's radius as a share of the smallest radius at a "
+                                                     f"junction; {held}")}
+        return {**super().param_specs(), **{key: spec for key, spec in wall.items() if key in self.constants()},
+                "spacing": ParamSpec(trainable=False, units="m", description=fixed),
+                "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None),
+                                       description="the fluid's dynamic viscosity, mu; the step uses mu / rho"),
+                "density": ParamSpec(units="kg/m^3", bounds=(0.0, None)),
                 "tolerance": ParamSpec(trainable=False, units="1",
                                        description="the solve's relative tolerance on its true residual"),
                 "solve_report": ParamSpec(trainable=False, units="1",
@@ -317,7 +374,68 @@ class ImplicitFlowNode(MimeNode):
         c = self.constants()
         return MACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), p["spacing"])
 
-    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid]:
+    @property
+    def walled_by_tree(self) -> bool:
+        """Whether the wall is a tube tree's (its leaves ``tree_*``) rather than a straight tube's."""
+        return "tree_points" in self.constants()
+
+    def tree(self) -> Any:
+        """The tube tree as built (``mime.scene.TubeTree``): its structure, which tubes meet, and the values the held
+        faces and the plan were made at."""
+        from mime.scene import TubeTree
+
+        c = self.constants()
+        points = np.asarray(c["tree_points"], dtype=np.float64)
+        radii = np.asarray(c["tree_radii"], dtype=np.float64)
+        return TubeTree(tuple((float(x), float(y), float(z)) for x, y, z in points), tuple(c["tree_segments"]),
+                        tuple((float(a), float(b)) for a, b in radii), float(c["tree_fillet"]))
+
+    @cached_property
+    def _held_faces(self) -> dict[str, tuple[Any, Any, tuple[float, float]]]:
+        return {}
+
+    def held_faces(self, grid: MACGrid) -> tuple[Any, Any, tuple[float, float]]:
+        """A tube tree's faces held near the wall, the union's plan on them and the reach outside them a face is
+        counted within (``mime.nodes.flow.fvm.held_faces``), made once per dtype from the values built."""
+        dtype = str(jnp.dtype(run_dtype()))
+        cache = self._held_faces
+        if dtype not in cache:
+            tree = self.tree()
+            c = self.constants()
+            # Made from the values built, outside whatever traces the step that first asks for them.
+            with cast(Any, jax).ensure_compile_time_eval():
+                cache[dtype] = held_faces(tree.lumen(), tree.parameters(), MACGrid(grid.cells, float(c["spacing"])),
+                                          band_named(c["band"]), tree.fillet_radius_value(), run_dtype())
+        return cache[dtype]
+
+    def tree_leaves(self, p: Mapping[str, Any]) -> dict[str, Array]:
+        """The tree's leaves as its lumen reads them, from the step's parameters."""
+        return {name: as_run_array(p[leaf]) for leaf, name in TREE_LEAVES.items()}
+
+    def vessel_axis(self, p: Mapping[str, Any]) -> Array:
+        """The direction the reported fluxes are taken along: the tube's axis, or a tree's period, z."""
+        if self.walled_by_tree:
+            return as_run_array((0.0, 0.0, 1.0))
+        return as_run_array(p["tube_axis"])
+
+    def vessel_radius(self, p: Mapping[str, Any]) -> Array:
+        """The radius the reported Reynolds number is taken by: the tube's, or a tree's narrowest (the box's whole
+        flux through its narrowest lumen, an upper bound)."""
+        if self.walled_by_tree:
+            return jnp.min(as_run_array(p["tree_radii"]))
+        return as_run_array(p["tube_radius"])
+
+    def cfl_axis(self, p: Mapping[str, Any]) -> Any:
+        """The direction the scheme's CFL line is read along: the tube's axis; a tree's flow along any direction, so
+        the diagonal, where the line is least (``g(n)`` a third)."""
+        if self.walled_by_tree:
+            return as_run_array((1.0, 1.0, 1.0))
+        return p["tube_axis"]
+
+    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid | TreeSolid]:
+        if self.walled_by_tree:
+            near, plans, reach = self.held_faces(grid)
+            return [TreeSolid(self.tree().lumen(), self.tree_leaves(p), near, plans, reach)]
         extents = [count * grid.spacing for count in grid.cells]
         if self.constants()["periodic_images"] == "own":
             shifts: tuple[tuple[Any, Any, Any], ...] = ((0.0, 0.0, 0.0),)
@@ -434,9 +552,11 @@ class ImplicitFlowNode(MimeNode):
             solve_report=jnp.zeros(REPORT_SIZE, dtype=dtype), solve_report_sum=jnp.zeros(REPORT_SIZE, dtype=dtype),
             solve_flagged=z, cfl=z, stopped_at=jnp.asarray(-1, dtype=jnp.int32), stopped_cfl=z, lumen_flux=z,
             bypass_ratio=z, bypass_flagged=z, reynolds=z, reynolds_flagged=z, negative_resistivity=z)
+        held = node_fields(FlowState(**common)) if not self.walled_by_tree else node_fields(
+            TreeFlowState(**common, **self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=dtype))))
         if not self.metered:
-            return node_fields(FlowState(**common))
-        return books.with_records(self, {**node_fields(FlowState(**common)), "stall_ratio": z, "stall_flagged": z})
+            return held
+        return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z})
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -489,16 +609,16 @@ class ImplicitFlowNode(MimeNode):
         checked = bool(c["convection"]) and scheme.cfl_line is not None
         stopped_before = jnp.asarray(state["stopped_at"]) >= 0
         # Past the line unless provably at or under it: a NaN or an infinite CFL is past it too.
-        past = ~(cfl <= scheme.cfl_limit(p["tube_axis"])) if checked else jnp.asarray(False)
+        past = ~(cfl <= scheme.cfl_limit(self.cfl_axis(p))) if checked else jnp.asarray(False)
         ended_state, stage = scheme.step(context, _scheme_state(state), time, dt)
         ended_velocity: Velocity = ended_state["velocity"]
         report = stage.report
         flagged = (report[2] + report[3] + report[4] > 0).astype(dtype)
-        axis = as_run_array(p["tube_axis"])
+        axis = self.vessel_axis(p)
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
         lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, ended_velocity)
         ratio = self.ratio(solid, lumen, lumen_scale)
-        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
+        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * self.vessel_radius(p) * self.kinematic(p))
         stokes = not bool(c["convection"])
         energy = self.energy_terms(p, grid, velocity, stage, sigma, fields, dt) if self.metered else {}
         ended: dict[str, Array] = dict(
@@ -513,12 +633,19 @@ class ImplicitFlowNode(MimeNode):
             reynolds=reynolds.astype(dtype),
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
             negative_resistivity=negative_resistivity(fields).astype(dtype))
-        held = node_fields(FlowState(**ended))
+        held = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
+            TreeFlowState(**ended, **self.wall_report(fields.counts)))
         if self.metered:
             stall = self.stall_ratio(energy)
             line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
         return held, StepParts(stage, fields, energy)
+
+    @staticmethod
+    def wall_report(counts: Array) -> dict[str, Array]:
+        """A tube tree's report fields from its counts (``WallFields.counts``), and its flag: any of them above zero."""
+        report = {name: counts[index] for index, name in enumerate(WALL_COUNTS)}
+        return {**report, "wall_inexact": (jnp.sum(counts) > 0).astype(counts.dtype)}
 
     # -- the step identity ------------------------------------------------------------------------------------------
     @override
@@ -654,7 +781,8 @@ class ImplicitFlowNode(MimeNode):
         above the monolithic solve's tolerance (a node with no such solve has no such line)."""
         del start, closest_approach
         c = self.constants()
-        cells = 2.0 * float(c["tube_radius"]) / float(c["spacing"])
+        radius = float(np.min(c["tree_radii"])) if self.walled_by_tree else float(c["tube_radius"])
+        cells = 2.0 * radius / float(c["spacing"])
         lines: list[str] = []
         if cells < CALIBRATED_CELLS:
             lines.append(f"the lumen is {cells:.3g} cells across, under the {CALIBRATED_CELLS:g} at and above which "
@@ -663,7 +791,8 @@ class ImplicitFlowNode(MimeNode):
                          f"and +10.8 % at 8, and under about 5 cells the build refuses")
         nu = float(c["viscosity"]) / float(c["density"])
         if run_dtype() == jnp.float32 and self.scheme.stores_inertia and "tolerance" in c:
-            tau = float(c["tube_radius"]) ** 2 / (STALL_SECTION * nu)
+            widest = float(np.max(c["tree_radii"])) if self.walled_by_tree else float(c["tube_radius"])
+            tau = widest ** 2 / (STALL_SECTION * nu)
             floor = float(np.finfo(np.float32).eps) * tau / self.delta_t
             if floor > float(c["tolerance"]):
                 lines.append(f"float32's rounding floor near a steady state, eps x tau/dt = {floor:.3g} (tau = R^2 / "
@@ -691,7 +820,8 @@ class ImplicitFlowNode(MimeNode):
         if step < 0 or not all(np.isfinite(np.asarray(state[f"velocity_{c}"])).all() for c in "xyz"):
             return None
         cfl = float(np.asarray(state["stopped_cfl"]))
-        line = float(self.scheme.cfl_limit(self.constants()["tube_axis"]))
+        c = self.constants()
+        line = float(self.scheme.cfl_limit((1.0, 1.0, 1.0) if self.walled_by_tree else c["tube_axis"]))
         finite = math.isfinite(cfl) and cfl > 0.0
         safe = self.delta_t * line / cfl if finite else float("nan")
         return Problem(
@@ -719,5 +849,5 @@ def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
 
 
 __all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
-           "STOP_FIELD", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "StepParts",
-           "check_deliveries"]
+           "STOP_FIELD", "TREE_LEAVES", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
+           "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries"]

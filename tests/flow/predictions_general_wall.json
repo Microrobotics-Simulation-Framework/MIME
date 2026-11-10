@@ -1,0 +1,155 @@
+{
+  "written": "2026-11-10, committed before any gate of F2a's PR 2b ran (the commit that adds this file is the timestamp): the FVM on a tube tree's wall (the union's exact distance on the faces the band reads, its counts reported), FA2 to FA8 on periodic vessels, and the interior ramp from h to 1.5h (row #315) behind its four gates",
+  "phase": "F2a PR 2b: the FVM on a general wall, FA2 to FA8, the interior ramp h to 1.5h",
+  "labels": "the builder's (Opus), from F2a's first step's measurements (its prototype, outside the node), F1a's curved spike, S1 and B3's numbers, and derivations stated per gate; 'measured-before' names its script",
+  "seen_before": [
+    "the loop (daughters 0.4 and 0.3, sharp) through the node at D/h 16, float64, steady, unturned, no offset: split 0.74246 with the new ramp and 0.74209 with the old (3h); bypass 4.4e-4 against 7.5e-4; lumen flux -0.08 %; counts zero (a development script, laptop, before this file)",
+    "the same at D/h 8: split 0.73305, bypass 1.31e-3, counts zero",
+    "the tree's wall fields alone at D/h 16 (loop, 8 regions, 11 meeting pairs): 3158 planned faces of 25,872 held, 46 s to compile and 12.6 s an evaluation on the loaded laptop (a development script); at D/h 8, 6.1 s with a plan margin of a cell before it was narrowed",
+    "the helical tube's and the elliptic tube's distances against a brute force: 2.7e-7 and 9.3e-8 D, the brute force's sampling floor",
+    "F2a's first step (prototype, not the node): the loop's composed split 0.74162 / 0.74443 / 0.74580 at D/h 16 / 32 / 64, fillet 0.03 arm 0.74128 / 0.74422 / 0.74566; the symmetric split's jitter at most 1.0e-3 at D/h 16 and one daughter +0.25 cell at 0.5346 to 0.5364; the reshaped ramp (h to 1.5h) cutting the open tube's bypass 1.4 to 2.5 times at 0.1h and moving the shift at most 4.6e-4 cells"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 (R3, R1)"],
+    "platform": "CPU: the laptop for development, GitHub's standard runner (4 vCPU, 16 GB) for the rates and references",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "D = 1, nu = rho = 1, G = 1 on the fluid along z; steady Stokes (the steady scheme, one step from rest), tolerance 1e-10 in float64 unless a gate says otherwise; 16 cells across the parent's diameter (FA8 and the contract 8); the default band (2h, 0.3h), the 0.1h interior unless a gate says; tube trees filleted at 0.1 of the smallest junction radius; held-face margin 0.5 cell, plan margin 0.25 cell",
+    "seeds_and_draws": "each draw a turn about z (1 to 89 degrees off the grid's planes in a random quarter) and a sub-cell offset in x, y and z (wall_cases.draw); a gate's CI cases at fixed seeds, its rate over DETECTION_SEED 1 to 200 on Actions"
+  },
+  "gate_r1_plant": {
+    "claim": "under the ramp from h to 1.5h the quarter-cell wall plant still fails the wall's shift against the planar calibration at every drawn sub-cell offset, and the clean wall passes it",
+    "kind": "acceptance (a control's detection rate)",
+    "case": "tests/flow/test_fvm_ramp.py::test_r1_the_walls_shift_holds_the_planar_calibration_at_a_drawn_offset, the straight tube at D/h 16, steady",
+    "prediction": {"value": null, "band": [0.0, 0.05], "unit": "cells, |shift - planar| on the clean wall", "basis": "measured-before", "why": "S1: the smooth band's shift +0.01 cells over sub-cell positions; the first step: the new ramp moves the shift at most 4.6e-4 cells"},
+    "metric": "the flux-effective radius's shift against the plane channel's under the same band and ramp",
+    "control": {"plant": "the solver's radius a quarter cell outward", "environment_variable": "MIME_PLANT_WALL=wall", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the quarter cell against the 0.15-cell line; the range measured by discriminating_range on the tube"},
+    "if_wrong": "a miss means the reshaped ramp makes the shift depend on the sub-cell position: the h-to-3h ramp stays and R1 is named",
+    "cannot_discriminate_if": "the planar calibration moved with the plant (it does not: it is a separate plane channel)"
+  },
+  "gate_r2_stenosis_occlusion": {
+    "claim": "through a 75 % stenosis the new ramp's bypass is no larger than the old's and the flux moves under 3e-3; through a full occlusion its leak is no larger; at 0.1h and 0.01h",
+    "kind": "bounds (against the old ramp)",
+    "case": "tests/flow/test_fvm_ramp.py::test_r2_*, tube trees at D/h 16, float64",
+    "prediction": {"value": null, "band": [0.1, 0.95], "unit": "new/old bypass and leak ratios; the stenosis's flux moved within +-1e-3", "basis": "derived", "why": "the stiff interior starts at the band's edge either way and reaches full stiffness at 1.5h instead of 3h, so the solid between 1.5h and 3h conducts (delta_in/delta)^2 of the band's instead of up to the band's; the lumen sees the wall's shift move by under 5e-4 cells"},
+    "metric": "bypass_ratio, and the box's whole flux",
+    "control": {"plant": "the 'new' arm's ramp ending at 6h", "environment_variable": "MIME_PLANT_WALL=ramp:6", "expected_rate": "every draw on the stenosis's bypass", "runs": 50, "clean_expected": "0/50", "resolution": "a ramp ending past the old one leaks more"},
+    "if_wrong": "the h-to-3h ramp stays and R2 is named",
+    "cannot_discriminate_if": "the bypass is zero in both arms (it is not: a periodic box's solid conducts)"
+  },
+  "gate_r3_float32": {
+    "claim": "float32 at its default stop raises no solve flag on the tube and the stenosis under the new ramp, its flux within 1e-4 of float64's",
+    "kind": "acceptance",
+    "case": "tests/flow/test_fvm_ramp.py::test_r3_float32_raises_no_flag_and_holds_float64s_flux",
+    "prediction": {"value": null, "band": [0.0, 5e-5], "unit": "relative flux difference", "basis": "measured-before", "why": "#224's residual tests: float32 within 1.5e-6 to 5e-6 of float64 at its floor stop on the stenosis; the ramp does not change the stop"},
+    "metric": "the box's flux; the report's at_cap, stagnated, not_finite",
+    "control": {"plant": "float32 held to a tolerance of 1e-9, under its rounding floor", "environment_variable": "MIME_PLANT_WALL=tolerance", "expected_rate": "every run flagged", "runs": 50, "clean_expected": "0/50", "resolution": "a stop held below the floor cannot converge"},
+    "if_wrong": "a flag on a correct float32 run under the new ramp: the h-to-3h ramp stays and R3 is named",
+    "cannot_discriminate_if": "float64 and float32 both run at a tolerance looser than the line"
+  },
+  "gate_r4_iterations": {
+    "claim": "through the stenosis at the 0.01h interior the new ramp takes at most 1.2 times the old ramp's CG iterations, steady and IMEX Euler",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_ramp.py::test_r4_the_cg_takes_no_more_iterations_through_the_stiff_stenosis",
+    "prediction": {"value": null, "band": [0.7, 1.1], "unit": "new/old iterations", "basis": "guess", "why": "a steeper ramp raises the penalty's gradient in the solid, but Jacobi scales each face by its own diagonal; the first step saw no change on the open tube"},
+    "metric": "the solve report's iterations",
+    "control": {"plant": "the new arm's interior ten times stiffer (0.001h)", "environment_variable": "MIME_PLANT_WALL=stiffer", "expected_rate": "every run over the line", "runs": 30, "clean_expected": "0/30", "resolution": "the 0.01h interior took about ten times 0.1h's iterations (B3), so a tenfold stiffer one crosses 1.2"},
+    "if_wrong": "the h-to-3h ramp stays and R4 is named",
+    "cannot_discriminate_if": "both arms hit the cap"
+  },
+  "gate_contract": {
+    "claim": "the node's wall is the union's exact distance on the faces it holds, and every face it does not hold lies where the fields are flat; its counts are zero at the values built",
+    "kind": "equality",
+    "case": "tests/flow/test_fvm_general_wall.py::test_the_nodes_wall_is_the_unions_distance_where_the_fields_read_it, the filleted loop at D/h 8",
+    "prediction": {"value": 0.0, "band": [0.0, 1e-12], "unit": "cells", "basis": "derived", "why": "the node evaluates the same union on the same points; its plan holds every failing face"},
+    "metric": "max |phi_node - phi_union| over the held faces",
+    "control": {"plant": "the plain minimum everywhere", "environment_variable": "MIME_PLANT_WALL=minimum", "expected_rate": "every draw", "runs": 200, "clean_expected": "0/200", "resolution": "the minimum is 0.8 to 1 cell off at a junction at D/h 8 (2a's gate 1)"},
+    "if_wrong": "the node reads another distance than the union's",
+    "cannot_discriminate_if": "no face fails the union's check (a draw with no junction in the box: never, the loop has two)"
+  },
+  "gate_fa2_curved": {
+    "claim": "on a helical tube (kappa a 0.15) the band does not displace the lumen: Dean's first-order profile fitted with a free centre puts it within 0.05 cells of the centreline along the principal normal, its free radius's shift within 0.15 of the planar calibration",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_curved_wall.py::test_fa2_the_curved_tubes_lumen_is_not_displaced_against_deans_profile",
+    "prediction": {"value": null, "band": [-0.03, 0.03], "unit": "cells (displacement along the normal)", "basis": "derived", "why": "F1a's spike: the mean shift moves at most 0.004 cells with kappa a 0.3; the band reads an exact distance, so the inner and outer walls shift alike to O(kappa h); Dean's O(kappa^2) terms are even about the binormal, torsion enters at O(kappa tau), about 0.02 of the first-order term"},
+    "metric": "the fitted centre's offset along the principal normal",
+    "control": {"plant": "the solver's centreline 0.1 cell outward", "environment_variable": "MIME_PLANT_WALL=centreline", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the fit reads the plant's 0.1 to within the displacement's own error"},
+    "if_wrong": "a displacement over the line: the band's shift depends on the side of the bend, a curvature indicator is needed (B3's first route); FA2 is named and the curved wall's validity says so",
+    "cannot_discriminate_if": "the fit without Dean's term were used (it puts the centre about 0.7 cells inward by the physics alone)"
+  },
+  "gate_fa3_taper": {
+    "claim": "along a biconical taper (radius 0.5 to 0.3 over 3 D) the wall's shift inferred against lubrication's flux is within 0.15 cells of the planar calibration",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_general_wall.py::test_fa3_the_taper_holds_the_planar_calibration_against_lubrication",
+    "prediction": {"value": null, "band": [-0.06, 0.06], "unit": "cells (inferred minus planar)", "basis": "derived", "why": "lubrication's error is O(slope^2) = 4e-3 relative, about 0.006 cells through the sensitivity (0.66 a cell); the band's jitter 0.03"},
+    "metric": "ln(Q / Q_lub) / (h d ln Q / d delta)",
+    "control": {"plant": "every radius a quarter cell out", "environment_variable": "MIME_PLANT_WALL=wall", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the quarter cell against the 0.15 line"},
+    "if_wrong": "the shift depends on the slope: the taper's slope gets a validity line",
+    "cannot_discriminate_if": "the sensitivity were zero (it is 0.66 a cell)"
+  },
+  "gate_fa4_ellipse": {
+    "claim": "on an elliptic section (semi-axes 0.5 and 0.3 D) each semi-axis shifts within 0.1 cells of a round tube's shift by the same estimator",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_curved_wall.py::test_fa4_the_elliptic_sections_semi_axes_shift_as_a_round_tubes",
+    "prediction": {"value": null, "band": [-0.05, 0.05], "unit": "cells", "basis": "derived", "why": "the band reads the exact distance; the section's curvature (radius 0.18 to 0.83 D) enters as kappa h, at most 0.35 at the major vertex at D/h 16, which F1a's spike bounds at 0.004 cells for kappa a 0.3 along a tube; the ellipse's is across it, untested"},
+    "metric": "the interior quadratic's zero level's semi-axes",
+    "control": {"plant": "the solver's major semi-axis a quarter cell longer", "environment_variable": "MIME_PLANT_WALL=wall", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the quarter cell against the 0.1 line"},
+    "if_wrong": "the shift depends on the wall's curvature across the section: a validity line on the section's least radius of curvature in cells",
+    "cannot_discriminate_if": "the round tube's estimator drifted the same way (it is the same estimator; the plant is on one axis)"
+  },
+  "gate_fa5_stenosis": {
+    "claim": "through a 75 % stenosis (throat 8 cells across at D/h 16) the wall's shift inferred against the Richardson reference's flux is within 0.15 cells of the planar calibration",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_general_wall.py::test_fa5_the_stenosis_holds_the_planar_calibration_against_its_reference; the reference by tests/flow/generate_wall_references.py at D/h 32 and 64 on Actions",
+    "prediction": {"value": null, "band": [-0.1, 0.1], "unit": "cells", "basis": "guess", "why": "B3: the shift is constant in cells on straight tubes down to 8 cells across with the error growing (+2.1 % of flux at 16, +10.8 % at 8); the throat is 8 cells across at D/h 16"},
+    "metric": "ln(Q16 / Q_ref) / (h d ln Q / d delta), the sensitivity lubrication's",
+    "control": {"plant": "every radius a quarter cell out", "environment_variable": "MIME_PLANT_WALL=wall", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the quarter cell against the 0.15 line"},
+    "if_wrong": "the shift at a throat departs from the calibration: a throat line in cells (round 1, item 2's criterion)",
+    "cannot_discriminate_if": "the reference were taken from the same resolution"
+  },
+  "gate_fa6_bifurcation": {
+    "claim": "the split-and-merge loop's split at 30 degrees (daughters 0.4 and 0.3 D, filleted) at D/h 16 lies within 0.01 of its Richardson reference, the vessel turned off the grid's planes",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_general_wall.py::test_fa6_the_loops_split_at_thirty_degrees_holds_its_reference",
+    "prediction": {"value": null, "band": [0.002, 0.008], "unit": "|split - reference|", "basis": "measured-before", "why": "the first step: the split converges at first order, 0.7416 / 0.7444 / 0.7458 at 16 / 32 / 64"},
+    "metric": "the first daughter's share of the two daughters' axial flux at the loop's middle",
+    "control": {"plant": "the first daughter a quarter cell out", "environment_variable": "MIME_PLANT_WALL=daughter", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the plant moves the split about 0.03 at D/h 16 (R^4)"},
+    "if_wrong": "the carina's discretisation error exceeds a straight tube's: the split's line at D/h 16 is the record's, refinement the route",
+    "cannot_discriminate_if": "the reference came from D/h 16"
+  },
+  "reference_values": {
+    "claim": "the references the gates read: the loop's split at fillet 0.1 extrapolated from D/h 32 and 64 (mean over four draws), and the stenosis's flux likewise",
+    "kind": "estimates",
+    "prediction": {"value": null, "band": [0.7465, 0.748], "unit": "the loop's reference split", "basis": "measured-before", "why": "the first step's fillet-0.03 arm extrapolated: 2 x 0.74566 - 0.74422 = 0.7471"},
+    "stenosis": "the stenosis's flux within 3 % of lubrication's (the cones' slope 0.25: lubrication's error a few per cent)"
+  },
+  "gate_fa7_symmetric": {
+    "claim": "the symmetric loop's split is a half within 0.005 at random turns about z and sub-cell offsets, never on a grid plane",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_general_wall.py::test_fa7_the_symmetric_split_is_a_half",
+    "prediction": {"value": null, "band": [0.0, 0.002], "unit": "|split - 0.5|", "basis": "measured-before", "why": "the first step: 0.4995 to 0.5010 over ten draws at D/h 16"},
+    "metric": "the split",
+    "control": {"plant": "the first daughter a quarter cell out", "environment_variable": "MIME_PLANT_WALL=daughter", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "0.5346 to 0.5364 in the first step"},
+    "if_wrong": "the junction's jitter exceeds the line: its line is set from the measured spread",
+    "cannot_discriminate_if": "the draw sat on a symmetry plane (draws are 1 to 89 degrees off)"
+  },
+  "gate_fa8_derivative": {
+    "claim": "the first daughter's flux's derivative in its radius, reverse mode through the steady step (the band, the union's implicit derivatives, the solve), equals the central difference within one discretisation to 1e-4",
+    "kind": "equality",
+    "case": "tests/flow/test_fvm_general_wall.py::test_fa8_the_first_daughters_flux_in_its_radius_is_the_central_difference, D/h 8, float64, tolerance 1e-12",
+    "prediction": {"value": null, "band": [0.0, 1e-5], "unit": "relative difference", "basis": "derived", "why": "the central difference at 5e-5 of the radius stays inside the held faces and the plan; its truncation ~1e-7 against the ripple's curvature, its rounding ~1e-7 at the solve's 1e-12"},
+    "metric": "|reverse - central| / |central|",
+    "control": {"plant": "the radii held out of the derivative (stop_gradient)", "environment_variable": "MIME_PLANT_WALL=stopped", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the reverse derivative zero"},
+    "if_wrong": "the derivative through the union's implicit step or the held faces is wrong: FA8 is named and the tree's geometry derivative stays unverified",
+    "cannot_discriminate_if": "the step moved a face out of the held set (the counts are asserted zero)"
+  },
+  "bits": {
+    "cases": "the released programs in tests/saved/cases.py that hold no FVM (script_a, hull_contact, coupled_toy, dynamic_rpm, prescribed_tube_flow and the rest bit_compare's probe lists), float64 and float32, base = the release tip, head = this branch, one job, one CPU",
+    "prediction": "every array np.array_equal; the FVM's programs (periodic_tube_flow, steady_tube_flow, rk3_tube_flow) move by the ramp, the tube's wall otherwise untouched",
+    "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "script_a@float64@ulp differs"}
+  },
+  "costs": {
+    "prediction": "the tree's wall fields at D/h 16 (the loop): 5 to 25 s an evaluation on a runner, once a step; at D/h 32 about four times (the planned faces grow with the wall's area); the tube's step unchanged",
+    "measured_at": "D/h 8 and 16 on the laptop (seen_before)"
+  },
+  "outcomes": null
+}
