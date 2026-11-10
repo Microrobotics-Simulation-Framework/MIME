@@ -1,0 +1,70 @@
+{
+ "written": "2026-11-10, committed before any gate of the ledger harness ran (the commit that adds this file is the timestamp): the energy ledger as lane F's development tool, a general mechanism in mime.testing with the flow's entries (design row #322): one check that a run's books close, ratio flags read from a node's declarations, one order check of each declared numerical term",
+ "phase": "the ledger harness (row #322), rungs 1 to 3",
+ "labels": "predictions by the builder (Opus) from the exploration runs below; 'measured-before' numbers say where they came from; every rate below is predicted for runs on seeds none of those used",
+ "seen_before": [
+  "stage A (exploration, not a gate): candidate readings on 200 clean draws a dtype and 40 a plant, an earlier envelope script, Actions run 42768468900: a convection reading over D_visc does not separate a stale convection from clean runs at high Reynolds numbers; over its own product's magnitude it does, once a rounding guard drops steps where convection is rounding (float32 clean runs read up to 0.32 without it)",
+  "stage A2 (the lines, not a gate): the declared readings on tests/flow/flag_cases.py's draws, seeds 0 to 199 clean and 0 to 39 each plant, both dtypes, 60 steps, Actions run 42769581278: stall clean worst 5.1e-6 (float64) and 2.0e-3 (float32), the 1e4-looser tolerance at least 3.5e-5 and 0.014, two iterations at least 1.3e-4 and 1.4e-4 (37 of 40 over the float32 clean worst); convection clean worst 0.104 in both, the stale level at least 0.36, the permuted field at least 0.15 at step 0 (0.12 after), the advective form 1 of 40 over clean, four times the step past the line 10 of 40; leak clean worst 1.35e-2 after 10 steps, 3.4e-3 after 20, 1.27e-3 after 30, the lost mask at least 0.017 from step 10 on, the weaker interior at most 4.5e-5 (under clean)",
+  "the order rig (tests/flow/test_fvm_ledger_orders.py's, seeds 0 to 2, locally, both dtypes at 1e-8 / 1e-4 / 1e-5): N_BE's ratio with dt halved 1.926 to 1.955, N_conv's 1.996 to 2.174, N_Krylov's with the tolerance halved 2.10 to 3.85 (not 2: the CG lands under its tolerance by a varying share), with it a hundredth 62 to 509; N_BE does not move with the tolerance (1.000)"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "GitHub runner (4 vCPU, CPU) for every rate; the laptop's CPU for the CI-sized tests",
+  "sizes_and_parameters": "flags: IMEX Euler with convection, D/h 8, 12 or 16, a box four cells long, Re 1 to 200 by the centreline speed and D, a swirl of 0.05 to 0.5 of U over the lumen, dt a fraction 0.1 to 1 of the CFL line (0.4) at the start's peak, 60 steps, the solve at its dtype's default; orders: #225's rig (D/h 8, dt 0.0025 over a fixed time 0.05, nu = D = 1, a cellular swirl warmed 20 steps at a quarter step, tolerance 1e-8 / 1e-5); the gift: step_identity's draws of a rigid body, a dynamic arm and a flow",
+  "seeds_and_draws": "every rate on seeds 1000 and up, disjoint from the lines' 0 to 199 and CI's 500 and 501; a rate's clean arm at the same seeds without the plant"
+ },
+ "gate_1_ledger_closes": {
+  "claim": "one check (mime.testing.ledger_closes) that a metered run's books close at every step, on any receiver: a gift of 1.25 floors of each step's scale caught on every run, one of 0.75 on none, on a rigid body, a dynamic arm and a flow, both dtypes",
+  "kind": "equality",
+  "case": "tests/energy/test_ledger_closes.py::test_detection_rate_target[<kind>] (step_identity, 20 draws a run, the gift planted in mime.core.ledger.recorded), 50 runs a kind, dtype and size",
+  "prediction": {"value": "1.25 floors: 50/50 caught each; 0.75 floors: 0/50; no gift: 0/50", "basis": "derived", "why": "the residual is the gift plus the step's own rounding, 0.03 to 0.11 floors on these receivers (P1a-1's and #225's measurements): 1.25 - 0.11 > 1 and 0.75 + 0.11 < 1"},
+  "metric": "the identity's residual over its floor, as the check reads it",
+  "control": {"plant": "a gift of 1.25 floors, unbooked", "environment_variable": "MIME_LEDGER_GIFT", "expected_rate": "50/50", "runs": 50, "clean_expected": "0/50", "resolution": "the floor itself: 0.75 never, 1.25 always"},
+  "if_wrong": "a 0.75 caught means the check judges tighter than its floor (a rounding over 0.25 floors on that receiver); a 1.25 missed means it reads the wrong field or the gift does not reach the records",
+  "cannot_discriminate_if": "the gift is planted after the records are written (the identity never sees it): the 1.25 arm failing to be caught shows that"
+ },
+ "gate_2_flags": {
+  "claim": "each active flag quiet on correct runs and caught where its planted bug is, its line measured (about twice the worst clean reading); the openings' two declared pending and never counted",
+  "kind": "acceptance",
+  "case": "probe/flag_rate.py on tests/flow/flag_cases.py's draws (the CI tests' draws), seeds 1000 to 1199 for the plants caught on every run, 1000 to 1049 for the others",
+  "stall": {
+   "line": {"float64": 1e-5, "float32": 4e-3},
+   "solve_tolerance_1e4": {"prediction": "200/200 both dtypes", "basis": "measured-before (stage A2's minimum 3.5x the line in both)"},
+   "solve_two_iterations": {"prediction": "50/50 float64; 40 to 49 of 50 float32", "basis": "measured-before (37/40 over the clean worst in float32)"},
+   "clean": "0/200 false alarms in each dtype"
+  },
+  "convection": {
+   "line": {"float64": 0.2, "float32": 0.2},
+   "convection_stale": {"prediction": "200/200 both dtypes", "basis": "measured-before (stage A2's minimum 0.36)"},
+   "convection_permuted": {"prediction": "40 to 50 of 50", "basis": "measured-before (minimum 0.15 against a line of 0.2)"},
+   "convection_advective": {"prediction": "0 to 3 of 50", "basis": "measured-before"},
+   "convection_past_the_line": {"prediction": "5 to 20 of 50: at low cell Reynolds numbers the implicit viscosity damps what the step past the line produces", "basis": "measured-before"},
+   "clean": "0/200 false alarms in each dtype"
+  },
+  "leak": {
+   "line": {"float64": 4e-3, "float32": 4e-3},
+   "settle": 30,
+   "leak_mask": {"prediction": "200/200 both dtypes", "basis": "measured-before (minimum 0.017 against 4e-3)"},
+   "leak_weak_interior": {"prediction": "0/50: a weaker interior lowers the loss inside (the bypass flux sees it, not energy)", "basis": "measured-before"},
+   "clean": "0/200 false alarms in each dtype"
+  },
+  "metric": "each flag's worst reading over the run against its line",
+  "if_wrong": "a clean false alarm means the line sits inside the clean tail: the line is re-measured, never moved to pass; a plant caught short of every run is reported as what the flag does not catch",
+  "cannot_discriminate_if": "both arms read zero (the reading's guard dropped every step): the clean arms' worst readings are kept in the probe's log to show they are not"
+ },
+ "gate_3_orders": {
+  "claim": "the order check (mime.testing.term_orders) passes each IMEX Euler term at its declared order and fails a term moved to a wrong order on every seed: N_BE and N_conv at order 1 or 3 where 2 is declared, N_Krylov with the viscous loss written into it",
+  "kind": "equality",
+  "case": "probe/order_rate.py on tests/flow/test_fvm_ledger_orders.py's rig, seeds 1000 to 1049 a plant and dtype",
+  "prediction": {"value": "every plant 50/50 in both dtypes; clean 0/50", "basis": "derived", "why": "the plant's ratio is the term's own times 2^(-1) or 2: about 0.96 to 1.09 and 3.85 to 4.35 against 1.6 to 2.4; the loss written into N_Krylov, a thousand times its size, falls by about 1.0 against at least 1.6"},
+  "control": {"expected_rate": "50/50 each", "clean_expected": "0/50"},
+  "if_wrong": "a clean seed out of band means the band is narrower than the rig's spread: re-measured, not widened to pass",
+  "cannot_discriminate_if": "a term is zero on the rig (its ratio 0/0): the clean sums are printed"
+ },
+ "bits": {
+  "cases": "periodic_tube_flow, steady_tube_flow, rk3_tube_flow (without and with EnergyLedger), script_a, script_a_metered, dynamic_rpm, 20 ms each, every history array, both dtypes, base origin/release/v0.3.0 against the head, one CPU (bit_compare.py on Actions)",
+  "prediction": "every array np.array_equal: the harness is test-side, the declarations (flags, orders) are read by no step",
+  "controls": {"repeat": "bit_compare.py's own controls (tests/test_probe_bit_compare.py)"}
+ },
+ "outcomes": null
+}

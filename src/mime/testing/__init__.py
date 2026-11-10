@@ -12,9 +12,11 @@ Users add their own tests at three levels:
 
 Here now: the family suites' harness (``assert_conforms(law, family=...)`` and the case kinds the families use:
 sign, frame, units, material reach, oracle, gradients, swap, equal and opposite, nodes, closed loop and energy); a
-dynamics' step identity with the energy ledger attached, on drawn states (``step_identity``); MADDENING's node
-verification for every node an entry builds (``assert_nodes_verified``: ``verify_node``, and ``verify_node_order``
-where a node declares an order), and the comparison of what an entry builds with its ``builds``
+dynamics' step identity with the energy ledger attached, on drawn states (``step_identity``); the energy ledger as a
+gate's tool (``ledger_closes``, one check that a metered run's books close at every step; the ratio flags a node
+declares, ``run_flags`` and ``judge_flags``; the order check of a scheme's numerical terms, ``term_orders``);
+MADDENING's node verification for every node an entry builds (``assert_nodes_verified``: ``verify_node``, and
+``verify_node_order`` where a node declares an order), and the comparison of what an entry builds with its ``builds``
 (``builds_failures``); the graph-invariant helpers (a built graph's canonical text, and order invariance); the saved
 form's round trip through a fresh process and the list of installed entries a registry walk covers; the check that
 every parameter leaf reaches the compiled step; the two-builds check, whether a compiled program holds a value made from
@@ -37,6 +39,9 @@ except ImportError as error:
 from mime.testing._adapters import HARNESS_TOKEN, AdapterReport, verify_adapter
 from mime.testing._energy import PORT_CASES, PORT_DRAWS, PortCase, dynamics_rig, fluid_rig, fluid_states, joint_rig, \
     joint_states, metered_twin, rigid_body_states, spinner_rig, spinner_states, step_identity
+from mime.testing._ledger_harness import ORDER_BAND, REFINEMENT, FlagReading, FlagReport, OrderCheck, OrderReport, \
+    active_flags, declared_flags, expected_ratio, flag_problems, flag_readings, judge_flags, ledger_closes, run_flags, \
+    term_orders
 from mime.testing._loopback import Certificates, ConnectProxy, LoopbackStore, Seen, certificates
 from mime.testing._families import (
     OUTWARD_SPEED,
@@ -192,6 +197,21 @@ from mime.testing._switches import (
 )
 
 __all__ = [
+    "ORDER_BAND",
+    "REFINEMENT",
+    "FlagReading",
+    "FlagReport",
+    "OrderCheck",
+    "OrderReport",
+    "active_flags",
+    "declared_flags",
+    "expected_ratio",
+    "flag_problems",
+    "flag_readings",
+    "judge_flags",
+    "ledger_closes",
+    "run_flags",
+    "term_orders",
     "OUTWARD_SPEED",
     "PORT_CASES",
     "PORT_DRAWS",

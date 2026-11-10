@@ -534,9 +534,68 @@ def metered_route_one_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec]
     return {**ended, **route_one_recorded(state, account, held)}
 
 
+# -- what a scheme declares for the ledger harness (``mime.testing``): read by tests, never by a step --------------
+
+@dataclass(frozen=True)
+class TermOrder:
+    """A numerical term's expected order: ``dt``, the power of the step its size per step falls with (2: summed over a
+    fixed time it halves as the step does), and ``tolerance``, the power of the solve's tolerance it falls with;
+    ``None`` where it does not fall with that argument, ``reason`` saying why (zero by construction, rounding).
+    ``at_least``: the orders are a floor on how fast it falls, not its rate (a residual a solve's stop bounds by its
+    tolerance, which the solve may land well under)."""
+
+    dt: int | None = None
+    tolerance: int | None = None
+    reason: str = ""
+    at_least: bool = False
+
+
+@dataclass(frozen=True)
+class FlagEvidence:
+    """A flag's planted bug and its measured detection: ``caught`` of ``runs`` planted runs read past the flag's line,
+    ``false_alarms`` of ``clean_runs`` runs at the same draws without the plant, and ``evidence``, the measurement's
+    run (a link)."""
+
+    plant: str
+    caught: int
+    runs: int
+    false_alarms: int
+    clean_runs: int
+    evidence: str
+
+    @property
+    def every_run(self) -> bool:
+        return self.runs > 0 and self.caught == self.runs and self.clean_runs > 0 and self.false_alarms == 0
+
+
+@dataclass(frozen=True)
+class LedgerFlag:
+    """A ratio of a metered step's terms that flags a known bug: ``name`` (what a reading past the line names),
+    ``ratio`` (the reading, in words), ``reading`` (``(node, p, before, after) -> Array``, the step's reading from the
+    states either side of it, traced), ``line`` (by dtype, the largest reading a correct run gives, measured on drawn
+    cases that ``clean`` states, the first ``settle`` steps of a run not judged: a state given from outside carries its
+    own transient), ``evidence`` (each planted bug with its measured rate; a plant that is not caught every run says
+    what the flag does not catch). **A flag is a check only when some plant is caught every run**; one that cannot be
+    gated yet is declared ``pending`` with the reason and is never counted as a check."""
+
+    name: str
+    ratio: str
+    reading: Callable[..., Any] | None
+    line: Mapping[str, float]
+    clean: str
+    evidence: tuple[FlagEvidence, ...] = ()
+    settle: int = 0
+    pending: str = ""
+
+    @property
+    def active(self) -> bool:
+        return not self.pending and any(e.every_run for e in self.evidence)
+
+
 __all__ = ["CHECK_CLUSTER", "CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES",
            "FLOW_IN", "HOSTED", "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS",
-           "ROUTE_ONE_FIELDS", "SOLVED", "UNMETERED", "WORKLESS", "LedgerDelivery", "LedgerRecords", "StepAccount",
+           "ROUTE_ONE_FIELDS", "SOLVED", "UNMETERED", "WORKLESS", "FlagEvidence", "LedgerDelivery", "LedgerFlag",
+           "LedgerRecords", "StepAccount", "TermOrder",
            "balance", "balance_floor", "between_floors", "definite_at_floor", "deliveries", "initial_records",
            "law_input", "laws", "losses", "magnitude", "metered_route_one_step", "metered_step", "own_input",
            "paired_work", "recorded", "route_one_recorded", "route_one_records", "stored", "summed", "summed_pair",

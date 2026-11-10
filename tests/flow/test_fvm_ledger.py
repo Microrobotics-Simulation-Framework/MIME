@@ -1,5 +1,5 @@
 """Gate 5: the FVM's step identity to P1a-1's floor (16 eps of the step's scale) with convection on, and the gift
-control; the stall detector's report (gate 8c) and its line; the per-step CFL check and its stop (gate 11). F2b's
+control, each judged by the ledger harness's one check (``mime.testing.ledger_closes``); the stall detector's report (gate 8c) and its line; the per-step CFL check and its stop (gate 11). F2b's
 wiring: the ``fluid`` port kind's pairing (each law's drive its force against the fluid's momentum at the solution),
 its step-identity case and its controls, and the projection's term shown zero to rounding at two tolerances."""
 
@@ -13,6 +13,7 @@ from fvm_cases import METERED, eps, in_dtype, run, tube_node
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import IMEXEuler, ImplicitFlowNode
+from mime.testing import ledger_closes
 
 
 def _stirred(node: ImplicitFlowNode, amplitude: float, seed: int):
@@ -35,10 +36,8 @@ def _metered(dtype: str, seed: int, **settings):
 @pytest.mark.parametrize("seed", range(3))
 def test_the_flow_nodes_identity_closes_to_the_ledgers_floor_with_convection_on(dtype, seed):
     node, state = _metered(dtype, seed)
-    worst = float(state[f"{books.RECORDS}identity_worst"])
-    assert worst <= books.IDENTITY_ULPS * eps(dtype)
-    assert float(state[f"{books.RECORDS}unattributed_worst"]) == 0.0
-    assert float(np.sum(state[f"{books.RECORDS}gift_steps"])) == 0.0
+    judged = ledger_closes(state)
+    assert judged.passed, judged.detail
     terms = np.asarray(state[f"{books.RECORDS}terms"])
     assert abs(terms[1]) > 0.0  # convection did book something at mixed time levels
 
@@ -56,14 +55,16 @@ def test_control_an_energy_gift_is_caught_by_the_identity(dtype, seed, monkeypat
 
     monkeypatch.setattr(IMEXEuler, "step", gifted)
     _, state = _metered(dtype, seed)
-    assert float(state[f"{books.RECORDS}identity_worst"]) > books.IDENTITY_ULPS * eps(dtype)
+    judged = ledger_closes(state)
+    assert judged.failed and "of its floor" in judged.detail
 
 
 def test_an_unnamed_hosted_law_is_unattributed(dtype):
     with in_dtype(dtype):
         node = tube_node(8, length_cells=2, dt=0.002, convection=True, ledger=METERED[:3])
         state = run(node, 3)
-    assert float(state[f"{books.RECORDS}unattributed_worst"]) > 0.0
+    judged = ledger_closes(state)
+    assert judged.failed and "unattributed" in judged.detail
 
 
 def test_the_stall_detector_reads_a_transient_far_under_its_line(dtype):
