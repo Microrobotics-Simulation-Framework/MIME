@@ -1,0 +1,48 @@
+{
+  "written": "2026-11-10, committed before S-F0-3b's gates ran as tests (the commit that adds this file is the timestamp); the fit's smoke runs before it are listed under seen_before: the fit loop under the fit-loop rule (Study.fit), its Fisher information at the start, its validity lines with their margins, and controller settings as leaves where an axis names them",
+  "phase": "S-F0-3b, lane S aligned with F0's designs, PR 3b: the first fit and controller settings as leaves",
+  "labels": "the builder's predictions; seen_before numbers from the builder's local smoke runs (laptop, float64), not reviewed",
+  "seen_before": [
+    "fit smoke (laptop, float64): the gently pulled sphere from 1.0 mm to a pose target made at 1.15 mm (its range's top), noise 1e-4, ended converged at 1.15 mm, the box's margin 1.6e-13 m, 5 iterates, FIM rank 1",
+    "fit smoke: the same sphere with a torque of 1.533e-12 N m about z (its turning Reynolds number 0.0913 at 1.15 mm, 0.105 at 1.0 mm, so the rung's declared 0.1 at about 1.05 mm), from 1.15 mm towards a target made at 1.0 mm: ended at a line (reynolds:drag:ball) at 1.05014 mm, margin 4.6e-7, one iterate past it (1.04843 mm) judged and not taken; before each iterate's watch read its own plan, the watch read the start's diameter and the line sat at 1.116 mm (found and fixed: the fit-loop rule's own lesson)",
+    "the post-run watch needs the medium's density declared; without it the line is not judged (now a LineMargin with margin NaN, named)"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "CPU; tests on CI's runners; control rates as probe arms on GitHub runners",
+    "sizes_and_parameters": "the gently pulled sphere (tests/gradients/gradient_rigs.py): radius ranged [1.0, 1.15] mm, Drag.MRS at 0.6 mm (91 force points), water (density declared 998 kg/m^3), 5 steps of 1 ms, its residual the pose's position (um) and quaternion's vector part (x 1e4) against a target made by a run, noise 1e-4",
+    "seeds_and_draws": "deterministic; controls' rates by detection_rate.py over 30 runs each"
+  },
+  "gate_consumer_fit": {
+    "claim": "the fit of the sphere's radius ends on a target made inside its declared range, where the spike's rebuilt descent ended 0.79 % short (each iterate rebuilt re-chose its force points)",
+    "kind": "equality (to the fit's tolerance)",
+    "prediction": {"value": "|a_fit / 1.15 mm - 1| under 1e-6, ended converged, every line judged at every iterate", "basis": "measured-before (smoke)"},
+    "control": {"plant": "the same fit of the experiment without its range: an iterate needs another program (66 to 72 force points between 1.0 and 1.15 mm) and the fit is refused (fit.value-keyed), never ending short", "expected_rate": "30/30"}
+  },
+  "gate_8_validity_at_each_iterate": {
+    "claim": "an iterate past a validity line is judged at that iterate and not taken, and the line reaches the steps with its margin: the fit ends on the line, naming it",
+    "kind": "acceptance (the mechanism), not an accuracy claim",
+    "case": "the torque rig, from 1.15 mm towards a target made at 1.0 mm past the line",
+    "prediction": {"value": "ended at a line (reynolds:drag:ball), its margin in [0, 1e-5], at about 1.050 mm; at least one iterate past it, not taken", "basis": "measured-before (smoke)"},
+    "control": {"plant": "the same loop through MADDENING's sysid.fit on the built graph (Adam, the loss through the graph's parameters): it ends past the line (radius under the fit's line radius, the watch's number over 0.1) with nothing in its result about it", "expected_rate": "30/30 (deterministic)", "environment_variable": "MIME_PLANT_FIT=sysid"},
+    "cannot_discriminate_if": "the target lies inside the line (the fit ends converged and the control too): the case puts it past"
+  },
+  "gate_fim": {
+    "claim": "the Fisher information at the start names an axis the residual cannot see before the first step",
+    "prediction": {"value": "a residual blind to the radius: rank 0 of 1, the radius named insensitive; the consumer's: rank 1, none named", "basis": "derived"}
+  },
+  "gate_controller_leaves": {
+    "claim": "a controller setting an axis names is a leaf of the controller's node inside the compiled step: a sweep of it is one group and one compile, its derivative passes through it, and a named setting the law reads through self is refused exactly",
+    "prediction": {"value": "a gain sweep of the spun magnet's follower in graph mode: one group (today: one a value); the derivative in the gain against a central difference that rebuilds under gate 9's line; ArmTracking's smoothing, gain and damping read through ctx; a planted law reading a named setting through self refused (controller.setting-unread)", "basis": "derived"},
+    "control": {"plant": "the follower reading its gain through self: refused every run", "expected_rate": "30/30"}
+  },
+  "bits": {
+    "cases": "gate 5's programs as in S-F0-3a, plus A0 in graph mode and its swap test's programs (the controller's settings undeclared: constants as today)",
+    "prediction": "every array np.array_equal to S-F0-3a's head"
+  },
+  "costs": {
+    "prediction": "re-planning an iterate about 1 s on the sphere (build_point, its assembly dominated by the MRS drag's held matrix made at build); the fit's run of an iterate about 0.1 s after its one compile",
+    "measured_at": "node_measure.py through the built graph (a runner re-planning one iterate) as a probe arm"
+  },
+  "outcomes": null
+}
