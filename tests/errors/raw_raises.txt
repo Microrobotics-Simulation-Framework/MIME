@@ -134,6 +134,8 @@ scene/_helix.py::Helix.samples KeyError 1  # protocol: the class Python's protoc
 scene/_helix.py::_held TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_kinds.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_kinds.py::kind_frame KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_resolution.py::ResolutionReport.entry KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_resolution.py::wall_resolution ValueError 1  # construction: a grid's spacing not above zero, raised where a script or a solver asks for the report, outside every public call of an experiment
 scene/_sampling.py::_quasi_uniform ValueError 2  # a kind's sampling at the build, from a density or a count a kind's own code gives: a lab's kind that passes one above its dense set, or a density not above zero, is a defect of that kind; reached, it is error.uncoded
 scene/_sampling.py::_density_at ValueError 2  # a kind's sampling at the build, from a density a kind's or a grading's own code gives: one not above zero, or above the floor's (FINEST), is a defect of that code; reached, it is error.uncoded
 scene/_grading.py::GradedDensity.traced ValueError 1  # a kind's declared feature of a form not in FEATURE_FORMS: a defect of that kind's own code, raised at the build; reached, it is error.uncoded
@@ -171,6 +173,7 @@ scene/_solids.py::_face_edges KeyError 1  # protocol: the class Python's protoco
 scene/_solids.py::_length TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_solids.py::_lengths TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_union.py::ExactUnion.__post_init__ ValueError 2  # construction: a union's meeting pairs misnamed, raised where a script or a kind makes the union, outside every public call of an experiment
 surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::Surrogate.resolve ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::evaluator_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call

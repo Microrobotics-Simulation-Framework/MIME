@@ -39,6 +39,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the openings (it needs the convective power split by plane), and the periodic box's flags on the open box and
   on RK3 (RK3 declares none). Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
 
+- **Composed walls in `mime.scene`: the seam-aware union, the fillet as its closing, the tube tree** (F2a's first
+  part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
+  or a lab's `Region`, by `mime.core.Shape`'s method names): the minimum, a check at each point of where it is exact (the deepest region's
+  nearest wall point lies outside the regions that meet it), and Newton at a wall, a seam or a corner where it is not,
+  at a plan's points held for a build. The plain minimum reads the fluid too shallow near every seam, a false wall of
+  0.4 to 1.75 cells at a Y's carina; the rule is exact to a brute force's floor at random rotations and sub-cell
+  offsets, and where two walls' normals are opposed (the plane of two parallel tubes' axes on an aligned grid), in both
+  dtypes, and in float32 at a scanner's coordinates (its regions are evaluated about the union's own origin). Every
+  value carries counts of where it is not exact (`UnionDistance`, `UnionNormal`: points outside the plan, points whose
+  own seam was never reached, and pairs of regions the run's values bring within reach that the union does not hold as
+  meeting). A fillet of radius `r` is the union's closing by a ball: the same rule on the regions widened by `r`, moved
+  back, exact in the fluid and against closed forms (a wedge, two balls) on both sides, and in the solid except within
+  `r` of a neck of the widened union thinner than `2 r` (tubes sharing no point whose wall is a little under `2 r`).
+  Derivatives by implicit differentiation. `TubeTree`: points, segments with a radius at each end (round cones), its
+  centreline with a junction where two segment ends or more meet, its lumen, one fillet (`FILLET_SHARE`, 0.1 of the
+  smallest radius at a junction, declared: no measurement of vessels gives it yet), its values parameters a derivative
+  flows through, and `turned` for tilted vessels; a malformed tree is refused (`call.tube_tree`). The walls' half of
+  the resolution report (`wall_resolution`, `stokes_layer`, `steady_layer`): the narrowest solid between tubes sharing
+  no point and the solid the fillet fills between them, and the wall layer against lines set from a Womersley sweep's
+  worst arm (wall shear within 5 % from 2.7 cells of layer, within 2 % from 4.5). No node runs it yet: the FVM's wall
+  is the first.
 - **The first fit: `Study.fit(residual, *, start, noise, duration, iterations=20, bounds=None, tolerance=None,
   acknowledged=None)`** (lane S's third PR, its second half), returning `mime.results.FitResult` (each `FitIterate`
   with its `LineMargin`s, the Fisher information at the start). Damped Gauss-Newton steps on the gradient path's

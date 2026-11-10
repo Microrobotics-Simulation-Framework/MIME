@@ -480,7 +480,10 @@ def test_the_spacing_is_a_twentieth_of_the_hulls_enclosing_radius_and_the_shortf
     directions = np.random.default_rng(0).normal(size=(20_000, 3))
     directions /= np.linalg.norm(directions, axis=1)[:, None]
     coarse = hull_points(spacing=plan.spacing)
-    estimate = float(((FINE @ directions.T).max(axis=0) - (coarse @ directions.T).max(axis=0)).max())
+    # a direction's reach does not depend on the others, so the 20,000 are taken in blocks: whole, the two products are
+    # a matrix of the samples by the directions each (about 9 GB in float64, which a CI runner's four workers cannot hold)
+    estimate = max(float(((FINE @ block.T).max(axis=0) - (coarse @ block.T).max(axis=0)).max())
+                   for block in np.array_split(directions, 40))
     assert plan.shortfall == pytest.approx(estimate, rel=0.15), (plan.shortfall, estimate)
 
 
