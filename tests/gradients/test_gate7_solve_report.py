@@ -177,6 +177,71 @@ def test_a_solve_stagnated_at_the_rounding_floor_is_warned_of_rechecked_and_repo
     assert "stopped short as well" in member.text()
 
 
+def test_the_rechecks_stopping_lifts_the_cap_and_raises_the_stall_restarts_and_changes_nothing_else():
+    """``recheck_stopping`` on its own: the cap to the larger of ten times itself and the default, the stall restarts
+    raised by ``STALL_RESTARTS`` (from whatever they were, 0 included), every other field, the tolerance first, as it was."""
+    import dataclasses
+
+    from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, STALL_RESTARTS, Stopping, recheck_stopping
+
+    for cap, restarts in [(1, STALL_RESTARTS), (DEFAULT_CAP, 0), (DEFAULT_CAP, 2), (4 * DEFAULT_CAP, 1)]:
+        held = Stopping(tolerance=1e-8, at_floor=True, cap=cap, check_every=7, least_iterations=2, stall_restarts=restarts)
+        lifted = recheck_stopping(held)
+        assert lifted == dataclasses.replace(held, cap=max(cap * RECHECK_CAP_FACTOR, DEFAULT_CAP),
+                                             stall_restarts=restarts + STALL_RESTARTS)
+        assert lifted.stall_restarts > held.stall_restarts and lifted.tolerance == held.tolerance
+
+
+def test_the_node_re_solves_a_rechecked_member_with_the_cap_lifted_and_the_stall_restarts_raised_through_the_real_solve():
+    """Through the solve the node runs: the stoppings it is given in a stagnated member's differentiated run are the
+    declared one's and, for the recheck, the declared one's with the cap lifted *and* the stall restarts raised (a
+    recheck that lifted the cap alone would give the restarts the member's own, which a stall needs more of)."""
+    import mime.nodes.flow.fvm._node as node_module
+    from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, STALL_RESTARTS
+
+    given: list[tuple[int, int]] = []
+    solving = node_module.projected_solve
+
+    def recording(grid, apply, diagonal, rhs, guess, stopping, *rest, **named):
+        given.append((stopping.cap, stopping.stall_restarts))
+        return solving(grid, apply, diagonal, rhs, guess, stopping, *rest, **named)
+
+    steps = 2
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(node_module, "projected_solve", recording)
+        result = Study(tube(report_rows=steps, tolerance=1e-17, name="tube_stagnated_stoppings")).sweep(
+            along({PATH: [mPa_s(1.0)]}), duration=ms(20.0 * steps)).gradient(flux, mode="reverse", acknowledged=ACKNOWLEDGED)
+    assert result.member(0).recheck is not None and result.member(0).recheck.made
+    own = (DEFAULT_CAP, STALL_RESTARTS)
+    lifted = (max(DEFAULT_CAP * RECHECK_CAP_FACTOR, DEFAULT_CAP), 2 * STALL_RESTARTS)
+    assert set(given) == {own, lifted}, given
+
+
+def test_a_recheck_whose_backward_solves_still_stop_short_does_not_report_converged():
+    """A cap on the transpose solves alone that survives the recheck (the seam ``transposed`` capping whatever
+    stopping it is given, the lifted one too): the member's primal solves converge, its transpose solves stop at their
+    cap, and the recheck re-solves with its primal cap lifted and its transpose solves still stopped short, which it says,
+    where a recheck judging the primal solves alone would call itself converged."""
+    import dataclasses
+
+    import mime.nodes.flow.fvm._solve as solve_module
+
+    steps = 3
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(solve_module, "transposed", lambda stopping: dataclasses.replace(stopping, cap=1))
+        result = Study(tube(report_rows=steps, name="tube_transpose_capped_through_recheck")).sweep(
+            along({PATH: [mPa_s(1.0)]}), duration=ms(20.0 * steps)).gradient(flux, mode="reverse", acknowledged=ACKNOWLEDGED)
+    member = result.member(0)
+    (report,) = member.solves
+    assert report.forward_short == 0 and report.backward_short == steps, "only the transpose solves stopped short"
+    recheck = member.recheck
+    assert recheck is not None and recheck.made and recheck.lifted == ("water.flow",)
+    (own,) = recheck.solves
+    assert own.forward_short == 0 and own.backward_short == steps, "the recheck's transpose solves are capped as well"
+    assert not recheck.converged
+    assert "stopped short as well" in member.text()
+
+
 def test_a_flagged_node_with_a_non_finite_solve_or_no_recheck_is_reported_not_rechecked_and_nothing_is_re_solved():
     """The recheck's structure with the reports made by hand: a non-finite residual is not what a lifted cap or a
     restart removes, and a node whose solve reads no recheck has none; each member is told which, and no program is
