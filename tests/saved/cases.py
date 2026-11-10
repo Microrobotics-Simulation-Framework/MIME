@@ -367,8 +367,6 @@ CASES = (
     # The same tube stepped by RK3, and its prescribed flow: the second scheme and the second flow field kind.
     Case("rk3_tube_flow", lambda: periodic_tube_flow(rk3=True)),
     Case("prescribed_tube_flow", prescribed_tube_flow),
-    # A point body coupled two-way to that flow through the exchange law: drag 0.5.0's stokes rung.
-    Case("point_body_flow", point_body_flow),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),
@@ -441,6 +439,9 @@ CASES = (
     Case("rft_kept", rft_kept),
     # A body in an electromagnet array's field, the calibrated multipole, placed, turned and with a background.
     Case("coil_array", coil_array),
+    # A point body coupled two-way to the tube's flow through the exchange law, drag 0.5.0's stokes rung: after the
+    # cases that use the sphere first, so that its golden output stays probed_shapes'.
+    Case("point_body_flow", point_body_flow),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),

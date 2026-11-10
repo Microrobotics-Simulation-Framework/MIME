@@ -58,7 +58,12 @@ LEDGER_FLOOR = 1e-9
 #: The rft rung's least eigenvalue is of a matrix scaled to a unit diagonal, so its scale is one; for a straight body
 #: (the rod, the seed) it is the spin's rounding, of either sign, a few units in the last place, and is judged against
 #: that scale, never its own. The coil's, 0.79, is a real number and is held to 1e-10 of it.
-CASE_FLOORS = {("rft_free_space", "least_eigenvalue"): 1.0, ("rft_kept", "least_eigenvalue"): 1.0}
+#: The point body's drag, driven along its tube's axis, each component on the scale of its axial value (N): the
+#: case's drag some 1e-10, its Faxen force some 1e-18; the components across the axis are the flow's rounding, some
+#: 1e-22 and 1e-30, which moves by its own size across machines.
+CASE_FLOORS = {("rft_free_space", "least_eigenvalue"): 1.0, ("rft_kept", "least_eigenvalue"): 1.0,
+               **{("point_body_flow", f"force_{axis}"): 1e-10 for axis in "xyz"},
+               **{("point_body_flow", f"faxen_{axis}"): 1e-18 for axis in "xyz"}}
 
 
 def floor_of(field: str, case: str = "") -> float:

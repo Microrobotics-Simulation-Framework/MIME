@@ -10,7 +10,8 @@ import math
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from point_cases import TUBE_RADIUS, WATER_MU, WATER_RHO, FreeBox, axis_profile, plant, point_experiment, seed
+from point_cases import (TUBE_RADIUS, WATER_MU, WATER_RHO, FreeBox, axis_profile, plant, point_experiment, seed,
+                         with_second_body)
 
 from mime.build import BuildRefused
 from mime.core import run_dtype
@@ -334,3 +335,29 @@ def test_the_stokes_rung_refuses_a_body_that_is_no_sphere_a_medium_with_no_grid_
     assert "support.unsupported" in _refused(point_experiment(flow=False))
     assert "drag.stokes-scheme" in _refused(point_experiment(dt=1e-5, scheme="rk3"))
     point_experiment().build()
+
+
+def _shared_lines(one_way: bool) -> tuple[dict[str, str], float]:
+    """Each drag's shared-medium line with a second point body 0.3 mm along the axis from the first, both of radius
+    40 um; and the two spheres' volume over the grid's box."""
+    built = with_second_body(point_experiment(), (0.0, 0.0, 0.3e-3), one_way=one_way).build()
+    lines = {owner: next(line for line in built.report.checked[owner] if "solved flow" in line)
+             for owner in ("drag:ball", "drag:bob")}
+    held = built.graph.get_node("water.flow").constants()
+    box = held["cells_x"] * held["cells_y"] * held["cells_z"] * float(held["spacing"]) ** 3
+    return lines, 2.0 * 4.0 / 3.0 * math.pi * 40e-6 ** 3 / box
+
+
+def test_two_point_bodies_in_one_medium_are_reported_interacting_through_the_flow(float64):
+    """Two two-way point bodies in one medium: each one's line names the other as scattering into the flow it reads,
+    their starting separation in radii (0.3 mm over 40 um, 7.5) and their volume fraction in the grid's box. The
+    control: with the second body one-way, the first's line names no body scattering into its flow, and the
+    second's still names the first."""
+    lines, fraction = _shared_lines(one_way=False)
+    print("\n" + "\n".join(lines.values()))
+    for owner, other in (("drag:ball", "'bob'"), ("drag:bob", "'ball'")):
+        assert f"into which {other} scatters its reaction" in lines[owner]
+        assert "starts 7.5 radii from it" in lines[owner] and f"fill {fraction:.3g} of the grid's box" in lines[owner]
+    control, _ = _shared_lines(one_way=True)
+    assert "no other body in it scatters a reaction" in control["drag:ball"]
+    assert "into which 'ball' scatters its reaction" in control["drag:bob"]

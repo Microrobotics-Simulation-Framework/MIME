@@ -145,6 +145,19 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
     return exp
 
 
+def with_second_body(exp: Experiment, at: tuple[float, float, float], *, radius: float = 40e-6,
+                     one_way: bool = False) -> Experiment:
+    """``exp`` with a second neutral point sphere, ``bob``, of ``radius`` (m) starting ``at`` (m) in the same water."""
+    exp.add_body(Body("bob", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=um(radius * 1e6)))},
+                      initial=State(position=mm(tuple(c * 1e3 for c in at)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                    velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    mass = WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
+    exp.declare("bob.mass", kg(mass), reason="a neutral sphere")
+    exp.declare("bob.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
+    exp.attach(Drag.Stokes(one_way=one_way), body="bob", medium="water")
+    return exp
+
+
 def axis_profile(state: dict[str, Any], centre: tuple[float, float, float], spacing: float) -> tuple[Any, Any]:
     """The axial velocity on the row of z faces through the tube's centre along x, and each face's distance from the
     axis (m): what Poiseuille's profile is fitted to."""
@@ -158,4 +171,5 @@ def axis_profile(state: dict[str, Any], centre: tuple[float, float, float], spac
 
 
 __all__ = ["TUBE_RADIUS", "WATER_MU", "WATER_RHO", "FreeBox", "axis_profile", "body_step", "plant", "point_experiment",
+           "with_second_body",
            "seed"]

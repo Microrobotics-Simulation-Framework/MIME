@@ -945,7 +945,9 @@ class _Planner:
             for plan in plans:
                 others = ", ".join(repr(name) for name in names if name != plan.bindings["body"]
                                    and not (plan.joined and name in joined))
-                if plan.joined:
+                if getattr(plan.entry, "rung", None) == "stokes":
+                    line = self.stokes_shared_line(plan, plans, medium)
+                elif plan.joined:
                     coupled = ", ".join(repr(name) for name in joined if name != plan.bindings["body"])
                     line = (f"{plan.bindings['body']!r}'s drag is solved jointly with {coupled}'s in the medium "
                             f"{medium!r}'s near field ({plan.joined}): each body's resistance takes the others into "
@@ -955,9 +957,52 @@ class _Planner:
                 else:
                     line = (f"the bodies {', '.join(repr(name) for name in names)} share the medium {medium!r}: "
                             f"{plan.bindings['body']!r}'s drag is computed alone, as if {others} were absent, and no "
-                            f"body outside a near field in it changes another's (bodies interact hydrodynamically "
-                            f"only through a medium's near field, drag 0.5.0's mrs rung)")
+                            f"body outside a near field or the solved flow in it changes another's (bodies interact "
+                            f"hydrodynamically only through a medium's near field, drag 0.5.0's mrs rung, or through "
+                            f"its solved flow, the stokes rung's)")
                 self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), line)
+
+    def stokes_shared_line(self, plan: EntryPlan, plans: Sequence[EntryPlan], medium: str) -> str:
+        """A stokes body's shared-medium line: its drag reads the medium's solved flow, into which every other two-way
+        stokes body scatters its reaction, so those bodies interact through the grid, a step apart; with the point
+        bodies' nearest starting separation over their radius and their volume fraction in the grid's box."""
+        body = plan.bindings["body"]
+        stokes = [other for other in plans if getattr(other.entry, "rung", None) == "stokes"]
+        scattering = sorted(other.bindings["body"] for other in stokes
+                            if other is not plan and not getattr(other.entry, "one_way", None))
+        alone = sorted(other.bindings["body"] for other in plans
+                       if other is not plan and other.bindings["body"] not in scattering)
+        named = ", ".join(repr(name) for name in scattering)
+        line = f"{body!r}'s drag reads the medium {medium!r}'s solved flow, " + (
+            f"into which {named} {'scatters its reaction' if len(scattering) == 1 else 'scatter their reactions'}: "
+            f"the bodies interact through the grid, resolved to the exchange kernel's width and read a step after "
+            f"they are scattered (lagged, no joint step)" if scattering
+            else "into which no other body in it scatters a reaction")
+        if alone:
+            line += f"; {', '.join(repr(name) for name in alone)} in the medium changes nothing of it"
+        starts = {other.bindings["body"]: self.start_of(other.bindings["body"]) for other in stokes}
+        hulls = {other.bindings["body"]: self.hull_of(other.bindings["body"]) for other in stokes}
+        placed = {name: (start, hull.kind.enclosing_radius(hull.settings)) for name, start in starts.items()
+                  for hull in (hulls[name],) if start is not None and hull is not None}
+        frame = self.exchange_frame_of(medium)
+        if len(placed) == len(stokes) >= 2 and frame is not None:
+            (own_start, own_radius) = placed[body]
+            nearest = min(math.dist(own_start, start) / max(own_radius, radius)
+                          for name, (start, radius) in placed.items() if name != body)
+            box = math.prod(frame.cells) * frame.spacing ** 3
+            fraction = sum(4.0 / 3.0 * math.pi * radius ** 3 for _, radius in placed.values()) / box
+            line += (f"; its nearest point body starts {nearest:.3g} radii from it, and the point bodies fill "
+                     f"{fraction:.3g} of the grid's box")
+        return line
+
+    def start_of(self, body: str) -> tuple[float, float, float] | None:
+        """``body``'s starting position (m), where its dynamics holds one of three numbers."""
+        dynamics = self.dynamics.get(body)
+        held: object = dynamics.initial.get("position") if dynamics is not None else None
+        if not isinstance(held, tuple) or len(cast(tuple[float, ...], held)) != 3:
+            return None
+        x, y, z = (float(c) for c in cast(tuple[float, ...], held))
+        return (x, y, z)
 
     def watch_plans(self) -> tuple[Watched, ...]:
         """The inputs of the post-run watch of every entry of the hydrodynamic family, from what the experiment

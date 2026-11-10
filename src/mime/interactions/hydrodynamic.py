@@ -1557,9 +1557,12 @@ class Drag(UncoupledDrag):
         f"steady self-field removed (the grid's undeveloped field acting as a history term); the fluid-acceleration "
         f"force and the added mass read the flow without the body, the kernel's own field removed by its fitted "
         f"free-box impulse response",
-        f"stokes: near a wall the point model holds to {WALL_LINE:g} radius (flagged within it); the separation of "
-        f"point bodies over their size and the volume fraction are reported at build; the particle Reynolds number by "
-        f"the slip is flagged above {REYNOLDS_LINE:g}",
+        f"stokes: near a wall the point model holds to {WALL_LINE:g} radius (flagged within it); the particle "
+        f"Reynolds number by the slip is flagged above {REYNOLDS_LINE:g}; point bodies in one medium interact through "
+        f"its solved flow only, each one's scattered reaction read by the others a step later (lagged: no joint step "
+        f"for several bodies), resolved to the kernel's width, and where several share a medium the build reports each "
+        f"one's nearest starting separation in radii and their volume fraction in the grid's box (reported, not "
+        f"judged: no line on either is measured)",
         "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
         "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
@@ -1628,7 +1631,7 @@ class Drag(UncoupledDrag):
     contact_gap: Annotated[Quantity | None, Length] = None
     near_field_dense_unknowns: int | None = None
     near_field_tolerance: float | None = None
-    one_way: bool = False
+    one_way: bool | None = None
     width: float | None = None
 
     @classmethod
@@ -1662,13 +1665,16 @@ class Drag(UncoupledDrag):
                       for name in ("grading", "contact", "contact_gap") if getattr(self, name) is not None]
         if self.rung != "stokes":
             found += [f"{name}= is a setting of the stokes rung's exchange with a grid, and the {self.rung} rung "
-                      f"reads none" for name, unset in (("one_way", False), ("width", None))
-                      if getattr(self, name) != unset]
+                      f"reads none" for name in ("one_way", "width") if getattr(self, name) is not None]
         else:
             found += [f"{name}= is a setting of another rung, and the stokes rung reads none"
                       for name in ("weights", "lubrication", "spacing", "blob", "patches", "wall_kind",
                                    "coefficients", "quadrature_refinement", "wall_refinement", "near_field_share",
                                    "near_field_dense_unknowns", "near_field_tolerance") if getattr(self, name) is not None]
+            written_way = cast(object, self.one_way)
+            if written_way is not None and not isinstance(written_way, bool):
+                found.append(f"one_way={written_way!r} is a switch: write one_way=True for the declared one-way "
+                             f"approximation, or leave it out for the two-way exchange")
             width = cast(object, self.width)
             if width is not None and (isinstance(width, bool) or not isinstance(width, int | float)
                                       or not 1.0 <= float(width) <= self.WIDTHS[-1]):
@@ -1919,7 +1925,7 @@ class Drag(UncoupledDrag):
             ctx.node_name(), ctx.timestep, radius=float(hull.kind.enclosing_radius(hull.settings)),
             viscosity=values["viscosity"], density=values["density"], spacing=frame.spacing, width_cells=width,
             origin=tuple(-c for c in frame.origin), initial_points=cast(tuple[float, ...], start),
-            one_way=self.one_way,
+            one_way=bool(self.one_way),
             drive_frequency=ctx.frequencies.get("medium", 0.0), **cast(dict[str, Any], vessel)))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(b.read("twist"), into=node["twist"])

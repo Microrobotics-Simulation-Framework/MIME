@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and refuses a body none clears (`drag.stokes-floor`); a sphere only (`drag.stokes-sphere`), in a flow on a grid
   stepped by IMEX Euler or its steady limit (`drag.stokes-scheme`). The FVM takes exchange
   partners (`flow.exchange_x`..`_z`, `flow.partners`), publishes its face sets (`flow.faces`) and books the exchange's
-  work per law; the energy ledger books the Maxey-Riley part under its own row (`<id>.maxey_riley`).
+  work per law; the energy ledger books the Maxey-Riley part under its own row (`<id>.maxey_riley`). Point bodies in one
+  medium interact through its flow, lagged a step; the build reports it on each one's drag, with their nearest starting
+  separation in radii and their volume fraction in the grid's box.
 
 - **Lubrication's hand-over on the MRS rung, body to wall: `Drag.MRS(lubrication=...)`** (drag 0.5.0, a numerical
   setting, on by default near a wall that opens, a plane or a tube, about a body whose hull kind has a support and
