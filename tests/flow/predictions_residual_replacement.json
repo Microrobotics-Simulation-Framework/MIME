@@ -189,5 +189,27 @@
     "prediction": "pass"
    }
   ]
+ },
+ "fix_round_b1": {
+  "written": "2026-11-10, in the commit that holds it, after the probe of the stress run's drawn shapes and before B1's two tests run",
+  "seen_before": [
+   "the stress run of 78eb319 drew 379 distinct shapes (replayed from its seeds); probed here through the fix's tree, the stenosis eight cells across with the 0.01h interior, float32, E-cores and P-cores",
+   "without the restart: off-centre shapes (an offset or tilt of at least 1e-3) stall on 344 of 344 on both core types, 206 of them drawn by a stress run that passed and so stalled on its CI runner too; exactly centred ones stall on 14 of 22 here, and the two kinds of core agree on all 22; a centred shape's stall turns on the CPU both ways ((0.5613449069981826, 0, 0, 0, 0) stalled on CI's run 1 and converges here; (0.59375, 0, 0, 0, 0) stalls here and converged on CI); 13 draws offset by less than 1e-3 (Hypothesis's tiny floats) behave as centred, 11 stalling",
+   "with the restart (default): 379 of 379 converge unflagged at their tolerance or floor, at 102 to 390 iterations; float32's field against float64's within 5.4e-7 (median 3.5e-7); float64 unflagged on 379"
+  ],
+  "choice": {
+   "ANSWER_LINE": "1e-5, float32's tolerance: about 19 times the largest error measured",
+   "STALLING": "four off-centre shapes, each drawn by a different stress run that passed (runs 5, 16, 20, 8: it stalled on that run's CI runner), each stalling here on both kinds of core, chosen for the highest least residual without the restart (4.5e-5 to 6.1e-5, 4.5 to 6 times the line it must stay above); no centred shape, since a centred stall turns on the CPU"
+  },
+  "gates": [
+   {
+    "gate": "test_with_the_restart_float32_converges_at_float64s_answer_on_every_draw (20 draws a run)",
+    "prediction": "passes on every run, locally and on CI (both default lanes, stress 20 of 20)"
+   },
+   {
+    "gate": "test_control_a_float32_stall_on_shapes_measured_to_stall_the_restart_breaks (4 shapes)",
+    "prediction": "each shape stagnates without the restart and converges with it, on every run locally and on CI; on CI this is the first measurement of these shapes on more than one runner, and a shape that does not stall there is reported with its runner, not dropped"
+   }
+  ]
  }
 }
