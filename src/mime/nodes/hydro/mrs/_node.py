@@ -282,8 +282,8 @@ def on_the_cells(weights: Array, owners: np.ndarray, area: Array) -> Array:
 
 def reach_weight(gap: Array) -> Array:
     """A cell's weight on its integrated column, from its force point's distance from the wall in force spacings (in a
-    graded run, in its own cell's size): 1 within half of :data:`WALL_REACH`, 0 beyond it, and a smoothstep between
-    (continuous with its first derivative)."""
+    graded run, in the measure :data:`GRADED_WALL_MEASURE` selects): 1 within half of :data:`WALL_REACH`, 0 beyond it,
+    and a smoothstep between (continuous with its first derivative)."""
     return smoothstep(gap, WALL_REACH)
 
 
@@ -300,7 +300,8 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     every cell is integrated and blended, ``chunks`` the whole quadrature's by its owners. Also whether a cell
     within the reach was left out of the budget. A step with no cell within the reach reads no more than the image at
     the force points (a ``cond``, whose two branches agree there, every weight zero). ``gap`` is in force spacings, or
-    in a graded run in each cell's own size, ``sqrt(area)``: the switch's mechanics are
+    in a graded run in the measure :data:`GRADED_WALL_MEASURE` selects (each cell's own size, ``sqrt(area)``, as
+    shipped): the switch's mechanics are
     ``mime.nodes.hydro._near_singular``'s, shared with the near field's cross-kernel."""
     return within_reach(gap, WALL_REACH,
                         lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,

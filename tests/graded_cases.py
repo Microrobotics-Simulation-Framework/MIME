@@ -34,9 +34,9 @@ def rim_drop() -> float:
 
 
 def above_plane(kind: Any, centre: tuple[float, float, float], orientation: tuple[float, ...], *, blob: float,
-                name: str = "graded", **drag: Any) -> Experiment:
+                name: str = "graded", spacing: float = SPACING, **drag: Any) -> Experiment:
     """``kind`` the hull of a body ``ball`` at ``centre`` and ``orientation`` above the plane z = 0, the medium filling
-    the half-space above it, with ``Drag.MRS`` in the plane wall kind at :data:`SPACING` and ``drag``'s settings."""
+    the half-space above it, with ``Drag.MRS`` in the plane wall kind at ``spacing`` (m) and ``drag``'s settings."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=m(0.0))))
     experiment.add_medium(Medium("water", fills=floor.half_space))
@@ -47,7 +47,7 @@ def above_plane(kind: Any, centre: tuple[float, float, float], orientation: tupl
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=m(SPACING), blob=blob, wall_kind="plane", **drag), body="ball", medium="water")
+    experiment.attach(Drag.MRS(spacing=m(spacing), blob=blob, wall_kind="plane", **drag), body="ball", medium="water")
     return experiment
 
 

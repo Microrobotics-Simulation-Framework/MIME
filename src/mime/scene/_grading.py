@@ -20,10 +20,11 @@ from the wall within a fraction of a turn; the MRS drag's step flags it (``off_p
 would break the held matrix and the derivatives.
 
 **The figures** are declarations from the measurements made before the build (a sphere at a plane wall, a cylinder's rim
-at a plane and in free space, blobs 0.1 and 0.025), where graded sampling with each force point
-at its cell's area centre held the sphere's normal resistance at half a force spacing from the wall to +5.2 % (blob
-0.1) and +1.8 % (0.025) against +12.2 % and +7.2 % uniform, and the rim's to +1.4 % and -0.6 % against +2.6 % and
--0.5 %; the gates in ``tests/oracles/test_graded_sampling.py`` measure them on the build."""
+at a plane and in free space, blobs 0.1 and 0.025). On the build, through the drag node: the sphere's normal resistance
+at half a force spacing from the wall, its contact graded, +5.31 % (blob 0.1) and +1.74 % (0.025) against Brenner's
+series, the uniform sampling +13.99 % and +8.53 % (``tests/oracles/test_graded_sampling.py`` holds the line); a
+cylinder's rim at a plane, its rims graded, +2.04 % and +0.07 % against a finer reference, uniform +3.04 % and +0.42 %
+(the build's gates, not in CI). A graded sampling is chosen at its settings rounded to :data:`FIGURES`."""
 
 from __future__ import annotations
 
@@ -40,8 +41,8 @@ from mime.units import Magnitude
 
 #: An edge's spacing, as a share of the sampling's: the rim grading measured before the build, a third.
 EDGE_SHARE = 1.0 / 3.0
-#: A crest's spacing, as a share of its least radius across it: about 1.2 times the force points on FL-9 at script A's
-#: 0.181 mm (1.6 times at 0.15).
+#: A crest's spacing, as a share of its least radius across it: FL-9's force points 1.27 times the uniform count at script
+#: A's 0.181 mm (6114 against 4816, its rims graded too) and 2.33 times at 0.4 mm (2227 against 957), measured.
 CREST_SHARE = 0.3
 #: How fast the spacing grows away from a feature, per unit of distance: the rim grading measured before the build, one.
 GROWTH = 1.0

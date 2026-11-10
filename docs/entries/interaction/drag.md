@@ -156,21 +156,40 @@ the body's frame, for a gap to the wall: the experiment's closest approach where
 one, else `contact_gap`, which is then required (`drag.grading-approach`). One policy turns them into a local spacing,
 finest at the feature or the contact and growing by the distance from it, never finer than a quarter of the force
 spacing, and the count rises by the density's mean; each graded force point sits at its cell's area centre, which is
-what makes grading help (with the points left where the relaxation puts them, it raised the error near a wall). The
-sampling is fixed on the body, as every sampling is, so a graded contact serves a body whose orientation to the wall is
-held, and a crest or a rim serves whichever way the body rolls about its axis: a step whose body lies within one force
-spacing of the wall with its nearest point outside the graded patch raises `off_patch`, and its resistance there has
-the uniform sampling's error near the wall, not the graded one's. Resampling to follow the pose is not done (it would
-break the held matrix and the derivatives). In a graded run the wall's self-image measures each cell's distance in the
-cell's own size, and a written `wall_refinement` counts from the finest spacing: the graded cells near the wall then lie
-farther from it in their own size, so fewer are integrated, and a graded contact half a force spacing from a plane
-measured less accurate with the image integrated than the uniform sampling at a blob of a tenth, the compact default,
-and more accurate at a fortieth (the wall's cell budget was not the cause: lifted to every cell, nothing moved). The build report states what was
-graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the force
-points' mean spacing. Measured against exact answers and finer references by `tests/oracles/test_graded_sampling.py`
-(a sphere's contact at a plane against Brenner's series, its wrong-way and leaves-the-patch controls); not bounded
-elsewhere. Refused: a kept version (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`), and a graded
-body in a medium's joint near field (`drag.grading-near-field`: the joint node raises no `off_patch` yet).
+what makes grading help (with the points left where the relaxation puts them, it raised the error near a wall). A
+graded sampling is chosen at its body's settings, the spacing and the contact rounded to four significant figures
+(`mime.scene._grading.FIGURES`), and moved with the body's own shape: its choice is discrete, so a move of a setting far
+below the spacing could otherwise choose other points, and a study's step of a millionth keeps one program. Over a
+declared range the count is the graded sampling's own, sampled at nine points of each ranged number
+(`GRADED_FORCE_POINTS`): a larger body's patch is a smaller share of its surface, so its graded count can fall as it
+grows.
+
+The sampling is fixed on the body, as every sampling is, so a graded contact serves a body whose orientation to the
+wall is held, and a crest or a rim serves whichever way the body rolls about its axis. The patch, where the grading made
+the spacing finer than the force spacing, is judged at each point of the node's quadrature: a step whose body lies
+within one force spacing of the wall with any point within `OFF_PATCH_BAND` force spacings of its least distance
+outside the patch raises `off_patch`, so that a face turned towards the wall is judged by all of it, a tie included,
+and there the resistance's error near the wall is not the graded one's. Resampling to follow the pose is not done (it
+would break the held matrix and the derivatives). In a graded run the wall's self-image measures each cell's distance
+in the cell's own size (`GRADED_WALL_MEASURE`, one switch in the node, its other value the force spacing), and a
+written `wall_refinement` counts from the finest spacing: the graded cells near the wall then lie farther from it in
+their own size, so fewer are integrated, and a graded contact half a force spacing from a plane measured less accurate
+with the image integrated than the uniform sampling at a blob of a tenth, the compact default, and more accurate at a
+fortieth (the wall's cell budget was not the cause: lifted to every cell, nothing moved). The build report states what
+was graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the
+force points' mean spacing.
+
+What grading buys is measured, not bounded. Against exact answers by `tests/oracles/test_graded_sampling.py`: a
+sphere's contact at a plane against Brenner's series, with its wrong-way and leaves-the-patch controls; there the
+contact grading helps beyond its count (a uniform sampling of as many force points stays near the uniform one's error).
+Against finer references, in the build's gates and not in CI: a cylinder's rim at a plane, where the rims' grading
+helps, and a screw's crest at a plane (the de Jongh screw's), where the gain was the point count: a uniform sampling of the graded count did as
+well, so crest grading there is a way to place the points, not a gain over spending them uniformly. Not bounded
+elsewhere. Refused: a kind without features asked for them (`drag.grading-features`), a kept version
+(`drag.grading-kind`), a contact with no wall (`drag.grading-contact`), with no gap to grade for
+(`drag.grading-approach`) or graded for a gap so wide that it grades nothing (`drag.grading-gap`), and a graded body in
+a medium's joint near field (`drag.grading-near-field`: its cross-kernel is measured on uniform samplings only, and
+with a wall it raises no `off_patch`).
 
 `wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
 no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.

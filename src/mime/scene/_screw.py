@@ -312,8 +312,8 @@ class Screw(Solid):
         it the thread's height and turn give: the section's height ``R modulation sin(starts theta)`` curves at
         ``R modulation starts^2`` per square radian, and the ridge turns ``sqrt(1 / R_crest^2 + (wavenumber / R)^2)``
         radians per metre across it, with the crest cylinder's own curvature beside it. Their distances are read from
-        the traced points (no closed form is given), so a graded screw's sampling can be chosen afresh by a move of a
-        setting far below its spacing."""
+        the traced points (no closed form is given); a graded sampling is chosen at its settings rounded
+        (``mime.scene._grading.FIGURES``), which holds its choice under a move of a setting far below its spacing."""
         radius, length, nu, epsilon = self._section(settings)
         starts, k, crest = self.starts, nu / radius, radius * (1.0 + epsilon)
         across = 1.0 / crest ** 2 + k * k
