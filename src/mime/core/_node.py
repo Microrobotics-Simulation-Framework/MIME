@@ -6,7 +6,7 @@ from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import cached_property
-from typing import Any, ClassVar, cast, override
+from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
 import jax
 import jax.numpy
@@ -15,6 +15,9 @@ from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 
 from mime.core._symbols import Symbol
+
+if TYPE_CHECKING:
+    from mime.core.ledger import LedgerFlag
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
 #: reads its array constructors as partly unknown; nodes call them through this name, and ``jax.jit`` through ``jit``.
@@ -184,6 +187,9 @@ class MimeNode(SimulationNode):
     #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
+    #: The ratios of the node's metered step that flag known bugs (``mime.core.ledger.LedgerFlag``), each with its
+    #: line and the planted bugs that prove it: read by ``mime.testing``'s ledger harness, never by the step.
+    LEDGER_FLAGS: ClassVar[tuple[LedgerFlag, ...]] = ()
     #: The commands a metered node pairs as loads read at the step's start (a dynamic arm's joint torques): the
     #: ledger moves a command into one of these into the input of its own beside it, and books its work under its
     #: writer, which is outside.

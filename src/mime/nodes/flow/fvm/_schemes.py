@@ -37,8 +37,13 @@ from typing import Any, ClassVar, NamedTuple, override
 from jax import Array
 
 from mime.core import jnp
+from mime.core.ledger import TermOrder
 from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
+
+
+#: The monolithic projected CG's residual term: its stop bounds it by the tolerance, a floor on how fast it falls.
+KRYLOV_ORDER = TermOrder(tolerance=1, at_least=True)
 
 
 class StageKind(StrEnum):
@@ -96,6 +101,9 @@ class TimeScheme[Record]:
     ledger_route: ClassVar[int]
     #: The scheme's numerical terms in its step identity, the order its records keep them.
     ledger_terms: ClassVar[tuple[str, ...]]
+    #: Each numerical term's expected order in dt and in the solve's tolerance (``mime.testing.term_orders`` checks
+    #: it), or why it has none.
+    ledger_orders: ClassVar[MappingProxyType[str, TermOrder]]
     #: The instant, as a fraction of the step, at which each stage reads its drive (the medium's body force): what the
     #: law that drives the medium delivers the drive at.
     drive_instants: ClassVar[tuple[float, ...]]
@@ -139,6 +147,13 @@ class IMEXEuler(TimeScheme[StageParts]):
     drive_instants = (1.0,)
     ledger_route = 2
     ledger_terms = ("backward_euler", "convection", "krylov")
+    #: ``N_BE`` and ``N_conv`` are a step's change squared and convection at mixed time levels, each ``O(dt^2)`` a step;
+    #: ``N_Krylov`` the solve's residual against its solution, which its stop bounds by its tolerance: it falls at least
+    #: as the tolerance does, and the CG lands under it by a varying share (1.1 to 7.3 times smaller for a halving,
+    #: 20 to 1700 for a hundredth, on the order tests' first rig over 200 seeds a dtype; 36 to 460 for a hundredth on
+    #: its ensembles at a step of 0.00125, 1500 a dtype).
+    ledger_orders = MappingProxyType({"backward_euler": TermOrder(dt=2), "convection": TermOrder(dt=2),
+                                      "krylov": KRYLOV_ORDER})
     cfl_line = 0.4
     steady = False
     stores_inertia = True
@@ -166,6 +181,10 @@ class Steady(TimeScheme[StageParts]):
     drive_instants = (1.0,)
     ledger_route = 2
     ledger_terms = ("backward_euler", "convection", "krylov")
+    ledger_orders = MappingProxyType({
+        "backward_euler": TermOrder(reason="zero: the steady limit stores no inertia"),
+        "convection": TermOrder(reason="zero: the steady limit is Stokes only"),
+        "krylov": KRYLOV_ORDER})
     cfl_line = None
     steady = True
     stores_inertia = False
@@ -204,6 +223,9 @@ class RK3(TimeScheme[_rk3.ExplicitStage]):
     drive_instants = _rk3.STAGE_TIMES
     ledger_route = 1
     ledger_terms = ("convection",)
+    ledger_orders = MappingProxyType({"convection": TermOrder(
+        reason="zero to rounding on a periodic box: the divergence form's convective power vanishes for a "
+               "divergence-free field at each stage, so no order in dt or tolerance is there to measure")})
     cfl_line = 1.7
     steady = False
     stores_inertia = True

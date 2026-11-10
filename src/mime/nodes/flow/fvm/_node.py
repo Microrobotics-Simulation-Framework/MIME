@@ -54,6 +54,7 @@ from mime.core import ledger as books
 from mime.core._node import rechecked
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, interior_depth, negative_resistivity, \
     wall_fields
+from mime.nodes.flow.fvm._flags import FLAGS
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
@@ -185,6 +186,9 @@ class ImplicitFlowNode(MimeNode):
     projected CG's stage kind (the module states the step)."""
 
     LEDGER_TERMS = ("backward_euler", "convection", "krylov")
+    #: The stall, a convective term not formed from its velocity, the drive in a solid; and the openings' two, pending
+    #: (``mime.nodes.flow.fvm._flags``).
+    LEDGER_FLAGS = FLAGS
     #: The state field the run reads between chunks for the step the CFL check stopped it at.
     STOP_FIELD: ClassVar[str] = STOP_FIELD
     rechecks: ClassVar[bool] = True

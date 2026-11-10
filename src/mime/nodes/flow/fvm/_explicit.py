@@ -44,6 +44,7 @@ from mime.core import ledger as books
 from mime.nodes.flow._waveform import waveform_at
 from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, negative_resistivity
+from mime.nodes.flow.fvm._flags import PENDING
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, check_deliveries
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StepContext, TimeScheme, scheme_named
@@ -119,6 +120,8 @@ class ExplicitFlowNode(ImplicitFlowNode):
     the step)."""
 
     LEDGER_TERMS = ("convection",)
+    #: The openings' two, pending: no flag is measured on RK3 yet, so none is a check of it.
+    LEDGER_FLAGS = PENDING
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-124",
