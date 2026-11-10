@@ -1,13 +1,13 @@
-"""The CG's residual replacement as a restart at the stall (``mime.nodes.flow.fvm._solve``'s module docstring): where the
-stop would find a stagnation, the CG restarts from the true residual instead, up to ``STALL_RESTARTS`` times.
+"""The CG's residual replacement as a restart at the stall (``mime.nodes.flow.fvm._solve``'s module docstring): where
+the stop would find a stagnation, the CG restarts from the true residual instead, up to ``STALL_RESTARTS`` times.
 
-Its gates: float32's recurrence stalls with the 0.01h interior in a flow with a pressure gradient (a stenosis) are
-broken, unflagged, at float64's answer within the tolerance; the derivative solves (tangent and transpose, read through
-the report block) converge with the primal; a solve that never stagnates is bit for bit the CG without the restart, in
-either dtype. Its controls: a stall the case plants (the 0.01h interior in a stenosis eight cells across, over draws of
-its shape, its place on the grid and its drive), which the restart breaks on every draw and the CG without it does not;
-and a planted wrong restart (the residual's sign flipped, from the start), which moves the answer and is flagged on
-every draw."""
+Its gates: with the 0.01h interior in a flow with a pressure gradient (a stenosis eight cells across, over draws of its
+shape, its place on the grid and its drive) float32's solve converges, unflagged, at float64's answer within a line, on
+every draw; the derivative solves (tangent and transpose, read through the report block) converge with the primal; a
+solve that never stagnates is bit for bit the CG without the restart, in either dtype. Its controls: a stall the case
+plants on fixed shapes measured to stall without the restart (whether a float32 draw stalls is a rounding event that
+differs by CPU, so the stall is not asserted over draws), which the restart breaks; and a planted wrong restart (the
+residual's sign flipped, from the start), which moves the answer and is flagged on every draw."""
 
 from __future__ import annotations
 
@@ -109,25 +109,54 @@ SHAPES = st.tuples(st.floats(0.4, 0.6), st.floats(-0.5, 0.5), st.floats(-0.5, 0.
                    st.floats(-0.3, 0.3))
 
 
-# -- the control the case plants: a stall the restart breaks on every draw ---------------------------------------------
+#: float32's answer against float64's, relative, where the restart converges: float32's tolerance, declared before the
+#: gate ran (``predictions_residual_replacement.json``, ``fix_round_b1``), about 19 times the largest error of the 379
+#: shapes a stress run drew (5.4e-7).
+ANSWER_LINE = 1e-5
+#: Shapes on which the CG without the restart stalls, measured on CI's runners and here: each drawn by a different
+#: stress run that passed (so it stalled on that run's runner), and stalling here on both kinds of core, its least
+#: residual 4.5e-5 to 6.1e-5. Off-centre shapes stalled on 344 of 344 here; a centred one's stall turns on the CPU.
+STALLING = (
+    (0.4, 0.0, 0.4131182338695217, 0.0, 0.0),
+    (0.4, 0.23187168742084985, 0.23187168742084985, 0.14582011025102282, 0.13811306304991489),
+    (0.5748629024643002, 0.4487391197415629, 0.32589321661738846, -0.21365488601539637, 0.22488432954975907),
+    (0.48454397635447477, -0.07995353997088628, -0.3569961749309025, 0.1761588039039737, -0.006010456649702567),
+)
 
-@settings(max_examples=20, deadline=None)
-@given(shape=SHAPES)
-def test_control_a_float32_stall_the_restart_breaks_on_every_draw(shape):
-    """The 0.01h interior in a stenosis eight cells across, float32: without the restart the CG's recurrence stalls
-    above the solve's floor and the solve stops stagnated, flagged; restarted at the stall it converges, unflagged, at
-    its tolerance or floor, and its answer is the flagged one's or closer to float64's."""
+
+def _converged_at_float64s_answer(shape) -> None:
     with in_dtype("float32"):
-        stalled, without = stenosis("float32", stall_restarts=0)(shape)
-        assert without[STAGNATED] == 1.0, without
-        assert without[RESIDUAL] > max(default_tolerance("float32"), stenosis("float32").floor(shape, stalled))
         solved, report = stenosis("float32")(shape)
         assert not _flagged(report), report
         assert report[RESIDUAL] <= max(default_tolerance("float32"), stenosis("float32").floor(shape, solved))
     with in_dtype("float64"):
         reference, _ = stenosis("float64")(shape)
-    grid = stenosis("float32").grid
-    assert _relative(solved, reference, grid) <= max(_relative(stalled, reference, grid), 1e-4)
+    assert _relative(solved, reference, stenosis("float32").grid) <= ANSWER_LINE
+
+
+# -- the gate: on every draw the restarted solve converges at float64's answer ---------------------------------------
+
+@settings(max_examples=20, deadline=None)
+@given(shape=SHAPES)
+def test_with_the_restart_float32_converges_at_float64s_answer_on_every_draw(shape):
+    """The 0.01h interior in a stenosis eight cells across, float32, every draw (centred ones among them, which may or
+    may not stall without the restart): the solve converges, unflagged, at its tolerance or floor, and its answer is
+    float64's within ``ANSWER_LINE``."""
+    _converged_at_float64s_answer(shape)
+
+
+# -- the control the case plants: a stall, on shapes measured to stall, that the restart breaks -----------------------
+
+@pytest.mark.parametrize("shape", STALLING)
+def test_control_a_float32_stall_on_shapes_measured_to_stall_the_restart_breaks(shape):
+    """Without the restart the CG's recurrence stalls above the solve's floor and the solve stops stagnated, flagged;
+    restarted at the stall it converges, unflagged, at float64's answer within ``ANSWER_LINE``. The shapes are fixed:
+    whether a draw stalls is a rounding event, and a centred draw that stalls on one CPU converged on another."""
+    with in_dtype("float32"):
+        stalled, without = stenosis("float32", stall_restarts=0)(shape)
+        assert without[STAGNATED] == 1.0, without
+        assert without[RESIDUAL] > max(default_tolerance("float32"), stenosis("float32").floor(shape, stalled))
+    _converged_at_float64s_answer(shape)
 
 
 # -- the planted wrong restart: the answer moved, and flagged ----------------------------------------------------------
@@ -138,7 +167,10 @@ def test_control_a_wrong_restart_moves_the_answer_and_is_flagged_on_every_draw(s
     """The restart planted with the residual's sign flipped (``A x - b``) in both dtypes; the start is made through the
     same restart, so the plant acts from the first iteration: the recurrence carries on away from the answer and the
     true residual never falls; the stop, which judges the true residual alone, never passes it as converged. On every
-    draw the solve is flagged and its answer is farther from the right one than ten times the tolerance."""
+    draw the solve is flagged and its answer is farther from the right one than ten times the tolerance. A flip at a
+    retry alone, the start right, is caught by nothing here and needs no catching: the true-residual stop and the
+    restart where the recursive residual falls first recover it (measured: unflagged on 21 of 21 off-centre shapes,
+    its answer within 9.4e-8 of the right restart's)."""
     for dtype in ("float32", "float64"):
         with in_dtype(dtype):
             right, _ = stenosis(dtype)(shape)
@@ -219,7 +251,10 @@ def test_the_derivative_solves_converge_with_the_primal_through_the_report_block
 @given(seed=st.integers(0, 2**31 - 1), amplitude=st.floats(1e-3, 1e3))
 def test_a_solve_that_never_stagnates_is_the_cg_without_the_restart(seed, amplitude):
     """The empty tube eight cells across at a backward-Euler shift (``test_fvm_solve.Problem``), whose solves converge
-    without a stagnation: in either dtype its answer and report are bit for bit the CG's without the restart."""
+    without a stagnation: in either dtype its answer and report are bit for bit the CG's without the restart. Both arms
+    run this loop, the retry's carry and selects in each, so this shows the restart inert where nothing stagnates, not
+    equality with the CG before it; that was measured outside the suite, the released programs and the stenosis's
+    solves bit for bit against the release branch's tip."""
     for dtype in ("float32", "float64"):
         with in_dtype(dtype):
             problem = problem_in(dtype)
