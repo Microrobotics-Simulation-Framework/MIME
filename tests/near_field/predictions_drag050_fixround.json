@@ -1,0 +1,76 @@
+{
+  "written": "2026-11-11, committed before any gate of #240's fix round ran (the commit that adds this file is the timestamp): the recheck names floor-limited only at the rounding floor (M1), the stall restarts' count and window pinned exactly (M2), the near field's memory refusal covers a differentiated run and keeps a headroom (M3)",
+  "phase": "#240's fix round, from its refuting review (M1 to M5, minors)",
+  "labels": "the fix round's predictions, from the review's runs and one exploration on the laptop (below); the memory counts are fitted by the probe that runs with this file, so the memory gate's prediction is of the line, not of the counts",
+  "seen_before": [
+    "the review's runs (MemAvailable about 14.5 GiB on a GitHub runner, float64, MIME's sphere of 882 force points, a line 1 mm apart): dense forward runs peaked at their estimate plus 1.2 to 1.6 GiB (8 to 9 spheres, 21,168 to 23,814 unknowns); a reverse-mode Study.gradient of three spheres (7,938 unknowns, 4 steps) peaked at 7.37 GiB against a forward estimate of 1.9; seven spheres in reverse mode (18,522 unknowns, 2 steps) built and failed with run.out-of-memory on one buffer of 28.2 GiB",
+    "the review's stall arms (float64, coarse spheres 0.4 mm spacing, Krylov length planted to 1 or 2): three spheres 0.2 mm apart, restart 1, every solve stagnated, and with the stagnation test off converged (objective -137.409); four spheres 0.2 mm apart, restart 2, 9 transpose solves stagnated and the stall restarts cured them",
+    "an exploration on the laptop (not a decision: the GMRES on the node's joint matrix of three coarse spheres, 1,152 unknowns, 0.2 and 0.05 mm apart): at a tolerance of 1e-30 each column's least true residual was 0.55 to 2.7 times eps || |A| |x| + |b| || in float64 and float32; with the Krylov length planted to 1 the stagnated columns were 6.7 to 6.6e5 times above it in float32 and 2e8 to 3.6e14 in float64; FLOOR_MARGIN set at 4 from it, before the probe below measures it through the node"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: GitHub runners (4 vCPU, 16 GB, MemAvailable about 14.5 GiB) for every measurement and control; the laptop for the touched tests",
+    "sizes_and_parameters": "MIME's sphere, 1 mm radius: 882 force points (0.15 mm spacing) for memory, 0.4 mm spacing for the recheck's cases; 1 ms steps; GMRES's production Krylov length 30, window 3, factor 0.5, cap 600, recheck cap 6000 and stall restarts 3",
+    "seeds_and_draws": "every gate is deterministic (no draws); controls run through detection_rate.py, N runs each, on Actions"
+  },
+  "gate_7_floor_named": {
+    "claim": "a recheck names floor-limited only where its solves stopped stagnated at their rounding floor (the least true residual within FLOOR_MARGIN = 4 of eps || |A| |x| + |b| ||); a stall above it is named stagnated, its recheck running past it",
+    "kind": "equality (a name) and acceptance",
+    "case": "tests/near_field/test_recheck.py: float32 at 1e-9 (the pair a radius apart) and float64 with the Krylov length planted to 1 (three spheres 0.2 mm apart); the floor probe's arms through the node (probe/f240-floor)",
+    "prediction": {
+      "value": "float32 at 1e-9: floor-limited, route 'run in float64, or take the dense route'; the planted Krylov length: stagnated, the recheck converged and within 1e-6 of the clean run's objective and derivative; float64 at 1e-15: floor-limited with the float64 route (a tolerance at or above the floor)",
+      "band": [null, null],
+      "unit": "",
+      "basis": "derived from the exploration's ratios and the shift's arithmetic",
+      "why": "a stall of GMRES(1) sits 1e8 or more above float64's floor, so the floor test cannot pass it; at a tolerance under the floor the least residual lies within 2.7 of it on the explored system"
+    },
+    "metric": "the stopped column's least true residual over eps || |A| |x| + |b| || at its iterate, the quantity the stop reads",
+    "control": {
+      "plant": "the old rule (any stagnation again named floor-limited), MIME_PLANT_FIX240=old_rule",
+      "expected_rate": "N/N: the stall test fails every run",
+      "runs": 5,
+      "clean_expected": "0/N",
+      "resolution": "stopped columns' ratios through the node: floors at most 4, stalls 6.7 or more (the probe states the range it measured)"
+    },
+    "if_wrong": "a genuine floor's ratio above 4 at larger sizes would name it stagnated and run its recheck to the cap: the margin is then raised from the probe's measurement, never fitted to pass",
+    "cannot_discriminate_if": "both arms converge before any stagnation (a plant that does not stall), or the recheck is not made"
+  },
+  "gate_8_stall_restarts_exact": {
+    "claim": "each stall restart begins the window again: on the cyclic shift (no restart moves the residual) a column stops stagnated after exactly (restarts + 1) windows of restarts",
+    "kind": "equality",
+    "case": "tests/near_field/test_gmres.py::test_each_stall_restart_buys_exactly_one_window_of_restarts, both dtypes, 0 to 3 stall restarts",
+    "prediction": {"value": "iterations 9 (restarts + 1), exactly", "band": [null, null], "unit": "iterations", "basis": "derived", "why": "a Krylov length under the shift's order adds only vectors orthogonal to the residual: each cycle's correction is zero to the bit"},
+    "metric": "the report's iterations",
+    "control": {
+      "plant": "the review's mutants: A, the count compared with <=; B, the window not begun again (MIME_PLANT_FIX240=count_le, window_kept)",
+      "expected_rate": "N/N each",
+      "runs": 5,
+      "clean_expected": "0/N",
+      "resolution": "one restart of three iterations: the count is exact"
+    },
+    "if_wrong": "an inexact count would mean a correction that is not zero: the shift's arithmetic is re-read",
+    "cannot_discriminate_if": "a cap below the predicted count"
+  },
+  "gate_9_memory_line": {
+    "claim": "the near field's memory refusal covers the run it will make: a forward run, and a Study.gradient's derivative in forward or reverse mode by counts measured through the node; it refuses where that estimate passes the memory a run can have less a stated headroom",
+    "kind": "bounds (measured, not a proof)",
+    "case": "probe/f240-memgate: dense, float64, MIME's sphere of 882 force points in a line 1 mm apart; forward runs and gradients at the sizes the line admits on a runner, and seven spheres in both modes",
+    "prediction": {
+      "value": "every admitted run's peak growth past the check stays under the line (the available memory less the headroom); seven spheres refused at build in forward and reverse mode with drag.near-field-memory, before any compile",
+      "band": [null, null],
+      "unit": "GiB",
+      "basis": "derived: the counts are fitted to the memory probe's sizes, and the line keeps a headroom above the fit's largest miss",
+      "why": "the derivative's buffers scale as the joint matrix's square at fixed geometry; the review's 28.2 GiB buffer at seven spheres is about eleven joint matrices, past any runner"
+    },
+    "metric": "the process's resident peak past the check (VmHWM reset at the check), against the check's MemAvailable",
+    "control": {
+      "plant": "the refusal's headroom removed and the derivative counts set to the forward run's (the PR's estimate): seven spheres in reverse mode is then admitted",
+      "expected_rate": "1/1 (deterministic: the arithmetic of the line)",
+      "runs": 1,
+      "clean_expected": "refused",
+      "resolution": "the line's arithmetic; the measured peaks' margin under it is reported"
+    },
+    "if_wrong": "an admitted size over its line means the counts or the headroom are short: refit and widen, never quietly reinstate a size line (#330's 'dense at every size' is the maintainer's)",
+    "cannot_discriminate_if": "every size measured is refused (no admitted size), or the runner's MemAvailable differs between the check and the run by more than the headroom"
+  }
+}
