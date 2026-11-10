@@ -1,7 +1,6 @@
 # OctoMag's calibration
 
-**What it is.** The calibrated multipole model (MPEM, order one) of OctoMag, eight coils about a small workspace: each
-coil's sources, each a fitted position, direction and coefficient, and the system's declared region of interest.
+**What it is.** ETH MSRL's published calibration of OctoMag (`OctoMag_Calibration.yaml`, undated in its name), evaluated by MIME: a calibrated multipole model (MPEM, order one) of eight coils about a small workspace, each coil's sources, each a fitted position, direction and coefficient, and the system's declared region of interest.
 Packaged as `asset("octomag")`, read by the field provider `CalibratedMultipole`.
 
 **The file.** `src/mime/data/emns_calibrations/octomag.yaml`, byte for byte its upstream's, which every read checks
@@ -16,7 +15,7 @@ Packaged as `asset("octomag")`, read by the field provider `CalibratedMultipole`
 open: it ships in the wheel.
 
 **Each value's basis.**
-- `Source_Position`, `Source_Direction`, `B_Coeff`: fitted by the system's makers. A source is a basis function, not
+- `Source_Position`, `Source_Direction`, `B_Coeff`: fitted by ETH MSRL. A source is a basis function, not
   hardware; its position need not be a coil's.
 - `Workspace_Dimensions`: declared, never fitted (the upstream fitter never writes it). Being inside it is no evidence
   of accuracy, and being outside it none of extrapolation; the fit's own domain is not published.

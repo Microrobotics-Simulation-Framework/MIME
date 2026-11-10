@@ -10,8 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **The coil array returns: `mime.fields.CalibratedMultipole`** (`calibrated_multipole` 0.1.0, its node
-  `CalibratedMultipoleNode`), an electromagnet array whose coils are a calibrated multipole model of order one, from one
-  of three packaged calibrations, `asset("navion_2")`, `asset("octomag")` and `asset("cardiomag")`: Apache-2.0,
+  `CalibratedMultipoleNode`), an electromagnet array whose coils are a calibrated multipole model of order one, from one of three packaged calibrations (ETH MSRL's published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME; not affiliated with or endorsed by the systems' makers), `asset("navion_2")`, `asset("octomag")` and `asset("cardiomag")`: Apache-2.0,
   Multi-Scale Robotics Lab, ETH Zurich, byte for byte their upstreams' at pinned commits, each with its card
   (`docs/assets/`). On `mime.fields.CoilArray`, the contract every kind of coil array keeps: the command `currents`, one
   per coil, reaches the node as `delivered_currents`; the array is placed by `at` and `orientation`, one exact
@@ -33,8 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   current), orders above one. CardioMag's file carries an `Offset` block of eight current-independent sources (about 1.5 mT at the
   median over its region) that neither mag_manip nor this evaluates, stated on its card and in the validity lines; a
   `Coil_List` that names the block is refused. No system ships a current limit: the figures published for each are cited
-  in its card and the validity lines (Navion 25 A an operating restriction and 45 A the hardware's, CardioMag 35 A a
-  coil, OctoMag 16 A), and the previous line's unsourced 35 A and 20 A are dropped.
+  in its card and the validity lines (Navion_2 25 A an operating restriction and 45 A the hardware's, CardioMag 35 A a coil with its 15 kW cap not modelled, OctoMag 16 A), MIME's declarations with their sources and no maker's specification, and the previous line's unsourced 35 A and 20 A are dropped.
 
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,

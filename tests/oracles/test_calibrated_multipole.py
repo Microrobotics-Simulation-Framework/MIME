@@ -26,6 +26,7 @@ per module), from ``references/mpem_mag_manip.npz`` (its generator and provenanc
 from __future__ import annotations
 
 import json
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -487,14 +488,30 @@ def test_octomags_guard_fires_at_its_source_and_its_nearest_corner_and_not_in_th
     assert np.max(np.abs(flagged["centre"]["gradient"])) < 10.0
 
 
+@cache
+def octomags_guard():
+    """OctoMag's ``near_source`` flag as a function of the reader's point, traced once: the node is built and its
+    step compiled on the first draw, and every later draw only evaluates it (a draw that built and traced the node
+    again took a minute over the example count)."""
+    node = built_node("octomag")
+    slots = node.constants()["slots"]
+    state, currents = node.initial_state(), jnp.zeros(8)
+
+    @jax.jit
+    def flag(point: jax.Array) -> jax.Array:
+        pose = jnp.concatenate([point, jnp.asarray((1.0, 0.0, 0.0, 0.0))])
+        return node.update(state, {"delivered_currents": currents, **{f"points_{name}": pose for name in slots}},
+                           1e-3)["near_source"]
+
+    return flag
+
+
 @PROPERTY
 @given(st.tuples(st.floats(-1, 1), st.floats(-1, 1), st.floats(-1, 1)).filter(lambda v: sum(c * c for c in v) > 1e-2),
        st.floats(2e-5, 3e-4))
 def test_octomags_guard_fires_on_every_draw_within_300_um_of_its_source(direction, distance):
-    node = built_node("octomag")
     unit = np.asarray(direction) / np.linalg.norm(direction)
-    out = step(node, octomags_source() + distance * unit, np.zeros(8))
-    assert out["near_source"] == 1.0, (direction, distance)
+    assert float(octomags_guard()(jnp.asarray(octomags_source() + distance * unit))) == 1.0, (direction, distance)
 
 
 @pytest.mark.parametrize("system", SYSTEMS)

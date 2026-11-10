@@ -292,8 +292,8 @@ class CoilArray(FieldProvider):
 class CalibratedMultipole(CoilArray):
     """An array whose coils are a calibrated multipole model of order one (MPEM): each coil's field per unit current is
     the sum of a few fitted point sources, ``b = sum_j beta_j (3 (d_j . r) r / r^5 - d_j / r^3)``, from
-    ``calibration``, one of the systems MIME packages (``asset("navion_2")``, ``asset("octomag")``,
-    ``asset("cardiomag")``), its coefficients and sources the node's leaves, read from the file. The calibration's own
+    ``calibration``, one of the calibrations MIME packages (ETH MSRL's published calibrations of Navion_2, OctoMag and
+    CardioMag, evaluated by MIME: ``asset("navion_2")``, ``asset("octomag")``, ``asset("cardiomag")``), its coefficients and sources the node's leaves, read from the file. The calibration's own
     frame is placed by ``at`` and ``orientation``.
 
     Each step it raises ``outside_region`` where a reader is outside the calibration's ``Workspace_Dimensions``, a
@@ -314,15 +314,16 @@ class CalibratedMultipole(CoilArray):
     references = ("Petruska2017", "Charreyron2021", "Kummer2010", "Zughaibi2025", "Zughaibi2026", "Gervasoni2024", "Yu2019")
     builds = {"": (CalibratedMultipoleNode,)}
     validity = (
-        "the field is linear in the delivered currents, each coil a calibrated multipole model of order one: fitted "
-        "point sources, basis functions and not hardware (Source_Position need not be a coil's, and a fit may place "
+        "the field is linear in the delivered currents, each coil a calibrated multipole model of order one, ETH "
+        "MSRL's published calibration evaluated by MIME: fitted point sources, basis functions and not hardware (Source_Position need not be a coil's, and a fit may place "
         "one far out)",
         "Workspace_Dimensions is a declared region, never fitted: a reader outside it raises outside_region, outside "
         "the declared region, which is no evidence of extrapolation, and inside it is no evidence of accuracy; the "
         "fit's own domain is not published",
         "the field is singular at a fitted source, where a source's own term takes the gradient to many times its "
         "interior scale: near_source is raised where a coil's gradient per unit current at a reader is more than 30 "
-        "times its median over the declared region (measured over 60 000 drawn points of each region: Navion_2 and "
+        "times its median over the declared region (the factor is MIME's declaration, set from a measurement over "
+        "60 000 drawn points of each region: Navion_2 and "
         "CardioMag nowhere, their smooth gradient reaching 13.5 and 2.4 times the median; OctoMag at 19, a pocket "
         "about 1.2 mm across around its fitted source, which sits 20 um outside the region's -x face and whose own "
         "gradient there is 10^8 times the median; the region's nearest grid corner, 1 mm from it, reads 86 times); "
@@ -332,15 +333,16 @@ class CalibratedMultipole(CoilArray):
         "the declared guard, 1e-4 of the field: OctoMag; Navion_2 and CardioMag build (each card's conditioning); on a "
         "GPU set JAX_DEFAULT_MATMUL_PRECISION=highest",
         "the coil field follows mag_manip's sign convention, which its oracle pins in software; ETH's measured "
-        "Navion data disagree with ETH's model by a global sign, and which side is flipped is not known: gradient pull "
+        "Navion_2 data disagree with ETH MSRL's published calibration by a global sign, and which side is flipped is "
+        "not known: gradient pull "
         "on a field-aligned body does not change with it, the torque on a fixed moment does, so establish the "
         "convention on the hardware before relying on a direction of rotation (MIME-ANO-153)",
         "agreement with mag_manip is a software oracle's: it cannot ground sign or frame against hardware",
-        "the currents are ideal and unlimited here: allocate() takes the limits the user declares, and no system ships "
-        "one; cited figures, none of them a rating of the rig a calibration was fitted on (which neither source "
+        "the currents are ideal and unlimited here: allocate() takes the limits the user declares, and no calibration "
+        "ships one, so a limit is MIME's declaration with its source and never a maker's specification; cited figures, none of them a rating of the rig a calibration was fitted on (which neither source "
         "states): OctoMag 16 A a coil, a published operating limit of ETH's rig (Zughaibi2025), and a 15 A amplifier "
-        "saturation its 2010 force tables assume (Kummer2010); Navion 25 A a coil as one lab's operating restriction (Zughaibi2025, Sec. III-B: \"we conservatively "
-        "restrict them to 25 A per coil for safety\"), the figure MIME uses; 45 A as what that lab says the hardware "
+        "saturation its 2010 force tables assume (Kummer2010); Navion_2 25 A a coil as one lab's operating restriction (Zughaibi2025, Sec. III-B: \"we conservatively "
+        "restrict them to 25 A per coil for safety\"), the figure MIME declares; 45 A as what that lab says the hardware "
         "supports (Zughaibi2025, Sec. III-B, and its sequel Zughaibi2026, Sec. II-C, the same three-coil system and "
         "drivers); the drivers rated 50 A continuous and 100 A peak, with the system paper's workspace maps at 50 A in "
         "each coil (Gervasoni2024, Experimental Section and Fig. 3); no source states a coil rating, or that its unit is "

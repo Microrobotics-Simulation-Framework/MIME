@@ -41,8 +41,7 @@ follows the chain carrying it. A reader's slot whose read names a point fixed in
 magnet's declared direction; its node holds the magnet's radius, against which its near-field limit is stated
 (MIME-ANO-100). A provider may read its apparatus's parts (`parts`) and values (`values`).
 
-**`CalibratedMultipole`** (`calibrated_multipole` 0.1.0): an electromagnet array whose coils are a calibrated multipole
-model of order one, from one of the three packaged calibrations (`asset("navion_2")`, `"octomag"`, `"cardiomag"`), on
+**`CalibratedMultipole`** (`calibrated_multipole` 0.1.0): an electromagnet array whose coils are a calibrated multipole model of order one, from one of the three packaged calibrations, ETH MSRL's published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME (`asset("navion_2")`, `"octomag"`, `"cardiomag"`), on
 `CoilArray`, the contract every kind of coil array keeps (not registered; coils from their geometry join it later): a
 field linear in the command `currents`, which reaches the node as `delivered_currents`, so a stage between a command and
 the coils can sit there later; the array placed by `at` and `orientation`, one exact transform; a uniform `background`,

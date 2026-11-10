@@ -1,7 +1,6 @@
 # CardioMag's calibration
 
-**What it is.** The calibrated multipole model (MPEM, order one) of CardioMag, eight coils, the variant whose `Offset`
-block is not enabled: each coil's sources, each a fitted position, direction and coefficient, and the system's declared region of
+**What it is.** ETH MSRL's published calibration of CardioMag (`mag_control/mpem/cal/C_Mag_Calibration_06-25-2015_no_offset.yaml`), evaluated by MIME: a calibrated multipole model (MPEM, order one) of eight coils, the variant whose `Offset` block is not enabled, each coil's sources, each a fitted position, direction and coefficient, and the system's declared region of
 interest. Packaged as `asset("cardiomag")`, read by the field provider `CalibratedMultipole`.
 
 **The file.** `src/mime/data/emns_calibrations/cardiomag.yaml`, byte for byte its upstream's, which every read checks
@@ -16,7 +15,7 @@ interest. Packaged as `asset("cardiomag")`, read by the field provider `Calibrat
 open: it ships in the wheel.
 
 **Each value's basis.**
-- `Source_Position`, `Source_Direction`, `B_Coeff`: fitted by the system's makers. A source is a basis function, not
+- `Source_Position`, `Source_Direction`, `B_Coeff`: fitted by ETH MSRL. A source is a basis function, not
   hardware; its position need not be a coil's.
 - `Workspace_Dimensions`: declared, never fitted (the upstream fitter never writes it). Being inside it is no evidence
   of accuracy, and being outside it none of extrapolation; the fit's own domain is not published.
@@ -27,7 +26,7 @@ rounding 8.9e-16 and float32 4.8e-7 of the field; least distance from a source t
 0.027 T/(m A), and none of 60 000 drawn points of the region reaches it (its smooth gradient reaches 2.4 times the
 median).
 
-**Its current limits.** None ships (`allocate()` takes the user's). The figure published for the CardioMag: "the maximum
+**Its current limits.** None ships (`allocate()` takes the user's). A limit is MIME's declaration with its source, never a maker's specification. The figure published for CardioMag: "the maximum
 current in each electromagnet is 35 A, and the maximum power in the whole system is 15 kW" (Yu et al. 2019, Sec. III-A,
 the eight-electromagnet system with a 10 cm cubic workspace). Nothing states that the unit measured is the one this
 calibration was fitted on, and the 15 kW cap is not modelled here (the coils' resistance is unknown), so 35 A in every coil

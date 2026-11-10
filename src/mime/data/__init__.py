@@ -54,17 +54,17 @@ PACKAGED: Mapping[str, PackagedAsset] = MappingProxyType({
         "remanence as a vendor's limits, 1.32 to 1.37 T; values CC0-1.0; an example, not reviewed library data"),
     "navion_2": PackagedAsset(
         "emns_calibrations/navion_2.yaml", "ea6eeb803b48d73551648e4df08116373a03fed4e871eb2b5c13706f57796b56",
-        "the Navion 2 electromagnetic navigation system's calibrated multipole model (3 coils, order one), "
-        "Workspace_eMNS's Navion_2_Calibration_24-02-2020.yaml byte for byte; Apache-2.0, Multi-Scale Robotics Lab, "
-        "ETH Zurich"),
+        "ETH MSRL's published calibration of Navion_2 (3 coils, calibrated multipole model of order one), evaluated by "
+        "MIME: Workspace_eMNS's Navion_2_Calibration_24-02-2020.yaml byte for byte; Apache-2.0, Multi-Scale Robotics "
+        "Lab, ETH Zurich"),
     "octomag": PackagedAsset(
         "emns_calibrations/octomag.yaml", "d0d92541ea3669bb1c4d4daf4acd36b9d3100f728e6270e2aebac53906cc0ad0",
-        "the OctoMag electromagnetic navigation system's calibrated multipole model (8 coils, order one), "
-        "Tesla_core_public's OctoMag_Calibration.yaml byte for byte; Apache-2.0, Multi-Scale Robotics Lab, ETH Zurich"),
+        "ETH MSRL's published calibration of OctoMag (8 coils, calibrated multipole model of order one), evaluated by "
+        "MIME: Tesla_core_public's OctoMag_Calibration.yaml byte for byte; Apache-2.0, Multi-Scale Robotics Lab, ETH Zurich"),
     "cardiomag": PackagedAsset(
         "emns_calibrations/cardiomag.yaml", "31bd9b234586497275c8abff6ff292ece7ed029be8b6077b027264870facd51c",
-        "the CardioMag electromagnetic navigation system's calibrated multipole model (8 coils, order one; its "
-        "Offset block of eight sources is carried and not enabled), Tesla_core_public's C_Mag_Calibration_06-25-2015_no_offset.yaml byte for "
+        "ETH MSRL's published calibration of CardioMag (8 coils, calibrated multipole model of order one, evaluated by "
+        "MIME; its Offset block of eight sources is carried and not enabled), Tesla_core_public's C_Mag_Calibration_06-25-2015_no_offset.yaml byte for "
         "byte; Apache-2.0, Multi-Scale Robotics Lab, ETH Zurich"),
 })
 

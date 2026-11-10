@@ -3688,11 +3688,11 @@ anomalies:
     planned_resolution: "Deferred to 0.4.0 (soft bodies, compliant vessels), where the thin-film model takes a deflecting gap (F0's decision C3, the register's A9). This entry changes no code."
 
   - anomaly_id: MIME-ANO-153
-    title: "The coil array's sign convention is mag_manip's, and ETH's measured Navion data disagree with ETH's model by a global sign: which side is flipped is not known"
+    title: "The coil array's sign convention is mag_manip's, and ETH's measured Navion_2 data disagree with ETH MSRL's published calibration by a global sign: which side is flipped is not known"
     description: >
       The calibrated multipole's coil field (calibrated_multipole 0.1.0) follows mag_manip's convention, which its
       software oracle pins (tests/oracles/test_calibrated_multipole.py, against mag_manip 3.0.0). The 0.2 line compared
-      the same model with ETH's measured Navion data, a 121-Hall-sensor validation set, and found a global sign between
+      the same calibration with ETH's measured Navion_2 data, a 121-Hall-sensor validation set, and found a global sign between
       them: a correlation of r = -0.9942 raw and +0.9942 with the field negated, which it read as a clean global flip, not
       a wiring permutation (over all six coil permutations and eight sign patterns, identity with (-1, -1, -1) won at
       1.30 mT, the next best at 13.3 mT) and not a frame rotation (a global flip has determinant -1; a proper rotation
@@ -3721,4 +3721,4 @@ anomalies:
       The measured comparison's numbers are the 0.2 line's, read from its source, not re-measured here; the measured set
       would be an acceptance test of sign and frame against hardware, not an accuracy claim, and it is not run in 0.3.
     workaround: "Establish the sign convention on your own hardware (a measured field at a known current, read with a sensor of known orientation) before relying on the direction of rotation; nothing is needed for gradient pull on a field-aligned body."
-    planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (Navion's measured campaign, re-read with its script) would settle which side is flipped. This entry changes no code."
+    planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (the measured Navion_2 campaign, re-read with its script) would settle which side is flipped. This entry changes no code."

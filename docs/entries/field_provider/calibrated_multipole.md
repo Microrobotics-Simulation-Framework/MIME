@@ -7,9 +7,7 @@ describes: "0.1.0"
 gradient, at each reader's point, linear in the current each coil carries: each coil's field per unit current is the sum
 of a few fitted point sources, the multipole electromagnet model of order one (Petruska et al.), read from a calibration
 MIME packages. `fields={"magnetic": CalibratedMultipole(calibration=asset("navion_2"))}`, with `commands={"currents":
-A((...))}` (one current per coil, by a drive or written by a controller). The packaged systems are Navion_2, CardioMag
-and OctoMag, each byte for byte as its makers publish it; each has its card under `docs/assets/`, with its provenance,
-its licence and its conditioning.
+A((...))}` (one current per coil, by a drive or written by a controller). The packaged calibrations are ETH MSRL's published calibration of Navion_2 (`models/Navion_2_Calibration_24-02-2020.yaml`), of CardioMag (`mag_control/mpem/cal/C_Mag_Calibration_06-25-2015_no_offset.yaml`) and of OctoMag (`OctoMag_Calibration.yaml`, undated in its name), each evaluated by MIME and shipped byte for byte as published; each has its card under `docs/assets/`, with its provenance, its licence and its conditioning. MIME is not affiliated with or endorsed by the makers of these systems.
 
 The command `currents` reaches the node as `delivered_currents`, the current each coil carries: the currents are ideal,
 delivered as commanded, so a later stage between the command and the coils (a slew limit, a coil's circuit) sits there
@@ -22,7 +20,7 @@ no override or study axis for them).
 It gives, outside a run, the field and gradient per unit current at a point (`provider.actuation(point)`, an
 `Actuation`, whose `matrix()` is the actuation matrix: the field's rows over the gradient's independent ones) and
 currents for a wanted field and gradient within limits the user declares (`allocate(actuation, field=..., gradient=...,
-limits=...)`: bounded least squares). No system ships limits; the validity lines cite the figures published for each.
+limits=...)`: bounded least squares). No calibration ships limits: the limits `allocate()` takes are the user's declarations, and the guard's factor is MIME's declaration (a convention set from the measurement each card gives), neither a maker's specification. The validity lines cite the sources of the figures published for each system.
 
 It publishes the flux density and the gradient at the reader's point, or at the point fixed in the body a read names
 (the magnet's centroid), so it feeds `Magnetic.Torque` and `Magnetic.Force`. With the energy ledger attached the array
@@ -43,8 +41,7 @@ flux density closes its account; the oracle is what checks the field.
 - In float32 for OctoMag: its sources cancel so deeply in its region that float32's rounding would cost more of the
   field than the declared guard allows, and more of its gradient; it is refused, and float64 is the route. Navion_2 and
   CardioMag build in float32. On a GPU set `JAX_DEFAULT_MATMUL_PRECISION=highest`.
-- Where the direction of rotation matters against hardware: the field follows mag_manip's sign convention, which ETH's
-  measured Navion data disagree with by a global sign, and which side is flipped is not known (MIME-ANO-153). Gradient
+- Where the direction of rotation matters against hardware: the field follows mag_manip's sign convention, which ETH's measured Navion_2 data disagree with by a global sign, and which side is flipped is not known (MIME-ANO-153). Gradient
   pull on a field-aligned body does not change with it; the torque on a fixed moment does.
 - Above core saturation, for a calibration of a higher order, a lab's own calibration file, or a coil's circuit
   (inductance, back-EMF): none is in this release. Saturation is deferred because no shipped calibration has fitted its
