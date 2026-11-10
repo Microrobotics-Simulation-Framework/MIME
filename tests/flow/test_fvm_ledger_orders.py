@@ -20,7 +20,7 @@ no longer decides: 1.60 to 2.30 over 2e5 triples of those swirls at 0.00125, non
 by 1.96 to 1.98 there and ``N_Krylov`` by 38 to 980 over the hundredfold. **The rates on fresh ensembles** are the
 PR's table (``detection_rate.py`` on Actions). CI checks ensemble 0 (swirls 0, 1 and 2).
 
-Every arm starts from one warmed state (the swirl and its drive after a short run at a quarter of the step), so the
+Every arm starts from one warmed state (the swirl and its drive after 20 steps of 0.000625, half the step), so the
 stiff interior's start, damped in a step whatever the step, is not in the sums; and each arm's books close
 (``ledger_closes``).
 

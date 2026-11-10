@@ -113,7 +113,6 @@ generated/entries/dynamics/fvm.md  24 0.72 2.88 3 8 832 689 832 868 771 868 539 
 generated/entries/dynamics/fvm.md  16 256 32 0.3 0.4 32 +2.1 16 +10.8 8 5 32  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
 generated/entries/dynamics/fvm.md  0.001 1.4e-4 32 4.8e-4 16 2.6e-3 8 0.1h 6.4e-5 1.4e-4 1.2e-3 0.01h  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
 generated/entries/dynamics/fvm.md  1  #2  # a validity line: each number a declared line or a measured value, its basis stated in the line
-generated/entries/dynamics/fvm.md  0.1 0.6  #1  # a validity line: the order tests' measured resolution (a share of the term's own size), its basis stated in the line
 generated/entries/dynamics/fvm.md  2 2 4  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
 generated/entries/dynamics/fvm.md  -20 8 16 -10 32  #2  # a validity line: each number a declared line or a measured value, its basis stated in the line
 generated/entries/dynamics/fvm.md  0.001 5.1e-6 2.0e-3 3e3 200 1e-5 4e-3  #1  # a validity line: the stall detector's declared line, the clean readings measured on drawn runs and the ledger harness's lines set from them, each basis stated in the line

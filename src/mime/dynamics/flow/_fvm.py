@@ -249,10 +249,11 @@ class FVM(Dynamics):
         "step; RK3 judges each step to have dissipated, and its drive's attribution (the work its stages applied "
         "against the law's own delivery at the stage instants) to the same floor. A gift a numerical term's own "
         "formula books is booked under that term, where the identity cannot see it (convection's, at mixed time "
-        "levels): only the order tests of the terms, on their fixed case, see one, from about 0.1 of the term's own "
-        "size on one seed of the three, and on all three from about 0.6 for N_BE (N_conv keeps one in its band "
-        "there) [measured], and the ledger harness's convection flag, on drawn runs in CI, sees a convective term "
-        "not formed from the velocity it acts on (a stale level); no check of it runs in a user's run",
+        "levels): the order tests see a term of the wrong order (first or third in dt, or a loss written into the "
+        "solve's residual), each term summed over three drawn swirls [measured, every ensemble], and the ledger "
+        "harness's convection flag, on drawn runs in CI, sees convection doing work beyond its time level's (a stale "
+        "level, the wrong field, the advective form), not an error in the convective operator that keeps it skew "
+        "(scaled, negated), which the manufactured-solution gate sees; no check of it runs in a user's run",
     )
     values = {"viscosity": "viscosity", "density": "density"}
     setting_roles = {

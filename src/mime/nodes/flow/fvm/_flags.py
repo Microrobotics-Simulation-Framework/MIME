@@ -11,7 +11,9 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
   convection's product): convection doing work beyond its time level's. The divergence form is skew on a
   divergence-free field, so at one level it does no work and at IMEX Euler's mixed levels all its work is the
   level's (``N_conv``'s own order is the order check's); a convective term formed from another velocity, or not
-  skew, does more;
+  skew, does more. **It does not see an error in the operator itself that keeps it skew** (scaled, negated): the
+  level's work comes from the same operator, so the reading stays rounding; gate 1's manufactured solution
+  (``tests/flow/test_fvm_mms.py``, its controls a sign flip and one component scaled by 1.05) is what sees one;
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
 - ``open_face_projection`` and ``port_kinetic_flux``: pending until a medium has openings (F2b's PR 2 gates them)."""
@@ -131,7 +133,9 @@ def _evidence(plant: str, caught: dict[str, tuple[int, int, int, int]], link: st
     return tuple(FlagEvidence(plant, dtype, *counts, link) for dtype, counts in caught.items())
 
 
-#: The implicit node's flags (IMEX Euler and its steady limit). Each line is about twice the worst clean reading.
+#: The implicit node's flags (IMEX Euler and its steady limit). Each line is 2 to 4 times the worst clean reading (the
+#: stall 2 times, the leak 3.1, convection 4.1 and 3.8), on draws whose worst sits at the envelope's edge (float32's
+#: stall at tau/dt near 3e3): beyond the envelope a line is unvalidated.
 FLAGS: tuple[LedgerFlag, ...] = (
     LedgerFlag("stall", "|N_Krylov| / D_visc", stall_reading, {"float64": 1e-5, "float32": 4e-3},
                f"{_CLEAN}: worst 5.1e-6 (float64) and 2.0e-3 (float32), every step judged; float32's clean runs read "

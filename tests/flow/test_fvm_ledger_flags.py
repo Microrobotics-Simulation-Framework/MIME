@@ -44,16 +44,17 @@ def test_the_pending_flags_are_never_counted_as_checks():
 
 def test_a_run_with_no_check_does_not_pass_and_a_flag_that_read_nothing_is_silent():
     """RK3 declares only the pending two: its report has no check and does not pass. A flag that read exactly zero at
-    every judged step (convection's where the node's convection is off) is listed as silent, not counted; a dtype with
-    no line is refused."""
+    every judged step (convection's where the node's convection is off) is listed as silent, not counted; a flag with
+    no line in the run's dtype fails, named."""
     explicit = judge_flags(ExplicitFlowNode.__new__(ExplicitFlowNode), {}, "float64")
     assert explicit.checks == 0 and not explicit.passed and "nothing was checked" in explicit.failures()[0]
     node = ImplicitFlowNode.__new__(ImplicitFlowNode)
     quiet = {flag: np.full(40, 1e-12) for flag in CAUGHT}
     report = judge_flags(node, {**quiet, "convection": np.zeros(40)}, "float64")
     assert report.silent == ("convection",) and report.checks == len(CAUGHT) - 1 and report.passed
-    with pytest.raises(ValueError, match="no measured line in float16"):
-        judge_flags(node, quiet, "float16")
+    unlined = judge_flags(node, quiet, "float16")
+    assert set(unlined.unlined) == set(CAUGHT) and not unlined.passed
+    assert any("no measured line" in failure for failure in unlined.failures())
 
 
 def test_control_a_flag_claimed_without_its_measurement_is_named():

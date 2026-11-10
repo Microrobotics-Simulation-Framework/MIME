@@ -221,12 +221,14 @@ class FlagReading:
 class FlagReport:
     """A run's flags: each active flag's reading (the checks), each pending flag with its reason, and each silent one
     (it read exactly zero at every judged step: the run formed nothing it reads, as convection's flag where the node's
-    convection is off). Neither a pending nor a silent flag is a check, and a run with no check does not pass."""
+    convection is off), and each with no line in the run's dtype (a failure). Neither a pending nor a silent flag is a
+    check, and a run with no check does not pass."""
 
     node: str
     readings: tuple[FlagReading, ...]
     pending: Mapping[str, str] = field(default_factory=dict[str, str])
     silent: tuple[str, ...] = ()
+    unlined: tuple[str, ...] = ()
 
     @property
     def checks(self) -> int:
@@ -234,11 +236,12 @@ class FlagReport:
 
     @property
     def passed(self) -> bool:
-        return bool(self.readings) and all(reading.passed for reading in self.readings)
+        return bool(self.readings) and not self.unlined and all(reading.passed for reading in self.readings)
 
     def failures(self) -> list[str]:
         found = [] if self.readings else [f"no flag of {self.node} read anything: nothing was checked (silent: "
                                           f"{list(self.silent)}, pending: {sorted(self.pending)})"]
+        found += [f"{name} has no measured line in the run's dtype: it judged nothing" for name in self.unlined]
         return found + [f"{r.flag} read {r.worst:.3g} at step {r.step}, past its line {r.line:.3g}"
                         for r in self.readings if not r.passed]
 
@@ -248,12 +251,14 @@ def judge_flags(node: Any, readings: Mapping[str, Any], dtype: str,
     """Each active flag of ``node`` (or each of ``flags``) judged on its readings over a run (a row a step, from the
     run's start, as :func:`run_flags` gives them) against its line in ``dtype``; the pending ones listed with their
     reasons; one that read exactly zero at every judged step listed as silent. A flag whose readings are missing fails,
-    as one whose reading is not a number does; a flag with no line in ``dtype`` is refused."""
+    as one whose reading is not a number does, and one with no line in ``dtype``."""
     held: list[FlagReading] = []
     silent: list[str] = []
+    unlined: list[str] = []
     for flag in active_flags(node) if flags is None else flags:
         if dtype not in flag.line:
-            raise ValueError(f"the flag {flag.name!r} has no measured line in {dtype} (it has {sorted(flag.line)})")
+            unlined.append(flag.name)
+            continue
         values = np.abs(np.asarray(readings.get(flag.name, np.full(1, np.nan)), dtype=np.float64))[flag.settle:]
         if values.size == 0 or not np.all(np.isfinite(values)):
             held.append(FlagReading(flag.name, float("nan"), flag.line[dtype], -1))
@@ -264,7 +269,8 @@ def judge_flags(node: Any, readings: Mapping[str, Any], dtype: str,
         at = int(np.argmax(values))
         held.append(FlagReading(flag.name, float(values[at]), flag.line[dtype], at + flag.settle))
     pending = {flag.name: flag.pending for flag in declared_flags(node) if flag.pending}
-    return FlagReport(str(getattr(node, "name", type(node).__name__)), tuple(held), pending, tuple(silent))
+    return FlagReport(str(getattr(node, "name", type(node).__name__)), tuple(held), pending, tuple(silent),
+                      tuple(unlined))
 
 
 # -- the order check ------------------------------------------------------------------------------------------------

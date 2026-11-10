@@ -18,9 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `judge_flags`, a flag that cannot be gated yet declared pending and never counted (`flag_problems`); and the order
   check `term_orders`, each numerical term against the order its scheme declares (`mime.core.ledger.TermOrder`, a
   scheme's `ledger_orders`): dt halved and the tolerance a hundredfold looser, apart, the order its fall shows rounding
-  to the declared one. The flow declares its first: the stall (`|N_Krylov| /
-  D_visc`), a convective term not formed from the velocity it acts on (`|N_conv|` over its product's magnitude), the
-  drive reaching into a solid (the wall's loss inside the solid over its whole), and the openings' two pending; and
+  to the declared one, read from each term summed over a drawn ensemble (on one drawn case a term whose leading
+  coefficient cancels can show an order its scheme does not have). The flow declares its first: the stall
+  (`|N_Krylov| / D_visc`), convection doing work beyond its time level's (`N_conv` against `-dt rho <C(u), u' - u>`:
+  a stale level, the wrong field, the advective form; not an error in the operator that keeps it skew, scaled or
+  negated, which the manufactured-solution gate sees), the drive reaching into a solid (the wall's loss inside the solid over its whole), and the openings' two pending; and
   its terms' orders (`N_BE` and `N_conv` second in dt, `N_Krylov` at least first in the tolerance). Test-side: no
   program changes.
 
