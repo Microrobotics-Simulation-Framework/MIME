@@ -2,9 +2,13 @@
 
 An axis is named by a typed path from a handle (``field.commands.frequency``, ``umr.initial.position``,
 ``drag.lubrication.epsilon``), by :data:`DT` or :data:`PRECISION`, or by the path's dotted string, which is also how it
-saves. A point is, by definition, the base experiment with the point's values declared in it: a command's drive set to
-the value, a thing's value declared, a law's setting written, a body's initial state set, the run's step changed. Its
-plan judges every build-time check of that experiment, as it would judge the experiment written so."""
+saves; a geometry's number is named as ``exp.source`` names it (``"ball.parts.shell.radius"``, ``"tube.inner_radius"``).
+A point is, by definition, the base experiment with the point's values declared in it: a command's drive set to the
+value, a thing's value declared, a law's setting written, a body's initial state set, a kind's setting written, the
+run's step changed. Its plan judges every build-time check of that experiment, as it would judge the experiment
+written so. The experiment's declared ranges are part of it (``exp.declare_range``), so a point inside a range is built
+over the range; a point outside one is the experiment with that range taken out (:func:`declared`), built for its own
+value."""
 
 from __future__ import annotations
 
@@ -19,6 +23,7 @@ import numpy as np
 from mime.build import (
     Attachment,
     Declaration,
+    RangeDeclaration,
     RunSettings,
     ThingDeclaration,
     ValueDeclaration,
@@ -30,8 +35,10 @@ from mime.things import (
     Body,
     CommandPath,
     InitialPath,
+    Part,
     SettingPath,
     State,
+    Structure,
     TypedPath,
     did_you_mean,
 )
@@ -57,6 +64,7 @@ class AxisKind(Enum):
     VALUE = "value"
     SETTING = "setting"
     INITIAL = "initial"
+    GEOMETRY = "geometry"
     DT = "dt"
     PRECISION = "precision"
 
@@ -64,7 +72,8 @@ class AxisKind(Enum):
 @dataclass(frozen=True)
 class Axis:
     """One thing a study varies: its path as it saves (``field.commands.frequency``), its kind, what it belongs to (an
-    apparatus, a thing, a law's id) and its name there (a command, a value, a setting, an initial value)."""
+    apparatus, a thing, a law's id) and its name there (a command, a value, a setting, an initial value, a kind's
+    setting: ``parts.shell.radius`` on a body, ``inner_radius`` on a structure)."""
 
     path: str
     kind: AxisKind
@@ -93,9 +102,30 @@ def candidates(declarations: Sequence[Declaration]) -> list[str]:
             found += [f"{name}.commands.{command}" for command in thing.commands]
         if isinstance(thing, Body):
             found += [f"{name}.initial.{key}" for key in getattr(type(thing.dynamics), "initial_state", {})]
+        if isinstance(thing, Body):
+            found += [f"{name}.parts.{part}.{setting}" for part, held in thing.parts.items()
+                      for setting in _numbers(held.geometry)]
+        if isinstance(thing, Structure) and thing.geometry is not None:
+            found += [f"{name}.{setting}" for setting in _numbers(thing.geometry)]
     for law_id, attachment in _laws(declarations).items():
         found += [f"{law_id}.{field.name}" for field in dataclasses.fields(attachment.law)]
     return found
+
+
+def _settings(kind: object) -> tuple[str, ...]:
+    """A geometry kind's settings: its dataclass fields."""
+    if not dataclasses.is_dataclass(kind) or isinstance(kind, type):
+        return ()
+    return tuple(field.name for field in dataclasses.fields(kind))
+
+
+def _numbers(kind: object) -> tuple[str, ...]:
+    """A geometry kind's settings that are one number each (a sphere's radius): the geometry an axis can name."""
+    return tuple(name for name in _settings(kind) if _number(getattr(kind, name)))
+
+
+def _number(value: object) -> bool:
+    return isinstance(value, Quantity) and isinstance(value.value, (int, float)) and not isinstance(value.value, bool)
 
 
 def _unknown(path: str, declarations: Sequence[Declaration], why: str) -> ArgumentRefused:
@@ -118,7 +148,9 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
     if isinstance(path, SettingPath):
         return _setting(str(path), path.owner, path.setting, declarations)
     if isinstance(path, TypedPath):
-        return Axis(str(path), AxisKind.VALUE, path.parts[0], ".".join(path.parts[1:]))
+        geometry = _geometry(str(path), declarations)
+        return geometry if geometry is not None else Axis(str(path), AxisKind.VALUE, path.parts[0],
+                                                          ".".join(path.parts[1:]))
     if not isinstance(path, str):
         raise ArgumentRefused([Refusal(
             "call.wrong-type", RefusalClass.USER, f"an axis is a typed path or its string, not {type(path).__name__}",
@@ -142,7 +174,37 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
         return _initial(path, head, last, declarations)
     if head not in _things(declarations):
         raise _unknown(path, declarations, f"no thing is named {head!r}")
-    return Axis(path, AxisKind.VALUE, head, rest)
+    geometry = _geometry(path, declarations)
+    return geometry if geometry is not None else Axis(path, AxisKind.VALUE, head, rest)
+
+
+def _geometry(path: str, declarations: Sequence[Declaration]) -> Axis | None:
+    """The geometry axis ``path`` names: a setting of a body's part's kind (``ball.parts.shell.radius``) or of a
+    structure's (``tube.inner_radius``); ``None`` where it names none (a part's density is a value). A setting that is
+    not one number (an ellipsoid's semi-axes, a direction, a count) is refused: the nodes built from it hold it as
+    built, so a new value of it is a new experiment."""
+    head, _, rest = path.partition(".")
+    thing = _things(declarations).get(head)
+    kind: object = None
+    setting = ""
+    if isinstance(thing, Body):
+        middle, _, tail = rest.partition(".")
+        part_name, _, setting = tail.partition(".")
+        part = thing.parts.get(part_name) if middle == "parts" else None
+        kind = part.geometry if isinstance(part, Part) else None
+    elif isinstance(thing, Structure):
+        kind, setting = thing.geometry, rest
+    if kind is None or setting not in _settings(kind):
+        return None
+    if not _number(getattr(kind, setting)):
+        raise ArgumentRefused([Refusal(
+            "study.held-geometry", RefusalClass.USER,
+            f"{path} is {value_text(getattr(kind, setting))}, a setting of {type(kind).__name__} that is not one number: "
+            f"the nodes built from the kind hold it as built (a vector of sizes, a direction or a count), so no study, "
+            f"override or range can vary it in one program",
+            f"make each value an experiment of its own, `Experiment.based_on(...)` with the kind written again; a "
+            f"kind's number can be varied: {did_you_mean(path, candidates(declarations))}")])
+    return Axis(path, AxisKind.GEOMETRY, head, rest)
 
 
 def _command(path: str, owner: str, command: str, declarations: Sequence[Declaration]) -> Axis:
@@ -196,12 +258,14 @@ def _with_setting(entry: Any, names: Sequence[str], value: object) -> Any:
 
 @dataclass(frozen=True)
 class Declared:
-    """A point's experiment as data: its run settings and declarations, and the precision it is built in (``None``:
-    the process's)."""
+    """A point's experiment as data: its run settings and declarations, the precision it is built in (``None``: the
+    process's), and the paths whose declared range its values lie outside (``outside``), taken out of its declarations
+    so that it is built for its own value."""
 
     settings: RunSettings
     declarations: tuple[Declaration, ...]
     x64: bool | None
+    outside: tuple[str, ...] = ()
 
 
 def declared(settings: RunSettings, declarations: Sequence[Declaration], values: Mapping[Axis, object],
@@ -232,10 +296,32 @@ def declared(settings: RunSettings, declarations: Sequence[Declaration], values:
                 held[at] = declaration
         else:
             held = [_replaced(d, axis, value) for d in held]
-    return Declared(settings, tuple(held), x64)
+    outside = {axis.path for axis, value in values.items() if outside_range(axis, value, held)}
+    held = [d for d in held if not (isinstance(d, RangeDeclaration) and str(d.path) in outside)]
+    return Declared(settings, tuple(held), x64, tuple(sorted(outside)))
+
+
+def range_of(axis: Axis, declarations: Sequence[Declaration]) -> RangeDeclaration | None:
+    """The range the experiment declares of ``axis``, if any."""
+    return next((d for d in declarations if isinstance(d, RangeDeclaration) and str(d.path) == axis.path), None)
+
+
+def outside_range(axis: Axis, value: object, declarations: Sequence[Declaration]) -> bool:
+    """Whether ``value`` lies outside the range the experiment declares of ``axis`` (never, where it declares none or
+    the value is not a quantity of the range's dimension, which the plan refuses)."""
+    held = range_of(axis, declarations)
+    if held is None or not isinstance(value, Quantity) or not isinstance(held.low, Quantity) or \
+            not isinstance(held.high, Quantity) or value.dimension != held.low.dimension:
+        return False
+    number = np.asarray(value.value, dtype=float)
+    low, high = np.asarray(held.low.value, dtype=float), np.asarray(held.high.value, dtype=float)
+    return bool(number.shape == low.shape and (np.any(number < low) or np.any(number > high)))
 
 
 def _replaced(declaration: Declaration, axis: Axis, value: object) -> Declaration:
+    if axis.kind is AxisKind.GEOMETRY and isinstance(declaration, ThingDeclaration) and \
+            declaration.thing.name == axis.owner:
+        return ThingDeclaration(_with_geometry(declaration.thing, axis.name, value))
     if axis.kind is AxisKind.SETTING and isinstance(declaration, Attachment) and \
             entry_id(type(declaration.law), declaration.bindings) == axis.owner:
         return Attachment(_with_setting(declaration.law, axis.name.split("."), value), declaration.bindings)
@@ -247,6 +333,32 @@ def _replaced(declaration: Declaration, axis: Axis, value: object) -> Declaratio
     if axis.kind is AxisKind.INITIAL and isinstance(thing, Body):
         return ThingDeclaration(dataclasses.replace(thing, initial=State(**{**dict(thing.initial), axis.name: value})))
     return declaration
+
+
+def _with_geometry(thing: Any, name: str, value: object) -> Any:
+    """``thing`` with its kind's setting ``name`` (``parts.shell.radius`` on a body, ``inner_radius`` on a structure)
+    written ``value``."""
+    if isinstance(thing, Body):
+        _, _, tail = name.partition(".")
+        part_name, _, setting = tail.partition(".")
+        part = thing.parts[part_name]
+        parts = {**thing.parts, part_name: dataclasses.replace(part, geometry=dataclasses.replace(part.geometry,
+                                                                                                  **{setting: value}))}
+        return dataclasses.replace(thing, parts=parts)
+    return dataclasses.replace(thing, geometry=dataclasses.replace(thing.geometry, **{name: value}))
+
+
+def geometry_value(axis: Axis, declarations: Sequence[Declaration]) -> object | None:
+    """The value a geometry axis's kind is written with in ``declarations``."""
+    thing = _things(declarations).get(axis.owner)
+    if isinstance(thing, Body):
+        _, _, tail = axis.name.partition(".")
+        part_name, _, setting = tail.partition(".")
+        part = thing.parts.get(part_name)
+        return getattr(part.geometry, setting, None) if part is not None else None
+    if isinstance(thing, Structure):
+        return getattr(thing.geometry, axis.name, None)
+    return None
 
 
 def value_text(value: object) -> str:
@@ -264,12 +376,14 @@ def differ(a: object, b: object) -> bool:
 
 def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declaration]) -> object | None:
     """The value the experiment itself declares where ``axis`` writes: a command's drive, a thing's declared value, a
-    law's setting, a body's initial value, the run's step. ``None`` where it declares none there (a value a record or
+    law's setting, a body's initial value, a kind's setting, the run's step. ``None`` where it declares none there (a value a record or
     a default gives) or for the precision."""
     if axis.kind is AxisKind.DT:
         return settings.dt
     if axis.kind is AxisKind.VALUE:
         return next((d.value for d in declarations if isinstance(d, ValueDeclaration) and str(d.path) == axis.path), None)
+    if axis.kind is AxisKind.GEOMETRY:
+        return geometry_value(axis, declarations)
     if axis.kind is AxisKind.SETTING:
         held: object = getattr(_laws(declarations).get(axis.owner), "law", None)
         for part in axis.name.split("."):
@@ -285,4 +399,5 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
 
 
 __all__ = ["DT", "OVERRIDE_REASON", "PRECISION", "PRECISIONS", "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath",
-           "base_value", "candidates", "declared", "differ", "resolve", "value_text"]
+           "base_value", "candidates", "declared", "differ", "geometry_value", "outside_range", "range_of", "resolve",
+           "value_text"]

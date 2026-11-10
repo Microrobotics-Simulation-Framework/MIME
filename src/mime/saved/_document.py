@@ -15,8 +15,8 @@ import yaml
 from mime.assets import AssetRef
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, LicenceDeclaration, \
-    PermissionDeclaration, RunSettings, SourceDeclaration, TermsDeclaration, ThingDeclaration, ValueDeclaration, \
-    binding_name, mode_of
+    PermissionDeclaration, RangeDeclaration, RunSettings, SourceDeclaration, TermsDeclaration, ThingDeclaration, \
+    ValueDeclaration, binding_name, mode_of
 from mime.build._derived import sha256_of
 from mime.data import Asset
 from mime.materials import RECORDS, Acceptance, Extrapolation, Nominal, Record, load_record, record_file
@@ -43,6 +43,7 @@ from mime.saved._schema import (
     ConditionDoc,
     ControllerDoc,
     DeclaredDoc,
+    RangeDoc,
     DynamicsDoc,
     EntryDoc,
     ExperimentDocument,
@@ -515,6 +516,31 @@ def _declared_doc(declaration: ValueDeclaration) -> tuple[str, DeclaredDoc]:
                   "reason": encode_basis(reason if reason is not None else PENDING, f"the declared value {path}")}
 
 
+def _after(document: dict[str, Any], key: str, added: Mapping[str, Any]) -> dict[str, Any]:
+    """``document`` with ``added`` written just after its ``key``, where a reader of the file looks for it."""
+    found: dict[str, Any] = {}
+    for name, value in document.items():
+        found[name] = value
+        if name == key:
+            found.update(added)
+    return found
+
+
+def _range_doc(declaration: RangeDeclaration) -> tuple[str, RangeDoc]:
+    """A declared range as the document holds it: its ends in SI, their unit, and its reason (pending where none is
+    given)."""
+    path = binding_name(declaration.path)
+    low, high = declaration.low, declaration.high
+    if not (isinstance(low, Quantity) and isinstance(high, Quantity)) or low.dimension != high.dimension:
+        raise UnsavableError(f"the range of {path} is [{low!r}, {high!r}]: two quantities of one dimension")
+    ends = [end.value for end in (low, high)]
+    if not all(isinstance(end, (int, float)) and not isinstance(end, bool) for end in ends):
+        raise UnsavableError(f"the range of {path} is [{low}, {high}]: a range is of one number")
+    reason = declaration.reason
+    return path, {"low": float(cast(float, ends[0])), "high": float(cast(float, ends[1])), "unit": unit_symbol(low.dimension),
+                  "reason": encode_basis(reason if reason is not None else PENDING, f"the range of {path}")}
+
+
 def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> ExperimentDocument:
     """The document of a declared experiment. Things are keyed by name and interactions and observations sorted by
     id, so the order a script declares them in changes nothing, as it changes nothing in the build."""
@@ -525,6 +551,7 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     interactions: list[BoundEntryDoc] = []
     observations: list[BoundEntryDoc] = []
     declared: dict[str, DeclaredDoc] = {}
+    ranges: dict[str, RangeDoc] = {}
     sources: dict[str, ReasonDoc] = {}
     controller: ControllerDoc | None = None
     for declaration in declarations:
@@ -540,6 +567,11 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         elif isinstance(declaration, ValueDeclaration):
             path, doc = _declared_doc(declaration)
             declared[path] = doc
+        elif isinstance(declaration, RangeDeclaration):
+            path, held_range = _range_doc(declaration)
+            if path in ranges:
+                raise UnsavableError(f"exp.declare_range gives {path} a range twice")
+            ranges[path] = held_range
         elif isinstance(declaration, ThingDeclaration):
             things[declaration.thing.name] = _thing_doc(declaration.thing)
         elif isinstance(declaration, (LicenceDeclaration, PermissionDeclaration, TermsDeclaration)):
@@ -578,6 +610,9 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     }
     if gravity is not None:
         document["gravity"] = gravity
+    if ranges:
+        document = cast(ExperimentDocument, _after(cast(dict[str, Any], document), "declared",
+                                                   {"ranges": dict(sorted(ranges.items()))}))
     if settings.based_on is not None:
         # written beside the experiment's own name, where a reader of the file looks for what it is
         held = cast(dict[str, Any], document)

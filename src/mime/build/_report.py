@@ -131,6 +131,9 @@ class BuildReport:
     #: Each declaration removed in this session (``exp.remove``) with what, if anything, still named it: the note
     #: ``remove`` gave (it raises no warning). The saved form holds what was left.
     removed: tuple[str, ...] = ()
+    #: The experiment's declared ranges, each with the choices it moved from the experiment's own value and their price
+    #: (``mime.build._ranges.range_lines``).
+    ranges: tuple[str, ...] = ()
     #: Set on a built experiment's report once the experiment has had a replacement or a removal since the build: what
     #: changed, and what to do. Never part of the saved form or the report's summary for a client.
     stale: str | None = None
@@ -149,6 +152,12 @@ class BuildReport:
             return []
         return [f"replaced in this session, the last one run winning ({len(self.replaced)}; the saved form holds only "
                 f"the last):", *(f"  {note}" for note in self.replaced)]
+
+    def range_lines(self) -> list[str]:
+        if not self.ranges:
+            return []
+        return ["declared ranges, each with the choices it moved and their price against the experiment's own value:",
+                *(f"  {line}" for line in self.ranges)]
 
     def asset_lines(self) -> list[str]:
         if not self.assets:
@@ -247,6 +256,7 @@ class BuildReport:
         if self.values:
             lines.append(f"values read ({len(self.values)}):")
             lines += [f"  {v.path} = {v.value!r} {v.unit}  [{_short(v.source)}]" for v in self.values]
+        lines += self.range_lines()
         held = self.materials
         if held is not None and held.reads:
             lines.append("record reads, with OpenMaterica's verdict:")
@@ -326,6 +336,7 @@ class BuildReport:
             lines += [f"      {detail}" for detail in v.details]
         if not self.values:
             lines.append("  none")
+        lines += self.range_lines()
         from mime.build._builders import REACTION
         from mime.build._lags import PLANNED, STAGGERED, Lag
 

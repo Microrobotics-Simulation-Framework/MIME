@@ -44,7 +44,7 @@ from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, register_wall
 #: The plane wall kind's name and version (``mime.walls.PlaneWall``).
 PLANE, PLANE_VERSION = "plane", "0.1.0"
 #: The plane's constants: its normal (held as built: the wall's frame, a direction) and its offset along it (the
-#: node's leaf ``wall_offset``, trainable, which lubrication's opening of a contact moves; not yet a study axis).
+#: node's leaf ``wall_offset``, trainable, which lubrication's opening of a contact moves, and an override or a study of the plane's offset writes).
 PLANE_PARAMETERS = ("normal", "offset")
 PLANE_UNITS = {"normal": "1", "offset": "m"}
 #: The floating values one pair of the image holds while a chunk of a cell's quadrature is read: its offset and its
