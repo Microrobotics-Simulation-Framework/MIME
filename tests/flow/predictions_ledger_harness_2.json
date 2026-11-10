@@ -29,5 +29,12 @@
   "prediction": {"value": "every plant 50/50 in both dtypes; clean 0/50", "basis": "measured-before: clean N_BE 1.92 to 1.96 and N_conv 1.66 to 2.53 against 1.41 to 2.83; N_Krylov's hundredfold fall at least 20 against at least 10; the plants' ratios about half and twice N_conv's (0.83 to 1.27, 3.3 to 5.1) and about 1 for the loss in N_Krylov"},
   "if_wrong": "a clean seed out of band, or a plant inside it, is reported with its ratio; the rule is not narrowed or widened to pass"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-10, after round 2's runs; the predictions above are as committed in 5fa60e6",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42776571840",
+  "gate_1_ledger_closes_sizes": "held: 1.5 floors 50/50 on the rigid body, the arm and the flow in both dtypes; 0.5 floors 0/50 on each; clean 0/50",
+  "gate_2_convection_flag": "held: the stale level 200/200 in both dtypes, clean 0/200; the permuted field 50/50, the advective form 50/50, past the CFL line 0/50, both dtypes. The range (a stale level blended in at a share s, 20 draws a size): caught on every draw from s = 1e-5, the grid's smallest, in float64, and from about 7.5e-3 in float32 (0 false alarms)",
+  "gate_3_orders": "held: every plant 50/50 in both dtypes, clean 0/50",
+  "after_the_runs": "the convection reading now reads zero on a step the CFL check held (the run is refused there); no drawn run reaches it, so the rates stand"
+ }
 }

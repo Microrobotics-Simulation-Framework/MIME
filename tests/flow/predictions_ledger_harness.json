@@ -66,5 +66,16 @@
   "prediction": "every array np.array_equal: the harness is test-side, the declarations (flags, orders) are read by no step",
   "controls": {"repeat": "bit_compare.py's own controls (tests/test_probe_bit_compare.py)"}
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-10, after round 1's runs; the predictions above are as committed in 65d4207",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42771046829",
+  "gate_1_ledger_closes": "1.25 floors held: 50/50 on every kind and dtype, clean 0/50. 0.75 floors WRONG on the rigid body in float64: caught on 3 of 50 runs (0/50 elsewhere): the rigid body's own rounding reaches 0.27 floors (stage A3, 2000 draws), not 0.11. Round 2 plants 1.5 and 0.5 (predictions_ledger_harness_2.json)",
+  "gate_2_flags": {
+   "stall": "held: the 1e4-looser tolerance 200/200 in both dtypes, clean 0/200; two iterations 50/50 (float64), 44/50 (float32), within the predicted 40 to 49",
+   "convection": "WRONG: the stale level 186/200 in both dtypes (predicted 200/200), every miss a swirl under 0.07 of U, where the stale level does little work beside the time level's own; the permuted field 49/50; the advective form 0/50; past the line 2/50 (predicted 5 to 20). The reading was redesigned (round 2)",
+   "leak": "held: the lost mask 200/200 in both dtypes, clean 0/200; the weaker interior 0/50"
+  },
+  "gate_3_orders": "plants held (50/50 each), clean WRONG: 5 to 8 of 50 seeds a dtype false-alarmed, N_Krylov falling by 1.31 to 1.58 over a halved tolerance (under 1.6) and N_conv by 2.42 once (over 2.4). Round 2's rule and refinement follow from 200 seeds' spread (stage A3)",
+  "bits": "held: 16 programs (8 a dtype), 534 arrays, every one equal (bit_compare.py, base release/v0.3.0 at beea1b9)"
+ }
 }

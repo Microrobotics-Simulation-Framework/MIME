@@ -71,7 +71,9 @@ def convection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any
     speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in started]))
     natural = weight * speed / grid.spacing * grid.inner_magnitude(started, ended)
     digits = jnp.sqrt(jnp.finfo(term.dtype).eps)
-    return jnp.where(size > digits * natural, _share(jnp.abs(term - level), size), 0.0)
+    # A step past the CFL line holds the state and its records (the run is refused): nothing was stepped to judge.
+    stepped = (size > digits * natural) & (jnp.asarray(after["stopped_at"]) < 0)
+    return jnp.where(stepped, _share(jnp.abs(term - level), size), 0.0)
 
 
 def leak_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:
@@ -110,6 +112,12 @@ _CLEAN = (f"200 drawn correct runs a dtype (IMEX Euler, D/h 8 to 16, Re 1 to 200
 #: The run that measured the convection reading's line (the reading as it now is: the first, ``|N_conv|`` over its
 #: product, caught a stale level on 186 of 200 runs, Actions run 42771046829).
 CONVECTION_LINE_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42775731499"
+#: The run that measured the convection flag's rates, each plant on fresh draws a dtype (seeds from 1000).
+CONVECTION_RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42776571840"
+_STALE = "a convective term formed from the run's starting velocity (a stale level)"
+_PERMUTED = "a convective term formed from the velocity's components permuted (the wrong field)"
+_ADVECTIVE = "the convective term in the advective form, (u . grad) u (not skew)"
+_PAST = "four times the step, the CFL line lifted (its convection formed as declared: not this flag's)"
 #: The run that measured the stall's and the leak's rates: each plant on 200 (or 50) fresh draws a dtype, seeds from
 #: 1000, and the same draws clean.
 RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42771046829"
@@ -134,7 +142,14 @@ FLAGS: tuple[LedgerFlag, ...] = (
                convection_reading, {"float64": 2e-9, "float32": 5e-5},
                f"200 drawn correct runs a dtype, as the others' ({CONVECTION_LINE_MEASURED}): worst 4.9e-10 (float64) "
                f"and 1.3e-5 (float32), every step judged: rounding, as a skew convection's whole work is its time "
-               f"level's", ()),
+               f"level's",
+               _evidence(_STALE, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)},
+                         CONVECTION_RATES_MEASURED)
+               + _evidence(_PERMUTED, {"float64": (50, 50, 0, 50), "float32": (50, 50, 0, 50)},
+                           CONVECTION_RATES_MEASURED)
+               + _evidence(_ADVECTIVE, {"float64": (50, 50, 0, 50), "float32": (50, 50, 0, 50)},
+                           CONVECTION_RATES_MEASURED)
+               + _evidence(_PAST, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, CONVECTION_RATES_MEASURED)),
     LedgerFlag("leak", "the wall's penalty loss inside the solid / the wall's whole loss", leak_reading,
                {"float64": 4e-3, "float32": 4e-3},
                f"{_CLEAN}: worst 1.3e-3 in both dtypes after 30 steps (a drawn start's flow in the solid decays over "
@@ -145,5 +160,5 @@ FLAGS: tuple[LedgerFlag, ...] = (
     *PENDING,
 )
 
-__all__ = ["CONVECTION_LINE_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
+__all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
            "stall_reading"]
