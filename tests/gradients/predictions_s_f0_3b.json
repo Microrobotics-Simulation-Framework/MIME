@@ -44,5 +44,13 @@
     "prediction": "re-planning an iterate about 1 s on the sphere (build_point, its assembly dominated by the MRS drag's held matrix made at build); the fit's run of an iterate about 0.1 s after its one compile",
     "measured_at": "node_measure.py through the built graph (a runner re-planning one iterate) as a probe arm"
   },
-  "outcomes": null
+  "outcomes": {
+    "measured": "probe runs 42777238562 (bits, sysid control, re-plan cost; head c551234) and 42781082190 (two controls' rates again, head 829589b)",
+    "gate_consumer_fit": "as predicted: converged at 1.15 mm (the box's margin 1.6e-13 m), 5 iterates; control (no range, fit.value-keyed) 30/30, clean 0/30",
+    "gate_8_validity_at_each_iterate": "as predicted: ended at the line reynolds:drag:ball at 1.05014 mm, margin 4.6e-7, one iterate past it judged and not taken; control (sysid.fit) 30/30, clean 0/30",
+    "gate_fim": "as predicted: rank 0 of 1 with the radius named for a blind residual; rank 1 for the consumer",
+    "gate_controller_leaves": "as predicted for the sweep (one group, one compile, members equal to their own builds at rtol 1e-12) and the exact check (control 30/30, clean 0/30); NOT as predicted: the derivative in the gain against gate 9's fixed line (4.5e-7 against 1e-7): the closed loop's objective bends more in the gain, so the test takes the MRS gradient oracle's protocol (the difference at h and h/2 with its truncation estimate), and passes it; a setting only the start reads splits the points into groups (the controller node's description holds its start), not one group as written in the test's first draft",
+    "bits": "as predicted: 604 of 604 arrays np.array_equal in float64 and in float32 against S-F0-3a's head, 8 programs (A0 inside the compiled step and a graph-mode follower among them, nothing named)",
+    "costs": "re-planning an iterate 0.22 s on a GitHub runner (0.215 to 0.281 s, 5 repeats; first 0.35 s), against the predicted about 1 s (the laptop's, loaded): about half the MRS hull's force points planned over the range (choose_over's sampling), half the structure key (MADDENING's to_dict of the MRS node's parameters)"
+  }
 }
