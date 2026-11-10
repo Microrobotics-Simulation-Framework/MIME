@@ -48,9 +48,9 @@ def stepped_resistance(built) -> tuple[np.ndarray, dict]:
 def test_past_the_line_the_grand_resistance_is_the_dense_routes_to_the_solves_tolerance(gap, count):
     with precision("float64"):
         dense, _ = stepped_resistance(cluster(gap, count))
-        iterative, out = stepped_resistance(cluster(gap, count, near_field_dense=0))
+        iterative, out = stepped_resistance(cluster(gap, count, near_field_dense_unknowns=0))
     with precision("float32"):
-        single, single_out = stepped_resistance(cluster(gap, count, near_field_dense=0))
+        single, single_out = stepped_resistance(cluster(gap, count, near_field_dense_unknowns=0))
     found, float32 = entrywise(iterative, dense), entrywise(single, dense)
     print(f"\n{count} spheres {gap * 1e3:g} mm apart: iterative against dense {found:.3g} (line {LINE:g}, report "
           f"{out['solve_report']}); float32's {float32:.3g} (line {FLOAT32_LINE:g}, report {single_out['solve_report']})")
@@ -62,7 +62,7 @@ def test_past_the_line_the_grand_resistance_is_the_dense_routes_to_the_solves_to
 
 def test_the_route_is_the_takeover_lines_and_the_build_report_says_which():
     with precision("float64"):
-        dense, iterative = cluster(0.5e-3, 2), cluster(0.5e-3, 2, near_field_dense=0)
+        dense, iterative = cluster(0.5e-3, 2), cluster(0.5e-3, 2, near_field_dense_unknowns=0)
     small, large = joint_node(dense), joint_node(iterative)
     assert not small.iterative and large.iterative and small.unknowns == large.unknowns > 0
     assert "solve_report" not in small.initial_state() and "solve_report" in large.initial_state()
@@ -79,7 +79,7 @@ def system(dtype: str, gap: float = 0.2e-3, count: int = 3):
     """The joint matrix, its motions and each body's preconditioner block (and its transpose) of ``count`` coarse spheres
     ``gap`` apart, as the node makes them in a ``dtype`` run past the line."""
     with precision(dtype):
-        built = cluster(gap, count, near_field_dense=0)
+        built = cluster(gap, count, near_field_dense_unknowns=0)
         node = joint_node(built)
         p = node.constants(parameter_leaves(built.graph)[NODE])
         inputs = start_inputs(built)

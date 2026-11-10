@@ -16,7 +16,7 @@ grand resistance ``R = W^T A^-1 M`` (``6K x 6K``) has every body's six rigid mot
 coupled 6 x 6 is six columns of it, each a whole column block, so a lagged step needs all of it whatever the solver.
 It is solved by the dense LU of the joint matrix (:func:`grand_resistance`), whose factors serve every right-hand
 side, or, for a cluster past the dense route's size, by GMRES on every column at once, each body's own block's
-inverse its preconditioner (:func:`iterative_resistance`), which holds no factors of the whole."""
+inverse its preconditioner (:func:`grand_resistance_by_gmres`), which holds no factors of the whole."""
 
 from __future__ import annotations
 
@@ -190,8 +190,9 @@ def grand_resistance(joint: Joint) -> Array:
     return _wrenches(joint, jnp.linalg.solve(joint.matrix, joint_motions(joint)))
 
 
-def iterative_resistance(joint: Joint, blocks: Sequence[Operator | None], transposed: Sequence[Operator | None],
-                         stopping: Stopping, tap: Array) -> tuple[Array, Array]:
+def grand_resistance_by_gmres(joint: Joint, blocks: Sequence[Operator | None],
+                              transposed: Sequence[Operator | None], stopping: Stopping,
+                              tap: Array) -> tuple[Array, Array]:
     """:func:`grand_resistance`'s ``R`` by GMRES on its ``6K`` columns at once, right-preconditioned by each body's own
     block (``blocks[i]`` on its rows; ``None``, the identity, for a model that declares no :data:`PRECONDITIONER`),
     ``transposed`` the transpose solve's, through ``custom_linear_solve`` with the report block ``tap`` on its
@@ -329,5 +330,5 @@ def quadratic_form(resistance: Array, twists: Array) -> tuple[Array, Array]:
 
 __all__ = ["BODY_FRAME_CONSTANT", "CROSS_KERNEL", "OVERLAP_RESOLUTION", "PRECONDITIONER", "BodyOperator", "Joint",
            "Placed", "blocks_of", "booked_work", "cross_image", "cross_loads", "grand_resistance",
-           "iterative_resistance", "joint_matrix", "joint_motions", "lagged_amplification", "lagged_gain", "offsets",
-           "pair_gaps", "quadratic_form"]
+           "grand_resistance_by_gmres", "joint_matrix", "joint_motions", "lagged_amplification", "lagged_gain",
+           "offsets", "pair_gaps", "quadratic_form"]

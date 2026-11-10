@@ -50,15 +50,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The near field past the dense route: GMRES, never silent** (`drag` 0.5.0, unreleased; `JointDragNode`). A cluster
   past the takeover line, `DENSE_UNKNOWNS` (16,000) joint unknowns, is solved by GMRES on its grand resistance's
   right-hand sides at once, each body's held free part's inverse (a new leaf, made once per build in its frame, made
-  again with the free part where a leaf moves) its preconditioner block, through `custom_linear_solve`: each solve,
-  the primal's and each derivative's, from a cold start, stopping on its true residual relative to its own right-hand
-  side, the transpose solve preconditioned by the transposed blocks. `Drag.MRS(near_field_dense=...)` moves the line
+  again with the free part where a leaf moves) its preconditioner block, through `custom_linear_solve`: each solve, the
+  primal's and each derivative's, from a cold start, stopping on its true residual relative to its own right-hand side,
+  the transpose solve preconditioned by the transposed blocks. `Drag.MRS(near_field_dense_unknowns=...)` moves the line
   and `Drag.MRS(near_field_tolerance=...)` sets the tolerance (1e-10 in float64, 1e-5 in float32, above the floor its
-  arithmetic leaves the residual at), both numerical settings; the build report says which route a cluster took.
-  The solve's report is the FVM's: each step's a state field (`solve_report`, its running sum beside it) with a flag
-  the run warns of with its count (`solve_flagged`: at the cap, stagnated, or a residual not finite; zero on the dense
-  route), the tangent solves' as those fields' tangents, and the transpose solves' as the gradient of the node's zero
-  `solve_report` parameter. The dense route's size refusal, `drag.near-field-size`, is gone: GMRES lifts it.
+  arithmetic leaves a pair's residual at down to the near-contact line), both numerical settings; the build report says
+  which route a cluster took and how its starting solve ended. **The line is declared, pending a re-decision**: its
+  basis is neither memory nor a measured time crossover. Through the node GMRES's run peaks above the dense route's
+  (1.11 to 1.35 times at 3,042 to 21,168 unknowns, either dtype: the bare solve's halving does not carry). In time the
+  bare solve on a quiet CPU in float64 had the dense LU faster or tied at 3,042, 4,056 and 8,112 unknowns; through the
+  node on a shared laptop (one run a case) GMRES's step was the shorter at every size a radius apart (1.3 to 4.1 times)
+  and the dense route's at four sizes of five a twentieth of a radius apart in float64. The solve's report is the FVM's:
+  each step's a state field (`solve_report`, its running sum beside it) with a flag the run warns of with its count
+  (`solve_flagged`: at the cap, stagnated, or a residual not finite; zero on the dense route), the tangent solves' as
+  those fields' tangents, and the transpose solves' as the gradient of the node's zero `solve_report` parameter (a row a
+  step with the node's `solve_report_rows`). **The dense route's size refusal, `drag.near-field-size`, becomes a memory
+  refusal on both routes** (`drag.near-field-memory`): the run's peak, estimated from counts of the joint matrix and of
+  the members' held blocks measured through the node, against the memory a run can have (the FVM's: a GPU's limit, or on a
+  CPU the smaller of the available memory and the control group's limit), so that no cluster that cannot fit runs, on
+  either route.
 
 - **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
   spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to

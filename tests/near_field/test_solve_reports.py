@@ -3,11 +3,14 @@ fields, so that the recheck reads them as it reads the FVM's): each step's prima
 sum and a flag the run tallies and warns of with its count; the tangent solves' report as the tangents of those fields;
 the transpose solves' as the gradient of the zero ``solve_report`` leaf, summed over the run or a row a step.
 
-The control, every run: a cap of one iteration planted (the node's stop built with ``cap=1``) is at the cap on every step
-of every run, forward (each step's report, the flag on every step, the warning's count) and backward (each step's row
-of the transpose reports, and the tangent's), through the node's own scan and through MIME's chunked run; the default
-stop raises none. And a tolerance below the dtype's floor (1e-30, written on the drag) stagnates every step's solve, in
-both dtypes: the run warns with the count, each report says stagnated, before its cap."""
+The controls, every run: a cap of one iteration planted on the transpose solves alone leaves every forward report and
+the tangent's clean and puts every row of the transpose reports at the cap, so a transpose report copied from the
+primal's (or the other way) fails it; until S-F0-3's reader lands, that stopped derivative solve shows only there, in
+the leaf's gradient, and nothing warns of it. A cap of one planted on every solve (the node's stop built with
+``cap=1``) is at the cap on every step of every run, forward (each step's report, the flag on every step) and backward
+(each step's row of the transpose reports, and the tangent's), through the node's own scan and through MIME's chunked
+run; the default stop raises none. And a tolerance below the dtype's floor (1e-30, written on the drag) stagnates every
+step's solve, in both dtypes: the run warns with the count, each report says stagnated, before its cap."""
 
 import warnings
 
@@ -18,7 +21,7 @@ import pytest
 from near_field_cases import NODE, bodies, joint_node, mrs, precision, rebuilt, spheres, start_inputs
 
 from mime.build._maddening import chunk_function, full_state, graph_params
-from mime.nodes.hydro.near_field import _node
+from mime.nodes.hydro.near_field import _contract, _gmres, _node
 from mime.nodes.hydro.near_field._gmres import REPORT_FIELDS, Stopping
 from mime.units import ms
 
@@ -29,13 +32,34 @@ LEAF = "m1_shape_radius"
 
 
 def pair(**settings):
-    return bodies("reported", spheres(0.3e-3, 2), mrs(SPACING, near_field_dense=0, **settings),
+    return bodies("reported", spheres(0.3e-3, 2), mrs(SPACING, near_field_dense_unknowns=0, **settings),
                   velocity=(1e-4, 0.0, 0.0))
 
 
 def capped(monkeypatch) -> None:
     """The plant: every GMRES of the joint node built with a cap of one iteration."""
     monkeypatch.setattr(_node, "Stopping", lambda tolerance, restart, cap: Stopping(tolerance, restart=restart, cap=1))
+
+
+def transpose_capped(monkeypatch) -> None:
+    """The plant on the transpose solves alone: the wrapper's transposed preconditioner marked, and GMRES given that
+    one a cap of one iteration; the primal's and the tangent's solves untouched."""
+    solve, real = _contract.reported_solve, _gmres.gmres
+
+    def marked(matrix, b, tap, precondition, transposed, stopping):
+        def planted(v):
+            return transposed(v)
+
+        planted.planted = True
+        return solve(matrix, b, tap, precondition, planted, stopping)
+
+    def gmres(operator, b, precondition, stopping):
+        if getattr(precondition, "planted", False):
+            stopping = Stopping(stopping.tolerance, restart=stopping.restart, cap=1)
+        return real(operator, b, precondition, stopping)
+
+    monkeypatch.setattr(_contract, "reported_solve", marked)
+    monkeypatch.setattr(_gmres, "gmres", gmres)
 
 
 def node_scan(node, inputs, params):
@@ -49,13 +73,15 @@ def node_scan(node, inputs, params):
     return jax.lax.scan(body, node.initial_state(), None, length=STEPS)
 
 
-@pytest.mark.parametrize("plant", [False, True])
+@pytest.mark.parametrize("plant", ["clean", "every", "transpose"])
 def test_each_steps_reports_forward_tangent_and_transpose_and_a_planted_cap_at_every_step(plant, monkeypatch):
-    if plant:
+    if plant == "every":
         capped(monkeypatch)
+    elif plant == "transpose":
+        transpose_capped(monkeypatch)
     with precision("float64"):
         built = pair().build()
-        node = rebuilt(joint_node(built), report_rows=STEPS)
+        node = rebuilt(joint_node(built), solve_report_rows=STEPS)
         inputs = {key: jnp.asarray(value) for key, value in start_inputs(built).items()}
         params = node.params_pytree()
         _, history = node_scan(node, inputs, params)
@@ -71,17 +97,20 @@ def test_each_steps_reports_forward_tangent_and_transpose_and_a_planted_cap_at_e
                              (radius,), (jnp.asarray(1e-3),))
     forward, backward = np.asarray(history["solve_report"]), np.asarray(transposed)
     flags = np.asarray(history["solve_flagged"])
-    print(f"\n{'planted' if plant else 'clean'}: forward {forward[:, [ITERATIONS, AT_CAP]].tolist()}, backward "
+    print(f"\n{plant}: forward {forward[:, [ITERATIONS, AT_CAP]].tolist()}, backward "
           f"{backward[:, [ITERATIONS, AT_CAP]].tolist()}, tangent {np.asarray(tangent)}")
     assert forward.shape == backward.shape == (STEPS, 6)
-    if plant:
+    if plant == "every":
         assert np.all(forward[:, AT_CAP] >= 1) and np.all(flags == 1.0)
-        assert np.all(backward[:, AT_CAP] >= 1) and np.all(backward[:, ITERATIONS] == 1.0)
         assert float(tangent[AT_CAP]) >= STEPS
     else:
         assert np.all(forward[:, AT_CAP] + forward[:, STAGNATED] == 0) and np.all(flags == 0.0)
-        assert np.all(backward[:, AT_CAP] + backward[:, STAGNATED] == 0) and np.all(backward[:, ITERATIONS] >= 1)
-        assert float(tangent[AT_CAP] + tangent[STAGNATED]) == 0.0 and float(tangent[ITERATIONS]) >= STEPS
+        assert np.all(forward[:, ITERATIONS] > 1)
+        assert float(tangent[AT_CAP] + tangent[STAGNATED]) == 0.0 and float(tangent[ITERATIONS]) > STEPS
+    if plant == "clean":
+        assert np.all(backward[:, AT_CAP] + backward[:, STAGNATED] == 0) and np.all(backward[:, ITERATIONS] > 1)
+    else:
+        assert np.all(backward[:, AT_CAP] >= 1) and np.all(backward[:, ITERATIONS] == 1.0)
 
 
 @pytest.mark.parametrize("plant", [False, True])
@@ -132,9 +161,9 @@ def test_a_run_whose_solves_stagnate_is_flagged_and_warned_of_with_its_count(dty
             assert f"{NODE}.solve_flagged" not in raised and not said and report[AT_CAP:AT_CAP + 3].sum() == 0.0
 
 
-def test_a_run_past_the_report_rows_is_refused_before_it_runs():
+def test_a_run_past_the_solve_report_rows_is_refused_before_it_runs():
     with precision("float64"):
-        node = rebuilt(joint_node(pair().build()), report_rows=3)
+        node = rebuilt(joint_node(pair().build()), solve_report_rows=3)
     assert node.run_problem(3) is None
     refused = node.run_problem(4)
     assert refused is not None and refused.code == "drag.near-field-report-rows"

@@ -28,7 +28,7 @@ from mime.nodes.hydro.near_field._mrs import Quadrature
 
 SPACING = 0.4e-3
 RADIUS_LEAF = "m1_shape_radius"
-ITERATIVE = {"near_field_dense": 0}
+ITERATIVE = {"near_field_dense_unknowns": 0}
 #: The scale test's line: the derivative over the loss's (or the tangent's) scale at 1e-12 and 1e6, relative.
 SCALE_LINE = 1e-9
 
@@ -78,6 +78,10 @@ def derivatives(gap: float, settings: dict, full: bool = True) -> dict:
 
 @pytest.mark.parametrize("gap", [1e-3, 0.25e-3])
 def test_forward_and_reverse_match_central_differences_and_the_dense_route_at_every_loss_scale(gap):
+    """The scale arm (the loss's and the tangent's scale at 1e-12, judged at ``SCALE_LINE``) is what guards the cold
+    start (decision 10): every solve warm-started from the primal's answer passes central differences, forward against
+    reverse and the dense route, and fails only it (measured: reverse 7.3 % and 4.8 % off at 1e-12 in the separation
+    and the radius at a gap of a radius). It is never trimmed as redundant with the other three."""
     with precision("float64"):
         rows = derivatives(gap, ITERATIVE)
         dense = derivatives(gap, {}, full=False)

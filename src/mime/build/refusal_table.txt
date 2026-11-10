@@ -132,6 +132,7 @@ drag.mrs-quadrature           user
 drag.mrs-resistance           user
 drag.near-field-gain          user
 drag.near-field-indefinite    user
+drag.near-field-memory        user
 drag.near-field-mixed         user
 drag.near-field-overlap       user
 drag.near-field-rates         user

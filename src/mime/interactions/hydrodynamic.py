@@ -28,7 +28,7 @@ from mime.nodes.hydro._rft_drag import (
 from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
-from mime.nodes.hydro.near_field import JointDragNode, member_prefix
+from mime.nodes.hydro.near_field import MEMORY_MEASURED, JointDragNode, member_prefix
 from mime.scene import quadrature_counts, quadrature_owners, sampled_points
 from mime.registry import (
     DESIGN,
@@ -1194,9 +1194,11 @@ class Drag(UncoupledDrag):
     steps, ``1/(1-g)``, are reported. Each body's coupled resistance and the cluster's grand resistance are judged as
     0.4.0's (their scaled least eigenvalue above zero, else the run stops, ``drag.near-field-indefinite``, the margin
     reported). A body alone in its medium keeps its own node, 0.4.0's, step for step. The joint system is solved by
-    one dense LU up to the takeover line (``near_field_dense``, ``DENSE_UNKNOWNS`` unknowns by default), and past it by
-    GMRES, each body's own block's inverse its preconditioner, each solve to ``near_field_tolerance`` on its true
-    residual and never silently short of it (``solve_flagged``, warned of with its count).
+    one dense LU up to the takeover line (``near_field_dense_unknowns``, ``DENSE_UNKNOWNS`` unknowns by default, a
+    declared line), and past it by GMRES, each body's own block's inverse its preconditioner, each solve to
+    ``near_field_tolerance`` on its true residual and never silently short of it (``solve_flagged``, warned of with its
+    count); on either route the build refuses a cluster whose run would not fit in the memory a run can have
+    (``drag.near-field-memory``).
 
     Version 0.5.0 couples a medium's mrs bodies; version 0.4.0 (``UncoupledDrag``, kept registered) computed each
     body's drag alone, and its surrogate rung, like 0.5.0's, is 0.3.0's; its rft rung, added before 0.5.0, is 0.5.0's.
@@ -1216,19 +1218,24 @@ class Drag(UncoupledDrag):
                        "quarter of a source's points, five kinds of six at their cases' spacings fell past the case's "
                        "line near contact, the box furthest, while MIME's sphere at its default count was unmoved to "
                        "within a few hundredths of a per cent)"),
-        "near_field_dense": convention(
+        "near_field_dense_unknowns": convention(
             NUMERICAL, "on the mrs rung, the most joint unknowns the near field's dense LU takes, DENSE_UNKNOWNS, past "
-                       "which its GMRES does: a memory line (measured on a laptop CPU in float64 near the line: the "
-                       "dense LU held about three times its matrix, about twice GMRES's peak; GMRES took the less "
-                       "time at every size measured, by a ratio the shared machine's load set); either route's "
-                       "answer is the other's to GMRES's tolerance"),
+                       "which its GMRES does: declared, not fitted, its default pending the maintainer's re-decision, "
+                       "since neither memory nor time places it as measured (through the node GMRES holds more "
+                       "memory than the dense LU, not less; its step was the shorter a radius apart and the dense "
+                       "route's mostly near contact, on a shared laptop, while the bare solve on a quiet CPU had the "
+                       "dense LU faster in float64 at some small sizes; DENSE_UNKNOWNS's comment gives the numbers); "
+                       "either route's answer is the other's to GMRES's tolerance, and on either a run that will not "
+                       "fit is refused (drag.near-field-memory)"),
         "near_field_tolerance": convention(
             NUMERICAL, "on the mrs rung past the dense route, GMRES's relative tolerance on each solve's true "
                        "residual, DEFAULT_TOLERANCE by the run's dtype: float64's holds the grand resistance to the "
-                       "dense route's to within its gates' lines near contact, float32's sits above the floor its own "
-                       "arithmetic leaves the residual at"),
+                       "dense route's to within its gates' lines near contact; float32's sits above the floor its own "
+                       "arithmetic leaves a pair's residual at down to the near-contact line, by a small margin there "
+                       "(DEFAULT_TOLERANCE's measurement), so a denser cluster near contact may stop short, flagged "
+                       "and warned of"),
     }
-    mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share", "near_field_dense", "near_field_tolerance")
+    mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share", "near_field_dense_unknowns", "near_field_tolerance")
     raises = (
         *UncoupledDrag.raises,
         Flag("gain_exceeded", "the lagged coupling of the medium's near field reached a gain of one or more (the "
@@ -1275,10 +1282,14 @@ class Drag(UncoupledDrag):
         "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
         "the force oracles' (the two-sphere series, Rotne and Prager's mobility, the dense assembly)",
+        f"mrs: the near field's memory, on either route: the run's peak past the process's fixed part, so many of its "
+        f"joint matrices and of its members' held blocks ({MEMORY_MEASURED}), reported at build and refused past the "
+        f"memory a run can have (drag.near-field-memory): a GPU's limit, or on a CPU the smaller of the host's "
+        f"available memory and the limit of the control group the process runs in, where one is set",
     )
 
     near_field_share: float | None = None
-    near_field_dense: int | None = None
+    near_field_dense_unknowns: int | None = None
     near_field_tolerance: float | None = None
 
     @override
@@ -1291,7 +1302,7 @@ class Drag(UncoupledDrag):
         found = super().setting_problems(settings)
         if self.rung == "rft":
             found += [f"{name}= is a setting of the mrs rung's near field, and the rft rung reads none"
-                      for name in ("near_field_share", "near_field_dense", "near_field_tolerance")
+                      for name in ("near_field_share", "near_field_dense_unknowns", "near_field_tolerance")
                       if getattr(self, name) is not None]
         return found
 
@@ -1316,11 +1327,11 @@ class Drag(UncoupledDrag):
             found.append(f"near_field_share is {share!r}, not a share above 0 and at most 1: the most of a source's "
                          f"quadrature points the near field's cross-kernel integrates, so write near_field_share=0.25 "
                          f"(or leave it out for every point, 1)")
-        line = cast(object, self.near_field_dense)
+        line = cast(object, self.near_field_dense_unknowns)
         if line is not None and (isinstance(line, bool) or not isinstance(line, int) or line < 0):
-            found.append(f"near_field_dense is {line!r}, not a whole number at or above zero: the most joint unknowns "
-                         f"the near field's dense LU takes before its GMRES does, so write near_field_dense=16000 (or 0 "
-                         f"for GMRES at every size)")
+            found.append(f"near_field_dense_unknowns is {line!r}, not a whole number at or above zero: the most "
+                         f"joint unknowns the near field's dense LU takes before its GMRES does, so write "
+                         f"near_field_dense_unknowns=16000 (or 0 for GMRES at every size)")
         tolerance = cast(object, self.near_field_tolerance)
         if tolerance is not None and (isinstance(tolerance, bool) or not isinstance(tolerance, int | float)
                                       or not 0.0 < float(tolerance) < 1.0):
@@ -1333,7 +1344,7 @@ class Drag(UncoupledDrag):
         """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the
         wall's constants once; each body's pose, twist and mass matrix read, its resistance and background load
         delivered. The cross-kernel's budget is the largest ``near_field_share`` its members write (every point where
-        none writes one); the takeover line the largest ``near_field_dense`` and the tolerance the smallest
+        none writes one); the takeover line the largest ``near_field_dense_unknowns`` and the tolerance the smallest
         ``near_field_tolerance`` they write (the more accurate route and solve any member asks for)."""
         ids = sorted(ctx.members)
         written = [cast(UncoupledDrag, ctx.members[owner].entry) for owner in ids]
@@ -1359,8 +1370,8 @@ class Drag(UncoupledDrag):
             held.update({f"{member_prefix(i)}{key}": value for key, value in arguments.items() if key not in names})
             bodies.append(member.bindings["body"])
         assert common is not None
-        lines = [int(cast(int, getattr(entry, "near_field_dense"))) for entry in written
-                 if getattr(entry, "near_field_dense", None) is not None]
+        lines = [int(cast(int, getattr(entry, "near_field_dense_unknowns"))) for entry in written
+                 if getattr(entry, "near_field_dense_unknowns", None) is not None]
         tolerances = [float(cast(float, getattr(entry, "near_field_tolerance"))) for entry in written
                       if getattr(entry, "near_field_tolerance", None) is not None]
         solve = {**({"dense_unknowns": max(lines)} if lines else {}),

@@ -102,7 +102,7 @@ def test_on_the_iterative_route_each_plant_stops_and_the_unplanted_steps_are_the
     with precision(dtype):
         for gap in (0.05, 0.3):
             dense = step_with(configuration(gap, 0), None)[1]
-            built = configuration(gap, 0, near_field_dense=0)
+            built = configuration(gap, 0, near_field_dense_unknowns=0)
             rows.append((gap, dense, step_with(built, None)[1], step_with(built, OwnIndefinite),
                          step_with(built, CrossDoubled)))
     for gap, dense, clean, (own_node, own), (cross_node, cross) in rows:

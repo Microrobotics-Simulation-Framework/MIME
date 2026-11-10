@@ -143,7 +143,7 @@ def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(1.0), **
 
 def mrs_near_field_gmres() -> Experiment:
     """The near field's case past the takeover line (a line of zero): the same bodies, the joint system by GMRES."""
-    return mrs_near_field("mrs_near_field_gmres", near_field_dense=0)
+    return mrs_near_field("mrs_near_field_gmres", near_field_dense_unknowns=0)
 
 
 def mrs_tube() -> Experiment:

@@ -17,7 +17,7 @@ from mime.nodes.hydro.near_field._contract import (
     cross_image,
     cross_loads,
     grand_resistance,
-    iterative_resistance,
+    grand_resistance_by_gmres,
     joint_matrix,
     lagged_amplification,
     lagged_gain,
@@ -29,6 +29,8 @@ from mime.nodes.hydro.near_field._node import (
     CONTACT_GAP,
     DEFAULT_TOLERANCE,
     DENSE_UNKNOWNS,
+    MEMORY_COUNTS,
+    MEMORY_MEASURED,
     JointDragInputs,
     JointDragNode,
     JointDragState,
@@ -36,7 +38,8 @@ from mime.nodes.hydro.near_field._node import (
 )
 
 __all__ = ["BODY_FRAME_CONSTANT", "CONTACT_GAP", "CROSS_KERNEL", "CROSS_SHARE", "DEFAULT_TOLERANCE", "DENSE_UNKNOWNS",
-           "OVERLAP_RESOLUTION", "PRECONDITIONER", "REACH", "BodyOperator", "Joint", "JointDragInputs", "JointDragNode",
-           "JointDragState", "MRSOperator", "Placed", "blocks_of", "booked_work", "cross_image", "cross_loads",
-           "cross_weight", "grand_resistance", "iterative_resistance", "joint_matrix", "lagged_amplification",
-           "lagged_gain", "member_prefix", "pair_gaps", "point_block", "quadratic_form"]
+           "MEMORY_COUNTS", "MEMORY_MEASURED", "OVERLAP_RESOLUTION", "PRECONDITIONER", "REACH", "BodyOperator",
+           "Joint", "JointDragInputs", "JointDragNode", "JointDragState", "MRSOperator", "Placed", "blocks_of",
+           "booked_work", "cross_image", "cross_loads", "cross_weight", "grand_resistance", "grand_resistance_by_gmres",
+           "joint_matrix", "lagged_amplification", "lagged_gain", "member_prefix", "pair_gaps", "point_block",
+           "quadratic_form"]

@@ -1,8 +1,10 @@
 """The build's near field (drag 0.5.0, C1, 4 and Bundle 2): a medium's mrs bodies grouped into one joint node, their
 reads and deliveries its; the mass matrix each body publishes only where the near field reads it; one declared mass
 read by both the body and the joint node (an override of it moves the node's gain); the build's refusals (a medium
-mixing a kept, uncoupled drag with the near field); a cluster past the takeover line built on the iterative route; and
-a saved folder of a near field, on either route, that loads and reproduces. The energy ledger beside a near field is ``test_ledger.py``'s."""
+mixing a kept, uncoupled drag with the near field; a cluster whose run will not fit in the memory a run can have, on
+either route); a cluster past the takeover line built on the iterative route, the build reporting its route, its memory
+and its starting solve; and a saved folder of a near field, on either route, that loads and reproduces. The energy
+ledger beside a near field is ``test_ledger.py``'s."""
 
 from __future__ import annotations
 
@@ -76,20 +78,47 @@ def test_a_medium_mixing_the_kept_uncoupled_drag_with_the_near_field_is_refused(
     assert "drag.near-field-mixed" in refused.value.codes()
 
 
+@pytest.mark.parametrize("route", ["dense", "gmres"])
+def test_a_cluster_whose_run_will_not_fit_is_refused_on_either_route(route, monkeypatch):
+    """The joint node's memory estimate against a planted memory a byte under it is refused before any step
+    (``drag.near-field-memory``), and a byte over it builds (the control), on either route."""
+    from mime.nodes.hydro.near_field import _node
+
+    law = mrs(SPACING, **({"near_field_dense_unknowns": 0} if route == "gmres" else {}))
+    needed = joint_node(cluster(2, law=law).build()).memory_estimate()
+    assert needed > 0.0
+    for room, fits in ((int(needed) - 1, False), (int(needed) + 1, True)):
+        monkeypatch.setattr(_node, "device_memory", lambda room=room: ("a planted memory", room))
+        if fits:
+            assert joint_node(cluster(2, law=law).build()).route == route
+            continue
+        with pytest.raises(BuildRefused) as refused:
+            cluster(2, law=law).build()
+        found = [each for each in refused.value.refusals if each.code == "drag.near-field-memory"]
+        assert len(found) == 1 and "a planted memory" in found[0].message
+        assert f"on the {route} route" in found[0].message
+
+
 def test_a_cluster_past_the_takeover_line_takes_the_iterative_route(monkeypatch):
     from mime.nodes.hydro.near_field import _node
 
     below = joint_node(cluster(2).build())
     monkeypatch.setattr(_node, "DENSE_UNKNOWNS", below.unknowns - 1)
-    past = joint_node(cluster(2).build())
+    built = cluster(2).build()
+    past = joint_node(built)
     assert not below.iterative and past.iterative and past.dense_unknowns == below.unknowns - 1
     assert "solve_report" in past.initial_state() and "solve_report" not in below.initial_state()
+    lines = built.report.checked.get(NODE, ())
+    print("\n" + "\n".join(lines))
+    assert any("the run's memory on the gmres route about" in line for line in lines)
+    assert any(line.startswith("at the start: the joint solve took") and "every column converged" in line
+               for line in lines)
 
 
 @pytest.mark.parametrize("route", ["dense", "iterative"])
 def test_a_saved_near_field_loads_and_reproduces_its_run(tmp_path, route):
     with precision("float64"):
-        experiment = cluster(2, law=mrs(SPACING, **({"near_field_dense": 0} if route == "iterative" else {})))
+        experiment = cluster(2, law=mrs(SPACING, **({"near_field_dense_unknowns": 0} if route == "iterative" else {})))
         built = experiment.build()
         first = built.run(ms(3.0), history=True)
         built.save(tmp_path / "near", steps=3)
