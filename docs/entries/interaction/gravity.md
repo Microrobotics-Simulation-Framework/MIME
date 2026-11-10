@@ -14,9 +14,9 @@ It is a member of the gravity family.
 
 **In a flowing medium.** For a medium of constant density it stays exact whether the medium is at rest or flows: the
 flow's pressure carries no hydrostatic part, so buoyancy is this law's alone. A body that takes a load from the flow
-also takes its share of the flow's body force (its drive), as a body in a resting medium takes buoyancy from gravity's.
-That share is a coupling law of a later phase and is not built yet: no body takes a load from a resolved flow. Nothing
-is refused or warned of, since a drive you give cannot be told apart from gravity.
+also takes its share of the flow's body force: the force on the fluid it displaces, `V f` for a uniform drive `f`, at
+its centre of buoyancy. That share is a coupling law of its own, not this one, and no body takes a load from a resolved
+flow yet. Nothing is refused or warned of, since a drive you give cannot be told apart from gravity.
 
 **When not to use it.**
 - For a body whose displaced volume changes, or that floats at a surface: the buoyant volume is a constant of the body,

@@ -41,10 +41,10 @@ class Gravity(Interaction):
 
     **In a flowing medium.** For a medium of constant density the law stays exact whether the medium is at rest or
     flows: the flow's pressure carries no hydrostatic part, so buoyancy is Gravity's alone. A body that takes a load
-    from the flow also takes its share of the flow's body force (the drive), as a body at rest in a resting medium
-    takes buoyancy from gravity's; that share is a coupling law of a later phase, not built here, since no body takes
-    a load from a resolved flow yet. Nothing is refused or warned of: a drive the user gives cannot be told apart from
-    gravity.
+    from the flow also takes its share of the flow's body force: the force on the fluid it displaces, ``V f`` for a
+    uniform drive ``f``, at its centre of buoyancy. That share is a coupling law of its own, not this one, and no body
+    takes a load from a resolved flow yet. Nothing is refused or warned of: a drive the user gives cannot be told apart
+    from gravity.
 
     A potential law: its family's energy, ``U = -(m g + F_b) . x - F_b . (R_q c_b)`` with ``F_b = -rho_f V g`` the
     buoyancy (``GravityNode.energy``), of which the wrench is the negative gradient, the couple's by the gradient on the
