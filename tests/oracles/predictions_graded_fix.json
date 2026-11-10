@@ -10,7 +10,9 @@
     "the graded sphere's count over radius (this round, a scan of the build's count formula, local, float64): 106 at 0.5 mm, 104 at 0.525 mm (0.3 mm spacing); 29 falls in 60 steps at 0.3 mm, 40 at 0.6 mm"
   ],
   "operating_point": {
-    "dtype": ["float64"],
+    "dtype": [
+      "float64"
+    ],
     "platform": "GitHub runner 4 vCPU (probe workflow), CPU",
     "sizes_and_parameters": "the gates' sphere: radius 1 mm, force spacing 0.3 mm, contact graded for 0.15 mm (half a spacing), blob 0.1 and 0.025, plane wall; the box 0.6 x 0.9 x 1.3 mm alike at blob 0.1; OFF_PATCH_BAND 0.05 force spacings, NEAR_WALL 1",
     "seeds_and_draws": "flag controls: a horizontal turn axis (sphere) or one of +-x, +-y (box), a turn angle and a gap of 0.3 to 0.9 force spacings, each drawn by the run's seed"
@@ -19,9 +21,25 @@
     "claim": "off_patch rises wherever a point within OFF_PATCH_BAND force spacings of the least gap lies outside the patch judged per quadrature point: the sphere turned 46 to 48 degrees and the box's face turned 89 to 90 degrees raise it on every draw; poses inside the patch (the sphere 0 to 30 degrees, the box 0 to 80) raise none",
     "kind": "acceptance",
     "case": "probe/flag_control.py through the drag node's own step (plane_cases.stepped)",
-    "prediction": {"value": "planted caught 30/30 for each of sphere blob 0.1, sphere blob 0.025, box; clean 0/30", "band": [30, 30], "unit": "runs", "basis": "derived", "why": "46 degrees lies past the pointwise patch's edge (45.6 degrees, where (0.15 mm + h) / 1.5 reaches the force spacing on a 1 mm sphere); at 89 degrees the box's face leaves the patch 0.3 mm from the edge, 0.005 mm above the least gap, inside the 0.015 mm band; the band reaches the patch's edge from about 35.7 degrees on the sphere and 87.1 degrees on the box"},
+    "prediction": {
+      "value": "planted caught 30/30 for each of sphere blob 0.1, sphere blob 0.025, box; clean 0/30",
+      "band": [
+        30,
+        30
+      ],
+      "unit": "runs",
+      "basis": "derived",
+      "why": "46 degrees lies past the pointwise patch's edge (45.6 degrees, where (0.15 mm + h) / 1.5 reaches the force spacing on a 1 mm sphere); at 89 degrees the box's face leaves the patch 0.3 mm from the edge, 0.005 mm above the least gap, inside the 0.015 mm band; the band reaches the patch's edge from about 35.7 degrees on the sphere and 87.1 degrees on the box"
+    },
     "metric": "the flag itself (0 or 1) at each drawn pose",
-    "control": {"plant": "the turn off the patch", "environment_variable": "FLAG_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30", "resolution": "the turn from which the flag rises on every draw, predicted 36 to 39 degrees (sphere) and 87 to 88.5 degrees (box) by discriminating_range.py over drawn axes and gaps"},
+    "control": {
+      "plant": "the turn off the patch",
+      "environment_variable": "FLAG_PLANT",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "the turn from which the flag rises on every draw, predicted 36 to 39 degrees (sphere) and 87 to 88.5 degrees (box) by discriminating_range.py over drawn axes and gaps"
+    },
     "if_wrong": "a miss at 46 to 48 means the per-point patch or the band is not what the step reads; a false alarm under 30 degrees means the band is wider than derived; then the band is re-derived, not tuned to the draws",
     "cannot_discriminate_if": "the flag is constant (both arms 1 or both 0): the clean arm's 0/30 and the planted arm's 30/30 together are the evidence"
   },
@@ -29,21 +47,39 @@
     "claim": "where the flag rises, against the graded and uniform errors (a measurement, not a pass/fail): the sphere's flag rises between 34 and 40 degrees about every axis, the box's between 86 and 88.5 degrees and stays raised to 180",
     "kind": "estimates",
     "case": "probe/flag_sweep.py (the sphere 0 to 90 degrees in 2 degree steps about x, y, skew; the box the review's poses)",
-    "prediction": {"value": null, "band": [34, 40], "unit": "degrees (sphere onset)", "basis": "derived", "why": "the band's reach over the sphere's curvature, give or take the quadrature's spacing (about 2 degrees)"},
+    "prediction": {
+      "value": null,
+      "band": [
+        34,
+        40
+      ],
+      "unit": "degrees (sphere onset)",
+      "basis": "derived",
+      "why": "the band's reach over the sphere's curvature, give or take the quadrature's spacing (about 2 degrees)"
+    },
     "if_wrong": "an onset outside the band: report it and re-derive the band's text"
   },
   "gate_M1_range": {
     "claim": "a graded body over a declared range takes the range's point with the most graded force points (sampled, GRADED_FORCE_POINTS), its node on that count, and a sweep across the range compiles once",
     "kind": "equality",
     "case": "tests/ranges/test_mrs_graded_range.py",
-    "prediction": {"value": "compiles (1,); the ranged node's count the largest graded count over the rule's nine points; the rule Sampled where the uniform one is Monotone (the sphere's radius)", "basis": "derived"},
-    "control": {"plant": "the uniform count rule on the graded hull", "expected_rate": "the witness pair (106 at 0.5 mm, 104 at 0.525 mm) falls, so a monotone rule fails it every run (deterministic)"}
+    "prediction": {
+      "value": "compiles (1,); the ranged node's count the largest graded count over the rule's nine points; the rule Sampled where the uniform one is Monotone (the sphere's radius)",
+      "basis": "derived"
+    },
+    "control": {
+      "plant": "the uniform count rule on the graded hull",
+      "expected_rate": "the witness pair (106 at 0.5 mm, 104 at 0.525 mm) falls, so a monotone rule fails it every run (deterministic)"
+    }
   },
   "gate_M2_walk": {
     "claim": "a graded sampling chosen at its rounded settings is quiet under the two-builds trace form for every number of its kind and drag moved by a relative 1e-6, on graded FL-9 and the graded helix; with the rounding made exact the same pairs fire on at least one number of each",
     "kind": "equality",
     "case": "probe/m2_walk.py through the real build (two_builds_of, run=False): FL-9 graded by features at 0.6 and 1.0 mm in free space, the helix's contact graded above a plane at 0.03 mm",
-    "prediction": {"value": "rounded: every pair quiet or not-discriminating; control: FL-9 at 0.6 mm bakes under at least one of radius, length, wavenumber, modulation; the helix under turns or filament_radius", "basis": "measured-before (the review's sampling-level re-choices) and derived (a 1e-6 move of a three-figure value stays in its four-figure rounding)"},
+    "prediction": {
+      "value": "rounded: every pair quiet or not-discriminating; control: FL-9 at 0.6 mm bakes under at least one of radius, length, wavenumber, modulation; the helix under turns or filament_radius",
+      "basis": "measured-before (the review's sampling-level re-choices) and derived (a 1e-6 move of a three-figure value stays in its four-figure rounding)"
+    },
     "if_wrong": "a rounded pair that fires means a choice depends on a number the rounding does not reach (the actual spacing, a part's rotation): find it; a control that stays quiet means the case cannot discriminate and another spacing is taken",
     "cannot_discriminate_if": "the control is quiet on every number at that spacing"
   },
@@ -51,16 +87,31 @@
     "claim": "the review's surviving mutants fail a test every run: the contact turned by the rotation (not its transpose), the measure the force spacing (the #308 alternative), off_patch judged within 0.6 force spacings; and the band set to zero",
     "kind": "acceptance",
     "case": "tests/oracles/test_graded_sampling.py's pins, each mutant applied to the source, through detection_rate.py",
-    "prediction": {"value": "each mutant caught N/N, clean 0/N (deterministic tests)", "basis": "derived"}
+    "prediction": {
+      "value": "each mutant caught N/N, clean 0/N (deterministic tests)",
+      "basis": "derived"
+    }
   },
   "gate_308_switch": {
     "claim": "the shipped measure (cell) reproduces the review's +5.243 % at blob 0.1, half a spacing; the switch set to force_spacing gives +3.333 %",
     "kind": "equality",
-    "prediction": {"value": "+5.243 % and +3.333 % within 0.005 points", "basis": "measured-before (the review's arms, reproduced to the printed digit there)"}
+    "prediction": {
+      "value": "+5.243 % and +3.333 % within 0.005 points",
+      "basis": "measured-before (the review's arms, reproduced to the printed digit there)"
+    }
   },
   "bits": {
     "cases": "uniform programs (mrs_solids, mrs_near_field, mrs_plane, mrs_tube, mrs_free_space, two spheres near a tube wall, a box's edge near a plane, FL-9 near a tube wall, drag 0.4.0's integrated plane image), six steps of every node's state, float32 and float64, the release tip against the head in one job, one CPU set, one thread",
     "prediction": "every array np.array_equal"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-10, after the gates ran; the predictions above are unchanged",
+    "gate_B1_flag_control": "met: caught 30/30 for each of sphere blob 0.1, sphere blob 0.025, box (two arms of 15 each), clean 0/30 each (probe run 42775606849, head 3564b41)",
+    "gate_B1_flag_sweep": "met: the sphere's flag rises at 38 degrees (blob 0.1) and 36 (0.025) about x, y and skew, never silent after; the box's at 88 degrees, raised to 180 (run 42775606849); discriminating range: every draw from 38 degrees (sphere, 40/40; 36 degrees 0/40) and 87.5 (box, 12/12; 85 0/12)",
+    "gate_M1_range": "met: compiles (1,), the node at the most graded force points over the rule's nine points (inside the range, above both corners), the rule Sampled, the uniform rule Monotone (tests/ranges/test_mrs_graded_range.py, local); the mutant taking the monotone rule caught 3/3, clean 0/3 (run 42777897771)",
+    "gate_M2_walk": "met: rounded, every pair quiet (the helix's contact gap not discriminating); exact, FL-9 at 0.6 mm bakes under radius, length, wavenumber and modulation (one force point re-chosen each), the helix under filament_radius (8) and spacing (770) (run 42777285034); FL-9 at 1.0 mm quiet both ways, so not used; the mutant with the rounding exact caught 3/3, clean 0/3 (run 42777897771)",
+    "gate_M4_pins": "met: contact frame, measure spacing, measure default, flag band 0.6, band zero, range monotone and rounding off each caught 3/3, clean 0/3 (run 42777897771)",
+    "gate_308_switch": "met: cell +5.2435 %, force spacing +3.3329 % within 5e-5 (tests/oracles/test_graded_sampling.py, local and in the probe's clean arms)",
+    "bits": "met at 3564b41: float32 254/254 and float64 254/254 arrays equal over the nine programs, base 49a413a (run 42775606849)"
+  }
 }
