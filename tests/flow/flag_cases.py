@@ -146,19 +146,23 @@ def _none(setter: Setter) -> None:
     del setter
 
 
-def _stops_short(setter: Setter) -> None:
-    """The CG stops at a tolerance 1e4 times the node's own, the node declaring (and reporting) its default."""
-    real = node_module.Stopping
+def stops_short(factor: float) -> Callable[[Setter], None]:
+    """The CG stops at a tolerance ``factor`` times the node's own, the node declaring (and reporting) its default."""
 
-    def stopping(**given: Any) -> Any:
-        return real(**{**given, "tolerance": 1e4 * given["tolerance"]})
+    def planted(setter: Setter) -> None:
+        real = node_module.Stopping
 
-    setter(node_module, "Stopping", stopping)
+        def stopping(**given: Any) -> Any:
+            return real(**{**given, "tolerance": factor * given["tolerance"]})
+
+        setter(node_module, "Stopping", stopping)
+
+    return planted
 
 
 #: Each plant by name: what it patches (two of the solve's take node settings instead, :func:`settings_of`).
 PLANTS: dict[str, Callable[[Setter], None]] = {
-    "solve_two_iterations": _none, "solve_tolerance_1e4": _none, "solve_stops_short_1e4": _stops_short,
+    "solve_two_iterations": _none, "solve_tolerance_1e4": _none, "solve_stops_short_1e4": stops_short(1e4),
     "convection_stale": _stale,
     "convection_permuted": _permuted, "convection_advective": _advective, "convection_past_the_line": _past_the_line,
     "convection_scaled": _operator(1.5), "convection_negated": _operator(-1.0),
@@ -216,4 +220,4 @@ def readings(point: Point, dtype: str, plant: str | None = None, flags: Any = No
     return node, found
 
 
-__all__ = ["AIMED", "PLANTS", "STEPS", "Point", "draw", "readings", "settings_of"]
+__all__ = ["AIMED", "PLANTS", "STEPS", "Point", "draw", "readings", "settings_of", "stops_short"]

@@ -10,7 +10,11 @@ were measured on.
 - **Quiet on correct runs**: each active flag's worst reading under its line, in both dtypes.
 - **Each flag's plant caught** (the control): a solve stopped at a tolerance 1e4 looser (the stall), a convective term
   formed from the run's starting velocity (convection), the fluid's mask lost beyond the band (the leak). The pending
-  openings' two are never counted."""
+  openings' two are never counted.
+- **The stall line's value**: every plant above reads many lines over it, so a line loosened threefold passes them (one
+  tightened threefold is caught by the clean runs). The node's flag is read at 2 % over and under the line as declared
+  (here, written out), and a solve stopped short is scaled to read 1.5 to 2.5 lines high, where a threefold looser line
+  misses it."""
 
 from __future__ import annotations
 
@@ -18,8 +22,10 @@ import dataclasses
 
 import numpy as np
 import pytest
-from flag_cases import PLANTS, draw, readings
+import flag_cases
+from flag_cases import PLANTS, draw, readings, stops_short
 
+from mime.core import jnp
 from mime.core.ledger import LedgerFlag
 from mime.nodes.flow.fvm import DEFAULT_TOLERANCE, STALL_LINES, STALL_PER_TOLERANCE, ExplicitFlowNode, ImplicitFlowNode
 from mime.nodes.flow.fvm._flags import FLAGS
@@ -131,3 +137,53 @@ def test_a_looser_tolerance_is_judged_against_that_solve(dtype):
     assert reading.max() > STALL_LINES[dtype], "the control cannot discriminate: the reading is under the default line"
     assert reading.max() < STALL_PER_TOLERANCE[dtype] * loose
     assert not (found["node_flag"] > 0.5).any()
+
+
+# -- the stall line's value, pinned ----------------------------------------------------------------------------------
+#: The line as declared, written out here and not read from ``STALL_PER_TOLERANCE``, so that a changed line is a changed
+#: number in this file too: every plant above reads many lines over it, so nothing else checks its value.
+PINNED_PER_TOLERANCE = {"float64": 1000.0, "float32": 500.0}
+#: Stops-short plants (seed, the CG's tolerance as a multiple of the node's) that land the worst reading between 1.5 and
+#: 2.5 lines, found by search on the plant's reading, which moves with the factor in steps (the CG stops on a whole
+#: iteration): at 1.5 to 2.5 lines a line loosened threefold misses the stall and one tightened threefold still flags it
+#: (the clean readings' maximum is under 0.6 of the line). Each is checked to land, below.
+LANDED = {"float64": ((1007, 53.0), (1000, 8.0)), "float32": ((1002, 270.0), (1007, 41.0))}
+
+
+def test_the_harnesss_line_is_the_pinned_line(dtype):
+    assert STALL.line[dtype] == PINNED_PER_TOLERANCE[dtype] * NOMINAL[dtype]
+    assert STALL_PER_TOLERANCE[dtype] == PINNED_PER_TOLERANCE[dtype]
+
+
+@pytest.mark.parametrize("looser", [1.0, 10.0])
+@pytest.mark.parametrize("side", [0.98, 1.02])
+def test_the_nodes_flag_is_set_just_over_the_line_and_not_just_under_it(dtype, side, looser, monkeypatch):
+    """The node's ``stall_flagged`` where its stall reading is planted at 2 % over or under the pinned line, at the
+    default tolerance and a tenfold looser one (the line moves with it): set over, not under, on every step. A line
+    loosened or tightened by more than 2 % moves one of the two."""
+    tolerance = looser * NOMINAL[dtype]
+    reading = side * PINNED_PER_TOLERANCE[dtype] * tolerance
+
+    def planted(cls, energy):
+        return jnp.full((), reading, dtype=jnp.asarray(energy["krylov"]).dtype)
+
+    monkeypatch.setattr(ImplicitFlowNode, "stall_ratio", classmethod(planted))
+    monkeypatch.setattr(flag_cases, "STEPS", 3)
+    _, found = readings(draw(SEEDS[0]), dtype, flags=[NODE_FLAG], settings={"tolerance": tolerance})
+    assert np.array_equal(found["node_flag"] > 0.5, np.full(3, side > 1.0))
+
+
+
+@pytest.mark.parametrize("case", [0, 1])
+def test_control_a_stall_reading_one_and_a_half_to_two_and_a_half_lines_high_is_caught(dtype, case, monkeypatch):
+    """A solve stopped short, scaled to read between 1.5 and 2.5 lines at its worst step (a control that fails every
+    run: the plant lands in the band, and both the node's flag and the harness's are set at the reading's steps)."""
+    seed, factor = LANDED[dtype][case]
+    line = PINNED_PER_TOLERANCE[dtype] * NOMINAL[dtype]
+    stops_short(factor)(monkeypatch.setattr)
+    _, found = readings(draw(seed), dtype, flags=[STALL, NODE_FLAG])
+    worst = np.abs(found["stall"]).max() / line
+    assert 1.5 <= worst <= 2.5, f"the plant landed at {worst:.2f} lines: search a new factor for seed {seed}"
+    over = np.abs(found["stall"]) > line
+    assert over.any() and np.array_equal(found["node_flag"] > 0.5, over)
+    assert (np.abs(found["stall"]) > STALL.line[dtype]).any()
