@@ -21,8 +21,9 @@ status acknowledged, since this gate is what checks it in these values. The step
 
 **Controls** (``gradient_plants.py``, each switched on by ``MIME_PLANT_GRADIENT`` for the gate kit's detection rate): a value
 baked at build (``baked``) and ``stop_gradient`` on a leaf the path uses (``stopped``) each move the derivative by its
-leaf's share, far past the line. The line's discriminating range is stated per case (``oracles.py`` of the probe: a
-planted relative error in the case's factor, the smallest caught on every draw)."""
+leaf's share, far past the line. The line's discriminating range, per case (a planted relative error in the case's
+factor, the smallest caught on every draw, refined; probe run 42796313803): the sphere 1.07e-7, the viscosity 1.15e-7, the
+drive amplitude 1.07e-7, so an error under about 1e-7 in a factor is not seen at this line, in any case."""
 
 from __future__ import annotations
 

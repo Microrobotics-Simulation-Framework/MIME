@@ -153,6 +153,23 @@ def test_the_rechecks_own_solves_are_run_and_converge_in_more_than_the_one_itera
     assert np.all(np.asarray(own.steps)[:, ITERATIONS] > 1), "converged in more than the one iteration it was capped at"
 
 
+def test_a_solve_stagnated_at_the_rounding_floor_is_warned_of_rechecked_and_reported_stopped_short_as_well():
+    """A tolerance under float64's rounding floor (1e-17) stops each solve stagnated, not at its cap: the recheck lifts
+    the cap and raises the stall restarts, which cannot take a solve under its floor, so it changes nothing and says its
+    own solves stopped short as well (a recheck that claimed to converge there would be wrong)."""
+    steps = 2
+    result = Study(tube(report_rows=steps, tolerance=1e-17, name="tube_stagnated")).sweep(
+        along({PATH: [mPa_s(1.0)]}), duration=ms(20.0 * steps)).gradient(flux, mode="reverse", acknowledged=ACKNOWLEDGED)
+    member = result.member(0)
+    (report,) = member.solves
+    rows = np.asarray(report.steps)
+    assert np.all(rows[:, REPORT_FIELDS.index("stagnated")] == 1) and np.all(rows[:, AT_CAP] == 0)
+    recheck = member.recheck
+    assert recheck is not None and recheck.made and recheck.lifted == ("water.flow",)
+    assert not recheck.converged and recheck.value_change < SAME and recheck.gradient_change[PATH] < SAME
+    assert "stopped short as well" in member.text()
+
+
 def test_a_flagged_node_with_a_non_finite_solve_or_no_recheck_is_reported_not_rechecked_and_nothing_is_re_solved():
     """The recheck's structure with the reports made by hand: a non-finite residual is not what a lifted cap or a
     restart removes, and a node whose solve reads no recheck has none; each member is told which, and no program is

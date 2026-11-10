@@ -186,6 +186,15 @@
         "basis": "measured-before (run 42786519269)"
       },
       "measured_at": "the same quantity on this head, as a probe arm through the study's own derivative program"
+    },
+    "outcomes": {
+      "measured": "probe run 42796313803 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803), head be61bcc, 20 arms",
+      "m1_recheck": "as predicted for the equality, better than predicted: with the cap planted through the node's cap setting the recheck's objective and derivative equal the clean run's exactly (0.0 relative) in reverse and forward mode; the capped member is off the clean run by 1.08e-3 (objective) and 6.3e-3 (reverse derivative) or 4.6e-3 (forward derivative), so the guessed size of the change (above 1e-3) held for the objective by 8 percent only, and the test's line is 1e-4; the transpose cap moves the derivative alone (1.9e-3, the objective 0). A stagnation (tolerance 1e-17, below float64's rounding floor) is rechecked and reported stopped short as well, changes 0 (a test).",
+      "m2_gate_7_machinery": "as predicted (tests, 13 passing and 2 skipping before the stagnation test was added); the gate 7 file as the oracle: forward mode's tangent report zeroed 30/30, reverse mode's transpose report zeroed 30/30, the warnings dropped 30/30, the recheck re-solving nothing 30/30 (clean 0/10 each); the cap itself through the node's setting 30/30 and through the seam 30/30 (clean 0/30) (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803)",
+      "m3_gate_9": "every control re-run on the final head: baked and stopped 30/30 on the sphere, 12/12 on the tube, clean 0; the drive at h = 1e-2 passes (the file's tests pass); discriminating range (planted relative error in the case's factor, smallest caught on every draw, refined): sphere 1.07e-7, viscosity 1.15e-7, drive 1.07e-7, as predicted (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803, arms range_sphere, range_viscosity, range_drive)",
+      "gate_5": "1096 of 1096 arrays np.array_equal in float64 and 1096 of 1096 in float32, 12 programs against the release tip, one CPU, on the final head (the solve was restructured to take its transpose stopping through a seam; its program is the same one)",
+      "gate_6_and_guard": "controls re-run on the final head: drop the flag, the stop, the extrapolation and the guard's NaN 30/30 each, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803)",
+      "gate_10_memory": "as the review measured, on this head through the study's own derivative program (the compiled program's static temp_size_in_bytes): tube reverse 40 steps 1.33 MB checkpointed, 2.51 MB not; 80 steps 1.49 and 4.59 MB; forward 0.48 MB; sphere reverse 80 and 320 steps 68.98 MB checkpointed and 68.97 MB not (no saving), forward 22.44 MB"
     }
   }
 }
