@@ -72,6 +72,10 @@ DISSIPATIVE, POTENTIAL, WORKLESS, UNMETERED = "dissipative", "potential", "workl
 ENERGY_CLASSES = (DISSIPATIVE, POTENTIAL, WORKLESS)
 #: ``mime.vocabulary.Definiteness.STATE``'s value: a law whose operator's definiteness is checked at run time.
 CHECK_DEFINITE = "state"
+#: A delivery whose sign is judged in its cluster's sum, not on its receiver's row: a medium's near field's lagged cross
+#: loads, which have no sign alone (one body drags another), judged by the joint node at one velocity, the grand
+#: resistance's quadratic form at the step's starting twists (its ``cluster_gift_steps``); metered all the same.
+CHECK_CLUSTER = "cluster"
 #: The constructor argument that attaches the ledger, and the prefix of the fields it adds to a receiver's state.
 LEDGER, RECORDS = "ledger", "ledger_"
 #: The step identity's rounding floor, in units of the run's eps on the step's scale (the magnitude of the arithmetic
@@ -149,8 +153,9 @@ class LedgerDelivery:
             raise ValueError(f"a delivery's kind is one of {[*DELIVERY_KINDS, HOSTED]}, not {self.kind!r}")
         if self.energy_class not in (*ENERGY_CLASSES, UNMETERED):
             raise ValueError(f"a law's class is one of {[*ENERGY_CLASSES, UNMETERED]}, not {self.energy_class!r}")
-        if self.check not in ("", CHECK_DEFINITE):
-            raise ValueError(f"a delivery's run-time check is {CHECK_DEFINITE!r} or none, not {self.check!r}")
+        if self.check not in ("", CHECK_DEFINITE, CHECK_CLUSTER):
+            raise ValueError(f"a delivery's run-time check is {CHECK_DEFINITE!r}, {CHECK_CLUSTER!r} or none, not "
+                             f"{self.check!r}")
         if any(_SEPARATOR in getattr(self, f.name) for f in fields(self)):
             raise ValueError(f"no field of a delivery holds {_SEPARATOR!r}: {self}")
 
@@ -343,7 +348,8 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     (``step_identity``; over :data:`IDENTITY_ULPS` times eps it has failed), the unattributed work as its largest
     magnitude (above zero it has failed), and per law the count of steps whose operator failed its definiteness
     (``indefinite_steps``) and, per **dissipative** law of ``held``, the count of steps in which its paired work was
-    positive beyond :data:`IDENTITY_ULPS` units of eps on the step's scale, or, for a law held in the step, its rule's
+    positive beyond :data:`IDENTITY_ULPS` units of eps on the step's scale (but a delivery judged in its cluster's sum,
+    :data:`CHECK_CLUSTER`, which its producer judges), or, for a law held in the step, its rule's
     removal at arrival negative beyond it (``gift_steps``: a dissipative law gives no energy, whatever it is
     delivered, neither through the step's solve nor by its rule at arrival; this is its class's sign, read from the
     law's own row, and it is silent on the identity, which books the gift under the law's name)."""
@@ -356,7 +362,7 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     gifts = jnp.zeros_like(state[f"{RECORDS}gift_steps"])
     rows = laws(held)
     floor = IDENTITY_ULPS * jnp.finfo(dtype).eps * step.scale
-    for row in sorted({rows.index(d.law) for d in held if d.energy_class == DISSIPATIVE}):
+    for row in sorted({rows.index(d.law) for d in held if d.energy_class == DISSIPATIVE and d.check != CHECK_CLUSTER}):
         gave = (step.work[row] > floor) | (step.hosted[row, 0] < -floor)
         gifts = gifts.at[row].set(gave.astype(dtype))
     r = RECORDS
@@ -517,10 +523,10 @@ def metered_route_one_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec]
     return {**ended, **route_one_recorded(state, account, held)}
 
 
-__all__ = ["CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES", "FLOW_IN", "HOSTED",
-           "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS", "ROUTE_ONE_FIELDS",
-           "SOLVED", "UNMETERED", "WORKLESS", "LedgerDelivery", "LedgerRecords", "StepAccount", "balance",
-           "balance_floor", "between_floors", "definite_at_floor", "deliveries", "initial_records", "law_input", "laws",
-           "losses", "magnitude", "metered_route_one_step", "metered_step", "own_input", "paired_work", "recorded",
-           "route_one_recorded", "route_one_records", "stored", "summed", "summed_pair", "unrecorded",
-           "with_law_inputs", "with_records"]
+__all__ = ["CHECK_CLUSTER", "CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES",
+           "FLOW_IN", "HOSTED", "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS",
+           "ROUTE_ONE_FIELDS", "SOLVED", "UNMETERED", "WORKLESS", "LedgerDelivery", "LedgerRecords", "StepAccount",
+           "balance", "balance_floor", "between_floors", "definite_at_floor", "deliveries", "initial_records",
+           "law_input", "laws", "losses", "magnitude", "metered_route_one_step", "metered_step", "own_input",
+           "paired_work", "recorded", "route_one_recorded", "route_one_records", "stored", "summed", "summed_pair",
+           "unrecorded", "with_law_inputs", "with_records"]

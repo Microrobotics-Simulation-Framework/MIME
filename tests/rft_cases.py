@@ -15,6 +15,7 @@ import numpy as np
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.interactions import Drag
+from mime.interactions.hydrodynamic import UncoupledDrag
 from mime.nodes.hydro import RFTDragNode
 from mime.nodes.hydro.mrs import wall_correction_named
 from mime.registry import Interaction
@@ -48,6 +49,11 @@ def centroid(settings: Mapping[str, float]) -> np.ndarray:
 
 def rft(**settings: Any) -> Interaction:
     return Drag.RFT(**settings)
+
+
+def kept_rft(**settings: Any) -> Interaction:
+    """The rung on drag 0.4.0, kept registered (``UncoupledDrag``): the version the rung was added to first."""
+    return UncoupledDrag.RFT(**settings)
 
 
 def helix_body(name: str, kind: Any, settings: Mapping[str, float], law: Interaction, *, tube: Tube | None = None,
@@ -111,10 +117,10 @@ def swimming_speed(resistance: np.ndarray) -> float:
     return float(-resistance[0, 3] / resistance[0, 0])
 
 
-def rft_free_space() -> Experiment:
+def rft_free_space(title: str = "rft_free_space", law: Any = rft) -> Experiment:
     """The round-trip case: a helix, a capsule and a prolate ellipsoid in water filling no region, each with the rung
     at its defaults, each moving and turning from the start."""
-    experiment = Experiment("rft_free_space", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment = Experiment(title, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_medium(Medium("water"))
     experiment.declare("water.viscosity", WATER, reason="water")
     kinds = {"coil": R6_HELIX, "rod": Capsule(radius=mm(0.03), height=mm(1.0), axis=(0.0, 0.6, 0.8)),
@@ -127,8 +133,14 @@ def rft_free_space() -> Experiment:
             angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
         experiment.declare(f"{name}.mass", kg(1e-9), reason="a sub-millimetre body's order")
         experiment.declare(f"{name}.inertia", kg_m2((1e-16, 2e-16, 3e-16)), reason="a sub-millimetre body's order")
-        experiment.attach(rft(wall_kind="free_space"), body=name, medium="water")
+        experiment.attach(law(wall_kind="free_space"), body=name, medium="water")
     return experiment
+
+
+def rft_kept() -> Experiment:
+    """``rft_free_space`` on drag 0.4.0, kept: the rung's golden output under the version it was added to, whose record
+    leaves ``coefficients`` out of every program on another rung."""
+    return rft_free_space("rft_kept", kept_rft)
 
 
 #: A helix small against its tube, on the tube's axis (the validity record's tube_k012): its resistance with the table is

@@ -203,8 +203,8 @@ def test_the_controls_the_version_check_removed_and_the_checks_in_the_other_orde
 def _entry_this_mime_no_longer_registers(folder):
     """script_a's drag recorded at a version no installed package registers, as a document from before a change."""
     document = (folder / DOCUMENT_FILE).read_text()
-    assert "name: drag\n  version: 0.4.0" in document
-    (folder / DOCUMENT_FILE).write_text(document.replace("name: drag\n  version: 0.4.0", "name: drag\n  version: 0.9.9"))
+    assert "name: drag\n  version: 0.5.0" in document
+    (folder / DOCUMENT_FILE).write_text(document.replace("name: drag\n  version: 0.5.0", "name: drag\n  version: 0.9.9"))
     _edit_lock(folder, lambda lock: [record.update(version="0.9.9") for record in lock["entries"]
                                      if record["name"] == "drag"])
 

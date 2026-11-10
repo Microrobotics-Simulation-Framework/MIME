@@ -36,7 +36,7 @@ from mime.registry import (
 from mime.scene._caps import cap_rings, ring_floor
 from mime.scene._centreline import straight
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
-from mime.scene._sampling import length_of, magnitude_of, quasi_uniform
+from mime.scene._sampling import counted, length_of, magnitude_of, quasi_uniform
 from mime.units import Length, Magnitude, Quantity
 
 
@@ -199,7 +199,7 @@ class Cylinder(Solid):
             return around, _counted(length, spacing, 1)
         if patch == "caps":
             # a cap's samples as dense as the side's, its area over the spacing squared, in rings (``_caps``)
-            return (max(1 + ring_floor(1), math.ceil(math.pi * radius * radius / (spacing * spacing))),)
+            return (counted(math.pi * radius * radius / (spacing * spacing), 1 + ring_floor(1)),)
         raise KeyError(patch)
 
     @override
@@ -554,7 +554,7 @@ def _around(count: int) -> np.ndarray:
 
 
 def _counted(length: float, spacing: float, least: int) -> int:
-    return max(least, math.ceil(length / spacing))
+    return counted(length / spacing, least)
 
 
 @register_geometry

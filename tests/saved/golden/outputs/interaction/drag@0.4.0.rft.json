@@ -1,6 +1,6 @@
 {
  "entry": "interaction drag 0.4.0",
- "case": "rft_free_space",
+ "case": "rft_kept",
  "steps": 8,
  "outputs": {
   "drag:coil": {

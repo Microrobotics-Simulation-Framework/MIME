@@ -30,7 +30,7 @@ from mime.registry import (
 )
 from mime.scene._caps import any_closer, cap_rings, ring_floor, symmetric_total
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
-from mime.scene._sampling import length_of, magnitude_of, quasi_uniform
+from mime.scene._sampling import counted, length_of, magnitude_of, quasi_uniform
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
 #: JAX's lax, whose loops carry no types (``mime.core._shapes`` takes it alike).
@@ -210,13 +210,13 @@ class Screw(Solid):
     @override
     def sample_counts(self, settings: Mapping[str, Magnitude], spacing: float, patch: str) -> tuple[int, ...]:
         radius, length, _, epsilon = self._section(settings)
-        around = max(4 * self.starts + 1, math.ceil(2.0 * math.pi * radius * (1.0 + epsilon) / spacing))
+        around = counted(2.0 * math.pi * radius * (1.0 + epsilon) / spacing, 4 * self.starts + 1)
         if patch == "lateral":
-            return around, max(1, math.ceil(length / spacing))
+            return around, counted(length / spacing)
         if patch == "caps":
             # A polar grid's count, outward rings of around samples, made symmetric; lowered by whole rounds where it
             # would crowd, never below one ring of the fewest round the centre.
-            outward = max(1, math.ceil(radius * (1.0 + epsilon) / spacing))
+            outward = counted(radius * (1.0 + epsilon) / spacing)
             total = symmetric_total(outward * around, self.starts)
             while outward > 1 and symmetric_total((outward - 1) * around, self.starts) > ring_floor(self.starts) \
                     and any_closer(self._cap_plane(radius, epsilon, total), CAP_SEPARATION * spacing):

@@ -58,7 +58,7 @@ LEDGER_FLOOR = 1e-9
 #: The rft rung's least eigenvalue is of a matrix scaled to a unit diagonal, so its scale is one; for a straight body
 #: (the rod, the seed) it is the spin's rounding, of either sign, a few units in the last place, and is judged against
 #: that scale, never its own. The coil's, 0.79, is a real number and is held to 1e-10 of it.
-CASE_FLOORS = {("rft_free_space", "least_eigenvalue"): 1.0}
+CASE_FLOORS = {("rft_free_space", "least_eigenvalue"): 1.0, ("rft_kept", "least_eigenvalue"): 1.0}
 
 
 def floor_of(field: str, case: str = "") -> float:
@@ -235,7 +235,7 @@ def test_a_rate_moved_beyond_a_positions_last_bits_over_the_step_is_caught():
 def test_the_rft_least_eigenvalue_is_judged_on_its_unit_scale():
     """The control: the coil's real least eigenvalue moved by 1e-8 is caught on every run; a straight body's, a few units
     in the last place of rounding, moved by 1e-14 is not (it is noise), and by 1e-8 is."""
-    golden = json.loads(path_of(("interaction", "drag", "0.4.0"), "rft").read_text())
+    golden = json.loads(path_of(("interaction", "drag", "0.5.0"), "rft").read_text())
     for node, size, caught in (("drag:coil", 1e-8, True), ("drag:rod", 1e-14, False), ("drag:rod", 1e-8, True)):
         moved = json.loads(json.dumps(golden))
         moved["outputs"][node]["least_eigenvalue"][0] += size
