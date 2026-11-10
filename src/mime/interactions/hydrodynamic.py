@@ -1677,10 +1677,10 @@ class Drag(UncoupledDrag):
                              f"the floor")
         return found
 
-    @override
-    def plan(self, ctx: PlanContext) -> Plan:
-        if self.rung != "stokes":
-            return super().plan(ctx)
+    def _stokes_plan(self, ctx: PlanContext) -> Plan:
+        """The stokes rung's plan: the body's pose and twist and the medium's face sets read, the drag and its
+        Maxey-Riley part delivered to the body, the scatter to the medium's exchange (unless one-way), the body
+        registered with the medium's field as an exchange partner."""
         problems = self._stokes_problems(ctx)
         delivers = {"resistance": Delivery("body", RESISTANCE.name),
                     "background_load": Delivery("body", BACKGROUND_LOAD.name),
@@ -2114,7 +2114,10 @@ class Drag(UncoupledDrag):
     @override
     def plan(self, ctx: PlanContext) -> Plan:
         """0.4.0's, and with lubrication the roughness of the body's surface and of the wall's, each read where the
-        experiment declares it (``<body>.roughness``, ``<structure>.roughness``; ``DEFAULT_ROUGHNESS`` otherwise)."""
+        experiment declares it (``<body>.roughness``, ``<structure>.roughness``; ``DEFAULT_ROUGHNESS`` otherwise); the
+        stokes rung's its own (:meth:`_stokes_plan`)."""
+        if self.rung == "stokes":
+            return self._stokes_plan(ctx)
         found = super().plan(ctx)
         if not self.lubricated(ctx):
             return found
