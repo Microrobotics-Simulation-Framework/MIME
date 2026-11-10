@@ -1,0 +1,94 @@
+{
+  "written": "2026-11-10, committed before any gate of F2a's PR 2a ran (the commit that adds this file is the timestamp): composed walls in mime.scene, the seam-aware union's exact signed distance (ExactUnion), the fillet as the union's closing, the tube tree (TubeTree: segments, junctions, a fillet, its centreline and lumen), the walls' half of the resolution report",
+  "phase": "F2a, PR 2a: composed walls in mime.scene (no FVM change, no solver change)",
+  "labels": "predictions by the builder from the first step's measurements (a prototype of the rule against a brute force, the same Y), from the derivation in mime.scene._union's docstring, and from development checks run while writing the code (listed under seen_before); a guess says so",
+  "seen_before": [
+    "F2a's first step (a prototype of the same rule, its own brute force at h/16, the spike's Y: three capsules of radius D/2 meeting at the origin, daughters at +-30 degrees, three sub-cell offsets, axis-aligned): composed at most 0.029 to 0.040 cells in the fluid at D/h 8 and 16, zero in the solid; the plain minimum 0.81 to 1.75 cells in the fluid on every offset; 0.5 to 1 % of the band's points failing the check",
+    "development checks of this code (dev scripts outside the repository, float64 and float32, CPU, axis-aligned Y, one to three sub-cell offsets, a brute force at h/32 over the points with |brute| < 2h): D/h 8 composed 0.019 cells fluid, 0.013 solid, plain minimum 0.56; D/h 16 composed 0.013 to 0.019 fluid, 0.014 to 0.020 solid, plain minimum 0.43 to 0.69, equal radii and radii 0.5/0.4/0.3 D, the same in float32 to the digits printed; no unrefined or unconverged point",
+    "development check of the tube tree (float64): the fillet share's derivative against a central difference within 7e-14 of a 2e-4 scale, a daughter's radius's within 1e-9 of a 1.1 scale, at 20 points failing the check; the normal's length 1 to within 6e-15; the centreline contract (mime.testing.centreline_problems) empty on the Y and on the split-and-merge loop"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (laptop for development; GitHub's 4-vCPU runners for the gates' rates)",
+    "sizes_and_parameters": "a parent diameter D of 1 mm; D/h 8 and 16 (h the grid's spacing); points on a world-aligned lattice of spacing h with a uniform sub-cell offset, within 1.3 D of the junction; the band |plain minimum| < 2h or |brute force| < 2h (the first step's band); the Y with equal radii D/2 (the spike's, segments 3 D) and with radii 0.5, 0.4, 0.3 D (segments 2 D), daughters at +-30 degrees",
+    "seeds_and_draws": "each draw a uniform random rotation of the vessel (never aligned with the lattice) and a uniform sub-cell offset, from DETECTION_SEED (fixed seeds in CI); 200 draws for each control's rate, fanned out as probe arms on Actions; physical scales only (vessels of a millimetre, fillets of tens of micrometres)"
+  },
+  "gate_1_composition_against_brute_force": {
+    "claim": "the seam-aware union's signed distance is exact within the band to the brute force's floor, at random rotations and sub-cell offsets (tilted and offset vessels), in both dtypes: under the band's contract line of 0.05 cells in the fluid and in the solid, with no unrefined and no unconverged point",
+    "kind": "bounds (the brute force is a sampled surface: it bounds the error from above by its floor plus the error)",
+    "case": "tests/scene/test_exact_union.py::test_the_union_is_exact_against_a_brute_force (TubeTree's lumen, its plan from the check at margin 0)",
+    "prediction": {"value": 0.02, "band": [0.005, 0.035], "unit": "cells, the largest |composed - brute| over the band, fluid and solid, per draw", "basis": "measured-before", "why": "the brute force at h/32 has a floor of about s/sqrt(2) = 0.022 cells next to the wall; the development checks read 0.013 to 0.020"},
+    "metric": "max |composed - brute| in cells over the band: the band's contract is a line on exactly this",
+    "control": {
+      "plant": "the plain minimum in place of the composed distance (MIME_PLANT_UNION=minimum), 0.4 to 1.75 cells off in the fluid, far above the line",
+      "environment_variable": "MIME_PLANT_UNION",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "from discriminating_range.py: a planted error added at the failing points; predicted resolution about 0.035 to 0.05 cells (the line less the composed error on the draw)"
+    },
+    "float32": "the same line in float32; composed float32 against composed float64 within 1e-3 cells (predicted about 1e-4: Newton's floor at 4096 units in the last place of the point's scale is the acceptance, its reach far below)",
+    "if_wrong": "a draw over the line means the candidates miss a nearest point (Newton reaching another seam point, a corner not tried): the worst point's candidates are printed and the rule's completeness claim is withdrawn for that geometry",
+    "cannot_discriminate_if": "the band holds no failing point (no seam in the box): asserted against, each draw must hold failing points"
+  },
+  "gate_2_fillet_against_closed_form": {
+    "claim": "the fillet (the union's closing by a ball of radius r) is exact on both sides against closed forms: a wedge of two half-spaces (a straight seam) and two overlapping balls (a circular seam), at random orientations, openings, fillet radii and placements",
+    "kind": "equality to rounding",
+    "case": "tests/scene/test_exact_union.py::test_the_fillet_is_the_closing_in_closed_form",
+    "prediction": {"value": 1e-13, "band": [0.0, 1e-11], "unit": "m, the largest |composed - closed form| in float64 at points within a few fillet radii of the seam, on a millimetre geometry", "basis": "derived", "why": "Newton converges to rounding (the half-spaces' seam in one step); 64 units in the last place of 1e-3 m is 1.4e-17 m, so a few hundred ulps"},
+    "float32": "within 1e-3 cells of h = 62.5 um (predicted about 1e-4 cells: a few hundred float32 ulps of 1e-3 m)",
+    "derivative": "the fillet share's derivative against a central difference (float64) within 1e-6 of its scale",
+    "control": {
+      "plant": "the fillet dropped (the sharp union compared with the filleted closed form; MIME_PLANT_FILLET=dropped): off by about r (1/sin(w/2) - 1) near the seam, at least 1.5e-3 r at the widest drawn opening",
+      "environment_variable": "MIME_PLANT_FILLET",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "from discriminating_range.py: the fillet's radius scaled by 1 + size; predicted resolution about 1e-9 relative (rounding over r)"
+    },
+    "if_wrong": "an error above rounding on the solid side would refute the derivation that the closing is exact on both sides (the record said 'the solid side is unchecked')",
+    "cannot_discriminate_if": "the drawn points all lie far from the seam (the fillet moves nothing there): points are drawn within three fillet radii of it"
+  },
+  "gate_3_junction_continuity": {
+    "claim": "the composed distance is continuous through the tree's junctions (the Y's and the loop's two), filleted and sharp, at random rotations: on dense lines through each junction no step between neighbouring samples exceeds their spacing (an exact signed distance is 1-Lipschitz)",
+    "kind": "acceptance (a necessary property; exactness is gate 1's)",
+    "case": "tests/scene/test_exact_union.py::test_the_distance_is_continuous_through_the_junctions",
+    "prediction": {"value": 1.0, "band": [0.999, 1.0], "unit": "the largest |step in distance| / spacing over the lines (plus rounding)", "basis": "derived", "why": "every candidate is a point of the boundary and the check's switch is continuous where a wall point reaches a seam"},
+    "control": {
+      "plant": "the carina's seam left out of the candidates (MIME_PLANT_UNION=no-carina-seam), as a Newton that never converges there: the depth jumps where the check starts failing, by a share of the false wall (predicted 0.2 to 1 cell)",
+      "environment_variable": "MIME_PLANT_UNION",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "the line's slack is rounding; any jump above the spacing's rounding is caught"
+    },
+    "if_wrong": "a jump means two candidates disagree where the rule switches between them: the switch's set is printed",
+    "cannot_discriminate_if": "the lines miss the failing region: each line passes through the carina's neighbourhood by construction and the failing points along it are counted (at least one per line asserted)"
+  },
+  "gate_4_derivatives_implicit": {
+    "claim": "the distance's derivatives by implicit differentiation are exact where a seam or a corner is the nearest point: in the point, the fillet share, a daughter's radius and the junction's position, against central differences in float64",
+    "kind": "equality to the difference's truncation and rounding",
+    "case": "tests/scene/test_exact_union.py::test_the_seams_derivatives_are_the_implicit_ones",
+    "prediction": {"value": 1e-8, "band": [0.0, 1e-6], "unit": "|AD - FD| over the derivative's scale", "basis": "measured-before", "why": "the development check read 3e-10 (share) and 1e-9 (radius) relative"},
+    "control": {
+      "plant": "the implicit step left out (the seam's point held, MIME_PLANT_IMPLICIT=held): its derivative in the parameters loses the seam's motion",
+      "environment_variable": "MIME_PLANT_IMPLICIT",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "from discriminating_range.py: the tangent scaled by 1 + size; predicted resolution about 1e-6"
+    },
+    "if_wrong": "a mismatch at a converged seam means the held Jacobian is not the KKT system's",
+    "cannot_discriminate_if": "the drawn point's nearest candidate is the plain wall (no seam): the points are drawn among those whose selected candidate is a seam, and a draw whose differences straddle a switch (one-sided differences disagreeing) is non-discriminating, counted, never a pass"
+  },
+  "bits": {
+    "cases": "the released programs of tests/saved/cases.py the previous builds compared (script_a, hull_contact, coupled_toy, dynamic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow), 20 ms with every field at every step, float64 and float32, base release/v0.3.0 and head in one job, one CPU, one BLAS thread (bit_compare.py)",
+    "prediction": "every array np.array_equal: no node, solver or saved form is touched",
+    "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "one parameter one ulp up: arrays differ"}
+  },
+  "costs": {
+    "prediction": "no time or memory claim in this PR: no node runs the union yet; the FVM's wall measures it through its node in the PR that adopts it",
+    "measured_at": "none"
+  },
+  "outcomes": null
+}
