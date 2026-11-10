@@ -207,9 +207,9 @@ class Plane(Geometry):
     ``offset`` its signed distance from the world's origin along that direction. Its regions are the ``half_space`` its
     normal points into, which a medium fills (``Medium(..., fills=floor.half_space)``), evaluated as the half-space
     (``mime.core.HalfSpace``), and the ``wall``, the other side. It has no surface yet (a contact against it comes
-    later), no drawing and no region primitive: its ``offset`` is a length that reaches a law as the node leaf ``wall_offset`` (a
-    structure's settings are not yet study or override axes), and its normal a direction, held as built. Its derivative is the half-space's: its distance is linear in the point and the offset, so
-    it has no switch."""
+    later), no drawing and no region primitive: its ``offset`` is a length that reaches a law as the node leaf
+    ``wall_offset`` (a study's axis and a run's override, ``floor.offset``), and its normal a direction, held as built.
+    Its derivative is the half-space's: its distance is linear in the point and the offset, so it has no switch."""
 
     name = "plane"
     version = "0.1.0"

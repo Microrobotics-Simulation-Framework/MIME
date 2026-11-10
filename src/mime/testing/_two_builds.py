@@ -31,14 +31,14 @@ build's chunk.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
 import jax
 import numpy as np
 
-from mime.build._in_graph import program_of
+from mime.build._in_graph import nested_program
 from mime.build._maddening import (
     chunk_function,
     chunk_step,
@@ -78,36 +78,6 @@ def _x64_only() -> None:
             "True)` before the first build",
             why="in float32 a literal prints in float32, so the trace form cannot see a value moved by less than about "
                 "3e-8 of itself")])
-
-
-def nested_program(closed: Any) -> Program:
-    """:func:`~mime.build._in_graph.program_of` of a traced step with the constants of every nested sub-program
-    appended, in the order the walk meets them: the closed jaxprs in the parameters of its equations (``jit``, ``cond``
-    branches, ``scan`` and ``while`` bodies, the functions of ``custom_jvp`` and ``custom_vjp``, the ``jaxprs`` of
-    ``custom_linear_solve``), and so on down. An array a nested ``jit`` closes over is the constant of that
-    sub-program: it is in neither the printed text nor the top-level constants."""
-    text, consts = program_of(closed)
-
-    def walk(program: Any) -> None:
-        for equation in getattr(program, "jaxpr", program).eqns:
-            for parameter in equation.params.values():
-                visit(parameter)
-
-    def visit(value: Any) -> None:
-        if hasattr(value, "consts") and (hasattr(value, "eqns") or hasattr(value, "jaxpr")):
-            consts.extend(np.asarray(held) for held in value.consts)
-            walk(value)
-        elif isinstance(value, tuple | list):
-            for each in cast(Sequence[Any], value):
-                visit(each)
-        elif isinstance(value, dict):
-            for each in cast(dict[Any, Any], value).values():
-                visit(each)
-        elif hasattr(value, "eqns"):
-            walk(value)
-
-    walk(closed)
-    return text, consts
 
 
 def step_program(built: BuiltExperiment) -> Program:

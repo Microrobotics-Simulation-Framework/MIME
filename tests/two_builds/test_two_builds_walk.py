@@ -39,7 +39,7 @@ from cases import CASES
 from mrs_cases import mrs_solids
 from robot_asset import bound_robot_with_parts
 
-from mime.build import BuildRefused, plan_experiment
+from mime.build import ArgumentRefused, BuildRefused, plan_experiment
 from mime.build._construct import assemble
 from mime.build._maddening import chunk_step, full_state, graph_params, parameter_leaves, unreadable_leaves
 from mime.control import law_and_models
@@ -199,23 +199,20 @@ REBUILDS = {
 @pytest.mark.parametrize("name", list(REBUILDS))
 def test_a_held_setting_takes_a_rebuild_an_override_and_a_sweep_are_refused(name: str):
     """What makes the walk's held fires acceptable: no run varies a leaf the step cannot read. An override of the
-    setting is refused, and a sweep over it refuses every point and its run, so a new value takes a new experiment, a
-    rebuild; neither runs at the built value. The control: a value the step reads is overridden and planned as one
-    group of two members, nothing refused."""
+    setting and a sweep over it are refused (``study.held-geometry``: a kind's setting that is not one number names no
+    axis, whose nodes hold it as built), so a new value takes a new experiment, a rebuild; neither runs at the built
+    value. The control: a value the step reads is overridden and planned as one group of two members, nothing
+    refused."""
     make, path, base, moved, leaf, axis, own, other = REBUILDS[name]
     exp = make()
     built = exp.build()
     assert leaf in unreadable_leaves(built.graph)
-    with pytest.raises(BuildRefused) as raised:
+    with pytest.raises(ArgumentRefused) as raised:
         built.run(ms(2.0), override={path: moved})
-    assert raised.value.codes() == ["value.unknown"]
-    swept = Study(exp).sweep(grid({path: [base, moved]}), duration=ms(2.0))
-    plan = swept.plan()
-    assert not plan.groups and len(plan.refused) == 2
-    assert all([r.code for r in point.refusals] == ["value.unknown"] for point in plan.refused), plan.text()
-    with pytest.raises(BuildRefused) as run:
-        swept.run()
-    assert run.value.codes() == ["study.refused-points"]
+    assert raised.value.codes() == ["study.held-geometry"]
+    with pytest.raises(ArgumentRefused) as swept:
+        Study(exp).sweep(grid({path: [base, moved]}), duration=ms(2.0)).run()
+    assert swept.value.codes() == ["study.held-geometry"]
 
     built.run(ms(2.0), override={axis: other})
     control = Study(exp).sweep(grid({axis: [own, other]}), duration=ms(2.0)).plan()
