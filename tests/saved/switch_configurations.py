@@ -57,7 +57,9 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     if hasattr(Drag, "handover_window"):  # a merge base before lubrication's hand-over builds no such drag
         from lubrication_cases import above_plane
 
-        found["drag/lubricated_sphere"] = partial(above_plane, 0.2)
+        # a coarse blob: the step's structure (its raw sites) is the same at any blob, and each worker that runs the
+        # scan holds every configuration's traced step, the quadrature's arrays in it
+        found["drag/lubricated_sphere"] = partial(above_plane, 0.2, blob=0.25)
     return found
 
 

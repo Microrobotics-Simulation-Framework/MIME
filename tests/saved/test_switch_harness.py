@@ -1266,7 +1266,7 @@ def mrs_plane_graph():
 def lubricated_plane_graph():
     from lubrication_cases import above_plane
 
-    return above_plane(0.2).build().graph
+    return above_plane(0.2, blob=0.25).build().graph  # the step's structure at a coarse blob, its arrays small
 
 
 def tracking_points():
