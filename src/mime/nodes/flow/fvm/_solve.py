@@ -110,10 +110,11 @@ STALL_RESTART_MEASURED = (
     "the CPU's rounding (14 of 22 at D/h 8 here); a restart where the stop would find the stagnation breaks each (379 "
     "of 379 draws at D/h 8, at 102 to 390 iterations, within 5.4e-7 of float64's answer; 8 of 8 at D/h 16 at 657 to "
     "686; at D/h 32 the steady solve at 1693 and its IMEX Euler steps at 1264 and 1240; at D/h 64 the steady solve at "
-    "its floor at 3522), one restart sufficing on every case counted; a restart every 100 iterations instead broke "
-    "the small stalls, but at D/h 64 kept the stiff solve from progressing (0.76 at 1540 iterations, its flux 3.7 % "
-    "off, where the plain CG reached 2.0e-3) and cost converging solves up to twice the iterations; replacing the "
-    "residual alone every 100 iterations, the direction kept, left 13 of 16 D/h 16 draws stalled")
+    "its floor, at 3522 or 4155 by the kind of core), one restart sufficing on every case counted; a restart every "
+    "100 iterations instead broke the small stalls, but at D/h 64 kept the stiff solve from progressing (0.76 at 1540 "
+    "iterations, its flux 3.7 % off, where the plain CG reached 2.0e-3) and cost converging solves up to twice the "
+    "iterations; replacing the residual alone every 100 iterations, the direction kept, left 13 of 16 D/h 16 draws "
+    "stalled")
 
 
 @dataclass(frozen=True)
