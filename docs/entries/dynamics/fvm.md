@@ -71,11 +71,14 @@ material record or `exp.declare`, never settings of the field.
 
 Open at the vessel's ends, `FVM(domain=VesselRegion())` on a straight tube along z, each end is an opening that takes
 one law: an `Inflow` (a flux given) or a `Windkessel` (a pressure affine in its flux over the step), attached with
-`medium=` and `surface=tube.inlet` or `surface=tube.outlet`. The box is open along its axis, the faces on its two planes
+`medium=` and `surface=tube.start` or `surface=tube.end`. The openings are the ones the vessel's geometry kind declares
+for the region the medium fills, named by geometry (a straight tube's `start` and `end` along its axis), never by the
+role a law gives them. The box is open along its axis, the faces on its two planes
 evolved half cells, so its projector stays exact; the step holds the openings' laws and couples them implicitly
 through its affine response (one unit field a step, solved again from the last), and the build refuses openings whose
 rows have no solution. IMEX Euler and its steady limit step it; RK3 with openings, tilted open vessels and a step
-rule for the open box (`dt='auto'`) come later.
+rule for the open box come later: `dt='auto'` is refused for it, saying so, and its CFL stop names a timestep from the
+inflow's peak.
 
 Each step of the implicit schemes reports its solve: the iterations, the true residual against the tolerance, and how
 the solve stopped (at its cap, stagnated, at a residual that is not finite); RK3's projections are exact fast solves,
@@ -116,7 +119,7 @@ and ±10 % at 32 (measured on a static tube). They stay trainable. The entry dec
 
 **When not to use it.**
 - Anywhere but a periodic box around a straight circular tube (aligned with z or tilted in the x-z plane along a lattice
-  direction of the box) or that tube along z open at its ends: a region cut from a vessel by planes, two outlets,
+  direction of the box) or that tube along z open at its ends: a region cut from a vessel by planes, several openings,
   valves and other vessels arrive with later versions.
 - Near a wall at a resolution the band does not resolve: the wall's shift is calibrated on straight tubes at the default
   resolution and finer, and about five cells across a lumen is the band's floor.

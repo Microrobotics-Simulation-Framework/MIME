@@ -104,8 +104,8 @@ def prescribed_tube_flow() -> Experiment:
 
 
 def open_tube_flow() -> Experiment:
-    """The FVM on the open vessel: the same tube, one millimetre long, cut at its own ends, an inflow at its inlet
-    (steady and pulsatile) and an RCR Windkessel at its outlet; IMEX Euler with convection on."""
+    """The FVM on the open vessel: the same tube, one millimetre long, cut at its own ends, an inflow at its start
+    (steady and pulsatile) and an RCR Windkessel at its end; IMEX Euler with convection on."""
     from mime.dynamics import FVM, Scheme
     from mime.interactions import Inflow, Windkessel
     from mime.scene import Scene, Tube, VesselRegion, Z
@@ -119,9 +119,9 @@ def open_tube_flow() -> Experiment:
     experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
     experiment.attach(Inflow(steady=mL_per_s(1e-3), amplitude=mL_per_s(3e-4), frequency=Hz(2.0)), medium="water",
-                      surface="tube.inlet")
+                      surface="tube.start")
     experiment.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
-                      medium="water", surface="tube.outlet")
+                      medium="water", surface="tube.end")
     return experiment
 
 

@@ -79,7 +79,8 @@ unit mass each law driving it delivers, and the drive's waveform, which reaches 
 its stage instants) and `opening` (a flow's openings' outward volume fluxes, `flow.opening_flux`, a row per opening,
 against their pressures: a pressure row's offset a load, `flow.opening_pressure`, its block solved,
 `flow.opening_impedance`; a flux row is held in the flow's step, as the laws at its openings are, registered with it
-through `flow.opening`); `DeliveryKind`, `EnergyClass`,
+through `flow.opening`, so in F2b's PR 2 no delivery pairs through it: its laws are registrations, booked as the
+flow's hosted rows); `DeliveryKind`, `EnergyClass`,
 `Definiteness`, and `POWER` and `ENERGY`, what a delivery and its flow pair to.
 
 **What a kind checks, and who reads it.** A kind fixes the flow and the delivery kind of each interface it accepts,

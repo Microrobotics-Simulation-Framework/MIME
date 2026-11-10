@@ -1,8 +1,9 @@
 """The open box's books (F2b's PR 2; predictions in ``predictions_open_ports.json``): FB13, IMEX Euler's step identity
 closes with open faces (``ledger_closes``), the kinetic-energy flux booked under the openings' line and not zero on
 these draws; its control, an interior gift; ``N_proj`` booked at rounding; ``N_WK``'s order in dt (``term_orders``),
-its control a physical loss written into it; the open box's flags declared, each pending until its line and rate are
-measured (``flag_problems`` holds none active without evidence)."""
+its control a physical loss written into it; the open box's flag declared with its measured line and rate
+(``flag_problems`` holds none active without evidence), and no pending flag declared (one not built is not
+declared)."""
 
 from __future__ import annotations
 
@@ -62,7 +63,8 @@ def test_control_a_loss_written_into_n_wk_fails_its_order(float64, monkeypatch):
 
 def test_the_open_flags_are_declared_and_none_claims_coverage_unshown():
     assert not flag_problems(OPEN_FLAGS)
-    assert {flag.name for flag in OPEN_FLAGS} >= {"open_face_projection", "port_kinetic_flux"}
+    assert [flag.name for flag in OPEN_FLAGS] == ["open_face_projection"]
+    assert all(flag.active and not flag.pending for flag in OPEN_FLAGS)
     assert OpenFlowNode.LEDGER_FLAGS is OPEN_FLAGS
 
 

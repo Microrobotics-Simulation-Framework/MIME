@@ -11,23 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A flow open at the vessel's ends, and the laws at its openings: `VesselRegion`, `Inflow`, `Windkessel`, the
   `opening` port kind.** `FVM(domain=VesselRegion())` on a straight tube along z cuts the region the medium fills at the
-  tube's own two ends, its new surfaces `tube.inlet` and `tube.outlet`, each an opening whose law is attached there:
-  `exp.attach(Inflow(steady=mL_per_s(...)), medium=blood, surface=tube.inlet)`, a volume flux pinned at the opening's
+  openings its geometry kind declares for it (`Geometry.openings`, read through `Region.openings`; named by geometry,
+  never by role): the tube's own two ends, its new surfaces `tube.start` and `tube.end` along its axis, each an opening
+  whose law is attached there:
+  `exp.attach(Inflow(steady=mL_per_s(...)), medium=blood, surface=tube.start)`, a volume flux pinned at the opening's
   evolved face (a flux row), and `exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=blood,
-  surface=tube.outlet)`, the RCR stepped by backward Euler at the flow's instant (a pressure row). The grid is open
+  surface=tube.end)`, the RCR stepped by backward Euler at the flow's instant (a pressure row). The grid is open
   along z with its planes' faces at half weight, so the projector stays orthogonal; the step holds each opening's law,
   coupled implicitly through the field's affine response (one unit field a step for the opening that is not the
   gauge's reference, made in the program and solved again from the last), its openings' rows solved together (A2's
-  hybrid rows), the build refusing rows with no solution (`flow.openings-ill-posed`), a law at no opening, an opening
-  with none or two, a law on a periodic box, RK3 with openings and a tilted open vessel. With the energy ledger the
+  hybrid rows) for each relative pressure's move before the pressure level, so no move is the difference of two
+  absolute pressures and the inflow's flux holds to its summation floor at any downstream resistance (the state keeps
+  `opening_pressure_relative` beside `opening_pressure`), the build refusing rows with no solution
+  (`flow.openings-ill-posed`), a law at no opening, an opening with none or two, a law on a periodic box, RK3 with
+  openings and a tilted open vessel. An open vessel has no step rule yet: `dt='auto'` is refused saying so
+  (`StepRule.unbounded`), and its CFL stop names a timestep from the inflow's peak. With the energy ledger the
   open flow is metered through `fluid` and the new `opening` port kind (a flow's openings' outward fluxes, a row per
   opening, against their pressures): each law's work under its name, the inflow a source supplying it, the kinetic
   energy convection carries through the openings as one line (`<node>.openings`, the scheme's own convective power
-  `dt rho <C(u), u>`), `N_proj` booked (rounding at the half-weight faces); a law that stores energy of its own keeps
-  its own books beside the flow's (`mime.core.ledger.law_records`: its storage at the step's start and end, its loss,
-  its numerical term, its own identity judged), and its loss is read net of what it gives back. `mime.testing.
-  port_law_suite`, the port-law family suite: a law's per-stage block passive over draws (CI check (a)), its own books
-  closing. Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
+  `dt rho <C(u), u>`), `N_proj` booked (rounding at the half-weight faces) and flagged (`open_face_projection`); a
+  law that stores energy of its own keeps its own books beside the flow's (`mime.core.ledger.law_records`,
+  `LawRecords`: its storage at the step's start and end, its loss, its numerical term, its own identity judged on its
+  own scale), and its loss is read net of what it gives back. `mime.testing.port_law_suite`, the port-law family
+  suite: the block of the row a law gives the solver passive over draws, at the step and its limit `dt -> 0` (CI check
+  (a)), its own books closing. The open grid's operator is gated at its planes against closed forms (its viscous and
+  convective half cells). Not built, and no flag declared for them: the port work against the kinetic-energy flux
+  through the openings (it needs the convective power split by plane), and the periodic box's flags on the open box and
+  on RK3 (RK3 declares none). Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
 
 - **A study's derivative: `Study.gradient(of, wrt=None, mode="auto", acknowledged=None)`** (lane S's third PR, the
   gradient path), returning `mime.results.GradientResult` (each member's `MemberGradient`: the objective, its

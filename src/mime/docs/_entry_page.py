@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from mime.docs._context import (
     VOCABULARY_PATH,
@@ -275,8 +275,12 @@ def _settings(w: Writer, record: Record) -> None:
         declared = mapping(settings.get(name))
         role = mapping(roles.get(name))
         group = field.get("group")
+        held_groups = [str(g) for g in cast(list[object], group)] if isinstance(group, list) else \
+            ([str(group)] if group else [])
+        grouped_as = (f"a group, `{held_groups[0]}`" if len(held_groups) == 1 else
+                      "one of the groups " + ", ".join(f"`{g}`" for g in held_groups)) if held_groups else "none"
         rows.append([code(name), code(field.get("type", "")), w.value(f"setting {name} default", field.get("default")),
-                     dimension_text(declared) if declared else (f"a group, `{group}`" if group else "none"),
+                     dimension_text(declared) if declared else grouped_as,
                      str(role.get("role", "none declared")), str(role.get("default", "none: required"))])
     w.table(["Setting", "Type", "Default", "Dimension", "Role", "Default's kind"], rows)
     w.paragraph("Each role and default's kind is the entry's `setting_roles` (`mime.registry.SettingRole`); a setting "

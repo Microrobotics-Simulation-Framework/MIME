@@ -1,10 +1,12 @@
 """The port-law family suite: the cases every law held at a flow's opening passes, on the law alone (F0's "Part D
 tail", item 1, CI check (a); ``mime.nodes.flow.fvm._ports``).
 
-- **Passivity**: the law's per-stage block has a positive semidefinite symmetric part over draws at physical scales
-  (``mime.core.ledger.definite_at_floor``). A sign or a transposition in a law is invisible to its own identity, which
-  books whatever the law does, and the same property keeps the openings' rows well posed. A source (a given flux or
-  pressure) supplies work and is exempt, said so.
+- **Passivity**: the block of the row the law gives the solver (``PortLaw.affine``'s, never a copy of it) has a
+  positive semidefinite symmetric part over draws at physical scales (``mime.core.ledger.definite_at_floor``), at the
+  draw's step and at the step's limit ``dt -> 0`` (a law stepped at every step a run can take: there a Windkessel's block
+  is its proximal resistance, so a sign error in it fails every draw). A sign or a transposition in a law is invisible
+  to its own identity, which books whatever the law does, and the same property keeps the openings' rows well posed. A
+  source (a given flux or pressure) supplies work and is exempt, said so.
 - **Its own books**: over a stage at drawn states, the work it received, ``dt p q`` at the pressure its row gives,
   equals its storage's change, its loss and its numerical term, to rounding.
 
@@ -22,7 +24,7 @@ import numpy as np
 from maddening.testing.verification import VerificationResult
 
 from mime.core import jnp
-from mime.nodes.flow.fvm._ports import PARAMETERS, PortLaw, RowKind, passive
+from mime.nodes.flow.fvm._ports import PARAMETERS, PortLaw, RowKind, block, passive
 
 _NAME = "port law"
 
@@ -73,9 +75,10 @@ def port_law_suite(law: PortLaw, *, max_examples: int = 200) -> VerificationResu
     def check(drawn: tuple[float, ...]) -> None:
         row, dt, state, flux = _parts(law, drawn)
         found: list[str] = []
-        if not bool(passive(law, row, dt)):
-            found.append(f"its block {np.asarray(law.block(row, dt)).tolist()} is not positive semidefinite at "
-                         f"{drawn}")
+        for step in (dt, 0.0):
+            if not bool(passive(law, row, step)):
+                found.append(f"its block {np.asarray(block(law, row, step)).tolist()} at dt = {step:g} is not "
+                             f"positive semidefinite at {drawn}")
         a, b = law.affine(row, state, 0.0, dt)
         pressure = a + b * flux if law.row is RowKind.PRESSURE else a
         ended = law.advanced(row, state, flux, jnp.asarray(pressure), dt)

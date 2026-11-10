@@ -501,6 +501,13 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
         if not (isinstance(shaped, Mapping) and all(k in named and isinstance(v, str) for k, v in
                                                     cast(Mapping[object, object], shaped).items())):
             found.append("region_shapes: a mapping of some of its regions to the names of the shapes they are")
+        openings: object = getattr(held, "openings", None)
+        surfaced = set(cast(Mapping[object, object], surfaces)) if isinstance(surfaces, Mapping) else set[object]()
+        if not (isinstance(openings, Mapping) and all(
+                k in named and isinstance(v, tuple) and all(o in surfaced for o in cast(tuple[object, ...], v))
+                for k, v in cast(Mapping[object, object], openings).items())):
+            found.append("openings: a mapping of some of its regions to the tuple of its surfaces each may be opened "
+                         "at, in order along its declared axis")
     if kind is EntryKind.WALL_KIND:
         found += _wall_kind_problems(held)
     if kind is EntryKind.FIELD_PROVIDER:

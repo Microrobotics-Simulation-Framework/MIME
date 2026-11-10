@@ -6,7 +6,7 @@ describes: "0.1.0"
 **What it models.** The downstream vessels beyond an opening as a lumped circuit: a `proximal` resistance, then the
 `compliance` of a capacitor drained by a `distal` resistance to a distal pressure of zero,
 `exp.attach(Windkessel(proximal=Pa_s_per_m3(...), compliance=m3_per_Pa(...), distal=Pa_s_per_m3(...)), medium=blood,
-surface=tube.outlet)`. The flow holds it in its own step and steps it by backward Euler at its own instant, so its
+surface=tube.end)`. The flow holds it in its own step and steps it by backward Euler at its own instant, so its
 pressure is affine in the opening's flux over the step (a pressure row) and the exchange across the opening does no work
 of its own. Backward Euler's numerical dissipation, half the compliance times the capacitor's change squared, first
 order in the step, is booked under its name with its capacitor's stored energy and its resistances' loss: with the

@@ -17,6 +17,7 @@ from ledger_cases import CONTACT_LAW, DRAG_LAW, LOAD_LAW, in_dtype, metered_body
 from mime.core import MimeNode
 from mime.core import ledger as books
 from mime.nodes.body import RigidInertialTensorNode
+from mime.registry import Dynamics, EntryKind, register_dynamics
 from mime.vocabulary import (
     APPLIED_WRENCH,
     LINK_INERTIA,
@@ -33,7 +34,7 @@ from mime.vocabulary import (
 
 
 def test_the_built_in_port_kinds_are_registered_and_their_units_pair_to_watts():
-    assert port_kinds() == ["delivered_inertia", "flow_in", "fluid", "joint", "rigid_body", "spinner"]
+    assert port_kinds() == ["delivered_inertia", "flow_in", "fluid", "joint", "opening", "rigid_body", "spinner"]
     assert all(port_kind(name) is not None and port_kind(name).problems() == [] for name in port_kinds())
 
 
@@ -155,3 +156,34 @@ def test_two_zero_diagonal_entries_coupled_to_each_other_alone_are_indefinite(na
     resistance[3, 4] = resistance[4, 3] = 1e-12
     with in_dtype(name) as dtype:
         assert not bool(books.definite_at_floor(jnp.asarray(resistance, dtype=dtype)))
+
+
+def _paired_twice(kinds: tuple[str, ...]) -> type:
+    from dataclasses import dataclass
+
+    from mime.gradients import GradientStatus
+    from mime.things import ThingKind
+
+    @dataclass(frozen=True, kw_only=True)
+    class PairedTwice(Dynamics):
+        name = "toy.paired_twice"
+        version = "0.1.0"
+        setting_roles = {}
+        differentiability = GradientStatus.EXACT
+        references = ()
+        builds = {"": ()}
+        applies_to = frozenset({ThingKind.BODY})
+        port_kinds = kinds
+
+    return PairedTwice
+
+
+def test_two_port_kinds_pairing_one_interface_are_refused_at_registration():
+    """#312: a delivery is paired by the one kind whose deliveries name its interface, so a dynamics naming two kinds
+    that both pair one (a chain joint's and a spinner's, ``apparatus.link_wrench``) is refused, naming them; the
+    control, the joint's kind alone, is not refused on that account."""
+    with pytest.raises(TypeError, match="'joint' and 'spinner' both pair 'apparatus.link_wrench'"):
+        register_dynamics(_paired_twice(("joint", "spinner")))
+    from mime.registry._registry import _energy_problems
+
+    assert not [p for p in _energy_problems(EntryKind.DYNAMICS, _paired_twice(("joint",))) if "both pair" in p]

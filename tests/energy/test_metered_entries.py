@@ -87,12 +87,20 @@ def test_an_entry_of_mime_s_that_says_neither_is_caught_by_name(registered, monk
 
 
 METERED = sorted(key for key in installed_entries() if key[0] == "dynamics" and classes(key).port_kinds)
+#: A port kind no law delivers into yet, with why it has no draws: its draws come with the first law that does.
+UNDRAWN = {"opening": "its deliveries (an opening's pressure, a load; its impedance, solved) pair nothing in F2b's PR 2: "
+                      "the laws at a flow's openings are held in its step as registrations and booked as hosted rows, "
+                      "gated by the open box's own (tests/flow/test_fvm_open_ledger.py); F2b's PR 3, whose laws "
+                      "deliver into it, brings its draws"}
 
 
 @pytest.mark.parametrize("key", METERED, ids=" ".join)
 def test_every_metered_dynamics_passes_its_step_identity(key):
     cls = classes(key)
-    assert cls.port_kinds[0] in PORT_DRAWS, "a new port kind brings its draws with it (mime.testing.PORT_DRAWS)"
+    for kind in cls.port_kinds:
+        assert kind in PORT_DRAWS or kind in UNDRAWN, \
+            f"a new port kind brings its draws with it (mime.testing.PORT_DRAWS): {kind!r}"
+    assert cls.port_kinds[0] in PORT_DRAWS, "a dynamics' first port kind is the one its step identity is drawn by"
     # A chain segment's and a flow's cases step their port kind's own rig, so they need no settings of the entry's.
     result = step_identity(cls.__new__(cls) if cls.port_kinds[0] in PORT_CASES else cls())
     print(f"\n{result}")

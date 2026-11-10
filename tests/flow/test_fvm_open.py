@@ -1,8 +1,9 @@
 """The open box's gates (F2b's PR 2; predictions in ``predictions_open_ports.json``, committed before they ran): FB1,
-the open tube is the periodic tube; FB2, the inflow's face flux is its waveform; FB3, the Windkessel's own books
-close; FB4, the step's superposed solution is the monolithic one at its solved pressures. Each with its control, a
-planted error caught on these draws; the controls' rates over fresh draws are measured on Actions (the PR's evidence
-table)."""
+the open tube is the periodic tube; FB2, the inflow's face flux is its waveform to its derived floor; FB3, the
+Windkessel's own books close on its own scale; FB4, the step's superposed solution is the monolithic one at its solved
+pressures. Each with its control, a planted error caught on these draws; the controls' rates over fresh draws are
+measured on Actions (the PR's evidence table). The draws reach a downstream resistance of 1e4 times the vessel's, and
+the gates hold there: a relative pressure's move is never formed as a difference of absolute pressures."""
 
 from __future__ import annotations
 
@@ -36,9 +37,9 @@ def test_the_open_tube_is_the_periodic_tube(dtype, monkeypatch, plant):
 
 @pytest.mark.parametrize("plant", [None, "inflow_scaled"])
 def test_the_inflows_face_flux_is_its_waveform(dtype, monkeypatch, plant):
-    """FB2: at every step the inlet's face flux is the inflow's waveform to 256 eps of the face's magnitude (the
-    prediction's 64 missed in float32 on 2 of 190 drawn runs); the control, a law that delivers 1e-3 more, is past
-    it."""
+    """FB2: at every step the start's face flux is the inflow's waveform to its floor, derived from the roundings it
+    carries (the face count's summation over the superposition's scale and the waveform's own; ``inflow_reading``),
+    never fitted; the control, a law that delivers 1e-3 more, is past it."""
     planted(monkeypatch, plant)
     for seed in SEEDS:
         node = point_node(draw(seed))
@@ -50,10 +51,11 @@ def test_the_inflows_face_flux_is_its_waveform(dtype, monkeypatch, plant):
 
 @pytest.mark.parametrize("plant", [None, "port_gift"])
 def test_the_windkessels_books_close(dtype, monkeypatch, plant):
-    """FB3: the Windkessel's own books close at every step to its floor (the work the fluid did on it is its
-    capacitor's change, its resistances' loss and N_WK), N_WK booked; the control, a negative resistance in its
-    stage's block that its books do not hold (a port gift), is past the floor. (The exchange alone, the fluid's port
-    work against the law's received work, pairs one solved flux on both sides and closes by construction: not a gate.)"""
+    """FB3: the Windkessel's own books close at every step to its floor on its own scale (the work the fluid did on it
+    is its capacitor's change, its resistances' loss and N_WK; the scale its terms' magnitudes and the face flux's
+    summation floor through its block), N_WK booked; the control, a negative resistance of 5 % of its row's block that
+    its books do not hold (a port gift), is past the floor. (The exchange alone, the fluid's port work against the law's
+    received work, pairs one face flux on both sides and closes by construction: not a gate.)"""
     planted(monkeypatch, plant)
     for seed in SEEDS:
         final, _ = scan(point_node(draw(seed)), STEPS)

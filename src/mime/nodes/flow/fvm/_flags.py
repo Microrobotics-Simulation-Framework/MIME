@@ -17,9 +17,13 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
 - the open box's own (``OPEN_FLAGS``): ``open_face_projection`` (``N_proj`` over the step's scale: a projector that is
-  not orthogonal under the books' inner product, its port faces at the wrong weight) and ``port_kinetic_flux`` (the
-  booked kinetic-energy flux against the face formula's: a flux left inside another term); the periodic box's three
-  are pending on the open box until their lines are measured there."""
+  not orthogonal under the books' inner product, its port faces at the wrong weight).
+
+**Not built** (no flag is declared for them, pending or otherwise): the record's port work against the kinetic-energy
+flux through the openings, whose reading needs the scheme's convective power split by plane (one line an opening, so
+the energy in and out does not cancel), F2b's PR 3 with the openings' own rows; and the periodic box's three on the
+open box and on RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those
+runs' own draws."""
 
 from __future__ import annotations
 
@@ -113,44 +117,6 @@ def projection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any
     return jnp.where(stepped, _share(jnp.abs(term), _step_scale(before, after)), 0.0)
 
 
-def face_kinetic_flux(node: Any, p: Mapping[str, Any], velocity: tuple[Array, Array, Array]) -> tuple[Array, Array]:
-    """The kinetic energy carried in through the openings over a step by the face formula, ``dt rho h^2 sum
-    (1/2)|u|^2 w`` on each plane (in at the low, out at the high; the tangential velocity at its end cell, averaged
-    onto the face's centre), and its gross, each plane's in magnitude summed."""
-    u, v, w = velocity
-    grid = node.grid(p)
-    weight = node.delta_t * as_run_array(p["density"]) * grid.spacing ** 2
-
-    def plane(end: int, w_end: Array) -> Array:
-        uc = 0.5 * (u[..., end] + jnp.roll(u[..., end], -1, 0))
-        vc = 0.5 * (v[..., end] + jnp.roll(v[..., end], -1, 1))
-        return jnp.sum(0.5 * (uc * uc + vc * vc + w_end * w_end) * w_end)
-
-    low, high = weight * plane(0, w[..., 0]), weight * plane(-1, w[..., -1])
-    return low - high, jnp.abs(low) + jnp.abs(high)
-
-
-#: The share of their gross the planes' net kinetic-energy flux must carry for a step to be judged: where the energy in
-#: and out nearly cancel, the face formula's own error is the whole of the net and the flag reads nothing.
-NET_SHARE = 0.1
-
-
-def kinetic_flux_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any],
-                         after: Mapping[str, Any]) -> Array:
-    """The kinetic energy's flux through the openings as the books hold it (the scheme's own convective power
-    ``dt rho <C(u), u>``, under ``<node>.openings``) against the face formula's at the step's start, over the face
-    formula's gross (each plane's in magnitude): rounding plus the face formula's own error (the open-ports spike's
-    0.74 % on a stenosis); a flux left in another term, or booked twice, reads above it. Judged only where the net
-    carries at least :data:`NET_SHARE` of the gross (zero elsewhere: a net that cancels is the formula's error)."""
-    held = books.deliveries(node.constants())
-    line = next(d.law for d in held if d.kind == books.HOSTED and d.field == "kinetic_flux")
-    booked = jnp.asarray(after[f"{books.RECORDS}step_work"])[books.laws(held).index(line)]
-    face, gross = face_kinetic_flux(node, p, _velocity(before))
-    judged = (jnp.abs(face) >= NET_SHARE * gross) & (jnp.asarray(after["stopped_at"]) < 0)
-    return jnp.where(judged, _share(jnp.abs(booked - face), gross), 0.0)
-
-
-
 #: The run that measured the lines: 200 draws a dtype of ``tests/flow/flag_cases.py``'s envelope (seeds 0 to 199), 60
 #: steps each, every flag read at every step.
 LINES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42769581278"
@@ -216,11 +182,6 @@ FLAGS: tuple[LedgerFlag, ...] = (
                settle=30),
 )
 
-#: RK3's flags: the periodic box's three, pending there.
-PENDING: tuple[LedgerFlag, ...] = tuple(
-    LedgerFlag(flag.name, flag.ratio, flag.reading, {}, "measured on IMEX Euler's drawn runs",
-               pending="its line was measured on IMEX Euler's drawn runs, not RK3's") for flag in FLAGS)
-
 #: The run that measured the open box's lines and rates: 200 drawn open runs a dtype (``tests/flow/open_cases.py``,
 #: seeds 0 to 199, 60 steps each) and each plant on 40 fresh draws (seeds from 1000), the same draws clean.
 OPEN_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42844502732"
@@ -229,24 +190,14 @@ _OPEN_CLEAN = (f"drawn open runs (an inflow and a Windkessel, IMEX Euler, D/h 8 
                f"{OPEN_MEASURED}")
 _UNIFORM = "the planes' faces at full weight in the inner product (the projector not orthogonal under it)"
 
-#: The open box's flags (``OpenFlowNode``): its two own, and the periodic box's three, pending there.
+#: The open box's flags (``OpenFlowNode``): its own (the module says which are not built).
 OPEN_FLAGS: tuple[LedgerFlag, ...] = (
     LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading,
                {"float64": 2e-17, "float32": 1e-8},
                f"200 {_OPEN_CLEAN}: worst 3.1e-18 (float64) and 2.4e-9 (float32), every step judged",
                _evidence(_UNIFORM, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, OPEN_MEASURED)),
-    LedgerFlag("port_kinetic_flux", "|the booked kinetic-energy flux - the face formula's| over the face formula's "
-                                    "gross", kinetic_flux_reading, {}, "not a check",
-               pending="judged only where the planes' net kinetic-energy flux carries a tenth of their gross, which "
-                       "23 of 190 drawn open runs inside the CFL line reach in each dtype (in and out nearly cancel: "
-                       "the net is a median 0.035 of the gross), so a flux left inside N_conv is caught on those alone; "
-                       "a reading per plane needs the scheme's convective power split by plane, which is not built. "
-                       "Its judged clean readings were at most 0.013 in both dtypes (" + OPEN_MEASURED + ")"),
-    *(LedgerFlag(flag.name, flag.ratio, flag.reading, {}, "measured on the periodic box",
-                 pending="its line was measured on the periodic box's drawn runs, not on the open box's")
-      for flag in FLAGS[:3]),
 )
 
-__all__ = ["CONVECTION_LINE_MEASURED", "NET_SHARE", "OPEN_FLAGS", "OPEN_MEASURED", "face_kinetic_flux", "kinetic_flux_reading", "projection_reading", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
-           "OPERATOR_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
-           "stall_reading"]
+__all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "OPEN_FLAGS",
+           "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
+           "projection_reading", "stall_reading"]

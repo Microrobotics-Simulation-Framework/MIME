@@ -1151,10 +1151,14 @@ class _Planner:
             if any(getattr(plan.entry, "rate", None) is not None for plan, _ in bounded):
                 return
             if not bounded:
+                missing = [f"{plan.thing!r}'s {plan.registered.cls.label()}: {rule.unbounded}" for plan, rule in rules
+                           if rule.unbounded]
                 if not unpredicted:
                     self.refuse("run.dt-auto-unset", RefusalClass.USER,
                                 "dt='auto' takes the base step from a field that bounds its own (a flow field with "
-                                "convection, or an explicit scheme), and nothing in this experiment does",
+                                "convection, or an explicit scheme), and "
+                                + (f"none here does yet: {'; '.join(missing)}" if missing else
+                                   "nothing in this experiment does"),
                                 "pass dt as a time to Experiment, such as dt=ms(1)")
                 return
             largest = min(cast(float, rule.largest) for _, rule in bounded)
@@ -1836,7 +1840,8 @@ class _Planner:
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
             self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}", error)
             return None
-        return Region(path, shape, parameters)
+        return Region(path, shape, parameters,
+                      tuple(f"{owner}.{surface}" for surface in type(plan.geometry).openings.get(part, ())))
 
     def literal_direction(self, value: object, what: str) -> tuple[float, float, float] | None:
         try:

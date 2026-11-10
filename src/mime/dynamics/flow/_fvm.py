@@ -26,7 +26,7 @@ from mime.core import jnp, run_dtype
 from mime.gradients import GradientStatus
 from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, ExplicitFlowNode, \
     ImplicitFlowNode, OpenFlowNode, periodic_tube_layout
-from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS
+from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
 from mime.nodes.flow.fvm._ports import port_law_named, well_posed
@@ -250,13 +250,19 @@ class FVM(Dynamics):
         f"refused past the memory a run can have (flow.memory): a GPU's limit, or on a CPU the smaller of the host's "
         f"available memory and the limit of the control group the process runs in, where one is set",
         f"geometry: {GEOMETRY}",
-        "openings (domain=VesselRegion()): a straight vessel along z cut at its two ends, each end an opening whose "
-        "law the step holds, coupled implicitly through the field's affine response (one unit field a step for the "
-        "opening that is not the gauge's reference, solved again from the last), its rows a pressure (Windkessel) or "
-        "a flux (Inflow); the inflow's face flux held to it to rounding; the Windkessel stepped by backward Euler, "
-        "its N_WK first order in dt; IMEX Euler or its steady limit only (RK3 with openings is not built); no step "
-        "rule yet: dt is given, dt='auto' refused, the CFL checked each step; tilted open vessels not built; float32 "
-        f"behind its guards: {FLOAT32_PORTS}",
+        "openings (domain=VesselRegion()): a straight vessel along z cut at the two ends its geometry kind declares "
+        "(a Tube's start and end), each an opening whose law the step holds, coupled implicitly through the field's "
+        "affine response (one unit field a step for the opening that is not the gauge's reference, solved again from "
+        "the last), its rows a pressure (Windkessel) or a flux (Inflow); an Inflow pins the whole plane's flux, the "
+        "wall's band included (the band carries its Darcy share, about 0.1 to 1 % of it, so the lumen takes Q less "
+        "that share); the inflow's face flux held to it to its summation floor, (N + 2) eps of its superposition's "
+        "scale over the plane's N faces, at any pressure level (a relative pressure's move is never formed from "
+        "absolute pressures; gated to a downstream resistance of 1e4 times the vessel's); the Windkessel stepped by "
+        "backward Euler, its N_WK first order in dt; a flux row at an opening the flow leaves by (a closed valve, "
+        "Inflow(steady=0)) is admitted and not gated yet (its gate, against the walled-off vessel, is F2b's third "
+        "PR's); IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
+        "dt='auto' refused, the CFL checked each step; tilted open vessels not built; float32 behind its guards: "
+        f"{FLOAT32_PORTS}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_LINE:g} (stall_flagged), is written with the "
         f"energy ledger attached (exp.observe(EnergyLedger())); a run without it has no stall report. Correct runs read "
         f"up to 5.1e-6 in float64 and 2.0e-3 in float32 (its tolerance against tau/dt, near 3e3) [measured, 200 drawn "
@@ -348,6 +354,12 @@ class FVM(Dynamics):
                                              f"lattice direction (a, 0, b) of the periodic box",
                             "align the tube with z, Tube(axis=+Z, ...), or tilt it in the x-z plane at a slope a/b of "
                             "small integers, Tube(axis=(a, 0, b), ...)")]
+        if self.open and len(region.openings) != 2:
+            return [Problem("flow.region", f"the flow's medium fills {region.path}, whose geometry kind declares "
+                                           f"{len(region.openings)} openings there; an open vessel is a straight "
+                                           f"vessel cut at the two ends its kind declares (a Tube's start and end)",
+                            "fill a Tube's lumen, Medium(fills=tube.lumen), or run the flow on a periodic box, "
+                            "FVM(domain=PeriodicBox(length=...))")]
         if self.open and lattice_of(_unit(region.parameters["axis"])) != (0, 1):
             return [Problem("flow.open-axis", f"the tube's axis {_unit(region.parameters['axis'])} is tilted, and an "
                                               f"open vessel's box is built along z only (tilted open vessels come "
@@ -356,10 +368,10 @@ class FVM(Dynamics):
         return []
 
     @staticmethod
-    def openings_of(region: Region) -> tuple[str, str]:
-        """The openings of the vessel the medium fills, cut at its own ends: its ``inlet`` and its ``outlet``."""
-        structure = region.path.partition(".")[0]
-        return (f"{structure}.inlet", f"{structure}.outlet")
+    def openings_of(region: Region) -> tuple[str, ...]:
+        """The openings of the vessel the medium fills, cut at its own ends: the surfaces its geometry kind declares
+        for the region, in order along its axis (a Tube's ``start`` and ``end``)."""
+        return region.openings
 
     @override
     def registration_problems(self, registrations: Sequence[ResolvedRegistration],
@@ -371,8 +383,8 @@ class FVM(Dynamics):
                                                 f"and the flow's periodic box has none",
                             "open the vessel's ends, FVM(domain=VesselRegion()), or drive the periodic box with "
                             "BodyForce")] if registrations else []
-        if region is None:
-            return []
+        if region is None or len(region.openings) != 2:
+            return []  # the region's own refusal names it
         openings = self.openings_of(region)
         found: list[Problem] = []
         for registration in registrations:
@@ -401,14 +413,16 @@ class FVM(Dynamics):
 
     def field_for(self, scheme: str) -> SolvedField:
         """The solved-field contract's declarations of this FVM stepped by ``scheme`` (its ledger route and its steady
-        solve are the scheme's), which SF-12's suite holds it to."""
-        return fvm_field(scheme)
+        solve are the scheme's; its ports and affine response its domain's), which SF-12's suite holds it to."""
+        return fvm_field(scheme, self.open)
 
     @classmethod
     @override
     def field_declarations(cls) -> tuple[SolvedField, ...]:
-        """One declaration a scheme (:meth:`field_for`)."""
-        return tuple(fvm_field(name) for name in SCHEMES)
+        """One declaration a scheme on a periodic box, and one a scheme that steps an open vessel (:meth:`field_for`)."""
+        return (*(fvm_field(name) for name in SCHEMES),
+                *(fvm_field(name, opened=True) for name in SCHEMES
+                  if scheme_named(name).stage_kind is StageKind.MONOLITHIC_PROJECTED_CG))
 
     @override
     def time_step(self, query: StepQuery) -> StepRule | None:
@@ -416,8 +430,8 @@ class FVM(Dynamics):
         from the drive's peak in the empty tube, the refusal past the line, and ``dt="auto"``'s largest stable step,
         each judged at the step the flow's node takes (its ``rate=`` included)."""
         region = query.region
-        if self.open:
-            return None  # an open vessel's step rule (the inflow's peak) comes with the region builder
+        if self.open:  # an open vessel's step rule (the CFL from the inflow's peak) comes with the region builder
+            return StepRule(None, lambda step, every: [], lambda step, every: (), unbounded=OPEN_STEP)
         if region is None or region.shape != "cylinder" or "viscosity" not in query.values \
                 or "density" not in query.values or lattice_of(_unit(region.parameters["axis"])) is None:
             return None
@@ -560,12 +574,12 @@ class FVM(Dynamics):
 
 def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],
                 region: Region) -> None:
-    """The open vessel's node: the box along z from the inlet's plane to the outlet's, each opening's law from its
+    """The open vessel's node: the box along z from its start's plane to its end's, each opening's law from its
     registration (its kind, its settings as a row of parameters, its id the ledger's name)."""
     by_opening = {r.subject: r for r in registrations}
     laws = [by_opening[opening] for opening in fvm.openings_of(region)]
-    inlet, outlet = (r.subject_parameters for r in laws)
-    length = -(float(cast(float, inlet["offset"])) + float(cast(float, outlet["offset"])))
+    start, end = (r.subject_parameters for r in laws)
+    length = -(float(cast(float, start["offset"])) + float(cast(float, end["offset"])))
     radius = float(region.parameters["radius"])  # type: ignore[arg-type]
     spacing = ctx.scalar("spacing") if fvm.spacing is not None else None
     layout = periodic_tube_layout(radius, length, cells_across=fvm.cells_across, spacing=spacing,

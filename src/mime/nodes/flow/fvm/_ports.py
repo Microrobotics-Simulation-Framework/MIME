@@ -10,14 +10,19 @@ for standard (power-conserving) relations: the stated limit that stays.
 
 **The port system** (:func:`port_system`). The field sees each opening's pressure relative to one reference opening
 (the gauge, decision 9: an incompressible field's effort is defined up to a constant, the laws see absolute pressures);
-its fluxes are affine in those differences through its unit fields' response ``R``: ``q = q0 + R (x - x_hat)``. The
-rows are solved for the differences and the reference's pressure together. **Well-posed** where some row is a pressure
-row; with none, the flux rows (which then cover every opening) sum to zero, so one is dropped for the gauge's reference
-row (the reference's pressure set to zero): what the build checks before it builds (:func:`well_posed`).
+its fluxes are affine in those differences through its unit fields' response ``R``: ``q = q0 + R m``, ``m`` the
+differences' move from those the step was solved at. The rows are solved for the moves first, the reference's
+pressure (the level) eliminated by its own row, then for the level: so a move is formed from the rows' own terms and
+never as the difference of two absolute pressures (whose rounding, ``eps |level|``, would grow with a downstream
+resistance many times the vessel's), save where two pressure laws' own pressures differ. **Well-posed** where some row
+is a pressure row; with none, the flux rows (which then cover every opening) sum to zero, so one is dropped for the
+gauge's reference row (the reference's pressure set to zero): what the build checks before it builds
+(:func:`well_posed`).
 
-**Passivity** (CI check (a)): a law's per-stage block ``b`` has a positive semidefinite symmetric part, which keeps the
-port system well posed and is invisible to the law's own identity (which books whatever the law does). A source
-(a given flux or pressure: it supplies work) is exempt (:attr:`PortLaw.source`)."""
+**Passivity** (CI check (a)): the block ``b`` of the row the solver solves (:meth:`PortLaw.affine`'s) has a positive
+semidefinite symmetric part at every step a run can take, its limit ``dt -> 0`` included, which keeps the port system
+well posed and is invisible to the law's own identity (which books whatever the law does). A source (a given flux or
+pressure: it supplies work) is exempt (:attr:`PortLaw.source`)."""
 
 from __future__ import annotations
 
@@ -26,7 +31,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, ClassVar, override
+from typing import Any, ClassVar, NamedTuple, override
 
 from jax import Array
 
@@ -99,11 +104,6 @@ class PortLaw:
         zero = jnp.zeros((), dtype=flux.dtype)
         return LawBooks(zero, zero, zero, zero)
 
-    def block(self, parameters: Array, dt: Any) -> Array:
-        """The law's per-stage block ``b`` (Pa s/m^3), a ``1 x 1`` matrix for a one-opening law: what the passivity
-        check reads."""
-        return jnp.zeros((1, 1), dtype=parameters.dtype)
-
 
 class Windkessel(PortLaw):
     """The RCR Windkessel stepped by backward Euler at the flow's instant (decision 8): the proximal resistance
@@ -143,10 +143,6 @@ class Windkessel(PortLaw):
         loss = dt * (parameters[0] * flux * flux + after * after / parameters[2])
         return LawBooks(0.5 * capacitance * before * before, 0.5 * capacitance * after * after, loss,
                         0.5 * capacitance * (after - before) ** 2)
-
-    @override
-    def block(self, parameters: Array, dt: Any) -> Array:
-        return jnp.reshape(parameters[0] + dt / self._denominator(parameters, dt), (1, 1))
 
 
 class Inflow(PortLaw):
@@ -229,45 +225,72 @@ def well_posed(rows: Sequence[RowKind], waveforms: Sequence[Sequence[float]] = (
             "instant: an incompressible flow takes in what it lets out, so the openings' rows have no solution")
 
 
+class PortSolution(NamedTuple):
+    """The port system's answer: each opening's pressure (absolute, Pa), its pressure relative to the reference opening
+    (Pa, zero at the reference: the field's own unknowns), that relative pressure's move from the one the step was
+    solved at (Pa, zero at the reference), and its outward flux by its row (m^3/s)."""
+
+    pressures: Array
+    relative: Array
+    moved: Array
+    fluxes: Array
+
+
 def port_system(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response: Array, predicted: Array,
-                reference: int) -> tuple[Array, Array]:
-    """The openings' pressures (absolute, Pa) and fluxes (outward, m^3/s) solving each opening's row with the field's
-    affine response: the fluxes ``q = base + R (x - x_hat)``, ``x`` the pressures relative to ``reference`` (the
-    field's own unknowns, ``R`` a column for each opening but the reference) and ``x_hat`` those the step was solved
-    at (``predicted``). Rows: a pressure row ``p_i - b_i q_i = a_i``, a flux row ``q_i = a_i``; with no pressure row the
-    reference's row is the gauge's, ``p_r = 0``."""
+                reference: int) -> PortSolution:
+    """The openings' pressures and fluxes solving each opening's row with the field's affine response: the fluxes
+    ``q = base + R m``, ``m`` the moves of the pressures relative to ``reference`` (``R`` a column for each opening but
+    the reference) from ``predicted``, those the step was solved at (relative, zero at the reference). Rows: a pressure
+    row ``p_i - b_i q_i = a_i`` with ``p_i = level + predicted_i + m_i``, a flux row ``q_i = a_i``; the reference's own
+    row is a pressure row where any is (``reference_of``) and gives the level once the moves are solved from the
+    others' rows (each other pressure row less the reference's, so the level leaves them); with no pressure row the
+    gauge sets the level to zero and the reference's flux row, which the others' imply, is dropped."""
     count = len(rows)
     others = [index for index in range(count) if index != reference]
+    a, b, base, response, predicted = (jnp.asarray(x) for x in (a, b, base, response, predicted))
     dtype = base.dtype
-    gauge_row = all(row is RowKind.FLUX for row in rows)
-    shift = jnp.stack([predicted[j] - predicted[reference] for j in others]) if others else jnp.zeros(0, dtype=dtype)
-    predicted_flux = base - response @ shift
-    matrix_rows: list[Array] = []
+
+    def row_of(i: int) -> tuple[Array, Array]:
+        """Opening ``i``'s row over the moves, its coefficients and right-hand side, the level's coefficient one for a
+        pressure row and zero for a flux row."""
+        if rows[i] is RowKind.FLUX:
+            return response[i], a[i] - base[i]
+        coefficients = -b[i] * response[i]
+        if i != reference:
+            coefficients = coefficients.at[others.index(i)].add(1.0)
+        return coefficients, a[i] + b[i] * base[i] - predicted[i]
+
+    gauge = rows[reference] is RowKind.FLUX
+    held = row_of(reference)
+    reduced: list[Array] = []
     right: list[Array] = []
-    for i, row in enumerate(rows):
-        if gauge_row and i == reference:
-            matrix_rows.append(jnp.zeros(count, dtype=dtype).at[-1].set(1.0))
-            right.append(jnp.zeros((), dtype=dtype))
-        elif row is RowKind.PRESSURE:
-            coefficients = -b[i] * response[i]
-            if i != reference:
-                coefficients = coefficients.at[others.index(i)].add(1.0)
-            matrix_rows.append(jnp.concatenate([coefficients, jnp.ones(1, dtype=dtype)]))
-            right.append(a[i] + b[i] * predicted_flux[i])
-        else:
-            matrix_rows.append(jnp.concatenate([response[i], jnp.zeros(1, dtype=dtype)]))
-            right.append(a[i] - predicted_flux[i])
-    solved = jnp.linalg.solve(jnp.stack(matrix_rows), jnp.stack(right))
-    relative, level = solved[:-1], solved[-1]
-    pressures = jnp.stack([level + (relative[others.index(j)] if j != reference else 0.0) for j in range(count)])
-    return pressures, predicted_flux + response @ relative
+    for i in others:
+        coefficients, value = row_of(i)
+        if rows[i] is RowKind.PRESSURE and not gauge:
+            coefficients, value = coefficients - held[0], value - held[1]
+        reduced.append(coefficients)
+        right.append(value)
+    moves = jnp.linalg.solve(jnp.stack(reduced), jnp.stack(right)) if others else jnp.zeros(0, dtype=dtype)
+    level = jnp.zeros((), dtype=dtype) if gauge else held[1] - jnp.dot(held[0], moves)
+    moved = jnp.stack([moves[others.index(j)] if j != reference else jnp.zeros((), dtype=dtype) for j in range(count)])
+    relative = jnp.stack([predicted[j] + moved[j] if j != reference else jnp.zeros((), dtype=dtype)
+                          for j in range(count)])
+    return PortSolution(level + relative, relative, moved, base + response @ moves)
+
+
+def block(law: PortLaw, parameters: Array, dt: Any) -> Array:
+    """The block ``b`` of the row ``law`` gives the solver over a stage of ``dt`` (Pa s/m^3), a ``1 x 1`` matrix for a
+    one-opening law: :meth:`PortLaw.affine`'s own, at a state of zero (a law's block does not depend on its state)."""
+    state = jnp.zeros(STATES, dtype=parameters.dtype)
+    return jnp.reshape(law.affine(parameters, state, jnp.zeros((), dtype=parameters.dtype), dt)[1], (1, 1))
 
 
 def passive(law: PortLaw, parameters: Array, dt: Any) -> Array:
-    """Whether ``law``'s per-stage block at ``parameters`` has a positive semidefinite symmetric part, judged by
-    ``definite_at_floor`` (traced: a boolean)."""
-    return books.definite_at_floor(law.block(parameters, dt))
+    """Whether the block of the row ``law`` gives the solver (:func:`block`) has a positive semidefinite symmetric part
+    at ``parameters`` over a stage of ``dt``, judged by ``definite_at_floor`` (traced: a boolean)."""
+    return books.definite_at_floor(block(law, parameters, dt))
 
 
-__all__ = ["PARAMETERS", "PORT_LAWS", "STATES", "SUM_ZERO", "GivenPressure", "Inflow", "LawBooks", "PortLaw", "RowKind",
-           "Windkessel", "passive", "port_law_named", "port_system", "reference_of", "waveforms_cancel", "well_posed"]
+__all__ = ["PARAMETERS", "PORT_LAWS", "STATES", "SUM_ZERO", "GivenPressure", "Inflow", "LawBooks", "PortLaw", "PortSolution",
+           "RowKind", "Windkessel", "block", "passive", "port_law_named", "port_system", "reference_of", "waveforms_cancel",
+           "well_posed"]

@@ -168,8 +168,10 @@ Also:
     on every run (coverage claimed, not shown), and a flag that cannot be gated yet is declared `pending` and never
     counted, and a run with no check does not pass. The flow's (`mime.nodes.flow.fvm._flags`): the stall, convection
     doing work beyond its time level's (not an error in the operator that keeps it skew: the manufactured-solution
-    gate's), the drive reaching into a solid; and the open box's (`OPEN_FLAGS`): `N_proj` at the open faces, and the
-    booked kinetic-energy flux against the face formula's;
+    gate's), the drive reaching into a solid; and the open box's (`OPEN_FLAGS`): `N_proj` at the open faces. No flag is
+    declared that is not measured: the record's port work against the kinetic-energy flux through the openings (it
+    needs the convective power split by plane) and the periodic box's three on the open box and on RK3 are not built,
+    and their routes are in `mime.nodes.flow.fvm._flags`;
   - `term_orders(sums, terms, orders)`: each numerical term against the order its scheme declares (a
     `mime.core.ledger.TermOrder` per term, in dt and in the solve's tolerance, or the reason it has none), from a rig's
     sums at its setting, with dt halved and with the tolerance a hundredfold looser (`REFINEMENT`: a solve's stop
@@ -180,11 +182,12 @@ Also:
     coefficient cancels can fall at an order its scheme does not have. A law held in a field's step declares its own
     term's order (the Windkessel's `N_WK`, second in dt) and is judged by the same harness. A later kind
     (acoustics) declares its flags and orders and uses the same harness.
-- **the port-law family suite** (`_port_laws.py`, `port_law_suite(law)`): a law held at a flow's opening has a
-  per-stage block whose symmetric part is positive semidefinite over draws at vascular scales in SI
-  (`definite_at_floor`; CI check (a)), and its own books close over a stage (the work it received, its storage's
-  change, its loss and its numerical term); every draw is judged, so a control's rate is the count it reports; a source
-  (a given flux or pressure) is exempt, said so. `PORT_LAW_DRAWS` holds each law's draws.
+- **the port-law family suite** (`_port_laws.py`, `port_law_suite(law)`): a law held at a flow's opening gives the
+  solver a row whose block (its `affine()`'s, never a copy) has a positive semidefinite symmetric part over draws at
+  vascular scales in SI, at the draw's step and at the step's limit `dt -> 0` (`definite_at_floor`; CI check (a): a
+  sign error in a Windkessel's proximal resistance fails every draw), and its own books close over a stage (the work
+  it received, its storage's change, its loss and its numerical term); every draw is judged, so a control's rate is the
+  count it reports; a source (a given flux or pressure) is exempt, said so. `PORT_LAW_DRAWS` holds each law's draws.
 
 Also:
 - **the closed-loop case** (`CaseKind.CLOSED_LOOP`), for a family whose laws together are the derivative of an energy in

@@ -2,7 +2,7 @@
 (F0's B6 and B7: drives are laws, a body force bound to the medium with no surface); and the laws held at a flow's
 openings (decisions 7 and 8; A2's hybrid rows): ``Inflow``, a flux given at an opening, and ``Windkessel``, the RCR
 whose pressure is affine in the opening's flux over each stage. A law at an opening binds the medium and the opening's
-surface (``exp.attach(Windkessel(...), medium=blood, surface=tube.outlet)``) and builds no node: the flow holds it in
+surface (``exp.attach(Windkessel(...), medium=blood, surface=tube.end)``) and builds no node: the flow holds it in
 its own step, through its registration."""
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ _PORT_GRADIENT = GradientRecord(
 
 class _OpeningLaw(Interaction):
     """What a law at an opening shares: its roles (the medium whose flow holds it, the opening's surface), its id
-    (its name and the opening: ``windkessel:tube.outlet``), and its plan, a registration with the medium's flow,
+    (its name and the opening: ``windkessel:tube.end``), and its plan, a registration with the medium's flow,
     which holds it in its step as the port law ``port_law`` (``mime.nodes.flow.fvm._ports``)."""
 
     port_law: ClassVar[str] = ""
@@ -140,9 +140,10 @@ class _OpeningLaw(Interaction):
 @dataclass(frozen=True, kw_only=True)
 class Inflow(_OpeningLaw):
     """A volume flux into the flow at an opening, ``steady + amplitude cos(2 pi frequency t + phase)``:
-    ``exp.attach(Inflow(steady=mL_per_s(1.0)), medium=blood, surface=tube.inlet)``. The flow holds the opening's flux
-    to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row). A source:
-    the work it supplies, the pressure the flow returns times its flux, is booked under its name."""
+    ``exp.attach(Inflow(steady=mL_per_s(1.0)), medium=blood, surface=tube.start)``. The flow holds the opening's flux
+    to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row): the whole
+    plane's flux, the wall's band included, so the lumen takes it less the band's Darcy share (about 0.1 to 1 %). A
+    source: the work it supplies, the pressure the flow returns times its flux, is booked under its name."""
 
     name = "inflow"
     version = "0.1.0"
@@ -176,7 +177,7 @@ class Inflow(_OpeningLaw):
 class Windkessel(_OpeningLaw):
     """The three-element (RCR) Windkessel at an opening: a ``proximal`` resistance, then the ``compliance`` of a
     capacitor drained by a ``distal`` resistance to a distal pressure of zero: ``exp.attach(Windkessel(proximal=...,
-    compliance=..., distal=...), medium=blood, surface=tube.outlet)``. The flow steps it by backward Euler at its own
+    compliance=..., distal=...), medium=blood, surface=tube.end)``. The flow steps it by backward Euler at its own
     instant (decision 8), so the exchange across the opening does no work of its own; its numerical dissipation
     ``N_WK = (C/2)(Pc' - Pc)^2``, first order, is booked under its name with its capacitor's storage and its
     resistances' loss. Dissipative: its per-stage block ``R_p + dt / (C + dt / R_d)`` is positive for positive

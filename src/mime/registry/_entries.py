@@ -231,6 +231,10 @@ class Region:
     path: str
     shape: str
     parameters: Mapping[str, Magnitude]
+    #: The surfaces the region may be opened at, as its geometry kind declares them (``Geometry.openings``), by their
+    #: paths in order along its declared axis (a straight tube's lumen: ``tube.start``, ``tube.end``); empty for a
+    #: region its kind declares no openings for.
+    openings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -268,6 +272,9 @@ class StepRule:
     #: The period the step must divide into a whole number of steps (s), where the dynamics' drive is periodic.
     period: float | None = None
     refusals: tuple[Problem, ...] = ()
+    #: Why a dynamics that should bound its step does not yet (``largest`` ``None``), said where ``dt="auto"`` is
+    #: refused for want of a bound (an open vessel's flow, whose step rule is not built).
+    unbounded: str = ""
 
 
 @dataclass(frozen=True)
@@ -1335,6 +1342,10 @@ class Geometry(Entry):
     directions: ClassVar[tuple[str, ...]] = ()
     patches: ClassVar[Mapping[str, str]] = MappingProxyType({})
     placement: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    #: The surfaces each region may be opened at (a medium's flow cut there, each an opening whose law is attached at
+    #: it), in order along the kind's declared axis, named by geometry and never by the role a law gives them (a
+    #: straight tube's lumen: ``("start", "end")``; a tree's: its root and its branch ends).
+    openings: ClassVar[Mapping[str, tuple[str, ...]]] = MappingProxyType({})
     native: ClassVar[Native | None] = None
     #: How far its :meth:`reach` may overstate its body's, as a share of its enclosing size: zero for a kind whose
     #: reach is its body's own; above zero for one whose reach is an envelope that holds its body (the screw's).

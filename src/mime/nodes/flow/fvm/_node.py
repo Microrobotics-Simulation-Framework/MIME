@@ -113,7 +113,7 @@ HOSTED_FIELDS = ("viscous", "penalty")
 DRIVE_FIELDS = ("body_force", "waveform")
 
 
-class _FlowFields(TypedDict):
+class FlowFields(TypedDict):
     velocity_x: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     velocity_y: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     velocity_z: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
@@ -134,11 +134,11 @@ class _FlowFields(TypedDict):
     negative_resistivity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
-class FlowState(_FlowFields, closed=True):
+class FlowState(FlowFields, closed=True):
     """The flow's state without the energy ledger."""
 
 
-class _FlowRecords(books.LedgerRecords):
+class FlowRecords(books.LedgerRecords):
     """With the energy ledger attached: the stall detector, ``|N_Krylov| / D_visc``, and its flag, beside the ledger's
     records (``mime.core.ledger.LedgerRecords``)."""
 
@@ -146,7 +146,7 @@ class _FlowRecords(books.LedgerRecords):
     stall_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
-class MeteredFlowState(_FlowFields, _FlowRecords, closed=True):
+class MeteredFlowState(FlowFields, FlowRecords, closed=True):
     """A metered flow's state: the flow's fields, the stall detector and the ledger's records."""
 
 

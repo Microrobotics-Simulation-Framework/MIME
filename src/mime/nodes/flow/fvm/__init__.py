@@ -8,7 +8,7 @@ from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import STALL_LINE, FlowInputs, FlowState, ImplicitFlowNode, MeteredFlowState, \
     StepParts
 from mime.nodes.flow.fvm._open import OpenMACGrid
-from mime.nodes.flow.fvm._open_node import OpenFlowNode
+from mime.nodes.flow.fvm._open_node import MeteredOpenFlowState, OpenFlowNode, OpenFlowState
 from mime.nodes.flow.fvm._ports import PORT_LAWS, GivenPressure, Inflow, PortLaw, RowKind, Windkessel, port_law_named
 from mime.nodes.flow.fvm._explicit import ExplicitFlowNode, ExplicitFlowState, cfl_check
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, TimeScheme, scheme_named
@@ -17,7 +17,8 @@ from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE, PRECONDITIONERS, REPOR
 
 __all__ = ["BANDS", "Band", "DEFAULT_BAND", "DEFAULT_CELLS_ACROSS", "DEFAULT_INTERIOR", "DEFAULT_TOLERANCE",
            "ExplicitFlowNode", "ExplicitFlowState", "FlowInputs", "FlowState", "IMEXEuler", "INTERIORS",
-           "ImplicitFlowNode", "Jacobi", "MACGrid", "MeteredFlowState", "OpenFlowNode", "OpenMACGrid", "PORT_LAWS",
+           "ImplicitFlowNode", "Jacobi", "MACGrid", "MeteredFlowState", "MeteredOpenFlowState", "OpenFlowNode",
+           "OpenFlowState", "OpenMACGrid", "PORT_LAWS",
            "PRECONDITIONERS", "GivenPressure", "Inflow", "PortLaw", "Preconditioner", "RK3", "RowKind", "Windkessel",
            "port_law_named",
            "REPORT_FIELDS", "REPORT_SIZE", "SCHEMES", "STALL_LINE", "StageKind", "Steady", "StepParts", "Stopping",

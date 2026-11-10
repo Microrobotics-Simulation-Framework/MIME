@@ -47,8 +47,9 @@ def _poiseuille_points(layout, count=7):
     return points, r
 
 
-def fvm_rig(scheme: str, dtype: str) -> tuple[object, FieldRig]:
-    """A D/h 16 aligned tube at its steady state under a body force, its reading against Poiseuille in the core."""
+def fvm_rig(scheme: str, dtype: str, opened: bool = False) -> tuple[object, FieldRig]:
+    """A D/h 16 aligned tube at its steady state under a body force, its reading against Poiseuille in the core; on an
+    open vessel (``opened``) its affine case the open node's."""
     g, nu, dh = 8.0, 1.0, 16
     layout = periodic_tube_layout(0.5, 4 / dh, cells_across=dh)
     h = layout.spacing
@@ -100,7 +101,7 @@ def fvm_rig(scheme: str, dtype: str) -> tuple[object, FieldRig]:
             return monolithic_distance(open_node, before, after), AFFINE_LINE[dtype]
 
     rig = FieldRig(node, p, state, {V: reading}, points, {V: exact}, 0.05, metered=metered,
-                   steady=steady if scheme == "steady" else None, affine=affine if scheme != "rk3" else None)
+                   steady=steady if scheme == "steady" else None, affine=affine if opened else None)
     from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_WAVEFORM
     from mime.registry import Port
 
@@ -143,11 +144,16 @@ def womersley_rig(dtype: str) -> tuple[object, FieldRig]:
 
 
 KINDS = {"imex_euler": lambda d: fvm_rig("imex_euler", d), "steady": lambda d: fvm_rig("steady", d),
-         "rk3": lambda d: fvm_rig("rk3", d), "womersley": womersley_rig}
+         "rk3": lambda d: fvm_rig("rk3", d), "womersley": womersley_rig,
+         "imex_euler_open": lambda d: fvm_rig("imex_euler", d, opened=True),
+         "steady_open": lambda d: fvm_rig("steady", d, opened=True)}
 
 
 def declared(name):
-    return Womersley.field if name == "womersley" else fvm_field(name)
+    """Each kind's declarations: a periodic box's by its scheme, an open vessel's (``_open``) with its ports."""
+    if name == "womersley":
+        return Womersley.field
+    return fvm_field(name.removesuffix("_open"), opened=name.endswith("_open"))
 
 
 @pytest.mark.parametrize("name", sorted(KINDS))
@@ -155,13 +161,13 @@ def test_each_kind_passes_the_suite_and_lists_what_it_skipped(dtype, name):
     kind, rig = KINDS[name](dtype)
     report = field_conformance(kind, declared(name), rig, dtype=dtype)
     assert report.passed, report.failures()
-    assert (FieldCase.AFFINE in report.skipped) == (name in ("womersley", "rk3"))
+    assert (FieldCase.AFFINE in report.skipped) == (not name.endswith("_open"))
     if name == "womersley":
         assert set(report.skipped) == {FieldCase.LEDGER, FieldCase.STEADY, FieldCase.AFFINE}
         assert "outside" in report.skipped[FieldCase.LEDGER]
     else:
         assert FieldCase.OUTSIDE in report.skipped
-        assert (FieldCase.STEADY in report.skipped) == (name != "steady")
+        assert (FieldCase.STEADY in report.skipped) == (name.removesuffix("_open") != "steady")
 
 
 @pytest.mark.parametrize("entry", ["fvm", "womersley"])
@@ -265,7 +271,7 @@ def test_control_the_affine_case_fails_on_a_wrong_unit_field(dtype, monkeypatch,
     from open_cases import PLANTS
 
     PLANTS[plant](monkeypatch.setattr)
-    kind, rig = fvm_rig("imex_euler", dtype)
+    kind, rig = fvm_rig("imex_euler", dtype, opened=True)
     del kind
     assert rig.affine is not None
     moved, line = rig.affine()

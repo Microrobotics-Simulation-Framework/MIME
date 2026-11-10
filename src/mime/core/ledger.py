@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING, Any
 
 from jax import Array
 from jaxtyping import Float
-from typing_extensions import Annotated, ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core._error_free import add_to_pair
 from mime.core._field_kinds import Units
@@ -89,8 +89,9 @@ PAIRED = ("work", "hosted", "terms", "unattributed", "between", "between_own")
 #: The suffix of a pair's second field.
 LOW = "_low"
 #: The columns of a storing law's own books (``StepAccount.stored``): its storage at the step's start and end, its loss
-#: and its own numerical term (J).
-LAW_BOOKS = ("storage_start", "storage_end", "loss", "numerical")
+#: and its own numerical term, and the scale its own identity is judged on (J): its terms' magnitudes, and whatever
+#: rounding the receiver holding it carries into what the law receives (a flow's face flux, summed over its faces).
+LAW_BOOKS = ("storage_start", "storage_end", "loss", "numerical", "scale")
 #: The records a receiver adds where a law it holds stores energy of its own (:func:`law_records`).
 LAW_RECORDS = ("law_storage_start", "law_storage", "law_loss", f"law_loss{LOW}", "law_numerical",
                f"law_numerical{LOW}", "law_identity_worst")
@@ -137,6 +138,20 @@ class LedgerRecords(TypedDict):
     ledger_scale: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
     ledger_indefinite_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
     ledger_gift_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+
+
+class LawRecords(TypedDict):
+    """The records a receiver adds where a law it holds stores energy of its own (:func:`law_records`), held only then:
+    each law's storage at the run's start and now, its loss and numerical term summed (pairs), and its own identity's
+    worst residual over its own scale."""
+
+    ledger_law_storage_start: NotRequired[ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]]
+    ledger_law_storage: NotRequired[ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]]
+    ledger_law_loss: NotRequired[ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]]
+    ledger_law_loss_low: NotRequired[ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]]
+    ledger_law_numerical: NotRequired[ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]]
+    ledger_law_numerical_low: NotRequired[ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]]
+    ledger_law_identity_worst: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]
 
 
 @dataclass(frozen=True)
@@ -389,7 +404,7 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     unexplained = own_start - state[f"{r}storage_own"]
     unexplained_relative = jnp.abs(unexplained) / scale_at_least
     if step.stored is not None:
-        start = {**start, **law_recorded(state, step, scale_at_least)}
+        start = {**start, **law_recorded(state, step)}
     return {
         **start,
         **summed_pair(state, "work", step.work), f"{r}step_work": step.work,
@@ -420,17 +435,20 @@ def law_records(storage: Any) -> dict[str, Array]:
             f"{r}law_identity_worst": as_run_array(jnp.zeros(()))}
 
 
-def law_recorded(state: Mapping[str, Array], step: StepAccount, scale: Array) -> dict[str, Array]:
+def law_recorded(state: Mapping[str, Array], step: StepAccount) -> dict[str, Array]:
     """The storing laws' records after ``step``: each law's storage now, its loss and numerical term summed, and the
-    worst over the run of its own identity's residual over the step's scale, ``-W = dE + loss + N`` (the work it took
+    worst over the run of its own identity's residual over its own scale (``LAW_BOOKS``' last column, never the
+    receiver's step: a law's books are judged on the scale they came from), ``-W = dE + loss + N`` (the work it took
     from the receiver, ``-W``, its storage's change, its loss, its numerical term), together with the jump of its
     storage between steps (a law's state edited between steps is seen there, as a receiver's own is)."""
     assert step.stored is not None
     r = RECORDS
-    start, end, loss, numerical = (step.stored[:, column] for column in range(len(LAW_BOOKS)))
-    own = jnp.abs(-step.work - (end - start) - loss - numerical) + jnp.abs(start - state[f"{r}law_storage"])
-    stores = (start != 0.0) | (end != 0.0) | (loss != 0.0) | (numerical != 0.0)
-    worst = jnp.max(jnp.where(stores, own, 0.0)) / scale
+    start, end, loss, numerical, scale = (step.stored[:, column] for column in range(len(LAW_BOOKS)))
+    held = state[f"{r}law_storage"]
+    own = jnp.abs(-step.work - (end - start) - loss - numerical) + jnp.abs(start - held)
+    # A law that stores nothing has a row of zeros, its scale among them, and is not judged.
+    scale = scale + jnp.abs(held)
+    worst = jnp.max(jnp.where(scale > 0.0, own / jnp.where(scale > 0.0, scale, 1.0), 0.0))
     return {f"{r}law_storage_start": state[f"{r}law_storage_start"], f"{r}law_storage": end,
             **summed_pair(state, "law_loss", loss), **summed_pair(state, "law_numerical", numerical),
             f"{r}law_identity_worst": jnp.maximum(state[f"{r}law_identity_worst"], worst)}
@@ -647,7 +665,7 @@ class LedgerFlag:
 __all__ = ["CHECK_CLUSTER", "CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES",
            "FLOW_IN", "HOSTED", "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS",
            "LAW_BOOKS", "LAW_RECORDS", "ROUTE_ONE_FIELDS", "SOLVED", "UNMETERED", "WORKLESS", "FlagEvidence", "LedgerDelivery", "LedgerFlag",
-           "LedgerRecords", "StepAccount", "TermOrder",
+           "LawRecords", "LedgerRecords", "StepAccount", "TermOrder",
            "balance", "balance_floor", "between_floors", "definite_at_floor", "deliveries", "initial_records",
            "law_input", "law_recorded", "law_records", "laws", "losses", "magnitude", "metered_route_one_step", "metered_step", "own_input",
            "paired_work", "recorded", "route_one_recorded", "route_one_records", "stored", "summed", "summed_pair",
