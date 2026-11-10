@@ -26,6 +26,7 @@ from maddening.testing.verification import VerificationResult
 
 from mime.core import jnp, ledger
 from mime.registry import Dynamics
+from mime.testing._ledger_harness import ledger_closes
 from mime.vocabulary import port_kind
 
 #: The rounding floor the case judges against, in units of eps on the step's scale: the ledger's.
@@ -388,7 +389,6 @@ def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
     twin, deliveries = found
     held = cast(Any, twin)
     dtype = np.dtype(np.asarray(next(iter(held.initial_state().values()))).dtype)
-    floor = ULPS * float(np.finfo(dtype).eps)
     last: dict[str, Any] = {}
     count = 0
     # The input that sums what no law owns, which the case feeds a load of its own: work that must come out booked as
@@ -405,8 +405,11 @@ def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
              "inertia": jnp.asarray(np.reshape(inertia, (-1,)), dtype=dtype)}
         state = {**{key: jnp.asarray(value, dtype=dtype) for key, value in held.initial_state().items()},
                  "pose": jnp.asarray(drawn["pose"], dtype=dtype), "twist": jnp.asarray(drawn["twist"], dtype=dtype)}
-        state = ledger.with_records(held, {key: value for key, value in state.items()
-                                           if not key.startswith(ledger.RECORDS)})
+        own = {key: value for key, value in state.items() if not key.startswith(ledger.RECORDS)}
+        # The records at the drawn body's own storage (its drawn mass and inertia, not the rig's), as a run's start
+        # would hold them: so the books start where the step does.
+        state = {**own, **ledger.initial_records(deliveries, len(held.LEDGER_TERMS), held.storage(p, own),
+                                                 held.configuration(p, own))}
         inputs = {name: jnp.zeros(tuple(entry.shape), dtype=dtype) for name, entry in held.boundary_input_spec().items()
                   if ledger.own_input(name) is None}
         inputs[unattributed_input] = jnp.asarray(drawn["unattributed"], dtype=dtype)
@@ -423,12 +426,8 @@ def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
         count += 1
         last.clear()
         last.update(drawn)
-        stepped = step(drawn)
-        over = float(stepped[f"{ledger.RECORDS}step_identity"]) / floor
-        assert over <= 1.0, f"the step identity's residual is {over:.3g} of its floor"
-        booked = float(stepped[f"{ledger.RECORDS}unattributed_worst"])
-        assert booked > 0.0, (f"work fed into the unattributed input ({unattributed_input}) was not booked as "
-                              f"unattributed work: it was booked under a law or lost")
+        judged = ledger_closes(step(drawn), fed_unattributed=True)
+        assert judged.passed, f"{judged.detail} (the unattributed input fed: {unattributed_input})"
 
     try:
         prop()
@@ -456,7 +455,6 @@ def _port_case_identity(case: PortCase, node: SimulationNode | None, max_example
     params = {key: value for key, value in dict(built.params).items() if key != ledger.LEDGER}
     twin = type(built)(built.name, float(built.delta_t), **params, ledger=tuple(d.encoded() for d in deliveries))
     dtype = np.dtype(np.asarray(next(iter(twin.initial_state().values()))).dtype)
-    floor = ULPS * float(np.finfo(dtype).eps)
     last: dict[str, Any] = {}
     count = 0
 
@@ -468,12 +466,8 @@ def _port_case_identity(case: PortCase, node: SimulationNode | None, max_example
         count += 1
         last.clear()
         last.update(drawn)
-        stepped = case.step(twin, deliveries, drawn, dtype)
-        over = float(stepped[f"{ledger.RECORDS}step_identity"]) / floor
-        assert over <= 1.0, f"the step identity's residual is {over:.3g} of its floor"
-        booked = float(stepped[f"{ledger.RECORDS}unattributed_worst"])
-        assert booked > 0.0, ("work fed into the unattributed input was not booked as unattributed work: it was "
-                              "booked under a law or lost")
+        judged = ledger_closes(case.step(twin, deliveries, drawn, dtype), fed_unattributed=True)
+        assert judged.passed, judged.detail
 
     try:
         prop()

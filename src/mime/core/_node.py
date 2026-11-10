@@ -6,7 +6,7 @@ from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import cached_property
-from typing import Any, ClassVar, cast, override
+from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
 import jax
 import jax.numpy
@@ -15,6 +15,9 @@ from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 
 from mime.core._symbols import Symbol
+
+if TYPE_CHECKING:
+    from mime.core.ledger import LedgerFlag
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
 #: reads its array constructors as partly unknown; nodes call them through this name, and ``jax.jit`` through ``jit``.
@@ -75,6 +78,61 @@ def run_constants_given(p: Mapping[str, Any]) -> bool:
     return RUN_CONSTANTS_GIVEN in p
 
 
+#: The key a differentiated run (``mime.build._maddening.differentiated_run``) adds to every node's step constants: an
+#: empty tuple, as :data:`RUN_CONSTANTS_GIVEN` is, so that the node's compiled step traced inside a derivative is kept
+#: apart from a forward run's, which never holds it. A guard that stops a forward run by writing NaN writes a finite
+#: stand-in where it is set, and raises the same flag (:func:`differentiated`).
+DIFFERENTIATED = "differentiated"
+
+#: The nodes whose steps the enclosing differentiated run traces (:func:`differentiated_nodes`).
+_DIFFERENTIATED: ContextVar[frozenset[str]] = ContextVar("mime_differentiated", default=frozenset())
+
+
+@contextmanager
+def differentiated_nodes(names: Iterable[str]) -> Generator[None]:
+    """For the block, the steps of the nodes ``names`` traced inside a derivative: each such node's step constants then
+    hold :data:`DIFFERENTIATED`. Read where a node's step is called, never inside its compiled step."""
+    token = _DIFFERENTIATED.set(frozenset(names))
+    try:
+        yield
+    finally:
+        _DIFFERENTIATED.reset(token)
+
+
+def differentiated(p: Mapping[str, Any]) -> bool:
+    """Whether the step constants ``p`` are a differentiated run's: a guard that stops a forward run by writing NaN
+    writes a finite stand-in here, with its flag, since a NaN in a step leaks into every derivative through the branch
+    a ``where`` discards."""
+    return DIFFERENTIATED in p
+
+
+#: The key a recheck (``mime.study``'s gradient, on a member whose solve stopped short) adds to the step constants of the
+#: nodes it re-solves: an empty tuple, as :data:`DIFFERENTIATED` is, so that the node's compiled step traced for the
+#: recheck is kept apart from the run's. A node with an iterative solve reads it to remove the cause of what stopped it
+#: short (:func:`rechecked`): the cap lifted, the stall restarts raised.
+RECHECKED = "rechecked"
+
+#: The nodes the enclosing recheck re-solves (:func:`rechecked_nodes`).
+_RECHECKED: ContextVar[frozenset[str]] = ContextVar("mime_rechecked", default=frozenset())
+
+
+@contextmanager
+def rechecked_nodes(names: Iterable[str]) -> Generator[None]:
+    """For the block, the steps of the nodes ``names`` traced as a recheck's: each such node's step constants then hold
+    :data:`RECHECKED`. Read where a node's step is called, never inside its compiled step."""
+    token = _RECHECKED.set(frozenset(names))
+    try:
+        yield
+    finally:
+        _RECHECKED.reset(token)
+
+
+def rechecked(p: Mapping[str, Any]) -> bool:
+    """Whether the step constants ``p`` are a recheck's: the node's iterative solve removes the cause of a stop short
+    (its cap, its restarts) rather than keeping the run's settings."""
+    return RECHECKED in p
+
+
 def node_input(units: str, shape: tuple[int, ...], *, additive: bool = False,
                description: str = "") -> BoundaryInputSpec:
     """An input declared the way every MIME node declares one: its shape, the run's dtype, a zero default, and its
@@ -119,9 +177,19 @@ class MimeNode(SimulationNode):
     was, its parameters included."""
 
     symbols: ClassVar[tuple[Symbol, ...]] = ()
+    #: Whether a guard of the node stops a forward run by writing NaN: such a node's step constants hold
+    #: :data:`DIFFERENTIATED` inside a differentiated run, where it writes the guard's flag form (:func:`differentiated`).
+    nan_stops: ClassVar[bool] = False
+    #: Whether the node's iterative solve reads :func:`rechecked`: a recheck of a member whose solve stopped short
+    #: re-solves it with the cause removed (the cap lifted, the restarts raised). A solving node that does not is
+    #: reported as not rechecked.
+    rechecks: ClassVar[bool] = False
     #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
+    #: The ratios of the node's metered step that flag known bugs (``mime.core.ledger.LedgerFlag``), each with its
+    #: line and the planted bugs that prove it: read by ``mime.testing``'s ledger harness, never by the step.
+    LEDGER_FLAGS: ClassVar[tuple[LedgerFlag, ...]] = ()
     #: The commands a metered node pairs as loads read at the step's start (a dynamic arm's joint torques): the
     #: ledger moves a command into one of these into the input of its own beside it, and books its work under its
     #: writer, which is outside.
@@ -207,6 +275,10 @@ class MimeNode(SimulationNode):
         held = self._step_constants(params)
         if params is not None and self.name in _MADE.get():
             held[RUN_CONSTANTS_GIVEN] = ()
+        if params is not None and self.nan_stops and self.name in _DIFFERENTIATED.get():
+            held[DIFFERENTIATED] = ()
+        if params is not None and self.name in _RECHECKED.get():
+            held[RECHECKED] = ()
         return held
 
     @override

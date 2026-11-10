@@ -5,6 +5,7 @@ here, once, and given the type MIME relies on. Nothing here changes what is call
 from __future__ import annotations
 
 import hashlib
+import math
 import warnings
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
@@ -24,7 +25,7 @@ from maddening.core.schedule import topological_sort
 from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
-from mime.core import MimeNode, one_ulp_up_leaf, run_constants_made
+from mime.core import MimeNode, differentiated_nodes, one_ulp_up_leaf, run_constants_made
 
 type NodeFields = dict[str, dict[str, Array]]
 
@@ -477,6 +478,113 @@ def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes:
                  - int(stats.alias_size_in_bytes) + int(stats.generated_code_size_in_bytes))
         return cast(tuple[Any, tuple[Array, Array, Array], Any], (total, (None, None, None), None))
     return cast(tuple[Any, tuple[Array, Array, Array], Any], program(state, external, params))
+
+
+type Tallied = tuple[Any, tuple[Array, Array, Array], Any]
+
+
+def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest], kept: Sequence[tuple[str, str]], *,
+                       checkpoint: bool, fed: Sequence[tuple[int, Fed]] | None = None) -> Callable[[Any, Any], Tallied]:
+    """A run of ``steps`` steps of the compiled graph as one pure function of the state (every node's fields and
+    ``_meta``) and the parameter tree, for a derivative to be taken through: ``(state, params) -> (final, (counted,
+    first, last), kept)``, each flag of ``tests`` reduced over the steps as :func:`batched_scan` reduces it (steps
+    raised, the first and the last, from the run's start), and each field of ``kept`` at every step. With
+    ``checkpoint`` (reverse mode) the steps are scanned in chunks of about the square root of their number, each chunk a
+    ``jax.checkpoint``: reverse mode keeps each chunk's start and recomputes its steps; without it (forward mode, which
+    stores nothing) the run is one chunk. What that saves is measured, not general: the compiled derivative program's
+    temporary memory on the periodic tube falls from 4.6 to 1.5 MB at 80 steps (2.5 to 1.3 MB at 40, so the saving grows
+    with the steps), for about 1.3 to 1.4 times the unchecked call's time on the runners; on the MRS sphere it saves nothing at 80 or 320 steps
+    (69 MB either way: what the program holds there is not the step states, and forward mode's is 22 MB).
+    The nodes' run-constants (:func:`with_run_constants`) are made once for the run, before its chunks and outside
+    their checkpoints, so that reverse mode derives each once (made in each chunk, a checkpoint made each again in its
+    recomputation, which cost the sphere's reverse call 2 to 19 times, measured). The chunks are an outer
+    scan, so the program's size does not grow with their number. Every node's step is traced as a differentiated run's
+    (``mime.core.differentiated``): a guard that stops a forward run by writing NaN writes its flag form. ``fed`` holds
+    the external inputs as stretches ``(steps, inputs)`` covering the run (a controller's writes held as a callback run
+    gave them), each a constant of the run and its own chunk; without it the graph takes none. Nothing is stored on the
+    graph, and :func:`batched_scan`, every forward run's program, is not touched."""
+    held = _held(graph)
+    jnp = _held(jax.numpy)
+    lax = _held(jax).lax
+    held._recover_from_escaped_tracers()  # noqa: SLF001
+    held._check_static_data_dirty()  # noqa: SLF001
+    if held._dirty or held._compiled_step is None:  # noqa: SLF001
+        held.compile()
+    held._refuse_xla_loop_hazards("run_scan", scan=True)  # noqa: SLF001
+    names = run_constant_nodes(graph)
+    every = tuple(graph.node_names)
+    step_fn = held._build_step_fn()  # noqa: SLF001
+    resolve = held._resolve_external_inputs  # noqa: SLF001
+    stretches = None if fed is None else [(int(length), resolve(dict(given))) for length, given in fed]
+    none_fed = resolve({})
+    count = len(tests)
+    fields = {node: sorted({f for n, f in kept if n == node}) for node in sorted({n for n, _ in kept})}
+
+    def raised_by(state: Mapping[str, Mapping[str, Array]], test: FlagTest) -> Array:
+        values = jnp.reshape(state[test.node][test.field], (-1,))
+        if test.limits is None:
+            return jnp.any(values != 0)
+        limits = jnp.asarray([_threshold(limit, np.dtype(values.dtype)) for limit in test.limits], dtype=values.dtype)
+        return jnp.any(jnp.abs(values) > limits)
+
+    def chunk(length: int, external: Any) -> Callable[[Any, Any], tuple[Any, Any]]:
+        """``length`` steps from a carry, given the parameters with the run-constants made; a checkpoint where
+        asked."""
+        def scanned(carry: Any, made: Any) -> tuple[Any, Any]:
+            def body(inner: Any, _: Any) -> tuple[Any, Any]:
+                state, counted, first, last, at = inner
+                state = step_fn(state, external, made)
+                at = at + 1
+                raised = jnp.stack([raised_by(state, test) for test in tests]) if tests else jnp.zeros((0,), dtype=bool)
+                out = {node: {name: state[node][name] for name in names_} for node, names_ in fields.items()}
+                return (state, counted + raised.astype(counted.dtype), jnp.where(raised & (first < 0), at, first),
+                        jnp.where(raised, at, last), at), out
+
+            return lax.scan(body, carry, None, length=length)
+
+        return _held(jax).checkpoint(scanned) if checkpoint else scanned
+
+    def concatenated(*each: Any) -> Any:
+        return jnp.concatenate(each)
+
+    def joined(parts: list[Any]) -> Any:
+        return _held(jax).tree_util.tree_map(concatenated, *parts) if parts else {}
+
+    def run(state: Any, params: Any) -> Tallied:
+        none = FlagTally.none(count)
+        carry = (state, jnp.asarray(none.count, jnp.int32), jnp.asarray(none.first, jnp.int32),
+                 jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
+        parts: list[Any] = []
+        # The run-constants made once for the whole run, outside every chunk's checkpoint: reverse mode keeps them
+        # and derives each once, where made in each chunk it made them again in each chunk's recomputation.
+        made = with_run_constants(graph, params)
+        with run_constants_made(names), differentiated_nodes(every):
+            if stretches is not None:
+                for length, external in stretches:
+                    carry, out = chunk(length, external)(carry, made)
+                    parts.append(out)
+            else:
+                length = max(1, math.ceil(math.sqrt(steps))) if checkpoint else max(1, steps)
+                chunks, rest = divmod(steps, length)
+                if chunks:
+                    step = chunk(length, none_fed)
+
+                    def outer(inner: Any, _: Any) -> tuple[Any, Any]:
+                        return step(inner, made)
+
+                    carry, out = lax.scan(outer, carry, None, length=chunks)
+
+                    def flattened(held_: Any) -> Any:
+                        return jnp.reshape(held_, (chunks * length, *jnp.shape(held_)[2:]))
+
+                    parts.append(_held(jax).tree_util.tree_map(flattened, out))
+                if rest:
+                    carry, out = chunk(rest, none_fed)(carry, made)
+                    parts.append(out)
+        final, counted, first, last, _ = carry
+        return final, (counted, first, last), joined(parts)
+
+    return run
 
 
 def ready(state: NodeFields) -> None:

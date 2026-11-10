@@ -131,6 +131,8 @@ class ReadOutcome:
     #: What the profile's rules decided of the reasons no acceptance covers and its rules let through: a waiver each
     #: (``generate``), with a pending basis, where profiles act on waivers alone, or a listing (``list``).
     decisions: tuple[Decision, ...] = ()
+    #: Whether the value is a table's read outside its readable range, extrapolated by the experiment's declaration.
+    extrapolated: bool = False
 
 
 def _reason_text(reason: Mapping[str, object]) -> str:
@@ -400,7 +402,8 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
                            "declare the value with its reason, exp.declare(...), or read the table inside its range")
         use += f"; extrapolated ({extrapolation.method}): {how}; basis: {extrapolation.basis}; " \
                f"reason: {extrapolation.reason}"
-        return ReadOutcome(material.name, field.field, request, status, texts, value, use, decisions=tuple(decisions))
+        return ReadOutcome(material.name, field.field, request, status, texts, value, use, decisions=tuple(decisions),
+                           extrapolated=True)
     nominal = material.nominal.get(field.field)
     if nominal is not None:
         bounds = result.get("value")

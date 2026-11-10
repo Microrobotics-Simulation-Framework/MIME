@@ -14,6 +14,7 @@ from fvm_cases import METERED, Waveform, eps, in_dtype, step_of
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import RK3, ExplicitFlowNode, ImplicitFlowNode, _rk3, cfl_check, periodic_tube_layout
+from mime.testing import ledger_closes
 
 
 def rk3_node(dh: int = 8, *, nu: float = 1.0, dt: float | None = None, length_cells: int = 4,
@@ -53,10 +54,9 @@ def test_every_rk3_step_dissipates_and_only_the_drive_s_attribution_is_claimed(d
     """No identity is claimed for the step; its drive's attribution is (the work the stages applied less the law's
     delivery), within the identity's floor."""
     state = _metered(dtype, seed)
-    assert float(state[f"{books.RECORDS}route_one_negative_steps"]) == 0.0
+    judged = ledger_closes(state)
+    assert judged.passed, judged.detail
     assert float(state[f"{books.RECORDS}route_one_worst"]) > 0.0
-    assert float(state[f"{books.RECORDS}identity_worst"]) <= books.IDENTITY_ULPS * eps(dtype)
-    assert float(state[f"{books.RECORDS}unattributed_worst"]) == 0.0
 
 
 _STEP, _RECORDED = _rk3.step, books.route_one_recorded
@@ -165,10 +165,9 @@ def _late(share):
 
 def test_rk3_books_the_drive_as_the_law_delivered_it_and_its_attribution_closes(dtype):
     state = _harmonic(dtype)
-    r = books.RECORDS
-    assert float(state[f"{r}identity_worst"]) <= books.IDENTITY_ULPS * eps(dtype)
-    assert float(state[f"{r}route_one_negative_steps"]) == 0.0 and float(state[f"{r}unattributed_worst"]) == 0.0
-    assert float(np.asarray(state[f"{r}work"])[0]) > 0.0
+    judged = ledger_closes(state)
+    assert judged.passed, judged.detail
+    assert float(np.asarray(state[f"{books.RECORDS}work"])[0]) > 0.0
 
 
 @pytest.mark.parametrize("plant", ["applied twice", "applied 1e-2 more", "read half a step late"])
@@ -181,7 +180,8 @@ def test_control_a_drive_the_stages_applied_unlike_the_law_s_delivery_fails_its_
     else:
         monkeypatch.setattr(ImplicitFlowNode, "drive", _scaled(1.0 if plant == "applied twice" else 1e-2))
     state = _harmonic(dtype)
-    assert float(state[f"{books.RECORDS}identity_worst"]) > books.IDENTITY_ULPS * eps(dtype)
+    judged = ledger_closes(state)
+    assert judged.failed and "books by formula" in judged.detail
 
 
 # -- the per-step CFL check ----------------------------------------------------------------------------------------

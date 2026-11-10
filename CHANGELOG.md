@@ -30,6 +30,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no point and the solid the fillet fills between them, and the wall layer against lines set from a Womersley sweep's
   worst arm (wall shear within 5 % from 2.7 cells of layer, within 2 % from 4.5). No node runs it yet: the FVM's wall
   is the first.
+- **A study's derivative: `Study.gradient(of, wrt=None, mode="auto", acknowledged=None)`** (lane S's third PR, the
+  gradient path), returning `mime.results.GradientResult` (each member's `MemberGradient`: the objective, its
+  derivative in each axis, the flags its run raised, its nodes' stops, its plan's extrapolated table reads, each
+  iterative solve's `SolveReport` forward and in the derivative solves, the warnings, and a `Recheck` where a solve
+  stopped short: the member re-solved with the cause removed, the cap lifted and the stall restarts raised). One mechanism: the sweep's points, planned and grouped as a run's, each
+  group differentiated together by `mime.build._maddening.differentiated_run` beside the batched scan (forward runs'
+  programs untouched), forward mode for a few numbers and reverse mode with a `jax.checkpoint` a chunk. The
+  derivative is read through the leaves and initial fields each axis writes, found by probe points, each by its
+  factor; what it cannot be read through is refused with its route (twelve `gradient.*` codes). The path's status
+  composed from its entries (`mime.gradients.composed`), a `cut` or `unverified` entry refused unless acknowledged
+  (`unacknowledged`): a controller called on the host is `cut`, its writes held as the forward run made them. The
+  guards' flag form in a differentiated run (`mime.core.differentiated`, marked as `run_constants_given` is): the MRS
+  drag's indefinite resistance gives the body the resistance of the step before, with the same flag and stop, so the
+  derivative is finite and the result names the stop. `ReadOutcome.extrapolated` marks a read extrapolated by the
+  experiment's declaration.
+- **The energy ledger as a gate's tool, in `mime.testing`.** `ledger_closes(books)`, one check that a metered run's
+  books close at every step (a receiver's records or a run's result: the step identity within its floor, attribution,
+  no gift or indefinite step, route 1's every step dissipated, no unowned jump between steps, the balance), which
+  `step_identity`, SF-12's ledger case and the flow's metered gates now judge with; **ratio flags** a node declares
+  (`MimeNode.LEDGER_FLAGS`, `mime.core.ledger.LedgerFlag` with `FlagEvidence`), each a ratio of a metered step's terms
+  with its line measured on drawn correct runs and each planted bug's measured detection rate, read by `run_flags` and
+  `judge_flags`, a flag that cannot be gated yet declared pending and never counted (`flag_problems`); and the order
+  check `term_orders`, each numerical term against the order its scheme declares (`mime.core.ledger.TermOrder`, a
+  scheme's `ledger_orders`): dt halved and the tolerance a hundredfold looser, apart, the order its fall shows rounding
+  to the declared one, read from each term summed over a drawn ensemble (on one drawn case a term whose leading
+  coefficient cancels can show an order its scheme does not have). The flow declares its first: the stall
+  (`|N_Krylov| / D_visc`), convection doing work beyond its time level's (`N_conv` against `-dt rho <C(u), u' - u>`:
+  a stale level, the wrong field, the advective form; not an error in the operator that keeps it skew, scaled or
+  negated, which the manufactured-solution gate sees), the drive reaching into a solid (the wall's loss inside the solid over its whole), and the openings' two pending; and
+  its terms' orders (`N_BE` and `N_conv` second in dt, `N_Krylov` at least first in the tolerance). Test-side: no
+  program changes.
+
 - **A medium's flow metered by the energy ledger: the `fluid` port kind, and the rule for a source.** With
   `exp.observe(EnergyLedger())` the build meters an FVM flow as a receiver of the new `fluid` port kind: its fluid's
   momentum (`flow.momentum`, kg m/s, over the fluid alone, as the drive acts on it alone) against the body force each
