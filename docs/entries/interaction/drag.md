@@ -148,7 +148,7 @@ resistance, the dense assembly the node is held to, and the two-sphere series an
 judged by no step after it. A body on the surrogate rung in the same medium is computed alone, and the build report
 says so.
 
-**Graded sampling** (0.5.0, opt-in; design #296). `Drag.MRS(grading="features")` grades the force points towards the
+**Graded sampling** (0.5.0, opt-in). `Drag.MRS(grading="features")` grades the force points towards the
 hull kind's declared features: a cylinder's rims, a box's edges, a screw's rims and crests (`Geometry.features`; a
 sphere, a capsule, an ellipsoid and a helix declare none, and are refused, `drag.grading-features`).
 `Drag.MRS(contact=..., contact_gap=...)` grades the side of the body held facing the wall, `contact` a direction in

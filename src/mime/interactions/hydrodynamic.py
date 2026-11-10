@@ -1226,7 +1226,7 @@ class Drag(UncoupledDrag):
         "grading": convention(
             NUMERICAL, "on the mrs rung, none: the force points quasi-uniform, as every released program's; written "
                        "'features', graded towards the hull kind's declared features (its edges and crests), each "
-                       "force point at its cell's area centre (design #296)"),
+                       "force point at its cell's area centre"),
         "contact": convention(
             NUMERICAL, "on the mrs rung, none: no contact graded; written, a direction in the body's frame, the side "
                        "of the body held facing the wall, whose patch is graded for contact_gap (opt-in, for a body "
@@ -1292,7 +1292,7 @@ class Drag(UncoupledDrag):
         "gain, so the check refuses some stable clusters (measured: three spheres a tenth of a radius apart, each "
         "body's relaxation time between about a twentieth and a tenth of the step), and the amplification and its "
         "relaxation are reported",
-        "mrs: with grading or contact written, the force points are graded (design #296): towards the hull kind's "
+        "mrs: with grading or contact written, the force points are graded: towards the hull kind's "
         "edges (EDGE_SHARE of the force spacing there) and crests (CREST_SHARE of their radius across) and towards a "
         "held contact (its gap to the wall over CONTACT_SPACINGS), the spacing growing by its distance from them and "
         "never finer than FINEST of the force spacing, each force point at its cell's area centre; "

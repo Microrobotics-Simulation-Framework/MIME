@@ -151,7 +151,7 @@ sphere about its centroid that holds it (`enclosing_radius`).
   samples are the spacing apart) grades it with no protocol change: the dense set is then refined to the finest local
   spacing, Lloyd's mass is the area times the density's square, and each sample is its generator's cell's dense point
   nearest the cell's area centre, the generators kept (`Sampling.generators`, which `quadrature_owners` reads), since
-  a solver collocating at the sample needs it at its cell's centre (design #296). The choice is made in float64
+  a solver collocating at the sample needs it at its cell's centre. The choice is made in float64
   whatever the run's precision, and cached in the process.
 - **`Geometry.features(settings, resolution)`** declares what a sampling may be graded towards
   (`mime.registry.Feature`): the cylinder's rims, the box's edges, the screw's rims and crests (each crest with its

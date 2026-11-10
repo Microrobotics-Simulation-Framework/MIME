@@ -1,4 +1,4 @@
-"""The switch of a near-singular evaluation, shared by its two callers (design #308): a kernel summed at each source
+"""The switch of a near-singular evaluation, shared by its two callers: a kernel summed at each source
 cell's collocation point far away and integrated over the cell's own quadrature near it (the boundary-integral
 literature's near-singular quadrature, the fast multipole method's near/far split), the two switched by a distance in a
 local size. Its callers are the wall's self-image (``mime.nodes.hydro.mrs``'s ``near_wall_image``) and the near field's

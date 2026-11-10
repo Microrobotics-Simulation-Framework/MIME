@@ -1,4 +1,4 @@
-"""The experiments graded sampling (design #296) is tested in, and its wrong-way control: a sphere held a gap above a
+"""The experiments graded sampling is tested in, and its wrong-way control: a sphere held a gap above a
 plane wall with ``Drag.MRS(contact=..., contact_gap=...)`` or a cylinder tilted so its rim is nearest it with
 ``grading="features"``, and the density that grades the wrong way (coarser where the grading is finer)."""
 

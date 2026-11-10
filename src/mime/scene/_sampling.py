@@ -77,7 +77,7 @@ TIE = 1e-12
 #: chosen at a graded density, by what ``Sampling.method`` records.
 QUADRATURE, QUASI_UNIFORM, GRADED = "quadrature", "quasi_uniform", "graded"
 #: The finest spacing a graded density asks for, as a share of the sampling's (its density at most this share's inverse
-#: square): the floor design #296 measured with, a quarter. It bounds the dense set a graded sampling is chosen from,
+#: square): the floor the grading was measured with, a quarter. It bounds the dense set a graded sampling is chosen from,
 #: whose points grow as its inverse square.
 FINEST = 0.25
 
@@ -304,7 +304,7 @@ def _density_at(kind: Geometry, density: Density, points: np.ndarray) -> np.ndar
 
 def _graded(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, patches: tuple[str, ...],
             density: Density) -> Sampling:
-    """:func:`quasi_uniform` at a density that is not uniform (design #296). As the uniform sampling, but:
+    """:func:`quasi_uniform` at a density that is not uniform. As the uniform sampling, but:
 
     - **the dense set is finer**, ``REFINEMENT`` times the finest local spacing the density asks for (at most
       ``REFINEMENT / FINEST`` times finer than the spacing), so that the finest cells hold as many dense points as a
@@ -315,8 +315,8 @@ def _graded(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, p
     - **each sample sits at its cell's area centre**: the cells are the relaxed generators' (each dense point's
       nearest), and each cell's sample is its dense point nearest the cell's area centroid (ties to the lower index),
       so that a solver that collocates at the sample and takes the traction constant over the cell (the MRS's
-      separated quadrature) does so at the cell's centre, as a uniform sampling's samples nearly are. Measured for
-      design #296: with the samples at the density-weighted centres the relaxation leaves them at, grading raised a
+      separated quadrature) does so at the cell's centre, as a uniform sampling's samples nearly are. Measured before
+      the build: with the samples at the density-weighted centres the relaxation leaves them at, grading raised a
       sphere's error at a plane wall (+20.9 % against +12.2 % with the uniform cells' points moved alike, half a force
       spacing from the wall, blob 0.1); at the area centres it lowered it (+5.2 %), and a cylinder's rim's alike;
     - ``generators`` keeps the relaxed generators, whose cells a solver takes (``quadrature_owners``)."""

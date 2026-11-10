@@ -20,20 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`Sampling.generators`): with the points where the relaxation leaves them, grading raised the error near a wall (the
   measurements behind design #296). Lloyd's mass on a graded density is the area times the density's square, so the
   samples' density is the density. **Geometry kinds declare features** (`Geometry.features`, a new optional capability;
-  `mime.registry.Feature`): the cylinder its rims, the box its twelve edges, the screw its rims and crests (each crest's
-  radius across it from the thread's height and turn, within 0.1 % of the surface's own principal curvature on FL-9).
-  The sampling is fixed on the body: **`off_patch`** flags a step whose body lies within one force spacing of the wall
-  with its nearest point outside the graded patch (a body turned past it), raised only where grading or contact is
-  written (`Flag.written`, new). In graded runs the wall's self-image measures each cell's distance from the wall in the
-  cell's own size (design #308) and a written `wall_refinement` is taken from the finest spacing. The build reports what
-  was graded, the counts and the finest spacing. Refused: features of a kind with none (`drag.grading-features`), a kept
-  version (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`) or no gap to grade for
-  (`drag.grading-approach`), and graded bodies in a medium's joint near field (`drag.grading-near-field`: the joint node
-  raises no `off_patch` yet). The uniform sampling is untouched: every released program's steps trace the same programs
-  (`tests/saved/step_jaxprs.py`, base against head, float32 and float64). The wall's self-image and the near field's
-  cross-kernel share one private switch (`mime.nodes.hydro._near_singular`: the C1 smoothstep, the nearest-first budget
-  and its shortfall, the cond that skips the near work, the kernel integrated over cells), each caller keeping its
-  kernel, distance, reach, budget and granularity.
+  `mime.registry.Feature`): the cylinder its rims and the box its twelve edges, each with its distance in closed form
+  (so a sampling graded on them keeps the body's symmetries and is chosen alike under a setting's move far below the
+  spacing, which a distance read from traced points ripples enough to break), the screw its rims and crests, read from
+  their traces (each crest's radius across it from the thread's height and turn, within 0.1 % of the surface's own
+  principal curvature on FL-9). The sampling is fixed on the body: **`off_patch`** flags a step whose body lies within
+  one force spacing of the wall with its nearest point outside the graded patch (a body turned past it), raised only
+  where grading or contact is written (`Flag.written`, new). In graded runs the wall's self-image measures each cell's
+  distance from the wall in the cell's own size (design #308) and a written `wall_refinement` is taken from the finest
+  spacing. The build reports what was graded, the counts and the finest spacing. Refused: features of a kind with none
+  (`drag.grading-features`), a kept version (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`) or no
+  gap to grade for (`drag.grading-approach`), and graded bodies in a medium's joint near field
+  (`drag.grading-near-field`: the joint node raises no `off_patch` yet). The uniform sampling is untouched: every
+  released program's steps trace the same programs (`tests/saved/step_jaxprs.py`, base against head, float32 and
+  float64). The wall's self-image and the near field's cross-kernel share one private switch
+  (`mime.nodes.hydro._near_singular`: the C1 smoothstep, the nearest-first budget and its shortfall, the cond that skips
+  the near work, the kernel integrated over cells), each caller keeping its kernel, distance, reach, budget and
+  granularity.
 
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,

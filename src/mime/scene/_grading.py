@@ -17,9 +17,9 @@ default); its spacing there keeps the contact ``CONTACT_SPACINGS`` local spacing
 feature or a contact that stays where it was graded: a crest or a rim, which is the contact whichever way the body
 rolls about its axis, or a body whose orientation to the wall is held. A body that turns carries a graded contact away
 from the wall within a fraction of a turn; the MRS drag's step flags it (``off_patch``) rather than resampling, which
-would break the held matrix and the derivatives (design #296).
+would break the held matrix and the derivatives.
 
-**The figures** are declarations from the measurements behind design #296 (a sphere at a plane wall, a cylinder's rim
+**The figures** are declarations from the measurements made before the build (a sphere at a plane wall, a cylinder's rim
 at a plane and in free space, blobs 0.1 and 0.025), where graded sampling with each force point
 at its cell's area centre held the sphere's normal resistance at half a force spacing from the wall to +5.2 % (blob
 0.1) and +1.8 % (0.025) against +12.2 % and +7.2 % uniform, and the rim's to +1.4 % and -0.6 % against +2.6 % and
@@ -37,14 +37,14 @@ from mime.registry import FEATURE_FORMS, Feature, Geometry, implements
 from mime.scene._sampling import FINEST, REFINEMENT, nearest, quadrature_arrays, quadrature_counts
 from mime.units import Magnitude
 
-#: An edge's spacing, as a share of the sampling's: the rim grading design #296 measured, a third.
+#: An edge's spacing, as a share of the sampling's: the rim grading measured before the build, a third.
 EDGE_SHARE = 1.0 / 3.0
 #: A crest's spacing, as a share of its least radius across it: about 1.2 times the force points on FL-9 at script A's
-#: 0.181 mm (#192's arithmetic; 1.6 times at 0.15).
+#: 0.181 mm (1.6 times at 0.15).
 CREST_SHARE = 0.3
-#: How fast the spacing grows away from a feature, per unit of distance: the rim grading design #296 measured, one.
+#: How fast the spacing grows away from a feature, per unit of distance: the rim grading measured before the build, one.
 GROWTH = 1.0
-#: The contact's local spacings from the wall at the gap it is graded for: the contact grading design #296 measured,
+#: The contact's local spacings from the wall at the gap it is graded for: the contact grading measured before the build,
 #: 1.5.
 CONTACT_SPACINGS = 1.5
 #: The features are traced at the finest spacing over this, so that a point's distance to one is read to a small share
@@ -78,7 +78,8 @@ class GradedDensity:
         held = np.full(len(points), spacing, dtype=np.float64)
         for feature in self.traced:
             own = EDGE_SHARE * spacing if feature.form == "edge" else CREST_SHARE * feature.size
-            held = np.minimum(held, own + GROWTH * nearest(feature.points, points)[0])
+            away = feature.distance(points) if feature.distance is not None else nearest(feature.points, points)[0]
+            held = np.minimum(held, own + GROWTH * away)
         if self.contact is not None:
             held = np.minimum(held, (self.contact.gap + self._height(points)) / CONTACT_SPACINGS)
         return np.clip(held, FINEST * spacing, spacing)

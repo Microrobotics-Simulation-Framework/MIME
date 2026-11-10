@@ -1227,12 +1227,16 @@ class Feature:
     (``"rim"``, ``"crest"``), its ``form`` (:data:`FEATURE_FORMS`: an ``"edge"``, where two faces meet at an angle, its
     ``size`` zero; a ``"crest"``, a smooth ridge, its ``size`` its least radius of curvature across it, m), and
     ``points`` on it, ``(n, 3)`` in the kind's own frame, no two neighbours farther apart than the resolution they were
-    asked at, from which a point's distance to the feature is read."""
+    asked at, from which a point's distance to the feature is read where the kind gives no ``distance`` of its own: a
+    function of points ``(m, 3)`` in its frame, each one's distance to the feature in closed form. A kind gives one where
+    it can: a distance read from the traced points ripples between them, which breaks the body's symmetries, so that a
+    sampling graded on it is chosen afresh by a move of a setting far below its spacing."""
 
     name: str
     form: str
     size: float
     points: np.ndarray
+    distance: Callable[[np.ndarray], np.ndarray] | None = None
 
 
 #: The forms a feature takes: an edge (two faces meeting at an angle) and a crest (a smooth ridge of small radius).

@@ -13,6 +13,7 @@ sampling every kind takes through ``Geometry.sampling``'s density (``mime.scene.
   (nothing is drawn).
 - **The uniform sampling takes none of it**: no generators, its method the uniform one."""
 
+import dataclasses
 import math
 
 import numpy as np
@@ -219,3 +220,39 @@ def test_a_graded_density_is_at_most_the_floors():
     kind, settings = CYLINDER
     with pytest.raises(ValueError, match="at most 16"):
         kind.sampling(settings, 0.4e-3, tuple(kind.patches), lambda points: np.full(len(points), 17.0))
+
+
+def chosen_at(length: float, *, traced: bool = False) -> tuple[bytes, bytes]:
+    kind = Cylinder(radius=mm(0.5), length=mm(1.2), axis=(0.0, 0.0, 1.0))
+    settings = {"radius": 5e-4, "length": length, "axis": (0.0, 0.0, 1.0)}
+    density = graded_density(kind, settings, 4e-4, features=True)
+    if traced:  # the kind's features with their closed-form distances taken away: read from the traced points
+        density.__dict__["traced"] = tuple(dataclasses.replace(f, distance=None) for f in density.traced)
+    held = kind.sampling(settings, 4e-4, tuple(kind.patches), density)
+    assert held.chosen is not None and held.generators is not None
+    return held.chosen.tobytes(), held.generators.tobytes()
+
+
+def test_a_graded_cylinders_choice_holds_under_a_millionths_move_of_its_length(monkeypatch):
+    """The rims' distances in closed form keep the cylinder's symmetries, so a move of its length by a millionth (the
+    two-builds walk's) chooses the same samples. The control: read from the traced points, whose distance ripples
+    between them, the same move chooses others."""
+    monkeypatch.setattr(_sampling, "_MADE", {})
+    assert chosen_at(1.2e-3) == chosen_at(1.2e-3 * (1 + 1e-6))
+    monkeypatch.setattr(_sampling, "_MADE", {})
+    assert chosen_at(1.2e-3, traced=True) != chosen_at(1.2e-3 * (1 + 1e-6), traced=True)
+
+
+@pytest.mark.parametrize("held", [CYLINDER, BOX], ids=["cylinder", "box"])
+def test_the_closed_form_distances_agree_with_the_traced_points(held):
+    """Zero on the feature, and within the trace's resolution of the distance to its nearest traced point, never more,
+    at points spread round the body."""
+    kind, settings = held
+    resolution = 1e-5
+    points = np.random.default_rng(11).normal(size=(500, 3)) * 1e-3
+    for feature in kind.features(settings, resolution):
+        assert feature.distance is not None
+        np.testing.assert_allclose(feature.distance(feature.points), 0.0, atol=1e-15)
+        traced = _sampling.nearest(feature.points, points)[0]
+        exact = feature.distance(points)
+        assert np.all(exact <= traced + 1e-15) and np.all(traced - exact <= resolution)

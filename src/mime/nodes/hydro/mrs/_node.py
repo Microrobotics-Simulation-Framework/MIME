@@ -284,7 +284,7 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     every cell is integrated and blended, ``chunks`` the whole quadrature's by its owners. Also whether a cell
     within the reach was left out of the budget. A step with no cell within the reach reads no more than the image at
     the force points (a ``cond``, whose two branches agree there, every weight zero). ``gap`` is in force spacings, or
-    in a graded run in each cell's own size, ``sqrt(area)`` (design #308): the switch's mechanics are
+    in a graded run in each cell's own size, ``sqrt(area)``: the switch's mechanics are
     ``mime.nodes.hydro._near_singular``'s, shared with the near field's cross-kernel."""
     return within_reach(gap, WALL_REACH,
                         lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
