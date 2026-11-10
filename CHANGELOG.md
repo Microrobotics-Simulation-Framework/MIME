@@ -767,6 +767,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`drag` 0.5.0's default MRS spacing steps one unit of the third figure below its bound, not ten units under a power
+  of ten.** The rule rounds the largest spacing that gives the family's sample count to three figures and, where that
+  lies past the bound, steps down one unit of the third figure, sized from the rounded value: where the bound is in the
+  last half unit under a power of ten (a ball of radius 3.9785 mm: bound 0.99953 mm) the rounded value is the power, and the
+  step went to 0.99 mm, not 0.999 mm, about 0.9 % finer spacing than needed, never coarser. 0.5.0 sizes the step
+  from the bound, so the spacing is the bound rounded down to three figures, in the family's path and in the confined
+  path alike (a closest approach over `CONFINED_GAP`). Drag 0.3.0 and 0.4.0 keep the released step (`step_from_boundary`),
+  so released programs keep their bits (measured, float32 and float64: the resolved spacing and the resistance's bits of
+  the ball, pill and FL-9 on both, and FL-9 confined on 0.4.0, equal to the tip's). Of 0.5.0's programs, only those whose
+  bound lies in that band move (the 1 mm ball, the pill and FL-9 at their defaults do not).
+
 - **The rft rung's resistance is the same bit for bit whichever kind of core a process started on** (MIME-ANO-125
   again; the rung is unreleased). R1's node summed `M^T f` over its 3n unknowns in one product (282 on
   `rft_free_space`'s helix), and with a wall took its block-diagonal local drag into `B M` and `B G` as dense products

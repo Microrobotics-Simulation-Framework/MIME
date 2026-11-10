@@ -10,8 +10,8 @@ entry's defect at every point a study or an override plans (``tests/ranges/test_
 
 **The controls**, deterministic (a fixed grid, no draw), so each fails on every run: the same scan over a number the
 force points' rule samples finds its fall (FL-9's radius), and the default spacing's scans find theirs (the ball's
-radius, where the spacing's rounding steps ten units under a power of ten, 0.999 to 0.99 mm; FL-9's modulation, where
-the spacing itself falls), so a rule that declared either monotone would fail here; a number declared monotone with no
+radius, where drag 0.4.0's rounding steps ten units under a power of ten, 0.999 to 0.99 mm, a step 0.5.0 does not take;
+FL-9's modulation, where the spacing itself falls), so a rule that declared either monotone would fail here; a number declared monotone with no
 scan fails the scans' census."""
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from mrs_cases import BALL, PILL, mrs
+from mrs_cases import BALL, PILL, mrs, uncoupled
 from script_a import fl9
 
 from mime.interactions.hydrodynamic import (
@@ -78,8 +78,9 @@ def force_scan(kind_name: str, number: str, window: tuple[float, float], spacing
     return scanned(kind_name, number, window, count, lambda hull: force_points(hull, spacing, patches))
 
 
-def spacing_scan(kind_name: str, number: str, window: tuple[float, float], count: int) -> np.ndarray:
-    entry: Any = mrs(mm(0.6))
+def spacing_scan(kind_name: str, number: str, window: tuple[float, float], count: int,
+                 entry: Any | None = None) -> np.ndarray:
+    entry = mrs(mm(0.6)) if entry is None else entry
     return scanned(kind_name, number, window, count, entry._family_spacing)
 
 
@@ -113,7 +114,8 @@ def test_control_the_scan_finds_the_screws_radius_falling_in_the_force_points_so
 @pytest.mark.parametrize(("kind", "number"), sorted(SPACING_CONTROLS), ids=lambda value: str(value))
 def test_control_the_default_spacing_falls_as_the_body_grows_so_its_rule_samples_every_number(kind, number):
     window, count, (at, before, after) = SPACING_CONTROLS[(kind, number)]
-    spacings = spacing_scan(kind, number, window, count)
+    # the ball's fall is drag 0.4.0's rounding, kept as released (0.5.0 takes the exact step: the test below)
+    spacings = spacing_scan(kind, number, window, count, uncoupled(mm(0.6)) if kind == "sphere" else None)
     found = falls(spacings)
     assert found != [], "a rule declaring it monotone fails"
     own = float(hull_of(KINDS[kind]).settings[number])
@@ -123,15 +125,24 @@ def test_control_the_default_spacing_falls_as_the_body_grows_so_its_rule_samples
     assert spacing_rule(hull_of(KINDS[kind], {number: (own, 2.0 * own)})) is SPACING_SAMPLED
 
 
-def test_the_default_spacing_steps_ten_units_under_a_power_of_ten():
-    """The witness of the rounding: on the ball the bisection's boundary lies at 0.99981 mm at a radius of 3.9785 mm,
-    the spacing to three figures, 1.00 mm, gives 325 samples of the family's 338, and the rule steps a unit of its own
-    third figure down, to 0.99 mm, where a radius of 3.976 mm (its boundary 0.99918 mm) gives 0.999 mm. The dip lies
-    where the boundary is in the last half unit under 1 mm: measured, 0.999 mm at 3.9772 mm and 0.99 mm from 3.9775
-    to 3.979 mm."""
-    entry: Any = mrs(mm(0.6))
-    below, above = (entry._family_spacing(hull_of(BALL, radius=radius)) for radius in (3.976e-3, 3.9785e-3))
-    assert (below, above) == (0.999e-3, 0.99e-3)
+def test_the_default_spacing_steps_ten_units_under_a_power_of_ten_on_the_released_drags_and_one_unit_on_0_5_0():
+    """The witness of the rounding: on the ball the bisection's boundary lies at 0.99953 mm at a radius of 3.9785 mm,
+    the spacing to three figures, 1.00 mm, gives too few samples of the family's 338, and drag 0.4.0 steps a unit of the
+    rounded value's third figure down, to 0.99 mm, where a radius of 3.976 mm (its boundary 0.99918 mm) gives 0.999 mm.
+    The dip lies where the boundary is in the last half unit under 1 mm: measured, 0.999 mm at 3.977 mm and 0.99 mm
+    from 3.9775 to 3.979 mm. Drag 0.5.0 steps from the boundary: 0.999 mm at both radii."""
+    released: Any = uncoupled(mm(0.6))
+    current: Any = mrs(mm(0.6))
+    radii = (3.976e-3, 3.977e-3, 3.9785e-3)
+    assert [released._family_spacing(hull_of(BALL, radius=radius)) for radius in radii] == [0.999e-3, 0.999e-3, 0.99e-3]
+    assert [current._family_spacing(hull_of(BALL, radius=radius)) for radius in radii] == [0.999e-3] * 3
+
+
+def test_the_balls_default_spacing_does_not_fall_as_it_grows_on_0_5_0_over_the_window_the_control_scans():
+    """The first fall drag 0.4.0's scan finds (``SPACING_CONTROLS``) is the rounding's; 0.5.0's scan of the same
+    window, on the same 400 values, finds none (a grid's finding, not a proof for every radius)."""
+    window, count, _ = SPACING_CONTROLS[("sphere", "radius")]
+    assert falls(spacing_scan("sphere", "radius", window, count)) == []
 
 
 #: Two radii of FL-9 a fiftieth of its radius apart where its force points at 1.5 mm fall (106, then 91; measured).
