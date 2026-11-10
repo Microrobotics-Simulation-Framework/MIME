@@ -207,4 +207,28 @@ sphere about its centroid that holds it (`enclosing_radius`).
   writer's resolution would hold more is drawn at fewer facets a turn, and its proxy records the facets it was drawn
   at. The screw's proxy was nearly all of A0's saved stage.
 
+**Composed walls**:
+
+- **`ExactUnion`**, the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
+  `PlaneSide`, or a lab's `Region`): the minimum, a check at each point of where it is exact (the deepest region's
+  nearest wall point outside the regions that meet it), and Newton at a wall, a seam or a corner where it is not. The
+  minimum alone reads the fluid too shallow near every seam (a false wall, up to about two cells at a Y's carina); the
+  rule is exact. Newton runs at a plan's points (`plan`, chosen when the caller builds, so the program's shapes are fixed),
+  and a point outside it that fails the check is counted (`unrefined`), never silent. Derivatives are the implicit
+  function theorem's, exact in the point and every parameter.
+- **The fillet** of radius `r` is the union's closing by a ball of radius `r`, which rounds every edge the solid has
+  between two walls (a carina, a daughter's root) and nothing else: the same rule on the regions widened by `r`, moved
+  back by `r`, exact on both sides, traced like any parameter, a zero radius the sharp union, never set from a grid.
+- **`TubeTree`**, a vessel as straight tubes between points (each segment a round cone, its radius linear between its
+  ends), its centreline (`mime.registry.Centreline`, a junction where two segment ends or more meet) and its lumen (an
+  `ExactUnion`), with one fillet, `fillet` times the smallest radius at a junction (`FILLET_SHARE`, a tenth, declared:
+  no measurement of vessels gives it yet). Its values are parameters (`parameters()`), so derivatives in the points, radii
+  and fillet flow; `turned` places it at any rotation and offset.
+- **The walls' resolution report** (`wall_resolution(features, spacing, layer=...)`): the smallest wall radius (a sharp
+  seam's zero), the narrowest lumen against the band's thin-feature estimate (five cells), the narrowest solid and the
+  sharpest wedge, and the wall layer (`stokes_layer`, `steady_layer`) against the lines a Womersley sweep measured for
+  the wall shear (`LAYER_LINES`); an entry with no line is reported as unmeasured.
+- Not yet: the tree as a registered geometry kind (its lumen's shape, with its switches declared, and its stage form)
+  comes with the FVM's wall, the first node whose step runs it.
+
 Releases are explained in the [package manifest](../README.md#status).

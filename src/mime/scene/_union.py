@@ -11,11 +11,11 @@ false wall, at every seam) it reads too shallow, by 0.8 to 1.75 cells at a Y's c
 **The rule.** At each point the deepest region's nearest wall point is checked against the regions that meet it.
 Where it lies inside one, the depth is the least distance to a point of the union's boundary among: each region's
 nearest wall point that lies outside the others; each seam's (two walls meeting: the nearest point of their
-intersection, by Newton on the Lagrangian from its linearisation's); and each corner (three walls meeting). Each is
-kept only where it lies outside the remaining regions, so every candidate is a point of the boundary and the least
-never reads too shallow. It finds the nearest point where each region's wall has one nearest point from any point off
-its medial set (balls, round cones, half-spaces: convex regions) and Newton reaches the seam's nearest point from its
-linearisation's, which the tests measure against a brute force.
+intersection, found by a march along it and polished by Newton on the Lagrangian); and each corner (three walls
+meeting). Each is kept only where it lies outside the remaining regions, so every candidate is a point of the
+boundary and the least never reads too shallow. It finds the nearest point where each region's wall has one nearest
+point from any point off its medial set (balls, round cones, half-spaces: convex regions) and the march passes within
+Newton's reach of the seam's nearest point, which the tests measure against a brute force.
 
 **The fillet.** A fillet of radius ``r`` is the union's closing by a ball of radius ``r``: every edge the solid has
 between two walls is rounded to radius ``r`` (a carina, a daughter's root) and nothing else moves. Its distance is the
@@ -39,6 +39,7 @@ further than the plan's margin are seen, never silent."""
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple, Protocol, cast
@@ -61,6 +62,10 @@ _stop: Callable[[Any], Any] = cast(Any, jax).lax.stop_gradient
 PROJECTIONS = 12
 #: Newton steps on the seam's Lagrangian from that start, to the seam's nearest point.
 NEWTON_STEPS = 8
+#: The march along a seam from its start, each way: its steps, and each step's length as a share of the union's size
+#: (its largest radius): 96 steps of a sixteenth cover six radii each way, a carina's whole seam.
+MARCH_STEPS = 96
+MARCH_STEP = 1.0 / 16.0
 #: A candidate's point is kept where it lies on its walls and outside the remaining regions to this many units in the
 #: last place of the point's scale (its distance from the origin plus the union's size): its own rounding.
 KEPT_ULPS = 64.0
@@ -285,8 +290,7 @@ class ExactUnion:
         of it whose deepest region's nearest wall point lies inside another or within ``margin`` of one, at
         ``parameters`` as built (NumPy, sorted). Walls that later move by up to about half the margin leave no
         failing point outside it; past that, :meth:`signed_distance` counts them."""
-        held = jnp.asarray(points)
-        least, clearance = self.check(parameters, held)
+        least, clearance = _checked(self)(parameters, jnp.asarray(points))
         chosen = np.asarray((least < margin) & (clearance < margin))
         return np.nonzero(chosen)[0]
 
@@ -314,11 +318,17 @@ class ExactUnion:
             kept = kept & (self.regions[j].distance(parameters, point) - radius >= -slack)
         return kept
 
-    def _seam(self, parameters: Parameters, points: Array, i: int, j: int, radius: Any) -> tuple[Array, Array]:
-        """The nearest point of the widened walls ``i`` and ``j``'s intersection to each point, by Newton on the
-        Lagrangian of ``|q - x|^2 / 2`` under ``phi_i = phi_j = 0`` from the linearisation's nearest point; its
-        distance where it converged and lies outside the remaining regions (infinite elsewhere), and whether it
-        converged. Its derivative is the implicit function theorem's."""
+    def _seam(self, parameters: Parameters, points: Array, i: int, j: int,
+              radius: Any) -> tuple[Array, Array, Array]:
+        """The point of the widened walls ``i`` and ``j``'s intersection nearest each point: the point carried onto the
+        intersection by Gauss-Newton (each step the nearest point of the constraints' linearisation), then marched
+        along it both ways (``MARCH_STEPS`` steps of ``MARCH_STEP`` of the union's size, each re-projected), the
+        nearest point visited outside the remaining regions polished by Newton on the Lagrangian of ``|q - x|^2 / 2``
+        under ``phi_i = phi_j = 0``. A seam is a closed curve with as many local nearest points as the point has
+        normals to it (a carina's two sides, from deep in the fluid), and Newton keeps the one it starts by, so the
+        march chooses it. Its distance where it converged and lies outside the remaining regions (infinite elsewhere),
+        whether it converged, and the point reached (held, a corner's start where the seam's nearest point lies past
+        the corner, inside another region); its derivative is the implicit function theorem's."""
         regions = self.regions
         dtype = points.dtype
         eye = jnp.eye(3, dtype=dtype)
@@ -350,24 +360,52 @@ class ExactUnion:
             return z - jnp.linalg.solve(jacobian + _ridge(dtype, 5), residual[..., None])[..., 0]
 
         held_points = _stop(points)
-        start = _lax.fori_loop(0, PROJECTIONS, projected, held_points)
-        _, gradients = walls(start)
+        slack = self._slack(held_points)
+        on_seam = _finite_or(_lax.fori_loop(0, PROJECTIONS, projected, held_points), held_points)
+
+        def marched(direction: float) -> tuple[Array, Array]:
+            def step(index: int, carry: tuple[Array, Array, Array, Array]) -> tuple[Array, Array, Array, Array]:
+                del index
+                q, heading, best, nearest = carry
+                gradients = walls(q)[1]
+                tangent = _unit(jnp.cross(gradients[..., 0, :], gradients[..., 1, :]))[0]
+                tangent = jnp.where((jnp.sum(tangent * heading, axis=-1) < 0.0)[..., None], -tangent, tangent)
+                q = projected(0, projected(0, q + MARCH_STEP * self.size * tangent))
+                q = _finite_or(q, best)
+                on = jnp.max(jnp.abs(walls(q)[0]), axis=-1) <= MARCH_STEP * self.size
+                usable = on & self._kept(parameters, q, (i, j), radius, slack)
+                apart = jnp.where(usable, _length(q - held_points), jnp.inf)
+                closer = apart < nearest
+                return q, tangent, jnp.where(closer[..., None], q, best), jnp.where(closer, apart, nearest)
+
+            _, gradients = walls(on_seam)
+            heading, _ = _unit(direction * jnp.cross(gradients[..., 0, :], gradients[..., 1, :]))
+            on = jnp.max(jnp.abs(walls(on_seam)[0]), axis=-1) <= MARCH_STEP * self.size
+            first = jnp.where(on & self._kept(parameters, on_seam, (i, j), radius, slack),
+                              _length(on_seam - held_points), jnp.inf)
+            _, _, best, nearest = _lax.fori_loop(0, MARCH_STEPS, step, (on_seam, heading, on_seam, first))
+            return best, nearest
+
+        forward, ahead = marched(1.0)
+        backward, behind = marched(-1.0)
+        on_seam = _stop(jnp.where((behind < ahead)[..., None], backward, forward))
+        _, gradients = walls(on_seam)
         gram = gradients @ jnp.swapaxes(gradients, -1, -2) + _ridge(dtype, 2)
-        multipliers = jnp.linalg.solve(gram, (gradients @ (held_points - start)[..., None]))[..., 0]
-        reached = _stop(_lax.fori_loop(0, NEWTON_STEPS, stepped, jnp.concatenate([start, multipliers], -1)))
+        multipliers = jnp.linalg.solve(gram, (gradients @ (held_points - on_seam)[..., None]))[..., 0]
+        reached = _stop(_lax.fori_loop(0, NEWTON_STEPS, stepped, jnp.concatenate([on_seam, multipliers], -1)))
         reached = _finite_or(reached, jnp.concatenate([held_points, jnp.zeros((*points.shape[:-1], 2), dtype)], -1))
         residual, jacobian = kkt(reached)
         z = _implicit(reached, _stop(jacobian) + _ridge(dtype, 5), residual)
         scale = _length(held_points) + self.size
         converged = _stop(jnp.max(jnp.abs(residual), axis=-1)) <= CONVERGED_ULPS * jnp.finfo(dtype).eps * scale
-        kept = converged & self._kept(parameters, reached[..., :3], (i, j), radius, self._slack(held_points))
+        kept = converged & self._kept(parameters, reached[..., :3], (i, j), radius, slack)
         seam = jnp.where(kept[..., None], z[..., :3], held_points)
-        return jnp.where(kept, _length(points - seam), jnp.inf), converged
+        return jnp.where(kept, _length(points - seam), jnp.inf), converged, reached[..., :3]
 
-    def _corner(self, parameters: Parameters, points: Array, corner: tuple[int, int, int],
-                radius: Any) -> Array:
-        """The point where the three widened walls of ``corner`` meet nearest each point, by Gauss-Newton from it; its
-        distance where it converged and lies outside the remaining regions, infinite elsewhere. Its derivative in
+    def _corner(self, parameters: Parameters, points: Array, corner: tuple[int, int, int], radius: Any,
+                start: Array) -> Array:
+        """A point where the three widened walls of ``corner`` meet, by Gauss-Newton from ``start``; its distance from
+        each point where it converged and lies outside the remaining regions, infinite elsewhere. Its derivative in
         the parameters is the implicit function theorem's (the corner does not move with the point)."""
         regions = [self.regions[k] for k in corner]
         dtype = points.dtype
@@ -383,8 +421,8 @@ class ExactUnion:
             return c - (jnp.swapaxes(gradients, -1, -2) @ jnp.linalg.solve(gram, values[..., None]))[..., 0]
 
         held_points = _stop(points)
-        reached = _finite_or(_stop(_lax.fori_loop(0, PROJECTIONS + NEWTON_STEPS, projected, held_points)),
-                             held_points)
+        reached = _finite_or(_stop(_lax.fori_loop(0, PROJECTIONS + NEWTON_STEPS, projected,
+                                                  _finite_or(_stop(start), held_points))), held_points)
         values, gradients = walls(reached)
         held_gradients = _stop(gradients)
         gram = held_gradients @ jnp.swapaxes(held_gradients, -1, -2) + _ridge(dtype, 3)
@@ -398,20 +436,36 @@ class ExactUnion:
 
     def refined_depth(self, parameters: Parameters, points: Array) -> tuple[Array, Array]:
         """The depth in the widened union at ``points`` ``(M, 3)`` by every candidate (walls, seams, corners), and
-        whether any candidate was found."""
+        whether any candidate was found. A corner's Gauss-Newton starts from the point, from its three walls' nearest
+        points and from the points its three seams reached: a Y's three walls meet at two corners, one each side of
+        its plane, and where a seam's nearest point lies past a corner the corner is the nearest point of the
+        boundary."""
         distances, normals, radius = self._widened(parameters, points)
         best = self._walls(parameters, points, distances, normals, radius)
+        feet = [_stop(points - distances[k][:, None] * normals[k]) for k in range(len(self.regions))]
+        reached: dict[tuple[int, int], Array] = {}
         for i, j in self.meets:
-            best = jnp.minimum(best, self._seam(parameters, points, i, j, radius)[0])
+            found, _, reached[(i, j)] = self._seam(parameters, points, i, j, radius)
+            best = jnp.minimum(best, found)
         for corner in self.corners:
-            best = jnp.minimum(best, self._corner(parameters, points, corner, radius))
+            i, j, k = corner
+            starts = (points, *(feet[m] for m in corner), reached[(i, j)], reached[(i, k)], reached[(j, k)])
+            found = self._corner(parameters, jnp.concatenate([points] * len(starts)), corner, radius,
+                                 jnp.concatenate(starts))
+            best = jnp.minimum(best, jnp.min(found.reshape(len(starts), -1), axis=0))
         return best, jnp.isfinite(best)
 
     # -- the distance ------------------------------------------------------------------------------------------------
     def signed_distance(self, parameters: Parameters, points: Any, plan: np.ndarray | None = None) -> UnionDistance:
         """The union's signed distance at ``points`` ``(N, 3)``, negative inside, filleted: the candidates run at the
-        points ``plan`` holds (indices, :meth:`plan`), at every point where it is ``None``."""
-        held = jnp.asarray(points)
+        points ``plan`` holds (indices, :meth:`plan`), at every point where it is ``None``. Compiled once for each
+        union and plan (and the points' shape and dtype), and traced inside any transform that calls it."""
+        held_plan = None if plan is None else tuple(int(i) for i in np.asarray(plan).ravel())
+        return _compiled(self, held_plan)(parameters, jnp.asarray(points))
+
+    def evaluate(self, parameters: Parameters, points: Array, plan: np.ndarray | None) -> UnionDistance:
+        """:meth:`signed_distance` as it is traced."""
+        held: Array = jnp.asarray(points)
         least, clearance = self.check(parameters, held)
         radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
         failing = (least < 0.0) & (clearance < -self._slack(held))
@@ -450,6 +504,23 @@ class ExactUnion:
         return jnp.min(distances, axis=0) + radius
 
 
+@functools.lru_cache(maxsize=64)
+def _compiled(union: ExactUnion, plan: tuple[int, ...] | None) -> Callable[[Parameters, Array], UnionDistance]:
+    """``union``'s distance at ``plan``, compiled: its loops are traced once rather than at every call."""
+    index = None if plan is None else np.asarray(plan, dtype=np.int64)
+
+    def evaluated(parameters: Parameters, points: Array) -> UnionDistance:
+        return union.evaluate(parameters, points, index)
+
+    return cast(Any, jax).jit(evaluated)
+
+
+@functools.lru_cache(maxsize=64)
+def _checked(union: ExactUnion) -> Callable[[Parameters, Array], tuple[Array, Array]]:
+    """``union``'s check, compiled."""
+    return cast(Any, jax).jit(union.check)
+
+
 def _implicit(reached: Array, jacobian: Array, residual: Array) -> Array:
     """One Newton step from ``reached``, a root to rounding held out of every derivative, with ``jacobian`` held: its
     value is the root's, and its tangent is the implicit function theorem's, ``-J^-1 dF``, through the residual's
@@ -469,5 +540,5 @@ def _ridge(dtype: Any, size: int) -> Array:
     return 16.0 * jnp.finfo(dtype).eps * jnp.eye(size, dtype=dtype)
 
 
-__all__ = ["CONVERGED_ULPS", "KEPT_ULPS", "NEWTON_STEPS", "PROJECTIONS", "Ball", "ExactUnion", "PlaneSide", "Region",
-           "RoundCone", "UnionDistance"]
+__all__ = ["CONVERGED_ULPS", "KEPT_ULPS", "MARCH_STEP", "MARCH_STEPS", "NEWTON_STEPS", "PROJECTIONS", "Ball",
+           "ExactUnion", "PlaneSide", "Region", "RoundCone", "UnionDistance"]

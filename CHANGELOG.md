@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Composed walls in `mime.scene`: the seam-aware union, the fillet as its closing, the tube tree** (F2a's first
+  part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
+  `PlaneSide`, or a lab's `Region`): the minimum, a check at each point of where it is exact (the deepest region's
+  nearest wall point lies outside the regions that meet it), and Newton at a wall, a seam or a corner where it is not,
+  at a plan's points held for a build, a miss outside the plan counted (`unrefined`). The plain minimum reads the fluid
+  too shallow near every seam, a false wall of 0.4 to 1.75 cells at a Y's carina; the rule is exact to a brute force's
+  floor at random rotations and sub-cell offsets in both dtypes. A fillet of radius `r` is the union's closing by a
+  ball (every edge of solid between two walls rounded, nothing else moved): the same rule on the regions widened by
+  `r`, moved back, exact on both sides against closed forms (a wedge, two balls). Derivatives by implicit
+  differentiation. `TubeTree`: points, segments with a radius at each end (round cones), its centreline with a junction
+  where two segment ends or more meet, its lumen, one fillet (`FILLET_SHARE`, 0.1 of the smallest radius at a
+  junction, declared: no measurement of vessels gives it yet), its values parameters a derivative flows through, and
+  `turned` for tilted vessels; a malformed tree is refused (`call.tube_tree`). The walls' half of the resolution report
+  (`wall_resolution`, `stokes_layer`, `steady_layer`). No node runs it yet: the FVM's wall is the first.
+
 - **The coil array returns: `mime.fields.CalibratedMultipole`** (`calibrated_multipole` 0.1.0, its node
   `CalibratedMultipoleNode`), an electromagnet array whose coils are a calibrated multipole model of order one, from one of three packaged calibrations (ETH MSRL's published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME; not affiliated with or endorsed by the systems' makers), `asset("navion_2")`, `asset("octomag")` and `asset("cardiomag")`: Apache-2.0,
   Multi-Scale Robotics Lab, ETH Zurich, byte for byte their upstreams' at pinned commits, each with its card

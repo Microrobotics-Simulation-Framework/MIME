@@ -46,6 +46,12 @@ FILLET_SHARE = 0.1
 APPROACH_POINTS = 257
 
 
+def _norm(v: np.ndarray, axis: int = -1) -> np.ndarray:
+    """``|v|`` over ``axis``, in NumPy."""
+    found: np.ndarray = np.sqrt(np.sum(v * v, axis=axis))
+    return found
+
+
 def _refused(message: str) -> Exception:
     """The refusal of a tree's declaration (``call.tube_tree``): the ``ValueError`` a call's argument raises, coded."""
     from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
@@ -109,7 +115,7 @@ class TubeTree:
     # -- its structure, fixed -------------------------------------------------------------------------------------
     def lengths(self) -> np.ndarray:
         points = np.asarray(self.points, dtype=np.float64)
-        return np.asarray([np.linalg.norm(points[end] - points[start]) for start, end in self.segments])
+        return np.asarray([float(_norm(points[end] - points[start])) for start, end in self.segments])
 
     @property
     def junctions(self) -> tuple[Junction, ...]:
@@ -135,12 +141,12 @@ class TubeTree:
         widening = 2.0 * self.fillet_radius_value()
         t = np.linspace(0.0, 1.0, APPROACH_POINTS)
         lines = [points[a][None] + t[:, None] * (points[b] - points[a])[None] for a, b in self.segments]
-        steps = [float(np.linalg.norm(points[b] - points[a])) / (APPROACH_POINTS - 1) for a, b in self.segments]
+        steps = [float(_norm(points[b] - points[a])) / (APPROACH_POINTS - 1) for a, b in self.segments]
         for i in range(len(self.segments)):
             for j in range(i + 1, len(self.segments)):
                 if (i, j) in shared:
                     continue
-                apart = float(np.min(np.linalg.norm(lines[i][:, None] - lines[j][None], axis=-1)))
+                apart = float(np.min(_norm(lines[i][:, None] - lines[j][None])))
                 if apart < radii[i].max() + radii[j].max() + widening + steps[i] + steps[j]:
                     shared.add((i, j))
         return tuple(sorted(shared))
@@ -181,7 +187,7 @@ class TubeTree:
         tangent, carried round the corner from the first segment that ends where it starts (``mime.scene.
         transported``), so the frame is continuous through every junction a parent reaches."""
         points = np.asarray(self.points, dtype=np.float64)
-        tangents = [(points[b] - points[a]) / np.linalg.norm(points[b] - points[a]) for a, b in self.segments]
+        tangents: list[np.ndarray] = [(points[b] - points[a]) / _norm(points[b] - points[a]) for a, b in self.segments]
         normals: dict[int, np.ndarray] = {}
         incoming = {end: index for index, (_, end) in reversed(list(enumerate(self.segments)))}
         for _ in range(len(self.segments)):
@@ -219,11 +225,11 @@ class TubeTree:
         points = np.asarray(self.points, dtype=np.float64)
         wedge = 180.0
         for junction in junctions:
-            directions = []
+            directions: list[np.ndarray] = []
             for segment, end in junction.ends:
                 a, b = (points[i] for i in self.segments[segment])
                 away = (b - a) if end == 0 else (a - b)
-                directions.append(away / np.linalg.norm(away))
+                directions.append(away / _norm(away))
             for i in range(len(directions)):
                 for j in range(i + 1, len(directions)):
                     cosine = float(np.clip(np.dot(directions[i], directions[j]), -1.0, 1.0))
@@ -241,7 +247,7 @@ class TubeTree:
                 along_j = c[None] + t[:, None] * (d - c)[None]
                 ri = radii[i, 0] + t * (radii[i, 1] - radii[i, 0])
                 rj = radii[j, 0] + t * (radii[j, 1] - radii[j, 0])
-                gap = np.linalg.norm(along_i[:, None] - along_j[None], axis=-1) - ri[:, None] - rj[None]
+                gap = _norm(along_i[:, None] - along_j[None]) - ri[:, None] - rj[None]
                 apart = min(apart, float(gap.min()))
         return WallFeatures(smallest, 2.0 * float(radii.min()), apart, wedge)
 
