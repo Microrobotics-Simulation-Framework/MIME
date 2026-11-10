@@ -136,27 +136,66 @@ def test_a_tolerance_below_the_dtypes_floor_stops_stagnated_before_its_cap_and_r
     assert 0.0 < float(report[RESIDUAL]) <= float(converged[1][RESIDUAL])
 
 
+#: The stall restarts' and the floor stop's system: the cyclic shift of 8 unknowns, on which restarted GMRES with a
+#: Krylov length under 8 makes no progress at all (every vector the basis adds is orthogonal to the residual, so each
+#: cycle's correction is exactly zero, in either dtype), its true residual the right-hand side's to the bit.
+SHIFT, SHIFT_RESTART = 8, 3
+
+
+def shifted(dtype: str, stopping: Stopping) -> np.ndarray:
+    """The shift's report from three unit columns, unpreconditioned, at a tolerance of 1e-6 it never reaches."""
+    with precision(dtype):
+        shift = jnp.roll(jnp.eye(SHIFT), 1, axis=0)
+        columns = jnp.eye(SHIFT)[:, [0, 2, 5]]
+        _, report = jax.jit(lambda a, b: gmres(lambda v: a @ v, b, lambda v: v, stopping,
+                                               lambda v: jnp.abs(a) @ v))(shift, columns)
+    return np.asarray(report)
+
+
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-def test_each_stall_restart_begins_the_window_again_and_none_traces_the_solve_as_before(dtype):
-    """``Stopping.stall_restarts`` (a recheck raises them, design #337): at a tolerance under the floor every column
-    stagnates whatever they are, and each restart begins its window again, so the solve takes at least a window of
-    restarts more each (``STAGNATION_WINDOW`` restarts of at least one iteration), and never reaches the tolerance. (That
-    none leaves a run's GMRES as it was is the bits probe's, base against head.)"""
+@pytest.mark.parametrize("restarts", [0, 1, 2, 3])
+def test_each_stall_restart_buys_exactly_one_window_of_restarts(dtype, restarts):
+    """``Stopping.stall_restarts`` (a recheck raises them, design #337): a stagnation is found once a window of restarts
+    has not halved the best, and each stall restart begins the window again, so on the shift, where no restart moves the
+    residual, every column stops stagnated after exactly ``(restarts + 1)`` windows of ``SHIFT_RESTART`` iterations a
+    restart. A restart too many (``<=`` on the count) or a window not begun again (a stall restart then buys one
+    restart, not a window) moves the count. (That none leaves a run's GMRES as it was is the bits probe's.)"""
+    report = shifted(dtype, Stopping(1e-6, restart=SHIFT_RESTART, cap=10_000, stall_restarts=restarts))
+    assert report[ITERATIONS] == SHIFT_RESTART * STAGNATION_WINDOW * (restarts + 1), report
+    assert report[STAGNATED] == 3 and report[AT_CAP] == 0 and report[RESIDUAL] == 1.0
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_under_the_floor_stop_a_stall_above_the_floor_runs_on_to_its_cap(dtype):
+    """``floor_stop`` (a recheck's, design #337's fix round): a stagnation stops a column only at its rounding floor.
+    The shift's residual sits at its right-hand side, ``1 / eps`` times its floor: a stall, so no column stops
+    stagnated, and each runs on to its cap, stall restarts and all."""
+    report = shifted(dtype, Stopping(1e-6, restart=SHIFT_RESTART, cap=60, stall_restarts=1, floor_stop=True))
+    assert report[AT_CAP] == 3 and report[STAGNATED] == 0 and report[ITERATIONS] == 60, report
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_under_the_floor_stop_a_solve_at_its_floor_stops_stagnated_before_its_cap(dtype):
+    """The node's own joint system (three coarse spheres) at a tolerance of 1e-30, under every dtype's floor: each
+    column reaches its rounding floor and, past its stall restarts, stops stagnated there, far before its cap."""
     with precision(dtype):
         matrix, motions, precondition, _ = system(dtype)
-        found = {restarts: jax.jit(lambda a, b, k=restarts: gmres(lambda v: a @ v, b, precondition,
-                                                                  Stopping(1e-30, cap=6000, stall_restarts=k)))(
-            matrix, motions) for restarts in (0, 1, 3)}
-    iterations = {k: float(report[ITERATIONS]) for k, (_, report) in found.items()}
-    print(f"\n{dtype}: iterations by stall restarts {iterations}")
-    for _, report in found.values():
-        assert report[STAGNATED] == motions.shape[1] and report[AT_CAP] == 0.0
-    assert iterations[0] + STAGNATION_WINDOW <= iterations[1] and iterations[1] + 2 * STAGNATION_WINDOW <= iterations[3]
+        _, report = jax.jit(lambda a, b: gmres(lambda v: a @ v, b, precondition,
+                                               Stopping(1e-30, cap=6000, stall_restarts=3, floor_stop=True),
+                                               lambda v: jnp.abs(a) @ v))(matrix, motions)
+    print(f"\n{dtype}: {dict(zip(REPORT_FIELDS, np.asarray(report).tolist()))}")
+    assert report[STAGNATED] == motions.shape[1] and report[AT_CAP] == 0.0 and report[ITERATIONS] < 6000
+
+
+def test_a_stop_at_the_floor_needs_the_operators_magnitude():
+    with pytest.raises(ValueError, match="magnitude"):
+        gmres(lambda v: v, jnp.ones((2, 1)), lambda v: v, Stopping(1e-6, floor_stop=True))
 
 
 def test_the_rechecks_stopping_lifts_the_cap_and_raises_the_stall_restarts_as_the_cgs_does():
     """``recheck_stopping`` for GMRES, by the CG's constants: the cap to the larger of ten times itself and the default,
-    the stall restarts raised by ``STALL_RESTARTS``, everything else, the tolerance first, as it was."""
+    the stall restarts raised by ``STALL_RESTARTS``, a stagnation stopping only at the floor, everything else, the
+    tolerance first, as it was."""
     import dataclasses
 
     from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, STALL_RESTARTS
@@ -165,7 +204,8 @@ def test_the_rechecks_stopping_lifts_the_cap_and_raises_the_stall_restarts_as_th
     for cap, restarts in [(1, 0), (CAP, 0), (CAP, 2), (4 * DEFAULT_CAP, 1)]:
         held = Stopping(1e-10, restart=17, cap=cap, window=4, stagnation=0.25, stall_restarts=restarts)
         assert recheck_stopping(held) == dataclasses.replace(
-            held, cap=max(cap * RECHECK_CAP_FACTOR, DEFAULT_CAP), stall_restarts=restarts + STALL_RESTARTS)
+            held, cap=max(cap * RECHECK_CAP_FACTOR, DEFAULT_CAP), stall_restarts=restarts + STALL_RESTARTS,
+            floor_stop=True)
 
 
 def test_a_zero_column_is_accepted_at_zero_and_a_nan_one_returns_nan_with_its_count():

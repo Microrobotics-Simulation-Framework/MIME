@@ -18,7 +18,7 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_input, \
     run_constants_given, run_dtype
-from mime.core._node import rechecked
+from mime.core._node import FLOOR_LIMITED, STAGNATED, rechecked
 from mime.nodes.hydro.mrs._node import (
     CONFINED_ASYMMETRY_LIMIT,
     HELD,
@@ -250,8 +250,7 @@ class JointDragNode(MimeNode):
                                            "quadrature")),
     )
     rechecks = True
-    floor_route = ("run in float64, or take the dense route, an LU with no tolerance to stop short of, "
-                   "Drag.MRS(near_field=NearField(solve='dense')), the default")
+    floor_stops = True
     symbols = (
         Symbol(r"\mathbf{R}", SymbolKind.STATE, "resistance", "N s/m; N s; N m s", _ADVANCE),
         Symbol(r"\mu", SymbolKind.PARAMETER, "viscosity", "Pa s", _ADVANCE),
@@ -323,6 +322,18 @@ class JointDragNode(MimeNode):
     def route(self) -> str:
         """The joint solve's route, ``"dense"`` or ``"gmres"`` (decided when built)."""
         return "gmres" if self._iterative else "dense"
+
+    @override
+    def recheck_route(self, cause: str, dtype: str) -> str:
+        """A floor: float64 in a float32 run, in float64 a tolerance at or above it; a stall: GMRES's restart length is
+        not a setting; and either way the dense route, an LU with no tolerance to stop short of."""
+        dense = ("take the dense route, Drag.MRS(near_field=NearField(solve='dense')), the default, an LU with no "
+                 "tolerance to stop short of")
+        if cause == FLOOR_LIMITED:
+            return (f"run in float64, or {dense}" if dtype == "float32" else
+                    f"write a tolerance at or above the floor, Drag.MRS(near_field=NearField(solve='gmres', "
+                    f"tolerance=...)), or {dense}")
+        return dense if cause == STAGNATED else ""
 
     def memory_estimate(self) -> float:
         """The bytes a run of the node holds at its peak past the process's fixed part, in the run's dtype

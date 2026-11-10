@@ -93,10 +93,11 @@ class Recheck:
     node flagged that was not re-solved, with the reason (a non-finite residual, which neither removes; a node whose
     solve has no recheck); the objective and the derivative the recheck gave, their changes from the member's own
     (relative to the member's), and its own solves' reports, which say whether it converged; ``causes``, each
-    rechecked node's stop named from its recheck's own solves, ``cap-limited`` (they converged once the cap was lifted
-    and the stall restarts raised, or stopped at the lifted cap again) or ``floor-limited`` (they stagnated again: a
-    floor, the dtype's rounding above the tolerance, which no cap lifts), and for a floor the route out its node names
-    (``floor_routes``). A recheck of no node (``made`` false) gives the member's own values and NaN changes."""
+    rechecked node's stop named from its recheck's solves and the member's (``mime.core``'s names: ``floor-limited``,
+    stagnated again at the solve's rounding floor, which no cap lifts; ``stagnated``, a stall above the floor, or a
+    stagnation whose floor the solve does not test; ``cap-limited``, a cap alone; ``not-finite``), and ``routes``, the
+    route out its node names for each, by the run's dtype. A recheck of no node (``made`` false) gives the member's own
+    values and NaN changes."""
 
     how: str
     lifted: tuple[str, ...]
@@ -107,7 +108,7 @@ class Recheck:
     gradient_change: Mapping[str, float]
     solves: tuple[SolveReport, ...]
     causes: Mapping[str, str] = field(default_factory=dict[str, str])
-    floor_routes: Mapping[str, str] = field(default_factory=dict[str, str])
+    routes: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
     def made(self) -> bool:
@@ -122,10 +123,24 @@ class Recheck:
 
 def _cause_text(report: SolveReport, recheck: Recheck) -> str:
     """A rechecked node's cause, as the member's text says it."""
-    if recheck.causes[report.node] == "floor-limited":
-        route = recheck.floor_routes.get(report.node, "")
-        return (f"floor-limited: it stagnated again with its cap lifted and its stall restarts raised, its dtype's "
-                f"rounding floor above its tolerance, which no cap lifts{'; ' + route if route else ''}")
+    cause = recheck.causes[report.node]
+    route = recheck.routes.get(report.node, "")
+    tail = f"; {route}" if route else ""
+    if cause == "floor-limited":
+        return (f"floor-limited: its recheck's solves stopped stagnated at their rounding floor (the least true residual "
+                f"within eps || |A| |x| + |b| ||), above the tolerance, which no cap lifts{tail}")
+    if cause == "not-finite":
+        return "not-finite: a solve of its recheck had a residual that was not finite, which no cap or restart removes"
+    if cause == "stagnated":
+        if report.stagnated:
+            what = ("it stagnated again with its cap lifted and its stall restarts raised; its solve does not test its "
+                    "rounding floor, so a floor and a stall are not told apart")
+        elif report.forward_short or report.backward_short:
+            what = "a stall, and its recheck, run past it, stopped at the lifted cap"
+        else:
+            what = ("a stall above its rounding floor, which its recheck ran past and converged, the changes above its "
+                    "stop's cost")
+        return f"stagnated: {what}{tail}"
     if report.forward_short or report.backward_short:
         return "cap-limited: it stopped at its cap again once the cap was lifted"
     return ("cap-limited: it converged with its cap lifted and its stall restarts raised, the changes above its stop's "
