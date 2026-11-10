@@ -98,7 +98,10 @@ def test_a_neutral_body_in_a_uniformly_driven_flow_moves_with_the_fluid(dtype):
     """Gate 3: on the tube's axis, before the wall's viscous front reaches it, the fluid accelerates uniformly and a
     neutrally buoyant point body with it. The plant switches the Maxey-Riley terms off."""
     rng = np.random.default_rng(3000 + seed())
-    exp = point_experiment(radius=float(rng.uniform(30e-6, 50e-6)), offset=float(rng.uniform(0.0, 0.2e-3)), dt=2e-4)
+    # Within a tenth of the radius of the axis, where the flow is uniform until the wall's viscous front arrives (at 8 ms
+    # its diffusion length is a sixth of the radius): farther out the front's curvature moves the slip past the line
+    # (three draws in twenty at offsets to 0.4 R, the rate probe's clean arm).
+    exp = point_experiment(radius=float(rng.uniform(30e-6, 50e-6)), offset=float(rng.uniform(0.0, 0.05e-3)), dt=2e-4)
     if plant("MAXEY_RILEY"):
         _patch_node(maxey_riley=False)
     try:
