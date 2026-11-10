@@ -1030,3 +1030,7 @@ tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_un
 tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float32-unit_negated] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
 tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float64-unit_scaled] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
 tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float64-unit_negated] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
+tests/flow/test_fvm_open_ledger.py::test_the_projection_flag_is_quiet_and_catches_its_plant[float32-None] # kept: the open box's projection flag on a drawn metered run, clean and planted
+tests/flow/test_fvm_open_ledger.py::test_the_projection_flag_is_quiet_and_catches_its_plant[float32-weights_uniform] # kept: the open box's projection flag on a drawn metered run, clean and planted
+tests/flow/test_fvm_open_ledger.py::test_the_projection_flag_is_quiet_and_catches_its_plant[float64-None] # kept: the open box's projection flag on a drawn metered run, clean and planted
+tests/flow/test_fvm_open_ledger.py::test_the_projection_flag_is_quiet_and_catches_its_plant[float64-weights_uniform] # kept: the open box's projection flag on a drawn metered run, clean and planted

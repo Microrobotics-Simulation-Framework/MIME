@@ -64,3 +64,18 @@ def test_the_open_flags_are_declared_and_none_claims_coverage_unshown():
     assert not flag_problems(OPEN_FLAGS)
     assert {flag.name for flag in OPEN_FLAGS} >= {"open_face_projection", "port_kinetic_flux"}
     assert OpenFlowNode.LEDGER_FLAGS is OPEN_FLAGS
+
+
+@pytest.mark.parametrize("plant", [None, "weights_uniform"])
+def test_the_projection_flag_is_quiet_and_catches_its_plant(dtype, monkeypatch, plant):
+    """The open_face_projection flag on a drawn run: under its line clean, past it with the planes' faces at full
+    weight in the inner product (the projector not orthogonal under the books' product). Its rate over fresh draws is
+    its evidence's."""
+    if plant:
+        PLANTS[plant](monkeypatch.setattr)
+    flag = next(f for f in OPEN_FLAGS if f.name == "open_face_projection")
+    node = point_node(draw(SEEDS[0]))
+    final, found = scan(node, STEPS, lambda p, b, a: flag.reading(node, p, b, a))
+    assert int(final["stopped_at"]) < 0
+    worst = float(np.max(np.abs(np.asarray(found))))
+    assert (worst <= flag.line[dtype]) == (plant is None), worst

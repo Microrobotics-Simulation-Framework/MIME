@@ -25,7 +25,8 @@ the step's start and end, its loss, its ``N_WK``: ``mime.core.ledger.law_records
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, NamedTuple, override
+from types import MappingProxyType
+from typing import Any, ClassVar, NamedTuple, override
 
 import numpy as np
 from jax import Array
@@ -36,6 +37,7 @@ from typing_extensions import Annotated, ReadOnly, TypedDict
 from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, run_dtype
 from mime.core import ledger as books
 from mime.core._node import rechecked
+from mime.core.ledger import TermOrder
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negative_resistivity
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
@@ -136,6 +138,11 @@ class OpenFlowNode(ImplicitFlowNode):
 
     LEDGER_TERMS = OPEN_TERMS
     GRID_TERMS = ("projection",)
+    #: The grid's own term's order (``mime.testing.term_orders``, beside the scheme's ``ledger_orders``): none, said so.
+    GRID_ORDERS: ClassVar[Mapping[str, TermOrder]] = MappingProxyType({"projection": TermOrder(
+        reason="rounding at any tolerance: the half-weight faces keep the projector orthogonal under the books' inner "
+               "product, so the projection's term does not fall with the tolerance (C13); the open_face_projection "
+               "flag bounds it")})
     LEDGER_FLAGS = OPEN_FLAGS
 
     def __init__(self, name: str, timestep: float, *, openings: Sequence[str], opening_laws: Sequence[str],

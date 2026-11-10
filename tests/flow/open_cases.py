@@ -286,9 +286,14 @@ def _velocity(state: Any) -> Any:
     return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
 
 
+#: FB2's line, in units of the run's eps on the face's magnitude: the prediction's 64 missed in float32 on 2 of 150 clean
+#: drawn runs (85 eps at worst; float64's worst 22), so the line is three times float32's worst.
+FB2_ULPS = 256.0
+
+
 def inflow_reading(node: OpenFlowNode) -> Callable[[Any, Any, Any], Any]:
     """FB2: the inlet's face flux against the inflow's waveform at the step's end (nominal, from the node's own
-    parameters), over 64 eps of the face's magnitude ``h^2 sum |w|``: above one it has failed."""
+    parameters), over :data:`FB2_ULPS` eps of the face's magnitude ``h^2 sum |w|``: above one it has failed."""
 
     def reading(p: Any, before: Any, after: Any) -> Any:
         del before
@@ -298,7 +303,7 @@ def inflow_reading(node: OpenFlowNode) -> Callable[[Any, Any, Any], Any]:
         flux = row[0] + row[1] * jnp.cos(2.0 * jnp.pi * row[2] * time + row[3])
         w = jnp.asarray(after["velocity_z"])[..., 0]
         size = grid.spacing ** 2 * jnp.sum(jnp.abs(w))
-        return jnp.abs(jnp.asarray(after["opening_flux"])[0] + flux) / (64.0 * jnp.finfo(row.dtype).eps * size)
+        return jnp.abs(jnp.asarray(after["opening_flux"])[0] + flux) / (FB2_ULPS * jnp.finfo(row.dtype).eps * size)
 
     return reading
 
