@@ -41,7 +41,8 @@ def test_the_inflows_face_flux_is_its_waveform(dtype, monkeypatch, plant):
     planted(monkeypatch, plant)
     for seed in SEEDS:
         node = point_node(draw(seed))
-        _, readings = scan(node, STEPS, inflow_reading(node))
+        final, readings = scan(node, STEPS, inflow_reading(node))
+        assert int(final["stopped_at"]) < 0  # inside the CFL line: a held run is no evidence
         worst = float(np.max(np.asarray(readings)))
         assert (worst <= 1.0) == (plant is None), (seed, worst)
 
@@ -68,7 +69,8 @@ def test_the_superposed_field_is_the_monolithic_solve(dtype, monkeypatch, plant)
     planted(monkeypatch, plant)
     for seed in SEEDS:
         node = point_node(draw(seed))
-        _, readings = scan(node, STEPS, superposed_reading(node))
+        final, readings = scan(node, STEPS, superposed_reading(node))
+        assert int(final["stopped_at"]) < 0
         worst = float(np.max(np.asarray(readings)))
         assert (worst <= 1.0) == (plant is None), (seed, worst)
 

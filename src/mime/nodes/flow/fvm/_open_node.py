@@ -35,6 +35,7 @@ from typing_extensions import Annotated, ReadOnly, TypedDict
 
 from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, run_dtype
 from mime.core import ledger as books
+from mime.core._node import rechecked
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negative_resistivity
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
@@ -44,7 +45,8 @@ from mime.nodes.flow.fvm._open import OpenMACGrid
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, port_law_named, port_system, reference_of, \
     well_posed
 from mime.nodes.flow.fvm._schemes import StageParts, StepContext
-from mime.nodes.flow.fvm._solve import Stopping, preconditioner_named, projected_solve, stagnation_window
+from mime.nodes.flow.fvm._solve import Stopping, preconditioner_named, projected_solve, recheck_stopping, \
+    stagnation_window
 
 #: The roles the open node's hosted rows take beside its viscosity's and wall's: each opening's law, by its index,
 #: and the kinetic energy convection carries through the openings.
@@ -227,6 +229,8 @@ class OpenFlowNode(ImplicitFlowNode):
         stopping = Stopping(tolerance=as_run_array(p["tolerance"]), at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
                             check_every=int(c["check_every"]),
                             window=stagnation_window(grid.cells, int(c["check_every"])))
+        if rechecked(p):
+            stopping = recheck_stopping(stopping)
         preconditioner = preconditioner_named(c["preconditioner"])
         steps = jnp.asarray(state["steps"])
         tap = self.report_row(p, steps)

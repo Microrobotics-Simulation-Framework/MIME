@@ -5,12 +5,12 @@ and each flag's ``evidence``); here a few draws of the same envelope (``flag_cas
 were measured on.
 
 - **Declared as measured**: an active flag carries a line in each dtype and a plant caught on every run with no false
-  alarm, its run linked; the openings' two are pending and never counted as checks. The control: a flag declared a
+  alarm, its run linked; a pending flag (RK3's, the open box's not yet measured) is never counted as a check. The control: a flag declared a
   check with no measured rate, and one pending with evidence, are each named.
 - **Quiet on correct runs**: each active flag's worst reading under its line, in both dtypes.
 - **Each flag's plant caught** (the control): a solve stopped at a tolerance 1e4 looser (the stall), a convective term
-  formed from the run's starting velocity (convection), the fluid's mask lost beyond the band (the leak). The pending
-  openings' two are never counted."""
+  formed from the run's starting velocity (convection), the fluid's mask lost beyond the band (the leak). The open
+  box's flags are its own gates' (``test_fvm_open_ledger.py``)."""
 
 from __future__ import annotations
 
@@ -37,13 +37,13 @@ def test_the_flags_are_declared_as_measured(node):
 def test_the_pending_flags_are_never_counted_as_checks():
     node = ImplicitFlowNode.__new__(ImplicitFlowNode)
     report = judge_flags(node, {}, "float64")
-    assert set(report.pending) == {"open_face_projection", "port_kinetic_flux"}
+    assert set(report.pending) == set()
     assert {r.flag for r in report.readings} == set(CAUGHT) == {f.name for f in active_flags(node)}
     assert report.checks == len(CAUGHT)
 
 
 def test_a_run_with_no_check_does_not_pass_and_a_flag_that_read_nothing_is_silent():
-    """RK3 declares only the pending two: its report has no check and does not pass. A flag that read exactly zero at
+    """RK3's flags are all pending: its report has no check and does not pass. A flag that read exactly zero at
     every judged step (convection's where the node's convection is off) is listed as silent, not counted; a flag with
     no line in the run's dtype fails, named."""
     explicit = judge_flags(ExplicitFlowNode.__new__(ExplicitFlowNode), {}, "float64")

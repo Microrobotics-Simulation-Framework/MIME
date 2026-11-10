@@ -116,7 +116,7 @@ def projection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any
 def face_kinetic_flux(node: Any, p: Mapping[str, Any], velocity: tuple[Array, Array, Array]) -> tuple[Array, Array]:
     """The kinetic energy carried in through the openings over a step by the face formula, ``dt rho h^2 sum
     (1/2)|u|^2 w`` on each plane (in at the low, out at the high; the tangential velocity at its end cell, averaged
-    onto the face's centre), and its natural size, ``dt rho h^2 sum |w|^3``."""
+    onto the face's centre), and its gross, each plane's in magnitude summed."""
     u, v, w = velocity
     grid = node.grid(p)
     weight = node.delta_t * as_run_array(p["density"]) * grid.spacing ** 2
@@ -126,30 +126,30 @@ def face_kinetic_flux(node: Any, p: Mapping[str, Any], velocity: tuple[Array, Ar
         vc = 0.5 * (v[..., end] + jnp.roll(v[..., end], -1, 1))
         return jnp.sum(0.5 * (uc * uc + vc * vc + w_end * w_end) * w_end)
 
-    flux = weight * (plane(0, w[..., 0]) - plane(-1, w[..., -1]))
-    size = weight * (jnp.sum(jnp.abs(w[..., 0]) ** 3) + jnp.sum(jnp.abs(w[..., -1]) ** 3))
-    return flux, size
+    low, high = weight * plane(0, w[..., 0]), weight * plane(-1, w[..., -1])
+    return low - high, jnp.abs(low) + jnp.abs(high)
+
+
+#: The share of their gross the planes' net kinetic-energy flux must carry for a step to be judged: where the energy in
+#: and out nearly cancel, the face formula's own error is the whole of the net and the flag reads nothing.
+NET_SHARE = 0.1
 
 
 def kinetic_flux_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any],
                          after: Mapping[str, Any]) -> Array:
     """The kinetic energy's flux through the openings as the books hold it (the scheme's own convective power
-    ``dt rho <C(u), u>``, under ``<node>.openings``) against the face formula's at the step's start, over their size:
-    rounding plus the face formula's own error (the open-ports spike's 0.74 % on a stenosis); a flux left in another
-    term, or formed otherwise at the planes, reads above it. Zero where both are under half the dtype's digits of the
-    flux's natural size (a flow whose ends carry no net kinetic energy: every digit is rounding there)."""
+    ``dt rho <C(u), u>``, under ``<node>.openings``) against the face formula's at the step's start, over the face
+    formula's gross (each plane's in magnitude): rounding plus the face formula's own error (the open-ports spike's
+    0.74 % on a stenosis); a flux left in another term, or booked twice, reads above it. Judged only where the net
+    carries at least :data:`NET_SHARE` of the gross (zero elsewhere: a net that cancels is the formula's error)."""
     held = books.deliveries(node.constants())
     line = next(d.law for d in held if d.kind == books.HOSTED and d.field == "kinetic_flux")
     booked = jnp.asarray(after[f"{books.RECORDS}step_work"])[books.laws(held).index(line)]
-    face, natural = face_kinetic_flux(node, p, _velocity(before))
-    size = jnp.abs(booked) + jnp.abs(face)
-    digits = jnp.sqrt(jnp.finfo(booked.dtype).eps)
-    stepped = (size > digits * natural) & (jnp.asarray(after["stopped_at"]) < 0)
-    return jnp.where(stepped, _share(jnp.abs(booked - face), size), 0.0)
+    face, gross = face_kinetic_flux(node, p, _velocity(before))
+    judged = (jnp.abs(face) >= NET_SHARE * gross) & (jnp.asarray(after["stopped_at"]) < 0)
+    return jnp.where(judged, _share(jnp.abs(booked - face), gross), 0.0)
 
 
-#: The periodic box's flags have no openings to plant at; the open box's lines and rates are measured below.
-PENDING: tuple[LedgerFlag, ...] = ()
 
 #: The run that measured the lines: 200 draws a dtype of ``tests/flow/flag_cases.py``'s envelope (seeds 0 to 199), 60
 #: steps each, every flag read at every step.
@@ -214,8 +214,12 @@ FLAGS: tuple[LedgerFlag, ...] = (
                _evidence(_MASK, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)}, RATES_MEASURED)
                + _evidence(_WEAK, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, RATES_MEASURED),
                settle=30),
-    *PENDING,
 )
+
+#: RK3's flags: the periodic box's three, pending there.
+PENDING: tuple[LedgerFlag, ...] = tuple(
+    LedgerFlag(flag.name, flag.ratio, flag.reading, {}, "measured on IMEX Euler's drawn runs",
+               pending="its line was measured on IMEX Euler's drawn runs, not RK3's") for flag in FLAGS)
 
 #: The open box's flags (``OpenFlowNode``): its two own, and the periodic box's three, pending there.
 OPEN_FLAGS: tuple[LedgerFlag, ...] = (
@@ -229,6 +233,6 @@ OPEN_FLAGS: tuple[LedgerFlag, ...] = (
       for flag in FLAGS[:3]),
 )
 
-__all__ = ["CONVECTION_LINE_MEASURED", "OPEN_FLAGS", "face_kinetic_flux", "kinetic_flux_reading", "projection_reading", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
+__all__ = ["CONVECTION_LINE_MEASURED", "NET_SHARE", "OPEN_FLAGS", "face_kinetic_flux", "kinetic_flux_reading", "projection_reading", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
            "OPERATOR_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
            "stall_reading"]

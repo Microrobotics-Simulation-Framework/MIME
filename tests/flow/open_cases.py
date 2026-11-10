@@ -7,7 +7,8 @@ where D, nu and rho are one; an ``Inflow`` at the low plane with mean speed U (t
 log-uniform in [1, 100]) and a pulsatile part of 0.3 of it over 40 steps a period; a ``Windkessel`` at the high plane
 (R_p 0.1 to 3 R_tube, R_d 1 to 10 R_tube, dt/(R_d C) 0.1 to 3); a narrowing of 0 to 0.4 at mid-length (the
 interior spike's stenosis); a swirl over the lumen of 0.05 to 0.5 of U in the start; the step a fraction 0.1 to 1 of
-the CFL line at the start's peak. :data:`STEPS` steps, metered as the build meters it.
+the CFL line at the larger of the start's peak and the throat's at the inflow's peak (a run past the line is held, so
+no gate judges one). :data:`STEPS` steps, metered as the build meters it.
 
 **The plants** (:data:`PLANTS`, each applied by ``setattr``, as ``flag_cases``' are): the port faces at full weight;
 the outlet's half-cell convective flux at full weight; an inflow 1e-3 above its waveform; a port gift in the
@@ -116,7 +117,9 @@ def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, **se
         parts.append(swirl + (2.0 * speed * np.clip(1.0 - across, 0.0, None) if k == 2 else 0.0))
     projected = grid.project(tuple(jnp.asarray(x) for x in parts))
     start = {f"initial_velocity_{x}": np.asarray(projected[k]) for k, x in enumerate("xyz")}
-    peak = max(float(np.max(np.abs(v))) for v in start.values())
+    # The step from the larger of the start's peak and the throat's: Poiseuille's centreline at the inflow's peak (1.3 U)
+    # through the narrowing's area, so the run stays inside the CFL line as the flow develops (a run past it is held).
+    peak = max(max(float(np.max(np.abs(v))) for v in start.values()), 2.6 * speed / (1.0 - point.narrowing) ** 2)
     dt = point.fraction * 0.4 * grid.spacing / peak
     resistance = tube_resistance(2.0)
     distal = point.distal * resistance

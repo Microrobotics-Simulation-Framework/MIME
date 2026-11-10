@@ -120,7 +120,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
     the step)."""
 
     LEDGER_TERMS = ("convection",)
-    #: The openings' two, pending: no flag is measured on RK3 yet, so none is a check of it.
+    #: The periodic box's three, pending: no flag is measured on RK3 yet, so none is a check of it.
     LEDGER_FLAGS = PENDING
 
     meta = NodeMeta(
