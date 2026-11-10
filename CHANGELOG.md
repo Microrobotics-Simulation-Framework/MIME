@@ -64,6 +64,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Coil_List` that names the block is refused. No system ships a current limit: the figures published for each are cited
   in its card and the validity lines (Navion_2 25 A an operating restriction and 45 A the hardware's, CardioMag 35 A a coil with its 15 kW cap not modelled, OctoMag 16 A), MIME's declarations with their sources and no maker's specification, and the previous line's unsourced 35 A and 20 A are dropped.
 
+- **Graded sampling on the MRS rung** (`drag` 0.5.0, design #296; `mime.scene._grading`). `Drag.MRS(grading="features")`
+  grades the force points towards the hull kind's declared features, and `Drag.MRS(contact=(0, 0, -1), contact_gap=...)`
+  towards a contact held facing the wall (opt-in, for a body whose orientation to the wall is held; `contact_gap`
+  defaults to the experiment's closest approach where a contact law declares one). One policy turns them into a local
+  spacing: an edge a third of the force spacing, a crest 0.3 of its radius across, a contact its gap over 1.5, each
+  growing by the distance from it, never finer than a quarter of the force spacing; the count is the uniform one times
+  the density's mean. **Each graded force point sits at its cell's area centre** (the dense point of its cell nearest
+  it), the cells the relaxed generators', which the separated quadrature, the reference and the wall quadratures take
+  (`Sampling.generators`): with the points where the relaxation leaves them, grading raised the error near a wall (the
+  measurements behind design #296). Lloyd's mass on a graded density is the area times the density's square, so the
+  samples' density is the density. **Geometry kinds declare features** (`Geometry.features`, a new optional capability;
+  `mime.registry.Feature`): the cylinder its rims and the box its twelve edges, each with its distance in closed form
+  (so a sampling graded on them keeps the body's symmetries and is chosen alike under a setting's move far below the
+  spacing, which a distance read from traced points ripples enough to break), the screw its rims and crests, read from
+  their traces (each crest's radius across it from the thread's height and turn, within 0.1 % of the surface's own
+  principal curvature on FL-9). **A graded sampling is chosen at its settings rounded to four figures**
+  (`mime.scene._grading.FIGURES`: the body's numbers, the spacing, the contact's gap and direction) and moved with the
+  body's own shape: a graded choice is discrete and a graded density no scale of the body's, so a relative move of a
+  millionth tipped near-ties without it (measured: FL-9's features at 0.4 mm, twenty of 2227 force points chosen
+  afresh under its length; a helix's contact, eight of 770 under its filament's radius). **Over a declared range** a
+  graded body's count is the graded sampling's own (`graded_force_points`), chosen by `GRADED_FORCE_POINTS`, sampled
+  in every ranged number: a larger body's patch is a smaller share of its surface, so its graded count can fall as it
+  grows (the 1 mm sphere's contact at 0.3 mm: 106 force points at a radius of 0.5 mm, 104 at 0.525 mm). The sampling is
+  fixed on the body: **`off_patch`** flags a step whose body lies within one force spacing of the wall with any point
+  of its quadrature within `OFF_PATCH_BAND` (0.05) force spacings of its least distance outside the graded patch,
+  judged at each quadrature point (a body turned past it, a face turned towards the wall included), raised only where
+  grading or contact is written (`Flag.written`, new). In graded runs the wall's self-image measures each cell's
+  distance from the wall in the cell's own size (design #308; `GRADED_WALL_MEASURE` in `mime.nodes.hydro.mrs._node`, one
+  switch, its other value the force spacing, measured better at the gate's sphere: +3.33 % against +5.24 % at blob 0.1,
+  -0.04 % against +1.67 % at 0.025) and a written `wall_refinement` is taken from the finest spacing. The build reports
+  what was graded, the counts and the finest spacing. **What grading buys, measured:** the sphere's contact grading
+  helps beyond its count (at half a force spacing from a plane, +5.31 % against +10.16 % for a uniform sampling of as
+  many force points, blob 0.1; +1.74 % against +6.00 % at 0.025); FL-9's crest grading at 0.4 mm does not (+2.23 %
+  graded against +2.37 % uniform at the graded count, half a spacing, blob 0.25): its gain over the uniform sampling's
+  957 points is the count. Refused: features of a kind with none (`drag.grading-features`), a kept version
+  (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`), no gap to grade for
+  (`drag.grading-approach`) or a gap of 1.5 force spacings or more, which grades nothing (`drag.grading-gap`), and
+  graded bodies in a medium's joint near field (`drag.grading-near-field`, before the medium's other near-field
+  refusals: its cross-kernel is measured on uniform samplings only, and with a wall it raises no `off_patch`). The
+  uniform sampling is untouched: every
+  released program's steps trace the same programs (`tests/saved/step_jaxprs.py`, base against head, float32 and
+  float64). The wall's self-image and the near field's cross-kernel share one private switch
+  (`mime.nodes.hydro._near_singular`: the C1 smoothstep, the nearest-first budget and its shortfall, the cond that skips
+  the near work, the kernel integrated over cells), each caller keeping its kernel, distance, reach, budget and
+  granularity.
+
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
   `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the

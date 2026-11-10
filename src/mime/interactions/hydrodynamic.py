@@ -30,7 +30,18 @@ from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
 from mime.nodes.hydro.near_field import MEMORY_MEASURED, JointDragNode, member_prefix
-from mime.scene import quadrature_counts, quadrature_owners, sampled_points
+from mime.scene import KEPT, quadrature, quadrature_counts, quadrature_owners, sampled_points
+from mime.scene._sampling import FINEST, quadrature_arrays
+from mime.scene._grading import (
+    CONTACT_SPACINGS,
+    Contact,
+    GradedDensity,
+    chosen_at,
+    figures,
+    finest_share,
+    graded_density,
+    graded_patch,
+)
 from mime.registry import (
     DESIGN,
     Centreline,
@@ -40,6 +51,7 @@ from mime.registry import (
     EntryKind,
     Delivery,
     Flag,
+    Geometry,
     GradientRecord,
     Hull,
     Interaction,
@@ -322,6 +334,26 @@ def force_points(hull: Hull, spacing: float, patches: tuple[str, ...]) -> float:
     return _force_points(hull.kind, tuple(sorted(hull.settings.items())), spacing, patches)
 
 
+#: A graded sampling's choice over a declared range: sampled in every number. Its count is the uniform one's times the
+#: density's mean over the surface, and between the uniform count's steps a larger body's graded patch is a smaller
+#: share of it, so its count falls as the body grows: the sphere's contact graded for half of a 0.3 mm spacing, 106
+#: force points at a radius of 0.5 mm and 104 at 0.525 mm (measured: a scan of 61 radii from 0.5 to 2 mm fell 29 times at
+#: 0.3 mm and 40 at 0.6 mm).
+GRADED_FORCE_POINTS = ChoiceRule.Sampled(
+    SAMPLED_COUNT, "a graded sampling's force points fall as the body grows between the uniform count's steps, its "
+                   "patch a smaller share of the surface (the sphere's contact graded for half of 0.3 mm: 106 at a "
+                   "radius of 0.5 mm, 104 at 0.525 mm; tests/ranges/test_mrs_graded_range.py)")
+
+
+def graded_force_points(hull: Hull, spacing: float, patches: tuple[str, ...], density: GradedDensity | None) -> float:
+    """How many force points the hull's kind gives at ``spacing`` on ``patches`` at the grading's ``density``: its
+    graded sampling's choice (the uniform one's, :func:`force_points`, where ``density`` is ``None``)."""
+    if density is None:
+        return force_points(hull, spacing, patches)
+    chosen = hull.kind.sampling(hull.settings, spacing, patches, density).chosen
+    return float(len(chosen)) if chosen is not None else force_points(hull, spacing, patches)
+
+
 def _solve_cost(chosen: float, own: float) -> str:
     return (f"its dense solve of {3 * chosen:g} unknowns against {3 * own:g}, about {(chosen / own) ** 3:.2g} times "
             f"the factorisation") if own > 0 else ""
@@ -588,7 +620,7 @@ class PointForceDrag(Interaction):
             problems = at_rest_problems(ctx, self.rung) + self._mrs_problems(ctx)
             hull = ctx.geometry(of="body")
             if not problems and hull is not None and "spacing" in ctx.settings:
-                self._sampled_hull(_owner(self, ctx.bindings), hull, ctx.scalar("spacing"))
+                self._sampled_hull(_owner(self, ctx.bindings), hull, ctx.scalar("spacing"), ctx.settings)
             return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
                         problems=tuple(problems), assets=self._wall_assets())
         problems: list[Problem] = at_rest_problems(ctx, self.rung)
@@ -648,10 +680,10 @@ class PointForceDrag(Interaction):
         found += _wall_problems(self.wall_kind, ctx.region("medium"), medium, hull)
         return found
 
-    def _sampled_hull(self, owner: str, hull: Hull, spacing: float) -> Hull:
+    def _sampled_hull(self, owner: str, hull: Hull, spacing: float, settings: Mapping[str, Magnitude]) -> Hull:
         """The hull the rung samples at ``spacing``: ``hull`` itself, or over a declared range of its numbers the
         point of the range with the most force points (:func:`force_points_rule`), whose sampling every body inside
-        the range takes, moved with its own shape."""
+        the range takes, moved with its own shape. ``settings`` are the entry's, in SI."""
         patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
         return choose_over(owner, hull, "force points", force_points_rule(hull),
                            lambda held: force_points(held, spacing, patches), cost=_solve_cost)
@@ -671,12 +703,12 @@ class PointForceDrag(Interaction):
                     for setting in dataclasses.fields(hull.kind)}
         # The discretisation is the sampled hull's (over a declared range, the range's), and the node's settings its
         # own body's, so that its samples move with its shape.
-        sampled = self._sampled_hull(ctx.id, hull, spacing)
-        sampling = sampled.kind.sampling(sampled.settings, spacing, patches)
+        sampled = self._sampled_hull(ctx.id, hull, spacing, ctx.settings)
+        sampling, wall_spacing, density = self._mrs_sampling(ctx, sampled, spacing, patches)
         counts, owners = self._quadrature_arguments(sampled, sampling, spacing)
         reference_counts, reference_owners = self._reference_quadrature(sampled, sampling, spacing)
-        wall_counts, wall_owners, refinement = self._wall_quadrature(sampled, sampling, spacing)
-        return dict(
+        wall_counts, wall_owners, refinement = self._wall_quadrature(sampled, sampling, wall_spacing)
+        return dict(**self._graded_arguments(sampled, sampling, density, counts, spacing),
             viscosity=ctx.scalar_value("viscosity"), blob=float(self.blob),
             kind=hull.kind.name, kind_version=hull.kind.version, patches=patches, counts=sampling.counts,
             part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
@@ -690,6 +722,17 @@ class PointForceDrag(Interaction):
             wall_refinement_written=None if refinement is None else cast(int, getattr(self, "wall_refinement")),
             **{f"{WALL}{name}": value for name, value in constants.items()},
             **{f"{SHAPE}{name}": value for name, value in settings.items()})
+
+    def _mrs_sampling(self, ctx: BuildContext, hull: Hull, spacing: float, patches: tuple[str, ...]) -> tuple[
+            Sampling, float, GradedDensity | None]:
+        """The force points' sampling, the spacing the wall's quadrature is refined from, and the density it was
+        graded at: the kind's sampling at the spacing, the spacing itself and none, here."""
+        return hull.kind.sampling(hull.settings, spacing, patches), spacing, None
+
+    def _graded_arguments(self, hull: Hull, sampling: Sampling, density: GradedDensity | None,
+                          counts: tuple[tuple[int, ...], ...] | None, spacing: float) -> dict[str, Any]:
+        """The node's arguments for a graded sampling beside the sampling's own: none here, where nothing is graded."""
+        return {}
 
     def _build_mrs(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         node = b.add_response_node(MRSDragNode(ctx.node_name(), ctx.timestep, **self._mrs_arguments(ctx)))
@@ -1333,6 +1376,27 @@ class Drag(UncoupledDrag):
                        "quarter of a source's points, five kinds of six at their cases' spacings fell past the case's "
                        "line near contact, the box furthest, while MIME's sphere at its default count was unmoved to "
                        "within a few hundredths of a per cent)"),
+        "grading": convention(
+            NUMERICAL, "on the mrs rung, none: the force points quasi-uniform, as every released program's; written "
+                       "'features', graded towards the hull kind's declared features (its edges and crests), each "
+                       "force point at its cell's area centre"),
+        "contact": convention(
+            NUMERICAL, "on the mrs rung, none: no contact graded; written, a direction in the body's frame, the side "
+                       "of the body held facing the wall, whose patch is graded for contact_gap (opt-in, for a body "
+                       "whose orientation to the wall is held: the sampling is fixed on the body, and a step whose "
+                       "nearest point leaves the patch near the wall raises off_patch)"),
+        "contact_gap": determined(
+            NUMERICAL, "on the mrs rung with contact written, the experiment's closest approach to the wall (the "
+                       "margin a contact holds the body off it by), where one is declared",
+            by="default_contact_gap"),
+        "quadrature_refinement": numerical_default(
+            "on the mrs rung, two over the blob, rounded up: the quadrature's spacing at most half the blob; with "
+            "grading or contact written, at least two over FINEST, so that the finest graded cells hold points",
+            "chosen by measurement: finer, neither family's number moved by what the stamp states (the sphere's drag "
+            "and rotational drag, a screw's speed, over a ladder of blobs); coarser, the quadrature no longer resolves "
+            "the blob (scripts/default_spacing_table.py); a graded cell a quarter of the force spacing across is left "
+            "empty by a quadrature as coarse as itself (drag.empty-cell)",
+            by="default_quadrature_refinement", measured=SEPARATED_REFINEMENT_MEASURED),
         "near_field_dense_unknowns": convention(
             NUMERICAL, "on the mrs rung, the most joint unknowns the near field's dense LU takes, DENSE_UNKNOWNS, past "
                        "which its GMRES does: declared, not fitted, its default pending the maintainer's re-decision, "
@@ -1350,7 +1414,17 @@ class Drag(UncoupledDrag):
                        "(DEFAULT_TOLERANCE's measurement), so a denser cluster near contact may stop short, flagged "
                        "and warned of"),
     }
-    mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share", "near_field_dense_unknowns", "near_field_tolerance")
+    mrs_settings = (
+        *UncoupledDrag.mrs_settings,
+        "near_field_share",
+        "near_field_dense_unknowns",
+        "near_field_tolerance",
+        "grading",
+        "contact",
+        "contact_gap",
+    )
+    #: The values ``grading`` takes beside none.
+    gradings: ClassVar[tuple[str, ...]] = ("features",)
     raises = (
         *UncoupledDrag.raises,
         Flag("gain_exceeded", "the lagged coupling of the medium's near field reached a gain of one or more (the "
@@ -1378,6 +1452,14 @@ class Drag(UncoupledDrag):
         Flag("near_contact", "two bodies of the medium's near field lay closer than a twentieth of the smaller one's "
                              "equivalent radius (CONTACT_GAP), the validity line's lower edge, where the MRS's own "
                              "error is not monotone in the spacing", rung="mrs", group=True),
+        Flag("off_patch", "on a graded sampling (grading or contact written), the body lay within one force spacing "
+                          "of the wall (NEAR_WALL) with a point of its quadrature outside the graded patch (where the "
+                          "grading made the spacing finer than the force spacing) within OFF_PATCH_BAND force "
+                          "spacings of its least distance: the sampling is fixed on the body, so a body that turned "
+                          "carried the patch away from the wall, and there the resistance's error near the wall is not "
+                          "the graded one's (on the gates' sphere it climbs towards the uniform sampling's as the "
+                          "patch's edge nears the wall)",
+             rung="mrs", group=False, written=("grading", "contact")),
     )
     validity = (
         *(line for line in UncoupledDrag.validity),
@@ -1393,6 +1475,21 @@ class Drag(UncoupledDrag):
         "gain, so the check refuses some stable clusters (measured: three spheres a tenth of a radius apart, each "
         "body's relaxation time between about a twentieth and a tenth of the step), and the amplification and its "
         "relaxation are reported",
+        "mrs: with grading or contact written, the force points are graded: towards the hull kind's "
+        "edges (EDGE_SHARE of the force spacing there) and crests (CREST_SHARE of their radius across) and towards a "
+        "held contact (its gap to the wall over CONTACT_SPACINGS), the spacing growing by its distance from them and "
+        "never finer than FINEST of the force spacing, each force point at its cell's area centre, chosen at the "
+        "settings rounded to FIGURES; measured against Brenner's series on a sphere's contact at a plane by "
+        "tests/oracles/test_graded_sampling.py, where it helps beyond its count, and against finer references in the "
+        "build's gates (a cylinder's rim at a plane, which it helps; a screw's crest at a plane, where a uniform sampling "
+        "of the graded count did as well), at the bodies, blobs and gaps those name, not bounded elsewhere. The "
+        "sampling is fixed on the body: a graded contact serves a body whose orientation to the wall is held (a crest "
+        "or a rim is the contact whichever way the body rolls about its axis), and a step with a point within "
+        "OFF_PATCH_BAND of its least distance outside the patch near the wall raises off_patch. With wall_refinement "
+        "written, the graded cells near the wall lie farther from it in their own "
+        "size than in the force spacing, so fewer are integrated: a graded contact half a force spacing from a plane "
+        "measured less accurate there than the uniform sampling at a blob of a tenth, the compact default, and more "
+        "accurate at a fortieth (the wall's cell budget was not the cause: lifted to every cell, nothing moved)",
         "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
         "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
@@ -1404,6 +1501,9 @@ class Drag(UncoupledDrag):
     )
 
     near_field_share: float | None = None
+    grading: str | None = None
+    contact: tuple[float, float, float] | None = None
+    contact_gap: Annotated[Quantity | None, Length] = None
     near_field_dense_unknowns: int | None = None
     near_field_tolerance: float | None = None
 
@@ -1419,7 +1519,31 @@ class Drag(UncoupledDrag):
             found += [f"{name}= is a setting of the mrs rung's near field, and the rft rung reads none"
                       for name in ("near_field_share", "near_field_dense_unknowns", "near_field_tolerance")
                       if getattr(self, name) is not None]
+        if self.rung != "mrs":
+            found += [f"{name}= is a setting of the mrs rung's sampling, and the {self.rung} rung reads none"
+                      for name in ("grading", "contact", "contact_gap") if getattr(self, name) is not None]
         return found
+
+    def default_contact_gap(self, ctx: PlanContext) -> Quantity | None:
+        """The gap a written contact is graded for when none is written: the experiment's closest approach to the
+        wall (``PlanContext.approach``), where a law holds the body off it by a margin above zero."""
+        approach = ctx.approach(of="body")
+        if self.rung != "mrs" or self.contact is None or approach is None or approach <= 0.0:
+            return None
+        return m(approach)
+
+    def graded(self) -> bool:
+        """Whether the force points are graded: ``grading`` or ``contact`` written."""
+        return self.rung == "mrs" and (self.grading is not None or self.contact is not None)
+
+    @override
+    def default_quadrature_refinement(self, ctx: PlanContext) -> int | None:
+        """0.4.0's rule, and where graded at least ``QUADRATURE_PER_BLOB`` over ``FINEST``: the quadrature's spacing at
+        most half the finest graded cell's."""
+        found = super().default_quadrature_refinement(ctx)
+        if found is None or not self.graded():
+            return found
+        return max(found, math.ceil(QUADRATURE_PER_BLOB / FINEST - 1e-9))
 
     def joins_near_field(self) -> bool:
         """Whether this drag, with others of its version in its medium, is built as their joint near field: the mrs
@@ -1442,6 +1566,20 @@ class Drag(UncoupledDrag):
             found.append(f"near_field_share is {share!r}, not a share above 0 and at most 1: the most of a source's "
                          f"quadrature points the near field's cross-kernel integrates, so write near_field_share=0.25 "
                          f"(or leave it out for every point, 1)")
+        grading = cast(object, self.grading)
+        if grading is not None and grading not in self.gradings:
+            found.append(f"grading is {grading!r}, not one of {self.gradings}: grading='features' grades the force "
+                         f"points towards the hull kind's edges and crests (leave it out for the uniform sampling)")
+        contact = cast(object, self.contact)
+        if contact is not None and not _direction(contact):
+            found.append(f"contact is {contact!r}, not a direction: three numbers, not all zero, in the body's frame, "
+                         f"the side of the body held facing the wall, so write contact=(0.0, 0.0, -1.0)")
+        gap = settings.get("contact_gap")
+        if gap is not None and not (isinstance(gap, float) and math.isfinite(gap) and gap > 0.0):
+            found.append(f"contact_gap is {gap!r} m, not a length above zero: the gap to the wall a contact is graded "
+                         f"for, so write contact_gap=mm(0.1)")
+        if gap is not None and contact is None:
+            found.append("contact_gap= is the gap a written contact is graded for, and no contact= is written")
         line = cast(object, self.near_field_dense_unknowns)
         if line is not None and (isinstance(line, bool) or not isinstance(line, int) or line < 0):
             found.append(f"near_field_dense_unknowns is {line!r}, not a whole number at or above zero: the most "
@@ -1454,6 +1592,124 @@ class Drag(UncoupledDrag):
                          f"tolerance on each solve's true residual, so write near_field_tolerance=1e-10 (float64's "
                          f"default; float32's is 1e-5)")
         return found
+
+    @override
+    def _mrs_problems(self, ctx: PlanContext) -> list[Problem]:
+        """0.4.0's refusals, and a grading the body or the experiment cannot take: features asked of a kind that
+        declares none (``drag.grading-features``), or of a kept version, whose sampling is its quadrature
+        (``drag.grading-kind``); a contact with no wall (``drag.grading-contact``), no closest approach to grade it
+        for (``drag.grading-approach``), or a gap so wide that it grades nothing (``drag.grading-gap``)."""
+        found = super()._mrs_problems(ctx)
+        if not self.graded():
+            return found
+        body = ctx.bindings["body"]
+        hull = ctx.geometry(of="body")
+        if hull is None:
+            return found
+        if (hull.kind.name, hull.kind.version) in KEPT:
+            found.append(Problem("drag.grading-kind", f"{hull.label()} is a kept version, whose sampling is its "
+                                                      f"quadrature, so it cannot be graded",
+                                 f"give {body} the kind's current version (a kind's default), Part(Screw(...)), or "
+                                 f"leave grading and contact out, Drag.MRS(spacing=...)"))
+        elif self.grading == "features" and not implements(hull.kind, "features"):
+            declaring = sorted({record.name for record in registered(EntryKind.GEOMETRY)
+                                if issubclass(record.cls, Geometry) and implements(record.cls, "features")})
+            found.append(Problem("drag.grading-features", f"grading='features' grades the force points towards the "
+                                                          f"hull kind's features, and {hull.label()} declares none",
+                                 f"leave grading out for this kind (the kinds that declare features: "
+                                 f"{', '.join(declaring)}), or grade a held contact, contact=(0.0, 0.0, -1.0)"))
+        if self.contact is None:
+            return found
+        if ctx.region("medium") is None:
+            found.append(Problem("drag.grading-contact", f"contact= grades {body}'s side held facing the wall, and "
+                                                         f"its medium fills no region, so it has no wall",
+                                 "leave contact out in free space, Drag.MRS(grading='features'), or fill the medium's "
+                                 "region with a wall, Medium('water', fills=floor.half_space)"))
+        elif ctx.settings.get("contact_gap") is None:
+            found.append(Problem("drag.grading-approach",
+                                 f"contact= grades {body}'s side held facing the wall for a gap to it, and none is "
+                                 f"written (contact_gap=) and nothing holds {body} off the wall by a margin above 0, "
+                                 f"whose closest approach it would take",
+                                 f"write the gap to grade for, Drag.MRS(contact=..., contact_gap=mm(0.1)), or hold "
+                                 f"{body} off the wall, Contact.Projection(margin=mm(0.1))"))
+        else:
+            gap, spacing = ctx.settings.get("contact_gap"), ctx.settings.get("spacing")
+            if isinstance(gap, float) and isinstance(spacing, float) and gap >= CONTACT_SPACINGS * spacing:
+                found.append(Problem(
+                    "drag.grading-gap", f"contact= grades {body}'s side held facing the wall for a gap of "
+                                        f"{gap * 1e3:.4g} mm, where {CONTACT_SPACINGS:g} local spacings from the wall "
+                                        f"ask a spacing of {gap / CONTACT_SPACINGS * 1e3:.4g} mm, no finer than the "
+                                        f"force spacing ({spacing * 1e3:.4g} mm): the contact grades nothing",
+                    f"leave contact out at this gap (the uniform sampling is as fine there), or grade for a gap below "
+                    f"{CONTACT_SPACINGS:g} force spacings, contact_gap=mm({CONTACT_SPACINGS * spacing * 1e3 / 2:.3g})"))
+        return found
+
+    @override
+    def _sampled_hull(self, owner: str, hull: Hull, spacing: float, settings: Mapping[str, Magnitude]) -> Hull:
+        """As 0.4.0's, and where graded the range's point with the most force points at the grading's own density
+        (:func:`graded_force_points`), sampled in every ranged number (:data:`GRADED_FORCE_POINTS`), its numbers
+        rounded to the figures a graded sampling is chosen at (``mime.scene._grading.FIGURES``)."""
+        if not self.graded():
+            return super()._sampled_hull(owner, hull, spacing, settings)
+        patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
+        at = figures(spacing)
+
+        def rounded(held: Hull) -> Hull:
+            return held.at(chosen_at(held.settings))
+
+        return rounded(choose_over(owner, hull, "force points", GRADED_FORCE_POINTS,
+                                   lambda held: graded_force_points(rounded(held), at, patches,
+                                                                    self._density(settings, rounded(held), at)),
+                                   cost=_solve_cost))
+
+    @override
+    def _mrs_sampling(self, ctx: BuildContext, hull: Hull, spacing: float, patches: tuple[str, ...]) -> tuple[
+            Sampling, float, GradedDensity | None]:
+        """Where graded (``graded()``), the kind's sampling at the policy's density (``mime.scene._grading``), chosen
+        at the spacing rounded as the hull's numbers are (``FIGURES``), its wall quadrature refined from its finest
+        spacing, and the density."""
+        at = figures(spacing)
+        density = self._density(ctx.settings, hull, at)
+        if density is None:
+            return super()._mrs_sampling(ctx, hull, spacing, patches)
+        sampling = hull.kind.sampling(hull.settings, at, patches, density)
+        if sampling.generators is None or sampling.chosen is None:
+            raise ValueError(f"{hull.kind.label()}'s sampling took no graded density: its method is "
+                             f"{sampling.method!r}")
+        return sampling, spacing * finest_share(density, sampled_points(hull.kind, hull.settings, sampling)), density
+
+    @override
+    def _graded_arguments(self, hull: Hull, sampling: Sampling, density: GradedDensity | None,
+                          counts: tuple[tuple[int, ...], ...] | None, spacing: float) -> dict[str, Any]:
+        """The node's graded patch, judged at each point of its separated quadrature (``counts``), the points its
+        step finds the body's nearest among, and the build report's line."""
+        if density is None or counts is None or sampling.chosen is None:
+            return {}
+        quadrature_points = quadrature_arrays(hull.kind, hull.settings, sampling.patches, counts)[0]
+        finest = finest_share(density, sampled_points(hull.kind, hull.settings, sampling))
+        count = len(sampled_points(hull.kind, hull.settings, quadrature(hull.kind, hull.settings, spacing,
+                                                                       sampling.patches)))
+        towards = ["the kind's features (its edges and crests)"] if density.features else []
+        if density.contact is not None:
+            towards.append(f"the contact facing the wall, graded for a gap of {density.contact.gap * 1e3:.4g} mm "
+                           f"at {CONTACT_SPACINGS:g} local spacings")
+        text = (f"towards {' and '.join(towards)}, {len(sampling.chosen)} force points against the uniform "
+                f"sampling's {count}, the finest {finest:.3g} of the force spacing")
+        return {"graded_patch": graded_patch(density, quadrature_points), "grading": text}
+
+    def _density(self, settings: Mapping[str, Magnitude], hull: Hull, spacing: float) -> GradedDensity | None:
+        """The grading's density over the hull's kind, or ``None`` where nothing is graded: its features where
+        ``grading='features'``, and its contact, the direction written turned into the kind's frame, for
+        ``contact_gap`` (of the entry's ``settings``, SI), each rounded as the hull's numbers are (``FIGURES``)."""
+        if not self.graded():
+            return None
+        contact = None
+        if self.contact is not None:
+            turn = np.asarray(hull.rotation, dtype=np.float64)
+            facing = [figures(float(c)) for c in turn.T @ np.asarray(self.contact, dtype=np.float64)]
+            contact = Contact((facing[0], facing[1], facing[2]), figures(float(cast(float, settings["contact_gap"]))))
+        return graded_density(hull.kind, hull.settings, spacing, features=self.grading == "features",
+                              contact=contact)
 
     def _build_near_field(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the
@@ -1500,6 +1756,16 @@ class Drag(UncoupledDrag):
             b.connect(b.read(f"{owner}/mass_matrix"), into=node[f"mass_matrix_{i}"])
             b.connect(node[f"resistance_{i}"], into=b.target(f"{owner}/resistance"))
             b.connect(node[f"background_load_{i}"], into=b.target(f"{owner}/background_load"))
+
+
+def _direction(value: object) -> bool:
+    """Whether ``value`` is three finite numbers, not all zero."""
+    if not isinstance(value, tuple) or len(cast(tuple[object, ...], value)) != 3:
+        return False
+    held = cast(tuple[object, ...], value)
+    if not all(isinstance(c, (int, float)) and not isinstance(c, bool) and math.isfinite(c) for c in held):
+        return False
+    return any(float(cast(float, c)) != 0.0 for c in held)
 
 
 def _wall_kinds_listed() -> str:

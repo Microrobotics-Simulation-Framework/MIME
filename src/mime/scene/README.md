@@ -148,8 +148,15 @@ sphere about its centroid that holds it (`enclosing_radius`).
   `REFINEMENT` times finer by farthest points (ties within `TIE` of the body's size broken by index, so a choice is
   the same on a machine that rounds the dense points' last bits otherwise) and `LLOYD_STEPS` of Lloyd's steps, each
   sample a quadrature sample with its cell's area as its weight. A `density` (a function of points, one where the
-  samples are the spacing apart) grades it with no protocol change. The choice is made in float64 whatever the run's
-  precision, and cached in the process.
+  samples are the spacing apart) grades it with no protocol change: the dense set is then refined to the finest local
+  spacing, Lloyd's mass is the area times the density's square, and each sample is its generator's cell's dense point
+  nearest the cell's area centre, the generators kept (`Sampling.generators`, which `quadrature_owners` reads), since
+  a solver collocating at the sample needs it at its cell's centre. The choice is made in float64
+  whatever the run's precision, and cached in the process.
+- **`Geometry.features(settings, resolution)`** declares what a sampling may be graded towards
+  (`mime.registry.Feature`): the cylinder's rims, the box's edges, the screw's rims and crests (each crest with its
+  radius across it). `mime.scene._grading` holds the one policy that turns them, and a contact held facing a wall,
+  into a density; the MRS rung's `grading` and `contact` settings choose it.
 - **The choice is not continuous in the kind's settings**, and is not meant to be: it is discrete (each sample one of
   the quadrature's, chosen by farthest points), so a small change of a setting can choose other samples, and a result
   then steps, by far more than its smooth change with the choice held (MIME-ANO-127 holds the measured steps). The grid
