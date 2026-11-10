@@ -59,5 +59,15 @@
     "prediction": "every array np.array_equal in all of those; 0.5.0's mrs_graded (graded, wall_refinement 2) differs, the measure's change",
     "controls": {"one_program_moved": "mrs_graded, which this change moves: the comparison can fail"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-10, after the gates ran; the predictions above are unchanged",
+    "gate_1_measure": "held: the shipped value is force_spacing and the parametrised test holds each value at its pin (local, float64)",
+    "gate_2_route": "held: an eight-sphere node of 21,168 unknowns is dense; mixed members dense; both declaring gmres, gmres with the smaller tolerance (local)",
+    "gate_3_recheck_cap": "held, after the objective was changed from the bodies' separation (3 mm, whose solve error sat in its last figures: the capped member 6e-7 off, under CHANGED) to their relative velocity; the probe's clean arm passed (run 42891010179); R1 failed 3 tests",
+    "gate_4_recheck_floor": "held: floor-limited with float64 and the dense route named, not converged; stoppings {(600, 0), (6000, 3)}; R2 failed 2 tests, R7 1",
+    "gate_5_recheck_transpose": "held: recheck not converged, cap-limited at its cap again; R4 failed 1 test",
+    "gate_6_stall_restarts": "held in both dtypes; R8 failed 2 tests",
+    "bits": "held (run 42891002225): every released program and 0.5.0's mrs_near_field, mrs_near_field_gmres, mrs_tube, mrs_plane, script_a and rft_free_space bit for bit in both dtypes; mrs_graded moved 8 of 19 arrays in each dtype",
+    "not_predicted": "mrs_graded's step raises wall_cells_short on every step in the force spacing (none in the cell measure): more fine cells lie within the reach than WALL_CELL_SHARE budgets for; measured locally through the node, every cell integrated moved the gate sphere's normal entry from +3.33287 % to +3.33277 % and mrs_graded's resistance by 1.6e-3 of its largest entry"
+  }
 }

@@ -108,7 +108,11 @@ OFF_PATCH_BAND = 0.05
 #: ``"cell"``, in the cell's own size, ``sqrt(area)``. Measured through the node on the gate's sphere, its contact
 #: graded for half a force spacing and the image integrated, against Brenner's series at half a spacing: +3.33 % (force
 #: spacing) and +5.24 % (cell) at blob 0.1, -0.04 % and +1.67 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The
-#: one switch between them; a uniform run reads neither.
+#: one switch between them; a uniform run reads neither. In the force spacing more of a graded body's fine cells lie
+#: within the reach than :data:`WALL_CELL_SHARE` budgets for, so its step raises ``wall_cells_short``: the gate's sphere
+#: (76 cells of 301 budgeted) and ``mrs_graded``'s cylinder (21 of 84) on every step; measured through the node in
+#: float64, every cell integrated moved the sphere's normal entry from +3.33287 % to +3.33277 % and the cylinder's
+#: resistance by 1.6e-3 of its largest entry.
 GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "force_spacing"
 #: What the build report says was mapped near a wall, for a wall kind without figures of its own
 #: (``WallCorrection.near_wall_text``).
