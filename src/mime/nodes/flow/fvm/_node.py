@@ -26,11 +26,15 @@ running sum; the derivative solves' reports come out through the ``solve_report`
 the run by default; a row a step with ``report_rows``) and the tangent of the running sum.
 
 **The step identity** (route 2, every term by formula, paired at the step's solution ``u'``): ``dKE = W_drive -
-D_visc - D_wall - N_BE - N_conv - N_Krylov``, ``KE`` by the grid's inner product. The drive, the viscosity and the wall's
-penalty are laws hosted in the step, each booked under its own name; the scheme's terms are ``N_BE = (1/2) rho |u' -
+D_visc - D_wall - N_BE - N_conv - N_Krylov``, ``KE`` by the grid's inner product. The node is a receiver of the ``fluid``
+port kind: each law driving it delivers its body force per unit mass ``g`` into its own input, and the step pairs it
+with the fluid's momentum at the instant it is applied, ``W = dt g . P'``, ``P' = rho <1 - chi, u'>`` (the fluid's
+alone, as the force acts on it alone): the drive's work regrouped by law. The viscosity and the wall's penalty are laws
+held in the step (:meth:`hosted_laws`), each booked under its own name; the scheme's terms are ``N_BE = (1/2) rho |u' -
 u|^2 dV``, ``N_conv = -dt rho <C(u), u'>`` (convection at mixed time levels) and ``N_Krylov = dt rho <rhs - A u', u'>``
-(the solve's true residual against the solution). With the ledger attached the node also reports ``|N_Krylov| /
-D_visc`` per step (the stall detector, flagged above :data:`STALL_LINE`)."""
+(the solve's true residual against the solution: the remainder unprojected, so it holds the projection's own term,
+``dt rho <p', D u'>``, which the exact projector leaves at rounding). With the ledger attached the node also reports
+``|N_Krylov| / D_visc`` per step (the stall detector, flagged above :data:`STALL_LINE`)."""
 
 from __future__ import annotations
 
@@ -100,8 +104,11 @@ GEOMETRY = ("its derivative is unverified: the tube's radius, centre and axis ar
             "32 (measured on a static tube)")
 #: The fields a held state still writes: the stop's own record.
 _STOP_RECORD = frozenset({STOP_FIELD, "stopped_cfl"})
-#: The hosted laws a metered node books, by the field their delivery names.
-HOSTED_FIELDS = ("body_force", "viscous", "penalty")
+#: The hosted laws a metered node books, by the field their delivery names: the fluid's viscosity and the wall's band.
+HOSTED_FIELDS = ("viscous", "penalty")
+#: The inputs a law driving the fluid delivers into: its body force, read where the scheme reads its drive at the
+#: step's end, and its waveform, read where the scheme evaluates its drive at its own stage instants.
+DRIVE_FIELDS = ("body_force", "waveform")
 
 
 class _FlowFields(TypedDict):
@@ -218,7 +225,7 @@ class ImplicitFlowNode(MimeNode):
                  at_floor: bool | None = None, cap: int = 5000, check_every: int = 20, band: str = "smooth_2h_0.3h",
                  interior: str = "0.1h",
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
-                 report_rows: int = 0,
+                 report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
                  ledger: Sequence[str] = ()) -> None:
         chosen = scheme_named(scheme)
@@ -236,7 +243,9 @@ class ImplicitFlowNode(MimeNode):
         if periodic_images not in ("own", "transverse"):
             raise ValueError(f"periodic_images is 'own' (an aligned tube) or 'transverse', not {periodic_images!r}")
         # A node made again from its own arguments (the ledger's wiring, a test's rebuild) carries the stop it was made
-        # with; otherwise the stop at the floor is float32's default, where no tolerance is given.
+        # with; otherwise the stop at the floor is float32's default, where no tolerance is given. Its solve_report
+        # parameter is zeros sized by report_rows, made here again, so the one it is given back is not read.
+        del solve_report
         if at_floor is None:
             at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
         if tolerance is None:
@@ -256,6 +265,7 @@ class ImplicitFlowNode(MimeNode):
                          preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
                          periodic_images=str(periodic_images), report_rows=int(report_rows),
                          solve_report=np.zeros((max(int(report_rows), 1), REPORT_SIZE)), **initial,
+                         **({"wall_name": str(wall_name)} if wall_name else {}),
                          **({"ledger": tuple(ledger)} if ledger else {}))
 
     @override
@@ -279,6 +289,11 @@ class ImplicitFlowNode(MimeNode):
 
     @override
     def boundary_input_spec(self) -> dict[str, Any]:
+        """:meth:`own_inputs`; with the ledger attached, each law's own input beside the one it would sum into
+        (``mime.core.ledger.with_law_inputs``)."""
+        return books.with_law_inputs(self.own_inputs(), books.deliveries(self.constants()))
+
+    def own_inputs(self) -> dict[str, Any]:
         """The body force per unit mass the laws bound to the medium drive its fluid with (summed), delivered once a step
         at its end; and the drive's waveform, which a scheme whose stages read their drive at other instants evaluates
         at each (``StepContext.force``). The monolithic schemes registered read at the step's end, so they take the
@@ -423,7 +438,7 @@ class ImplicitFlowNode(MimeNode):
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
         if self.metered:
-            ended = books.metered_step(self, self.boundary_input_spec(), p, state, boundary_inputs, dt, self.stepped)
+            ended = books.metered_step(self, self.own_inputs(), p, state, boundary_inputs, dt, self.stepped)
         else:
             ended = self.stepped(p, state, boundary_inputs, dt)[0]
         return self.held_past_the_line(state, ended)
@@ -479,7 +494,7 @@ class ImplicitFlowNode(MimeNode):
         ratio = self.ratio(solid, lumen, lumen_scale)
         reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
         stokes = not bool(c["convection"])
-        energy = self.energy_terms(p, grid, velocity, stage, sigma, dt) if self.metered else {}
+        energy = self.energy_terms(p, grid, velocity, stage, sigma, fields, dt) if self.metered else {}
         ended: dict[str, Array] = dict(
             **_held_of(ended_state), steps=steps + 1, solve_report=report,
             solve_report_sum=jnp.asarray(state["solve_report_sum"]) + report,
@@ -508,8 +523,10 @@ class ImplicitFlowNode(MimeNode):
         return 0.5 * as_run_array(p["density"]) * self.grid(p).inner(velocity, velocity)
 
     def energy_terms(self, p: Mapping[str, Any], grid: MACGrid, before: Velocity, stage: StageParts, sigma: Velocity,
-                     dt: float) -> dict[str, Array]:
-        """Each term of the step's identity (J), and the magnitude of the arithmetic forming them (``scale``)."""
+                     fields: WallFields, dt: float) -> dict[str, Array]:
+        """Each term of the step's identity (J), the fluid's momentum at the solution the drive is paired with
+        (:meth:`fluid_momentum`), and the magnitude of the arithmetic forming them (``scale``)."""
+        fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2])
         rho, nu = as_run_array(p["density"]), self.kinematic(p)
         solved = stage.solved
         inner, size = grid.inner, grid.inner_magnitude
@@ -522,18 +539,61 @@ class ImplicitFlowNode(MimeNode):
         stores = self.scheme.stores_inertia
         zero = jnp.zeros((), dtype=solved[0].dtype)
         terms = {
-            "drive": dt * rho * inner(stage.force, solved),
+            **self.fluid_momentum(grid, fluid, solved, rho),
             "viscous": dt * rho * nu * inner(minus_laplacian, solved),
             "penalty": dt * rho * inner(penalised, solved),
             "backward_euler": 0.5 * rho * inner(change, change) if stores else zero,
             "convection": -dt * rho * inner(stage.convection, solved),
             "krylov": dt * rho * inner(remainder, solved),
         }
-        scale = rho * (dt * (size(stage.rhs, solved) + size(applied, solved) + size(stage.force, solved)
+        # The drive's products are judged on the laws' own magnitude (drive_work's), counted once.
+        scale = rho * (dt * (size(stage.rhs, solved) + size(applied, solved)
                              + size(stage.convection, solved) + nu * size(minus_laplacian, solved)
                              + size(penalised, solved))
                        + (size(before, before) + size(solved, solved) + size(before, solved) if stores else 0.0))
         return {**terms, "scale": scale}
+
+    @staticmethod
+    def fluid_momentum(grid: MACGrid, fluid: Velocity, velocity: Velocity, rho: Array) -> dict[str, Array]:
+        """The fluid's momentum ``rho <1 - chi, u>`` (kg m/s, a component each, ``fluid`` the faces' ``1 - chi``), the
+        ``fluid`` port kind's flow, and its magnitude ``rho <1 - chi, |u|>``: what a body force per unit mass on the fluid
+        is paired with, and its rounding judged on."""
+        volume = grid.cell_volume
+        momentum = jnp.stack([rho * volume * jnp.sum(fluid[c] * velocity[c]) for c in range(3)])
+        size = jnp.stack([rho * volume * jnp.sum(jnp.abs(fluid[c] * velocity[c])) for c in range(3)])
+        return {"momentum": momentum, "momentum_size": size}
+
+    def drive_read(self) -> str:
+        """The input the scheme reads its drive from (:data:`DRIVE_FIELDS`): the body force where every stage reads it
+        at the step's end, the waveform where they evaluate it at their own instants."""
+        return "body_force" if all(instant == STEP_END for instant in self.scheme.drive_instants) else "waveform"
+
+    @override
+    def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
+        """The laws the flow holds in its own step, each ``(role, law, class)``: the fluid's viscosity under the node's
+        name (``water.flow.viscosity``) and the wall's band under the wall's own (``wall_name``, as the build gives it:
+        ``tube.wall``; the node's ``.wall`` otherwise), both dissipative. The drive is delivered, not held."""
+        wall = str(self.constants().get("wall_name", "")) or f"{self.name}.wall"
+        return (("viscous", f"{self.name}.viscosity", books.DISSIPATIVE), ("penalty", wall, books.DISSIPATIVE))
+
+    def drive_work(self, held: Sequence[books.LedgerDelivery], boundary_inputs: Mapping[str, Array],
+                   rows: Sequence[str], dt: float, momentum: Array, size: Array) -> tuple[Array, Array, Array]:
+        """Each law's drive paired by the one rule as the ``fluid`` port kind says, ``dt g . P'``, ``g`` its own input
+        and ``P'`` the fluid's momentum at the instant the scheme applied it (a row per law); the unattributed input's
+        likewise; and the magnitude of the products (law by law, so that drives that cancel are judged on their own
+        size). The input the scheme does not read pairs no work: what it delivered was not applied."""
+        dtype = momentum.dtype
+        work = jnp.zeros(len(rows), dtype=dtype)
+        scale = jnp.zeros((), dtype=dtype)
+        read = self.drive_read()
+        for index, delivery in enumerate(held):
+            if delivery.kind == books.LOAD and delivery.field == "body_force" == read:
+                g = jnp.asarray(boundary_inputs[books.law_input(delivery.field, index)], dtype=dtype)
+                work = work.at[rows.index(delivery.law)].add(dt * jnp.dot(g, momentum))
+                scale = scale + dt * jnp.dot(jnp.abs(g), size)
+        plain = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
+        unattributed = dt * jnp.dot(plain, momentum) if read == "body_force" else jnp.zeros((), dtype=dtype)
+        return work, unattributed, scale + dt * jnp.dot(jnp.abs(plain), size)
 
     @staticmethod
     def ratio(numerator: Array, denominator: Array, scale: Array) -> Array:
@@ -557,27 +617,28 @@ class ImplicitFlowNode(MimeNode):
     def identity_terms(self, p: Mapping[str, Any], held: Sequence[books.LedgerDelivery], state: Mapping[str, Array],
                        boundary_inputs: Mapping[str, Array], ended: Mapping[str, Array], parts: StepParts,
                        dt: float) -> books.StepAccount:
-        """The step's identity: the hosted laws' work under their names (the drive's ``+W``, the viscosity's and the
-        wall's ``-D``), the scheme's three terms, the storage at both ends. A hosted law the ledger does not name is
-        booked as unattributed, which the ledger counts as a failure of attribution."""
+        """The step's identity: each driving law's work, paired with the fluid's momentum (:meth:`drive_work`), the
+        hosted laws' under their names (the viscosity's and the wall's ``-D``), the scheme's three terms, the storage at
+        both ends. A hosted law the ledger does not name is booked as unattributed, which the ledger counts as a failure
+        of attribution, as is work fed into the plain body-force input."""
         energy = parts.energy
         dtype = jnp.asarray(energy["krylov"]).dtype
-        work_of = {"body_force": energy["drive"], "viscous": -energy["viscous"], "penalty": -energy["penalty"]}
         rows = books.laws(held)
-        work = jnp.zeros(len(rows), dtype=dtype)
-        hosted = jnp.zeros((len(rows), 2), dtype=dtype)
+        check_deliveries(held)
+        work, unattributed, drive_scale = self.drive_work(held, boundary_inputs, rows, dt, energy["momentum"],
+                                                          energy["momentum_size"])
+        hosted_work = {"viscous": -energy["viscous"], "penalty": -energy["penalty"]}
         named: set[str] = set()
         for delivery in held:
-            if delivery.kind != books.HOSTED or delivery.field not in work_of:
-                raise ValueError(f"the flow node hosts {list(work_of)}: it takes no delivery {delivery}")
-            work = work.at[rows.index(delivery.law)].add(work_of[delivery.field])
-            named.add(delivery.field)
-        unattributed = sum((value for field, value in work_of.items() if field not in named),
-                           start=jnp.zeros((), dtype=dtype))
+            if delivery.kind == books.HOSTED:
+                work = work.at[rows.index(delivery.law)].add(hosted_work[delivery.field])
+                named.add(delivery.field)
+        unattributed = unattributed + sum((value for field, value in hosted_work.items() if field not in named),
+                                          start=jnp.zeros((), dtype=dtype))
         terms = jnp.stack([energy[name] for name in self.scheme.ledger_terms])
-        return books.StepAccount(work=work, hosted=hosted, unattributed=unattributed, terms=terms,
-                                 storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
-                                 scale=energy["scale"], operators={})
+        return books.StepAccount(work=work, hosted=jnp.zeros((len(rows), 2), dtype=dtype), unattributed=unattributed,
+                                 terms=terms, storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
+                                 scale=energy["scale"] + drive_scale, operators={})
 
     # -- at the build and after the run ---------------------------------------------------------------------------
     def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
@@ -637,5 +698,17 @@ class ImplicitFlowNode(MimeNode):
             if finite else "use a smaller timestep, dt=..., or dt='auto', or the Stokes approximation FVM(stokes=True)")
 
 
-__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "GEOMETRY", "HOSTED_FIELDS", "STALL_LINE", "STALL_SECTION", "STOKES_REYNOLDS",
-           "STOP_FIELD", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "StepParts"]
+def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
+    """Refuse a delivery the flow does not take: a hosted law other than its viscosity and its wall's band, or a
+    delivered one into anything but its drive's inputs (``fluid``'s loads)."""
+    for delivery in held:
+        hosted = delivery.kind == books.HOSTED and delivery.field in HOSTED_FIELDS
+        driven = delivery.kind == books.LOAD and delivery.field in DRIVE_FIELDS
+        if not (hosted or driven):
+            raise ValueError(f"the flow node hosts {list(HOSTED_FIELDS)} and is driven through {list(DRIVE_FIELDS)}: "
+                             f"it takes no delivery {delivery}")
+
+
+__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_LINE", "STALL_SECTION", "STOKES_REYNOLDS",
+           "STOP_FIELD", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "StepParts",
+           "check_deliveries"]

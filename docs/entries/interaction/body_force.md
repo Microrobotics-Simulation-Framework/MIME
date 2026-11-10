@@ -11,7 +11,10 @@ drive: the stand-in for the pressure drop a period of the vessel would carry. Th
 is what responds to it, so a different field kind takes the same drive. It is delivered once a step, at the instant the
 field's time scheme reads its drive (for IMEX Euler, the step's end), and as its waveform's coefficients, which RK3
 evaluates at its own stage times and the prescribed flow (`Womersley()`) responds to analytically: one law, either rung.
-A medium whose field reads the waveform takes one such law; its steady part and harmonic go in that one.
+A medium whose field reads the waveform takes one such law; its steady part and harmonic go in that one. With the
+energy ledger, driving a flow the ledger meters, it is outside the components (it declares no class, its node reads
+nothing of theirs, and it delivers loads), and the flow books its work, paired with the fluid's momentum, as supplied
+under its name; a flow the ledger does not meter (the prescribed flow) pairs it with nothing.
 
 **When not to use it.**
 - As gravity on the fluid: a uniform gravity on an incompressible fluid in a closed box is balanced by its hydrostatic

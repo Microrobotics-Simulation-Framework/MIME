@@ -11,7 +11,9 @@ program changes, bit for bit.
 
 The build report's `energy` lines say, for each law, what kind of exchange it is (dissipative, potential, or unmetered
 with the law's reason) and what is outside the components, worked out from the graph: a thing that receives no load
-from them, such as a field turning on its own or a drive. A run's result gives the account in plain words,
+from them, such as a field turning on its own or a drive, and a law that declares no class and whose own node reads
+nothing of the components (a body force driving a medium's flow), which supplies its own work. A law that declares a
+class keeps it, whatever its node reads: gravity is a potential, not a supply. A run's result gives the account in plain words,
 `result.energy.text()`: what each body stores, what each dissipative law lost, what was supplied (named by what supplies
 it, taken from the dissipation side: what was lost plus the change in what is stored) and each potential's change; with
 `details=True`, each law's work on each body, the scheme's own terms, the work the supplied laws paired in the steps,
@@ -26,8 +28,9 @@ useful work as a share of what was supplied.
 - To find a wrong delivery between laws: the build compares its graph with the deliveries it made and refuses a
   swap, a duplicate or a missing delivery by name (`post-build.ledger-inputs`). The books cannot see them, and a law's
   residual shows only a swap that involves gravity and a moving load.
-- On a dynamics that is not metered: a medium's flow (the FVM, whose hosted laws the build does not yet name for the
-  ledger; the prescribed flow, outside and storing nothing), a toy's, a lab's that names no port kind. The build report
+- On a dynamics that is not metered: the prescribed flow (outside and storing nothing), a toy's, a lab's that names
+  no port kind. A medium's FVM flow is metered: its kinetic energy stored, its viscosity's and its wall's losses under
+  their names, and the drive's work supplied by the law driving it. The build report
   lists it with its reason, and the account leaves it out and says so: `result.energy.unmetered`,
   `result.energy.text()` and `result.text()` name it with the reason, and a run whose receivers are all unmetered has
   an account that says no receiver is metered, not `None`. A dynamic arm and a dynamic motor are metered: each books
