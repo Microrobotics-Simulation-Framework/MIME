@@ -199,6 +199,8 @@ flow.region                   user
 flow.resolution               user
 flow.solve-report-rows        user
 flow.steady-convection        user
+flow.tree-period              user
+flow.tree-scheme              user
 flow.viscous-limit            user
 frame.gravity-invalid         user
 frame.gravity-missing         user

@@ -62,7 +62,7 @@ def test_a_listed_field_that_is_now_filled_fails_until_its_line_is_deleted(tmp_p
 def test_a_field_of_a_lab_or_a_toy_is_outside_the_list_and_counted(tmp_path):
     done = docs_check(copy_checkout(tmp_path), plant="lab_numbered")
     assert done.returncode == 0, done.stdout
-    assert "none declared in MIME's pages: 14 fields" in done.stdout
+    assert "none declared in MIME's pages: 15 fields" in done.stdout
     assert re.search(r"none declared (\d+)", done.stdout) and int(re.search(r"none declared (\d+)",
                                                                            done.stdout).group(1)) > 13
 
@@ -78,7 +78,7 @@ def test_a_new_line_with_the_shared_start_reason_fails_against_a_base_that_does_
     edit(path, f"{EMPTY_ITEM}  # {NONE_DECLARED_START}", f"{EMPTY_ITEM}  # its own reason")
     done = docs_check(root, plant="mime_empty", base="HEAD")
     assert done.returncode == 0, done.stdout
-    assert re.search(r"compared with HEAD's, 14 lines there and 15 here", done.stdout)
+    assert re.search(r"compared with HEAD's, 15 lines there and 16 here", done.stdout)
 
 
 def test_a_malformed_item_and_a_missing_list_fail(tmp_path):

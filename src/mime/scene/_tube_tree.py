@@ -162,13 +162,21 @@ class TubeTree(Geometry):
     version = "0.1.0"
     setting_roles = {
         **dict.fromkeys(("points", "segments", "radii"), PHYSICAL),
-        "fillet": convention(PHYSICAL, "an anatomical baseline declared for vessels, 0.1 of the smallest radius at a "
-                                       "junction (the smaller daughter's at a Y), not fitted to any measurement"),
+        "fillet": convention(PHYSICAL, "an anatomical baseline declared for vessels, a tenth of the smallest radius "
+                                       "at a junction (the smaller daughter's at a Y), not fitted to any measurement"),
         "ends": convention(PHYSICAL, "a tree's free ends but the root are end_0, end_1, ... in the order of their "
                                      "points unless named"),
     }
-    differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord()
+    differentiability = GradientStatus.UNVERIFIED
+    gradient = GradientRecord(
+        where="in its points, radii and fillet, through the lumen's distance and normal",
+        reason="the union's selections (the deepest lumen, the least of its candidates, whether a candidate stands) are "
+               "plain JAX, declared as no switch: the distance has a kink where two candidates tie and its normal a "
+               "jump; a seam's and a corner's point carry the implicit function theorem's derivative, which the "
+               "union's gate holds to central differences, and a flow's derivative through the band is held by the "
+               "FVM's",
+        route="the union's selections written through mime.core.switch with owners, when a contact or a drag reads a "
+              "tree's surface")
     references = ()
     builds = {"": ()}
     regions = ("lumen", "wall")
@@ -350,7 +358,9 @@ class TubeTree(Geometry):
         if not segments.size:
             return xp.asarray(0.0) * xp.asarray(parameters["fillet"])
         radii = xp.reshape(xp.asarray(parameters["radii"]), (-1, 2))
-        return xp.asarray(parameters["fillet"]) * xp.min(radii[segments, ends])
+        held = radii[segments, ends]
+        # The least by its index, its derivative the selected radius's (``mime.scene._union._lesser``'s reason).
+        return xp.asarray(parameters["fillet"]) * held[xp.argmin(held)]
 
     def fillet_radius_value(self) -> float:
         return float(self.fillet_radius(self.parameters(), np))

@@ -85,6 +85,28 @@ def periodic_tube_flow(steady: bool = False, rk3: bool = False) -> Experiment:
     return experiment
 
 
+def tree_flow() -> Experiment:
+    """The FVM on a tube tree's lumen in its periodic box (``TubeTree``, filleted): a vessel narrowing to 0.8 of its
+    radius over half its period and back, its parent reaching a radius past each end of the period, steady Stokes under
+    a body force on the fluid; the throat twelve cells across, so the wall is the union's exact distance at its
+    junctions."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import BodyForce
+    from mime.scene import PeriodicBox, Scene, TubeTree, Z
+    from mime.units import Pa_s, kg_per_m3, m_per_s2
+
+    experiment = Experiment("tree_flow", scene=Scene.new(up=Z, units="m"), dt=ms(5.0))
+    tree = TubeTree(points=mm((0.0, 0.0, -0.5, 0.0, 0.0, 0.25, 0.0, 0.0, 0.5, 0.0, 0.0, 0.75, 0.0, 0.0, 1.5)),
+                    segments=((0, 1), (1, 2), (2, 3), (3, 4)), radii=mm((0.5, 0.5, 0.5, 0.4, 0.4, 0.5, 0.5, 0.5)))
+    experiment.add_structure(Structure("vessel", geometry=tree))
+    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=12, stokes=True, scheme=Scheme.Steady())
+    experiment.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(0.01)), medium="water")
+    return experiment
+
+
 def prescribed_tube_flow() -> Experiment:
     """The prescribed flow (Womersley) in the same tube under the same drive: the cheap rung, no grid."""
     from mime.dynamics import Womersley
@@ -337,6 +359,8 @@ CASES = (
     # The same tube stepped by RK3, and its prescribed flow: the second scheme and the second flow field kind.
     Case("rk3_tube_flow", lambda: periodic_tube_flow(rk3=True)),
     Case("prescribed_tube_flow", prescribed_tube_flow),
+    # The FVM on a tube tree's lumen, its wall the union's exact distance where the band reads it.
+    Case("tree_flow", tree_flow),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),

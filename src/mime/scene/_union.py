@@ -315,8 +315,7 @@ class ExactUnion:
         """:meth:`check` at local points, with the deepest region and the meeting region its nearest wall point lies
         deepest in (each ``(N,)``)."""
         distances, normals, radius = self._widened(parameters, points)
-        least = jnp.min(distances, axis=0)
-        deepest = jnp.argmin(distances, axis=0)
+        least, deepest = _least(distances)
         normal = jnp.take_along_axis(normals, deepest[None, :, None], axis=0)[0]
         foot = points - least[:, None] * normal
         at_foot = jnp.stack([region.signed_distance(parameters, foot) for region in self.regions]) - radius
@@ -350,7 +349,7 @@ class ExactUnion:
             kept = jnp.ones(points.shape[:-1], dtype=bool)
             for j in np.nonzero(table[i])[0]:
                 kept = kept & (self.regions[j].signed_distance(parameters, foot) - radius >= -slack)
-            best = jnp.minimum(best, jnp.where(kept, jnp.abs(distances[i]), jnp.inf))
+            best = _lesser(best, jnp.where(kept, jnp.abs(distances[i]), jnp.inf))
         return best
 
     def _kept(self, parameters: Parameters, point: Array, own: Sequence[int], radius: Any, slack: Array) -> Array:
@@ -517,14 +516,14 @@ class ExactUnion:
         stalled = jnp.zeros(points.shape[:-1], dtype=bool)
         for i, j in self.meets:
             seam = self._seam(parameters, points, i, j, radius)
-            best = jnp.minimum(best, seam.distance)
+            best = _lesser(best, seam.distance)
             own = ((deepest == i) & (inside == j)) | ((deepest == j) & (inside == i))
             stalled = stalled | (own & ~seam.reached_seam)
         for corner in self.corners:
             starts = self._corner_starts(parameters, points, corner, feet, size)
             found = self._corner(parameters, jnp.concatenate([points] * len(starts)), corner, radius,
                                  jnp.concatenate(starts))
-            best = jnp.minimum(best, jnp.min(found.reshape(len(starts), -1), axis=0))
+            best = _lesser(best, _least(found.reshape(len(starts), -1))[0])
         return best, jnp.isfinite(best) & ~stalled
 
     # -- the distance ------------------------------------------------------------------------------------------------
@@ -577,7 +576,7 @@ class ExactUnion:
         radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
         least = self.regions[0].signed_distance(parameters, held) - radius
         for region in self.regions[1:]:
-            least = jnp.minimum(least, region.signed_distance(parameters, held) - radius)
+            least = _lesser(least, region.signed_distance(parameters, held) - radius)
         return least + radius
 
 
@@ -618,6 +617,22 @@ def _finite_or(value: Array, fallback: Array) -> Array:
     """``value`` where every component of a point's row is finite, ``fallback`` elsewhere: a step that did not reach a
     seam keeps its discarded lane finite, so no NaN reaches a derivative through it."""
     return jnp.where(jnp.all(jnp.isfinite(value), axis=-1, keepdims=True), value, fallback)
+
+
+def _lesser(a: Array, b: Array) -> Array:
+    """The lesser of ``a`` and ``b``, each element: a selection by one comparison, its derivative the selected one's.
+    Not ``jnp.minimum`` or ``jnp.min``, whose derivatives find the least by comparing it again with its operands: XLA
+    may compute an operand twice, fused into two programs whose arithmetic rounds differently (a multiply and an add
+    contracted into one in one of them), and the comparison then finds no operand equal to the least, or another one,
+    and reverse mode reads a derivative forward mode does not."""
+    return jnp.where(b < a, b, a)
+
+
+def _least(stacked: Array) -> tuple[Array, Array]:
+    """The least of ``stacked`` along its first axis, by the index of the least (its derivative the selected entry's,
+    as :func:`_lesser`'s), and that index."""
+    index = jnp.argmin(stacked, axis=0)
+    return jnp.take_along_axis(stacked, index[None], axis=0)[0], index
 
 
 def _ridge(dtype: Any, size: int) -> Array:
