@@ -1,7 +1,7 @@
 """A differentiated study's result: for each member, the objective and its derivative in each axis, with what its run
 raised (the flags, a node's stop, a table read extrapolated by the experiment's declaration), the status of the path
 the derivative took through the experiment's entries, and each iterative solve's report, forward and in the
-derivative solves, with the warning of a solve that did not converge and the recheck of it at a tighter tolerance."""
+derivative solves, with the warning of a solve that did not converge and the recheck of it with the cause removed."""
 
 from __future__ import annotations
 
@@ -20,11 +20,15 @@ from mime.nodes.flow.fvm._solve import REPORT_FIELDS
 SHORT = ("at_cap", "stagnated", "not_finite")
 
 
-def _short(report: NDArray[np.float64] | None) -> int:
+def _count(report: NDArray[np.float64] | None, names: tuple[str, ...]) -> int:
     if report is None:
         return 0
     held = np.asarray(report, dtype=np.float64).reshape(-1, len(REPORT_FIELDS))
-    return int(round(float(sum(held[:, REPORT_FIELDS.index(name)].sum() for name in SHORT))))
+    return int(round(float(sum(held[:, REPORT_FIELDS.index(name)].sum() for name in names))))
+
+
+def _short(report: NDArray[np.float64] | None) -> int:
+    return _count(report, SHORT)
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,11 @@ class SolveReport:
         """The derivative solves that stopped short of their tolerance."""
         return _short(self.backward)
 
+    @property
+    def not_finite(self) -> int:
+        """The solves, primal and derivative, whose residual was not finite: no cap or restart removes that."""
+        return _count(self.forward, ("not_finite",)) + _count(self.backward, ("not_finite",))
+
     def flagged_steps(self) -> tuple[int, ...]:
         """The steps (from 1) whose primal solve stopped short, where the run kept each step's report."""
         if self.steps is None:
@@ -73,13 +82,17 @@ class SolveReport:
 
 @dataclass(frozen=True)
 class Recheck:
-    """A member's derivative computed again with every flagged solve's tolerance tightened: ``how`` (the same compiled
-    program at ``tolerance``, the tolerance a parameter of it; or, from a float32 run, a float64 rebuild, since
-    float32's floor leaves nothing to tighten), the objective and the derivative it gave, their changes from the
-    member's own (relative to the member's), and its own solves' reports, which say whether it converged."""
+    """A member's derivative computed again with the cause of each flagged solve removed: ``how``; ``lifted``, the
+    nodes re-solved with their cap lifted and their stall restarts raised, at the member's own tolerance (a solve that
+    did not reach its cap or stall is unchanged, so only the solves that stopped short move); ``not_rechecked``, each
+    node flagged that was not re-solved, with the reason (a non-finite residual, which neither removes; a node whose
+    solve has no recheck); the objective and the derivative the recheck gave, their changes from the member's own
+    (relative to the member's), and its own solves' reports, which say whether it converged. A recheck of no node
+    (``made`` false) gives the member's own values and NaN changes."""
 
     how: str
-    tolerance: float | None
+    lifted: tuple[str, ...]
+    not_rechecked: Mapping[str, str]
     value: float
     gradient: Mapping[str, NDArray[np.float64]]
     value_change: float
@@ -87,8 +100,14 @@ class Recheck:
     solves: tuple[SolveReport, ...]
 
     @property
+    def made(self) -> bool:
+        """Whether any flagged solve was re-solved."""
+        return bool(self.lifted)
+
+    @property
     def converged(self) -> bool:
-        return all(report.forward_short == 0 and report.backward_short == 0 for report in self.solves)
+        """Whether a recheck was made and none of its own solves stopped short."""
+        return self.made and all(report.forward_short == 0 and report.backward_short == 0 for report in self.solves)
 
 
 @dataclass(frozen=True)
@@ -144,10 +163,13 @@ class MemberGradient:
         lines += [f"  {line}" for report in self.solves for line in report.text().splitlines()]
         lines += [f"  warning: {text}" for text in self.warnings]
         if self.recheck is not None:
-            changes = ", ".join(f"{path} {change:.3g}" for path, change in self.recheck.gradient_change.items())
-            lines.append(f"  recheck ({self.recheck.how}): objective changed {self.recheck.value_change:.3g}, the "
-                         f"derivative {changes} (relative); its own solves "
-                         f"{'converged' if self.recheck.converged else 'stopped short as well'}")
+            recheck = self.recheck
+            if recheck.made:
+                changes = ", ".join(f"{path} {change:.3g}" for path, change in recheck.gradient_change.items())
+                lines.append(f"  recheck ({recheck.how}): objective changed {recheck.value_change:.3g}, the "
+                             f"derivative {changes} (relative); its own solves "
+                             f"{'converged' if recheck.converged else 'stopped short as well'}")
+            lines += [f"  recheck not made for {node}: {reason}" for node, reason in recheck.not_rechecked.items()]
         return "\n".join(lines)
 
 

@@ -16,6 +16,7 @@ from mime.build import BuildRefused
 from mime.build._maddening import available_memory, cgroup_limit, device_memory
 from mime.dynamics import FVM
 from mime.observations import EnergyLedger
+from mime.testing import ledger_closes
 from mime.units import mm, ms
 
 
@@ -118,3 +119,5 @@ def test_the_run_meters_the_flow_and_names_nothing_unmetered(float64, ledger):
         built.report.energy
     assert "outside: body_force:water (receives no delivery from the components)" in built.report.energy
     assert not any("not metered" in line for line in built.report.energy), built.report.energy
+    judged = ledger_closes(result)
+    assert judged.passed, judged.detail

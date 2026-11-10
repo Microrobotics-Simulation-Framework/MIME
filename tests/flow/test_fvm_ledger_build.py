@@ -14,7 +14,6 @@ nothing); without the planted read it is outside. The graph is deterministic, so
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 from fvm_cases import in_dtype
 
@@ -25,6 +24,7 @@ from mime.dynamics import FVM, Scheme
 from mime.experiment import Experiment
 from mime.interactions import BodyForce
 from mime.observations import EnergyLedger
+from mime.testing import ledger_closes
 from mime.scene import PeriodicBox, Scene, Tube, Z
 from mime.things import Medium, Structure
 from mime.units import Hz, kg_per_m3, m_per_s2, mm, mPa_s, ms
@@ -60,15 +60,13 @@ def test_imex_euler_s_account_closes_on_a_driven_womersley_flow(dtype):
     assert {d.law: d.energy_class for d in held} == LAWS
     account = result.energy
     assert account is not None
-    assert account.findings == () and dict(account.unmetered) == {}
-    assert float(account.identity_worst["water.flow"]) <= 1.0
-    assert float(account.unattributed["water.flow"]) == 0.0
+    judged = ledger_closes(result)
+    assert judged.passed, judged.detail
+    assert dict(account.unmetered) == {}
     assert abs(float(account.balance)) <= float(account.balance_floor)
     assert set(account.lost) == {"water.flow.viscosity", "tube.wall"} and all(v > 0.0 for v in account.lost.values())
     assert set(account.supplied) == {"body_force:water"}
     assert set(account.paired_supply) == {"body_force:water"}
-    records = result.final["water.flow"]
-    assert float(np.sum(records[f"{ledger.RECORDS}gift_steps"])) == 0.0
     assert "not metered" not in result.text()
 
 
@@ -78,10 +76,9 @@ def test_rk3_s_every_step_dissipates_on_a_driven_womersley_flow_its_drive_under_
         built = womersley(Scheme.RK3()).build()
         result = built.run(PERIOD)
     account = result.energy
-    assert account is not None and account.findings == ()
-    records = result.final["water.flow"]
-    assert float(records[f"{ledger.RECORDS}route_one_negative_steps"]) == 0.0
-    assert float(account.unattributed["water.flow"]) == 0.0
+    assert account is not None
+    judged = ledger_closes(result)
+    assert judged.passed, judged.detail
     assert set(account.paired_supply) == {"body_force:water"} and float(account.paired_supply["body_force:water"]) > 0.0
     assert set(account.lost) == {"water.flow.viscosity", "tube.wall"}
 
@@ -95,8 +92,9 @@ def test_control_on_rk3_a_drive_applied_unlike_its_delivery_is_the_run_s_finding
     real = ImplicitFlowNode.drive
     monkeypatch.setattr(ImplicitFlowNode, "drive",
                         lambda self, fields, delivered: tuple(1.01 * c for c in real(self, fields, delivered)))
-    account = womersley(Scheme.RK3()).build().run(ms(25.0)).energy
-    assert account is not None
+    result = womersley(Scheme.RK3()).build().run(ms(25.0))
+    account = result.energy
+    assert account is not None and ledger_closes(result).failed
     assert any(finding.startswith("the drive's work on water.flow as its stages applied it is not what the law")
                for finding in account.findings), account.findings
 

@@ -490,8 +490,11 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
     first, last), kept)``, each flag of ``tests`` reduced over the steps as :func:`batched_scan` reduces it (steps
     raised, the first and the last, from the run's start), and each field of ``kept`` at every step. With
     ``checkpoint`` (reverse mode) the steps are scanned in chunks of about the square root of their number, each chunk a
-    ``jax.checkpoint``: reverse mode keeps each chunk's start and recomputes its steps, about twice the square root of
-    the run's steps stored for twice its compute; without it (forward mode, which stores nothing) the run is one chunk.
+    ``jax.checkpoint``: reverse mode keeps each chunk's start and recomputes its steps; without it (forward mode, which
+    stores nothing) the run is one chunk. What that saves is measured, not general: the compiled derivative program's
+    temporary memory on the periodic tube falls from 4.6 to 1.5 MB at 80 steps (2.5 to 1.3 MB at 40, so the saving grows
+    with the steps), for about 1.3 to 1.4 times the unchecked call's time on the runners; on the MRS sphere it saves nothing at 80 or 320 steps
+    (69 MB either way: what the program holds there is not the step states, and forward mode's is 22 MB).
     The nodes' run-constants (:func:`with_run_constants`) are made once for the run, before its chunks and outside
     their checkpoints, so that reverse mode derives each once (made in each chunk, a checkpoint made each again in its
     recomputation, which cost the sphere's reverse call 2 to 19 times, measured). The chunks are an outer

@@ -73,9 +73,13 @@ LLOYD_STEPS = 20
 #: above float64's rounding of a squared distance (2e-16 of it) and far below any spacing a sampling uses (a body
 #: sampled at a thousandth of its size has squared spacings 1e-6 of its squared size).
 TIE = 1e-12
-#: A sampling that is the kind's own quadrature, and one chosen by :func:`quasi_uniform`, by what ``Sampling.method``
-#: records.
-QUADRATURE, QUASI_UNIFORM = "quadrature", "quasi_uniform"
+#: A sampling that is the kind's own quadrature, one chosen by :func:`quasi_uniform` at the uniform density, and one
+#: chosen at a graded density, by what ``Sampling.method`` records.
+QUADRATURE, QUASI_UNIFORM, GRADED = "quadrature", "quasi_uniform", "graded"
+#: The finest spacing a graded density asks for, as a share of the sampling's (its density at most this share's inverse
+#: square): the floor the grading was measured with, a quarter. It bounds the dense set a graded sampling is chosen from,
+#: whose points grow as its inverse square.
+FINEST = 0.25
 
 _jit: Any = cast(Any, jax).jit
 _fori_loop: Any = cast(Any, jax).lax.fori_loop
@@ -155,8 +159,12 @@ def _relaxed(points: np.ndarray, mass: np.ndarray, chosen: np.ndarray, quantum: 
     it (so that two generators either side of an edge, whose centroids lie inside the body, are not both drawn onto
     the edge), or, for a generator whose cell is empty, to its nearest dense point not yet taken; ties within
     ``quantum`` go to the lower index."""
-    count = len(chosen)
-    generators = np.asarray(points[chosen], dtype=np.float64)
+    return _relaxed_from(points, mass, np.asarray(points[chosen], dtype=np.float64), quantum)
+
+
+def _relaxed_from(points: np.ndarray, mass: np.ndarray, generators: np.ndarray, quantum: float) -> np.ndarray:
+    """:func:`_relaxed` from the generators' positions ``generators`` (not necessarily dense points)."""
+    count = len(generators)
     for _ in range(LLOYD_STEPS):
         owner = _owners(generators, points, quantum)
         held = np.bincount(owner, weights=mass, minlength=count)
@@ -222,8 +230,12 @@ def quadrature_owners(kind: Geometry, settings: Mapping[str, Magnitude], samplin
     in (ties within the tie rule to the lower sample, as every choice here breaks them). Made once, at build, in
     float64 from the settings in SI: the map is then held, so that the quadrature's points move with the kind's
     parameters and a study's derivative flows through them while the map does not change (Smith 2018, Gallagher &
-    Smith 2021). A sample no point is nearest has an empty cell, which the consumer refuses."""
-    force = sampled_points(kind, settings, sampling)
+    Smith 2021). A sample no point is nearest has an empty cell, which the consumer refuses. Where the sampling keeps
+    its cells' generators apart from its samples (a graded sampling's, ``Sampling.generators``), the cells are the
+    generators': each point in the cell of the generator nearest it, whose sample lies at that cell's area centre."""
+    force = sampled_points(kind, settings, sampling if sampling.generators is None else
+                           Sampling(sampling.patches, sampling.counts, sampling.method, sampling.generators,
+                                    sampling.members))
     points, _, _ = quadrature_arrays(kind, settings, sampling.patches, counts)
     return _owners(force, points, tie_quantum(points)).astype(np.int32)
 
@@ -259,6 +271,8 @@ def quasi_uniform(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
 
 def _quasi_uniform(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, patches: tuple[str, ...],
                    density: Density) -> Sampling:
+    if density is not uniform:
+        return _graded(kind, settings, spacing, patches, density)
     own, _, _ = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))
     counts = quadrature_counts(kind, settings, spacing / REFINEMENT, patches)
     points, weights, _ = quadrature_arrays(kind, settings, patches, counts)
@@ -275,6 +289,68 @@ def _quasi_uniform(kind: Geometry, settings: Mapping[str, Magnitude], spacing: f
     for array in (chosen, members):
         array.flags.writeable = False
     return Sampling(patches, counts, QUASI_UNIFORM, chosen, members)
+
+
+def _density_at(kind: Geometry, density: Density, points: np.ndarray) -> np.ndarray:
+    held = np.asarray(density(points), dtype=np.float64)
+    if held.shape != (len(points),) or not np.all(np.isfinite(held) & (held > 0.0)):
+        raise ValueError(f"{kind.label()}: a sampling's density is a number above zero at every point")
+    if np.max(held) > 1.0 / FINEST ** 2 * (1.0 + 1e-9):
+        raise ValueError(f"{kind.label()}: a graded sampling's density is at most {1.0 / FINEST ** 2:g} (its spacing "
+                         f"at least {FINEST:g} of the sampling's, the finest its dense set is refined for), and it "
+                         f"asks {float(np.max(held)):.4g}")
+    return held
+
+
+def _graded(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, patches: tuple[str, ...],
+            density: Density) -> Sampling:
+    """:func:`quasi_uniform` at a density that is not uniform. As the uniform sampling, but:
+
+    - **the dense set is finer**, ``REFINEMENT`` times the finest local spacing the density asks for (at most
+      ``REFINEMENT / FINEST`` times finer than the spacing), so that the finest cells hold as many dense points as a
+      uniform sampling's; the count (the density's mean over the area) and the farthest points are taken on the
+      uniform sampling's dense set, as a density's always were, and Lloyd's steps run on the finer one;
+    - **Lloyd's mass is the area times the density's square**, so that the generators' density in two dimensions is the
+      density (a centroidal tessellation's generators fall as the square root of its mass);
+    - **each sample sits at its cell's area centre**: the cells are the relaxed generators' (each dense point's
+      nearest), and each cell's sample is its dense point nearest the cell's area centroid (ties to the lower index),
+      so that a solver that collocates at the sample and takes the traction constant over the cell (the MRS's
+      separated quadrature) does so at the cell's centre, as a uniform sampling's samples nearly are. Measured before
+      the build: with the samples at the density-weighted centres the relaxation leaves them at, grading raised a
+      sphere's error at a plane wall (+20.9 % against +12.2 % with the uniform cells' points moved alike, half a force
+      spacing from the wall, blob 0.1); at the area centres it lowered it (+5.2 %), and a cylinder's rim's alike;
+    - ``generators`` keeps the relaxed generators, whose cells a solver takes (``quadrature_owners``)."""
+    coarse_counts = quadrature_counts(kind, settings, spacing / REFINEMENT, patches)
+    coarse, coarse_weights, _ = quadrature_arrays(kind, settings, patches, coarse_counts)
+    coarse_density = _density_at(kind, density, coarse)
+    own, _, _ = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))
+    count = max(1, round(len(own) * float(np.sum(coarse_weights * coarse_density) / np.sum(coarse_weights))))
+    finer = math.ceil(REFINEMENT * math.sqrt(float(np.max(coarse_density))) - 1e-9)
+    counts = quadrature_counts(kind, settings, spacing / max(finer, REFINEMENT), patches)
+    points, weights, _ = quadrature_arrays(kind, settings, patches, counts)
+    held = _density_at(kind, density, points)
+    start = coarse[_farthest(coarse, coarse_density, count, tie_quantum(coarse))]
+    quantum = tie_quantum(points)
+    generators = _relaxed_from(points, weights * held * held, start, quantum)
+    members = _members(points, generators, quantum)
+    centred = _centred(points, weights, members, quantum)
+    for array in (centred, members, generators):
+        array.flags.writeable = False
+    return Sampling(patches, counts, GRADED, centred, members, generators.astype(np.int32))
+
+
+def _centred(points: np.ndarray, weights: np.ndarray, members: np.ndarray, quantum: float) -> np.ndarray:
+    """Each cell's dense point nearest its area centroid (``members``' rows, padded with ``len(points)``; ties within
+    ``quantum`` to the lower index)."""
+    pad = len(points)
+    found = np.empty(len(members), dtype=np.int32)
+    for i, row in enumerate(members):
+        cell: np.ndarray = row[row < pad]
+        centre: np.ndarray = np.sum(weights[cell, None] * points[cell], axis=0) / np.sum(weights[cell])
+        offsets: np.ndarray = points[cell] - centre
+        away = np.floor(np.sum(offsets * offsets, axis=1) / quantum)
+        found[i] = int(cell[int(np.lexsort((cell, away))[0])])
+    return found
 
 
 #: How far past a whole number a length over its spacing may lie and still take that many samples: a share of the
@@ -478,7 +554,8 @@ def _spread_farthest(points: np.ndarray, directions: np.ndarray, apart: float,
     return index, reach
 
 
-__all__ = ["COUNT_SLACK", "JUDGED_SAMPLES", "LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach", "cells",
+__all__ = ["COUNT_SLACK", "FINEST", "GRADED", "JUDGED_SAMPLES", "LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM",
+           "REFINEMENT", "TIE", "body_reach", "cells",
            "counted", "hull_shortfall", "judged_samples", "length_of", "magnitude_of", "nearest", "quadrature",
            "quadrature_arrays", "quadrature_counts", "quadrature_owners", "quasi_uniform", "sampled_points",
            "sampled_reach", "samples_shortfall", "shortfall_directions", "tie_quantum"]

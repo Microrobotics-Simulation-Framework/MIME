@@ -1,0 +1,63 @@
+{
+ "written": "2026-11-10, committed before any gate of the fix round's order judgement ran (the commit that adds this file is the timestamp): the order check judged on each term summed over a drawn ensemble of three swirls at a step of 0.00125; the convection flag's measured blindness to an operator error; the floor pinned on records",
+ "phase": "the ledger harness (row #322), the fix round after its refuting review: the order check's false alarm (M2 of the review's majors is the convection flag, M1 the order check), the floor's pin",
+ "labels": "predictions by the fix round's builder (Opus) from the exploration below; every rate is predicted for swirls and draws the exploration did not use",
+ "seen_before": [
+  "the review's runs (Actions 42784359759): one swirl's N_conv ratio as dt halves, seeds 2000 to 2299 (float64), 1.51 to 2.86, 2 out of 1.414 to 2.828; seed 1053's three halvings 4.161, 3.995, 3.731; the convection flag on the convective operator scaled by 1.5 caught 0/50 (float64, float32) and negated 0/50 (float64), clean 0/50; the floor loosened 1.3 and 1.45 times passed CI's gift sizes",
+  "the exploration (Actions run 42793247582, probe/ledger-fix-x, the order rig's sums at 0.0025, 0.00125, 0.000625, 0.0003125 and the tolerance x100, swirls 5000 to 5399 a dtype): one swirl's N_conv ratio 1.01 to 6.59 at 0.0025 (2 out, seeds 5104 and 5352; the third-order plant inside the band on 5104), 1.13 to 2.46 at 0.00125 (1 out), 1.57 to 2.25 at 0.000625 (0 out), the same in both dtypes; N_conv's sum 0.02 % to 79 % of its products' pointwise magnitudes, so no parts' scale separates a cancelling swirl from an ordinary one; summed over three swirls (2e5 random triples of the 400), 1.46 to 3.44 at 0.0025 (2 out) and 1.60 to 2.30 at 0.00125 (0 out, each plant's ratio, half and twice, outside the band on every triple); N_BE 1.959 to 1.979 at 0.00125; N_Krylov's fall over the hundredfold at 0.0025, 59.8 to 979 (float64) and 38.5 to 291 (float32)",
+  "locally before this file, deterministic (no draws): tests/energy/test_ledger_closes.py's floor pin passes, and fails with the floor in _record_failures scaled by 1.3, 1.45 and 0.99 (8 of 8 cases each)"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "GitHub runner, 4 vCPU, CPU",
+  "sizes_and_parameters": "the order rig of tests/flow/test_fvm_ledger_orders.py: IMEX Euler, convection on, D/h 8, length 4 cells, the Poiseuille drive 8, nu = rho = D = 1, a fixed time of 0.05, dt 0.00125 and 0.000625, the warm-up 20 steps of 0.000625, tolerance 1e-8 (float64) and 1e-5 (float32) and a hundred times looser",
+  "seeds_and_draws": "an ensemble e is swirls 3e to 3e + 2 (the cellular swirl's three phases from the swirl's seed); the controls use ensembles 2000 to 3499 (swirls 6000 to 10499), 300 a plant and dtype; CI checks ensemble 0 (swirls 0, 1, 2, its seeds as before)"
+ },
+ "gate_1_orders_on_the_sum": {
+  "claim": "each numerical term, summed over an ensemble of three drawn swirls, falls at its declared order: no clean ensemble out of the band, and each wrong order caught on every ensemble",
+  "kind": "acceptance",
+  "case": "probe/order_rate.py (the rig's _report) through .github/probe/detection_rate.py, DETECTION_SEED the ensemble",
+  "prediction": {
+   "value": "clean: 0 of 1500 ensembles a dtype out (300 under each plant's arm); N_conv's summed ratio within 1.55 to 2.4 on every ensemble, N_BE's 1.95 to 1.99, N_Krylov's hundredfold fall at least 30; each plant 300/300 a dtype: N_BE and N_conv at order 1 (ratio about 1) and order 3 (about 4), the viscous loss in N_Krylov (about 1)",
+   "basis": "measured-before on other swirls (the exploration's 2e5 triples at this step: 1.60 to 2.30)",
+   "why": "a swirl whose N_conv cancels has a sum hundreds of times smaller than an ordinary one's, so it weighs little in the ensemble's sum; at 0.00125 one swirl's sums are nearer their asymptote than at 0.0025 (out of the band 1 in 400 against 2 in 400)"
+  },
+  "metric": "the ensemble's ratio of summed magnitudes, the quantity the check judges",
+  "control": {
+   "plant": "ORDER_PLANT=term:argument:power (tests/flow/test_fvm_ledger_orders.py's wrong_order): convection:dt:-1, convection:dt:1, backward_euler:dt:-1, backward_euler:dt:1, krylov:tolerance:loss",
+   "environment_variable": "ORDER_PLANT",
+   "expected_rate": "300/300 each, both dtypes",
+   "runs": 300,
+   "clean_expected": "0/300 each arm (1500 distinct ensembles a dtype in all)",
+   "resolution": "the band's edges are a factor 1.41 from second order; the plants' ratios a factor 2 from it"
+  },
+  "if_wrong": "a clean ensemble out of the band is reported with its swirls' ratios and sums; the band is not widened. A plant inside it is reported likewise",
+  "cannot_discriminate_if": "every swirl of an ensemble cancels: then its multiplicative plants are below any sums-only check's resolution (on one such swirl the order-one plant turns its third-order fall into an exact second)"
+ },
+ "gate_2_convection_flag_operator_error": {
+  "claim": "the convection flag does not see an error in the convective operator that keeps it skew (scaled, negated): its reading compares the booked work with its time level's own work from the same operator; gate 1's manufactured solution (tests/flow/test_fvm_mms.py) is the check that sees it",
+  "kind": "acceptance (a stated gap)",
+  "case": "probe/flag_rate.py with LEDGER_PLANT convection_scaled (MACGrid.convection times 1.5) and convection_negated, draws of tests/flow/flag_cases.py, seeds 1300 to 1349",
+  "prediction": {"value": "0/50 caught in both dtypes for each, clean 0/50", "basis": "measured-before (the review's 0/50)", "why": "a skew operator scaled or negated does no work at one time level and all its work at IMEX Euler's mixed levels is that level's: the reading stays rounding"},
+  "if_wrong": "a catch would mean the scaled operator's work departs from its level's beyond rounding: reported, and the flag's text says what it then catches"
+ },
+ "gate_3_floor_pin": {
+  "claim": "ledger_closes' floor is pinned at its exact value: a worst step at exactly 16 units of the dtype's rounding passes, the next number above fails, so a loosened or tightened floor fails CI",
+  "kind": "equality",
+  "case": "tests/energy/test_ledger_closes.py::test_the_floor_is_pinned_at_its_exact_value (records, both dtypes, the identity and the jump, routes 1 and 2)",
+  "prediction": {"value": "passes; fails with the floor scaled by 1.3, 1.45 or 0.99", "basis": "seen before (local, deterministic)"}
+ },
+ "gate_4_books_close_where_adopted": {
+  "claim": "the books close on the runs ledger_closes now also judges: the flags' clean drawn runs (seeds 500, 501), the stall detector's two runs, the declaration test's metered build",
+  "kind": "acceptance",
+  "prediction": {"value": "each passes in both dtypes", "basis": "guess (each is a metered run of a node whose identity closes on step_identity's draws)"}
+ },
+ "outcomes": {
+   "written": "2026-11-10, after the round's runs; the predictions above are as committed in e62bc11",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42794715500",
+   "gate_1_orders_on_the_sum": "held: 0 of 1500 clean ensembles out of the band in each dtype (300 under each plant's arm); N_conv's summed ratio 1.971 to 2.216, N_BE's 1.960 to 1.977, N_Krylov's hundredfold fall 47.3 to 460 (float64) and 36.3 to 120 (float32); each plant 300/300 in both dtypes (N_BE at order 1: 0.980 to 0.989, at 3: 3.92 to 3.95; N_conv at 1: 0.987 to 1.072, at 3: 3.99 to 4.30; the loss in N_Krylov: 1.00); every arm's books closed. The range (discriminating_range.py, ensembles 3500 to 3539, 40 a size): an order shift of N_conv caught on every ensemble from 0.49 up and 0.57 down (refined), on none from 0.42 down, no false alarm, both dtypes",
+   "gate_2_convection_flag_operator_error": "held: the operator scaled by 1.5 caught 0/50 and negated 0/50, in both dtypes, clean 0/50",
+   "gate_3_floor_pin": "held: the test passes locally; the floor scaled 1.3, 1.45 and 0.99 fails 8 of 8 cases each (local, deterministic)",
+   "gate_4_books_close_where_adopted": "held locally (both dtypes): the flags' clean drawn runs, the stall detector's two runs, the declaration test's metered build; CI's lanes are the evidence"
+ }
+}
