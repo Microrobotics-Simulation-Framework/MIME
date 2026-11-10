@@ -48,11 +48,15 @@ def swept():
 
     through_self = os.environ.get("MIME_PLANT_CONTROLLER") == "self"
     study = Study(followed(through_self=through_self)).sweep(along({"controller.gain": GAINS}), duration=ms(30))
-    return study, study.run()
+    try:
+        return study, study.run()
+    except BuildRefused as refused:  # the plant's refusal, which the test then fails on, never errors on
+        return study, refused
 
 
 def test_a_sweep_of_a_setting_the_step_reads_is_one_group_one_compile_and_each_member_its_own_build(swept):
     study, result = swept
+    assert not isinstance(result, BuildRefused), f"the sweep was refused: {result}"
     plan = study.plan()
     assert len(plan.groups) == 1 and plan.compiles == 1
     leaves = plan.groups[0].built.graph.params["nodes"]["controller"]

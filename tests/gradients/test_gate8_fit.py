@@ -36,11 +36,15 @@ LINE = "reynolds:drag:ball"
 def consumer():
     """The consumer's fit; ``MIME_PLANT_FIT=unranged`` takes the range away (the gate kit's rate of its control)."""
     ranged = None if os.environ.get("MIME_PLANT_FIT") == "unranged" else (1.0, 1.15)
-    return Study(gentle(1.0, ranged=ranged)).fit(pose_residual(pose_target(1.15)), start={RADIUS: mm(1.0)},
-                                                 noise=NOISE, duration=ms(STEPS))
+    try:
+        return Study(gentle(1.0, ranged=ranged)).fit(pose_residual(pose_target(1.15)), start={RADIUS: mm(1.0)},
+                                                     noise=NOISE, duration=ms(STEPS))
+    except BuildRefused as refused:  # the plant's refusal, which the test then fails on, never errors on
+        return refused
 
 
 def test_the_fit_ends_on_a_target_inside_the_range(consumer):
+    assert not isinstance(consumer, BuildRefused), f"the fit was refused: {consumer}"
     assert consumer.ended == "converged"
     assert abs(float(consumer.values[RADIUS]) / 1.15e-3 - 1.0) < 1e-6
     assert all(line.judged for iterate in consumer.iterates for line in iterate.lines)
