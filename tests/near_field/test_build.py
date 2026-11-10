@@ -1,14 +1,16 @@
 """The build's near field (drag 0.5.0, C1, 4 and Bundle 2): a medium's mrs bodies grouped into one joint node, their
 reads and deliveries its; the mass matrix each body publishes only where the near field reads it; one declared mass
 read by both the body and the joint node (an override of it moves the node's gain); the build's refusals (a medium
-mixing a kept, uncoupled drag with the near field; a cluster past the dense route's size); and a saved folder of a near
-field that loads and reproduces. The energy ledger beside a near field is ``test_ledger.py``'s."""
+mixing a kept, uncoupled drag with the near field; a cluster whose run will not fit in the memory a run can have, on
+either route); a cluster past the takeover line built on the iterative route, the build reporting its route, its memory
+and its starting solve; and a saved folder of a near field, on either route, that loads and reproduces. The energy
+ledger beside a near field is ``test_ledger.py``'s."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
-from near_field_cases import NODE, bodies, joint_node, mrs, precision, spheres, stepped
+from near_field_cases import NODE, assembled, bodies, joint_node, line, mrs, precision, spheres, stepped
 
 from mime.build import BuildRefused
 from mime.experiment import Experiment
@@ -19,8 +21,8 @@ from mime.units import kg, m, ms
 SPACING = 0.6e-3
 
 
-def cluster(count: int = 2, gap: float = 0.4e-3, **settings):
-    return bodies("near", spheres(gap, count), mrs(SPACING), **settings)
+def cluster(count: int = 2, gap: float = 0.4e-3, law=None, **settings):
+    return bodies("near", spheres(gap, count), law if law is not None else mrs(SPACING), **settings)
 
 
 def test_a_mediums_mrs_bodies_are_one_joint_node_reading_each_pose_twist_and_mass_and_delivering_each_load():
@@ -76,24 +78,89 @@ def test_a_medium_mixing_the_kept_uncoupled_drag_with_the_near_field_is_refused(
     assert "drag.near-field-mixed" in refused.value.codes()
 
 
-def test_a_cluster_past_the_dense_routes_size_is_refused(monkeypatch):
+@pytest.mark.parametrize("route", ["dense", "gmres"])
+def test_a_cluster_whose_run_will_not_fit_is_refused_on_either_route(route, monkeypatch):
+    """The joint node's memory estimate against a planted memory a byte under it is refused before any step
+    (``drag.near-field-memory``), and a byte over it builds (the control), on either route."""
     from mime.nodes.hydro.near_field import _node
 
-    monkeypatch.setattr(_node, "DENSE_UNKNOWNS", 100)
-    with pytest.raises(BuildRefused) as refused:
-        cluster(2).build()
-    assert "drag.near-field-size" in refused.value.codes()
+    law = mrs(SPACING, **({"near_field_dense_unknowns": 0} if route == "gmres" else {}))
+    needed = joint_node(cluster(2, law=law).build()).memory_estimate()
+    assert needed > 0.0
+    for room, fits in ((int(needed) - 1, False), (int(needed) + 1, True)):
+        monkeypatch.setattr(_node, "device_memory", lambda room=room: ("a planted memory", room))
+        if fits:
+            assert joint_node(cluster(2, law=law).build()).route == route
+            continue
+        with pytest.raises(BuildRefused) as refused:
+            cluster(2, law=law).build()
+        found = [each for each in refused.value.refusals if each.code == "drag.near-field-memory"]
+        assert len(found) == 1 and "a planted memory" in found[0].message
+        assert f"on the {route} route" in found[0].message
 
 
-def test_a_saved_near_field_loads_and_reproduces_its_run(tmp_path):
+#: The fit's own configuration, two of MIME's spheres at 882 force points each a radius apart (5,292 unknowns), and what
+#: its fit gave (:data:`MEMORY_COUNTS`) as the estimate in GiB, written out here rather than derived from the counts
+#: (a golden value: a count edited without a refit, or a term dropped, moves it), with the two peaks past the fixed part
+#: the fit's own runs measured there (a radius apart, then a twentieth of one, in the fix round's measurements).
+FITTED_ESTIMATE_GIB = {("dense", "float64"): 1.0454, ("gmres", "float64"): 1.5148,
+                       ("dense", "float32"): 0.7835, ("gmres", "float32"): 1.0537}
+MEASURED_PEAK_GIB = {("dense", "float64"): (1.048, 1.071), ("gmres", "float64"): (1.602, 1.492),
+                     ("dense", "float32"): (0.884, 0.760), ("gmres", "float32"): (1.143, 1.007)}
+#: The fit's residual band over its 882-point cases (the measured peak over the estimate: 0.92 to 1.13).
+FIT_BAND = (0.92, 1.13)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_the_memory_estimate_is_what_the_fit_measured_and_gmres_holds_the_inverses_besides(dtype):
+    """The estimate on the fit's own configuration, both routes: the golden value of the fit, the fit's measured peaks
+    inside its own residual band of it, and the GMRES route's estimate over the dense route's by at least the held
+    blocks' bytes (``8 sum (3 N)^2``, here counted from the bodies' force points). The refusal test above takes its
+    control from the estimate itself, so it cannot see the estimate move; this one can. Measured, not a bound: the
+    band is the fit's residual over that one configuration."""
+    with precision(dtype):
+        built = bodies("fit", line(1e-3, 2), UncoupledDrag.MRS(spacing=m(0.15e-3), wall_kind="free_space")).build()
+        names = ["s0", "s1"]
+        members = [built.graph.get_node(f"drag:{body}") for body in names]
+        estimate = {route: assembled(members, names, dense_unknowns=room).memory_estimate()
+                    for route, room in (("dense", 10 ** 9), ("gmres", 0))}
+        unknowns = assembled(members, names).unknowns
+    assert unknowns == 2 * 3 * 882
+    held_blocks = 8 * 2 * (3 * 882) ** 2
+    for route, needed in estimate.items():
+        assert needed / 2 ** 30 == pytest.approx(FITTED_ESTIMATE_GIB[(route, dtype)], rel=1e-3), (route, dtype)
+        for peak in MEASURED_PEAK_GIB[(route, dtype)]:
+            assert FIT_BAND[0] <= peak / (needed / 2 ** 30) <= FIT_BAND[1], (route, dtype, peak)
+    assert estimate["gmres"] - estimate["dense"] >= held_blocks
+
+
+def test_a_cluster_past_the_takeover_line_takes_the_iterative_route(monkeypatch):
+    from mime.nodes.hydro.near_field import _node
+
+    below = joint_node(cluster(2).build())
+    monkeypatch.setattr(_node, "DENSE_UNKNOWNS", below.unknowns - 1)
+    built = cluster(2).build()
+    past = joint_node(built)
+    assert not below.iterative and past.iterative and past.dense_unknowns == below.unknowns - 1
+    assert "solve_report" in past.initial_state() and "solve_report" not in below.initial_state()
+    lines = built.report.checked.get(NODE, ())
+    print("\n" + "\n".join(lines))
+    assert any("the run's memory on the gmres route about" in line for line in lines)
+    assert any(line.startswith("at the start: the joint solve took") and "every column converged" in line
+               for line in lines)
+
+
+@pytest.mark.parametrize("route", ["dense", "iterative"])
+def test_a_saved_near_field_loads_and_reproduces_its_run(tmp_path, route):
     with precision("float64"):
-        experiment = cluster(2)
+        experiment = cluster(2, law=mrs(SPACING, **({"near_field_dense_unknowns": 0} if route == "iterative" else {})))
         built = experiment.build()
         first = built.run(ms(3.0), history=True)
         built.save(tmp_path / "near", steps=3)
         again = Experiment.load(tmp_path / "near").build()
         second = again.run(ms(3.0), history=True)
     assert sorted(again.graph.node_names) == sorted(built.graph.node_names)
+    assert joint_node(again).iterative == (route == "iterative")
     for node in (NODE, "s0", "s1"):
         for field, value in first.history[node].items():
             assert np.array_equal(np.asarray(value), np.asarray(second.history[node][field])), (node, field)

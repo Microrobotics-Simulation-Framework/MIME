@@ -125,9 +125,9 @@ NEAR = {"ball": (BALL, mm((0.0, 0.0, 0.0)), (HALF, TURN, 0.0, 0.0)),
         "bead": (Sphere(radius=mm(0.6)), mm((1.0, 2.2, 0.0)), (HALF, 0.0, 0.0, TURN))}
 
 
-def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(1.0)) -> Experiment:
+def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(1.0), **settings: object) -> Experiment:
     """The round-trip case of drag 0.5.0's near field: three bodies in one unbounded medium on the mrs rung, one joint
-    node, each moving and turning from the start."""
+    node, each moving and turning from the start (``settings`` the near field's own)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_medium(Medium("water"))
     experiment.declare("water.viscosity", WATER, reason="water")
@@ -137,8 +137,13 @@ def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(1.0)) ->
             angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
         experiment.declare(f"{body}.mass", kg(1e-7), reason="a millimetre body's order")
         experiment.declare(f"{body}.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
-        experiment.attach(mrs(spacing), body=body, medium="water")
+        experiment.attach(mrs(spacing, **settings), body=body, medium="water")
     return experiment
+
+
+def mrs_near_field_gmres() -> Experiment:
+    """The near field's case past the takeover line (a line of zero): the same bodies, the joint system by GMRES."""
+    return mrs_near_field("mrs_near_field_gmres", near_field_dense_unknowns=0)
 
 
 def mrs_tube() -> Experiment:
