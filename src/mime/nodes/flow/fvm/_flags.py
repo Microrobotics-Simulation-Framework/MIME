@@ -29,6 +29,21 @@ from mime.core import as_run_array, jnp
 from mime.core import ledger as books
 from mime.core.ledger import FlagEvidence, LedgerFlag
 from mime.nodes.flow.fvm._band import band_named
+from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE
+
+#: The stall detector's line, in the solve's tolerance: ``|N_Krylov| / D_visc`` above this many tolerances is a stall. **One
+#: number a dtype, read by the node's ``stall_flagged`` at the tolerance the run was built with and by the harness's stall
+#: flag at the default tolerance** (:data:`STALL_LINES`), so the two cannot disagree. The reading scales with the tolerance
+#: (:data:`STALL_MEASURED`), so a run that asks for a looser solve is judged against that solve, not the default one.
+STALL_PER_TOLERANCE = {"float64": 1000.0, "float32": 500.0}
+#: The run that measured the stall reading's clean maxima at the default tolerance and a tenfold tighter and looser one
+#: (200 drawn correct runs each, seeds 0 to 199 of ``tests/flow/flag_cases.py``, 60 steps, every step read), and what it
+#: showed: the worst reading over the tolerance 510 in float64 and 200 in float32 at the default, 391 and 479 at a tenfold
+#: tighter tolerance (float32's below its rounding floor at the worst draws), 329 and 245 at a tenfold looser one; a
+#: draw's reading moves with the tolerance by 0.106 and 9.6 times (float64) and 0.108 and 9.6 times (float32), medians.
+STALL_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42858484810"
+#: The line at the default tolerance, a dtype: the harness's.
+STALL_LINES = {name: STALL_PER_TOLERANCE[name] * DEFAULT_TOLERANCE[name] for name in STALL_PER_TOLERANCE}
 
 #: The interior's depth, in band widths from the wall, from which the solid is fully stiff (the band's half width and
 #: the stiffening ramp's whole width): what the leak flag counts as inside a solid.
@@ -142,7 +157,7 @@ def _evidence(plant: str, caught: dict[str, tuple[int, int, int, int]], link: st
 #: stall 2 times, the leak 3.1, convection 4.1 and 3.8), on draws whose worst sits at the envelope's edge (float32's
 #: stall at tau/dt near 3e3): beyond the envelope a line is unvalidated.
 FLAGS: tuple[LedgerFlag, ...] = (
-    LedgerFlag("stall", "|N_Krylov| / D_visc", stall_reading, {"float64": 1e-5, "float32": 4e-3},
+    LedgerFlag("stall", "|N_Krylov| / D_visc", stall_reading, STALL_LINES,
                f"{_CLEAN}: worst 5.1e-6 (float64) and 2.0e-3 (float32), every step judged; float32's clean runs read "
                f"up to twice the node's own stall line, 1e-3, at tau/dt near 3e3 (its tolerance against tau/dt)",
                _evidence(_TOLERANCE, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)}, RATES_MEASURED)

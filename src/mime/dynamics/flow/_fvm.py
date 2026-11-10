@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING, Annotated, override
 
 from mime.core import jnp, run_dtype
 from mime.gradients import GradientStatus
-from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, ExplicitFlowNode, \
-    ImplicitFlowNode, periodic_tube_layout
-from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, STALL_LINE, \
+from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, STALL_PER_TOLERANCE, \
+    ExplicitFlowNode, ImplicitFlowNode, periodic_tube_layout
+from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, \
     STOKES_REYNOLDS
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, \
@@ -240,11 +240,17 @@ class FVM(Dynamics):
         f"refused past the memory a run can have (flow.memory): a GPU's limit, or on a CPU the smaller of the host's "
         f"available memory and the limit of the control group the process runs in, where one is set",
         f"geometry: {GEOMETRY}",
-        f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_LINE:g} (stall_flagged), is written with the "
-        f"energy ledger attached (exp.observe(EnergyLedger())); a run without it has no stall report. Correct runs read "
-        f"up to 5.1e-6 in float64 and 2.0e-3 in float32 (its tolerance against tau/dt, near 3e3) [measured, 200 drawn "
-        f"runs a dtype], so in float32 the flag is raised on correct runs there; the ledger harness's stall flag "
-        f"judges at 1e-5 and 4e-3",
+        f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "
+        f"float64 and {STALL_PER_TOLERANCE['float32']:g} in float32 (stall_flagged), is written with the energy ledger "
+        f"attached (exp.observe(EnergyLedger())); a run without it has no stall report. The reading scales with the "
+        f"solve's tolerance, so the line does: a run built with a looser tolerance is judged against that solve. "
+        f"Correct runs read up to 510 tolerances in float64 and 200 in float32 at the default tolerance (a tenfold "
+        f"tighter or looser one: 391 and 329 in float64, 479 and 245 in float32, float32's tighter one below its "
+        f"rounding floor at the worst draws) [measured, 200 drawn runs a dtype and tolerance, tau/dt about 4 to 3e3 "
+        f"(4.1e3 at the worst draw), D/h 8 to 16, Re 1 to 200; beyond that envelope the line is unvalidated]. A solve "
+        f"stopped far short of its own tolerance is flagged; a tolerance set loose on purpose is not, so the flag "
+        f"cannot see a tolerance that is wrong for the question. The ledger harness's stall flag judges the same "
+        f"number at the default tolerance",
         "the energy ledger: IMEX Euler and its steady limit close the step identity to its rounding floor at every "
         "step; RK3 judges each step to have dissipated, and its drive's attribution (the work its stages applied "
         "against the law's own delivery at the stage instants) to the same floor. A gift a numerical term's own "

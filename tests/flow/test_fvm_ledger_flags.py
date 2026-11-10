@@ -20,7 +20,9 @@ import numpy as np
 import pytest
 from flag_cases import PLANTS, draw, readings
 
-from mime.nodes.flow.fvm import ExplicitFlowNode, ImplicitFlowNode
+from mime.core.ledger import LedgerFlag
+from mime.nodes.flow.fvm import DEFAULT_TOLERANCE, STALL_LINES, STALL_PER_TOLERANCE, ExplicitFlowNode, ImplicitFlowNode
+from mime.nodes.flow.fvm._flags import FLAGS
 from mime.testing import active_flags, flag_problems, judge_flags, ledger_closes
 
 #: Each active flag's plant caught on every run (its rate in its evidence).
@@ -87,3 +89,45 @@ def test_control_each_flag_catches_its_plant(dtype, flag, seed, monkeypatch):
     node, found = readings(draw(seed), dtype, plant)
     report = judge_flags(node, found, dtype)
     assert flag in {r.flag for r in report.readings if not r.passed}, report.readings
+
+
+# -- the stall line: one number a dtype, in solve tolerances ---------------------------------------------------------
+STALL = next(flag for flag in FLAGS if flag.name == "stall")
+#: The node's own stall_flagged as a reading (1 where it is set), beside the harness's.
+NODE_FLAG = LedgerFlag("node_flag", "stall_flagged", lambda node, p, before, after: after["stall_flagged"],
+                       {"float64": 0.5, "float32": 0.5}, "")
+#: Draws of the seeds the line was measured on whose reading at a tenfold looser tolerance is over the harness's line at
+#: the default (3.3e-5 against 1e-5 in float64; 2.5e-2 against 5e-3 in float32): where the tying to the tolerance
+#: decides the flag.
+LOOSE_DRAWS = {"float64": 111, "float32": 159}
+NOMINAL = {"float64": 1e-8, "float32": 1e-5}
+
+
+def test_the_harnesss_line_is_the_nodes_line_at_the_default_tolerance():
+    """One number a dtype: the harness's line is the node's, in tolerances, at the default tolerance."""
+    assert dict(STALL.line) == STALL_LINES
+    for name, line in STALL_LINES.items():
+        assert line == STALL_PER_TOLERANCE[name] * DEFAULT_TOLERANCE[name] == STALL_PER_TOLERANCE[name] * NOMINAL[name]
+
+
+@pytest.mark.parametrize("plant", [None, "solve_stops_short_1e4"])
+def test_the_nodes_flag_is_the_harnesss_line_on_every_step_at_the_default_tolerance(dtype, plant, monkeypatch):
+    """On a correct run neither flag is set; on a solve stopped short while the node declares its default tolerance
+    both are, on the same steps."""
+    if plant:
+        PLANTS[plant](monkeypatch.setattr)
+    _, found = readings(draw(SEEDS[0]), dtype, plant, flags=[STALL, NODE_FLAG])
+    harness, node = np.abs(found["stall"]) > STALL_LINES[dtype], found["node_flag"] > 0.5
+    assert np.array_equal(harness, node)
+    assert bool(node.any()) == (plant is not None)
+
+
+def test_a_looser_tolerance_is_judged_against_that_solve(dtype):
+    """Control: the draw's reading at a tenfold looser tolerance is over the default tolerance's line (so a line that
+    ignored the tolerance would flag a correct run that asked for a looser solve), and under its own."""
+    loose = 10.0 * NOMINAL[dtype]
+    node, found = readings(draw(LOOSE_DRAWS[dtype]), dtype, flags=[STALL, NODE_FLAG], settings={"tolerance": loose})
+    reading = np.abs(found["stall"])
+    assert reading.max() > STALL_LINES[dtype], "the control cannot discriminate: the reading is under the default line"
+    assert reading.max() < STALL_PER_TOLERANCE[dtype] * loose
+    assert not (found["node_flag"] > 0.5).any()
