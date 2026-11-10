@@ -101,11 +101,13 @@
   node's step is traced as a differentiated run's (`mime.core.differentiated`), where a guard that stops a forward run
   by writing NaN writes its flag form (the MRS drag: the resistance the body took at the step before, the same flag
   and stop). Each member's result carries its flags (counted inside the run), its nodes' stops, its plan's
-  extrapolated table reads, and each iterative solve's report (the FVM's: forward from its state, a row a step;
-  backward from its `solve_report` leaf's gradient in reverse mode, its running sum's tangent in forward mode), a
-  warning for each solve that stopped short and a recheck that re-solves the member with the cause removed (the cap
-  lifted, the stall restarts raised, at the member's own tolerance, on a program traced for it; a solve that reached
-  neither is unchanged), reporting the change in the objective and the derivative; a non-finite residual, which neither
+  extrapolated table reads, and each iterative solve's report (the FVM's CG and the near field's GMRES: forward from
+  its state, a row a step; backward from its `solve_report` leaf's gradient in reverse mode, its running sum's tangent
+  in forward mode), a warning for each solve that stopped short and a recheck that re-solves the member with the cause
+  removed (the cap lifted, the stall restarts raised, at the member's own tolerance, on a program traced for it; a
+  solve that reached neither is unchanged), reporting the change in the objective and the derivative and each node's
+  cause from the recheck's own solves: `cap-limited` (converged, or at the lifted cap again) or `floor-limited`
+  (stagnated again, a floor no cap lifts, with the route out its node names); a non-finite residual, which neither
   removes, and a node whose solve has no recheck are reported not rechecked, with the reason.
 
 - **A study in a folder** (`_folder_run.py`, `_record.py`, `_content.py`, `_spec.py`): `study.run_to(folder)` writes a

@@ -112,10 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Coil_List` that names the block is refused. No system ships a current limit: the figures published for each are cited
   in its card and the validity lines (Navion_2 25 A an operating restriction and 45 A the hardware's, CardioMag 35 A a coil with its 15 kW cap not modelled, OctoMag 16 A), MIME's declarations with their sources and no maker's specification, and the previous line's unsourced 35 A and 20 A are dropped.
 
-- **Graded sampling on the MRS rung** (`drag` 0.5.0, design #296; `mime.scene._grading`). `Drag.MRS(grading="features")`
-  grades the force points towards the hull kind's declared features, and `Drag.MRS(contact=(0, 0, -1), contact_gap=...)`
-  towards a contact held facing the wall (opt-in, for a body whose orientation to the wall is held; `contact_gap`
-  defaults to the experiment's closest approach where a contact law declares one). One policy turns them into a local
+- **Graded sampling on the MRS rung** (`drag` 0.5.0, design #296; `mime.scene._grading`).
+  `Drag.MRS(sampling=ForceSampling(grading="features"))` grades the force points towards the hull kind's declared
+  features, and `ForceSampling(contact=(0, 0, -1), contact_gap=...)` towards a contact held facing the wall (opt-in, for
+  a body whose orientation to the wall is held; `contact_gap` defaults to the experiment's closest approach where a
+  contact law declares one). One policy turns them into a local
   spacing: an edge a third of the force spacing, a crest 0.3 of its radius across, a contact its gap over 1.5, each
   growing by the distance from it, never finer than a quarter of the force spacing; the count is the uniform one times
   the density's mean. **Each graded force point sits at its cell's area centre** (the dense point of its cell nearest
@@ -123,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`Sampling.generators`): with the points where the relaxation leaves them, grading raised the error near a wall (the
   measurements behind design #296). Lloyd's mass on a graded density is the area times the density's square, so the
   samples' density is the density. **Geometry kinds declare features** (`Geometry.features`, a new optional capability;
-  `mime.registry.Feature`): the cylinder its rims and the box its twelve edges, each with its distance in closed form
+  `mime.registry.SurfaceFeature`): the cylinder its rims and the box its twelve edges, each with its distance in closed form
   (so a sampling graded on them keeps the body's symmetries and is chosen alike under a setting's move far below the
   spacing, which a distance read from traced points ripples enough to break), the screw its rims and crests, read from
   their traces (each crest's radius across it from the thread's height and turn, within 0.1 % of the surface's own
@@ -139,10 +140,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of its quadrature within `OFF_PATCH_BAND` (0.05) force spacings of its least distance outside the graded patch,
   judged at each quadrature point (a body turned past it, a face turned towards the wall included), raised only where
   grading or contact is written (`Flag.written`, new). In graded runs the wall's self-image measures each cell's
-  distance from the wall in the cell's own size (design #308; `GRADED_WALL_MEASURE` in `mime.nodes.hydro.mrs._node`, one
-  switch, its other value the force spacing, measured better at the gate's sphere: +3.33 % against +5.24 % at blob 0.1,
-  -0.04 % against +1.67 % at 0.025) and a written `wall_refinement` is taken from the finest spacing. The build reports
-  what was graded, the counts and the finest spacing. **What grading buys, measured:** the sphere's contact grading
+  distance from the wall in the force spacing, as a uniform run's (design #329, superseding #308's cell's own size;
+  `GRADED_WALL_MEASURE` in `mime.nodes.hydro.mrs._node`, one switch: at the gate's sphere +3.33 % against +5.24 % at blob
+  0.1, -0.04 % against +1.67 % at 0.025) and a written `wall_refinement` is taken from the finest spacing. The build reports
+  what was graded, the counts and the finest spacing. **What grading buys, measured**, each claim against a uniform
+  sampling of the graded count as well (the count-matched uniform arm, design #329's standard control, which the sphere's
+  oracle runs): the sphere's contact grading
   helps beyond its count (at half a force spacing from a plane, +5.31 % against +10.16 % for a uniform sampling of as
   many force points, blob 0.1; +1.74 % against +6.00 % at 0.025); FL-9's crest grading at 0.4 mm does not (+2.23 %
   graded against +2.37 % uniform at the graded count, half a spacing, blob 0.25): its gain over the uniform sampling's
@@ -179,7 +182,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than a twentieth of the smaller body's equivalent radius raises `near_contact`, the validity line's edge. **The
   cross-kernel's budget** is every quadrature point of a source by default, by measurement: a quarter of them held the
   two-sphere and gain gates at MIME's default sphere but left five hull kinds of six past their conformance line near
-  contact (the box 12 % at a third of a cell); `Drag.MRS(near_field_share=...)` lowers it as a cost setting, a cell
+  contact (the box 12 % at a third of a cell); `Drag.MRS(near_field=NearField(share=...))` lowers it as a cost setting, a cell
   within the reach that does not fit raising `cross_cells_short`. A body alone in its medium keeps its own node, so no
   program with one mrs body a medium moves; a folder saved with `drag` 0.4.0, kept as `UncoupledDrag`, rebuilds its
   bodies' own nodes. The build refuses a medium mixing the two versions (`drag.near-field-mixed`). With the energy
@@ -196,16 +199,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pure function of the bodies' poses, their leaves and the wall's parameters, and a body model of another kind in the
   same medium (a slender body's, a resistive-force body's) needs the joint node to hold a member kind per index.
 
-- **The near field past the dense route: GMRES, never silent** (`drag` 0.5.0, unreleased; `JointDragNode`). A cluster
-  past the takeover line, `DENSE_UNKNOWNS` (16,000) joint unknowns, is solved by GMRES on its grand resistance's
+- **The near field's GMRES route, declared and never silent** (`drag` 0.5.0, unreleased; `JointDragNode`). A cluster
+  whose drags declare it, `Drag.MRS(near_field=NearField(solve="gmres"))`, is solved by GMRES on its grand resistance's
   right-hand sides at once, each body's held free part's inverse (a new leaf, made once per build in its frame, made
   again with the free part where a leaf moves) its preconditioner block, through `custom_linear_solve`: each solve, the
   primal's and each derivative's, from a cold start, stopping on its true residual relative to its own right-hand side,
-  the transpose solve preconditioned by the transposed blocks. `Drag.MRS(near_field_dense_unknowns=...)` moves the line
-  and `Drag.MRS(near_field_tolerance=...)` sets the tolerance (1e-10 in float64, 1e-5 in float32, above the floor its
-  arithmetic leaves a pair's residual at down to the near-contact line), both numerical settings; the build report says
-  which route a cluster took and how its starting solve ended. **The line is declared, pending a re-decision**: its
-  basis is neither memory nor a measured time crossover. Through the node GMRES's run peaks above the dense route's
+  the transpose solve preconditioned by the transposed blocks. `NearField(tolerance=...)` sets the tolerance (1e-10 in
+  float64, 1e-5 in float32, above the floor its arithmetic leaves a pair's residual at down to the near-contact line), a
+  numerical setting; the build report says which route a cluster took and how its starting solve ended. **The dense
+  route is taken at every size unless GMRES is declared** (design #330, superseding the takeover line of 16,000 unknowns
+  first built): neither memory nor a measured time crossover places a line, and the memory refusal is the only bound.
+  Through the node GMRES's run peaks above the dense route's
   (1.11 to 1.35 times at 3,042 to 21,168 unknowns, either dtype: the bare solve's halving does not carry). In time the
   bare solve on a quiet CPU in float64 had the dense LU faster or tied at 3,042, 4,056 and 8,112 unknowns; through the
   node on a shared laptop (one run a case) GMRES's step was the shorter at every size a radius apart (1.3 to 4.1 times)
@@ -217,7 +221,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refusal on both routes** (`drag.near-field-memory`): the run's peak, estimated from counts of the joint matrix and of
   the members' held blocks measured through the node, against the memory a run can have (the FVM's: a GPU's limit, or on a
   CPU the smaller of the available memory and the control group's limit), so that no cluster that cannot fit runs, on
-  either route.
+  either route. **A gradient study rechecks it** (design #337): the joint node declares `rechecks`, and a member whose
+  solve stopped short is re-solved with GMRES's cap lifted and its stall restarts raised (`Stopping.stall_restarts`, new
+  for GMRES and none in a run: a stagnation begins the window again), by the FVM's CG's rule; the recheck names each
+  node's cause from its own solves, `cap-limited` or `floor-limited` (`Recheck.causes`, with the node's route out,
+  `MimeNode.floor_route`: float64, or the dense route), and `NO_RECHECK_REASON` no longer says a solve reads no cap.
 
 - **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
   spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to
@@ -647,6 +655,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **`Drag.MRS`'s 0.5.0 settings grouped by concern** (design #326 as the names sitting, #336, decided it; drag 0.5.0 is
+  unreleased, so no saved-form step). The core stays flat (`spacing`, `blob`, `patches`, `wall_kind`, and 0.4.0's
+  others); the force points' grading is `sampling=ForceSampling(grading=..., contact=..., contact_gap=...)` and the
+  near field's joint solve `near_field=NearField(solve=..., tolerance=..., share=...)`, both exported from
+  `mime.interactions` (`near_field_share`, `near_field_tolerance`, `near_field_dense_unknowns`, `grading`, `contact`
+  and `contact_gap` are gone); near contact (`lubrication=`) stays until its seam's form is decided. A group's setting
+  may declare a default computed by the entry's own method (`contact_gap`'s, the closest approach), which the build takes
+  and records at `<setting>.<field>`, and registration checks the method is the entry's. `mime.registry.Feature` is
+  `SurfaceFeature`. Registered: MIME-ANO-155, a reverse-mode derivative in a shape leaf through MADDENING's own
+  `run_scan` remaking the MRS rung's held matrix at every backward step (32 to 660 s where MIME's chunked run takes
+  about a minute; MADDENING Ask 51).
 
 - **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
   interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its

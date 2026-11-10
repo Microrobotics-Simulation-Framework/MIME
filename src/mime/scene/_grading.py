@@ -20,11 +20,15 @@ from the wall within a fraction of a turn; the MRS drag's step flags it (``off_p
 would break the held matrix and the derivatives.
 
 **The figures** are declarations from the measurements made before the build (a sphere at a plane wall, a cylinder's rim
-at a plane and in free space, blobs 0.1 and 0.025). On the build, through the drag node: the sphere's normal resistance
-at half a force spacing from the wall, its contact graded, +5.31 % (blob 0.1) and +1.74 % (0.025) against Brenner's
-series, the uniform sampling +13.99 % and +8.53 % (``tests/oracles/test_graded_sampling.py`` holds the line); a
-cylinder's rim at a plane, its rims graded, +2.04 % and +0.07 % against a finer reference, uniform +3.04 % and +0.42 %
-(the build's gates, not in CI). A graded sampling is chosen at its settings rounded to :data:`FIGURES`."""
+at a plane and in free space, blobs 0.1 and 0.025). A claim of what grading buys is judged against a uniform sampling of
+the graded count as well as the uniform one (the count-matched uniform arm, the standard control for a sampling
+claim): a graded sampling holds more force points. On the build, through the drag node: the sphere's normal
+resistance at half a force spacing from the wall, its contact graded, +5.31 % (blob 0.1) and +1.74 % (0.025) against
+Brenner's series, the uniform sampling +13.99 % and +8.53 %, a uniform sampling of the graded count +10.16 % and +6.00 %
+(``tests/oracles/test_graded_sampling.py`` holds the line, its count-matched arm included); a cylinder's rim at a plane,
+its rims graded, +2.04 % and +0.07 % against a finer reference, uniform +3.04 % and +0.42 % (the build's gates, not in
+CI, without a count-matched arm); a screw's crest at a plane, where a uniform sampling of the graded count did as well.
+A graded sampling is chosen at its settings rounded to :data:`FIGURES`."""
 
 from __future__ import annotations
 

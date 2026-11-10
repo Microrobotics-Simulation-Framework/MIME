@@ -1403,8 +1403,9 @@ class Geometry(Entry):
         raise NotImplementedError
 
     def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[SurfaceFeature, ...]:
-        """The features of its surface a sampling may be graded towards (:class:`SurfaceFeature`): its edges and crests, each
-        traced in its own frame by points no farther apart than ``resolution`` (m), from its settings in SI, at build.
+        """The features of its surface a sampling may be graded towards (:class:`SurfaceFeature`): its edges and crests,
+        each traced in its own frame by points no farther apart than ``resolution`` (m), from its settings in SI, at
+        build.
         A kind with none (a sphere, a capsule) does not implement it; a consumer that grades towards features refuses
         such a kind by name."""
         raise NotImplementedError

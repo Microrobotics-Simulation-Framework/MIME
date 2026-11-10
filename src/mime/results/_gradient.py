@@ -128,7 +128,8 @@ def _cause_text(report: SolveReport, recheck: Recheck) -> str:
                 f"rounding floor above its tolerance, which no cap lifts{'; ' + route if route else ''}")
     if report.forward_short or report.backward_short:
         return "cap-limited: it stopped at its cap again once the cap was lifted"
-    return "cap-limited: it converged with its cap lifted and its stall restarts raised, the changes above its stop's cost"
+    return ("cap-limited: it converged with its cap lifted and its stall restarts raised, the changes above its stop's "
+            "cost")
 
 
 @dataclass(frozen=True)

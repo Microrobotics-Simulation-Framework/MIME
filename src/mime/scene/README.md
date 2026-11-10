@@ -156,7 +156,7 @@ sphere about its centroid that holds it (`enclosing_radius`).
 - **`Geometry.features(settings, resolution)`** declares what a sampling may be graded towards
   (`mime.registry.SurfaceFeature`): the cylinder's rims, the box's edges, the screw's rims and crests (each crest with its
   radius across it). `mime.scene._grading` holds the one policy that turns them, and a contact held facing a wall,
-  into a density; the MRS rung's `grading` and `contact` settings choose it.
+  into a density; the MRS rung's `sampling=ForceSampling(grading=..., contact=...)` chooses it.
 - **The choice is not continuous in the kind's settings**, and is not meant to be: it is discrete (each sample one of
   the quadrature's, chosen by farthest points), so a small change of a setting can choose other samples, and a result
   then steps, by far more than its smooth change with the choice held (MIME-ANO-127 holds the measured steps). The grid

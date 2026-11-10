@@ -3,7 +3,8 @@ member whose solve stopped short is re-solved with GMRES's cap lifted and its st
 is, the recheck naming the stop's cause from its own solves.
 
 The case: two spheres a radius apart, one pulled towards the other, on the declared GMRES route, the derivative of their
-separation after three steps in the water's viscosity, reverse mode. The plants, each through what the production solve
+relative velocity after three steps in the water's viscosity, reverse mode (the velocity, not the separation, whose
+millimetres would hide a solve's error in its last figures). The plants, each through what the production solve
 reads:
 
 - **A one-iteration cap** (the node's ``Stopping`` built with ``cap=1``; a clean solve takes 7 to 20 iterations): every
@@ -53,14 +54,14 @@ def pulled(name: str, **near: object):
     return experiment
 
 
-def separation(final):
-    """The bodies' separation along their line in micrometres after the run."""
-    return 1e6 * (final["s1"]["pose"][0] - final["s0"]["pose"][0])
+def closing(final):
+    """The bodies' relative velocity along their line, micrometres a second, after the run."""
+    return 1e6 * (final["s1"]["twist"][0] - final["s0"]["twist"][0])
 
 
 def derivative(experiment):
     return Study(experiment).sweep(along({PATH: [mPa_s(1.0)]}), duration=ms(float(STEPS))).gradient(
-        separation, mode="reverse").member(0)
+        closing, mode="reverse").member(0)
 
 
 def capped(patch: pytest.MonkeyPatch) -> None:

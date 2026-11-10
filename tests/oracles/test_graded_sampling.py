@@ -5,6 +5,9 @@ its controls.
   against Brenner's exact normal resistance at half and one force spacing: at blob 0.1 the graded normal entry lies
   within 7 % at half a spacing and nearer the exact answer than the uniform sampling's at both gaps (the gates' line,
   predicted before it ran; the uniform one is +14.0 % and +3.6 %, W1's map).
+- **The count-matched uniform arm** (design #329, the standard control for a sampling claim): a uniform sampling of the
+  graded count lies farther from Brenner's answer at half a spacing than the graded contact, so it helps beyond its
+  count.
 - **The wrong-way control** (coarser at the contact, the uniform count) at blob 0.025, where the gates measured it worse
   than uniform at both gaps every time it ran (nothing is drawn): it fails the line the graded sampling passes.
 - **The flag when the body's nearest points leave the patch** (``off_patch``), the patch judged at each point of the
@@ -81,6 +84,26 @@ def test_the_graded_contact_lies_nearer_brenners_answer_than_the_uniform_samplin
         assert abs(graded) < abs(uniform), (gap, graded, uniform)
     assert abs(normal_error(graded_sphere, 0.5)[0]) < 0.07
     assert drag_node(graded_sphere).sample_count > drag_node(uniform_sphere).sample_count
+
+
+@pytest.fixture(scope="module")
+def count_matched_sphere(uniform_sphere, graded_sphere):
+    """The uniform sampling of the graded sphere's count (design #329's count-matched arm): its force spacing the
+    module's times the root of the two counts' ratio, its blob the same share of it."""
+    ratio = drag_node(uniform_sphere).sample_count / drag_node(graded_sphere).sample_count
+    return sphere(0.5, blob=0.1, graded=False, spacing=SPACING * math.sqrt(ratio)).build()
+
+
+def test_the_graded_contact_lies_nearer_brenners_answer_than_a_uniform_sampling_of_its_count(graded_sphere,
+                                                                                            count_matched_sphere):
+    """The count-matched uniform arm, the standard control for a sampling claim (design #329): a graded sampling holds
+    more force points, so that it helps beyond its count is shown against a uniform sampling of as many, within a tenth
+    (measured before: +5.31 % graded against +10.16 % at the graded count, half a force spacing, blob 0.1)."""
+    graded, matched = drag_node(graded_sphere).sample_count, drag_node(count_matched_sphere).sample_count
+    errors = normal_error(graded_sphere, 0.5)[0], normal_error(count_matched_sphere, 0.5)[0]
+    print(f"\ncounts: graded {graded}, count-matched uniform {matched}; errors at half a spacing {errors}")
+    assert abs(matched - graded) <= 0.1 * graded
+    assert abs(errors[0]) < abs(errors[1])
 
 
 def test_the_wrong_way_control_fails_the_line_the_graded_contact_passes():

@@ -29,5 +29,5 @@ KEPT: Mapping[tuple[str, str], tuple[type[Interaction], str]] = MappingProxyType
     ("magnetic.force", "0.1.0"): (CentreMagneticForce, MagneticForce.version),
 })
 
-__all__ = ["KEPT", "BodyForce", "Contact", "Drag", "ForceSampling", "Gravity", "Lubrication", "Magnetic", "MagneticForce",
-           "MagneticTorque", "NearField", "roughness_cutoff"]
+__all__ = ["KEPT", "BodyForce", "Contact", "Drag", "ForceSampling", "Gravity", "Lubrication", "Magnetic",
+           "MagneticForce", "MagneticTorque", "NearField", "roughness_cutoff"]

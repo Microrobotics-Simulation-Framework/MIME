@@ -85,8 +85,8 @@ HELD_INVERSE = "held_inverse"
 #: stopping stagnated in 8 of 48 columns, flagged. The dense route is exact to rounding, held to W3a's gates.
 ROUTES = ("dense", "gmres")
 #: GMRES's relative tolerance on each solve's true residual, by the run's dtype: an accuracy-bearing numerical setting,
-#: ``Drag.MRS(near_field=NearField(solve="gmres", tolerance=...))``. Float64's holds the grand resistance within 1e-10 of the dense route's on
-#: the gates' configurations. Float32's sits above the floor its own arithmetic leaves the residual at, measured on
+#: ``Drag.MRS(near_field=NearField(solve="gmres", tolerance=...))``. Float64's holds the grand resistance within 1e-10
+#: of the dense route's on the gates' configurations. Float32's sits above the floor its own arithmetic leaves the residual at, measured on
 #: MIME's sphere (pairs a radius to a twentieth of one apart, a triangle, a line of four, a cube of eight): the least
 #: true residual float32 reached, at any restart length, was the residual float32 reads at float64's answer rounded to
 #: it, 8e-7 for a pair a radius apart to 6.6e-6 for one a twentieth of one apart, the near-contact line; a floor, not a
@@ -192,7 +192,8 @@ class JointDragNode(MimeNode):
     this one's books.
 
     **The solve, by its route** (``solve``, :data:`ROUTES`): ``"dense"``, the default at every size, one dense LU of
-    the joint matrix, whose factors serve every right-hand side; ``"gmres"``, declared, GMRES on every column at once (``mime.nodes.hydro.near_field._gmres``), each body's held free part's inverse its preconditioner block
+    the joint matrix, whose factors serve every right-hand side; ``"gmres"``, declared, GMRES on every column at once
+    (``mime.nodes.hydro.near_field._gmres``), each body's held free part's inverse its preconditioner block
     (made once per build in its frame, as the free part is, and turned to its pose), each solve's tolerance
     (``tolerance``, :data:`DEFAULT_TOLERANCE` by the run's dtype) relative to its own right-hand side, its stop on the
     true residual, never silent. Its report, the FVM's (``REPORT_FIELDS``): the primal's each step a state field

@@ -173,7 +173,8 @@ def test_a_cluster_takes_gmres_only_where_every_members_drag_declares_it():
 @pytest.mark.parametrize("route", ["dense", "iterative"])
 def test_a_saved_near_field_loads_and_reproduces_its_run(tmp_path, route):
     with precision("float64"):
-        experiment = cluster(2, law=mrs(SPACING, **({"near_field": NearField(solve="gmres")} if route == "iterative" else {})))
+        gmres = {"near_field": NearField(solve="gmres")} if route == "iterative" else {}
+        experiment = cluster(2, law=mrs(SPACING, **gmres))
         built = experiment.build()
         first = built.run(ms(3.0), history=True)
         built.save(tmp_path / "near", steps=3)

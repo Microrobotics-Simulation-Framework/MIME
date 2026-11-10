@@ -116,8 +116,8 @@ class ForceSampling(SettingGroup):
     ``grading='features'`` towards the hull kind's declared features (its edges and crests), and ``contact``, a
     direction in the body's frame, towards the side of the body held facing the wall, graded for ``contact_gap``. Left
     out, the force points are quasi-uniform, as every released program's. What grading buys is measured, never bounded,
-    and a claim of it is judged against a uniform sampling of the graded count, the count-matched uniform arm (decision
-    #329), as well as against the uniform sampling itself."""
+    and a claim of it is judged against a uniform sampling of the graded count, the count-matched uniform arm, as well
+    as against the uniform sampling itself."""
 
     group = "force_sampling"
     setting_roles = {
@@ -148,13 +148,13 @@ class NearField(SettingGroup):
     to ``tolerance`` on its true residual); and ``share``, the most of a source's quadrature points the cross-kernel
     integrates. The dense route is taken at every size unless GMRES is declared; on either route the build refuses a
     cluster whose run would not fit in the memory a run can have (``drag.near-field-memory``), the only bound on its
-    size (decision #330)."""
+    size."""
 
     group = "near_field"
     setting_roles = {
         "solve": convention(
-            NUMERICAL, "'dense', one dense LU at every size, exact to rounding, the memory refusal its only bound "
-                       "(decision #330): through the node GMRES holds more memory than the dense LU, not less (1.11 "
+            NUMERICAL, "'dense', one dense LU at every size, exact to rounding, the memory refusal its only bound: "
+                       "through the node GMRES holds more memory than the dense LU, not less (1.11 "
                        "to 1.35 times its peak at 3,042 to 21,168 unknowns, either dtype), and neither route's time "
                        "places a size line (a radius apart GMRES's step was the shorter at every size measured, near "
                        "contact the dense route's mostly was, on a shared laptop); 'gmres' a declared choice, its "
@@ -1573,9 +1573,9 @@ class Drag(UncoupledDrag):
         "or a rim is the contact whichever way the body rolls about its axis), and a step with a point within "
         "OFF_PATCH_BAND of its least distance outside the patch near the wall raises off_patch. With wall_refinement "
         "written, the wall's self-image measures a graded cell's distance in the force spacing, as a uniform run's "
-        "(GRADED_WALL_MEASURE, decision #329): on the gates' sphere graded for half a force spacing from a plane, "
-        "+3.33 % at a blob of a tenth, the compact default, against the uniform sampling's +1.47 %, and -0.04 % at a "
-        "fortieth against -2.18 %",
+        "(GRADED_WALL_MEASURE): on the gates' sphere graded for half a force spacing from a plane, "
+        "farther from Brenner's series than the uniform sampling at a blob of a tenth, the compact default, and nearer "
+        "at a fortieth (GRADED_WALL_MEASURE's comment gives the numbers)",
         "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
         "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
