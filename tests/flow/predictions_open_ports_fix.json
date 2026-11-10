@@ -55,5 +55,16 @@
  "bits": {
   "cases": "the released programs (script A and its metered form, the hull contact, the coupled toy, the dynamic and kinematic RPM arms, the four periodic flows, the nudged toy), both dtypes, base against head in one job",
   "prediction": "every array np.array_equal: the fix touches the open node, the port laws, the storing laws' records (held only where a law stores), the step rule's dataclass and the regions' declared openings, none of which a released program computes with"
+ },
+ "outcomes": {
+  "written": "2026-11-10, after the fix round's probe ran; the predictions above are as committed in 696b937",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42877559684",
+  "gate_b2_open_operator": "held: the three plants caught 200/200 in each dtype, clean 0/200 (seeds from 5000); ranges 1e-12 (float64) and 1e-4 (float32) of the viscous half cell's weight, 1e-12 and 1e-3 of the convective one's; clean worst 0.088 and 0.13 of the line on 30 draws while writing, the CI test's 12 draws a dtype passing",
+  "gate_fb2_derived": "held: worst 0.031 (float64) and 0.15 (float32) of the derived floor over 200 draws a dtype, 0.031 and 0.044 at R_d over 1e3 R_tube; Q x 1.001 caught 40/40 each, clean 0/40; range 3.7e-13 and 1.9e-4 of Q",
+  "gate_fb3_own_scale": "held: worst 0.050 (float64) and 0.13 (float32) of its floor on its own scale, N_WK > 0 on 200/200; the gift of 5 % of the block caught 40/40 each, clean 0/40; range 1.9e-12 and 2.7e-4 of the block",
+  "gates_re_measured": "FB1 worst 1.2e-12 and 2.6e-6 (lines 1e-9, 1e-4), its plant 40/40, range 1.4e-9 and 1e-3; FB4 worst 0.13 and 0.12, against a cold monolithic solve 1.6e-8 and 1.6e-5, its plants 40/40 each, range 7.2e-7 and 2.7e-3; the projection flag worst 2.4e-18 and 1.2e-9 (lines 2e-17, 1e-8), its plant 40/40, range 1e-14 or less and 1e-5; FB13 ledger_closes 200/200 a dtype, its plant 40/40, range 3.7e-10 and 0.027 of the Poiseuille gradient, BUT its worst 0.25 (float64) and 0.68 (float32) of its floor: the predicted 0.5 MISSED in float32, its median rising by decade of R_d (0.012, 0.045, 0.10, 0.12); inference: the level times the net face flux, a sum over N faces judged at 16 eps of the planes' magnitude; route stated in the PR; N_WK's order: 40/40 three-case ensembles a dtype within the order-2 band (clean); its plant: the distal loss written into N_WK caught 40/40 each dtype; range 0.016 of the distal loss",
+  "check_a_solver_block": "held: the Windkessel 200/200 passing; its row's block flipped and R_p's sign flipped in row and books each fail 200/200 (tests/flow/test_port_laws.py)",
+  "float32_envelope": "the prediction (near 3e-5) MISSED: worst 7.2e-4 over the 190 runs inside the CFL line (1.1e-3 with the held ones read at their hold), median 3.3e-5, p90 1.3e-4, larger at the higher Reynolds numbers; draw 0 4.3e-6; the validity text now states this envelope",
+  "bits": "held: 22 programs, 420 arrays, all np.array_equal, base c816e40 against the fix round's code, one CPU"
  }
 }
