@@ -57,15 +57,10 @@ class Elsewise(Womersley):
     field = dataclasses.replace(Womersley.field, provides=(CONCENTRATION.name,))
 
 
-def _off(cls: Any) -> dict[str, Any]:
-    """Lubrication's hand-over off where the version has it: it is not built for bodies sharing a medium yet."""
-    return {"lubrication": False} if hasattr(cls, "default_lubrication") else {}
-
-
 def mrs(cls: Any) -> Experiment:
     experiment = mrs_tube()
     experiment.remove("drag:ball")
-    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube", **_off(cls)), body="ball", medium="water")
+    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
     return experiment
 
 
@@ -94,7 +89,7 @@ def joint(cls: Any) -> Experiment:
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("bead.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("bead.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
-    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube", **_off(cls)), body="bead", medium="water")
+    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="bead", medium="water")
     return experiment
 
 
