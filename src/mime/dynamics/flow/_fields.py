@@ -5,17 +5,27 @@ its entry."""
 from __future__ import annotations
 
 from mime.fields._solved import NOT_DECLARED, SolvedField
-from mime.nodes.flow.fvm import scheme_named
+from mime.nodes.flow.fvm import StageKind, scheme_named
 from mime.scene import PeriodicBox
-from mime.vocabulary import FLOW_BODY_FORCE, FLOW_VELOCITY, FLOW_WAVEFORM
+from mime.vocabulary import FLOW_BODY_FORCE, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, FLOW_VELOCITY, \
+    FLOW_WAVEFORM
 
 
 def fvm_field(scheme: str) -> SolvedField:
-    """The FVM's declarations with the scheme ``scheme``."""
+    """The FVM's declarations with the scheme ``scheme``: the monolithic schemes take exchange partners (SF-4), RK3's
+    explicit stages none yet."""
     chosen = scheme_named(scheme)
+    exchanges = chosen.stage_kind is StageKind.MONOLITHIC_PROJECTED_CG
     return SolvedField(
-        hosting="solved", role="flow", provides=(FLOW_VELOCITY.name,), time_level=NOT_DECLARED,
-        own_contribution="none", accepts=(FLOW_BODY_FORCE.name, FLOW_WAVEFORM.name), exchange=NOT_DECLARED,
+        hosting="solved", role="flow", provides=(FLOW_VELOCITY.name,),
+        time_level="a partner's gather reads the field at the step's start (two-way) or as the step left it (one-way)"
+        if exchanges else NOT_DECLARED,
+        own_contribution="the exchange kernel's steady self-response in a free box by the grid's operators, and its "
+                         "one-step and impulse responses" if exchanges else "none",
+        accepts=(FLOW_BODY_FORCE.name, FLOW_WAVEFORM.name,
+                 *((FLOW_EXCHANGE_X.name, FLOW_EXCHANGE_Y.name, FLOW_EXCHANGE_Z.name) if exchanges else ())),
+        exchange="a Gaussian kernel on the grid's face sets (mime.gaussian_mac), gather and scatter a transpose pair, "
+                 "lagged" if exchanges else NOT_DECLARED,
         outside=False, domain_kinds=(PeriodicBox.group,), ports="none",
         properties=("viscosity", "density", "inverse_permeability"),
         settings=("domain", "spacing", "cells_across", "scheme", "stokes", "tolerance", "preconditioner", "wall",

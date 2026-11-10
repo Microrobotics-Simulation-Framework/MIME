@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
+  on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and scatter a
+  transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`), Faxén's corrections paired so
+  the exchange stays workless, the kernel's own steady field removed from the drag's reading, and Maxey and Riley's
+  fluid-acceleration force and added mass read on the flow without the body (the kernel's own field removed by its
+  fitted free-box impulse response); lagged, two-way by default, `one_way=True` the declared approximation. The build
+  widens the kernel (`width=`, on a ladder at or above max(h, a/1.7)) until the coupled one-step margin clears its floor,
+  and refuses a body none clears (`drag.stokes-floor`); a sphere only (`drag.stokes-sphere`), in a flow on a grid
+  (`drag.stokes-no-grid`), stepped by IMEX Euler or its steady limit (`drag.stokes-scheme`). The FVM takes exchange
+  partners (`flow.exchange_x`..`_z`, `flow.partners`), publishes its face sets (`flow.faces`) and books the exchange's
+  work per law; the energy ledger books the Maxey-Riley part under its own row (`<id>.maxey_riley`).
+
 - **A study's derivative: `Study.gradient(of, wrt=None, mode="auto", acknowledged=None)`** (lane S's third PR, the
   gradient path), returning `mime.results.GradientResult` (each member's `MemberGradient`: the objective, its
   derivative in each axis, the flags its run raised, its nodes' stops, its plan's extrapolated table reads, each

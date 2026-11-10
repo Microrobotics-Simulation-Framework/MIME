@@ -92,6 +92,10 @@ class PointDragState(TypedDict, closed=True):
     added_resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     added_load: ReadOnly[Float[Array, "6"]]
     steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    #: The drag's dissipation over the run, ``sum R0 |V - u_d|^2 dt`` at the velocity each step solved for and the
+    #: reading it was solved with (the step before's, summed a step late): the energy ledger books the law's paired
+    #: work on the body and on the fluid, and their sum plus this is the lagged exchange's unpaired work.
+    dissipated: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
     margin: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     below_floor: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     history_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
@@ -175,7 +179,7 @@ class PointDragNode(MimeNode):
             drag_reading=as_run_array(jnp.zeros(3)), clean_reading=as_run_array(jnp.zeros(3)),
             history=as_run_array(jnp.zeros((modes, 3))), resistance=as_run_array(jnp.zeros((6, 6))),
             background_load=as_run_array(jnp.zeros(6)), added_resistance=as_run_array(jnp.zeros((6, 6))),
-            added_load=as_run_array(jnp.zeros(6)), steps=zero, margin=zero, below_floor=zero,
+            added_load=as_run_array(jnp.zeros(6)), steps=zero, dissipated=zero, margin=zero, below_floor=zero,
             history_residual=zero, history_flagged=zero, wall_gap=zero, near_wall=zero, particle_reynolds=zero,
             reynolds_flagged=zero))
 
@@ -266,6 +270,7 @@ class PointDragNode(MimeNode):
         # The drag the body felt in the step before, which the fluid's step takes now, at the body's present point.
         felt = r0 * (velocity - jnp.asarray(state["drag_reading"], dtype=dtype))
         force = jnp.where(started, felt, 0.0) if two_way else jnp.zeros(3, dtype=dtype)
+        dissipated = jnp.asarray(state["dissipated"]) + jnp.where(started, jnp.sum(felt * felt) / r0 * dt, 0.0)
         decay = made["decay"].astype(dtype)
         history = decay[:, None] * (history + made["amplitude"].astype(dtype)[:, None] * force[None, :])
         points = (pose[:3] + as_run_array(jnp.asarray(c["origin"])))[None, :]
@@ -278,7 +283,7 @@ class PointDragNode(MimeNode):
             faxen_x=delivery_c * force[0:1], faxen_y=delivery_c * force[1:2], faxen_z=delivery_c * force[2:3],
             drag_reading=drag_reading, clean_reading=clean, history=history, resistance=resistance,
             background_load=background, added_resistance=added_resistance, added_load=added_load,
-            steps=jnp.asarray(state["steps"]) + 1.0, margin=margin,
+            steps=jnp.asarray(state["steps"]) + 1.0, dissipated=dissipated, margin=margin,
             below_floor=(margin < FLOOR).astype(dtype), history_residual=made["residual"].astype(dtype),
             history_flagged=(made["residual"] > HISTORY_LINE).astype(dtype), wall_gap=gap,
             near_wall=(gap < WALL_LINE).astype(dtype), particle_reynolds=_lax.stop_gradient(reynolds),

@@ -63,6 +63,7 @@ def test_the_exchange_law_is_a_transpose_pair_in_the_grids_inner_product(dtype):
     """Gate 1: over 60 draws, gather and scatter, both modes, every face set, through the registered mapping kind."""
     rng = np.random.default_rng(1000 + seed())
     misses = [_drawn_pair(rng, dtype) for _ in range(60)]
+    print(f"F3 gate 1 [{dtype}]: largest relative miss {max(m for m, _ in misses):.3g} over 60 draws")
     assert all(miss <= line for miss, line in misses), max(miss for miss, _ in misses)
 
 
@@ -78,6 +79,7 @@ def test_one_body_in_still_fluid_coupled_moves_as_it_would_uncoupled(dtype):
     mobility = 1.0 / (6.0 * math.pi * WATER_MU * box.radius)
     expected = mobility * box.force - HASIMOTO * box.force / (6.0 * math.pi * WATER_MU * box.cells * box.h)
     found = float(box.velocity[2])
+    print(f"F3 gate 2 [{dtype}]: |V - V_expected|/(M0 F) = {abs(found - expected) / (mobility * box.force):.3g}")
     assert abs(found - expected) / (mobility * box.force) < 2e-3, (found, expected)
 
 
@@ -105,6 +107,7 @@ def test_a_neutral_body_in_a_uniformly_driven_flow_moves_with_the_fluid(dtype):
         _patch_node()
     velocity = _final(result, "ball", "twist")[2]
     reading = _final(result, "drag:ball", "drag_reading")[2]
+    print(f"F3 gate 3 [{dtype}]: |V - u_d|/|V| = {abs(velocity - reading) / abs(velocity):.3g}")
     assert abs(velocity - reading) / abs(velocity) < 1e-4, (velocity, reading)
 
 
@@ -152,6 +155,8 @@ def test_a_force_free_body_in_poiseuille_flow_moves_at_faxens_closed_form(dtype)
     curvature, centre_speed = -fit[0], fit[1]
     expected = centre_speed - curvature * (offset ** 2 + (2.0 / 3.0) * h ** 2)
     velocity = _final(result, "ball", "twist")[2]
+    print(f"F3 gate 4 [{dtype}]: |V - V_Faxen|/U = {abs(velocity - expected) / centre_speed:.3g}, Faxen term "
+          f"{curvature * (2.0 / 3.0) * h ** 2 / centre_speed:.3g} of U")
     assert abs(velocity - expected) / centre_speed < 3e-3, (velocity, expected, centre_speed)
 
 
@@ -180,6 +185,8 @@ def test_one_way_a_heavy_body_slips_with_the_added_masss_closed_form(dtype):
         v = ((m + m_a) / dt * v + r0 * g * (n + 1) * dt + (m_f + m_a) * rate) / ((m + m_a) / dt + r0)
         predicted.append(v)
     terminal = abs((m_f - m) * g / r0)
+    print(f"F3 gate 5 [{dtype}]: largest |V - V_closed|/|w_inf| = "
+          f"{np.max(np.abs(velocity - np.asarray(predicted))) / terminal:.3g}")
     assert np.max(np.abs(velocity - np.asarray(predicted))) / terminal < 1e-3
 
 
@@ -195,6 +202,7 @@ def test_the_rate_terms_read_the_flow_without_the_body_and_stay_finite(dtype):
             break
     terminal = box.force / (6.0 * math.pi * WATER_MU * box.radius)
     speed = float(jnp.max(jnp.abs(box.velocity)))
+    print(f"F3 gate 6 [{dtype}]: the body's speed after 200 steps over its terminal speed {speed / terminal:.3g}")
     assert math.isfinite(speed) and speed < 2.0 * terminal, speed / terminal
 
 
@@ -244,6 +252,13 @@ def test_the_books_close_with_the_exchange_booked_under_the_drag(dtype):
     assert verdict.status == "PASS", verdict.detail
     rows = {(law.law, law.receiver) for law in result.energy.laws} if result.energy is not None else set()
     assert {("drag:ball", "water.flow"), ("drag:ball", "ball"), ("drag:ball.maxey_riley", "ball")} <= rows, rows
+    # The lagged exchange's unpaired work (item 8): the drag's paired work on both receivers plus its dissipation,
+    # reported against the work exchanged with the fluid; measured, never hidden (the PR states its value).
+    work = sum(float(law.work) for law in result.energy.laws if law.law == "drag:ball")
+    exchanged = abs(float(next(law.work for law in result.energy.laws
+                               if (law.law, law.receiver) == ("drag:ball", "water.flow"))))
+    unpaired = work + float(np.asarray(result.final["drag:ball"]["dissipated"]))
+    print(f"F3 lagged exchange: unpaired {unpaired:.3e} J against {exchanged:.3e} J exchanged with the fluid")
 
 
 def test_a_derivative_through_the_exchange_law_matches_a_central_difference(float64):
@@ -275,6 +290,8 @@ def test_a_derivative_through_the_exchange_law_matches_a_central_difference(floa
         moved = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0, viscosity=mu)
         ends.append(float(moved.build().run(ms(2.0)).final["ball"]["pose"][2]))
     difference = (ends[0] - ends[1]) / (2.0 * step)
+    print(f"F3 gate 9: derivative {derivative:.10g}, central difference {difference:.10g}, relative "
+          f"{abs(derivative - difference) / abs(difference):.3g}")
     assert abs(derivative - difference) <= 1e-5 * abs(difference), (derivative, difference)
 
 

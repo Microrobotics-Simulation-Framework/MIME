@@ -19,6 +19,7 @@ from mime.core import MimeNode
 from mime.nodes.flow import fvm as flow
 from mime.nodes.flow._body_force import BodyForceNode, BodyForceState
 from mime.nodes.flow._womersley import PrescribedFlowInputs, PrescribedFlowNode, PrescribedFlowState
+from mime.nodes.hydro._point_drag import PointDragNode, PointDragState
 from mime.core.multibody import read_urdf
 from mime.data import asset
 from mime.nodes import actuation, body, control, hydro, magnetic
@@ -72,6 +73,8 @@ TYPED = [
                            tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
      flow.FlowState, flow.FlowInputs, set()),
     (BodyForceNode("f", DT, along=(0, 0, 1), steady=1.0), BodyForceState, None, set()),
+    (PointDragNode("p", DT, radius=5e-5, viscosity=1e-3, density=1e3, spacing=1e-4, width_cells=1.0,
+                   origin=(0.0, 0.0, 0.0), start=(5e-4, 5e-4, 1e-4)), PointDragState, None, set()),
     (flow.ExplicitFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=2, spacing=1e-4, viscosity=1e-3, density=1e3,
                            tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
      flow.ExplicitFlowState, flow.FlowInputs, set()),

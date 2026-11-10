@@ -1391,8 +1391,9 @@ class Drag(UncoupledDrag):
                                         "medium's grid; one_way=True is the declared approximation, its reaction not "
                                         "delivered"),
         "width": convention(NUMERICAL, "on the stokes rung, none: the exchange kernel's width the narrowest of the "
-                                       "ladder at or above max(1, a/(1.7 h)) cells whose coupled one-step margin clears "
-                                       "the floor at the run's values (the build reports it)"),
+                                       "ladder (WIDTHS) at or above the rule's least width whose coupled one-step margin "
+                                       "clears the floor at the run's values (the validity line states the rule; the "
+                                       "build reports the width)"),
         "near_field_share": convention(
             NUMERICAL, "on the mrs rung, every quadrature point of a source, the whole share: the share that holds each "
                        "registered hull kind's conformance case within the cross-kernel's reach (measured: at a "
