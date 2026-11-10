@@ -1387,6 +1387,12 @@ class Drag(UncoupledDrag):
     WIDTHS: ClassVar[tuple[float, ...]] = (1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
     setting_roles = {
         **UncoupledDrag.setting_roles,
+        "one_way": convention(PHYSICAL, "two-way: on the stokes rung the drag's reaction is scattered back onto the "
+                                        "medium's grid; one_way=True is the declared approximation, its reaction not "
+                                        "delivered"),
+        "width": convention(NUMERICAL, "on the stokes rung, none: the exchange kernel's width the narrowest of the "
+                                       "ladder at or above max(1, a/(1.7 h)) cells whose coupled one-step margin clears "
+                                       "the floor at the run's values (the build reports it)"),
         "near_field_share": convention(
             NUMERICAL, "on the mrs rung, every quadrature point of a source, the whole share: the share that holds each "
                        "registered hull kind's conformance case within the cross-kernel's reach (measured: at a "
@@ -1596,7 +1602,9 @@ class Drag(UncoupledDrag):
             return super().plan(ctx)
         problems = self._stokes_problems(ctx)
         delivers = {"resistance": Delivery("body", RESISTANCE.name),
-                    "background_load": Delivery("body", BACKGROUND_LOAD.name)}
+                    "background_load": Delivery("body", BACKGROUND_LOAD.name),
+                    "added_resistance": Delivery("body", RESISTANCE.name),
+                    "added_load": Delivery("body", BACKGROUND_LOAD.name)}
         if not self.one_way:
             delivers.update({f"exchange_{axis}": Delivery("medium", interface.name) for axis, interface in
                              zip("xyz", (FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z), strict=True)})
@@ -1654,6 +1662,13 @@ class Drag(UncoupledDrag):
                         "a finer grid (FVM(cells_across=...)) or a larger step (dt=...), both of which raise the "
                         "margin; or a resolved body (Drag.Penalty) or the MRS near field for a body this large against "
                         "the grid")]
+
+    @override
+    def judged_in_sum(self) -> bool:
+        """The stokes rung's drag: the flow carries the body (the drag's work on the body positive), and the fluid's
+        side pays for it (two-way: the dissipation is the sum of both receivers' rows) or the field supplies it (one
+        way, the reaction not delivered), so no one receiver's row is judged a gift."""
+        return self.rung == "stokes"
 
     def stokes_width(self, ctx: PlanContext | BuildContext, values: Mapping[str, Magnitude]) -> tuple[
             float | None, float, tuple[float, ...]]:
@@ -1733,7 +1748,7 @@ class Drag(UncoupledDrag):
             ctx.node_name(), ctx.timestep, radius=float(hull.kind.enclosing_radius(hull.settings)),
             viscosity=values["viscosity"], density=values["density"], spacing=frame.spacing, width_cells=width,
             origin=tuple(-c for c in frame.origin), start=cast(tuple[float, ...], start), one_way=self.one_way,
-            **cast(dict[str, Any], vessel)))
+            drive_frequency=ctx.frequencies.get("medium", 0.0), **cast(dict[str, Any], vessel)))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(b.read("twist"), into=node["twist"])
 
@@ -1753,6 +1768,8 @@ class Drag(UncoupledDrag):
                           mapping=kernel(component, "laplacian", "scatter"), points="points")
         b.connect(node["resistance"], into=b.target("resistance"))
         b.connect(node["background_load"], into=b.target("background_load"))
+        b.connect(node["added_resistance"], into=b.target("added_resistance"), part="maxey_riley")
+        b.connect(node["added_load"], into=b.target("added_load"), part="maxey_riley")
 
     @override
     def _mrs_setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:

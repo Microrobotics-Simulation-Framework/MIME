@@ -107,11 +107,12 @@ class RestrictedBuilder:
               carries: str, mapping: object | None = None, geometry: tuple[str, str] | None = None) -> None:
         self.edges.append(EdgeDecl(by, source, target, additive, units, len(self.edges), carries, mapping, geometry))
 
-    def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
+    def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef, part: str = "") -> None:
         """A read into an input of one of the entry's own nodes, an output of one of its own nodes into a target, or,
         for an interaction, one of its own nodes' outputs into another's input (:meth:`InteractionBuilder.connect`).
         The edge's ``additive`` flag comes from the target's kind and its units labels from the vocabulary; an entry
-        sets neither."""
+        sets neither. ``part`` books a delivery under a part of the law of its own (``<id>.<part>``, a row of the
+        energy ledger beside the law's: the class its node declares for that output, ``DELIVERY_CLASSES``)."""
         if isinstance(source, ReadRef):
             if not isinstance(into, PortRef) or not self._own(into):
                 raise EntryBuildError(f"read {source.key[-1]!r} goes into {into!r}, not an input of its own nodes")
@@ -128,8 +129,8 @@ class RestrictedBuilder:
                 raise EntryBuildError(f"target {into.key[-1]!r} is delivered from {source!r}, not an output of its own "
                                       f"nodes")
             target = into.target
-            self._edge(target.by, (source.node, source.field), (target.node, target.field), target.kind.additive,
-                       target.units, DELIVERY)
+            self._edge(f"{target.by}.{part}" if part else target.by, (source.node, source.field),
+                       (target.node, target.field), target.kind.additive, target.units, DELIVERY)
             self._connected[into.key] += 1
         else:
             raise EntryBuildError(f"connect({source!r}, into={into!r}): connect a read into an own input, or an own "
@@ -187,7 +188,7 @@ class InteractionBuilder(_ReaderBuilder):
         return label in self._plan.delivers
 
     @override
-    def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
+    def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef, part: str = "") -> None:
         """As :meth:`RestrictedBuilder.connect`, and an output of one of its own nodes into an input of another of its
         own, added after it: what the law delivers, into the node that makes its reaction."""
         if isinstance(source, PortRef) and isinstance(into, PortRef):
@@ -202,7 +203,7 @@ class InteractionBuilder(_ReaderBuilder):
             self._edge(self._plan.owner, (source.node, source.field), (into.node, into.field), False,
                        str(getattr(spec, "expected_units", "") or ""), DELIVERY)
             return
-        super().connect(source, into=into)
+        super().connect(source, into=into, part=part)
 
     def gather(self, label: str, field: str, *, into: PortRef, mapping: object, points: str,
                units: str | None = None) -> None:
@@ -256,8 +257,8 @@ class ObservationBuilder(_ReaderBuilder):
         return self._add(node, local)
 
     @override
-    def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
-        if not isinstance(source, ReadRef):
+    def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef, part: str = "") -> None:
+        if not isinstance(source, ReadRef) or part:
             raise EntryBuildError("an observation only reads")
         super().connect(source, into=into)
 

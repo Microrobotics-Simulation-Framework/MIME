@@ -98,11 +98,19 @@ FLOW_FACES = define(Interface(
     description="a medium's flow on its grid: the velocity on one set of the grid's faces, in the grid's own shape and "
                 "coordinates, which an exchange law's gather reads at a partner's points (each face set its own "
                 "field)"))
-FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z = (define(Interface(
-    f"flow.exchange_{axis}", TargetKind.LOAD, "N/m^3", "grid", (-1, -1, -1),
-    sign="on a medium's fluid and solid alike, per unit volume", magnitude=1e3,
-    description=f"the force density an exchange law scatters onto the grid's faces normal to {axis} (the "
-                f"partners' forces on the medium, by its kernel), summed over every partner's law")) for axis in "xyz")
+
+
+def _exchange(name: str, axis: str) -> Interface:
+    return define(Interface(
+        name, TargetKind.LOAD, "N/m^3", "grid", (-1, -1, -1), sign="on a medium's fluid and solid alike, per unit volume",
+        magnitude=1e3, description=f"the force density an exchange law scatters onto the grid's faces normal to {axis} "
+                                   f"(the partners' forces on the medium, by its kernel), summed over every partner's "
+                                   f"law"))
+
+
+FLOW_EXCHANGE_X = _exchange("flow.exchange_x", "x")
+FLOW_EXCHANGE_Y = _exchange("flow.exchange_y", "y")
+FLOW_EXCHANGE_Z = _exchange("flow.exchange_z", "z")
 FLOW_PARTNERS = define(Interface(
     "flow.partners", TargetKind.REGISTRATION, "", None, (),
     description="the exchange partners a medium's field takes deliveries from through an exchange law (a point body's "

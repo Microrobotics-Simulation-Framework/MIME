@@ -349,8 +349,8 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
         # the one its receiver solves with, and not on the loads it delivers beside it (the MRS rung's background load).
         check = ledger.CHECK_DEFINITE if interaction is not None and paired.value == ledger.SOLVED and \
             interaction.definiteness() is Definiteness.STATE else ""
-        if by in laws and laws[by].members:
-            check = ledger.CHECK_CLUSTER  # a near field's cross loads, judged in its cluster's sum by its node
+        if by in laws and laws[by].members or interaction is not None and interaction.judged_in_sum():
+            check = ledger.CHECK_CLUSTER  # judged in a sum by the law's node: a near field's, an exchange's
         energy_class, supplier = _class_line(interaction), ",".join(supplied_by.get(by, ()))
         if interaction is None:
             source, _, output = by.rpartition(".")

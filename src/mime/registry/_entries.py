@@ -434,6 +434,9 @@ class BuildContext:
     #: By each body role, the bound body's initial state in SI (its position, orientation, velocities), where a law's
     #: node must hold where the body starts before its first read (an exchange law's points).
     starts: Mapping[str, Mapping[str, Magnitude]] = field(default_factory=dict[str, Mapping[str, Magnitude]])
+    #: By each medium role of a law exchanging with its field, the highest frequency (Hz) of the drives bound to that
+    #: medium, where one is pulsatile: a point body's Basset number is read from it.
+    frequencies: Mapping[str, float] = field(default_factory=dict[str, float])
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -1090,6 +1093,13 @@ class Interaction(Entry):
 
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         raise NotImplementedError
+
+    def judged_in_sum(self) -> bool:
+        """Whether the law's dissipation is judged only in the sum of its deliveries to every receiver, never on one
+        receiver's row: an exchange between a body and a field, whose drag does work on the body that the fluid's
+        side pays for (a flow carrying a body along). Its receivers then count no gift from its rows; it reports its
+        own. False by default."""
+        return False
 
     def definiteness(self) -> Definiteness | None:
         """For a dissipative law delivering an operator, where it is shown positive semidefinite: by its construction

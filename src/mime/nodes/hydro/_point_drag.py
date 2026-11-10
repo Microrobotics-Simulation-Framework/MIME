@@ -61,17 +61,18 @@ HISTORY_LINE = 1e-3
 #: point model is -5.0 % at a = h and -8.9 % at a = 2h; under 1 % at half a radius beyond it).
 WALL_LINE = 1.0
 #: The particle Reynolds number, by the body's diameter and its speed relative to the reading, above which a step is
-#: flagged: declared, not fitted (the law is Stokes's).
-REYNOLDS_LINE = 1.0
+#: flagged: declared, not fitted, the rung's ReynoldsRange (STOKES_REYNOLDS: the law is Stokes's).
+REYNOLDS_LINE = 0.1
+#: The Basset number a sqrt(omega/nu) of the drive's frequency above which the build reports the history force as
+#: outside the model (it scales against Stokes drag as that number: C5 point 2); declared, not fitted.
+BASSET_LINE = 0.3
 #: The fields the scatter reads (the force a component) and the reading's inputs (each mode a component).
 FORCES = ("force_x", "force_y", "force_z")
 FAXEN_FORCES = ("faxen_x", "faxen_y", "faxen_z")
 AVERAGES = ("gathered_x", "gathered_y", "gathered_z")
 LAPLACIANS = ("curvature_x", "curvature_y", "curvature_z")
 
-EQUATIONS = (r"(m + m_a)\frac{\mathbf{V}' - \mathbf{V}}{\Delta t} = 6 \pi \mu a \left( \mathbf{u}_d - \mathbf{V}' "
-             r"\right) + (m_f + m_a) \frac{D \mathbf{u}_c}{D t}, \quad \mathbf{u}_d = G\left(1 + c_6 L\right) "
-             r"\mathbf{u} - M_\infty \mathbf{f}")
+EQUATIONS = r"\mathbf{f} = 6 \pi \mu a \left( \mathbf{V} - \mathbf{u} \right)"
 _STEP = "mime.nodes.hydro._point_drag.PointDragNode.stepped"
 
 
@@ -88,6 +89,8 @@ class PointDragState(TypedDict, closed=True):
     history: ReadOnly[Annotated[Float[Array, "modes 3"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Float[Array, "6"]]
+    added_resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
+    added_load: ReadOnly[Float[Array, "6"]]
     steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     margin: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     below_floor: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
@@ -124,21 +127,31 @@ class PointDragNode(MimeNode):
                     Reference("Faxen1922", "the corrections for the flow's curvature"),
                     Reference("MaxeyPatel2001", "a force distributed by a Gaussian kernel on a grid")),
     )
-    symbols = (Symbol(r"\mathbf{R}", SymbolKind.STATE, "resistance", "N s/m; N s; N m s", _STEP),
-               Symbol(r"\mathbf{f}", SymbolKind.STATE, "force_x", "N", _STEP))
+    symbols = (Symbol(r"\mathbf{f}", SymbolKind.STATE, "force_x", "N", _STEP),
+               Symbol(r"\mu", SymbolKind.PARAMETER, "viscosity", "Pa s", _STEP),
+               Symbol("a", SymbolKind.PARAMETER, "radius", "m", _STEP),
+               Symbol(r"\mathbf{V}", SymbolKind.INPUT, "twist", "m/s; rad/s", _STEP),
+               Symbol(r"\mathbf{u}", SymbolKind.STATE, "drag_reading", "m/s", _STEP))
+    #: The class each part of the law's deliveries is booked in (``<id>.<part>``, a row of the energy ledger beside
+    #: the drag's): the fluid-acceleration force and the added mass exchange kinetic energy with the fluid the solver
+    #: does not hold for them, neither dissipative nor a potential, so their work is recorded under their own name and
+    #: not judged (until I2's delivered inertia takes the added mass).
+    DELIVERY_CLASSES = {"maxey_riley": "unmetered"}
 
     def __init__(self, name: str, timestep: float, *, radius: float, viscosity: float, density: float,
                  spacing: float, width_cells: float, origin: Sequence[float], start: Sequence[float],
-                 faxen: bool = True, maxey_riley: bool = True, one_way: bool = False,
+                 faxen: bool = True, maxey_riley: bool = True, added_mass: bool = True, one_way: bool = False,
                  vessel_centre: Sequence[float] = (), vessel_axis: Sequence[float] = (),
-                 vessel_radius: float = 0.0) -> None:
+                 vessel_radius: float = 0.0, drive_frequency: float = 0.0) -> None:
         super().__init__(name, timestep, radius=float(radius), viscosity=float(viscosity), density=float(density),
                          spacing=float(spacing), width_cells=float(width_cells),
                          origin=tuple(float(c) for c in origin), start=tuple(float(c) for c in start),
-                         faxen=bool(faxen), maxey_riley=bool(maxey_riley), one_way=bool(one_way),
+                         faxen=bool(faxen), maxey_riley=bool(maxey_riley), added_mass=bool(added_mass),
+                         one_way=bool(one_way),
                          **({"vessel_centre": tuple(float(c) for c in vessel_centre),
                              "vessel_axis": tuple(float(c) for c in vessel_axis),
-                             "vessel_radius": float(vessel_radius)} if vessel_radius > 0.0 else {}))
+                             "vessel_radius": float(vessel_radius)} if vessel_radius > 0.0 else {}),
+                         **({"drive_frequency": float(drive_frequency)} if drive_frequency > 0.0 else {}))
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -161,7 +174,8 @@ class PointDragNode(MimeNode):
             points=start[None, :], force_x=one, force_y=one, force_z=one, faxen_x=one, faxen_y=one, faxen_z=one,
             drag_reading=as_run_array(jnp.zeros(3)), clean_reading=as_run_array(jnp.zeros(3)),
             history=as_run_array(jnp.zeros((modes, 3))), resistance=as_run_array(jnp.zeros((6, 6))),
-            background_load=as_run_array(jnp.zeros(6)), steps=zero, margin=zero, below_floor=zero,
+            background_load=as_run_array(jnp.zeros(6)), added_resistance=as_run_array(jnp.zeros((6, 6))),
+            added_load=as_run_array(jnp.zeros(6)), steps=zero, margin=zero, below_floor=zero,
             history_residual=zero, history_flagged=zero, wall_gap=zero, near_wall=zero, particle_reynolds=zero,
             reynolds_flagged=zero))
 
@@ -241,14 +255,14 @@ class PointDragNode(MimeNode):
         velocity = twist[:3]
         r0 = 6.0 * jnp.pi * mu * a
         fluid_mass = 4.0 / 3.0 * jnp.pi * a ** 3 * rho
-        added = 0.5 * fluid_mass if c["maxey_riley"] else jnp.zeros((), dtype=dtype)
+        added = 0.5 * fluid_mass if c["maxey_riley"] and c["added_mass"] else jnp.zeros((), dtype=dtype)
         share = fluid_mass if c["maxey_riley"] else jnp.zeros((), dtype=dtype)
         rotation = 8.0 * jnp.pi * mu * a ** 3
         eye = jnp.eye(3, dtype=dtype)
-        resistance = jnp.zeros((6, 6), dtype=dtype).at[:3, :3].set((r0 + added / dt) * eye).at[3:, 3:].set(
-            rotation * eye)
-        load = r0 * drag_reading + added / dt * velocity + (share + added) * rate
-        background = jnp.concatenate([load, jnp.zeros(3, dtype=dtype)])
+        resistance = jnp.zeros((6, 6), dtype=dtype).at[:3, :3].set(r0 * eye).at[3:, 3:].set(rotation * eye)
+        background = jnp.concatenate([r0 * drag_reading, jnp.zeros(3, dtype=dtype)])
+        added_resistance = jnp.zeros((6, 6), dtype=dtype).at[:3, :3].set(added / dt * eye)
+        added_load = jnp.concatenate([added / dt * velocity + (share + added) * rate, jnp.zeros(3, dtype=dtype)])
         # The drag the body felt in the step before, which the fluid's step takes now, at the body's present point.
         felt = r0 * (velocity - jnp.asarray(state["drag_reading"], dtype=dtype))
         force = jnp.where(started, felt, 0.0) if two_way else jnp.zeros(3, dtype=dtype)
@@ -263,12 +277,43 @@ class PointDragNode(MimeNode):
             points=points.astype(dtype), force_x=force[0:1], force_y=force[1:2], force_z=force[2:3],
             faxen_x=delivery_c * force[0:1], faxen_y=delivery_c * force[1:2], faxen_z=delivery_c * force[2:3],
             drag_reading=drag_reading, clean_reading=clean, history=history, resistance=resistance,
-            background_load=background, steps=jnp.asarray(state["steps"]) + 1.0, margin=margin,
+            background_load=background, added_resistance=added_resistance, added_load=added_load,
+            steps=jnp.asarray(state["steps"]) + 1.0, margin=margin,
             below_floor=(margin < FLOOR).astype(dtype), history_residual=made["residual"].astype(dtype),
             history_flagged=(made["residual"] > HISTORY_LINE).astype(dtype), wall_gap=gap,
             near_wall=(gap < WALL_LINE).astype(dtype), particle_reynolds=_lax.stop_gradient(reynolds),
             reynolds_flagged=(reynolds > REYNOLDS_LINE).astype(dtype))
         return node_fields(ended)
+
+    def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
+        """What the build reports of the point body at its own values: the kernel's width and why, the coupled
+        one-step margin against the floor, the self-history's fit (labelled fitted, with its residual), the body's
+        size against the cell, and the Basset number of the drive's frequency where one is given."""
+        del start, closest_approach
+        c = self.constants()
+        made = self.responses(c, self.delta_t)
+        a, h, width = float(c["radius"]), float(c["spacing"]), float(c["width_cells"])
+        least = max(1.0, a / (1.7 * h))
+        lines = [f"the exchange kernel's width: {width:g} cells ({width * h:.4g} m), the narrowest of the ladder at or "
+                 f"above max(1, a/(1.7 h)) = {least:.3g} cells whose coupled one-step margin clears the floor {FLOOR:g}"
+                 f" at the run's values" if width >= least - 1e-12 else
+                 f"the exchange kernel's width: {width:g} cells, written",
+                 f"the coupled one-step margin (M0 + M_c - M_inf)/M0 = {float(made['margin']):.4g} in free space at r "
+                 f"= nu dt/h^2 = {float(c['viscosity']) / float(c['density']) * self.delta_t / h ** 2:.4g} (floor "
+                 f"{FLOOR:g}; the wall lowers it, by up to 0.15 at half a radius at r = 3 in the floor sweep)",
+                 f"the self-history the rate terms remove is fitted: {made['amplitude'].shape[0]} decay modes, fixed "
+                 f"log-spaced rates, amplitudes by least squares over the free box's response; its residual "
+                 f"{float(made['residual']):.2g} of the one-step response over the fitted range (flagged above "
+                 f"{HISTORY_LINE:g})",
+                 f"the body's radius is {a / h:.3g} cells: a point model (a resolved body, Drag.Penalty, when it is "
+                 f"many cells across)"]
+        if c.get("drive_frequency", 0.0):
+            number = a * math.sqrt(2.0 * math.pi * float(c["drive_frequency"]) * float(c["density"])
+                                   / float(c["viscosity"]))
+            lines.append(f"the Basset number a sqrt(omega/nu) = {number:.3g} at the drive's frequency (the history force "
+                         f"against Stokes drag scales as it; no memory law is held: a validity line, flagged above "
+                         f"{BASSET_LINE:g})" + (" - ABOVE THE LINE" if number > BASSET_LINE else ""))
+        return lines
 
     def wall_gap(self, p: Mapping[str, Any], position: Array, a: Array) -> Array:
         """The body's gap to the vessel's wall in its radii (a report, held out of derivatives); a large number with
@@ -300,5 +345,5 @@ def free_space_margin(radius: float, viscosity: float, density: float, spacing: 
     return (mobility + one_step - steady) / mobility
 
 
-__all__ = ["AVERAGES", "FAXEN_FORCES", "FLOOR", "FORCES", "HISTORY_LINE", "LAPLACIANS", "REYNOLDS_LINE", "WALL_LINE",
+__all__ = ["AVERAGES", "BASSET_LINE", "FAXEN_FORCES", "FLOOR", "FORCES", "HISTORY_LINE", "LAPLACIANS", "REYNOLDS_LINE", "WALL_LINE",
            "PointDragNode", "PointDragState", "free_space_margin"]

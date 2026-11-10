@@ -215,7 +215,11 @@ def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[s
                 why="a run-constant takes the place of a leaf the step reads, so that the compiled step is the same "
                     "program with or without it")])
         nodes[name] = {**own, **made}
-    return {**params, "nodes": nodes}
+    # A study's tree names the nodes' leaves alone; an exchange edge's mapping (``mime.mappings``) has an entry of its
+    # own in the graph's tree (empty: its kind holds no weights), which MADDENING's step reads whole.
+    mappings = {**cast(Mapping[str, Any], _held(graph).params.get("mappings", {})),
+                **cast(Mapping[str, Any], params.get("mappings", {}))}
+    return {**params, "nodes": nodes, "mappings": mappings}
 
 
 def chunk_function(graph: GraphManager, steps: int, fed: Fed | None = None) -> Callable[[Any, Any], Any]:

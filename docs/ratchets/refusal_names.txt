@@ -13,12 +13,14 @@ commands.jsonl           # the command log a live session writes into its run fo
 doi.org  # a host doi.org answers to, compared with an address's
 dx.doi.org  # a host doi.org answers to, compared with an address's
 files.enabled  # the records API's field a draft is saved naming while its files are still to come
+flow.exchange_partner    # the registration kind of a medium field's exchange partner (mime.vocabulary)
 fluid.dynamic_viscosity  # an OpenMaterica record field a value is read from
 locations.toml  # the user's or lab's locations file
 lubrication.epsilon      # a setting group's setting, as an entry reads it in SI
 magnetic.remanence       # an OpenMaterica record field a value is read from
 mime.asset_adapters  # the entry-point group an asset adapter is registered through
 mime.entries             # the entry-point group a load finds namespaces by
+mime.gaussian_mac        # the exchange law's mapping kind, registered with MADDENING (mime.mappings)
 model-viewer.min.js  # the web viewer's script, inlined into a page from mime/viz/_viewer/ (mime.viz._web)
 no-locations-file.toml  # the empty locations file the adapter harness points MIME at
 pyproject.toml           # the project's metadata, whose pins the number rule reads releases from
