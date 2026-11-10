@@ -286,6 +286,10 @@ class ChunkedRun:
         #: What the last :meth:`run` reduced of the flags it was given to test, inside its compiled scans (``None`` for
         #: a run that was given none to test): each one's steps raised, and its first and last, from the graph's start.
         self.tally: FlagTally | None = None
+        #: Where a list is set here, each stretch of steps a scan ran with the same writes acting, as ``(steps, the
+        #: external inputs)``, appended as it runs: what a differentiated run of the same member takes as its inputs,
+        #: held (``mime.study._gradient``). ``None``: nothing is recorded.
+        self.stretches: list[tuple[int, Fed]] | None = None
 
     def block(self) -> int:
         """The most steps one scan that keeps every step's state holds on the device: :data:`HISTORY_BLOCK_BYTES` over
@@ -390,6 +394,8 @@ class ChunkedRun:
                 self.tally = (self.tally or FlagTally.none(len(self._tests))).then(reduced.shifted(step))
             else:
                 final = scan_chunk(self.graph, stop - step, fed, **given)
+            if self.stretches is not None:
+                self.stretches.append((stop - step, fed))
             self.steps += stop - step
             step = stop
         ready(final)
