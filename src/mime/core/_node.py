@@ -75,6 +75,34 @@ def run_constants_given(p: Mapping[str, Any]) -> bool:
     return RUN_CONSTANTS_GIVEN in p
 
 
+#: The key a differentiated run (``mime.build._maddening.differentiated_run``) adds to every node's step constants: an
+#: empty tuple, as :data:`RUN_CONSTANTS_GIVEN` is, so that the node's compiled step traced inside a derivative is kept
+#: apart from a forward run's, which never holds it. A guard that stops a forward run by writing NaN writes a finite
+#: stand-in where it is set, and raises the same flag (:func:`differentiated`).
+DIFFERENTIATED = "differentiated"
+
+#: The nodes whose steps the enclosing differentiated run traces (:func:`differentiated_nodes`).
+_DIFFERENTIATED: ContextVar[frozenset[str]] = ContextVar("mime_differentiated", default=frozenset())
+
+
+@contextmanager
+def differentiated_nodes(names: Iterable[str]) -> Generator[None]:
+    """For the block, the steps of the nodes ``names`` traced inside a derivative: each such node's step constants then
+    hold :data:`DIFFERENTIATED`. Read where a node's step is called, never inside its compiled step."""
+    token = _DIFFERENTIATED.set(frozenset(names))
+    try:
+        yield
+    finally:
+        _DIFFERENTIATED.reset(token)
+
+
+def differentiated(p: Mapping[str, Any]) -> bool:
+    """Whether the step constants ``p`` are a differentiated run's: a guard that stops a forward run by writing NaN
+    writes a finite stand-in here, with its flag, since a NaN in a step leaks into every derivative through the branch
+    a ``where`` discards."""
+    return DIFFERENTIATED in p
+
+
 def node_input(units: str, shape: tuple[int, ...], *, additive: bool = False,
                description: str = "") -> BoundaryInputSpec:
     """An input declared the way every MIME node declares one: its shape, the run's dtype, a zero default, and its
@@ -119,6 +147,9 @@ class MimeNode(SimulationNode):
     was, its parameters included."""
 
     symbols: ClassVar[tuple[Symbol, ...]] = ()
+    #: Whether a guard of the node stops a forward run by writing NaN: such a node's step constants hold
+    #: :data:`DIFFERENTIATED` inside a differentiated run, where it writes the guard's flag form (:func:`differentiated`).
+    nan_stops: ClassVar[bool] = False
     #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
@@ -207,6 +238,8 @@ class MimeNode(SimulationNode):
         held = self._step_constants(params)
         if params is not None and self.name in _MADE.get():
             held[RUN_CONSTANTS_GIVEN] = ()
+        if params is not None and self.nan_stops and self.name in _DIFFERENTIATED.get():
+            held[DIFFERENTIATED] = ()
         return held
 
     @override

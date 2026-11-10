@@ -18,8 +18,8 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, \
-    node_input, quaternion, run_constants_given, typed_view
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, differentiated, jit, jnp, \
+    node_fields, node_input, quaternion, run_constants_given, typed_view
 from mime.nodes.hydro.mrs._quadrature import (
     Chunks,
     padded,
@@ -359,14 +359,18 @@ def least_distance(distances: Array) -> Array:
 
 
 def judged(found: Array, accepted: Array, gap: Array, within: Any, state: Mapping[str, Array],
-           pose: Array) -> NodeFields:
+           pose: Array, *, finite: bool = False) -> NodeFields:
     """A step's resistance judged before the body takes it, as the node's state with a wall: ``found``, the raw
     ``W^T A^-1 M``, its symmetric part delivered where it is positive definite or where the wall's reads were refused,
     and NaN where it is not (the stop: :func:`stops_where`); its least eigenvalue scaled by its diagonal and the share
     its symmetric part drops, each held out of every derivative (:func:`scaled_least_eigenvalue`, ``asymmetry``); the
     flags ``indefinite``, ``near_wall`` (``gap`` below ``within``, m) and ``asymmetric``; and the stop's record, the
     node's count of steps and, kept from the first step that stopped, its count, pose, gap and eigenvalue. Generic in
-    the resistance: any square resistance a solve delivers is judged the same way."""
+    the resistance: any square resistance a solve delivers is judged the same way.
+
+    ``finite`` (a differentiated run, ``mime.core.differentiated``): the stop's flag form. A stopped step delivers the
+    resistance the body took at the step before (zero before the first) in place of NaN, its flag and record the same:
+    a NaN written here would reach every derivative of the run through the branch a ``where`` discards."""
     dtype = pose.dtype
     held = _lax.stop_gradient(found)
     least, dropped = scaled_least_eigenvalue(held).astype(dtype), asymmetry(held).astype(dtype)
@@ -380,7 +384,8 @@ def judged(found: Array, accepted: Array, gap: Array, within: Any, state: Mappin
                                         state["stopped_pose"]]))
     flags = jnp.stack([stopped, near, dropped > CONFINED_ASYMMETRY_LIMIT]).astype(dtype)
     return node_fields(SeparatedDragState(
-        resistance=jnp.where(stopped, jnp.nan, (found + found.T) / 2.0).astype(dtype),
+        resistance=jnp.where(stopped, jnp.asarray(state["resistance"], dtype=dtype) if finite else jnp.nan,
+                             (found + found.T) / 2.0).astype(dtype),
         background_load=jnp.zeros(6, dtype=dtype), wall_accepted=accepted, least_eigenvalue=least, asymmetry=dropped,
         indefinite=flags[0], near_wall=flags[1], asymmetric=flags[2], wall_gap=gap.astype(dtype), steps=steps,
         stopped_at=record[0], stopped_least=record[1], stopped_gap=record[2], stopped_pose=record[3:]))
@@ -494,6 +499,7 @@ class MRSDragNode(MimeNode):
     step); ``near_wall`` and ``asymmetric`` are reports against :data:`NEAR_WALL` force spacings and
     :data:`CONFINED_ASYMMETRY_LIMIT`. The build reports the body's distance at its start (:meth:`built_lines`)."""
 
+    nan_stops = True
     meta = NodeMeta(
         algorithm_id="MIME-NODE-108",
         description="The resistance of a rigid body in Stokes flow by the method of regularised Stokeslets "
@@ -1211,7 +1217,7 @@ class MRSDragNode(MimeNode):
         zero = jnp.zeros((), dtype=dtype)
         if self._free():
             found = viscosity * turned_resistance(held, quaternion.rotation_matrix(pose[3:]))
-            fields = judged(found.astype(dtype), jnp.asarray(True), zero, None, state, pose)
+            fields = judged(found.astype(dtype), jnp.asarray(True), zero, None, state, pose, finite=differentiated(p))
             return node_fields({key: value for key, value in fields.items()
                                 if key not in ("asymmetry", "wall_gap", "stopped_gap")})
         wall = self._wall()
@@ -1251,7 +1257,7 @@ class MRSDragNode(MimeNode):
 
         found, accepted, gap, short = checkpoint(solved)(held, theta, viscosity, pose, parameters)
         fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
-                        state, pose)
+                        state, pose, finite=differentiated(p))
         if distance is None:
             return node_fields({key: value for key, value in fields.items() if key not in ("wall_gap", "stopped_gap")})
         if spacing is None:

@@ -84,6 +84,28 @@
   ramp down from one that is, report that start (`Crossing.read` false), never the start frequency as a step-out or a
   catch.
 
+- **A study's derivative** (`_gradient.py`): `study.gradient(of, wrt=None, mode="auto", acknowledged=None)`, the
+  derivative of `of` (a `jax.numpy` function of a member's final state by node and field, to a scalar) in each axis of
+  `wrt` (the sweep's own by default) at each point, `mime.results.GradientResult`. The points are the sweep's, planned
+  and grouped as a run's; each group's members are differentiated together, vmapped, by a run whose chunks are
+  composed in one program (`mime.build._maddening.differentiated_run`, beside the batched scan, which is untouched):
+  forward mode up to two numbers, reverse beyond, each chunk of about the square root of the steps a `jax.checkpoint`.
+  The derivative is read through what each axis writes, found from two probe points a small relative move away
+  (`PROBE_MOVE`), toward the inside of a declared range: each trainable leaf and each initial field it moves, with its
+  factor (the ratio, for a linear map; the probes' slope, for an affine one, a node's start made from the value and a
+  constant), checked at every member; a leaf a node makes from them is followed through its making (an MRS drag's held
+  matrix, `made_again`). Refused with their routes: a variant (`dt`, the precision, a rung, a numerical setting), a
+  value that is no number, a move that needs another compiled program (`gradient.value-keyed`: declare a range), a
+  leaf the step never reads (`gradient.leaf-unread`), one held out of every derivative and not made by its node, a map
+  that is not affine, a part of a field, and a path through a `cut` or `unverified` entry unless acknowledged. Every
+  node's step is traced as a differentiated run's (`mime.core.differentiated`), where a guard that stops a forward run
+  by writing NaN writes its flag form (the MRS drag: the resistance the body took at the step before, the same flag
+  and stop). Each member's result carries its flags (counted inside the run), its nodes' stops, its plan's
+  extrapolated table reads, and each iterative solve's report (the FVM's: forward from its state, a row a step;
+  backward from its `solve_report` leaf's gradient in reverse mode, its running sum's tangent in forward mode), a
+  warning for each solve that stopped short and a recheck at a hundredth of its tolerance (the same compiled program;
+  in float32 it says the recheck is a float64 variant).
+
 - **A study in a folder** (`_folder_run.py`, `_record.py`, `_content.py`, `_spec.py`): `study.run_to(folder)` writes a
   study folder (see `mime.results`) group by group and batch by batch, into a new or empty folder or one that holds the
   same study (anything else is refused and left untouched; `study.json` is written first and marks the folder as the
@@ -111,7 +133,7 @@
 Sweeps, overrides, the drives that ramp a command with the step-out readings, the study folder, the spec file and
 `mime study`, resume and the bridge to an experiment are built (dev2, the study layer's first three phases), and
 declared ranges with their first consumer (lane S's alignment with F0, its second PR); a study folder does not yet
-record a protocol. Plots and comparisons, checkpoints and forks, variants, fits and sensitivities
-come later.
+record a protocol. A study's derivative (lane S's alignment, its third PR) is built. Plots and comparisons,
+checkpoints and forks, variants, fits and sensitivities come later.
 
 Releases are explained in the [package manifest](../README.md#status).

@@ -44,6 +44,7 @@ from mime.validity import Profile
 if TYPE_CHECKING:
     from mime.experiment import BuiltExperiment, Experiment
     from mime.results import OutputRef
+    from mime.results._gradient import GradientResult
     from mime.results._study import StudyResult
 
 type Arrays = dict[str, dict[str, np.ndarray]]
@@ -462,6 +463,29 @@ class Study:
                 "drop_refused=True) to run the rest, the dropped points recorded on the result")])
         assert self._duration is not None
         return run_study(plan, self._record, self._every)
+
+    @public
+    def gradient(self, of: Callable[[Any], Any], *, wrt: Sequence[object] | None = None, mode: str = "auto",
+                 acknowledged: Mapping[str, str] | None = None) -> GradientResult:
+        """The derivative of the objective ``of`` in each axis of ``wrt`` (the sweep's own axes when not given; an axis
+        the sweep does not vary is taken at the experiment's value), at each of the sweep's points: ``of`` takes a
+        member's final state by node and field (``final["ball"]["pose"]``, as ``RunResult.final`` holds it) to a
+        scalar, written in ``jax.numpy``. The points are planned and grouped as :meth:`run` runs them, and each group's
+        members are differentiated together, the run's chunks composed in one program. ``mode``: ``"forward"`` (one
+        tangent an axis's number), ``"reverse"`` (each chunk recomputed from its start, about the square root of the
+        run's steps stored), or ``"auto"``, forward up to two numbers and reverse beyond. The derivative is taken in
+        the parameters each axis writes; an axis that writes none, writes one by a map that is not linear, moves the
+        initial state, or needs another compiled program a little way from its value is refused with its route.
+        ``acknowledged`` maps an entry's id to the reason a path through it is wanted where its status is ``cut`` or
+        ``unverified`` (a controller called on the host is ``cut``: its writes are held as the forward run made them),
+        refused otherwise. The result (:class:`~mime.results.GradientResult`) carries, for each member, the flags its
+        differentiated run raised, a node's stop, the table reads its plan extrapolated, the path's status, and each
+        iterative solve's report forward and in the derivative solves, with a warning where one stopped short and its
+        recheck at a tighter tolerance."""
+        from mime.study._gradient import gradient
+
+        plan = self.plan()
+        return gradient(self._experiment, plan, of, wrt, mode, acknowledged, self._reasons, self._protocol)
 
     @public
     def run_to(self, out: str | PathLike[str], *, shard: tuple[int, int] | None = None, pilot: bool = False,
