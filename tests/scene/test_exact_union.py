@@ -1,12 +1,15 @@
 """The seam-aware union (``mime.scene.ExactUnion``) and the tube tree's lumen: F2a's PR 2a gates, their predictions in
-``predictions_composed_walls.json`` (committed before they ran).
+``predictions_composed_walls.json`` and ``predictions_composed_walls_fix_round.json`` (committed before they ran).
 
 1. **Exact against a brute force, tilted and offset**: the Y's lumen (equal radii, as F1a's spike, and radii of 0.5,
    0.4 and 0.3 D) and the split-and-merge loop's, turned at random and on a lattice moved by a random sub-cell offset,
-   within the band, under the band's contract line of 0.05 cells in the fluid and the solid, in float64 and float32;
-   float32 within 1e-3 cells of float64. **Control** (``MIME_PLANT_UNION=minimum``): the plain minimum, 0.4 to 1.75
-   cells off in the fluid, fails on every draw.
-2. **The fillet is the closing, in closed form**: a wedge of two half-spaces and two overlapping balls, filleted, on
+   and a hairpin aligned with the lattice (where two walls' normals are opposed), within the band, under the band's
+   contract line of 0.05 cells in the fluid and the solid, in float64 and float32; float32 within 1e-3 cells of
+   float64, at the world's origin and 0.1 to 0.3 m from it; a corner of the filleted loop found from just off its
+   plane. **Control** (``MIME_PLANT_UNION=minimum``): the plain minimum, 0.4 to 1.75 cells off in the fluid, fails on
+   every draw; each fix of the review's round has its own (``planted``).
+2. **The fillet is the closing, in closed form**: a wedge of two half-spaces (``mime.core.HalfSpace``) and two
+   overlapping balls, filleted, on
    both sides, to rounding; the fillet share's derivative against a central difference. **Control**
    (``MIME_PLANT_FILLET=dropped``): the sharp union against the filleted closed form.
 3. **Continuous through the junctions**: on dense lines through the Y's carina and the loop's two, filleted and sharp,
@@ -17,10 +20,14 @@
    (``MIME_PLANT_IMPLICIT=held``): the seam's point held, its implicit step left out.
 
 Each control's rate is measured over 200 draws on Actions (``.github/probe/detection_rate.py``, a draw a seed through
-``DETECTION_SEED``); CI runs the fixed seeds."""
+``DETECTION_SEED``); CI runs the fixed seeds. Gate 1 is ``test_union_brute_force.py``'s and gate 3
+``test_union_continuity.py``'s, which import their draws and plants from here: CI deals an unlisted file to a shard by
+its path, and the four gates in one file were over a shard's half hour."""
 
 import math
 import os
+from dataclasses import dataclass
+from typing import Any
 
 import jax
 import numpy as np
@@ -29,8 +36,6 @@ from union_oracles import (
     D,
     REACH,
     aligned_rotation,
-    brute_distance,
-    filleted_distance,
     hairpin_tree,
     lattice,
     loop_tree,
@@ -43,9 +48,8 @@ from union_oracles import (
 )
 
 import mime.scene._union as union_module
-from mime.core import jnp
-from mime.scene import Ball, ExactUnion, PlaneSide, TubeTree
-from mime.scene._union import Seam
+from mime.core import HalfSpace, jnp
+from mime.scene import Ball, ExactUnion, TubeTree
 
 #: The band's contract line: the signed distance exact within the band to this many cells.
 CONTRACT_LINE = 0.05
@@ -133,94 +137,6 @@ def composed(tree: TubeTree, points: np.ndarray, dtype: str) -> tuple[np.ndarray
     return np.asarray(found.distance, dtype=np.float64), found
 
 
-# -- gate 1 ---------------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("dtype", ["float64", "float32"])
-@pytest.mark.parametrize("kind", ["spike", "asymmetric", "loop", "hairpin"])
-@pytest.mark.parametrize("seed", seed_list((11,)))
-def test_the_union_is_exact_against_a_brute_force(kind, seed, dtype, monkeypatch):
-    planted(monkeypatch)
-    tree, points, h, middle, reach = drawn(kind, seed, 8)
-    plain = plain_minimum(tree, points)
-    band = np.abs(plain) < 3.0 * h
-    points, plain = points[band], plain[band]
-    exact = brute_distance(tree, points, BRUTE_SPACING * h, middle, reach + 0.5 * D)
-    judged = (np.abs(plain) < 2.0 * h) | (np.abs(exact) < 2.0 * h)
-    distance, found = composed(tree, points, dtype)
-    error = np.abs(distance - exact)[judged] / h
-    fluid = exact[judged] < 0.0
-    print(f"\n{kind} seed {seed} {dtype}: {int(judged.sum())} points, {int(np.sum(found.failing))} failing the check; "
-          f"largest error {error[fluid].max():.4f} cells in the fluid, {error[~fluid].max():.4f} in the solid; "
-          f"the plain minimum {np.abs(plain - exact)[judged][fluid].max() / h:.3f}")
-    assert int(np.sum(np.asarray(found.failing)[judged])) > 0, "no point failed the check: the draw cannot discriminate"
-    assert int(found.unrefined) == 0 and int(found.unconverged) == 0
-    assert error.max() <= CONTRACT_LINE, f"largest error {error.max():.4f} cells over the band's line {CONTRACT_LINE}"
-
-
-#: A point of the split-and-merge loop's plane, in its own frame (D), whose nearest point of the filleted lumen's
-#: boundary is a corner of its second junction (two, one each side of the plane): the first round's defect, which gate
-#: 3's draw 31 crossed 1.6e-5 D from the plane (and its draws 3016 and 3023 near it, under the fix round's first
-#: seam starts).
-MERGE_CORNER = np.asarray([-0.178, 0.0, 2.207])
-
-
-@pytest.mark.parametrize("seed", seed_list((15,)))
-def test_a_corner_off_the_loops_plane_is_found_from_it(seed, monkeypatch):
-    """Points 1e-6 D either side of the filleted loop's plane about ``MERGE_CORNER`` (a patch of 0.04 D), the loop
-    turned at random and moved by a sub-cell offset: against the filleted brute force (``filleted_distance``).
-    Gauss-Newton from the point and from its walls' nearest points stays near the plane, where neither corner is (it
-    misses from 1e-9 to 3e-5 D off the plane at the patch's centre); a corner also starts from four points a size away
-    across its first wall's normal, off the plane. **Control** (``MIME_PLANT_UNION=corner-starts``): those starts left
-    out."""
-    planted(monkeypatch)
-    h = D / 8.0
-    rng = np.random.default_rng(seed + 7919)
-    turn, offset = rotation(seed), rng.uniform(0.0, h, 3)
-    tree = loop_tree(0.1).turned(turn, offset)
-    across = np.linspace(-0.02, 0.02, 5) * D
-    local = MERGE_CORNER * D + np.stack(np.meshgrid(across, [-1e-6 * D, 1e-6 * D], across, indexing="ij"),
-                                        -1).reshape(-1, 3)
-    points = local @ turn.T + offset
-    exact = filleted_distance(tree, points, BRUTE_SPACING * h, points.mean(axis=0), 0.8 * D)
-    distance, found = composed(tree, points, "float64")
-    error = np.abs(distance - exact) / h
-    print(f"\nseed {seed}: {int(np.sum(found.failing))} of {len(points)} failing, largest error {np.nanmax(error):.4f} "
-          f"cells, depth {-np.nanmax(exact) / D:.3f} to {-np.nanmin(exact) / D:.3f} D")
-    assert np.all(np.isfinite(exact)) and np.all(np.asarray(found.failing))
-    assert int(found.unrefined) == 0 and int(found.unconverged) == 0
-    assert np.max(error) <= CONTRACT_LINE
-
-
-@pytest.mark.parametrize("seed", seed_list((13,)))
-def test_the_union_is_exact_at_sixteen_cells_a_diameter(seed):
-    tree, points, h = drawn_y("asymmetric", seed, 16)
-    plain = plain_minimum(tree, points)
-    band = np.abs(plain) < 3.0 * h
-    points, plain = points[band], plain[band]
-    exact = brute_distance(tree, points, BRUTE_SPACING * h, np.asarray(tree.points[1]), (REACH + 0.25) * D)
-    judged = (np.abs(plain) < 2.0 * h) | (np.abs(exact) < 2.0 * h)
-    distance, found = composed(tree, points, "float64")
-    error = np.abs(distance - exact)[judged] / h
-    assert int(found.unrefined) == 0 and int(found.unconverged) == 0
-    assert error.max() <= CONTRACT_LINE
-
-
-@pytest.mark.parametrize("place", ["origin", "far"])
-@pytest.mark.parametrize("seed", seed_list((14,)))
-def test_float32_agrees_with_float64(seed, place, monkeypatch):
-    """float32 against float64 on the same draw, at the world's origin and 0.1 to 0.3 m from it along each axis (a
-    scanner's coordinates). **Control** (``MIME_PLANT_UNION=world-allowance``): the allowances scaled with the
-    distance from the world's origin, as before the union had a frame of its own."""
-    planted(monkeypatch)
-    tree, points, h, _, _ = drawn("asymmetric", seed, 8, far=place == "far")
-    points = points[np.abs(plain_minimum(tree, points)) < 2.0 * h]
-    wide = composed(tree, points, "float64")[0]
-    narrow, found = composed(tree, points, "float32")
-    apart = np.max(np.abs(narrow - wide)) / h
-    print(f"\n{place} seed {seed}: float32 against float64 {apart:.2e} cells, {int(np.sum(found.failing))} failing")
-    assert int(found.unrefined) == 0 and int(found.unconverged) == 0
-    assert apart <= DTYPE_LINE
-
-
 # -- gate 2 ---------------------------------------------------------------------------------------------------------
 def drawn_wedge(seed: int) -> tuple[tuple[np.ndarray, np.ndarray], np.ndarray, float, np.ndarray]:
     """Two half-spaces whose solid wedge opens 20 to 120 degrees, at a random orientation and place, a fillet of 20
@@ -265,8 +181,32 @@ def drawn_balls(seed: int) -> tuple[tuple[np.ndarray, np.ndarray], tuple[float, 
     return (c1, c2), (float(r1), float(r2)), float(fillet), on_ring + offsets
 
 
+@dataclass(frozen=True)
+class OwnValues:
+    """A ``mime.core`` shape in a union, its values (``reads``, by its parameter names) read from the union's one
+    mapping: two half-spaces, each with its own normal and offset."""
+
+    shape: Any
+    reads: tuple[tuple[str, Any], ...]
+
+    def own(self, parameters):
+        return {name: read(parameters) for name, read in self.reads}
+
+    def signed_distance(self, parameters, points):
+        return self.shape.signed_distance(self.own(parameters), points)
+
+    def outward_normal(self, parameters, points):
+        return self.shape.outward_normal(self.own(parameters), points)
+
+    def curvature(self, parameters, points):
+        return self.shape.curvature(self.own(parameters), points)
+
+
 def wedge_union(normals: tuple[np.ndarray, np.ndarray], origin: np.ndarray, fillet_of) -> ExactUnion:
-    regions = tuple(PlaneSide(normal_of=lambda p, n=n: n, offset=lambda p, n=n: float(n @ origin)) for n in normals)
+    """The union of the half-spaces ``n_i . (x - origin) <= 0``: each ``HalfSpace`` takes the side its normal points
+    into, so its normal is ``-n_i`` and its offset ``-n_i . origin``."""
+    regions = tuple(OwnValues(HalfSpace(), (("normal", lambda p, n=n: -n),
+                                            ("offset", lambda p, n=n: -float(n @ origin)))) for n in normals)
     return ExactUnion(regions, ((0, 1),), size=lambda p: D, fillet=fillet_of)
 
 
@@ -318,71 +258,6 @@ def test_the_fillet_shares_derivative_is_its_difference(seed):
     scale = np.max(np.abs(np.asarray(difference)))
     assert scale > 0.0
     assert np.max(np.abs(exact - np.asarray(difference))) <= DERIVATIVE_LINE * scale
-
-
-# -- gate 3 ---------------------------------------------------------------------------------------------------------
-def carina(tree: TubeTree, at: int, first: int, second: int) -> np.ndarray:
-    """The point of the solid's edge between two tubes leaving the junction at point ``at``: on their bisector, as far
-    from the junction as their walls meet."""
-    points = np.asarray(tree.points)
-    start = points[at]
-    u, v = (points[sum(tree.segments[k]) - at] - start for k in (first, second))
-    u, v = u / np.linalg.norm(u), v / np.linalg.norm(v)
-    half = math.acos(float(np.clip(u @ v, -1.0, 1.0))) / 2.0
-    radius = max(tree.radii[first][0], tree.radii[second][0])
-    return start + (u + v) / np.linalg.norm(u + v) * radius / math.sin(half)
-
-
-def with_carina_seam_left_out(monkeypatch, pairs):
-    """The plant: the seams of ``pairs`` give no candidate, as a Newton that never converges there."""
-    held = ExactUnion._seam
-
-    def seam(self, parameters, points, i, j, radius):
-        if (i, j) in pairs:
-            return Seam(jnp.full(points.shape[:-1], jnp.inf, dtype=points.dtype),
-                        jnp.zeros(points.shape[:-1], dtype=bool), jnp.ones(points.shape[:-1], dtype=bool))
-        return held(self, parameters, points, i, j, radius)
-
-    monkeypatch.setattr(ExactUnion, "_seam", seam)
-
-
-@pytest.mark.parametrize("fillet", [0.0, 0.1])
-@pytest.mark.parametrize("shape", ["y", "loop"])
-@pytest.mark.parametrize("seed", seed_list((31,)))
-def test_the_distance_is_continuous_through_the_junctions(shape, fillet, seed, monkeypatch):
-    planted(monkeypatch)
-    if shape == "y":
-        tree = y_tree("asymmetric", fillet)
-        tips, carina_pairs = [carina(tree, 1, 1, 2)], {(1, 2)}
-    else:
-        tree = loop_tree(fillet)
-        tips, carina_pairs = [carina(tree, 1, 1, 2), carina(tree, 6, 5, 6)], {(1, 2), (5, 6)}
-    if UNION_PLANT == "no-carina-seam":
-        with_carina_seam_left_out(monkeypatch, carina_pairs)
-    rng = np.random.default_rng(seed)
-    turn = rotation(seed + 303)
-    offset = rng.uniform(0.0, D / 16.0, 3)
-    tree = tree.turned(turn, offset)
-    tips = [turn @ tip + offset for tip in tips]
-    lumen = tree.lumen()
-    held = parameters_of(tree, "float64")
-    spacing = D / 1024.0
-    lines = []
-    for tip in tips:
-        near = lattice(tip, 0.4 * D, D / 64.0)
-        failing = near[lumen.plan(held, jnp.asarray(near), margin=0.0)]
-        assert len(failing) >= 6, "too few points fail the check near the carina to draw lines through"
-        for through in failing[rng.choice(len(failing), size=6, replace=False)]:
-            direction = rng.normal(size=3)
-            direction /= np.linalg.norm(direction)
-            lines.append(through + np.arange(-256, 257)[:, None] * spacing * direction)
-    points = jnp.asarray(np.concatenate(lines))
-    found = lumen.signed_distance(held, points, lumen.plan(held, points, margin=0.0))
-    assert int(found.unrefined) == 0
-    values = np.asarray(found.distance).reshape(len(lines), -1)
-    worst = float(np.max(np.abs(np.diff(values, axis=1)))) / spacing
-    print(f"\n{shape} fillet {fillet}: the largest step over the spacing {worst:.9f}")
-    assert worst <= 1.0 + 1e-6
 
 
 # -- gate 4 ---------------------------------------------------------------------------------------------------------

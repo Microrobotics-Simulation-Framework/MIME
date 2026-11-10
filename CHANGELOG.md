@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Composed walls in `mime.scene`: the seam-aware union, the fillet as its closing, the tube tree** (F2a's first
   part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
-  `PlaneSide`, or a lab's `Region`): the minimum, a check at each point of where it is exact (the deepest region's
+  or a lab's `Region`, by `mime.core.Shape`'s method names): the minimum, a check at each point of where it is exact (the deepest region's
   nearest wall point lies outside the regions that meet it), and Newton at a wall, a seam or a corner where it is not,
   at a plan's points held for a build. The plain minimum reads the fluid too shallow near every seam, a false wall of
   0.4 to 1.75 cells at a Y's carina; the rule is exact to a brute force's floor at random rotations and sub-cell

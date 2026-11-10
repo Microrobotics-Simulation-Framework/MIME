@@ -101,15 +101,17 @@ CONVERGED_ULPS = 4096.0
 
 
 class Region(Protocol):
-    """A region with an exact signed distance (negative inside), evaluated at points ``(..., 3)``: the distance
-    ``(...)``, its gradient, the outward unit normal ``(..., 3)``, and the normal's derivative ``(..., 3, 3)``, each a
-    JAX function of the parameters. Off its medial set its wall has one nearest point from any point."""
+    """A region with an exact signed distance (negative inside), evaluated at points ``(..., 3)``, by the names and
+    meanings of ``mime.core.Shape`` for a shape that takes many points: its ``signed_distance`` ``(...)``, its
+    ``outward_normal`` (the unit gradient, ``(..., 3)``) and its ``curvature`` (the normal's derivative,
+    ``(..., 3, 3)``), each a JAX function of the parameters, read from the union's one mapping. Off its medial set
+    its wall has one nearest point from any point."""
 
-    def distance(self, parameters: Parameters, points: Array) -> Array: ...
+    def signed_distance(self, parameters: Parameters, points: Array) -> Array: ...
 
-    def normal(self, parameters: Parameters, points: Array) -> Array: ...
+    def outward_normal(self, parameters: Parameters, points: Array) -> Array: ...
 
-    def hessian(self, parameters: Parameters, points: Array) -> Array: ...
+    def curvature(self, parameters: Parameters, points: Array) -> Array: ...
 
 
 def _length(v: Array) -> Array:
@@ -136,6 +138,8 @@ def _ball(offset: Array, radius: Any) -> tuple[Array, Array, Array]:
 class Ball:
     """A ball: ``centre`` (three numbers) and ``radius``, each read from the parameters."""
 
+    takes_many = True
+    convex = True
     centre: Read
     radius: Read
 
@@ -143,38 +147,14 @@ class Ball:
         centre = jnp.asarray(self.centre(parameters), dtype=points.dtype)
         return _ball(points - centre, jnp.asarray(self.radius(parameters), dtype=points.dtype))
 
-    def distance(self, parameters: Parameters, points: Array) -> Array:
+    def signed_distance(self, parameters: Parameters, points: Array) -> Array:
         return self.evaluate(parameters, points)[0]
 
-    def normal(self, parameters: Parameters, points: Array) -> Array:
+    def outward_normal(self, parameters: Parameters, points: Array) -> Array:
         return self.evaluate(parameters, points)[1]
 
-    def hessian(self, parameters: Parameters, points: Array) -> Array:
+    def curvature(self, parameters: Parameters, points: Array) -> Array:
         return self.evaluate(parameters, points)[2]
-
-
-@dataclass(frozen=True)
-class PlaneSide:
-    """The side of a plane its ``normal`` points away from, ``x . n <= offset``: the normal (three numbers, any length
-    above zero) and the offset, each read from the parameters. Its distance is ``x . n - offset`` with ``n`` the unit
-    normal, flat, so its normal's derivative is zero."""
-
-    normal_of: Read
-    offset: Read
-
-    def _unit_normal(self, parameters: Parameters, dtype: Any) -> Array:
-        normal = jnp.asarray(self.normal_of(parameters), dtype=dtype)
-        return normal / jnp.sqrt(jnp.sum(normal * normal))
-
-    def distance(self, parameters: Parameters, points: Array) -> Array:
-        normal = self._unit_normal(parameters, points.dtype)
-        return jnp.sum(points * normal, axis=-1) - jnp.asarray(self.offset(parameters), dtype=points.dtype)
-
-    def normal(self, parameters: Parameters, points: Array) -> Array:
-        return jnp.broadcast_to(self._unit_normal(parameters, points.dtype), points.shape)
-
-    def hessian(self, parameters: Parameters, points: Array) -> Array:
-        return jnp.zeros((*points.shape, 3), dtype=points.dtype)
 
 
 @dataclass(frozen=True)
@@ -191,6 +171,8 @@ class RoundCone:
     piece's distance and its normal agree where they meet, so the distance is continuously differentiable there. Its
     medial set is the axis between the balls' centres, where the normal is zero."""
 
+    takes_many = True
+    convex = True
     start: Read
     end: Read
     start_radius: Read
@@ -224,13 +206,13 @@ class RoundCone:
                             jnp.where(after[..., None, None], end_ball[2], cone_hessian))
         return distance, normal, hessian
 
-    def distance(self, parameters: Parameters, points: Array) -> Array:
+    def signed_distance(self, parameters: Parameters, points: Array) -> Array:
         return self.evaluate(parameters, points)[0]
 
-    def normal(self, parameters: Parameters, points: Array) -> Array:
+    def outward_normal(self, parameters: Parameters, points: Array) -> Array:
         return self.evaluate(parameters, points)[1]
 
-    def hessian(self, parameters: Parameters, points: Array) -> Array:
+    def curvature(self, parameters: Parameters, points: Array) -> Array:
         return self.evaluate(parameters, points)[2]
 
 
@@ -325,8 +307,8 @@ class ExactUnion:
     def _widened(self, parameters: Parameters, points: Array) -> tuple[Array, Array, Any]:
         """Each region's distance less the fillet's radius ``(n, ...)``, its normal ``(n, ..., 3)``, and the radius."""
         radius = jnp.asarray(self.fillet(parameters), dtype=points.dtype)
-        distances = jnp.stack([region.distance(parameters, points) for region in self.regions]) - radius
-        normals = jnp.stack([region.normal(parameters, points) for region in self.regions])
+        distances = jnp.stack([region.signed_distance(parameters, points) for region in self.regions]) - radius
+        normals = jnp.stack([region.outward_normal(parameters, points) for region in self.regions])
         return distances, normals, radius
 
     def _check(self, parameters: Parameters, points: Array) -> tuple[Array, Array, Array, Array]:
@@ -337,7 +319,7 @@ class ExactUnion:
         deepest = jnp.argmin(distances, axis=0)
         normal = jnp.take_along_axis(normals, deepest[None, :, None], axis=0)[0]
         foot = points - least[:, None] * normal
-        at_foot = jnp.stack([region.distance(parameters, foot) for region in self.regions]) - radius
+        at_foot = jnp.stack([region.signed_distance(parameters, foot) for region in self.regions]) - radius
         meeting = jnp.where(jnp.asarray(self.neighbours)[:, deepest], at_foot, jnp.inf)
         return least, jnp.min(meeting, axis=0), deepest, jnp.argmin(meeting, axis=0)
 
@@ -367,7 +349,7 @@ class ExactUnion:
             foot = points - distances[i][:, None] * normals[i]
             kept = jnp.ones(points.shape[:-1], dtype=bool)
             for j in np.nonzero(table[i])[0]:
-                kept = kept & (self.regions[j].distance(parameters, foot) - radius >= -slack)
+                kept = kept & (self.regions[j].signed_distance(parameters, foot) - radius >= -slack)
             best = jnp.minimum(best, jnp.where(kept, jnp.abs(distances[i]), jnp.inf))
         return best
 
@@ -377,7 +359,7 @@ class ExactUnion:
         others = sorted({int(j) for i in own for j in np.nonzero(table[i])[0]} - set(own))
         kept = jnp.ones(point.shape[:-1], dtype=bool)
         for j in others:
-            kept = kept & (self.regions[j].distance(parameters, point) - radius >= -slack)
+            kept = kept & (self.regions[j].signed_distance(parameters, point) - radius >= -slack)
         return kept
 
     def _seam(self, parameters: Parameters, points: Array, i: int, j: int, radius: Any) -> Seam:
@@ -397,8 +379,9 @@ class ExactUnion:
         step_length = MARCH_STEP * size
 
         def walls(q: Array) -> tuple[Array, Array]:
-            values = jnp.stack([regions[i].distance(parameters, q), regions[j].distance(parameters, q)], -1) - radius
-            gradients = jnp.stack([regions[i].normal(parameters, q), regions[j].normal(parameters, q)], -2)
+            pair = (regions[i], regions[j])
+            values = jnp.stack([region.signed_distance(parameters, q) for region in pair], -1) - radius
+            gradients = jnp.stack([region.outward_normal(parameters, q) for region in pair], -2)
             return values, gradients
 
         def projected(_: int, q: Array) -> Array:
@@ -412,10 +395,10 @@ class ExactUnion:
         def kkt(z: Array) -> tuple[Array, Array]:
             q, multipliers = z[..., :3], z[..., 3:]
             values, gradients = walls(q)
-            hessians = jnp.stack([regions[i].hessian(parameters, q), regions[j].hessian(parameters, q)], -3)
+            curvatures = jnp.stack([regions[i].curvature(parameters, q), regions[j].curvature(parameters, q)], -3)
             stationary = q - points + jnp.sum(multipliers[..., :, None] * gradients, axis=-2)
             residual = jnp.concatenate([stationary, values], -1)
-            top = eye + jnp.sum(multipliers[..., :, None, None] * hessians, axis=-3)
+            top = eye + jnp.sum(multipliers[..., :, None, None] * curvatures, axis=-3)
             jacobian = jnp.concatenate([jnp.concatenate([top, jnp.swapaxes(gradients, -1, -2)], -1),
                                         jnp.concatenate([gradients, jnp.zeros((*q.shape[:-1], 2, 2), dtype)], -1)],
                                        -2)
@@ -475,7 +458,7 @@ class ExactUnion:
     def _seam_starts(self, parameters: Parameters, points: Array, i: int, size: Array) -> Array:
         """A seam's starts ``(5, M, 3)``: each point, and the four a ``size`` away along two directions across wall
         ``i``'s normal there, which leave any plane through the point that the normal lies in."""
-        across_wall = self.regions[i].normal(parameters, points)
+        across_wall = self.regions[i].outward_normal(parameters, points)
         helper = jnp.eye(3, dtype=points.dtype)[jnp.argmin(jnp.abs(across_wall), axis=-1)]
         first = _unit(jnp.cross(across_wall, helper))[0]
         second = jnp.cross(across_wall, first)
@@ -497,8 +480,8 @@ class ExactUnion:
         dtype = points.dtype
 
         def walls(c: Array) -> tuple[Array, Array]:
-            values = jnp.stack([region.distance(parameters, c) for region in regions], -1) - radius
-            gradients = jnp.stack([region.normal(parameters, c) for region in regions], -2)
+            values = jnp.stack([region.signed_distance(parameters, c) for region in regions], -1) - radius
+            gradients = jnp.stack([region.outward_normal(parameters, c) for region in regions], -2)
             return values, gradients
 
         def projected(_: int, c: Array) -> Array:
@@ -574,7 +557,8 @@ class ExactUnion:
         unplanned = jnp.asarray(self.unplanned(parameters))
         return UnionDistance(widened + radius, failing, unrefined, unconverged, unplanned)
 
-    def normal(self, parameters: Parameters, points: Any, plan: np.ndarray | None = None) -> UnionNormal:
+    def outward_normal(self, parameters: Parameters, points: Any, plan: np.ndarray | None = None
+                       ) -> UnionNormal:
         """The union's outward unit normal at ``points`` (the distance's gradient in each point), with the distance
         and its counts."""
         def total(at: Array) -> tuple[Array, UnionDistance]:
@@ -638,4 +622,4 @@ def _ridge(dtype: Any, size: int) -> Array:
 
 
 __all__ = ["CONVERGED_ULPS", "KEPT_ULPS", "MARCH_STEP", "MARCH_STEPS", "NEWTON_STEPS", "POSITION_ULPS", "PROJECTIONS",
-           "Ball", "ExactUnion", "PlaneSide", "Region", "RoundCone", "Seam", "UnionDistance", "UnionNormal"]
+           "Ball", "ExactUnion", "Region", "RoundCone", "Seam", "UnionDistance", "UnionNormal"]

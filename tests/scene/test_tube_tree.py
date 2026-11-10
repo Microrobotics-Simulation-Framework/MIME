@@ -117,7 +117,7 @@ def test_its_normal_is_unit_and_its_nearest_point_on_the_wall():
     held = parameters_of(tree)
     points = jnp.asarray(np.random.default_rng(6).uniform(-0.8 * D, 0.8 * D, (400, 3)))
     plan = lumen.plan(held, points, margin=0.0)
-    found = lumen.normal(held, points, plan)
+    found = lumen.outward_normal(held, points, plan)
     distance, normal = found.distance.distance, found.normal
     lengths = np.asarray(jnp.linalg.norm(normal, axis=-1))
     off_medial = np.abs(lengths - 1.0) < 1e-6
@@ -176,7 +176,7 @@ def test_a_study_that_brings_tubes_within_reach_is_counted(seed):
     within = (D + wall) / (1.1 * D)
     study = {**held, "radii": held["radii"] * rng.uniform(within + 0.01, within + 0.2)}
     assert int(lumen.signed_distance(study, points).unplanned) == 1
-    assert int(lumen.normal(study, points).distance.unplanned) == 1
+    assert int(lumen.outward_normal(study, points).distance.unplanned) == 1
 
 
 def test_the_report_names_tubes_the_fillet_joins():

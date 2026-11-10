@@ -216,9 +216,10 @@ sphere about its centroid that holds it (`enclosing_radius`).
 
 **Composed walls**:
 
-- **`ExactUnion`**, the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
-  `PlaneSide`, or a lab's `Region`): the minimum, a check at each point of where it is exact (the deepest region's
-  nearest wall point outside the regions that meet it), and Newton at a wall, a seam or a corner where it is not. The
+- **`ExactUnion`**, the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`, or a
+  lab's `Region`: `mime.core.Shape`'s `signed_distance`, `outward_normal` and `curvature` at many points): the
+  minimum, a check at each point of where it is exact (the deepest region's nearest wall point outside the regions
+  that meet it), and Newton at a wall, a seam or a corner where it is not. The
   minimum alone reads the fluid too shallow near every seam (a false wall, up to about two cells at a Y's carina); the
   rule is exact, also where two walls' normals are opposed (the plane through two parallel tubes' axes, which an aligned
   grid hits). Newton runs at a plan's points (`plan`, chosen when the caller builds, so the program's shapes are fixed).

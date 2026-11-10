@@ -64,7 +64,7 @@ from mime.scene._resolution import (
     wall_resolution,
 )
 from mime.scene._tube_tree import FILLET_SHARE, TubeTree, WallFeatures
-from mime.scene._union import Ball, ExactUnion, PlaneSide, Region, RoundCone, UnionDistance, UnionNormal
+from mime.scene._union import Ball, ExactUnion, Region, RoundCone, UnionDistance, UnionNormal
 from mime.scene._helix import Helix
 from mime.scene._screw import Screw
 from mime.scene._kinds import kind_frame, placed, shape_settings
@@ -116,7 +116,7 @@ __all__ = [
     "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
     "Helix", "polyline", "straight",
-    "Ball", "ExactUnion", "FILLET_SHARE", "LAYER_LINES", "PlaneSide", "Region", "ResolutionEntry", "ResolutionReport",
+    "Ball", "ExactUnion", "FILLET_SHARE", "LAYER_LINES", "Region", "ResolutionEntry", "ResolutionReport",
     "RoundCone", "TubeTree", "UnionDistance", "UnionNormal", "WallFeatures", "steady_layer", "stokes_layer",
     "wall_resolution",
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
