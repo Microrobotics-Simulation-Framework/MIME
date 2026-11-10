@@ -1350,6 +1350,7 @@ def coverage_problems(listed, reached: list[switch.Reached]) -> list[str]:
     return problems
 
 
+@pytest.mark.memory_heavy
 def test_every_guard_the_scan_lists_is_reached_false_and_every_nonzero_norm_away_from_zero(graph):
     """The scan lists every ``domain_guard`` and ``nonzero_norm`` call in scope; the guard points reach each guard with
     its condition false (so the test above judges it) and each nonzero norm, never at zero."""

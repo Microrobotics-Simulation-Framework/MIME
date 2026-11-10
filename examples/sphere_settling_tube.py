@@ -64,10 +64,10 @@ SPACING_UM, MARGIN_UM = 2.5, 1.5
 STEP_MS, DURATION_MS, EARLY_MS = 2.0, 80.0, (2.0, 6.0)
 #: What the run states beside its numbers, and the view's caption.
 LIMIT = ("The drag includes the tube's wall, from its table, down to a gap of about one sample spacing (2.5 um). "
-         "Closer than that, near-contact lubrication is not modelled in 0.3.0.dev1, so the last approach is too fast, "
-         "and the contact, not the fluid, holds the ball on the floor. Near-contact lubrication, and a flat floor's "
-         "wall (so a dish), are planned for 0.3.0.dev2. The end caps are drawn, not computed: the physics is the "
-         "infinite tube's.")
+         "Closer than that the coarse MRS alone is too fast on the last approach, and the contact, not the fluid, "
+         "holds the ball on the floor: drag 0.5.0 models near-contact lubrication, and this demo writes it off, its "
+         "hand-over gap at this spacing lying past the film's window. A flat floor's wall (so a dish) is a later "
+         "release's. The end caps are drawn, not computed: the physics is the infinite tube's.")
 
 
 def sphere_settling_tube() -> Experiment:
