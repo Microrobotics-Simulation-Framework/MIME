@@ -89,6 +89,10 @@ FLOW_BODY_FORCE = define(Interface(
     magnitude=1e-3,
     description="a uniform body force per unit mass on a medium's fluid (none on its solid), summed over every law "
                 "that drives it: on a periodic box, the drive that stands in for a pressure drop"))
+FLOW_MOMENTUM = define(Interface(
+    "flow.momentum", ReadKind.STATE, "kg m/s", "world", (3,), magnitude=1e-8,
+    description="a medium's fluid's total momentum, the integral of rho u over its fluid (none over its solid, as a body "
+                "force acts on its fluid alone): the flow a uniform body force per unit mass on it is paired with"))
 FLOW_WAVEFORM = define(Interface(
     "flow.waveform", TargetKind.EQUALITY_CONSTRAINT, "1", "world", (7,),
     sign="on the fluid of a medium, per unit mass", magnitude=1.0,

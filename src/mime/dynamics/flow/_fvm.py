@@ -39,7 +39,7 @@ from mime.units import Magnitude
 from mime.scene import PeriodicBox
 from mime.things import ThingKind
 from mime.units import Length, Quantity
-from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM
+from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM, FLUID
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -103,7 +103,10 @@ MEMORY_MEASURED = ("measured on a CPU with 24 threads as the slope of the proces
                    "for IMEX Euler and its steady limit in float64 (689 to 832 over the runs), 868 for RK3 (771 to "
                    "868), and in float32 539 (447 to 539) and 462 (433 to 462); fewer threads hold less (the steady "
                    "limit in float64 about 560 with 8 and 430 with 4) and more may hold more; the process's fixed "
-                   "part, its imports and compile, about 0.8 to 0.9 GiB, is not in it; a GPU's is not measured")
+                   "part, its imports and compile, about 0.8 to 0.9 GiB, is not in it; a GPU's is not measured; the "
+                   "figures are without the energy ledger, whose terms add to a step: XLA's analysis of one step's "
+                   "program at D/h 32 gives 1.26 and 1.20 times its size without it for IMEX Euler (float64 and "
+                   "float32) and 1.15 for RK3 in both, which the estimate does not include")
 
 
 #: The least margin of solid, in cells, between a tube's band and its image: their fields flatten 3 cells into the
@@ -184,6 +187,7 @@ class FVM(Dynamics):
     references = ("HarlowWelch1965", "Angot1999", "Womersley1955")
     builds = {"": (ImplicitFlowNode, ExplicitFlowNode)}
     applies_to = frozenset({ThingKind.MEDIUM})
+    port = FLUID.name
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform")}
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
@@ -237,13 +241,16 @@ class FVM(Dynamics):
         f"available memory and the limit of the control group the process runs in, where one is set",
         f"geometry: {GEOMETRY}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_LINE:g} (stall_flagged), is written with the "
-        f"energy ledger attached; the build does not yet meter the flow, so a run through the build has no stall "
-        f"report",
+        f"energy ledger attached (exp.observe(EnergyLedger())); a run without it has no stall report",
+        "the energy ledger: IMEX Euler and its steady limit close the step identity to its rounding floor at every "
+        "step; RK3 judges each step to have dissipated, and its drive's attribution (the work its stages applied "
+        "against the law's own delivery at the stage instants) to the same floor. A gift a numerical term's own "
+        "formula books is booked under that term, where the identity cannot see it (convection's, at mixed time "
+        "levels): only the order tests of the terms, on their fixed case, see one, from about 0.1 of the term's own "
+        "size on one seed of the three, and on all three from about 0.6 for N_BE (N_conv keeps one in its band "
+        "there) [measured]; no check of it runs in a user's run",
     )
     values = {"viscosity": "viscosity", "density": "density"}
-    unmetered = ("its step identity is written and gated on its node (every term by formula, the solve's residual "
-                 "included), but the build does not yet name its hosted laws (the viscosity, the wall's penalty, the "
-                 "drive) for the ledger, so it leaves the flow unmetered")
     setting_roles = {
         "domain": PHYSICAL,
         "spacing": convention(NUMERICAL, "none given: the lumen's diameter over cells_across, the band's sweet-spot "
@@ -447,19 +454,23 @@ class FVM(Dynamics):
         scheme = chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
         band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.delta_in]
         images = "own" if lattice == (0, 1) else "transverse"
+        # The wall's band is booked under the wall's own region: the medium fills a tube's lumen, its solid that tube's
+        # wall (B9: a region's loss under its own name).
+        wall = f"{region.path.rpartition('.')[0]}.wall"
         if scheme_named(scheme).stage_kind is StageKind.EXPLICIT_PROJECTED:
             b.add_node(ExplicitFlowNode(
                 ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1],
                 cells_z=layout.cells[2], spacing=layout.spacing, viscosity=viscosity, density=density,
                 tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
-                convection=not self.stokes, band=band, interior=interior, periodic_images=images))
+                convection=not self.stokes, band=band, interior=interior, periodic_images=images, wall_name=wall))
             return
         b.add_node(ImplicitFlowNode(
             ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
             spacing=layout.spacing, viscosity=viscosity, density=density,
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
-            interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows))
+            interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows,
+            wall_name=wall))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:

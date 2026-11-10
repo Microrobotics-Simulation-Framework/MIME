@@ -51,8 +51,10 @@ class BodyForce(Interaction):
                                "flow)"))
     delivers = {"force": Delivery("medium", FLOW_BODY_FORCE.name),
                 "waveform": Delivery("medium", FLOW_WAVEFORM.name)}
-    unmetered = ("a drive's supplied work, paired by the flow field it drives, which the ledger does not yet meter "
-                 "through the build")
+    unmetered = ("a drive declares no class, since a source has none: its own node reads no component's state and it "
+                 "delivers loads, so where the flow it drives is metered the build counts it outside the components "
+                 "and books its work, paired by the flow with the fluid's momentum, as supplied under its own name; "
+                 "a flow the ledger does not meter (the prescribed flow) pairs it with nothing")
     setting_roles = {
         "along": DESIGN, "steady": PHYSICAL,
         "amplitude": convention(PHYSICAL, "a steady drive unless a pulsatile one is declared"),
