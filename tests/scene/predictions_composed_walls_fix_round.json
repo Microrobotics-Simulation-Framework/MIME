@@ -138,5 +138,45 @@
       "what": "the first probe's clean arms found two failures: gate 3 on the filleted loop at draws 3016 and 3023 (no plant), the largest step 1.234 and 1.206 of the spacing, at points about 1e-3 D from the loop's plane near its second junction, where a corner of the merge is the nearest point and no start of its Gauss-Newton reached the corner on the nearer side (the first round's code passed both draws; the fix round's seam starts changed the seams' reached points the corner started from). A corner now starts as a seam does: from the point, its walls' nearest points and four points a size away across its first wall's normal; the seams' reached points are no longer starts (development check: the targeted gate's patch at four rotations 0.0029 to 0.0042 cells, gate 3's draws 31, 3016 and 3023 at 0.986, 0.999 and 0.976). The plant corner-starts now leaves those four starts out (the same starts as the first round's revert: the point and its walls' nearest points). Also from the first probe, on the code then: the march left out (march-0) was caught by gate 1 (float64) in 151 of 200 draws, not every run; gate 3 failed every one of 20 draws with 4, 8 or 12 steps; so the march's revert is now measured on gate 3. Predictions for the second probe: every control 200/200 with its clean arm quiet; march-0 on gate 3 200/200; the needed march length 24 to 48 steps [guess, from the first probe: 48 passed 20 of 20 on gates 1 and 3, 24 failed gate 3 in 12 of 20]"
     }
   ],
-  "outcomes": null
+  "outcomes": {
+    "recorded": "2026-11-10, after the gates ran; the predictions above are unchanged (their corrections are dated in place)",
+    "probes": "first https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42805135687 (on 9a4f63c: found gate 3's two clean failures, corrections_second); second https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484 (on 9ce22ec, the code of this head): every number below is the second's unless said; the review's checks rerun on 9ce22ec at https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829674368",
+    "gate_1_opposed_normals": {
+      "result": "met: 0.0161 cells in the fluid, 0.0093 in the solid, both dtypes, at the fixed seed (the plain minimum 1.196), no unrefined or unconverged point (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arm gates); the clean arm's 50 draws all passed; the review's cross-sections 0.000 cells on and off the plane, filleted and sharp (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829674368, arm xsec)",
+      "control": "point-start 200/200, clean 0/50 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms ctl-pointstart-*)",
+      "resolution": "0.0504 cells (ranges:g1h, 20 draws, no false alarm; https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arm range-g1h)"
+    },
+    "gate_1_float32_far_from_the_origin": {
+      "result": "met: 1.15e-4 cells at the fixed seed far (predicted 1.2e-4), 1.15e-6 at the origin (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arm gates); the clean arm's 50 draws passed; the review's Y at 0.137 m 6e-5 cells (was 0.28; https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829674368, arm far)",
+      "control": "world-allowance 200/200, clean 0/50 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms ctl-worldallow-*): the guess held",
+      "resolution": "9.6e-4 cells (ranges:f32far; https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arm range-f32far)"
+    },
+    "unplanned_pairs_counted": {
+      "result": "met: 1 at the study, 0 as made, with the distance and the normal; the review's study x1.0, x1.1: 0, x1.2, x1.35: 1 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829674368, arm study)",
+      "control": "no-unplanned 200/200, clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms ctl-unplanned-*)"
+    },
+    "fused_walls_reported": {
+      "result": "met as predicted; walls of 0.06, 0.09 and 0.12 mm read 0.06, 0.09 and 0.12 mm, the first two fused (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829674368, arm study)"
+    },
+    "layer_lines_from_the_sweep": {
+      "result": "met: crossings 2.69 and 4.47, lines 2.7 and 4.5"
+    },
+    "march_needed_length": {
+      "result": "march-0 caught 200/200 by gate 3, clean 0/20 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms ctl-nomarch-*; on the first probe's code gate 1 caught it in only 151 of 200, https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42805135687). Gate 1 (float64) failed 5/20 at 8 and 16 steps, 1/20 at 24, 0/20 at 32, 48 and 64; gate 3 20/20 at 8, 18/20 at 16, 12/20 at 24, 1/20 at 32, 0/20 at 48 and 64 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms march-*). The needed length is 48 steps (on these draws); the 96 kept are a margin of two. The guess (8 to 24) was wrong: the review's 24-step mutant passed 40 of 40 on the first round's code, whose seams started from the point alone"
+    },
+    "corner_seam_starts": {
+      "result": "the first round's seam-reached starts were replaced (corrections_second); the replacement's revert on gate 3's random draws: 4/40 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms rnd-cornerstarts-g3-*), as the prediction said random draws barely see it"
+    },
+    "gate_1_corner_off_the_plane": {
+      "result": "met: 0.0042 cells at the fixed seed (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arm gates); clean arm 50 draws passed",
+      "control": "corner-starts 200/200, clean 0/50 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms ctl-cornerstarts-*)"
+    },
+    "gates_1_to_4_rerun": {
+      "result": "met on the second probe: G1 0.0093 to 0.0185 cells (the plain minimum 0.60 to 1.20), G2 1.6e-19 to 5.4e-19 m float64 and 8.3e-11 to 1.9e-10 m float32, G3 0.943 to 0.986, G4 8.2e-14 to 8.9e-11 relative (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arm gates: 57 passed)",
+      "controls": "minimum, fillet dropped, carina seam left out, implicit held: each 200/200, clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484). On the first probe the carina control's clean arm flagged 2/200 (gate 3, draws 3016 and 3023): the defect corrected in 9ce22ec",
+      "resolution": "G1 0.0502 cells, G2 1.8e-7 of the radius, G3 0.0095 cells on all 50 draws (the gate's own six lines a draw: the review's m2), G4 1.7e-6 of the tangent (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arms range-*)"
+    },
+    "bits": "met: 14 programs (7 cases, both dtypes), 250 arrays np.array_equal between release/v0.3.0 at 6a57334 and the head on one runner, one CPU; the one-ulp control differs in exactly its array (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42829626484, arm bits)",
+    "costs": "no time or memory claim; for the record, the second probe's gate log ran the two test files in 12.5 min on one runner (57 tests)"
+  }
 }
