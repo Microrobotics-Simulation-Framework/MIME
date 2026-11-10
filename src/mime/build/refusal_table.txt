@@ -3,6 +3,7 @@
 # Every code MIME constructs is here, and nothing else: a Refusal whose code is not here and is not in a registered
 # namespace's own (labx.too-far) raises when it is constructed. The rows are generated from a scan of the source, and
 # `mime docs check` fails, naming the row to add, delete or change, when they differ from what the source constructs.
+allocation.wanted             user
 apparatus.reserved-field      user
 asset.audit                   user
 asset.conflict                environment
@@ -293,6 +294,7 @@ override.initial-after-start  user
 override.leaf-unread          user
 override.no-declarations      user
 override.no-effect            user
+override.outside-range        user
 override.structural           user
 override.unreplayable         user
 override.variant              user
@@ -387,6 +389,16 @@ push.token-scope              environment
 push.too-large                user
 push.too-many-files           user
 push.unconfirmed              user
+range.corner                  user
+range.cost                    user
+range.duplicate               user
+range.kind                    user
+range.order                   user
+range.outside                 user
+range.path                    user
+range.reason-pending          user
+range.too-many                user
+range.units                   user
 read.not-published            user
 record.changed                user
 record.extrapolation          user
@@ -479,6 +491,7 @@ study.bridge-precision        user
 study.folder-not-empty        user
 study.format                  user
 study.group-file              user
+study.held-geometry           user
 study.leaf-unread             user
 study.manifest                user
 study.no-base                 user
@@ -494,6 +507,9 @@ study.precision               user
 study.protocol-command        user
 study.protocol-folder         user
 study.protocol-quantity       user
+study.range-bake              internal
+study.range-dependent         internal
+study.range-split             user
 study.reason-no-axis          user
 study.refused-points          user
 study.series-every-step       user

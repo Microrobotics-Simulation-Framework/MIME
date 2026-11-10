@@ -23,6 +23,14 @@ from mime.nodes.actuation._dynamic import (
     DynamicMotorNode,
     DynamicMotorState,
 )
+from mime.nodes.actuation._multipole import (
+    Calibration,
+    CalibratedMultipoleNode,
+    CalibratedMultipoleState,
+    CalibrationError,
+    placed_unit_fields,
+    read_calibration,
+)
 from mime.nodes.actuation._point_dipole import (
     DIPOLE_CONSTANT,
     PointDipoleInputs,
@@ -45,6 +53,10 @@ __all__ = [
     "SWEEPS",
     "WRENCH_UNITS",
     "ArmInputs",
+    "CalibratedMultipoleNode",
+    "CalibratedMultipoleState",
+    "Calibration",
+    "CalibrationError",
     "ArmState",
     "Command",
     "ConstantNode",
@@ -74,5 +86,7 @@ __all__ = [
     "UniformRotatingInputs",
     "UniformRotatingNode",
     "UniformRotatingState",
+    "placed_unit_fields",
     "point_dipole",
+    "read_calibration",
 ]

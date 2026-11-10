@@ -65,6 +65,24 @@ def test_the_sdist_ships_the_surrogate_weights_with_their_pinned_hash(sdist):
     assert held is not None and hashlib.sha256(held.read()).hexdigest() == PINNED
 
 
+#: The eMNS calibrations, byte for byte their upstreams' (Workspace_eMNS at 524f851, Tesla_core_public at 5ef021b):
+#: the sha256 of the upstream bytes, written out here rather than read from MIME.
+CALIBRATIONS = {"mime/data/emns_calibrations/navion_2.yaml":
+                "ea6eeb803b48d73551648e4df08116373a03fed4e871eb2b5c13706f57796b56",
+                "mime/data/emns_calibrations/octomag.yaml":
+                "d0d92541ea3669bb1c4d4daf4acd36b9d3100f728e6270e2aebac53906cc0ad0",
+                "mime/data/emns_calibrations/cardiomag.yaml":
+                "31bd9b234586497275c8abff6ff292ece7ed029be8b6077b027264870facd51c"}
+
+
+@pytest.mark.parametrize("member", sorted(CALIBRATIONS))
+def test_the_wheel_and_the_sdist_ship_each_calibration_as_its_upstream_bytes(wheel, sdist, member):
+    assert hashlib.sha256(wheel.read(member)).hexdigest() == CALIBRATIONS[member]
+    (held,) = [m for m in sdist.getmembers() if m.name.endswith(f"/src/{member}")]
+    extracted = sdist.extractfile(held)
+    assert extracted is not None and hashlib.sha256(extracted.read()).hexdigest() == CALIBRATIONS[member]
+
+
 #: The wall tables' references: data the asset commands read, so the wheel and the sdist must carry them.
 WALL_TABLE_REFERENCES = ("mime/data/assets/wall_tables.json", "mime/data/assets/unit_tube_tables.json")
 

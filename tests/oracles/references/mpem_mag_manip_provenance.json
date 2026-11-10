@@ -1,0 +1,14 @@
+{
+ "generator": "tests/oracles/generate_mpem_references.py",
+ "seed": 20261109,
+ "mag_manip": "3.0.0",
+ "mag_manip_wheel_sha256": "1a2b3802132fb2b3a17406e2bf30db45ec313f37fc26cf450241e8fd5bcfa341",
+ "numpy": "1.26.4",
+ "python": "3.10.20",
+ "calibrations_sha256": {
+  "navion_2": "ea6eeb803b48d73551648e4df08116373a03fed4e871eb2b5c13706f57796b56",
+  "octomag": "d0d92541ea3669bb1c4d4daf4acd36b9d3100f728e6270e2aebac53906cc0ad0",
+  "cardiomag": "31bd9b234586497275c8abff6ff292ece7ed029be8b6077b027264870facd51c"
+ },
+ "archive_sha256": "fe54bbb020d1972b2c0d8badbd9b59485697ac3e74392f743b56c1727364c041"
+}

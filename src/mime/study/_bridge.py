@@ -3,7 +3,8 @@ experiment with its point's values declared (and, for a study run on a ramp, its
 as the study declared it); this makes that an experiment of its own, through ``Experiment.based_on(<the base>,
 name=name)`` and the declarations a person would make, so that the lineage is never lost: the new experiment records
 the base it was made from, each value declared carries the reason ``from study <id>, member <i>``, and each declaration
-it replaced is in ``plan().replaced``."""
+it replaced is in ``plan().replaced``. A member that lay outside a declared range of the base was built for its own value,
+without that range, and its experiment is made so: the range is removed (``plan().removed`` says so)."""
 
 from __future__ import annotations
 
@@ -58,6 +59,8 @@ def member_as_experiment(run: RunResult, name: str, base: Path | None) -> Experi
     if isinstance(member.protocol, Ramp):
         ramped, _ = declared_with(member.protocol, held.declarations)
     experiment.redeclared(held.settings, ramped)
+    for path in held.outside:  # a member outside a declared range was built for its own value, without it
+        experiment.remove(path, kind="range")
     return experiment
 
 

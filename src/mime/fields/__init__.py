@@ -1,9 +1,11 @@
-"""Field providers: what makes a field available at points. Here now: ``UniformRotating``, and ``PointDipole``, a
-magnet part's field; and ``KEPT``, the earlier versions kept registered."""
+"""Field providers: what makes a field available at points. Here now: ``UniformRotating``; ``PointDipole``, a magnet
+part's field; ``CalibratedMultipole``, an electromagnet array's, on the contract every ``CoilArray`` keeps, with
+``Actuation`` and ``allocate``; and ``KEPT``, the earlier versions kept registered."""
 
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from mime.fields._coil_array import CALIBRATIONS, Actuation, Allocation, CalibratedMultipole, CoilArray, allocate
 from mime.fields._point_dipole import PointDipole
 from mime.fields._previous import ClockRotating
 from mime.fields._uniform_rotating import UniformRotating
@@ -16,4 +18,5 @@ KEPT: Mapping[tuple[str, str], tuple[type[FieldProvider], str]] = MappingProxyTy
     ("uniform_rotating", "0.1.0"): (ClockRotating, UniformRotating.version),
 })
 
-__all__ = ["KEPT", "PointDipole", "UniformRotating"]
+__all__ = ["CALIBRATIONS", "KEPT", "Actuation", "Allocation", "CalibratedMultipole", "CoilArray", "PointDipole",
+           "UniformRotating", "allocate"]

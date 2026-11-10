@@ -115,8 +115,8 @@ class PlaneWall(WallKind):
     """An unbounded plane with a no-slip wall, the medium filling the half-space its normal points into: the image
     system of a Stokeslet above it (Blake 1971), regularised by the drag's own blob (Ainley et al. 2008), in closed form,
     so no table and no switch. It matches a half_space region and reads its normal and offset; the offset is the drag
-    node's leaf ``wall_offset`` (a gradient and a caller of the node reach it; a structure's settings are not yet study
-    or override axes), and the normal is held as built."""
+    node's leaf ``wall_offset`` (a gradient, a caller of the node and an override or a study of the plane's offset
+    reach it), and the normal is held as built."""
 
     name = "plane"
     version = "0.1.0"

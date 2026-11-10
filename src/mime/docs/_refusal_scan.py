@@ -39,6 +39,7 @@ IMPLIED: Mapping[tuple[str, str], RefusalClass] = {
     ("saved/_reconstruct.py", "refuse"): RefusalClass.USER,
     ("materials/_read.py", "refused"): RefusalClass.USER,
     ("build/_plan.py", "pending"): RefusalClass.USER,
+    ("build/_ranges.py", "refuse"): RefusalClass.USER,
     ("build/_profile.py", "pending"): RefusalClass.USER,
 }
 FILE_SUFFIXES = frozenset({"json", "npz", "npy", "yaml", "yml", "lock", "usda", "usd", "usdc", "txt", "md", "py"})
