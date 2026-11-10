@@ -94,6 +94,9 @@ class ControllerDeclaration:
     mode: Any
     rate: Any = None
     latency: Any = None
+    #: The settings a study's axis names (``controller.<setting>``), each held as a leaf of the controller's node
+    #: inside the compiled step where its step reads it: set by the axis, never by a script, and not saved.
+    leaves: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

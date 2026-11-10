@@ -39,6 +39,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the openings (it needs the convective power split by plane), and the periodic box's flags on the open box and
   on RK3 (RK3 declares none). Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
 
+- **The first fit: `Study.fit(residual, *, start, noise, duration, iterations=20, bounds=None, tolerance=None,
+  acknowledged=None)`** (lane S's third PR, its second half), returning `mime.results.FitResult` (each `FitIterate`
+  with its `LineMargin`s, the Fisher information at the start). Damped Gauss-Newton steps on the gradient path's
+  derivative under the fit-loop rule: each iterate planned again through `build_point` and run on the start's
+  compiled program, every validity line judged there and given to the steps with its margin, the iterates clipped to
+  each axis's declared range and its leaves' bounds, MADDENING's `fim` with the declared noise (required) at the start
+  (every insensitive axis named before the first step). On the gently pulled sphere the radius fits to a target inside
+  its range where the spike's rebuilt descent ended 0.79 % short; across a Reynolds line the fit ends on the line,
+  naming it (a fresh build at the radius it ended at reads the number within 1e-4 of the limit), where `sysid.fit` on
+  the built graph runs through it silently. The default `tolerance` is 1e-9 of the values, or ten times the run's machine epsilon where that is higher (float32:
+  1.2e-6); a fit whose loss does not fall in three iterates in a row, short of any line, ends `stagnated`. A line that
+  cannot be judged (no density declared) is never taken as
+  inside: the start is refused (`fit.line-unjudged`) and a later iterate ends the fit `unjudged`; a range that pins
+  the step ends it `at a line` (`box:<axis>`); an iterate that needs another compiled program refuses the fit
+  (`fit.value-keyed`) with the iterates taken in the error's `partial`. **Controller settings as leaves**: a setting a
+  study's axis names (`controller.<setting>`) is a leaf of the controller's node inside the compiled step where its
+  step reads it (`controller.setting-unread` for one read through `self`; `controller.setting-not-leaf` for a count, a
+  switch, a name, a direction or a file, which the compiled step reads as built); `ArmTracking` reads its smoothing,
+  gain and damping through its context, and an integer written for a float setting (`gain=2`) is that float.
+  MIME-ANO-146 is partly resolved: for the settings the step reads; open for a start-only one (`home`) in the graph
+  mode, where the two-builds check says `quiet` of runs that differ (the callback mode stays outside `params` by
+  design). Nine refusal codes (`fit.*`, `gradient.objective`, `controller.setting-*`).
+
 - **Lubrication's hand-over on the MRS rung, body to wall: `Drag.MRS(lubrication=...)`** (drag 0.5.0, a numerical
   setting, on by default near a wall that opens, a plane or a tube, about a body whose hull kind has a support and
   whose least radius of curvature holds the hand-over gap within the film's window). The near-wall resistance is the

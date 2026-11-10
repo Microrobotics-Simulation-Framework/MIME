@@ -610,14 +610,34 @@ def unwatched_through_the_run(built, expected: str) -> None:
     assert any(line.startswith("post-run containment could not be checked") and expected in line for line in lines), lines
 
 
+def withdraw_takes_many(monkeypatch):
+    """The cylinder's ``takes_many`` withdrawn, on its class: the declaration is the class's, and a patch on the
+    registered instance puts the old value back as an instance attribute that then shadows every later patch of the
+    class (the hull contact's refusal test, in the same worker, saw its withdrawal ignored)."""
+    monkeypatch.setattr(type(CYLINDER), "takes_many", False)
+
+
 def test_a_surface_whose_shape_takes_one_point_at_a_time_is_unwatched_and_says_so(monkeypatch):
     """Through the planner: the tube's cylinder withdrawn from ``takes_many`` (a lab's shape need not take many). The
     control is the same case with it, which is watched."""
     assert [w for w in case(inertia=True).report.watches if isinstance(w, ContainmentPlan)]
-    monkeypatch.setattr(CYLINDER, "takes_many", False)
+    withdraw_takes_many(monkeypatch)
     built = case(inertia=True)
     assert not [w for w in built.report.watches if isinstance(w, ContainmentPlan)]
     unwatched_through_the_run(built, "takes one point at a time")
+
+
+def test_a_withdrawal_of_takes_many_leaves_the_cylinder_as_it_was_for_a_later_withdrawal():
+    """The withdrawal above, undone, and then a later test's withdrawal of the same declaration on the class (the hull
+    contact's, which expects ``confinement.surface-shape``): it takes effect. The control is the cylinder between them,
+    which takes many and carries nothing of its own."""
+    with pytest.MonkeyPatch.context() as earlier:
+        withdraw_takes_many(earlier)
+    assert CYLINDER.takes_many and "takes_many" not in vars(CYLINDER)
+    with pytest.MonkeyPatch.context() as later:
+        later.setattr(type(CYLINDER), "takes_many", False)
+        built = case(inertia=True)
+        assert not [w for w in built.report.watches if isinstance(w, ContainmentPlan)]
 
 
 def test_a_hull_kind_that_gives_no_samples_is_unwatched_and_says_so():

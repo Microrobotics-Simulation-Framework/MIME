@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -66,6 +66,21 @@ _BUILDERS: dict[Section, type[RestrictedBuilder]] = {
 #: MADDENING's ``validate()`` marks each issue with its kind. These four stop ``compile()``, so each is a refusal.
 _REFUSED_ISSUES = {"ERROR": "maddening.error", "WARNING[units]": "maddening.units",
                    "WARNING[shape]": "maddening.shape", "WARNING[dtype]": "maddening.dtype"}
+
+
+def _remake(plans: PlanSet) -> tuple[Callable[[Mapping[str, Any]], Any] | None, dict[str, Any]]:
+    """Where a study's axis names settings of a controller inside the compiled step: its law made from settings given
+    by name, and the named settings' values in SI; ``None`` and none otherwise."""
+    controller = plans.controller
+    if controller is None or not controller.leaves:
+        return None, {}
+    from mime.control._run import control_context
+
+    def remake(given: Mapping[str, Any]) -> Any:
+        return controller.entry.law(control_context(plans, given))
+
+    settings = control_context(plans).settings
+    return remake, {name: settings[name] for name in controller.leaves}
 
 
 def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] = (),
@@ -340,7 +355,9 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     if plans.controller is not None and plans.controller.mode is Mode.GRAPH:
         if law is None:
             raise ValueError("a controller inside the compiled step is built from its law: pass construct its law")
-        in_graph, controller_edges, refusals = controller_nodes(plans.controller, law, plans.dt, built)
+        remake, leaf_values = _remake(plans)
+        in_graph, controller_edges, refusals = controller_nodes(plans.controller, law, plans.dt, built, remake,
+                                                                leaf_values)
         if refusals:
             raise BuildRefused(refusals, report_of(plans, order, refusals))
         built.update({node.name: node for node in in_graph})
