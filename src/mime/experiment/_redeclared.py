@@ -18,7 +18,7 @@ name, a law's or an observation's id, a value's or a source's path; the controll
   - *A law or an observation*, where no other declaration names its id, replaces the earlier one with a note; where
     one does (a value, a source, the controller), both are kept and the build refuses the two, saying a line or cell
     has probably run twice.
-  - *A value, a source, the controller or the licence* replaces the earlier one; nothing names them.
+  - *A value, a source, a range, the controller or the licence* replaces the earlier one; nothing names them.
   - *The note is also kept.* A warning is all a warnings filter removes, so each replacement is also recorded on the
     experiment (``replaced``), which ``plan()`` and the build report show (``PlanSet.replaced``,
     ``BuildReport.replaced``). The saved form is not changed: it holds the final declarations. The note is raised
@@ -49,6 +49,7 @@ from mime.build import (
     LicenceDeclaration,
     ObservationDeclaration,
     PermissionDeclaration,
+    RangeDeclaration,
     SourceDeclaration,
     ThingDeclaration,
     ValueDeclaration,
@@ -105,6 +106,9 @@ def known_as(declaration: Declaration) -> Known | None:
     if isinstance(declaration, SourceDeclaration):
         path = _path(declaration.path)
         return Known("exp.source(...)", f"the source of {path}", ("source", path))
+    if isinstance(declaration, RangeDeclaration):
+        path = _path(declaration.path)
+        return Known("exp.declare_range(...)", f"the range of {path}", ("range", path))
     if isinstance(declaration, ControllerDeclaration):
         return Known("exp.set_controller(...)", "the controller", ("controller", ""))
     if isinstance(declaration, LicenceDeclaration):

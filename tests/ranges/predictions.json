@@ -1,0 +1,27 @@
+{
+  "written": "2026-11-08, committed before any gate of S-F0-2 ran (the commit that adds this file is the timestamp): declared ranges, saved with the experiment; geometry axes; the MRS rung's force points chosen over a range",
+  "operating_point": "the pulled sphere of tests/oracles/test_mrs_gradients.py: Drag.MRS at spacing 0.6 mm, blob 0.5, quadrature refinement 4, free space, mass and inertia declared; the range ball.parts.shell.radius in [1.0, 1.15] mm; float64 unless stated",
+  "gate_4": {
+    "prediction": "a sweep of the radius at 1.0, 1.05, 1.1 and 1.15 mm on the ranged experiment is one group and compiles once a chunk length (the S2b gate 2 counter); every member holds 91 force points (the sampling chosen at 1.15 mm). The same sweep with no range is three groups (66, 66, 72 and 91 force points), each split reason naming the drag node's counts",
+    "control": "a planted rung that chooses its sampling from the member's own radius under the range splits the sweep into three groups, and plan() reports the split as inside the declared range, every run; in the strict profile's rule the same split is a refusal (the rule is tested by its function: strict is not built and is refused by name)"
+  },
+  "price_report": "the ranged build's report names, for ball.parts.shell.radius, the drag's force points 91 chosen at 1.15 mm against 66 at the experiment's own 1.0 mm, and the dense solve's 273 unknowns against 198 (about 2.6 times the factorisation)",
+  "monotone": {
+    "prediction": "the sphere's force-point count is non-decreasing in its radius at fixed spacing on a grid of radii 0.8 to 1.6 mm at spacings 0.3, 0.45, 0.6 and 1.0 mm (no exception); the default spacing is non-decreasing in the radius",
+    "control": "a planted consumer whose measure peaks inside the range: declared monotone, its choice at the corners falls short of the member at the peak, refused there (the member's own count above the range's) every run; declared sampled inside at 9 points a setting, the same member is covered"
+  },
+  "independence": {
+    "prediction": "on the ranged sphere, the build under the range equals the build without it with the drag's reported choices pinned (structure record, leaves, initial state and the traced step), at the base and at both corners",
+    "control": "a planted entry that sizes a value from the range (its width) without reporting a choice is refused, every run"
+  },
+  "two_builds": "the trace form at a relative move of 1e-6 inside the range, on the ranged sphere's radius: quiet",
+  "cache": "a second plan of the same ranged study reuses both verdicts (no further build for the checks); the first plan's checks on the MRS sphere cost about 2 to 6 s on this laptop's CPU (noisy, shared machine)",
+  "overrides": "an override of the radius inside the range passes as data (one compiled step, no rebuild) and runs the member a study runs at that value, bit for bit; outside the range it is refused (override.outside-range), naming the range",
+  "outside_point": "a study point outside the range is built for its own value, a group of its own, its split reason naming the range",
+  "bridge_and_saved_form": "a ranged experiment saved and loaded keeps its range (form 11 on the branch), and verify passes; a member inside the range made an experiment (as_experiment) reproduces the member's arrays bit for bit; a member outside it is made without that range",
+  "bits": {
+    "cases": "unranged experiments: the pulled MRS sphere and the screw-in-tube example (the tube demo), float64 and float32, the chunked run",
+    "prediction": "every array np.array_equal to #208's head (7b5c69b) on the same machine at one usable CPU count and one BLAS thread: without a range no choice moves"
+  },
+  "s2b_gates": "S2b's gates 1 to 3, the chunk test and the batch-of-one test pass as they run now, with the range in the base for the ranged cases"
+}

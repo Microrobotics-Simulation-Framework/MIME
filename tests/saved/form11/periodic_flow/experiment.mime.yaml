@@ -1,0 +1,82 @@
+schema: mime.document/11
+mime: 0.3.0.dev1
+experiment: periodic_tube_flow
+profile: exploratory
+run:
+  dt:
+    value: 0.00025
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  tube:
+    kind: structure
+    prim: /World/tube
+    geometry:
+      name: tube
+      version: 0.1.0
+      settings:
+        axis: [0.0, 0.0, 1.0]
+        inner_radius:
+          value: 0.0005
+          unit: m
+        wall:
+          value: 0.0002
+          unit: m
+        length:
+          value: 0.01
+          unit: m
+  water:
+    kind: medium
+    prim: /World/water
+    fields:
+      flow:
+        name: fvm
+        version: 0.1.0
+        settings:
+          domain:
+            group: periodic_box
+            settings:
+              length:
+                value: 0.00025
+                unit: m
+              margin: 4
+          cells_across: 8
+          scheme:
+            group: imex_euler
+            settings: {}
+    fills: tube.lumen
+interactions:
+- id: body_force:water
+  name: body_force
+  version: 0.1.0
+  binds:
+    medium: water
+  settings:
+    along: [0.0, 0.0, 1.0]
+    steady:
+      value: 1.0
+      unit: m/s^2
+    amplitude:
+      value: 0.5
+      unit: m/s^2
+    frequency:
+      value: 2.0
+      unit: Hz
+observations: []
+declared:
+  water.density:
+    value: 1000.0
+    unit: kg/m^3
+    reason: water near 20 C
+  water.viscosity:
+    value: 0.001
+    unit: Pa s
+    reason: water near 20 C
+materials: {}
+controller: null
