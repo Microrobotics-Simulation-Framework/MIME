@@ -370,6 +370,6 @@ def term_orders(sums: Sums | Sequence[Sums], terms: Sequence[str], orders: Mappi
     return OrderReport(tuple(checks), skipped, undeclared)
 
 
-__all__ = ["ORDER_HALF_WIDTH", "REFINEMENT", "FlagReading", "FlagReport", "OrderCheck", "OrderReport", "Sums", "active_flags",
-           "declared_flags", "flag_problems", "flag_readings", "judge_flags", "ledger_closes", "observed_order",
-           "ratio_band", "run_flags", "term_orders"]
+__all__ = ["ORDER_HALF_WIDTH", "REFINEMENT", "FlagReading", "FlagReport", "OrderCheck", "OrderReport", "Sums",
+           "active_flags", "declared_flags", "flag_problems", "flag_readings", "judge_flags", "ledger_closes",
+           "observed_order", "ratio_band", "run_flags", "term_orders"]

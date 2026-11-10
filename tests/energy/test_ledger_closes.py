@@ -9,7 +9,8 @@ step's own rounding, which reaches 0.27 floors on a rigid body's draws (0.10 on 
 2000 draws a kind and dtype, the PR's table). So a gift between about 0.73 and 1.27 floors is caught on some draws and
 not others, and a floor loosened by 30 % passes these drawn gifts: **the floor's value is pinned on records** (no
 rounding: a worst step at exactly the floor passes, the next number above fails). The rate over independent runs is
-measured on Actions (``test_detection_rate_target``).
+measured on Actions with this file run as a script (:func:`caught_in_one_run`), never collected as a test: CI's lanes
+allow no skipped test.
 
 **Each of its checks has a control on records** that fails it alone: the identity, unattributed work (and none where
 the gate fed some), a dissipative law's gift, an indefinite operator, a step that gave energy on route 1, a jump
@@ -27,12 +28,6 @@ from ledger_cases import in_dtype
 
 from mime.core import ledger as books
 from mime.testing import ledger_closes, step_identity
-
-#: The gift a detection-rate run plants, in floors of each step's scale (the probe's planted arm sets it; its clean arm
-#: unsets it, a gift of zero), and the switch that runs the probe's target at all (unset in CI's lanes).
-GIFT = float(os.environ.get("MIME_LEDGER_GIFT", "0"))
-RATE = "MIME_LEDGER_RATE" in os.environ
-
 
 def gifted(floors: float):
     """``mime.core.ledger.recorded`` with each step's end storage raised by ``floors`` of the identity's floor on that
@@ -67,15 +62,19 @@ def test_a_gift_over_the_floor_is_caught_on_every_draw_and_one_under_it_on_none(
         assert result.passed, result
 
 
-@pytest.mark.skipif(not RATE, reason="the detection-rate probe's target (MIME_LEDGER_RATE): CI runs the case above")
-@pytest.mark.parametrize("kind", ["rigid_body", "joint", "fluid"])
-def test_detection_rate_target(kind, monkeypatch):
-    """One run of the rate: a gift of ``MIME_LEDGER_GIFT`` floors (zero where unset) on draws of ``kind`` in the
-    dtype ``MIME_LEDGER_DTYPE``; it fails when the check catches it."""
-    with in_dtype(os.environ.get("MIME_LEDGER_DTYPE", "float64")):
-        monkeypatch.setattr(books, "recorded", gifted(GIFT))
-        result = step_identity(_dynamics(kind), max_examples=20)
-    assert result.passed, result
+def caught_in_one_run(kind: str, dtype: str, floors: float) -> bool:
+    """One run of the gift's detection rate: a gift of ``floors`` on 20 draws of ``kind`` in ``dtype``; True when the
+    check catches it. ``python tests/energy/test_ledger_closes.py --kind fluid --dtype float32`` is the target of
+    ``.github/probe/detection_rate.py --script`` (``--plant-var MIME_LEDGER_GIFT``: the planted arm's gift in floors,
+    zero on the clean arm); it exits 1 when caught."""
+    real = books.recorded
+    books.recorded = gifted(floors)
+    try:
+        with in_dtype(dtype):
+            result = step_identity(_dynamics(kind), max_examples=20)
+    finally:
+        books.recorded = real
+    return result.failed
 
 
 # -- each check, on records -----------------------------------------------------------------------------------------
@@ -188,3 +187,15 @@ def test_a_run_s_result_judges_each_metered_receiver_and_its_findings():
         final = {"b": {"velocity": np.zeros(3)}}
 
     assert ledger_closes(Unmetered()).failed
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--kind", choices=["rigid_body", "joint", "fluid"], required=True)
+    parser.add_argument("--dtype", choices=["float64", "float32"], default="float64")
+    arguments = parser.parse_args()
+    gift = float(os.environ.get("MIME_LEDGER_GIFT", "0"))
+    sys.exit(1 if caught_in_one_run(arguments.kind, arguments.dtype, gift) else 0)
