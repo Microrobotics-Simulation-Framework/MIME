@@ -37,6 +37,7 @@ PATH = "water.viscosity"
 SAME, CHANGED = 1e-6, 1e-4
 
 
+@functools.cache
 def run(plant: str | None, mode: str):
     with pytest.MonkeyPatch.context() as patch:
         cap_plant(patch, plant)
@@ -62,9 +63,19 @@ def reference(mode: str):
             flux, mode=mode, acknowledged=ACKNOWLEDGED).member(0)
 
 
-@pytest.fixture(scope="module", params=[("primal", "reverse"), ("primal", "forward"), ("transpose", "reverse"),
-                                        ("transpose", "forward")], ids="-".join)
+CAPPED = [("primal", "reverse"), ("primal", "forward"), ("transpose", "reverse"), ("transpose", "forward")]
+
+
+@pytest.fixture(scope="module", params=CAPPED, ids="-".join)
 def capped(request):
+    plant, mode = request.param
+    return plant, mode, run(plant, mode)
+
+
+@pytest.fixture(scope="module", params=[case for case in CAPPED if case != ("transpose", "forward")], ids="-".join)
+def rechecked(request):
+    """The capped runs that something stopped short in (forward mode takes no transpose solve, so a transpose cap caps
+    nothing there: asserted in the report test)."""
     plant, mode = request.param
     return plant, mode, run(plant, mode)
 
@@ -120,14 +131,12 @@ def test_a_capped_solve_is_warned_of_with_its_count_and_shown_in_the_report(capp
         assert member.recheck is None
 
 
-def test_a_capped_solve_is_rechecked_with_its_cap_lifted_and_reaches_the_clean_runs_answer(capped):
+def test_a_capped_solve_is_rechecked_with_its_cap_lifted_and_reaches_the_clean_runs_answer(rechecked):
     """Where something stopped short, the recheck re-solves with the cap lifted: it converges, and its objective and
     derivative are the clean run's, where the capped member's are far from it (the primal cap; the transpose cap moves
     the derivative alone, the primal solves being converged)."""
-    plant, mode, result = capped
+    plant, mode, result = rechecked
     member, held = result.member(0), reference(mode)
-    if plant == "transpose" and mode == "forward":
-        pytest.skip("nothing capped: asserted in the report test")
     recheck = member.recheck
     assert recheck is not None and recheck.made and recheck.converged
     assert recheck.lifted == ("water.flow",) and recheck.not_rechecked == {}
@@ -141,11 +150,9 @@ def test_a_capped_solve_is_rechecked_with_its_cap_lifted_and_reaches_the_clean_r
         assert recheck.value_change < SAME, "the primal solves were converged: the objective does not move"
 
 
-def test_the_rechecks_own_solves_are_run_and_converge_in_more_than_the_one_iteration_they_were_capped_at(capped):
+def test_the_rechecks_own_solves_are_run_and_converge_in_more_than_the_one_iteration_they_were_capped_at(rechecked):
     """The recheck's own solves are re-run and reported (a stub reporting a change of zero has none)."""
-    plant, mode, result = capped
-    if plant == "transpose" and mode == "forward":
-        pytest.skip("nothing capped: asserted in the report test")
+    result = rechecked[2]
     recheck = result.member(0).recheck
     assert recheck is not None and len(recheck.solves) == 1
     (own,) = recheck.solves
