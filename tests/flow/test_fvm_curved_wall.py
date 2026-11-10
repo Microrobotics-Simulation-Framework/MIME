@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import math
 
-import numpy as np
 import pytest
 from fvm_cases import in_dtype, run
 from test_fvm_tube import planar_calibration
@@ -55,20 +54,26 @@ def helix_case(seed: int, dh: int = 16, planted: bool = False):
     return solid_node(given, cells, h, TUBE, tolerance=1e-10), oracle, cells, h
 
 
-@pytest.mark.parametrize("seed", seeds(1201, 1202))
-def test_fa2_the_curved_tubes_lumen_is_not_displaced_against_deans_profile(seed):
+def measure_curved(seed: int) -> dict[str, float]:
+    """FA2's reading at a draw: the fitted centre's offsets along the principal normal and the binormal and the free
+    radius's shift less the planar calibration, in cells, and the fitted amplitude against ``G cos(pitch) / 4``."""
     with in_dtype("float64"):
         node, helix, cells, h = helix_case(seed, planted=plant("centreline") is not None)
         state = run(node, 1)
         fitted = dean_fit(helix, state, cells, h, 2.0 * h)
-    displacement = fitted["normal"] / h
-    shift = (fitted["radius"] - TUBE) / h
-    planar = planar_calibration(16, "float64")
-    print(f"\nseed {seed}: displacement {displacement:+.4f} cells along the normal, {fitted['binormal'] / h:+.4f} "
-          f"along the binormal; shift {shift:+.4f} (planar {planar:+.4f}); amplitude {fitted['amplitude']:.4f} of "
-          f"G cos(pitch)/4; {fitted['points']:.0f} cells; report {np.asarray(state['solve_report'])}")
-    assert abs(displacement) <= DISPLACEMENT_LINE
-    assert abs(shift - planar) < SHIFT_LINE
+    return {"displacement": fitted["normal"] / h, "binormal": fitted["binormal"] / h,
+            "shift": (fitted["radius"] - TUBE) / h - planar_calibration(16, "float64"),
+            "amplitude": fitted["amplitude"], "cells": fitted["points"]}
+
+
+@pytest.mark.parametrize("seed", seeds(1201, 1202))
+def test_fa2_the_curved_tubes_lumen_is_not_displaced_against_deans_profile(seed):
+    read = measure_curved(seed)
+    print(f"\nseed {seed}: displacement {read['displacement']:+.4f} cells along the normal, {read['binormal']:+.4f} "
+          f"along the binormal; shift less the planar calibration {read['shift']:+.4f}; amplitude "
+          f"{read['amplitude']:.4f} of G cos(pitch)/4; {read['cells']:.0f} cells")
+    assert abs(read["displacement"]) <= DISPLACEMENT_LINE
+    assert abs(read["shift"]) < SHIFT_LINE
 
 
 def ellipse_case(seed: int, a: float, b: float, dh: int = 16, grown: float = 0.0):
@@ -82,15 +87,20 @@ def ellipse_case(seed: int, a: float, b: float, dh: int = 16, grown: float = 0.0
     return solid_node(given, cells, h, min(a, b), tolerance=1e-10), oracle, cells, h
 
 
-@pytest.mark.parametrize("seed", seeds(1301, 1302))
-def test_fa4_the_elliptic_sections_semi_axes_shift_as_a_round_tubes(seed):
+def measure_section(seed: int) -> dict[str, float]:
+    """FA4's reading at a draw: each semi-axis's shift less the round tube's by the same estimator, in cells."""
     with in_dtype("float64"):
         node, tube, cells, h = ellipse_case(seed, 0.5, 0.3, grown=0.25 if plant("wall") else 0.0)
         a, b = ellipse_fit(tube, run(node, 1), cells, h, 2.0 * h)
         round_node, round_tube, round_cells, _ = ellipse_case(seed, 0.5, 0.5)
         r, r_other = ellipse_fit(round_tube, run(round_node, 1), round_cells, h, 2.0 * h)
     round_shift = 0.5 * ((r - 0.5) + (r_other - 0.5)) / h
-    shifts = ((a - 0.5) / h, (b - 0.3) / h)
-    print(f"\nseed {seed}: semi-axes' shifts {shifts[0]:+.4f}, {shifts[1]:+.4f} cells; the round tube's "
-          f"{round_shift:+.4f} ({(r - 0.5) / h:+.4f}, {(r_other - 0.5) / h:+.4f})")
-    assert all(abs(shift - round_shift) <= SECTION_LINE for shift in shifts)
+    return {"major": (a - 0.5) / h - round_shift, "minor": (b - 0.3) / h - round_shift, "round": round_shift}
+
+
+@pytest.mark.parametrize("seed", seeds(1301, 1302))
+def test_fa4_the_elliptic_sections_semi_axes_shift_as_a_round_tubes(seed):
+    read = measure_section(seed)
+    print(f"\nseed {seed}: semi-axes' shifts less the round tube's {read['major']:+.4f}, {read['minor']:+.4f} cells "
+          f"(the round tube's {read['round']:+.4f})")
+    assert abs(read["major"]) <= SECTION_LINE and abs(read["minor"]) <= SECTION_LINE

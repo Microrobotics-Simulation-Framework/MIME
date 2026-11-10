@@ -17,17 +17,15 @@ Richardson references at 32 and 64 cells a diameter, stored (``data/general_wall
 from __future__ import annotations
 
 import dataclasses
-import functools
 import json
 import math
 import os
 from pathlib import Path
 from typing import Any
 
-import jax
 import jax.numpy as jnp
 import numpy as np
-from fvm_cases import Waveform, driven, in_dtype, run
+from fvm_cases import Waveform, driven, in_dtype, run  # noqa: F401 - in_dtype re-exported for the gates
 from scipy.optimize import least_squares
 
 from mime.nodes.flow.fvm import ImplicitFlowNode, MACGrid

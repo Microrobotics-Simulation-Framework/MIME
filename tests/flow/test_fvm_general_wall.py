@@ -66,11 +66,9 @@ def _planted(tree: Tree, dh: int, segments: tuple[int, ...], name: str) -> Tree 
 
 
 # -- the contract -------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("seed", seeds(601))
-def test_the_nodes_wall_is_the_unions_distance_where_the_fields_read_it(seed):
-    """The filleted loop at 8 cells a diameter: on each face set, the node's distance equals the union's (all its
-    candidates at every held face) to rounding, its counts are zero, and every face it does not hold lies where the
-    fields are flat (deeper than the band's fluid half, or past the fillet's radius in the solid)."""
+def measure_contract(seed: int) -> dict[str, float]:
+    """The contract's reading at a draw: the node's largest difference from the union on its held faces (cells), its
+    counts, and the faces it does not hold where a field is not flat."""
     angle, offset = draw(seed)
     with in_dtype("float64"):
         placed = tree_node(loop(), 8, angle=angle, offset=offset)
@@ -88,7 +86,7 @@ def test_the_nodes_wall_is_the_unions_distance_where_the_fields_read_it(seed):
         tree = node.tree()
         near, _, reach = node.held_faces(grid)
         h = placed.layout.spacing
-        worst = 0.0
+        worst, unheld = 0.0, 0
         for k in range(3):
             points = np.asarray(grid.face_points(k, "float64")).reshape(-1, 3)
             exact = np.asarray(tree.lumen().signed_distance(tree.parameters(), points[near[k]]).distance)
@@ -96,10 +94,20 @@ def test_the_nodes_wall_is_the_unions_distance_where_the_fields_read_it(seed):
             worst = max(worst, float(np.max(np.abs(phi[near[k]] - exact))) / h)
             outside = np.ones(len(phi), dtype=bool)
             outside[near[k]] = False
-            assert not np.any(outside & (phi > -reach[0]) & (phi <= reach[1]))
-    print(f"\nseed {seed}: the node against the union {worst:.2e} cells, counts {np.asarray(counts)}")
-    assert np.all(np.asarray(counts) == 0.0)
-    assert worst <= CONTRACT_LINE
+            unheld += int(np.sum(outside & (phi > -reach[0]) & (phi <= reach[1])))
+    return {"worst": worst, "counts": float(np.sum(np.asarray(counts))), "unheld": float(unheld)}
+
+
+@pytest.mark.parametrize("seed", seeds(601))
+def test_the_nodes_wall_is_the_unions_distance_where_the_fields_read_it(seed):
+    """The filleted loop at 8 cells a diameter: on each face set, the node's distance equals the union's (all its
+    candidates at every held face) to rounding, its counts are zero, and every face it does not hold lies where the
+    fields are flat (deeper than the band's fluid half, or past the fillet's radius in the solid)."""
+    read = measure_contract(seed)
+    print(f"\nseed {seed}: the node against the union {read['worst']:.2e} cells, counts {read['counts']:.0f}, "
+          f"faces not held where a field is not flat {read['unheld']:.0f}")
+    assert read["counts"] == 0.0 and read["unheld"] == 0.0
+    assert read["worst"] <= CONTRACT_LINE
 
 
 # -- FA3 and FA5 ----------------------------------------------------------------------------------------------------
@@ -107,37 +115,36 @@ def _inferred_shift(tree: Tree, flux: float, reference: float, h: float) -> floa
     return math.log(flux / reference) / (h * lubrication_sensitivity(tree)[1])
 
 
-@pytest.mark.parametrize("seed", seeds(701, 702))
-def test_fa3_the_taper_holds_the_planar_calibration_against_lubrication(seed):
-    tree, dh = taper(), 16
-    offset = draw(seed)[1]
-    with in_dtype("float64"):
-        placed = tree_node(tree, dh, offset=offset, tolerance=1e-10,
-                           solver=_planted(tree, dh, tuple(range(len(tree.segments))), "wall"))
-        state = run(placed.node, 1)
-    shift = _inferred_shift(tree, box_flux(state), lubrication_flux(tree), placed.layout.spacing)
-    planar = planar_calibration(16, "float64")
-    print(f"\nseed {seed}: taper's shift {shift:+.4f} cells against lubrication, planar {planar:+.4f}; "
-          f"counts {[float(state[k]) for k in ('wall_unrefined', 'wall_unconverged', 'wall_unplanned')]}")
-    assert float(state["wall_inexact"]) == 0.0
-    assert abs(shift - planar) < SHIFT_LINE
-
-
-@pytest.mark.parametrize("seed", seeds(801, 802))
-def test_fa5_the_stenosis_holds_the_planar_calibration_against_its_reference(seed):
-    reference = references().get("stenosis")
-    if reference is None:
-        pytest.fail("no stored reference for the stenosis (generate_wall_references.py)")
-    tree, dh = stenosis(), 16
+def measure_shift(geometry: str, seed: int) -> dict[str, float]:
+    """FA3's and FA5's reading at a draw: the wall's inferred shift against its oracle (lubrication's flux for the
+    taper, the reference's for the stenosis) less the planar calibration, in cells, and the wall's flag."""
+    tree, dh = (taper() if geometry == "taper" else stenosis()), 16
     with in_dtype("float64"):
         placed = tree_node(tree, dh, offset=draw(seed)[1], tolerance=1e-10,
                            solver=_planted(tree, dh, tuple(range(len(tree.segments))), "wall"))
         state = run(placed.node, 1)
-    shift = _inferred_shift(tree, box_flux(state), reference["flux"], placed.layout.spacing)
-    planar = planar_calibration(16, "float64")
-    print(f"\nseed {seed}: stenosis's shift {shift:+.4f} cells against its reference, planar {planar:+.4f}")
-    assert float(state["wall_inexact"]) == 0.0
-    assert abs(shift - planar) < SHIFT_LINE
+    oracle = lubrication_flux(tree) if geometry == "taper" else references()["stenosis"]["flux"]
+    shift = _inferred_shift(tree, box_flux(state), oracle, placed.layout.spacing)
+    return {"shift": shift - planar_calibration(16, "float64"), "inexact": float(state["wall_inexact"])}
+
+
+@pytest.mark.parametrize("seed", seeds(701, 702))
+def test_fa3_the_taper_holds_the_planar_calibration_against_lubrication(seed):
+    read = measure_shift("taper", seed)
+    print(f"\nseed {seed}: the taper's shift against lubrication, less the planar calibration, {read['shift']:+.4f} "
+          f"cells")
+    assert read["inexact"] == 0.0
+    assert abs(read["shift"]) < SHIFT_LINE
+
+
+@pytest.mark.parametrize("seed", seeds(801, 802))
+def test_fa5_the_stenosis_holds_the_planar_calibration_against_its_reference(seed):
+    assert "stenosis" in references(), "no stored reference for the stenosis (generate_wall_references.py)"
+    read = measure_shift("stenosis", seed)
+    print(f"\nseed {seed}: the stenosis's shift against its reference, less the planar calibration, "
+          f"{read['shift']:+.4f} cells")
+    assert read["inexact"] == 0.0
+    assert abs(read["shift"]) < SHIFT_LINE
 
 
 # -- FA6 and FA7 ----------------------------------------------------------------------------------------------------
@@ -154,8 +161,7 @@ def _split(tree: Tree, dh: int, seed: int) -> tuple[float, dict]:
 @pytest.mark.parametrize("seed", seeds(901, 902))
 def test_fa6_the_loops_split_at_thirty_degrees_holds_its_reference(seed):
     reference = references().get("loop")
-    if reference is None:
-        pytest.fail("no stored reference for the loop's split (generate_wall_references.py)")
+    assert reference is not None, "no stored reference for the loop's split (generate_wall_references.py)"
     split, state = _split(loop(), 16, seed)
     print(f"\nseed {seed}: split {split:.5f} against the reference {reference['split']:.5f}")
     assert float(state["wall_inexact"]) == 0.0
@@ -171,11 +177,9 @@ def test_fa7_the_symmetric_split_is_a_half(seed):
 
 
 # -- FA8 ------------------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("seed", seeds(1101))
-def test_fa8_the_first_daughters_flux_in_its_radius_is_the_central_difference(seed):
-    """At 8 cells a diameter, float64: ``d Q_1 / d R_1`` along the first daughter's radii (both ends of its three
-    segments), reverse mode through one steady step against ``(Q(R + e) - Q(R - e)) / 2e`` at ``e`` 5e-5 of the radius,
-    both sides on the node as built (its cells, held faces and plan), their counts zero."""
+def measure_derivative(seed: int) -> dict[str, float]:
+    """FA8's reading at a draw: the reverse derivative, the central difference, their relative difference, and the
+    wall's flag."""
     angle, offset = draw(seed)
     with in_dtype("float64"):
         placed = tree_node(loop(), 8, angle=angle, offset=offset, tolerance=1e-12)
@@ -202,7 +206,17 @@ def test_fa8_the_first_daughters_flux_in_its_radius_is_the_central_difference(se
         up = float(jax.jit(flux)(jnp.asarray(held["tree_radii"]) + step * direction)[0])
         down = float(jax.jit(flux)(jnp.asarray(held["tree_radii"]) - step * direction)[0])
     central = (up - down) / (2.0 * step)
-    print(f"\nseed {seed}: dQ1/dR1 reverse {reverse:.8e}, central {central:.8e}, relative "
-          f"{abs(reverse - central) / abs(central):.2e}; flux {float(value):.6e}")
-    assert float(ended["wall_inexact"]) == 0.0
-    assert abs(reverse - central) <= DERIVATIVE_LINE * abs(central)
+    return {"reverse": reverse, "central": central, "relative": abs(reverse - central) / abs(central),
+            "flux": float(value), "inexact": float(ended["wall_inexact"])}
+
+
+@pytest.mark.parametrize("seed", seeds(1101))
+def test_fa8_the_first_daughters_flux_in_its_radius_is_the_central_difference(seed):
+    """At 8 cells a diameter, float64: ``d Q_1 / d R_1`` along the first daughter's radii (both ends of its three
+    segments), reverse mode through one steady step against ``(Q(R + e) - Q(R - e)) / 2e`` at ``e`` 5e-5 of the radius,
+    both sides on the node as built (its cells, held faces and plan), their counts zero."""
+    read = measure_derivative(seed)
+    print(f"\nseed {seed}: dQ1/dR1 reverse {read['reverse']:.8e}, central {read['central']:.8e}, relative "
+          f"{read['relative']:.2e}; flux {read['flux']:.6e}")
+    assert read["inexact"] == 0.0
+    assert read["relative"] <= DERIVATIVE_LINE
