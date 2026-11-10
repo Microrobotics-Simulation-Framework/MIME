@@ -161,8 +161,8 @@ def test_an_iterate_past_a_line_is_judged_there_and_the_fit_ends_on_the_line(acr
 
 def test_the_fit_ends_where_a_fresh_build_reads_the_line(across):
     """The independent oracle: the Reynolds number of a fresh build at the radius the fit ended at is within 1e-4 of the
-    limit, inside it. A fit that judged each iterate by the start's plan (``stale_watch``) ends 6 % of the range short of
-    it, with every line of its own result in order."""
+    limit, inside it. A fit that judged each iterate by the start's plan (``stale_watch``) ends 6 % short of
+    the line's radius, with every line of its own result in order."""
     result, _ = across
     reynolds, limit = turning_number(float(result.values[RADIUS]) * 1e3)
     assert 0.0 <= (limit - reynolds) / limit <= ON_THE_LINE, (reynolds, limit)
