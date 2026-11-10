@@ -6,9 +6,10 @@ round 4, item 10; R4-B-09 option 0).
 The cases (``FieldCase``): its **declarations** (SF-1 to SF-11 written, "not declared" only on the three open rows,
 what it provides and accepts in the vocabulary and on the kind); a **reading** at points, with its quantity's shape and
 units (against an oracle in SI); **outside** (a kind that declares it takes no delivery takes none: its node's inputs
-are its drives' ports); its **ledger** (route 2: the step identity to the ledger's floor; route 1: every step
-dissipated); **steady** (a declared steady solve is the time-stepped fixed point: a step from it moves it by no more
-than the solve's tolerance); the **affine** response (none is built before F2b). A kind that declares a capability
+are its drives' ports); its **ledger** (its records of its declared route, and its books closing at every step,
+``ledger_closes``: route 2's step identity to the ledger's floor, route 1's every step dissipated); **steady** (a
+declared steady solve is the time-stepped fixed point: a step from it moves it by no more than the solve's
+tolerance); the **affine** response (none is built before F2b). A kind that declares a capability
 whose case its rig does not give fails, as a planted absent case must. **The standing check as a test**: nothing here
 reads a solver, a projector or a fluid's operator; a non-fluid kind passes it with its own rig."""
 
@@ -23,6 +24,7 @@ import numpy as np
 
 from mime.core import ledger as books
 from mime.fields._solved import SolvedField
+from mime.testing._ledger_harness import ledger_closes
 from mime.vocabulary import lookup
 
 
@@ -130,28 +132,17 @@ def _outside(kind: Any, rig: FieldRig) -> CaseResult:
                       else "")
 
 
-def _ledger(declared: SolvedField, rig: FieldRig, dtype: str) -> CaseResult:
+def _ledger(declared: SolvedField, rig: FieldRig) -> CaseResult:
     if rig.metered is None:
         return CaseResult(FieldCase.LEDGER, False, f"it declares ledger route {declared.ledger_route} and its rig gives "
                                                    f"no metered run")
     state = rig.metered()
-    r = books.RECORDS
-    eps = float(np.finfo(dtype).eps)
-    if declared.ledger_route == 2:
-        worst = float(np.asarray(state[f"{r}identity_worst"]))
-        ok = worst <= books.IDENTITY_ULPS * eps and float(np.asarray(state[f"{r}unattributed_worst"])) == 0.0
-        return CaseResult(FieldCase.LEDGER, ok, "" if ok else f"its step identity's worst step is {worst:.3g} of its "
-                                                               f"scale, over {books.IDENTITY_ULPS} eps")
-    if f"{r}route_one_negative_steps" not in state:
-        return CaseResult(FieldCase.LEDGER, False, "it declares route 1 and its records hold no route-1 check")
-    negative = float(np.asarray(state[f"{r}route_one_negative_steps"]))
-    worst = float(np.asarray(state[f"{r}route_one_worst"]))
-    claimed = float(np.asarray(state[f"{r}identity_worst"]))
-    found = [f"{negative:g} steps gave energy (route 1's dissipation at worst {worst:.3g} of its scale)"] \
-        if negative != 0.0 else []
-    found += [f"the part of its step it claims (a drive's attribution) is {claimed:.3g} of its scale at worst, over "
-              f"{books.IDENTITY_ULPS} eps"] if claimed > books.IDENTITY_ULPS * eps else []
-    return CaseResult(FieldCase.LEDGER, not found, "; ".join(found))
+    route = 1 if f"{books.RECORDS}route_one_step" in state else 2
+    if route != declared.ledger_route:
+        return CaseResult(FieldCase.LEDGER, False, f"it declares ledger route {declared.ledger_route} and its records "
+                                                   f"are route {route}'s")
+    judged = ledger_closes(state)
+    return CaseResult(FieldCase.LEDGER, judged.passed, judged.detail)
 
 
 def _steady(rig: FieldRig) -> CaseResult:
@@ -184,7 +175,7 @@ def field_conformance(kind: Any, declared: SolvedField, rig: FieldRig, *, dtype:
             if declared.ledger_route is None:
                 skipped[case] = f"no ledger route: {declared.ledger_reason}"
             else:
-                results.append(_ledger(declared, rig, dtype))
+                results.append(_ledger(declared, rig))
         elif case is FieldCase.STEADY:
             if declared.steady_solve:
                 results.append(_steady(rig))

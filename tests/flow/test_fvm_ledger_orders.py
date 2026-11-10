@@ -1,31 +1,41 @@
-"""CI check (b) (row #301, R-19): each numerical term the flow's step identity books falls at its order, so a physical
-loss written into an ``N`` formula, which the identity books whatever it is called and closes all the same, is caught.
+"""CI check (b) (row #301, R-19), on the ledger harness's order check (``mime.testing.term_orders``): each numerical
+term the flow's step identity books falls at the order its scheme declares (``TimeScheme.ledger_orders``), so a
+physical loss written into an ``N`` formula, which the identity books whatever it is called and closes all the same, is
+caught; and every scheme declares an order, or why it has none, for every term it books.
 
-On a smooth swirl in the periodic tube with its Poiseuille drive (IMEX Euler, convection on, D/h 8, a fixed time of
-0.05 in units of D and nu), each term's magnitude summed over the run:
+On smooth swirls in the periodic tube with its Poiseuille drive (IMEX Euler, convection on, D/h 8, a fixed time of
+0.05 in units of D and nu, the solve at each dtype's default tolerance), each term's magnitude summed over the run and
+over the three swirls of one drawn ensemble, at the rig's step and tolerance, with dt halved and with the tolerance a
+hundred times looser: ``N_BE`` and ``N_conv``, declared second order in dt, pass where the order their fall shows
+rounds to two (a ratio of 1.41 to 2.83); ``N_Krylov``, declared at least first order in the tolerance (its stop
+bounds it), where it shows at least half an order (a fall of at least ten, #225's). The steady limit's two zero terms
+and RK3's convective power (zero to rounding on the box) declare no order, with their reasons.
 
-- ``N_BE`` and ``N_conv`` at ``dt`` and ``dt / 2``: first order, their ratio within :data:`FIRST_ORDER`;
-- ``N_Krylov`` at two tolerances a hundred apart: it falls with the tolerance, its ratio at least
-  :data:`KRYLOV_FALL`.
+**Why three swirls summed, at a step of 0.00125.** ``N_conv`` is the residual of products that cancel (its sum is
+0.02 % to 79 % of their magnitudes), so on one swirl whose leading coefficient nearly vanishes it falls at an apparent
+order of 1 or 3.7, in both dtypes alike (a coefficient, not rounding): over 400 swirls a dtype (seeds 5000 to 5399) one
+swirl's ratio ran 1.01 to 6.59 at round 1's step, 0.0025, 2 out of the band and the third-order plant missed on 1, and
+1.13 to 2.46 at 0.00125, 1 out. Summed over three swirls, each weighs by its own size, and a ratio of two small numbers
+no longer decides: 1.60 to 2.30 over 2e5 triples of those swirls at 0.00125, none out, every plant out. **On fresh
+ensembles** (2000 to 3499, swirls 6000 to 10499; ``detection_rate.py`` on Actions, run 42794715500): over 1500 a
+dtype ``N_conv`` falls by 1.97 to 2.22, ``N_BE`` by 1.96 to 1.98 and ``N_Krylov`` by 47 to 460 (float64) and 36 to
+120 (float32) over the hundredfold, no ensemble out of its band; each plant below caught on 300 of 300 a dtype; an
+order shift of ``N_conv`` caught on every ensemble from 0.49 up and 0.57 down (40 ensembles a size), on none from 0.42.
+CI checks ensemble 0 (swirls 0, 1 and 2).
 
-The projection's term (``N_proj``) is not booked on the periodic box: ``tests/flow/test_fvm_ledger.py`` shows it zero to
-rounding at two tolerances. The Windkessels' ``N_WK`` comes with them.
+Every arm starts from one warmed state (the swirl and its drive after 20 steps of 0.000625, half the step), so the
+stiff interior's start, damped in a step whatever the step, is not in the sums; and each arm's books close
+(``ledger_closes``).
 
-Every arm starts from one warmed state (the swirl and its drive after a short run at a quarter of the step), so the
-stiff interior's start, damped in a step whatever the step, is not in the sums.
+**The controls, each failing every ensemble**: ``N_BE`` and ``N_conv`` moved to the wrong order, each scaled by ``(dt
+/ dt_rig)^k`` (``k = -1``: first order; ``k = +1``: third), the difference moved into the viscous row so the identity
+still closes; and the viscous loss written into ``N_Krylov`` (#225's control), of order zero in the tolerance. A
+multiplicative plant is below any check's resolution on a swirl whose term cancels (on one such swirl the order-one
+plant turns a third-order fall into an exact second), which is a further reason the order is read from the sum.
+Over-budget cases go on the duration allowlist, never under ``slow``.
 
-**The control, each failing every run**: the viscous loss moved into the term (written into its formula, the viscous
-row emptied by as much): the identity still closes, and the term's ratio leaves its band, a dissipation per unit time
-not falling with the step or the tolerance. Over-budget cases go on the duration allowlist, never under ``slow``.
-
-**The resolution** (measured on this case, three seeds; ``N_BE`` and ``N_conv`` alike in both dtypes): a physical loss
-of ``k`` times the term's own coarse sum, moved from the viscous row into the term, leaves the band on one seed of the
-three from ``k = 0.1`` (``N_BE`` at 1.58, ``N_conv`` at 1.45), which fails the test, and on all three from about 0.6
-for ``N_BE`` (``N_conv`` keeps one seed in band there); ``N_Krylov`` stays in band at 0.03 of its looser sum and leaves
-on all three at 0.3. Against the viscous loss these are about 0.8 % of it moved into ``N_BE``, 2.5e-6 of it into
-``N_conv``, and 1.4e-7 (float64) or 3.3e-4 (float32) into ``N_Krylov``; the control moves all of it. **A gift a term's
-own formula books** (convection's, at mixed time levels) is booked under that term, where the step identity cannot see
-it: these tests, on this case, are the only check of it, at these resolutions."""
+**A gift a term's own formula books** (convection's, at mixed time levels) is booked under that term, where the step
+identity cannot see it: the order check and the convection flag (``mime.nodes.flow.fvm._flags``) are what see it."""
 
 from __future__ import annotations
 
@@ -35,17 +45,26 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from fvm_cases import METERED, eps, in_dtype, tube_node
+from fvm_cases import METERED, in_dtype, tube_node
 
 from mime.core import ledger as books
-from mime.nodes.flow.fvm import ImplicitFlowNode
+from mime.nodes.flow.fvm import SCHEMES, ImplicitFlowNode
+from mime.testing import ledger_closes, term_orders
+from mime.testing._ledger_harness import observed_order
 
-#: The fixed time each term is summed over (D = 1, nu = 1: about a fifth of the swirl's decay time).
+#: The fixed time each term is summed over (D = 1, nu = 1: the swirl's change per step decays about 1.4-fold a step
+#: at 0.0025, so the run's first steps carry most of each sum).
 TIME = 0.05
-#: The band a first-order term's sum at dt over its sum at dt / 2 lies in: R-19's, as the rotor's exchange test.
-FIRST_ORDER = (1.6, 2.4)
-#: The least ratio of ``N_Krylov``'s summed magnitude at a tolerance to its sum at a hundredth of it.
-KRYLOV_FALL = 10.0
+#: The step of the arms (halved from round 1's 0.0025, where one swirl's sums are further from their asymptote), and
+#: the warm-up's: a quarter of the run at 0.000625, which the stiff interior and the drive's start settle in (the
+#: penalty damps the solid's start in a step whatever the step is).
+STEP, WARM_STEP, WARM_STEPS = 0.00125, 0.000625, 20
+#: The swirls each check sums its terms over: ensemble ``e`` is swirls ``3e`` to ``3e + 2``.
+SWIRLS = 3
+#: The rig's tolerance in each dtype: its default.
+TOLERANCE = {"float64": 1e-8, "float32": 1e-5}
+#: The drive, constant: the tube's Poiseuille body force.
+DRIVE = 8.0
 #: Each term's index in the records (``ImplicitFlowNode.LEDGER_TERMS``).
 TERMS = {name: index for index, name in enumerate(ImplicitFlowNode.LEDGER_TERMS)}
 
@@ -66,38 +85,36 @@ def cellular(node: ImplicitFlowNode, seed: int) -> dict[str, Any]:
     return {f"initial_velocity_{k}": np.asarray(swirl[i]) for i, k in enumerate("xyz")}
 
 
-#: The step of the dt arms and of the tolerance arms, and the warm-up's: a twentieth of the coarse arm's run at a
-#: quarter of its step, which the stiff interior and the drive's start settle in (the penalty damps the solid's start in
-#: a step whatever the step is, which no order describes).
-STEP, WARM_STEP, WARM_STEPS = 0.0025, 0.000625, 20
-#: The tolerances of the Krylov arms, a hundred apart, each dtype's: float32's above its rounding floor; the dt arms take
-#: the tighter.
-TOLERANCES = {"float64": (1e-6, 1e-8), "float32": (1e-3, 1e-5)}
-#: The drive, constant: the tube's Poiseuille body force.
-DRIVE = 8.0
-
-
-def moved_into(term: str):
-    """The plant: the viscous loss written into ``term``'s formula, the viscous row emptied by as much."""
+def wrong_order(term: str, argument: str, power: int | None):
+    """The plant: ``term`` scaled by ``(dt / STEP)^power`` (or by the tolerance over the rig's), the difference moved
+    into the viscous row, so that the identity still closes and the term falls at its order plus ``power``; with
+    ``power`` None, the viscous loss moved into the term whole (#225's control: a physical loss written into an ``N``
+    formula, of order zero in the tolerance)."""
     real = ImplicitFlowNode.energy_terms
 
-    def planted(self, *args: Any) -> dict[str, Any]:
-        terms = dict(real(self, *args))
-        terms[term] = terms[term] + terms["viscous"]
-        terms["viscous"] = 0.0 * terms["viscous"]
+    def planted(self, p, grid, before, stage, sigma, fields, dt):
+        terms = dict(real(self, p, grid, before, stage, sigma, fields, dt))
+        if power is None:
+            terms[term] = terms[term] + terms["viscous"]
+            terms["viscous"] = 0.0 * terms["viscous"]
+            return terms
+        rig = STEP if argument == "dt" else TOLERANCE[str(jnp.asarray(terms[term]).dtype)]
+        setting = dt if argument == "dt" else p["tolerance"]
+        moved = terms[term] * (setting / rig) ** power
+        terms["viscous"] = terms["viscous"] + terms[term] - moved
+        terms[term] = moved
         return terms
 
     return planted
 
 
-def arms(dtype: str, seeds: range) -> list[dict[str, float]]:
-    """For each seed, every arm from its warmed state: the terms' summed magnitudes (``N_BE`` is never negative;
-    ``N_conv``, ``dt <C(u), u - u'>`` with ``<C(u), u>`` zero to rounding on a divergence-free field, and ``N_Krylov``
-    change sign) at ``dt`` and ``dt / 2``, ``N_Krylov``'s at the two tolerances, the viscous loss, and the identity's worst
-    step over its floor. One program for every arm: the step, the run's length and the tolerance are its arguments."""
-    loose, tight = TOLERANCES[dtype]
+def sums_of(dtype: str, seed: int) -> tuple[Any, list[Any]]:
+    """The rig's ``sums(dt_scale, tolerance_scale)`` for ``seed`` (each term's summed magnitude over :data:`TIME`), and
+    the list each arm's ended records are put in. One compiled program for every arm: the step, the run's length and
+    the tolerance are its arguments."""
+    tolerance = TOLERANCE[dtype]
     with in_dtype(dtype):
-        node = tube_node(8, length_cells=4, dt=STEP, convection=True, tolerance=tight, ledger=METERED)
+        node = tube_node(8, length_cells=4, dt=STEP, convection=True, tolerance=tolerance, ledger=METERED)
         p0 = node._step_constants(None)  # noqa: SLF001
         held = books.deliveries(node.constants())
         given = {books.law_input(d.field, index): jnp.asarray([0.0, 0.0, DRIVE]) if d.field == "body_force"
@@ -109,55 +126,111 @@ def arms(dtype: str, seeds: range) -> list[dict[str, float]]:
             def body(_, carry):
                 s, sums = carry
                 s = node.advance(p, s, given, dt)
-                terms = jnp.abs(s[f"{books.RECORDS}step_terms"])
-                return s, sums + jnp.concatenate([terms, -s[f"{books.RECORDS}step_work"][1:2]])
+                return s, sums + jnp.abs(s[f"{books.RECORDS}step_terms"])
 
-            ended, sums = jax.lax.fori_loop(0, steps, body, (state, jnp.zeros(len(TERMS) + 1, dtype=dt.dtype)))
-            return ended, sums
+            return jax.lax.fori_loop(0, steps, body, (state, jnp.zeros(len(TERMS), dtype=dt.dtype)))
 
         compiled = jax.jit(arm)
         dtype_of = jnp.asarray(0.0).dtype
-        found = []
-        for seed in seeds:
-            start = node.initial_state()
-            swirl = cellular(node, seed)
-            begin = {**start, **{f"velocity_{c}": jnp.asarray(swirl[f"initial_velocity_{c}"], dtype=dtype_of)
-                                 for c in "xyz"}}
-            begin = books.with_records(node, books.unrecorded(begin))
-            warm, _ = compiled(begin, jnp.asarray(WARM_STEP, dtype=dtype_of), WARM_STEPS,
-                               jnp.asarray(tight, dtype=dtype_of))
-            fresh = books.with_records(node, books.unrecorded({**start, **{f"velocity_{c}": warm[f"velocity_{c}"]
-                                                                            for c in "xyz"}}))
-            sums, worst = {}, 0.0
-            for label, dt, tolerance in (("coarse", STEP, tight), ("fine", STEP / 2, tight), ("loose", STEP, loose)):
-                ended, summed = compiled(fresh, jnp.asarray(dt, dtype=dtype_of), int(round(TIME / dt)),
-                                         jnp.asarray(tolerance, dtype=dtype_of))
-                sums[label] = np.asarray(summed, dtype=np.float64)
-                worst = max(worst, float(ended[f"{books.RECORDS}identity_worst"]) / (books.IDENTITY_ULPS * eps(dtype)))
-            found.append({**{f"{name}_ratio": float(sums["coarse"][i] / sums["fine"][i])
-                             for name, i in TERMS.items() if name != "krylov"},
-                          "krylov_ratio": float(sums["loose"][TERMS["krylov"]] / sums["coarse"][TERMS["krylov"]]),
-                          "viscous": float(sums["coarse"][-1]), "worst": worst})
-        return found
+        start = node.initial_state()
+        swirl = cellular(node, seed)
+        begin = books.with_records(node, books.unrecorded({**start, **{f"velocity_{c}": jnp.asarray(
+            swirl[f"initial_velocity_{c}"], dtype=dtype_of) for c in "xyz"}}))
+        warm, _ = compiled(begin, jnp.asarray(WARM_STEP, dtype=dtype_of), WARM_STEPS, jnp.asarray(tolerance,
+                                                                                                  dtype=dtype_of))
+        fresh = books.with_records(node, books.unrecorded({**start, **{f"velocity_{c}": warm[f"velocity_{c}"]
+                                                                        for c in "xyz"}}))
+    ended: list[Any] = []
+
+    def sums(dt_scale: float, tolerance_scale: float) -> dict[str, float]:
+        with in_dtype(dtype):
+            dt = STEP * dt_scale
+            state, summed = compiled(fresh, jnp.asarray(dt, dtype=dtype_of), int(round(TIME / dt)),
+                                     jnp.asarray(tolerance * tolerance_scale, dtype=dtype_of))
+        ended.append(state)
+        return {name: float(summed[index]) for name, index in TERMS.items()}
+
+    return sums, ended
+
+
+def _report(dtype: str, ensemble: int):
+    """The order check of the ensemble's three swirls summed, and every arm's ended state."""
+    rigs = [sums_of(dtype, seed) for seed in range(SWIRLS * ensemble, SWIRLS * (ensemble + 1))]
+    scheme = SCHEMES["imex_euler"]
+    report = term_orders([sums for sums, _ in rigs], scheme.ledger_terms, scheme.ledger_orders)
+    return report, [state for _, ended in rigs for state in ended]
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-def test_each_numerical_term_falls_at_its_order(dtype):
-    for found in arms(dtype, range(3)):
-        assert found["worst"] <= 1.0
-        for name in ("backward_euler", "convection"):
-            assert FIRST_ORDER[0] <= found[f"{name}_ratio"] <= FIRST_ORDER[1], (name, found)
-        assert found["krylov_ratio"] >= KRYLOV_FALL, found
+def test_each_numerical_term_falls_at_its_declared_order(dtype):
+    report, ended = _report(dtype, 0)
+    assert report.passed, (report.failures(), report.checks)
+    assert [(c.term, c.argument) for c in report.checks] == [("backward_euler", "dt"), ("convection", "dt"),
+                                                             ("krylov", "tolerance")]
+    for state in ended:
+        judged = ledger_closes(state)
+        assert judged.passed, judged.detail
+
+
+PLANTS = [("backward_euler", "dt", -1), ("backward_euler", "dt", 1), ("convection", "dt", -1),
+          ("convection", "dt", 1), ("krylov", "tolerance", None)]
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-@pytest.mark.parametrize("term", ["backward_euler", "convection", "krylov"])
-def test_control_the_viscous_loss_written_into_a_term_leaves_its_order(dtype, term, monkeypatch):
-    """The identity still closes with the loss moved, and the term's ratio leaves its band on every seed."""
-    monkeypatch.setattr(ImplicitFlowNode, "energy_terms", moved_into(term))
-    for found in arms(dtype, range(3)):
-        assert found["worst"] <= 1.0
-        if term == "krylov":
-            assert found["krylov_ratio"] < KRYLOV_FALL, found
-        else:
-            assert not FIRST_ORDER[0] <= found[f"{term}_ratio"] <= FIRST_ORDER[1], found
+@pytest.mark.parametrize(("term", "argument", "power"), PLANTS,
+                         ids=[f"{t}-{a}{'-loss' if p is None else f'{p:+d}'}" for t, a, p in PLANTS])
+def test_control_a_term_of_the_wrong_order_fails_on_every_ensemble(dtype, term, argument, power, monkeypatch):
+    """The identity still closes with the term moved, and its check fails: at order 1 or 3 where 2 is declared (ratios
+    about 1 and 4 against 1.41 to 2.83), or near order 0 where at least 1 is (a fall of about 1 against at least
+    10)."""
+    monkeypatch.setattr(ImplicitFlowNode, "energy_terms", wrong_order(term, argument, power))
+    report, ended = _report(dtype, 0)
+    failed = [check for check in report.checks if not check.passed]
+    assert [(c.term, c.argument) for c in failed] == [(term, argument)], report.checks
+    assert all(ledger_closes(state).passed for state in ended)
+
+
+def test_every_scheme_declares_an_order_or_its_reason_for_every_term_it_books():
+    for scheme in SCHEMES.values():
+        assert set(scheme.ledger_orders) == set(scheme.ledger_terms), scheme.name
+        for term, order in scheme.ledger_orders.items():
+            assert order.dt is not None or order.tolerance is not None or order.reason, (scheme.name, term)
+
+
+# -- the harness itself, on exact power laws -------------------------------------------------------------------------
+
+def _laws(orders: dict[str, tuple[float, float]]):
+    """``sums`` of terms whose sums are exact powers: ``(p, q)`` the dt and tolerance orders of each, summed over a
+    fixed time (``dt^(p - 1)``) and a fixed count of steps (``tol^q``)."""
+    return lambda dt, tol: {term: dt ** (p - 1) * tol ** q for term, (p, q) in orders.items()}
+
+
+def test_the_harness_reads_the_fall_from_the_sum_over_cases():
+    """One case whose term cancels (its sums 1000 times smaller, falling at third order) does not decide: the sum over
+    three falls at second order; alone it would fail. Wherever the cancelling case stands in the list (first, middle,
+    last): a harness that read only the first case, or only the last, would judge the cancelled one alone in one of
+    them."""
+    from mime.core.ledger import TermOrder
+
+    declared = {"a": TermOrder(dt=2)}
+    cancelled = lambda dt, tol: {"a": 1e-3 * dt**2}  # noqa: E731
+    ordinary = _laws({"a": (2, 0)})
+    assert not term_orders(cancelled, ["a"], declared).passed
+    for place in range(3):
+        cases = [ordinary, ordinary]
+        cases.insert(place, cancelled)
+        assert term_orders(cases, ["a"], declared).passed, place
+
+
+def test_the_harness_passes_exact_orders_and_fails_one_off_and_an_undeclared_term():
+    from mime.core.ledger import TermOrder
+
+    declared = {"a": TermOrder(dt=2), "b": TermOrder(tolerance=1, at_least=True), "c": TermOrder(reason="zero")}
+    assert term_orders(_laws({"a": (2, 0), "b": (0, 1), "c": (0, 0)}), ["a", "b", "c"], declared).passed
+    assert term_orders(_laws({"a": (2, 0), "b": (0, 3), "c": (0, 0)}), ["a", "b", "c"], declared).passed
+    for wrong in ({"a": (1, 0), "b": (0, 1), "c": (0, 0)}, {"a": (3, 0), "b": (0, 1), "c": (0, 0)},
+                  {"a": (2, 0), "b": (0, 0), "c": (0, 0)}):
+        assert not term_orders(_laws(wrong), ["a", "b", "c"], declared).passed
+    report = term_orders(_laws({"a": (2, 0), "d": (2, 0)}), ["a", "d"], declared)
+    assert report.undeclared == ("d",) and not report.passed
+    assert observed_order("dt", 2.0) == 2.0 and observed_order("tolerance", 100.0) == 1.0
