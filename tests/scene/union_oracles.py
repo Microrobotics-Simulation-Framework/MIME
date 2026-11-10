@@ -162,6 +162,18 @@ def brute_distance(tree: TubeTree, points: np.ndarray, spacing: float, near: np.
     return np.where(plain_minimum(tree, points) < 0.0, -distance, distance)
 
 
+def filleted_distance(tree: TubeTree, points: np.ndarray, spacing: float, near: np.ndarray,
+                      reach: float) -> np.ndarray:
+    """A filleted tree's signed distance where the brute force reaches it, NaN elsewhere: in the closing's fluid (depth
+    in the union widened by the fillet's radius ``r`` at least ``r``) that depth less ``r``, from the widened tree's
+    brute force; outside the widened union the union's own distance (the plain minimum, exact there); the solid within
+    ``r`` of the widened union has no oracle here."""
+    r = tree.fillet_radius_value()
+    widened = TubeTree(tree.points, tree.segments, tuple((a + r, b + r) for a, b in tree.radii), 0.0)
+    depth = brute_distance(widened, points, spacing, near, reach)
+    return np.where(depth <= -r, depth + r, np.where(depth >= 0.0, plain_minimum(tree, points), np.nan))
+
+
 def _in_cone(offset: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
     """Whether each 2-D ``offset`` is a combination of ``first`` and ``second`` with both weights from zero on."""
     basis = np.stack([first, second], axis=1)

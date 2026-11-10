@@ -30,6 +30,7 @@ from union_oracles import (
     REACH,
     aligned_rotation,
     brute_distance,
+    filleted_distance,
     hairpin_tree,
     lattice,
     loop_tree,
@@ -151,6 +152,39 @@ def test_the_union_is_exact_against_a_brute_force(kind, seed, dtype, monkeypatch
     assert int(np.sum(np.asarray(found.failing)[judged])) > 0, "no point failed the check: the draw cannot discriminate"
     assert int(found.unrefined) == 0 and int(found.unconverged) == 0
     assert error.max() <= CONTRACT_LINE, f"largest error {error.max():.4f} cells over the band's line {CONTRACT_LINE}"
+
+
+#: A point of the split-and-merge loop's plane, in its own frame (D), whose nearest point of the filleted lumen's
+#: boundary is a corner of its second junction (two, one each side of the plane): the first round's defect, which gate
+#: 3's draw 31 crossed 1.6e-5 D from the plane.
+MERGE_CORNER = np.asarray([-0.178, 0.0, 2.207])
+
+
+@pytest.mark.parametrize("seed", seed_list((15,)))
+def test_a_corner_off_the_loops_plane_is_found_from_it(seed, monkeypatch):
+    """Points 1e-6 D either side of the filleted loop's plane about ``MERGE_CORNER`` (a patch of 0.04 D), the loop
+    turned at random and moved by a sub-cell offset: against the filleted brute force (``filleted_distance``).
+    Gauss-Newton from the point and from its walls' nearest points stays near the plane, where neither corner is (it
+    misses from 1e-9 to 3e-5 D off the plane at the patch's centre); a corner also starts from the points its seams
+    reached, which the march has carried off it. **Control** (``MIME_PLANT_UNION=corner-starts``): those starts left
+    out."""
+    planted(monkeypatch)
+    h = D / 8.0
+    rng = np.random.default_rng(seed + 7919)
+    turn, offset = rotation(seed), rng.uniform(0.0, h, 3)
+    tree = loop_tree(0.1).turned(turn, offset)
+    across = np.linspace(-0.02, 0.02, 5) * D
+    local = MERGE_CORNER * D + np.stack(np.meshgrid(across, [-1e-6 * D, 1e-6 * D], across, indexing="ij"),
+                                        -1).reshape(-1, 3)
+    points = local @ turn.T + offset
+    exact = filleted_distance(tree, points, BRUTE_SPACING * h, points.mean(axis=0), 0.8 * D)
+    distance, found = composed(tree, points, "float64")
+    error = np.abs(distance - exact) / h
+    print(f"\nseed {seed}: {int(np.sum(found.failing))} of {len(points)} failing, largest error {np.nanmax(error):.4f} "
+          f"cells, depth {-np.nanmax(exact) / D:.3f} to {-np.nanmin(exact) / D:.3f} D")
+    assert np.all(np.isfinite(exact)) and np.all(np.asarray(found.failing))
+    assert int(found.unrefined) == 0 and int(found.unconverged) == 0
+    assert np.max(error) <= CONTRACT_LINE
 
 
 @pytest.mark.parametrize("seed", seed_list((13,)))

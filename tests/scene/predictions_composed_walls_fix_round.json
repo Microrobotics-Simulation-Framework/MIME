@@ -101,5 +101,36 @@
     "prediction": "no time or memory claim: no node runs the union yet",
     "measured_at": "none"
   },
+  "gate_1_corner_off_the_plane": {
+    "claim": "a corner of the filleted loop's second junction is found from points 1e-6 D either side of the loop's plane where it is their nearest point (a patch of 0.04 D about (-0.178, 0, 2.207) D in the loop's frame), the loop turned at random and moved by a sub-cell offset: against the filleted brute force (the widened tree's, less r), under the band's line of 0.05 cells at D/h 8, no unrefined or unconverged point",
+    "kind": "bounds",
+    "case": "tests/scene/test_exact_union.py::test_a_corner_off_the_loops_plane_is_found_from_it",
+    "prediction": {
+      "value": 0.02,
+      "band": [
+        0.0,
+        0.04
+      ],
+      "unit": "cells, the largest |composed - brute| over the patch",
+      "basis": "measured-before (gate 1's floor) and derived",
+      "why": "the points lie about 0.3 D deep, where the brute force's sampling floor near a corner is a share of its spacing h/32"
+    },
+    "control": {
+      "plant": "MIME_PLANT_UNION=corner-starts: a corner's Gauss-Newton not started from the points its seams reached (the first round's second fix reverted); predicted to read about -0.60 D where -0.30 D is right (2.4 cells), on every draw",
+      "environment_variable": "MIME_PLANT_UNION",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/50",
+      "resolution": "the band's line less the floor, about 0.03 cells (not separately ranged: the plant is 2.4 cells, eighty times it)"
+    },
+    "if_wrong": "a planted draw that passes means the starts from the point escape the plane at some rotation: the slab is measured at that rotation and the patch moved into it",
+    "cannot_discriminate_if": "the patch's points are not failing (asserted) or the corner is not their nearest point (the planted arm's rate says)"
+  },
+  "corrections": [
+    {
+      "written": "2026-11-10, after the predictions above were committed and before any corner-starts measurement or the targeted test ran",
+      "what": "the third seen_before entry is void: its reverted arm reused the program compiled before the plant (an ExactUnion's programs are cached per union and plan), so it measured nothing. Re-measured with the caches cleared (development check, the new code, the filleted loop at the first round's defect point (-0.177887, y, 2.206754) D): with the corner's seam-reached starts left out, the distance is -0.599 D where it is -0.300 D, for |y| from 1e-9 to 3.2e-5 D at four rotations (and at y = 0 unrotated, though not at y = 0 turned); from 1e-4 D off the plane it is right. So the first round's second fix is still needed, in a slab about the loop's plane too thin for random draws to hit (gate 3's draw 31 crossed it once); the targeted gate above draws inside it. The corner_seam_starts prediction (0 of the random draws) stands."
+    }
+  ],
   "outcomes": null
 }
