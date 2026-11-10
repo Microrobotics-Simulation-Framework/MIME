@@ -829,7 +829,7 @@ class _Planner:
             others = sorted(plan.owner for plan in self.readers if plan.section is Section.INTERACTION
                             and plan.bindings.get("medium") == medium and plan not in members
                             and getattr(plan.entry, "rung", None) == "mrs")
-            graded = self.near_field_graded(medium, members)
+            graded = self.near_field_graded(medium, members) | self.near_field_lubricated(medium, members)
             if others:
                 self.refuse("drag.near-field-mixed", RefusalClass.USER,
                             f"medium {medium!r} holds the mrs drag of {', '.join(m.owner for m in members)}, whose "
@@ -865,6 +865,23 @@ class _Planner:
                 member.reads, member.delivers = {}, {}
             self.readers.append(group)
             self.declared.append(group)
+
+    def near_field_lubricated(self, medium: str, members: Sequence[EntryPlan]) -> bool:
+        """Whether a body of the medium's near field takes lubrication's hand-over (its drag's ``lubrication``, on by
+        default near a wall that opens), refused if so (``drag.lubrication-near-field``): the hand-over is built for
+        one body against its wall; between bodies sharing a medium it comes with the joint node's pair correction, and
+        until then their drags write it off, so that no default leaves a body's gap uncovered."""
+        lubricated = sorted(plan.owner for plan in members if getattr(plan.entry, "lubrication", None) is True)
+        if not lubricated:
+            return False
+        self.refuse("drag.lubrication-near-field", RefusalClass.USER,
+                    f"medium {medium!r}'s near field couples the bodies of {', '.join(m.owner for m in members)}, and "
+                    f"{', '.join(lubricated)} take lubrication's hand-over (on by default near a wall that opens), "
+                    f"which is built for one body against its wall, not yet for bodies sharing a medium",
+                    "write lubrication=False on the drags of a medium shared by two bodies or more, Drag.MRS("
+                    "lubrication=False), which keeps their coarse MRS at its near-wall validity line; or put the body "
+                    "near the wall in a medium of its own, exp.add_medium(Medium(...))")
+        return True
 
     def near_field_graded(self, medium: str, members: Sequence[EntryPlan]) -> bool:
         """Whether a body of the medium's near field has graded force points (``grading`` or ``contact``), refused if
@@ -2815,6 +2832,9 @@ class _Planner:
         up, gravity = (self.frame.up, self.frame.gravity) if self.frame else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
         declared = {(role, path.partition(".")[2]): value for role, name in bindings.items()
                     if cls.roles[role].binds_a_thing for path, value in self.declared_of(name).items()}
+        declared |= {(role, f"wall.{path.partition('.')[2]}"): value for role, name in bindings.items()
+                     if cls.roles[role] is RoleKind.MEDIUM and name in self.fills
+                     for path, value in self.declared_of(self.fills[name].partition(".")[0]).items()}
         regions = {role: region for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
                    for region in (self.region_of(name),) if region is not None}
         hulls = {role: hull for role, name in bindings.items() if cls.roles[role] is RoleKind.BODY
@@ -3400,7 +3420,10 @@ class _Planner:
                     self.defect(plan.registered.cls, f"it reads a value through role {read.role!r}, which binds no "
                                                      f"thing")
                     continue
-                self.value(plan, label, plan.bindings[read.role], read.name)
+                thing = plan.bindings[read.role]
+                if read.wall:
+                    thing = self.fills.get(thing, "").partition(".")[0]
+                self.value(plan, label, thing, read.name)
 
     def dynamics_value_problems(self, plan: EntryPlan) -> None:
         """What the dynamics says is wrong with the values it reads, once all are resolved: a value that was refused

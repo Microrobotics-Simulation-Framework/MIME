@@ -27,9 +27,10 @@ BLOB = 0.1
 def sphere_above_plane(spacing: float, gap: float, *, blob: float = BLOB, wall_refinement: int | None = None,
                        normal: tuple[float, float, float] = (0.0, 0.0, 1.0), offset: float = 0.0,
                        orientation: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
-                       name: str = "sphere_above_plane") -> Experiment:
+                       name: str = "sphere_above_plane", lubrication: bool = False) -> Experiment:
     """The sphere (radius ``RADIUS``) with its surface ``gap`` (in radii) above the plane through ``offset`` (m) along
-    ``normal``, its force spacing ``spacing`` (in radii), at rest and held by nothing."""
+    ``normal``, its force spacing ``spacing`` (in radii), at rest and held by nothing; the coarse MRS alone unless
+    ``lubrication`` (the drag's hand-over, on by default near a plane, written off here)."""
     unit = np.asarray(normal, dtype=np.float64) / np.linalg.norm(normal)
     centre = (offset + RADIUS * (1.0 + gap)) * unit
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
@@ -42,7 +43,8 @@ def sphere_above_plane(spacing: float, gap: float, *, blob: float = BLOB, wall_r
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    settings: dict[str, Any] = {"spacing": m(spacing * RADIUS), "blob": blob, "wall_kind": "plane"}
+    settings: dict[str, Any] = {"spacing": m(spacing * RADIUS), "blob": blob, "wall_kind": "plane",
+                                "lubrication": lubrication}
     if wall_refinement is not None:
         settings["wall_refinement"] = wall_refinement
     experiment.attach(Drag.MRS(**settings), body="ball", medium="water")

@@ -39,6 +39,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the openings (it needs the convective power split by plane), and the periodic box's flags on the open box and
   on RK3 (RK3 declares none). Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
 
+- **Lubrication's hand-over on the MRS rung, body to wall: `Drag.MRS(lubrication=...)`** (drag 0.5.0, a numerical
+  setting, on by default near a wall that opens, a plane or a tube, about a body whose hull kind has a support and
+  whose least radius of curvature holds the hand-over gap within the film's window). The near-wall resistance is the
+  coarse MRS evaluated once with the body's near contact opened to the hand-over gap (`HANDOVER_SPACINGS`, 0.75, of the
+  force spacing; the finest graded spacing where graded), never closer, plus the thin film's increment between the
+  contact's gap and the opened one: Reynolds' equation on the gap's second-order form (the body's support curvature
+  less the wall's), solved by exact block-tridiagonal elimination (`mime.nodes.hydro._film`). It is the MRS's own
+  completion in the gap, not physics beyond Stokes flow; `lubrication=False` keeps the coarse MRS alone. **The film's
+  window is the build's rule:** where the hand-over gap lies past `WINDOW` (0.15) of the body's least radius of
+  curvature over its whole surface (a crest or an edge sharper than the spacing resolves, the de Jongh screw at its
+  family's spacing, a sphere at a spacing of 0.3 radii), the default is False, the coarse MRS carries every gap and the
+  build report gives the gap against the radius; `lubrication=True` written there is refused
+  (`drag.lubrication-window`). The contact is opened by moving the wall (`WallCorrection.opened`: the plane
+  translated, the tube dilated), smoothly (a C2 lift, the identity beyond the hand-over band, so a body farther off is
+  the coarse MRS's, step for step, at the cost of the contact's search). **Each surface's roughness** is a declared
+  length (`<body>.roughness`, `<structure>.roughness`, 1 um where none is declared, never fitted): below the pair's
+  composite roughness (`mime.interactions.roughness_cutoff`, the root of the sum of squares) the film's gap is floored,
+  so its resistance stops growing and a contact carries the gap; the build report says where that floor reaches the
+  lift's band. The near-wall resistance owns every hydrodynamic coupling of rotation and translation down to that
+  cutoff, and the node reports the film's own share (`film_coupling`) and increment (`film_increment`). With it, a
+  compact body's default blob near a wall is 0.05 and the default force spacing no longer follows a contact's margin,
+  and a body held on the wall (a margin of 0) is no longer refused (`drag.mrs-on-wall`). Flags: `handover_window`,
+  `film_annulus` (a body nearly filling a lumen, whose ring contact the point film does not cover),
+  `handover_far_side` (a tube opened by dilation about a body filling more than half its diameter) and
+  `film_unsolved` (warned of). Known: the coupling of rotation and translation is over-counted against its own size
+  below the hand-over gap (MIME-ANO-154). Not yet: several contacts of one body, a ring's film, bodies sharing a medium
+  (refused with the hand-over on, `drag.lubrication-near-field`: write `lubrication=False` there) and a body between
+  two walls; the surrogate's blend (`Lubrication(epsilon=...)`) is unchanged, and on drag 0.5.0 an override of
+  `lubrication` is a variant (a numerical setting), where 0.4.0's is structural. Released programs (drag 0.3.0 and
+  0.4.0) are unchanged.
 - **A study's derivative: `Study.gradient(of, wrt=None, mode="auto", acknowledged=None)`** (lane S's third PR, the
   gradient path), returning `mime.results.GradientResult` (each member's `MemberGradient`: the objective, its
   derivative in each axis, the flags its run raised, its nodes' stops, its plan's extrapolated table reads, each
