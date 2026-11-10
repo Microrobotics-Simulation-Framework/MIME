@@ -214,4 +214,46 @@ sphere about its centroid that holds it (`enclosing_radius`).
   writer's resolution would hold more is drawn at fewer facets a turn, and its proxy records the facets it was drawn
   at. The screw's proxy was nearly all of A0's saved stage.
 
+**Composed walls**:
+
+- **`ExactUnion`**, the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`, or a
+  lab's `Region`: `mime.core.Shape`'s `signed_distance`, `outward_normal` and `curvature` at many points): the
+  minimum, a check at each point of where it is exact (the deepest region's nearest wall point outside the regions
+  that meet it), and Newton at a wall, a seam or a corner where it is not. The
+  minimum alone reads the fluid too shallow near every seam (a false wall, up to about two cells at a Y's carina); the
+  rule is exact, also where two walls' normals are opposed (the plane through two parallel tubes' axes, which an aligned
+  grid hits). Newton runs at a plan's points (`plan`, chosen when the caller builds, so the program's shapes are fixed).
+  Every value it returns carries counts of where it is not exact (`UnionDistance`, `UnionNormal`): failing points
+  outside the plan (`unrefined`), planned points with no candidate or whose own seam was never reached (`unconverged`),
+  and pairs of regions the run's values bring within reach that the union does not hold as meeting (`unplanned`: a
+  tree's radii scaled by a study, say). A zero count is not a proof: a candidate missed outside these is in none. The
+  regions are evaluated about the union's origin (a tree's centroid), so a vessel at a scanner's coordinates is
+  judged in float32 as one at the world's origin. Derivatives are the implicit function theorem's, exact in the point
+  and every parameter.
+- **The fillet** of radius `r` is the union's closing by a ball of radius `r`, which rounds every edge the solid has
+  between two walls (a carina, a daughter's root) and fills solid thinner than its diameter between two meeting
+  tubes: the same rule on the regions widened by `r`, moved back by `r`, traced like any parameter, a zero radius the
+  sharp union, never set from a grid. It is exact in the fluid, and in the solid except within `r` of a neck of the
+  widened union thinner than the fillet's diameter: between parallel tubes that share no point and whose wall is a
+  little thinner than that diameter (the window is in `mime.scene._union`'s docstring), where the solid's distance
+  reads too near the fluid.
+- **`TubeTree`**, a vessel as straight tubes between points (each segment a round cone, its radius linear between its
+  ends), its centreline (`mime.registry.Centreline`, a junction where two segment ends or more meet) and its lumen (an
+  `ExactUnion`, one for equal trees), with one fillet, `fillet` times the smallest radius at a junction (`FILLET_SHARE`,
+  a tenth, declared: no measurement of vessels gives it yet). One radius for the tree: where its junctions span radii
+  of ten to one the largest junction is rounded at a hundredth of its daughter's radius, not a tenth, and the fillet's
+  derivative in the radii jumps where the smallest junction radius changes hands. Tubes that share no point meet where
+  they come within two fillet radii and a margin (a sixteenth of the largest radius) of each other as
+  made; the fillet then joins them across a wall thinner than its diameter, which the report names. Its values are
+  parameters (`parameters()`), so derivatives in the points, radii and fillet flow; `turned` places it at any rotation
+  and offset.
+- **The walls' resolution report** (`wall_resolution(features, spacing, layer=...)`): the smallest wall radius (a sharp
+  seam's zero), the narrowest lumen against the band's thin-feature estimate (five cells), the narrowest solid between
+  tubes that share no point, the solid the fillet fills between them where it does, the sharpest wedge, and the wall
+  layer (`stokes_layer`, `steady_layer`) against the lines a Womersley sweep measured for the wall shear
+  (`LAYER_LINES`, each interpolated on the sweep's worst arm, whose rows are kept with the tests); an entry with no
+  line is reported as unmeasured.
+- Not yet: the tree as a registered geometry kind (its lumen's shape, with its switches declared, and its stage form)
+  comes with the FVM's wall, the first node whose step runs it.
+
 Releases are explained in the [package manifest](../README.md#status).
