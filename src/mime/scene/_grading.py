@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any, cast
 from functools import cached_property
 
 import numpy as np
@@ -50,6 +51,14 @@ CONTACT_SPACINGS = 1.5
 #: The features are traced at the finest spacing over this, so that a point's distance to one is read to a small share
 #: of the spacing there.
 TRACE = 8.0
+#: The significant figures a graded sampling is chosen at (:func:`chosen_at`): the body's settings, the spacing and the
+#: contact's gap and direction rounded to four, so that every body whose numbers round alike takes one sampling, moved
+#: with its own shape, as a declared range's bodies take the range's. A graded choice is discrete (the farthest points,
+#: Lloyd's cells, each cell's centred point) and a graded density is no scale of the body's, so a move of a setting far
+#: below the spacing can tip a near-tie: measured before this rounding, under a relative 1e-6 move of one setting, two
+#: of a box's 299 contact-graded points chosen afresh, four and eight of a helix's 770, and twenty of FL-9's 2227
+#: feature-graded points at 0.4 mm. A move of a relative 1e-6 of a round value (three figures) stays in its rounding.
+FIGURES = 4
 
 
 @dataclass(frozen=True)
@@ -118,6 +127,25 @@ class GradedDensity:
         return direction, float(np.max(dense @ direction))
 
 
+def figures(value: float) -> float:
+    """``value`` rounded to :data:`FIGURES` significant figures."""
+    return float(f"{value:.{FIGURES}g}")
+
+
+def chosen_at(settings: Mapping[str, Any]) -> dict[str, Any]:
+    """The settings a graded sampling is chosen at (:data:`FIGURES`): each number, or tuple of numbers, rounded; an
+    integer (a count), a flag or a name as it is."""
+    held: dict[str, Any] = {}
+    for name, value in settings.items():
+        if isinstance(value, float):
+            held[name] = figures(value)
+        elif isinstance(value, tuple) and all(isinstance(c, float) for c in cast(tuple[object, ...], value)):
+            held[name] = tuple(figures(c) for c in cast(tuple[float, ...], value))
+        else:
+            held[name] = value
+    return held
+
+
 def graded_density(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, *, features: bool,
                    contact: Contact | None = None) -> GradedDensity:
     """The policy's density for ``kind`` at ``settings`` (SI) sampled at ``spacing`` (m): towards its declared features
@@ -139,5 +167,5 @@ def graded_patch(density: GradedDensity, points: Sequence[Sequence[float]] | np.
     return density.spacing_at(held) < density.spacing * (1.0 - 1e-9)
 
 
-__all__ = ["CONTACT_SPACINGS", "CREST_SHARE", "EDGE_SHARE", "GROWTH", "TRACE", "Contact", "GradedDensity",
-           "finest_share", "graded_density", "graded_patch"]
+__all__ = ["CONTACT_SPACINGS", "CREST_SHARE", "EDGE_SHARE", "FIGURES", "GROWTH", "TRACE", "Contact", "GradedDensity",
+           "chosen_at", "figures", "finest_share", "graded_density", "graded_patch"]

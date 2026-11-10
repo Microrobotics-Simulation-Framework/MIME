@@ -129,6 +129,7 @@ drag.empty-cell               user
 drag.grading-approach         user
 drag.grading-contact          user
 drag.grading-features         user
+drag.grading-gap              user
 drag.grading-kind             user
 drag.grading-near-field       user
 drag.medium-flows             user

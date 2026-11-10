@@ -102,8 +102,8 @@ def wrong_way() -> Iterator[None]:
     """Every graded drag built inside it grades the wrong way (:class:`WrongWay`)."""
     held = hydrodynamic.Drag._density
 
-    def inverted(self: Any, ctx: Any, hull: Any, spacing: float) -> Any:
-        base = held(self, ctx, hull, spacing)
+    def inverted(self: Any, settings: Any, hull: Any, spacing: float) -> Any:
+        base = held(self, settings, hull, spacing)
         if base is None:
             return None
         patches = tuple(hull.kind.patches)

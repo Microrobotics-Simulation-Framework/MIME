@@ -7,7 +7,7 @@ import dataclasses
 import math
 from collections.abc import Mapping, Sequence
 from functools import cached_property
-from typing import Any, NamedTuple, cast, override
+from typing import Any, Literal, NamedTuple, cast, override
 
 import jax
 import numpy as np
@@ -84,6 +84,21 @@ HELD_FROM = "held_from."
 #: spacing to one. The bound keeps a factor of two over the largest indefinite gap. A flag, never a stop: the stop is
 #: the resistance's own eigenvalue.
 NEAR_WALL = 1.0
+#: On a graded sampling, how far past the body's least distance from the wall, in force spacings, a point of its
+#: quadrature still counts as nearest for ``off_patch``: any such point outside the graded patch raises it, so that a
+#: face turned towards the wall (a tie, or within a degree or two of one) is judged by all of it, not by whichever of its
+#: points the least happens to fall on. Chosen against the flag's controls, before their rates were measured: a box's
+#: face turned 89 degrees towards the wall lies within 0.02 force spacings of its least distance where it leaves the
+#: patch, and the gate's sphere (a radius of 3.3 force spacings, its contact graded for half a spacing) brings the
+#: patch's edge within 0.05 force spacings of the wall about 10 degrees before the edge itself reaches the nearest point.
+OFF_PATCH_BAND = 0.05
+#: How a graded run's wall self-image measures each cell's distance from the wall when it blends the integrated image
+#: in (decision #308): ``"cell"``, in the cell's own size, ``sqrt(area)``, decided and shipped; ``"force_spacing"``, in
+#: the force spacing, as a uniform run's. Measured through the node on the gate's sphere, its contact graded for half a
+#: force spacing and the image integrated, against Brenner's series at half a spacing: +5.24 % (cell) and +3.33 %
+#: (force spacing) at blob 0.1, +1.67 % and -0.04 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The one switch
+#: between them; a uniform run reads neither.
+GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "cell"
 #: What the build report says was mapped near a wall, for a wall kind without figures of its own
 #: (``WallCorrection.near_wall_text``).
 NEAR_WALL_MAPPED = "every indefinite resistance mapped lay within half a force spacing of the wall (MIME-ANO-130)"
@@ -225,7 +240,8 @@ class SeparatedDragState(TypedDict, closed=True):
     with a wall, the body's least distance from it (m, and in force spacings, the near-wall flag's measure) and the
     stop's record: the node's count of steps, and the step (zero for none), pose, gap and least eigenvalue at which its
     resistance first turned indefinite. On a graded sampling, ``off_patch``: the body within :data:`NEAR_WALL` force
-    spacings of the wall with its nearest point outside the graded patch (zero without a wall)."""
+    spacings of the wall with a point of its quadrature within :data:`OFF_PATCH_BAND` force spacings of its least
+    distance outside the graded patch (zero without a wall)."""
 
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
@@ -601,7 +617,8 @@ class MRSDragNode(MimeNode):
         self._patch: np.ndarray | None = None
         if graded_patch is not None:
             if quadrature_owners is None:
-                raise ValueError("a graded sampling's patch is judged on a separated quadrature (quadrature_owners)")
+                raise ValueError("a graded sampling's patch is judged on a separated quadrature's points "
+                                 "(quadrature_owners)")
             self._patch = np.asarray(graded_patch, dtype=bool)
             self._patch.flags.writeable = False
             separated["graded_patch"] = self._patch
@@ -613,14 +630,14 @@ class MRSDragNode(MimeNode):
                          **{key: value for key, value in constants.items()})
         if self._owners is not None:
             self._check_owners(self._owners)
-        if self._patch is not None and self._patch.shape != (self.sample_count,):
-            raise ValueError(f"graded_patch names whether each of the {self.sample_count} force points lies in the "
-                             f"graded patch; it has shape {self._patch.shape}")
+        if self._patch is not None and self._owners is not None and self._patch.shape != self._owners.shape:
+            raise ValueError(f"graded_patch names whether each of the {len(self._owners)} points of the separated "
+                             f"quadrature lies in the graded patch; it has shape {self._patch.shape}")
 
     @property
     def graded(self) -> bool:
         """Whether the node's sampling is graded (``graded_patch`` given): its wall's self-image then measures each
-        cell's distance in the cell's own size, and its step flags ``off_patch``."""
+        cell's distance as :data:`GRADED_WALL_MEASURE` says, and its step flags ``off_patch``."""
         return self._patch is not None
 
     @override
@@ -1106,16 +1123,19 @@ class MRSDragNode(MimeNode):
         return graded + lines
 
     def _graded_lines(self) -> list[str]:
-        """What the build reports of a graded sampling: what it was graded towards, as the drag described it, and the
-        patch's share of the cells."""
+        """What the build reports of a graded sampling: what it was graded towards, as the drag described it, the
+        patch's share of the quadrature's points, and how the wall's self-image measures a cell's distance."""
         if self._patch is None:
             return []
         held = int(np.count_nonzero(self._patch))
-        flag = ("; a step with the body within one force spacing of the wall and its nearest point outside the patch "
-                "raises off_patch (the sampling is fixed on the body, so a body that turns carries the patch away)"
-                if not self._free() else "")
-        return [f"the force points are graded: {self.constants().get('grading')}; {held} of the {self.sample_count} "
-                f"cells lie in the graded patch, finer than the force spacing{flag}"]
+        measure = "its own size" if GRADED_WALL_MEASURE == "cell" else "the force spacing"
+        flag = (f"; a step with the body within {NEAR_WALL:g} force spacing of the wall and a point within "
+                f"{OFF_PATCH_BAND:g} force spacings of its least distance outside the patch raises off_patch (the "
+                f"sampling is fixed on the body, so a body that turns carries the patch away); the wall's self-image "
+                f"measures each cell's distance in {measure}, and a written wall_refinement is from the finest "
+                f"spacing" if not self._free() else "")
+        return [f"the force points are graded: {self.constants().get('grading')}; {held} of the {len(self._patch)} "
+                f"points of the separated quadrature lie in the graded patch, finer than the force spacing{flag}"]
 
     def _memory_at(self, force_points: float) -> str:
         """The run's memory at ``force_points`` for the report's closest-approach line, as the tube's fit states it; a
@@ -1255,7 +1275,8 @@ class MRSDragNode(MimeNode):
                                                                self.wall_chunks)
 
         spacing = p.get("force_spacing")
-        graded, cells_in_patch, owners = self._patch is not None, self._patch, self._owners
+        graded, in_patch = self._patch is not None, self._patch
+        own_size = graded and GRADED_WALL_MEASURE == "cell"
 
         def solved(held: Array, theta: Mapping[str, Any], viscosity: Array, pose: Array,
                    parameters: Mapping[str, Any]) -> tuple[Array, ...]:
@@ -1272,7 +1293,7 @@ class MRSDragNode(MimeNode):
                                                  wall_quadrature[0])
                 kept, runs, capped_owners = wall_capped
                 weights = _ops.segment_sum(cells.weights, jnp.asarray(runs), num_segments=len(kept))
-                measure = jnp.sqrt(body.area) if graded else spacing
+                measure = jnp.sqrt(body.area) if own_size else spacing
                 image, short = near_wall_image(
                     wall, image, force, pose[:3] + jnp.matmul(cells.points[jnp.asarray(kept)], turn.T,
                                                               precision=PRECISION),
@@ -1287,9 +1308,11 @@ class MRSDragNode(MimeNode):
                 return found, image.accepted, gap, short
             if distance is None:
                 return found, image.accepted, zero, short, jnp.asarray(False)
-            away = distance(points, parameters)
-            outside = ~jnp.asarray(cells_in_patch)[jnp.asarray(owners)[jnp.argmin(away)]]
-            return found, image.accepted, least_distance(away), short, outside
+            away = _lax.stop_gradient(distance(points, parameters))
+            least = least_distance(away)
+            band = jnp.inf if spacing is None else OFF_PATCH_BAND * spacing
+            outside = jnp.any(~jnp.asarray(in_patch) & (away <= least + band))
+            return found, image.accepted, least, short, outside
 
         found, accepted, gap, short, *outside = checkpoint(solved)(held, theta, viscosity, pose, parameters)
         fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
@@ -1330,8 +1353,8 @@ class MRSDragNode(MimeNode):
                                         background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
 
 
-__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
-           "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
+__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "GRADED_WALL_MEASURE", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
+           "OFF_PATCH_BAND", "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
            "WALL_CELL_SHARE", "WALL_REACH",
            "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",
            "floating_leaves", "judged", "path_name",
