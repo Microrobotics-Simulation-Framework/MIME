@@ -9,7 +9,8 @@
   ``cap`` setting or the seam by which the solve takes its transpose solves' stopping apart (:func:`cap_plant`);
 - ``MIME_PLANT_SOLVE_REPORT``: ``tangent``, ``transpose``, ``warning`` or ``recheck``, a part of the solve-report
   machinery broken (:func:`report_plant`);
-- ``MIME_PLANT_GUARD``: ``nan``, the MRS drag's stop writing NaN in a differentiated run too (no flag form)."""
+- ``MIME_PLANT_GUARD``: ``nan``, the MRS drag's stop writing NaN in a differentiated run too (no flag form);
+- ``MIME_PLANT_FIT_LOOP``: a part of the fit loop broken (:func:`fit_plant`), each a clause of the fit-loop rule."""
 
 from __future__ import annotations
 
@@ -18,17 +19,20 @@ import os
 from contextlib import contextmanager, nullcontext
 
 import jax
+import numpy as np
 import pytest
 
 import mime.nodes.flow.fvm._solve as solve_module
 import mime.nodes.hydro.mrs._node as mrs_node
+import mime.study._fit as fit_module
 import mime.study._gradient as gradient_module
 from mime.core import MimeNode
 from mime.nodes.flow.fvm import ImplicitFlowNode
 from mime.nodes.hydro.mrs import MRSDragNode
 
-GRADIENT, DROP, CAP, GUARD, REPORT = ("MIME_PLANT_GRADIENT", "MIME_PLANT_GRADIENT_DROP", "MIME_PLANT_SOLVE_CAP",
-                                      "MIME_PLANT_GUARD", "MIME_PLANT_SOLVE_REPORT")
+GRADIENT, DROP, CAP, GUARD, REPORT, FIT_LOOP = (
+    "MIME_PLANT_GRADIENT", "MIME_PLANT_GRADIENT_DROP", "MIME_PLANT_SOLVE_CAP", "MIME_PLANT_GUARD",
+    "MIME_PLANT_SOLVE_REPORT", "MIME_PLANT_FIT_LOOP")
 
 
 def from_environment(variable: str) -> str | None:
@@ -120,6 +124,48 @@ def guard_plant(patch: pytest.MonkeyPatch, kind: str | None) -> None:
     patch.setattr(mrs_node, "differentiated", lambda p: False)
 
 
+def fit_plant(patch: pytest.MonkeyPatch, kind: str | None) -> None:
+    """A clause of the fit-loop rule broken (``MIME_PLANT_FIT_LOOP``): ``stale_watch``, each iterate's Reynolds watch read
+    from the start's plan, not its own (the rule's re-plan dropped for the watch); ``jac_half``, the residual's
+    derivative at half its value; ``fim_noise``, the Fisher information taken with a unit noise, not the declared one;
+    ``no_limit``, the lines judged only after a step (no margin limits it); ``no_box``, the iterates not clipped to
+    their box; ``no_judge_run``, no run line judged at an iterate; ``unjudged_taken``, a line that cannot be judged read
+    as judged (its NaN margin a pass)."""
+    if kind is None:
+        return
+    if kind == "stale_watch":
+        patch.setattr(fit_module._Fit, "watches_of", lambda self, point: self.watches)  # noqa: SLF001
+    elif kind == "jac_half":
+        evaluate = fit_module._Fit.evaluate  # noqa: SLF001
+
+        def halved(self, point):
+            scaled, rows, lines, twists = evaluate(self, point)
+            return scaled, {path: 0.5 * held for path, held in rows.items()}, lines, twists
+
+        patch.setattr(fit_module._Fit, "evaluate", halved)  # noqa: SLF001
+    elif kind == "fim_noise":
+        information = fit_module.fisher_information
+        patch.setattr(fit_module, "fisher_information",
+                      lambda residual, params, noise: information(residual, params, np.ones_like(noise)))
+    elif kind == "no_limit":
+        patch.setattr(fit_module, "_line_limit", lambda run, twists, step, lines, gain=1.0: (1.0, "", float("inf")))  # noqa: SLF001
+    elif kind == "no_box":
+        box = fit_module._box  # noqa: SLF001
+
+        def unbounded(*args, **kwargs):
+            low, high = box(*args, **kwargs)
+            return np.full_like(low, -np.inf), np.full_like(high, np.inf)
+
+        patch.setattr(fit_module, "_box", unbounded)  # noqa: SLF001
+    elif kind == "no_judge_run":
+        patch.setattr(fit_module._Fit, "run_lines", lambda self, tally, final, watches: [])  # noqa: SLF001
+    elif kind == "unjudged_taken":
+        patch.setattr(fit_module.LineMargin, "judged", property(lambda self: True))
+    else:
+        raise ValueError(f"{FIT_LOOP} is stale_watch, jac_half, fim_noise, no_limit, no_box, no_judge_run or "
+                         f"unjudged_taken, not {kind!r}")
+
+
 @contextmanager
 def stopping_every_step():
     """The MRS drag's guard made to stop at every step (its least eigenvalue judged against a line above any): a
@@ -129,5 +175,5 @@ def stopping_every_step():
         yield
 
 
-__all__ = ["CAP", "DROP", "GRADIENT", "GUARD", "REPORT", "cap_plant", "drop_plant", "from_environment",
-           "gradient_plant", "guard_plant", "report_plant", "stopping_every_step"]
+__all__ = ["CAP", "DROP", "FIT_LOOP", "GRADIENT", "GUARD", "REPORT", "cap_plant", "drop_plant", "fit_plant",
+           "from_environment", "gradient_plant", "guard_plant", "report_plant", "stopping_every_step"]

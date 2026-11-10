@@ -3392,6 +3392,15 @@ anomalies:
       reach the run. Read: an override of a run whose controller is called on the host is refused (override.callback), and
       each member of a study makes its own law from its own settings, so no merged path runs one member's home for
       another's.
+
+      Partly resolved by lane S's S-F0-3b (settings the compiled step reads are leaves where a study's axis names them),
+      and its review found what that leaves open [measured, float64, graph mode, 8 ms]: ``home`` is read only by the
+      controller node's start, so in the graph mode it is neither a leaf nor a held input. The two-builds check on two
+      graph-mode ``tracked_rpm`` builds with ``home`` moved by a relative 1e-6 and 1e-4 gives the verdict ``quiet`` (the
+      trace form not fired, no leaf moved, no held input moved, the run form's ratio 0.0), while the two runs differ by
+      3.2e-4 relative in the magnetic force wrench at 1e-4. The same check on the callback build gives ``outside-step``.
+      So for a start-only setting in the graph mode the check now says two runs agree that do not, and says it without
+      a sign, where it used to report.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -3399,8 +3408,8 @@ anomalies:
       study, a check or an override that assumes everything that moves a run is a params leaf: it would miss the home pose
       and report that two runs agree when they do not. Whether that matters depends on how a deployment varies the
       controller's settings.
-    resolution_status: resolved
-    affected_versions: ">=0.3.0.dev1, <0.3.0.dev2"
+    resolution_status: partially_resolved
+    affected_versions: ">=0.3.0.dev1"
     resolution_version: "0.3.0.dev2"
     affected_components:
       - "entry: controller arm_tracking 0.1.0; the home setting and the controller's first write"
@@ -3416,13 +3425,16 @@ anomalies:
       - "tests/gradients/test_controller_leaves.py::test_control_a_setting_read_through_self_is_refused_exactly"
       - "tests/gradients/test_controller_leaves.py::test_the_tracking_controllers_numbers_read_through_its_context_sweep_as_one_group"
       - "tests/gradients/test_path_and_refusals.py::test_a_callback_controllers_path_is_cut_refused_unless_acknowledged_and_never_silently_zero"
+      - "tests/two_builds/test_outside_step.py::test_a_start_only_setting_in_the_graph_mode_is_quiet_to_the_check_while_the_run_moves"
     residual_risk: >
-      One setting of one controller was measured; whether the controller's other settings (the axis, the up direction, the
-      base) and the other controllers reach the run in the same way is not known. The size of the effect is the case's
-      (a 1e-6 relative change of the home pose moved the magnetic force by 1.3e10 units in the last place of its scale), not
-      a bound.
-    workaround: "None needed. A study's point makes each member's own law and start, and a run's override of a callback controller's setting is refused (override.callback)."
-    planned_resolution: "Done in lane S's S-F0-3b, which makes a controller's settings leaves where a study's axis names them (controller.<setting>). Inside the compiled step (mode graph) a named setting the step reads is a leaf of the controller's node, its law made again from the leaves inside the traced step: a sweep of it is one program, an override runs as data, a derivative passes through it. A setting only the law's start reads reaches the run through each point's start, and one read through self is refused exactly (controller.setting-unread). A setting nothing names stays a constant, so released programs do not move. The callback mode stays outside params by design: the law is made on the host from each member's settings, an override is refused (override.callback), a derivative's path through it is cut (refused unless acknowledged, its writes then held as the forward run made them), and the two-builds check reports the home pose outside-step, as above. The alternative, every numeric setting of a controller inside the compiled step a leaf whether named or not, went to the maintainer with its cost: A0's graph-mode bits to measure."
+      Open: a setting only the law's start reads (``home``, in the graph mode) is not seen by the two-builds check, which
+      says ``quiet`` of two builds whose runs differ by 3.2e-4 relative at a 1e-4 move of ``home``; a study's point
+      carries it through each point's start, so a study is right, and a script that compares two builds with the check
+      alone is not. One controller was measured; whether another controller's start-only settings reach the run the same
+      way is not known. Settings the step reads, as a leaf, are held by tests/gradients/test_controller_leaves.py; the size of the
+      effect of ``home`` is the case's, not a bound.
+    workaround: "Compare two builds that differ in a controller's start-only setting by their runs (the run form's ratio is blind to it in the graph mode), not by the check's verdict alone; a study's points are right as they are. In the callback mode the check reports it (outside-step)."
+    planned_resolution: "Done for the settings the compiled step reads, in lane S's S-F0-3b, which makes a controller's settings leaves where a study's axis names them (controller.<setting>): a sweep of one is one program, an override runs as data, a derivative passes through it, and one read through self is refused exactly (controller.setting-unread). Open for a start-only setting in the graph mode: the two-builds check would need to compare the controller node's initial state and first write as well as its step's parameters, which no PR has done; it is named for the next piece that touches the check. The callback mode stays outside params by design: the law is made on the host from each member's settings, an override is refused (override.callback), a derivative's path through it is cut (refused unless acknowledged, its writes then held as the forward run made them), and the check reports the home pose outside-step. The alternative, every numeric setting of a controller inside the compiled step a leaf whether named or not, went to the maintainer with its cost: A0's graph-mode bits to measure."
 
   - anomaly_id: MIME-ANO-147
     title: "In reverse mode the MRS rung's held-or-made resistance is made again at every step of the backward loop, about 0.5 s a step on 222 force points, whether or not a setting moved"

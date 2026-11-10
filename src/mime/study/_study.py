@@ -501,9 +501,13 @@ class Study:
         its run raised, a node's stop, the Reynolds watch, the box) and given to the steps as a constraint with its
         margin, an iterate past one not taken; the iterates kept inside each axis's declared range, its leaves'
         bounds and ``bounds`` (by axis, low and high); and MADDENING's Fisher information of the residual with the
-        noise taken at the start, which names an axis the residual cannot see before the first step. Ends
-        ``converged`` (the step under ``tolerance`` of the values), ``at a line`` (naming it), or at ``iterations``.
-        A controller called on the host is refused (its path is cut); ``acknowledged`` as for :meth:`gradient`."""
+        noise (required) taken at the start, which names every axis the residual cannot see before the first step. A line
+        that cannot be judged is never taken as inside (``fit.line-unjudged`` at the start; an iterate ends the fit
+        ``unjudged``). Ends ``converged`` (the step under ``tolerance`` of the values), ``at a line`` (naming it: a
+        refusal's code, a flag, the Reynolds line, ``box:<axis>`` where the range pins the step), ``unjudged``, or at
+        ``iterations``. An iterate that needs another compiled program refuses the fit (``fit.value-keyed``), the
+        iterates taken in the error's ``partial``. A controller called on the host is refused (its path is cut);
+        ``acknowledged`` as for :meth:`gradient`."""
         from mime.study._fit import fit
 
         return fit(self._experiment, residual, start, noise, duration, iterations, bounds, tolerance, acknowledged)

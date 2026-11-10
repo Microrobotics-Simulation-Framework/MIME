@@ -30,6 +30,7 @@ from mime.build import (
     ValueDeclaration,
     entry_id,
 )
+from mime.build._control import Mode, mode_of
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.things import (
     Apparatus,
@@ -98,6 +99,20 @@ def _controller(declarations: Sequence[Declaration]) -> ControllerDeclaration | 
     return next((d for d in declarations if isinstance(d, ControllerDeclaration)), None)
 
 
+def leaf_settings(declaration: ControllerDeclaration) -> tuple[str, ...]:
+    """The controller's settings a law reads through its context, so that they can be leaves of its node inside the
+    compiled step: its bare numbers (a gain, a smoothing) and its dimensioned ones (a standoff, a home pose). A count
+    (``iterations``), a switch (``orientation_feedback``), a name (``end_effector``), a direction (``axis``) and a file
+    are read as built. Where the controller is a callback every setting is a member's own law's, so every one is open."""
+    from mime.control._run import numeric_settings
+
+    entry = declaration.controller
+    if mode_of(declaration.mode) is not Mode.GRAPH:
+        return tuple(field.name for field in dataclasses.fields(entry))
+    return tuple(field.name for field in dataclasses.fields(entry)
+                 if field.name in numeric_settings(entry) or isinstance(getattr(entry, field.name), Quantity))
+
+
 def _laws(declarations: Sequence[Declaration]) -> dict[str, Attachment]:
     return {entry_id(type(d.law), d.bindings): d for d in declarations if isinstance(d, Attachment)}
 
@@ -121,7 +136,7 @@ def candidates(declarations: Sequence[Declaration]) -> list[str]:
         found += [f"{law_id}.{field.name}" for field in dataclasses.fields(attachment.law)]
     held = _controller(declarations)
     if held is not None and CONTROLLER not in _things(declarations):
-        found += [f"{CONTROLLER}.{field.name}" for field in dataclasses.fields(held.controller)]
+        found += [f"{CONTROLLER}.{name}" for name in leaf_settings(held)]
     return found
 
 
@@ -230,6 +245,17 @@ def _controller_setting(path: str, setting: str, declarations: Sequence[Declarat
     if held is None or setting not in {field.name for field in dataclasses.fields(held.controller)}:
         raise _unknown(path, declarations, "no controller is set with that setting" if held is not None else
                        "the experiment sets no controller")
+    open_to_axes = leaf_settings(held)
+    if setting not in open_to_axes:
+        raise ArgumentRefused([Refusal(
+            "controller.setting-not-leaf", RefusalClass.USER,
+            f"the axis {path!r} names a setting of the controller that is read as built (a count, a switch, a name, a "
+            f"direction or a file), where the controller runs inside the compiled step: only a number a law reads "
+            f"through its context can be varied there",
+            f"vary one of {', '.join(f'{CONTROLLER}.{name}' for name in open_to_axes)}; or run the controller as a "
+            f"callback (`mode='callback'`), where each member makes its own law",
+            why="a setting becomes a leaf of the controller's node, and only the numbers a law reads through its "
+                "context can be")])
     return Axis(path, AxisKind.CONTROLLER, CONTROLLER, setting)
 
 

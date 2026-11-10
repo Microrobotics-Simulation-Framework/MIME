@@ -30,13 +30,15 @@ WEIGHTS = (0.3, -0.5, 0.7), (0.2, 0.9, -0.4)
 
 
 def gentle(radius: float = 1.05, *, ranged: tuple[float, float] | None = (LOW, HIGH), pull=GENTLE,
-           name: str = "gentle", **settings: object) -> Experiment:
-    """The sphere at ``radius`` mm pulled by ``pull``, its radius's range ``ranged`` (mm) declared."""
+           name: str = "gentle", density: bool = True, **settings: object) -> Experiment:
+    """The sphere at ``radius`` mm pulled by ``pull``, its radius's range ``ranged`` (mm) declared, and water's density
+    declared unless ``density`` is off (the post-run Reynolds watch cannot then be judged)."""
     experiment = free_space(name, {"ball": Sphere(radius=mm(radius))}, mrs(SPACING, **settings), mass=kg(2e-8),
                             inertia=kg_m2((2e-17, 2e-17, 2e-17)))
     experiment.attach(ConstantWrench(value=pull), body="ball")
     # Water's density, which the drag does not read, so that the post-run Reynolds watch reads the body's number.
-    experiment.declare("water.density", kg_per_m3(998.0), reason="water near 20 C")
+    if density:
+        experiment.declare("water.density", kg_per_m3(998.0), reason="water near 20 C")
     if ranged is not None:
         experiment.declare_range(RADIUS, mm(ranged[0]), mm(ranged[1]), reason="the design range of the ball's radius")
     return experiment
@@ -77,12 +79,14 @@ def flux(final) -> jnp.ndarray:
     return final["water.flow"]["lumen_flux"]
 
 
-def pose_target(radius: float, pull=GENTLE):
+def pose_target(radius: float, pull=GENTLE, *, ranged: tuple[float, float] | None = (LOW, HIGH), density: bool = True):
     """The sphere's pose after its run at ``radius`` mm, as :func:`pose_residual` reads it: the position (um) and the
-    quaternion's vector part times 1e4."""
+    quaternion's vector part times 1e4. Made over the range, as the fit's iterates are (a radius outside it needs
+    ``ranged=None``, and its force points are then its own)."""
     import numpy as np
 
-    pose = np.asarray(gentle(radius, pull=pull, name="target").build().run(ms(STEPS)).final["ball"]["pose"])
+    pose = np.asarray(gentle(radius, pull=pull, name="target", ranged=ranged,
+                             density=density).build().run(ms(STEPS)).final["ball"]["pose"])
     return jnp.asarray(np.concatenate([pose[:3] * 1e6, pose[4:] * 1e4]))
 
 

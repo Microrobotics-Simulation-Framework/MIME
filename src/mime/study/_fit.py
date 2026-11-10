@@ -10,7 +10,9 @@ the start (MADDENING's ``fim``), so an axis the residual cannot see is named bef
 read from the run's end, its number against the rung's declared bound (a line with a number, whose margin the step is
 limited by: the step's prediction of the body's twist, from its derivative, is read by the watch's own code); and the
 box. An iterate past any line is not taken: the step is halved toward the last iterate taken, and where a line's
-margin limits it to nothing the fit ends ``at a line``, naming it."""
+margin limits it to nothing the fit ends ``at a line``, naming it. A line that cannot be judged (the Reynolds number
+needs the medium's density, and none is declared) is never taken as inside: the start refuses (``fit.line-unjudged``),
+and an iterate where one cannot be judged ends the fit ``unjudged``."""
 
 from __future__ import annotations
 
@@ -55,6 +57,18 @@ INSIDE = 0.999
 DAMPING, EASED, STIFFENED = 1e-3, 1.0 / 3.0, 4.0
 
 
+class _Keyed(Exception):  # noqa: N818 - control flow inside the module: an iterate that needs another program
+    def __init__(self, values: Mapping[Axis, np.ndarray]) -> None:
+        super().__init__()
+        self.values = values
+
+
+class FitRefused(BuildRefused):
+    """A fit refused after it took iterates: ``partial`` is the fit as it stood (``ended`` ``refused``)."""
+
+    partial: FitResult | None = None
+
+
 def _si(value: object) -> np.ndarray:
     held = magnitude(value)
     if held is None:
@@ -90,13 +104,28 @@ def _box(axis: Axis, write: Written, point: Point, start: np.ndarray, declaratio
             continue
         factor = np.asarray(write.factors[f"leaf:{node}.{leaf}"], dtype=np.float64).reshape(-1)
         at = np.asarray(point.tree[node][leaf], dtype=np.float64).reshape(-1)
+        if factor.size != start.size and start.size != 1:
+            raise ArgumentRefused([Refusal(
+                "fit.box", RefusalClass.USER,
+                f"{axis.path} writes {node}.{leaf} through a factor of {factor.size} numbers, and the axis holds "
+                f"{start.size}: the leaf's bounds cannot be read back to the axis's values the iterates are kept inside",
+                "fit an axis that writes the leaf one for one or by one scalar, `Study(exp).fit(..., start={'<axis>': ...})`, or "
+                "one whose leaf has no bounds",
+                why="an iterate past a leaf's bounds is past a line the fit would not see")])
         for edge, side in ((bounds[0], "low"), (bounds[1], "high")):
-            if edge is None or not np.all(factor > 0) or factor.size != start.size and start.size != 1:
+            if edge is None:
                 continue
-            # leaf = at + factor (theta - start): the value of theta at which the leaf reaches its bound.
-            reached = np.reshape(start + (float(edge) - at) / factor, (-1,))
-            value = np.max(reached) if side == "low" else np.min(reached)
-            low, high = (np.maximum(low, value), high) if side == "low" else (low, np.minimum(high, value))
+            # leaf = at + factor (theta - start): the value of theta at which the leaf reaches its bound. A negative
+            # factor turns the side round; a zero one leaves the leaf where it is, whatever theta.
+            moving = factor != 0.0
+            reached = start.reshape(-1) + (float(edge) - at) / np.where(moving, factor, 1.0)
+            floor = np.asarray(factor > 0.0) == (side == "low")
+            floors = np.where(moving & floor, reached, -np.inf)
+            ceilings = np.where(moving & np.logical_not(floor), reached, np.inf)
+            if factor.size == start.size:
+                low, high = np.maximum(low, floors.reshape(start.shape)), np.minimum(high, ceilings.reshape(start.shape))
+            else:  # one number written to a leaf of several: every one of them inside
+                low, high = np.maximum(low, np.max(floors)), np.minimum(high, np.min(ceilings))
     return low, high
 
 
@@ -104,7 +133,7 @@ class _Fit:
     """The fit's evaluation of an iterate on the program the start built."""
 
     def __init__(self, experiment: Experiment, axes: Sequence[Axis], start: Mapping[Axis, object], residual: Any,
-                 duration: Quantity, noise: np.ndarray | None, acknowledged: Mapping[str, str]) -> None:
+                 duration: Quantity, noise: np.ndarray, acknowledged: Mapping[str, str]) -> None:
         from mime.study._study import Study, along
 
         self.axes = tuple(axes)
@@ -164,8 +193,7 @@ class _Fit:
         marks = tuple((node, leaf, None) for node, leaves in self.leader.tree.items() for leaf in leaves)
         with precision(self.leader.declared.x64):
             self.prepared = prepare(built, self.writes, of, "forward", params, marks, False, None, group.steps)
-        self.noise = np.ones(self.size) if noise is None else np.broadcast_to(np.asarray(noise, np.float64),
-                                                                              (self.size,)).copy()
+        self.noise = np.broadcast_to(noise, (self.size,)).copy()
 
     def point(self, values: Mapping[Axis, np.ndarray]) -> Point:
         declared = {axis: _quantity(self.like[axis], value) for axis, value in values.items()}
@@ -263,10 +291,12 @@ def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[o
     _, declarations, _ = experiment.declared_as()
     axes = [resolve(path, declarations) for path in start]
     starts = {axis: value for axis, value in zip(axes, start.values(), strict=True)}
-    sigma = None if noise is None else np.asarray(_si(noise) if isinstance(noise, Quantity) else noise, np.float64)
-    if sigma is not None and not np.all(np.isfinite(sigma) & (sigma > 0)):
+    sigma = np.asarray(_si(noise) if isinstance(noise, Quantity) else noise, np.float64) if noise is not None else None
+    if sigma is None or not np.all(np.isfinite(sigma) & (sigma > 0)):
         raise ArgumentRefused([Refusal("fit.noise", RefusalClass.USER,
-                                       f"the declared noise is a positive number (or one a residual), not {noise!r}",
+                                       f"a fit is given the residual's declared noise, a positive number (or one a "
+                                       f"residual entry), not {noise!r}: the Fisher information and the loss are "
+                                       f"over it, and a unit noise would make them a statement about nothing",
                                        "declare the residual's noise, `Study(exp).fit(..., noise=1e-3)`")])
     run = _Fit(experiment, axes, starts, residual, duration, sigma, dict(acknowledged or {}))
     given = {resolve(path, declarations): pair for path, pair in (bounds or {}).items()}
@@ -287,7 +317,7 @@ def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[o
 
 def _fisher(run: _Fit, theta: Mapping[Axis, np.ndarray]) -> tuple[Any, tuple[str, ...]]:
     """MADDENING's Fisher information of the residual (its rows, not the watched twists) with the declared noise, at
-    the start; the axes its weakest directions name, where its rank is short of their number."""
+    the start, and every axis it cannot resolve."""
     point = run.point(theta)
     theta0, factors = stacked_members([point], [0], run.writes, run.settings, run.declarations, np.float64)
     theta0 = {path: held[0] for path, held in theta0.items()}
@@ -305,13 +335,24 @@ def _fisher(run: _Fit, theta: Mapping[Axis, np.ndarray]) -> tuple[Any, tuple[str
     with precision(run.leader.declared.x64):
         report = fisher_information(residual, {path: _jnp.asarray(value) for path, value in theta0.items()},
                                     run.noise)
-    count = int(sum(np.size(value) for value in theta0.values()))
-    insensitive: tuple[str, ...] = ()
-    if int(report.rank) < count:
-        name, _ = report.least_identifiable()
-        # MADDENING names a leaf by its key path, ``['<path>']`` for a flat dict.
-        insensitive = tuple(path for path in theta0 if str(name) in (path, f"[{path!r}]")) or (str(name),)
-    return report, insensitive
+    return report, _insensitive(report, tuple(theta0))
+
+
+def _insensitive(report: Any, paths: Sequence[str]) -> tuple[str, ...]:
+    """Every axis the information cannot resolve: those with support in its null space (a Cramer-Rao bound of
+    infinity), by axis path; not one at exactly 0.0, whose relative scale is none (``zero_scaled``: the column
+    vanishes whatever the data say, which the report holds)."""
+    bound = np.reshape(np.asarray(report.crb), (-1,))
+    unscaled = set(report.zero_scaled)
+    found: list[str] = []
+    for name, held in zip(report.param_names, bound, strict=True):
+        if np.isfinite(held) or name in unscaled:
+            continue
+        # MADDENING names a leaf by its key path, ``['<path>']`` for a flat dict, ``['<path>'][i]`` for an entry.
+        path = next((path for path in paths if name == path or name.startswith(f"[{path!r}]")), name)
+        if path not in found:
+            found.append(path)
+    return tuple(found)
 
 
 def _flat(values: Mapping[Axis, np.ndarray]) -> np.ndarray:
@@ -338,66 +379,97 @@ def _descend(run: _Fit, axes: Sequence[Axis], theta: dict[Axis, np.ndarray],
                                  np.zeros(0), {}, lines, False, "its plan is refused")
             return iterate, None, np.zeros((0, 0))
         if point.key != run.leader.key:
-            raise BuildRefused([Refusal(
-                "fit.value-keyed", RefusalClass.USER,
-                "an iterate needs another compiled program than the start's: an entry makes a choice from the value "
-                "when it is built, so the fit's objective changes under it",
-                "declare a range of each fitted axis, `exp.declare_range(path, low, high, reason=...)`, which fixes "
-                "the choice over it and bounds the fit",
-                why="a fit whose iterates are built for their own values converges on a moving objective")])
+            raise _Keyed(values)
         scaled, rows, lines, twists = run.evaluate(point)
         loss = 0.5 * float(scaled @ scaled)
         taken, why = taken_if(loss, lines)
         jacobian = np.concatenate([rows[path] for path in sorted(rows)], axis=0).T  # m x n
         iterate = FitIterate(len(iterates), {a.path: v.copy() for a, v in values.items()}, loss, scaled,
-                             {path: rows[path] for path in paths}, (*lines, *box), taken, why)
+                             {path: rows[path] for path in paths}, (*lines, *box), taken, why,
+                             dict(point.computed or {}))
         return iterate, (scaled, twists), jacobian
 
+    current: FitIterate
     current, held, jacobian = judge(theta, lambda loss, lines: (not any(line.past for line in lines),
                                                                   "the start" if not any(line.past for line in lines)
                                                                   else "the start is past a line"))
     iterates.append(current)
+    if current.unjudged:
+        raise BuildRefused([Refusal(
+            "fit.line-unjudged", RefusalClass.USER,
+            "the start has a validity line that cannot be judged, and a fit does not take a line it did not judge as "
+            "inside: " + "; ".join(line.text() for line in current.unjudged),
+            "declare what the line needs (the Reynolds number needs the medium's density, `exp.declare("
+            "'water.density', ...)`), or drop the rung the line belongs to",
+            why="an iterate past an unjudged line would be taken, and the fit would end converged past it")])
     if not current.taken:
         return _result(run, paths, start, theta, current, "at a line", _past_names(current), iterates, fim,
                        insensitive)
     damping, gain = DAMPING, 1.0
     ended, why = "iterations", f"{iterations} iterates judged"
     order = sorted(range(len(axes)), key=lambda i: axes[i].path)
-    while len(iterates) < iterations:
+    stop = False
+    while len(iterates) < iterations and not stop:
         scaled, twists = held
         gradient = jacobian.T @ scaled
         normal = jacobian.T @ jacobian
         system: np.ndarray = normal + damping * np.diag(np.diag(normal)) + np.finfo(np.float64).tiny * np.eye(len(normal))
         step_flat: np.ndarray = -cast(np.ndarray, np.linalg.solve(system, gradient))
-        step = _unflat(step_flat, theta, axes, order)
-        trial = {axis: np.clip(theta[axis] + step[axis], *boxes[axis]) for axis in axes}
+        wanted = _unflat(step_flat, theta, axes, order)
+        trial = {axis: np.clip(theta[axis] + wanted[axis], *boxes[axis]) for axis in axes}
         step = {axis: trial[axis] - theta[axis] for axis in axes}
         scale, line, predicted = _line_limit(run, twists, step, current.lines, gain)
         reached = _reached(current.lines, line)
         size = float(np.max(np.abs(_flat(step))) * scale)
+        floor = tolerance * max(float(np.max(np.abs(_flat(theta)))), np.finfo(np.float64).tiny)
         if scale <= 0.0 or (line and reached):
             ended, why = "at a line", line
             break
-        if size <= tolerance * max(float(np.max(np.abs(_flat(theta)))), np.finfo(np.float64).tiny):
-            ended, why = ("at a line", line) if line else ("converged", f"the step fell below {tolerance:g} of the "
-                                                                         f"values")
+        if size <= floor:
+            pinned = [axis.path for axis in axes if np.max(np.abs(step[axis] - wanted[axis])) > floor]
+            if line:
+                ended, why = "at a line", line
+            elif pinned:
+                ended, why = "at a line", ", ".join(f"box:{path}" for path in pinned)
+            else:
+                ended, why = "converged", f"the step fell below {tolerance:g} of the values"
             break
         taken = False
-        for _ in range(HALVINGS):
-            values = {axis: theta[axis] + scale * step[axis] for axis in axes}
-            iterate, candidate, candidate_jacobian = judge(values, lambda loss, lines: _rule(loss, lines, current))
-            iterates.append(iterate)
-            if iterate.taken:
-                if line:
-                    gain = _measured_gain(current.lines, iterate.lines, line, predicted, gain)
-                theta, current, held, jacobian = values, iterate, candidate, candidate_jacobian
-                damping *= EASED
-                taken = True
-                break
-            if not iterate.past or len(iterates) >= iterations:
-                damping *= STIFFENED
-                break
-            scale = _back_off(scale, current.lines, iterate.lines)
+        try:
+            for _ in range(HALVINGS):
+                values = {axis: theta[axis] + scale * step[axis] for axis in axes}
+                iterate, candidate, candidate_jacobian = judge(values, lambda loss, lines: _rule(loss, lines, current))
+                iterates.append(iterate)
+                if iterate.taken:
+                    if line:
+                        gain = _measured_gain(current.lines, iterate.lines, line, predicted, gain)
+                    theta, current, held, jacobian = values, iterate, candidate, candidate_jacobian
+                    damping *= EASED
+                    taken = True
+                    break
+                if iterate.unjudged and not iterate.past:
+                    ended, why, stop = "unjudged", "; ".join(line_.text() for line_ in iterate.unjudged), True
+                    break
+                if not iterate.past or len(iterates) >= iterations:
+                    damping *= STIFFENED
+                    break
+                scale = _back_off(scale, current.lines, iterate.lines)
+        except _Keyed as keyed:
+            at = ", ".join(f"{axis.path} = {np.array2string(value, precision=10)}" for axis, value in
+                           keyed.values.items())
+            refused = FitRefused([Refusal(
+                "fit.value-keyed", RefusalClass.USER,
+                f"the iterate at {at} (judged after {sum(1 for each in iterates if each.taken)} taken) needs another "
+                f"compiled program than the start's: an entry makes a choice from the value when it is built, so the "
+                f"fit's objective changes under it",
+                "declare a range of each fitted axis, `exp.declare_range(path, low, high, reason=...)`, which fixes "
+                "the choice over it and bounds the fit; the iterates taken are in the error's `partial`",
+                why="a fit whose iterates are built for their own values converges on a moving objective")])
+            refused.partial = _result(run, paths, start, theta, current, "refused", f"the iterate at {at} needs "
+                                      f"another compiled program", iterates, fim, insensitive)
+            raise refused from None
+        if stop:
+            break
         if not taken and iterates[-1].past and len(iterates) < iterations:
             ended, why = "at a line", _past_names(iterates[-1])
             break
@@ -405,10 +477,14 @@ def _descend(run: _Fit, axes: Sequence[Axis], theta: dict[Axis, np.ndarray],
 
 
 def _rule(loss: float, lines: tuple[LineMargin, ...], current: FitIterate) -> tuple[bool, str]:
-    """Whether an iterate is taken: past no line, and its loss below the last taken iterate's."""
+    """Whether an iterate is taken: past no line, every line judged (a NaN margin is not a pass), and its loss below the
+    last taken iterate's."""
     past = [line.name for line in lines if line.past]
     if past:
         return False, f"past {', '.join(past)}"
+    unjudged = [line.name for line in lines if not line.judged]
+    if unjudged:
+        return False, f"cannot judge {', '.join(unjudged)}"
     if loss < current.loss:
         return True, "the loss fell"
     return False, "the loss did not fall"

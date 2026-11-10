@@ -56,7 +56,9 @@ class LineMargin:
 class FitIterate:
     """One iterate: its ``values`` (by axis path, SI), the residual over the declared noise (``scaled``) and the loss
     (half its squared norm), the derivative of the scaled residual in each axis, every validity line with its margin,
-    whether the fit took it, and why it did or did not."""
+    whether the fit took it, and why it did or did not. ``computed`` holds the lines the iterate's plan computed at
+    build (by entry; prose, which their runtime forms, the flags, number): empty where the iterate's nodes were
+    judged at what the start's were."""
 
     index: int
     values: Mapping[str, NDArray[np.float64]]
@@ -66,16 +68,24 @@ class FitIterate:
     lines: tuple[LineMargin, ...]
     taken: bool
     why: str
+    computed: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
 
     @property
     def past(self) -> tuple[LineMargin, ...]:
         return tuple(line for line in self.lines if line.past)
 
+    @property
+    def unjudged(self) -> tuple[LineMargin, ...]:
+        """The lines that could not be judged here: never counted inside."""
+        return tuple(line for line in self.lines if not line.judged)
+
 
 @dataclass(frozen=True)
 class FitResult:
     """A fit: the axes it fitted (``wrt``), the values it started from and ended at (SI), the loss there, where it
-    ended (``ended``: ``converged``, ``at a line`` with the line's name in ``why``, ``iterations``, ``stalled``), every
+    ended (``ended``: ``converged``; ``at a line`` with the line's name in ``why`` (a refusal's code, a flag's path, a
+    Reynolds line, ``box:<axis>`` where the range pins the step); ``unjudged`` where an iterate had a line that could not
+    be judged; ``iterations``; ``refused`` on the partial result of a refused fit), every
     iterate it judged, the Fisher information of the scaled residual at the start (MADDENING's ``FIMReport``, with the
     declared noise) and the axes it names insensitive there, and the path's status as a study's derivative composes
     it."""
@@ -104,12 +114,19 @@ class FitResult:
         if self.insensitive:
             lines.append(f"  insensitive at the start (the Fisher information with the declared noise): "
                          f"{', '.join(self.insensitive)}")
+        unscaled = tuple(getattr(self.fim, "zero_scaled", ()))
+        if unscaled:
+            lines.append(f"  not resolved by the Fisher information (a start of exactly 0.0 has no relative scale): "
+                         f"{', '.join(unscaled)}")
+        first: Mapping[str, tuple[str, ...]] = self.iterates[0].computed if self.iterates else {}
         for iterate in self.iterates:
             shown = ", ".join(f"{np.array2string(np.asarray(value), precision=8)}" for value in iterate.values.values())
             lines.append(f"  iterate {iterate.index}: {shown}, loss {iterate.loss:.6g}, "
                          f"{'taken' if iterate.taken else 'not taken'}: {iterate.why}")
             lines += [f"    {line.text()}" for line in iterate.lines
                       if line.past or not line.judged or np.isfinite(line.limit)]
+            lines += [f"    plan line of {owner}: {text}" for owner, held in iterate.computed.items() for text in held
+                      if text not in first.get(owner, ())]
         return "\n".join(lines)
 
     @override

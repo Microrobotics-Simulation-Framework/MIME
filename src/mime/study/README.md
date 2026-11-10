@@ -118,16 +118,21 @@
   iterate past a line is not taken, a numbered line limits the step by the watch's prediction from the twist's
   derivative, and the fit ends `at a line` where the margin leaves nothing; the iterates stay inside each axis's
   declared range, its leaves' bounds and `bounds`; MADDENING's Fisher information of the residual with the noise is
-  taken at the start and names an axis the residual cannot see. An iterate that needs another compiled program (an
-  axis with no declared range across a value-keyed choice) is refused (`fit.value-keyed`), never fitted on a moving
-  objective; a controller called on the host is refused (`fit.callback`).
+  taken at the start, with the noise as it is declared (required), and names every axis the residual cannot see. A
+  line that cannot be judged (the Reynolds number without the medium's density) is never taken as inside: the start is
+  refused (`fit.line-unjudged`), and an iterate whose line cannot be judged ends the fit `unjudged`; a range that pins
+  the step ends it `at a line`, `box:<axis>`. An iterate that needs another compiled program (an axis with no declared
+  range across a value-keyed choice) is refused (`fit.value-keyed`, the iterates taken in the error's `partial`), never
+  fitted on a moving objective; a controller called on the host is refused (`fit.callback`).
 - **A controller's setting as an axis** (`controller.<setting>`): a point declares it, and where the controller runs
   inside the compiled step its law reads it through its context (`ctx.scalar`, `ctx.vector`): a setting its step reads
   is a leaf of the controller's node (`setting_<name>`), its law made again from the leaves inside the traced step, so
   a sweep is one program, an override runs as data and a derivative passes through it; one its start alone reads
   reaches the run through each point's start; one read through `self` is refused exactly (`controller.setting-unread`,
-  one trace with the setting as an argument). A setting no axis names stays a constant. A controller called on the
-  host makes each member's law from its own settings, as before.
+  one trace with the setting as an argument). A setting no axis names stays a constant. Inside the compiled step only
+  the numbers a law reads through its context can be axes (`controller.setting-not-leaf` names those that can: a count,
+  a switch, a name, a direction and a file are read as built). A controller called on the host makes each member's law
+  from its own settings, as before.
 
 - **A study in a folder** (`_folder_run.py`, `_record.py`, `_content.py`, `_spec.py`): `study.run_to(folder)` writes a
   study folder (see `mime.results`) group by group and batch by batch, into a new or empty folder or one that holds the

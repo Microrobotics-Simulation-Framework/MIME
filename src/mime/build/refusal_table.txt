@@ -110,6 +110,7 @@ controller.mode-unknown       user
 controller.more-than-one      user
 controller.read-refused       user
 controller.read-unknown       user
+controller.setting-not-leaf   user
 controller.setting-unread     user
 controller.signal             user
 controller.unreached-read     user
@@ -176,7 +177,9 @@ env.variant                   user
 error.uncoded                 internal
 error.unrecognised            unrecognised
 experiment.name               user
+fit.box                       user
 fit.callback                  user
+fit.line-unjudged             user
 fit.noise                     user
 fit.start                     user
 fit.value-keyed               user

@@ -141,11 +141,17 @@ class ReadModels(Mapping[str, Any]):
 
 def numeric_settings(entry: object) -> dict[str, float]:
     """A controller's settings that are bare numbers (a gain, a smoothing), as its law may read them through its
-    context, beside its dimensioned settings in SI: an integer or a flag is a count or a switch, read as built."""
+    context, beside its dimensioned settings in SI: a field the class annotates ``float`` (an integer written for it,
+    ``gain=2``, is the float 2.0), or holding a float; an integer field is a count and a flag a switch, read as built."""
     if not dataclasses.is_dataclass(entry):
         return {}
-    return {field.name: float(value) for field in dataclasses.fields(entry)
-            if isinstance(value := getattr(entry, field.name), float)}
+    found: dict[str, float] = {}
+    for field in dataclasses.fields(entry):
+        value = getattr(entry, field.name)
+        written_float = field.type is float or field.type == "float"
+        if isinstance(value, float) or (written_float and isinstance(value, int) and not isinstance(value, bool)):
+            found[field.name] = float(value)
+    return found
 
 
 def control_context(plans: PlanSet, given: Mapping[str, Any] | None = None) -> BuildContext:

@@ -10,6 +10,8 @@ smoothing through its context (``planted_gradients.TracedFollower``); and A0's t
 
 from __future__ import annotations
 
+import dataclasses
+import os
 import sys
 from pathlib import Path
 
@@ -20,11 +22,13 @@ STUDY = str(Path(__file__).resolve().parents[1] / "study")
 if STUDY not in sys.path:
     sys.path.append(STUDY)
 
-from chain_cases import tracked_rpm  # noqa: E402
+from chain_cases import tracked_rpm, tracking  # noqa: E402
 from control_cases import spun_magnet  # noqa: E402
 from planted_gradients import TracedFollower  # noqa: E402
 
-from mime.build import BuildRefused  # noqa: E402
+import mime.control._run as run_module  # noqa: E402
+from mime.build import ArgumentRefused, BuildRefused  # noqa: E402
+from mime.study._axes import candidates, resolve  # noqa: E402
 from mime.study import Study, along  # noqa: E402
 from mime.units import ms  # noqa: E402
 
@@ -44,8 +48,6 @@ def followed(name: str = "followed", **settings):
 def swept():
     """The gain's sweep; ``MIME_PLANT_CONTROLLER=self`` has the law read its gain through ``self`` (the gate kit's
     rate of the exact check's control)."""
-    import os
-
     through_self = os.environ.get("MIME_PLANT_CONTROLLER") == "self"
     study = Study(followed(through_self=through_self)).sweep(along({"controller.gain": GAINS}), duration=ms(30))
     try:
@@ -127,3 +129,57 @@ def test_a_fit_through_a_callback_controller_is_refused():
     with pytest.raises(BuildRefused) as raised:
         Study(exp).fit(tilt, start={"spin.magnetic_moment": A_m2(18.89)}, noise=1.0, duration=ms(30))
     assert [refusal.code for refusal in raised.value.refusals] == ["fit.callback"]
+
+
+INTEGERS = {"gain": 2, "smoothing": 1, "damping": 0}
+
+
+@pytest.fixture(autouse=True)
+def planted_float_only(monkeypatch):
+    """``MIME_PLANT_CONTROLLER=float_only`` has the context's bare numbers the fields holding a float alone, as the first
+    form of this stage took them (the gate kit's rate of the integer tests)."""
+    if os.environ.get("MIME_PLANT_CONTROLLER") == "float_only":
+        monkeypatch.setattr(run_module, "numeric_settings", lambda entry: {
+            field.name: float(getattr(entry, field.name)) for field in dataclasses.fields(entry)
+            if isinstance(getattr(entry, field.name), float)})
+
+
+def test_an_integer_written_for_a_float_setting_is_that_float_and_a_count_or_a_switch_is_not_a_setting():
+    """``ArmTracking(gain=2)`` type-checks (an integer is a float for a type checker) and built before the law read its
+    numbers through its context: the number the context holds is the float, whatever was written."""
+    written = run_module.numeric_settings(tracking(**INTEGERS))
+    floats = run_module.numeric_settings(tracking(**{name: float(value) for name, value in INTEGERS.items()}))
+    assert written == floats and all(type(value) is float for value in written.values())
+    assert {"gain", "smoothing", "damping"} <= set(written) and not {"iterations", "orientation_feedback"} & set(written)
+    assert "orientation_feedback" not in run_module.numeric_settings(tracking(orientation_feedback=True))
+
+
+@pytest.mark.parametrize("mode", ["callback", "graph"])
+def test_a_controller_written_with_integers_for_its_float_settings_builds_in_both_modes(mode):
+    """The blocker of the review of this stage: on the release these builds (an integer for a float field), and the first
+    form of the context's numbers refused them as an entry defect."""
+    built = tracked_rpm(f"integers_{mode}", mode=mode, controller=tracking(**INTEGERS)).build()
+    assert built.plans.controller is not None
+
+
+READ_AS_BUILT = ("iterations", "orientation_feedback", "end_effector", "axis", "description", "orientation")
+
+
+@pytest.mark.parametrize("setting", READ_AS_BUILT)
+def test_a_setting_read_as_built_is_no_axis_inside_the_compiled_step_and_the_refusal_names_those_that_are(setting):
+    """A count, a switch, a name, a direction or a file is read as built, so inside the compiled step no leaf can hold
+    it: ``controller.iterations`` was offered and crashed uncoded when planned."""
+    _, declarations, _ = tracked_rpm("not_a_leaf", mode="graph").declared_as()
+    with pytest.raises(ArgumentRefused) as raised:
+        resolve(f"controller.{setting}", declarations)
+    (refusal,) = raised.value.refusals
+    assert refusal.code == "controller.setting-not-leaf"
+    assert all(f"controller.{name}" in refusal.action for name in ("gain", "smoothing", "damping", "standoff"))
+    offered = [path for path in candidates(declarations) if path.startswith("controller.")]
+    assert f"controller.{setting}" not in offered and "controller.gain" in offered
+
+
+def test_as_a_callback_every_setting_is_a_members_own_law_and_so_an_axis():
+    _, declarations, _ = tracked_rpm("callback_axes", mode="callback").declared_as()
+    assert resolve("controller.iterations", declarations).name == "iterations"
+    assert "controller.iterations" in candidates(declarations)
