@@ -70,6 +70,7 @@ from chain_cases import tracked_rpm, tracking
 
 from mime.build import Mode
 from mime.control import _arm_tracking, control_context
+from mime.control._run import numeric_settings
 from mime.core import jnp
 from mime.registry import BuildContext
 from mime.units import m
@@ -116,14 +117,15 @@ def rotation_angle(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def port(feedback: bool, parameters: Mapping[str, float] | None = None, settings: Mapping[str, Any] | None = None):
-    """A0's controller with the 0.2 rig's settings, ready to step; ``parameters`` replaces some of its parameters and
+    """A0's controller with the 0.2 rig's settings (and its own bare numbers, which the law reads through its context as a
+    build hands them), ready to step; ``parameters`` replaces some of its parameters and
     ``settings`` some of the settings a build hands it (the standoff, the reach, the lookahead)."""
     controller = tracking(orientation_feedback=feedback, standoff=m(0.15), reach=m((-0.05, 0.05)),
                           **(PARAMETERS | dict(parameters or {})))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return controller.law(BuildContext("controller", 5e-4, 5e-4, "controller",
-                                           settings=SETTINGS | dict(settings or {})))
+                                           settings=numeric_settings(controller) | SETTINGS | dict(settings or {})))
 
 
 def stepped(feedback: bool, inputs: dict[str, np.ndarray], parameters: Mapping[str, float] | None = None,

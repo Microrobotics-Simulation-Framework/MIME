@@ -20,7 +20,7 @@ from maddening import GraphManager
 from mime.build._derived import array_record, canonical_json, derive
 from mime.build._in_graph import program_of
 from mime.build._maddening import parameter_tree, static_dependencies
-from mime.nodes.control import ControllerNode
+from mime.nodes.control import SETTING, ControllerNode
 
 #: JAX's tracer, whose hints name types from jaxlib, which ships no stubs.
 _jax: Any = cast(Any, jax)
@@ -55,7 +55,17 @@ def _controller_programs(graph: GraphManager) -> dict[str, Any]:
         start = cast(Mapping[str, Any], constants["initial_state"])
         reads = cast(Mapping[str, tuple[str, tuple[int, ...]]], constants["reads"])
         zeros = {label: np.zeros(shape, dtype=_jax.numpy.zeros(()).dtype) for label, (_, shape) in reads.items()}
-        text, consts = program_of(_jax.make_jaxpr(node.law_step)(dict(start), zeros))
+        if node.leaf_settings:
+            # The settings it holds as leaves are arguments of the traced step, so their values are not its constants.
+            leaves = {name: constants[f"{SETTING}{name}"] for name in node.leaf_settings}
+
+            def stepped(given: Mapping[str, Any], held: Mapping[str, Any], settings: Mapping[str, Any],
+                        node: ControllerNode = node) -> Any:
+                return node.step_at({f"{SETTING}{name}": value for name, value in settings.items()})(given, held)
+
+            text, consts = program_of(_jax.make_jaxpr(stepped)(dict(start), zeros, leaves))
+        else:
+            text, consts = program_of(_jax.make_jaxpr(node.law_step)(dict(start), zeros))
         found[name] = {"program": hashlib.sha256(text.encode()).hexdigest(),
                        "constants": [array_record(held) for held in consts]}
     return found

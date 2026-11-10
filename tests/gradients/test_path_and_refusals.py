@@ -163,3 +163,10 @@ def test_a_callback_controllers_path_is_cut_refused_unless_acknowledged_and_neve
     assert graph.finite and member.finite
     assert np.all(member.gradient["spin.magnetic_moment"] != graph.gradient["spin.magnetic_moment"]), \
         "the cut path holds the controller's writes, so its derivative is not the closed loop's"
+
+
+def test_an_objective_of_more_than_one_number_is_refused():
+    exp, spring = planted("double")
+    with pytest.raises(BuildRefused) as raised:
+        Study(exp).sweep(along({spring.k: [N(1.7) / m(1.0)]}), duration=s(0.2)).gradient(lambda final: final["probe"]["x"])
+    assert codes(raised) == ["gradient.objective"]
