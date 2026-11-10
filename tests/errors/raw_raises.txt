@@ -88,7 +88,7 @@ nodes/flow/fvm/_exchange.py::_axis_weights ValueError 1  # invariant: an exchang
 nodes/hydro/_rft_drag.py::RFTDragNode.__init__ ValueError 5  # construction: the node's constructor given a coefficient set, a stop form, shape and wall constants or counts it cannot take, which only the rung's build gives and its plan has checked; reached, it is error.uncoded
 nodes/hydro/_rft_drag.py::drag_coefficients ValueError 1  # invariant: a coefficient set the setting's own check (drag.rft-coefficients) has already refused; reached, it is error.uncoded, keeping its class
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 9  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 11  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode._check_owners ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode.chunks ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 nodes/_kinds.py::registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded

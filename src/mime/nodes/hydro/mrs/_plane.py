@@ -142,6 +142,16 @@ def plane_distance(points: Array, parameters: Mapping[str, Any]) -> Array:
     return heights(points, n, jnp.asarray(parameters["offset"], dtype=points.dtype))
 
 
+def plane_opened(parameters: Mapping[str, Any], delta: Any) -> dict[str, Any]:
+    """The plane moved ``delta`` (m) away from the medium along its normal: its offset less ``delta``."""
+    return {**parameters, "offset": parameters["offset"] - delta}
+
+
+def plane_region(parameters: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+    """The half-space the medium fills, from the plane's normal and offset."""
+    return "half_space", {"normal": parameters["normal"], "offset": parameters["offset"]}
+
+
 def plane_preparation(parameters: Mapping[str, Any], dtype: Any) -> dict[str, object]:
     """The plane's ``prepare``: its normal as written (normalised in the program) and its offset, from the half-space
     the medium fills."""
@@ -162,8 +172,10 @@ PLANE_COST = ("measured on a 4-core laptop CPU in float64, a jitted step took ab
 PLANE_CORRECTION = register_wall_correction(WallCorrection(
     PLANE, PLANE_VERSION, PLANE_PARAMETERS, plane_correction, prepare=plane_preparation, units=PLANE_UNITS,
     held=frozenset({"normal"}), distance=plane_distance, image=plane_image, pair_values=PLANE_PAIR_VALUES,
-    regularised=True, cost_text=PLANE_COST, near_wall_text=PLANE_NEAR_WALL))
+    regularised=True, cost_text=PLANE_COST, near_wall_text=PLANE_NEAR_WALL, opened=plane_opened,
+    region=plane_region))
 
 
 __all__ = ["PLANE", "PLANE_CORRECTION", "PLANE_COST", "PLANE_NEAR_WALL", "PLANE_PAIR_VALUES", "PLANE_PARAMETERS", "PLANE_UNITS", "PLANE_VERSION",
-           "ImageTerms", "heights", "image_terms", "plane_correction", "plane_distance", "plane_image", "plane_preparation", "unit_normal"]
+           "ImageTerms", "heights", "image_terms", "plane_correction", "plane_distance", "plane_image", "plane_opened",
+           "plane_preparation", "plane_region", "unit_normal"]

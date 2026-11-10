@@ -6,8 +6,10 @@ there (one inverse-kinematics iteration: each runs the same functions, so more t
 dynamic arm with Coulomb friction (``chain_cases.friction_arm``), whose friction and sweeps' start A0's AR4 never
 reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's support no case reaches; A0's
 apparatus with its masses mounted and that friction arm, each with the energy ledger, whose metered steps (the arm's
-and the motor's step identities, and the impulses split by the friction's share) no other configuration takes; and
-those steps traced and scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
+and the motor's step identities, and the impulses split by the friction's share) no other configuration takes; a
+sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
+no round-trip case's body is fine enough for (where the package has the hand-over); and those steps traced and
+scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
 configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
 from collections.abc import Callable
@@ -50,6 +52,14 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found["contact/rod_hull"] = rod_contact
     found["ledger/massive_rpm"] = partial(metered, partial(massive_rpm, "massive_rpm_metered"))
     found["ledger/friction_arm"] = partial(metered, partial(friction_arm, "friction_arm_metered"))
+    from mime.interactions import Drag
+
+    if hasattr(Drag, "handover_window"):  # a merge base before lubrication's hand-over builds no such drag
+        from lubrication_cases import above_plane
+
+        # a coarse blob: the step's structure (its raw sites) is the same at any blob, and each worker that runs the
+        # scan holds every configuration's traced step, the quadrature's arrays in it
+        found["drag/lubricated_sphere"] = partial(above_plane, 0.2, blob=0.25)
     return found
 
 

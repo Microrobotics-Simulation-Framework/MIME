@@ -127,10 +127,13 @@ class Registration:
 class Value:
     """A read of a value of the thing bound to ``role``: its mass, its buoyant volume, a medium's density. Phase 1
     resolves it through ``mime.materials``, the one place that reads such values, and hands it to the entry in SI,
-    with ``ctx.values``; the entry passes it to its node's constructor, so it becomes a ``params`` leaf."""
+    with ``ctx.values``; the entry passes it to its node's constructor, so it becomes a ``params`` leaf. With ``wall``,
+    the value of the structure whose region the medium bound to ``role`` fills (its wall's roughness), which a plan
+    sees as ``ctx.value(role, "wall.<name>")``."""
 
     role: str
     name: str
+    wall: bool = False
 
 
 @dataclass(frozen=True)
@@ -682,7 +685,7 @@ class Flag:
     run reports the flags raised over each window it reads, and a flag never blocks a read. A flag that ``warns`` is
     also warned of after a run that raised it, with its count: one whose steps hold values that are not what the step
     computes to its stated accuracy (a solve that stopped short). ``written``, where given, names settings of which
-    one written (not ``None``) makes the node raise it: a flag of an opt-in option."""
+    one written (not ``None``, and not ``False`` for a switch) makes the node raise it: a flag of an opt-in option."""
 
     field: str
     meaning: str
@@ -695,7 +698,7 @@ class Flag:
     def raised_by(self, rung: str | None, group: bool, entry: object = None) -> bool:
         """Whether the node built for ``rung``, for a group or not, from ``entry`` (its settings), raises it."""
         return (self.rung is None or self.rung == rung) and (self.group is None or self.group == group) and (
-            not self.written or any(getattr(entry, name, None) is not None for name in self.written))
+            not self.written or any(getattr(entry, name, None) not in (None, False) for name in self.written))
 
 
 @dataclass(frozen=True)

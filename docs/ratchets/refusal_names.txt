@@ -50,3 +50,4 @@ plotly.subplots  # a module name: plotly's subplot helper, imported when a figur
 plotly.offline  # a module name: plotly's bundled plotly.js, imported when a page inlines it
 memory.max  # a file name: cgroup v2's memory limit, read for the memory a CPU run can have
 memory.limit_in_bytes  # a file name: cgroup v1's memory limit, read for the memory a CPU run can have
+wall.roughness  # the name a plan reads the roughness of the wall a medium fills by (PlanContext.value(role, 'wall.roughness')), not a refusal code
