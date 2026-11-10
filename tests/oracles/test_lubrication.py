@@ -445,32 +445,33 @@ def test_gate7_the_term_doubled_moves_the_speed_by_what_the_six_by_six_predicts(
 
 def compared(built, pose_of, gaps, leaf_names, step=1e-6):
     """Reverse, forward and Richardson's central difference of a weighted sum of the resistance in each leaf, at each
-    gap; each leaf stepped by ``step`` of its size."""
+    gap; each leaf stepped by ``step`` of its size. The loss takes the pose and the weights as arguments, so that each
+    derivative compiles once for every gap."""
     node, state, leaves, _ = stepper(built)
+
+    def loss(values, pose, along, weights):
+        held = {**leaves, **{k: v for k, v in zip(leaf_names, values[:-1], strict=True)}}
+        moved = pose + values[-1] * along
+        return jnp.sum(weights * node.update(state, {"pose": moved}, 1e-3, params=held)["resistance"])
+
+    value, reverse_of, forward_of = jax.jit(loss), jax.jit(jax.grad(loss)), jax.jit(jax.jacfwd(loss))
     found = []
     for gap in gaps:
         pose = pose_of(gap)
         scale = np.asarray(node.update(state, {"pose": pose}, 1e-3, params=leaves)["resistance"])
         weights = jnp.asarray((1.0 + 0.1 * np.arange(36).reshape(6, 6) / 36.0)
                               / np.sqrt(np.abs(np.outer(np.diag(scale), np.diag(scale)))))
-
-        along = 2 if float(pose[2]) != 0.0 else 0
-
-        def loss(values):
-            held = {**leaves, **{k: v for k, v in zip(leaf_names, values[:-1], strict=True)}}
-            moved = pose.at[along].add(values[-1])
-            return jnp.sum(weights * node.update(state, {"pose": moved}, 1e-3, params=held)["resistance"])
-
+        along = jnp.zeros(7).at[2 if float(pose[2]) != 0.0 else 0].set(1.0)
         at = jnp.asarray([*(leaves[k] for k in leaf_names), 0.0])
-        reverse = np.asarray(jax.jit(jax.grad(loss))(at))
-        forward = np.asarray(jax.jit(jax.jacfwd(loss))(at))
+        reverse = np.asarray(reverse_of(at, pose, along, weights))
+        forward = np.asarray(forward_of(at, pose, along, weights))
         here = []
         for i, name in enumerate((*leaf_names, "position")):
             size = RADIUS if name in ("position", "wall_offset", "wall_radius") else abs(float(at[i]))
             h = step * size
             e = jnp.zeros_like(at).at[i].set(h)
-            coarse = (float(loss(at + e)) - float(loss(at - e))) / (2 * h)
-            fine = (float(loss(at + e / 2)) - float(loss(at - e / 2))) / h
+            coarse = (float(value(at + e, pose, along, weights)) - float(value(at - e, pose, along, weights))) / (2 * h)
+            fine = (float(value(at + e / 2, pose, along, weights)) - float(value(at - e / 2, pose, along, weights))) / h
             # each derivative on the loss's scale per unit relative move of its leaf, so that a leaf the resistance
             # does not read at this gap (the roughness above the cutoff) is judged against the others
             here.append((gap, name, reverse[i] * size, forward[i] * size, (4 * fine - coarse) / 3 * size))
@@ -676,14 +677,17 @@ def test_gate13_the_films_increment_in_the_spheres_radius_through_the_node_equal
     off the plane as its radius moves, against the central difference of two builds at a (1 +- SHAPE_STEP)."""
     gap = 0.01 * RADIUS
     with planted():
-        cases = {factor: stepper(above_plane(0.15, kind=Sphere(radius=m(factor * RADIUS))).build())
+        # a spacing of 0.19 radii holds the hand-over gap within the window at a (1 - SHAPE_STEP) as well
+        cases = {factor: stepper(above_plane(0.19, kind=Sphere(radius=m(factor * RADIUS))).build())
                  for factor in (1.0, 1.0 + SHAPE_STEP, 1.0 - SHAPE_STEP)}
         base = cases[1.0]
-        for i, j in FILM_ENTRIES:
-            derivative = float(jax.grad(lambda r, i=i, j=j: film_at(base, r, gap)[i, j])(jnp.asarray(RADIUS)))
-            up = float(film_at(cases[1.0 + SHAPE_STEP], (1.0 + SHAPE_STEP) * RADIUS, gap)[i, j])
-            down = float(film_at(cases[1.0 - SHAPE_STEP], (1.0 - SHAPE_STEP) * RADIUS, gap)[i, j])
-            rebuilt = (up - down) / (2.0 * SHAPE_STEP * RADIUS)
+        rows, columns = (jnp.asarray(index) for index in zip(*FILM_ENTRIES, strict=True))
+        derivatives = np.asarray(jax.jacrev(lambda r: film_at(base, r, gap)[rows, columns])(jnp.asarray(RADIUS)))
+        up = np.asarray(film_at(cases[1.0 + SHAPE_STEP], (1.0 + SHAPE_STEP) * RADIUS, gap))
+        down = np.asarray(film_at(cases[1.0 - SHAPE_STEP], (1.0 - SHAPE_STEP) * RADIUS, gap))
+        for k, (i, j) in enumerate(FILM_ENTRIES):
+            derivative = float(derivatives[k])
+            rebuilt = (float(up[i, j]) - float(down[i, j])) / (2.0 * SHAPE_STEP * RADIUS)
             print(f"\nentry ({i}, {j}): through the node {derivative:.8g}, two builds {rebuilt:.8g}, "
                   f"ratio {derivative / rebuilt:.6f}")
             assert abs(derivative / rebuilt - 1.0) <= SHAPE_LINE, ((i, j), derivative, rebuilt)
