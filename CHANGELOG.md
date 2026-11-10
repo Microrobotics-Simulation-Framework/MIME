@@ -187,9 +187,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   distance from the wall in the force spacing, as a uniform run's (design #329, superseding #308's cell's own size;
   `GRADED_WALL_MEASURE` in `mime.nodes.hydro.mrs._node`, one switch: at the gate's sphere +3.33 % against +5.24 % at blob
   0.1, -0.04 % against +1.67 % at 0.025) and a written `wall_refinement` is taken from the finest spacing. The build reports
-  what was graded, the counts and the finest spacing. **What grading buys, measured**, each claim against a uniform
-  sampling of the graded count as well (the count-matched uniform arm, design #329's standard control, which the sphere's
-  oracle runs): the sphere's contact grading
+  what was graded, the counts and the finest spacing. **What grading buys, measured**, against a uniform sampling of
+  the graded count as well where that arm was run (the count-matched uniform arm, design #329's standard control, which
+  the sphere's oracle runs; the cylinder's rim's figures have none, so its gain may be the count's): the sphere's contact
+  grading
   helps beyond its count (at half a force spacing from a plane, +5.31 % against +10.16 % for a uniform sampling of as
   many force points, blob 0.1; +1.74 % against +6.00 % at 0.025); FL-9's crest grading at 0.4 mm does not (+2.23 %
   graded against +2.37 % uniform at the graded count, half a spacing, blob 0.25): its gain over the uniform sampling's

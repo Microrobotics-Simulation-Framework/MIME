@@ -108,11 +108,12 @@ OFF_PATCH_BAND = 0.05
 #: ``"cell"``, in the cell's own size, ``sqrt(area)``. Measured through the node on the gate's sphere, its contact
 #: graded for half a force spacing and the image integrated, against Brenner's series at half a spacing: +3.33 % (force
 #: spacing) and +5.24 % (cell) at blob 0.1, -0.04 % and +1.67 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The
-#: one switch between them; a uniform run reads neither. In the force spacing more of a graded body's fine cells lie
-#: within the reach than :data:`WALL_CELL_SHARE` budgets for, so its step raises ``wall_cells_short``: the gate's sphere
-#: (76 cells of 301 budgeted) and ``mrs_graded``'s cylinder (21 of 84) on every step; measured through the node in
-#: float64, every cell integrated moved the sphere's normal entry from +3.33287 % to +3.33277 % and the cylinder's
-#: resistance by 1.6e-3 of its largest entry.
+#: one switch between them; a uniform run reads neither. A graded body's fine cells within the reach outnumber what
+#: :data:`WALL_CELL_SHARE` budgets for, so its steps raise ``wall_cells_short`` on default graded runs: the gate's
+#: sphere (76 cells of 301 budgeted) on every step in either measure, ``mrs_graded``'s cylinder (21 of 84) on every step
+#: in the force spacing and on none in the cell's own size. Measured through the node, in both dtypes: every cell
+#: integrated moved the largest resistance entry by 1.6e-4 of itself (the sphere) and 1.6e-3 (the cylinder), against
+#: 1.8e-2 and 7.3e-3 for this switch; the sphere's normal entry alone from +3.33287 % to +3.33277 %.
 GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "force_spacing"
 #: What the build report says was mapped near a wall, for a wall kind without figures of its own
 #: (``WallCorrection.near_wall_text``).
@@ -151,7 +152,11 @@ WALL_REACH = 2.0
 #: the 0.1 mm margin, eight rolls: within two spacings of the wall lay at most 14.6% of the cells at 0.278 mm, 16.2% at
 #: 0.3, 23.7% at 0.4, 44% at 0.6 and 63% at 0.829. A cell's row is padded to :data:`WALL_CELL_CAP`, so a budget pays
 #: only below about 0.41 (the kept points over the padded row, at every spacing measured); 0.25 holds the cells within
-#: the reach from 0.4 mm down, and a coarser spacing flags that it is short.
+#: the reach from 0.4 mm down, and a coarser spacing flags that it is short. A graded body's cells are counted against
+#: the same share, so default graded runs with ``wall_refinement`` raise ``wall_cells_short`` on every step measured
+#: (:data:`GRADED_WALL_MEASURE`'s comment): there it says the farthest cells within the reach took the image at their
+#: force points, at the cost measured there, not that the budget held. Whether a graded run's budget follows its
+#: density is the maintainer's open question.
 WALL_CELL_SHARE = 0.25
 #: The most wall points a cell's image is integrated on, in multiples of the mean over the cells, rounded up
 #: (:func:`mime.nodes.hydro.mrs._quadrature.capped_cells`): a tensor grid crowds some cells (at 0.4 mm on FL-9 the widest
@@ -1342,9 +1347,12 @@ class MRSDragNode(MimeNode):
                  if used is not None else "")
         promoted = (f" (wall_refinement={written} written, which leaves a cell of this body with no wall point, so the "
                     f"next finer that leaves none)" if used is not None and written != used else "")
+        graded = (" (a graded body's cells within the reach outnumber the budget, so its steps raise "
+                  "wall_cells_short, every step on the default graded runs measured: the farthest of them take the "
+                  "image at their force points)" if self.graded and not self.wall_every else "")
         return (f"the image at the force points, and where a cell lies within {WALL_REACH:g} force spacings of the "
                 f"wall integrated over {which} on a wall quadrature{finer}{promoted}, of up to {table.shape[1]} points "
-                f"a cell, blended to the point image by the distance")
+                f"a cell, blended to the point image by the distance{graded}")
 
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
         """Why the node stopped a run, from its state at the run's end: the step whose resistance turned indefinite

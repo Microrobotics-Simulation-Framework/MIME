@@ -212,21 +212,23 @@ in the force spacing, as a uniform run's (`GRADED_WALL_MEASURE`, one switch in t
 cell's own size, was the first build's), and a written `wall_refinement` counts from the finest spacing: a graded contact half
 a force spacing from a plane, the image integrated, measured farther from Brenner's series than the uniform sampling at
 a blob of a tenth, the compact default, and nearer at a fortieth, and nearer at both than with the cells measured in
-their own size (the switch's comment gives the numbers). Measured in the force spacing, more of a graded body's fine
-cells lie within the image's reach than the wall's cell budget holds, so such a step raises `wall_cells_short`; with
-every cell integrated, the gates' sphere moved by about a millionth of its normal entry and the graded round-trip
-cylinder by under two thousandths of its largest entry. The build report states what
+their own size (the switch's comment gives the numbers). A graded body's fine cells within the image's reach
+outnumber the wall's cell budget, so default graded runs with `wall_refinement` raise `wall_cells_short` on every step
+measured (the gates' sphere in either measure, the graded round-trip cylinder in the force spacing): there it says the
+farthest of those cells took the image at their force points, not that the budget held; with every cell integrated
+the largest resistance entry moved by 1.6e-4 of itself on the sphere and 1.6e-3 on the cylinder. The build report states what
 was graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the
 force points' mean spacing.
 
-What grading buys is measured, not bounded, and every claim of it is judged against a uniform sampling of the graded
-count as well as the uniform one: the count-matched uniform arm is the standard control for a sampling claim, since
-a graded sampling holds more force points. Against exact answers by `tests/oracles/test_graded_sampling.py`:
+What grading buys is measured, not bounded. The standard control for a sampling claim is a uniform sampling of the
+graded count as well as the uniform one (the count-matched uniform arm), since a graded sampling holds more force
+points; a figure measured without it says so. Against exact answers by `tests/oracles/test_graded_sampling.py`:
 a sphere's contact at a plane against Brenner's series, with its wrong-way, leaves-the-patch and count-matched controls;
 there the contact grading helps beyond its count (a uniform sampling of as many force points stays near the uniform
 one's error).
 Against finer references, in the build's gates and not in CI: a cylinder's rim at a plane, where the rims' grading
-helps, and a screw's crest at a plane (the de Jongh screw's), where the gain was the point count: a uniform sampling of the graded count did as
+came nearer the reference than the uniform sampling, with no count-matched arm measured, so whether the gain is the
+grading's or the count's is not known; and a screw's crest at a plane (the de Jongh screw's), where the gain was the point count: a uniform sampling of the graded count did as
 well, so crest grading there is a way to place the points, not a gain over spending them uniformly. Not bounded
 elsewhere. Refused: a kind without features asked for them (`drag.grading-features`), a kept version
 (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`), with no gap to grade for

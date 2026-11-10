@@ -115,9 +115,10 @@ class ForceSampling(SettingGroup):
     """How the mrs rung samples a body's force points where it grades them (drag 0.5.0, opt-in):
     ``grading='features'`` towards the hull kind's declared features (its edges and crests), and ``contact``, a
     direction in the body's frame, towards the side of the body held facing the wall, graded for ``contact_gap``. Left
-    out, the force points are quasi-uniform, as every released program's. What grading buys is measured, never bounded,
-    and a claim of it is judged against a uniform sampling of the graded count, the count-matched uniform arm, as well
-    as against the uniform sampling itself."""
+    out, the force points are quasi-uniform, as every released program's. What grading buys is measured, never bounded;
+    a claim of it stands against a uniform sampling of the graded count, the count-matched uniform arm, as well as
+    against the uniform sampling itself, and one without that arm (the cylinder's rim's) says the gain may be the
+    count's."""
 
     group = "force_sampling"
     setting_roles = {
@@ -1563,10 +1564,11 @@ class Drag(UncoupledDrag):
         "edges (EDGE_SHARE of the force spacing there) and crests (CREST_SHARE of their radius across) and towards a "
         "held contact (its gap to the wall over CONTACT_SPACINGS), the spacing growing by its distance from them and "
         "never finer than FINEST of the force spacing, each force point at its cell's area centre, chosen at the "
-        "settings rounded to FIGURES. What it buys is measured per kind, each against a uniform sampling of the "
-        "graded count as well as the uniform one, and bounded nowhere: a sphere's contact at a plane against "
-        "Brenner's series (tests/oracles/test_graded_sampling.py), where it helps beyond its count; a cylinder's rim "
-        "at a plane against a finer reference in the build's gates, where it helps; a screw's crest at a plane "
+        "settings rounded to FIGURES. What it buys is measured per kind and bounded nowhere: a sphere's contact at a "
+        "plane against Brenner's series (tests/oracles/test_graded_sampling.py), where it helps beyond its count (a "
+        "uniform sampling of the graded count measured beside it); a cylinder's rim at a plane against a finer "
+        "reference in the build's gates, nearer it than the uniform sampling, with no uniform sampling of the graded "
+        "count measured, so whether the gain is the grading's or the count's is not known; a screw's crest at a plane "
         "against one, where a uniform sampling of the graded count did as well, so the gain was the count; a box's "
         "edges, an ellipsoid's and a capsule's surfaces not measured; at the bodies, blobs and gaps those name. The "
         "sampling is fixed on the body: a graded contact serves a body whose orientation to the wall is held (a crest "
@@ -1575,11 +1577,11 @@ class Drag(UncoupledDrag):
         "written, the wall's self-image measures a graded cell's distance in the force spacing, as a uniform run's "
         "(GRADED_WALL_MEASURE): on the gates' sphere graded for half a force spacing from a plane, "
         "farther from Brenner's series than the uniform sampling at a blob of a tenth, the compact default, and nearer "
-        "at a fortieth (GRADED_WALL_MEASURE's comment gives the numbers); measured in the force spacing, more of a "
-        "graded body's fine cells lie within the image's reach than the wall's cell budget holds (WALL_CELL_SHARE), so "
-        "such a step raises wall_cells_short: the gates' sphere and the graded round-trip cylinder raised it every "
-        "step, and with every cell integrated the sphere's normal entry moved by about a millionth of itself and the "
-        "cylinder's resistance by under two thousandths of its largest entry",
+        "at a fortieth (GRADED_WALL_MEASURE's comment gives the numbers); a graded body's fine cells within the image's "
+        "reach outnumber the wall's cell budget (WALL_CELL_SHARE), so default graded runs raise wall_cells_short on "
+        "every step measured (the gates' sphere in either measure, the graded round-trip cylinder in the force "
+        "spacing): the farthest of those cells took the image at their force points, and with every cell integrated "
+        "the largest resistance entry moved by 1.6e-4 of itself on the sphere and 1.6e-3 on the cylinder",
         "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
         "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
