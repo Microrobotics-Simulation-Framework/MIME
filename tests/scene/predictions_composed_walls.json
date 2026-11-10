@@ -90,5 +90,29 @@
     "prediction": "no time or memory claim in this PR: no node runs the union yet; the FVM's wall measures it through its node in the PR that adopts it",
     "measured_at": "none"
   },
-  "outcomes": null
+  "outcomes": {
+    "recorded": "2026-11-10, after the gates ran; the predictions above are unchanged",
+    "gate_1_composition_against_brute_force": {
+      "result": "met after a fix. The first run at random rotations failed: 0.12 to 0.65 cells at four points three to four cells deep in the fluid, where a carina's seam has two local nearest points and Newton kept the far one from every local start. After the march along the seam: 0.012 to 0.019 cells in the fluid and the solid, both dtypes, on the spike's Y, the unequal Y and the split-and-merge loop (the loop added to this gate after gate 3's finding); at 16 cells a diameter under the line; float32 within 1e-3 cells of float64; no unrefined or unconverged point. The plain minimum 0.60 to 1.09 cells. Between 2.4 and 3.6 % of the points within three cells of the wall fail the check at 8 cells a diameter",
+      "control": "200/200 caught, the clean arm 0/200 flagged and 0 inconclusive (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310); each clean draw ran all three vessels in both dtypes under the line, so the gate held at 200 further random rotations and offsets",
+      "resolution": "0.050 cells (refined; 0.056 the grid's), an error added at the failing points: the line less the composed error, as predicted; the plain minimum plants at ten times it or more (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310, arm range-g1)"
+    },
+    "gate_2_fillet_against_closed_form": {
+      "result": "met: 1.9e-19 to 5.8e-19 m in float64 (rounding on a millimetre geometry, far under the predicted 1e-13), 8.9e-11 to 2.0e-10 m in float32, on both sides of the wedge and the two balls: the derivation that the closing is exact in the solid holds; the fillet share's derivative within 1e-13 of its scale",
+      "control": "200/200 caught, the clean arm 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310)",
+      "resolution": "2.4e-7 of the fillet's radius (refined; 1e-6 the grid's), the radius scaled by 1 + size (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310, arm range-g2)"
+    },
+    "gate_3_junction_continuity": {
+      "result": "met after a fix. With lines drawn at random near the carina the gate could not discriminate (no line met the failing strip: a test defect, fixed by drawing each line through a point failing the check). It then found a real defect: on the filleted loop the distance jumped by 0.3 D at one point near the second junction, where every start of a corner's Gauss-Newton missed the corner and the seams' nearest points lay past it; a corner's Gauss-Newton now also starts from the points its seams reached. After it: the largest step 0.94 to 0.99 of the spacing",
+      "control": "200/200 caught, the clean arm 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310)",
+      "resolution": "0.014 cells, the smallest size of the grid caught on 49 of 50 draws, a step of that size planted where the check fails, every larger size to 0.3 the same (the script reports no resolution, which needs every draw); the 50th draw's line lies wholly inside the failing set (513 of 513 points), where a constant plant makes no step by construction: the oracle's premise, not the gate's (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42786130970, arm range-g3)"
+    },
+    "gate_4_derivatives_implicit": {
+      "result": "met: |AD - FD| at most 1.1e-10 of the scale (the point, a daughter's radius, the junction) and 1e-13 (the fillet share), 24 of 24 draws smooth for each move",
+      "control": "200/200 caught, the clean arm 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310)",
+      "resolution": "2.4e-6 of the tangent (refined; 1e-5 the grid's), the tangent in a daughter's radius scaled by 1 + size (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310, arm range-g4)"
+    },
+    "bits": "met: 14 programs (7 cases, both dtypes), 238 arrays np.array_equal between release/v0.3.0 at 49a413a and the head on one runner, one CPU, one BLAS thread; the comparison's control (one ulp moved in one array of script A on the head's side) differs in exactly that array (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42778681310, arm bits)",
+    "costs": "no time or memory claim; for the record, the loop's union compiles in about 38 s and runs in 0.3 s for 6,569 points on a loaded laptop (a development measurement, not through a node)"
+  }
 }
