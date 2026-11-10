@@ -394,6 +394,18 @@ def tube_distance(points: Array, parameters: Mapping[str, Any]) -> Array:
     return jnp.asarray(parameters["radius"], dtype=points.dtype) - jnp.sqrt(jnp.sum(across * across, axis=-1))
 
 
+def tube_opened(parameters: Mapping[str, Any], delta: Any) -> dict[str, Any]:
+    """The tube dilated by ``delta`` (m): its radius plus ``delta``, its axis and table unchanged."""
+    return {**parameters, "radius": parameters["radius"] + delta}
+
+
+def tube_region(parameters: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+    """The lumen the medium fills, a cylinder from the tube's centre, the last row of its frame (its axis) and its
+    radius."""
+    frame = jnp.asarray(parameters["frame"]).reshape(3, 3)
+    return "cylinder", {"centre": jnp.asarray(parameters["centre"]), "axis": frame[2], "radius": parameters["radius"]}
+
+
 def tube_preparation(table: Callable[[], Table]) -> Callable[[Mapping[str, Any], Any], dict[str, object]]:
     """The tube's ``prepare``: the frame across its axis, held as built, and ``table()`` compiled for the run's
     dtype."""
@@ -448,6 +460,7 @@ def tube_wall(name: str, version: str, table: Callable[[], Table], assets: tuple
     return WallCorrection(name, version, TUBE_PARAMETERS, tube_correction, prepare=tube_preparation(table),
                           units=TUBE_UNITS, held=frozenset({"frame", "table"}), beyond=axial_reach(table),
                           assets=assets, distance=tube_distance, image=tube_image, pair_values=TABLE_PAIR_VALUES,
+                          opened=tube_opened, region=tube_region,
                           regularised=False)
 
 
@@ -473,5 +486,6 @@ __all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "P
            "TABLE_PAIR_VALUES", "TUBE_CORRECTION", "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "PairReads",
            "Reads", "across_the_axis",
            "axial_reach", "frame_across", "held_once", "into_the_source_frame", "pair_block", "shipped_unit_tube",
-           "table_provenance", "target_weight", "tube_correction", "tube_distance", "tube_image", "tube_pair_reads",
+           "table_provenance", "target_weight", "tube_correction", "tube_distance", "tube_image", "tube_opened",
+           "tube_pair_reads", "tube_region",
            "tube_preparation", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table", "weight_between"]

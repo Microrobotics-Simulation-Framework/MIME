@@ -145,12 +145,12 @@ def test_its_save_splits_each_field_into_the_blocks_of_the_units_its_build_decla
 def test_the_run_and_its_view_state_the_limit(example, written, tmp_path):
     from mime import viz
 
-    for line in ("down to a gap of about one sample spacing", "not modelled in 0.3.0.dev1",
-                 "the contact, not the fluid, holds the ball on the floor", "are planned for 0.3.0.dev2"):
+    for line in ("down to a gap of about one sample spacing", "this demo writes it off",
+                 "the contact, not the fluid, holds the ball on the floor", "past the film's window"):
         assert line in " ".join(example.__doc__.split()) and line in example.LIMIT, line
     assert written.recording is not None
     page, result = viz.web(written.recording.parent, tmp_path / "view.html", caption=example.LIMIT)
     text = page.read_text(encoding="utf-8")
-    assert "planned for 0.3.0.dev2" in text and result.withheld == {} and result.samples > 30
+    assert "this demo writes it off" in text and result.withheld == {} and result.samples > 30
     shown = written.view(caption=example.LIMIT)  # the notebook's form, the viewer from jsDelivr
-    assert "planned for 0.3.0.dev2" in shown.html and shown.result.glb == result.glb
+    assert "this demo writes it off" in shown.html and shown.result.glb == result.glb
