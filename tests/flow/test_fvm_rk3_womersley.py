@@ -92,8 +92,9 @@ def _harmonics(dtype: str, plant: float, drive: float = 1.0):
         original = _rk3.step
         forcing = ImplicitFlowNode.forcing
 
-        def planted(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt_):
-            return original(grid, velocity, pressure, plant * viscosity, resistivity, force, convection, time, dt_)
+        def planted(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt_, **recorded):
+            return original(grid, velocity, pressure, plant * viscosity, resistivity, force, convection, time, dt_,
+                            **recorded)
 
         def scaled(self, fields, boundary_inputs, scheme, dtype__):
             force = forcing(self, fields, boundary_inputs, scheme, dtype__)

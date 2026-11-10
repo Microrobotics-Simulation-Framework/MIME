@@ -44,12 +44,14 @@ def cluster(shape: str, gap: float, ratio: float, law: type = Drag):
                   inertia=0.4 * mass * RADIUS * RADIUS, dt_ms=DT * 1e3)
 
 
-def step_of(shape: str, gap: float, ratio: float):
+def step_of(shape: str, gap: float, ratio: float, built=None, **settings):
     """The joint node's first step at the configuration, every cross-block integrated: assembled from the bodies'
-    per-body nodes (drag 0.4.0), so that a configuration the build refuses at its start is stepped all the same."""
-    built = cluster(shape, gap, ratio, UncoupledDrag).build()
+    per-body nodes (drag 0.4.0, of ``built`` where given), so that a configuration the build refuses at its start is
+    stepped all the same."""
+    built = built if built is not None else cluster(shape, gap, ratio, UncoupledDrag).build()
     names = sorted(placed(shape, gap))
-    node = assembled([built.graph.get_node(f"drag:{body}") for body in names], names, reach=1e9, cross_share=1.0)
+    node = assembled([built.graph.get_node(f"drag:{body}") for body in names], names, reach=1e9, cross_share=1.0,
+                     **settings)
     out = node.update(node.initial_state(), uncoupled_inputs(built, names), DT, params=node.params_pytree())
     return built, node, names, {key: np.asarray(value) for key, value in out.items()}
 
@@ -145,3 +147,21 @@ def test_in_float32_the_gain_is_the_float64_ones_and_decides_the_same(shape, gap
           f"{float(wide['gain']):.5f} in float64")
     assert abs(float(narrow["gain"]) - float(wide["gain"])) <= FLOAT32_GAIN
     assert float(narrow["gain_exceeded"]) == float(wide["gain_exceeded"])
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_on_the_iterative_route_the_gain_is_the_dense_routes_and_decides_the_same(dtype):
+    """Gate 6 past the takeover line (gate 11's dtype arm): the triangle at a tenth of a radius, overdamped (refused)
+    and inertial (let through), its gain on GMRES within the solve's tolerance of the dense route's, in each dtype."""
+    rows = []
+    with precision(dtype):
+        for ratio in (0.001, 1.0):
+            built, _, _, dense = step_of("triangle", 0.1, ratio)
+            rows.append((ratio, dense, step_of("triangle", 0.1, ratio, built, dense_unknowns=0)[3]))
+    for ratio, dense, iterative in rows:
+        gains = float(dense["gain"]), float(iterative["gain"])
+        print(f"\n{dtype}, the triangle at 0.1 a, tau/dt {ratio}: gain {gains[1]:.6f} on GMRES, {gains[0]:.6f} dense "
+              f"(report {iterative['solve_report']})")
+        assert abs(gains[1] - gains[0]) <= (1e-8 if dtype == "float64" else 1e-4)
+        assert float(iterative["gain_exceeded"]) == float(dense["gain_exceeded"]) == float(ratio < 0.01)
+        assert float(iterative["solve_flagged"]) == 0.0

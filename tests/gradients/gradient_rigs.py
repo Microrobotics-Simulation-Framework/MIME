@@ -58,7 +58,7 @@ def tube(viscosity: float = 1.0, amplitude: float = 0.01, steady: float = 0.01, 
     settings = {} if tolerance is None else {"tolerance": tolerance}
     exp.add_medium(Medium("water", fills="tube.lumen", material=material, fields={"flow": FVM(
         domain=PeriodicBox(length=mm(0.25)), cells_across=8, stokes=True, scheme=Scheme.IMEXEuler(),
-        report_rows=report_rows, **settings)}))
+        solve_report_rows=report_rows, **settings)}))
     exp.declare("water.viscosity", mPa_s(viscosity), reason="water near 20 C")
     if material is None:
         exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")

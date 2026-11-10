@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from contextlib import contextmanager
 
@@ -71,8 +72,7 @@ def cap_plant(patch: pytest.MonkeyPatch, which: str | None) -> None:
     if which not in ("primal", "transpose"):
         raise ValueError(f"{CAP} is primal or transpose, not {which!r}")
     def capped(grid, apply, diagonal, rhs, guess, stopping, tap, preconditioner, magnitude=None):
-        one = solve_module.Stopping(tolerance=stopping.tolerance, at_floor=stopping.at_floor, cap=1,
-                                    check_every=1, window=stopping.window, stagnation=stopping.stagnation)
+        one = dataclasses.replace(stopping, cap=1, check_every=1)
         primal, transpose = (one, stopping) if which == "primal" else (stopping, one)
         return _projected_two(grid, apply, diagonal, rhs, guess, primal, transpose, tap, preconditioner, magnitude)
 

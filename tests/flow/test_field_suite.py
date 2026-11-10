@@ -13,9 +13,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import scipy.special
-from fvm_cases import Waveform, in_dtype, step_of, tube_node
+from fvm_cases import METERED, Waveform, in_dtype, step_of, tube_node
 
-from mime.core import ledger as books
 from mime.dynamics.flow._fields import fvm_field
 from mime.dynamics.flow._womersley import Womersley
 from mime.fields._solved import NOT_DECLARED
@@ -27,11 +26,6 @@ from mime.testing._field_kinds import FieldCase, FieldRig, field_conformance
 from mime.vocabulary import FLOW_VELOCITY
 
 V = FLOW_VELOCITY.name
-HOSTED = (
-    books.LedgerDelivery("body_force", "drive:water.body_force", books.UNMETERED, books.HOSTED).encoded(),
-    books.LedgerDelivery("viscous", "viscosity:water", books.DISSIPATIVE, books.HOSTED).encoded(),
-    books.LedgerDelivery("penalty", "wall:vessel", books.DISSIPATIVE, books.HOSTED).encoded(),
-)
 
 
 def _kind(accepts):
@@ -81,9 +75,9 @@ def fvm_rig(scheme: str, dtype: str) -> tuple[object, FieldRig]:
     def metered():
         with in_dtype(dtype):
             if scheme == "rk3":
-                m = ExplicitFlowNode(**{**_arguments(node), "ledger": HOSTED})
+                m = ExplicitFlowNode(**{**_arguments(node), "ledger": METERED})
             else:
-                m = tube_node(8, dt=0.002, convection=scheme != "steady", ledger=HOSTED, scheme=scheme)
+                m = tube_node(8, dt=0.002, convection=scheme != "steady", ledger=METERED, scheme=scheme)
             return _scan(m, m._step_constants(None), 10, Waveform(steady=g))  # noqa: SLF001
 
     def steady():
@@ -219,8 +213,8 @@ def test_control_a_route_one_kind_whose_steps_give_energy_fails(dtype, monkeypat
 
     original = _rk3.step
 
-    def gifted(*args):
-        u, p, parts = original(*args)
+    def gifted(*args, **recorded):
+        u, p, parts = original(*args, **recorded)
         return tuple(1.5 * c for c in u), p, parts  # the kinetic energy x 2.25 a step, far over its dissipation
 
     monkeypatch.setattr(_rk3, "step", gifted)

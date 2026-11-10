@@ -1,4 +1,4 @@
-"""Weight and buoyancy on a body in a medium at rest."""
+"""Weight and buoyancy on a body in a medium of constant density, at rest or flowing."""
 
 from __future__ import annotations
 
