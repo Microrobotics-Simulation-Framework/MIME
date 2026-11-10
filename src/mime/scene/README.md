@@ -242,7 +242,7 @@ sphere about its centroid that holds it (`enclosing_radius`).
   a tenth, declared: no measurement of vessels gives it yet). One radius for the tree: where its junctions span radii
   of ten to one the largest junction is rounded at a hundredth of its daughter's radius, not a tenth, and the fillet's
   derivative in the radii jumps where the smallest junction radius changes hands. Tubes that share no point meet where
-  they come within two fillet radii and a margin (`MEETING_MARGIN`, a sixteenth of the largest radius) of each other as
+  they come within two fillet radii and a margin (a sixteenth of the largest radius) of each other as
   made; the fillet then joins them across a wall thinner than its diameter, which the report names. Its values are
   parameters (`parameters()`), so derivatives in the points, radii and fillet flow; `turned` places it at any rotation
   and offset.
