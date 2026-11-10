@@ -9,12 +9,16 @@ Entries, each in cells of the spacing:
   where the wall is filleted);
 - **the narrowest lumen**: the smallest diameter, against the band's thin-feature estimate (a band two cells wide on
   each side over-conducts a gap narrower than about five cells);
-- **the narrowest solid**: the least gap between two walls that do not meet, and the sharpest wedge of solid between
-  two tubes leaving a junction, as the length from its apex over which it is thinner than the band (a feature thinner
-  than the band does not become fully solid inside it);
+- **the narrowest solid**: the least solid between two tubes that share no point, and the sharpest wedge of solid
+  between two tubes leaving a junction, as the length from its apex over which it is thinner than the band (a feature
+  thinner than the band does not become fully solid inside it);
+- **the solid the fillet fills** between tubes that share no point, where there is one: a wall thinner than the
+  fillet's diameter, which its closing removes, joining the tubes (``WallFeatures.fused``);
 - **the wall layer**, given a flow: the Stokes layer ``R sqrt(2) / alpha`` in pulsatile flow, ``D / sqrt(Re)`` in steady
   flow, against the lines a Womersley sweep measured for the wall shear read along the normal from the calibrated wall
-  (within 5 % at about 2.3 cells of layer, within 2 % at about 4.5; alpha 6 to 20 at 16 to 64 cells a diameter)."""
+  (alpha 6 to 20 at 16 to 64 cells a diameter, two sub-cell offsets): within 5 % from about 2.7 cells of layer,
+  interpolated on the worst arm between its rows at 2.26 cells (6.5 %) and 3.23 (3.2 %); within 2 % from about 4.5,
+  between 3.77 (2.7 %) and 4.53 (1.95 %). The rows are kept with the tests that hold the lines to them."""
 
 from __future__ import annotations
 
@@ -23,9 +27,9 @@ from dataclasses import dataclass
 
 from mime.scene._tube_tree import WallFeatures
 
-#: The wall layer's lines, in cells of layer: the wall shear within 5 % and within 2 % (measured, as the docstring
-#: says).
-LAYER_LINES = {"wall shear within 5 %": 2.3, "wall shear within 2 %": 4.5}
+#: The wall layer's lines, in cells of layer: the wall shear within 5 % and within 2 % (interpolated on a sweep's worst
+#: arm, as the docstring says).
+LAYER_LINES = {"wall shear within 5 %": 2.7, "wall shear within 2 %": 4.5}
 #: The narrowest lumen's line, in cells: the band's thin-feature estimate.
 LUMEN_LINE = 5.0
 #: The registered band's width in cells (the default band, two cells), which the wedge's entry is read against.
@@ -49,7 +53,7 @@ class ResolutionEntry:
 
     def text(self) -> str:
         if self.line is None:
-            return f"{self.name}: {self.cells:.3g} cells (no line measured yet)"
+            return f"{self.name}: {self.cells:.3g} cells ({self.basis or 'no line measured yet'})"
         verdict = "below its line: refine the wall here" if self.below else "at or above its line"
         return f"{self.name}: {self.cells:.3g} cells, {verdict} ({self.line:.3g}; {self.basis})"
 
@@ -94,15 +98,22 @@ def wall_resolution(features: WallFeatures, spacing: float, *, layer: float | No
         ResolutionEntry("smallest wall radius", features.smallest_radius / spacing, None, ""),
         ResolutionEntry("narrowest lumen", features.narrowest_lumen / spacing, LUMEN_LINE,
                         "an estimate: a band of two cells each side over-conducts a gap narrower than about five"),
-        ResolutionEntry("narrowest solid between walls that do not meet", features.narrowest_solid / spacing, None, ""),
+        ResolutionEntry("narrowest solid between tubes that share no point", features.narrowest_solid / spacing, None,
+                        ""),
         ResolutionEntry(f"sharpest wedge ({features.sharpest_wedge:.3g} degrees), thinner than the band from its apex",
                         wedge_cells, None, ""),
     ]
+    if features.fused:
+        entries.append(ResolutionEntry(
+            f"solid the fillet fills between tubes that share no point {list(features.fused)}",
+            features.narrowest_solid / spacing, None,
+            "the fillet's closing joins these tubes; within its radius of this wall the solid's distance may read too "
+            "near the fluid"))
     if layer is not None:
         cells = layer / spacing
         for name, line in LAYER_LINES.items():
             entries.append(ResolutionEntry(f"wall layer, for {name}", cells, line,
-                                           "measured by a Womersley sweep, alpha 6 to 20, 16 to 64 cells a diameter"))
+                                           "a Womersley sweep's worst arm, alpha 6 to 20, 16 to 64 cells a diameter"))
     return ResolutionReport(spacing, tuple(entries))
 
 

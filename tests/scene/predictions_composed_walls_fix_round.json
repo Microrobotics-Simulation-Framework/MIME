@@ -1,0 +1,105 @@
+{
+  "written": "2026-11-10, committed before any gate of the fix round of F2a's PR 2a ran (the commit that adds this file is the timestamp): the fixes to the refuting review's majors M1 (opposed normals), M2 (the build's structure counted at run), M6 (the union's own frame), M3 (the fillet joining tubes that share no point, reported) and M5 (the 5 % layer line), and the gates' power against the review's mutants",
+  "phase": "F2a, PR 2a, fix round: composed walls in mime.scene",
+  "labels": "predictions by the fix round's builder from the review's measurements, from development checks of the fixed code (listed under seen_before), and from derivations; a guess says so. The first round's predictions (predictions_composed_walls.json) stand as written; its gates G1 to G4 run again on the fixed code against them",
+  "seen_before": [
+    "the review (PR head bf6cbf9): the aligned hairpin 29.3 and 29.5 cells too deep on the plane of its legs' axes, unconverged 0; a radius study x1.35 on a hairpin whose legs did not meet as made 4.0 cells off, unrefined 0; the asymmetric Y at 0.137 m float32 0.28 cells off float64, the allowance there 0.54 cells; the fillet's window (wall 0.098 mm, r 0.05 mm) 0.149 cells in the solid; the sweep's worst arm 6.40 to 6.46 % at 2.26 cells of layer; the corner-starts revert caught 0/40 (G1) and 3/40 (G3), the march cut to 24 steps 0/40 and 0/40",
+    "development checks of the fixed code (dev scripts outside the repository, float64 unless said, CPU, a loaded laptop): the hairpin cross-section of the review (wall 0.06 mm, share 0.1, D/h 16; legs overlapping 0.1 mm, sharp) 0.000 cells against the exact 2-D closing on and off the plane of the axes; the radius study counted (unplanned 1 at x1.2 and x1.35, 0 at x1.0 to x1.1); the Y at 0.137 m: float32 against float64 6e-5 cells, float64 against the brute force 0.0105 cells; the window wall 0.098 mm: 0.33 cells at the neck's centre (the solid side's premise fails there; documented, not fixed); the meeting pairs of the gates' trees unchanged by the closed-form segment distance",
+    "development check: with the seams' new starts, reverting the corner's seam-reached starts changed no value at gate 3's seed 31 (the draw that found the defect at bf6cbf9) nor on lattices of D/64 near the loop's second junction at four seeds; at bf6cbf9 the one point it changed lies 1.6e-5 D from the loop's plane"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (GitHub's 4-vCPU runners for the rates, ranges and gate logs; a laptop for development)",
+    "sizes_and_parameters": "a parent diameter D of 1 mm; D/h 8 (16 in one test); the gates' trees as in the first round; the hairpin: legs of radius D/2 and 3 D, walls 0.05 to 0.15 D overlapping (G1) or 0.2 to 0.4 D apart (the study), joined at the top; far: 0.1 to 0.3 m from the world's origin along each axis",
+    "seeds_and_draws": "DETECTION_SEED per draw (fixed seeds in CI); 200 planted draws per new control's rate (the counted study's, the opposed normals', the frame's, the march's revert), clean arms beside; physical scales only"
+  },
+  "gate_1_opposed_normals": {
+    "claim": "the union is exact against the brute force where two walls' normals are opposed: the hairpin aligned with the lattice (one of the 24 axis-keeping rotations, a sub-cell offset in the plane of its legs' axes, so lattice points lie on that plane), legs overlapping by 0.05 to 0.15 D, both dtypes, under the band's line of 0.05 cells, no unrefined and no unconverged point",
+    "kind": "bounds (the brute force bounds the error from above by its floor plus the error)",
+    "case": "tests/scene/test_exact_union.py::test_the_union_is_exact_against_a_brute_force[<seed>-hairpin-<dtype>]",
+    "prediction": {"value": 0.02, "band": [0.005, 0.035], "unit": "cells, the largest |composed - brute| over the band", "basis": "measured-before", "why": "the brute force's floor at h/32 is about 0.022 cells next to the wall; the cross-section check read 0.000 against an exact 2-D form, so what is left is the brute force's"},
+    "control": {
+      "plant": "MIME_PLANT_UNION=point-start: a seam's projection from the point alone (the starts across the wall reverted); predicted to fail through the count (the points' own seam never reached: unconverged) and through the error (the minimum kept, about 1.3 to 1.7 cells off on the plane)",
+      "environment_variable": "MIME_PLANT_UNION",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/40",
+      "resolution": "discriminating_range.py on the hairpin's draw (ranges:g1h): an error added at the failing points; predicted about 0.035 to 0.05 cells, as gate 1's"
+    },
+    "if_wrong": "a draw over the line means a seam's starts all miss it: the worst point's starts are printed and the fix is withdrawn for that geometry",
+    "cannot_discriminate_if": "no lattice point on the plane of the axes between the legs (the draw keeps the plane on the lattice by construction) or no failing point (asserted against)"
+  },
+  "gate_1_float32_far_from_the_origin": {
+    "claim": "float32 agrees with float64 within 1e-3 cells for the asymmetric Y 0.1 to 0.3 m from the world's origin along each axis (a scanner's coordinates), as at the origin, with no unrefined and no unconverged point",
+    "kind": "equality to the inputs' rounding",
+    "case": "tests/scene/test_exact_union.py::test_float32_agrees_with_float64[<seed>-far] (and [<seed>-origin])",
+    "prediction": {"value": 1.2e-4, "band": [0.0, 5e-4], "unit": "cells, the largest |float32 - float64| over the points within 2h of the wall", "basis": "derived", "why": "the points and parameters rounded to float32 at 0.3 m move by half a float32 ulp, about 1.5e-8 m = 1.2e-4 cells at h = D/8; the union's own arithmetic is at its origin's scale (mm), far below"},
+    "control": {
+      "plant": "MIME_PLANT_UNION=world-allowance: the allowances scaled with the distance from the world's origin (4096 ulps of 0.1 to 0.3 m, 0.4 to 1.2 cells), the frame kept; predicted to accept corners that did not converge on every draw [guess: the review saw one draw at 0.137 m]",
+      "environment_variable": "MIME_PLANT_UNION",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/50",
+      "resolution": "discriminating_range.py (ranges:f32far): an error added to float32 at the failing points; predicted about 9e-4 cells (the line less the float32 difference)"
+    },
+    "if_wrong": "a draw over the line with the fix means float32 far from the origin has another floor: the worst point's candidates in both dtypes are printed; a planted arm that misses means the old allowance does not always accept a wrong corner: the control is replaced by one measured to fail every run, or the miss rate reported",
+    "cannot_discriminate_if": "no failing point (no corner or seam in the box): asserted against through gate 1's draws of the same Y"
+  },
+  "unplanned_pairs_counted": {
+    "claim": "a study that brings two tubes within reach that the union does not hold as meeting is counted at the run's values (unplanned 1), with the distance and with the normal; at the values the tree was made with, 0",
+    "kind": "acceptance (a count, exact)",
+    "case": "tests/scene/test_tube_tree.py::test_a_study_that_brings_tubes_within_reach_is_counted (a hairpin, walls 0.2 to 0.4 D apart, turned and moved at random, radii scaled 0.01 to 0.2 past reach)",
+    "prediction": {"value": 1, "band": [1, 1], "unit": "pairs", "basis": "derived", "why": "the closed-form distance between the legs' axes against their reach at the run's values"},
+    "control": {
+      "plant": "MIME_PLANT_UNION=no-unplanned: the count left out",
+      "environment_variable": "MIME_PLANT_UNION",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "a count: exact"
+    },
+    "if_wrong": "a count of 0 at the study means the run's structure check is blind to the pair",
+    "cannot_discriminate_if": "the study does not bring the legs within reach (drawn past it by construction)"
+  },
+  "fused_walls_reported": {
+    "claim": "the report names tubes sharing no point whose solid the fillet fills (the hairpin's legs, wall 0.06 D, share 0.1), reads the narrowest solid between tubes sharing no point whether or not they meet (0.06 D and 0.12 D, where the review read inf), and reads the loop's island between its branches as solid and finite",
+    "kind": "acceptance (deterministic)",
+    "case": "tests/scene/test_tube_tree.py::test_the_report_names_tubes_the_fillet_joins",
+    "prediction": {"value": "fused ((0, 2),) at 0.06 D, none at 0.12 D; narrowest 0.06 D and 0.12 D; the loop's under 0.3 D", "basis": "derived"},
+    "if_wrong": "the solid test (the gap's middle outside every tube) misreads the hairpin's or the loop's geometry"
+  },
+  "layer_lines_from_the_sweep": {
+    "claim": "LAYER_LINES are the sweep's worst-arm crossings, interpolated and rounded up to a tenth of a cell: past each line every row is within its share",
+    "kind": "equality (to the rows)",
+    "case": "tests/scene/test_tube_tree.py::test_the_layer_lines_are_the_sweeps_worst_arm, against tests/scene/womersley_sweep_rows.json",
+    "prediction": {"value": "5 %: crossing 2.69, line 2.7; 2 %: crossing 4.47, line 4.5", "basis": "derived (arithmetic on the rows)"}
+  },
+  "march_needed_length": {
+    "claim": "a measurement, not a gate: the fewest march steps each way at which gate 1 (float64, all four vessels) and gate 3 pass on 20 draws each, against the 96 kept; and the march's revert (none) caught on every run",
+    "kind": "estimate (of a margin)",
+    "case": "MIME_PLANT_UNION=march-<n> for n in 0, 4, 8, 12, 16, 24, 48 through detection_rate.py",
+    "prediction": {"value": "march-0 caught 200/200 by gate 1 (float64); the needed length 8 to 24 steps [guess, from the review's 24 passing 40 of 40]; 96 a margin of four times or more", "basis": "guess"},
+    "if_wrong": "a length that fails at 48 means the march is near its edge and its length is set from a measurement, with the geometry that needs it added to the gates"
+  },
+  "corner_seam_starts": {
+    "claim": "a measurement of the first round's second fix (a corner's Gauss-Newton also started from the points its seams reached) under the fixed seams: its revert's rate on gate 1 and gate 3's random draws, and on a targeted family if one is found where it bites every run",
+    "kind": "estimate",
+    "case": "MIME_PLANT_UNION=corner-starts through detection_rate.py",
+    "prediction": {"value": "0 of the draws on gates 1 and 3 [guess, from the development check above]", "basis": "guess"},
+    "if_wrong": "a draw it fails on names the family to add as a targeted case"
+  },
+  "gates_1_to_4_rerun": {
+    "claim": "the first round's gates on the fixed code, against its predictions (predictions_composed_walls.json) and its controls re-measured at 200 draws each",
+    "prediction": {"value": "as the first round's: G1 0.005 to 0.035 cells, G2 1e-13 m (band to 1e-11), G3 at most 1 + 1e-6, G4 1e-8 relative (band to 1e-6); each control 200/200, clean 0/200", "basis": "measured-before (the first round)"}
+  },
+  "bits": {
+    "cases": "the released programs of tests/saved/cases.py the first round compared (script_a, hull_contact, coupled_toy, dynamic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow), 20 ms with every field at every step, float64 and float32, base release/v0.3.0 and head in one job, one CPU (bit_compare.py)",
+    "prediction": "every array np.array_equal: no node, solver or saved form is touched",
+    "controls": {"one_ulp": "one array of script A one ulp up on the head's side: that array differs"}
+  },
+  "costs": {
+    "prediction": "no time or memory claim: no node runs the union yet",
+    "measured_at": "none"
+  },
+  "outcomes": null
+}

@@ -75,6 +75,23 @@ def loop_tree(fillet: float = 0.0) -> TubeTree:
     return TubeTree(points, segments, tuple((r * D, r * D) for r in radii), fillet)
 
 
+def hairpin_tree(wall: float, fillet: float = 0.0, length: float = 3.0) -> TubeTree:
+    """Two parallel legs of radius D/2 and ``length`` D along z, their walls ``wall`` apart (below zero: overlapping),
+    joined at the top by a third tube: a hairpin in the xz-plane, its legs sharing no point."""
+    s = D + wall
+    return TubeTree(((0.0, 0.0, 0.0), (0.0, 0.0, length * D), (s, 0.0, length * D), (s, 0.0, 0.0)),
+                    ((0, 1), (1, 2), (2, 3)), ((0.5 * D, 0.5 * D),) * 3, fillet)
+
+
+def aligned_rotation(seed: int) -> np.ndarray:
+    """One of the 24 rotations that take the world's axes to its axes (a signed permutation of determinant one)."""
+    rng = np.random.default_rng(seed)
+    while True:
+        turn = np.eye(3)[rng.permutation(3)] * rng.choice((-1.0, 1.0), 3)[:, None]
+        if np.linalg.det(turn) > 0.0:
+            return turn
+
+
 def lattice(centre: np.ndarray, reach: float, spacing: float) -> np.ndarray:
     """The points of the world-aligned lattice of ``spacing`` through the world's origin within ``reach`` of
     ``centre``: a vessel moved by a sub-cell offset sits at that offset on it."""

@@ -28,7 +28,9 @@ import pytest
 from union_oracles import (
     D,
     REACH,
+    aligned_rotation,
     brute_distance,
+    hairpin_tree,
     lattice,
     loop_tree,
     plain_minimum,
@@ -42,6 +44,7 @@ from union_oracles import (
 import mime.scene._union as union_module
 from mime.core import jnp
 from mime.scene import Ball, ExactUnion, PlaneSide, TubeTree
+from mime.scene._union import Seam
 
 #: The band's contract line: the signed distance exact within the band to this many cells.
 CONTRACT_LINE = 0.05
@@ -69,17 +72,52 @@ def drawn_y(kind: str, seed: int, cells: int) -> tuple[TubeTree, np.ndarray, flo
     return tree, points, h
 
 
-def drawn(kind: str, seed: int, cells: int) -> tuple[TubeTree, np.ndarray, float, np.ndarray, float]:
+def drawn(kind: str, seed: int, cells: int, far: bool = False) -> tuple[TubeTree, np.ndarray, float, np.ndarray, float]:
     """A Y (``spike``, ``asymmetric``) or the split-and-merge ``loop``, turned at random about the world's origin and
     moved by a sub-cell offset of a lattice of ``D / cells``; the lattice's points within the gates' reach of its
-    junctions (the middle of the loop's two), that middle and that reach."""
+    junctions (the middle of the loop's two), that middle and that reach. ``hairpin``: two legs overlapping by 0.05 to
+    0.15 D, turned by one of the rotations that keep the lattice's axes and moved by a sub-cell offset along the plane of
+    their axes, so lattice points lie on it (where the two walls' normals are opposed); its points about the legs'
+    middle. ``far``: moved besides by 0.1 to 0.3 m along each axis, as a scanner's coordinates."""
     h = D / cells
     rng = np.random.default_rng(seed + 7919)
-    tree = (loop_tree() if kind == "loop" else y_tree(kind)).turned(rotation(seed), rng.uniform(0.0, h, 3))
-    junctions = [np.asarray(tree.points[int(j.name[1:])]) for j in tree.junctions if len(j.ends) >= 3]
-    middle = np.mean(junctions, axis=0)
-    reach = REACH * D + max(float(np.linalg.norm(j - middle)) for j in junctions)
+    if kind == "hairpin":
+        turn = aligned_rotation(seed)
+        tree = hairpin_tree(-rng.uniform(0.05, 0.15) * D).turned(turn, turn @ (rng.uniform(0.0, h, 3) * (1, 0, 1)))
+        points = np.asarray(tree.points)
+        middle = 0.25 * np.sum(points, axis=0)
+        reach = REACH * D
+    else:
+        tree = (loop_tree() if kind == "loop" else y_tree(kind)).turned(rotation(seed), rng.uniform(0.0, h, 3))
+        junctions = [np.asarray(tree.points[int(j.name[1:])]) for j in tree.junctions if len(j.ends) >= 3]
+        middle = np.mean(junctions, axis=0)
+        reach = REACH * D + max(float(np.linalg.norm(j - middle)) for j in junctions)
+    if far:
+        away = rng.choice((-1.0, 1.0), 3) * rng.uniform(0.1, 0.3, 3)
+        away = np.round(away / h) * h
+        tree, middle = tree.turned(np.eye(3), away), middle + away
     return tree, lattice(middle, reach, h), h, middle, reach
+
+
+def planted(monkeypatch) -> None:
+    """The fix round's plants (``MIME_PLANT_UNION``), each a fix reverted: ``point-start`` (a seam's projection from
+    the point alone, as before the starts across the wall), ``corner-starts`` (a corner's Gauss-Newton not started
+    from the points its seams reached), ``world-allowance`` (the rounding allowances scaled with the distance from the
+    world's origin), ``march-<n>`` (the march along a seam cut to ``n`` steps each way; ``march-0``, none)."""
+    if UNION_PLANT == "point-start":
+        monkeypatch.setattr(ExactUnion, "_seam_starts", lambda self, parameters, points, i, size: points[None])
+    elif UNION_PLANT == "corner-starts":
+        held = ExactUnion._corner_starts
+        monkeypatch.setattr(ExactUnion, "_corner_starts", lambda self, *args: held(self, *args)[:4])
+    elif UNION_PLANT == "world-allowance":
+        def allowance(self, parameters, points, ulps):
+            world = points + jnp.asarray(self.origin(parameters), dtype=points.dtype)
+            size = self._size(parameters, points.dtype)
+            return ulps * jnp.finfo(points.dtype).eps * (jnp.sqrt(jnp.sum(world * world, axis=-1)) + size)
+
+        monkeypatch.setattr(ExactUnion, "_allowance", allowance)
+    elif UNION_PLANT is not None and UNION_PLANT.startswith("march-"):
+        monkeypatch.setattr(union_module, "MARCH_STEPS", int(UNION_PLANT.removeprefix("march-")))
 
 
 def composed(tree: TubeTree, points: np.ndarray, dtype: str) -> tuple[np.ndarray, object]:
@@ -94,9 +132,10 @@ def composed(tree: TubeTree, points: np.ndarray, dtype: str) -> tuple[np.ndarray
 
 # -- gate 1 ---------------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-@pytest.mark.parametrize("kind", ["spike", "asymmetric", "loop"])
+@pytest.mark.parametrize("kind", ["spike", "asymmetric", "loop", "hairpin"])
 @pytest.mark.parametrize("seed", seed_list((11,)))
-def test_the_union_is_exact_against_a_brute_force(kind, seed, dtype):
+def test_the_union_is_exact_against_a_brute_force(kind, seed, dtype, monkeypatch):
+    planted(monkeypatch)
     tree, points, h, middle, reach = drawn(kind, seed, 8)
     plain = plain_minimum(tree, points)
     band = np.abs(plain) < 3.0 * h
@@ -128,13 +167,21 @@ def test_the_union_is_exact_at_sixteen_cells_a_diameter(seed):
     assert error.max() <= CONTRACT_LINE
 
 
+@pytest.mark.parametrize("place", ["origin", "far"])
 @pytest.mark.parametrize("seed", seed_list((14,)))
-def test_float32_agrees_with_float64(seed):
-    tree, points, h = drawn_y("asymmetric", seed, 8)
+def test_float32_agrees_with_float64(seed, place, monkeypatch):
+    """float32 against float64 on the same draw, at the world's origin and 0.1 to 0.3 m from it along each axis (a
+    scanner's coordinates). **Control** (``MIME_PLANT_UNION=world-allowance``): the allowances scaled with the
+    distance from the world's origin, as before the union had a frame of its own."""
+    planted(monkeypatch)
+    tree, points, h, _, _ = drawn("asymmetric", seed, 8, far=place == "far")
     points = points[np.abs(plain_minimum(tree, points)) < 2.0 * h]
     wide = composed(tree, points, "float64")[0]
-    narrow = composed(tree, points, "float32")[0]
-    assert np.max(np.abs(narrow - wide)) / h <= DTYPE_LINE
+    narrow, found = composed(tree, points, "float32")
+    apart = np.max(np.abs(narrow - wide)) / h
+    print(f"\n{place} seed {seed}: float32 against float64 {apart:.2e} cells, {int(np.sum(found.failing))} failing")
+    assert int(found.unrefined) == 0 and int(found.unconverged) == 0
+    assert apart <= DTYPE_LINE
 
 
 # -- gate 2 ---------------------------------------------------------------------------------------------------------
@@ -183,12 +230,12 @@ def drawn_balls(seed: int) -> tuple[tuple[np.ndarray, np.ndarray], tuple[float, 
 
 def wedge_union(normals: tuple[np.ndarray, np.ndarray], origin: np.ndarray, fillet_of) -> ExactUnion:
     regions = tuple(PlaneSide(normal_of=lambda p, n=n: n, offset=lambda p, n=n: float(n @ origin)) for n in normals)
-    return ExactUnion(regions, ((0, 1),), size=D, fillet=fillet_of)
+    return ExactUnion(regions, ((0, 1),), size=lambda p: D, fillet=fillet_of)
 
 
 def balls_union(centres, radii, fillet_of) -> ExactUnion:
     regions = tuple(Ball(centre=lambda p, c=c: c, radius=lambda p, r=r: r) for c, r in zip(centres, radii, strict=True))
-    return ExactUnion(regions, ((0, 1),), size=D, fillet=fillet_of)
+    return ExactUnion(regions, ((0, 1),), size=lambda p: D, fillet=fillet_of)
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
@@ -225,7 +272,7 @@ def test_the_fillet_shares_derivative_is_its_difference(seed):
     chosen = jnp.asarray(points[np.asarray(found.failing)][:40])
 
     def at(share):
-        return lumen.distance({**held, "fillet": share}, chosen)
+        return lumen.signed_distance({**held, "fillet": share}, chosen).distance
 
     exact = np.asarray(jax.jvp(at, (held["fillet"],), (jnp.asarray(1.0),))[1])
     step = 1e-5
@@ -255,8 +302,8 @@ def with_carina_seam_left_out(monkeypatch, pairs):
 
     def seam(self, parameters, points, i, j, radius):
         if (i, j) in pairs:
-            return (jnp.full(points.shape[:-1], jnp.inf, dtype=points.dtype), jnp.zeros(points.shape[:-1], dtype=bool),
-                    points)
+            return Seam(jnp.full(points.shape[:-1], jnp.inf, dtype=points.dtype),
+                        jnp.zeros(points.shape[:-1], dtype=bool), points, jnp.ones(points.shape[:-1], dtype=bool))
         return held(self, parameters, points, i, j, radius)
 
     monkeypatch.setattr(ExactUnion, "_seam", seam)
@@ -266,6 +313,7 @@ def with_carina_seam_left_out(monkeypatch, pairs):
 @pytest.mark.parametrize("shape", ["y", "loop"])
 @pytest.mark.parametrize("seed", seed_list((31,)))
 def test_the_distance_is_continuous_through_the_junctions(shape, fillet, seed, monkeypatch):
+    planted(monkeypatch)
     if shape == "y":
         tree = y_tree("asymmetric", fillet)
         tips, carina_pairs = [carina(tree, 1, 1, 2)], {(1, 2)}
@@ -311,8 +359,9 @@ def test_the_seams_derivatives_are_the_implicit_ones(seed, monkeypatch):
     lumen = tree.lumen()
     held = parameters_of(tree, "float64")
     at_points = jnp.asarray(points)
-    distances, normals, radius = lumen._widened(held, at_points)
-    walls = np.asarray(lumen._walls(held, at_points, distances, normals, radius))
+    local = lumen._local(held, at_points)
+    distances, normals, radius = lumen._widened(held, local)
+    walls = np.asarray(lumen._walls(held, local, distances, normals, radius))
     found = lumen.signed_distance(held, at_points)
     depth = np.asarray(radius - found.distance)
     seamed = np.nonzero(np.asarray(found.failing) & (depth < walls - 1e-3 * h))[0]
@@ -332,7 +381,7 @@ def test_the_seams_derivatives_are_the_implicit_ones(seed, monkeypatch):
     for name, (moved, step) in moves.items():
         def at(t, moved=moved):
             parameters, where = moved(t)
-            return lumen.distance(parameters, where)
+            return lumen.signed_distance(parameters, where).distance
 
         exact = np.asarray(jax.jvp(at, (jnp.asarray(0.0),), (jnp.asarray(1.0),))[1])
         values = {k: np.asarray(at(jnp.asarray(k * step))) for k in (-2, -1, 1, 2)}

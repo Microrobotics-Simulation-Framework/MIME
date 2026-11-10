@@ -1,0 +1,293 @@
+{
+ "what": "F2a's first step's Womersley sweep: a thin periodic straight tube (D = 1, nu = 1) on the FVM's band, IMEX Euler under Stokes at 100 steps a period, driven by G0 cos(w t), started from the exact solution and run five times the slowest mode's decay; the oracle is IMEX Euler's own time-discrete Womersley, so the error read is the space discretisation's. The wall shear's first harmonic is read along the normal from the calibrated wall (a quadratic through zero at the steady flux's effective radius and the clean points R - 3h < r < R - h); its amplitude's error against the exact wall shear, and the same estimator's on the exact profile at the same points. The layer is the Stokes layer R sqrt(2) / alpha in cells. Measured on a laptop, CPU, float64; mime.scene.LAYER_LINES are set from these rows.",
+ "rows": [
+  {
+   "cells_a_diameter": 16,
+   "alpha": 6.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.885618,
+   "wall_shear_amplitude_error": -0.091483,
+   "estimator_on_exact_profile_error": -0.074276
+  },
+  {
+   "cells_a_diameter": 16,
+   "alpha": 10.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.131371,
+   "wall_shear_amplitude_error": -0.251531,
+   "estimator_on_exact_profile_error": -0.224703
+  },
+  {
+   "cells_a_diameter": 16,
+   "alpha": 14.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 0.808122,
+   "wall_shear_amplitude_error": -0.419029,
+   "estimator_on_exact_profile_error": -0.384021
+  },
+  {
+   "cells_a_diameter": 16,
+   "alpha": 20.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 0.565685,
+   "wall_shear_amplitude_error": -0.596196,
+   "estimator_on_exact_profile_error": -0.570065
+  },
+  {
+   "cells_a_diameter": 16,
+   "alpha": 6.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.885618,
+   "wall_shear_amplitude_error": -0.070912,
+   "estimator_on_exact_profile_error": -0.066422
+  },
+  {
+   "cells_a_diameter": 16,
+   "alpha": 10.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.131371,
+   "wall_shear_amplitude_error": -0.218094,
+   "estimator_on_exact_profile_error": -0.204777
+  },
+  {
+   "cells_a_diameter": 16,
+   "alpha": 14.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 0.808122,
+   "wall_shear_amplitude_error": -0.379764,
+   "estimator_on_exact_profile_error": -0.355025
+  },
+  {
+   "cells_a_diameter": 16,
+   "alpha": 20.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 0.565685,
+   "wall_shear_amplitude_error": -0.560702,
+   "estimator_on_exact_profile_error": -0.537149
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 6.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 3.771236,
+   "wall_shear_amplitude_error": -0.027044,
+   "estimator_on_exact_profile_error": -0.012854
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 10.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 2.262742,
+   "wall_shear_amplitude_error": -0.063953,
+   "estimator_on_exact_profile_error": -0.05461
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 14.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.616244,
+   "wall_shear_amplitude_error": -0.127936,
+   "estimator_on_exact_profile_error": -0.118568
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 20.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.131371,
+   "wall_shear_amplitude_error": -0.250492,
+   "estimator_on_exact_profile_error": -0.234143
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 6.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 3.771236,
+   "wall_shear_amplitude_error": -0.010388,
+   "estimator_on_exact_profile_error": -0.01167
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 10.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 2.262742,
+   "wall_shear_amplitude_error": -0.045858,
+   "estimator_on_exact_profile_error": -0.050277
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 14.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.616244,
+   "wall_shear_amplitude_error": -0.107325,
+   "estimator_on_exact_profile_error": -0.110113
+  },
+  {
+   "cells_a_diameter": 32,
+   "alpha": 20.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 1.131371,
+   "wall_shear_amplitude_error": -0.225739,
+   "estimator_on_exact_profile_error": -0.219692
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 6.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 7.542472,
+   "wall_shear_amplitude_error": -0.015496,
+   "estimator_on_exact_profile_error": -0.001576
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 10.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 4.525483,
+   "wall_shear_amplitude_error": -0.019509,
+   "estimator_on_exact_profile_error": -0.009676
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 14.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 3.232488,
+   "wall_shear_amplitude_error": -0.031577,
+   "estimator_on_exact_profile_error": -0.025239
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 20.0,
+   "offset_cells": [
+    0.0,
+    0.0
+   ],
+   "dtype": "float64",
+   "layer_cells": 2.262742,
+   "wall_shear_amplitude_error": -0.064624,
+   "estimator_on_exact_profile_error": -0.061275
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 6.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 7.542472,
+   "wall_shear_amplitude_error": -0.000778,
+   "estimator_on_exact_profile_error": -0.001392
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 10.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 4.525483,
+   "wall_shear_amplitude_error": -0.005098,
+   "estimator_on_exact_profile_error": -0.008733
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 14.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 3.232488,
+   "wall_shear_amplitude_error": -0.017106,
+   "estimator_on_exact_profile_error": -0.022958
+  },
+  {
+   "cells_a_diameter": 64,
+   "alpha": 20.0,
+   "offset_cells": [
+    0.3,
+    0.2
+   ],
+   "dtype": "float64",
+   "layer_cells": 2.262742,
+   "wall_shear_amplitude_error": -0.048912,
+   "estimator_on_exact_profile_error": -0.056179
+  }
+ ]
+}

@@ -17,13 +17,18 @@ one ball.
 
 **Its values are parameters** (:meth:`TubeTree.parameters`: the points, the radii and the fillet's share, in SI), read
 by the centreline and the lumen as JAX functions, so a derivative in any of them flows; its structure (which points
-the segments join, so which tubes meet) is fixed. Tubes that do not share a point but overlap (a tight bend's
-non-neighbours, a loop closing on itself) meet as well, found at the values it is made with.
+the segments join, so which tubes meet) is fixed. Tubes that do not share a point but come within reach of each other
+(their walls within two fillet radii and a margin: a tight bend's non-neighbours, a loop closing on itself, a hairpin's
+legs) meet as well, found at the values it is made with; at a run's values the lumen counts the pairs that come within
+reach without meeting (``UnionDistance.unplanned``: a study that moves the radii or the points far enough), where its
+distance is not exact. Tubes that share no point and come within ``2 r`` across solid are joined by the fillet (its
+closing fills the wall): the report names them (:meth:`TubeTree.features`).
 
 **Tilted vessels** are its points turned (:meth:`TubeTree.turned`): nothing in it is aligned with an axis."""
 
 from __future__ import annotations
 
+import functools
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -41,8 +46,10 @@ type Parameters = Mapping[str, Any]
 #: The fillet's radius at a vessel's junctions, as a share of the smallest radius a segment has at one (the smaller
 #: daughter's at a Y): an anatomical baseline declared for vessels, not fitted to any measurement.
 FILLET_SHARE = 0.1
-#: How many points along each of two tubes that share no point their nearest approach is read at, when the tree is
-#: made, to find whether they overlap.
+#: How far, as a share of the largest radius, two tubes that share no point may lie outside each other's reach (their
+#: walls two fillet radii apart) and still be made to meet: the room a study has before the lumen counts the pair.
+MEETING_MARGIN = 1.0 / 16.0
+#: How many points along each of two tubes that share no point the solid between them is read at, for the report.
 APPROACH_POINTS = 257
 
 
@@ -66,14 +73,16 @@ def _refused(message: str) -> Exception:
 @dataclass(frozen=True)
 class WallFeatures:
     """What a wall's geometry gives the resolution report, in metres and degrees: its smallest radius of curvature (a
-    sharp seam's is zero), its narrowest lumen (a diameter), the narrowest solid between two tubes that do not meet
-    (infinite where none come close), and the sharpest wedge of solid between two tubes leaving a junction (its
-    opening, degrees; 180 where none)."""
+    sharp seam's is zero), its narrowest lumen (a diameter), the narrowest solid between two tubes that share no point
+    (infinite where none has solid between them), the sharpest wedge of solid between two tubes leaving a junction (its
+    opening, degrees; 180 where none), and the pairs of tubes sharing no point whose solid the fillet fills (thinner
+    than its diameter: the closing joins them)."""
 
     smallest_radius: float
     narrowest_lumen: float
     narrowest_solid: float
     sharpest_wedge: float
+    fused: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -132,24 +141,41 @@ class TubeTree:
         return np.asarray([s for s, _ in held], dtype=np.int64), np.asarray([e for _, e in held], dtype=np.int64)
 
     def meets(self) -> tuple[tuple[int, int], ...]:
-        """The pairs of segments whose tubes meet: those sharing a point, and those that overlap (with the fillet's
-        widening) at the values the tree is made with."""
-        shared = {(i, j) for i in range(len(self.segments)) for j in range(i + 1, len(self.segments))
-                  if set(self.segments[i]) & set(self.segments[j])}
-        points = np.asarray(self.points, dtype=np.float64)
-        radii = np.asarray(self.radii, dtype=np.float64)
-        widening = 2.0 * self.fillet_radius_value()
-        t = np.linspace(0.0, 1.0, APPROACH_POINTS)
-        lines = [points[a][None] + t[:, None] * (points[b] - points[a])[None] for a, b in self.segments]
-        steps = [float(_norm(points[b] - points[a])) / (APPROACH_POINTS - 1) for a, b in self.segments]
-        for i in range(len(self.segments)):
-            for j in range(i + 1, len(self.segments)):
-                if (i, j) in shared:
-                    continue
-                apart = float(np.min(_norm(lines[i][:, None] - lines[j][None])))
-                if apart < radii[i].max() + radii[j].max() + widening + steps[i] + steps[j]:
-                    shared.add((i, j))
-        return tuple(sorted(shared))
+        """The pairs of segments whose tubes meet: those sharing a point, and those within reach of each other (their
+        walls within two fillet radii, and ``MEETING_MARGIN``) at the values the tree is made with."""
+        margin = MEETING_MARGIN * float(np.max(np.asarray(self.radii)))
+        apart, reach = self._approach(self.parameters(), np)
+        shared = {pair for pair in self._pairs() if set(self.segments[pair[0]]) & set(self.segments[pair[1]])}
+        near = {pair for pair, gap, within in zip(self._pairs(), apart, reach, strict=True) if gap < within + margin}
+        return tuple(sorted(shared | near))
+
+    def _pairs(self) -> list[tuple[int, int]]:
+        return [(i, j) for i in range(len(self.segments)) for j in range(i + 1, len(self.segments))]
+
+    def _approach(self, parameters: Parameters, xp: Any, pairs: Sequence[tuple[int, int]] | None = None
+                  ) -> tuple[Any, Any]:
+        """For each pair (every pair by default): the least distance between the two segments' axes, and their reach
+        (each tube's largest radius and two fillet radii), in ``xp`` (NumPy or JAX)."""
+        held = list(self._pairs()) if pairs is None else list(pairs)
+        first = np.asarray([self.segments[i] for i, _ in held], dtype=np.int64).reshape(-1, 2)
+        second = np.asarray([self.segments[j] for _, j in held], dtype=np.int64).reshape(-1, 2)
+        points = xp.asarray(parameters["points"])
+        radii = xp.max(xp.asarray(parameters["radii"]), axis=1)
+        apart = _segments_apart(xp, points[first[:, 0]], points[first[:, 1]], points[second[:, 0]],
+                                points[second[:, 1]])
+        indices = np.asarray(held, dtype=np.int64).reshape(-1, 2)
+        reach = radii[indices[:, 0]] + radii[indices[:, 1]] + 2.0 * self.fillet_radius(parameters, xp)
+        return apart, reach
+
+    def unplanned(self, parameters: Parameters) -> Any:
+        """How many pairs of tubes that do not meet (:meth:`meets`) come within reach of each other at
+        ``parameters``: where the lumen's check is blind and its distance not exact."""
+        meeting = set(self.meets())
+        held = [pair for pair in self._pairs() if pair not in meeting]
+        if not held:
+            return jnp.asarray(0)
+        apart, reach = self._approach(parameters, jnp, held)
+        return jnp.sum(apart < reach)
 
     # -- its values, parameters ---------------------------------------------------------------------------------------
     def parameters(self) -> dict[str, np.ndarray]:
@@ -159,27 +185,23 @@ class TubeTree:
                 "radii": np.asarray(self.radii, dtype=np.float64),
                 "fillet": np.asarray(self.fillet, dtype=np.float64)}
 
-    def fillet_radius(self, parameters: Parameters) -> Any:
+    def fillet_radius(self, parameters: Parameters, xp: Any = jnp) -> Any:
         """The fillet's radius (m): its share times the smallest radius a segment has at a junction; zero with no
         junction."""
         segments, ends = self._junction_ends()
         if not segments.size:
-            return jnp.asarray(0.0) * jnp.asarray(parameters["fillet"])
-        radii = jnp.asarray(parameters["radii"])
-        return jnp.asarray(parameters["fillet"]) * jnp.min(radii[segments, ends])
+            return xp.asarray(0.0) * xp.asarray(parameters["fillet"])
+        radii = xp.asarray(parameters["radii"])
+        return xp.asarray(parameters["fillet"]) * xp.min(radii[segments, ends])
 
     def fillet_radius_value(self) -> float:
-        return float(np.asarray(self.fillet_radius(self.parameters())))
+        return float(self.fillet_radius(self.parameters(), np))
 
     def lumen(self) -> ExactUnion:
         """Its lumen: the round cones' union, filleted, its exact signed distance a JAX function of
-        :meth:`parameters`."""
-        regions = tuple(
-            RoundCone(start=lambda p, a=a: jnp.asarray(p["points"])[a], end=lambda p, b=b: jnp.asarray(p["points"])[b],
-                      start_radius=lambda p, i=i: jnp.asarray(p["radii"])[i, 0],
-                      end_radius=lambda p, i=i: jnp.asarray(p["radii"])[i, 1])
-            for i, (a, b) in enumerate(self.segments))
-        return ExactUnion(regions, self.meets(), float(np.max(np.asarray(self.radii))), fillet=self.fillet_radius)
+        :meth:`parameters`, written about the points' centroid; one union for equal trees (so one compiled
+        program)."""
+        return _lumen(self)
 
     def centreline(self) -> Centreline:
         """Its centreline: a straight segment for each, its local radius linear between its ends' (the inscribed
@@ -219,9 +241,10 @@ class TubeTree:
         """Its :class:`WallFeatures` at the values it is made with."""
         radii = np.asarray(self.radii, dtype=np.float64)
         junctions = self.junctions
+        fillet = self.fillet_radius_value()
         smallest = float(radii.min())
         if junctions:
-            smallest = min(smallest, self.fillet_radius_value())
+            smallest = min(smallest, fillet)
         points = np.asarray(self.points, dtype=np.float64)
         wedge = 180.0
         for junction in junctions:
@@ -234,22 +257,84 @@ class TubeTree:
                 for j in range(i + 1, len(directions)):
                     cosine = float(np.clip(np.dot(directions[i], directions[j]), -1.0, 1.0))
                     wedge = min(wedge, math.degrees(math.acos(cosine)))
-        meets = set(self.meets())
-        apart = math.inf
+        walls = {pair: self._solid_between(*pair) for pair in self._pairs()
+                 if not set(self.segments[pair[0]]) & set(self.segments[pair[1]])}
+        fused = tuple(pair for pair, wall in walls.items() if wall < 2.0 * fillet)
+        return WallFeatures(smallest, 2.0 * float(radii.min()), min(walls.values(), default=math.inf), wedge, fused)
+
+    def _solid_between(self, i: int, j: int) -> float:
+        """The thinnest solid between tubes ``i`` and ``j`` (sharing no point): the least gap between their walls
+        along the line joining two points of their axes (``APPROACH_POINTS`` each) whose middle lies outside every
+        tube; infinite where no such gap is solid (the tubes overlap, or what lies between them is lumen)."""
+        points = np.asarray(self.points, dtype=np.float64)
+        radii = np.asarray(self.radii, dtype=np.float64)
         t = np.linspace(0.0, 1.0, APPROACH_POINTS)
-        for i in range(len(self.segments)):
-            for j in range(i + 1, len(self.segments)):
-                if (i, j) in meets:
-                    continue
-                a, b = (points[k] for k in self.segments[i])
-                c, d = (points[k] for k in self.segments[j])
-                along_i = a[None] + t[:, None] * (b - a)[None]
-                along_j = c[None] + t[:, None] * (d - c)[None]
-                ri = radii[i, 0] + t * (radii[i, 1] - radii[i, 0])
-                rj = radii[j, 0] + t * (radii[j, 1] - radii[j, 0])
-                gap = _norm(along_i[:, None] - along_j[None]) - ri[:, None] - rj[None]
-                apart = min(apart, float(gap.min()))
-        return WallFeatures(smallest, 2.0 * float(radii.min()), apart, wedge)
+
+        def along(k: int) -> tuple[np.ndarray, np.ndarray]:
+            a, b = (points[m] for m in self.segments[k])
+            return a[None] + t[:, None] * (b - a)[None], radii[k, 0] + t * (radii[k, 1] - radii[k, 0])
+
+        (axis_i, radius_i), (axis_j, radius_j) = along(i), along(j)
+        offset = axis_j[None] - axis_i[:, None]
+        apart = _norm(offset)
+        gap = apart - radius_i[:, None] - radius_j[None]
+        share = (radius_i[:, None] + 0.5 * gap) / np.where(apart > 0.0, apart, 1.0)
+        middle = axis_i[:, None] + offset * share[..., None]
+        flat = middle.reshape(-1, 3)
+        solid = np.ones(len(flat), dtype=bool)
+        for k, (a, b) in enumerate(self.segments):
+            solid &= _round_cone_distance(flat, points[a], points[b], radii[k, 0], radii[k, 1]) > 0.0
+        held = gap.reshape(-1)[solid & (gap.reshape(-1) >= 0.0)]
+        return float(held.min()) if held.size else math.inf
+
+
+@functools.lru_cache(maxsize=64)
+def _lumen(tree: TubeTree) -> ExactUnion:
+    """``tree``'s lumen (:meth:`TubeTree.lumen`), made once for equal trees."""
+
+    def local(parameters: Parameters) -> Any:
+        held = jnp.asarray(parameters["points"])
+        return held - jnp.mean(held, axis=0)
+
+    regions = tuple(
+        RoundCone(start=lambda p, a=a: local(p)[a], end=lambda p, b=b: local(p)[b],
+                  start_radius=lambda p, i=i: jnp.asarray(p["radii"])[i, 0],
+                  end_radius=lambda p, i=i: jnp.asarray(p["radii"])[i, 1])
+        for i, (a, b) in enumerate(tree.segments))
+    return ExactUnion(regions, tree.meets(), size=lambda p: jnp.max(jnp.asarray(p["radii"])),
+                      fillet=tree.fillet_radius, origin=lambda p: jnp.mean(jnp.asarray(p["points"]), axis=0),
+                      unplanned=tree.unplanned)
+
+
+def _segments_apart(xp: Any, a: Any, b: Any, c: Any, d: Any) -> Any:
+    """The least distance between segments ``a``-``b`` and ``c``-``d`` (each ``(..., 3)``), in ``xp``: from an end of
+    one to the other, or between interior points where the joining line is square to both (not parallel)."""
+
+    def to_segment(p: Any, start: Any, end: Any) -> Any:
+        span = end - start
+        along = xp.clip(xp.sum((p - start) * span, axis=-1) / xp.sum(span * span, axis=-1), 0.0, 1.0)
+        return xp.sqrt(xp.sum((p - start - along[..., None] * span) ** 2, axis=-1))
+
+    ends = xp.minimum(xp.minimum(to_segment(a, c, d), to_segment(b, c, d)),
+                      xp.minimum(to_segment(c, a, b), to_segment(d, a, b)))
+    u, v, w = b - a, d - c, a - c
+    uu, vv, uv = xp.sum(u * u, axis=-1), xp.sum(v * v, axis=-1), xp.sum(u * v, axis=-1)
+    uw, vw = xp.sum(u * w, axis=-1), xp.sum(v * w, axis=-1)
+    determinant = uu * vv - uv * uv
+    crossing = determinant > 1e-12 * uu * vv
+    safe = xp.where(crossing, determinant, 1.0)
+    s, t = (uv * vw - vv * uw) / safe, (uu * vw - uv * uw) / safe
+    inside = crossing & (s > 0.0) & (s < 1.0) & (t > 0.0) & (t < 1.0)
+    interior = xp.sqrt(xp.sum((w + s[..., None] * u - t[..., None] * v) ** 2, axis=-1))
+    return xp.where(inside, xp.minimum(ends, interior), ends)
+
+
+def _round_cone_distance(points: np.ndarray, a: np.ndarray, b: np.ndarray, ra: float, rb: float) -> np.ndarray:
+    """A round cone's distance, in NumPy, near enough for the report: the distance from its segment less the radius at
+    the nearest point's share of it (exact for a capsule)."""
+    span = b - a
+    along = np.clip((points - a) @ span / (span @ span), 0.0, 1.0)
+    return _norm(points - (a + along[:, None] * span)) - (ra + along * (rb - ra))
 
 
 def _segment(index: int, pair: tuple[int, int], normal: np.ndarray) -> CentrelineSegment:
@@ -285,4 +370,4 @@ def _segment(index: int, pair: tuple[int, int], normal: np.ndarray) -> Centrelin
     return CentrelineSegment(length=length, frame=frame, radius=radius)
 
 
-__all__ = ["APPROACH_POINTS", "FILLET_SHARE", "TubeTree", "WallFeatures"]
+__all__ = ["APPROACH_POINTS", "FILLET_SHARE", "MEETING_MARGIN", "TubeTree", "WallFeatures"]

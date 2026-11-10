@@ -13,16 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
   `PlaneSide`, or a lab's `Region`): the minimum, a check at each point of where it is exact (the deepest region's
   nearest wall point lies outside the regions that meet it), and Newton at a wall, a seam or a corner where it is not,
-  at a plan's points held for a build, a miss outside the plan counted (`unrefined`). The plain minimum reads the fluid
-  too shallow near every seam, a false wall of 0.4 to 1.75 cells at a Y's carina; the rule is exact to a brute force's
-  floor at random rotations and sub-cell offsets in both dtypes. A fillet of radius `r` is the union's closing by a
-  ball (every edge of solid between two walls rounded, nothing else moved): the same rule on the regions widened by
-  `r`, moved back, exact on both sides against closed forms (a wedge, two balls). Derivatives by implicit
-  differentiation. `TubeTree`: points, segments with a radius at each end (round cones), its centreline with a junction
-  where two segment ends or more meet, its lumen, one fillet (`FILLET_SHARE`, 0.1 of the smallest radius at a
-  junction, declared: no measurement of vessels gives it yet), its values parameters a derivative flows through, and
-  `turned` for tilted vessels; a malformed tree is refused (`call.tube_tree`). The walls' half of the resolution report
-  (`wall_resolution`, `stokes_layer`, `steady_layer`). No node runs it yet: the FVM's wall is the first.
+  at a plan's points held for a build. The plain minimum reads the fluid too shallow near every seam, a false wall of
+  0.4 to 1.75 cells at a Y's carina; the rule is exact to a brute force's floor at random rotations and sub-cell
+  offsets, and where two walls' normals are opposed (the plane of two parallel tubes' axes on an aligned grid), in both
+  dtypes, and in float32 at a scanner's coordinates (its regions are evaluated about the union's own origin). Every
+  value carries counts of where it is not exact (`UnionDistance`, `UnionNormal`: points outside the plan, points whose
+  own seam was never reached, and pairs of regions the run's values bring within reach that the union does not hold as
+  meeting). A fillet of radius `r` is the union's closing by a ball: the same rule on the regions widened by `r`, moved
+  back, exact in the fluid and against closed forms (a wedge, two balls) on both sides, and in the solid except within
+  `r` of a neck of the widened union thinner than `2 r` (tubes sharing no point whose wall is a little under `2 r`).
+  Derivatives by implicit differentiation. `TubeTree`: points, segments with a radius at each end (round cones), its
+  centreline with a junction where two segment ends or more meet, its lumen, one fillet (`FILLET_SHARE`, 0.1 of the
+  smallest radius at a junction, declared: no measurement of vessels gives it yet), its values parameters a derivative
+  flows through, and `turned` for tilted vessels; a malformed tree is refused (`call.tube_tree`). The walls' half of
+  the resolution report (`wall_resolution`, `stokes_layer`, `steady_layer`): the narrowest solid between tubes sharing
+  no point and the solid the fillet fills between them, and the wall layer against lines set from a Womersley sweep's
+  worst arm (wall shear within 5 % from 2.7 cells of layer, within 2 % from 4.5). No node runs it yet: the FVM's wall
+  is the first.
 - **A medium's flow metered by the energy ledger: the `fluid` port kind, and the rule for a source.** With
   `exp.observe(EnergyLedger())` the build meters an FVM flow as a receiver of the new `fluid` port kind: its fluid's
   momentum (`flow.momentum`, kg m/s, over the fluid alone, as the drive acts on it alone) against the body force each

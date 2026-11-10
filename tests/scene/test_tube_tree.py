@@ -2,16 +2,21 @@
 centreline's contract (``mime.testing.centreline_problems``), its fillet, its placement, the held plan's guard, and the
 walls' resolution report. The union's gates are ``test_exact_union.py``'s."""
 
+import dataclasses
+import json
 import math
+import os
+from pathlib import Path
 
 import numpy as np
 import pytest
-from union_oracles import D, loop_tree, rotation, y_tree
+from union_oracles import D, hairpin_tree, lattice, loop_tree, rotation, seed_list, y_tree
 
 from mime.build import ArgumentRefused
 from mime.core import jnp
 from mime.scene import (
     FILLET_SHARE,
+    LAYER_LINES,
     Helix,
     TubeTree,
     steady_layer,
@@ -21,6 +26,9 @@ from mime.scene import (
 from mime.testing import centreline_problems
 from mime.units import mm
 
+UNION_PLANT = os.environ.get("MIME_PLANT_UNION")
+#: The shares of the wall shear's error each layer line is set for.
+LAYER_SHARES = {"wall shear within 5 %": 0.05, "wall shear within 2 %": 0.02}
 #: A kind that labels the centreline harness's lines; the tree's own centreline is what is held.
 LABEL = Helix(radius=mm(0.15), pitch=mm(0.6), turns=2.5, filament_radius=mm(0.03))
 
@@ -94,7 +102,7 @@ def test_a_round_cone_is_the_union_of_its_balls():
     tree = TubeTree(((0.0, 0.0, 0.0), (2e-3, 0.0, 0.0)), ((0, 1),), ((0.5e-3, 0.2e-3),))
     rng = np.random.default_rng(5)
     points = rng.uniform((-1e-3, -1e-3, -1e-3), (3e-3, 1e-3, 1e-3), (500, 3))
-    found = np.asarray(tree.lumen().distance(parameters_of(tree), jnp.asarray(points)))
+    found = np.asarray(tree.lumen().signed_distance(parameters_of(tree), jnp.asarray(points)).distance)
     s = np.linspace(0.0, 1.0, 20001)
     centres = s[:, None] * np.asarray([2e-3, 0.0, 0.0])
     radii = 0.5e-3 + s * (0.2e-3 - 0.5e-3)
@@ -109,14 +117,14 @@ def test_its_normal_is_unit_and_its_nearest_point_on_the_wall():
     held = parameters_of(tree)
     points = jnp.asarray(np.random.default_rng(6).uniform(-0.8 * D, 0.8 * D, (400, 3)))
     plan = lumen.plan(held, points, margin=0.0)
-    distance = lumen.distance(held, points, plan)
-    normal = lumen.normal(held, points, plan)
+    found = lumen.normal(held, points, plan)
+    distance, normal = found.distance.distance, found.normal
     lengths = np.asarray(jnp.linalg.norm(normal, axis=-1))
     off_medial = np.abs(lengths - 1.0) < 1e-6
     assert off_medial.mean() > 0.9
     nearest = points - distance[:, None] * normal
-    assert np.max(np.abs(np.asarray(lumen.distance(held, nearest, lumen.plan(held, nearest, margin=0.0))))
-                  [off_medial]) <= 1e-12
+    on_wall = lumen.signed_distance(held, nearest, lumen.plan(held, nearest, margin=0.0)).distance
+    assert np.max(np.abs(np.asarray(on_wall))[off_medial]) <= 1e-12
 
 
 def test_a_turned_and_moved_tree_turns_and_moves_its_distance():
@@ -127,8 +135,9 @@ def test_a_turned_and_moved_tree_turns_and_moves_its_distance():
     here_lumen, there_lumen = tree.lumen(), moved.lumen()
     held, moved_held = parameters_of(tree), parameters_of(moved)
     at_here, at_there = jnp.asarray(points), jnp.asarray(points @ turn.T + offset)
-    here = np.asarray(here_lumen.distance(held, at_here, here_lumen.plan(held, at_here, margin=0.0)))
-    there = np.asarray(there_lumen.distance(moved_held, at_there, there_lumen.plan(moved_held, at_there, margin=0.0)))
+    here = np.asarray(here_lumen.signed_distance(held, at_here, here_lumen.plan(held, at_here, margin=0.0)).distance)
+    there = np.asarray(there_lumen.signed_distance(moved_held, at_there,
+                                                   there_lumen.plan(moved_held, at_there, margin=0.0)).distance)
     assert np.max(np.abs(here - there)) <= 1e-15
 
 
@@ -145,6 +154,64 @@ def test_points_outside_the_plan_that_fail_the_check_are_counted():
     assert int(lumen.signed_distance(wider, points, plan).unrefined) > 0
     margined = lumen.plan(held, points, margin=0.2 * D)
     assert int(lumen.signed_distance(wider, points, margined).unrefined) == 0
+
+
+@pytest.mark.parametrize("seed", seed_list((51,)))
+def test_a_study_that_brings_tubes_within_reach_is_counted(seed):
+    """A hairpin whose legs do not meet as made (walls 0.2 to 0.4 D apart, turned and moved at random), and a study that
+    scales its radii until they come within reach (the fillet's widening included): the pair the union does not hold
+    as meeting is counted at the run's values, with the distance and with the normal; at the values it was made with,
+    none. **Control** (``MIME_PLANT_UNION=no-unplanned``): the count left out."""
+    rng = np.random.default_rng(seed)
+    wall = rng.uniform(0.2, 0.4) * D
+    tree = hairpin_tree(wall, 0.1).turned(rotation(seed), rng.uniform(-D, D, 3))
+    lumen = tree.lumen()
+    if UNION_PLANT == "no-unplanned":
+        lumen = dataclasses.replace(lumen, unplanned=lambda parameters: 0)
+    assert lumen.meets == ((0, 1), (1, 2))
+    held = parameters_of(tree)
+    middle = 0.25 * np.sum(np.asarray(tree.points), axis=0)
+    points = jnp.asarray(lattice(middle, 0.3 * D, D / 16.0))
+    assert int(lumen.signed_distance(held, points).unplanned) == 0
+    within = (D + wall) / (1.1 * D)
+    study = {**held, "radii": held["radii"] * rng.uniform(within + 0.01, within + 0.2)}
+    assert int(lumen.signed_distance(study, points).unplanned) == 1
+    assert int(lumen.normal(study, points).distance.unplanned) == 1
+
+
+def test_the_report_names_tubes_the_fillet_joins():
+    """A hairpin whose wall is thinner than the fillet's diameter is joined by its closing, and the report says so;
+    the narrowest solid is read between tubes sharing no point whether or not they meet (a wall of 0.12 D, which the
+    fillet does not fill, is read too); the loop's island between its branches is solid, its touching ends' gap
+    lumen."""
+    fused = hairpin_tree(0.06 * D, 0.1).features()
+    assert fused.fused == ((0, 2),) and fused.narrowest_solid == pytest.approx(0.06 * D, rel=1e-9)
+    entries = wall_resolution(fused, D / 16.0).entries
+    joined = next(entry for entry in entries if entry.name.startswith("solid the fillet fills"))
+    assert joined.cells == pytest.approx(0.96, rel=1e-9) and "joins these tubes" in joined.text()
+    apart = hairpin_tree(0.12 * D, 0.1).features()
+    assert apart.fused == () and apart.narrowest_solid == pytest.approx(0.12 * D, rel=1e-9)
+    loop = loop_tree(0.1).features()
+    assert loop.fused == () and 0.0 < loop.narrowest_solid < 0.3 * D
+
+
+def test_the_layer_lines_are_the_sweeps_worst_arm():
+    """``LAYER_LINES`` against the Womersley sweep's rows they are set from: past each line every row's wall shear is
+    within its share, and the line is the worst arm's crossing of the share, interpolated between the rows either side
+    of it, rounded up to a tenth of a cell."""
+    rows = json.loads(Path(__file__).with_name("womersley_sweep_rows.json").read_text())["rows"]
+    worst: dict[float, float] = {}
+    for row in rows:
+        layer = row["layer_cells"]
+        worst[layer] = max(worst.get(layer, 0.0), abs(row["wall_shear_amplitude_error"]))
+    layers = sorted(worst)
+    for name, line in LAYER_LINES.items():
+        share = LAYER_SHARES[name]
+        assert all(worst[layer] <= share for layer in layers if layer >= line), name
+        above = max(layer for layer in layers if worst[layer] > share)
+        below = min(layer for layer in layers if layer > above)
+        crossing = above + (worst[above] - share) / (worst[above] - worst[below]) * (below - above)
+        assert crossing <= line <= math.ceil(crossing * 10.0) / 10.0 + 1e-12, (name, crossing)
 
 
 def test_the_features_the_report_reads():
