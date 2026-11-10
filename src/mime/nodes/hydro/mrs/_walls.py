@@ -111,6 +111,14 @@ class WallCorrection:
     regularised: bool = False
     cost_text: str = ""
     near_wall_text: str = ""
+    #: How lubrication's hand-over opens a near contact with this wall (``mime.nodes.hydro.mrs._handover``): the
+    #: constants with the wall moved ``delta`` (m) away from the medium along its normal everywhere (a plane
+    #: translated, a tube dilated), a JAX function of both; ``None`` for a wall that cannot be opened, with which the
+    #: drag takes no hand-over.
+    opened: Callable[[Mapping[str, Any], Any], dict[str, Any]] | None = None
+    #: The region the medium fills, from the constants: the registered shape's name (``mime.core.shape_named``) and
+    #: its parameters, which a near contact's search and the wall's curvature read; ``None`` with ``opened``.
+    region: Callable[[Mapping[str, Any]], tuple[str, dict[str, Any]]] | None = None
 
 
 def cell_image(wall: WallCorrection, targets: Array, points: Array, weights: Array, chunks: Chunks,
