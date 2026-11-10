@@ -179,8 +179,8 @@ flow.preconditioner           user
 flow.prescribed-alpha         user
 flow.prescribed-region        user
 flow.region                   user
-flow.report-rows              user
 flow.resolution               user
+flow.solve-report-rows        user
 flow.steady-convection        user
 flow.viscous-limit            user
 frame.gravity-invalid         user

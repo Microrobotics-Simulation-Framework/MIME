@@ -23,7 +23,7 @@ build reports them (:meth:`built_lines`).
 
 **The report.** Each step's primal solve report (``mime.nodes.flow.fvm._solve``'s block) is a state field, with its
 running sum; the derivative solves' reports come out through the ``solve_report`` parameter's gradient (summed over
-the run by default; a row a step with ``report_rows``) and the tangent of the running sum.
+the run by default; a row a step with ``solve_report_rows``) and the tangent of the running sum.
 
 **The step identity** (route 2, every term by formula, paired at the step's solution ``u'``): ``dKE = W_drive -
 D_visc - D_wall - N_BE - N_conv - N_Krylov``, ``KE`` by the grid's inner product. The node is a receiver of the ``fluid``
@@ -225,7 +225,7 @@ class ImplicitFlowNode(MimeNode):
                  at_floor: bool | None = None, cap: int = 5000, check_every: int = 20, band: str = "smooth_2h_0.3h",
                  interior: str = "0.1h",
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
-                 report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
+                 solve_report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
                  ledger: Sequence[str] = ()) -> None:
         chosen = scheme_named(scheme)
@@ -244,7 +244,7 @@ class ImplicitFlowNode(MimeNode):
             raise ValueError(f"periodic_images is 'own' (an aligned tube) or 'transverse', not {periodic_images!r}")
         # A node made again from its own arguments (the ledger's wiring, a test's rebuild) carries the stop it was made
         # with; otherwise the stop at the floor is float32's default, where no tolerance is given. Its solve_report
-        # parameter is zeros sized by report_rows, made here again, so the one it is given back is not read.
+        # parameter is zeros sized by solve_report_rows, made here again, so the one it is given back is not read.
         del solve_report
         if at_floor is None:
             at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
@@ -263,8 +263,8 @@ class ImplicitFlowNode(MimeNode):
                          at_floor=bool(at_floor), cap=int(cap),
                          check_every=int(check_every), band=str(band), interior=str(interior),
                          preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
-                         periodic_images=str(periodic_images), report_rows=int(report_rows),
-                         solve_report=np.zeros((max(int(report_rows), 1), REPORT_SIZE)), **initial,
+                         periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
+                         solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
                          **({"wall_name": str(wall_name)} if wall_name else {}),
                          **({"ledger": tuple(ledger)} if ledger else {}))
 
@@ -390,7 +390,7 @@ class ImplicitFlowNode(MimeNode):
 
     def report_row(self, p: Mapping[str, Any], steps: Array) -> Array:
         """The ``solve_report`` row this step's solve writes its derivative solves' reports through."""
-        rows = int(self.constants()["report_rows"])
+        rows = int(self.constants()["solve_report_rows"])
         if rows == 0:
             return jnp.asarray(p["solve_report"])[0]
         return jnp.asarray(p["solve_report"])[jnp.clip(steps, 0, rows - 1)]
@@ -666,14 +666,16 @@ class ImplicitFlowNode(MimeNode):
         return lines
 
     def run_problem(self, end: int) -> Problem | None:
-        """A run that would end past the last row of the derivative solves' per-step reports (``report_rows``) is
-        refused before it runs: a row is a step's, and a step past the last would be summed into it."""
-        rows = int(self.constants()["report_rows"])
+        """A run that would end past the last row of the derivative solves' per-step reports (``solve_report_rows``)
+        is refused before it runs: a row is a step's, and a step past the last would be summed into it."""
+        rows = int(self.constants()["solve_report_rows"])
         if rows == 0 or end <= rows:
             return None
-        return Problem("flow.report-rows", f"the derivative solves' reports are kept a row a step for {rows} steps, "
-                                           f"and this run would end at step {end}",
-                       f"build with FVM(report_rows={end}) or more, or report_rows=0 to sum them over the run")
+        return Problem("flow.solve-report-rows",
+                       f"the derivative solves' reports are kept a row a step for {rows} steps, and this run would end "
+                       f"at step {end}",
+                       f"build with FVM(solve_report_rows={end}) or more, or solve_report_rows=0 to sum them over the "
+                       f"run")
 
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
         """The step the CFL check stopped the run at, with the CFL it read and the timestep that keeps the line. A state

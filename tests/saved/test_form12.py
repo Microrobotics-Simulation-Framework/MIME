@@ -10,8 +10,8 @@ The folders of the eleventh form:
   convection, eight cells across, driven by ``BodyForce``'s steady and pulsatile parts), written by MIME at the last
   commit of form 11 (46fcc79, F1a-2's second PR), float64, four usable CPUs (``taskset -c 0-3``), one BLAS thread,
   saved by ``exp.build().save(folder)``, pinned by its sha256;
-- ``form11/chain_screw``: the current folder as form 11 wrote it (a document and a lock); ``current/chain_screw`` is
-  it restated to form 12 (its schema lines and its document and input hashes, no value moved).
+- ``form11/chain_screw``: the current folder as form 11 wrote it (a document and a lock); ``form12/chain_screw`` is
+  it restated to form 12 (its schema lines and its document and input hashes, no value moved), as form 12 wrote it.
 
 A reader of version 11 refuses a folder of version 12 as ``load.newer-form``, the document and the lock each once.
 
@@ -43,7 +43,7 @@ from mime.saved._versions import CURRENT, DOCUMENT_SCHEMAS, LOCK_SCHEMAS, RANGES
 SAVED = Path(__file__).parent
 FORM11_CHAIN = SAVED / "form11" / "chain_screw"
 FLOW11 = SAVED / "form11" / "periodic_flow"
-CURRENT_FOLDER = SAVED / "current" / "chain_screw"
+FORM12_CHAIN = SAVED / "form12" / "chain_screw"
 PINNED = {"experiment.mime.yaml": "f7ea736b84fb0637039741e06e9d033dbd884b767c240b1a7dd2ba0ab69cb480",
           "mime.lock": "769d6932ce38a5f95b8b83209c63c6ee02e6c8247b6037935f7e6ff54b91e7e7",
           "reference.npz": "92e9160facde462c378e392e004ccbbb61c3afff768cb0c5e7184ca318422c75",
@@ -71,11 +71,11 @@ def ranged() -> Experiment:
 
 
 def test_version_twelve_writes_a_declared_range_into_the_document_and_reads_it_back(tmp_path: Path):
-    assert CURRENT == RANGES_ADDED == 12
-    assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/12" and LOCK_SCHEMAS[CURRENT] == "mime.lock/12"
+    assert RANGES_ADDED == 12 < CURRENT
+    assert DOCUMENT_SCHEMAS[RANGES_ADDED] == "mime.document/12" and LOCK_SCHEMAS[RANGES_ADDED] == "mime.lock/12"
     lock = ranged().save(tmp_path / "ranged", steps=2)
     document = yaml.safe_load((tmp_path / "ranged" / DOCUMENT_FILE).read_text(encoding="utf-8"))
-    assert lock["schema"] == "mime.lock/12" and document["schema"] == "mime.document/12"
+    assert lock["schema"] == LOCK_SCHEMAS[CURRENT] and document["schema"] == DOCUMENT_SCHEMAS[CURRENT]
     assert document[RANGES_KEY] == {"ball.parts.shell.radius": {
         "low": 0.001, "high": 0.00115, "unit": "m", "reason": "the design range of the ball's radius"}}
     loaded = Experiment.load(tmp_path / "ranged")
@@ -86,7 +86,7 @@ def test_version_twelve_writes_a_declared_range_into_the_document_and_reads_it_b
     assert loaded.build().graph.get_node("drag:ball").sample_count == 91, "the load builds over the range"
 
 
-@pytest.mark.parametrize("folder", [FORM11_CHAIN, CURRENT_FOLDER], ids=["form11", "current"])
+@pytest.mark.parametrize("folder", [FORM11_CHAIN, FORM12_CHAIN], ids=["form11", "form12"])
 def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Path):
     document = parse_yaml((folder / DOCUMENT_FILE).read_text(encoding="utf-8"))
     lock = lock_of(folder)
@@ -95,7 +95,7 @@ def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Pa
 
 
 def test_saving_again_under_form_twelve_moves_the_document_and_input_hashes_and_never_the_others():
-    eleven, twelve = lock_of(FORM11_CHAIN), lock_of(CURRENT_FOLDER)
+    eleven, twelve = lock_of(FORM11_CHAIN), lock_of(FORM12_CHAIN)
     assert [key for key in ("document", "input", "derived", "observations")
             if eleven["hashes"][key] != twelve["hashes"][key]] == ["document", "input"]
     assert {key: value for key, value in eleven.items() if key not in ("schema", "hashes")} == \

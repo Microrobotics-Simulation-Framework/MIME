@@ -12,9 +12,13 @@ parameters of the graph, so a study can move them.
 
 It is a member of the gravity family.
 
+**In a flowing medium.** For a medium of constant density it stays exact whether the medium is at rest or flows: the
+flow's pressure carries no hydrostatic part, so buoyancy is this law's alone. A body that takes a load from the flow
+also takes its share of the flow's body force: the force on the fluid it displaces, `V f` for a uniform drive `f`, at
+its centre of buoyancy. That share is a coupling law of its own, not this one, and no body takes a load from a resolved
+flow yet. Nothing is refused or warned of, since a drive you give cannot be told apart from gravity.
+
 **When not to use it.**
-- With a medium that moves and carries its own hydrostatic load: the medium here is at rest, and with a flow that
-  counts the hydrostatic pressure the buoyancy would be counted twice. No such flow is built yet.
 - For a body whose displaced volume changes, or that floats at a surface: the buoyant volume is a constant of the body,
   and the fluid's density is uniform.
 - For anything but weight and buoyancy: it is not the drag, the contact or any hydrodynamic load on the body.
