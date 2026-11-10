@@ -62,6 +62,12 @@ def guard_problems(root: Path, scratch: Path) -> list[str]:
     return found
 
 
+def uncommented(step: dict[str, object]) -> dict[str, object]:
+    """The step with the comment lines of its script left out (the probe's says why its one line differs)."""
+    lines = str(step["run"]).splitlines()
+    return {**step, "run": "\n".join(line for line in lines if not line.strip().startswith("#"))}
+
+
 def probe_problems(root: Path, scratch: Path) -> list[str]:
     found: list[str] = []
     workflow, ci = load(root, "probe.yml"), load(root, "ci.yml")
@@ -88,7 +94,7 @@ def probe_problems(root: Path, scratch: Path) -> list[str]:
     # would be scanned; its range is what the development branch does not hold.
     expected = [{**step, "run": str(step["run"]).replace('range="$PUSH_AFTER"', 'range="$dev..$PUSH_AFTER"')}
                 for step in reference_step]
-    if scan_step != expected or len(scan_step) != 1:
+    if [uncommented(step) for step in scan_step] != [uncommented(step) for step in expected] or len(scan_step) != 1:
         found.append("the scan step is not ci.yml's `no private name or path` step")
     if [s for s in scan["steps"] if "checkout" in str(s.get("uses"))] != [s for s in reference if "checkout" in str(s.get("uses"))]:
         found.append("the scan's checkout is not ci.yml's (fetch-depth 0, no persisted credentials)")
