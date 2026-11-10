@@ -824,6 +824,7 @@ class _Planner:
             others = sorted(plan.owner for plan in self.readers if plan.section is Section.INTERACTION
                             and plan.bindings.get("medium") == medium and plan not in members
                             and getattr(plan.entry, "rung", None) == "mrs")
+            graded = self.near_field_graded(medium, members)
             if others:
                 self.refuse("drag.near-field-mixed", RefusalClass.USER,
                             f"medium {medium!r} holds the mrs drag of {', '.join(m.owner for m in members)}, whose "
@@ -833,7 +834,7 @@ class _Planner:
                             "or put the other body in a medium of its own")
                 continue
             owner = f"near_field:{medium}"
-            if self.near_field_rates_differ(medium, members):
+            if self.near_field_rates_differ(medium, members) or graded:
                 continue
             where = f"interaction {owner}"
             reads: dict[str, ResolvedRead] = {}
@@ -859,6 +860,28 @@ class _Planner:
                 member.reads, member.delivers = {}, {}
             self.readers.append(group)
             self.declared.append(group)
+
+    def near_field_graded(self, medium: str, members: Sequence[EntryPlan]) -> bool:
+        """Whether a body of the medium's near field has graded force points (``grading`` or ``contact``), refused if
+        so (``drag.grading-near-field``), before the medium's other near-field refusals: graded sampling in a near
+        field is not built. Its cross-kernel's reach and conformance cases are measured on uniform samplings only, and
+        with a wall the joint node takes each body's wall self-image on the force spacing and raises no
+        ``off_patch``."""
+        graded = sorted(plan.owner for plan in members if getattr(plan.entry, "graded", lambda: False)())
+        if not graded:
+            return False
+        walled = [plan.owner for plan in members if getattr(plan.entry, "wall_kind", None) != "free_space"]
+        wall = (": with a wall, the joint node also measures each body's wall image on its force spacing and raises no "
+                "off_patch, so a graded body's patch leaving the wall would go unflagged" if walled else "")
+        self.refuse("drag.grading-near-field", RefusalClass.USER,
+                    f"medium {medium!r}'s near field couples the bodies of {', '.join(m.owner for m in members)}, and "
+                    f"{', '.join(graded)} grade their force points, which a near field does not take: its "
+                    f"cross-kernel's reach and each kind's conformance case are measured on uniform samplings "
+                    f"only{wall}",
+                    "leave grading and contact out of the drags in a medium shared by two bodies or more, "
+                    "Drag.MRS(spacing=...); or put the graded body in a medium of its own, exp.add_medium(Medium(...)), "
+                    "which drops its hydrodynamic coupling to the other bodies")
+        return True
 
     def near_field_rates_differ(self, medium: str, members: Sequence[EntryPlan]) -> bool:
         """Whether a body of the medium's near field steps at another rate than the joint node, refused if so
