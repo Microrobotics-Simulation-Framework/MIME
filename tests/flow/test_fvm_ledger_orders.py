@@ -11,7 +11,10 @@ declared second order in dt, pass where the order their fall shows rounds to two
 order (a fall of at least ten, #225's). The steady limit's two zero terms and RK3's convective power (zero to rounding
 on the box) declare no order, with their reasons. **Measured on 200 seeds a dtype** (the PR's table): ``N_BE`` falls by
 1.92 to 1.96 as dt halves, ``N_conv`` by 1.66 to 2.53 (#225's band, 1.6 to 2.4, was narrower than that), and
-``N_Krylov`` by 1.1 to 7.3 as the tolerance halves, so the tolerance's step is a hundredfold.
+``N_Krylov`` by 1.1 to 7.3 as the tolerance halves, so the tolerance's step is a hundredfold. On 2 of 300 drawn phases
+``N_conv``'s leading coefficient nearly vanishes (its work against the step's change, whose convective and viscous
+parts can cancel) and it falls at an apparent order of 3.1 and 2.5: the check false-alarms there, and is not widened to
+pass them, since a third order is what it refuses. The seeds here are fixed.
 
 Every arm starts from one warmed state (the swirl and its drive after a short run at a quarter of the step), so the
 stiff interior's start, damped in a step whatever the step, is not in the sums; and each arm's books close
