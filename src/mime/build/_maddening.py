@@ -490,9 +490,11 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
     first, last), kept)``, each flag of ``tests`` reduced over the steps as :func:`batched_scan` reduces it (steps
     raised, the first and the last, from the run's start), and each field of ``kept`` at every step. With
     ``checkpoint`` (reverse mode) the steps are scanned in chunks of about the square root of their number, each chunk a
-    ``jax.checkpoint`` that makes its nodes' run-constants once before its loop (:func:`with_run_constants`): reverse
-    mode keeps each chunk's start and recomputes its steps, about twice the square root of the run's steps stored for
-    twice its compute; without it (forward mode, which stores nothing) the run is one chunk. The chunks are an outer
+    ``jax.checkpoint``: reverse mode keeps each chunk's start and recomputes its steps, about twice the square root of
+    the run's steps stored for twice its compute; without it (forward mode, which stores nothing) the run is one chunk.
+    The nodes' run-constants (:func:`with_run_constants`) are made once for the run, before its chunks and outside
+    their checkpoints, so that reverse mode derives each once (made in each chunk, a checkpoint made each again in its
+    recomputation, which cost the sphere's reverse call 2 to 19 times, measured). The chunks are an outer
     scan, so the program's size does not grow with their number. Every node's step is traced as a differentiated run's
     (``mime.core.differentiated``): a guard that stops a forward run by writing NaN writes its flag form. ``fed`` holds
     the external inputs as stretches ``(steps, inputs)`` covering the run (a controller's writes held as a callback run
@@ -523,10 +525,9 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
         return jnp.any(jnp.abs(values) > limits)
 
     def chunk(length: int, external: Any) -> Callable[[Any, Any], tuple[Any, Any]]:
-        """``length`` steps from a carry, its run-constants made first; a checkpoint where asked."""
-        def scanned(carry: Any, parameters: Any) -> tuple[Any, Any]:
-            made = with_run_constants(graph, parameters)
-
+        """``length`` steps from a carry, given the parameters with the run-constants made; a checkpoint where
+        asked."""
+        def scanned(carry: Any, made: Any) -> tuple[Any, Any]:
             def body(inner: Any, _: Any) -> tuple[Any, Any]:
                 state, counted, first, last, at = inner
                 state = step_fn(state, external, made)
@@ -551,10 +552,13 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
         carry = (state, jnp.asarray(none.count, jnp.int32), jnp.asarray(none.first, jnp.int32),
                  jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
         parts: list[Any] = []
+        # The run-constants made once for the whole run, outside every chunk's checkpoint: reverse mode keeps them
+        # and derives each once, where made in each chunk it made them again in each chunk's recomputation.
+        made = with_run_constants(graph, params)
         with run_constants_made(names), differentiated_nodes(every):
             if stretches is not None:
                 for length, external in stretches:
-                    carry, out = chunk(length, external)(carry, params)
+                    carry, out = chunk(length, external)(carry, made)
                     parts.append(out)
             else:
                 length = max(1, math.ceil(math.sqrt(steps))) if checkpoint else max(1, steps)
@@ -563,7 +567,7 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
                     step = chunk(length, none_fed)
 
                     def outer(inner: Any, _: Any) -> tuple[Any, Any]:
-                        return step(inner, params)
+                        return step(inner, made)
 
                     carry, out = lax.scan(outer, carry, None, length=chunks)
 
@@ -572,7 +576,7 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
 
                     parts.append(_held(jax).tree_util.tree_map(flattened, out))
                 if rest:
-                    carry, out = chunk(rest, none_fed)(carry, params)
+                    carry, out = chunk(rest, none_fed)(carry, made)
                     parts.append(out)
         final, counted, first, last, _ = carry
         return final, (counted, first, last), joined(parts)
