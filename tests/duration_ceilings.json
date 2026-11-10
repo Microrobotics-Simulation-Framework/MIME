@@ -1,7 +1,7 @@
 {
  "written_by": "scripts/duration_triage.py: do not edit by hand",
  "generated": "2026-11-09",
- "source": "35 push and manual runs of ci.yml on release/v0.3.0, runs 42157721518 to 42538025458, Python 3.12 and 3.14, cold only; the ceilings of two tests whose cost moved, refitted on 2026-11-10 by the same rule from the cold Python 3.12 and 3.14 reports of runs 42551949655 to 42841389484 (the 16-shard table, 40 reports of one and 30 of the other), scripts/duration_triage.py's own functions",
+ "source": "35 push and manual runs of ci.yml on release/v0.3.0, runs 42157721518 to 42538025458, Python 3.12 and 3.14, cold only; the ceilings of three tests whose cost moved, refitted on 2026-11-10 by the same rule from the cold Python 3.12 and 3.14 reports of runs 42551949655 to 42841389484 (the 16-shard table: 40 reports of one test, 30 of each of the other two), scripts/duration_triage.py's own functions",
  "rule": "the larger of 3 times the test's median and 1.2 times its 95th percentile over the cold reports of the source, at least 60 s",
  "ceilings": {
   "tests/assets/test_asset_integrity.py::test_control_without_the_lock_the_same_processes_fail_or_download_twice": 60.0,
@@ -180,7 +180,7 @@
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction drag 0.4.0]": 146.0,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction gravity 0.1.0]": 60.0,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.force 0.1.0]": 70.0,
-  "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.force 0.2.0]": 461.0,
+  "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.force 0.2.0]": 929.0,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.torque 0.1.0]": 64.0,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.torque 0.2.0]": 897.0,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction toy.drag 0.2.0]": 60.0,
@@ -876,7 +876,7 @@
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction drag 0.4.0]": 48.4,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction gravity 0.1.0]": 19.5,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.force 0.1.0]": 23.3,
-  "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.force 0.2.0]": 105.6,
+  "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.force 0.2.0]": 309.6,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.torque 0.1.0]": 21.0,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.torque 0.2.0]": 298.9,
   "tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction toy.drag 0.2.0]": 13.1,
