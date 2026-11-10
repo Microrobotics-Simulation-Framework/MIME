@@ -51,14 +51,15 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, run_dtype
 from mime.core import ledger as books
+from mime.core._node import rechecked
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, interior_depth, negative_resistivity, \
     wall_fields
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
-from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, REPORT_SIZE, Stopping, default_tolerance, \
-    preconditioner_named, projected_solve, stagnation_window
+from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, DEFAULT_CAP, REPORT_SIZE, Stopping, default_tolerance, \
+    preconditioner_named, projected_solve, recheck_stopping, stagnation_window
 from mime.registry import Problem
 
 EQUATIONS = (r"\frac{\mathbf{u}_{n+1} - \mathbf{u}_{n}}{h} = -\nabla \cdot \left( \mathbf{u}_{n} \mathbf{u}_{n} \right) + "
@@ -186,6 +187,7 @@ class ImplicitFlowNode(MimeNode):
     LEDGER_TERMS = ("backward_euler", "convection", "krylov")
     #: The state field the run reads between chunks for the step the CFL check stopped it at.
     STOP_FIELD: ClassVar[str] = STOP_FIELD
+    rechecks: ClassVar[bool] = True
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-123",
@@ -222,7 +224,7 @@ class ImplicitFlowNode(MimeNode):
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
                  viscosity: float, density: float, tube_centre: Sequence[float], tube_axis: Sequence[float],
                  tube_radius: float, scheme: str = "imex_euler", convection: bool = True, tolerance: float | None = None,
-                 at_floor: bool | None = None, cap: int = 5000, check_every: int = 20, band: str = "smooth_2h_0.3h",
+                 at_floor: bool | None = None, cap: int = DEFAULT_CAP, check_every: int = 20, band: str = "smooth_2h_0.3h",
                  interior: str = "0.1h",
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
                  solve_report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
@@ -463,6 +465,8 @@ class ImplicitFlowNode(MimeNode):
         stopping = Stopping(tolerance=as_run_array(p["tolerance"]), at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
                             check_every=int(c["check_every"]),
                             window=stagnation_window(grid.cells, int(c["check_every"])))
+        if rechecked(p):
+            stopping = recheck_stopping(stopping)
         preconditioner = preconditioner_named(c["preconditioner"])
         steps = jnp.asarray(state["steps"])
         tap = self.report_row(p, steps)

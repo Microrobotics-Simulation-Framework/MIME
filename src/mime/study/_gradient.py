@@ -18,11 +18,12 @@ beyond, each chunk a ``jax.checkpoint``.
 read from its final state (a guard's flag form keeps it finite), the material reads the member's plan extrapolated,
 the path's status composed from the entries the derivative passes through (a ``cut`` or ``unverified`` entry refused
 unless acknowledged), and each iterative solve's report forward and in the derivative solves, with the warning of a
-solve that stopped short and the recheck at a tighter tolerance."""
+solve that stopped short and the recheck that re-solves it with the cause removed."""
 
 from __future__ import annotations
 
 import dataclasses
+import functools
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -40,6 +41,8 @@ from mime.build._refusals import ArgumentRefused
 from mime.control._run import ChunkedRun
 from mime.gradients import ACKNOWLEDGED_ONLY, GradientStatus, composed, unacknowledged
 from mime.core import MimeNode
+from mime.core._node import rechecked_nodes
+from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, STALL_RESTARTS
 from mime.nodes.control import ControllerNode, DelayNode
 from mime.registry import Role, placed_gradient, rung_gradient
 from mime.results._gradient import GradientResult, MemberGradient, RaisedFlag, Recheck, SolveReport
@@ -57,20 +60,24 @@ _jax: Any = jax
 _jnp: Any = jax.numpy
 
 #: Up to how many scalars ``mode="auto"`` takes the derivative in forward mode (one tangent each, the primal run with
-#: each); reverse mode beyond, its cost about a few runs whatever their number. Provisional: from the gate kit's
-#: measurement of the two on the study's consumers (forward mode about 1.5 runs a scalar, reverse 2 to 4 runs).
+#: each); reverse mode beyond. Provisional, and neither measurement's crossover (the gate kit's budget, both through the
+#: study's own derivative program): on the periodic tube one scalar forward costs 527 ms against 623 ms reverse, a
+#: crossover of 1.2 scalars; on the MRS sphere 10 ms against 59 to 65, about six.
 FORWARD_UP_TO = 2
 MODES = ("auto", "forward", "reverse")
 #: The relative move of a probe point, which finds the leaves an axis writes: a power of two, so that the move of a
 #: value is exact, and small enough to stay inside a declared range and on one side of every value-keyed choice the
 #: study's points are on.
 PROBE_MOVE = 2.0 ** -20
-#: How much a recheck tightens a flagged solve's tolerance.
-RECHECK_FACTOR = 1e-2
+#: Why a flagged node is not rechecked: what the recheck's change (a cap lifted, restarts raised) cannot remove.
+NOT_FINITE_REASON = ("a solve's residual was not finite: neither a larger cap nor a restart removes that, whose cause is "
+                     "a NaN or an infinity in the solve's operator or right-hand side (the run's flags and its stop "
+                     "name where)")
+NO_RECHECK_REASON = "its solve has no recheck: it reads neither a cap to lift nor restarts to raise"
 #: A node's iterative solves report through these: a ``params`` leaf of zeros whose gradient is the transpose solves'
 #: reports, and a state field holding the primal reports' running sum (``mime.nodes.flow.fvm``'s design, which every
-#: iterative solve in MIME follows); and the leaf a recheck tightens.
-REPORT_LEAF, REPORT_SUM, REPORT_STEP, TOLERANCE = "solve_report", "solve_report_sum", "solve_report", "tolerance"
+#: iterative solve in MIME follows).
+REPORT_LEAF, REPORT_SUM, REPORT_STEP = "solve_report", "solve_report_sum", "solve_report"
 #: How far a written leaf's ratio to its axis's value may differ between the probe and a member for the map from the
 #: axis to the leaf to be taken as linear: rounding's, many times over, and far below any affine or nonlinear map's.
 LINEAR = 1e-9
@@ -693,7 +700,8 @@ def _group(plan: StudyPlan, group: Group, indices: Sequence[int], built: BuiltEx
             runs.append(([index], _stretches(built, points[index], group.steps) if callback else None))
     for chunk, fed in runs:
         params, axes = stacked_tree(points, chunk, group.varying)
-        prepared = _prepare(built, writes, of, mode, params, axes, batched, fed, group.steps)
+        again = functools.partial(_prepare, built, writes, of, mode, params, axes, batched, fed, group.steps)
+        prepared = again()
         theta0, factors = _stacked(points, chunk, writes, settings, declarations, real)
         state = stacked_state(points, chunk, meta)
         if not batched:
@@ -706,9 +714,8 @@ def _group(plan: StudyPlan, group: Group, indices: Sequence[int], built: BuiltEx
         taps = {node: params["nodes"][node][REPORT_LEAF] for node in prepared.solving}
         results = _call(prepared, theta0, factors, params, state, taps)
         reports = [_report(prepared.solving, held.final, held.out, held.backward, mode) for held in results]
-        flagged = sorted({report.node for held in reports for report in held
-                          if report.forward_short or report.backward_short})
-        rechecks = _recheck(prepared, flagged, results, theta0, factors, params, state, taps, mode) if flagged \
+        flagged = any(report.forward_short or report.backward_short for held in reports for report in held)
+        rechecks = _recheck(graph, again, reports, results, theta0, factors, params, state, taps, mode) if flagged \
             else [None] * len(results)
         for index, held, own, recheck in zip(chunk, results, reports, rechecks, strict=True):
             point = points[index]
@@ -747,35 +754,57 @@ def _stretches(built: BuiltExperiment, point: Point, steps: int) -> list[tuple[i
         return list(runs.stretches)
 
 
-def _recheck(prepared: _Prepared, flagged: Sequence[str], results: Sequence[_Member], theta0: Mapping[str, Any],
-             factors: Mapping[str, Any], params: Any, state: Any, taps: Mapping[str, Any],
-             mode: str) -> list[Recheck | None]:
-    """Each member's derivative again with the tolerance of every node whose solve stopped short (a parameter of the
-    program) tightened by :data:`RECHECK_FACTOR`, on the same compiled program, the batch at once: the change in the
-    objective and the derivative. A float32 run's floor leaves nothing to tighten, so there the recheck says so and is
-    not made here."""
-    if _jnp.zeros(()).dtype != np.float64:
-        return [Recheck("not made: float32's rounding floor leaves nothing to tighten; run the member in float64 (a "
-                        "PRECISION variant) to recheck it", None, held.value, held.gradient, float("nan"),
-                        {path: float("nan") for path in held.gradient}, ()) for held in results]
-    nodes = {node: dict(leaves) for node, leaves in params["nodes"].items()}
-    tolerance = None
-    for node in flagged:
-        current = np.asarray(nodes[node][TOLERANCE])
-        nodes[node][TOLERANCE] = current * RECHECK_FACTOR
-        tolerance = float(np.min(current)) * RECHECK_FACTOR
-    again = _call(prepared, theta0, factors, {**params, "nodes": nodes}, state, taps)
+def _unmade(held: _Member, refused: Mapping[str, str]) -> Recheck:
+    """The recheck of a member none of whose flagged solves could be re-solved: its own values, NaN changes."""
+    return Recheck("not made", (), refused, held.value, held.gradient, float("nan"),
+                   {path: float("nan") for path in held.gradient}, ())
+
+
+def _recheck(graph: Any, again: Callable[[], _Prepared], reports: Sequence[tuple[SolveReport, ...]],
+             results: Sequence[_Member], theta0: Mapping[str, Any], factors: Mapping[str, Any], params: Any, state: Any,
+             taps: Mapping[str, Any], mode: str) -> list[Recheck | None]:
+    """Each member's derivative again with the cause of its flagged solves removed, on a program traced for it
+    (``again`` makes it, inside :func:`~mime.core._node.rechecked_nodes`): the nodes whose solve stopped short and read
+    the recheck (:attr:`~mime.core.MimeNode.rechecks`) re-solve with their cap lifted and their stall restarts raised,
+    at the member's own tolerance, the batch at once. A solve that did not reach its cap or stall is unchanged, so only
+    the solves that stopped short move; the change in the objective and the derivative is what the shortfall cost.
+    A node whose flagged solve had a non-finite residual, or whose solve has no recheck, is reported not rechecked,
+    with its reason; a member with none rechecked gets its own values and NaN changes."""
+    plans: list[tuple[tuple[str, ...], dict[str, str]]] = []
+    for own in reports:
+        lifted: list[str] = []
+        refused: dict[str, str] = {}
+        for report in own:
+            if not (report.forward_short or report.backward_short):
+                continue
+            if report.not_finite:
+                refused[report.node] = NOT_FINITE_REASON
+            elif not cast("type[MimeNode]", type(graph.get_node(report.node))).rechecks:
+                refused[report.node] = NO_RECHECK_REASON
+            else:
+                lifted.append(report.node)
+        plans.append((tuple(lifted), refused))
+    nodes = sorted({node for taken, _ in plans for node in taken})
+    if not nodes:
+        return [_unmade(held, refused) for held, (_, refused) in zip(results, plans, strict=True)]
+    with rechecked_nodes(nodes):
+        repeated = _call(again(), theta0, factors, params, state, taps)
     found: list[Recheck | None] = []
-    for held, other in zip(results, again, strict=True):
-        solves = _report(prepared.solving, other.final, other.out, other.backward, mode)
+    how = f"the cap lifted to the larger of {RECHECK_CAP_FACTOR} times itself and {DEFAULT_CAP}, the stall restarts " \
+          f"raised by {STALL_RESTARTS}, at the solve's own tolerance"
+    for held, other, (taken, refused) in zip(results, repeated, plans, strict=True):
+        if not taken:
+            found.append(_unmade(held, refused))
+            continue
+        solves = _report(taken, other.final, other.out, other.backward, mode)
         scale = abs(held.value) or 1.0
         found.append(Recheck(
-            f"the same compiled program with the tolerance of {', '.join(flagged)} times {RECHECK_FACTOR:g}", tolerance,
-            other.value, other.gradient, abs(other.value - held.value) / scale,
+            f"{how}: {', '.join(taken)}", taken, refused, other.value, other.gradient,
+            abs(other.value - held.value) / scale,
             {path: float(np.max(np.abs(other.gradient[path] - held.gradient[path])) /
                          (float(np.max(np.abs(held.gradient[path]))) or 1.0)) for path in held.gradient}, solves))
     return found
 
 
-__all__ = ["FORWARD_UP_TO", "MODES", "PROBE_MOVE", "RECHECK_FACTOR", "Written", "factor_of", "gradient", "key",
+__all__ = ["FORWARD_UP_TO", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient", "key",
            "magnitude", "member_factor", "objective_nodes", "path_nodes", "path_statuses", "solving_nodes", "written"]

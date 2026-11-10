@@ -1,10 +1,18 @@
 """Gate 9, float64: a study's derivative, reverse and forward, against a central difference that rebuilds (each side
-the experiment written again with the value moved, built and run through ``built.run``), at a relative step of
-``H = 1e-4``, at loss scales 1e-12 and 1e6; its line ``|AD/CD - 1| <= 1e-7``.
+the experiment written again with the value moved, built and run through ``built.run``), at loss scales 1e-12 and 1e6;
+its line ``|AD/CD - 1| <= 1e-7``, judged for each case at the relative step its difference resolves.
 
-The line from measurement (probe run 42763593758, before this gate): at ``h = 1e-4`` the difference agreed with the
-derivative through the built graph's parameters to 5.7e-9 on the pulled sphere's radius and 7.4e-9 to 1.1e-8 on the
-tube's viscosity (its truncation, and at the tube's default tolerance its solve's); about ten times under the line.
+**The step, per case.** A central difference has a truncation that falls as ``h^2`` and, on the tube, a noise from the
+CG's tolerance (1e-8) that rises as ``1/h``; each case is judged at the step where the two are well under the line
+(measured: run 42787513427 for the tube, the review's ladder of ``h``; probe run 42763593758 for the sphere):
+
+- the sphere's radius, ``h = 1e-4``: 5.7e-9 (probe run 42763593758: 1.5e-11 at 3e-6, so the difference's truncation);
+- the tube's viscosity, ``h = 1e-4``: 9.4e-9 (truncation, falling as ``h^2``: 1.1e-6, 1.2e-7, 9.4e-9 at 1e-3, 3e-4,
+  1e-4; and noise past it, 4.4e-8 at 3e-5);
+- the tube's drive amplitude, ``h = 1e-2``: 1.4e-9. The map is affine (the flux is linear in the body force under
+  Stokes), so it has no truncation and wants the large step; at the viscosity's ``h = 1e-4`` its noise alone is 6.2e-8, 1.6
+  times under the line, which is a difference's resolution and not a gradient's error (at tolerance 1e-12 the same
+  derivative agrees to 1.9e-11).
 
 The cases: the gently pulled sphere's radius at 1.05 mm, inside its declared range [1.0, 1.15] mm, so that each side of
 the difference builds the range's force points (away from every value-keyed boundary); and the periodic tube's
@@ -13,7 +21,8 @@ status acknowledged, since this gate is what checks it in these values. The step
 
 **Controls** (``gradient_plants.py``, each switched on by ``MIME_PLANT_GRADIENT`` for the gate kit's detection rate): a value
 baked at build (``baked``) and ``stop_gradient`` on a leaf the path uses (``stopped``) each move the derivative by its
-leaf's share, far past the line."""
+leaf's share, far past the line. The line's discriminating range is stated per case (``oracles.py`` of the probe: a
+planted relative error in the case's factor, the smallest caught on every draw)."""
 
 from __future__ import annotations
 
@@ -24,7 +33,9 @@ from gradient_plants import GRADIENT, from_environment, gradient_plant
 from mime.study import Study, along
 from mime.units import mm, mPa_s, ms
 
+#: The relative step of each case's difference (module docstring).
 H = 1e-4
+H_DRIVE = 1e-2
 LINE = 1e-7
 SCALES = (1e-12, 1e6)
 MODES = ("reverse", "forward")
@@ -41,8 +52,8 @@ def tube_flux(viscosity: float, amplitude: float) -> float:
     return float(flux(tube(viscosity * 1e3, amplitude).build().run(ms(20.0 * TUBE_STEPS)).final))
 
 
-def central(loss, theta: float) -> float:
-    return (loss(theta * (1 + H)) - loss(theta * (1 - H))) / (2 * H * theta)
+def central(loss, theta: float, h: float = H) -> float:
+    return (loss(theta * (1 + h)) - loss(theta * (1 - h))) / (2 * h * theta)
 
 
 def derivatives(experiment, axis, value, of, wrt, duration, acknowledged=None):
@@ -68,7 +79,7 @@ def flow():
     with pytest.MonkeyPatch.context() as patch:
         gradient_plant(patch, from_environment(GRADIENT))
         differences = {"water.viscosity": central(lambda mu: tube_flux(mu, 0.01), 1e-3),
-                       "body_force:water.amplitude": central(lambda a: tube_flux(1e-3, a), 0.01)}
+                       "body_force:water.amplitude": central(lambda a: tube_flux(1e-3, a), 0.01, H_DRIVE)}
         return differences, derivatives(tube(), "water.viscosity", mPa_s(1.0), flux, list(differences),
                                         ms(20.0 * TUBE_STEPS), ACKNOWLEDGED)
 

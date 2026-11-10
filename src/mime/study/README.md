@@ -103,8 +103,10 @@
   and stop). Each member's result carries its flags (counted inside the run), its nodes' stops, its plan's
   extrapolated table reads, and each iterative solve's report (the FVM's: forward from its state, a row a step;
   backward from its `solve_report` leaf's gradient in reverse mode, its running sum's tangent in forward mode), a
-  warning for each solve that stopped short and a recheck at a hundredth of its tolerance (the same compiled program;
-  in float32 it says the recheck is a float64 variant).
+  warning for each solve that stopped short and a recheck that re-solves the member with the cause removed (the cap
+  lifted, the stall restarts raised, at the member's own tolerance, on a program traced for it; a solve that reached
+  neither is unchanged), reporting the change in the objective and the derivative; a non-finite residual, which neither
+  removes, and a node whose solve has no recheck are reported not rechecked, with the reason.
 
 - **A study in a folder** (`_folder_run.py`, `_record.py`, `_content.py`, `_spec.py`): `study.run_to(folder)` writes a
   study folder (see `mime.results`) group by group and batch by batch, into a new or empty folder or one that holds the

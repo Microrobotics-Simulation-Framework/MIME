@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A study's derivative: `Study.gradient(of, wrt=None, mode="auto", acknowledged=None)`** (lane S's third PR, the
   gradient path), returning `mime.results.GradientResult` (each member's `MemberGradient`: the objective, its
   derivative in each axis, the flags its run raised, its nodes' stops, its plan's extrapolated table reads, each
-  iterative solve's `SolveReport` forward and in the derivative solves, the warnings, and a `Recheck` at a tighter
-  tolerance where a solve stopped short). One mechanism: the sweep's points, planned and grouped as a run's, each
+  iterative solve's `SolveReport` forward and in the derivative solves, the warnings, and a `Recheck` where a solve
+  stopped short: the member re-solved with the cause removed, the cap lifted and the stall restarts raised). One mechanism: the sweep's points, planned and grouped as a run's, each
   group differentiated together by `mime.build._maddening.differentiated_run` beside the batched scan (forward runs'
   programs untouched), forward mode for a few numbers and reverse mode with a `jax.checkpoint` a chunk. The
   derivative is read through the leaves and initial fields each axis writes, found by probe points, each by its

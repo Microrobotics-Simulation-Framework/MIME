@@ -481,7 +481,7 @@ class Study:
         refused otherwise. The result (:class:`~mime.results.GradientResult`) carries, for each member, the flags its
         differentiated run raised, a node's stop, the table reads its plan extrapolated, the path's status, and each
         iterative solve's report forward and in the derivative solves, with a warning where one stopped short and its
-        recheck at a tighter tolerance."""
+        recheck with the cause removed (the cap lifted, the stall restarts raised)."""
         from mime.study._gradient import gradient
 
         plan = self.plan()
