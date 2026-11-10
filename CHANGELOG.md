@@ -902,6 +902,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The FVM's stall flag is set from clean runs, in the solve's tolerance, and stops firing on correct float32 runs.** The
+  stall detector `|N_Krylov| / D_visc` (`stall_flagged`, with the energy ledger attached) was flagged above a fixed
+  1e-3 that was inferred, not measured: correct float32 runs read up to 2.0e-3 (tau/dt near 3e3), and in float64 it
+  caught 114 of 200 planted tolerance stalls. The reading scales with the solve's tolerance (a drawn run's reading moves
+  by a median 0.11 and 9.6 times for a tolerance a tenfold tighter and looser, in both dtypes), so the line is
+  `STALL_PER_TOLERANCE` solve tolerances, 1000 in float64 and 500 in float32 (about twice the largest clean reading over
+  the tolerance, 510 and 245, on 200 drawn runs at each of three tolerances), read at the tolerance the run was built
+  with: a run that asks for a looser solve is judged against that solve, and the flag cannot see a tolerance that is wrong
+  for the question. The ledger harness's stall flag is the same number at the default tolerance (1e-5, 5e-3), one source
+  for both. The planted stalls are caught on 200 of 200 runs in both dtypes (a solve whose tolerance is 1e4 times the
+  default; a CG stopped at 1e4 times the tolerance the node declares) with no clean run flagged; a solve stopped after two
+  iterations is caught on 50 of 50 (float64) and 43 of 50 (float32): a stall that small is inside float32's clean
+  readings. The line is validated for tau/dt up to 4.1e3, D/h 8 to 16, Re 1 to 200, and beyond that it is unvalidated.
+  `mime.nodes.flow.fvm.STALL_LINE` is replaced by `STALL_PER_TOLERANCE` and `STALL_LINES`. No program's arrays move except
+  `stall_flagged` where a reading lay between the old and the new line (measured, float32 and float64, bit for bit).
+  Test-side: `FlagReport.unlined` is `without_line`.
+
 - **`drag` 0.5.0's default MRS spacing steps one unit of the third figure below its bound, not ten units under a power
   of ten.** The rule rounds the largest spacing that gives the family's sample count to three figures and, where that
   lies past the bound, steps down one unit of the third figure, sized from the rounded value: where the bound is in the
