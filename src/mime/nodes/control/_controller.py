@@ -17,6 +17,8 @@ from mime.core import MimeNode, NodeFields, jnp, node_fields, node_input, typed_
 type Step = Callable[[Mapping[str, Any], Mapping[str, Any]], tuple[Mapping[str, Any], Mapping[str, Any]]]
 #: A read label's units, as the vocabulary spells them, and its shape.
 type ReadSpec = tuple[str, tuple[int, ...]]
+#: The prefix of a controller node's leaf holding one of its law's settings (``setting_gain``).
+SETTING = "setting_"
 
 
 class ControllerState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
@@ -48,12 +50,26 @@ class ControllerNode(MimeNode):
     covers."""
 
     def __init__(self, name: str, timestep: float, *, step: Step, controller: str, reads: Mapping[str, ReadSpec],
-                 initial_state: Mapping[str, Any], initial_writes: Mapping[str, Any]) -> None:
+                 initial_state: Mapping[str, Any], initial_writes: Mapping[str, Any],
+                 settings: Mapping[str, Any] | None = None,
+                 remake: Callable[[Mapping[str, Any]], Step] | None = None) -> None:
+        held = {f"{SETTING}{name_}": jnp.asarray(value) for name_, value in sorted((settings or {}).items())}
         super().__init__(name, timestep, controller=controller,
                          reads={label: (units, tuple(shape)) for label, (units, shape) in sorted(reads.items())},
                          initial_state={key: jnp.asarray(value) for key, value in sorted(initial_state.items())},
-                         initial_writes={label: jnp.asarray(value) for label, value in sorted(initial_writes.items())})
+                         initial_writes={label: jnp.asarray(value) for label, value in sorted(initial_writes.items())},
+                         **held)
         self.law_step = step
+        #: Where settings are leaves (``settings``, each ``setting_<name>``), the law's step made again from them
+        #: inside the traced step: ``remake(settings) -> step``.
+        self.remake = remake
+        self.leaf_settings = tuple(sorted(settings or {}))
+
+    def step_at(self, p: Mapping[str, Any]) -> Step:
+        """The law's step at the step constants ``p``: made again from the leaves it holds, or the built one."""
+        if self.remake is None:
+            return self.law_step
+        return self.remake({name: p[f"{SETTING}{name}"] for name in self.leaf_settings})
 
     @override
     def to_dict(self) -> dict[str, Any]:
@@ -83,8 +99,8 @@ class ControllerNode(MimeNode):
                 dt: float) -> NodeFields:
         held, given = typed_view(ControllerState, state), typed_view(ControllerInputs, boundary_inputs)
         keys, writes = self._arrays("initial_state"), self._arrays("initial_writes")
-        after, written = self.law_step({key: held[f"state_{key}"] for key in keys},
-                                       {label: given[f"read_{label}"] for label in self._reads()})
+        after, written = self.step_at(p)({key: held[f"state_{key}"] for key in keys},
+                                         {label: given[f"read_{label}"] for label in self._reads()})
         return node_fields({**{f"state_{key}": after[key] for key in keys},
                             **{f"write_{label}": jnp.asarray(written[label], dtype=writes[label].dtype)
                                for label in writes}})
@@ -130,5 +146,5 @@ class DelayNode(MimeNode):
         return node_fields(out)
 
 
-__all__ = ["ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode", "DelayState",
-           "ReadSpec", "Step"]
+__all__ = ["SETTING", "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode",
+           "DelayState", "ReadSpec", "Step"]

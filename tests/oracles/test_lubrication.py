@@ -391,6 +391,7 @@ def lowest(node, leaves, orientation) -> float:
     return float(-np.min((points @ turn.T)[:, 2]))
 
 
+@pytest.mark.memory_heavy
 @pytest.mark.parametrize("case", ["sphere above the plane", "ellipsoid above the plane", "sphere in the tube"])
 def test_gate4_the_lift_form_is_definite_at_drawn_poses(case):
     import os
@@ -488,6 +489,7 @@ GRADIENT_GAPS = (0.3, 0.2, 0.15, 0.1, 0.0035, 0.0028, 0.002)
 GRADIENT_LINE = 1e-5
 
 
+@pytest.mark.memory_heavy
 @pytest.mark.parametrize("wall", ["plane", "tube"])
 def test_gate8_forward_and_reverse_equal_the_difference_across_the_handover_and_the_cutoff(wall):
     with planted():
@@ -503,6 +505,7 @@ def test_gate8_forward_and_reverse_equal_the_difference_across_the_handover_and_
         assert abs(forward - difference) <= GRADIENT_LINE * scale, (gap, name, forward, difference)
 
 
+@pytest.mark.memory_heavy
 def test_gate8_controls_a_stopped_lift_and_a_hard_max():
     gaps = (0.1, 0.0028)
     for plant in ("lift_stopped", "hard_max"):
@@ -674,6 +677,7 @@ def film_at(case, radius: float, gap: float):
     return node.update(state, {"pose": plane_pose(gap, lowest=radius)}, 1e-3, params=held)["film_increment"]
 
 
+@pytest.mark.memory_heavy
 def test_gate13_the_films_increment_in_the_spheres_radius_through_the_node_equals_two_builds_difference():
     """d(film increment)/d(shape_radius) by reverse mode through the node's own step, the body held a gap of 0.01 radii
     off the plane as its radius moves, against the central difference of two builds at a (1 +- SHAPE_STEP)."""

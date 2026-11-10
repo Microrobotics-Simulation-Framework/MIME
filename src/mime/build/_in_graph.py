@@ -38,7 +38,7 @@ from maddening.core.node import SimulationNode
 from mime.build._builders import COMMAND, STATE, EdgeDecl
 from mime.build._control import DELAY, ControllerPlan, Mode
 from mime.build._lags import EdgeLag, Lag, scheduled
-from mime.build._maddening import initial_fields, inputs, make_jaxpr_with_shapes
+from mime.build._maddening import initial_fields, inputs, live_inputs, make_jaxpr, make_jaxpr_with_shapes
 from mime.build._probes import host_callbacks
 from mime.build._refusals import MIME_DEFECT, Explained, Refusal, RefusalClass, entry_defect
 from mime.core import jnp
@@ -188,11 +188,43 @@ def traced_branch_refusal(label: str, error: BaseException, step: Any, cls: type
         where=place.text() if place is not None else step_place(step))
 
 
-def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
-                     built: Mapping[str, SimulationNode]) -> tuple[list[SimulationNode], list[EdgeDecl], list[Refusal]]:
+def leaf_reads(remake: Any, values: Mapping[str, Any], start: Mapping[str, Any],
+               given: Mapping[str, Any]) -> tuple[set[str], set[str]]:
+    """Which of the settings ``values`` the law ``remake`` makes from them reads, found exactly by tracing it with each
+    as an argument: the settings its step reads (from the law's start and zero reads), and those its start or held
+    writes are made from."""
+    names = sorted(values)
+    arguments = [jnp.asarray(values[name]) for name in names]
+
+    def setting(held: Any, name: str) -> Any:
+        value: object = values[name]
+        return tuple(held[i] for i in range(len(cast(tuple[float, ...], value)))) if isinstance(value, tuple) else held
+
+    def stepped(*held: Any) -> Any:
+        law = remake({name: setting(arg, name) for name, arg in zip(names, held, strict=True)})
+        return law.step(dict(start), dict(given))
+
+    def started(*held: Any) -> Any:
+        law = remake({name: setting(arg, name) for name, arg in zip(names, held, strict=True)})
+        return law.state, law.held
+
+    def used(fn: Any) -> set[str]:
+        live = live_inputs(cast(Any, make_jaxpr(fn, *arguments)).jaxpr)
+        return {name for name, read in zip(names, live, strict=True) if read}
+
+    return used(stepped), used(started)
+
+
+def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[str, SimulationNode],
+                     remake: Any = None, leaf_values: Mapping[str, Any] | None = None
+                     ) -> tuple[list[SimulationNode], list[EdgeDecl], list[Refusal]]:
     """The controller's nodes and edges inside the compiled step, from its law (``law``, a ``ControlLaw``) and the
     nodes built for the rest of the graph, whose state it reads and whose commands it writes; or the refusal of its
-    step for this mode."""
+    step for this mode. ``remake`` makes the law from settings given by name (``plan.leaves``, at ``leaf_values``):
+    each its step reads is a leaf of the node (``setting_<name>``), the step made again from the leaves inside the
+    traced step; one its start alone is made from reaches the run through the start, which a study's point holds;
+    one neither reads is refused (``controller.setting-unread``: a law that reads it through ``self`` keeps the value
+    it was built with whatever the leaf)."""
     owner = plan.owner
     reads = {read.label: jnp.asarray(initial_fields(built[read.node])[read.field]) for read in plan.reads}
     dtypes = {write.label: inputs(built[write.node])[write.field].dtype for write in plan.writes}
@@ -225,9 +257,33 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
             f"{Mode.GRAPH.value}): {impure[0]}",
             f"run it as a callback, mode={Mode.CALLBACK.word!r}, where each call of its step runs; or write its step "
             f"as a pure function of its state and reads, with what changes between ticks in its state")]
+    leaves: dict[str, Any] = {}
+    made: Any = None
+    if remake is not None and leaf_values:
+        in_step, in_start = leaf_reads(remake, leaf_values, start, given)
+        unread = sorted(set(leaf_values) - in_step - in_start)
+        if unread:
+            return [], [], [Refusal(
+                "controller.setting-unread", RefusalClass.USER,
+                f"the controller {label}'s law reads {', '.join(unread)} neither in its step nor in its start through "
+                f"its context, so a value a study gives it there would change nothing the run computes: it reads the "
+                f"value it was built with (through self, or as a Python number)",
+                f"read each setting a study varies through the law's context, `ctx.scalar({unread[0]!r})` or "
+                f"`ctx.vector(...)`, in `law(ctx)`; or vary another axis",
+                why="a setting an axis names becomes a leaf the traced step reads, so the law must read it there")]
+        names = sorted(in_step)
+        leaves = {name: np.asarray(leaf_values[name], dtype=np.asarray(jnp.zeros(())).dtype) for name in names}
+        shapes = {name: leaf_values[name] for name in names}
+
+        def node_remake(settings: Mapping[str, Any]) -> Any:
+            given_ = {name: (tuple(settings[name][i] for i in range(len(shapes[name])))
+                             if isinstance(shapes[name], tuple) else settings[name]) for name in names}
+            return inlined(remake(given_).step)
+
+        made = node_remake if names else None
     node = ControllerNode(owner, dt * plan.period, step=step, controller=plan.registered.cls.label(),
                           reads={read.label: (read.units, tuple(reads[read.label].shape)) for read in plan.reads},
-                          initial_state=start, initial_writes=held)
+                          initial_state=start, initial_writes=held, settings=leaves, remake=made)
     edges = [EdgeDecl(owner, (read.node, read.field), (owner, f"read_{read.label}"), False, read.units, seq, STATE)
              for seq, read in enumerate(plan.reads)]
     nodes: list[SimulationNode] = [node]

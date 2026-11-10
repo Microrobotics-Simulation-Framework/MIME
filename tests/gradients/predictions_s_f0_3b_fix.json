@@ -1,0 +1,57 @@
+{
+  "written": "2026-11-10, committed before the fix round's probe runs (the commit that adds this file is the timestamp): the round that answers the refuting review of S-F0-3b (one blocker, five majors, eight minors)",
+  "phase": "S-F0-3b fix round: integer settings, gate 8 that discriminates, an unjudged line never taken, the information's noise, ANO-146 stated as it is, non-numeric controller axes",
+  "labels": "the builder's predictions; seen_before numbers from the reviewer's probe runs (Actions, float64 unless stated) and the builder's local smoke runs, not reviewed",
+  "seen_before": [
+    "review run 42854744101: the gate rig ends at 1.050137 mm, a fresh build's Reynolds number there 0.0999995 (limit 0.1), the line's own radius 1.050132 mm (5 nm inside); with each iterate's watch read from the start's plan (stale_watch) it ends at 1.1157 mm, a fresh build reading 0.0941",
+    "review run 42854744101: without water.density the fit ends converged at 1.0091 mm with every iterate's Reynolds line not judged, a fresh build reading 0.104 (past 0.1)",
+    "review run 42858427761: an interior target (1.08 mm) converges in 5 iterates to 1.5e-12 relative; with the residual's derivative halved (jac_half) it ends on iterations at 1.0908 mm, 1.0 % off; the fit's re-plan (build_point with the reference and pins) took 0.145 to 0.511 s, mean 0.33 s, an evaluation 0.011 to 0.019 s after its compile",
+    "builder's local smoke (laptop, float64): the interior target 1.08 mm from 1.0 mm converges in 5 iterates to -1.5e-12 relative; the same fit unranged is refused at the iterate at 1.06198 mm after 1 taken; a target at 1.3 mm (unranged build) ends at a line at 1.15 mm, the range's top"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 for the bits and the cost"],
+    "platform": "CPU; GitHub runners; one CPU and one BLAS thread for the bits",
+    "sizes_and_parameters": "the gently pulled sphere of tests/gradients/gradient_rigs.py (radius ranged [1.0, 1.15] mm, 5 steps of 1 ms, noise 1e-4), turned by 1.533e-12 N m for the line; A0 (AR4) in both modes for the settings",
+    "seeds_and_draws": "deterministic; each control's rate by detection_rate.py over the runs stated, a rate over a deterministic target being one measurement"
+  },
+  "gate_8_oracle": {
+    "claim": "the fit across the Reynolds line ends where a fresh build reads the line: within 1e-4 of the limit, inside it",
+    "kind": "inequality against an independent read (a fresh build's Reynolds number at the radius the fit ended at)",
+    "prediction": {"value": "0 <= (limit - Re)/limit <= 1e-4; expected about 5e-6", "basis": "measured-before (review run 42854744101)"},
+    "control": {"stale_watch": "caught 10/10, clean 0/10 (the end 6 % of the range from the line)", "no_limit": "10/10", "no_judge_run": "10/10", "sysid": "20/20, clean 0/20"}
+  },
+  "gate_consumer_interior": {
+    "claim": "an interior target (1.08 mm) is reached by the descent and not by the box's clip",
+    "kind": "equality (to the fit's tolerance)",
+    "prediction": {"value": "|a / 1.08 mm - 1| under 1e-6, converged", "basis": "measured-before (1.5e-12)"},
+    "control": {"jac_half": "caught 10/10, clean 0/10", "unranged": "20/20, clean 0/20"}
+  },
+  "gate_unjudged": {
+    "claim": "a line that cannot be judged is never taken as inside: the start refused, a later iterate ends the fit unjudged",
+    "kind": "binary",
+    "prediction": {"value": "fit.line-unjudged naming the line and water.density; ended unjudged with one iterate taken", "basis": "reasoned"},
+    "control": {"unjudged_taken": "caught 10/10 on each test, clean 0/10"}
+  },
+  "gate_information": {
+    "claim": "the Fisher information is over the declared noise: its largest eigenvalue is the square of the scaled derivative times the value",
+    "kind": "equality, rtol 1e-4",
+    "prediction": {"value": "equal; with a unit noise it would be 1e8 times larger", "basis": "reasoned"},
+    "control": {"fim_noise": "caught 10/10, clean 0/10"}
+  },
+  "gate_integer_settings": {
+    "claim": "ArmTracking(gain=2, smoothing=1, damping=0) builds in both modes and holds the floats",
+    "kind": "binary",
+    "prediction": {"value": "built, numeric_settings equal to the float spellings", "basis": "reasoned"},
+    "control": {"float_only (the first form of numeric_settings)": "caught 10/10 on the unit test and on each mode's build, clean 0/10"}
+  },
+  "bits": {
+    "claim": "released programs unchanged against the release c816e40 (the fix round touches numeric_settings, which now also holds an integer written for a float field)",
+    "kind": "bit equality",
+    "prediction": {"value": "every array np.array_equal, float64 and float32, 18 programs", "basis": "the released programs write floats; the first round's 604/604 and the review's 952/952"}
+  },
+  "cost": {
+    "claim": "the fit's re-plan on its own path (build_point with the reference and pins) and its evaluation",
+    "kind": "timing, runner",
+    "prediction": {"value": "re-plan 0.15 to 0.5 s (mean about 0.3 s), evaluation about 0.01 to 0.02 s after the first", "basis": "measured-before (review run 42858427761)"}
+  }
+}

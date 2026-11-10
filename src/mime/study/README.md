@@ -110,6 +110,32 @@
   (stagnated again, a floor no cap lifts, with the route out its node names); a non-finite residual, which neither
   removes, and a node whose solve has no recheck are reported not rechecked, with the reason.
 
+- **A fit** (`_fit.py`): `Study(exp).fit(residual, start={...}, noise=..., duration=..., iterations=..., bounds=None,
+  tolerance=...)`, `mime.results.FitResult`: the values of the axes `start` names that make `residual` (a `jax.numpy`
+  function of a run's final state to an array, each entry over the declared `noise`) least, by damped Gauss-Newton
+  steps on the gradient path's derivative (forward mode), under **the fit-loop rule**: each iterate is planned again
+  through `build_point` (every check its plan makes, at its values) and run on the compiled program the start built;
+  every validity line is judged there (a refusal of its plan, a flag its run raised, a node's stop, the Reynolds watch
+  read from its own plan, and its box) and given to the steps as a constraint with its margin (`LineMargin`): an
+  iterate past a line is not taken, a numbered line limits the step by the watch's prediction from the twist's
+  derivative, and the fit ends `at a line` where the margin leaves nothing; the iterates stay inside each axis's
+  declared range, its leaves' bounds and `bounds`; MADDENING's Fisher information of the residual with the noise is
+  taken at the start, with the noise as it is declared (required), and names every axis the residual cannot see. A
+  line that cannot be judged (the Reynolds number without the medium's density) is never taken as inside: the start is
+  refused (`fit.line-unjudged`), and an iterate whose line cannot be judged ends the fit `unjudged`; a range that pins
+  the step ends it `at a line`, `box:<axis>`. An iterate that needs another compiled program (an axis with no declared
+  range across a value-keyed choice) is refused (`fit.value-keyed`, the iterates taken in the error's `partial`), never
+  fitted on a moving objective; a controller called on the host is refused (`fit.callback`).
+- **A controller's setting as an axis** (`controller.<setting>`): a point declares it, and where the controller runs
+  inside the compiled step its law reads it through its context (`ctx.scalar`, `ctx.vector`): a setting its step reads
+  is a leaf of the controller's node (`setting_<name>`), its law made again from the leaves inside the traced step, so
+  a sweep is one program, an override runs as data and a derivative passes through it; one its start alone reads
+  reaches the run through each point's start; one read through `self` is refused exactly (`controller.setting-unread`,
+  one trace with the setting as an argument). A setting no axis names stays a constant. Inside the compiled step only
+  the numbers a law reads through its context can be axes (`controller.setting-not-leaf` names those that can: a count,
+  a switch, a name, a direction and a file are read as built). A controller called on the host makes each member's law
+  from its own settings, as before.
+
 - **A study in a folder** (`_folder_run.py`, `_record.py`, `_content.py`, `_spec.py`): `study.run_to(folder)` writes a
   study folder (see `mime.results`) group by group and batch by batch, into a new or empty folder or one that holds the
   same study (anything else is refused and left untouched; `study.json` is written first and marks the folder as the
@@ -137,7 +163,8 @@
 Sweeps, overrides, the drives that ramp a command with the step-out readings, the study folder, the spec file and
 `mime study`, resume and the bridge to an experiment are built (dev2, the study layer's first three phases), and
 declared ranges with their first consumer (lane S's alignment with F0, its second PR); a study folder does not yet
-record a protocol. A study's derivative (lane S's alignment, its third PR) is built. Plots and comparisons,
+record a protocol. A study's derivative and its first fit, with controller settings as leaves (lane S's
+alignment, its third PR), are built. Plots and comparisons,
 checkpoints and forks, variants, fits and sensitivities come later.
 
 Releases are explained in the [package manifest](../README.md#status).

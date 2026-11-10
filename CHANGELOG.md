@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The first fit: `Study.fit(residual, *, start, noise, duration, iterations=20, bounds=None, tolerance=None,
+  acknowledged=None)`** (lane S's third PR, its second half), returning `mime.results.FitResult` (each `FitIterate`
+  with its `LineMargin`s, the Fisher information at the start). Damped Gauss-Newton steps on the gradient path's
+  derivative under the fit-loop rule: each iterate planned again through `build_point` and run on the start's
+  compiled program, every validity line judged there and given to the steps with its margin, the iterates clipped to
+  each axis's declared range and its leaves' bounds, MADDENING's `fim` with the declared noise (required) at the start
+  (every insensitive axis named before the first step). On the gently pulled sphere the radius fits to a target inside
+  its range where the spike's rebuilt descent ended 0.79 % short; across a Reynolds line the fit ends on the line,
+  naming it (a fresh build at the radius it ended at reads the number within 1e-4 of the limit), where `sysid.fit` on
+  the built graph runs through it silently. The default `tolerance` is 1e-9 of the values, or ten times the run's machine epsilon where that is higher (float32:
+  1.2e-6); a fit whose loss does not fall in three iterates in a row, short of any line, ends `stagnated`. A line that
+  cannot be judged (no density declared) is never taken as
+  inside: the start is refused (`fit.line-unjudged`) and a later iterate ends the fit `unjudged`; a range that pins
+  the step ends it `at a line` (`box:<axis>`); an iterate that needs another compiled program refuses the fit
+  (`fit.value-keyed`) with the iterates taken in the error's `partial`. **Controller settings as leaves**: a setting a
+  study's axis names (`controller.<setting>`) is a leaf of the controller's node inside the compiled step where its
+  step reads it (`controller.setting-unread` for one read through `self`; `controller.setting-not-leaf` for a count, a
+  switch, a name, a direction or a file, which the compiled step reads as built); `ArmTracking` reads its smoothing,
+  gain and damping through its context, and an integer written for a float setting (`gain=2`) is that float.
+  MIME-ANO-146 is partly resolved: for the settings the step reads; open for a start-only one (`home`) in the graph
+  mode, where the two-builds check says `quiet` of runs that differ (the callback mode stays outside `params` by
+  design). Nine refusal codes (`fit.*`, `gradient.objective`, `controller.setting-*`).
+
 - **Lubrication's hand-over on the MRS rung, body to wall: `Drag.MRS(lubrication=...)`** (drag 0.5.0, a numerical
   setting, on by default near a wall that opens, a plane or a tube, about a body whose hull kind has a support and
   whose least radius of curvature holds the hand-over gap within the film's window). The near-wall resistance is the
@@ -951,6 +974,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **The FVM's stall flag is set from clean runs, in the solve's tolerance, and stops firing on correct float32 runs.** The
+  stall detector `|N_Krylov| / D_visc` (`stall_flagged`, with the energy ledger attached) was flagged above a fixed
+  1e-3 that was inferred, not measured: correct float32 runs read up to 2.0e-3 (tau/dt near 3e3), and in float64 it
+  caught 114 of 200 planted tolerance stalls. The reading scales with the solve's tolerance (a drawn run's reading moves
+  by a median 0.11 and 9.6 times for a tolerance a tenfold tighter and looser, in both dtypes), so the line is
+  `STALL_PER_TOLERANCE` solve tolerances, 1000 in float64 and 500 in float32 (about twice the largest clean reading over
+  the tolerance, 510 and 245, on 200 drawn runs at each of three tolerances), read at the tolerance the run was built
+  with: a run that asks for a looser solve is judged against that solve, and the flag cannot see a tolerance that is wrong
+  for the question. The ledger harness's stall flag is the same number at the default tolerance (1e-5, 5e-3), one source
+  for both. The planted stalls are caught on 200 of 200 runs in both dtypes (a solve whose tolerance is 1e4 times the
+  default; a CG stopped at 1e4 times the tolerance the node declares) with no clean run flagged; a solve stopped after two
+  iterations is caught on 50 of 50 (float64) and 43 of 50 (float32): a stall that small is inside float32's clean
+  readings. The line is validated for tau/dt up to 4.1e3, D/h 8 to 16, Re 1 to 200, and beyond that it is unvalidated.
+  `mime.nodes.flow.fvm.STALL_LINE` is replaced by `STALL_PER_TOLERANCE` and `STALL_LINES`. No program's arrays move except
+  `stall_flagged` where a reading lay between the old and the new line (measured, float32 and float64, bit for bit).
+  Test-side: `FlagReport.unlined` is `without_line`.
 
 - **`drag` 0.5.0's default MRS spacing steps one unit of the third figure below its bound, not ten units under a power
   of ten.** The rule rounds the largest spacing that gives the family's sample count to three figures and, where that

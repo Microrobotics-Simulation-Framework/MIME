@@ -94,3 +94,42 @@ def planted_gradient(kind: str):
 
 
 __all__ = ["BOUND", "PlantedGradientSpring", "planted_gradient"]
+
+
+from mime.registry import ControlLaw, Controller, GradientRecord, Signal, register_controller  # noqa: E402
+
+
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class TracedFollower(Controller):
+    """``tests/control_cases.py``'s follower reading its gain and smoothing through its context (``ctx.scalar``), so
+    that a study's axis on either makes it a leaf its step reads; ``start``, the filter's start, which only its start
+    reads; ``through_self`` reads the gain from the entry instead, as the follower there does."""
+
+    name = "gradtoy.follower"
+    version = "0.1.0"
+    differentiability = GradientStatus.EXACT
+    gradient = GradientRecord()
+    builds = {"": ()}
+    reads = {"pose": Signal("m; 1", (7,))}
+    writes = {"angle": Signal("1", ())}
+    gain: float = 50.0
+    smoothing: float = 0.5
+    start: float = 0.0
+    through_self: bool = False
+
+    def law(self, ctx: Any) -> ControlLaw:
+        import jax.numpy as jnp
+
+        gain = self.gain if self.through_self else ctx.scalar("gain")
+        smoothing = ctx.scalar("smoothing")
+
+        def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            filtered = state["filtered"] + smoothing * (gain * reads["pose"][4] - state["filtered"])
+            return {"filtered": filtered}, {"angle": filtered}
+
+        begun = jnp.asarray(ctx.scalar("start")) + jnp.zeros(())
+        return ControlLaw(state={"filtered": begun}, held={"angle": jnp.zeros(())}, step=step)
+
+
+__all__ += ["TracedFollower"]

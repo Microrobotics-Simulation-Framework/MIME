@@ -9,12 +9,12 @@ at the start's peak speed; :data:`STEPS` steps from the Poiseuille profile plus 
 deliveries (``METERED``). Cell Reynolds numbers 0.06 to 25, CFL 0.04 to 0.4, tau/dt about 4 to 3e3.
 
 **The plants** (:data:`PLANTS`, each applied by ``setattr`` so that pytest's ``monkeypatch`` and a probe's own process
-apply it alike): a solve stopped short (two iterations, or a tolerance 1e4 looser, each reporting arrival as its
-stopping rule allows); a convective term formed from the run's starting velocity (a stale level) or from the velocity's
-components permuted (the wrong field), in the advective form, or at four times the step with the CFL line lifted; the
-convective operator itself scaled by 1.5 or negated (still skew: an operator error); and the fluid's mask lost beyond
-the band (the drive reaching into the solid) or the solid's interior a thousand times
-less stiff."""
+apply it alike): a solve stopped short (two iterations; a node tolerance 1e4 looser; or the CG's stop 1e4 looser than the
+node's tolerance, which the node declares at its default: each reporting arrival as its stopping rule allows); a
+convective term formed from the run's starting velocity (a stale level) or from the velocity's components permuted (the
+wrong field), in the advective form, or at four times the step with the CFL line lifted; the convective operator itself
+scaled by 1.5 or negated (still skew: an operator error); and the fluid's mask lost beyond the band (the drive reaching
+into the solid) or the solid's interior a thousand times less stiff."""
 
 from __future__ import annotations
 
@@ -146,15 +146,31 @@ def _none(setter: Setter) -> None:
     del setter
 
 
-#: Each plant by name: what it patches (the solve's two take node settings instead, :func:`settings_of`).
+def stops_short(factor: float) -> Callable[[Setter], None]:
+    """The CG stops at a tolerance ``factor`` times the node's own, the node declaring (and reporting) its default."""
+
+    def planted(setter: Setter) -> None:
+        real = node_module.Stopping
+
+        def stopping(**given: Any) -> Any:
+            return real(**{**given, "tolerance": factor * given["tolerance"]})
+
+        setter(node_module, "Stopping", stopping)
+
+    return planted
+
+
+#: Each plant by name: what it patches (two of the solve's take node settings instead, :func:`settings_of`).
 PLANTS: dict[str, Callable[[Setter], None]] = {
-    "solve_two_iterations": _none, "solve_tolerance_1e4": _none, "convection_stale": _stale,
+    "solve_two_iterations": _none, "solve_tolerance_1e4": _none, "solve_stops_short_1e4": stops_short(1e4),
+    "convection_stale": _stale,
     "convection_permuted": _permuted, "convection_advective": _advective, "convection_past_the_line": _past_the_line,
     "convection_scaled": _operator(1.5), "convection_negated": _operator(-1.0),
     "leak_mask": _wall("mask"), "leak_weak_interior": _wall("weak"),
 }
 #: The flag each plant is aimed at.
-AIMED = {"solve_two_iterations": "stall", "solve_tolerance_1e4": "stall", "convection_stale": "convection",
+AIMED = {"solve_two_iterations": "stall", "solve_tolerance_1e4": "stall", "solve_stops_short_1e4": "stall",
+         "convection_stale": "convection",
          "convection_permuted": "convection", "convection_advective": "convection",
          "convection_past_the_line": "convection", "convection_scaled": "convection",
          "convection_negated": "convection", "leak_mask": "leak", "leak_weak_interior": "leak"}
@@ -204,4 +220,4 @@ def readings(point: Point, dtype: str, plant: str | None = None, flags: Any = No
     return node, found
 
 
-__all__ = ["AIMED", "PLANTS", "STEPS", "Point", "draw", "readings", "settings_of"]
+__all__ = ["AIMED", "PLANTS", "STEPS", "Point", "draw", "readings", "settings_of", "stops_short"]
