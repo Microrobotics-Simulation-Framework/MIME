@@ -48,6 +48,8 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 ACTIONS = ROOT / ".github" / "actions"
 #: The development branch, and the name it had until 2026-11-05, which no workflow may name.
 BRANCH, OLD_BRANCH = "release/v0.3.0", "v0.3"
+#: The measurement runner, which runs on a push to ``probe/**`` and on no other branch.
+PROBE_WORKFLOW = "probe.yml"
 #: The old name as a branch: ``v0.3`` not followed by a digit or by a ``.`` and a word character, so that a version
 #: (``v0.3.0``, ``v0.3.0.dev1``) is not the name but ``v0.3`` ending a sentence is.
 OLD_NAME = re.compile(r"\bv0\.3(?!\d|\.\w)")
@@ -174,6 +176,8 @@ def branch_filter_problems(directory: Path) -> list[str]:
     branch: a workflow dropping it would silently stop running on the branch (the ``stress`` label would do nothing)."""
     found = []
     for name, workflow in workflows(directory):
+        if name == PROBE_WORKFLOW:  # runs on probe branches alone, never the development branch (tests/test_ci_probe.py)
+            continue
         triggers = workflow.get("on", workflow.get(True))
         for event, configuration in (triggers.items() if isinstance(triggers, dict) else []):
             branches = configuration.get("branches") if isinstance(configuration, dict) else None  # schedule: a list

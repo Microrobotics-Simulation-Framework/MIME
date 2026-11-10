@@ -1,0 +1,148 @@
+name: Probe
+
+# A measurement runner for development: a push to a branch `probe/<name>` runs `probe/run.sh` from that branch on a standard
+# GitHub runner (free for a public repository), so that a heavy measurement does not wait for a maintainer's machine.
+# Probe branches are never merged and never opened as pull requests (ci.yml fails a pull request whose head is one); an agent
+# or a maintainer pushes one, reads its run's artifact and deletes the branch. How: .github/probe/README.md.
+#
+# Triggered by nothing else: no pull request, no `main` or `release/**` push, no schedule. The first job is the private-name
+# check, exactly the step ci.yml's `no private name or path` job runs, because a probe's logs are public; the probe waits for it.
+# A probe job holds no secret. If the branch has `probe/arms.txt` (one arm name a line, each of letters, digits, `.`, `_`, `-`),
+# one job runs per arm with PROBE_ARM set, in parallel; otherwise one job runs, PROBE_ARM empty. What each uploads is
+# `probe/out/`, even when the script fails or times out. tests/test_ci_probe.py reads this file.
+
+on:
+  push:
+    branches: ["probe/**"]
+
+permissions:
+  contents: read
+
+# One run per branch: a newer push cancels the older run of the same branch.
+concurrency:
+  group: probe-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAX_PLATFORMS: cpu
+  UV_VERSION: "0.13.4"
+
+jobs:
+  scan:
+    name: probe, no private name or path
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: No private name or path in the tracked files, the commits or the branch's name
+        env:
+          CONFIDENTIAL_SCAN_KEY: ${{ secrets.CONFIDENTIAL_SCAN_KEY }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
+          TARGET: ${{ github.base_ref || github.ref_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          dev=origin/release/v0.3.0
+          public=""
+          if [ "$TARGET" = main ]; then public="$dev"; fi
+          name="$HEAD_REF"
+          case "$EVENT" in
+            pull_request) range="$PR_BASE..$PR_HEAD" ;;
+            push)
+              range="$PUSH_AFTER"
+              if git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then range="$PUSH_BEFORE..$PUSH_AFTER"; fi ;;
+            *) range="HEAD"; public="$dev"; name="$REF_NAME" ;;
+          esac
+          python3 scripts/check_confidential.py ${range:+--messages "$range" --diffs "$range"} \
+            ${public:+--public "$public"} ${name:+--ref-name "$name"}
+
+  # The arms: the lines of probe/arms.txt, or one unnamed arm. Read from the pushed tree as text and checked against a
+  # pattern, so that an arm name reaches no command line unchecked.
+  arms:
+    name: probe arms
+    needs: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The arms to run
+        id: read
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, re
+          from pathlib import Path
+
+          path = Path("probe/arms.txt")
+          arms = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()] if path.is_file() else [""]
+          bad = [arm for arm in arms if arm and not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", arm)]
+          if bad or len(set(arms)) != len(arms) or not arms:
+              raise SystemExit(f"probe/arms.txt: arm names must be unique and match [A-Za-z0-9._-]{{1,40}}; refused: {bad}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("matrix=" + json.dumps({"arm": arms}) + "\n")
+          PYTHON
+
+  probe:
+    name: probe${{ matrix.arm && format(' ({0})', matrix.arm) || '' }}
+    needs: [scan, arms]
+    runs-on: ubuntu-latest
+    # The script gets 320 minutes (the step's `timeout`), the rest of the job is set-up and the upload.
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.arms.outputs.matrix) }}
+    env:
+      PROBE_ARM: ${{ matrix.arm }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          # A probe branch restores the cache and never saves one: a copy per branch would evict the release branch's.
+          save-cache: false
+      - name: Install the locked PyPI releases
+        run: |
+          uv sync --locked --extra verify
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
+      - name: Run probe/run.sh
+        id: run
+        run: |
+          mkdir -p probe/out
+          test -f probe/run.sh || { echo "::error::this branch has no probe/run.sh"; exit 1; }
+          timeout --kill-after=60 19200 bash probe/run.sh
+      - name: What the artifact is called
+        id: name
+        if: ${{ always() }}
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          name=$(printf '%s-%s' "$BRANCH" "$PROBE_ARM" | tr -c 'A-Za-z0-9._\n-' '-' | sed 's/-*$//')
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - name: Upload probe/out (also when the script failed)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.name.outputs.name }}
+          path: probe/out
+          retention-days: 14
+          if-no-files-found: warn
