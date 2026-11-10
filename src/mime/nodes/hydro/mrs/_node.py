@@ -1170,7 +1170,7 @@ class MRSDragNode(MimeNode):
         experiment's closest approach needs (``closest_approach``, m: the margin a contact holds the body's hull off
         the wall by, ``None`` where nothing holds it off)."""
         spacing = self._force_spacing()
-        graded = self._graded_lines() + self._film_lines(start)
+        graded = self._graded_lines()
         if self._owners is None or self._free() or self._wall().distance is None or spacing is None or \
                 start is None or "pose" not in start:
             return graded
@@ -1217,7 +1217,7 @@ class MRSDragNode(MimeNode):
         if integrated is not None:
             lines.append(integrated)
         lines.append(self._image_text())
-        return graded + lines
+        return graded + lines + self._film_lines(start)
 
     def _film_lines(self, start: Mapping[str, Any] | None) -> list[str]:
         """What the build reports of lubrication's hand-over: the hand-over gap against the force spacing and, at the

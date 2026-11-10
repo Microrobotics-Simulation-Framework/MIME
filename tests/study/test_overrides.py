@@ -112,7 +112,7 @@ def test_an_override_runs_the_nodes_own_checks_at_the_build_as_a_study_does():
     from mime.study._override import overridden
     from mime.units import mm
 
-    built = mrs_tube().build()
+    built = mrs_tube(lubrication=False).build()  # the coarse MRS's own check of the start
     with pytest.raises(BuildRefused) as refused:
         built.run(ms(2), override={"ball.initial.position": mm((4.45, 0.0, 0.0))})
     assert "drag.mrs-resistance" in refused.value.codes(), refused.value.codes()

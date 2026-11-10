@@ -112,7 +112,8 @@ def floored(monkeypatch, start_mm=(0.0, 0.0, -1.0), wall_refinement: int | None 
     quadrature eight times finer), FL-9 resting on the floor at the contact's 0.1 mm margin; the review's case, with the
     wall's image at the force points (``wall_refinement`` 1) unless another is given."""
     monkeypatch.setattr(OP, "pinned", lambda geometry: geometry)
-    monkeypatch.setattr(OP, "pinned_law", lambda law: dataclasses.replace(law, wall_refinement=wall_refinement)
+    monkeypatch.setattr(OP, "pinned_law", lambda law: dataclasses.replace(law, wall_refinement=wall_refinement,
+                                                                          lubrication=False)
                         if law.name == "drag" else law)
     return OP.experiment(rung="bem", spacing_mm=0.829, blob=0.25, start_mm=start_mm)
 
@@ -654,7 +655,7 @@ def held_off(margin_mm: float | None, wall: bool = True, wall_refinement: int | 
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     e.declare("body.mass", kg(1e-5), reason="a millimetre body's order")
     e.declare("body.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    e.attach(Drag.MRS(wall_kind="tube" if wall else "free_space", wall_refinement=wall_refinement,
+    e.attach(Drag.MRS(lubrication=False, wall_kind="tube" if wall else "free_space", wall_refinement=wall_refinement,
                       spacing=mm(spacing_mm) if spacing_mm is not None else None), body="body", medium="water")
     if margin_mm is not None:
         e.attach(Contact.Projection(margin=mm(margin_mm)), body="body", surface="tube.inner_surface")

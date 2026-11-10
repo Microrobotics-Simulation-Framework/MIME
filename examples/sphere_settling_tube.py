@@ -83,8 +83,10 @@ def sphere_settling_tube() -> Experiment:
         position=um((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(RADIUS_UM)))}))
     exp.declare("ball.parts.steel.density", kg_per_m3(STEEL), reason="steel")
-    exp.attach(Drag.MRS(spacing=um(SPACING_UM), blob=0.1, quadrature_refinement=20, wall_kind="tube"), body=ball,
-               medium=water)
+    # The coarse MRS alone, as this demo states its limit: its re-declaration with lubrication's hand-over (on by
+    # default near a wall in drag 0.5.0) comes with its numbers measured again.
+    exp.attach(Drag.MRS(spacing=um(SPACING_UM), blob=0.1, quadrature_refinement=20, wall_kind="tube",
+                        lubrication=False), body=ball, medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
     exp.attach(Contact.Projection(margin=um(MARGIN_UM), spacing=um(MARGIN_UM)), body=ball,
                surface=tube.inner_surface)

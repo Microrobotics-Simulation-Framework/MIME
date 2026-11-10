@@ -1428,11 +1428,11 @@ class Drag(UncoupledDrag):
                        "(DEFAULT_TOLERANCE's measurement), so a denser cluster near contact may stop short, flagged "
                        "and warned of"),
         "lubrication": determined(
-            NUMERICAL, "on the mrs rung, in a medium whose wall opens (a plane, a tube) about a body whose hull kind "
+            DESIGN, "on the mrs rung, in a medium whose wall opens (a plane, a tube) about a body whose hull kind "
                        "has a support: on, lubrication's hand-over, the MRS's own completion in the gap (the coarse MRS "
                        "evaluated with the body's near contact opened to HANDOVER_SPACINGS of the force spacing, plus "
-                       "the thin film's increment); written False, the coarse MRS alone, a declared numerical choice "
-                       "whose validity line is its near-wall error; on the surrogate rung, none unless "
+                       "the thin film's increment); written False, the coarse MRS alone, whose validity line is its "
+                       "near-wall error; on the surrogate rung, none unless "
                        "Lubrication(epsilon=...) is written (its blend)",
             by="default_lubrication"),
     }
