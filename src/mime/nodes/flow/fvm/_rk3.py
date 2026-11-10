@@ -48,13 +48,18 @@ _LAX: Any = jax.lax
 class ExplicitStage(NamedTuple):
     """What the ledger reads of an RK3 step, each in m^2/s^2 per unit volume times the cell volume (multiply by the
     density for joules): the drive's work, the viscous and penalty dissipations, the convective power, and the
-    magnitude of the arithmetic forming them (the step's scale)."""
+    magnitude of the arithmetic forming them (the step's scale). Where the step is given the fluid's faces, also the
+    fluid's momentum per unit density at each stage's start, ``<1 - chi, u_k>`` a component each, a row per stage (zero
+    where the quadrature's weight is), and its magnitude ``<1 - chi, |u_k|>``: what a law's drive, evaluated at the
+    stage's instant, is paired with."""
 
     drive: Array
     viscous: Array
     penalty: Array
     convection: Array
     scale: Array
+    momentum: Array | None = None
+    momentum_size: Array | None = None
 
 
 def _add(a: Velocity, b: Velocity, s: Any = 1.0) -> Velocity:
@@ -89,13 +94,16 @@ def ready_pressure(grid: MACGrid, velocity: Velocity, pressure: Array, ready: Ar
 
 
 def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, resistivity: Velocity, force: Force,
-         convection: bool, time: Any, dt: Any) -> tuple[Velocity, Array, ExplicitStage]:
+         convection: bool, time: Any, dt: Any, *, fluid: Velocity | None = None) -> tuple[Velocity, Array, ExplicitStage]:
     """One RK3 step: the new velocity and pressure, and what the ledger reads of the step. ``force(k, t)`` is the drive
-    at stage ``k``'s time ``t``."""
+    at stage ``k``'s time ``t``; ``fluid``, the faces' ``1 - chi``, where the step records the fluid's momentum at its
+    stages."""
     inner, size = grid.inner, grid.inner_magnitude
     dtype = velocity[0].dtype
     zero = jnp.zeros((), dtype=dtype)
     drive = viscous_d = penalty_d = conv_p = scale = zero
+    momenta: list[Array] = []
+    momentum_sizes: list[Array] = []
     previous: Velocity | None = None
     for k in range(3):
         g, z, a = GAMMA[k], ZETA[k], ALPHA[k]
@@ -108,6 +116,10 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
             r = _add(r, previous, dt * z)
         held = (r[0] / (1.0 + stage_dt * resistivity[0]), r[1] / (1.0 + stage_dt * resistivity[1]),
                 r[2] / (1.0 + stage_dt * resistivity[2]))
+        if fluid is not None:
+            weighted = [fluid[c] * velocity[c] for c in range(3)] if QUADRATURE[k] != 0.0 else [zero, zero, zero]
+            momenta.append(jnp.stack([grid.cell_volume * jnp.sum(x) for x in weighted]))
+            momentum_sizes.append(jnp.stack([grid.cell_volume * jnp.sum(jnp.abs(x)) for x in weighted]))
         if QUADRATURE[k] != 0.0:
             w = dt * QUADRATURE[k]
             drive = drive + w * inner(f, velocity)
@@ -123,7 +135,10 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
         pressure = pressure + phi
         previous = h
     scale = scale + size(velocity, velocity)
-    return velocity, pressure, ExplicitStage(drive, viscous_d, penalty_d, conv_p, scale)
+    if fluid is None:
+        return velocity, pressure, ExplicitStage(drive, viscous_d, penalty_d, conv_p, scale)
+    return velocity, pressure, ExplicitStage(drive, viscous_d, penalty_d, conv_p, scale, jnp.stack(momenta),
+                                             jnp.stack(momentum_sizes))
 
 
 __all__ = ["ALPHA", "GAMMA", "QUADRATURE", "STAGE_TIMES", "ZETA", "ExplicitStage", "consistent_pressure",

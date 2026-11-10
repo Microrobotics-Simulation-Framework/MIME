@@ -54,11 +54,15 @@ wherever the region its medium fills carries a field.
 With `EnergyLedger()` attached the build meters the flow as a receiver of the `fluid` port kind: its fluid's momentum
 (`flow.momentum`, the integral of the density times the velocity over the fluid, none over the solid) against the body
 force each law driving it delivers. The kinetic energy is what the flow stores; each law's drive is booked as the work
-it did on the fluid, a `BodyForce` supplying its own (it reads nothing of the components, so it is outside); the
+it did on the fluid, a `BodyForce` supplying its own (it reads nothing of the components and delivers loads, so it is
+outside); the
 viscous loss is booked under the flow's viscosity (`water.flow.viscosity`) and the wall's band under the wall
 (`tube.wall`); the scheme's own terms (backward Euler's, convection at mixed time levels and the solve's residual) are
 numerical, never a loss. IMEX Euler and its steady limit close the step's identity to rounding at every step; RK3's
-split penalty has no formula term, so each RK3 step is judged to have dissipated instead. The stall detector is written
+split penalty has no formula term, so each RK3 step is judged to have dissipated instead, and its drive's attribution
+is checked at every step: the work its stages applied against the law's own delivery, evaluated at the stage instants.
+A gift a numerical term's own formula books (convection's) is booked under that term, where the identity cannot see it:
+only the order tests on their fixed case see it, the validity says from what size. The stall detector is written
 with the ledger.
 
 The flow is driven by laws bound to the medium: on a periodic box, a `BodyForce` on the fluid, which stands in for the

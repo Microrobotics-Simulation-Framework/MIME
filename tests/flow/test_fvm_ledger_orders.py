@@ -16,7 +16,16 @@ stiff interior's start, damped in a step whatever the step, is not in the sums.
 
 **The control, each failing every run**: the viscous loss moved into the term (written into its formula, the viscous
 row emptied by as much): the identity still closes, and the term's ratio leaves its band, a dissipation per unit time
-not falling with the step or the tolerance. Over-budget cases go on the duration allowlist, never under ``slow``."""
+not falling with the step or the tolerance. Over-budget cases go on the duration allowlist, never under ``slow``.
+
+**The resolution** (measured on this case, three seeds; ``N_BE`` and ``N_conv`` alike in both dtypes): a physical loss
+of ``k`` times the term's own coarse sum, moved from the viscous row into the term, leaves the band on one seed of the
+three from ``k = 0.1`` (``N_BE`` at 1.58, ``N_conv`` at 1.45), which fails the test, and on all three from about 0.6
+for ``N_BE`` (``N_conv`` keeps one seed in band there); ``N_Krylov`` stays in band at 0.03 of its looser sum and leaves
+on all three at 0.3. Against the viscous loss these are about 0.8 % of it moved into ``N_BE``, 2.5e-6 of it into
+``N_conv``, and 1.4e-7 (float64) or 3.3e-4 (float32) into ``N_Krylov``; the control moves all of it. **A gift a term's
+own formula books** (convection's, at mixed time levels) is booked under that term, where the step identity cannot see
+it: these tests, on this case, are the only check of it, at these resolutions."""
 
 from __future__ import annotations
 

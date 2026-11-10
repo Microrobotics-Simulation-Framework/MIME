@@ -11,11 +11,16 @@ With the ledger attached:
   paired reaction pays, is not outside; a magnet on a kinematic one is), so that an apparatus holding a dynamic and a
   kinematic segment is outside in its kinematic part alone. A drive and a controller receive nothing, and are outside;
   a command they write into a metered receiver is supplied work, named by its writer. **A law is a source outside the
-  components where it declares no class and its own nodes read no component's state** (a body force driving a medium's
-  flow, whose node computes its waveform from its own parameters): what it delivers is supplied work, named by the law.
-  The rule is for laws that declare no class, and only those: a class says how a law's work is booked, so a law that
-  declares one keeps it whatever its node reads (gravity without a couple reads nothing, and is a potential, its
-  energy's change the components'). Nothing is declared;
+  components where it declares no class, no read it declares is of a component's state, and it delivers only loads its
+  receivers pair** (a body force driving a metered flow, whose node computes its waveform from its own parameters):
+  what it delivers is supplied work, **named by the law itself**, also where it reads a unit outside, and the law is
+  listed outside (a class-less law that reads a component is supplied by the units outside it reads, as any law is).
+  Every read the law declares counts, the points a field is read at among them (a field read at a body's pose reads the
+  body); and only a load, whose work does not depend on the components where its node reads none of them (a resistance
+  is paired with the receiver's own solution; a delivery into a receiver the ledger does not meter is paired as
+  nothing). The rule is for laws that declare no class, and only those: a class says how a law's work is booked, so a
+  law that declares one keeps it whatever its node reads (gravity without a couple reads nothing, and is a potential,
+  its energy's change the components'). Nothing is declared;
 - **each law delivers into its own input on its receiver.** A receiver is a dynamics' node that writes its step
   identity (``MimeNode.LEDGER_TERMS``) and names its port kind (``Dynamics.port``). Every delivery edge into it is moved
   from the input it sums into (``applied_wrench``) to the law's own (``mime.core.ledger.law_input``), the summed input
@@ -53,7 +58,7 @@ from mime.core import ledger
 from mime.registry import Dynamics, Interaction, Observation
 from mime.validity import Profile
 from mime.things import ThingKind
-from mime.vocabulary import CONFINEMENT, Definiteness, port_kind
+from mime.vocabulary import CONFINEMENT, Definiteness, DeliveryKind, port_kind
 
 #: The sections whose entries produce: what may be outside.
 _PRODUCERS = (Section.DYNAMICS, Section.PROVIDER, Section.DRIVE)
@@ -135,8 +140,8 @@ def boundary(plans: PlanSet, edges: Sequence[EdgeDecl]) -> tuple[tuple[str, ...]
     """What is outside, by unit (:func:`_unit`), and each law that reads it with the units it reads. A unit is outside
     when none of its nodes receives a delivery or a reaction from the components; a field an apparatus carries, when
     no law reading it delivers into a segment of that apparatus (the reaction its field's change is paid by); a drive
-    and a controller always; and a law that declares no class whose own nodes read no component's state
-    (:func:`_sources`), which supplies its own deliveries."""
+    and a controller always; and a law that declares no class, reads no component's state and delivers only loads its
+    receivers pair (:func:`_sources`), which supplies its own deliveries."""
     owners = _owners(plans)
     chained = _chained(plans)
     units = {name: unit for name, plan in owners.items() for unit in (_unit(plans, plan),) if unit is not None}
@@ -174,21 +179,47 @@ def boundary(plans: PlanSet, edges: Sequence[EdgeDecl]) -> tuple[tuple[str, ...]
 
 
 def _sources(plans: PlanSet, edges: Sequence[EdgeDecl], units: Mapping[str, str], outside: set[str]) -> set[str]:
-    """The laws that are sources outside the components: each declares no class, has nodes of its own, and none of
-    them reads a state or a field from anything but itself and the units outside. **Only a law that declares no class**:
-    a class says how a law's work is booked (a potential's as its energy's change, which is the components'), so gravity
-    without a couple, whose node reads nothing, stays a potential. A read from a node that is no unit (another law's) is
-    a component's."""
+    """The laws that are sources outside the components: each declares no class, has nodes of its own, every read it
+    declares is from itself or a unit outside, and every delivery it makes is a load its receiver pairs as one
+    (:func:`_paired_as`).
+
+    - **Every read it declares**: each state or field edge the law asked for, into its own nodes or not, so that the
+      points a field is read at count (a field read at a body's pose, ``at=``, reads the body). A read from a node
+      that is no unit (another law's) is a component's.
+    - **Loads only**: a node that reads nothing supplies work that does not depend on the components only where it
+      delivers a load. A force the step solves for is paired as ``-U^T R U``, the receiver's own state through the
+      pairing itself, as a flow handed in and a delivered inertia are; and a delivery into a receiver whose port kind
+      does not pair it (one the ledger does not meter) is paired as nothing.
+    - **Only a law that declares no class**: a class says how a law's work is booked (a potential's as its energy's
+      change, which is the components'), so gravity without a couple, whose node reads nothing, stays a potential."""
+    owners = _owners(plans)
     found: set[str] = set()
     for plan in plans.entries:
         law = plan.entry
         if plan.section is not Section.INTERACTION or not isinstance(law, Interaction) or law.energy_class is not None:
             continue
         mine = set(plan.node_names())
-        if mine and all(units.get(e.source[0]) in outside for e in edges
-                        if e.target[0] in mine and e.carries in (STATE, FIELD) and e.source[0] not in mine):
+        reads = [e for e in edges if e.carries in (STATE, FIELD) and (e.by == plan.owner or e.target[0] in mine)
+                 and e.source[0] not in mine]
+        delivered = [e for e in edges if e.by == plan.owner and e.carries == DELIVERY and e.target[0] not in mine]
+        if mine and delivered and all(units.get(e.source[0]) in outside for e in reads) \
+                and all(_paired_as(owners, e.target[0], e.target[1]) is DeliveryKind.LOAD for e in delivered):
             found.add(plan.owner)
     return found
+
+
+def _paired_as(owners: Mapping[str, EntryPlan], node: str, field: str) -> DeliveryKind | None:
+    """What a delivery into ``node``'s input ``field`` is, as its receiver's port kind pairs it; ``None`` where the
+    node is no dynamics', its dynamics names no port kind, or the kind does not pair that input."""
+    plan = owners.get(node)
+    dynamics = plan.entry if plan is not None and plan.section is Section.DYNAMICS else None
+    if plan is None or not isinstance(dynamics, Dynamics) or not dynamics.port:
+        return None
+    kind = port_kind(dynamics.port)
+    local = node.removeprefix(plan.owner).removeprefix(".")
+    interface = next((name for name, port in dynamics.capabilities().accepts.items()
+                      if port.node == local and port.field == field), None)
+    return kind.deliveries.get(interface) if kind is not None and interface is not None else None
 
 
 def _law_of(edge: EdgeDecl, laws: Mapping[str, EntryPlan], owners: Mapping[str, EntryPlan]) -> str:
@@ -264,8 +295,8 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
         if by in supplied_by and (reason or not source):
             continue
         # A source that states no reason for declaring no class is still a declaration missing: logged, or refused.
-        lines.append(f"{by}: declares no energy class and states no reason; its own nodes read nothing of the "
-                     f"components, so it is outside and supplies its own work" if source else
+        lines.append(f"{by}: declares no energy class and states no reason; it reads no component's state and "
+                     f"delivers only loads, so it is outside and supplies its own work" if source else
                      f"{by}: declares no energy class and reads nothing from outside: not metered: {reason}" if reason
                      else f"{by}: declares no energy class, reads nothing from outside and states no reason")
         if refuses_unmetered(profile, reason):

@@ -238,6 +238,13 @@ class FVM(Dynamics):
         f"geometry: {GEOMETRY}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_LINE:g} (stall_flagged), is written with the "
         f"energy ledger attached (exp.observe(EnergyLedger())); a run without it has no stall report",
+        "the energy ledger: IMEX Euler and its steady limit close the step identity to its rounding floor at every "
+        "step; RK3 judges each step to have dissipated, and its drive's attribution (the work its stages applied "
+        "against the law's own delivery at the stage instants) to the same floor. A gift a numerical term's own "
+        "formula books is booked under that term, where the identity cannot see it (convection's, at mixed time "
+        "levels): only the order tests of the terms, on their fixed case, see one, from about 0.1 of the term's own "
+        "size on one seed of the three, and on all three from about 0.6 for N_BE (N_conv keeps one in its band "
+        "there) [measured]; no check of it runs in a user's run",
     )
     values = {"viscosity": "viscosity", "density": "density"}
     setting_roles = {

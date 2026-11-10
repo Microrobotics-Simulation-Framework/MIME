@@ -16,10 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stage instants). The flow's step pairs each law's drive with the fluid's momentum at the instant it applied it; the
   viscosity and the wall's band are held in the step and booked under `<medium>.flow.viscosity` and the wall's own
   region (`tube.wall`); IMEX Euler and its steady limit close the step identity to rounding, and RK3 judges each step
-  to have dissipated. The ledger's boundary gains a rule: **a law that declares no class and whose own nodes read
-  nothing of the components is outside**, and what it delivers is supplied work under its own name (a `BodyForce`); a
-  law that declares a class keeps it whatever its node reads (gravity reads nothing without a couple, and stays a
-  potential). A source that states no reason for declaring no class is still logged under exploratory and refused
+  to have dissipated and checks its drive's attribution (the work its stages applied against the law's own delivery
+  at the stage instants) to the same floor. The ledger's boundary gains a rule: **a law that declares no class, reads
+  nothing of the components (every read it declares, the points a field is read at among them) and delivers only
+  loads its receivers pair is outside**, and what it delivers is supplied work under its own name (a `BodyForce`
+  driving a metered flow); a law that declares a class keeps it whatever its node reads (gravity reads nothing without
+  a couple, and stays a potential). A source that states no reason for declaring no class is still logged under exploratory and refused
   under research (`ledger.unmetered`). The flow's reason for being unmetered is gone, and `mime.testing`'s port cases
   gain the fluid's (`fluid_rig`, `fluid_states`).
 

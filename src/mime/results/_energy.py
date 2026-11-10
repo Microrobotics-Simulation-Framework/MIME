@@ -128,7 +128,8 @@ class EnergyAccount:
     ``unattributed`` (the work each receiver's unattributed inputs paired: zero, exactly, where every delivery is a
     law's), ``identity_worst`` (each receiver's step identity's worst step over its rounding floor: above one is a
     finding; the jump of a receiver's storage between steps that no declared producer explains is judged in it, apart
-    in ``between_worst``), and ``balance``, the receivers' books summed over the run, with ``balance_floor``, its
+    in ``between_worst``; on route 1, where the identity is not claimed, the part of the step booked by formula: a
+    flow's drive as its stages applied it against the law's delivery), and ``balance``, the receivers' books summed over the run, with ``balance_floor``, its
     rounding. ``findings`` are the checks that failed, in words, by receiver and with the amount: work that arrived
     unattributed, a step identity over its floor. They are what a run's text says before anything else."""
 
@@ -161,8 +162,8 @@ class EnergyAccount:
     #: Each coupling group by its members (``a+b``): MADDENING's verdict at the run's last step, and the group's
     #: residual, its members' jumps between steps summed.
     groups: Mapping[str, str] = field(default_factory=dict[str, str])
-    #: Each node the build left unmetered though it receives deliveries (a lab's dynamics naming no port kind), with
-    #: its reason: what the account leaves out.
+    #: Each node the build left unmetered though it receives deliveries (a dynamics naming no port kind: the prescribed
+    #: flow, which stores nothing, a toy, a lab's), with its reason: what the account leaves out.
     unmetered: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
@@ -441,7 +442,13 @@ def _findings(name: str, records: Mapping[str, Any], identity: Scalar, between_f
                      f"where every delivery is a law's). The identity and the books close with it, under no name: an "
                      f"edge the build did not declare, or a controller called on the host (mode 'callback'), whose "
                      f"writes it cannot attribute")
-    if float(cast(float, identity)) > 1.0:
+    claimed = float(np.asarray(records[f"{ledger.RECORDS}identity_worst"], dtype=np.float64)) / (
+        ledger.IDENTITY_ULPS * float(np.finfo(records[f"{ledger.RECORDS}identity_worst"].dtype).eps))
+    if f"{ledger.RECORDS}route_one_step" in records and claimed > 1.0:
+        found.append(f"the drive's work on {name} as its stages applied it is not what the law driving it delivered, "
+                     f"paired at the stages' own instants (the part of its step route 1 books by formula): its worst "
+                     f"step is {claimed:.3g} times its rounding floor")
+    elif float(cast(float, identity)) > 1.0:
         owned = " by the jump of its storage between steps, which no declared producer owns" \
             if not grouped and float(cast(float, between_floors)) > 1.0 else ""
         found.append(f"the step identity of {name} failed{owned}: its worst step is "

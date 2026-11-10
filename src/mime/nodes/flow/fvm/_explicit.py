@@ -21,7 +21,11 @@ the implicit node's.
 delivers a waveform), the viscosity's and the wall's dissipations under their laws' names (the implicit node's
 :meth:`~ImplicitFlowNode.hosted_laws`) and the scheme's terms (``TimeScheme.ledger_terms``: the convective power), each
 by RK3's own quadrature; the split penalty has no formula term, so the identity is not claimed and each step is judged
-to have dissipated (``mime.core.ledger.route_one_recorded``)."""
+to have dissipated (``mime.core.ledger.route_one_recorded``). **The drive's attribution is claimed**: the law's row is
+its own delivery, its waveform evaluated at the scheme's stage instants ``t_n + c_k dt`` from its own input and paired
+with the fluid's momentum at each stage's start by the quadrature (:meth:`ExplicitFlowNode.delivered_work`), and the
+work the stages applied less it is judged each step as an identity is, on the two computations' magnitudes: a force
+the step applied that the law did not deliver (a wrong stage instant, a scaled or misplaced drive) fails it."""
 
 from __future__ import annotations
 
@@ -37,6 +41,7 @@ from typing_extensions import Annotated, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, run_dtype
 from mime.core import ledger as books
+from mime.nodes.flow._waveform import waveform_at
 from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, negative_resistivity
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
@@ -240,8 +245,9 @@ class ExplicitFlowNode(ImplicitFlowNode):
         fields = self.fields(p, grid)
         sigma = self.resistivity(p, fields)
         convection = bool(c["convection"])
+        fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2]) if self.metered else None
         context = StepContext(grid, self.operator_of(p, grid, sigma), self.forcing(fields, boundary_inputs, scheme, dtype),
-                              convection, _no_monolithic_solve, self.kinematic(p), sigma)
+                              convection, _no_monolithic_solve, self.kinematic(p), sigma, fluid)
         steps = jnp.asarray(state["steps"])
         time = steps.astype(dtype) * dt
         cfl, stopped_at, stopped_cfl = cfl_check(_velocity(state), dt, grid.spacing, self.line(p), convection,
@@ -265,30 +271,34 @@ class ExplicitFlowNode(ImplicitFlowNode):
     def identity_terms(self, p: Mapping[str, Any], held: Sequence[books.LedgerDelivery], state: Mapping[str, Array],
                        boundary_inputs: Mapping[str, Array], ended: Mapping[str, Array], parts: Any,
                        dt: float) -> books.StepAccount:
-        """The step's account on route 1: the drive's ``+W`` under the law that delivered what the scheme read, the
-        hosted laws' work under their names (the viscosity's and the wall's ``-D``), each by RK3's quadrature, the
-        scheme's terms (``ledger_terms``: the convective power, ``N_conv = -C``), the storage at both ends. The
-        residual, the split penalty's numerical dissipation, is not claimed to vanish. The quadrature records the
-        drive's work summed, so one law delivers what the scheme reads (a waveform is not summed); fed into the plain
-        input as well, the work is unattributed."""
+        """The step's account on route 1: the drive's ``+W`` under the law that delivered what the scheme read (its
+        own delivery, :meth:`delivered_work`), the hosted laws' work under their names (the viscosity's and the wall's
+        ``-D``), each by RK3's quadrature, the scheme's terms (``ledger_terms``: the convective power, ``N_conv =
+        -C``), the storage at both ends. The residual, the split penalty's numerical dissipation, is not claimed to
+        vanish; the drive's attribution is (``claimed``: the work the stages applied less the law's delivery). One law
+        delivers what the scheme reads (a waveform is not summed); fed into the plain input as well, the work the
+        stages applied is unattributed."""
         stage = parts.stage
         rho = as_run_array(p["density"])
         dtype = jnp.asarray(stage.drive).dtype
         check_deliveries(held)
         rows = books.laws(held)
         read = self.drive_read()
-        driving = [d for d in held if d.kind == books.LOAD and d.field == read]
+        driving = [index for index, d in enumerate(held) if d.kind == books.LOAD and d.field == read]
         if len(driving) > 1:
-            raise ValueError(f"{len(driving)} laws deliver the flow's {read}; the explicit stage records the drive's work "
-                             f"summed, so one law delivers it")
+            raise ValueError(f"{len(driving)} laws deliver the flow's {read}; a waveform is not summed, so one law "
+                             f"delivers it")
         work_of = {"viscous": -rho * stage.viscous, "penalty": -rho * stage.penalty}
         numerical = {"convection": -rho * stage.convection}
         work = jnp.zeros(len(rows), dtype=dtype)
         hosted = jnp.zeros((len(rows), 2), dtype=dtype)
         drive = rho * stage.drive
         unattributed = jnp.zeros((), dtype=dtype)
+        claimed: tuple[Array, Array] | None = None
         if driving and read not in boundary_inputs:
-            work = work.at[rows.index(driving[0].law)].add(drive)
+            delivered, size = self.delivered_work(boundary_inputs[books.law_input(read, driving[0])], stage, state, dt)
+            work = work.at[rows.index(held[driving[0]].law)].add(rho * delivered)
+            claimed = (drive - rho * delivered, 2.0 * rho * size)
         else:
             unattributed = unattributed + drive
         named: set[str] = set()
@@ -301,7 +311,29 @@ class ExplicitFlowNode(ImplicitFlowNode):
         terms = jnp.stack([numerical[name] for name in self.scheme.ledger_terms])
         return books.StepAccount(work=work, hosted=hosted, unattributed=unattributed, terms=terms,
                                  storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
-                                 scale=rho * stage.scale, operators={})
+                                 scale=rho * stage.scale, operators={},
+                                 claimed=None if claimed is None else claimed[0],
+                                 claimed_scale=None if claimed is None else claimed[1])
+
+    def delivered_work(self, coefficients: Array, stage: _rk3.ExplicitStage, state: Mapping[str, Array],
+                       dt: float) -> tuple[Array, Array]:
+        """A law's drive as it delivered it (per unit density): its waveform ``coefficients`` evaluated at the scheme's
+        own stage instants, ``t_n + c_k dt``, ``t_n`` from the step count the step starts at, and paired by the
+        quadrature with the fluid's momentum at each stage's start, ``sum_k b_k dt g(t_k) . <1 - chi, u_k>``; and the
+        magnitude of its products, ``sum_k b_k dt |g(t_k)| . <1 - chi, |u_k|>``, which the work the stages applied has
+        too. Formed apart from the force the stages applied (``forcing``), from the law's own input."""
+        assert stage.momentum is not None and stage.momentum_size is not None, "a metered step records the momenta"
+        dtype = stage.drive.dtype
+        time = jnp.asarray(state["steps"]).astype(dtype) * dt
+        given = jnp.asarray(coefficients, dtype=dtype)
+        work = size = jnp.zeros((), dtype=dtype)
+        for k, (weight, instant) in enumerate(zip(_rk3.QUADRATURE, self.scheme.drive_instants, strict=True)):
+            if weight == 0.0:
+                continue
+            g = waveform_at(given, time + instant * dt).astype(dtype)
+            work = work + dt * weight * jnp.dot(g, stage.momentum[k])
+            size = size + dt * weight * jnp.dot(jnp.abs(g), stage.momentum_size[k])
+        return work, size
 
     @override
     def run_problem(self, end: int) -> Problem | None:

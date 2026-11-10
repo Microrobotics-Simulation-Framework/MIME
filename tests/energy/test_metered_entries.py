@@ -193,10 +193,11 @@ def unmetered_law(profile: str):
     return exp
 
 
-#: The line a law gets that declares no class, states no reason, and whose own node reads nothing of the components:
-#: a source by the graph, outside and supplying its own work, its missing declaration logged all the same.
-SAYS_NOTHING = ("{}: declares no energy class and states no reason; its own nodes read nothing of the components, so it "
-                "is outside and supplies its own work")
+#: The line a law gets that declares no class, states no reason, reads nothing of the components and delivers only
+#: loads its receiver pairs: a source by the graph, outside and supplying its own work, its missing declaration logged
+#: all the same.
+SAYS_NOTHING = ("{}: declares no energy class and states no reason; it reads no component's state and delivers only "
+                "loads, so it is outside and supplies its own work")
 
 
 def test_an_outside_law_that_says_nothing_is_logged_under_exploratory_and_refused_under_research():
@@ -216,4 +217,5 @@ def test_the_lab_fixture_s_nudge_on_a_toy_is_logged_with_the_toy_s_reason():
     experiment.observe(EnergyLedger())
     lines = experiment.build().report.energy
     assert any(line.startswith("probe: receives deliveries") and "a toy with no physics" in line for line in lines)
-    assert SAYS_NOTHING.format("labx.nudge:probe") in lines
+    # The toy's dynamics names no port kind, so the nudge's load is paired as nothing: not a source.
+    assert "labx.nudge:probe: declares no energy class, reads nothing from outside and states no reason" in lines

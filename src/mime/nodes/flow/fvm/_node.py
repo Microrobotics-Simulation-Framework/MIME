@@ -546,7 +546,8 @@ class ImplicitFlowNode(MimeNode):
             "convection": -dt * rho * inner(stage.convection, solved),
             "krylov": dt * rho * inner(remainder, solved),
         }
-        scale = rho * (dt * (size(stage.rhs, solved) + size(applied, solved) + size(stage.force, solved)
+        # The drive's products are judged on the laws' own magnitude (drive_work's), counted once.
+        scale = rho * (dt * (size(stage.rhs, solved) + size(applied, solved)
                              + size(stage.convection, solved) + nu * size(minus_laplacian, solved)
                              + size(penalised, solved))
                        + (size(before, before) + size(solved, solved) + size(before, solved) if stores else 0.0))

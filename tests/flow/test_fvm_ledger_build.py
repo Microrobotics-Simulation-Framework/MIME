@@ -5,7 +5,8 @@ viscosity and the wall's band are held in the flow's step under their own names.
 **The account closes on a driven Womersley flow** (a steady and a harmonic body force, Womersley number about 2.5,
 one period), in both dtypes: IMEX Euler's step identity within its floor at every step, nothing unattributed, the
 books' balance within their rounding, the losses under ``water.flow.viscosity`` and ``tube.wall``, the supply under
-``body_force:water``; RK3, on route 1, every step judged to have dissipated, its drive's work under the same law.
+``body_force:water``; RK3, on route 1, every step judged to have dissipated, its drive's work under the same law as the
+law delivered it, and the work its stages applied checked against it (a drive applied 1 % larger is a finding).
 
 **The control for the source rule on the flow** (D2's): the same build's plans and edges with one planted read, the
 fluid's state into the drive's node, put the drive back inside the components (not outside, its work supplied by
@@ -83,6 +84,21 @@ def test_rk3_s_every_step_dissipates_on_a_driven_womersley_flow_its_drive_under_
     assert float(account.unattributed["water.flow"]) == 0.0
     assert set(account.paired_supply) == {"body_force:water"} and float(account.paired_supply["body_force:water"]) > 0.0
     assert set(account.lost) == {"water.flow.viscosity", "tube.wall"}
+
+
+def test_control_on_rk3_a_drive_applied_unlike_its_delivery_is_the_run_s_finding(float64, monkeypatch):
+    """The drive the stages apply 1 % larger than the law delivered, which route 1's sign check passes: the claimed part
+    of RK3's step (the drive's attribution) names it among the run's findings, and the law's row is still what it
+    delivered."""
+    from mime.nodes.flow.fvm import ImplicitFlowNode
+
+    real = ImplicitFlowNode.drive
+    monkeypatch.setattr(ImplicitFlowNode, "drive",
+                        lambda self, fields, delivered: tuple(1.01 * c for c in real(self, fields, delivered)))
+    account = womersley(Scheme.RK3()).build().run(ms(25.0)).energy
+    assert account is not None
+    assert any(finding.startswith("the drive's work on water.flow as its stages applied it is not what the law")
+               for finding in account.findings), account.findings
 
 
 def _captured(exp: Experiment):

@@ -199,5 +199,5 @@ A run's result gives the account itself, `result.energy` ([the results note](../
 ## `unmetered`
 
 With the energy ledger, each node that receives loads and that the build leaves unmetered, by name, with its reason (a
-lab's dynamics that names no port kind). A run's account names each as left out of
-it (`result.energy.unmetered`), as does `result.text()`. Empty without the ledger, and where every receiver is metered.
+dynamics that names no port kind: the prescribed flow, `Womersley()`, which stores nothing, a toy, a lab's). A run's
+account names each as left out of it (`result.energy.unmetered`), as does `result.text()`. Empty without the ledger, and where every receiver is metered.

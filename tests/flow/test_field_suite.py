@@ -213,8 +213,8 @@ def test_control_a_route_one_kind_whose_steps_give_energy_fails(dtype, monkeypat
 
     original = _rk3.step
 
-    def gifted(*args):
-        u, p, parts = original(*args)
+    def gifted(*args, **recorded):
+        u, p, parts = original(*args, **recorded)
         return tuple(1.5 * c for c in u), p, parts  # the kinetic energy x 2.25 a step, far over its dissipation
 
     monkeypatch.setattr(_rk3, "step", gifted)
