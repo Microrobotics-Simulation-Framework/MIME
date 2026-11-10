@@ -186,8 +186,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finite, naming the flow. It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
   with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
   with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
-  gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
-  the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
+  gradient, a row a step with `solve_report_rows` (a run past the last row refused before it runs). With convection on,
+  at the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
   refused, naming the step and a timestep to try. The wall's settings are its group, `wall=Band(delta_in=...)`. Its
   derivative is checked exact in the viscosity, the density and the drive, and declared unverified in the tube's
   geometry (the entry's status). `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is
@@ -517,6 +517,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
+  interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its
+  rounding floor (a 75 % stenosis at 16 cells across, 1e-4 against 4.8e-6), flagged. Now, where the stop would find a
+  stagnation, the CG restarts from the true residual, its window begun again, up to three times before it stops
+  flagged (`Stopping.stall_restarts`): every stall measured at 8, 16 and 32 cells across converges, unflagged, at its
+  tolerance or floor. A solve that never stagnates never restarts, so its arithmetic is unchanged, in either dtype; no
+  saved or released program moves. A restart every 100 iterations and the residual replaced with the direction kept
+  were measured first and not adopted (the entry's validity says why).
+
 - **A round length keeps its count of samples** (`mime.scene`'s solids and screw). A kind's count along a length was
   the ceiling of the length over the spacing, so a round input (a 2 mm capsule at a 1 mm spacing, a whole number of
   spacings) took the next count, and a recompiled program, where its last digit or a study's move of a millionth lifted
@@ -539,6 +548,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declares, by its path (its ends in SI, their unit and its reason); nothing else moves. A folder of form 11 loads as
   before, and one of form 10 through form 11's step; one of them holding `ranges` is refused. A reader of form 11
   refuses a folder of form 12 as `load.newer-form`.
+
+- **Saved form 13: the FVM's `report_rows` is `solve_report_rows`.** The setting, its refusal
+  (`flow.solve-report-rows`) and the flow node's parameter take the new name. A folder of form 12 or earlier loads as
+  before: its old name is read as the new and written back with the old name for its input hash. A reader of form 12
+  refuses a folder of form 13 as `load.newer-form`.
 
 - **The MRS drag's held matrix is compared with leaves, not constants, and its second key is gone.** Beside
   `held_in_body_frame` each separated-quadrature drag holds `held_from.<leaf>`, the leaves the matrix was made at;
@@ -568,7 +582,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   float64 is unchanged). On the empty tube at 64 cells across with `wall=Band(delta_in=0.01)` the solve that
   stagnated, flagged, after 1000 iterations now stops unflagged after 69, its flux within 1.3e-7 of float64's. A solve
   that stalls above the floor still stops stagnated and is flagged: with the 0.01h interior in a flow with a pressure
-  gradient, float32's conjugate gradient can stall well above it.
+  gradient, float32's conjugate gradient can stall well above it. The floor counts only while it is under a hundred
+  times the tolerance (1e-3 in float32), and past that the stop holds the tolerance: made from the iterate, the floor
+  rises with an iterate that grows, and a singular system's solve was passed as converged at a true residual up to
+  thousands of times the right-hand side's; such a solve now ends flagged. The line does not close that case entirely:
+  a growing iterate can still stop under it (measured in the entry's validity).
 
 - **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
   JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;

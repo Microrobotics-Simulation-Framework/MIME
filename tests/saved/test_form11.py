@@ -56,7 +56,8 @@ def test_version_eleven_writes_a_mediums_fields_by_role_and_reads_them_back(tmp_
     from cases import CASES
 
     assert MEDIUM_FIELDS_ADDED == 11 < CURRENT
-    assert DOCUMENT_SCHEMAS[MEDIUM_FIELDS_ADDED] == "mime.document/11" and LOCK_SCHEMAS[MEDIUM_FIELDS_ADDED] == "mime.lock/11"
+    assert DOCUMENT_SCHEMAS[MEDIUM_FIELDS_ADDED] == "mime.document/11" and LOCK_SCHEMAS[MEDIUM_FIELDS_ADDED] == \
+        "mime.lock/11"
     experiment = next(case for case in CASES if case.name == "periodic_tube_flow").make()
     lock = experiment.save(tmp_path / "flow")
     assert lock["schema"] == LOCK_SCHEMAS[CURRENT]
