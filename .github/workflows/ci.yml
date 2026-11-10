@@ -917,6 +917,13 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
+      # A probe branch (probe.yml, .github/probe/README.md) is a measurement runner's, never merged: a pull request whose head
+      # is one fails here, a required check, before anything else. tests/test_ci_probe.py runs this step.
+      - name: A probe branch is never a pull request's head
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in probe/*) echo "::error::$HEAD_REF is a probe branch: probe branches are never merged or opened as pull requests"; exit 1 ;; esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A medium's flow metered by the energy ledger: the `fluid` port kind, and the rule for a source.** With
+  `exp.observe(EnergyLedger())` the build meters an FVM flow as a receiver of the new `fluid` port kind: its fluid's
+  momentum (`flow.momentum`, kg m/s, over the fluid alone, as the drive acts on it alone) against the body force each
+  law driving it delivers (`flow.body_force`, a load; the drive's waveform a mapped load, which RK3 evaluates at its
+  stage instants). The flow's step pairs each law's drive with the fluid's momentum at the instant it applied it; the
+  viscosity and the wall's band are held in the step and booked under `<medium>.flow.viscosity` and the wall's own
+  region (`tube.wall`); IMEX Euler and its steady limit close the step identity to rounding, and RK3 judges each step
+  to have dissipated and checks its drive's attribution (the work its stages applied against the law's own delivery
+  at the stage instants) to the same floor. The ledger's boundary gains a rule: **a law that declares no class, reads
+  nothing of the components (every read it declares, the points a field is read at among them) and delivers only
+  loads its receivers pair is outside**, and what it delivers is supplied work under its own name (a `BodyForce`
+  driving a metered flow); a law that declares a class keeps it whatever its node reads (gravity reads nothing without
+  a couple, and stays a potential). A source that states no reason for declaring no class is still logged under
+  exploratory and refused under research (`ledger.unmetered`). The flow's reason for being unmetered is gone, and
+  `mime.testing`'s port cases gain the fluid's (`fluid_rig`, `fluid_states`).
+
+- **The coil array returns: `mime.fields.CalibratedMultipole`** (`calibrated_multipole` 0.1.0, its node
+  `CalibratedMultipoleNode`), an electromagnet array whose coils are a calibrated multipole model of order one, from one of three packaged calibrations (ETH MSRL's published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME; not affiliated with or endorsed by the systems' makers), `asset("navion_2")`, `asset("octomag")` and `asset("cardiomag")`: Apache-2.0,
+  Multi-Scale Robotics Lab, ETH Zurich, byte for byte their upstreams' at pinned commits, each with its card
+  (`docs/assets/`). On `mime.fields.CoilArray`, the contract every kind of coil array keeps: the command `currents`, one
+  per coil, reaches the node as `delivered_currents`; the array is placed by `at` and `orientation`, one exact
+  transform; `background` is a uniform field in the world frame, zero unless declared (the calibrations are fitted to
+  the coil field alone; Earth's 50 uT is 0.1 to 1 % of a 5 to 50 mT field and has no gradient). The sources' positions,
+  directions and coefficients, the pose and the background are the node's leaves. It publishes the flux density and
+  its gradient at the reader's point or its magnet's centroid, so dev1's magnetic pair reads it; it raises
+  `outside_region` (outside the calibration's declared region, which is not a fit domain) and `near_source` (a coil's
+  gradient per unit current above 30 times its median over the region, which is a fitted source's own term;
+  `source_clearance` replaces the rule with a distance), and refuses float32 where the sources' cancellation puts its rounding above
+  1e-4 of the field (OctoMag; `setting.value`). `provider.actuation(point)` gives the field and gradient per unit
+  current at a point (`Actuation`, its `matrix()` the 8 x K actuation matrix), and `allocate(actuation, field=,
+  gradient=, limits=)` bounded least-squares currents within limits the user declares (`allocation.wanted` refuses a
+  wanted gradient that is not symmetric and trace-free, and limits that are not above zero). The units `T_per_m` and
+  `mT_per_m`, of the dimension `FIELD_GRADIENT`. Held to ETH's `mag_manip` 3.0.0 per system at 10 eps over the field's
+  cancellation (its archive's generator in `tests/oracles/`); its sign convention is mag_manip's, which no hardware
+  grounds here (MIME-ANO-153). Not returned from the 0.2 line's `CoilArrayFieldNode`: the sign setting (a validity line
+  and MIME-ANO-153 instead), S-MPEM saturation (no shipped calibration fits it; it makes the field nonlinear in
+  current), orders above one. CardioMag's file carries an `Offset` block of eight current-independent sources (about 1.5 mT at the
+  median over its region) that neither mag_manip nor this evaluates, stated on its card and in the validity lines; a
+  `Coil_List` that names the block is refused. No system ships a current limit: the figures published for each are cited
+  in its card and the validity lines (Navion_2 25 A an operating restriction and 45 A the hardware's, CardioMag 35 A a coil with its 15 kW cap not modelled, OctoMag 16 A), MIME's declarations with their sources and no maker's specification, and the previous line's unsourced 35 A and 20 A are dropped.
+
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
   `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the
@@ -86,6 +127,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   With the energy ledger attached, a run's account names what the build leaves unmetered, a medium's flow among them,
   with its reason (`result.energy.unmetered`, in `result.energy.text()` and `result.text()`), where it was `None`.
   Every dot in the FVM's programs is checked to state the highest precision (a CPU test of the traced programs).
+- **Declared ranges** (`exp.declare_range(path, low, high, reason=...)`, saved form 12): the range of a value the
+  experiment writes, on any axis a study names (a thing's value, a kind's number, a command's constant value, a law's
+  setting, a body's initial value); refused on `dt`, the precision, a rung or a numerical setting, on a value that is not
+  one quantity, where the experiment's own value lies outside it, and past six ranges. Its reason, pending or not
+  given, is judged by the profile as a declared value's is (refused in research, `range.reason-pending`; stamped in
+  exploratory). Every choice an entry makes from
+  the value is made over the range (`mime.registry.choose_over`, with the rule the entry declares: `ChoiceRule.Monotone`,
+  judged at the range's corners, or `ChoiceRule.Sampled`, inside as well; neither is the entry's defect), so a sweep across it is one group
+  and one compile, and a run's override inside it runs as data. The build prices what the range moved in its report
+  and plans the experiment at every corner, so each validity line is judged over the range (`range.corner`). A choice
+  is made in every one of those plans at each of its rule's points, and past 1024 evaluations in all (points times
+  plans) it is refused before its first (`range.cost`, naming the numbers its rule samples); the MRS rung's cost per
+  evaluation is in the guide. Only a body's hull's numbers reach an entry as a range: the price report says "no
+  consumer reads this range" for any other. A study's point outside a range is built for its own value, a group of its
+  own; a run's override outside one is refused (`override.outside-range`); members inside a range that still split,
+  against the first group inside it, are an entry's defect where an entry is offered the range and the build's
+  otherwise, reported (refused in strict, `study.range-split`). Before its first sweep a ranged study checks, in
+  float64 and once for the experiment's content, that the range reaches the build only through the choices entries
+  report (the independence check, at the experiment's own value and the ranges' two extreme corners, all low and all
+  high: not at the mixed corners) and that a move of 1e-6 inside each range moves no constant of the step or of a
+  sub-program nested in it (the two-builds trace form, `mime.build._in_graph.nested_program`, beside a leaf the step
+  reads or not; `held` where the move writes only a leaf the step does not read, `not-discriminating` where it changes
+  nothing the build holds, each named in the plan). New refusals: `range.corner`, `range.cost`, `range.duplicate`,
+  `range.kind`, `range.order`, `range.outside`, `range.path`, `range.reason-pending`, `range.too-many`, `range.units`,
+  `override.outside-range`, `study.held-geometry`, `study.range-split`, and `study.range-bake` and
+  `study.range-dependent` (MIME's defect).
+- **Geometry axes**: a number of a body's part's kind (`"ball.parts.shell.radius"`) or a structure's
+  (`"tube.inner_radius"`, a plane's `"floor.offset"`) is an axis of a study, an override and a range; a kind's setting
+  that is not one number is refused as one (`study.held-geometry`). A structure's number reaches the drag node's leaf
+  as a build at that value does (the plane's `wall_offset`: the resistance with the override equals a fresh build's,
+  entry for entry), each point judged by the build's validity lines; until now it was refused (`value.unknown`).
+- **`Drag.MRS` over a range** (its first consumer, no version change): over a declared range of its body's numbers the
+  rung samples at the range's point with the most force points, its default spacing the family's at the range's
+  finest, and keeps the body's own numbers as its leaves, so the chosen samples move with each member's shape. The
+  force points are monotone in the sphere's radius and the capsule's radius and height (measured from half to twice
+  the ball's and the pill's own, at 0.3 and 0.6 mm) and the screw's length, wavenumber and modulation (0.7 to 1.6
+  times FL-9's, at 1.0 and 1.5 mm), each scanned in CI, and sampled at nine points elsewhere: the screw's radius is
+  not monotone (106 at 2.153 mm, 91 at 2.184 mm, at 1.5 mm). The default spacing is sampled at nine points in every
+  number, since it falls as the body grows: over the screw's modulation (0.98 % finer inside a window than at its
+  ends), and wherever its rounding to three figures steps under a power of ten (the ball's 0.999 mm at a radius of
+  3.976 mm, 0.99 mm at 3.9785 mm: the step is a unit of the rounded value's third figure, ten of the value below it,
+  which the default of an experiment with no range has as well; unchanged here). On the pulled sphere over [1.0, 1.15] mm at 0.6 mm: 91 force points at every member, against 66 at 1.0 mm
+  alone. An experiment with no range builds as before, bit for bit.
 
 - **The two-builds check** (`mime.testing.two_builds`, `two_builds_of`, `step_program`, `graph_program`, `run_form`;
   float64 only): whether a compiled program holds a value made from a declared one as a constant of its own, which a
@@ -474,6 +558,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and written back so for its input hash; one of them whose medium holds `fields` is refused. A reader of form 10
   refuses a folder of form 11 as `load.newer-form`.
 
+- **Saved form 12: the experiment's declared ranges.** The document holds `ranges`, each range `exp.declare_range`
+  declares, by its path (its ends in SI, their unit and its reason); nothing else moves. A folder of form 11 loads as
+  before, and one of form 10 through form 11's step; one of them holding `ranges` is refused. A reader of form 11
+  refuses a folder of form 12 as `load.newer-form`.
+
 - **The MRS drag's held matrix is compared with leaves, not constants, and its second key is gone.** Beside
   `held_in_body_frame` each separated-quadrature drag holds `held_from.<leaf>`, the leaves the matrix was made at;
   `held_or_made` compares the step's leaves with them, so the step's program is the same at every value (the trace form
@@ -716,6 +805,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **`drag` 0.5.0's default MRS spacing steps one unit of the third figure below its bound, not ten units under a power
+  of ten.** The rule rounds the largest spacing that gives the family's sample count to three figures and, where that
+  lies past the bound, steps down one unit of the third figure, sized from the rounded value: where the bound is in the
+  last half unit under a power of ten (a ball of radius 3.9785 mm: bound 0.99953 mm) the rounded value is the power, and the
+  step went to 0.99 mm, not 0.999 mm, about 0.9 % finer spacing than needed, never coarser. 0.5.0 sizes the step
+  from the bound, so the spacing is the bound rounded down to three figures, in the family's path and in the confined
+  path alike (a closest approach over `CONFINED_GAP`). Drag 0.3.0 and 0.4.0 keep the released step (`step_from_boundary`),
+  so released programs keep their bits (measured, float32 and float64: the resolved spacing and the resistance's bits of
+  the ball, pill and FL-9 on both, and FL-9 confined on 0.4.0, equal to the tip's). Of 0.5.0's programs, only those whose
+  bound lies in that band move (the 1 mm ball, the pill and FL-9 at their defaults do not).
 
 - **The rft rung's resistance is the same bit for bit whichever kind of core a process started on** (MIME-ANO-125
   again; the rung is unreleased). R1's node summed `M^T f` over its 3n unknowns in one product (282 on

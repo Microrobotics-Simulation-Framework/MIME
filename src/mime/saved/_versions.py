@@ -94,7 +94,14 @@ role (``fields: {flow: ...}``), as an apparatus's are, where version 10 and earl
 aspect (``dynamics: {flow: ...}``); a medium's ``dynamics`` is no longer written. Nothing else changed. A document of an
 earlier version is read with its medium's ``dynamics.flow`` as ``fields.flow``, and written back so for its lock's
 hashes; one of an earlier version whose medium holds ``fields`` is left for the schema check to refuse. The lock holds
-no new key; its schema moves with the document's."""
+no new key; its schema moves with the document's.
+
+**Version 12** (``mime.document/12``, ``mime.lock/12``) adds one key to the document, ``ranges``, each range declared in
+the experiment (``exp.declare_range``) by its axis's path: its ends in SI with their unit, and its reason, written only
+where one is declared. A declared range changes the build (every choice keyed on its value is made over the range), so
+it is part of the document and of the document and input hashes. Nothing else changed. A document of an earlier version
+declares no range; one of an earlier version that holds the key is refused, never read as declaring one. The lock holds
+no new key; its schema moves with the document's, as at every version."""
 
 from __future__ import annotations
 
@@ -107,14 +114,16 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 11
+CURRENT = 12
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
                                        7: "mime.document/7", 8: "mime.document/8", 9: "mime.document/9",
-                                       10: "mime.document/10", CURRENT: DOCUMENT_SCHEMA}
+                                       10: "mime.document/10", 11: "mime.document/11",
+                                       CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
                                    5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", 8: "mime.lock/8",
-                                   9: "mime.lock/9", 10: "mime.lock/10", CURRENT: LOCK_SCHEMA}
+                                   9: "mime.lock/9", 10: "mime.lock/10", 11: "mime.lock/11",
+                                   CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
 #: experiment an experiment was made from, the version whose lock names the program the reference outputs were
@@ -132,6 +141,8 @@ SOURCE_SCALE_ADDED = 10
 MEDIUM_FIELDS_ADDED = 11
 #: A medium's key version 11 added, and the aspect of its ``dynamics`` an earlier version wrote its flow as.
 FIELDS_KEY, FLOW_ASPECT = "fields", "flow"
+#: The version that added the experiment's declared ranges to the document.
+RANGES_ADDED = 12
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
@@ -147,6 +158,8 @@ RECORD_KEYS_ADDED: tuple[str, ...] = ("credit", "role", "kind", "derivation", "n
                                       "citation", "adapters")
 #: The document's key version 7 added: the experiment this one was made from.
 BASED_ON_KEY = "based_on"
+#: The document's key version 12 added: the experiment's declared ranges.
+RANGES_KEY = "ranges"
 #: The lock's keys version 8 added: the program below its ``reference``, the two counts below its ``environment``.
 PROGRAM_KEY = "program"
 USABLE_CPUS_KEY = "usable_cpus"
@@ -288,6 +301,11 @@ def based_on_held(data: object) -> list[str]:
     return [BASED_ON_KEY] if isinstance(data, dict) and BASED_ON_KEY in cast("dict[str, object]", data) else []
 
 
+def ranges_held(data: object) -> list[str]:
+    """``["ranges"]`` where ``data`` (a document) holds the key version 12 added, and none otherwise."""
+    return [RANGES_KEY] if isinstance(data, dict) and RANGES_KEY in cast("dict[str, object]", data) else []
+
+
 def program_keys_held(data: object) -> list[str]:
     """The keys version 8 added that a lock holds: ``reference.program``, ``environment.usable_cpus`` and
     ``environment.blas_threads``."""
@@ -361,20 +379,21 @@ def _flow_of_fields(medium: dict[str, object]) -> dict[str, object]:
 
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
-    terms keys in one of an earlier version, version 5's duration, version 7's ``based_on`` and version 11's media's
-    ``fields`` in one earlier than each."""
+    terms keys in one of an earlier version, version 5's duration, version 7's ``based_on``, version 11's media's
+    ``fields`` and version 12's ``ranges`` in one earlier than each."""
     found = terms_keys_held(data) if version < TERMS_ADDED else []
     found += duration_held(data) if version < DURATION_ADDED else []
     found += medium_fields_held(data) if version < MEDIUM_FIELDS_ADDED else []
+    found += ranges_held(data) if version < RANGES_ADDED else []
     return found + (based_on_held(data) if version < BASED_ON_ADDED else [])
 
 
 def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
     """``data`` as the current schema reads it, the version it was written in (the current one for a document that is
     not of an earlier version, which the schema check judges), and the ids of the drags that named the old rung. A
-    document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's, 5's, 7's
-    or 11's in any earlier) is left as it is, for the schema check to refuse. A medium's flow an earlier version wrote
-    as ``dynamics.flow`` is read as ``fields.flow``."""
+    document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's, 5's, 7's,
+    11's or 12's in any earlier) is left as it is, for the schema check to refuse. A medium's flow an earlier version
+    wrote as ``dynamics.flow`` is read as ``fields.flow``."""
     if not isinstance(data, dict):
         return data, CURRENT, ()
     held = dict(cast("dict[str, object]", data))
@@ -431,6 +450,8 @@ def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any
         held = _with_media(held, _flow_of_fields)
     if version < BASED_ON_ADDED:
         held = {key: value for key, value in held.items() if key != BASED_ON_KEY}
+    if version < RANGES_ADDED:
+        held = {key: value for key, value in held.items() if key != RANGES_KEY}
     if version < TERMS_ADDED:
         held = {key: value for key, value in held.items() if key not in TERMS_KEYS}
     run = held.get("run")
@@ -544,8 +565,9 @@ __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "
            "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY",
            "MEDIUM_FIELDS_ADDED", "RECORDS_ADDED", "medium_fields_held",
            "PRODUCTS_REFUSAL", "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
-           "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RESOLUTION_KEYS", "RUNG_RENAMED",
+           "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RANGES_ADDED", "RANGES_KEY", "RESOLUTION_KEYS",
+           "RUNG_RENAMED",
            "SOURCE_SCALE_ADDED", "TERMS_ADDED", "TERMS_KEYS", "USABLE_CPUS_KEY", "added_after", "based_on_held",
            "document_in_form", "duration_held", "newer_form_refusal", "physics_in_form", "products_waiver_refusals",
-           "program_keys_held", "resolution_held", "resolved_in_form", "terms_keys_held",
+           "program_keys_held", "ranges_held", "resolution_held", "resolved_in_form", "terms_keys_held",
            "upgraded_document", "upgraded_lock", "version_of"]

@@ -1,8 +1,8 @@
 """``exp.remove(...)``: a declaration taken out of the experiment, by hand, in a script or a notebook.
 
 What it removes, by the word ``kind=`` names it: a ``thing`` (by its name or handle), a ``law`` (by its id, which
-``attach`` returned), an ``observation`` (by its id or handle), a declared ``value`` or a ``source`` (by the path), or
-the ``controller`` (which has no name: ``exp.remove(kind="controller")``). A name that is two kinds at once (a path
+``attach`` returned), an ``observation`` (by its id or handle), a declared ``value``, a ``source`` or a ``range`` (by
+the path), or the ``controller`` (which has no name: ``exp.remove(kind="controller")``). A name that is two kinds at once (a path
 with a declared value and a source) is refused until ``kind=`` says which; one that is none is refused with the
 candidates.
 
@@ -39,7 +39,7 @@ from mime.things import did_you_mean
 
 #: The kinds ``kind=`` names, with the key ``known_as`` gives the declaration of each.
 KEYS = {"thing": "thing", "law": "attach", "observation": "observe", "value": "value", "source": "source",
-        "controller": "controller"}
+        "range": "range", "controller": "controller"}
 _WORDS = {key: word for word, key in KEYS.items()}
 
 
@@ -68,7 +68,7 @@ def _removable(held: list[Declaration], kind: str | None) -> list[Found]:
 def _how_to_remove(found: Found) -> str:
     if found.kind == "controller":
         return "exp.remove(kind='controller')"
-    if found.kind in ("value", "source"):
+    if found.kind in ("value", "source", "range"):
         return f"exp.remove({found.name!r}, kind={found.kind!r})"
     return f"exp.remove({found.name!r})"
 

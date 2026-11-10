@@ -1,6 +1,7 @@
 """RK3's node (``ExplicitFlowNode``): route 1 per step with its one-step and every-step gift controls (F1b's gate 7)
-and a planted cumulative judgement that only the one-step gift catches, the per-step CFL check at RK3's line along the
-vessel's axis (gate 3 (c)), a state given from outside restarted from its consistent pressure (gate 4's transplant
+and a planted cumulative judgement that only the one-step gift catches, the drive's attribution claimed per step with
+its planted misapplied drives, the per-step CFL check at RK3's line along the vessel's axis
+(gate 3 (c)), a state given from outside restarted from its consistent pressure (gate 4's transplant
 half), and a batch over the viscosity equal to its separate runs (open item 8)."""
 
 from __future__ import annotations
@@ -9,16 +10,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from fvm_cases import Waveform, eps, in_dtype, step_of
+from fvm_cases import METERED, Waveform, eps, in_dtype, step_of
 
 from mime.core import ledger as books
-from mime.nodes.flow.fvm import RK3, ExplicitFlowNode, _rk3, cfl_check, periodic_tube_layout
-
-HOSTED = (
-    books.LedgerDelivery("body_force", "drive:water.body_force", books.UNMETERED, books.HOSTED).encoded(),
-    books.LedgerDelivery("viscous", "viscosity:water", books.DISSIPATIVE, books.HOSTED).encoded(),
-    books.LedgerDelivery("penalty", "wall:vessel", books.DISSIPATIVE, books.HOSTED).encoded(),
-)
+from mime.nodes.flow.fvm import RK3, ExplicitFlowNode, ImplicitFlowNode, _rk3, cfl_check, periodic_tube_layout
 
 
 def rk3_node(dh: int = 8, *, nu: float = 1.0, dt: float | None = None, length_cells: int = 4,
@@ -47,18 +42,20 @@ def _stirred(node, amplitude, seed):
 def _metered(dtype, seed):
     with in_dtype(dtype):
         start = _stirred(rk3_node(), 0.5, seed)
-        node = rk3_node(ledger=HOSTED, **start)
+        node = rk3_node(ledger=METERED, **start)
         return run(node, 20)
 
 
 # -- route 1 ------------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("seed", range(3))
-def test_every_rk3_step_dissipates_and_no_identity_is_claimed(dtype, seed):
+def test_every_rk3_step_dissipates_and_only_the_drive_s_attribution_is_claimed(dtype, seed):
+    """No identity is claimed for the step; its drive's attribution is (the work the stages applied less the law's
+    delivery), within the identity's floor."""
     state = _metered(dtype, seed)
     assert float(state[f"{books.RECORDS}route_one_negative_steps"]) == 0.0
     assert float(state[f"{books.RECORDS}route_one_worst"]) > 0.0
-    assert float(state[f"{books.RECORDS}identity_worst"]) == 0.0
+    assert float(state[f"{books.RECORDS}identity_worst"]) <= books.IDENTITY_ULPS * eps(dtype)
     assert float(state[f"{books.RECORDS}unattributed_worst"]) == 0.0
 
 
@@ -72,8 +69,8 @@ def _gifted(share, only_step=None):
     times the step's own dissipation (its viscous and penalty terms, the scheme's own pairing), on every step or on
     ``only_step`` alone."""
 
-    def step(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt):
-        u, p, parts = _STEP(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt)
+    def step(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt, **recorded):
+        u, p, parts = _STEP(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt, **recorded)
         kinetic = 0.5 * grid.inner(u, u)
         lost = parts.viscous + parts.penalty
         factor = jnp.sqrt(1.0 + share * lost / kinetic)
@@ -139,6 +136,52 @@ def test_a_gift_under_half_a_steps_dissipation_is_not_counted(dtype, seed, monke
     monkeypatch.setattr(_rk3, "step", _gifted(0.5))
     state = _metered(dtype, seed)
     assert float(state[f"{books.RECORDS}route_one_negative_steps"]) == 0.0
+
+
+# -- the drive's attribution, claimed on route 1 --------------------------------------------------------------------
+
+#: A steady and a harmonic drive, from rest, over 200 steps: the rig the refuting review planted its RK3 drive gift on.
+HARMONIC = Waveform(steady=8.0, amplitude=4.0, omega=20.0)
+_DRIVE, _FORCING = ImplicitFlowNode.drive, ImplicitFlowNode.forcing
+
+
+def _harmonic(dtype):
+    with in_dtype(dtype):
+        return run(rk3_node(ledger=METERED), 200, waveform=HARMONIC)
+
+
+def _scaled(share):
+    """The drive the stages apply ``1 + share`` times what the law delivered (the review's plant)."""
+    return lambda self, fields, delivered: tuple((1.0 + share) * c for c in _DRIVE(self, fields, delivered))
+
+
+def _late(share):
+    """Each stage's drive read ``share`` of a step after its instant: a wrong stage instant."""
+    def forcing(self, fields, boundary_inputs, scheme, dtype):
+        force = _FORCING(self, fields, boundary_inputs, scheme, dtype)
+        return lambda stage, time: force(stage, time + share * self.delta_t)
+    return forcing
+
+
+def test_rk3_books_the_drive_as_the_law_delivered_it_and_its_attribution_closes(dtype):
+    state = _harmonic(dtype)
+    r = books.RECORDS
+    assert float(state[f"{r}identity_worst"]) <= books.IDENTITY_ULPS * eps(dtype)
+    assert float(state[f"{r}route_one_negative_steps"]) == 0.0 and float(state[f"{r}unattributed_worst"]) == 0.0
+    assert float(np.asarray(state[f"{r}work"])[0]) > 0.0
+
+
+@pytest.mark.parametrize("plant", ["applied twice", "applied 1e-2 more", "read half a step late"])
+def test_control_a_drive_the_stages_applied_unlike_the_law_s_delivery_fails_its_attribution(dtype, plant, monkeypatch):
+    """The drive applied larger than delivered, which route 1's sign check passed while the law's row was the work the
+    stages applied (the step still dissipated), and a wrong stage instant: each fails the claimed part's floor on every
+    run, in both dtypes, whatever the sign check sees."""
+    if plant == "read half a step late":
+        monkeypatch.setattr(ImplicitFlowNode, "forcing", _late(0.5))
+    else:
+        monkeypatch.setattr(ImplicitFlowNode, "drive", _scaled(1.0 if plant == "applied twice" else 1e-2))
+    state = _harmonic(dtype)
+    assert float(state[f"{books.RECORDS}identity_worst"]) > books.IDENTITY_ULPS * eps(dtype)
 
 
 # -- the per-step CFL check ----------------------------------------------------------------------------------------

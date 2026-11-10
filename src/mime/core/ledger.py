@@ -278,7 +278,9 @@ class StepAccount:
     are judged on the size of what was rounded) and, by row, each operator whose definiteness is checked at run
     time. ``own_start`` and ``own_end`` are the storage without what a delivery adds (a delivered inertia's part),
     where the storage has such a part: the jump between steps they leave is the receiver's own state's, which no
-    producer declares, and is judged (:func:`recorded`); where it has none they are the storage itself."""
+    producer declares, and is judged (:func:`recorded`); where it has none they are the storage itself. ``claimed`` and
+    ``claimed_scale`` are a route-1 receiver's claimed part, where it claims one (:func:`route_one_recorded`): the
+    residual of the part of its step it books by formula and the magnitude that residual is judged on."""
 
     work: Array
     hosted: Array
@@ -290,6 +292,8 @@ class StepAccount:
     operators: Mapping[int, Array]
     own_start: Array | None = None
     own_end: Array | None = None
+    claimed: Array | None = None
+    claimed_scale: Array | None = None
 
     def residual(self) -> Array:
         """``dH - W + N``: the change in storage less every paired work, the scheme's terms added back."""
@@ -487,13 +491,17 @@ def route_one_recorded(state: Mapping[str, Array], step: StepAccount,
     """The records after ``step`` of a receiver whose scheme claims no step identity (route 1, F0's SF-9: storage at
     least; S1's RK3, whose split penalty has no formula term). The running sums are :func:`recorded`'s; its identity
     is not judged, so its residual, the scheme's numerical dissipation that no formula books, is left in the balance
-    (``dH - W + N`` summed, as for any receiver) and the identity's fields read zero. **Route 1's check is that every
-    step dissipated**: the work every law that is not dissipative supplied, the unattributed included, less the change
-    in storage, ``D = W - dH``, is at least ``-IDENTITY_ULPS`` units of eps on the step's scale. A step that gave energy
-    (an energy gift larger than the step's own dissipation, by the identity ``D = D_true - G``), or whose books went
-    non-finite, is counted (``route_one_negative_steps``, a running sum kept as a pair as :data:`PAIRED`'s are, its
-    ``_low`` beside it); ``route_one_step`` is the step's ``D`` over its scale, ``route_one_worst`` its
-    smallest over the run."""
+    (``dH - W + N`` summed, as for any receiver). **Route 1's check is that every step dissipated**: the work every law
+    that is not dissipative supplied, the unattributed included, less the change in storage, ``D = W - dH``, is at
+    least ``-IDENTITY_ULPS`` units of eps on the step's scale. A step that gave energy (an energy gift larger than the
+    step's own dissipation, by the identity ``D = D_true - G``), or whose books went non-finite, is counted
+    (``route_one_negative_steps``, a running sum kept as a pair as :data:`PAIRED`'s are, its ``_low`` beside it);
+    ``route_one_step`` is the step's ``D`` over its scale, ``route_one_worst`` its smallest over the run. **A part of
+    the step the receiver books by formula** (``StepAccount.claimed``: a flow's drive as its stages applied it less the
+    law's delivery) is judged as a step identity is, its residual over its own magnitude in the identity's fields
+    (``step_identity``, ``identity_worst``; over :data:`IDENTITY_ULPS` units of eps it has failed): a gift booked
+    under the law that delivered less, which the sign of ``D`` cannot see where the step's dissipation is larger. The
+    identity's fields read zero where the receiver claims no part."""
     out = recorded(state, step, held)
     dtype = step.work.dtype
     rows = laws(held)
@@ -507,7 +515,10 @@ def route_one_recorded(state: Mapping[str, Array], step: StepAccount,
     zero = jnp.zeros((), dtype=dtype)
     first = jnp.asarray(state[f"{r}scale"]) == 0.0
     worst = jnp.where(first, relative, jnp.minimum(state[f"{r}route_one_worst"], relative))
-    return {**out, f"{r}step_identity": zero, f"{r}identity_worst": zero,
+    claimed = zero if step.claimed is None or step.claimed_scale is None else \
+        jnp.abs(step.claimed) / jnp.maximum(step.claimed_scale, jnp.finfo(dtype).tiny)
+    return {**out, f"{r}step_identity": claimed,
+            f"{r}identity_worst": jnp.maximum(state[f"{r}identity_worst"], claimed),
             f"{r}route_one_step": relative, f"{r}route_one_worst": worst,
             **summed_pair(state, "route_one_negative_steps", (~(relative >= -floor)).astype(dtype))}
 

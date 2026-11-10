@@ -62,6 +62,36 @@ def program_of(closed: Any) -> tuple[str, list[Any]]:
     return _ADDRESS.sub("", str(closed)), [np.asarray(held) for held in closed.consts]
 
 
+def nested_program(closed: Any) -> tuple[str, list[Any]]:
+    """:func:`program_of` of a traced step with the constants of every nested sub-program appended, in the order the
+    walk meets them: the closed jaxprs in the parameters of its equations (``jit``, ``cond`` branches, ``scan`` and ``while`` bodies, the functions of ``custom_jvp`` and ``custom_vjp``, the ``jaxprs`` of
+    ``custom_linear_solve``), and so on down. An array a nested ``jit`` closes over is the constant of that
+    sub-program: it is in neither the printed text nor the top-level constants. The two-builds check's trace form
+    (``mime.testing``) and a study's range check (``mime.study._ranges``) compare programs in this form."""
+    text, consts = program_of(closed)
+
+    def walk(program: Any) -> None:
+        for equation in getattr(program, "jaxpr", program).eqns:
+            for parameter in equation.params.values():
+                visit(parameter)
+
+    def visit(value: Any) -> None:
+        if hasattr(value, "consts") and (hasattr(value, "eqns") or hasattr(value, "jaxpr")):
+            consts.extend(np.asarray(held) for held in value.consts)
+            walk(value)
+        elif isinstance(value, tuple | list):
+            for each in cast(Sequence[Any], value):
+                visit(each)
+        elif isinstance(value, dict):
+            for each in cast(dict[Any, Any], value).values():
+                visit(each)
+        elif hasattr(value, "eqns"):
+            walk(value)
+
+    walk(closed)
+    return text, consts
+
+
 def impure_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any], first: Any) -> list[str]:
     """Whether tracing ``step`` a second time gives another program than ``first``, the program the trace check took:
     it then reads Python state its own calls change, which the compiled step would freeze at its trace. A step with
@@ -277,5 +307,5 @@ def _reached(owner: str, lags: Sequence[EdgeLag]) -> set[str]:
     return reached
 
 
-__all__ = ["controller_nodes", "in_graph_order", "inlined", "order_refusals", "trace_problems"]
+__all__ = ["controller_nodes", "in_graph_order", "inlined", "nested_program", "order_refusals", "trace_problems"]
 
