@@ -1,0 +1,71 @@
+{
+ "written": "2026-11-10, committed before any gate of the stall line ran (the commit that adds this file is the timestamp): the FVM's float32 stall line set from clean maxima, one number a dtype shared by the node's stall_flagged and the ledger harness's stall flag",
+ "phase": "the stall line (row #332)",
+ "labels": "predictions by the builder (Sonnet) from the mechanism below and the numbers seen before; nothing of this probe's output was read before this file",
+ "seen_before": [
+  "the ledger harness's table (mime.nodes.flow.fvm._flags, measured on Actions run 42769581278): 200 drawn correct runs a dtype, seeds 0 to 199, 60 steps, the stall reading's worst 5.1e-6 (float64) and 2.0e-3 (float32), at the default tolerance, every step judged; float32's reading rises with tau/dt, worst near tau/dt 3e3; the tolerance plant (1e4 times the default) caught 200/200 a dtype and the two-iteration plant 50/50 (float64) and 44/50 (float32), seeds 1000 on",
+  "the node's own line, 1e-3, was set from the stall spike's transient values 'about three orders below a stall's reading' (an inference), before the harness measured clean runs"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "GitHub runner, 4 vCPU, CPU, the probe workflow",
+  "sizes_and_parameters": "tests/flow/flag_cases.py's envelope: IMEX Euler, convection on, D/h 8, 12 or 16, Re 1 to 200 (log-uniform), swirl 0.05 to 0.5 of the centreline speed, dt 0.1 to 1 of the CFL line, tau/dt about 4 to 3e3, 60 steps; the reading is the node's own stall_ratio. Tolerances: the default (float64 1e-8; float32 1e-5 raised to the solve's rounding floor where that is higher), a tenfold tighter and a tenfold looser one set explicitly (an explicit tolerance is held as given, no floor), and for float32 the nominal 1e-5 set explicitly (to separate the floor from the tolerance)",
+  "seeds_and_draws": "clean: seeds 0 to 199 a dtype and tolerance (the seeds the table was measured on); plants: seeds 1000 to 1199 (tolerance plant) and 1000 to 1049 (two-iteration plant) a dtype"
+ },
+ "gate_1_scaling_with_the_tolerance": {
+  "claim": "whether the stall reading's clean maximum scales with the solve's tolerance, in each dtype",
+  "kind": "estimates",
+  "case": "probe/lines.py through ImplicitFlowNode (flag_cases.readings), the node's stall_ratio at every step",
+  "prediction": {
+   "value": "float64: the maxima scale with the tolerance, about 5e-7 (tight, 1e-9), 5.1e-6 (default, reproducing the table), 5e-5 (loose, 1e-7); the ratio loose/default in 3 to 12 and tight/default in 0.08 to 0.4. float32: the default reproduces 2.0e-3 (1.5e-3 to 2.5e-3) and the worst case does NOT scale: loose (1e-4) over nominal (explicit 1e-5) in 3 to 12 only where the tolerance is above the floor, but the maximum over the envelope is set by the draws whose rounding floor eps x tau/dt (1e-4 to 4e-4 at tau/dt 1e3 to 3e3) is above the tolerance, so tight (1e-6) over nominal in 0.7 to 1.5 and the default over nominal in 0.7 to 1.5",
+   "basis": "derived: N_Krylov = dt rho <rhs - A u', u'> is the stop's true residual (relative tolerance times |rhs|) against the solution, and |rhs| |u'| over the viscous dissipation grows with tau/dt, so the reading is about tolerance x tau/dt x c where the solve stops at its tolerance; the CG checks every 20 iterations, so the stop overshoots the tolerance by a factor between 0.1 and 1 and the maximum is a fraction of the linear law. Float32 stops at max(tolerance, floor) by default and stagnates at the floor when a given tolerance is below it",
+   "why": "float64's floor (eps x tau/dt, 7e-13 at 3e3) is orders below 1e-8, so every float64 run stops at its tolerance; float32's floor is above 1e-5 for tau/dt above about 80"
+  },
+  "metric": "the per-run worst reading and the ratios of the 200-run maxima across tolerances",
+  "control": {
+   "plant": "the default arm reproduces the table's maxima (5.1e-6, 2.0e-3): the probe measures the same runs by the same code; a different default maximum would say the harness or the node moved since the table",
+   "expected_rate": "default maxima within 1.5 times of the table's",
+   "clean_expected": "no run with a non-finite reading"
+  },
+  "if_wrong": "float64 not scaling would mean the stall reading is not set by the solve's stop and the rule's 'tie to the tolerance' has nothing to tie to; float32 scaling with the tolerance would mean its worst case is a tolerance-limited run, not a floor-limited one",
+  "cannot_discriminate_if": "a tight float32 arm stops at a stagnation (below the floor) on every run: then it measures the floor, not the tolerance, and says nothing about scaling for tolerances the floor does not hide"
+ },
+ "gate_2_the_rule": {
+  "claim": "the line is set by the maintainer's rule: tied to the run's tolerance if the readings scale with it, otherwise one line a dtype, set from the clean maxima; the node's line and the harness's flag read the same number",
+  "kind": "acceptance",
+  "prediction": {
+   "value": "one line a dtype, about twice the default arm's clean maximum: 1e-5 (float64) and 4e-3 (float32), the harness's present lines, so the node's 1e-3 moves to them (float64 down by 100, float32 up by 4); the node's flag no longer fires on correct float32 runs in the envelope",
+   "basis": "derived from the maxima predicted in gate 1 and the table's 2 to 4 times margin; a line tied to the tolerance would be blind to the tolerance plant by construction (the reading over the tolerance does not change when the tolerance is the thing planted), so it cannot be the line that catches that plant"
+  },
+  "if_wrong": "the lines come out of the measured maxima whatever they are; the prediction is reported wrong with its numbers"
+ },
+ "gate_3_the_plant_caught_on_every_run": {
+  "claim": "the harness's stall plant (a solve whose tolerance is 1e4 times its default, reporting arrival) is caught on every run at the new line in both dtypes with the clean arm quiet; the two-iteration plant is measured beside it",
+  "kind": "acceptance",
+  "case": "probe/stall_rate.py through .github/probe/detection_rate.py, 200 planted and 200 clean runs a dtype, seeds from 1000 (probe on the PR's head)",
+  "prediction": {
+   "value": "tolerance plant 200/200 and clean 0/200 in both dtypes (95 % lower bound 0.985); the two-iteration plant 50/50 in float64 and about 44/50 in float32 as in the table (a warm start already within two iterations of a float32 stiff solve's floor reads below the line), reported not hidden; the plants' smallest per-run readings at least 20 times the new line (tolerance plant)",
+   "basis": "measured-before at the same lines (the table's evidence rows)",
+   "why": "1e4 times the default tolerance puts the reading about 1e4 above the clean level in float64 and about 1e2 to 1e4 in float32 (tolerance 0.1 against a floor of 1e-4 at most)"
+  },
+  "control": {
+   "plant": "STALL_PLANT=tolerance_1e4 (settings tolerance = 1e4 times the dtype's default) and two_iterations (cap 2, check every 1)",
+   "environment_variable": "STALL_PLANT",
+   "expected_rate": "200/200 (tolerance), clean 0/200",
+   "runs": 200,
+   "clean_expected": "0/200",
+   "resolution": "the smallest plant that is caught on every draw is not measured by this gate: the plant is 1e4 times the default, far above any resolution the clean maximum implies; a plant of 10 to 30 times the default would sit near the line (the clean maximum is already 2 to 3 times below it) and is not claimed"
+  },
+  "if_wrong": "a miss is reported with its seed and reading and the line is not moved to catch it if that puts it under twice the clean maximum",
+  "cannot_discriminate_if": "the line is tied to the tolerance: the tolerance plant moves its own line"
+ },
+ "bits": {
+  "cases": "two metered tube programs of the flags' envelope (flag_cases.readings at one draw each, one whose float32 stall reading lies between the old and the new line, if the lines probe finds one) in float64 and float32, base (the release tip the branch was cut from) and head, in one job, one CPU, one BLAS thread (bit_compare.py)",
+  "prediction": "every array np.array_equal except stall_flagged, in the one float32 program whose reading lies between 1e-3 and the new line (4e-3), where the flag falls from 1 to 0: the line is read after the solve and moves no velocity, pressure or ledger record; in float64 a reading between 1e-5 and 1e-3 would move the flag the other way (1 where it was 0): none is expected, the float64 maximum is 5.1e-6",
+  "controls": {
+   "repeat": "the head recorded twice: every array identical",
+   "one_ulp": "bit_compare.py's own controls (tests/test_probe_bit_compare.py): a one-ulp change differs"
+  }
+ },
+ "outcomes": null
+}
