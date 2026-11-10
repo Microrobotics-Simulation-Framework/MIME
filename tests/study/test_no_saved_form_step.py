@@ -74,3 +74,28 @@ def test_the_control_only_the_step_named_passes(current: int, held: int, passes:
     """A step to 13 fails, whatever the branch records beside it: the form 13 paragraph and an empty
     ``tests/saved/test_form13.py`` are not read. A branch behind the tip fails too."""
     assert allowed(current, held) is passes
+
+
+def steps_of(versions: dict[str, object]) -> dict[int, list[str]]:
+    """The saved-form versions the module's ``*_ADDED`` and ``*_RENAMED`` constants name, each with its constants."""
+    named: dict[int, list[str]] = {}
+    for name, value in versions.items():
+        if name.isupper() and name.endswith(("_ADDED", "_RENAMED")) and type(value) is int:
+            named.setdefault(value, []).append(name)
+    return named
+
+
+def test_each_saved_form_step_is_one_change_and_the_last_is_current():
+    """Two branches that each take the same form's step (both name form 12, one merged after the other without its
+    renumbering) pass the step guard above, which reads ``CURRENT`` alone; here each version is named by one constant,
+    and the highest by one is ``CURRENT``."""
+    import mime.saved._versions as versions
+
+    named = steps_of(vars(versions))
+    assert {version: names for version, names in named.items() if len(names) > 1} == {}
+    assert max(named) == CURRENT
+
+
+def test_the_control_two_changes_naming_one_form_are_seen():
+    assert steps_of({"ROWS_RENAMED": 12, "OTHER_ADDED": 12, "TERMS_ADDED": 4, "FIELDS_KEY": "fields"}) == {
+        12: ["ROWS_RENAMED", "OTHER_ADDED"], 4: ["TERMS_ADDED"]}

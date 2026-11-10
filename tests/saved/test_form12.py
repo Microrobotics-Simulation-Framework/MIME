@@ -16,9 +16,11 @@ write-back.
 
 **The controls.** With the resolved record's write-back removed, the form-11 flow folder is refused as
 ``load.input-hash`` on every run (a hash: the same input, the same refusal); with the document's read of the old name
-removed, its flow is refused as a setting the FVM does not take (``load.setting-unknown``). Version 11's reader refuses
-a folder of version 12 as ``load.newer-form``, the document and the lock each once, and the form left unstepped is read
-by it with none."""
+removed, its flow is refused as a setting the FVM does not take (``load.setting-unknown``); with the derived graph's
+write-back removed, the folder's own graph, named as form 12 names it, is not written back as its lock holds it (a check
+of keys, where a load's comparison of a rebuilt graph off the lock's environment reads numbers). Version 11's reader
+refuses a folder of version 12 as ``load.newer-form``, the document and the lock each once, and the form left unstepped
+is read by it with none."""
 
 import hashlib
 import json
@@ -107,6 +109,24 @@ def test_the_step_leaves_a_folder_without_a_flow_as_it_was():
     assert _versions.document_in_form(upgraded, 11) == document
     assert _versions.resolved_in_form(lock["resolved"], 11) == lock["resolved"]
     assert _versions.physics_in_form(lock["derived"]["physics"], 11) == lock["derived"]["physics"]
+
+
+def test_the_form_eleven_flow_folders_derived_graph_is_written_back_as_its_lock_holds_it():
+    """The derived graph's write-back alone, on the form-11 flow folder's own lock, in any environment (a load compares
+    a rebuilt graph with the lock's by its numbers, which an environment unlike the lock's does not reproduce, so it
+    cannot see a key left unrenamed): the lock's graph named as this form names it, the flow node's parameter by its
+    new name, is written back into form 11 as the lock holds it."""
+    physics = json.loads((FLOW11 / LOCK_FILE).read_text(encoding="utf-8"))["derived"]["physics"]
+
+    def named_now(node: dict[str, object]) -> dict[str, object]:
+        params = node.get("params")
+        if not isinstance(params, dict) or OLD_ROWS not in params:
+            return node
+        return {**node, "params": {NEW_ROWS if key == OLD_ROWS else key: value for key, value in params.items()}}
+
+    current = {**physics, "nodes": [named_now(node) for node in physics["nodes"]]}
+    assert _keys(current, NEW_ROWS) == ["nodes.1.params.solve_report_rows"] and _keys(current, OLD_ROWS) == []
+    assert _versions.physics_in_form(current, 11) == physics
 
 
 def test_the_form_eleven_flow_folder_keeps_its_rows_under_the_new_name(tmp_path: Path):
