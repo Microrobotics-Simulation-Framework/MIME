@@ -130,5 +130,62 @@
     "gate_9_central_difference": "MRS 5.7e-9 (both modes, both scales), FVM viscosity 9.4e-9 (reverse) and 9.3e-9 (forward), as predicted; NOT predicted separately: the FVM drive's amplitude 6.15e-8, 1.6x under the line (a linear map: the difference's error is two runs' noise at the solve's 1e-8 tolerance [inference]); controls baked and stopped 30/30 (MRS) and 12/12 (FVM), clean 0; the line's discriminating range from a planted relative error of 1.07e-7",
     "gate_guard_flag_forms": "as predicted (tests); control (NaN written) 30/30, clean 0/30",
     "costs": "prediction wrong in kind: with the run-constants made in each chunk, the MRS sphere's checkpointed reverse call (146 ms at 80 steps, 630 ms at 320) was 2 to 19 times its unchecked one (65, 34 ms), each checkpoint making them again; fixed (made once for the run, 40 and 57 ms on the laptop). The seam against MADDENING's own scan at 80 steps: 1654 ms, 11x the checkpointed call before the fix and 25x the unchecked. Forward mode on the sphere 9 to 12 ms a call at 20 to 320 steps; on the tube forward 7.6 ms a step and reverse 8.4 (checkpointed) and 6.4 (unchecked). Memory: not separable from the process's peak at these sizes (0.72 to 0.97 GiB in the steady phase), so the checkpoint's saving is not measured"
+  },
+  "fix_round_230": {
+    "written": "2026-11-10, committed before any of the fix round's gates ran (the commit that adds this block is the timestamp): the refuting review of #230 at head 6d276ea (three majors M1 to M3, six minors)",
+    "labels": "'measured-before' numbers are the review's, from probe runs 42786519269 and 42787513427 on 6d276ea; the rest derived or guessed, and say so",
+    "m1_recheck_that_can_change_its_trigger": {
+      "claim": "the recheck re-solves a flagged member with the cause of each flag removed (the CG's cap lifted to the larger of ten times itself and the default 5000; its stall restarts raised by the default's number) at the member's own tolerance, on a program of its own; a solve with a non-finite residual is reported not rechecked, with its reason; it reports the change in the objective and the derivative",
+      "kind": "equality, and change",
+      "case": "the periodic tube's viscosity gradient (reverse), 20 steps, the FVM node's cap constant set to 1 (the node's own 'cap' setting, planted through its constants)",
+      "prediction": {
+        "value": "the recheck's objective equals the clean run's to 1e-7 relative and its derivative to 1e-6 (the clean run's own tolerance noise, 1e-8 x tens); the change from the capped member's is above 1e-3 relative in both (guess: a single CG iteration from the scaled start is nowhere near the flow); the recheck's solves converged",
+        "basis": "derived for the equality (the same program at the same tolerance, nothing capped); guessed for the size of the change"
+      },
+      "control": {
+        "plant": "the recheck re-solving nothing and reporting its change as 0 (recheck_noop, the reviewer's mutant) and the recheck at a tighter tolerance only (the 6d276ea recheck)",
+        "expected_rate": "30/30 each",
+        "runs": 30,
+        "clean_expected": "0/30"
+      },
+      "cannot_discriminate_if": "the cap plant leaves the solve converged (the clean run's per-step iterations are asserted above one, and the plant's report asserted at the cap)"
+    },
+    "m2_gate_7_machinery": {
+      "claim": "forward mode's report of the tangent solves and its warnings are asserted (primal cap, forward mode: 20 primal and 20 tangent solves short, two warnings; clean forward mode: no warning, the tangent solves taking iterations); the transpose-only cap is planted through a seam the production solve reads, not a copy of it",
+      "prediction": {
+        "value": "cap plant forward: forward_short 20, backward_short 20, two warnings (measured-before, the review's capmodes); transpose seam, reverse: backward_short 20, forward_short 0; clean: 0 and 0",
+        "basis": "measured-before (run 42786519269)"
+      },
+      "control": {
+        "plant": "forward mode's tangent report zeroed (fwdreport), the recheck re-solving nothing (recheck_noop), the transpose seam ignored by the solve (transpose_ignored) and the warning text dropped (no_warning)",
+        "expected_rate": "30/30 each, the gate's whole test file as the oracle",
+        "runs": 30,
+        "clean_expected": "0/30"
+      }
+    },
+    "m3_gate_9_operating_points": {
+      "claim": "each case of gate 9 is judged at the step its central difference resolves: the sphere's radius and the tube's viscosity at h = 1e-4 (truncation 9e-9 and noise comparable), the tube's drive amplitude (an affine map: no truncation) at h = 1e-2",
+      "prediction": {
+        "value": "|AD/CD - 1| about 6e-9 (sphere), 9.4e-9 (viscosity), 1.4e-9 (drive, against 6.15e-8 at h = 1e-4)",
+        "band": [
+          0.0,
+          1e-07
+        ],
+        "unit": "1",
+        "basis": "measured-before (run 42787513427 for the tube; the sphere's from run 42775520610)"
+      },
+      "discriminating_range": {
+        "prediction": "each case's resolution a planted relative error in its factor of 1.0e-7 to 1.2e-7 (the line 1e-7 plus the case's own agreement), the sphere's 1.07e-7 measured before (run 42771045612); the drive's and the viscosity's not measured before",
+        "basis": "derived, and says so"
+      }
+    },
+    "gate_10_memory": {
+      "claim": "the checkpoint's saving is stated as measured: the tube's compiled derivative program's temporary memory 4.4 MB unchecked to 1.3 MB checkpointed at 80 steps; the sphere's no saving (69 MB both, 80 and 320 steps)",
+      "prediction": {
+        "value": "as the review measured (compiled program's temp_size_in_bytes, static): tube 80 steps 1.3 / 4.4 MB, sphere 69.0 / 69.0 MB",
+        "basis": "measured-before (run 42786519269)"
+      },
+      "measured_at": "the same quantity on this head, as a probe arm through the study's own derivative program"
+    }
   }
 }
