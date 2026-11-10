@@ -124,17 +124,18 @@ def _members(hint: object) -> tuple[object, ...]:
     return (hint,)
 
 
-def _group_of(hint: object) -> type[SettingGroup] | None:
-    """The setting group a setting's annotation holds (``Lubrication | None``), if any."""
-    groups = [m for m in _members(hint) if isinstance(m, type) and issubclass(m, SettingGroup)]
-    return groups[0] if len(groups) == 1 else None
+def _groups_of(hint: object) -> list[type[SettingGroup]]:
+    """The setting groups a setting's annotation holds (``Lubrication | None``; a flow's ``PeriodicBox |
+    VesselRegion``), if any."""
+    return [m for m in _members(hint) if isinstance(m, type) and issubclass(m, SettingGroup)]
 
 
 def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list[str]]:
     """The dimension each setting of ``cls`` declares in its annotation, and every problem with those declarations:
     a marker on a setting that does not hold a :class:`Quantity`, a :class:`Quantity` with no marker, a default of
     another dimension. A setting holding a :class:`SettingGroup` contributes its group's dimensioned settings as
-    ``<setting>.<field>``, optional where the setting may be ``None``."""
+    ``<setting>.<field>``, optional where the setting may be ``None`` or another group it may hold has no such field
+    (a flow's ``domain.length``, a periodic box's and not a vessel region's)."""
     try:
         hints = typing.get_type_hints(cls, include_extras=True)
     except Exception as error:  # noqa: BLE001 - a lab's annotation that does not resolve becomes a refusal naming it
@@ -144,17 +145,23 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
     problems: list[str] = []
     for setting in dataclasses.fields(cls):
         hint: object = hints.get(setting.name)
-        group = _group_of(hint)
-        if group is not None:
+        groups = _groups_of(hint)
+        if groups:
             if issubclass(cls, SettingGroup):
-                problems.append(f"setting {setting.name!r} holds the group {group.__name__}: a group holds no group")
+                problems.append(f"setting {setting.name!r} holds the group {groups[0].__name__}: a group holds no "
+                                f"group")
                 continue
-            inner, inner_problems = dimensioned_settings(group)
-            problems += [f"in its group {setting.name!r}: {problem}" for problem in inner_problems]
             optional = type(None) in _members(hint)
-            for name, declared in inner.items():
-                found[f"{setting.name}.{name}"] = dataclasses.replace(declared,
-                                                                      optional=declared.optional or optional)
+            for group in groups:
+                inner, inner_problems = dimensioned_settings(group)
+                problems += [f"in its group {setting.name!r}: {problem}" for problem in inner_problems]
+                for name, declared in inner.items():
+                    key = f"{setting.name}.{name}"
+                    held = found.get(key)
+                    if held is not None and held.dimension != declared.dimension:
+                        problems.append(f"setting {key!r} is of two dimensions in the groups {setting.name!r} holds")
+                    everywhere = all(name in _settings(other) for other in groups)
+                    found[key] = dataclasses.replace(declared, optional=declared.optional or optional or not everywhere)
             continue
         if typing.get_origin(hint) is Annotated:
             held, *metadata = typing.get_args(hint)

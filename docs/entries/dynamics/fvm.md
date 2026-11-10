@@ -69,6 +69,14 @@ The flow is driven by laws bound to the medium: on a periodic box, a `BodyForce`
 pressure drop a period of the vessel would carry. The fluid's viscosity and density are the medium's values, from its
 material record or `exp.declare`, never settings of the field.
 
+Open at the vessel's ends, `FVM(domain=VesselRegion())` on a straight tube along z, each end is an opening that takes
+one law: an `Inflow` (a flux given) or a `Windkessel` (a pressure affine in its flux over the step), attached with
+`medium=` and `surface=tube.inlet` or `surface=tube.outlet`. The box is open along its axis, the faces on its two planes
+evolved half cells, so its projector stays exact; the step holds the openings' laws and couples them implicitly
+through its affine response (one unit field a step, solved again from the last), and the build refuses openings whose
+rows have no solution. IMEX Euler and its steady limit step it; RK3 with openings, tilted open vessels and a step
+rule for the open box (`dt='auto'`) come later.
+
 Each step of the implicit schemes reports its solve: the iterations, the true residual against the tolerance, and how
 the solve stopped (at its cap, stagnated, at a residual that is not finite); RK3's projections are exact fast solves,
 which do not stop short, so an RK3 step never raises the flag that follows. A step whose solve stopped other than
@@ -107,8 +115,9 @@ and ±10 % at 32 (measured on a static tube). They stay trainable. The entry dec
 `unverified`.
 
 **When not to use it.**
-- Anywhere but a periodic box around a straight circular tube, aligned with z or tilted in the x-z plane along a lattice
-  direction of the box: the region with openings, inflows and outlets, and other vessels arrive with later versions.
+- Anywhere but a periodic box around a straight circular tube (aligned with z or tilted in the x-z plane along a lattice
+  direction of the box) or that tube along z open at its ends: a region cut from a vessel by planes, two outlets,
+  valves and other vessels arrive with later versions.
 - Near a wall at a resolution the band does not resolve: the wall's shift is calibrated on straight tubes at the default
   resolution and finer, and about five cells across a lumen is the band's floor.
 - With bodies in the flow: neither a point body's exchange nor a resolved body is coupled yet.

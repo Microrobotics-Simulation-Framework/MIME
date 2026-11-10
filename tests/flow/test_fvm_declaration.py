@@ -115,8 +115,8 @@ def test_the_run_meters_the_flow_and_names_nothing_unmetered(float64, ledger):
     account = result.energy
     assert account is not None and dict(account.unmetered) == {} and dict(built.report.unmetered) == {}
     assert "not metered" not in account.text(details=True) and "not metered" not in result.text()
-    assert "water.flow: metered (fluid port), its step identity and each law's paired work recorded in its step" in \
-        built.report.energy
+    assert ("water.flow: metered (fluid and opening ports), its step identity and each law's paired work recorded in "
+            "its step") in built.report.energy
     assert "outside: body_force:water (receives no delivery from the components)" in built.report.energy
     assert not any("not metered" in line for line in built.report.energy), built.report.energy
     judged = ledger_closes(result)

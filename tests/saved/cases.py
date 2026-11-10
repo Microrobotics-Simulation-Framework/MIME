@@ -103,6 +103,28 @@ def prescribed_tube_flow() -> Experiment:
     return experiment
 
 
+def open_tube_flow() -> Experiment:
+    """The FVM on the open vessel: the same tube, one millimetre long, cut at its own ends, an inflow at its inlet
+    (steady and pulsatile) and an RCR Windkessel at its outlet; IMEX Euler with convection on."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import Inflow, Windkessel
+    from mime.scene import Scene, Tube, VesselRegion, Z
+    from mime.units import Pa_s, Pa_s_per_m3, kg_per_m3, m3_per_Pa, mL_per_s
+
+    experiment = Experiment("open_tube_flow", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(1.0))))
+    flow = FVM(domain=VesselRegion(margin=4), cells_across=8, scheme=Scheme.IMEXEuler())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(Inflow(steady=mL_per_s(1e-3), amplitude=mL_per_s(3e-4), frequency=Hz(2.0)), medium="water",
+                      surface="tube.inlet")
+    experiment.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
+                      medium="water", surface="tube.outlet")
+    return experiment
+
+
 def walled_toy() -> Experiment:
     """The coupled toy beside a passive structure, which builds no node and saves as a thing."""
     experiment = coupled_toy()
@@ -337,6 +359,7 @@ CASES = (
     # The same tube stepped by RK3, and its prescribed flow: the second scheme and the second flow field kind.
     Case("rk3_tube_flow", lambda: periodic_tube_flow(rk3=True)),
     Case("prescribed_tube_flow", prescribed_tube_flow),
+    Case("open_tube_flow", open_tube_flow),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),

@@ -16,7 +16,10 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
   (``tests/flow/test_fvm_mms.py``, its controls a sign flip and one component scaled by 1.05) is what sees one;
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
-- ``open_face_projection`` and ``port_kinetic_flux``: pending until a medium has openings (F2b's PR 2 gates them)."""
+- the open box's own (``OPEN_FLAGS``): ``open_face_projection`` (``N_proj`` over the step's scale: a projector that is
+  not orthogonal under the books' inner product, its port faces at the wrong weight) and ``port_kinetic_flux`` (the
+  booked kinetic-energy flux against the face formula's: a flux left inside another term); the periodic box's three
+  are pending on the open box until their lines are measured there."""
 
 from __future__ import annotations
 
@@ -95,15 +98,58 @@ def leak_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], aft
     return _share(loss, booked)
 
 
-#: The openings' two, declared and not yet checks: no medium has an opening to plant at.
-PENDING = (
-    LedgerFlag("open_face_projection", "N_proj at the open faces over the step's scale", None, {},
-               "not measured", pending="no medium has openings yet (a periodic box only), so no plant can be gated: "
-                                       "F2b's PR 2 gates it with its measured rate"),
-    LedgerFlag("port_kinetic_flux", "a port's work against the kinetic-energy flux through its faces", None, {},
-               "not measured", pending="no medium has openings yet (a periodic box only), so no plant can be gated: "
-                                       "F2b's PR 2 gates it with its measured rate"),
-)
+def _step_scale(before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:
+    """The step's scale, from the running sum's two ends."""
+    return jnp.asarray(after[f"{books.RECORDS}scale"]) - jnp.asarray(before[f"{books.RECORDS}scale"])
+
+
+def projection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:
+    """``|N_proj|`` over the step's scale: the projection's own term at the open faces, rounding where the
+    projector is orthogonal under the inner product the books are formed in (the half-weight faces)."""
+    del p
+    terms = cast(tuple[str, ...], node.LEDGER_TERMS)
+    term = jnp.asarray(after[f"{books.RECORDS}step_terms"])[terms.index("projection")]
+    stepped = jnp.asarray(after["stopped_at"]) < 0
+    return jnp.where(stepped, _share(jnp.abs(term), _step_scale(before, after)), 0.0)
+
+
+def face_kinetic_flux(node: Any, p: Mapping[str, Any], velocity: tuple[Array, Array, Array]) -> tuple[Array, Array]:
+    """The kinetic energy carried in through the openings over a step by the face formula, ``dt rho h^2 sum
+    (1/2)|u|^2 w`` on each plane (in at the low, out at the high; the tangential velocity at its end cell, averaged
+    onto the face's centre), and its natural size, ``dt rho h^2 sum |w|^3``."""
+    u, v, w = velocity
+    grid = node.grid(p)
+    weight = node.delta_t * as_run_array(p["density"]) * grid.spacing ** 2
+
+    def plane(end: int, w_end: Array) -> Array:
+        uc = 0.5 * (u[..., end] + jnp.roll(u[..., end], -1, 0))
+        vc = 0.5 * (v[..., end] + jnp.roll(v[..., end], -1, 1))
+        return jnp.sum(0.5 * (uc * uc + vc * vc + w_end * w_end) * w_end)
+
+    flux = weight * (plane(0, w[..., 0]) - plane(-1, w[..., -1]))
+    size = weight * (jnp.sum(jnp.abs(w[..., 0]) ** 3) + jnp.sum(jnp.abs(w[..., -1]) ** 3))
+    return flux, size
+
+
+def kinetic_flux_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any],
+                         after: Mapping[str, Any]) -> Array:
+    """The kinetic energy's flux through the openings as the books hold it (the scheme's own convective power
+    ``dt rho <C(u), u>``, under ``<node>.openings``) against the face formula's at the step's start, over their size:
+    rounding plus the face formula's own error (the open-ports spike's 0.74 % on a stenosis); a flux left in another
+    term, or formed otherwise at the planes, reads above it. Zero where both are under half the dtype's digits of the
+    flux's natural size (a flow whose ends carry no net kinetic energy: every digit is rounding there)."""
+    held = books.deliveries(node.constants())
+    line = next(d.law for d in held if d.kind == books.HOSTED and d.field == "kinetic_flux")
+    booked = jnp.asarray(after[f"{books.RECORDS}step_work"])[books.laws(held).index(line)]
+    face, natural = face_kinetic_flux(node, p, _velocity(before))
+    size = jnp.abs(booked) + jnp.abs(face)
+    digits = jnp.sqrt(jnp.finfo(booked.dtype).eps)
+    stepped = (size > digits * natural) & (jnp.asarray(after["stopped_at"]) < 0)
+    return jnp.where(stepped, _share(jnp.abs(booked - face), size), 0.0)
+
+
+#: The periodic box's flags have no openings to plant at; the open box's lines and rates are measured below.
+PENDING: tuple[LedgerFlag, ...] = ()
 
 #: The run that measured the lines: 200 draws a dtype of ``tests/flow/flag_cases.py``'s envelope (seeds 0 to 199), 60
 #: steps each, every flag read at every step.
@@ -171,6 +217,18 @@ FLAGS: tuple[LedgerFlag, ...] = (
     *PENDING,
 )
 
-__all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
+#: The open box's flags (``OpenFlowNode``): its two own, and the periodic box's three, pending there.
+OPEN_FLAGS: tuple[LedgerFlag, ...] = (
+    LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading, {}, "not yet measured",
+               pending="its line and its plant's rate are measured on the open box's drawn runs"),
+    LedgerFlag("port_kinetic_flux", "|the booked kinetic-energy flux - the face formula's| over their size",
+               kinetic_flux_reading, {}, "not yet measured",
+               pending="its line and its plants' rates are measured on the open box's drawn runs"),
+    *(LedgerFlag(flag.name, flag.ratio, flag.reading, {}, "measured on the periodic box",
+                 pending="its line was measured on the periodic box's drawn runs, not on the open box's")
+      for flag in FLAGS[:3]),
+)
+
+__all__ = ["CONVECTION_LINE_MEASURED", "OPEN_FLAGS", "face_kinetic_flux", "kinetic_flux_reading", "projection_reading", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
            "OPERATOR_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
            "stall_reading"]

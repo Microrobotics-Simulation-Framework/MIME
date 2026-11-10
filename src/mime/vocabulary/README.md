@@ -76,7 +76,10 @@ it applies it at, and the inertia its frames carry, paired by its change), `spin
 the loads on its frames, of which the rotor's axial torque is its own and the rest passes to its host),
 `delivered_inertia`, `flow_in` and `fluid` (a medium's fluid's momentum, `flow.momentum`, against the body force per
 unit mass each law driving it delivers, and the drive's waveform, which reaches it through the flow's own evaluation at
-its stage instants); `DeliveryKind`, `EnergyClass`,
+its stage instants) and `opening` (a flow's openings' outward volume fluxes, `flow.opening_flux`, a row per opening,
+against their pressures: a pressure row's offset a load, `flow.opening_pressure`, its block solved,
+`flow.opening_impedance`; a flux row is held in the flow's step, as the laws at its openings are, registered with it
+through `flow.opening`); `DeliveryKind`, `EnergyClass`,
 `Definiteness`, and `POWER` and `ENERGY`, what a delivery and its flow pair to.
 
 **What a kind checks, and who reads it.** A kind fixes the flow and the delivery kind of each interface it accepts,

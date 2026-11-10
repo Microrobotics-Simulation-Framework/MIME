@@ -341,7 +341,7 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
         if f"{ledger.RECORDS}law_storage" in records:  # each law holding energy of its own (a Windkessel's capacitor)
             change = records[f"{ledger.RECORDS}law_storage"] - records[f"{ledger.RECORDS}law_storage_start"]
             rows = ledger.laws(held)
-            for law in cast(Any, receiver).storing_laws():
+            for law in receiver.storing_laws():
                 stored[law] = _scalar(change[rows.index(law)])
             numerical[f"{name} (its laws' own)"] = _sum(records[f"{ledger.RECORDS}law_numerical"])
         numerical[name] = _sum(records[f"{ledger.RECORDS}terms"])

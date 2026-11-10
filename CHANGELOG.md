@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A flow open at the vessel's ends, and the laws at its openings: `VesselRegion`, `Inflow`, `Windkessel`, the
+  `opening` port kind.** `FVM(domain=VesselRegion())` on a straight tube along z cuts the region the medium fills at the
+  tube's own two ends, its new surfaces `tube.inlet` and `tube.outlet`, each an opening whose law is attached there:
+  `exp.attach(Inflow(steady=mL_per_s(...)), medium=blood, surface=tube.inlet)`, a volume flux pinned at the opening's
+  evolved face (a flux row), and `exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=blood,
+  surface=tube.outlet)`, the RCR stepped by backward Euler at the flow's instant (a pressure row). The grid is open
+  along z with its planes' faces at half weight, so the projector stays orthogonal; the step holds each opening's law,
+  coupled implicitly through the field's affine response (one unit field a step for the opening that is not the
+  gauge's reference, made in the program and solved again from the last), its openings' rows solved together (A2's
+  hybrid rows), the build refusing rows with no solution (`flow.openings-ill-posed`), a law at no opening, an opening
+  with none or two, a law on a periodic box, RK3 with openings and a tilted open vessel. With the energy ledger the
+  open flow is metered through `fluid` and the new `opening` port kind (a flow's openings' outward fluxes, a row per
+  opening, against their pressures): each law's work under its name, the inflow a source supplying it, the kinetic
+  energy convection carries through the openings as one line (`<node>.openings`, the scheme's own convective power
+  `dt rho <C(u), u>`), `N_proj` booked (rounding at the half-weight faces); a law that stores energy of its own keeps
+  its own books beside the flow's (`mime.core.ledger.law_records`: its storage at the step's start and end, its loss,
+  its numerical term, its own identity judged), and its loss is read net of what it gives back. `mime.testing.
+  port_law_suite`, the port-law family suite: a law's per-stage block passive over draws (CI check (a)), its own books
+  closing. Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
+
 - **The energy ledger as a gate's tool, in `mime.testing`.** `ledger_closes(books)`, one check that a metered run's
   books close at every step (a receiver's records or a run's result: the step identity within its floor, attribution,
   no gift or indefinite step, route 1's every step dissipated, no unowned jump between steps, the balance), which
@@ -602,6 +622,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **`Dynamics.port` is now `port_kinds`, a tuple** (no alias): a dynamics may name several port kinds, each delivery
+  paired by the one kind whose deliveries name its interface, and two kinds pairing one interface are refused at
+  registration. The rigid body, the arm, the motor and the FVM (now `("fluid", "opening")`) declare theirs; a lab's
+  dynamics writes `port_kinds = ("rigid_body",)` where it wrote `port = "rigid_body"`.
 
 - **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
   interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its

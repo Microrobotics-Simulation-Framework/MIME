@@ -8,7 +8,7 @@ its own step, through its registration."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, override
+from typing import TYPE_CHECKING, Annotated, ClassVar, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.flow._body_force import BodyForceNode
@@ -119,7 +119,7 @@ class _OpeningLaw(Interaction):
     (its name and the opening: ``windkessel:tube.outlet``), and its plan, a registration with the medium's flow,
     which holds it in its step as the port law ``port_law`` (``mime.nodes.flow.fvm._ports``)."""
 
-    port_law: str = ""
+    port_law: ClassVar[str] = ""
     family = None
     builds = {"": ()}
     roles = {"medium": RoleKind.MEDIUM, "surface": RoleKind.SURFACE}
@@ -201,8 +201,12 @@ class Windkessel(_OpeningLaw):
 
     @override
     def setting_problems(self, settings) -> list[str]:  # type: ignore[no-untyped-def]
-        return [f"{name} is {settings[name]!r}, not a value above zero" for name in ("proximal", "compliance", "distal")
-                if not (isinstance(settings[name], float) and settings[name] > 0.0)]
+        found: list[str] = []
+        for name in ("proximal", "compliance", "distal"):
+            value = settings[name]
+            if not (isinstance(value, float) and value > 0.0):
+                found.append(f"{name} is {value!r}, not a value above zero")
+        return found
 
 
 __all__ = ["BodyForce", "Inflow", "Windkessel"]

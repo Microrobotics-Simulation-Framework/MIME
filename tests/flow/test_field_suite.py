@@ -89,12 +89,29 @@ def fvm_rig(scheme: str, dtype: str) -> tuple[object, FieldRig]:
                     for c in "xyz")
         return moved / float(np.max(np.abs(np.asarray(state["velocity_z"])))), (1e-6 if dtype == "float64" else 1e-4)
 
+    def affine():
+        """FB4's monolithic reference on the open box: a drawn pulsatile run's last step against one cold solve of it."""
+        from open_cases import draw, monolithic_distance, point_node, scan
+
+        with in_dtype(dtype):
+            open_node = point_node(draw(0), ledger=False, scheme=scheme, convection=scheme != "steady")
+            before, _ = scan(open_node, 4)
+            after, _ = scan(open_node, 1, state=before)
+            return monolithic_distance(open_node, before, after), AFFINE_LINE[dtype]
+
     rig = FieldRig(node, p, state, {V: reading}, points, {V: exact}, 0.05, metered=metered,
-                   steady=steady if scheme == "steady" else None)
-    from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM
+                   steady=steady if scheme == "steady" else None, affine=affine if scheme != "rk3" else None)
+    from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_WAVEFORM
     from mime.registry import Port
 
-    return _kind({FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform")}), rig
+    return _kind({FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
+                  FLOW_OPENING.name: Port("openings")}), rig
+
+
+#: The affine case's line: the step's superposed solution against the monolithic solve, over the largest speed (the
+#: step's own tolerance, 1e-8 and float32's floor, through the operator's conditioning): on draw 0 while writing, 4.6e-10
+#: and 1.8e-6 clean, a unit field scaled by 1.1 2.7e-4 in float32; the drawn spread is the probe's (the PR's table).
+AFFINE_LINE = {"float64": 1e-6, "float32": 3e-5}
 
 
 def _arguments(node):
@@ -138,7 +155,7 @@ def test_each_kind_passes_the_suite_and_lists_what_it_skipped(dtype, name):
     kind, rig = KINDS[name](dtype)
     report = field_conformance(kind, declared(name), rig, dtype=dtype)
     assert report.passed, report.failures()
-    assert FieldCase.AFFINE in report.skipped
+    assert (FieldCase.AFFINE in report.skipped) == (name in ("womersley", "rk3"))
     if name == "womersley":
         assert set(report.skipped) == {FieldCase.LEDGER, FieldCase.STEADY, FieldCase.AFFINE}
         assert "outside" in report.skipped[FieldCase.LEDGER]
@@ -239,3 +256,17 @@ def test_a_prescribed_flow_in_a_medium_that_fills_no_tube_is_refused(float64):
     with pytest.raises(BuildRefused) as raised:
         exp.build()
     assert "flow.prescribed-region" in [r.code for r in raised.value.refusals]
+
+
+@pytest.mark.parametrize("plant", ["unit_scaled", "unit_negated"])
+def test_control_the_affine_case_fails_on_a_wrong_unit_field(dtype, monkeypatch, plant):
+    """The affine case can fail: a unit field scaled by 1.1, or negated, moves the superposed solution from the
+    monolithic solve past its line (in pulsatile flow, where the step's pressures move)."""
+    from open_cases import PLANTS
+
+    PLANTS[plant](monkeypatch.setattr)
+    kind, rig = fvm_rig("imex_euler", dtype)
+    del kind
+    assert rig.affine is not None
+    moved, line = rig.affine()
+    assert moved > line, (moved, line)

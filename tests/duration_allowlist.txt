@@ -993,3 +993,36 @@ tests/two_builds/test_graded_walk.py::test_control_with_the_rounding_exact_the_m
 tests/two_builds/test_graded_walk.py::test_control_with_the_rounding_exact_the_measured_pair_fires[helix] # kept: the walk's control, the helix's contact graded at 0.03 mm built twice with the rounding exact (about 16 s on a probe runner, more on a loaded one); a control must fail every run, so it is never skipped
 tests/near_field/test_build.py::test_the_memory_estimate_is_what_the_fit_measured_and_gmres_holds_the_inverses_besides[float64] # kept: the memory estimate pinned on the fit's own 882-point cases, both routes: one 24 s build of two spheres at 0.15 mm spacing per dtype (36 to 45 s on a loaded laptop); the refusal test above takes its control from the estimate itself and cannot see it move
 tests/near_field/test_build.py::test_the_memory_estimate_is_what_the_fit_measured_and_gmres_holds_the_inverses_besides[float32] # kept: the memory estimate pinned on the fit's own 882-point cases, both routes: one 24 s build of two spheres at 0.15 mm spacing per dtype (36 to 45 s on a loaded laptop); the refusal test above takes its control from the estimate itself and cannot see it move
+tests/flow/test_fvm_open.py::test_the_open_tube_is_the_periodic_tube[float32-None] # kept: FB1, the open tube against the periodic one, two compiled steady programs a dtype, the control's arm with its planted end faces
+tests/flow/test_fvm_open.py::test_the_open_tube_is_the_periodic_tube[float32-gradient_full_cell] # kept: FB1, the open tube against the periodic one, two compiled steady programs a dtype, the control's arm with its planted end faces
+tests/flow/test_fvm_open.py::test_the_inflows_face_flux_is_its_waveform[float32-None] # kept: FB2, two drawn open runs a dtype (each a compiled program at its own grid and step), clean and planted
+tests/flow/test_fvm_open.py::test_the_inflows_face_flux_is_its_waveform[float32-inflow_scaled] # kept: FB2, two drawn open runs a dtype (each a compiled program at its own grid and step), clean and planted
+tests/flow/test_fvm_open.py::test_the_windkessels_books_close[float32-None] # kept: FB3, two drawn metered open runs a dtype, clean and with the port gift planted
+tests/flow/test_fvm_open.py::test_the_windkessels_books_close[float32-port_gift] # kept: FB3, two drawn metered open runs a dtype, clean and with the port gift planted
+tests/flow/test_fvm_open.py::test_the_superposed_field_is_the_monolithic_solve[float32-None] # kept: FB4, two drawn open runs a dtype, clean and with each unit-field plant
+tests/flow/test_fvm_open.py::test_the_superposed_field_is_the_monolithic_solve[float32-unit_scaled] # kept: FB4, two drawn open runs a dtype, clean and with each unit-field plant
+tests/flow/test_fvm_open.py::test_the_superposed_field_is_the_monolithic_solve[float32-unit_negated] # kept: FB4, two drawn open runs a dtype, clean and with each unit-field plant
+tests/flow/test_fvm_open_ledger.py::test_the_books_close_with_open_faces[float32-None] # kept: FB13, two drawn metered open runs a dtype through a narrowing, clean and with the interior gift
+tests/flow/test_fvm_open_ledger.py::test_the_books_close_with_open_faces[float32-interior_gift] # kept: FB13, two drawn metered open runs a dtype through a narrowing, clean and with the interior gift
+tests/flow/test_fvm_open.py::test_the_open_tube_is_the_periodic_tube[float64-None] # kept: FB1, the open tube against the periodic one, two compiled steady programs a dtype, the control's arm with its planted end faces
+tests/flow/test_fvm_open.py::test_the_open_tube_is_the_periodic_tube[float64-gradient_full_cell] # kept: FB1, the open tube against the periodic one, two compiled steady programs a dtype, the control's arm with its planted end faces
+tests/flow/test_fvm_open.py::test_the_inflows_face_flux_is_its_waveform[float64-None] # kept: FB2, two drawn open runs a dtype (each a compiled program at its own grid and step), clean and planted
+tests/flow/test_fvm_open.py::test_the_inflows_face_flux_is_its_waveform[float64-inflow_scaled] # kept: FB2, two drawn open runs a dtype (each a compiled program at its own grid and step), clean and planted
+tests/flow/test_fvm_open.py::test_the_windkessels_books_close[float64-None] # kept: FB3, two drawn metered open runs a dtype, clean and with the port gift planted
+tests/flow/test_fvm_open.py::test_the_windkessels_books_close[float64-port_gift] # kept: FB3, two drawn metered open runs a dtype, clean and with the port gift planted
+tests/flow/test_fvm_open.py::test_the_superposed_field_is_the_monolithic_solve[float64-None] # kept: FB4, two drawn open runs a dtype, clean and with each unit-field plant
+tests/flow/test_fvm_open.py::test_the_superposed_field_is_the_monolithic_solve[float64-unit_scaled] # kept: FB4, two drawn open runs a dtype, clean and with each unit-field plant
+tests/flow/test_fvm_open.py::test_the_superposed_field_is_the_monolithic_solve[float64-unit_negated] # kept: FB4, two drawn open runs a dtype, clean and with each unit-field plant
+tests/flow/test_fvm_open_ledger.py::test_the_books_close_with_open_faces[float64-None] # kept: FB13, two drawn metered open runs a dtype through a narrowing, clean and with the interior gift
+tests/flow/test_fvm_open_ledger.py::test_the_books_close_with_open_faces[float64-interior_gift] # kept: FB13, two drawn metered open runs a dtype through a narrowing, clean and with the interior gift
+tests/flow/test_fvm_open.py::test_float32_is_within_its_line_of_float64 # kept: the ports' float32 line, one drawn open run in each dtype
+tests/flow/test_fvm_open_ledger.py::test_n_proj_is_rounding_at_two_tolerances # kept: N_proj at two tolerances, two metered open runs
+tests/flow/test_fvm_open_ledger.py::test_n_wk_has_its_order # kept: N_WK's order (CI check (b)), one ensemble of three drawn cases at two steps, six compiled runs
+tests/flow/test_fvm_open_ledger.py::test_control_a_loss_written_into_n_wk_fails_its_order # kept: N_WK's order check's control, the same ensemble with the loss planted
+tests/flow/test_fvm_openings.py::test_an_open_vessel_runs_with_its_laws_and_its_books_close # kept: the open vessel built, run and metered through the experiment
+tests/flow/test_fvm_openings.py::test_a_saved_open_vessel_loads_and_runs_bit_for_bit # kept: the open vessel saved, loaded and both run
+tests/flow/test_fvm_openings.py::test_inflows_at_every_opening_must_cancel # kept: two cancelling inflows built and run through the gauge's row
+tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float32-unit_scaled] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
+tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float32-unit_negated] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
+tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float64-unit_scaled] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
+tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float64-unit_negated] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted

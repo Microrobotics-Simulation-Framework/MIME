@@ -30,8 +30,7 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.flow.fvm._grid import MACGrid, Velocity, _average_to_centre, _average_to_face, \
-    _difference_to_centre, _difference_to_face
+from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 
 #: The weight the ends' half cells carry in the inner product.
 HALF = 0.5
@@ -53,6 +52,22 @@ def _end_weight(shape: tuple[int, ...], dtype: Any) -> Array:
     weight = np.ones(shape[2])
     weight[0] = weight[-1] = HALF
     return jnp.asarray(weight, dtype=dtype)[None, None, :]
+
+
+def _average_to_face(a: Array, axis: int) -> Array:
+    return 0.5 * (jnp.roll(a, 1, axis) + a)
+
+
+def _difference_to_face(a: Array, axis: int, h: Any) -> Array:
+    return (a - jnp.roll(a, 1, axis)) / h
+
+
+def _average_to_centre(a: Array, axis: int) -> Array:
+    return 0.5 * (a + jnp.roll(a, -1, axis))
+
+
+def _difference_to_centre(a: Array, axis: int, h: Any) -> Array:
+    return (jnp.roll(a, -1, axis) - a) / h
 
 
 def _z_difference_to_centre(w: Array, h: Any) -> Array:

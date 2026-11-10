@@ -30,14 +30,16 @@ from typing import Any, NamedTuple, override
 import numpy as np
 from jax import Array
 from jaxtyping import Float
+from maddening.core.compliance.metadata import NodeMeta, Reference
 from typing_extensions import Annotated, ReadOnly, TypedDict
 
-from mime.core import NodeFields, Units, as_run_array, jnp, node_fields, run_dtype
+from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, run_dtype
 from mime.core import ledger as books
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negative_resistivity
+from mime.nodes.flow.fvm._flags import OPEN_FLAGS
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STALL_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
-    _held_of, _scheme_state, _velocity, check_deliveries
+    check_deliveries
 from mime.nodes.flow.fvm._open import OpenMACGrid
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, port_law_named, port_system, reference_of, \
     well_posed
@@ -47,6 +49,8 @@ from mime.nodes.flow.fvm._solve import Stopping, preconditioner_named, projected
 #: The roles the open node's hosted rows take beside its viscosity's and wall's: each opening's law, by its index,
 #: and the kinetic energy convection carries through the openings.
 KINETIC_FLUX = "kinetic_flux"
+#: The open node's numerical terms: the scheme's, and the projection's own at the open faces.
+OPEN_TERMS = ("backward_euler", "convection", "krylov", "projection")
 OPENING = "opening_"
 #: The float32 flow's distance from float64's with ports (the open-ports spike, D/h 16, measured 1.6e-6 to 3.5e-6).
 FLOAT32_PORTS = "the flow within 1.6e-6 to 3.5e-6 of float64's (the open-ports spike, measured at D/h 16)"
@@ -82,16 +86,55 @@ class OpenPorts(NamedTuple):
     force: Velocity
 
 
+def _velocity(state: Mapping[str, Array]) -> Velocity:
+    return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+
+
 def _add(a: Velocity, b: Velocity, scale: Any = 1.0) -> Velocity:
     return (a[0] + scale * b[0], a[1] + scale * b[1], a[2] + scale * b[2])
+
+
+#: The openings' conditions, the periodic node's momentum equation (``ImplicitFlowNode``'s) holding inside.
+EQUATIONS = (r"\operatorname{p}_{n+1} = p_{k}, \quad p_{k} = \operatorname{a}_{k} + \operatorname{b}_{k} q_{k} \ \text{or} "
+             r"\ q_{k} = \operatorname{Q}_{k}")
+_STEPPED = "mime.nodes.flow.fvm._open_node.OpenFlowNode.stepped"
 
 
 class OpenFlowNode(ImplicitFlowNode):
     """The flow field of a medium in a straight vessel along z cut at its two ends, each an opening whose law the step
     holds, stepped by IMEX Euler (or its steady limit) on the monolithic projected CG (the module states the step)."""
 
-    LEDGER_TERMS = ("backward_euler", "convection", "krylov", "projection")
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-129",
+        description="A medium's flow in a straight vessel open at its two ends: the periodic flow node's step on the "
+                    "Cartesian MAC grid open along z, each end an opening whose law (an inflow, a Windkessel) the "
+                    "step holds, coupled implicitly through the field's affine response.",
+        governing_equations=EQUATIONS,
+        assumptions=(
+            "Inside, the periodic flow node's (ImplicitFlowNode's) momentum equation and its wall's band",
+            "The grid is open along z: the faces on its two planes are evolved half cells, weighted by a half in the "
+            "inner product, so the projector stays orthogonal; the pressure's field part is zero on the planes, whose "
+            "pressures the openings' forces carry",
+            "At an open plane the viscous flux is zero and convection's flux is the plane's own face value",
+            "Each opening k's law states its pressure affine in its outward volume flux over the stage (a, b), or the "
+            "flux itself (Q); the field's pressure on the opening's plane is its pressure, seen relative to one "
+            "reference opening (the gauge)",
+            "The unit fields are solved in the program each step from the last, while the operator is fixed"),
+        limitations=(
+            "A straight vessel along z only, one opening at each plane",
+            "IMEX Euler or its steady limit: RK3 with openings is not built",
+            "No backflow stabilisation at an outlet yet: a reversing outlet at high Reynolds number is unguarded",
+        ),
+        references=(Reference("HarlowWelch1965"), Reference("Westerhof2009")),
+    )
+    symbols = (
+        Symbol(r"p", SymbolKind.STATE, "opening_pressure", "Pa", _STEPPED),
+        Symbol(r"q", SymbolKind.STATE, "opening_flux", "m^3/s", _STEPPED),
+    )
+
+    LEDGER_TERMS = OPEN_TERMS
     GRID_TERMS = ("projection",)
+    LEDGER_FLAGS = OPEN_FLAGS
 
     def __init__(self, name: str, timestep: float, *, openings: Sequence[str], opening_laws: Sequence[str],
                  opening_parameters: Any, opening_law_ids: Sequence[str] = (), initial_opening_state: Any = None,
@@ -213,7 +256,8 @@ class OpenFlowNode(ImplicitFlowNode):
             units: list[Velocity] = []
             reports = [report]
             for k, j in enumerate(others):
-                unit, unit_report = one(grid.port_force(jnp.zeros(2, dtype=dtype).at[j].set(1.0), rho), held_units[k])
+                unit, unit_report = self.unit_field(one, grid.port_force(jnp.zeros(2, dtype=dtype).at[j].set(1.0), rho),
+                                                    held_units[k])
                 units.append(unit)
                 reports.append(unit_report)
             response = jnp.stack([grid.opening_fluxes(unit) for unit in units], axis=1) if units else \
@@ -236,7 +280,7 @@ class OpenFlowNode(ImplicitFlowNode):
         checked = bool(c["convection"]) and scheme.cfl_line is not None
         stopped_before = jnp.asarray(state["stopped_at"]) >= 0
         past = ~(cfl <= scheme.cfl_limit(p["tube_axis"])) if checked else jnp.asarray(False)
-        ended_state, stage = scheme.step(context, _scheme_state(state), time, dt)
+        ended_state, stage = scheme.step(context, {"velocity": _velocity(state)}, time, dt)
         ports = solved_ports["ports"]
         ended_velocity: Velocity = ended_state["velocity"]
         flux = grid.opening_fluxes(ended_velocity)
@@ -250,8 +294,10 @@ class OpenFlowNode(ImplicitFlowNode):
         ratio = self.ratio(solid, lumen, lumen_scale)
         reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
         stokes = not bool(c["convection"])
+        solved_velocity: Velocity = ended_state["velocity"]
         ended: dict[str, Array] = dict(
-            **_held_of(ended_state), steps=steps + 1, solve_report=report,
+            velocity_x=solved_velocity[0], velocity_y=solved_velocity[1], velocity_z=solved_velocity[2],
+            steps=steps + 1, solve_report=report,
             solve_report_sum=jnp.asarray(state["solve_report_sum"]) + report,
             solve_flagged=flagged, cfl=cfl.astype(dtype),
             stopped_at=jnp.where(stopped_before, jnp.asarray(state["stopped_at"]),
@@ -274,6 +320,11 @@ class OpenFlowNode(ImplicitFlowNode):
             stall = self.stall_ratio(energy)
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > STALL_LINE).astype(dtype)}
         return held, StepParts(stage, fields, energy)
+
+    def unit_field(self, solve: Any, force: Velocity, start: Velocity) -> tuple[Velocity, Array]:
+        """The unit field a unit pressure at one opening drives over the step (``force`` its force), solved from
+        ``start`` (the last step's) by the step's own ``solve``, and its report."""
+        return solve(force, start)
 
     # -- the step identity ------------------------------------------------------------------------------------------
     def open_energy_terms(self, p: Mapping[str, Any], grid: OpenMACGrid, before: Velocity, stage: StageParts,
@@ -383,7 +434,7 @@ class OpenFlowNode(ImplicitFlowNode):
                     stored = stored.at[row].set(energy["law_books"][int(delivery.field.removeprefix(OPENING))])
         unattributed = unattributed + sum((value for field, value in hosted_work.items() if field not in named),
                                           start=jnp.zeros((), dtype=dtype))
-        terms = jnp.stack([energy[name] for name in self.LEDGER_TERMS])
+        terms = jnp.stack([energy[name] for name in OPEN_TERMS])
         storing = any(law.stores for law in self.laws())
         return books.StepAccount(work=work, hosted=jnp.zeros((len(rows), 2), dtype=dtype), unattributed=unattributed,
                                  terms=terms, storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
