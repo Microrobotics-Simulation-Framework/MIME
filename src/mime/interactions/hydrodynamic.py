@@ -1301,9 +1301,9 @@ class Drag(UncoupledDrag):
         "graded contact serves a body whose orientation to the wall is held (a crest or a rim is the contact whichever "
         "way the body rolls about its axis), and a step whose nearest point leaves the patch near the wall raises "
         "off_patch. With wall_refinement written, the graded cells near the wall lie farther from it in their own "
-        "size than in the force spacing, so fewer are integrated, and they outnumber the wall's cell budget "
-        "(wall_cells_short): a graded contact half a force spacing from a plane measured less accurate there than "
-        "the uniform sampling at a blob of a tenth, the compact default, and more accurate at a fortieth",
+        "size than in the force spacing, so fewer are integrated: a graded contact half a force spacing from a plane "
+        "measured less accurate there than the uniform sampling at a blob of a tenth, the compact default, and more "
+        "accurate at a fortieth (the wall's cell budget was not the cause: lifted to every cell, nothing moved)",
         "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
         "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "

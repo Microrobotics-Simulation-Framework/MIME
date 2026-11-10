@@ -163,9 +163,9 @@ spacing of the wall with its nearest point outside the graded patch raises `off_
 the uniform sampling's error near the wall, not the graded one's. Resampling to follow the pose is not done (it would
 break the held matrix and the derivatives). In a graded run the wall's self-image measures each cell's distance in the
 cell's own size, and a written `wall_refinement` counts from the finest spacing: the graded cells near the wall then lie
-farther from it in their own size, so fewer are integrated, and they outnumber the wall's cell budget
-(`wall_cells_short`); a graded contact half a force spacing from a plane measured less accurate with the image
-integrated than the uniform sampling at a blob of a tenth, the compact default, and more accurate at a fortieth. The build report states what was
+farther from it in their own size, so fewer are integrated, and a graded contact half a force spacing from a plane
+measured less accurate with the image integrated than the uniform sampling at a blob of a tenth, the compact default,
+and more accurate at a fortieth (the wall's cell budget was not the cause: lifted to every cell, nothing moved). The build report states what was
 graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the force
 points' mean spacing. Measured against exact answers and finer references by `tests/oracles/test_graded_sampling.py`
 (a sphere's contact at a plane against Brenner's series, its wrong-way and leaves-the-patch controls); not bounded
