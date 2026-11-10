@@ -1,0 +1,200 @@
+{
+  "written": "2026-11-10, committed before any gate of S-F0-3a ran (the commit that adds this file is the timestamp): the gradient path over a study's resolved axes (a differentiated chunked run beside the batched scan, forward and reverse mode, a checkpoint per chunk in reverse), its result (flags, refusals, table extrapolations, composed statuses, the solves' reports forward and backward with the warning and the recheck) and the guard flag forms (the MRS rung's indefinite resistance and unread wall)",
+  "phase": "S-F0-3a, lane S aligned with F0's designs, PR 3a: the gradient path",
+  "labels": "the builder's predictions; 'measured-before' numbers are from one probe run on a GitHub runner (4 vCPU, float64), named below; the rest derived or guessed, and say so",
+  "seen_before": [
+    "central difference rebuilt over h 1e-2 to 1e-7 against the derivative through the built graph's params (MADDENING's run_scan, reverse and forward), loss scales 1e-12, 1 and 1e6, float64, probe run 42763593758 on release 8dda937: the pulled sphere (the pull of the declared-range rigs, radius ranged [1.0, 1.15] mm, at 1.05 mm, 5 steps): reverse = forward = -467.4378390246 at every scale; |AD/CD - 1| 5.7e-9 at h 1e-4, 1.5e-11 at h 3e-6",
+    "the same probe, the periodic tube (R 0.5 mm, D/h 8, IMEX Euler under Stokes, dt 20 ms, 20 steps, body force 1 + cos(2 pi 0.64 t) m/s^2, viscosity 1 mPa s), the lumen's flux in the viscosity: at the default tolerance 1e-8 reverse -3.344848592196e-05 and forward -3.344848592546e-05 (1.0e-10 apart), |AD/CD - 1| 7.4e-9 at h 1e-4 and 1.3e-7 at h 3e-5 (the solve's tolerance); at tolerance 1e-12 reverse = forward, 1.1e-8 at h 1e-4 (truncation), 5.6e-11 at h 3e-6",
+    "the same probe: the pulled sphere moves at 0.174 m/s, a translational Reynolds number of 365 by its diameter in water, past Drag.MRS's declared 0.1; the gradient rigs here pull 1e4 times less (about 0.04 [arithmetic])",
+    "build_point on the ranged sphere: 0.93 to 1.08 s a point after the first (11.6 s with the process's warm-up), laptop, float64"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "CPU; gates on CI's runners, measurements as probes on GitHub runners (4 vCPU)",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "MRS: a sphere of radius 1.0 to 1.15 mm, Drag.MRS at a written spacing of 0.6 mm (91 force points over the range), blob 0.5, quadrature refinement 4, water, mass 2e-8 kg, inertia 2e-17 kg m^2, dt 1 ms, 5 steps, the pull (2e-10, -1e-10, 3e-10) N and (4e-14, 2e-14, -3e-14) N m (translational Re about 0.04, turning about 4e-3). FVM: the periodic tube above, cells_across 8, its solve at the default tolerance unless a gate says otherwise",
+    "seeds_and_draws": "the gates are deterministic; the controls' rates by detection_rate.py over 30 runs each as probe arms"
+  },
+  "gate_5_released_programs": {
+    "claim": "nothing in a released program moves: the forward runs (MADDENING's scan, MIME's chunked run with flags, the batched scan and a batch of one) of the MRS and FVM cases give the base's arrays bit for bit",
+    "kind": "equality",
+    "case": "bit_compare.py base release tip against head, one CPU, one BLAS thread: pulled, mrs_free_space, mrs_tube, screw_in_tube, sphere_settling_tube, the periodic flow (IMEX Euler) and its steady limit; float64 and float32",
+    "prediction": {
+      "value": "every array np.array_equal",
+      "basis": "derived",
+      "why": "the differentiated run is a separate function; the forward programs' code paths are unchanged (the marker is added only inside a differentiated run, a key absent from a forward run's constants)"
+    },
+    "metric": "np.array_equal per array",
+    "control": {
+      "plant": "the head recorded twice (identical) and one leaf one ulp up (arrays differ)",
+      "expected_rate": "1/1 each, deterministic"
+    },
+    "if_wrong": "a moved array is a change in a released program: found and reverted before the PR, never explained away",
+    "cannot_discriminate_if": "a program the comparison does not run: the list above names each"
+  },
+  "gate_6_what_the_run_raised": {
+    "claim": "a member's raised flag, a refusal (a node's stop) and a table extrapolation appear in its gradient result, read from the same differentiated run (the flags) and the member's own plan (the extrapolation)",
+    "kind": "equality",
+    "case": "a study over the ranged sphere whose one member raises the MRS rung's indefinite flag and stops (a blob planted large at that member), and an experiment whose material read is extrapolated by the experiment's declaration; gradient in reverse and forward mode",
+    "prediction": {
+      "value": "each item present with its count, first and last step (the flag), its code (the stop), its field and basis (the extrapolation); the gradient finite in the flag form",
+      "basis": "derived",
+      "why": "the tally is the batched scan's own reduction, carried as aux of the differentiated function; the stop is read from the member's final state by the node's stop_problem; the extrapolation from the plan's reads"
+    },
+    "metric": "presence and equality with the forward run's own tally and refusal",
+    "control": {
+      "plant": "the result's assembly dropping one item (a flag, the stop, the extrapolation), one at a time, switched by MIME_PLANT_GRADIENT_DROP",
+      "environment_variable": "MIME_PLANT_GRADIENT_DROP",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "a missing item is a result that hides what its run raised: the gate fails",
+    "cannot_discriminate_if": "the member raises nothing: the case is built so that it does, and the test asserts the forward run raises it first"
+  },
+  "gate_7_solve_report": {
+    "claim": "a solve stopped at its cap, forward or in its transpose, is warned of with its count, shows in the per-step report, and is rechecked at a tighter tolerance with the change in value and gradient reported",
+    "kind": "equality",
+    "case": "the periodic tube's viscosity gradient (reverse), report_rows = steps; the cap planted at one iteration on the primal solve, then on the transpose solve alone",
+    "prediction": {
+      "value": "primal plant: forward warning count 20 of 20 steps, every per-step row at_cap 1; transpose plant: backward warning count 20, every per-step backward row at_cap 1, the primal rows converged; with no plant both counts 0; the recheck at tolerance 1e-10 reports its change, and with the cap planted reports that its own solves stopped at the cap as well",
+      "basis": "derived",
+      "why": "a cap of one iteration cannot reach 1e-8 from a scaled start on this solve (it takes 4 to 6 iterations at 1e-8, the frozen golden reports)"
+    },
+    "metric": "the stop counts of the report block, forward from the state, backward from the solve_report leaf's gradient",
+    "control": {
+      "plant": "the cap of one iteration itself (MIME_PLANT_SOLVE_CAP=primal|transpose)",
+      "environment_variable": "MIME_PLANT_SOLVE_CAP",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "a capped solve the result does not warn of: the seam does not carry the backward report",
+    "cannot_discriminate_if": "the cap is not reached (a solve converging in one iteration): the clean run's per-step iterations are asserted above one"
+  },
+  "gate_9_central_difference": {
+    "claim": "the gradient through the study's path, reverse and forward, equals the central difference that rebuilds, float64, at h = 1e-4, at loss scales 1e-12 and 1e6",
+    "kind": "equality (to the difference's resolution)",
+    "case": "the ranged sphere's radius at 1.05 mm (the loss of the gradient oracle's pose weights); the periodic tube's viscosity and its drive's amplitude (the lumen's flux)",
+    "prediction": {
+      "value": "|AD/CD - 1| about 6e-9 (MRS) and 7e-9 to 1.1e-8 (FVM)",
+      "band": [
+        0.0,
+        1e-07
+      ],
+      "unit": "1",
+      "basis": "measured-before (probe run 42763593758, at the larger pull for the sphere)",
+      "why": "at h = 1e-4 the difference's truncation dominates; the solve's tolerance adds about 1e-8 to the tube's at the default 1e-8"
+    },
+    "metric": "|AD/CD - 1|",
+    "control": {
+      "plant": "(a) a value baked at build: the MRS rung's held resistance read as built whatever the radius (MIME_PLANT_GRADIENT=baked), the tube's penalty viscosity taken from the build (baked); (b) stop_gradient on the leaf (MIME_PLANT_GRADIENT=stopped)",
+      "environment_variable": "MIME_PLANT_GRADIENT",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "the line 1e-7 sits about 10x above the measured difference; each plant moves the gradient by its leaf's share, predicted O(0.1) to 1"
+    },
+    "if_wrong": "a gradient off by more than the line is a path that drops a share: found by the controls' kind",
+    "cannot_discriminate_if": "a difference across a value-keyed boundary (the radius stays inside its range, one force-point count) or a step below tol x tau/dt (h 1e-4 is far above)"
+  },
+  "gate_guard_flag_forms": {
+    "claim": "a guard that stops a forward run by writing NaN (the MRS rung's indefinite resistance; its unread wall) writes a finite stand-in in a differentiated run and raises the same flag at the same step, so the gradient is finite and the result names the stop",
+    "kind": "equality",
+    "case": "the ranged sphere with a blob planted large enough to make the resistance indefinite at its first step; the tube's wall read past its readable range",
+    "prediction": {
+      "value": "the forward run: flag at step 1, NaN resistance, refused; the differentiated run: flag at step 1, every gradient finite, the stop in the result",
+      "basis": "derived"
+    },
+    "metric": "isfinite of the gradient; the flag's first step equal to the forward run's",
+    "control": {
+      "plant": "the marker ignored (the NaN written in the differentiated run too): MIME_PLANT_GUARD=nan",
+      "environment_variable": "MIME_PLANT_GUARD",
+      "expected_rate": "30/30 (a NaN gradient)",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "a NaN gradient from a guard: the flag form does not reach the guard"
+  },
+  "costs": {
+    "prediction": "reverse mode with a checkpoint per chunk costs 2 to 4 forward runs and stores about one chunk's states per chunk boundary; forward mode about 1.5 runs per parameter: forward wins up to 2 scalars (mode='auto''s line N, set from the measurement); the backward step with the run-constant seam 10x or more faster than without on the sphere (S-F0-1 measured 17.9x and 30.9x on FL-9)",
+    "measured_at": "node_measure.py through the built graph as probe arms: the sphere at 5, 20 and 80 steps and the tube at 20 and 80 steps; the gate sizes are not among them"
+  },
+  "outcomes": {
+    "measured": "probe runs 42771045612 (controls, bits, budget, discriminating range; head cad4957), 42775520610 (gate 9's values, head cad4957), 42777359900 (gate 10, the compiled call alone)",
+    "gate_5_released_programs": "as predicted: 1092 of 1092 arrays np.array_equal in float64 and 1092 of 1092 in float32, 12 programs against the release tip, one CPU",
+    "gate_6_what_the_run_raised": "as predicted (tests); controls 30/30 each (drop flag, drop stop, drop extrapolation), clean 0/30",
+    "gate_7_solve_report": "as predicted (tests); controls 30/30 each (primal cap, transpose cap), clean 0/30",
+    "gate_9_central_difference": "MRS 5.7e-9 (both modes, both scales), FVM viscosity 9.4e-9 (reverse) and 9.3e-9 (forward), as predicted; NOT predicted separately: the FVM drive's amplitude 6.15e-8, 1.6x under the line (a linear map: the difference's error is two runs' noise at the solve's 1e-8 tolerance [inference]); controls baked and stopped 30/30 (MRS) and 12/12 (FVM), clean 0; the line's discriminating range from a planted relative error of 1.07e-7",
+    "gate_guard_flag_forms": "as predicted (tests); control (NaN written) 30/30, clean 0/30",
+    "costs": "prediction wrong in kind: with the run-constants made in each chunk, the MRS sphere's checkpointed reverse call (146 ms at 80 steps, 630 ms at 320) was 2 to 19 times its unchecked one (65, 34 ms), each checkpoint making them again; fixed (made once for the run, 40 and 57 ms on the laptop). The seam against MADDENING's own scan at 80 steps: 1654 ms, 11x the checkpointed call before the fix and 25x the unchecked. Forward mode on the sphere 9 to 12 ms a call at 20 to 320 steps; on the tube forward 7.6 ms a step and reverse 8.4 (checkpointed) and 6.4 (unchecked). Memory: not separable from the process's peak at these sizes (0.72 to 0.97 GiB in the steady phase), so the checkpoint's saving is not measured"
+  },
+  "fix_round_230": {
+    "written": "2026-11-10, committed before any of the fix round's gates ran (the commit that adds this block is the timestamp): the refuting review of #230 at head 6d276ea (three majors M1 to M3, six minors)",
+    "labels": "'measured-before' numbers are the review's, from probe runs 42786519269 and 42787513427 on 6d276ea; the rest derived or guessed, and say so",
+    "m1_recheck_that_can_change_its_trigger": {
+      "claim": "the recheck re-solves a flagged member with the cause of each flag removed (the CG's cap lifted to the larger of ten times itself and the default 5000; its stall restarts raised by the default's number) at the member's own tolerance, on a program of its own; a solve with a non-finite residual is reported not rechecked, with its reason; it reports the change in the objective and the derivative",
+      "kind": "equality, and change",
+      "case": "the periodic tube's viscosity gradient (reverse), 20 steps, the FVM node's cap constant set to 1 (the node's own 'cap' setting, planted through its constants)",
+      "prediction": {
+        "value": "the recheck's objective equals the clean run's to 1e-7 relative and its derivative to 1e-6 (the clean run's own tolerance noise, 1e-8 x tens); the change from the capped member's is above 1e-3 relative in both (guess: a single CG iteration from the scaled start is nowhere near the flow); the recheck's solves converged",
+        "basis": "derived for the equality (the same program at the same tolerance, nothing capped); guessed for the size of the change"
+      },
+      "control": {
+        "plant": "the recheck re-solving nothing and reporting its change as 0 (recheck_noop, the reviewer's mutant) and the recheck at a tighter tolerance only (the 6d276ea recheck)",
+        "expected_rate": "30/30 each",
+        "runs": 30,
+        "clean_expected": "0/30"
+      },
+      "cannot_discriminate_if": "the cap plant leaves the solve converged (the clean run's per-step iterations are asserted above one, and the plant's report asserted at the cap)"
+    },
+    "m2_gate_7_machinery": {
+      "claim": "forward mode's report of the tangent solves and its warnings are asserted (primal cap, forward mode: 20 primal and 20 tangent solves short, two warnings; clean forward mode: no warning, the tangent solves taking iterations); the transpose-only cap is planted through a seam the production solve reads, not a copy of it",
+      "prediction": {
+        "value": "cap plant forward: forward_short 20, backward_short 20, two warnings (measured-before, the review's capmodes); transpose seam, reverse: backward_short 20, forward_short 0; clean: 0 and 0",
+        "basis": "measured-before (run 42786519269)"
+      },
+      "control": {
+        "plant": "forward mode's tangent report zeroed (fwdreport), the recheck re-solving nothing (recheck_noop), the transpose seam ignored by the solve (transpose_ignored) and the warning text dropped (no_warning)",
+        "expected_rate": "30/30 each, the gate's whole test file as the oracle",
+        "runs": 30,
+        "clean_expected": "0/30"
+      }
+    },
+    "m3_gate_9_operating_points": {
+      "claim": "each case of gate 9 is judged at the step its central difference resolves: the sphere's radius and the tube's viscosity at h = 1e-4 (truncation 9e-9 and noise comparable), the tube's drive amplitude (an affine map: no truncation) at h = 1e-2",
+      "prediction": {
+        "value": "|AD/CD - 1| about 6e-9 (sphere), 9.4e-9 (viscosity), 1.4e-9 (drive, against 6.15e-8 at h = 1e-4)",
+        "band": [
+          0.0,
+          1e-07
+        ],
+        "unit": "1",
+        "basis": "measured-before (run 42787513427 for the tube; the sphere's from run 42775520610)"
+      },
+      "discriminating_range": {
+        "prediction": "each case's resolution a planted relative error in its factor of 1.0e-7 to 1.2e-7 (the line 1e-7 plus the case's own agreement), the sphere's 1.07e-7 measured before (run 42771045612); the drive's and the viscosity's not measured before",
+        "basis": "derived, and says so"
+      }
+    },
+    "gate_10_memory": {
+      "claim": "the checkpoint's saving is stated as measured: the tube's compiled derivative program's temporary memory 4.4 MB unchecked to 1.3 MB checkpointed at 80 steps; the sphere's no saving (69 MB both, 80 and 320 steps)",
+      "prediction": {
+        "value": "as the review measured (compiled program's temp_size_in_bytes, static): tube 80 steps 1.3 / 4.4 MB, sphere 69.0 / 69.0 MB",
+        "basis": "measured-before (run 42786519269)"
+      },
+      "measured_at": "the same quantity on this head, as a probe arm through the study's own derivative program"
+    },
+    "outcomes": {
+      "measured": "probe run 42796313803 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803), head be61bcc, 20 arms",
+      "m1_recheck": "as predicted for the equality, better than predicted: with the cap planted through the node's cap setting the recheck's objective and derivative equal the clean run's exactly (0.0 relative) in reverse and forward mode; the capped member is off the clean run by 1.08e-3 (objective) and 6.3e-3 (reverse derivative) or 4.6e-3 (forward derivative), so the guessed size of the change (above 1e-3) held for the objective by 8 percent only, and the test's line is 1e-4; the transpose cap moves the derivative alone (1.9e-3, the objective 0). A stagnation (tolerance 1e-17, below float64's rounding floor) is rechecked and reported stopped short as well, changes 0 (a test).",
+      "m2_gate_7_machinery": "as predicted (tests, 13 passing and 2 skipping before the stagnation test was added); the gate 7 file as the oracle: forward mode's tangent report zeroed 30/30, reverse mode's transpose report zeroed 30/30, the warnings dropped 30/30, the recheck re-solving nothing 30/30 (clean 0/10 each); the cap itself through the node's setting 30/30 and through the seam 30/30 (clean 0/30) (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803)",
+      "m3_gate_9": "every control re-run on the final head: baked and stopped 30/30 on the sphere, 12/12 on the tube, clean 0; the drive at h = 1e-2 passes (the file's tests pass); discriminating range (planted relative error in the case's factor, smallest caught on every draw, refined): sphere 1.07e-7, viscosity 1.15e-7, drive 1.07e-7, as predicted (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803, arms range_sphere, range_viscosity, range_drive)",
+      "gate_5": "1096 of 1096 arrays np.array_equal in float64 and 1096 of 1096 in float32, 12 programs against the release tip, one CPU, on the final head (the solve was restructured to take its transpose stopping through a seam; its program is the same one)",
+      "gate_6_and_guard": "controls re-run on the final head: drop the flag, the stop, the extrapolation and the guard's NaN 30/30 each, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42796313803)",
+      "gate_10_memory": "as the review measured, on this head through the study's own derivative program (the compiled program's static temp_size_in_bytes): tube reverse 40 steps 1.33 MB checkpointed, 2.51 MB not; 80 steps 1.49 and 4.59 MB; forward 0.48 MB; sphere reverse 80 and 320 steps 68.98 MB checkpointed and 68.97 MB not (no saving), forward 22.44 MB"
+    }
+  }
+}

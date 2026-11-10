@@ -1,6 +1,6 @@
 """Gradient statuses, their composition and the gradient map's checks."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
 
 from mime.core.switch import Declaration
@@ -66,4 +66,28 @@ def status_problem(declared: GradientStatus, switches: Sequence[Declaration],
     return f"it is declared {declared.value}, and {given}{capped}: it is {derived.value}"
 
 
-__all__ = ["RANK", "GradientStatus", "derived_status", "status_of_switches", "status_problem"]
+def composed(statuses: Iterable[GradientStatus]) -> GradientStatus:
+    """A path's status: the least of its entries' (:data:`RANK`), and ``EXACT`` for a path through no entry. A
+    ``FIXED_KEY`` path holds its random keys fixed, so it is that where nothing on it promises less."""
+    held = list(statuses)
+    if not held:
+        return GradientStatus.EXACT
+    least = min(RANK[status] for status in held)
+    found = [status for status in held if RANK[status] == least]
+    return GradientStatus.FIXED_KEY if GradientStatus.FIXED_KEY in found else found[0]
+
+
+#: The statuses a differentiated study refuses on its path unless each entry holding one is acknowledged with a reason:
+#: no derivative passes (``CUT``), or one is computed that no check has earned (``UNVERIFIED``).
+ACKNOWLEDGED_ONLY = frozenset({GradientStatus.CUT, GradientStatus.UNVERIFIED})
+
+
+def unacknowledged(path: Mapping[str, GradientStatus], acknowledged: Mapping[str, str]) -> tuple[str, ...]:
+    """The entries on ``path`` (by id) whose status is refused unless acknowledged, and that ``acknowledged`` (entry
+    id to its reason, a sentence) does not acknowledge."""
+    return tuple(sorted(owner for owner, status in path.items()
+                        if status in ACKNOWLEDGED_ONLY and not acknowledged.get(owner, "").strip()))
+
+
+__all__ = ["ACKNOWLEDGED_ONLY", "RANK", "GradientStatus", "composed", "derived_status", "status_of_switches",
+           "status_problem", "unacknowledged"]

@@ -38,10 +38,13 @@ from mime.core._shapes import (
 )
 from mime.core._field_kinds import FieldKind, HeldForces, HeldPoints, Units, field_kinds, paired_forces, typed_units
 from mime.core._node import (
+    DIFFERENTIATED,
     NUDGED_SIZE,
     RUN_CONSTANTS_GIVEN,
     MimeNode,
     as_run_array,
+    differentiated,
+    differentiated_nodes,
     jit,
     jnp,
     node_input,
@@ -59,6 +62,7 @@ __all__ = [
     "CAPSULE_SWITCHES",
     "CYLINDER",
     "CYLINDER_SWITCHES",
+    "DIFFERENTIATED",
     "RUN_CONSTANTS_GIVEN",
     "SCREW",
     "SCREW_SWITCHES",
@@ -86,6 +90,8 @@ __all__ = [
     "Units",
     "VelocityRule",
     "as_run_array",
+    "differentiated",
+    "differentiated_nodes",
     "field_kinds",
     "jit",
     "jnp",

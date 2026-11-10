@@ -24,7 +24,14 @@ controls.
 
 `GradientStatus`: every registered entry declares one. `piecewise` is split
 into `piecewise_kink` and `piecewise_jump`, and `status_of_switches`, `derived_status` and `status_problem` give the
-status an entry's switches and its listed raw sites allow, which `mime docs check` holds every entry to. Composition,
-the map and the checks arrive with the first fit, in a1.
+status an entry's switches and its listed raw sites allow, which `mime docs check` holds every entry to.
+
+**Composition and the rule** are built: `composed` gives a path's status, the least of its entries'; `unacknowledged`
+names the entries on a path whose status is `cut` or `unverified` (`ACKNOWLEDGED_ONLY`) and that no reason
+acknowledges. The first consumer is a study's derivative (`Study.gradient`, `mime.study`): the path is the entries
+whose nodes lie between the leaves the axes write and the nodes the objective reads, each at its attached rung's status;
+a controller called on the host is `cut` there (its writes held as the forward run made them). Its checks are gates
+in the tests: the derivative against a central difference that rebuilds, with a value baked at build and a stopped
+leaf as controls. The map, the forward response per input and a fit's own checks come with the fit.
 
 Releases are explained in the [package manifest](../README.md#status).
