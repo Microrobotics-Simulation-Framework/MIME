@@ -1743,7 +1743,8 @@ class Drag(UncoupledDrag):
         node = b.add_response_node(PointDragNode(
             ctx.node_name(), ctx.timestep, radius=float(hull.kind.enclosing_radius(hull.settings)),
             viscosity=values["viscosity"], density=values["density"], spacing=frame.spacing, width_cells=width,
-            origin=tuple(-c for c in frame.origin), start=cast(tuple[float, ...], start), one_way=self.one_way,
+            origin=tuple(-c for c in frame.origin), initial_points=cast(tuple[float, ...], start),
+            one_way=self.one_way,
             drive_frequency=ctx.frequencies.get("medium", 0.0), **cast(dict[str, Any], vessel)))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(b.read("twist"), into=node["twist"])

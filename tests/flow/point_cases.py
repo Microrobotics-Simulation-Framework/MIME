@@ -66,7 +66,8 @@ class FreeBox:
         self.radius = radius_cells * h
         start = (side / 2 + 0.37 * h, side / 2 + 0.21 * h, side / 2 + 0.11 * h)
         self.drag = PointDragNode("drag", self.dt, radius=self.radius, viscosity=WATER_MU, density=WATER_RHO,
-                                  spacing=h, width_cells=width, origin=(0.0, 0.0, 0.0), start=start, faxen=faxen,
+                                  spacing=h, width_cells=width, origin=(0.0, 0.0, 0.0), initial_points=start,
+                                  faxen=faxen,
                                   maxey_riley=maxey_riley)
         self.mass = mass_ratio * WATER_RHO * 4.0 / 3.0 * math.pi * self.radius ** 3
         self.force = force

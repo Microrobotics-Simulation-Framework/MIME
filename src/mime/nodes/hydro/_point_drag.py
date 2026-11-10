@@ -47,7 +47,7 @@ from jaxtyping import Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
-from typing_extensions import Annotated, ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input
 from mime.nodes.flow.fvm._exchange import HISTORY_MODES, faxen, kernel_spectrum, self_history, steady_response, \
@@ -109,6 +109,17 @@ class PointDragState(TypedDict, closed=True):
     reynolds_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
 
 
+class PointDragInputs(TypedDict, closed=True):
+    pose: NotRequired[ReadOnly[Float[Array, "7"]]]
+    twist: NotRequired[ReadOnly[Float[Array, "6"]]]
+    gathered_x: NotRequired[ReadOnly[Float[Array, "1"]]]
+    gathered_y: NotRequired[ReadOnly[Float[Array, "1"]]]
+    gathered_z: NotRequired[ReadOnly[Float[Array, "1"]]]
+    curvature_x: NotRequired[ReadOnly[Float[Array, "1"]]]
+    curvature_y: NotRequired[ReadOnly[Float[Array, "1"]]]
+    curvature_z: NotRequired[ReadOnly[Float[Array, "1"]]]
+
+
 class PointDragNode(MimeNode):
     """A point sphere's drag, fluid-acceleration force and added mass in a flow on a grid, coupled two-way through the
     exchange law and lagged (the module states the law, the readings and the checks)."""
@@ -146,13 +157,14 @@ class PointDragNode(MimeNode):
     DELIVERY_CLASSES = {"maxey_riley": "unmetered"}
 
     def __init__(self, name: str, timestep: float, *, radius: float, viscosity: float, density: float,
-                 spacing: float, width_cells: float, origin: Sequence[float], start: Sequence[float],
+                 spacing: float, width_cells: float, origin: Sequence[float], initial_points: Sequence[float],
                  faxen: bool = True, maxey_riley: bool = True, added_mass: bool = True, one_way: bool = False,
                  vessel_centre: Sequence[float] = (), vessel_axis: Sequence[float] = (),
                  vessel_radius: float = 0.0, drive_frequency: float = 0.0) -> None:
         super().__init__(name, timestep, radius=float(radius), viscosity=float(viscosity), density=float(density),
                          spacing=float(spacing), width_cells=float(width_cells),
-                         origin=tuple(float(c) for c in origin), start=tuple(float(c) for c in start),
+                         origin=tuple(float(c) for c in origin),
+                         initial_points=tuple(float(c) for c in initial_points),
                          faxen=bool(faxen), maxey_riley=bool(maxey_riley), added_mass=bool(added_mass),
                          one_way=bool(one_way),
                          **({"vessel_centre": tuple(float(c) for c in vessel_centre),
@@ -168,14 +180,17 @@ class PointDragNode(MimeNode):
                 "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None)),
                 "density": ParamSpec(units="kg/m^3", bounds=(0.0, None), description="the fluid's density"),
                 "spacing": ParamSpec(trainable=False, units="m", description=structural),
-                "width_cells": ParamSpec(trainable=False, units="1", description=structural)}
+                "width_cells": ParamSpec(trainable=False, units="1", description=structural),
+                "initial_points": ParamSpec(trainable=False, units="m",
+                                            description="where the body starts, the exchange edges' first points: an "
+                                                        "initial condition, which reaches the run through the state")}
 
     @override
     def initial_state(self) -> NodeFields:
         c = self.constants()
         zero = as_run_array(jnp.zeros(()))
         one = as_run_array(jnp.zeros(1))
-        start = as_run_array(jnp.asarray(c["start"])) + as_run_array(jnp.asarray(c["origin"]))
+        start = as_run_array(jnp.asarray(c["initial_points"])) + as_run_array(jnp.asarray(c["origin"]))
         modes = HISTORY_MODES
         return node_fields(PointDragState(
             points=start[None, :], force_x=one, force_y=one, force_z=one, faxen_x=one, faxen_y=one, faxen_z=one,
@@ -269,7 +284,7 @@ class PointDragNode(MimeNode):
         dissipated = jnp.asarray(state["dissipated"]) + jnp.where(started, jnp.sum(felt * felt) / r0 * dt, 0.0)
         decay = made["decay"].astype(dtype)
         history = decay[:, None] * (history + made["amplitude"].astype(dtype)[:, None] * force[None, :])
-        points = (pose[:3] + as_run_array(jnp.asarray(c["origin"])))[None, :]
+        points = (pose[:3] + as_run_array(p["origin"]))[None, :]
         relative = jnp.sqrt(jnp.sum((velocity - drag_reading) ** 2))
         reynolds = 2.0 * a * relative * rho / mu
         gap = self.wall_gap(p, pose[:3], a)
@@ -319,15 +334,14 @@ class PointDragNode(MimeNode):
     def wall_gap(self, p: Mapping[str, Any], position: Array, a: Array) -> Array:
         """The body's gap to the vessel's wall in its radii (a report, held out of derivatives); a large number with
         no vessel."""
-        c = self.constants()
-        if "vessel_radius" not in c:
+        if "vessel_radius" not in self.constants():
             return jnp.asarray(1e30, dtype=position.dtype)
-        centre = jnp.asarray(c["vessel_centre"], dtype=position.dtype)
-        axis = jnp.asarray(c["vessel_axis"], dtype=position.dtype)
+        centre = jnp.asarray(p["vessel_centre"], dtype=position.dtype)
+        axis = jnp.asarray(p["vessel_axis"], dtype=position.dtype)
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
         offset = position - centre
         across = offset - jnp.dot(offset, axis) * axis
-        gap = (float(c["vessel_radius"]) - jnp.sqrt(jnp.sum(across * across)) - a) / a
+        gap = (jnp.asarray(p["vessel_radius"], dtype=position.dtype) - jnp.sqrt(jnp.sum(across * across)) - a) / a
         return _lax.stop_gradient(gap)
 
 
@@ -346,5 +360,5 @@ def free_space_margin(radius: float, viscosity: float, density: float, spacing: 
     return (mobility + one_step - steady) / mobility
 
 
-__all__ = ["AVERAGES", "BASSET_LINE", "FAXEN_FORCES", "FLOOR", "FORCES", "HISTORY_LINE", "LAPLACIANS", "REYNOLDS_LINE", "WALL_LINE",
+__all__ = ["AVERAGES", "BASSET_LINE", "FAXEN_FORCES", "PointDragInputs", "FLOOR", "FORCES", "HISTORY_LINE", "LAPLACIANS", "REYNOLDS_LINE", "WALL_LINE",
            "PointDragNode", "PointDragState", "free_space_margin"]
