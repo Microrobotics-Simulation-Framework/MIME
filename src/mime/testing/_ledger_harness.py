@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 #: How far each argument is refined: dt halved; the tolerance a hundred times looser. A solve's stop bounds its residual
 #: by the tolerance, which it lands under by a varying share, so halving the tolerance often leaves the stop where it
 #: was (the flow's N_Krylov fell by 1.1 to 7.3 over a halving, 200 seeds a dtype): a hundredfold step, #225's, resolves
-#: it (20 to 1700).
+#: it (20 to 1700; 36 to 460 on the order rig's drawn ensembles, 1500 a dtype).
 REFINEMENT = {"dt": 2.0, "tolerance": 100.0}
 #: A term passes where the order its fall shows is within this of its declared order: the ratio rounds to the declared
 #: order and to no neighbour. For a second order in dt, 1.41 to 2.83; for an order of at least one in the tolerance, a
@@ -52,7 +52,9 @@ REFINEMENT = {"dt": 2.0, "tolerance": 100.0}
 #: ``N_conv`` is the residual of products that cancel (its sum is 0.02 % to 79 % of their magnitudes), so where its
 #: leading coefficient nearly vanishes one swirl falls at an apparent order of 1 or 3.7 (ratios 1.01 to 6.59 over 400
 #: swirls a dtype, 2 out of the band, and the third-order plant missed on 1): the band is judged on the sum over
-#: drawn cases (:func:`term_orders`), never widened to pass a single case.
+#: drawn cases (:func:`term_orders`), never widened to pass a single case. Three swirls summed, at the order rig's
+#: step of 0.00125: 1.97 to 2.22 over 1500 fresh ensembles a dtype, none out, each wrong order (1 or 3) caught on every
+#: one, and an order shift of ``N_conv`` caught on every ensemble from 0.49 up and 0.57 down (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42794715500).
 ORDER_HALF_WIDTH = 0.5
 _NAME = "ledger closes"
 

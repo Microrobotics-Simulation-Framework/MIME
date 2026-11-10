@@ -120,6 +120,11 @@ _STALE = "a convective term formed from the run's starting velocity (a stale lev
 _PERMUTED = "a convective term formed from the velocity's components permuted (the wrong field)"
 _ADVECTIVE = "the convective term in the advective form, (u . grad) u (not skew)"
 _PAST = "four times the step, the CFL line lifted (its convection formed as declared: not this flag's)"
+#: The run that measured the convection flag's blindness to an operator error, fresh draws a dtype (seeds from 1300).
+OPERATOR_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42794715500"
+_SCALED = ("the convective operator scaled by 1.5, still skew (an operator error: the manufactured-solution gate's, "
+           "tests/flow/test_fvm_mms.py)")
+_NEGATED = "the convective operator negated, still skew (an operator error: the manufactured-solution gate's)"
 #: The run that measured the stall's and the leak's rates: each plant on 200 (or 50) fresh draws a dtype, seeds from
 #: 1000, and the same draws clean.
 RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42771046829"
@@ -153,7 +158,9 @@ FLAGS: tuple[LedgerFlag, ...] = (
                            CONVECTION_RATES_MEASURED)
                + _evidence(_ADVECTIVE, {"float64": (50, 50, 0, 50), "float32": (50, 50, 0, 50)},
                            CONVECTION_RATES_MEASURED)
-               + _evidence(_PAST, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, CONVECTION_RATES_MEASURED)),
+               + _evidence(_PAST, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, CONVECTION_RATES_MEASURED)
+               + _evidence(_SCALED, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, OPERATOR_MEASURED)
+               + _evidence(_NEGATED, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, OPERATOR_MEASURED)),
     LedgerFlag("leak", "the wall's penalty loss inside the solid / the wall's whole loss", leak_reading,
                {"float64": 4e-3, "float32": 4e-3},
                f"{_CLEAN}: worst 1.3e-3 in both dtypes after 30 steps (a drawn start's flow in the solid decays over "
@@ -164,5 +171,6 @@ FLAGS: tuple[LedgerFlag, ...] = (
     *PENDING,
 )
 
-__all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
+__all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "OPERATOR_MEASURED",
+           "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
            "stall_reading"]

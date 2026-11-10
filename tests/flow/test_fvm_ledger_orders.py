@@ -16,9 +16,12 @@ and RK3's convective power (zero to rounding on the box) declare no order, with 
 order of 1 or 3.7, in both dtypes alike (a coefficient, not rounding): over 400 swirls a dtype (seeds 5000 to 5399) one
 swirl's ratio ran 1.01 to 6.59 at round 1's step, 0.0025, 2 out of the band and the third-order plant missed on 1, and
 1.13 to 2.46 at 0.00125, 1 out. Summed over three swirls, each weighs by its own size, and a ratio of two small numbers
-no longer decides: 1.60 to 2.30 over 2e5 triples of those swirls at 0.00125, none out, every plant out. ``N_BE`` falls
-by 1.96 to 1.98 there and ``N_Krylov`` by 38 to 980 over the hundredfold. **The rates on fresh ensembles** are the
-PR's table (``detection_rate.py`` on Actions). CI checks ensemble 0 (swirls 0, 1 and 2).
+no longer decides: 1.60 to 2.30 over 2e5 triples of those swirls at 0.00125, none out, every plant out. **On fresh
+ensembles** (2000 to 3499, swirls 6000 to 10499; ``detection_rate.py`` on Actions, run 42794715500): over 1500 a
+dtype ``N_conv`` falls by 1.97 to 2.22, ``N_BE`` by 1.96 to 1.98 and ``N_Krylov`` by 47 to 460 (float64) and 36 to
+120 (float32) over the hundredfold, no ensemble out of its band; each plant below caught on 300 of 300 a dtype; an
+order shift of ``N_conv`` caught on every ensemble from 0.49 up and 0.57 down (40 ensembles a size), on none from 0.42.
+CI checks ensemble 0 (swirls 0, 1 and 2).
 
 Every arm starts from one warmed state (the swirl and its drive after 20 steps of 0.000625, half the step), so the
 stiff interior's start, damped in a step whatever the step, is not in the sums; and each arm's books close

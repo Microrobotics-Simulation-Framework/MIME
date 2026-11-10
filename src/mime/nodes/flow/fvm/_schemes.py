@@ -150,7 +150,8 @@ class IMEXEuler(TimeScheme[StageParts]):
     #: ``N_BE`` and ``N_conv`` are a step's change squared and convection at mixed time levels, each ``O(dt^2)`` a step;
     #: ``N_Krylov`` the solve's residual against its solution, which its stop bounds by its tolerance: it falls at least
     #: as the tolerance does, and the CG lands under it by a varying share (1.1 to 7.3 times smaller for a halving,
-    #: 20 to 1700 for a hundredth, on the order tests' rig over 200 seeds a dtype).
+    #: 20 to 1700 for a hundredth, on the order tests' first rig over 200 seeds a dtype; 36 to 460 for a hundredth on
+    #: its ensembles at a step of 0.00125, 1500 a dtype).
     ledger_orders = MappingProxyType({"backward_euler": TermOrder(dt=2), "convection": TermOrder(dt=2),
                                       "krylov": KRYLOV_ORDER})
     cfl_line = 0.4
