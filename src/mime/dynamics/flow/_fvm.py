@@ -246,8 +246,8 @@ class FVM(Dynamics):
         f"solve's tolerance, so the line does: a run built with a looser tolerance is judged against that solve. "
         f"Correct runs read up to 510 tolerances in float64 and 200 in float32 at the default tolerance (a tenfold "
         f"tighter or looser one: 391 and 329 in float64, 479 and 245 in float32, float32's tighter one below its "
-        f"rounding floor at the worst draws) [measured, 200 drawn runs a dtype and tolerance, tau/dt about 4 to 3e3 "
-        f"(4.1e3 at the worst draw), D/h 8 to 16, Re 1 to 200; beyond that envelope the line is unvalidated]. A solve "
+        f"rounding floor at the worst draws) [measured, 200 drawn runs a dtype and tolerance, tau/dt up to 4.1e3, D/h 8 "
+        f"to 16, Re 1 to 200; beyond that envelope the line is unvalidated]. A solve "
         f"stopped far short of its own tolerance is flagged; a tolerance set loose on purpose is not, so the flag "
         f"cannot see a tolerance that is wrong for the question. The ledger harness's stall flag judges the same "
         f"number at the default tolerance",
