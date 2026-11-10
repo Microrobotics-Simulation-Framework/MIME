@@ -18,6 +18,12 @@ which no restart lowers) or a convergence stall of the restarted method: both st
 (iterations); these two return the iterate of the least true residual checked. A residual that is not finite returns
 **NaN**. A zero right-hand side is accepted at once, its answer zero (no iteration needed: the start is cold).
 
+**Stall restarts** (``stall_restarts``, 0 by default, as the FVM's CG's ``Stopping.stall_restarts``): up to that many
+times a stagnation begins the column's window again, from the best true residual so far, before one stops it. A run's
+GMRES takes none; a gradient study's recheck of a member whose solve stopped short lifts the cap and raises them
+(:func:`recheck_stopping`), so that what still stops it is a floor, which neither removes. With none, the solve is
+traced as it was without them.
+
 **Starts are cold** (the stall decision's item 4): every solve, primal and derivative alike, starts from zero, so a
 tangent or transpose solve never starts at the primal's warm start, whose error would be set by the primal's scale.
 
@@ -28,6 +34,7 @@ finite, or were accepted at a zero right-hand side. Counts add where reports are
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
@@ -36,7 +43,7 @@ import jax
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE
+from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, REPORT_FIELDS, REPORT_SIZE, STALL_RESTARTS
 from mime.nodes.hydro.mrs._solve import PRECISION
 
 _lax: Any = cast(Any, jax).lax
@@ -61,14 +68,23 @@ CAP = 600
 @dataclass(frozen=True)
 class Stopping:
     """When GMRES stops: the relative tolerance on each column's true residual (a ``params`` leaf: the
-    accuracy-bearing setting), the basis's length before a restart, the cap in iterations, and the stagnation's window
-    (restarts) and factor."""
+    accuracy-bearing setting), the basis's length before a restart, the cap in iterations, the stagnation's window
+    (restarts) and factor, and how many times a stagnation begins the window again before one stops it."""
 
     tolerance: Any
     restart: int = RESTART
     cap: int = CAP
     window: int = STAGNATION_WINDOW
     stagnation: float = STAGNATION_FACTOR
+    stall_restarts: int = 0
+
+
+def recheck_stopping(stopping: Stopping) -> Stopping:
+    """``stopping`` with the cause of a stop short removed, as a recheck re-solves a member, by the FVM's CG's rule
+    (``mime.nodes.flow.fvm._solve.recheck_stopping``): the cap lifted to the larger of :data:`RECHECK_CAP_FACTOR`
+    times itself and :data:`DEFAULT_CAP`, the stall restarts raised by :data:`STALL_RESTARTS`, at the same tolerance."""
+    return dataclasses.replace(stopping, cap=max(stopping.cap * RECHECK_CAP_FACTOR, DEFAULT_CAP),
+                               stall_restarts=stopping.stall_restarts + STALL_RESTARTS)
 
 
 def _norms(x: Array) -> Array:
@@ -170,10 +186,12 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
         return jnp.where(length[None, :] > 0, correction, 0.0), length
 
     def going(carry: tuple[Any, ...]) -> Array:
-        return jnp.any(carry[-1] == _RUNNING)
+        return jnp.any(carry[9] == _RUNNING)
+
+    allowed = int(stopping.stall_restarts)
 
     def restart(carry: tuple[Any, ...]) -> tuple[Any, ...]:
-        x, r, beta, count, recent, before, checks, kept, lowest, ended = carry
+        x, r, beta, count, recent, before, checks, kept, lowest, ended, *stalls = carry
         running = ended == _RUNNING
         correction, length = cycle(x, r, beta, running, count)
         x = jnp.where(running[None, :], x + correction, x)
@@ -185,20 +203,28 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
         earlier = jnp.minimum(before, recent[0])
         full = checks + 1 >= stopping.window
         stagnated = ~converged & full & (jnp.min(held, axis=0) > stopping.stagnation * earlier)
+        counted = checks + 1
+        if allowed:  # a stall restart begins the window again from the best so far; none traces no such step
+            again = stagnated & (stalls[0] < allowed)
+            stagnated = stagnated & ~again
+            earlier = jnp.where(again, jnp.minimum(earlier, jnp.min(held, axis=0)), earlier)
+            held = jnp.where(again[None, :], jnp.inf, held)
+            counted = jnp.where(again, 0, counted)
+            stalls = [stalls[0] + again.astype(jnp.int32)]
         lower = running & (true_norm < lowest)
         status = jnp.where(~jnp.isfinite(true_norm), _NOT_FINITE, jnp.where(
             converged, _CONVERGED, jnp.where(stagnated, _STAGNATED, jnp.where(count >= stopping.cap, _AT_CAP,
                                                                               _RUNNING))))
         return (x, jnp.where(running[None, :], r, carry[1]), jnp.where(running, true_norm, beta), count,
                 jnp.where(running[None, :], held, recent), jnp.where(running, earlier, before),
-                jnp.where(running, checks + 1, checks), jnp.where(lower[None, :], x, kept),
-                jnp.where(lower, true_norm, lowest), jnp.where(running, status, ended).astype(jnp.int32))
+                jnp.where(running, counted, checks), jnp.where(lower[None, :], x, kept),
+                jnp.where(lower, true_norm, lowest), jnp.where(running, status, ended).astype(jnp.int32), *stalls)
 
     zeros = jnp.zeros_like(b)
     initial = (zeros, b, norm_b, jnp.zeros(columns, dtype=jnp.int32),
                jnp.full((stopping.window, columns), jnp.inf, dtype=dtype), norm_b, jnp.zeros(columns, dtype=jnp.int32),
-               zeros, norm_b, ended0.astype(jnp.int32))
-    x, _, last, count, _, _, _, kept, lowest, ended = _lax.while_loop(going, restart, initial)
+               zeros, norm_b, ended0.astype(jnp.int32), *([jnp.zeros(columns, dtype=jnp.int32)] if allowed else []))
+    x, _, last, count, _, _, _, kept, lowest, ended, *_ = _lax.while_loop(going, restart, initial)
     # A column that converged (or was accepted) returns its last iterate; one stopped short, the iterate of its least
     # true residual checked (past a floor the iterate wanders); one whose residual went non-finite, NaN.
     short = (ended == _STAGNATED) | (ended == _AT_CAP)
@@ -247,4 +273,4 @@ def reported_solve(matrix: Array, b: Array, tap: Array, precondition: Operator, 
 
 
 __all__ = ["CAP", "REPORT_FIELDS", "REPORT_SIZE", "RESTART", "STAGNATION_FACTOR", "STAGNATION_WINDOW", "Stopping",
-           "gmres", "reported_solve"]
+           "gmres", "recheck_stopping", "reported_solve"]

@@ -73,7 +73,12 @@ PROBE_MOVE = 2.0 ** -20
 NOT_FINITE_REASON = ("a solve's residual was not finite: neither a larger cap nor a restart removes that, whose cause is "
                      "a NaN or an infinity in the solve's operator or right-hand side (the run's flags and its stop "
                      "name where)")
-NO_RECHECK_REASON = "its solve has no recheck: it reads neither a cap to lift nor restarts to raise"
+NO_RECHECK_REASON = ("its node declares no recheck (MimeNode.rechecks), so nothing re-solves it with a cap lifted or "
+                     "stall restarts raised")
+#: What a rechecked node's stop short was, read from the recheck's own solves: ``cap-limited`` where they converged (the
+#: lifted cap or the raised stall restarts removed it) or stopped at the lifted cap again; ``floor-limited`` where they
+#: stagnated again, which a larger cap cannot change (the dtype's rounding floor above the tolerance).
+CAP_LIMITED, FLOOR_LIMITED = "cap-limited", "floor-limited"
 #: A node's iterative solves report through these: a ``params`` leaf of zeros whose gradient is the transpose solves'
 #: reports, and a state field holding the primal reports' running sum (``mime.nodes.flow.fvm``'s design, which every
 #: iterative solve in MIME follows).
@@ -768,8 +773,10 @@ def _recheck(graph: Any, again: Callable[[], _Prepared], reports: Sequence[tuple
     the recheck (:attr:`~mime.core.MimeNode.rechecks`) re-solve with their cap lifted and their stall restarts raised,
     at the member's own tolerance, the batch at once. A solve that did not reach its cap or stall is unchanged, so only
     the solves that stopped short move; the change in the objective and the derivative is what the shortfall cost.
-    A node whose flagged solve had a non-finite residual, or whose solve has no recheck, is reported not rechecked,
-    with its reason; a member with none rechecked gets its own values and NaN changes."""
+    Each rechecked node's cause is named from its recheck's own solves (:data:`CAP_LIMITED`, :data:`FLOOR_LIMITED`),
+    a floor with the route out its node states (:attr:`~mime.core.MimeNode.floor_route`). A node whose flagged solve
+    had a non-finite residual, or whose solve has no recheck, is reported not rechecked, with its reason; a member with
+    none rechecked gets its own values and NaN changes."""
     plans: list[tuple[tuple[str, ...], dict[str, str]]] = []
     for own in reports:
         lifted: list[str] = []
@@ -798,13 +805,18 @@ def _recheck(graph: Any, again: Callable[[], _Prepared], reports: Sequence[tuple
             continue
         solves = _report(taken, other.final, other.out, other.backward, mode)
         scale = abs(held.value) or 1.0
+        causes = {report.node: FLOOR_LIMITED if (report.forward_short or report.backward_short) and report.stagnated
+                  else CAP_LIMITED for report in solves}
         found.append(Recheck(
             f"{how}: {', '.join(taken)}", taken, refused, other.value, other.gradient,
             abs(other.value - held.value) / scale,
             {path: float(np.max(np.abs(other.gradient[path] - held.gradient[path])) /
-                         (float(np.max(np.abs(held.gradient[path]))) or 1.0)) for path in held.gradient}, solves))
+                         (float(np.max(np.abs(held.gradient[path]))) or 1.0)) for path in held.gradient}, solves,
+            causes, {node: cast("type[MimeNode]", type(graph.get_node(node))).floor_route
+                     for node, cause in causes.items() if cause == FLOOR_LIMITED}))
     return found
 
 
-__all__ = ["FORWARD_UP_TO", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient", "key",
+__all__ = ["CAP_LIMITED", "FLOOR_LIMITED", "FORWARD_UP_TO", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient",
+           "key",
            "magnitude", "member_factor", "objective_nodes", "path_nodes", "path_statuses", "solving_nodes", "written"]

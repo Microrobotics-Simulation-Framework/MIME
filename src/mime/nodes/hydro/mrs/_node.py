@@ -104,12 +104,12 @@ NEAR_WALL = 1.0
 #: patch's edge within 0.05 force spacings of the wall about 10 degrees before the edge itself reaches the nearest point.
 OFF_PATCH_BAND = 0.05
 #: How a graded run's wall self-image measures each cell's distance from the wall when it blends the integrated image
-#: in (decision #308): ``"cell"``, in the cell's own size, ``sqrt(area)``, decided and shipped; ``"force_spacing"``, in
-#: the force spacing, as a uniform run's. Measured through the node on the gate's sphere, its contact graded for half a
-#: force spacing and the image integrated, against Brenner's series at half a spacing: +5.24 % (cell) and +3.33 %
-#: (force spacing) at blob 0.1, +1.67 % and -0.04 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The one switch
-#: between them; a uniform run reads neither.
-GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "cell"
+#: in: ``"force_spacing"``, in the force spacing, as a uniform run's (decision #329, superseding #308's ``"cell"``);
+#: ``"cell"``, in the cell's own size, ``sqrt(area)``. Measured through the node on the gate's sphere, its contact
+#: graded for half a force spacing and the image integrated, against Brenner's series at half a spacing: +3.33 % (force
+#: spacing) and +5.24 % (cell) at blob 0.1, -0.04 % and +1.67 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The
+#: one switch between them; a uniform run reads neither.
+GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "force_spacing"
 #: What the build report says was mapped near a wall, for a wall kind without figures of its own
 #: (``WallCorrection.near_wall_text``).
 NEAR_WALL_MAPPED = "every indefinite resistance mapped lay within half a force spacing of the wall (MIME-ANO-130)"
@@ -337,9 +337,8 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     every cell is integrated and blended, ``chunks`` the whole quadrature's by its owners. Also whether a cell
     within the reach was left out of the budget. A step with no cell within the reach reads no more than the image at
     the force points (a ``cond``, whose two branches agree there, every weight zero). ``gap`` is in force spacings, or
-    in a graded run in the measure :data:`GRADED_WALL_MEASURE` selects (each cell's own size, ``sqrt(area)``, as
-    shipped): the switch's mechanics are
-    ``mime.nodes.hydro._near_singular``'s, shared with the near field's cross-kernel."""
+    in a graded run in the measure :data:`GRADED_WALL_MEASURE` selects (the force spacing, as a uniform run's): the
+    switch's mechanics are ``mime.nodes.hydro._near_singular``'s, shared with the near field's cross-kernel."""
     return within_reach(gap, WALL_REACH,
                         lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
                                                  parameters, viscosity, eps_squared),
@@ -1241,8 +1240,8 @@ class MRSDragNode(MimeNode):
             return [f"lubrication's hand-over is not taken: at the force spacing it would take, {declined}, past the "
                     f"film's window ({WINDOW:g} of it), where the build's rule gives every gap to the coarse MRS at its "
                     f"near-wall validity line (a sharp edge is the MRS's with its graded sampling, "
-                    f"grading='features'); a force spacing at most {WINDOW / HANDOVER_SPACINGS:.3g} of that radius "
-                    f"brings the contact into the window"]
+                    f"ForceSampling(grading='features')); a force spacing at most "
+                    f"{WINDOW / HANDOVER_SPACINGS:.3g} of that radius brings the contact into the window"]
         if not self.lubricated or start is None or "pose" not in start:
             return []
         leaves = self.params_pytree()

@@ -14,7 +14,7 @@ from script_a import fl9
 from mime.build._maddening import node_state, parameter_leaves
 from mime.dynamics import RigidInertial
 from mime.experiment import BuiltExperiment, Experiment
-from mime.interactions import Drag
+from mime.interactions import Drag, ForceSampling, NearField
 from mime.interactions.hydrodynamic import PointForceDrag, UncoupledDrag
 from mime.nodes.hydro.mrs import MRSDragNode
 from mime.registry import Dynamics, Geometry, Interaction
@@ -142,8 +142,8 @@ def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(1.0), **
 
 
 def mrs_near_field_gmres() -> Experiment:
-    """The near field's case past the takeover line (a line of zero): the same bodies, the joint system by GMRES."""
-    return mrs_near_field("mrs_near_field_gmres", near_field_dense_unknowns=0)
+    """The near field's case on its declared GMRES route: the same bodies, the joint system by GMRES."""
+    return mrs_near_field("mrs_near_field_gmres", near_field=NearField(solve="gmres"))
 
 
 def mrs_tube() -> Experiment:
@@ -186,8 +186,8 @@ def mrs_plane() -> Experiment:
 
 def mrs_graded() -> Experiment:
     """The round-trip case of graded sampling (design #296): a cylinder tilted above a plane wall, its rims graded
-    (``grading="features"``) and its side facing the wall graded as a held contact, the wall's image integrated over the
-    cells near it, moving along the plane and turning, at a coarse spacing."""
+    (``ForceSampling(grading="features")``) and its side facing the wall graded as a held contact, the wall's image
+    integrated over the cells near it, moving along the plane and turning, at a coarse spacing."""
     experiment = Experiment("mrs_graded", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=mm(0.0))))
     experiment.add_medium(Medium("water", fills=floor.half_space))
@@ -201,8 +201,9 @@ def mrs_graded() -> Experiment:
                                            angular_velocity=rad_per_s((1.0, -2.0, 0.5)))))
     experiment.declare("can.mass", kg(1e-6), reason="a millimetre body's order")
     experiment.declare("can.inertia", kg_m2((1e-13, 1e-13, 1e-13)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=mm(0.4), blob=0.5, wall_kind="plane", wall_refinement=2, grading="features",
-                               contact=(1.0, 0.0, -1.0), contact_gap=mm(0.3)), body="can", medium="water")
+    experiment.attach(Drag.MRS(spacing=mm(0.4), blob=0.5, wall_kind="plane", wall_refinement=2,
+                               sampling=ForceSampling(grading="features", contact=(1.0, 0.0, -1.0),
+                                                      contact_gap=mm(0.3))), body="can", medium="water")
     return experiment
 
 

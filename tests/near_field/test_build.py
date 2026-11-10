@@ -14,6 +14,7 @@ from near_field_cases import NODE, assembled, bodies, joint_node, line, mrs, pre
 
 from mime.build import BuildRefused
 from mime.experiment import Experiment
+from mime.interactions import NearField
 from mime.interactions.hydrodynamic import UncoupledDrag
 from mime.nodes.hydro.mrs import MRSDragNode
 from mime.units import kg, m, ms
@@ -84,7 +85,7 @@ def test_a_cluster_whose_run_will_not_fit_is_refused_on_either_route(route, monk
     (``drag.near-field-memory``), and a byte over it builds (the control), on either route."""
     from mime.nodes.hydro.near_field import _node
 
-    law = mrs(SPACING, **({"near_field_dense_unknowns": 0} if route == "gmres" else {}))
+    law = mrs(SPACING, **({"near_field": NearField(solve="gmres")} if route == "gmres" else {}))
     needed = joint_node(cluster(2, law=law).build()).memory_estimate()
     assert needed > 0.0
     for room, fits in ((int(needed) - 1, False), (int(needed) + 1, True)):
@@ -117,15 +118,18 @@ def test_the_memory_estimate_is_what_the_fit_measured_and_gmres_holds_the_invers
     inside its own residual band of it, and the GMRES route's estimate over the dense route's by at least the held
     blocks' bytes (``8 sum (3 N)^2``, here counted from the bodies' force points). The refusal test above takes its
     control from the estimate itself, so it cannot see the estimate move; this one can. Measured, not a bound: the
-    band is the fit's residual over that one configuration."""
+    band is the fit's residual over that one configuration. And a node of eight such spheres, 21,168 unknowns, past
+    the withdrawn line of 16,000, takes the dense route (decision #330)."""
     with precision(dtype):
         built = bodies("fit", line(1e-3, 2), UncoupledDrag.MRS(spacing=m(0.15e-3), wall_kind="free_space")).build()
         names = ["s0", "s1"]
         members = [built.graph.get_node(f"drag:{body}") for body in names]
-        estimate = {route: assembled(members, names, dense_unknowns=room).memory_estimate()
-                    for route, room in (("dense", 10 ** 9), ("gmres", 0))}
+        estimate = {route: assembled(members, names, solve=route).memory_estimate() for route in ("dense", "gmres")}
         unknowns = assembled(members, names).unknowns
+        large = assembled(members * 4, [f"s{i}" for i in range(8)])  # nothing made: the node's route and size alone
     assert unknowns == 2 * 3 * 882
+    assert large.unknowns == 8 * 3 * 882 > 16_000 and large.route == "dense" and not large.iterative, (
+        "no size line (decision #330): a cluster past the withdrawn 16,000 unknowns takes the dense route")
     held_blocks = 8 * 2 * (3 * 882) ** 2
     for route, needed in estimate.items():
         assert needed / 2 ** 30 == pytest.approx(FITTED_ESTIMATE_GIB[(route, dtype)], rel=1e-3), (route, dtype)
@@ -134,26 +138,42 @@ def test_the_memory_estimate_is_what_the_fit_measured_and_gmres_holds_the_invers
     assert estimate["gmres"] - estimate["dense"] >= held_blocks
 
 
-def test_a_cluster_past_the_takeover_line_takes_the_iterative_route(monkeypatch):
-    from mime.nodes.hydro.near_field import _node
-
-    below = joint_node(cluster(2).build())
-    monkeypatch.setattr(_node, "DENSE_UNKNOWNS", below.unknowns - 1)
-    built = cluster(2).build()
-    past = joint_node(built)
-    assert not below.iterative and past.iterative and past.dense_unknowns == below.unknowns - 1
-    assert "solve_report" in past.initial_state() and "solve_report" not in below.initial_state()
-    lines = built.report.checked.get(NODE, ())
+def test_the_route_is_dense_unless_gmres_is_declared():
+    """Decision #330: the route is the drags' declaration, never the cluster's size (the size itself is the memory
+    estimate's test above, a cluster past the withdrawn line of 16,000 unknowns taking the dense route): by GMRES only
+    where the drags declare it, which the build report says."""
+    with precision("float64"):
+        dense = cluster(2).build()
+        declared = cluster(2, law=mrs(SPACING, near_field=NearField(solve="gmres"))).build()
+    assert joint_node(dense).route == "dense" and joint_node(declared).route == "gmres"
+    assert "solve_report" in joint_node(declared).initial_state()
+    assert "solve_report" not in joint_node(dense).initial_state()
+    lines = declared.report.checked.get(NODE, ())
     print("\n" + "\n".join(lines))
+    assert any("as its drags declare (NearField(solve='gmres'))" in line for line in lines)
     assert any("the run's memory on the gmres route about" in line for line in lines)
     assert any(line.startswith("at the start: the joint solve took") and "every column converged" in line
                for line in lines)
+    assert any("the dense route at every size" in line for line in dense.report.checked.get(NODE, ()))
+
+
+def test_a_cluster_takes_gmres_only_where_every_members_drag_declares_it():
+    """Members that differ: the more accurate route any asks for, the dense one, unless every member's drag declares
+    GMRES; the tolerance the smallest any writes."""
+    gmres = mrs(SPACING, near_field=NearField(solve="gmres", tolerance=1e-9))
+    with precision("float64"):
+        mixed = bodies("mixed", spheres(0.4e-3, 2), {"s0": gmres, "s1": mrs(SPACING)}).build()
+        both = bodies("both", spheres(0.4e-3, 2),
+                      {"s0": gmres, "s1": mrs(SPACING, near_field=NearField(solve="gmres"))}).build()
+    assert joint_node(mixed).route == "dense"
+    node = joint_node(both)
+    assert node.route == "gmres" and float(node.constants()["tolerance"]) == 1e-9
 
 
 @pytest.mark.parametrize("route", ["dense", "iterative"])
 def test_a_saved_near_field_loads_and_reproduces_its_run(tmp_path, route):
     with precision("float64"):
-        experiment = cluster(2, law=mrs(SPACING, **({"near_field_dense_unknowns": 0} if route == "iterative" else {})))
+        experiment = cluster(2, law=mrs(SPACING, **({"near_field": NearField(solve="gmres")} if route == "iterative" else {})))
         built = experiment.build()
         first = built.run(ms(3.0), history=True)
         built.save(tmp_path / "near", steps=3)

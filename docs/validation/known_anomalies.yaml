@@ -3767,3 +3767,34 @@ anomalies:
       rest on the coupling against its own size is not affected beyond that.
     workaround: "For rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
     planned_resolution: "Open, for the maintainer's choice before W2b's rolling arm relies on the coupling (both routes measured in W2a's fix round): a smaller hand-over gap (its numbers in the workaround: the miss roughly halves from a spacing of 0.2 radii to 0.1, at six times the step), or the film's next order in the gap over the radius (not built; the miss is a constant at h_m, so an order that does not change the film's patch does not remove it)."
+
+  - anomaly_id: MIME-ANO-155
+    title: "Reverse mode through MADDENING's run_scan in a shape leaf remakes the MRS rung's held matrix at every backward step: 32 to 660 s for a gradient MIME's chunked run takes in about a minute"
+    description: >
+      The MRS rung's node holds the body's free part, a matrix made once per build from the body's shape leaves (its
+      radius, its kind's numbers, its placement and its blob) and made again from the traced leaves where a derivative
+      is taken in one (held_or_made). MIME's own runs make it once a run: a study's derivative and MIME's chunked run
+      (chunk_function) take the nodes' run-constants before their chunks, outside the scan. MADDENING's own scan
+      (graph.run_scan) has no such seam, so a reverse-mode derivative through it in a shape leaf makes the matrix again
+      at every step of the backward pass, and an outer jit around it fails on a host conversion there. Measured on the
+      lubrication probe's sphere of 1 mm above a plane (drag 0.5.0's mrs rung with its hand-over, float64, CPU, a
+      4-vCPU GitHub runner, 10 steps; probe run 42860822450): the gradient in the radius took 32 to 660 s through
+      run_scan at hand-over gaps of 0.15 to 0.0375 radii (215 to 685 force points), and in the plane's offset, a leaf
+      the matrix does not depend on, 1.4 to 8 s; through MIME's chunked run the radius took 3.6 to 62 s (run
+      42869205448), six to 31 times the forward run, the matrix's derivative made once a chunk. The values and
+      derivatives are the same either way; only the time differs.
+    severity: minor
+    safety_relevance: not_safety_relevant
+    safety_relevance_rationale: >
+      No value or derivative changes: the matrix made again at every backward step is the same matrix. A derivative
+      through MADDENING's scan in a shape leaf is slow, or fails to compile under an outer jit with an error that says
+      so; nothing is returned wrong.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "entry: interaction drag 0.5.0, rung mrs; a reverse-mode derivative in a shape leaf through MADDENING's run_scan, not through MIME's own runs"
+    residual_risk: >
+      Measured on one sphere at three hand-over gaps; a larger body's matrix costs more to make (it grows as the square
+      of the force points), so the gap between the two paths grows with it.
+    workaround: "Take the derivative through MIME's own path, Study.gradient or the chunked run (mime.build._maddening.chunk_function), which makes the held matrix once a run, not through graph.run_scan."
+    planned_resolution: "Open, MADDENING Ask 51: its scan's run-constant seam extended to a held value that depends on a traced leaf, so that a node's held matrix is made once a run through run_scan as it is through MIME's chunked run. This entry changes no code."

@@ -184,6 +184,9 @@ class MimeNode(SimulationNode):
     #: re-solves it with the cause removed (the cap lifted, the restarts raised). A solving node that does not is
     #: reported as not rechecked.
     rechecks: ClassVar[bool] = False
+    #: What takes a rechecked solve past a floor-limited stop (one that stagnated again with its cap lifted and its stall
+    #: restarts raised: its dtype's rounding floor above its tolerance), as a gradient study's recheck names it.
+    floor_route: ClassVar[str] = ""
     #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None

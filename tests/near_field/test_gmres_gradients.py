@@ -21,6 +21,7 @@ from near_field_cases import NODE, bodies, joint_node, mrs, precision, spheres, 
 from rigid_oracles import ConstantWrench
 
 from mime.build._maddening import parameter_leaves
+from mime.interactions import NearField
 from mime.nodes.hydro.near_field import MRSOperator, Placed
 from mime.nodes.hydro.near_field import _contract
 from mime.nodes.hydro.near_field._gmres import REPORT_SIZE
@@ -28,7 +29,7 @@ from mime.nodes.hydro.near_field._mrs import Quadrature
 
 SPACING = 0.4e-3
 RADIUS_LEAF = "m1_shape_radius"
-ITERATIVE = {"near_field_dense_unknowns": 0}
+ITERATIVE = {"near_field": NearField(solve="gmres")}
 #: The scale test's line: the derivative over the loss's (or the tangent's) scale at 1e-12 and 1e6, relative.
 SCALE_LINE = 1e-9
 

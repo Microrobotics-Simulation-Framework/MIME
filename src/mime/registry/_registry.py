@@ -268,6 +268,34 @@ def role_problems(cls: type) -> list[str]:
                              f"convention, or a numerical default that is its written value")
         if kind is DefaultKind.CONVENTION and (not held.basis.strip() or written is dataclasses.MISSING):
             found.append(f"{where} declares a convention without its basis, or without a written default to be it")
+    found += _group_default_problems(cls)
+    return found
+
+
+def _group_default_problems(cls: type) -> list[str]:
+    """A default computed for a setting of a group the entry holds (its role's ``by``) is computed by the entry's own
+    method, from the plan's context, as an interaction's or an observation's own setting's is; its written default is
+    None (not given)."""
+    if not dataclasses.is_dataclass(cls):
+        return []
+    try:
+        hints = typing.get_type_hints(cls, include_extras=True)
+    except Exception:  # noqa: BLE001 - dimensioned_settings reports an annotation that does not resolve
+        return []
+    found: list[str] = []
+    for setting in dataclasses.fields(cls):
+        group = _group_of(hints.get(setting.name))
+        if group is None:
+            continue
+        for name, held in sorted(declared_roles(group).items()):
+            if held.by is None:
+                continue
+            where = f"setting {setting.name}.{name}"
+            if not issubclass(cls, (Interaction, Observation)) or not callable(getattr(cls, held.by, None)):
+                found.append(f"{where} declares a default computed by {held.by!r}, which is no method of the entry, "
+                             f"an interaction or an observation, that holds its group")
+            elif _written_default(group, name) is not None:
+                found.append(f"{where}'s default is computed by {held.by!r}, so its written default is None")
     return found
 
 

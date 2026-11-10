@@ -35,7 +35,7 @@ from functools import cached_property
 
 import numpy as np
 
-from mime.registry import FEATURE_FORMS, Feature, Geometry, implements
+from mime.registry import FEATURE_FORMS, SurfaceFeature, Geometry, implements
 from mime.scene._sampling import FINEST, REFINEMENT, nearest, quadrature_arrays, quadrature_counts
 from mime.units import Magnitude
 
@@ -98,7 +98,7 @@ class GradedDensity:
         return (self.spacing / self.spacing_at(np.asarray(points, dtype=np.float64))) ** 2
 
     @cached_property
-    def traced(self) -> tuple[Feature, ...]:
+    def traced(self) -> tuple[SurfaceFeature, ...]:
         """The kind's features traced at the finest spacing over :data:`TRACE`; none where features are not graded."""
         if not self.features:
             return ()

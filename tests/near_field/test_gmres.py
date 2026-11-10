@@ -19,9 +19,10 @@ import pytest
 from near_field_cases import NODE, bodies, entrywise, joint_node, mrs, precision, rebuilt, spheres, start_inputs
 
 from mime.build._maddening import parameter_leaves
+from mime.interactions import NearField
 from mime.nodes.hydro.near_field import joint_matrix
 from mime.nodes.hydro.near_field._contract import joint_motions, offsets
-from mime.nodes.hydro.near_field._gmres import REPORT_FIELDS, Stopping, gmres, reported_solve
+from mime.nodes.hydro.near_field._gmres import STAGNATION_WINDOW, REPORT_FIELDS, Stopping, gmres, reported_solve
 
 SPACING = 0.4e-3
 CONFIGURATIONS = [(0.5e-3, 2), (0.2e-3, 2), (0.3e-3, 3)]
@@ -48,9 +49,9 @@ def stepped_resistance(built) -> tuple[np.ndarray, dict]:
 def test_past_the_line_the_grand_resistance_is_the_dense_routes_to_the_solves_tolerance(gap, count):
     with precision("float64"):
         dense, _ = stepped_resistance(cluster(gap, count))
-        iterative, out = stepped_resistance(cluster(gap, count, near_field_dense_unknowns=0))
+        iterative, out = stepped_resistance(cluster(gap, count, near_field=NearField(solve="gmres")))
     with precision("float32"):
-        single, single_out = stepped_resistance(cluster(gap, count, near_field_dense_unknowns=0))
+        single, single_out = stepped_resistance(cluster(gap, count, near_field=NearField(solve="gmres")))
     found, float32 = entrywise(iterative, dense), entrywise(single, dense)
     print(f"\n{count} spheres {gap * 1e3:g} mm apart: iterative against dense {found:.3g} (line {LINE:g}, report "
           f"{out['solve_report']}); float32's {float32:.3g} (line {FLOAT32_LINE:g}, report {single_out['solve_report']})")
@@ -60,15 +61,15 @@ def test_past_the_line_the_grand_resistance_is_the_dense_routes_to_the_solves_to
     assert out["solve_flagged"] == single_out["solve_flagged"] == 0.0
 
 
-def test_the_route_is_the_takeover_lines_and_the_build_report_says_which():
+def test_the_route_is_the_declared_one_and_the_build_report_says_which():
     with precision("float64"):
-        dense, iterative = cluster(0.5e-3, 2), cluster(0.5e-3, 2, near_field_dense_unknowns=0)
+        dense, iterative = cluster(0.5e-3, 2), cluster(0.5e-3, 2, near_field=NearField(solve="gmres"))
     small, large = joint_node(dense), joint_node(iterative)
     assert not small.iterative and large.iterative and small.unknowns == large.unknowns > 0
     assert "solve_report" not in small.initial_state() and "solve_report" in large.initial_state()
     assert "tolerance" not in small.constants() and large.constants()["tolerance"] == 1e-10
     said = " ".join(large.built_lines(None, None))
-    assert "by GMRES" in said and "takeover" in said and "1e-10" in said
+    assert "by GMRES" in said and "NearField(solve='gmres')" in said and "1e-10" in said
     assert "dense LU" in " ".join(small.built_lines(None, None))
 
 
@@ -79,7 +80,7 @@ def system(dtype: str, gap: float = 0.2e-3, count: int = 3):
     """The joint matrix, its motions and each body's preconditioner block (and its transpose) of ``count`` coarse spheres
     ``gap`` apart, as the node makes them in a ``dtype`` run past the line."""
     with precision(dtype):
-        built = cluster(gap, count, near_field_dense_unknowns=0)
+        built = cluster(gap, count, near_field=NearField(solve="gmres"))
         node = joint_node(built)
         p = node.constants(parameter_leaves(built.graph)[NODE])
         inputs = start_inputs(built)
@@ -133,6 +134,38 @@ def test_a_tolerance_below_the_dtypes_floor_stops_stagnated_before_its_cap_and_r
     print(f"\n{dtype}: a tolerance of 1e-30 stops at {report}")
     assert report[STAGNATED] == motions.shape[1] and report[AT_CAP] == 0.0 and report[ITERATIONS] < 600
     assert 0.0 < float(report[RESIDUAL]) <= float(converged[1][RESIDUAL])
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_each_stall_restart_begins_the_window_again_and_none_traces_the_solve_as_before(dtype):
+    """``Stopping.stall_restarts`` (a recheck raises them, design #337): at a tolerance under the floor every column
+    stagnates whatever they are, and each restart begins its window again, so the solve takes at least a window of
+    restarts more each (``STAGNATION_WINDOW`` restarts of at least one iteration), and never reaches the tolerance. (That
+    none leaves a run's GMRES as it was is the bits probe's, base against head.)"""
+    with precision(dtype):
+        matrix, motions, precondition, _ = system(dtype)
+        found = {restarts: jax.jit(lambda a, b, k=restarts: gmres(lambda v: a @ v, b, precondition,
+                                                                  Stopping(1e-30, cap=6000, stall_restarts=k)))(
+            matrix, motions) for restarts in (0, 1, 3)}
+    iterations = {k: float(report[ITERATIONS]) for k, (_, report) in found.items()}
+    print(f"\n{dtype}: iterations by stall restarts {iterations}")
+    for _, report in found.values():
+        assert report[STAGNATED] == motions.shape[1] and report[AT_CAP] == 0.0
+    assert iterations[0] + STAGNATION_WINDOW <= iterations[1] and iterations[1] + 2 * STAGNATION_WINDOW <= iterations[3]
+
+
+def test_the_rechecks_stopping_lifts_the_cap_and_raises_the_stall_restarts_as_the_cgs_does():
+    """``recheck_stopping`` for GMRES, by the CG's constants: the cap to the larger of ten times itself and the default,
+    the stall restarts raised by ``STALL_RESTARTS``, everything else, the tolerance first, as it was."""
+    import dataclasses
+
+    from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, STALL_RESTARTS
+    from mime.nodes.hydro.near_field._gmres import CAP, recheck_stopping
+
+    for cap, restarts in [(1, 0), (CAP, 0), (CAP, 2), (4 * DEFAULT_CAP, 1)]:
+        held = Stopping(1e-10, restart=17, cap=cap, window=4, stagnation=0.25, stall_restarts=restarts)
+        assert recheck_stopping(held) == dataclasses.replace(
+            held, cap=max(cap * RECHECK_CAP_FACTOR, DEFAULT_CAP), stall_restarts=restarts + STALL_RESTARTS)
 
 
 def test_a_zero_column_is_accepted_at_zero_and_a_nan_one_returns_nan_with_its_count():

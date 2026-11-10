@@ -192,6 +192,9 @@ class ImplicitFlowNode(MimeNode):
     #: The state field the run reads between chunks for the step the CFL check stopped it at.
     STOP_FIELD: ClassVar[str] = STOP_FIELD
     rechecks: ClassVar[bool] = True
+    floor_route: ClassVar[str] = ("leave the flow's tolerance unwritten (float32's stop takes the solve's own floor "
+                                  "where its tolerance is out of reach) or write it at or above the floor, "
+                                  "FVM(tolerance=...), or run in float64")
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-123",
