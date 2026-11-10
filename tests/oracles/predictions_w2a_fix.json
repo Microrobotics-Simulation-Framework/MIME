@@ -1,0 +1,57 @@
+{
+  "written": "2026-11-10, committed before any of the fix round's gates ran (the commit that adds this file is the timestamp): the fix round of W2a's PR 1a after its refuting review (a blocker and eight majors)",
+  "phase": "W2a PR 1a, fix round: the film's window as the build's rule (B1); gate 1 over drawn orientations and the increment judged entry by entry on its own scale (M2); gate 2 below 0.06 radii against the sourced asymptote and at every gap of the lift's band (M1, m1); a shape leaf differentiated through the node (M3); the tube's film against a closed form (M4)",
+  "labels": "predictions by the fix round's builder from the review's measurements through the node (seen before, below) and a bench of the film alone (the record's form, not a decision)",
+  "seen_before": [
+    "the review (run 42811869364, head 903cb17, float64, a 1 mm sphere above a plane, blob 0.05): gate 1 over 20 drawn orientations (seed 2341): s/a 0.2, h/a 0.06, the normal -6.79 to -7.27 % (15 of 20 past 7 %); s/a 0.3, h/a 0.075, -11.69 to -12.02 % (1 of 20 past 12 %); s/a 0.15 worst 4.3 %",
+    "the review: the translation per rotation against Goldman-Cox-Brenner through the node, s/a 0.2: +41 % (h/a 0.01), +34 % (0.005), +28 % (0.002), +25 % (0.001); s/a 0.15: +33 % falling to +19 %",
+    "the review: the increment entry by entry, band (h/a 0.1, 0.075, 0.06) against the MFS increments: tangential 0.66 to 0.71, normal 0.78 to 0.84, rotation 0.71 to 0.75, coupling about the centre 1.76 to 1.93; deep pairs (0.001-0.005, 0.002-0.01) against Brenner and GCB within 3.9 %, x1.1 caught 5/5 in both",
+    "the review: d film_zz / d shape_radius by AD 0.48 of two builds' (h/a 0.01), the tangential 0.27; the tube's curvature-sign mutant moves the tube's normal entry -18 to -65 % and no gate caught it",
+    "this round's bench of the film alone (not through the node): the record's form, the gap from both surfaces' signed distances on a patch of 1 to 6 times the film's width at h_m (0.15 a): the coupling's increment over the MFS's 1.80 to 1.92 (1 times), 0.88 to 0.99 (2 times), -0.19 to -0.38 (3 times), negative beyond; at 2 times the normal's increment 1.16 to 1.18 and the rotation's 1.25: no patch holds every entry",
+    "the MFS against the asymptotes (the reference file): the coupling about the centre is 1.35 times GCB's at h/a 0.06, 1.55 at 0.075, 2.18 at 0.1; the tangential 1.020, 1.026, 1.035"
+  ],
+  "operating_point": {
+    "dtype": "float64 (gates 1, 2, 13, 14 and the increment's judgement)",
+    "platform": "CPU: CI's default lane; GitHub runners (4 vCPU) for the probes and the controls' rates",
+    "sizes_and_parameters": "a sphere of radius a = 1 mm, water (1 mPa s), a plane z = 0 or a straight tube of radius 2 mm (a/R 0.5); blob 0.05 (the lubricated default); h_m = 0.75 s; roughness 1 nm on both surfaces",
+    "seeds_and_draws": "gate 1: orientations drawn by DETECTION_SEED (5 a run), the gaps fixed; controls' rates on Actions with .github/probe/detection_rate.py"
+  },
+  "gate_1_orientations": {
+    "claim": "every entry of the lubricated 6 x 6 within 7 % of the exact answer at every gap, at s/a 0.15 and 0.2, over drawn orientations of the sphere",
+    "kind": "bounds",
+    "prediction": {"band": [0.0, 0.07], "basis": "measured-before (the review)", "outcome_predicted": "s/a 0.15 within 7 % at every draw; s/a 0.2 within 7 % but the normal at h/a 0.06, -6.7 to -7.4 % (most draws past 7 %): the committed line missed there, reported missed and its range pinned"},
+    "control": {"plant": "the lift left out (lubrication=False) and the increment x1.1", "expected_rate": "N/N at the gaps the original gate 1 named"}
+  },
+  "gate_2_below_and_band": {
+    "claim": "a force-free sphere spun on the plane translates at the exact rate per rotation within 10 % at every gap: the MFS at every gap of the lift's band, Goldman-Cox-Brenner's asymptote at h/a 0.01, 0.005, 0.002, 0.001",
+    "kind": "bounds",
+    "prediction": {"band": [0.0, 0.1], "outcome_predicted": "missed below h_m at every gap (s/a 0.2: about +8 to +43 % in the band, +41 % falling to +25 % below 0.06; s/a 0.15: about +10 to +27 % and +33 % falling to +19 %); within 10 % at the band's upper gaps above h_m; each pinned to +-0.01"},
+    "oracle_resolution": "GCB's translation per rotation against the MFS: +32 % at h/a 0.06 (its coupling's next order), falling about as the gap [inference: about 0.7 h of the coupling's 6 pi a^2]: about 2 % at 0.01 and below 1 % at 0.005; the gate judges against GCB only at h/a 0.01 and below",
+    "control": {"plant": "the film's coupling counted twice", "expected_rate": "N/N at every pinned gap"}
+  },
+  "increment_entry_by_entry": {
+    "claim": "the film's increment judged on its own scale: in the band (h/a 0.075 and 0.06, the lift at h_m) against the MFS's increments, each entry's ratio pinned; between two deep gaps (0.001-0.005, 0.002-0.01) against Brenner (normal) and GCB (tangential, rotation, coupling), within 7 %",
+    "kind": "bounds (deep); a pin (band)",
+    "prediction": {"band": [0.0, 0.07], "outcome_predicted": "deep pairs within 4 %; band ratios as the review measured (tangential 0.66 to 0.71, normal 0.78 to 0.84, rotation 0.71 to 0.75, coupling 1.76 to 1.93)"},
+    "control": {"plant": "the increment x1.1", "expected_rate": "N/N: the band's pins move by a tenth of each ratio (0.07 to 0.19, against a pin of 0.01); the deep pairs read about 1.10"}
+  },
+  "gate_13_shape_leaf": {
+    "claim": "the film's increment differentiated in the sphere's radius (shape_radius) through the node equals the central difference across two builds at a(1 +- 1e-3)",
+    "kind": "equality to the difference's resolution",
+    "prediction": {"band": [0.0, 1e-4], "unit": "relative, per entry (normal, tangential, rotation, coupling)", "basis": "derived: the floor no longer binds for a sphere and the reach is traced; the difference's truncation is about 1e-6"},
+    "control": {"plant": "held_floor: the film's curvature floored at one over a held size (the first build's floor)", "expected_rate": "N/N: AD about 0.48 of the two builds' on the normal, 0.27 on the tangential"}
+  },
+  "gate_14_tube_film": {
+    "claim": "the tube's lubricated normal entry, times the gap, tends to the leading order for the contact's relative curvatures (k1 = 1/a, k2 = 1/a - 1/R): 12 pi mu / ((k1 + k2) sqrt(k1 k2)), the exact solution of Reynolds' squeeze equation on an elliptic paraboloid gap, p = 6 mu V / ((k1 + k2) h^2) [derived, checked by substitution; at k1 = k2 it is the sphere's 6 pi mu a^2 / h, Brenner's and Cox and Brenner's leading term]",
+    "kind": "estimates (a form oracle: the limit and the exponent)",
+    "prediction": {"band": [0.97, 1.03], "unit": "the limit at h/a 1e-3; exponents -1 +- 0.05 at h/a 1e-3 to 2.2e-3", "basis": "derived; the plane's gate 3 reads 0.9996"},
+    "control": {"plant": "wall_sign: the wall's curvature added to the body's", "expected_rate": "N/N: the limit reads about 0.35 (the review's -65 %)"}
+  },
+  "b1_window_rule": {
+    "claim": "a body whose least radius of curvature puts the hand-over gap past WINDOW (0.15) of it is the coarse MRS's by the build's rule (lubrication False, reported with h_m/R), and lubrication=True written there is refused (drag.lubrication-window); a body within the window keeps the hand-over by default",
+    "kind": "acceptance",
+    "prediction": {"outcome_predicted": "FL-9 in its tube at its family's spacing: False, its least radius set by its caps' rims (an edge, near zero) or its crest (0.197 mm, h_m/R 3.16); the sphere at s/a 0.3 (h_m 0.225 a): False; at s/a 0.2: True"},
+    "control": {"plant": "the rule removed (WINDOW unbounded)", "expected_rate": "N/N: FL-9's default then takes the film"}
+  },
+  "outcomes": null
+}
