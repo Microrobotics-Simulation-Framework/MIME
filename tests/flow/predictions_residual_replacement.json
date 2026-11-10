@@ -211,5 +211,23 @@
     "prediction": "each shape stagnates without the restart and converges with it, on every run locally and on CI; on CI this is the first measurement of these shapes on more than one runner, and a shape that does not stall there is reported with its runner, not dropped"
    }
   ]
+ },
+ "fix_round_amended": {
+  "written": "2026-11-10, in the commit that holds it, after the sweep gate ran under the line as first built and before it runs under the rule below",
+  "what_the_sweep_showed": [
+   "the line as first built capped the floor at it (the bar max(tolerance, min(floor, line))): float32's spurious stops 72 of 82 now flagged (each stagnated, at 200 to 980 iterations), float64's 91 of 91; genuine convergences unchanged (10 of 10, bit for bit in iterations and residual); but 10 float32 stops stayed unflagged, not the 1 predicted (2, counting both arms): 8 of them were refused above the line and then, a few iterations on, accepted at the line itself, their in-solve residual 7.4e-4 to 9.8e-4 while their floor stood at 4.7e-3 to 9.2e-3; recomputed outside the solve their residual read 7.3e-4 to 1.7e-3, above the line: where the floor is above the line the residual cannot be read to the line, and the cap accepted rounding noise",
+   "the prediction for this gate failed on those 8; the genuine-floor and bits gates were not yet run (the D/h 64 0.01h stenosis had started under the cap; it is run again under the rule below)"
+  ],
+  "rule": "the floor counts only while it is under the line (the bar max(tolerance, floor) where floor <= line, the tolerance where it is above): past the line the stop holds the tolerance; same line, 100 tolerances. Where the floor stays under the line the bar is the one before, bit for bit",
+  "gates": [
+   {
+    "gate": "the sweep under this rule (probe)",
+    "prediction": "float32: the 8 accepted at the line now flagged; the 2 at 2.6e-4 (16 cells, c = 1e-5, both arms; floor 2.7e-4, under the line) stay unflagged, as no line on the floor can refuse them; float64 91 of 91 flagged; genuine convergences unchanged"
+   },
+   {
+    "gate": "every other gate of the fix round's sections",
+    "prediction": "as predicted there: the singular plants' tests (their least-squares residuals, 1.6e-3 and up, lie above the line in both dtypes, so no stop can take them), the genuine floor stops unchanged, the bits"
+   }
+  ]
  }
 }
