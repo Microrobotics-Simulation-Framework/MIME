@@ -80,9 +80,15 @@ def test_the_superposed_field_is_the_monolithic_solve(dtype, monkeypatch, plant)
         assert (worst <= 1.0) == (plant is None), (seed, worst)
 
 
+#: The validity text's float32 envelope: the worst of 190 drawn open runs inside the CFL line, float32's flow against
+#: float64's over the largest speed after 60 steps (median 3.3e-5; draw 0 read 4.3e-6), measured on the built node
+#: (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42877559684, arms f32env-*).
+FLOAT32_ENVELOPE = 7.2e-4
+
+
 def test_float32_is_within_its_line_of_float64():
-    """The ports' float32 flow against float64's on one draw: the validity text's 1.6e-6 to 3.5e-6 (the spike's,
-    D/h 16) read on the built node, its line ten times the larger (this draw's grid and Reynolds number differ)."""
+    """The ports' float32 flow against float64's on one draw, within the envelope the validity text states (an
+    acceptance of the statement, measured over the draws, not an accuracy bound)."""
     point = draw(0)
     finals = {}
     for dtype in ("float64", "float32"):
@@ -92,4 +98,4 @@ def test_float32_is_within_its_line_of_float64():
     worst = max(float(np.max(np.abs(np.asarray(finals["float64"][f"velocity_{x}"], dtype=np.float64)
                                     - np.asarray(finals["float32"][f"velocity_{x}"], dtype=np.float64))))
                 for x in "xyz") / speed
-    assert worst <= 3.5e-5, worst
+    assert worst <= FLOAT32_ENVELOPE, worst

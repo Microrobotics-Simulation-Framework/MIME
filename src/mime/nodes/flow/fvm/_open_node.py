@@ -25,6 +25,7 @@ the step's start and end, its loss, its ``N_WK``: ``mime.core.ledger.law_records
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
@@ -59,8 +60,12 @@ KINETIC_FLUX = "kinetic_flux"
 #: The open node's numerical terms: the scheme's, and the projection's own at the open faces.
 OPEN_TERMS = ("backward_euler", "convection", "krylov", "projection")
 OPENING = "opening_"
-#: The float32 flow's distance from float64's with ports (the open-ports spike, D/h 16, measured 1.6e-6 to 3.5e-6).
-FLOAT32_PORTS = "the flow within 1.6e-6 to 3.5e-6 of float64's (the open-ports spike, measured at D/h 16)"
+#: The float32 flow's distance from float64's with ports, over the largest speed, measured on the built node over the
+#: open rig's draws (``tests/flow/open_cases.py``; the probe of the review's fix round): the envelope, not one point.
+FLOAT32_PORTS = ("the flow within 7.2e-4 of float64's over the largest speed on 190 drawn open runs inside the CFL line "
+                 "(median 3.3e-5, the larger at the higher Reynolds numbers; D/h 8 to 16, Re 1 to 100, a downstream "
+                 "resistance to 1e4 times the vessel's, 60 steps), measured on the built node; the open-ports spike's "
+                 "1.6e-6 to 3.5e-6 was one point at D/h 16")
 
 
 #: Why an open vessel's flow bounds no step of its own, said where ``dt='auto'`` is refused and where the CFL check
@@ -380,12 +385,11 @@ class OpenFlowNode(ImplicitFlowNode):
         cfl = float(np.asarray(state["stopped_cfl"]))
         line = float(self.scheme.cfl_limit(self.constants()["tube_axis"]))
         safe = f"dt <= {self.delta_t * line / cfl:.4g} s, " if math.isfinite(cfl) and cfl > 0.0 else "a smaller dt, "
-        return Problem(problem.code, problem.message,
-                       f"use a timestep under {safe}the line at the speed the flow had reached by then: a flow still "
-                       f"speeding up needs a smaller one (Poiseuille's centreline at the inflow's peak mean speed, "
-                       f"twice it, over the narrowest lumen's share of the vessel's area, bounds it); dt='auto' is "
-                       f"refused here ({OPEN_STEP}); or the Stokes approximation FVM(stokes=True) where convection is "
-                       f"negligible")
+        return dataclasses.replace(problem, action=(
+            f"use a timestep under {safe}the line at the speed the flow had reached by then: a flow still speeding up "
+            f"needs a smaller one (Poiseuille's centreline at the inflow's peak mean speed, twice it, over the narrowest "
+            f"lumen's share of the vessel's area, bounds it); dt='auto' is refused here ({OPEN_STEP}); or the Stokes "
+            f"approximation FVM(stokes=True) where convection is negligible"))
 
     def unit_field(self, solve: Any, force: Velocity, start: Velocity) -> tuple[Velocity, Array]:
         """The unit field a unit pressure at one opening drives over the step (``force`` its force), solved from

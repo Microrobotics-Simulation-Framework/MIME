@@ -259,7 +259,7 @@ class FVM(Dynamics):
         "scale over the plane's N faces, at any pressure level (a relative pressure's move is never formed from "
         "absolute pressures; gated to a downstream resistance of 1e4 times the vessel's); the Windkessel stepped by "
         "backward Euler, its N_WK first order in dt; a flux row at an opening the flow leaves by (a closed valve, "
-        "Inflow(steady=0)) is admitted and not gated yet (its gate, against the walled-off vessel, is F2b's third "
+        "an Inflow of no flux) is admitted and not gated yet (its gate, against the walled-off vessel, is F2b's third "
         "PR's); IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
         "dt='auto' refused, the CFL checked each step; tilted open vessels not built; float32 behind its guards: "
         f"{FLOAT32_PORTS}",

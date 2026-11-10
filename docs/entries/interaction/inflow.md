@@ -8,7 +8,8 @@ describes: "0.1.0"
 and `frequency=` (and `phase=`, in radians). The flow holds it in its own step: the opening's face is evolved like any
 other, and its pressure is the unknown that pins its flux to the inflow at the step's end, solved with the flow's other
 openings through the flow's affine response (a flux row). It pins the whole opening's flux, the wall's band included:
-the band carries its Darcy share of it (about 0.1 to 1 %), so the lumen takes the inflow less that share. The profile across the opening is the flow's own, developed
+the band carries its Darcy share of it (the flow's entry gives its size), so the lumen takes the inflow less that
+share. The profile across the opening is the flow's own, developed
 by the vessel upstream of it, never imposed. With the energy ledger it is a source: it declares no class, and the flow
 books its work, the pressure it returns times the flux the law gives, under the law's name, as supplied.
 

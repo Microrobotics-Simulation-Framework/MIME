@@ -183,10 +183,11 @@ FLAGS: tuple[LedgerFlag, ...] = (
 )
 
 #: The run that measured the open box's lines and rates: 200 drawn open runs a dtype (``tests/flow/open_cases.py``,
-#: seeds 0 to 199, 60 steps each) and each plant on 40 fresh draws (seeds from 1000), the same draws clean.
-OPEN_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42844502732"
-_OPEN_CLEAN = (f"drawn open runs (an inflow and a Windkessel, IMEX Euler, D/h 8 to 16, Re 1 to 100 through a "
-               f"narrowing of up to 0.4, inside the CFL line; tests/flow/open_cases.py), 60 steps each, "
+#: seeds 0 to 199, 60 steps each) and each plant on 40 fresh draws (seeds from 3000), the same draws clean.
+OPEN_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42877559684"
+_OPEN_CLEAN = (f"drawn open runs (an inflow and a Windkessel with a downstream resistance of 1 to 1e4 times the "
+               f"vessel's, IMEX Euler, D/h 8 to 16, Re 1 to 100 through a narrowing of up to 0.4, a run held past the "
+               f"CFL line read on its steps before the hold; tests/flow/open_cases.py), 60 steps each, "
                f"{OPEN_MEASURED}")
 _UNIFORM = "the planes' faces at full weight in the inner product (the projector not orthogonal under it)"
 
@@ -194,7 +195,7 @@ _UNIFORM = "the planes' faces at full weight in the inner product (the projector
 OPEN_FLAGS: tuple[LedgerFlag, ...] = (
     LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading,
                {"float64": 2e-17, "float32": 1e-8},
-               f"200 {_OPEN_CLEAN}: worst 3.1e-18 (float64) and 2.4e-9 (float32), every step judged",
+               f"200 {_OPEN_CLEAN}: worst 2.4e-18 (float64) and 1.2e-9 (float32), every step judged",
                _evidence(_UNIFORM, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, OPEN_MEASURED)),
 )
 

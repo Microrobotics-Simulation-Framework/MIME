@@ -14,6 +14,7 @@ from mime.build import BuildRefused
 from mime.dynamics import FVM, Scheme
 from mime.experiment import Experiment
 from mime.interactions import BodyForce, Inflow, Windkessel
+from mime.nodes.flow.fvm import OpenFlowNode
 from mime.observations import EnergyLedger
 from mime.scene import PeriodicBox, Scene, Tube, VesselRegion, Z
 from mime.testing import ledger_closes
@@ -26,8 +27,8 @@ FLUX = 1e-3 * math.pi * RADIUS ** 2
 RESISTANCE = 8.0 * MU * LENGTH / (math.pi * RADIUS ** 4)
 
 
-def vessel(*, domain=None, axis=+Z, scheme=None, laws=("start", "end"), inflows=("start",)) -> Experiment:
-    exp = Experiment("open_tube", scene=Scene.new(up=Z, units="m"), dt=ms(2.0))
+def vessel(*, domain=None, axis=+Z, scheme=None, laws=("start", "end"), inflows=("start",), dt=None) -> Experiment:
+    exp = Experiment("open_tube", scene=Scene.new(up=Z, units="m"), dt=ms(2.0) if dt is None else dt)
     exp.add_structure(Structure("tube", geometry=Tube(axis=axis, inner_radius=mm(RADIUS * 1e3), wall=mm(0.2),
                                                       length=mm(LENGTH * 1e3))))
     flow = FVM(domain=VesselRegion() if domain is None else domain, cells_across=8,
@@ -117,3 +118,23 @@ def test_an_open_vessel_steps_by_imex_euler_or_its_steady_limit(float64):
 
 def test_a_tilted_open_vessel_is_refused(float64):
     assert "flow.open-axis" in refused(vessel(axis=(1.0, 0.0, 1.0)))
+
+
+def test_dt_auto_on_an_open_vessel_is_refused_naming_its_missing_step_rule(float64):
+    """dt='auto' is refused with the open vessel's own reason, never "nothing in this experiment" bounds its step."""
+    with pytest.raises(BuildRefused) as raised:
+        vessel(dt="auto").build()
+    (refusal,) = [r for r in raised.value.refusals if r.code == "run.dt-auto-unset"]
+    assert "no step rule yet" in str(refusal) and "nothing in this experiment" not in str(refusal)
+
+
+def test_the_cfl_stop_on_an_open_vessel_names_its_own_routes(float64):
+    """The CFL stop's routes on an open vessel: a timestep from the inflow's peak, never dt='auto' or a steady drive."""
+    built = vessel().build()
+    node = built.graph.get_node("water.flow")
+    assert isinstance(node, OpenFlowNode)
+    state = {**dict(node.initial_state()), "stopped_at": np.int32(5), "stopped_cfl": np.float64(0.9)}
+    problem = node.stop_problem(state)
+    assert problem is not None and problem.code == "flow.cfl-exceeded"
+    assert "dt='auto' is refused here" in problem.action and "steady drive" not in problem.action
+    assert "inflow's peak" in problem.action
