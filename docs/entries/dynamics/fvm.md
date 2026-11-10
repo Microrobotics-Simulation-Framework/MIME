@@ -45,13 +45,25 @@ estimate (the cells times the bytes a cell a run on a CPU was measured to hold a
 can have: a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the control group the
 process runs in (a container's, a batch job's). A box whose run will not fit is refused when the experiment is planned
 (`flow.memory`), with a coarser grid or a shorter period as its route. The estimate is measured, not a bound: the peak
-grows with the threads a run uses, and a GPU's bytes a cell are not measured. The flow provides the velocity at points
+grows with the threads a run uses, and a GPU's bytes a cell are not measured. It is measured without the energy
+ledger, whose terms make a step's program 1.15 to 1.26 times larger by XLA's analysis at D/h 32: a metered run holds
+more than the estimate says. The flow provides the velocity at points
 (`field.flow.velocity`, its solved-field declarations' `provides`); a drag, which assumes its medium at rest, is refused
 wherever the region its medium fills carries a field.
 
-The build does not yet meter the flow for the energy ledger (its step identity is written and gated on its node, but
-its hosted laws are not named for the ledger). With `EnergyLedger()` attached the run's account names the flow as not
-metered, with that reason (`result.energy.unmetered`, `result.energy.text()`, `result.text()`).
+With `EnergyLedger()` attached the build meters the flow as a receiver of the `fluid` port kind: its fluid's momentum
+(`flow.momentum`, the integral of the density times the velocity over the fluid, none over the solid) against the body
+force each law driving it delivers. The kinetic energy is what the flow stores; each law's drive is booked as the work
+it did on the fluid, a `BodyForce` supplying its own (it reads nothing of the components and delivers loads, so it is
+outside); the
+viscous loss is booked under the flow's viscosity (`water.flow.viscosity`) and the wall's band under the wall
+(`tube.wall`); the scheme's own terms (backward Euler's, convection at mixed time levels and the solve's residual) are
+numerical, never a loss. IMEX Euler and its steady limit close the step's identity to rounding at every step; RK3's
+split penalty has no formula term, so each RK3 step is judged to have dissipated instead, and its drive's attribution
+is checked at every step: the work its stages applied against the law's own delivery, evaluated at the stage instants.
+A gift a numerical term's own formula books (convection's) is booked under that term, where the identity cannot see it:
+only the order tests on their fixed case see it, the validity says from what size. The stall detector is written
+with the ledger.
 
 The flow is driven by laws bound to the medium: on a periodic box, a `BodyForce` on the fluid, which stands in for the
 pressure drop a period of the vessel would carry. The fluid's viscosity and density are the medium's values, from its
@@ -66,12 +78,15 @@ stopped, and a run that records every step (`history=True`) keeps each step's. A
 checks of the true residual, none fell below a share of the best before them (the entry's validity lists the window and
 the share). With no tolerance given, a float32 run's solve stops at its tolerance, or at its own rounding floor where
 that is higher (on a fine grid with a stiff interior): the residual an answer reaches when each of the operator's
-coefficients and the right-hand side is off by one rounding unit. A tolerance given is held as given. A float32 solve
-that stalls above that floor is still flagged: with the stiffer interior (`Band`'s smaller `delta_in`) in a flow with a
-pressure gradient its conjugate gradient can stall well above it, though the solve could still converge. A solve whose
-residual is not finite (a NaN in the step's drive or operator) returns NaN, never a velocity it did not solve for, so
-the run is refused for its state's not being finite, naming the flow (and, in a run that records every step, the step
-where it began).
+coefficients and the right-hand side is off by one rounding unit. A tolerance given is held as given. The floor counts
+only while it is small (the entry's validity gives the line; past it the tolerance holds): it is made from the answer,
+and an answer that grows without bound, as a singular system's does, raises its own floor, so a stop at the floor is
+taken only where the residual is itself small. Where a solve would stop stagnated it first restarts from its true
+residual, a few times (the entry's validity gives how many): with the stiffer interior (`Band`'s smaller `delta_in`) in
+a flow with a pressure gradient, float32's conjugate gradient stalls well above its floor, and a restart there breaks
+the stall. A stall that outlasts the restarts is still flagged. A solve whose residual is not finite (a NaN in the
+step's drive or operator) returns NaN, never a velocity it did not solve for, so the run is refused for its state's not
+being finite, naming the flow (and, in a run that records every step, the step where it began).
 
 With convection on, each step checks the flow's CFL number against the scheme's line along the vessel's axis, behind
 the build's prediction (for a state handed over mid-run, or a flow the prediction does not cover). At the first step

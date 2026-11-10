@@ -396,10 +396,10 @@ def test_a_box_margin_under_the_fields_reach_is_refused_when_planned():
 
 def test_a_run_past_the_reports_rows_is_refused_before_it_runs(float64):
     """Minor 1: the derivative solves' per-step rows are never clamped; a run that would pass the last row is refused
-    before it runs (flow.report-rows), naming the rows and the route. The control: a run within them runs."""
-    built = experiment(cells_across=8, report_rows=3).build()
+    before it runs (flow.solve-report-rows), naming the rows and the route. The control: a run within them runs."""
+    built = experiment(cells_across=8, solve_report_rows=3).build()
     built.run(ms(60.0))  # three steps of 20 ms: within the rows
     with pytest.raises(ArgumentRefused) as raised:
         built.run(ms(20.0))
-    assert [r.code for r in raised.value.refusals] == ["flow.report-rows"]
-    assert "report_rows=4" in raised.value.refusals[0].action
+    assert [r.code for r in raised.value.refusals] == ["flow.solve-report-rows"]
+    assert "solve_report_rows=4" in raised.value.refusals[0].action

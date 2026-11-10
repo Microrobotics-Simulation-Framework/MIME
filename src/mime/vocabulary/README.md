@@ -68,19 +68,21 @@ operators a dynamic segment takes from a spinner mounted on it, `apparatus.link_
 rotors' momentum about their axes, `N m s`, whose gyroscopic torque the segment applies) and `apparatus.link_inertia`
 (a row per frame, the rotors' inertia beyond the frame's own at the step's start and end, in kg m²).
 
-The port kinds and energy classes: `PortKind`, `register_port_kind`, `port_kind`, `port_kinds`; MIME's five kinds,
+The port kinds and energy classes: `PortKind`, `register_port_kind`, `port_kind`, `port_kinds`; MIME's six kinds,
 `rigid_body` (a body's twist, against its applied wrench and background load read at the step's start, and its
 resistance and confinement solved for in its step), `joint` (a dynamic arm's joint rates, against the loads on its
 frames, which reach them through its Jacobian, its spinners' momenta, whose gyroscopic torque it returns at the rates
 it applies it at, and the inertia its frames carry, paired by its change), `spinner` (a dynamic motor's rotor, against
 the loads on its frames, of which the rotor's axial torque is its own and the rest passes to its host),
-`delivered_inertia` and `flow_in`; `DeliveryKind`, `EnergyClass`,
+`delivered_inertia`, `flow_in` and `fluid` (a medium's fluid's momentum, `flow.momentum`, against the body force per
+unit mass each law driving it delivers, and the drive's waveform, which reaches it through the flow's own evaluation at
+its stage instants); `DeliveryKind`, `EnergyClass`,
 `Definiteness`, and `POWER` and `ENERGY`, what a delivery and its flow pair to.
 
 **What a kind checks, and who reads it.** A kind fixes the flow and the delivery kind of each interface it accepts,
 and pairs their units to watts; shape and sign live on the interface entries and are not compared, and an interface
 listed in `mapped` skips the unit pairing (its map is the receiver's own: a dynamic arm's Jacobian, a motor's
-axis). With the energy ledger attached the build reads a metered
+axis, a flow's evaluation of a waveform). With the energy ledger attached the build reads a metered
 dynamics' kind (`Dynamics.port`) for how each delivery into it is paired, and the receiver's node refuses a delivery
 paired otherwise than it pairs that input; it reads each law's class and definiteness for its records and its run-time
 check. A declaration settles nothing by itself: each class is checked by an exact identity on the law alone (the energy

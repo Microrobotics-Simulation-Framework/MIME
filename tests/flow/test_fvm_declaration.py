@@ -1,8 +1,8 @@
 """The FVM's declaration at the build: the build report's line for the box (its cells, spacing and resolution, and
 the run's memory estimate, the cells times the measured bytes a cell, against the memory a run can have), the memory
 refusal (gate 13): a box whose run will not fit is refused when planned, with its route; what a CPU run can have (the
-host's available memory, or its control group's limit where that is less); and the flow named as unmetered in a run's
-energy account with the energy ledger attached."""
+host's available memory, or its control group's limit where that is less); and the flow metered, with nothing named
+unmetered, in a run's energy account with the energy ledger attached."""
 
 from __future__ import annotations
 
@@ -98,25 +98,23 @@ def test_a_cpu_runs_room_is_the_hosts_available_memory_or_its_control_groups_lim
 
 
 @pytest.mark.parametrize("ledger", [True, False], ids=["ledger", "control-no-ledger"])
-def test_the_run_names_the_flow_unmetered_with_its_reason_in_its_account_and_its_text(float64, ledger):
-    """With the energy ledger attached the run's account is not empty: it names the flow, which the build does not yet
-    meter, with its reason, and so does the run's text; the build report lists the drive once and says why it is not
-    metered. Without the ledger there is no account and no such line."""
+def test_the_run_meters_the_flow_and_names_nothing_unmetered(float64, ledger):
+    """With the energy ledger attached the build meters the flow (the ``fluid`` port), the drive is outside and
+    supplies its work, and no run text, account or report line names the flow unmetered: the reason F1a-2 gave for
+    leaving it out is gone. Without the ledger there is no account and no such line."""
     exp = experiment()
     if ledger:
         exp.observe(EnergyLedger())
     built = exp.build()
     result = built.run(ms(40.0))
-    named = f"water.flow is not metered, so not in the account: {FVM.unmetered}"
+    assert FVM.port == "fluid" and FVM.unmetered == ""
     if not ledger:
         assert result.energy is None and "not metered" not in result.text()
         return
     account = result.energy
-    assert account is not None and dict(account.unmetered) == {"water.flow": FVM.unmetered}
-    assert f"water.flow: {FVM.unmetered}" in account.text() and "no receiver is metered" in account.text()
-    assert f"energy ledger: {named}" in result.text().splitlines()
-    lines = built.report.energy
-    assert any(line.startswith("water.flow: receives deliveries (body_force:water) and is not metered")
-               for line in lines), lines
-    assert any(line.startswith("body_force:water: declares no energy class") and "not metered: " in line
-               for line in lines), lines
+    assert account is not None and dict(account.unmetered) == {} and dict(built.report.unmetered) == {}
+    assert "not metered" not in account.text(details=True) and "not metered" not in result.text()
+    assert "water.flow: metered (fluid port), its step identity and each law's paired work recorded in its step" in \
+        built.report.energy
+    assert "outside: body_force:water (receives no delivery from the components)" in built.report.energy
+    assert not any("not metered" in line for line in built.report.energy), built.report.energy

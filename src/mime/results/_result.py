@@ -382,8 +382,8 @@ class RunResult:
     def energy(self) -> EnergyAccount | None:
         """The energy ledger's account of the run (:class:`~mime.results.EnergyAccount`), from the build's start to its
         end: what is stored, lost and supplied, named by what supplies it, and each potential's change, in plain words
-        (``result.energy.text()``), and what the build left unmetered, with its reason (``unmetered``: a flow the
-        build does not yet meter). ``None`` for a run built without ``EnergyLedger``, and for one read back from a
+        (``result.energy.text()``), and what the build left unmetered, with its reason (``unmetered``: a dynamics
+        naming no port kind, such as the prescribed flow, which stores nothing, and a lab's). ``None`` for a run built without ``EnergyLedger``, and for one read back from a
         folder, which keeps no law's parameters to take a potential's change from."""
         if self._account is None and self._energy is not None:
             self._account = self._energy()

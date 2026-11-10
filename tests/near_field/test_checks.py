@@ -26,8 +26,8 @@ SPACING = 0.4e-3
 class OwnIndefinite(JointDragNode):
     """The plant: the first body's own block shifted down by twice its largest eigenvalue."""
 
-    def solved(self, p, poses):
-        found, *rest = super().solved(p, poses)
+    def solved(self, p, poses, steps=None):
+        found, *rest = super().solved(p, poses, steps)
         block = found[:6, :6]
         shift = 2.0 * jnp.max(jnp.abs(jnp.linalg.eigvalsh(0.5 * (block + block.T))))
         return (found.at[:6, :6].add(-shift * jnp.eye(6, dtype=found.dtype)), *rest)
@@ -36,17 +36,17 @@ class OwnIndefinite(JointDragNode):
 class CrossDoubled(JointDragNode):
     """The plant: every cross block doubled, every body's own block as it was."""
 
-    def solved(self, p, poses):
-        found, *rest = super().solved(p, poses)
+    def solved(self, p, poses, steps=None):
+        found, *rest = super().solved(p, poses, steps)
         count = len(self.members)
         mask = jnp.kron(jnp.eye(count, dtype=found.dtype), jnp.ones((6, 6), dtype=found.dtype))
         return (found * mask + 2.0 * found * (1.0 - mask), *rest)
 
 
-def configuration(gap: float, seed: int):
+def configuration(gap: float, seed: int, **settings):
     rng = np.random.default_rng(seed)
     turns = {f"s{i}": tuple(q / np.linalg.norm(q)) for i, q in enumerate(rng.normal(size=(2, 4)))}
-    return bodies("checked", spheres(gap * 1e-3, 2), mrs(SPACING), orientations=turns).build()
+    return bodies("checked", spheres(gap * 1e-3, 2), mrs(SPACING, **settings), orientations=turns).build()
 
 
 def step_with(built, cls):
@@ -92,3 +92,25 @@ def test_the_margin_is_reported_each_step_and_the_stop_recorded_once():
             state = planted.update(state, inputs, planted.delta_t, params=params)
     assert float(state["steps"]) == 3.0 and float(state["stopped_at"]) == 1.0
     assert np.asarray(state["least_eigenvalue"]).shape == (2,)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_on_the_iterative_route_each_plant_stops_and_the_unplanted_steps_are_the_dense_routes(dtype):
+    """Gate 7 past the takeover line (gate 11's dtype arm): the same plants stop every configuration, none stops
+    unplanted, and the unplanted step's margins are the dense route's to the solve's tolerance."""
+    rows = []
+    with precision(dtype):
+        for gap in (0.05, 0.3):
+            dense = step_with(configuration(gap, 0), None)[1]
+            built = configuration(gap, 0, near_field_dense_unknowns=0)
+            rows.append((gap, dense, step_with(built, None)[1], step_with(built, OwnIndefinite),
+                         step_with(built, CrossDoubled)))
+    for gap, dense, clean, (own_node, own), (cross_node, cross) in rows:
+        moved = float(np.max(np.abs(clean["least_eigenvalue"] - dense["least_eigenvalue"])))
+        print(f"\n{dtype} gap {gap} a, GMRES: margins {np.round(clean['least_eigenvalue'], 4)}, the dense route's moved "
+              f"by {moved:.2g}; planted own {float(own['stopped_why'])}, planted cross {float(cross['stopped_why'])}")
+        assert float(clean["stopped_at"]) == 0.0 and float(clean["solve_flagged"]) == 0.0
+        assert moved <= (1e-8 if dtype == "float64" else 1e-4)
+        assert float(own["stopped_why"]) == WHY_MEMBER and own_node.stop_problem(own).code == "drag.near-field-indefinite"
+        assert float(cross["stopped_why"]) == WHY_CLUSTER and np.all(cross["least_eigenvalue"] > 0.0)
+        assert "cluster's grand resistance" in cross_node.stop_problem(cross).message

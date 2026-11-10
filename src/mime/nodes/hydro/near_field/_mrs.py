@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 import jax
@@ -148,6 +148,25 @@ class MRSOperator:
                 None if member.wall_every else cast(np.ndarray, member.wall_table), member.wall_budget, chunks,
                 parameters, viscosity, placed.eps_squared)
         return free + image.matrix, image.accepted, short
+
+    def preconditioner(self, inverse: Array, pose: Array, viscosity: Any,
+                       transpose: bool = False) -> Callable[[Array], Array]:
+        """Its preconditioner block (:data:`PRECONDITIONER`), from ``inverse``, its held free part's inverse in its frame
+        at unit viscosity: the free part's inverse at the pose, ``mu Q H^-1 Q^T`` on each 3 x 3 block (``mu Q H^-T
+        Q^T`` with ``transpose``, the transpose solve's), applied to columns ``(3N, c)``. Its own block's inverse in
+        free space; beside a wall its own block also holds the wall's self-image, which it leaves out (a
+        preconditioner changes a solve's cost, never its answer)."""
+        turn = quaternion.rotation_matrix(pose[3:])
+        factor = inverse.T if transpose else inverse
+
+        def apply(v: Array) -> Array:
+            count = v.shape[0] // 3
+            local = jnp.einsum("ab,nac->nbc", turn, v.reshape(count, 3, -1), precision=PRECISION)
+            solved = jnp.matmul(factor, local.reshape(3 * count, -1), precision=PRECISION)
+            back = jnp.einsum("ab,nbc->nac", turn, solved.reshape(count, 3, -1), precision=PRECISION)
+            return viscosity * back.reshape(3 * count, -1)
+
+        return apply
 
     def cross(self, placed: Placed, targets: Array, reach: Any) -> tuple[Array, Array]:
         point = point_block(targets, placed)
