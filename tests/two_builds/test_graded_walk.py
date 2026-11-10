@@ -44,7 +44,7 @@ def helix() -> Experiment:
                       velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-9), reason="a sub-millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-17, 1e-17, 1e-17)), reason="a sub-millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=mm(0.03), blob=0.25, wall_kind="plane", contact=(0.0, 0.0, -1.0),
+    experiment.attach(Drag.MRS(lubrication=False, spacing=mm(0.03), blob=0.25, wall_kind="plane", contact=(0.0, 0.0, -1.0),
                                contact_gap=mm(0.015)), body="ball", medium="water")
     return experiment
 

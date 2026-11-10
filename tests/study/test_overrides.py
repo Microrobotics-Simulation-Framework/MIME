@@ -12,11 +12,14 @@ import numpy as np
 import pytest
 from compare import TOLERANCE_EPS, misses, worst
 from planted import planted
-from script_a import reproduction_arm
+from script_a import EPSILON, REFERENCE_START, reproduction_arm, script_a
 
 from mime import Study
 from mime.build import BuildRefused
 from mime.cli import main
+from mime.data import asset
+from mime.interactions import Lubrication
+from mime.interactions.hydrodynamic import UncoupledDrag
 from mime.study import DT, grid
 from mime.study._override import verify_run
 from mime.units import Hz, N, kg, m, ms, s
@@ -60,18 +63,21 @@ def test_a_leaf_the_compiled_step_does_not_read_is_refused_with_a_rebuild_as_its
 
 
 def test_a_structural_setting_and_a_numerical_one_are_refused_with_their_routes():
-    exp = reproduction_arm()
-    built = exp.build()
+    """Drag 0.4.0's lubrication (the surrogate's blend, a design setting there) is a setting the program is built
+    from; drag 0.5.0's is a numerical choice (the mrs rung's hand-over, the MRS's completion in the gap, whose
+    validity line is its near-wall error; the surrogate's blend shares the setting), so overriding it is a variant, as
+    the step and the rung are."""
+    kept = script_a("script_a", start=REFERENCE_START, drag=UncoupledDrag.Surrogate(
+        weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON))).build()
     with pytest.raises(BuildRefused) as structural:
-        built.run(s(0.1), override={"drag:umr.lubrication": None})
+        kept.run(s(0.1), override={"drag:umr.lubrication": None})
     assert structural.value.codes() == ["override.structural"]
     assert "Study" in structural.value.refusals[0].action
-    with pytest.raises(BuildRefused) as variant:
-        built.run(s(0.1), override={DT: ms(0.25)})
-    assert variant.value.codes() == ["override.variant"] and "variant" in variant.value.refusals[0].message
-    with pytest.raises(BuildRefused) as rung:
-        built.run(s(0.1), override={"drag:umr.rung": "mrs"})
-    assert rung.value.codes() == ["override.variant"]
+    built = reproduction_arm().build()
+    for override in ({"drag:umr.lubrication": None}, {DT: ms(0.25)}, {"drag:umr.rung": "mrs"}):
+        with pytest.raises(BuildRefused) as variant:
+            built.run(s(0.1), override=override)
+        assert variant.value.codes() == ["override.variant"] and "variant" in variant.value.refusals[0].message
 
 
 def test_run_to_records_the_overrides_and_verify_run_replays_them(tmp_path, capsys):

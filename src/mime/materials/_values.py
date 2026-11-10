@@ -88,6 +88,8 @@ class ValueKind:
 
 
 _APPARENT: Mapping[str, tuple[str, ...]] = MappingProxyType({"density_kind": ("apparent",)})
+_ROUGH = AboveZero("a surface's roughness is a length above zero: at zero the film's resistance between two surfaces "
+                   "grows without bound as their gap closes", "um", 1e-6, 1.0, "a smooth machined or moulded surface")
 
 #: Every value a thing has, by the kind of thing. A body's are derived from its parts when it has parts; a medium's
 #: are read from its record when it has one; either may be declared in the experiment.
@@ -113,6 +115,14 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
         "helix_wavenumber": ValueKind(DIMENSIONLESS, (), "the normalised wavenumber nu of a screw-shaped body: its "
                                                          "cross-section turns by nu / R radians per metre along its "
                                                          "axis, R its reference radius (de Jongh et al. 2025, Eq. 1)"),
+        "roughness": ValueKind(LENGTH, (), "the roughness of the body's surface: with the wall's, where lubrication's "
+                                           "film hands the gap over to contact (a declared length, never fitted)",
+                               above_zero=_ROUGH),
+    },
+    ThingKind.STRUCTURE: {
+        "roughness": ValueKind(LENGTH, (), "the roughness of the structure's surface, where a medium fills its region: "
+                                           "with a body's, where lubrication's film hands the gap over to contact (a "
+                                           "declared length, never fitted)", above_zero=_ROUGH),
     },
     ThingKind.APPARATUS: {
         "magnetic_moment": ValueKind(MAGNETIC_MOMENT, (3,), "the permanent moment of the apparatus's magnet part, in "

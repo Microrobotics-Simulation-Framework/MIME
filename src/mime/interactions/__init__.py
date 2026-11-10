@@ -1,6 +1,7 @@
 """Interactions: one physical law among named things, one module per family. Here now: ``Magnetic.Torque`` and
 ``Magnetic.Force``, ``Gravity``, ``Contact`` (by projection of the body's hull) and ``Drag`` (its surrogate rung, with
-``Lubrication``, and its MRS rung); and ``KEPT``, the earlier versions kept registered."""
+``Lubrication``, and its MRS rung, with ``roughness_cutoff``, where its lubrication hands a gap to contact); and
+``KEPT``, the earlier versions kept registered."""
 
 from collections.abc import Mapping
 from types import MappingProxyType
@@ -11,6 +12,7 @@ from mime.interactions.flow import BodyForce
 from mime.interactions.gravity import Gravity
 from mime.interactions.hydrodynamic import Drag, Lubrication, PointForceDrag, UncoupledDrag
 from mime.interactions.magnetic import Magnetic, MagneticForce, MagneticTorque
+from mime.nodes.hydro.mrs._handover import roughness_cutoff
 from mime.registry import Interaction
 
 #: The versions of the interactions kept registered after a later version changed what they compute, by name and
@@ -26,4 +28,5 @@ KEPT: Mapping[tuple[str, str], tuple[type[Interaction], str]] = MappingProxyType
     ("magnetic.force", "0.1.0"): (CentreMagneticForce, MagneticForce.version),
 })
 
-__all__ = ["KEPT", "BodyForce", "Contact", "Drag", "Gravity", "Lubrication", "Magnetic", "MagneticForce", "MagneticTorque"]
+__all__ = ["KEPT", "BodyForce", "Contact", "Drag", "Gravity", "Lubrication", "Magnetic", "MagneticForce", "MagneticTorque",
+           "roughness_cutoff"]
