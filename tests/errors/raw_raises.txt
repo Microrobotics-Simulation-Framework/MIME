@@ -75,6 +75,7 @@ materials/_records.py::RecordFile.read OSError 1  # invariant: a record file con
 nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_multipole.py::CalibratedMultipoleNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_reaction.py::SourceReactionNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::IntegratingRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded

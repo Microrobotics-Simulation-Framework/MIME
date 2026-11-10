@@ -5,7 +5,7 @@
 ## What goes here
 
 - **Surrogate weights**, pinned by sha256.
-- **Calibrations** for electromagnetic navigation systems, from a2.
+- **Calibrations** for electromagnetic navigation systems, byte for byte as published.
 - **The environment's pins**, `env/`: each variant's hashed requirements, exported from `uv.lock`, the base image of
   each Python series and the uv that installs the pins (`uv.json`), each pinned by digest, which [`mime.env`](../env/README.md) reads.
 
@@ -35,5 +35,9 @@ a manifest beside its description (the AR4's in `examples/descriptions/ar4/`), a
 the assets `openmaterica_example_water` and `openmaterica_example_ndfeb_n45`, which `mime.materials.packaged_record`
 names. Their values are CC0-1.0, their origin OpenMaterica's tag `openmaterica-v0.1.0.dev3`; they are examples, not
 reviewed library data, and are never edited here (`records/README.md`).
+
+**`emns_calibrations/`**: ETH MSRL's published calibrations of three electromagnetic navigation systems, Navion_2, OctoMag and CardioMag, evaluated by MIME, as the assets `navion_2`, `octomag` and `cardiomag`, which `mime.fields.CalibratedMultipole` reads: under the
+Apache License, Multi-Scale Robotics Lab, ETH Zurich, each byte for byte its upstream's at a pinned commit
+(`emns_calibrations/README.md`, and a card per file in `docs/assets/`).
 
 Releases are explained in the [package manifest](../README.md#status).

@@ -546,3 +546,72 @@
   year    = {1991},
   doi     = {10.1016/0021-9991(91)90238-G},
 }
+
+@article{Petruska2017,
+  author  = {Petruska, Andrew J. and Edelmann, Janis and Nelson, Bradley J.},
+  title   = {Model-Based Calibration for Magnetic Manipulation},
+  journal = {IEEE Transactions on Magnetics},
+  volume  = {53},
+  number  = {7},
+  pages   = {1--6},
+  year    = {2017},
+  doi     = {10.1109/TMAG.2017.2653080},
+  note    = {The multipole electromagnet model (MPEM) the calibrated multipole evaluates: each coil's field per unit current a sum of fitted multipole sources.},
+}
+
+@article{Charreyron2021,
+  author  = {Charreyron, Samuel L. and Boehler, Quentin and Kim, Byungsoo and Weibel, Cameron and Chautems, Christophe and Nelson, Bradley J.},
+  title   = {Modeling Electromagnetic Navigation Systems},
+  journal = {IEEE Transactions on Robotics},
+  volume  = {37},
+  number  = {4},
+  pages   = {1009--1021},
+  year    = {2021},
+  doi     = {10.1109/TRO.2020.3047053},
+  note    = {Electromagnetic navigation systems modelled with MPEM and its saturating form (S-MPEM, not in calibrated\_multipole 0.1.0); mag\_manip is its library.},
+}
+
+@article{Kummer2010,
+  author  = {Kummer, Michael P. and Abbott, Jake J. and Kratochvil, Bradley E. and Borer, Ruedi and Sengul, Ali and Nelson, Bradley J.},
+  title   = {{OctoMag}: An Electromagnetic System for {5-DOF} Wireless Micromanipulation},
+  journal = {IEEE Transactions on Robotics},
+  volume  = {26},
+  number  = {6},
+  pages   = {1006--1017},
+  year    = {2010},
+  doi     = {10.1109/TRO.2010.2073030},
+  note    = {OctoMag's design; its force tables all assume a 15-A saturation of the current amplifiers, an assumption of that paper, not a rating of the rig the shipped calibration was fitted on.},
+}
+
+@article{Gervasoni2024,
+  author  = {Gervasoni, Simone and Pedrini, Norman and Rifai, Tarik and Fischer, Cedric and Landers, Fabian C. and Mattmann, Michael and Dreyfus, Roland and Viviani, Silvia and Veciana, Andrea and Masina, Enea and Aktas, Buse and Puigmart{\'\i}-Luis, Josep and Chautems, Christophe and Pan{\'e}, Salvador and Boehler, Quentin and Gruber, Philipp and Nelson, Bradley J.},
+  title   = {A Human-Scale Clinically Ready Electromagnetic Navigation System for Magnetically Responsive Biomaterials and Medical Devices},
+  journal = {Advanced Materials},
+  volume  = {36},
+  number  = {31},
+  pages   = {2310701},
+  year    = {2024},
+  doi     = {10.1002/adma.202310701},
+  note    = {The Navion_2 system paper. Experimental Section and Fig. 3: drivers rated 50 A continuous and 100 A peak, workspace maps at 50 A in each coil; it states no coil rating.},
+}
+
+@misc{Yu2019,
+  author  = {Yu, Ruoxi and Charreyron, Samuel L. and Boehler, Quentin and Weibel, Cameron and Poon, Carmen C. Y. and Nelson, Bradley J.},
+  title   = {Modeling Electromagnetic Navigation Systems for Medical Applications using Random Forests and Artificial Neural Networks},
+  year    = {2019},
+  note    = {arXiv:1909.12028 (published at ICRA 2020, DOI 10.1109/ICRA40945.2020.9197212). Sec. III-A: the CardioMag, eight electromagnets: ``The maximum current in each electromagnet is 35 A, and the maximum power in the whole system is 15 kW.''},
+}
+
+@misc{Zughaibi2026,
+  author  = {Zughaibi, Jasan and Jaggy, Elia and Gantenbein, Valentin and von Arx, Denis and Sartini, Cristiano and K{\"u}hne, Jonas and Brinkmann, Oliver and Ernst, Pascal and Pan{\'e}, Salvador and Boehler, Quentin and Muehlebach, Michael and Nelson, Bradley J.},
+  title   = {Electromagnetic Micro-Guidewire Control in Large Workspaces},
+  year    = {2026},
+  note    = {arXiv:2609.16354. Sec. II-C: the same three-coil system and drivers as Zughaibi2025; 45 A coil-current constraints.},
+}
+
+@misc{Zughaibi2025,
+  author  = {Zughaibi, Jasan and von Arx, Denis and Derungs, Maurus and Heemeyer, Florian and Antonelli, Luca A. and Boehler, Quentin and Muehlebach, Michael and Nelson, Bradley J.},
+  title   = {Expanding the Workspace of Electromagnetic Navigation Systems Using Dynamic Feedback for Single- and Multi-agent Control},
+  year    = {2025},
+  note    = {arXiv:2511.18486. Sec. III-B: OctoMag's coils limited to 16 A each in operation; a Navion_2 whose hardware supports 45 A, restricted to 25 A per coil for safety: one lab's operating figures, not ratings.},
+}

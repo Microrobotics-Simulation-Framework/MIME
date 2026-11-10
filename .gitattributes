@@ -15,3 +15,7 @@
 *.whl binary
 *.usdc binary
 *.usdz binary
+
+# The eMNS calibrations are third parties' files, shipped byte for byte and pinned by the sha256 of the upstream bytes;
+# CardioMag's mixes CRLF and LF line ends, which eol=lf would rewrite on commit. Git keeps them as they are.
+src/mime/data/emns_calibrations/*.yaml -text

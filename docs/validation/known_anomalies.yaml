@@ -3686,3 +3686,39 @@ anomalies:
       value; nothing is measured for a compliant wall at a gap of the film's scale.
     workaround: "Treat a result for a body within the lubricating film's scale of a soft wall as unbounded in this respect; for a rigid-wall experiment (script A's tube as modelled) nothing is needed."
     planned_resolution: "Deferred to 0.4.0 (soft bodies, compliant vessels), where the thin-film model takes a deflecting gap (F0's decision C3, the register's A9). This entry changes no code."
+
+  - anomaly_id: MIME-ANO-153
+    title: "The coil array's sign convention is mag_manip's, and ETH's measured Navion_2 data disagree with ETH MSRL's published calibration by a global sign: which side is flipped is not known"
+    description: >
+      The calibrated multipole's coil field (calibrated_multipole 0.1.0) follows mag_manip's convention, which its
+      software oracle pins (tests/oracles/test_calibrated_multipole.py, against mag_manip 3.0.0). The 0.2 line compared
+      the same calibration with ETH's measured Navion_2 data, a 121-Hall-sensor validation set, and found a global sign between
+      them: a correlation of r = -0.9942 raw and +0.9942 with the field negated, which it read as a clean global flip, not
+      a wiring permutation (over all six coil permutations and eight sign patterns, identity with (-1, -1, -1) won at
+      1.30 mT, the next best at 13.3 mT) and not a frame rotation (a global flip has determinant -1; a proper rotation
+      cannot flip all three comparable components). The same source quotes 2.34 mT RMSE for the flipped comparison in
+      another passage; which metric each of the two figures is, it does not record, and neither the measured set's
+      reading nor its script is in the 0.2 tree [read: src/mime/nodes/actuation/coil_array_field.py at the tag pre-0.3,
+      its field_sign parameter and hazard hints].
+
+      Which side is flipped is not known: a sign-symmetric excitation cannot tell a calibration's
+      polarity from the rig's current or sensor convention, and ETH's own validation metric (convex-hull distances over a
+      symmetric current box) is invariant under B -> -B, so neither would have been caught. 0.2 carried a field_sign
+      parameter, default +1; 0.3 does not carry one: the convention is stated, not a setting. Gradient pull on a field-aligned body is invariant under the flip (F proportional to grad
+      |B|^2); the torque on a fixed moment, m x B, flips, and so does which way a permanent-magnet body turns to align.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A result that depends on the direction a fixed moment turns in an eMNS field (torque-mode steering, a permanent
+      magnet's alignment) is wrong in sign if the hardware's convention is the other one; a result on gradient pull of a
+      field-aligned body is not affected. No software check can tell which: mag_manip agreement pins the convention, not
+      the hardware's.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "entry: field_provider calibrated_multipole 0.1.0; its sign convention against hardware"
+    residual_risk: >
+      The measured comparison's numbers are the 0.2 line's, read from its source, not re-measured here; the measured set
+      would be an acceptance test of sign and frame against hardware, not an accuracy claim, and it is not run in 0.3.
+    workaround: "Establish the sign convention on your own hardware (a measured field at a known current, read with a sensor of known orientation) before relying on the direction of rotation; nothing is needed for gradient pull on a field-aligned body."
+    planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (the measured Navion_2 campaign, re-read with its script) would settle which side is flipped. This entry changes no code."

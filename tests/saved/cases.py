@@ -278,6 +278,34 @@ def probed_shapes() -> Experiment:
     return experiment
 
 
+def coil_array(**settings: Any) -> Experiment:
+    """A millimetre body in the Navion_2's field, the calibrated multipole placed off the world's origin and turned,
+    with a background field (``settings`` written over these), its currents a constant drive, and dev1's magnetic pair
+    (0.2.0) on the body, its magnet off its centre of mass: so that the walk moves the array's pose and background and
+    the pair reads it at the magnet's centroid. No gravity, no medium."""
+    from mime.data import asset
+    from mime.dynamics import RigidInertial
+    from mime.fields import CalibratedMultipole
+    from mime.interactions import Magnetic
+    from mime.scene import Scene, Z
+    from mime.units import A, A_m2, T, m_per_s2
+
+    experiment = Experiment("coil_array", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    placed = {"at": m((0.01, -0.02, 0.005)), "orientation": (0.96, 0.0, 0.0, 0.28), "background": T((2e-5, 0.0, -4e-5)),
+              **settings}
+    experiment.add_apparatus(Apparatus("coils", fields={"magnetic": CalibratedMultipole(
+        calibration=asset("navion_2"), **placed)}, commands={"currents": A((5.0, -3.0, 2.0))}))
+    experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=mm((3.0, 2.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((1e-3, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    for path, value in (("umr.mass", kg(4e-6)), ("umr.inertia", kg_m2((1.6e-10, 1.6e-10, 1.6e-10))),
+                        ("umr.magnetic_moment", A_m2((1e-3, 0.0, 5e-4))), ("umr.magnet_centre", mm((0.2, 0.0, 0.0)))):
+        experiment.declare(path, value, reason="a millimetre body's magnet, its order")
+    experiment.attach(Magnetic.Torque(), body="umr", field="coils.magnetic")
+    experiment.attach(Magnetic.Force(), body="umr", field="coils.magnetic")
+    return experiment
+
+
 def rigid_explicit() -> Experiment:
     """A ball of three different moments, moving and spinning at 200 rad/s in water, on the kept ``rigid_inertial``
     0.2.0 (the gyroscopic term explicit, MIME-ANO-129) with the drag's MRS rung: what a folder saved before the term
@@ -373,6 +401,8 @@ CASES = (
     Case("rft_tube", rft_tube),
     # rft_free_space on drag 0.4.0, kept: its rft rung's golden output, the version the rung was added to first.
     Case("rft_kept", rft_kept),
+    # A body in an electromagnet array's field, the calibrated multipole, placed, turned and with a background.
+    Case("coil_array", coil_array),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),
