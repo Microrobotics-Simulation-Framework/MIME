@@ -216,13 +216,13 @@ TRUNCATION = 8.0
 
 
 class ExchangeStencil(NamedTuple):
-    """A point set's exchange weights on one face set: each axis's lattice indices ``(n, 3, m)``, its normalised 1-D
+    """A point set's exchange weights on one face set: each axis's lattice indices ``(n, 3, m)`` (``lattice``), its normalised 1-D
     weights ``(n, 3, m)`` (per unit length) and their second differences ``(n, 3, m)`` (per unit length cubed), from
     which the kernel's average (``w_x w_y w_z``) and its Laplacian (``L w``, a sum of three separable products) are
     read: the seven-point Laplacian is self-adjoint, so a field's Laplacian read by the kernel is the field read by
     the kernel's Laplacian."""
 
-    index: Array
+    lattice: Array
     weight: Array
     curvature: Array
 

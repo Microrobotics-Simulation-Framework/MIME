@@ -186,7 +186,9 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
                         rates_read=plan.rates_read, mass_read=plan.mass_read,
                         members={member.owner: _context(member, plans) for member in plan.members},
-                        entry=plan.entry)
+                        entry=plan.entry, exchanges=dict(plan.exchanges),
+                        starts={role: dict(body.initial) for role, name in plan.bindings.items() if plan.exchanges
+                                for body in plans.entries if body.section is Section.DYNAMICS and body.owner == name})
 
 
 def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder, list[str]]:
@@ -394,7 +396,8 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     for node in nodes:
         graph.add_node(node)
     for edge in edges:
-        add_edge(graph, edge.source, edge.target, additive=edge.additive, units=edge.units)
+        add_edge(graph, edge.source, edge.target, additive=edge.additive, units=edge.units, mapping=edge.mapping,
+                 geometry=edge.geometry)
     for group in sorted(groups, key=lambda members: position[members[0]]):
         held = next(g for g in plans.groups if set(g.nodes) == set(group))
         add_coupling_group(graph, group, max_iterations=held.max_iterations, tolerance=held.tolerance)

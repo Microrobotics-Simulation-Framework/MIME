@@ -37,6 +37,10 @@ class EdgeDecl:
     units: str
     seq: int
     carries: str = STATE
+    #: A transfer between discretisations (``mime.mappings``): the mapping the edge carries its value through, and the
+    #: moving geometry it reads, ``(anchor, field)`` of the edge's source or target node. ``None`` for a plain edge.
+    mapping: object | None = None
+    geometry: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -100,8 +104,8 @@ class RestrictedBuilder:
         return isinstance(port, PortRef) and port.node in self._plan.node_names()
 
     def _edge(self, by: str, source: tuple[str, str], target: tuple[str, str], additive: bool, units: str,
-              carries: str) -> None:
-        self.edges.append(EdgeDecl(by, source, target, additive, units, len(self.edges), carries))
+              carries: str, mapping: object | None = None, geometry: tuple[str, str] | None = None) -> None:
+        self.edges.append(EdgeDecl(by, source, target, additive, units, len(self.edges), carries, mapping, geometry))
 
     def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
         """A read into an input of one of the entry's own nodes, an output of one of its own nodes into a target, or,
@@ -199,6 +203,35 @@ class InteractionBuilder(_ReaderBuilder):
                        str(getattr(spec, "expected_units", "") or ""), DELIVERY)
             return
         super().connect(source, into=into)
+
+    def gather(self, label: str, field: str, *, into: PortRef, mapping: object, points: str,
+               units: str | None = None) -> None:
+        """A transfer of the read ``label``'s node's state ``field`` (one face set of a medium's field on its grid) into
+        ``into``, an input of one of its own nodes, through ``mapping`` (``mime.mappings``), at the points its node
+        holds in its state ``points``: the exchange law's gather. The read is a state read of the medium's field
+        dynamics, which it names; the edge reads that node's ``field`` beside the one the read resolved to. Its units
+        label (both ends, as every edge's) is what the mapping delivers, ``units`` where that is not the read's."""
+        if label not in self._plan.reads:
+            raise EntryBuildError(f"it gathers {label!r}, and its plan declares {sorted(self._plan.reads)}")
+        if not self._own(into):
+            raise EntryBuildError(f"its gather goes into {into!r}, not an input of its own nodes")
+        read = self._plan.reads[label]
+        self._edge(self._plan.owner, (read.node, field), (into.node, into.field), False, units or read.units, STATE,
+                   mapping, ("target", points))
+        self._connected[("read", label)] = 1  # every face set and mode of one read: the read is connected once
+
+    def scatter(self, source: PortRef, *, into: str, mapping: object, points: str) -> None:
+        """An output of one of its own nodes delivered into the target ``into`` (one face set of a medium's field)
+        through ``mapping``, at the points the source node holds in its state ``points``: the exchange law's scatter.
+        Additive: every partner's scatter sums into the face set."""
+        if not self._own(source):
+            raise EntryBuildError(f"its scatter comes from {source!r}, not an output of its own nodes")
+        if into not in self._plan.delivers:
+            raise EntryBuildError(f"it scatters into {into!r}, and its plan declares {sorted(self._plan.delivers)}")
+        target = self._plan.delivers[into]
+        self._edge(target.by, (source.node, source.field), (target.node, target.field), True, target.units, DELIVERY,
+                   mapping, ("source", points))
+        self._connected[("target", into)] = 1  # each mode's scatter into one face set: delivered once
 
     def mount(self, label: str, into: PortRef) -> None:
         """The frame poses of the segment the reaction delivered under ``label`` goes to, into ``into``, an input of

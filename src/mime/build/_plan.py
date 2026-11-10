@@ -56,6 +56,7 @@ from mime.build._watch import WATCHED_FAMILY, ContainmentPlan, UnwatchedContainm
 from mime.core import VELOCITY_RULES, jnp, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
+from mime.fields._solved import ExchangeFrame
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
 from mime.core.multibody._tree import as_vector3, rotation_matrix
 from mime.core.multibody._urdf import ISSUES
@@ -412,6 +413,10 @@ class EntryPlan:
     command: ResolvedCommand | None = None
     regions: dict[str, Region] = field(default_factory=dict[str, Region])
     hulls: dict[str, Hull] = field(default_factory=dict[str, Hull])
+    #: By each medium role an interaction is bound to, the exchange frame of the field it carries (SF-4).
+    exchanges: dict[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
+    #: A reader's plan context, kept for its checks once its values are resolved (``Interaction.value_problems``).
+    context: PlanContext | None = None
     position: int = 0
     segment: Segment | None = None
     mount: ResolvedMount | None = None
@@ -1801,6 +1806,15 @@ class _Planner:
             return None
         return path
 
+    def exchange_frame_of(self, medium: str) -> ExchangeFrame | None:
+        """The exchange frame of the field medium ``medium`` carries, where its dynamics gives one (SF-4: what a field
+        that takes exchange deliveries tells its partners), from the dynamics' plan: its region and settings in SI."""
+        plan = self.dynamics.get(medium)
+        frame_of = getattr(plan.entry, "exchange_frame", None) if plan is not None else None
+        if plan is None or frame_of is None:
+            return None
+        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings))
+
     def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
         """The fields carried in the region medium ``medium`` fills, by their ids (``water.flow``): its own and those of
         every other medium filling the same region, each with the quantities its kind's solved-field declarations
@@ -2813,8 +2827,11 @@ class _Planner:
                      for mount in (self.source_mount(name),) if mount is not None}
         provided = {role: self.fields_in_region_of(name) for role, name in bindings.items()
                     if cls.roles[role] is RoleKind.MEDIUM}
+        exchanges = {role: frame for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
+                     for frame in (self.exchange_frame_of(name),) if frame is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
-                              hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided)
+                              hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided,
+                              exchanges=exchanges)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -2839,7 +2856,8 @@ class _Planner:
             self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}",
                         problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
-                               plan=plan, settings=settings, regions=regions, hulls=hulls)
+                               plan=plan, settings=settings, regions=regions, hulls=hulls, exchanges=exchanges,
+                               context=context)
         if section is Section.OBSERVATION:
             self.defer_rate(entry_plan, getattr(entry, "rate", None), where)
         if section is Section.OBSERVATION and (plan.delivers or plan.registrations or plan.groups):
@@ -3381,6 +3399,29 @@ class _Planner:
                                                      f"thing")
                     continue
                 self.value(plan, label, plan.bindings[read.role], read.name)
+            self.interaction_value_problems(plan)
+
+    def interaction_value_problems(self, plan: EntryPlan) -> None:
+        """What an interaction says is wrong with the values it reads, once all are resolved, at its plan's context."""
+        assert plan.plan is not None
+        entry = plan.entry
+        if plan.section is not Section.INTERACTION or not isinstance(entry, Interaction) or \
+                set(plan.values) != set(plan.plan.values) or plan.context is None:
+            return
+        try:
+            problems = entry.value_problems({label: value.value for label, value in plan.values.items()},
+                                            plan.context)
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(type(entry), f"value_problems() raised {error!r}", error)
+            return
+        where = f"{plan.owner} ({type(entry).label()})"
+        for problem in problems:
+            uncatalogued = catalogue_problem(problem.code, RefusalClass.USER)
+            if uncatalogued is not None:
+                self.defect(type(entry), f"its value problem ({problem.message}) has a code it cannot be refused "
+                                         f"with: {uncatalogued}")
+                continue
+            self.refuse(problem.code, RefusalClass.USER, f"{where}: {problem.message}", problem.action)
 
     def dynamics_value_problems(self, plan: EntryPlan) -> None:
         """What the dynamics says is wrong with the values it reads, once all are resolved: a value that was refused

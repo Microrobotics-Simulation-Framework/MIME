@@ -35,9 +35,14 @@ def _held(value: object) -> Any:
 
 
 def add_edge(graph: GraphManager, source: tuple[str, str], target: tuple[str, str], *, additive: bool,
-             units: str) -> None:
+             units: str, mapping: object | None = None, geometry: tuple[str, str] | None = None) -> None:
+    """An edge, plain or through a mapping that reads a moving geometry (``mime.mappings``' exchange edges)."""
+    if mapping is None:
+        _held(graph).add_edge(source[0], target[0], source[1], target[1], additive=additive, source_units=units,
+                              target_units=units)
+        return
     _held(graph).add_edge(source[0], target[0], source[1], target[1], additive=additive, source_units=units,
-                          target_units=units)
+                          target_units=units, mapping=mapping, geometry=geometry)
 
 
 def add_external_input(graph: GraphManager, node: str, field: str) -> None:

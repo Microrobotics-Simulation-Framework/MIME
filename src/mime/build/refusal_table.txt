@@ -153,6 +153,10 @@ drag.patches                  user
 drag.rft-coefficients         user
 drag.rft-indefinite           user
 drag.rft-wall-range           user
+drag.stokes-floor             user
+drag.stokes-no-grid           user
+drag.stokes-scheme            user
+drag.stokes-sphere            user
 drag.wall-kind                user
 drag.wall-range               user
 dynamics.wrong-thing          user

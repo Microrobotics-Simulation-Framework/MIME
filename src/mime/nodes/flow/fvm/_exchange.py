@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import functools
 import math
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 from jax import Array
@@ -52,7 +52,7 @@ def _axis_weights(stencil: ExchangeStencil, mode: str) -> list[tuple[Array, Arra
 def gather(grid: MACGrid, component: int, field: Array, stencil: ExchangeStencil, mode: str = "average") -> Array:
     """``G u`` at each point (``(n,)``): the cell volume times the sum over the stencil's faces of the mode's weights
     times the ``component``-th face set's values ``field``."""
-    index = stencil.index
+    index = stencil.lattice
     values = field[index[:, 0, :, None, None], index[:, 1, None, :, None], index[:, 2, None, None, :]]
     total = jnp.zeros(index.shape[0], dtype=field.dtype)
     for wx, wy, wz in _axis_weights(stencil, mode):
@@ -64,7 +64,7 @@ def scatter(grid: MACGrid, component: int, values: Array, stencil: ExchangeStenc
     """``S f`` on the ``component``-th face set (the grid's shape): each point's value ``values`` (``(n,)``) times the
     mode's weights, summed onto the faces; a force (N) becomes a force density (N/m^3). The transpose of
     :func:`gather` in :meth:`MACGrid.inner`."""
-    index = stencil.index
+    index = stencil.lattice
     density = jnp.zeros(grid.cells, dtype=values.dtype)
     for wx, wy, wz in _axis_weights(stencil, mode):
         spread = values[:, None, None, None] * wx[:, :, None, None] * wy[:, None, :, None] * wz[:, None, None, :]
@@ -120,4 +120,116 @@ def steady_free(grid: MACGrid, density: Array, component: int = 2) -> Array:
     return jnp.asarray(np.fft.irfftn(transformed * kept, s=grid.cells))
 
 
-__all__ = ["FREE_BOX_WIDTHS", "HASIMOTO", "MODES", "faxen", "gather", "scatter", "self_mobility", "steady_free"]
+#: The free box the spectral sums run over, in cells a side: the kernel's own field over the fitted range stays inside
+#: it (the samples stop where the field's diffusion length reaches a quarter of the side).
+SPECTRUM_SIDE = 64
+#: The self-history's fixed decay modes: Laplacian eigenvalues (1/h^2) log-spaced from below the box's smallest to the
+#: grid's largest, each the decay ``1/(1 + r lambda)`` a step; their amplitudes are fitted (:func:`self_history`).
+HISTORY_MODES = 16
+HISTORY_LAMBDAS = (1e-3, 12.0)
+#: The fit's samples: the steps after a unit force at which the free box's response is matched, log-spaced; and the
+#: singular values, relative to the largest, below which the least squares drops a direction, by the run's dtype.
+HISTORY_SAMPLES = 48
+HISTORY_RCOND = {"float64": 1e-12, "float32": 1e-6}
+
+
+class KernelSpectrum(NamedTuple):
+    """The kernel's free-box spectrum along one axis's face set (``h = mu = rho = 1``): each wavenumber's weight ``W =
+    |w_hat|^2 P_cc / N`` and the seven-point Laplacian's eigenvalue there, made in the program from the kernel's width
+    (traced), so that every self-response below is a sum over it and differentiable in the width."""
+
+    weight: Array
+    eigenvalue: Array
+
+
+def kernel_spectrum(width_cells: Any, side: int = SPECTRUM_SIDE, component: int = 2,
+                    offset: tuple[float, float, float] = (0.37, 0.21, 0.11)) -> KernelSpectrum:
+    """The spectrum of the kernel of ``width_cells`` cells on a periodic box of ``side`` cells: the kernel is separable,
+    so its transform is the product of three one-dimensional ones; the projection keeps ``1 - |d_c|^2 / lambda`` of a
+    field on face set ``component``. The mean (wavenumber zero) is removed, as an unbounded fluid has none."""
+    dtype = jnp.asarray(width_cells).dtype if hasattr(width_cells, "dtype") else jnp.zeros(()).dtype
+    index = jnp.arange(side, dtype=dtype)
+    frequency = jnp.fft.fftfreq(side).astype(dtype)
+    sines = 4.0 * jnp.sin(jnp.pi * frequency) ** 2
+    powers: list[Array] = []
+    for axis in range(3):
+        shift = 0.0 if axis == component else 0.5
+        centre = side / 2.0 + offset[axis] - shift
+        distance = index - centre
+        line = jnp.exp(-0.5 * (distance / width_cells) ** 2)
+        line = line / jnp.sum(line)
+        transform = jnp.fft.fft(line)
+        powers.append(jnp.real(transform * jnp.conj(transform)))
+    eigenvalue = sines[:, None, None] + sines[None, :, None] + sines[None, None, :]
+    along = (sines[:, None, None], sines[None, :, None], sines[None, None, :])[component]
+    safe = jnp.where(eigenvalue == 0.0, 1.0, eigenvalue)
+    kept = jnp.where(eigenvalue == 0.0, 0.0, 1.0 - along / safe)
+    weight = powers[0][:, None, None] * powers[1][None, :, None] * powers[2][None, None, :] * kept / side ** 3
+    return KernelSpectrum(weight, eigenvalue)
+
+
+def paired(spectrum: KernelSpectrum, reading: Any, delivery: Any) -> Array:
+    """Each wavenumber's weight for a reading with Faxén coefficient ``reading`` of a delivery with ``delivery`` (both
+    in cells squared): the kernel ``(I + c L) w`` transforms to ``(1 - c lambda) w_hat``."""
+    lam = spectrum.eigenvalue
+    return spectrum.weight * (1.0 - reading * lam) * (1.0 - delivery * lam)
+
+
+def steady_response(spectrum: KernelSpectrum, reading: Any = 0.0, delivery: Any = 0.0) -> Array:
+    """The kernel's steady self-response in a free box (``1/(mu h)`` units): ``sum W / lambda`` with Hasimoto's term
+    for the box's images. Equal to :func:`self_mobility`'s by the same operator (its oracle)."""
+    lam = spectrum.eigenvalue
+    side = lam.shape[0]
+    safe = jnp.where(lam == 0.0, 1.0, lam)
+    weights = paired(spectrum, reading, delivery)
+    return jnp.sum(jnp.where(lam == 0.0, 0.0, weights / safe)) + HASIMOTO / (6.0 * math.pi * side)
+
+
+def step_response(spectrum: KernelSpectrum, r: Any, steps: Array, reading: Any = 0.0, delivery: Any = 0.0) -> Array:
+    """The kernel's own field read ``steps`` backward-Euler steps after a unit force held for one step, from rest
+    (``1/(mu h)`` units; ``r = nu dt / h^2``): ``r sum W (1 + r lambda)^-(j+1)``. Step 0 is the one-step mobility
+    ``M_c`` the coupled resistance is made from."""
+    weights = paired(spectrum, reading, delivery)
+    decay = 1.0 / (1.0 + r * spectrum.eigenvalue)
+    exponent = jnp.asarray(steps).astype(decay.dtype) + 1.0
+    return r * jnp.sum(weights[None] * decay[None] ** exponent[:, None, None, None], axis=(1, 2, 3))
+
+
+class SelfHistory(NamedTuple):
+    """The kernel's own field after a force, as fixed decay modes: the field read ``j`` steps after a unit force is
+    ``sum_m amplitude_m decay_m^(j+1)`` (``1/(mu h)`` units), fitted; ``residual`` is the fit's largest miss over its
+    samples, relative to the one-step mobility; ``span`` the last step the samples reach."""
+
+    amplitude: Array
+    decay: Array
+    residual: Array
+    span: Array
+
+
+def self_history(spectrum: KernelSpectrum, r: Any, reading: Any = 0.0, delivery: Any = 0.0) -> SelfHistory:
+    """**Fitted**: the free box's response of :func:`step_response` matched by :data:`HISTORY_MODES` modes whose decays
+    are fixed (``1/(1 + r lambda_m)``, ``lambda_m`` log-spaced over :data:`HISTORY_LAMBDAS`) and whose amplitudes are
+    linear least squares over log-spaced samples up to where the field's diffusion length reaches a quarter of the box,
+    with the modes' total held to the steady response (the tail beyond the samples). Deterministic and traced: a
+    derivative in the width, ``r`` or the coefficients passes through the fit. N3 reads the grid's share from it."""
+    dtype = spectrum.weight.dtype
+    side = spectrum.eigenvalue.shape[0]
+    span = jnp.maximum((side / 4.0) ** 2 / r, 8.0)
+    fractions = jnp.linspace(0.0, 1.0, HISTORY_SAMPLES, dtype=dtype)
+    samples = jnp.floor(jnp.expm1(fractions * jnp.log1p(span)))
+    targets = step_response(spectrum, r, samples, reading, delivery)
+    lambdas = jnp.asarray(np.geomspace(*HISTORY_LAMBDAS, HISTORY_MODES), dtype=dtype)
+    decay = 1.0 / (1.0 + r * lambdas)
+    basis = decay[None, :] ** (samples[:, None] + 1.0)
+    scale = targets[0]
+    total = steady_response(spectrum, reading, delivery)
+    rows = jnp.concatenate([basis / scale, (decay / (1.0 - decay))[None, :] / total * 10.0])
+    right = jnp.concatenate([targets / scale, jnp.ones(1, dtype=dtype) * 10.0])
+    amplitude = jnp.linalg.lstsq(rows, right, rcond=HISTORY_RCOND[np.dtype(dtype).name])[0]
+    residual = jnp.max(jnp.abs(basis @ amplitude - targets)) / scale
+    return SelfHistory(amplitude, decay, residual, span)
+
+
+__all__ = ["FREE_BOX_WIDTHS", "HASIMOTO", "HISTORY_LAMBDAS", "HISTORY_MODES", "HISTORY_RCOND", "HISTORY_SAMPLES",
+           "MODES", "SPECTRUM_SIDE", "KernelSpectrum", "SelfHistory", "faxen", "gather", "kernel_spectrum", "paired",
+           "scatter", "self_history", "self_mobility", "steady_free", "step_response", "steady_response"]
