@@ -6,10 +6,10 @@
     "labx": 4
   },
   "refusal_scan": {
-    "literal_codes": 522,
+    "literal_codes": 523,
     "files": 113,
     "variable_calls": 63,
     "tuple_codes": 51
   },
-  "refusal_table": 580
+  "refusal_table": 581
 }
