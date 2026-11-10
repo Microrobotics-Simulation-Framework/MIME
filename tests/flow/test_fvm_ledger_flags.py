@@ -54,9 +54,9 @@ def test_a_run_with_no_check_does_not_pass_and_a_flag_that_read_nothing_is_silen
     quiet = {flag: np.full(40, 1e-12) for flag in CAUGHT}
     report = judge_flags(node, {**quiet, "convection": np.zeros(40)}, "float64")
     assert report.silent == ("convection",) and report.checks == len(CAUGHT) - 1 and report.passed
-    unlined = judge_flags(node, quiet, "float16")
-    assert set(unlined.unlined) == set(CAUGHT) and not unlined.passed
-    assert any("no measured line" in failure for failure in unlined.failures())
+    unmeasured = judge_flags(node, quiet, "float16")
+    assert set(unmeasured.without_line) == set(CAUGHT) and not unmeasured.passed
+    assert any("no measured line" in failure for failure in unmeasured.failures())
 
 
 def test_control_a_flag_claimed_without_its_measurement_is_named():
