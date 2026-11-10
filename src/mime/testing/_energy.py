@@ -6,8 +6,9 @@ read at the step's start, an operator solved for in the step), books ``H' - H = 
 scale on drawn states, and **work fed into its unattributed input is booked as unattributed** (a draw is fed into the
 input that sums what no law owns, the unattributed work comes out above zero, and the identity closes with it): a node
 that books such work under a law, or loses it, fails the case on every draw. Drawn per port kind
-(:data:`PORT_DRAWS`): a rigid body's at a millimetre swimmer's scales (:func:`rigid_body_states`); a port kind with no
-draws yet fails the case, naming it. A dynamics that names no port kind passes with its reason for being unmetered, and fails without
+(:data:`PORT_DRAWS`): a rigid body's at a millimetre swimmer's scales (:func:`rigid_body_states`); a chain segment's and
+a fluid's on their own rigs (:data:`PORT_CASES`: a fluid's is a water-filled millimetre tube's flow,
+:func:`fluid_rig`); a port kind with no draws yet fails the case, naming it. A dynamics that names no port kind passes with its reason for being unmetered, and fails without
 one."""
 
 from __future__ import annotations
@@ -251,6 +252,65 @@ def _spinner_step(twin: Any, deliveries: Sequence[ledger.LedgerDelivery], drawn:
     return _compiled(twin)(p, state, inputs)
 
 
+#: The fluid rig's tube: a millimetre lumen of water, eight cells across, four cells long (the periodic box's), at a
+#: step of 0.1 ms (IMEX Euler's CFL 0.4 holds to 0.5 m/s).
+_TUBE_RADIUS, _WATER_VISCOSITY, _WATER_DENSITY, _FLUID_STEP = 0.5e-3, 1e-3, 1000.0, 1e-4
+
+
+def fluid_rig(dt: float = _FLUID_STEP) -> SimulationNode:
+    """A medium's flow as a build makes it, IMEX Euler with convection on: a periodic box holding a straight tube of
+    water 1 mm across, eight cells across the lumen and four cells long, its wall under its own name. What the fluid
+    port kind's step identity is checked on."""
+    from mime.nodes.flow.fvm import ImplicitFlowNode, periodic_tube_layout
+
+    across = 8
+    layout = periodic_tube_layout(_TUBE_RADIUS, 4 * 2.0 * _TUBE_RADIUS / across, cells_across=across)
+    return ImplicitFlowNode("case_flow", dt, cells_x=layout.cells[0], cells_y=layout.cells[1],
+                            cells_z=layout.cells[2], spacing=layout.spacing, viscosity=_WATER_VISCOSITY,
+                            density=_WATER_DENSITY, tube_centre=layout.centre, tube_axis=layout.axis,
+                            tube_radius=layout.radius, wall_name="case_wall")
+
+
+@st.composite
+def fluid_states(draw: Callable[..., Any]) -> dict[str, Any]:
+    """A millimetre tube's water and what drives it: a Poiseuille flow along the tube, its mean speed to 5 cm/s with
+    its sign, beside a swirl of the same order (a seeded field of 1e-4 to 5e-2 m/s, made divergence-free by the step),
+    and a body force per unit mass to 10 m/s^2 (a second, fed to the unattributed input); each component drawn 0.1 to 1
+    of its scale with its own sign."""
+    def signed(least: float, most: float) -> float:
+        return draw(st.floats(least, most)) * draw(st.sampled_from((-1.0, 1.0)))
+
+    return {"mean": signed(1e-4, 5e-2), "swirl": draw(st.floats(1e-4, 5e-2)),
+            "seed": draw(st.integers(0, 2 ** 31 - 1)), "load": _vector(draw, 1e-2, 10.0),
+            "unattributed": _vector(draw, 1e-2, 10.0)}
+
+
+def _fluid_step(twin: Any, deliveries: Sequence[ledger.LedgerDelivery], drawn: Mapping[str, Any],
+                dtype: Any) -> Mapping[str, Any]:
+    p = twin._step_constants(None)
+    grid = twin.grid(p)
+    c = twin.constants()
+    rng = np.random.default_rng(int(drawn["seed"]))
+    points = np.asarray(grid.face_points(2, dtype), dtype=np.float64)
+    centre = c["tube_centre"]
+    across = ((points[..., 0] - centre[0]) ** 2 + (points[..., 1] - centre[1]) ** 2) / c["tube_radius"] ** 2
+    axial = 2.0 * float(drawn["mean"]) * np.clip(1.0 - across, 0.0, None)
+    cells = tuple(int(n) for n in grid.cells)
+    swirl: list[np.ndarray] = [float(drawn["swirl"]) * rng.standard_normal(cells) for _ in range(3)]
+    flow = grid.project((jnp.asarray(swirl[0], dtype=dtype), jnp.asarray(swirl[1], dtype=dtype),
+                         jnp.asarray(swirl[2] + axial, dtype=dtype)))
+    held = twin.initial_state()
+    state = {key: jnp.asarray(value) for key, value in held.items() if not key.startswith(ledger.RECORDS)}
+    state.update(velocity_x=flow[0], velocity_y=flow[1], velocity_z=flow[2])
+    state = ledger.with_records(twin, state)
+    values = {"body_force": drawn["load"], "waveform": np.zeros(np.shape(c.get("waveform", np.zeros(7))))}
+    inputs = {"body_force": jnp.asarray(drawn["unattributed"], dtype=dtype)}
+    for index, delivery in enumerate(deliveries):
+        if delivery.kind != ledger.HOSTED:
+            inputs[ledger.law_input(delivery.field, index)] = jnp.asarray(values[delivery.field], dtype=dtype)
+    return _compiled(twin)(p, state, inputs)
+
+
 @dataclass(frozen=True)
 class PortCase:
     """How a port kind's step identity is checked: its rig (a receiver's node as a build makes it), its draws, the
@@ -263,8 +323,9 @@ class PortCase:
     step: Callable[[Any, Sequence[ledger.LedgerDelivery], Mapping[str, Any], Any], Mapping[str, Any]]
 
 
-#: The chain segments' port kinds, each with its own rig: a dynamic arm's joints, and a spinner on a host frame.
+#: The port kinds checked on rigs of their own: a dynamic arm's joints, a spinner on a host frame, and a medium's flow.
 PORT_CASES: dict[str, PortCase] = {
+    "fluid": PortCase(fluid_rig, fluid_states, ("body_force", "waveform"), _fluid_step),
     "joint": PortCase(joint_rig, joint_states, ("joint_forces", "joint_torques", "link_inertia", "link_momentum",
                                                 "link_wrench"), _arm_step),
     "spinner": PortCase(spinner_rig, spinner_states, ("link_wrench", "torque"), _spinner_step),
@@ -411,8 +472,8 @@ def _port_case_identity(case: PortCase, node: SimulationNode | None, max_example
         over = float(stepped[f"{ledger.RECORDS}step_identity"]) / floor
         assert over <= 1.0, f"the step identity's residual is {over:.3g} of its floor"
         booked = float(stepped[f"{ledger.RECORDS}unattributed_worst"])
-        assert booked > 0.0, ("work fed into the unattributed input (link_wrench) was not booked as unattributed "
-                              "work: it was booked under a law or lost")
+        assert booked > 0.0, ("work fed into the unattributed input was not booked as unattributed work: it was "
+                              "booked under a law or lost")
 
     try:
         prop()
@@ -447,5 +508,6 @@ def dynamics_rig(dynamics: Dynamics) -> SimulationNode | str:
     return built.graph.get_node(names[0])
 
 
-__all__ = ["PORT_CASES", "PORT_DRAWS", "PortCase", "dynamics_rig", "joint_rig", "joint_states", "metered_twin",
+__all__ = ["PORT_CASES", "PORT_DRAWS", "PortCase", "dynamics_rig", "fluid_rig", "fluid_states", "joint_rig",
+           "joint_states", "metered_twin",
            "rigid_body_states", "spinner_rig", "spinner_states", "step_identity"]

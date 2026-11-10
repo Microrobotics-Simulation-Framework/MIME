@@ -23,6 +23,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   junction, declared: no measurement of vessels gives it yet), its values parameters a derivative flows through, and
   `turned` for tilted vessels; a malformed tree is refused (`call.tube_tree`). The walls' half of the resolution report
   (`wall_resolution`, `stokes_layer`, `steady_layer`). No node runs it yet: the FVM's wall is the first.
+- **A medium's flow metered by the energy ledger: the `fluid` port kind, and the rule for a source.** With
+  `exp.observe(EnergyLedger())` the build meters an FVM flow as a receiver of the new `fluid` port kind: its fluid's
+  momentum (`flow.momentum`, kg m/s, over the fluid alone, as the drive acts on it alone) against the body force each
+  law driving it delivers (`flow.body_force`, a load; the drive's waveform a mapped load, which RK3 evaluates at its
+  stage instants). The flow's step pairs each law's drive with the fluid's momentum at the instant it applied it; the
+  viscosity and the wall's band are held in the step and booked under `<medium>.flow.viscosity` and the wall's own
+  region (`tube.wall`); IMEX Euler and its steady limit close the step identity to rounding, and RK3 judges each step
+  to have dissipated and checks its drive's attribution (the work its stages applied against the law's own delivery
+  at the stage instants) to the same floor. The ledger's boundary gains a rule: **a law that declares no class, reads
+  nothing of the components (every read it declares, the points a field is read at among them) and delivers only
+  loads its receivers pair is outside**, and what it delivers is supplied work under its own name (a `BodyForce`
+  driving a metered flow); a law that declares a class keeps it whatever its node reads (gravity reads nothing without
+  a couple, and stays a potential). A source that states no reason for declaring no class is still logged under
+  exploratory and refused under research (`ledger.unmetered`). The flow's reason for being unmetered is gone, and
+  `mime.testing`'s port cases gain the fluid's (`fluid_rig`, `fluid_states`).
 
 - **The coil array returns: `mime.fields.CalibratedMultipole`** (`calibrated_multipole` 0.1.0, its node
   `CalibratedMultipoleNode`), an electromagnet array whose coils are a calibrated multipole model of order one, from one of three packaged calibrations (ETH MSRL's published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME; not affiliated with or endorsed by the systems' makers), `asset("navion_2")`, `asset("octomag")` and `asset("cardiomag")`: Apache-2.0,
@@ -73,8 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contact (the box 12 % at a third of a cell); `Drag.MRS(near_field_share=...)` lowers it as a cost setting, a cell
   within the reach that does not fit raising `cross_cells_short`. A body alone in its medium keeps its own node, so no
   program with one mrs body a medium moves; a folder saved with `drag` 0.4.0, kept as `UncoupledDrag`, rebuilds its
-  bodies' own nodes. The build refuses a cluster past the dense route's size, a memory line (`drag.near-field-size`),
-  and a medium mixing the two versions (`drag.near-field-mixed`). With the energy ledger attached, each body's own
+  bodies' own nodes. The build refuses a medium mixing the two versions (`drag.near-field-mixed`). With the energy
+  ledger attached, each body's own
   resistance is its drag's law and the cross loads are the near field's own, `near_field:<medium>`, booked on each body
   by the one pairing rule and never judged on one body's row, where they have no sign (one body drags another): the
   node judges the cluster's books a step late, from what it delivered and the twists the bodies reached, as the
@@ -86,6 +101,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delivers, its own block, its cross-kernel, its normals) takes the MRS as its first body model; its joint system is a
   pure function of the bodies' poses, their leaves and the wall's parameters, and a body model of another kind in the
   same medium (a slender body's, a resistive-force body's) needs the joint node to hold a member kind per index.
+
+- **The near field past the dense route: GMRES, never silent** (`drag` 0.5.0, unreleased; `JointDragNode`). A cluster
+  past the takeover line, `DENSE_UNKNOWNS` (16,000) joint unknowns, is solved by GMRES on its grand resistance's
+  right-hand sides at once, each body's held free part's inverse (a new leaf, made once per build in its frame, made
+  again with the free part where a leaf moves) its preconditioner block, through `custom_linear_solve`: each solve, the
+  primal's and each derivative's, from a cold start, stopping on its true residual relative to its own right-hand side,
+  the transpose solve preconditioned by the transposed blocks. `Drag.MRS(near_field_dense_unknowns=...)` moves the line
+  and `Drag.MRS(near_field_tolerance=...)` sets the tolerance (1e-10 in float64, 1e-5 in float32, above the floor its
+  arithmetic leaves a pair's residual at down to the near-contact line), both numerical settings; the build report says
+  which route a cluster took and how its starting solve ended. **The line is declared, pending a re-decision**: its
+  basis is neither memory nor a measured time crossover. Through the node GMRES's run peaks above the dense route's
+  (1.11 to 1.35 times at 3,042 to 21,168 unknowns, either dtype: the bare solve's halving does not carry). In time the
+  bare solve on a quiet CPU in float64 had the dense LU faster or tied at 3,042, 4,056 and 8,112 unknowns; through the
+  node on a shared laptop (one run a case) GMRES's step was the shorter at every size a radius apart (1.3 to 4.1 times)
+  and the dense route's at four sizes of five a twentieth of a radius apart in float64. The solve's report is the FVM's:
+  each step's a state field (`solve_report`, its running sum beside it) with a flag the run warns of with its count
+  (`solve_flagged`: at the cap, stagnated, or a residual not finite; zero on the dense route), the tangent solves' as
+  those fields' tangents, and the transpose solves' as the gradient of the node's zero `solve_report` parameter (a row a
+  step with the node's `solve_report_rows`). **The dense route's size refusal, `drag.near-field-size`, becomes a memory
+  refusal on both routes** (`drag.near-field-memory`): the run's peak, estimated from counts of the joint matrix and of
+  the members' held blocks measured through the node, against the memory a run can have (the FVM's: a GPU's limit, or on a
+  CPU the smaller of the available memory and the control group's limit), so that no cluster that cannot fit runs, on
+  either route.
 
 - **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
   spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to
@@ -185,8 +223,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finite, naming the flow. It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
   with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
   with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
-  gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
-  the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
+  gradient, a row a step with `solve_report_rows` (a run past the last row refused before it runs). With convection on,
+  at the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
   refused, naming the step and a timestep to try. The wall's settings are its group, `wall=Band(delta_in=...)`. Its
   derivative is checked exact in the viscosity, the density and the drive, and declared unverified in the tube's
   geometry (the entry's status). `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is
@@ -516,6 +554,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
+  interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its
+  rounding floor (a 75 % stenosis at 16 cells across, 1e-4 against 4.8e-6), flagged. Now, where the stop would find a
+  stagnation, the CG restarts from the true residual, its window begun again, up to three times before it stops
+  flagged (`Stopping.stall_restarts`): every stall measured at 8, 16 and 32 cells across converges, unflagged, at its
+  tolerance or floor. A solve that never stagnates never restarts, so its arithmetic is unchanged, in either dtype; no
+  saved or released program moves. A restart every 100 iterations and the residual replaced with the direction kept
+  were measured first and not adopted (the entry's validity says why).
+
 - **A round length keeps its count of samples** (`mime.scene`'s solids and screw). A kind's count along a length was
   the ceiling of the length over the spacing, so a round input (a 2 mm capsule at a 1 mm spacing, a whole number of
   spacings) took the next count, and a recompiled program, where its last digit or a study's move of a millionth lifted
@@ -538,6 +585,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declares, by its path (its ends in SI, their unit and its reason); nothing else moves. A folder of form 11 loads as
   before, and one of form 10 through form 11's step; one of them holding `ranges` is refused. A reader of form 11
   refuses a folder of form 12 as `load.newer-form`.
+
+- **Saved form 13: the FVM's `report_rows` is `solve_report_rows`.** The setting, its refusal
+  (`flow.solve-report-rows`) and the flow node's parameter take the new name. A folder of form 12 or earlier loads as
+  before: its old name is read as the new and written back with the old name for its input hash. A reader of form 12
+  refuses a folder of form 13 as `load.newer-form`.
 
 - **The MRS drag's held matrix is compared with leaves, not constants, and its second key is gone.** Beside
   `held_in_body_frame` each separated-quadrature drag holds `held_from.<leaf>`, the leaves the matrix was made at;
@@ -567,7 +619,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   float64 is unchanged). On the empty tube at 64 cells across with `wall=Band(delta_in=0.01)` the solve that
   stagnated, flagged, after 1000 iterations now stops unflagged after 69, its flux within 1.3e-7 of float64's. A solve
   that stalls above the floor still stops stagnated and is flagged: with the 0.01h interior in a flow with a pressure
-  gradient, float32's conjugate gradient can stall well above it.
+  gradient, float32's conjugate gradient can stall well above it. The floor counts only while it is under a hundred
+  times the tolerance (1e-3 in float32), and past that the stop holds the tolerance: made from the iterate, the floor
+  rises with an iterate that grows, and a singular system's solve was passed as converged at a true residual up to
+  thousands of times the right-hand side's; such a solve now ends flagged. The line does not close that case entirely:
+  a growing iterate can still stop under it (measured in the entry's validity).
 
 - **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
   JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;

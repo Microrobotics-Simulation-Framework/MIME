@@ -33,7 +33,7 @@ from mime.vocabulary import (
 
 
 def test_the_built_in_port_kinds_are_registered_and_their_units_pair_to_watts():
-    assert port_kinds() == ["delivered_inertia", "flow_in", "joint", "rigid_body", "spinner"]
+    assert port_kinds() == ["delivered_inertia", "flow_in", "fluid", "joint", "rigid_body", "spinner"]
     assert all(port_kind(name) is not None and port_kind(name).problems() == [] for name in port_kinds())
 
 

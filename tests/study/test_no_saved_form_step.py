@@ -1,9 +1,10 @@
 """The sweep takes no saved-form step: a study's points and a run's overrides live in run folders and results, never in
 the saved form, so ``CURRENT`` is the saved form of the release branch's tip this branch merges into, but for the
 steps design rows allow by name, each from the form before it: form 11, a medium's fields written by role (the
-solved-field contract's SF-1; the FVM's declaration, F0's D2 F1a), and form 12, the experiment's declared ranges
+solved-field contract's SF-1; the FVM's declaration, F0's D2 F1a), form 12, the experiment's declared ranges
 (``exp.declare_range``; the maintainer's decision on design row #258's note, 2026-11-08: a declared range lives on the
-experiment, saved with it). A branch takes at most one of them past the tip; a later step is not the sweep's to take,
+experiment, saved with it), and form 13, the FVM's setting ``report_rows`` named ``solve_report_rows`` (design row
+#303). A branch takes at most one of them past the tip; a later step is not the sweep's to take,
 and fails here until a design row allows it by name and this guard says so. The tip is read from
 ``origin/release/v0.3.0`` where the checkout holds it, or from the first
 parent of a pull request's merge commit, which is that tip, as CI checks a pull request out."""
@@ -19,8 +20,8 @@ from mime.saved._versions import CURRENT
 ROOT = Path(__file__).resolve().parents[2]
 VERSIONS = "src/mime/saved/_versions.py"
 #: The saved-form steps a branch may take beside the sweep, each from the form before it: form 10 to 11 (a medium's
-#: fields by role) and 11 to 12 (the declared ranges, row #258's note).
-ALLOWED_STEPS = ((10, 11), (11, 12))
+#: fields by role), 11 to 12 (the declared ranges, row #258's note) and 12 to 13 (the FVM's setting renamed, row #303).
+ALLOWED_STEPS = ((10, 11), (11, 12), (12, 13))
 
 
 def _git(*args: str) -> str | None:
@@ -62,7 +63,7 @@ def test_the_saved_form_is_the_tips_or_one_step_allowed_by_name():
     assert allowed(CURRENT, held), (
         f"CURRENT is {CURRENT} here and {held} on {where}: the sweep takes no saved-form step, and the steps allowed "
         f"by name are {', '.join(f'{a} to {b}' for a, b in ALLOWED_STEPS)} (a medium's fields by role; the declared "
-        f"ranges, row #258's note), one at a time")
+        f"ranges, row #258's note; the FVM's setting renamed solve_report_rows, row #303), one at a time")
 
 
 def test_the_control_a_form_the_tip_does_not_hold_is_seen():
@@ -73,10 +74,36 @@ def test_the_control_a_form_the_tip_does_not_hold_is_seen():
 
 
 @pytest.mark.parametrize(("current", "held", "passes"), [
-    (12, 11, True), (11, 10, True), (12, 12, True), (11, 11, True),
-    (13, 12, False), (12, 10, False), (13, 11, False), (11, 9, False), (11, 12, False), (10, 11, False)])
+    (13, 12, True), (12, 11, True), (11, 10, True), (13, 13, True), (12, 12, True), (11, 11, True),
+    (14, 13, False), (13, 11, False), (12, 10, False), (14, 12, False), (11, 9, False), (12, 13, False),
+    (11, 12, False), (10, 11, False)])
 def test_the_control_only_the_step_named_passes(current: int, held: int, passes: bool):
-    """A step to 13 fails, whatever the branch records beside it: a form 13 paragraph and an empty
-    ``tests/saved/test_form13.py`` are not read. Two steps at once fail, a branch behind the tip fails too, and so does
+    """A step to 14 fails, whatever the branch records beside it: a form 14 paragraph and an empty
+    ``tests/saved/test_form14.py`` are not read. Two steps at once fail, a branch behind the tip fails too, and so does
     the step before."""
     assert allowed(current, held) is passes
+
+
+def steps_of(versions: dict[str, object]) -> dict[int, list[str]]:
+    """The saved-form versions the module's ``*_ADDED`` and ``*_RENAMED`` constants name, each with its constants."""
+    named: dict[int, list[str]] = {}
+    for name, value in versions.items():
+        if name.isupper() and name.endswith(("_ADDED", "_RENAMED")) and type(value) is int:
+            named.setdefault(value, []).append(name)
+    return named
+
+
+def test_each_saved_form_step_is_one_change_and_the_last_is_current():
+    """Two branches that each take the same form's step (both name form 12, one merged after the other without its
+    renumbering) pass the step guard above, which reads ``CURRENT`` alone; here each version is named by one constant,
+    and the highest by one is ``CURRENT``."""
+    import mime.saved._versions as versions
+
+    named = steps_of(vars(versions))
+    assert {version: names for version, names in named.items() if len(names) > 1} == {}
+    assert max(named) == CURRENT
+
+
+def test_the_control_two_changes_naming_one_form_are_seen():
+    assert steps_of({"ROWS_RENAMED": 12, "OTHER_ADDED": 12, "TERMS_ADDED": 4, "FIELDS_KEY": "fields"}) == {
+        12: ["ROWS_RENAMED", "OTHER_ADDED"], 4: ["TERMS_ADDED"]}

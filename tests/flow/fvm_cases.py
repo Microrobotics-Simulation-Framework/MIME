@@ -13,8 +13,21 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from mime.core import ledger as books
 from mime.nodes.flow._waveform import waveform
 from mime.nodes.flow.fvm import ImplicitFlowNode, MACGrid, periodic_tube_layout
+
+#: The drive's law, and the laws a metered flow node holds, as the build names them for a medium ``water`` filling a
+#: tube ``tube``'s lumen (the node built here is named ``flow``).
+DRIVE_LAW, VISCOSITY_LAW, WALL_LAW = "body_force:water", "flow.viscosity", "tube.wall"
+#: A metered flow node's deliveries as the build makes them: the drive's force and waveform, each into its own input,
+#: and the viscosity and the wall's band held in the step.
+METERED = (
+    books.LedgerDelivery("body_force", DRIVE_LAW, books.UNMETERED, books.LOAD, "", DRIVE_LAW).encoded(),
+    books.LedgerDelivery("waveform", DRIVE_LAW, books.UNMETERED, books.LOAD, "", DRIVE_LAW).encoded(),
+    books.LedgerDelivery("viscous", VISCOSITY_LAW, books.DISSIPATIVE, books.HOSTED).encoded(),
+    books.LedgerDelivery("penalty", WALL_LAW, books.DISSIPATIVE, books.HOSTED).encoded(),
+)
 
 
 def eps(dtype: str) -> float:
@@ -116,17 +129,20 @@ class Stenosis:
 def step_of(node: ImplicitFlowNode, p: Any, waveform: Waveform | None = None) -> Any:
     """The node's step with its drive delivered as the law delivers it, ``(state) -> state``: the value at the
     instant a scheme reads it once a step at, and the waveform, which a scheme whose stages read their own instants
-    evaluates at each."""
+    evaluates at each; into the law's own inputs where the node is metered."""
     drive = waveform if waveform is not None else DRIVES.get(node, Waveform())
     dt = node.delta_t
-
+    held = books.deliveries(node.constants())
     instant = node.scheme.drive_instants[0]
 
     def step(s: Any) -> Any:
         dtype = s["velocity_z"].dtype
         time = (jnp.asarray(s["steps"]).astype(dtype) + instant) * dt
-        return node.advance(p, s, {"body_force": drive.at(time).astype(dtype),
-                                   "waveform": drive.coefficients(dtype)}, dt)
+        given = {"body_force": drive.at(time).astype(dtype), "waveform": drive.coefficients(dtype)}
+        if held:  # metered: the drive's law delivers into its own inputs, as the build wires it
+            given = {books.law_input(d.field, index): given[d.field] for index, d in enumerate(held)
+                     if d.kind == books.LOAD}
+        return node.advance(p, s, given, dt)
 
     return step
 
