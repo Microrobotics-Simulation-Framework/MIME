@@ -5,7 +5,7 @@ accepts, what a delivery into it is (:class:`DeliveryKind`): a load read at the 
 for, a flow handed in, or a delivered inertia. The receiver imposes its flow; each delivery imposes what its kind says
 it is. A kind states no pairing of its own: the pairing is ``mime.core.ledger``'s one rule, keyed by the delivery kind.
 Kinds are registered (:func:`register_port_kind`), open to labs; MIME's own are a rigid body's, a chain segment's
-joints', a delivered inertia's and a flow-in's.
+joints', a delivered inertia's, a flow-in's and a fluid's.
 
 An **energy class** (:class:`EnergyClass`) is one per law, its deliveries and reactions together: dissipative,
 potential or workless, each settled by an exact identity on the law alone in its family's suite. There is no source
@@ -26,6 +26,9 @@ from mime.vocabulary._mime import (
     APPLIED_WRENCH,
     BACKGROUND_LOAD,
     CONFINEMENT,
+    FLOW_BODY_FORCE,
+    FLOW_MOMENTUM,
+    FLOW_WAVEFORM,
     FRAME_ANGULAR_VELOCITIES,
     JOINT_VELOCITIES,
     LINK_INERTIA,
@@ -125,9 +128,10 @@ class PortKind:
     it is. Every interface named is a vocabulary entry, and each delivery's units paired with the flow's give watts
     part by part (an operator's blocks against the flow twice, an inertia's change a joule): ``N; N m`` against ``m/s;
     rad/s``. An inequality constraint (a confinement) is held in the receiver's step, not delivered as a value, so its
-    units pair with nothing; a delivery in ``mapped`` reaches the flow through the receiver's own kinematics (a load on
-    a chain's frames, which its Jacobian turns into a generalised force against its joint rates), so its units pair
-    with the flow only after that map, which is the receiver's."""
+    units pair with nothing; a delivery in ``mapped`` reaches the flow through a map of the receiver's own (a load on
+    a chain's frames, which its Jacobian turns into a generalised force against its joint rates; a drive's waveform,
+    which a flow evaluates at its own stage instants into the body force it applies), so its units pair with the flow
+    only after that map, which is the receiver's."""
 
     name: str
     flow: str
@@ -219,7 +223,14 @@ FLOW_IN = register_port_kind(PortKind(
     "flow_in", FRAME_ANGULAR_VELOCITIES.name, MappingProxyType({LINK_MOMENTUM.name: DeliveryKind.FLOW_IN}),
     "a spinner's momentum on its host frame, whose angular velocity it receives: paired with the gyroscopic torque "
     "it returns"))
+FLUID = register_port_kind(PortKind(
+    "fluid", FLOW_MOMENTUM.name, MappingProxyType({
+        FLOW_BODY_FORCE.name: DeliveryKind.LOAD, FLOW_WAVEFORM.name: DeliveryKind.LOAD}),
+    "a medium's fluid's momentum against the uniform body force per unit mass the laws driving it deliver, each "
+    "law's paired by the flow's step with its fluid's momentum at the instants it applies it; a drive's waveform "
+    "reaches the momentum through the flow's own evaluation of it at its stage instants",
+    mapped=frozenset({FLOW_WAVEFORM.name})))
 
-__all__ = ["DELIVERED_INERTIA", "ENERGY", "FLOW_IN", "JOINT", "POWER", "RIGID_BODY", "SPINNER", "Definiteness",
+__all__ = ["DELIVERED_INERTIA", "ENERGY", "FLOW_IN", "FLUID", "JOINT", "POWER", "RIGID_BODY", "SPINNER", "Definiteness",
            "DeliveryKind",
            "EnergyClass", "PortKind", "port_kind", "port_kinds", "register_port_kind"]

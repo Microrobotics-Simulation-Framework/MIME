@@ -351,12 +351,12 @@ def test_a_child_of_a_folder_the_released_wheel_saved_saves_in_the_current_form_
     loaded = Experiment.load(parent)
     assert loaded.load_report is not None
     assert loaded.load_report.text().splitlines()[1:3] == [
-        "saved form: mime.document/6, read as version 11", "input hash: reproduced exactly"]
+        "saved form: mime.document/6, read as version 13", "input hash: reproduced exactly"]
     assert loaded.build().verify().reproduced, "the parent, its run's length declared in form 6, loads and verifies"
     with untouched(parent):
         child = based_on_edited_saved(parent, tmp_path / "child", name="stiffer_timed_toy")
     parent_lock, document = lock_of(parent), document_of(child)
-    assert (document["schema"], lock_of(child)["schema"]) == ("mime.document/11", "mime.lock/11")
+    assert (document["schema"], lock_of(child)["schema"]) == ("mime.document/13", "mime.lock/13")
     assert document["based_on"] == {"experiment": "timed_toy", "input_hash": parent_lock["hashes"]["input"],
                                     "mime": parent_lock["environment"]["mime"]}
     assert document["run"]["duration"] == RELEASED_DURATION, "the run's length is the parent's"

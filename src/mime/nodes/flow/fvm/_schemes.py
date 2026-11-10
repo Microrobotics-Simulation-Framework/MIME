@@ -70,8 +70,9 @@ class StepContext:
     """What a field kind gives a scheme for one step: the grid; the operator ``A_c u = c u - nu L u + Sigma u`` for a
     time coefficient ``c``; the drive, ``force(stage, time)``, the body force per unit mass on each face set that the
     scheme's stage ``stage`` reads at ``time`` (its instant, ``t_n + drive_instants[stage] dt``); whether convection is
-    on; the solve (``solve(c, rhs, guess) -> (u, report)``); and, for a stage kind that applies them explicitly, the
-    kinematic viscosity and the regions' resistivity ``nu x sum(1/K)`` on each face set."""
+    on; the solve (``solve(c, rhs, guess) -> (u, report)``); for a stage kind that applies them explicitly, the
+    kinematic viscosity and the regions' resistivity ``nu x sum(1/K)`` on each face set; and, where the field is
+    metered, the faces' fluid fraction ``1 - chi``, which such a stage kind pairs the drive with at its stages."""
 
     grid: MACGrid
     operator: Callable[[Any], Callable[[Velocity], Velocity]]
@@ -80,6 +81,7 @@ class StepContext:
     solve: Callable[[Any, Velocity, Velocity | None], tuple[Velocity, Array]]
     viscosity: Any = None
     resistivity: Velocity | None = None
+    fluid: Velocity | None = None
 
 
 class TimeScheme[Record]:
@@ -232,7 +234,7 @@ class RK3(TimeScheme[_rk3.ExplicitStage]):
                                        resistivity, context.force(0, time + self.drive_instants[0] * dt),
                                        context.convection)
         ended, ended_pressure, stage = _rk3.step(grid, velocity, pressure, viscosity, resistivity, context.force,
-                                                 context.convection, time, dt)
+                                                 context.convection, time, dt, fluid=context.fluid)
         return ({"velocity": ended, "pressure": ended_pressure,
                  "pressure_ready": jnp.ones((), dtype=velocity[0].dtype)}, stage)
 

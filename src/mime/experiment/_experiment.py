@@ -25,6 +25,7 @@ from mime.build import (
     Declaration,
     ObservationDeclaration,
     PlanSet,
+    RangeDeclaration,
     RunSettings,
     SourceDeclaration,
     ThingDeclaration,
@@ -37,6 +38,7 @@ from mime.build import (
 )
 from mime.build._checks import stopped_refusals
 from mime.build._construct import description_warnings, report_of
+from mime.build._ranges import judged_over_ranges, range_lines
 from mime.core.multibody import DescriptionWarning
 from mime.build._watch import ContainmentPlan
 from mime.build._report import NodeLine
@@ -505,6 +507,23 @@ class Experiment:
         self._declare(ValueDeclaration(path, value, reason))
 
     @public
+    def declare_range(self, path: TypedPath | str, low: Quantity, high: Quantity, *, reason: Basis | None = None) -> None:
+        """Declare the range ``[low, high]`` of a value the experiment writes, with its reason: a thing's value
+        (``"umr.mass"``), a body's part's kind's number (``"ball.parts.shell.radius"``), a structure's
+        (``"tube.inner_radius"``), a command's constant value (``field.commands.frequency``), a law's setting through
+        its handle (``drag.lubrication.epsilon``) or a body's initial value, named as a study names an axis. Every
+        choice the build makes from that value (a count of force points, a spacing) is made over the range instead, so
+        that every value inside it builds one program: a study's sweep across it is one group and one compile, and an
+        override inside it runs as data. A run of the experiment uses the range's discretisation, not its own value's;
+        the build report prices what the range moved. The saved form records it.
+
+        Refused at build: the run's step, the precision, a rung or a numerical setting (each a variant), a value that is
+        not one quantity, ends in another dimension or not in order, the experiment's own value outside the range, a
+        path ranged twice, more than ``MAX_RANGES`` ranges (``mime.build._ranges``), and a range at whose corner the
+        experiment is refused. Without a reason the research profile refuses it."""
+        self._declare(RangeDeclaration(path, low, high, reason))
+
+    @public
     def source(self, path: TypedPath | str, *, reason: Basis) -> None:
         """State where a setting's value comes from, apart from the value: ``exp.source("tube.inner_radius",
         reason="the tube's datasheet")``. For a value that is not a quantity (``starts``, an axis, a wall kind) or a
@@ -611,6 +630,7 @@ class Experiment:
 
         with keeping_pins(self._saved) as pins:
             plans = self.plan()
+            judged_over_ranges(self._settings, self._declarations, plans)
             law, problems, models = law_and_models(plans)
             if problems and plans.controller is not None:
                 cls = plans.controller.registered.cls
@@ -619,7 +639,7 @@ class Experiment:
             graph, report, derived = construct(plans, law, models)
             stage = stage_text(stage_spec(plans))
             record = record_of(self._settings, self._declarations, plans, derived, stage)
-            report = replace(report, stage_hash=record.stage_hash, assets=pins.lines())
+            report = replace(report, stage_hash=record.stage_hash, assets=pins.lines(), ranges=range_lines(plans))
         for text in report.range_warnings():
             warn_at_script(text, UserWarning)
         for text in description_warnings(plans):

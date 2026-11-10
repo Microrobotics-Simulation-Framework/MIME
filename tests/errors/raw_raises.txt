@@ -76,6 +76,7 @@ materials/_records.py::RecordFile.read OSError 1  # invariant: a record file con
 nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_multipole.py::CalibratedMultipoleNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_reaction.py::SourceReactionNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::IntegratingRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -106,6 +107,7 @@ registry/_entries.py::_held KeyError 1  # protocol: the class Python's protocol 
 registry/_entries.py::_scalar TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 registry/_entries.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 registry/_entries.py::implements KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+registry/_ranges.py::choose_over TypeError 1  # an entry's defect: a choice over a declared range that declares no rule, raised inside the entry's plan or build, which the planner refuses as entry.defect naming the entry
 registry/_registry.py::_register TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 registry/_registry.py::_register ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 registry/_registry.py::register_setting_group TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
@@ -235,10 +237,10 @@ nodes/flow/fvm/_band.py::band_named ValueError 1  # internal: the fvm entry refu
 nodes/flow/fvm/_band.py::interior_depth ValueError 1  # internal: the fvm entry refuses an unoffered interior depth when planned (flow.interior), so a script reaches this only by constructing the node itself
 nodes/flow/fvm/_box.py::periodic_tube_layout ValueError 2  # internal: the layout of a tube the plan has already checked (flow.region, flow.box-axis): a radius or period not positive, or an axis off the box's lattice, reaches it only from a direct call
 nodes/flow/fvm/_explicit.py::ExplicitFlowNode.__init__ ValueError 2  # internal: a scheme of another stage kind or ledger terms, or an unknown images mode, which the fvm entry never builds (it picks the node by the scheme's stage kind), so a script reaches this only by constructing the node itself
-nodes/flow/fvm/_explicit.py::ExplicitFlowNode.identity_terms ValueError 1  # internal: a ledger delivery the flow node does not host, which only the build constructs
+nodes/flow/fvm/_explicit.py::ExplicitFlowNode.identity_terms ValueError 1  # internal: more than one law delivering the waveform RK3 reads, which only the build constructs, and the build refuses a second body force on one medium (id.duplicate, target.exclusive)
 nodes/flow/fvm/_explicit.py::_no_monolithic_solve TypeError 1  # internal: the step context's monolithic solve, which a scheme of the explicit stage kind never calls (its projections are the grid's fast solve): reached only by a scheme that breaks its own stage kind
 nodes/flow/fvm/_node.py::ImplicitFlowNode.__init__ ValueError 3  # internal: a scheme of another stage kind, state or ledger terms, the steady scheme with convection, or an unknown images mode, which the fvm entry refuses or never builds (flow.steady-convection), so a script reaches this only by constructing the node itself
-nodes/flow/fvm/_node.py::ImplicitFlowNode.identity_terms ValueError 1  # internal: a ledger delivery the flow node does not host, which only the build constructs (and the build does not meter the flow yet)
+nodes/flow/fvm/_node.py::check_deliveries ValueError 1  # internal: a ledger delivery the flow node neither hosts nor is driven through (its viscosity and wall band held, body_force and waveform delivered), which only the build constructs, from the fluid port kind the flow names
 nodes/flow/fvm/_schemes.py::scheme_named ValueError 1  # internal: an unregistered scheme, which the fvm entry's setting groups cannot name, so a script reaches this only by constructing the node itself
 nodes/flow/fvm/_solve.py::guarded_cg ValueError 1  # internal: a stop at the rounding floor given no operator magnitude, which the flow node always passes with it (the floor is float32's default stop), so a script reaches this only by calling the solve itself
 nodes/flow/fvm/_solve.py::preconditioner_named ValueError 1  # internal: an unregistered preconditioner, which the fvm entry refuses when planned (flow.preconditioner), so a script reaches this only by constructing the node itself

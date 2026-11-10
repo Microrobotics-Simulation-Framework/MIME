@@ -19,6 +19,7 @@ from mime.build import (
     Refusal,
     RefusalClass,
     RunSettings,
+    RangeDeclaration,
     SourceDeclaration,
     TermsDeclaration,
     ThingDeclaration,
@@ -276,6 +277,14 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
                                                                                 "writes them")
             continue
         declarations.append(ValueDeclaration(path, value, decode_basis(declared["reason"])))
+    for path, ranged in document.get("ranges", {}).items():
+        try:
+            low, high = (decode_setting({"value": ranged[end], "unit": ranged["unit"]}) for end in ("low", "high"))
+        except ValueError as error:
+            reader.refuse("load.units", f"the range of {path}: {error}", "write units as experiment.save() writes "
+                                                                          "them")
+            continue
+        declarations.append(RangeDeclaration(path, low, high, decode_basis(ranged["reason"])))
     declarations += [SourceDeclaration(path, decode_basis(reason)) for path, reason in document["sources"].items()]
     licence = experiment_licence(document)
     declarations += [LicenceDeclaration(licence, read=True)] if licence is not None else []

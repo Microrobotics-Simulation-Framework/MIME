@@ -20,7 +20,17 @@ from mime.build._maddening import static_dependencies, unreadable_leaves
 from mime.build._plan import Section
 from mime.registry import Role
 from mime.saved._pins import keeping_pins
-from mime.study._axes import OVERRIDE_REASON, Axis, AxisKind, base_value, differ, resolve, value_text
+from mime.study._axes import (
+    OVERRIDE_REASON,
+    Axis,
+    AxisKind,
+    base_value,
+    differ,
+    outside_range,
+    range_of,
+    resolve,
+    value_text,
+)
 from mime.study._point import Point, build_point, checked_digests, same_run
 from mime.units import Quantity, parse_unit, si, unit_symbol
 
@@ -62,6 +72,18 @@ def _variants(built: BuiltExperiment, axes: Sequence[Axis]) -> list[Refusal]:
                 "compare it as a variant: a Study over it (Study(exp).sweep(grid({...: [...]}), ...)), each value built "
                 "and compiled as its own group", why="an override changes a design or physical value for one run"))
     return found
+
+
+def _outside(axis: Axis, value: object, declarations: Sequence[Any]) -> Refusal:
+    held = range_of(axis, declarations)
+    assert held is not None
+    return Refusal(
+        "override.outside-range", RefusalClass.USER,
+        f"the override sets {axis.path} to {value_text(value)}, outside its declared range [{held.low}, {held.high}]: "
+        f"the compiled step holds the range's choices, which a value outside it is not built for",
+        f"run it as a Study, whose point outside the range is built for its own value (Study(exp).sweep(grid({{"
+        f"{axis.path!r}: [...]}}), duration=...)), or declare a range that holds it, exp.declare_range({axis.path!r}, "
+        f"low, high, reason=...)", why="an override runs as data on the built step, inside the range it was built over")
 
 
 def _leaves(tree: Mapping[str, Mapping[str, np.ndarray]], other: Mapping[str, Mapping[str, np.ndarray]]
@@ -129,6 +151,8 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
     axes = {resolve(path, declarations): value for path, value in overrides.items()}
     controller = built.plans.controller
     refusals = _variants(built, list(axes))
+    refusals += [_outside(axis, value, declarations) for axis, value in axes.items()
+                 if outside_range(axis, value, declarations)]
     if controller is not None and controller.mode is Mode.CALLBACK:
         refusals.append(Refusal(
             "override.callback", RefusalClass.USER,

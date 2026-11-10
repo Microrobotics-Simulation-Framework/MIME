@@ -58,7 +58,7 @@ def edited(path: Path, old: str, new: str) -> None:
 
 def test_the_unedited_folder_reads(folder: Path):
     """The baseline the folder's controls discriminate against."""
-    assert read_folder(folder).lock["schema"] == "mime.lock/11", "a version 4 lock, read under the current form"
+    assert read_folder(folder).lock["schema"] == "mime.lock/13", "a version 4 lock, read under the current form"
     assert lock_x64(folder) in (True, False) and _read_lock(folder)["schema"] == "mime.lock/4"
     assert folder_assets(folder) == () and _lock_of(folder) != {}
 

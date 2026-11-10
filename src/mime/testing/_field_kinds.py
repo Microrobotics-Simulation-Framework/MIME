@@ -146,9 +146,12 @@ def _ledger(declared: SolvedField, rig: FieldRig, dtype: str) -> CaseResult:
         return CaseResult(FieldCase.LEDGER, False, "it declares route 1 and its records hold no route-1 check")
     negative = float(np.asarray(state[f"{r}route_one_negative_steps"]))
     worst = float(np.asarray(state[f"{r}route_one_worst"]))
-    ok = negative == 0.0
-    return CaseResult(FieldCase.LEDGER, ok, "" if ok else f"{negative:g} steps gave energy (route 1's dissipation at "
-                                                           f"worst {worst:.3g} of its scale)")
+    claimed = float(np.asarray(state[f"{r}identity_worst"]))
+    found = [f"{negative:g} steps gave energy (route 1's dissipation at worst {worst:.3g} of its scale)"] \
+        if negative != 0.0 else []
+    found += [f"the part of its step it claims (a drive's attribution) is {claimed:.3g} of its scale at worst, over "
+              f"{books.IDENTITY_ULPS} eps"] if claimed > books.IDENTITY_ULPS * eps else []
+    return CaseResult(FieldCase.LEDGER, not found, "; ".join(found))
 
 
 def _steady(rig: FieldRig) -> CaseResult:

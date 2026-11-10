@@ -94,7 +94,20 @@ role (``fields: {flow: ...}``), as an apparatus's are, where version 10 and earl
 aspect (``dynamics: {flow: ...}``); a medium's ``dynamics`` is no longer written. Nothing else changed. A document of an
 earlier version is read with its medium's ``dynamics.flow`` as ``fields.flow``, and written back so for its lock's
 hashes; one of an earlier version whose medium holds ``fields`` is left for the schema check to refuse. The lock holds
-no new key; its schema moves with the document's."""
+no new key; its schema moves with the document's.
+
+**Version 12** (``mime.document/12``, ``mime.lock/12``) adds one key to the document, ``ranges``, each range declared in
+the experiment (``exp.declare_range``) by its axis's path: its ends in SI with their unit, and its reason, written only
+where one is declared. A declared range changes the build (every choice keyed on its value is made over the range), so
+it is part of the document and of the document and input hashes. Nothing else changed. A document of an earlier version
+declares no range; one of an earlier version that holds the key is refused, never read as declaring one. The lock holds
+no new key; its schema moves with the document's, as at every version.
+
+**Version 13** (``mime.document/13``, ``mime.lock/13``) names the FVM's setting ``solve_report_rows``, which version 12
+and earlier named ``report_rows``: in a medium's flow settings, in the flow's resolved entry and its default, and among
+the flow node's parameters in the derived graph. Nothing else changed. A document of an earlier version is read with
+the old name as the new, and the rebuilt document, resolved record and derived graph are written back with the old name
+for its lock's hashes. No key is added; the schemas move with the form."""
 
 from __future__ import annotations
 
@@ -107,14 +120,16 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 11
+CURRENT = 13
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
                                        7: "mime.document/7", 8: "mime.document/8", 9: "mime.document/9",
-                                       10: "mime.document/10", CURRENT: DOCUMENT_SCHEMA}
+                                       10: "mime.document/10", 11: "mime.document/11", 12: "mime.document/12",
+                                       CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
                                    5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", 8: "mime.lock/8",
-                                   9: "mime.lock/9", 10: "mime.lock/10", CURRENT: LOCK_SCHEMA}
+                                   9: "mime.lock/9", 10: "mime.lock/10", 11: "mime.lock/11", 12: "mime.lock/12",
+                                   CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
 #: experiment an experiment was made from, the version whose lock names the program the reference outputs were
@@ -132,6 +147,12 @@ SOURCE_SCALE_ADDED = 10
 MEDIUM_FIELDS_ADDED = 11
 #: A medium's key version 11 added, and the aspect of its ``dynamics`` an earlier version wrote its flow as.
 FIELDS_KEY, FLOW_ASPECT = "fields", "flow"
+#: The version that added the experiment's declared ranges to the document.
+RANGES_ADDED = 12
+#: The version that renamed the FVM's setting: a form before it names ``solve_report_rows`` ``report_rows``.
+ROWS_RENAMED = 13
+OLD_ROWS, NEW_ROWS = "report_rows", "solve_report_rows"
+_FVM = "fvm"
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
@@ -147,6 +168,8 @@ RECORD_KEYS_ADDED: tuple[str, ...] = ("credit", "role", "kind", "derivation", "n
                                       "citation", "adapters")
 #: The document's key version 7 added: the experiment this one was made from.
 BASED_ON_KEY = "based_on"
+#: The document's key version 12 added: the experiment's declared ranges.
+RANGES_KEY = "ranges"
 #: The lock's keys version 8 added: the program below its ``reference``, the two counts below its ``environment``.
 PROGRAM_KEY = "program"
 USABLE_CPUS_KEY = "usable_cpus"
@@ -288,6 +311,11 @@ def based_on_held(data: object) -> list[str]:
     return [BASED_ON_KEY] if isinstance(data, dict) and BASED_ON_KEY in cast("dict[str, object]", data) else []
 
 
+def ranges_held(data: object) -> list[str]:
+    """``["ranges"]`` where ``data`` (a document) holds the key version 12 added, and none otherwise."""
+    return [RANGES_KEY] if isinstance(data, dict) and RANGES_KEY in cast("dict[str, object]", data) else []
+
+
 def program_keys_held(data: object) -> list[str]:
     """The keys version 8 added that a lock holds: ``reference.program``, ``environment.usable_cpus`` and
     ``environment.blas_threads``."""
@@ -359,22 +387,57 @@ def _flow_of_fields(medium: dict[str, object]) -> dict[str, object]:
                                  **cast("dict[str, object]", fields)}}
 
 
+def _with_setting(entry: object, was: str, now: str) -> object:
+    """``entry`` (a medium's flow in the document, or the flow's resolved entry) with the FVM's setting ``was`` named
+    ``now``."""
+    if not isinstance(entry, dict):
+        return entry
+    held = cast("dict[str, object]", entry)
+    settings = held.get("settings")
+    if held.get("name") != _FVM or not isinstance(settings, dict) or was not in settings:
+        return held
+    renamed = {now if key == was else key: value for key, value in cast("dict[str, object]", settings).items()}
+    return {**held, "settings": renamed}
+
+
+def _with_flow_setting(medium: dict[str, object], was: str, now: str) -> dict[str, object]:
+    """A medium's document with its flow's FVM setting ``was`` named ``now``."""
+    fields = medium.get(FIELDS_KEY)
+    if not isinstance(fields, dict):
+        return medium
+    held = cast("dict[str, object]", fields)
+    if FLOW_ASPECT not in held:
+        return medium
+    return {**medium, FIELDS_KEY: {**held, FLOW_ASPECT: _with_setting(held[FLOW_ASPECT], was, now)}}
+
+
+def _rows_read(medium: dict[str, object]) -> dict[str, object]:
+    """A medium's document of a form before version 13 as version 13 reads it: the FVM's setting by its new name."""
+    return _with_flow_setting(medium, OLD_ROWS, NEW_ROWS)
+
+
+def _rows_written(medium: dict[str, object]) -> dict[str, object]:
+    """A medium's document written back into a form before version 13: the FVM's setting by its old name."""
+    return _with_flow_setting(medium, NEW_ROWS, OLD_ROWS)
+
+
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
-    terms keys in one of an earlier version, version 5's duration, version 7's ``based_on`` and version 11's media's
-    ``fields`` in one earlier than each."""
+    terms keys in one of an earlier version, version 5's duration, version 7's ``based_on``, version 11's media's
+    ``fields`` and version 12's ``ranges`` in one earlier than each."""
     found = terms_keys_held(data) if version < TERMS_ADDED else []
     found += duration_held(data) if version < DURATION_ADDED else []
     found += medium_fields_held(data) if version < MEDIUM_FIELDS_ADDED else []
+    found += ranges_held(data) if version < RANGES_ADDED else []
     return found + (based_on_held(data) if version < BASED_ON_ADDED else [])
 
 
 def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
     """``data`` as the current schema reads it, the version it was written in (the current one for a document that is
     not of an earlier version, which the schema check judges), and the ids of the drags that named the old rung. A
-    document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's, 5's, 7's
-    or 11's in any earlier) is left as it is, for the schema check to refuse. A medium's flow an earlier version wrote
-    as ``dynamics.flow`` is read as ``fields.flow``."""
+    document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's, 5's, 7's,
+    11's or 12's in any earlier) is left as it is, for the schema check to refuse. A medium's flow an earlier version
+    wrote as ``dynamics.flow`` is read as ``fields.flow``."""
     if not isinstance(data, dict):
         return data, CURRENT, ()
     held = dict(cast("dict[str, object]", data))
@@ -392,6 +455,8 @@ def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
         held, renamed = _renamed_rungs(held)
     if version < MEDIUM_FIELDS_ADDED:
         held = _with_media(held, _fields_of_flow)
+    if version < ROWS_RENAMED:
+        held = _with_media(held, _rows_read)
     return {**held, "schema": DOCUMENT_SCHEMA}, version, renamed
 
 
@@ -427,10 +492,14 @@ def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any
     held = dict(document)
     if version == CURRENT:
         return held
+    if version < ROWS_RENAMED:
+        held = _with_media(held, _rows_written)
     if version < MEDIUM_FIELDS_ADDED:
         held = _with_media(held, _flow_of_fields)
     if version < BASED_ON_ADDED:
         held = {key: value for key, value in held.items() if key != BASED_ON_KEY}
+    if version < RANGES_ADDED:
+        held = {key: value for key, value in held.items() if key != RANGES_KEY}
     if version < TERMS_ADDED:
         held = {key: value for key, value in held.items() if key not in TERMS_KEYS}
     run = held.get("run")
@@ -507,10 +576,42 @@ def _inertia_in_form(path: str, record: Any) -> Any:
     return held
 
 
-def resolved_in_form(resolved: Mapping[str, Any], version: int) -> dict[str, Any]:
-    """A resolved record written back into the form of ``version``: before version 9, a body's inertia from its parts
-    as its diagonal; before version 3, the rung, the possessive and the profile as version 2 and 1 wrote them."""
+def _default_path_in_form(path: str, record: object) -> str:
+    """A default's path in the profile's record as a form before version 13 named it: the FVM's setting by its old
+    name."""
+    suffix = f".{NEW_ROWS}"
+    entry = cast("dict[str, object]", record).get("entry") if isinstance(record, dict) else None
+    if path.endswith(suffix) and isinstance(entry, str) and entry.startswith(f"{_FVM} "):
+        return f"{path[:-len(suffix)]}.{OLD_ROWS}"
+    return path
+
+
+def _rows_in_form(resolved: dict[str, Any]) -> dict[str, Any]:
+    """A resolved record with the FVM's setting named as a form before version 13 named it: in each flow's entry and
+    among the profile's defaults (``<path>.solve_report_rows``)."""
     held = dict(resolved)
+    entries = held.get("entries")
+    if isinstance(entries, dict):
+        held["entries"] = {name: _with_setting(entry, NEW_ROWS, OLD_ROWS)
+                           for name, entry in cast("dict[str, object]", entries).items()}
+    profile = held.get("profile")
+    if isinstance(profile, dict):
+        record = cast("dict[str, object]", profile)
+        defaults = record.get("defaults")
+        if isinstance(defaults, dict):
+            renamed = {_default_path_in_form(path, value): value
+                       for path, value in cast("dict[str, object]", defaults).items()}
+            held["profile"] = {**record, "defaults": renamed}
+    return held
+
+
+def resolved_in_form(resolved: Mapping[str, Any], version: int) -> dict[str, Any]:
+    """A resolved record written back into the form of ``version``: before version 13, the FVM's setting as
+    ``report_rows``; before version 9, a body's inertia from its parts as its diagonal; before version 3, the rung, the
+    possessive and the profile as version 2 and 1 wrote them."""
+    held = dict(resolved)
+    if version < ROWS_RENAMED:
+        held = _rows_in_form(held)
     values = held.get("values")
     if version < INERTIA_TENSOR_ADDED and isinstance(values, dict):
         held["values"] = {path: _inertia_in_form(path, record)
@@ -529,9 +630,25 @@ def resolved_in_form(resolved: Mapping[str, Any], version: int) -> dict[str, Any
     return held
 
 
+def _node_rows_in_form(node: object) -> object:
+    """A node of the derived graph with the flow node's parameter named as a form before version 13 named it."""
+    if not isinstance(node, dict):
+        return node
+    held = cast("dict[str, object]", node)
+    params = held.get("params")
+    if not isinstance(params, dict) or NEW_ROWS not in params:
+        return held
+    renamed = {OLD_ROWS if key == NEW_ROWS else key: value for key, value in cast("dict[str, object]", params).items()}
+    return {**held, "params": renamed}
+
+
 def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
-    """The derived graph's physics written back into the form of ``version``: the drag node's type as it was named."""
+    """The derived graph's physics written back into the form of ``version``: the flow node's parameter and the drag
+    node's type as they were named."""
     held = dict(physics)
+    nodes = held.get("nodes")
+    if version < ROWS_RENAMED and isinstance(nodes, list):
+        held["nodes"] = [_node_rows_in_form(node) for node in cast("list[Any]", nodes)]
     nodes = held.get("nodes")
     if version < RUNG_RENAMED and isinstance(nodes, list):
         held["nodes"] = [{**cast("dict[str, Any]", node), "type": OLD_NODE}
@@ -544,8 +661,9 @@ __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "
            "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY",
            "MEDIUM_FIELDS_ADDED", "RECORDS_ADDED", "medium_fields_held",
            "PRODUCTS_REFUSAL", "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
-           "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RESOLUTION_KEYS", "RUNG_RENAMED",
+           "NEW_ROWS", "OLD_ROWS", "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RANGES_ADDED",
+           "RANGES_KEY", "RESOLUTION_KEYS", "ROWS_RENAMED", "RUNG_RENAMED",
            "SOURCE_SCALE_ADDED", "TERMS_ADDED", "TERMS_KEYS", "USABLE_CPUS_KEY", "added_after", "based_on_held",
            "document_in_form", "duration_held", "newer_form_refusal", "physics_in_form", "products_waiver_refusals",
-           "program_keys_held", "resolution_held", "resolved_in_form", "terms_keys_held",
+           "program_keys_held", "ranges_held", "resolution_held", "resolved_in_form", "terms_keys_held",
            "upgraded_document", "upgraded_lock", "version_of"]

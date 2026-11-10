@@ -29,8 +29,8 @@ from mime.interactions import Gravity
 from mime.nodes.body import RigidInertialNode
 from mime.nodes.body._rigid_inertial import _PAIRED_AS
 from mime.observations import EnergyLedger
-from mime.registry import ChainSegment, Dynamics, EntryKind, Interaction, lookup, register_interaction
-from mime.testing import PORT_DRAWS, installed_entries, step_identity
+from mime.registry import Dynamics, EntryKind, Interaction, lookup, register_interaction
+from mime.testing import PORT_CASES, PORT_DRAWS, installed_entries, step_identity
 from mime.testing._energy import dynamics_rig
 from mime.vocabulary import RIGID_BODY, register_namespace
 
@@ -93,8 +93,8 @@ METERED = sorted(key for key in installed_entries() if key[0] == "dynamics" and 
 def test_every_metered_dynamics_passes_its_step_identity(key):
     cls = classes(key)
     assert cls.port in PORT_DRAWS, "a new port kind brings its draws with it (mime.testing.PORT_DRAWS)"
-    # A chain segment's case steps its port kind's own rig, so it needs no settings of the entry's.
-    result = step_identity(cls.__new__(cls) if issubclass(cls, ChainSegment) else cls())
+    # A chain segment's and a flow's cases step their port kind's own rig, so they need no settings of the entry's.
+    result = step_identity(cls.__new__(cls) if cls.port in PORT_CASES else cls())
     print(f"\n{result}")
     assert result.passed, result
 
@@ -193,10 +193,16 @@ def unmetered_law(profile: str):
     return exp
 
 
+#: The line a law gets that declares no class, states no reason, reads nothing of the components and delivers only
+#: loads its receiver pairs: a source by the graph, outside and supplying its own work, its missing declaration logged
+#: all the same.
+SAYS_NOTHING = ("{}: declares no energy class and states no reason; it reads no component's state and delivers only "
+                "loads, so it is outside and supplies its own work")
+
+
 def test_an_outside_law_that_says_nothing_is_logged_under_exploratory_and_refused_under_research():
     built = unmetered_law("exploratory").build()
-    assert "unstated.gravity:umr: declares no energy class, reads nothing from outside and states no reason" in \
-        built.report.energy
+    assert SAYS_NOTHING.format("unstated.gravity:umr") in built.report.energy
     with pytest.raises(BuildRefused) as refused:
         unmetered_law("research").build()
     assert refused.value.codes() == ["ledger.unmetered"], refused.value
@@ -211,4 +217,5 @@ def test_the_lab_fixture_s_nudge_on_a_toy_is_logged_with_the_toy_s_reason():
     experiment.observe(EnergyLedger())
     lines = experiment.build().report.energy
     assert any(line.startswith("probe: receives deliveries") and "a toy with no physics" in line for line in lines)
+    # The toy's dynamics names no port kind, so the nudge's load is paired as nothing: not a source.
     assert "labx.nudge:probe: declares no energy class, reads nothing from outside and states no reason" in lines

@@ -159,6 +159,14 @@ Each declaration removed in this session (`exp.remove(...)`), as a note: what wa
 the experiment keeps the note (`plan().removed` holds the same lines). It is empty for an experiment nothing
 was removed from. The saved experiment holds what was left ([reading errors](../reading_errors.md#taking-a-declaration-out)).
 
+## `ranges`
+
+Each range the experiment declares (`exp.declare_range(...)`), with each choice the build made over it that differs from
+the one the experiment's own value would make, and what that costs: the MRS rung's force points chosen at the range's
+corner with the most, against the count at the experiment's own radius, and its dense solve's size against the other.
+A run of the experiment uses the range's choices, so this is what declaring the range costs every run; to pay less,
+narrow the range. It is empty for an experiment that declares no range ([studies](studies.md#declared-ranges)).
+
 ## `stale`
 
 Set on a built experiment's `report` once the experiment has had a replacement or a removal since the build: what changed
@@ -178,8 +186,9 @@ graph: each body it meters, with each law acting on it and that law's class (`di
 with the law's reason), what each law that reads something outside is supplied by, each thing that receives loads and
 cannot be metered with its reason, and what is outside (a thing that receives no load from the components: a field
 turning on its own, a drive, the controller, a prescribed motion; on an apparatus with a chain, each segment and each
-field it carries apart, so a kinematic arm carrying a dynamic motor is outside and the motor inside). Empty without
-the ledger.
+field it carries apart, so a kinematic arm carrying a dynamic motor is outside and the motor inside; a law that
+declares no class and whose own node reads nothing of the components, such as a body force driving a medium's flow,
+which supplies its own work). Empty without the ledger.
 
 A law that couples two receivers is checked in every profile: one whose receivers step at different rates is refused
 (`law.rate-divided`), and a damper between two receivers that no one step holds and no coupling group solves together
@@ -190,5 +199,5 @@ A run's result gives the account itself, `result.energy` ([the results note](../
 ## `unmetered`
 
 With the energy ledger, each node that receives loads and that the build leaves unmetered, by name, with its reason (a
-medium's flow, whose hosted laws the build does not yet name for the ledger). A run's account names each as left out of
-it (`result.energy.unmetered`), as does `result.text()`. Empty without the ledger, and where every receiver is metered.
+dynamics that names no port kind: the prescribed flow, `Womersley()`, which stores nothing, a toy, a lab's). A run's
+account names each as left out of it (`result.energy.unmetered`), as does `result.text()`. Empty without the ledger, and where every receiver is metered.

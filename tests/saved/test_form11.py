@@ -55,11 +55,12 @@ def codes_of(folder: Path) -> list[str]:
 def test_version_eleven_writes_a_mediums_fields_by_role_and_reads_them_back(tmp_path: Path):
     from cases import CASES
 
-    assert CURRENT == MEDIUM_FIELDS_ADDED == 11
-    assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/11" and LOCK_SCHEMAS[CURRENT] == "mime.lock/11"
+    assert MEDIUM_FIELDS_ADDED == 11 < CURRENT
+    assert DOCUMENT_SCHEMAS[MEDIUM_FIELDS_ADDED] == "mime.document/11" and LOCK_SCHEMAS[MEDIUM_FIELDS_ADDED] == \
+        "mime.lock/11"
     experiment = next(case for case in CASES if case.name == "periodic_tube_flow").make()
     lock = experiment.save(tmp_path / "flow")
-    assert lock["schema"] == "mime.lock/11"
+    assert lock["schema"] == LOCK_SCHEMAS[CURRENT]
     water = yaml.safe_load((tmp_path / "flow" / DOCUMENT_FILE).read_text(encoding="utf-8"))["things"]["water"]
     assert "dynamics" not in water and list(water["fields"]) == ["flow"] and water["fields"]["flow"]["name"] == "fvm"
     loaded = Experiment.load(tmp_path / "flow")

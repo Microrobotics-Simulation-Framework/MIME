@@ -31,6 +31,7 @@ from mime.build._declarations import (
     LicenceDeclaration,
     ObservationDeclaration,
     PermissionDeclaration,
+    RangeDeclaration,
     RunSettings,
     SourceDeclaration,
     TermsDeclaration,
@@ -99,6 +100,7 @@ from mime.build._stage import kind_prim, stage_spec
 
 __all__ = [
     "CONVENTIONAL_GRAVITY",
+    "RangeDeclaration",
     "SourceDeclaration",
     "LicenceDeclaration",
     "PermissionDeclaration",

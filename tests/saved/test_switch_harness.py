@@ -62,6 +62,7 @@ import pytest
 import tube_asset
 from mrs_cases import mrs_free_space, mrs_plane, mrs_solids
 import multibody_cases
+from cases import coil_array
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
 from hull_cases import MARGIN as HULL_MARGIN, TUBE_RADIUS, hull_node, kind_points, rotation
@@ -426,6 +427,29 @@ def dipole_at(graph, point) -> dict:
     given = {"mount_poses": AT_THE_ORIGIN, **{f"points_{slot}": jnp.asarray((*point, 1.0, 0.0, 0.0, 0.0))
                                                for slot in slots}}
     out = node.fresh_update(node_state(graph, "rpm.magnetic"), given, DT, params=leaves(graph, "rpm.magnetic"))
+    return {"flux_density": jnp.stack([out[f"flux_density_{slot}"] for slot in slots]),
+            "gradient": jnp.stack([out[f"gradient_{slot}"] for slot in slots])}
+
+
+@cache
+def coil_graph():
+    """The coil array's apparatus (``cases.coil_array``), built in float64 as the harness runs."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        return coil_array().build().graph
+    finally:
+        jax.config.update("jax_enable_x64", held)
+
+
+def coils_at(graph, point) -> dict:
+    """The coil array's field and gradient at the world ``point`` (a reader's pose, unturned), for each of its slots,
+    its currents the case's drive."""
+    node = graph.get_node("coils.magnetic")
+    slots = [name.removeprefix("points_") for name in node.boundary_input_spec() if name.startswith("points_")]
+    given = {"delivered_currents": jnp.asarray((5.0, -3.0, 2.0)),
+             **{f"points_{slot}": jnp.asarray((*point, 1.0, 0.0, 0.0, 0.0)) for slot in slots}}
+    out = node.fresh_update(node_state(graph, "coils.magnetic"), given, DT, params=leaves(graph, "coils.magnetic"))
     return {"flux_density": jnp.stack([out[f"flux_density_{slot}"] for slot in slots]),
             "gradient": jnp.stack([out[f"gradient_{slot}"] for slot in slots])}
 
@@ -1053,7 +1077,7 @@ def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); a body held by its hull's points, one of
     them on the tube's axis (the sweeps'); the drag on the axis; the swim speed
-    before it has observed; the phase lag in no field before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; and
+    before it has observed; the phase lag in no field before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; the coil array read away from its sources (its source offsets', and its reader's distances'); and
     the drag's MRS samples on FL-9's screw and on an ellipsoid, where each kind's surface element (each sample's
     ``nonzero_norm``) is."""
 
@@ -1116,6 +1140,9 @@ def guard_points(graph):
         return dipole_at(chain_graph(), point)
 
     away = jnp.asarray((0.05, 0.0, 0.0))
+
+    def coils(point):
+        return coils_at(coil_graph(), point)
 
     def elements(pose):
         """The drag's MRS rung on FL-9's screw, which samples the helix kind in its step: its outputs
@@ -1191,6 +1218,7 @@ def guard_points(graph):
         "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
         "the screw on its focal set": (lambda: focus(on_the_focus), lambda: jax.jacfwd(focus)(on_the_focus)),
         "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
+        "the coil array away from its sources": (lambda: coils(away), lambda: jax.jacfwd(coils)(away)),
         "the MRS samples on the screw": (lambda: elements(screw_pose),
                                                lambda: jax.jacfwd(elements)(screw_pose)),
         "the MRS samples on the ellipsoid": (lambda: egg_elements(egg_pose),
@@ -1251,6 +1279,7 @@ def swim_at_twist(graph, twist):
                                    "the hull contact on FL-9 and an ellipsoid at the wall", "the drag on the axis",
                                    "the swim speed before observing", "the solids' shapes on their sets",
                                    "the screw on its focal set", "the dipole away from its centre",
+                                   "the coil array away from its sources",
                                    "the MRS samples on the screw",
                                    "A0's controller on its target's orientation",
                                    "A0's controller turning its end effector",
