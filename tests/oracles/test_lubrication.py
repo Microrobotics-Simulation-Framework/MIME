@@ -444,10 +444,11 @@ def test_gate7_the_term_doubled_moves_the_speed_by_what_the_six_by_six_predicts(
 
 # -- gate 8 ----------------------------------------------------------------------------------------------------------
 
-def compared(built, pose_of, gaps, leaf_names, step=1e-6):
+def compared(built, pose_of, gaps, leaf_names, step=1e-6, forward_too=True):
     """Reverse, forward and Richardson's central difference of a weighted sum of the resistance in each leaf, at each
     gap; each leaf stepped by ``step`` of its size. The loss takes the pose and the weights as arguments, so that each
-    derivative compiles once for every gap."""
+    derivative compiles once for every gap. Without ``forward_too`` the forward column repeats the reverse one (the
+    controls judge the reverse alone)."""
     node, state, leaves, _ = stepper(built)
 
     def loss(values, pose, along, weights):
@@ -455,7 +456,8 @@ def compared(built, pose_of, gaps, leaf_names, step=1e-6):
         moved = pose + values[-1] * along
         return jnp.sum(weights * node.update(state, {"pose": moved}, 1e-3, params=held)["resistance"])
 
-    value, reverse_of, forward_of = jax.jit(loss), jax.jit(jax.grad(loss)), jax.jit(jax.jacfwd(loss))
+    value, reverse_of = jax.jit(loss), jax.jit(jax.grad(loss))
+    forward_of = jax.jit(jax.jacfwd(loss)) if forward_too else reverse_of
     found = []
     for gap in gaps:
         pose = pose_of(gap)
@@ -510,7 +512,7 @@ def test_gate8_controls_a_stopped_lift_and_a_hard_max():
         with planted(plant):
             built = above_plane(0.2, roughness=2e-6).build()
             found = compared(built, lambda g: plane_pose(g * RADIUS), gaps if plant == "lift_stopped" else (0.15,),
-                             ("wall_offset",))
+                             ("wall_offset",), forward_too=False)
         worst = max(abs(reverse - difference) / scale for _, _, reverse, _, difference, scale in found)
         print(f"\n{plant}: the worst |AD - FD| / scale {worst:.3g}")
         assert worst > 100 * GRADIENT_LINE, plant
