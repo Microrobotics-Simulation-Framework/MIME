@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 import jax
 import numpy as np
@@ -210,6 +210,7 @@ class WallFields:
     counts: Array | None = None
 
 
+@runtime_checkable
 class FacedSolid(Protocol):
     """A solid whose distance is held per face set (a tube tree's: its held faces and plan are each set's): its signed
     distance on the three face sets' points, together, and the counts of where it is not exact (:class:`TreeSolid`)."""
@@ -245,7 +246,7 @@ def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: B
     faced: dict[int, tuple[Array, Array, Array]] = {}
     counts: Array | None = None
     for index, solid in enumerate(solids):
-        if not isinstance(solid, TubeSolid):
+        if isinstance(solid, FacedSolid):
             faced[index], counts = solid.face_distances(held)
     chis: list[Array] = []
     inverse: list[Array] = []
