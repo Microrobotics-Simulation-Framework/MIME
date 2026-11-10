@@ -307,9 +307,10 @@ class CalibratedMultipole(CoilArray):
     setting_roles = {
         "calibration": DESIGN,
         "source_clearance": convention(NUMERICAL, "none given: the guard is the gradient's, a coil's gradient per "
-                                                        "unit current above 30 times its median over the declared "
-                                                        "region, each calibration's own; a length given replaces it "
-                                                        "with a distance from a fitted source")}
+                                                        "unit current above a declared multiple of its median over "
+                                                        "the declared region (the validity line states it), each "
+                                                        "calibration's own; a length given replaces it with a "
+                                                        "distance from a fitted source")}
     references = ("Petruska2017", "Charreyron2021", "Kummer2010", "Zughaibi2025", "Zughaibi2026", "Gervasoni2024", "Yu2019")
     builds = {"": (CalibratedMultipoleNode,)}
     validity = (

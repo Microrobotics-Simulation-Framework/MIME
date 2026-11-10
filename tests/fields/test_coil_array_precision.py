@@ -23,7 +23,7 @@ from mime import Apparatus, Body, Experiment, State
 from mime.build import BuildRefused
 from mime.data import asset
 from mime.dynamics import RigidInertial
-from mime.fields import CalibratedMultipole
+from mime.fields import CalibratedMultipole, allocate
 from mime.fields._coil_array import FLOAT32_BUDGET, calibration_of
 from mime.interactions import Magnetic
 from mime.nodes.actuation import CalibratedMultipoleNode
@@ -112,6 +112,32 @@ def test_a_background_moves_the_field_by_itself_and_the_gradient_by_nothing(syst
             (field, gradient), (moved, same) = stepped(plain, point, currents), stepped(shifted, point, currents)
             assert np.all(np.abs(moved - field - held) <= 2 * eps * (np.abs(field) + np.abs(held)))
             assert np.array_equal(same, gradient)
+
+
+#: How far the node's field may sit from the wanted one (T): the solver's tolerance in float64, and in float32 the
+#: rounding of the sum over the coils (each card's float32 floor, 1.5e-5 of the peak, over a few mT), each two orders or more
+#: more below the 50 uT a dropped background leaves.
+FIELD_TOLERANCE = {"float64": 1e-12, "float32": 1e-7}
+
+
+@pytest.mark.parametrize("precision", ["float32", "float64"])
+@pytest.mark.parametrize("system", ["navion_2", "cardiomag"])
+def test_allocated_currents_make_the_wanted_field_including_the_background(system, precision):
+    """The wanted field is the whole field at the reader, background included: ``allocate`` asks the coils for the
+    wanted field less the background, so the node, which adds the background, gives the wanted field back. Planted
+    (the background dropped from the target) the field comes out the background (50 uT) off, some 10^4 times the
+    rounding allowed here."""
+    background = np.array((30e-6, -20e-6, 33e-6))  # 50 uT in all
+    point, currents = ORACLE[f"{system}_points"][0], ORACLE[f"{system}_currents"][0]
+    wanted = np.array((4e-3, -2e-3, 3e-3))
+    with in_dtype(precision):
+        provider = CalibratedMultipole(calibration=asset(system), background=T(tuple(background)))
+        found = allocate(provider.actuation(m(tuple(point))), field=T(tuple(wanted)), limits=A(35.0))
+        assert not any(found.at_limit) and found.field_miss is not None and found.field_miss < 1e-12
+        node = node_of(system, background=T(tuple(background)))
+        made, _ = stepped(node, point, np.asarray(found.currents.value))
+        miss = float(np.max(np.abs(made - wanted)))
+        assert miss < FIELD_TOLERANCE[precision]
 
 
 #: What each calibration's card states of its conditioning (docs/assets/<name>.md), as it prints each (and in SI): the
