@@ -300,7 +300,6 @@ def spacing_rule(hull: Hull) -> ChoiceRule.Monotone | ChoiceRule.Sampled:
     return SPACING_SAMPLED
 
 
-@functools.lru_cache(maxsize=256)
 def _step_down(spacing: float, boundary: float, from_boundary: bool) -> float:
     """``spacing``, rounded to three figures past ``boundary``, one unit of the third figure lower. The unit is the
     boundary's (``from_boundary``: exact rounding-down) or the rounded value's (the released step, which within half a
@@ -309,6 +308,7 @@ def _step_down(spacing: float, boundary: float, from_boundary: bool) -> float:
     return float(f"{spacing - unit:.3g}")
 
 
+@functools.lru_cache(maxsize=256)
 def _force_points(kind: Any, settings: tuple[tuple[str, Any], ...], spacing: float, patches: tuple[str, ...]) -> float:
     sampling = kind.sampling(dict(settings), spacing, patches)
     if sampling.chosen is not None:
