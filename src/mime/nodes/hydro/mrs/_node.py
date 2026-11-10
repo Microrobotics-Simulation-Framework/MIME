@@ -1309,7 +1309,7 @@ class MRSDragNode(MimeNode):
                 return found, image.accepted, gap, short
             if distance is None:
                 return found, image.accepted, zero, short, jnp.asarray(False)
-            away = _lax.stop_gradient(distance(points, parameters))
+            away = distance(points, parameters)
             least = least_distance(away)
             band = jnp.inf if spacing is None else OFF_PATCH_BAND * spacing
             outside = jnp.any(~jnp.asarray(in_patch) & (away <= least + band))
