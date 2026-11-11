@@ -88,12 +88,14 @@ def slope_inputs(mass: float, theta: float, dtype=None) -> dict:
 
 def on_the_floor(name: str = "friction_sphere", *, theta: float = 0.3, mu: float | None = 0.2, body=BALL,
                  density: float = DENSITY, fluid_density: float = 1.0, dt: float = 1e-3, margin: float | None = None,
-                 roughness: float | None = None, rolling: float | None = None, along: bool = False) -> Experiment:
+                 roughness: float | None = None, spacing: float | None = None, rolling: float | None = None,
+                 along: bool = False) -> Experiment:
     """``body`` on the floor of a tube whose axis is tilted ``theta`` up from x about -y (``axis(theta)``), so that
     gravity pulls down the tube's lowest line by ``g sin(theta)`` and into the floor by ``g cos(theta)``, held by the contact with ``Coulomb(mu)`` (none where
     ``mu`` is ``None``; with rolling resistance ``rolling`` where given), its margin the contact's default (the roughness
-    cutoff) unless written; in a gas of ``fluid_density`` (its buoyancy in the gravity law). ``along`` turns the body's
-    x along the tube's axis (a cylinder lying on the floor down the slope: the block)."""
+    cutoff) unless written, its hull's spacing the contact's default unless written; in a gas of ``fluid_density`` (its
+    buoyancy in the gravity law). ``along`` turns the body's x along the tube's axis (a cylinder lying on the floor down
+    the slope: the block)."""
     kind, settings = body
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(G), dt=s(dt))
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=axis(theta), inner_radius=m(TUBE_RADIUS),
@@ -113,6 +115,7 @@ def on_the_floor(name: str = "friction_sphere", *, theta: float = 0.3, mu: float
         experiment.declare("tube.roughness", m(roughness), reason="a declared roughness")
     experiment.attach(Gravity(), body=ball, medium=gas)
     contact = Contact.Projection(**({} if margin is None else {"margin": m(margin)}),
+                                 **({} if spacing is None else {"spacing": m(spacing)}),
                                  **({} if mu is None else {"friction": Coulomb(
                                      mu=mu, **({} if rolling is None else {"rolling": m(rolling)}))}))
     experiment.attach(contact, body=ball, surface=tube.inner_surface)

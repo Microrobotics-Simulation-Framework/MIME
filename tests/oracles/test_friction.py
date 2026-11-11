@@ -51,6 +51,10 @@ G = 9.81
 DT, STEPS = 1e-3, 100
 #: The closed forms' resolution in each dtype: a hundred steps of a step solved exactly but for the dtype's rounding.
 EXACT = {jnp.float64: 1e-12, jnp.float32: 2e-5}
+#: Through the build, a margin of 10 um and the hull's points 0.1 mm apart (2,016 of them, 2.7 um short of the sphere,
+#: within the margin): the dry oracles do not depend on either, and the default spacing at the default margin (the
+#: roughness cutoff, 1.4 um) seeds the sphere from about 51,000.
+COARSE = {"margin": 1e-5, "spacing": 1e-4}
 
 
 @pytest.fixture(params=[jnp.float64, jnp.float32], ids=["float64", "float32"])
@@ -124,7 +128,7 @@ def test_control_frictionless_the_sphere_slides_and_never_turns(dtype):
 def test_through_the_build_the_sphere_on_a_tilted_tubes_floor_rolls_or_slips_as_its_closed_form(dtype, ratio):
     mu = 0.2
     theta = math.atan(3.5 * mu * ratio)
-    built = on_the_floor(theta=theta, mu=mu).build()
+    built = on_the_floor(theta=theta, mu=mu, **COARSE).build()
     twist = np.asarray(built.run(s(STEPS * DT), history=True).history["ball"]["twist"], dtype=np.float64)
     state, acceleration = incline_oracle(theta, mu, rolls=True)
     down = -twist[-1, :3] @ np.asarray(axis(theta)) / (STEPS * DT)
@@ -166,7 +170,7 @@ def test_the_margin_defaults_to_the_roughness_cutoff_and_reads_the_declared_roug
     from mime.nodes.hydro.near_contact import roughness_cutoff
 
     assert Contact.engagement(None, None) == pytest.approx(math.sqrt(2.0) * 1e-6, rel=1e-15)
-    built = on_the_floor(roughness=3e-6).build()
+    built = on_the_floor(roughness=3e-6, spacing=1e-4).build()
     node = built.graph.get_node("ball")
     assert float(node.constants()["margin"]) == pytest.approx(float(roughness_cutoff(3e-6, 3e-6)), rel=1e-15)
 
@@ -179,7 +183,7 @@ def test_the_ledger_books_friction_as_mu_n_times_the_slip_distance_and_rolling_a
 
     mu = 0.2
     theta = math.atan(3.5 * mu * ratio)
-    experiment = on_the_floor(theta=theta, mu=mu)
+    experiment = on_the_floor(theta=theta, mu=mu, **COARSE)
     experiment.observe(EnergyLedger())
     result = experiment.build().run(s(STEPS * DT), history=True)
     account = result.energy
