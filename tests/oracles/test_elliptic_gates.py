@@ -234,8 +234,8 @@ def composed_controls(pair: str, lifted, coarse) -> dict[str, np.ndarray | None]
     _, cstate, cleaves, cstep = coarse
     h1, h2 = (float(v) * 1e-3 for v in pair.split(","))
     pose = across(h1, h2)
-    lift = np.asarray(step(pose, leaves)["resistance"])
-    true = np.asarray(cstep(pose, cleaves)["resistance"])
+    lift = np.array(step(pose, leaves)["resistance"])
+    true = np.array(cstep(pose, cleaves)["resistance"])
     # the contacts and their own openings, as the node finds them
     wall = node._wall()
     held = node.params_pytree()
@@ -288,7 +288,7 @@ def composed_controls(pair: str, lifted, coarse) -> dict[str, np.ndarray | None]
         nearer = min(distinct, key=lambda k: float(contacts.contacts.gap[k]))
         along = np.asarray(contacts.contacts.frame[nearer][2])
         moved = pose.at[:3].add(jnp.asarray(along * move))
-        per_body = np.asarray(cstep(moved, cleaves)["resistance"])
+        per_body = np.array(cstep(moved, cleaves)["resistance"])
         for k in distinct:  # the other contact's increment taken back over its closed span
             per_body += own(k, move if k == nearer else -move)
     return {"lift": lift, "one_at_a_time": one_at_a_time, "subtraction": subtraction, "per_body_lift": per_body}
