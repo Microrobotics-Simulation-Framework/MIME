@@ -649,11 +649,11 @@ def _resolved_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, resolved: S
     """The flow's node with the resolved bodies on its grid (``mime.nodes.flow.fvm._resolved_node``): each body's
     pose and twist read at the step's start, its load delivered back to it under its drag's id."""
     from mime.dynamics.flow._resolved import resolved_spec
-    from mime.nodes.flow.fvm._resolved_node import ResolvedFlowNode
+    from mime.nodes.flow.fvm._resolved_node import ResolvedFlowNode, ResolvedSpec
 
     del fvm
     band = BANDS[DEFAULT_BAND]
-    specs = []
+    specs: list[ResolvedSpec] = []
     for registration in resolved:
         assert registration.hull is not None, "the drag's plan refuses a body with no hull"
         specs.append(resolved_spec(registration.hull, registration.id, layout.spacing, band))

@@ -1123,6 +1123,12 @@ class Interaction(Entry):
         its rows."""
         return ""
 
+    def delivers_added_mass(self) -> bool:
+        """Whether the law delivers an added mass to its body (a point body's Maxey-Riley added mass, through its
+        resistance): refused on a body a medium's field resolves on its grid, whose inertia the grid already carries
+        (A6, item 9)."""
+        return False
+
     def definiteness(self) -> Definiteness | None:
         """For a dissipative law delivering an operator, where it is shown positive semidefinite: by its construction
         (checked once in its family's suite) or at the state it reads (checked at run time where the ledger is

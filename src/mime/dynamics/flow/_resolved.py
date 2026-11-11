@@ -67,8 +67,8 @@ def resolved_spec(hull: Hull, law: str, spacing: float, band: Band) -> ResolvedS
 
 def _number(value: Magnitude) -> float | tuple[float, ...]:
     if isinstance(value, tuple):
-        return tuple(float(v) for v in value)  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
-    return float(value)  # type: ignore[arg-type]
+        return tuple(float(v) for v in value)
+    return float(value)
 
 
 __all__ = ["FEATURE_CELLS", "feature_cells", "feature_radius", "finest_spacing", "resolved_spec", "solid_region"]

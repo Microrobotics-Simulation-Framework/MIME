@@ -1512,10 +1512,10 @@ class Drag(UncoupledDrag):
         "one_way": convention(PHYSICAL, "two-way: on the stokes rung the drag's and the couple's reactions are "
                                         "scattered back onto the medium's grid; one_way=True is the declared "
                                         "approximation, its reactions not delivered"),
-        "feature_cells": convention(NUMERICAL, f"on the penalty rung, {FEATURE_CELLS}: N, the cells across the radius "
-                                               f"of the body's smallest feature, which the medium's grid takes where it "
-                                               f"is finer than the lumen's own (B12: 6.9 % at 3 cells a radius and 1.0 "
-                                               f"% at 6 on a sphere's Stokes drag)"),
+        "feature_cells": convention(NUMERICAL, "on the penalty rung, FEATURE_CELLS: N, the cells across the radius of "
+                                               "the body's smallest feature, which the medium's grid takes where it is "
+                                               "finer than the lumen's own (B12; the rung's validity line gives the "
+                                               "drag's error it was measured at)"),
         "kernel_width": convention(NUMERICAL, "on the stokes rung, none: the exchange kernel's width the narrowest of "
                                               "the ladder (WIDTHS) at or above the rule's least width whose coupled "
                                               "one-step margins clear the floor at the run's values (the validity line "
@@ -1681,6 +1681,26 @@ class Drag(UncoupledDrag):
         f"radii apart, along and across their line of centres) was within 0.2 to 2.1 % of the cross term at 48 cells "
         f"and 0.2 to 1.2 % at 64 [measured by the rung's refuting review]; the exact two-sphere solution's nearer terms (about "
         f"15/(4 rho^4) along the line, 1.5 % of one body's speed at 4 radii) no point body carries",
+        f"penalty: a rigid body resolved on the medium's grid, its solid lifted by the wall's own band (2h, 0.3h) from "
+        f"its solid region's exact signed distance (a sphere's, a capsule's) at its pose each step, the grid's spacing "
+        f"the finer of the lumen's and N = {FEATURE_CELLS} cells (feature_cells) across the radius of its smallest "
+        f"feature; a first-order body: in Stokes flow a sphere at a/R 0.375 reads its drag 6.0 % under Haberman and "
+        f"Sayre at 3 cells a radius and 0.8 % at 6, as a radius 0.07 and 0.02 cells smaller [measured, the rung's gate "
+        f"1]; refused under {PENALTY_THIN_LINE:g} cells a radius ({PENALTY_THIN_BASIS})",
+        f"penalty: its load the penalty's force and torque plus the interior fluid's momentum change taken from the "
+        f"field (the field formulation; the rigid-interior shortcut diverges at a density ratio of 1.2 where this "
+        f"holds), coupled lagged, a declared form: the field solved at the body's twist at the step's start, the body "
+        f"taking the solved field's load in the same step; stable from a density ratio of {PENALTY_LAGGED_RATIOS[1]:g} "
+        f"down to {PENALTY_LAGGED_RATIOS[0]:g} ({PENALTY_LAGGED_BASIS}), refused below it (drag.penalty-lagged), not "
+        f"measured above it; its exchange is not paired at one twist, so its unpaired work is booked in the drag's "
+        f"rows: the one-pass affine coupling, which pairs it, is the route this rung comes with next",
+        "penalty: the displaced share of the medium's drive (the drive acts on the fluid alone) given to the body at its "
+        "hull's centroid, its volume the hull's, under the drag's part drag:<body>.displaced; a body moved through the "
+        "cells carries a ripple in its force and more in its force's derivative in its position (gate 5: the drag's "
+        "spread through a cell 0.17 % at 6 cells a radius, its change a cell 0.5 %) [measured]; the free body only: "
+        "within about two cells of the wall its band meets the wall's, the near-wall resolved-body phase's, not this "
+        "rung's; a delivered added mass on it is refused (drag.penalty-added-mass), its grid carrying the fluid's "
+        "inertia",
         "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
         "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
@@ -1956,6 +1976,16 @@ class Drag(UncoupledDrag):
                                  f"({PENALTY_LAGGED_BASIS})",
                                  "a denser body, or Drag.MRS(...) for a light one; the one-pass affine coupling, "
                                  "which pairs the exchange at one twist, is the route this coupling comes with next"))
+        from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND
+        from mime.nodes.flow.fvm._resolved import window_cells
+
+        window = window_cells(float(hull.kind.enclosing_radius(hull.settings)), frame.spacing, BANDS[DEFAULT_BAND])
+        if window > min(frame.cells):
+            found.append(Problem("drag.penalty-box",
+                                 f"{body} with the band about it spans {window} cells, more than the medium's box holds "
+                                 f"across its least extent ({min(frame.cells)} cells): its solid would meet its own "
+                                 f"periodic image",
+                                 "a longer box, FVM(domain=PeriodicBox(length=...)), or a smaller body"))
         radius = feature_radius(hull)
         if radius is not None and radius / frame.spacing < PENALTY_THIN_LINE - 1e-9:
             found.append(Problem("drag.penalty-thin",
@@ -2062,6 +2092,11 @@ class Drag(UncoupledDrag):
             if min(free_space_margins(radius, viscosity, density, frame.spacing, width, ctx.dt * factor)) >= FLOOR:
                 return ctx.dt * factor
         return None
+
+    @override
+    def delivers_added_mass(self) -> bool:
+        """The stokes rung delivers the Maxey-Riley added mass on the body's acceleration relative to the fluid's."""
+        return self.rung == "stokes"
 
     @override
     def judged_in_sum(self) -> str:

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A body resolved on the FVM's grid: `Drag.Penalty()`** (drag 0.5.0's penalty rung, F4, its first part). The body's
+  solid is lifted onto the grid's faces by the wall's own band from its solid region's exact signed distance (a
+  sphere's, a capsule's; another kind is refused, `drag.penalty-kind`) at its pose each step, on a window of faces
+  about it, the solid the union of the wall's and the bodies'; its penalty drives its interior to its rigid twist in
+  the field's own solve, and its load is the penalty's force and torque plus the interior fluid's momentum change
+  taken from the field (the field formulation, B8 point 5). The coupling is lagged, a declared form (stable from a
+  density ratio of 1.4 down to 0.3 at Re 76; a lighter body is refused, `drag.penalty-lagged`); the one-pass affine
+  coupling is its next part. The FVM's spacing with no spacing written is the finer of the lumen's and N cells across
+  the body's smallest feature's radius (`feature_cells`, 6 by default); a grid under the thinnest-feature line is
+  refused (`drag.penalty-thin`), as are RK3 (`drag.penalty-scheme`), an open vessel (`flow.open-resolved`) and an
+  added mass delivered to a resolved body (`drag.penalty-added-mass`). The body takes the displaced share of the
+  medium's drive (the drive acts on the fluid alone) under its drag's part `<id>.displaced`. The flow node holds the
+  penalty in its step under the drag's id and judges its sign at one velocity (`body_<i>_gift_steps`, read onto the
+  drag's rows); a law held in its receiver's step and judged in its sum is judged by its host. `ResolvedFlowNode`
+  (MIME-NODE-131); the registration `flow.resolved` (kind `flow.resolved_partner`).
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
   scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's

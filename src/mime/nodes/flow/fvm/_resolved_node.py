@@ -45,7 +45,6 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 from mime.core import as_run_array, jnp, node_input, run_dtype, shape_named
 from mime.core import ledger as books
 from mime.core.ledger import IDENTITY_ULPS
-from mime.nodes.flow._waveform import WAVEFORM_SIZE
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import EQUATIONS, FlowFields, ImplicitFlowNode, StepParts
@@ -123,7 +122,8 @@ class ResolvedFlowNode(ImplicitFlowNode):
         governing_equations=EQUATIONS + r", \quad \mathbf{F}_b = \rho h^3 \sum \frac{\nu}{K_b} (\mathbf{u} - " \
                                         r"\mathbf{u}_b) + \frac{d}{dt} \rho h^3 \sum \chi_b \mathbf{u}",
         assumptions=(
-            *ImplicitFlowNode.meta.assumptions,
+            "Incompressible Newtonian fluid, its viscosity and density uniform, on the MAC grid of the implicit flow "
+            "node, its wall a smooth Brinkman band",
             "Each resolved body is rigid, its solid lifted by the wall's own band from its solid region's exact signed "
             "distance, evaluated on a window of faces about it; the solid is the union of the wall's and the bodies'",
             "A body's load is the penalty's force and torque plus its interior fluid's momentum change taken from the "
@@ -131,13 +131,13 @@ class ResolvedFlowNode(ImplicitFlowNode):
             "The coupling is lagged: the field is solved at each body's twist at the step's start, and the body takes "
             "the load the solved field puts on it in the same step"),
         limitations=(
-            *ImplicitFlowNode.meta.limitations,
+            "A periodic box only: no openings, the flow driven by a body force on the fluid",
             "The lagged coupling was measured stable from a density ratio of 1.4 down to 0.3 at Re 76 (the coupling "
             "spike's R3); its exchange is not paired at one twist, so its unpaired work is the coupling's own residual",
             "A body is resolved where its thinnest feature holds the cells the build's line asks; bodies at least two "
             "cells from the wall and from each other (closer, the bands overlap: the near-wall resolved-body phase)",
         ),
-        references=(*ImplicitFlowNode.meta.references, Reference("KempeFrohlich2012")),
+        references=(Reference("HarlowWelch1965"), Reference("Angot1999"), Reference("KempeFrohlich2012")),
     )
 
     def __init__(self, name: str, timestep: float, *, bodies: Sequence[ResolvedSpec] | int = (),

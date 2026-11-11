@@ -70,15 +70,18 @@ class ResolvedBody:
                                                                                               dtype=body_points.dtype)
         shape = shape_named(self.shape)
         flat = local.reshape(-1, 3)
-        distance = jax.vmap(lambda point: shape.signed_distance(self.parameters, point))(flat)
+        def one(point: Array) -> Array:
+            return shape.signed_distance(self.parameters, point)
+
+        distance = jax.vmap(one)(flat)
         return -distance.reshape(local.shape[:-1])
 
 
 class BodyFaces(NamedTuple):
-    """One face set's window about a body: each axis's wrapped lattice indices ``(w,)``, each face's offset from the
+    """One face set's window about a body: each axis's wrapped lattice indices ``(w,)`` (``lattice``), each face's offset from the
     body's centre ``(w, w, w, 3)`` (m), the body's indicator and its resistivity ``1/K`` (m^-2) there."""
 
-    index: tuple[Array, Array, Array]
+    lattice: tuple[Array, Array, Array]
     offset: Array
     chi: Array
     inverse_permeability: Array
@@ -118,19 +121,19 @@ def interior_part(phi: Array, band: Band, h: Any) -> Array:
 
 def placed(field: Array, faces: BodyFaces) -> Array:
     """``field``'s values on the window (``(w, w, w)``)."""
-    ix, iy, iz = faces.index
+    ix, iy, iz = faces.lattice
     return field[ix[:, None, None], iy[None, :, None], iz[None, None, :]]
 
 
 def scattered(field: Array, faces: BodyFaces, values: Array) -> Array:
     """``field`` with ``values`` added on the window."""
-    ix, iy, iz = faces.index
+    ix, iy, iz = faces.lattice
     return field.at[ix[:, None, None], iy[None, :, None], iz[None, None, :]].add(values)
 
 
 def united(field: Array, faces: BodyFaces) -> Array:
     """The wall's indicator ``field`` united with the body's on the window: ``1 - (1 - chi_w)(1 - chi_b)``."""
-    ix, iy, iz = faces.index
+    ix, iy, iz = faces.lattice
     at = (ix[:, None, None], iy[None, :, None], iz[None, None, :])
     return field.at[at].set(1.0 - (1.0 - field[at]) * (1.0 - faces.chi))
 

@@ -147,7 +147,7 @@ from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnit
 from mime.registry._ranges import RangeChoice, planned_over, recording
 from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
-    Capability, ReadKind, TargetKind
+    RESOLVED_PARTNER, Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
@@ -3893,7 +3893,31 @@ class _Planner:
                                         f"reads {interface} from the uniform field {path!r} where {owner} reads it, "
                                         f"{held.node}.{held.field}, adding no slot to the provider")
 
+    def refuse_added_mass_on_resolved(self) -> None:
+        """A law delivering an added mass to a body a medium's field resolves on its grid is refused: the grid carries
+        the fluid's inertia on that body (its interior and the flow round it), so it would be counted twice (A6, item
+        9)."""
+        for dynamics in self.dynamics.values():
+            for registration in dynamics.registrations:
+                if registration.kind != RESOLVED_PARTNER:
+                    continue
+                for plan in self.declared:
+                    entry = plan.entry
+                    if plan.owner == registration.id or not isinstance(entry, Interaction) or \
+                            registration.subject not in plan.bindings.values() or not entry.delivers_added_mass():
+                        continue
+                    self.refuse("drag.penalty-added-mass", RefusalClass.USER,
+                                f"{plan.owner} delivers an added mass to {registration.subject!r}, which "
+                                f"{registration.id} resolves on the medium's grid: the grid carries the fluid's "
+                                f"inertia on a resolved body (its interior and the flow round it), so the added mass "
+                                f"would be counted twice",
+                                f"leave out the exp.attach(...) of {plan.owner}: a resolved body takes its drag, its "
+                                f"added mass included, from its one drag; a delivered added mass belongs on a body in a "
+                                f"medium whose solver carries no inertia (the Stokes rungs), through the "
+                                f"delivered-inertia port of the added-mass phase (I2)")
+
     def collect_registrations_and_slots(self) -> None:
+        self.refuse_added_mass_on_resolved()
         for dynamics in self.dynamics.values():
             dynamics.registrations.sort(key=lambda r: r.id)
             entry = dynamics.entry

@@ -739,8 +739,7 @@ class ImplicitFlowNode(MimeNode):
         """The roles of the laws the node holds in its step (:meth:`hosted_laws`): the viscosity's and the wall's."""
         return HOSTED_FIELDS
 
-    @staticmethod
-    def hosted_work(energy: Mapping[str, Array]) -> dict[str, Array]:
+    def hosted_work(self, energy: Mapping[str, Array]) -> dict[str, Array]:
         """Each hosted law's work on the fluid over the step, by its role: the viscosity's and the wall's, ``-D``."""
         return {"viscous": -energy["viscous"], "penalty": -energy["penalty"]}
 

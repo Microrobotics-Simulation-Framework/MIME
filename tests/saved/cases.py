@@ -116,6 +116,37 @@ def point_body_flow(self_history: str | None = None) -> Experiment:
     return experiment
 
 
+def resolved_body_flow() -> Experiment:
+    """A sphere resolved on the FVM's grid (drag 0.5.0's penalty rung) in the periodic tube's steady drive, off the
+    axis, slightly heavier than the water, at 3 cells a radius: IMEX Euler under Stokes, the body's solid lifted by the
+    wall's band at its pose each step, its load the penalty's plus its interior's momentum change, its displaced share
+    apart."""
+    from mime.dynamics import FVM, RigidInertial, Scheme
+    from mime.interactions import BodyForce, Drag
+    from mime.scene import PeriodicBox, Scene, Sphere, Tube, Z
+    from mime.things import Body, Part, State
+    from mime.units import Pa_s, kg, kg_m2, kg_per_m3, m_per_s, m_per_s2, rad_per_s, um
+
+    experiment = Experiment("resolved_body_flow", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(10.0))))
+    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=8, stokes=True, scheme=Scheme.IMEXEuler())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    radius = 150e-6
+    mass = 1.2 * 1000.0 * 4.0 / 3.0 * 3.141592653589793 * radius ** 3
+    experiment.add_body(Body("bead", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=um(150.0)))},
+                             initial=State(position=mm((0.05, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                           velocity=m_per_s((0.0, 0.0, 0.0)),
+                                           angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare("bead.mass", kg(mass), reason="a bead 1.2 times water's density")
+    experiment.declare("bead.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
+    experiment.attach(Drag.Penalty(feature_cells=3), body="bead", medium="water")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    return experiment
+
+
 def prescribed_tube_flow() -> Experiment:
     """The prescribed flow (Womersley) in the same tube under the same drive: the cheap rung, no grid."""
     from mime.dynamics import Womersley
@@ -477,6 +508,8 @@ CASES = (
     # A point body coupled two-way to the tube's flow through the exchange law, drag 0.5.0's stokes rung: after the
     # cases that use the sphere first, so that its golden output stays probed_shapes'.
     Case("point_body_flow", point_body_flow),
+    # A body resolved on the tube's grid, drag 0.5.0's penalty rung: after the cases that use the sphere first.
+    Case("resolved_body_flow", resolved_body_flow),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),
