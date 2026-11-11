@@ -38,7 +38,6 @@ as it was, its Newton step solved with the singular Hessian from an unpolished r
 import functools
 import json
 import math
-from collections.abc import Collection
 from dataclasses import replace
 from pathlib import Path
 
@@ -196,34 +195,37 @@ RATE, TURNING = 1.0, np.array([0.31, 0.77])
 DRAWS = (np.array([0.37, 0.61, 0.53]), np.array([0.62, 0.21, 0.18]))
 
 
-@functools.cache
-def examples(dtype: str, shapes: Collection[str] | None = None) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
+def examples(dtype: str, shapes: tuple[str, ...] | None = None) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
     """A probe near each declared set of each shape (of ``shapes``, every shape by default), for each parameter the
     case moves and each capability, in ``dtype``, ``EXAMPLE_OFFSET[dtype]`` of the size from the set on its positive
     side, along a direction off every axis with the parameter moved at ``RATE``, of the sign along which the float64
     difference finds the steeper derivative (so that no parameter's part cancels the point's); with the parameter and
-    its unplanted check."""
+    its unplanted check. Made once per shape and dtype, whichever test asks first."""
+    return tuple(held for shape in sorted(SHAPE_CASES) if shapes is None or shape in shapes
+                 for held in _examples_of(dtype, shape))
+
+
+@functools.cache
+def _examples_of(dtype: str, shape: str) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
+    case = SHAPE_CASES[shape]
     found = []
-    for shape, case in sorted(SHAPE_CASES.items()):
-        if shapes is not None and shape not in shapes:
-            continue
-        own = TYPICAL[shape]
-        size = case.size(own)
-        rotation = suite._rotation(TURN)  # noqa: SLF001 - the suite's own rotation, as its probes turn
-        shift = size * np.array([0.7, -1.3, 2.1])
-        world = case.turned(own, TURN, shift)
-        offset = EXAMPLE_OFFSET[dtype] * size
-        for chosen in case.sets:
-            for draw in DRAWS[:2 if chosen.owner == "screw.focus" else 1]:
-                point = rotation @ chosen.place(own, offset, draw) + shift
-                for name in case.moved:
-                    curves = [ShapeProbe(shape, world, point, DIRECTION / np.linalg.norm(DIRECTION),
-                                         {name: suite.moved_rate(case, world, name, sign * RATE, TURNING, size)},
-                                         chosen.owner, "near", offset, dtype, size) for sign in (1.0, -1.0)]
-                    for capability in case.capabilities:
-                        checks = [(probe, check_shape(probe, capability)) for probe in curves]
-                        probe, check = max(checks, key=lambda held: _steepness(held[1]))
-                        found.append((probe, capability, name, check))
+    own = TYPICAL[shape]
+    size = case.size(own)
+    rotation = suite._rotation(TURN)  # noqa: SLF001 - the suite's own rotation, as its probes turn
+    shift = size * np.array([0.7, -1.3, 2.1])
+    world = case.turned(own, TURN, shift)
+    offset = EXAMPLE_OFFSET[dtype] * size
+    for chosen in case.sets:
+        for draw in DRAWS[:2 if chosen.owner == "screw.focus" else 1]:
+            point = rotation @ chosen.place(own, offset, draw) + shift
+            for name in case.moved:
+                curves = [ShapeProbe(shape, world, point, DIRECTION / np.linalg.norm(DIRECTION),
+                                     {name: suite.moved_rate(case, world, name, sign * RATE, TURNING, size)},
+                                     chosen.owner, "near", offset, dtype, size) for sign in (1.0, -1.0)]
+                for capability in case.capabilities:
+                    checks = [(probe, check_shape(probe, capability)) for probe in curves]
+                    probe, check = max(checks, key=lambda held: _steepness(held[1]))
+                    found.append((probe, capability, name, check))
     return tuple(found)
 
 
@@ -257,16 +259,16 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
     """Each example can discriminate (the planted tangent above the tolerance and the floor there, so a miss is a
     failure and not a null result), and each fails planted, on every run (nothing is drawn); every shape but those
     :data:`SEPARATE` holds."""
-    _planted_tangent_fails(dtype, [shape for shape in SHAPE_CASES if shape not in SEPARATE])
+    _planted_tangent_fails(dtype, tuple(shape for shape in sorted(SHAPE_CASES) if shape not in SEPARATE))
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_control_a_planted_wrong_tangent_fails_at_every_example_near_the_tube_trees_sets(dtype):
     """The same control at the tube tree's examples (:data:`SEPARATE`)."""
-    _planted_tangent_fails(dtype, list(SEPARATE))
+    _planted_tangent_fails(dtype, SEPARATE)
 
 
-def _planted_tangent_fails(dtype: str, shapes: Collection[str]) -> None:
+def _planted_tangent_fails(dtype: str, shapes: tuple[str, ...]) -> None:
     caught, missed, constant, margins = [], [], set(), []
     for probe, capability, name, clean in examples(dtype, shapes):
         steep = float(np.max(np.abs(clean.autodiff))) / clean.scale
