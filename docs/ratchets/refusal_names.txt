@@ -43,6 +43,7 @@ mermaid.min.js  # the file name of Mermaid's single-file build, shipped in mime/
 domain.length  # a setting of a group, read in SI by an entry's build (ctx.scalar): the periodic box's period
 smooth_2h_0.3h  # the name of the flow's one registered band, (W 2h, delta 0.3h)
 half_space.boundary  # the half-space's case in the shape conformance suite: the set its probes are placed about, which no switch owns
+tube_tree.boundary  # the tube tree's case in the shape conformance suite: the set its probes are placed about (a tube's wall about the parent's middle), which no switch owns
 plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
 plotly.subplots  # a module name: plotly's subplot helper, imported when a figure is drawn
 plotly.offline  # a module name: plotly's bundled plotly.js, imported when a page inlines it
