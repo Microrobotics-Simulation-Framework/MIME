@@ -908,10 +908,20 @@ class MRSDragNode(MimeNode):
     @cached_property
     def wall_budget(self) -> int:
         """How many cells a step integrates the wall's image over at most, the nearest the wall: ``wall_cells`` where
-        given, else :data:`WALL_CELL_SHARE` of the cells, rounded up."""
+        given, else :data:`WALL_CELL_SHARE` of the cells, rounded up; on a graded sampling the budget follows its
+        density (decision #353): every cell of the graded patch, finer than the force spacing and crowding the reach
+        where it faces the wall, and the share of the rest (:attr:`graded_cells`)."""
         held = int(self.constants().get("wall_cells") or 0)
-        found = held if held > 0 else math.ceil(WALL_CELL_SHARE * self.sample_count)
+        graded = self.graded_cells
+        found = held if held > 0 else graded + math.ceil(WALL_CELL_SHARE * (self.sample_count - graded))
         return max(1, min(found, self.sample_count))
+
+    @cached_property
+    def graded_cells(self) -> int:
+        """How many cells hold a point of the graded patch (zero on a uniform sampling)."""
+        if self._patch is None or self._owners is None:
+            return 0
+        return int(np.unique(self._owners[self._patch]).size)
 
     @cached_property
     def wall_capped(self) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:

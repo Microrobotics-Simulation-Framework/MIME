@@ -188,6 +188,41 @@ def test_the_shipped_graded_wall_measure_is_decision_329s():
     assert GRADED_WALL_MEASURE == "force_spacing"
 
 
+def _cells_short(make, dtype: str) -> tuple[int, int, int]:
+    """The steps of a six-step run of ``make``'s graded body that raise ``wall_cells_short``, the steps, and its
+    budget, in ``dtype``."""
+    from mime.units import ms
+
+    held_x64 = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", dtype == "float64")
+    try:
+        built = make().build()
+        drag = next(name for name in built.graph.node_names if name.startswith("drag:"))
+        held = np.asarray(built.run(ms(6.0), history=True).history[drag]["wall_cells_short"])
+        return int(np.sum(held > 0)), int(held.shape[0]), int(built.graph.get_node(drag).wall_budget)
+    finally:
+        jax.config.update("jax_enable_x64", held_x64)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@pytest.mark.parametrize("case", ["sphere", "cylinder"])
+def test_a_default_graded_run_raises_no_wall_cells_short_its_budget_following_the_graded_density(case, dtype,
+                                                                                                 monkeypatch):
+    """Decision #353: a graded body's wall budget follows its density, every cell of its graded patch and
+    ``WALL_CELL_SHARE`` of the rest, so the gates' graded sphere (half a spacing from a plane, ``wall_refinement`` 2)
+    and ``mrs_graded``'s cylinder raise ``wall_cells_short`` on no step; the flag is kept for a real shortfall. The
+    control, a budget cut planted (the share of every cell, the patch not counted whole, the budget before #353),
+    raises it on every step."""
+    from mrs_cases import mrs_graded
+
+    make = (lambda: sphere(0.5, blob=0.1, graded=True, wall_refinement=2)) if case == "sphere" else mrs_graded
+    short, steps, budget = _cells_short(make, dtype)
+    assert steps == 6 and short == 0, (case, dtype, short, budget)
+    monkeypatch.setattr(mrs_node.MRSDragNode, "graded_cells", property(lambda self: 0))
+    cut, _, smaller = _cells_short(make, dtype)
+    assert smaller < budget and cut == steps, (case, dtype, cut, smaller, budget)
+
+
 def test_the_contact_is_turned_into_a_turned_parts_frame_so_its_patch_faces_the_wall():
     """A capsule part turned 90 degrees about x (its axis along y in the body), contact=(0, 0, -1) in the body's frame:
     the graded patch lies on the capsule's side facing -z in the body's frame, not +z."""
