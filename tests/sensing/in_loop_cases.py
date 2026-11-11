@@ -14,7 +14,7 @@ import numpy as np
 
 from mime import Body, Experiment, State, Structure
 from mime.dynamics import RigidInertial
-from mime.observations import Camera, Detector, World
+from mime.observations import Camera, Detector, Mounted, World
 from mime.scene import Scene, Sphere, Tube, X, Z
 from mime.sensing import _scene as scene
 from mime.sensing._node import CameraNode
@@ -40,10 +40,8 @@ def planted(name: str) -> bool:
     return PLANT == name
 
 
-def ballistic(period: Quantity = ms(3), *, sub_frames: int = 1, balls: int = 1, mount: Any = None,
-              detector: Detector = DETECTOR, hide: tuple[str, ...] = (), absorbers: tuple[tuple[str, float], ...] = (
-                  ("tube", 3000.0),), **camera: Any) -> Experiment:
-    """``balls`` steel balls moving along a tube at 2 mm/s, seen by a camera that sees the whole scene."""
+def scene_without_camera(balls: int = 1) -> Experiment:
+    """``balls`` steel balls moving along a tube at 2 mm/s: the done case's scene without its drag, and no camera."""
     exp = Experiment("ballistic", scene=Scene.new(up=Z, units="m"), dt=ms(1))
     exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=um(60), wall=um(10), length=um(480))))
     for index in range(balls):
@@ -53,6 +51,14 @@ def ballistic(period: Quantity = ms(3), *, sub_frames: int = 1, balls: int = 1, 
             velocity=m_per_s((SPEED, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0))),
             parts={"steel": Part(Sphere(radius=um(RADIUS_UM)))}))
         exp.declare(f"{name}.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    return exp
+
+
+def ballistic(period: Quantity = ms(3), *, sub_frames: int = 1, balls: int = 1, mount: Any = None,
+              detector: Detector = DETECTOR, hide: tuple[str, ...] = (), absorbers: tuple[tuple[str, float], ...] = (
+                  ("tube", 3000.0),), **camera: Any) -> Experiment:
+    """``balls`` steel balls moving along a tube at 2 mm/s, seen by a camera that sees the whole scene."""
+    exp = scene_without_camera(balls)
     exp.observe(Camera(detector=detector, mount=mount or World(position=m((0.0, -1e-3, 0.0)), orientation=LOOK_ACROSS),
                        frame_period=period, sub_frames=sub_frames, hide=hide, absorbers=absorbers, **camera))
     return exp
@@ -95,3 +101,23 @@ def plant_node(patches: dict[str, Callable[..., Any]]) -> None:
     """Replace methods of the camera node (a control's planted error in the target)."""
     for name, function in patches.items():
         setattr(CameraNode, name, function)
+
+
+def cost_case(width: int = 320, camera: bool = True, period_steps: int = 1, moving_mount: bool = False,
+              frames_every: int = 0) -> Experiment:
+    """The scene at ``width`` x ``3 width / 4`` pixels for the cost probe: no camera (the baseline), a camera that renders
+    every ``period_steps`` base steps, or one on a gantry's carriage (``moving_mount``), which renders the tube in every
+    frame. ``frames_every`` is unused and kept at zero."""
+    del frames_every
+    if not camera:
+        return scene_without_camera()
+    scale = width / DETECTOR.width
+    detector = Detector(width=width, height=width * 3 // 4, fx=DETECTOR.fx * scale, fy=DETECTOR.fy * scale,
+                        cx=(width - 1) / 2, cy=(width * 3 // 4 - 1) / 2)
+    exp = ballistic(ms(period_steps), detector=detector,
+                    mount=Mounted(frame="stage.gantry.carriage", orientation=LOOK_ACROSS) if moving_mount else None)
+    if moving_mount:
+        from test_in_loop_mounts import moving_gantry
+
+        moving_gantry(exp)
+    return exp
