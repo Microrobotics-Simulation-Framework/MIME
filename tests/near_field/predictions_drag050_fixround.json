@@ -73,6 +73,30 @@
     "if_wrong": "an admitted size over its line means the counts or the headroom are short: refit and widen, never quietly reinstate a size line (#330's 'dense at every size' is the maintainer's)",
     "cannot_discriminate_if": "every size measured is refused (no admitted size), or the runner's MemAvailable differs between the check and the run by more than the headroom"
   },
+  "gate_10_wall_budget_353": {
+    "written": "2026-11-11, after the maintainer's decision #353 (the wall's cell budget follows the graded density), committed after its probe (probe/f240-wall) was pushed and before any of its results were read; seen before: a local exploration (float64, laptop): the new budget 160 of 301 cells on the gates' sphere (113 in the graded patch) and 78 of 84 on mrs_graded's cylinder (76), no step short; the old share 76 and 21, every step short",
+    "claim": "a default graded run raises no wall_cells_short; a planted budget cut raises it on every step; the change's cost through the node, off and on",
+    "kind": "acceptance (the flag) and estimates (the cost)",
+    "case": "tests/oracles/test_graded_sampling.py::test_a_default_graded_run_raises_no_wall_cells_short_its_budget_following_the_graded_density; probe/f240-wall (node_measure and the budget off and on in one job, both dtypes)",
+    "prediction": {
+      "value": "0 of 6 steps short on the sphere and the cylinder in both dtypes; the cut 6 of 6; the largest resistance entry moves by about what every cell integrated moved it (the review: 1.6e-4 sphere, 1.6e-3 cylinder); a step's time up by less than the budget's growth (2.1 and 3.7 times the cells), the run's peak memory up by tens of MiB",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "measured-before (the exploration) and derived",
+      "why": "the cells within the reach of a graded body are its patch's and a ring of uniform ones, which the share holds"
+    },
+    "control": {
+      "plant": "the budget before #353 (the share of every cell), MUT=W through the source",
+      "expected_rate": "5/5",
+      "runs": 5,
+      "clean_expected": "0/2"
+    },
+    "if_wrong": "a step still short means the patch rule undercounts the reach: the budget follows the cells within the reach at build instead",
+    "cannot_discriminate_if": "the run has no wall image (no wall_refinement), where the field does not exist"
+  },
   "outcomes": {
     "written": "2026-11-11, after the gates ran; the predictions above unchanged",
     "gate_7_floor_named": {
