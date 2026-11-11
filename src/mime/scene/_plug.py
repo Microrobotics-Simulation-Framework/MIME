@@ -1,7 +1,7 @@
 """The ``plug`` geometry kind: a solid circular cylinder placed in the world, the region a porous material fills in a
-vessel (a clot). Kept in a module of its own while its place is decided (a kind of its own, or a placement and a region
-on ``cylinder``): the flow reads a structure's cylinder through one adapter (``mime.dynamics.flow``'s
-``porous_cylinder``), so either choice changes only that."""
+vessel (a clot). A kind of its own, which stays registered when ``cylinder`` gains a placement of its own: the flow
+reads a structure's cylinder through one adapter (``mime.dynamics.flow``'s ``porous_cylinder``, its accepted kinds
+``POROUS_KINDS``), so a second kind is a line there."""
 
 from __future__ import annotations
 
