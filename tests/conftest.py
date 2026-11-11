@@ -151,7 +151,7 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
     before are given back (``_cache_ceiling.give_back_programs``) once the lock is held. The helix reference's 5.7 GB
     test started in workers that already held 2.5 to 2.9 GB of earlier tests' programs and peaked at 7.5 to 8.0 GB, and
     with the other three workers at 1.9 to 3.7 GB each the shard's machine-wide memory reached 15.3 to 15.6 GB of a
-    runner's 16 (a probe on Python 3.12 and 3.14, 2026-11-11): the runs that lost their runner."""
+    runner's 16 (a probe on Python 3.12 and 3.14, 2026-11-11). Started from a clean worker the test begins at 1.5 to 1.6 GB."""
     if item.get_closest_marker(MEMORY_HEAVY) is None:
         return (yield)
     import _cache_ceiling
