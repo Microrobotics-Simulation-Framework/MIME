@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -179,10 +180,19 @@ def lane_problems(jobs: Sequence[dict[str, Any]]) -> list[str]:
 
 
 def run_jobs(repository: str, run_id: int, gh: Gh) -> list[dict[str, Any]]:
-    """The run's jobs at their latest attempts, as ``name`` and ``conclusion``."""
-    text = gh(["api", f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100", "--paginate",
-               "--jq", ".jobs[] | {name, conclusion}"])
-    return [json.loads(line) for line in text.splitlines() if line.strip()]
+    """The run's jobs at their latest attempts, as ``name`` and ``conclusion``, read page by page by
+    ``scripts/run_jobs.py`` (a page of 100 answered HTTP 502 every time on a run of 94 jobs)."""
+    path = Path(__file__).resolve().with_name("run_jobs.py")
+    spec = importlib.util.spec_from_file_location("_release_run_jobs", path)
+    assert spec is not None and spec.loader is not None
+    paging = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(paging)
+    url = f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest"
+    try:
+        jobs = paging.all_jobs(lambda number: json.loads(gh(["api", paging.page_url(url, number)])))
+    except paging.ReadFailed as error:
+        raise ValueError(str(error)) from error
+    return [{"name": job["name"], "conclusion": job["conclusion"]} for job in jobs]
 
 
 def ci_problems(repository: str, commit: str, gh: Gh) -> tuple[str, list[str]]:
