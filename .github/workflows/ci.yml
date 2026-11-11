@@ -56,7 +56,7 @@ name: CI
 # and never saves, a push starts empty and saves (scripts/compilation_cache_mode.py; not in the three lanes above). setup-uv's own cache is saved the
 # same way, by pushes only: pull requests and branches each saved a copy of about 0.5 GB, which filled GitHub's 10 GB
 # per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`; a shard's is
-# 30, raised from 20 on 2026-11-07: shard jobs had ranged from 7 to 20 min across runs, and a slow runner cancelled
+# 30 (45 for openmaterica-main, at its job below), raised from 20 on 2026-11-07: shard jobs had ranged from 7 to 20 min across runs, and a slow runner cancelled
 # openmaterica-main's shard 8 of a push at its 20 min, at 55 %, the same shard passing in 11 to 14 min in the runs
 # before and after. A slow test is still caught by the per-test duration gate, not by the job's limit. The longest of the 45 shard jobs of run 41724784021 (a push at nine shards, so every shard cold) took 18.7 min, a
 # margin of 1.07 (the limit was set at about 3.5 times the 5.7 min measured then); the tenth shard was added to move
@@ -450,13 +450,23 @@ jobs:
           python3 scripts/run_jobs.py "$JOBS_URL" \
             | python3 scripts/check_shard_jobs.py --prefix "completion tests (default, Python ${{ matrix.python-version }})" --shards 1
 
+  # This lane's shards start as cold as the other lanes' on a push (a push starts every lane empty, and this lane runs
+  # on pushes and the nightly run), so a cache of its own would never be restored where it runs, and the lanes' caches
+  # were dropped for the 10 GB limit. Measured on 7 release pushes of 2026-11-11 (runs 42967420822 to 43016587315): the
+  # mean shard job took 15.7 min here and 15.3 on `default` (Python 3.12), over 140 jobs each; a whole lane's test
+  # seconds, and the JAX trace, lower and compile seconds in them (about 25 %), agree within 8 % across lanes. What
+  # differs is the runner: the same `default` (Python 3.12) shards took 19.9 min on an EPYC 7763 against 12.8 on a 9V45
+  # and 15.5 on a 9V74, and the three heaviest shards (5, 14, 20) ran 16 to 29 min. Two shards here were cancelled at
+  # 30.3 min with every test that ran passing (shard 14 of run 43008523634, shard 5 of run 43016587315), so this lane's
+  # cold maximum is above 30 min (taken as 31 to 32) and the cancel hides it; `default` (Python 3.12) reached 28.8 min,
+  # 1.2 min short of the same limit. 45 min is about 1.4 times that maximum.
   openmaterica-main-tests:
     name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
     needs: shards
     if: ${{ github.event_name != 'schedule' && needs.shards.outputs.openmaterica == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
