@@ -183,7 +183,9 @@ def test_a_force_free_body_in_poiseuille_flow_moves_at_faxens_closed_form(dtype)
     """Gate 4: steady Stokes flow in the tube (its steady limit), a neutral body a third of the radius off the axis,
     against ``u(b) + (a^2/6) lap u`` on a Poiseuille profile fitted to the grid's own row through the axis. At a =
     sigma = h the Faxén term is 1.0 % of the centreline speed and the bare kernel's own 3.1 %. The plant switches the
-    Faxén pair off."""
+    Faxén pair off. **Resolution:** the line (3e-3 of U) holds the term's presence, to about 30 % of its size; a 20 %
+    error in its coefficient moves V by about 0.2 % of U, under the line, so the coefficient itself is the next test's
+    (``test_the_nodes_constant_correction_is_faxens_law``)."""
     h = 2.0 * TUBE_RADIUS / 16.0
     offset = float(np.random.default_rng(4000 + seed()).uniform(0.2, 0.45)) * TUBE_RADIUS
     exp = point_experiment(radius=h, offset=offset, dt=5e-4, steady=True, kernel_width=1.0)
@@ -205,6 +207,31 @@ def test_a_force_free_body_in_poiseuille_flow_moves_at_faxens_closed_form(dtype)
     print(f"F3 gate 4 [{dtype}]: |V - V_Faxen|/U = {abs(velocity - expected) / centre_speed:.3g}, Faxen term "
           f"{curvature * (2.0 / 3.0) * h ** 2 / centre_speed:.3g} of U")
     assert abs(velocity - expected) / centre_speed < 3e-3, (velocity, expected, centre_speed)
+
+
+@pytest.mark.parametrize("radius", [30e-6, 55e-6])
+@pytest.mark.parametrize("width_cells", [1.0, 1.7])
+def test_the_nodes_constant_correction_is_faxens_law(dtype, radius, width_cells):
+    """Gate 4's coefficient check: the node's constant correction beyond the kernel's own second moment is ``a^2/6 -
+    sigma^2/2`` for the drag reading and its delivery and ``a^2/10 - sigma^2/2`` for the volume average, written here
+    from Faxén's law and the kernel's width (``width_cells`` cells of ``spacing``), not through the module's ``faxen``,
+    at two radii and two widths. Gate 4 cannot resolve it (its line holds the term's presence, to about 30 % of its
+    size); this does, to the dtype's rounding. The mutant that takes 1/5 for 1/6 in the drag's share differs by 17 %."""
+    from mime.nodes.hydro._point_drag import PointDragNode
+
+    h = 1e-5
+    node = PointDragNode("drag", 2e-4, radius=radius, viscosity=WATER_MU, density=WATER_RHO, spacing=h,
+                         width_cells=width_cells, origin=(0.0, 0.0, 0.0), initial_points=(0.0, 0.0, 0.0))
+    drag, average, delivery = (float(x) for x in node.coefficients({"radius": radius}))
+    sigma = width_cells * h
+    third = radius ** 2 / 6.0 - 0.5 * sigma ** 2
+    tenth = radius ** 2 / 10.0 - 0.5 * sigma ** 2
+    scale = radius ** 2 / 6.0 + 0.5 * sigma ** 2
+    line = 1e-6 if dtype == "float32" else 1e-12
+    print(f"F3 gate 4 coefficient [{dtype}] a={radius:.3g} sigma={sigma:.3g}: drag {drag / third - 1:.2g}, average "
+          f"{average / tenth - 1:.2g}, delivery {delivery / third - 1:.2g} (relative to the law)")
+    assert abs(drag - third) <= line * scale and abs(delivery - third) <= line * scale, (drag, delivery, third)
+    assert abs(average - tenth) <= line * scale, (average, tenth)
 
 
 def test_one_way_a_heavy_body_slips_with_the_added_masss_closed_form(dtype):
@@ -315,7 +342,7 @@ def test_the_books_close_with_the_exchange_booked_under_the_drag(dtype):
     from mime.testing import ledger_closes
 
     if plant("GIFT"):
-        _wrap_stepped(_gift)
+        _wrap_stepped(_gift_of(0.5))
     try:
         result = _metered(40e-6, 2e-4, 2.0)
     finally:
@@ -330,13 +357,39 @@ def test_the_books_close_with_the_exchange_booked_under_the_drag(dtype):
     assert gifts == {"ball": 0, "water.flow": 0}, gifts
 
 
-def _gift(stepped):  # noqa: ANN001, ANN202 - the review's energy gift: +0.5 R0 V on the drag's load to the body
-    def planted(self, p, state, inputs, dt):  # noqa: ANN001, ANN202
-        ended = dict(stepped(self, p, state, inputs, dt))
-        r0 = 6.0 * math.pi * p["viscosity"] * p["radius"]
-        ended["background_load"] = ended["background_load"].at[:3].add(0.5 * r0 * inputs["twist"][:3])
-        return ended
-    return planted
+def _gift_of(share: float):  # noqa: ANN202 - the review's energy gift: +share R0 V on the drag's load to the body
+    def wrapped(stepped):  # noqa: ANN001, ANN202
+        def planted(self, p, state, inputs, dt):  # noqa: ANN001, ANN202
+            ended = dict(stepped(self, p, state, inputs, dt))
+            r0 = 6.0 * math.pi * p["viscosity"] * p["radius"]
+            ended["background_load"] = ended["background_load"].at[:3].add(share * r0 * inputs["twist"][:3])
+            return ended
+        return planted
+    return wrapped
+
+
+@pytest.mark.parametrize("share", [0.5, 0.1])
+def test_the_drag_nodes_gift_count_sees_a_planted_gift_on_every_draw_and_none_on_a_clean_run(dtype, share):
+    """Gate 8's control, in CI (the review's B1, which the fix round measured at 10 of 10 only in a probe): the review's
+    gift, +0.5 R0 V on the drag's load to the body, and one at 0.1 R0 V, planted into the point drag; the node's own
+    ``cluster_gift_steps`` is at least 1 on every one of five drawn bodies, in both dtypes, and 0 on the same bodies
+    clean. The mutant that makes the count add nothing fails the planted arm on every draw."""
+    rng = np.random.default_rng(8000 + seed())
+    for _ in range(5):
+        radius, ratio = float(rng.uniform(30e-6, 50e-6)), float(rng.uniform(1.5, 3.0))
+        counts = {}
+        for planted in (False, True):
+            if planted:
+                _wrap_stepped(_gift_of(share))
+            try:
+                result = point_experiment(radius=radius, dt=2e-4, mass_ratio=ratio).build().run(ms(4.0))
+            finally:
+                _wrap_stepped(None)
+            counts[planted] = float(np.asarray(result.final["drag:ball"]["cluster_gift_steps"]))
+        print(f"F3 gate 8 control [{dtype}] share {share} a={radius:.3g} ratio {ratio:.2f}: gift steps clean "
+              f"{counts[False]:g}, planted {counts[True]:g}")
+        assert counts[False] == 0.0, counts
+        assert counts[True] >= 1.0, counts
 
 
 def test_the_lagged_exchanges_unpaired_work_falls_at_its_order(dtype):
