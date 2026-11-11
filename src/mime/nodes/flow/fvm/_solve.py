@@ -81,7 +81,7 @@ type Operator = Callable[[Velocity], Velocity]
 
 #: The solve site of :func:`projected_solve`: every solve of the FVM's guarded conjugate gradient runs inside it.
 CG_SITE = register(SolveSite("fvm_cg", "cg", "mime.nodes.flow.fvm._solve.projected_solve",
-                             nodes=("ImplicitFlowNode", "OpenFlowNode")))
+                             nodes=("ImplicitFlowNode", "OpenFlowNode", "ResolvedFlowNode")))
 
 
 #: The stagnation stop, set from measurement (``STAGNATION_MEASURED``): over a window of checks of the true residual,

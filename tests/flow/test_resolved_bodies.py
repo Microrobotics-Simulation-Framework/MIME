@@ -15,6 +15,8 @@ committed first (``tests/flow/predictions_f4.json``). The controls honour ``MIME
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import math
 
 import jax
@@ -26,7 +28,7 @@ from resolved_cases import (FreeBox, HeldSphere, deeper_band, haberman_sayre, pa
 
 from dataclasses import dataclass
 
-from mime.build import BuildRefused
+from mime.build import BuildRefused, RunFailed
 from mime.core import run_dtype
 from mime.interactions import Drag
 from mime.registry import register_interaction
@@ -99,40 +101,43 @@ def test_a_neutral_sphere_in_a_uniformly_driven_free_box_accelerates_with_the_fl
 
 
 # -- gate 4: the books ----------------------------------------------------------------------------------------------
-def _gift(original):  # noqa: ANN001, ANN202 - the plant: +0.5 times the penalty's load along the twist, delivered
-    def stepped(self, p, state, inputs, dt):  # noqa: ANN001, ANN202
-        held, parts = original(self, p, state, inputs, dt)
-        twist = jnp.asarray(inputs["body_0_twist"], dtype=run_dtype())
-        scale = jnp.linalg.norm(held["body_0_penalty"][:3]) / jnp.maximum(jnp.linalg.norm(twist[:3]), 1e-30)
-        held = {**held, "body_0_load": held["body_0_load"].at[:3].add(0.5 * scale * twist[:3]),
-                "body_0_penalty": held["body_0_penalty"].at[:3].add(0.5 * scale * twist[:3])}
-        return held, parts
-    return stepped
+def _gift(original):  # noqa: ANN001, ANN202 - the plant: the body's penalty load taken at half the twist solved at
+    def body_books(self, p, fields, velocity, index):  # noqa: ANN001, ANN202
+        halved = dataclasses.replace(fields, twists=tuple(0.5 * twist for twist in fields.twists))
+        return original(self, p, halved, velocity, index)
+    return body_books
 
 
 def test_the_books_close_and_the_drag_is_judged_at_one_velocity_by_its_host(dtype):
     """Gate 4: metered, a sphere (ratio 1.2) carried in R3's driven tube for 40 steps: every receiver's books close at
     every step (``ledger_closes``); the drag booked under its id on the fluid's row (held in its step) and the body's, its
     share under ``drag:ball.displaced``; its sign judged by its host at one velocity, no gift step on either row. The
-    plant is an energy gift on the load the body takes."""
+    plant takes the body's penalty load at half the twist the field was solved at (a load at a velocity the field did
+    not see, which gives the body work the fluid never lost: the defect a judgement at one velocity exists for). A gift
+    added to the delivered load alone is not this gate's to see: the lagged exchange's unpaired work is booked in the
+    drag's rows by design, unjudged until the affine coupling pairs it (measured: such a plant caught 0 of 5 runs in
+    each dtype)."""
     from mime.observations import EnergyLedger
     from mime.testing import ledger_closes
 
     exp = r3_experiment(1.2)
     exp.observe(EnergyLedger())
-    if plant("GIFT"):
-        with patched(ResolvedFlowNode, "stepped", _gift(ResolvedFlowNode.stepped)):
+    stopped: RunFailed | None = None
+    with patched(ResolvedFlowNode, "body_books", _gift(ResolvedFlowNode.body_books)) if plant("GIFT") \
+            else contextlib.nullcontext():
+        try:
             result = exp.build().run(ms(6.0))
-    else:
-        result = exp.build().run(ms(6.0))
-    verdict = ledger_closes(result)
-    assert verdict.status == "PASS", verdict.detail
-    assert result.energy is not None
+        except RunFailed as failed:  # the books up to a stop, so that a gift reads as a gift, not as the stop it causes
+            stopped, result = failed, failed.result
+    assert result is not None and result.energy is not None, stopped
     rows = {(law.law, law.receiver): law for law in result.energy.laws}
     assert {("drag:ball", "water.flow"), ("drag:ball", "ball"), ("drag:ball.displaced", "ball")} <= set(rows), rows
     gifts = {receiver: rows[("drag:ball", receiver)].gift_steps for receiver in ("ball", "water.flow")}
-    print(f"F4 gate 4 [{dtype}]: the drag's gift steps {gifts}")
+    print(f"F4 gate 4 [{dtype}]: the drag's gift steps {gifts}" + (" (the run stopped)" if stopped else ""))
     assert gifts == {"ball": 0, "water.flow": 0}, gifts
+    assert stopped is None, stopped
+    verdict = ledger_closes(result)
+    assert verdict.status == "PASS", verdict.detail
 
 
 # -- gates 5 and 6: the ripple and the derivative in position ------------------------------------------------------------
