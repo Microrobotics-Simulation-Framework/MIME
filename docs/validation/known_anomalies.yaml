@@ -3744,7 +3744,7 @@ anomalies:
     planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (the measured Navion_2 campaign, re-read with its script) would settle which side is flipped. This entry changes no code."
 
   - anomaly_id: MIME-ANO-154
-    title: "Below the hand-over gap the lift form over-counts the coupling of rotation and translation against its own size, at every gap: a sphere spun on a plane translates up to 43 % too fast, the excess falling only as one over the logarithm of the gap"
+    title: "Below the hand-over gap the thin film's form of the near-contact law over-counts the coupling of rotation and translation against its own size, at every gap: open for every kind but the sphere, whose exact form closes it near a plane and in a tube"
     description: >
       Drag 0.5.0's lubrication hand-over (the lift form: the coarse MRS with the contact opened to the hand-over gap h_m,
       plus the thin film's increment TF(h) - TF(h_m)) holds every entry of a sphere's resistance above a plane within 7 % of
@@ -3771,19 +3771,37 @@ anomalies:
       surfaces' signed distances on a patch of one, two and three times the film's width at h_m, moves the coupling
       at 0.01 radii from +48 % through -13 % to -54 % and puts the normal 7.9 to 14 % off at 0.06: no patch holds every
       entry, so it was not taken.
+
+      Closed for spheres by W2a's PR 1b-i: the near-contact law (mime.nodes.hydro.near_contact) gives a sphere its exact
+      increment, the plane's exact remainder from MIME's table of the bispherical solutions (sphere_plane_resistance)
+      with the contact's own singular terms (the body's curvature in them), in place of the film. Measured through the
+      node at drag 0.5.0's family spacing (a 1 mm sphere, 0.251 radii, h_m 0.188 radii, blob 0.05, float64): above a
+      plane the sphere spun on the wall translates within 1.2 % of the exact rate at every gap 0.3 to 0.001 radii
+      against the graded MFS, every entry within 2.8 % (the normal, the coarse MRS's own at the hand-over gap); in a
+      straight tube at sphere-to-tube ratios 0.22, 0.28 and 0.34, the rolling round the circumference within 3.3 % of
+      the plane's rate and along the axis -3.6, -7.0 and -12 % against an independent tube MFS (the plane's form there,
+      44 to 57 % round the circumference). The thin film's form, which every other kind still takes, is unchanged: its
+      numbers above are the film's on a sphere given that form.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       A body rolling on a wall by hydrodynamics alone (the rolling arm's stage 1) moves by this coupling: at every gap
       below the hand-over gap its speed per rotation is over-counted, by up to 43 % at the window's widest spacing and
       still by a fifth at a thousandth of the radius.
-    resolution_status: open
+    resolution_status: partially_resolved
     affected_versions: ">=0.3.0.dev2"
     affected_components:
-      - "entry: interaction drag 0.5.0, rung mrs; with lubrication, at every gap below the hand-over gap"
+      - "entry: interaction drag 0.5.0, rung mrs; with near_contact in the thin film's form (every kind but the sphere), at every gap below the hand-over gap"
+    verification:
+      - "tests/oracles/test_near_contact.py::test_gate2_a_sphere_spun_on_the_plane_translates_at_the_exact_rate_at_every_gap"
+      - "tests/oracles/test_near_contact.py::test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates"
+      - "tests/oracles/test_near_contact.py::test_gate1_every_entry_within_its_line_at_every_gap_and_drawn_orientation"
     residual_risk: >
-      Measured on a sphere above a plane at four spacings (0.1 to 0.2 radii); an elongated contact and a tube are not
-      measured for the coupling. Each entry on its own diagonal scale is within 7 % (gate 1), so a result that does not
-      rest on the coupling against its own size is not affected beyond that.
-    workaround: "For rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
-    planned_resolution: "Open, for the maintainer's choice before W2b's rolling arm relies on the coupling (both routes measured in W2a's fix round): a smaller hand-over gap (its numbers in the workaround: the miss roughly halves from a spacing of 0.2 radii to 0.1, at six times the step), or the film's next order in the gap over the radius (not built; the miss is a constant at h_m, so an order that does not change the film's patch does not remove it)."
+      For every kind but the sphere: the film's form was measured on a sphere given it, above a plane at four spacings
+      (0.1 to 0.2 radii), and the MIME-ANO-154 probes measured it on prolate spheroids lying on a plane, the rolling
+      rate up to 86 % off at aspect 2 (238 % in aspect 4's small roll about its long axis) at a hand-over gap of 0.15 of
+      the minor semi-axis. Each entry on its own diagonal scale is within 7 % on the sphere, so a result that does not
+      rest on the coupling against its own size is less affected. A sphere in a tube is measured only at ratios 0.22 to
+      0.34.
+    workaround: "For a sphere, none is needed. For another kind's rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
+    planned_resolution: "Resolved for spheres (near a plane and in a tube) by the near-contact law's sphere form. Open for other kinds, a known limitation: a closed form from the contact's curvatures alone (the elliptic contact's singular terms, which the near-contact seam takes as another form) waits on the maintainer's word on the follow-up probe's spheroids, where it removes the film's failures on the long-axis roll and costs accuracy on tilted bodies; across the alpha releases, a per-body remainder from a fine reference."

@@ -68,5 +68,22 @@
     "prediction": "every array equal; 0.5.0 programs that move: a sphere near a wall with the hand-over on (the sphere's form in place of the film), and a sphere at its family spacing near a wall (the hand-over now on: the film's window is the film's, not the sphere form's)",
     "controls": {"one_ulp": "the same program with one parameter one ulp up: arrays differ"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-11, after the gates ran; the predictions above are unchanged",
+    "runs": {
+      "table": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42949957251",
+      "gates_rates_bits": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42955737237"
+    },
+    "table_build": "held: the series 2.1e-12, reciprocity 5.3e-10, the no-slip condition off the nodes 3.3e-10, growth 3.8e-10. The spline: held within a radius of the wall (2.7e-7 relative, the coupling; the other entries 1.4e-8); missed past 3 radii on the relative measure, where the coupling vanishes (6e-6 to 3.4e-4 of itself at 3 to 10 radii): judged on the free sphere's drag (6 pi) every entry within 5e-8 at every midpoint, the line the test holds beside the relative one within a radius. Control: linear interpolation 1.1e-4 to 3.4e-3 relative within a radius, caught (deterministic)",
+    "table_against_graded_mfs": "held: within three times the MFS's own level-B-against-C difference (floored at 2e-4) at every gap 0.3 to 0.005 radii; at 0.002 and 0.001, xx and ryry within 0.11 %, the coupling within 0.7 %, the rate within 0.8 % (the MFS unresolved there)",
+    "gate_1_plane": "held: worst over 16 gaps and 5 drawn orientations, the normal +2.82 % (against Brenner's series), rxrx and ryry 1.13 %, every other entry within 0.81 %. The increment through the node against the plane's exact increment: 2.6e-6 to 3.0e-6 of each entry's own scale (not predicted: the node reads the sphere's radius from its support's curvature, regularised by RADIUS_FLOOR, 1e-6 of the size; the test's line 1e-5). Control (increment x1.1): 5/5 caught, clean 0/5, every gap below the band reading 0.100",
+    "gate_2_plane": "held: worst -1.13 % (0.001 radii); -0.45 % to -0.91 % elsewhere. Control (coupling counted twice): 5/5 caught, clean 0/5; +50 % to +87 % below the opening's band",
+    "gate_8": "held: forward and reverse within about 1e-9 of the largest derivative at every gap across the hand-over gap (0.18825 radii), the table's edge (1e-3) and the cutoff (2.83 um), in the plane's offset, the body's height and the body's roughness. Controls, 5/5 each, clean 0/5: the opening's derivative stopped 0.025, a hard max 0.035, the continuation's kink at the edge 2.2e-4 (against a line of 1e-5)",
+    "gate_2_tube": "across held (-3.3, -2.6, -1.7 % of the plane's rate at a/R 0.22, 0.28, 0.34); the normal held (+3.5, +3.3, +3.6 %); along the axis held at 0.22 (-3.6 %) and 0.28 (-7.0 %) and MISSED at 0.34 (-11.9 % against the predicted 10 %, the family's spacing's hand-over gap 0.188 radii against probe B's 0.15, where it read -8.9 %): reported missed, its range pinned [-0.13, -0.11]. Controls, 5/5 each, clean 0/5: the plane's form kept +48, +57, +62 % across; the gap's curvature alone -6.4, -10, -16 % across",
+    "seam": "held: the sphere form at a plane contact against the table's increment, 2.5e-15 at worst over three frames and offsets",
+    "float32": "within 5e-5 of float64 on the diagonal scale at five gaps (line 1e-3)",
+    "two_builds": "quiet in the sphere's radius",
+    "bits": "as predicted: every array equal, both dtypes, base dface1d against the head, one CPU: drag 0.3.0's and 0.4.0's mrs rung near a plane and in a tube, script A and A0 (now on drag 0.4.0), the free-space settling sphere, 0.5.0 with the hand-over off, 0.5.0 unwritten with the ball beyond the opening's band (the hand-over's own fields left out), and the film's form on a mild ellipsoid within its window and band. Moved, as predicted: a ball within the band (the film's form on the base, the sphere's on the head)",
+    "costs": "held (runner timings flagged loaded by node_measure.py, so a comparison within one job, not a timing claim; run 42957523750): at 0.2 radii, blob 0.05, float64, the step near the wall (0.02 radii) 146 ms in the sphere's form against 146 ms off and 185 ms in the film's, far from it 149 / 146 / 150 ms; peaks 1.36 / 1.15 / 1.55 GiB. Reverse mode through MIME's differentiated run, 10 steps, one arm a form: the plane's offset 0.55 s a step (sphere) against 0.69 (film) and 0.56 (off, far from the wall), the radius 4.9 / 5.2 / 5.4 s a step (MIME-ANO-155's held matrix, the same in every form); peaks 2.9 to 3.1 / 3.7 to 3.8 / 2.4 to 2.5 GiB"
+  }
 }

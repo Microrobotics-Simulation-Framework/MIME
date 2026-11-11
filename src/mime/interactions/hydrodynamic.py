@@ -1561,7 +1561,7 @@ class Drag(UncoupledDrag):
         "(sphere_plane_resistance: Brenner's, Jeffery's, Dean and O'Neill's, O'Neill's); in a tube, the hybrid of the "
         "plane's exact remainder and the elliptic contact's singular terms with the body's own curvature (Cox's; Claeys "
         "and Brady's). Its error is the coarse MRS's own at the hand-over gap, which the opening leaves: a sphere above "
-        "a plane at the family's spacing (tests/oracles/test_near_contact.py), the normal entry up to +2.6 % at and "
+        "a plane at the family's spacing (tests/oracles/test_near_contact.py), the normal entry up to +2.8 % at and "
         "below the hand-over gap, every other entry and the rolling rate within 1.2 %; in a tube against an independent "
         "tube MFS at sphere-to-tube radius ratios of 0.22, 0.28 and 0.34, the rolling round the circumference within "
         "3.3 % and the normal within 3.6 %, the rolling along the axis -3.6, -7.0 and -12 % of the plane's rate (worst "

@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The near-contact law, one seam for every rung, and a sphere's exact form (`mime.nodes.hydro.near_contact`).** A
+  rung declares the gap it resolves down to and evaluates itself with the contact opened to it (`opening`); the law
+  adds the increment to the true gap from the contact's geometry (`NearContact`: its point, frame, gap, and the gap's
+  and the body's own principal curvatures) by the form the body's kind declares (`Geometry.near_contact`), which the
+  plan picks and the build report names. **A sphere's form** (`Sphere.near_contact = "sphere"`) is exact: the plane's
+  exact remainder from the new packaged table `sphere_plane_resistance` (MIME's, from the bispherical solutions:
+  Brenner 1961, Jeffery 1915, Dean and O'Neill 1963, O'Neill 1964; built by `scripts/sphere_plane_table.py`, its
+  sha256 pinned, its derivation record shipped; read as its singular terms plus a C2 spline in `ln(h/a)`, continued C1
+  below its range), plus the contact's own elliptic singular terms with the body's curvature (Cox 1974, Claeys and
+  Brady 1989): exact against a plane, the hybrid in a tube. Drag 0.5.0's mrs rung takes it for a sphere near a wall
+  that opens at any spacing (the film's window is the film's); every other kind keeps the thin film's form, its
+  numbers unchanged, MIME-ANO-154 open for it (now `partially_resolved`: closed for spheres near a plane and in a
+  tube). The seam's roughness cutoff (`roughness_cutoff`) and the ambient's zero on the opened wall (`ambient_point`,
+  `AMBIENT_ZERO`; no drag rung reads an ambient flow yet) are the same for every rung. The gates' oracles, the graded
+  and the tube methods of fundamental solutions of the MIME-ANO-154 probes, are committed with their scripts
+  (`tests/differential/graded_mfs.py`, `tube_mfs.py`).
+- **Drag 0.5.0's near-contact setting and fields renamed, and its surrogate blend retired.** The mrs rung's hand-over
+  is `Drag.MRS(near_contact=True | False)` (was `lubrication=`); its state fields are `contact_increment`,
+  `contact_coupling` and `contact_cutoff` (were `film_*`; `film_residual`, `film_unsolved` and `film_annulus` stay the
+  film's). `lubrication=` written on drag 0.5.0 is the surrogate's blend, which 0.5.0 retires: refused
+  (`lubrication.retired`), naming drag 0.4.0, which keeps it. Script A, A0, the inertia arms and the tests built on
+  them pin drag 0.4.0 (`KEPT["drag", "0.4.0"]`), their programs bit for bit. Drag 0.5.0 is unreleased; no released
+  program changes.
+
 - **A flow open at the vessel's ends, and the laws at its openings: `VesselRegion`, `Inflow`, `Windkessel`, the
   `opening` port kind.** `FVM(domain=VesselRegion())` on a straight tube along z cuts the region the medium fills at the
   openings its geometry kind declares for it (`Geometry.openings`, read through `Region.openings`; named by geometry,
