@@ -1,0 +1,41 @@
+{
+  "written": "2026-11-11, committed before the bit comparison, the probes and CI ran: the precision seam's small form (design row #357): solve sites registered by trace, a float64 dtype walk, one shared dense helper, no number changed",
+  "phase": "the precision seam, small form (row #357)",
+  "labels": "the builder's predictions, from the code's structure: a JAX name scope adds metadata to the operations traced inside it and changes no operation, so the bit comparisons are predicted equal and the walks' verdicts follow from which primitives a program holds",
+  "seen_before": [
+    "while writing the walk, tests/solve_sites ran once in full on the laptop before this file: the clean walks passed on all six cases in both dtypes and the five plants were each caught once (one plant needed its return shape fixed first); no rate, no bit comparison and no CI run had been read",
+    "the earlier exploration listed the solve primitives the near field's step traces (lu, cholesky, triangular_solve, custom_linear_solve, fft) on the laptop, float64, and found nothing the registry did not then name"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: a GitHub runner (4 vCPU; one CPU and one BLAS thread pinned for the bit comparison)",
+    "sizes_and_parameters": "the walk: the FVM tube D/h 8 (IMEX Euler with convection, the steady limit, RK3), the open tube D/h 8 with an Inflow and a Windkessel, two spheres of 1 mm a gap of 0.3 mm apart at a force spacing of 0.6 mm on the near field's dense route and on GMRES; the bits: the same programs run five steps, the near field also with three spheres",
+    "seeds_and_draws": "no draws: a traced program is deterministic, so a control's rate across processes shows the harness (the process, its seed, its thread layout), not independent draws"
+  },
+  "gate_1_clean_walk": {
+    "claim": "every solve primitive a registered node kind's step traces sits inside a registered mime-solve scope, and the registry and the walk agree both ways on which node kind reaches which site",
+    "kind": "equality",
+    "case": "tests/solve_sites/test_registry.py, the six cases, both dtypes, through the node's own advance",
+    "prediction": {"value": 0, "unit": "unregistered solves", "basis": "derived", "why": "each shared function wraps its whole body in its scope and the sites left in place (the per-body 6 x 6 factors) are wrapped where they are"},
+    "metric": "the count of solve primitives outside a registered scope, and the set difference of the sites reached and the sites claimed per node kind",
+    "control": {"plant": "bypass_dense and direct_solve_in_step (tests/solve_sites/solve_walk.py)", "environment_variable": "MIME_PLANT_SOLVE", "expected_rate": "30/30 each", "runs": 30, "clean_expected": "0/30", "resolution": "one solve primitive anywhere in a step"},
+    "if_wrong": "an unnamed solve in a registered node kind's step: register it or move it to a shared function, and report which",
+    "cannot_discriminate_if": "a step traces no solve primitive at all (the case would show nothing): the agreement test requires every claimed site to be reached"
+  },
+  "gate_2_float64_walk": {
+    "claim": "in a float64 run every operand and result inside a registered solve scope is float64 (complex128 for a transform's spectrum)",
+    "kind": "equality",
+    "case": "the same six cases, float64",
+    "prediction": {"value": 0, "unit": "narrower floats inside a solve scope", "basis": "derived", "why": "x64 is on, nothing in the solves casts down"},
+    "metric": "the dtypes of the operands and results of every equation inside a scope",
+    "control": {"plant": "downcast_dense, downcast_cg, downcast_gmres", "environment_variable": "MIME_PLANT_SOLVE", "expected_rate": "30/30 each", "runs": 30, "clean_expected": "0/30", "resolution": "a single float32 cast inside one solve"},
+    "if_wrong": "a float32 value inside a solve in a float64 run is a silent downcast: name it and fix it or declare it",
+    "cannot_discriminate_if": "a float32 run (x64 off): the walk is float64 only"
+  },
+  "bits": {
+    "cases": "the near field dense at two and three spheres and on GMRES at two, the open box with two openings, the FVM's three schemes, and the released per-body drag and script A, in both dtypes, base (release tip) against head, one job, one CPU, one BLAS thread (.github/probe/bit_compare.py)",
+    "prediction": "every array np.array_equal in both dtypes",
+    "basis": "derived: a name scope changes operation metadata, not operations; dense_solve is jnp.linalg.solve in a scope",
+    "if_wrong": "a moved bit under a name scope would mean XLA's fusion reads the metadata: report the arrays and revert that site to a bare call, keeping the registry for the others"
+  }
+}
