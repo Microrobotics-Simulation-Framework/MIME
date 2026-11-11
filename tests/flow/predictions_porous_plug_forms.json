@@ -49,5 +49,27 @@
       "why": "the body force acts on the fluid's share f, and the parallel form's 1/(f K) takes another f"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084858227",
+    "head": "05af2ae (the parallel form as the code's own; the share-and-reach form planted by the probe's use_form)",
+    "gate_1_forms_finite_plug": {
+      "parallel_0.01h": "against the series at sqrt(K)/h 0.01 / 0.03 / 0.1 / 0.3 / 1: D/h 16 -1.38 / -0.99 / -0.06 / +1.43 / +1.62 %; D/h 32 -0.26 / -0.08 / +0.32 / +0.93 / +0.42 %; D/h 64 +0.04 / +0.13 / +0.29 / +0.56 / +0.22 %",
+      "parallel_0.1h": "D/h 16 -1.67 / -1.21 / +0.14 / +2.03 / +1.97 %; D/h 32 -0.31 / -0.08 / +0.58 / +1.43 / +0.73 %",
+      "share_and_reach": "0.01h: D/h 16 +78 / +36 / +21 / +12 / +3.0 %, D/h 32 +47 / +20 / +12 / +6.7 / +1.3 %; 0.1h: D/h 16 +121 / +115 / +74 / +26 / +4.4 %, D/h 32 +76 / +71 / +44 / +15 / +2.2 %",
+      "face_pressures": "the parallel form's face pressures' drop against Darcy's at the measured flux within 3.5 % (0.1h, D/h 16, sqrt(K)/h 0.3) and within 1.4 % at D/h 32 and 64 (0.01h)",
+      "verdict": "held: parallel within 2 % at D/h 16, 32 and 64 for sqrt(K)/h 0.1 to 1 (0.01h), and within 2.1 % down to 0.01 at every D/h and both interiors; share and reach in the band at D/h 16 for 0.1 and 0.3, below it (+3.0 %) at 1, roughly halving at 32 as predicted"
+    },
+    "gate_2_forms_floor": {
+      "parallel": "no measurement: every floor arm (sqrt(K)/h 1e-3) stopped stagnated, true residual 0.49 to 1.0, flagged, at 3120 / 6160 / 12340 iterations (D/h 16 / 32 / 64), both interiors; re-measured as an intercept (predictions_porous_plug_floor.json)",
+      "share_and_reach": "converged but at D/h 64 with 0.01h (its 20000-iteration cap): the flux over the open tube's 1.09e-6 / 2.19e-7 / 4.63e-8 at D/h 16 / 32 / 64, the same at both interiors, the plug's own Darcy share 4.9e-7 / 1.2e-7 / 3.1e-8 within it",
+      "verdict": "share and reach held (at most 1e-5 at D/h 16, falling faster than (h/D)^3); without the reach held at D/h 16 (the first measurements, 8.5e-4 at 0.01h, 7.4e-3 at 0.1h); the parallel form's floor unmeasured here"
+    },
+    "gate_3_forms_long_plug": {
+      "parallel": "against Brinkman at sqrt(K)/h 0.03 / 0.1 / 0.3 / 1 / 3: D/h 16 -5.15 / -3.76 / -1.14 / +1.15 / +1.63 %; D/h 32 -2.68 / -1.97 / -0.68 / +0.32 / +0.34 %; D/h 64 -1.35 / -0.99 / -0.35 / +0.14 / +0.13 %",
+      "share_and_reach": "D/h 16 +1.10 / +2.23 / +3.06 / +2.19 / +1.81 %; D/h 32 +0.45 / +1.00 / +1.36 / +0.79 / +0.41 %; D/h 64 +0.20 / +0.48 / +0.67 / +0.37 / +0.16 %",
+      "profile": "the parallel form's profile within 0.92 / 1.04 / 1.03 % of the centreline at sqrt(K)/h 1 and 0.61 / 0.83 / 1.21 % at 3 (D/h 16 / 32 / 64)",
+      "verdict": "held at D/h 32 and 64; missed at D/h 16 by 0.15 points at sqrt(K)/h 0.03 (-5.15 % against the band's -5 %); the cost of the parallel form on a body-force-driven plug, first order in h/R, as predicted"
+    },
+    "decision": "the parallel form kept as the default (item 6 of the maintainer's train sitting, 2026-11-11: accepted)"
+  }
 }
