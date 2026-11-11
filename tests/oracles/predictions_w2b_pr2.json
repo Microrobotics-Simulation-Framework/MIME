@@ -48,5 +48,13 @@
     "prediction": {"value": null, "band": [0.0, 1e-6], "unit": "|estimate - 0.3| (noise-free data, so the standard error from noise 1e-3 of the speed is about 1e-3 of mu; the estimate's own error far below it)", "basis": "derived"},
     "control": {"plant": "pure rolling data", "expected_rate": "1/1: bounded below only"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-11, after the runs (laptop CPU, the touched files at w2b/rolling with PR 1's final head merged); the predictions above are as committed in d69324d",
+    "gate_1_rolling_thresholds": "held: float64 worst 8.5e-13 g (held still at 0.9995 of mu_r/a: 8.36e-12 m/s^2 against 0), rolling and slipping either side to the 10 digits printed (3.187781098, 3.191180027 m/s^2); float32 worst 1.7e-7 g (3.187782764 against 3.187781098). Each side of each threshold in its branch, both dtypes (predicted under 1e-11 g, float32 5e-5)",
+    "gate_2_rolling_flat": "held: worst |v - v_oracle| 5.93e-13 m/s against v0 2e-3 (3.0e-10 of v0; float32 8.8e-11 m/s), then still (last speed -7e-30). Control (the rolling rows turned about the normal): the rolling never slows, 1/1 (predicted under 1e-9 of v0)",
+    "gate_3_spun": "held: the first rolling step 292 against 291.25 (mu 0.1) and 59 against 58.25 (mu 0.5): 0.75 of a step each, both dtypes; final (2/7) a omega0 to the 10 digits printed in float64, 1.9e-6 relative in float32. Control (friction at the centre): the spin never turns into rolling, 1/1 (predicted within one step)",
+    "gate_4_rolling_gradient": "held: AD -343.5534439 against the closed form -343.5534439 at mu_r 0.05 a and at 0 (the right slope), float64, to the 10 digits printed (under 3e-10 relative); float32 -343.5532837, 4.7e-7 relative (predicted under 1e-9, float64)",
+    "gate_5_fit": "held: sliding data (mu 0.3, the block) fitted from 0.2 end at 0.3 to the 9 digits printed (|estimate - 0.3| under 5e-10), one standard error 3.0e-4 at a noise of 1e-3 of the speed, the gradient-free control 0.299877 (within one standard error), verdict identified, 50 of 50 held steps sliding. Control (pure rolling data): bounded below only, the bound 0.06 = (2/7) tan(theta) to 1e-6, 1/1 (predicted |estimate - 0.3| under 1e-6)",
+    "not_predicted": "Study.fit took touching as a line and ended every fit of a held body at its start; STATE_FLAGS (touching) is no longer a line, the fit's existing tests (tests/gradients/test_gate8_fit.py, test_controller_leaves.py) pass unchanged"
+  }
 }
