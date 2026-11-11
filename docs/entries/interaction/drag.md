@@ -253,10 +253,15 @@ MRS's own completion, a declared numerical choice whose validity line is the coa
 beyond Stokes flow; written False, the coarse MRS alone. The law's form is the body's kind's, named in the build report:
 
 - **A sphere's** (`Sphere` declares it): its exact increment. Against a plane, the exact sphere-plane resistance from
-  MIME's table of the bispherical solutions ([`sphere_plane_resistance`](../../assets/sphere_plane_resistance.md),
-  Brenner's, Jeffery's, Dean and O'Neill's, O'Neill's); in a tube, the hybrid of the plane's exact remainder and the
-  elliptic contact's singular terms with the body's own curvature (Cox's; Claeys and Brady's). A sphere takes it at any
-  spacing: its error is the coarse MRS's own at the hand-over gap.
+  MIME's table of the bispherical solutions (the packaged asset `sphere_plane_resistance`: Brenner's, Jeffery's, Dean
+  and O'Neill's, O'Neill's); in a tube, the hybrid of the plane's exact remainder and the elliptic contact's singular
+  terms with the body's own curvature (Cox's; Claeys and Brady's). A sphere takes it at any uniform spacing: its error
+  is the coarse MRS's own at the hand-over gap, measured above a plane at uniform force spacings of 0.15 to 0.6 radii
+  as the normal +2.1 to +3.6 %, every other entry within 1.8 % and the rolling rate within 1.4 %. In a tube it is
+  gated at sphere-to-tube ratios of 0.22 to 0.34 (`TESTED_TUBE_RATIO`); past 0.34 a step raises `handover_tube_ratio`,
+  the rolling along the axis measured -18 % at 0.40 and -25 % at 0.46 (MIME-ANO-154 open there). A sphere whose force
+  points are graded towards its contact is refused the form (`drag.near-contact-graded`): the hand-over gap then sits
+  at the finest graded spacing, where its normal read +9.5 % and +19.7 %.
 - **Every other kind's**: the thin film's (Reynolds' equation on the gap's second-order form), with MIME-ANO-154 open
   for it. Which regime carries a gap is the build's, never the writer's: the film is taken only where the hand-over gap
   lies within `WINDOW` of the body's least radius of curvature, judged over the whole body whatever its pose. A body
@@ -278,8 +283,8 @@ given it by `tests/oracles/test_lubrication.py` (each entry on its own diagonal 
 coupling over-counted below the hand-over gap, MIME-ANO-154). The validity lines give the numbers. Flags:
 `handover_window` (the film's: a contact past its window, which the build's rule keeps from happening and the flag
 guards), `film_annulus` (a ring contact the film's point form does not cover), `handover_far_side` (a tube opened by
-dilation about a body filling more than `FAR_SIDE_FILL` of its diameter, which opens the far side too) and
-`film_unsolved`. A step far from the wall costs the contact's search only; one within the opening's band adds the
+dilation about a body filling more than `FAR_SIDE_FILL` of its diameter, which opens the far side too),
+`handover_tube_ratio` (the sphere's form in a tube past the gated ratio) and `film_unsolved`. A step far from the wall costs the contact's search only; one within the opening's band adds the
 law's increment (a spline read for a sphere, two film solves for the film). Drag 0.5.0's surrogate takes no
 `lubrication=`: its blend is retired (`lubrication.retired`), and drag 0.4.0 keeps it. Not yet: several contacts of
 one body, a ring's form, bodies sharing a medium (refused, `drag.lubrication-near-field`) and a body between two walls.

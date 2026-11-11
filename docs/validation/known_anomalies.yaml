@@ -3744,7 +3744,7 @@ anomalies:
     planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (the measured Navion_2 campaign, re-read with its script) would settle which side is flipped. This entry changes no code."
 
   - anomaly_id: MIME-ANO-154
-    title: "Below the hand-over gap the thin film's form of the near-contact law over-counts the coupling of rotation and translation against its own size, at every gap: open for every kind but the sphere, whose exact form closes it near a plane and in a tube"
+    title: "Below the hand-over gap the thin film's form of the near-contact law over-counts the coupling of rotation and translation against its own size, at every gap: open for every kind but the sphere, whose exact form closes it near a plane and in a tube at sphere-to-tube ratios of 0.22 to 0.34; open for a sphere in a tube above 0.34, where its rolling along the axis misses by -18 % at 0.40 and -25 % at 0.46"
     description: >
       Drag 0.5.0's lubrication hand-over (the lift form: the coarse MRS with the contact opened to the hand-over gap h_m,
       plus the thin film's increment TF(h) - TF(h_m)) holds every entry of a sphere's resistance above a plane within 7 % of
@@ -3780,8 +3780,13 @@ anomalies:
       against the graded MFS, every entry within 2.8 % (the normal, the coarse MRS's own at the hand-over gap); in a
       straight tube at sphere-to-tube ratios 0.22, 0.28 and 0.34, the rolling round the circumference within 3.3 % of
       the plane's rate and along the axis -3.6, -7.0 and -12 % against an independent tube MFS (the plane's form there,
-      44 to 57 % round the circumference). The thin film's form, which every other kind still takes, is unchanged: its
-      numbers above are the film's on a sphere given that form.
+      44 to 57 % round the circumference), every diagonal entry within 7 % of the MFS where it resolves the entry. The
+      tube is closed only within 0.22 to 0.34. Above 0.34 it is open: the rolling along the axis misses the tube MFS by
+      -18 % of the plane's rate at a ratio of 0.40 and -25 % at 0.46 (the PR's review's tube MFS rows, resolved: levels
+      B against C within 0.65 % on that scale; pinned by tests/oracles/test_near_contact.py), round the circumference
+      and the normal within 4 % and 6 %; a step there within the opening's band raises handover_tube_ratio, and the
+      build report says so. The thin film's form, which every other kind still takes, is unchanged: its numbers above
+      are the film's on a sphere given that form.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -3792,19 +3797,21 @@ anomalies:
     affected_versions: ">=0.3.0.dev2"
     affected_components:
       - "entry: interaction drag 0.5.0, rung mrs; with near_contact in the thin film's form (every kind but the sphere), at every gap below the hand-over gap"
+      - "entry: interaction drag 0.5.0, rung mrs; with near_contact in the sphere's form in a tube past a sphere-to-tube ratio of 0.34 (handover_tube_ratio), at every gap within the opening's band"
     verification:
       - "tests/oracles/test_near_contact.py::test_gate2_a_sphere_spun_on_the_plane_translates_at_the_exact_rate_at_every_gap"
       - "tests/oracles/test_near_contact.py::test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates"
       - "tests/oracles/test_near_contact.py::test_gate1_every_entry_within_its_line_at_every_gap_and_drawn_orientation"
+      - "tests/oracles/test_near_contact.py::test_above_the_gated_ratio_the_step_is_flagged_and_the_along_axis_miss_is_the_measured_one"
     residual_risk: >
       For every kind but the sphere: the film's form was measured on a sphere given it, above a plane at four spacings
       (0.1 to 0.2 radii), and the MIME-ANO-154 probes measured it on prolate spheroids lying on a plane, the rolling
       rate up to 86 % off at aspect 2 (238 % in aspect 4's small roll about its long axis) at a hand-over gap of 0.15 of
       the minor semi-axis. Each entry on its own diagonal scale is within 7 % on the sphere, so a result that does not
-      rest on the coupling against its own size is less affected. A sphere in a tube is measured only at ratios 0.22 to
-      0.34.
-    workaround: "For a sphere, none is needed. For another kind's rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
-    planned_resolution: "Resolved for spheres (near a plane and in a tube) by the near-contact law's sphere form. Open for other kinds, a known limitation: a closed form from the contact's curvatures alone (the elliptic contact's singular terms, which the near-contact seam takes as another form) waits on the maintainer's word on the follow-up probe's spheroids, where it removes the film's failures on the long-axis roll and costs accuracy on tilted bodies; across the alpha releases, a per-body remainder from a fine reference."
+      rest on the coupling against its own size is less affected. A sphere in a tube is gated at ratios 0.22 to 0.34 and
+      measured at 0.40 and 0.46, where the miss along the axis grows with the ratio; past 0.46 it is not measured.
+    workaround: "For a sphere near a plane, or in a tube at a sphere-to-tube ratio up to 0.34, none is needed; in a tube above 0.34 none is built: the step raises handover_tube_ratio and the rolling along the axis carries the measured miss (at 0.34 it was -8.9 % at a hand-over gap of 0.15 radii against -12 % at the family's 0.188, so a finer force spacing narrows it there). For another kind's rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
+    planned_resolution: "Resolved for spheres near a plane and in a tube at sphere-to-tube ratios of 0.22 to 0.34 by the near-contact law's sphere form. Open for a sphere in a tube above 0.34 (flagged, handover_tube_ratio), a known limitation: the hybrid's miss along the axis grows with the hand-over gap against the lumen's radius [inference, not measured], so a finer force spacing there, or the tube's own exact remainder in place of the plane's, are the routes, neither built. Open for other kinds, a known limitation: a closed form from the contact's curvatures alone (the elliptic contact's singular terms, which the near-contact seam takes as another form) waits on the maintainer's word on the follow-up probe's spheroids, where it removes the film's failures on the long-axis roll and costs accuracy on tilted bodies; across the alpha releases, a per-body remainder from a fine reference."
 
   - anomaly_id: MIME-ANO-155
     title: "Reverse mode through MADDENING's run_scan in a shape leaf remakes the MRS rung's held matrix at every backward step: 32 to 660 s for a gradient MIME's chunked run takes in about a minute"
