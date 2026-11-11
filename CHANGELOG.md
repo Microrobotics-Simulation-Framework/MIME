@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The region builder: a vessel's region cut by planes, its cuts extended and bent onto the box's faces; the open tube
+  tree; tilted open vessels; the backflow term; the outlet watch.** `FVM(domain=VesselRegion(around="j1", reach=mm(3),
+  extension_diameters=4, bend_diameters=2))` cuts the vessel (a `Tube`, a `TubeTree`) by planes normal to its
+  centreline at arc length `reach` from the junction `around` (neither: the whole vessel at its own ends), continues
+  each cut straight for its extension, turns it by a circular bend onto the nearer z face of the box and runs it to
+  the plane (`mime.scene._region`): the vessel's own part a tube tree, each opening's extension, bend and run a ball
+  swept along a tangent-continuous path, the two one solid. Each opening keeps the name of the vessel end beyond its
+  cut, so the laws attached at the vessel's ends bind the cuts; the upstream opening is the cut leading to the root, by
+  the centreline (a tree with no root is refused, `flow.region-upstream`; `flow.region-cut`, `flow.region-face` the
+  other refusals; `flow.open-axis` is gone: a tilted vessel is built). The build reports each opening's plane, its
+  neighbours, its extension, bend and run and their series resistance, and the Reynolds number its extension develops.
+  The backflow term (`f = min(w, 0) w / h` on the fluid of each outlet's half cell, from the step's start, normal only)
+  is booked as `<node>.backflow`, its sign checked (`backflow_flagged`); the outlet watch, an observer, reads each
+  opening's reversed share while its net flux is outward (`opening_reversed`, `opening_reversed_flagged`). Renamed
+  (unreleased): `port_kinetic_flux` is `opening_kinetic_flux`.
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
   patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the
