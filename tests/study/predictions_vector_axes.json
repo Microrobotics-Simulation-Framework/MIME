@@ -64,5 +64,43 @@
       "one_ulp": "script A with its frequency one ulp up: differs"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-11, after the gates ran; the predictions above are unchanged",
+    "gate_1_equals_by_hand": {
+      "measured": "0 arrays differ in every case: the egg's whole semi-axes and its third semi-axis by the viscosity (float64 and float32) through the study's whole path; the tree's radii[3] through the study's path on CI at 93fd480 (run 43039777747, 335.6 s on a runner) and, from 3106d94, at its points (the structure key, leaves, initial state and the traced step, text and constants)",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331 (arm gates, 43 passed)",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43039777747",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43044725087"
+      ],
+      "controls": {
+        "keep-base, egg-component": "10/10 caught, clean 0/10 (lower bound 0.74)",
+        "next-index, egg-component": "10/10 caught, clean 0/10",
+        "keep-base, egg-whole": "10/10 caught, clean 0/10",
+        "keep-base, tree at its points": "10/10 caught, clean 0/10",
+        "next-index, tree at its points": "10/10 caught, clean 0/10",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+      },
+      "changed_after_measurement": "the tree's case of gate 1 moved from the study's whole path to its points: the study and its hand-written studies took 5.6 min on a runner (tracing and lowering 74 %), past what a test run on every push may take; at its points it took 1.1 min (run 43044725087). Its claim there is the same program on the same inputs (the traced step compared, which the structure key alone does not hold), not a run compared; the egg's cases keep the run. Not predicted: the prediction did not say what the tree would cost"
+    },
+    "gate_2_split_per_value": {
+      "measured": "as predicted: [[0, 2], [1]], the reason and the plan's line as written",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+    },
+    "gate_3_refusals": {
+      "measured": "every code as predicted; one case not listed in the prediction: a component of a tree's segments (vessel.segments[0]) is refused study.held-geometry, the whole setting's refusal, not study.component-path",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+    },
+    "gate_4_inert": {
+      "measured": "the tree no medium fills is refused (study.axis-inert, its text for a built axis); the planted trace (each point's step traced with its radii written into it) is not: two groups",
+      "missed": "the first form of the case (the tree beside water alone) built no node and was refused run.nothing-to-step at every point, so it judged nothing: a ball that moves was added; the box case was not run, and the planted trace stands for a value a node holds as built in its step alone",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+    },
+    "gate_5_saved": {
+      "measured": "as predicted: the folder equal to the result in memory, the spec file's component paths and values, the same id and group keys from the spec, no member run again",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43039777747 (23.6 s on a runner)"
+    },
+    "bits": "as predicted: 20 programs (script A, A0, the MRS free space, near field, plane, tube and solids cases, the tree's flow, and script A's and the egg's studies over a scalar axis, their group keys and members), float32 and float64, 602 arrays np.array_equal, base the release tip against the head in one job on one CPU (run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43050840810, arm bits; the first run, 43047483331, compared 18 of them, the probe's dump unable to import the tree's case on either side); controls: the head twice equal, script A with its frequency one ulp up differs",
+    "memory": "every arm's peak above its one-program estimate but the two tree arms' (0.77 to 1.92 GiB against bounds of 0.58 to 1.02 GiB): a test run builds several programs, which the one-program case does not estimate; said, not a calibration row (the decision of 2026-11-11 on probe arms)"
+  }
 }
