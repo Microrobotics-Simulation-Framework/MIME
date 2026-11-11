@@ -141,7 +141,7 @@ def _lines(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: 
     along_u, along_v = linear(*du), linear(*dv)
     lines = [coverage.line(g, gu, gv) for g, gu, gv in zip(values, along_u, along_v, strict=True)]
     for inner, bound in form.bounds:
-        lines[inner] = coverage.beyond(lines[inner], lines[bound])
+        lines[inner] = coverage.greater(lines[inner], lines[bound])
     return lines
 
 

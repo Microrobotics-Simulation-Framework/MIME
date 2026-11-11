@@ -11,20 +11,19 @@ imaged):
   vanishing there linearly, on the ray (not its whole line); and ``compose``, how the pieces make the body (a least for
   a union, a greatest for an intersection). The pixel integration reads each piece's straight edge at ``g / |grad g|``
   pixels with normal ``grad g / |grad g|``, the gradient by ``jvp`` along the ray table's derivatives, and composes those
-  distances, which share one scale (pixels); raw values do not (a cap seen nearly edge-on changes ten times faster across
-  the image than a side), so a least of raw values can take the wrong piece. ``edge`` is the composition of the raw
+  distances, which share one scale (pixels); raw values do not (a cap seen nearly edge-on changes thirteen times faster
+  across the image than a side), so a least of raw values can take the wrong piece. ``edge`` is the composition of the raw
   values: the same sign everywhere, so the same outline.
 
 The silhouettes: a ball's is its tangent cone, ``g`` the distance from the centre to the ray less the radius. A
 capsule's is the ray's distance from its segment less the radius (the distance from a line to a segment is the distance
 to the clamped foot of their common perpendicular, exactly, the squared distance being convex along the segment; on the
 ray, where that foot is behind the pinhole, the pinhole's distance from the segment). A capped cylinder is the convex
-hull of its two cap discs, so its image is their images' hull: its pieces are each cap disc (the in-plane distance from
-the cap's centre to where the ray crosses its plane, less the radius), the side (the distance between the ray and the
-axis less the radius) and the span (the axial coordinate of their common perpendicular's foot beyond the half-length),
-composed as the least of the caps and of the greatest of the side and the span. Where that foot leaves the span inside
-the side's band, the ray crosses the cap disc there, so the least is negative: the composition's zero set is the hull's
-outline exactly."""
+hull of its two cap discs, so its image is their images' hull: its pieces are each cap disc (by its cone from the
+pinhole, ``_cap``, bounded by the cap's ball), the side (the distance between the ray and the axis less the radius) and
+the span (the axial coordinate of their common perpendicular's foot beyond the half-length), composed as the least of
+the caps and of the greatest of the side and the span. Where that foot leaves the span inside the side's band, the ray
+crosses the cap disc there, so the least is negative: the composition's zero set is the hull's outline exactly."""
 
 from __future__ import annotations
 
@@ -102,9 +101,11 @@ class Form:
     value or an edge's line), and the radius of the smallest ball about its frame's origin that holds it
     (``enclosing``), for a window's size. ``corners``: whether two pieces meet at an angle in its outline; ``turning``:
     the pieces whose own outline can turn within a pixel (a cap disc seen near edge-on, its ellipse's ends a fraction of
-    a pixel round), sub-sampled wherever they cross one; ``bounds``: pairs ``(i, j)``, piece ``i`` lying inside piece
-    ``j``'s region (a cap inside its bounding ball), so that ``i``'s line is read only where ``j``'s is near (pieces
-    named only as bounds are not composed)."""
+    a pixel round), sub-sampled wherever they cross one; ``bounds``: pairs ``(i, j)``, piece ``i``'s region lying inside
+    piece ``j``'s (a cap inside its bounding ball), so that ``i``'s line is taken as the greater of the two: the same
+    outline, and ``j``'s distance where ``i``'s first-order one falls short (beyond a thin cap's ends, where a cap's
+    edge function changes fastest across its ellipse, not towards its end). Pieces named only as bounds are not
+    composed."""
 
     interval: Callable[[Mapping[str, Any], Vec, Vec], Interval]
     pieces: Callable[[Mapping[str, Any], Vec, Vec], tuple[Any, ...]]
@@ -172,18 +173,22 @@ def _cylinder_interval(p: Mapping[str, Any], o: Vec, d: Vec) -> Interval:
 
 
 def _cap(z: Any, radius: Any, o: Vec, d: Vec) -> Any:
-    """The cap disc in the plane ``z``: the in-plane distance from its centre to where the ray crosses the plane, less
-    the radius; the radius itself (outside, its gradient nil) where the ray leaves the plane behind it."""
-    t = (z - o[2]) / _guard(d[2])
-    x, y = o[0] + t * d[0], o[1] + t * d[1]
-    return _on_ray(t >= 0.0, _safe_sqrt(x * x + y * y, (GRAZING * radius) ** 2) - radius, radius)
+    """The cap disc in the plane ``z``, by its cone from the pinhole: ``|V| - R d_z s``, ``V`` the in-plane offset from
+    the cap's centre of the ray's crossing times ``d_z`` and ``s`` the side of the plane the pinhole is on. Where the ray
+    crosses the plane ahead, it is ``|d_z|`` times the in-plane distance less the radius; where it crosses behind, it is
+    positive. Homogeneous in ``d``, it has no pole at the plane's vanishing line (where the crossing itself goes to
+    infinity, and the crossing's distance, read to first order, puts an outline at that line however far the cap is)."""
+    height = z - o[2]
+    vx, vy = height * d[0] + d[2] * o[0], height * d[1] + d[2] * o[1]
+    facing = jnp.where(height < 0.0, -d[2], d[2])
+    floor = (GRAZING * radius * d[2]) ** 2 + jnp.finfo(jnp.result_type(vx)).tiny
+    return _safe_sqrt(vx * vx + vy * vy, floor) - radius * facing
 
 
 def _cylinder_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
     """The caps, the side and the span, each on the ray: where the line's closest approach to the axis is behind the
     pinhole, the side and the span are read at the pinhole. Then each cap's bounding ball (the ball of the cap's radius
-    about its centre, which holds the cap): a cap's own value is no distance far from its outline (near its plane's
-    vanishing line it falls towards zero however far the cap is), so it is read only within its ball's silhouette."""
+    about its centre, which holds the cap), the cap's bound."""
     radius, half_length = p["radius"], p["length"] / 2.0
     mid, q, _, axial = _side(radius, o, d)
     ahead = mid >= 0.0

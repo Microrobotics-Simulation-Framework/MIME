@@ -76,21 +76,6 @@ def greater(a: Line, b: Line) -> Line:
     return Line(*(jnp.where(first, x, y) for x, y in zip(a, b, strict=True)))
 
 
-#: A piece lying inside another's region (a cap inside its bounding ball) is read only where the bound's line is within
-#: this many pixels: beyond it the inner piece's outline cannot reach the pixel (half its diagonal, and a margin for
-#: the bound's own first-order distance).
-BOUND_REACH = 1.5
-#: The distance a piece is given where it cannot reach the pixel: far outside.
-OUTSIDE_PX = 1e6
-
-
-def beyond(inner: Line, bound: Line) -> Line:
-    """``inner``'s line where ``bound``'s is within ``BOUND_REACH`` pixels, else far outside (``OUTSIDE_PX``): a piece
-    whose outline lies inside another's region cannot cross a pixel beyond that region."""
-    far = bound.distance > BOUND_REACH
-    return Line(jnp.where(far, OUTSIDE_PX, inner.distance), jnp.where(far, 1.0, inner.nu), jnp.where(far, 0.0, inner.nv))
-
-
 def covered(edge: Line, size: float = 1.0) -> Any:
     """The share of a square ``size`` pixels a side, centred where the line was read, on the body's side of it."""
     au, av = jnp.abs(edge.nu), jnp.abs(edge.nv)

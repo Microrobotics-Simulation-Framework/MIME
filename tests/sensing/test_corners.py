@@ -33,6 +33,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import mime.sensing._coverage as coverage
+import mime.sensing._forms as forms
 import mime.sensing._render as render_module
 from mime.sensing import Appearance, CameraPose, Pinhole, Subject, render
 
@@ -44,13 +45,29 @@ LINE = 1.0 / SAMPLES ** 2
 REVIEWED = [0.0, 2.0, 4.0, 6.0, 10.0, 20.0]
 
 
+def _reviewed_pieces(p, o, d):
+    """The cylinder's pieces as the review found them: each cap the in-plane distance of the ray's crossing, the side
+    and the span on the ray's whole line."""
+    radius, half_length = p["radius"], p["length"] / 2.0
+    _, q, _, axial = forms._side(radius, o, d)
+
+    def cap(z):
+        t = (z - o[2]) / forms._guard(d[2])
+        x, y = o[0] + t * d[0], o[1] + t * d[1]
+        return forms._safe_sqrt(x * x + y * y, (forms.GRAZING * radius) ** 2) - radius
+
+    side = forms._safe_sqrt(q, (forms.GRAZING * radius) ** 2) - radius
+    return cap(-half_length), cap(half_length), side, jnp.abs(axial) - half_length
+
+
 def _raw_box_coverage(subject, p, o, d, du, dv, corner_samples):
     """The box edge as the review found it: the least of raw values, its line read through ``jvp``, sub-samples only
     where two pieces' lines cross the pixel."""
     form = subject.placed.form
 
     def edges(dx, dy, dz):
-        return form.edge(p, o, (dx, dy, dz)), form.pieces(p, o, (dx, dy, dz))
+        pieces = _reviewed_pieces(p, o, (dx, dy, dz))
+        return jnp.minimum(jnp.minimum(pieces[0], pieces[1]), jnp.maximum(pieces[2], pieces[3])), pieces
 
     (g, pieces), linear = jax.linearize(edges, *d)
     gu, pieces_u = linear(*du)
@@ -64,7 +81,7 @@ def _raw_box_coverage(subject, p, o, d, du, dv, corner_samples):
     for su, sv in coverage.sub_offsets(corner_samples):
         moved = tuple(d[i] + su * du[i] + sv * dv[i] for i in range(3))
         scale = 1.0 / jnp.sqrt(sum(c * c for c in moved))
-        h, sub_linear = jax.linearize(lambda x, y, z: form.edge(p, o, (x, y, z)), *(c * scale for c in moved))
+        h, sub_linear = jax.linearize(lambda x, y, z: edges(x, y, z)[0], *(c * scale for c in moved))
         total = total + coverage.box(h, sub_linear(*du), sub_linear(*dv), 1.0 / corner_samples)
     return jnp.where(corner, total / corner_samples ** 2, single)
 
