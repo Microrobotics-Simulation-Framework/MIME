@@ -1,0 +1,82 @@
+{
+  "written": "2026-11-11, committed before any gate, control or mutant of this fix round ran on a runner (the commit that adds this file is the timestamp): the fix round of vector axes, layer 1 (PR #254): one spelling of a component path, a tuple of bare numbers saved and read back as itself, gate 1 through the study's whole path on two groups of one structure key, a direction's component written where it says",
+  "phase": "vector axes, layer 1, fix round (the refuting review's M1, M2, M3 and its mutant dir-next)",
+  "labels": "the fix round's, from reading the code and the review, and from the light local runs listed under seen_before; the mutants are the review's (dir-next, const-digest) and the fix round's own, each the behaviour a fix removed",
+  "seen_before": [
+    "local, float64, loaded laptop (build_point only, nothing run): the egg's semi_axes[2] at 1.1 and 1.1000001 mm share one structure key, and at 1.095, 1.098, 1.099, 1.1001, 1.1005, 1.101 to 1.2 mm each has its own; mrs_plane's floor.normal at (0, 0.6, 0.8), (0, 0, 1), (0, 0.5, 0.866) and (0.1, 0.6, 0.8), and floor.normal[1] at 0.6, 0.5 and 0.7, all one structure key, the drag node's leaf wall_normal differing: so the plane, not the egg, is the cheap case of two groups of one structure key",
+    "local (loaded laptop, -n 4, clean, nothing planted): test_vector_axes.py's light tests pass (47); the plane's gate 1 cases pass in float64 (19.2 s whole, 20.1 s component) and plane-whole in float32 (22.8 s); the five round trips pass (13.5 s orientation to 32.4 s components)",
+    "no plant or mutant of this file was run anywhere before it was committed"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 (gate 1's egg component and plane whole)"],
+    "platform": "CPU, a GitHub runner (4 vCPU) for every rate, the gates and the durations; the laptop for the light local runs only",
+    "sizes_and_parameters": "the plane: tests/mrs_cases.py's mrs_plane, a ball of 0.5 mm radius a radius above a plane wall, Drag.MRS (0.5.0, the plane wall kind) at a 0.3 mm spacing, blob 0.5, no near contact, water 1 mPa s, dt 1 ms, 2 ms, moving at 1 mm/s along the plane and turning; floor.normal whole at (0, 0.6, 0.8) and (0, 0, 1), and floor.normal[1] at 0.6 and 0.5 (a normal of (0, 0.5, 0.8), which the plane normalises). The egg as gate 1 holds it (0.35 mm), and at a 1 mm spacing for the round trips (as gate 5 had it)",
+    "seeds_and_draws": "no draw: every gate, control and mutant is deterministic, so each fails on every run or never"
+  },
+  "gate_1_shared_structure": {
+    "claim": "a study whose two groups share one structure key, split by the built axis's value alone, equals the same points written by hand, bit for bit per point, through the study's whole path (the plan, its groups, the leaves and initial state each group is fed, the batched run): the plane's normal whole and by its component 1",
+    "kind": "equality",
+    "case": "tests/study/test_vector_axes.py::test_a_study_over_a_vector_setting_equals_the_points_written_by_hand[plane-whole] and [plane-component] (float64); test_a_study_in_float32_equals_the_points_written_by_hand[plane-whole] (the egg's float32 test, renamed and parametrised)",
+    "prediction": {
+      "value": 0,
+      "unit": "arrays differing (structure keys, leaves, initial states, final states)",
+      "basis": "derived",
+      "why": "each point declares the plane with the normal written, as the hand-written script does; the normal reaches the drag node as its leaf wall_normal, so both values build one program, and each group runs its own point's leaves on it, as the hand-written study of one point does at a batch of one"
+    },
+    "premise": "the test asserts, before comparing, that the plan's two groups have one structure key, and that the hand-written studies' members end in different states (so a group run on the other value's leaves shows in a run)",
+    "metric": "np.array_equal of every array, equality of the structure keys",
+    "control": {
+      "plant": "struct-cache: a group's leaves taken from the first point of the study with its structure key, as a cache of builds keyed by the structure key alone would (MIME_VECTOR_PLANT=struct-cache, a monkeypatch of mime.study._study.stacked_tree, the review's plant in the test's own fixture); keep-base on both plane cases and next-index on plane-component (the test's existing plants)",
+      "environment_variable": "MIME_VECTOR_PLANT (struct-cache, keep-base, next-index)",
+      "expected_rate": "10/10 for each node and plant, clean 0/3: under struct-cache group 1 runs the normal (0, 0.6, 0.8) where its hand-written point runs (0, 0, 1) or (0, 0.5, 0.8), a moving ball's drag along another wall, far above a bit",
+      "runs": 10,
+      "clean_expected": "0/3",
+      "resolution": "one bit: array equality; the plant moves the wall normal by 0.1 to 0.6 in a component"
+    },
+    "if_wrong": "a clean difference names the array and point: in the leaves, the study wrote another normal than the script; in the final state with equal leaves, the run path fed the group something else, which is what the plant stands for",
+    "cannot_discriminate_if": "the two normals gave one run, or the two groups had two structure keys (then the plant is the identity, as on the egg): the premise assertions fail the test in either case"
+  },
+  "gate_2_digest_alone": {
+    "claim": "on the plane, the value's digest in a point's key is all that splits the two groups: a digest that is one for every value merges them",
+    "kind": "acceptance",
+    "case": "gate 1's plane cases (the premise: two groups of one structure key)",
+    "prediction": {"value": "the review's mutant const-digest caught 5/5 over the review's node set (the plane cases among them), clean 0/1", "basis": "derived", "why": "under it the two normals have one key, so the plan holds one group of two and the premise's two groups fail"}
+  },
+  "gate_3_one_spelling": {
+    "claim": "a component path names one number in one spelling: a second index on a component (vessel.radii[3][0], semi_axes[2][1], vessel.radii[1][0]) is refused study.component-path; an index written with a leading zero ([03], [00]), a sign, a space or nothing is refused study.component-spelling; each of the tree's eight radii by its index writes that number alone and its axis's path is the one spelling; a setting named whole and by a component is refused study.axis-twice (the semi-axes and a plane's normal), judged on what the axes write",
+    "kind": "acceptance",
+    "case": "tests/study/test_vector_axes.py::test_a_path_that_names_no_vector_component_is_refused_with_its_code, test_a_component_path_writes_the_number_it_names_and_saves_in_one_spelling, test_a_setting_named_whole_and_by_a_component_is_refused",
+    "prediction": {"value": "each code as listed, the message naming the setting", "basis": "derived"},
+    "controls": {
+      "nested": "the second-index refusal removed (the PR head's behaviour: vessel.radii[3][0] resolved to component 0): caught 5/5 over the review's node set, clean 0/1",
+      "zero-led": "the spelling refusal removed for an index of digits ([03] read as [3], the PR head's behaviour): caught 5/5, clean 0/1"
+    }
+  },
+  "gate_4_direction_component": {
+    "claim": "a component of a plane's normal (bare numbers, no unit) writes that number into the normal as the experiment declares it, the other components kept, for each of its three components; and through the study's whole path (gate 1's plane-component)",
+    "kind": "equality",
+    "case": "tests/study/test_vector_axes.py::test_a_directions_component_writes_that_component_alone[0, 1, 2], and gate 1's plane-component",
+    "prediction": {"value": "each declared normal equals the base with that component written", "basis": "derived"},
+    "control": {"mutant": "dir-next, the review's (a bare tuple's component written one place along): caught 5/5 over the review's node set, clean 0/1, where the review measured 0/3"}
+  },
+  "gate_5_round_trip": {
+    "claim": "every form of value an axis takes (a quantity, a vector quantity, a dimensionless quantity and vector, a number, a count, a name, a switch, a direction of floats and of whole numbers, a quaternion) reads back from study.json's form (through JSON) and the spec file's (through YAML) as the value it was, its type included; and five studies, two components of the egg's semi-axes, the whole semi-axes, the plane's normal whole and by a component, and the egg's initial orientation (not built), read back from their folder equal to the result in memory (coordinates in their form), are the same study from their spec (its id, its groups' keys) and resume with no member run again",
+    "kind": "equality",
+    "case": "tests/study/test_vector_axes.py::test_each_value_form_reads_back_from_the_folder_and_the_spec_as_it_was_written, test_a_study_over_built_axes_saves_and_reads_back[components, whole, direction, direction-component, orientation]",
+    "prediction": {"value": "equal in every form and study; no member run again", "basis": "derived", "why": "a tuple of bare numbers is now saved as the list of its numbers with no unit and read back as the tuple (JSON and YAML keep a whole number and a float apart), so the coordinates, the axis record's unit (none) and the study's id are the ones the study was made with"},
+    "control": {"mutant": "dimless-save: the PR head's saved form (a tuple of bare numbers as a dimensionless quantity in study.json and the spec): caught 5/5 over the review's node set, clean 0/1"}
+  },
+  "bits": {
+    "cases": "the builder's twenty programs (script A, A0, the MRS tube, plane, solids, free space and near field cases, the tree's flow, and script A's and the egg's studies over a scalar axis: their group keys and members), float64 and float32; base the release tip (origin/release/v0.3.0), head this branch, one job, one CPU, one BLAS thread (.github/probe/bit_compare.py)",
+    "prediction": "every array np.array_equal: the fix round changes the study's paths, refusals and saved form, no node, build or run, and mrs_plane's new argument keeps its default",
+    "controls": {
+      "repeat": "the head recorded twice: equal",
+      "one_ulp": "script A with its frequency one ulp up: differs"
+    }
+  },
+  "durations": {
+    "prediction": "each new or changed test of test_vector_axes.py under 30 s on a runner but possibly the round trip of two components (23.6 s on a runner before; 32.4 s on the loaded laptop) and the whole semi-axes' (28.1 s on the laptop); a test over 30 s on the gates arm's JUnit goes on the duration allowlist with its runner time",
+    "basis": "measured-before (the laptop's times above, loaded), a guess for the runner"
+  },
+  "outcomes": null
+}
