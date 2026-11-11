@@ -63,7 +63,6 @@ from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, WALL_COUNTS,
 from mime.nodes.flow.fvm._open import OpenMACGrid
 from mime.nodes.flow.fvm._open_node import BACKFLOW, KINETIC_FLUX, OPENING, REVERSAL_LINE, OpeningFields, \
     OpenFlowNode, check_open_deliveries, opening_role
-from mime.nodes.flow.fvm._open_node import EQUATIONS as OPEN_EQUATIONS
 from mime.nodes.flow.fvm._ports import LawBooks, PortSolution
 from mime.nodes.flow.fvm._schemes import StageKind, StepContext
 from mime.registry import Problem
@@ -71,6 +70,9 @@ from mime.registry import Problem
 #: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
 _LAX: Any = jax.lax
 _STEPPED = "mime.nodes.flow.fvm._open_explicit.OpenExplicitFlowNode.stepped"
+#: Each opening's row at each of RK3's stages (backward Euler over the stage, at its end): the open node's rows.
+EQUATIONS = (r"p_{k} = \operatorname{a}_{k} + \sum_{j} \operatorname{B}_{kj} q_{j} \ \text{or} \ q_{k} = "
+             r"\operatorname{Q}_{k} \ \text{at the end of each of RK3's stages, over the stage}")
 #: RK3's numerical terms (its convective term, zero on the open box: its power is all booked as the openings' flux).
 SCHEME_TERMS = ("convection",)
 _START = "mime.nodes.flow.fvm._open_explicit.OpeningStages.ready"
@@ -258,7 +260,7 @@ class OpenExplicitFlowNode(OpenFlowNode):
         description="A medium's flow in a vessel open at the box's two z planes stepped by S1's explicit RK3: the "
                     "Cartesian MAC grid open along z, each opening (a patch of a plane) held by a law the step holds at "
                     "each of RK3's stages, coupled implicitly through the stage's affine response.",
-        governing_equations=OPEN_EQUATIONS,
+        governing_equations=EQUATIONS,
         assumptions=(
             "Inside, the periodic RK3 node's (ExplicitFlowNode's) stage: convection and viscosity explicit, the "
             "wall's penalty implicit and pointwise in each stage, the incremental projection each stage",
@@ -285,7 +287,6 @@ class OpenExplicitFlowNode(OpenFlowNode):
     symbols = (
         Symbol(r"p", SymbolKind.STATE, "opening_pressure", "Pa", _STEPPED),
         Symbol(r"q", SymbolKind.STATE, "opening_flux", "m^3/s", _STEPPED),
-        Symbol(r"\alpha_{k}", SymbolKind.CONSTANT, "mime.nodes.flow.fvm._rk3.ALPHA", "1", _STEPPED),
     )
 
     @override

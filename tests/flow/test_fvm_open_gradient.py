@@ -1,11 +1,16 @@
 """FB15, float64: gradients with ports (F2b PR 4b; predictions in ``predictions_rk3_ports.json``). The open tube's
-openings' pressures and outlet flux after six steps from a cold prediction (the openings' relative pressures start at zero, so the
-first step's moves are the whole pressures), differentiated in the Windkessel's R_p, C and R_d, the inflow's amplitude
-and the viscosity, reverse and forward, against a central difference that rebuilds the node, at loss scales 1e-12 and
-1e6 (the scale test), on the open node of each stage kind (IMEX Euler's projected CG with its unit fields solved in the
-program; RK3's fast solves). Its control: ``stop_gradient`` on IMEX Euler's unit fields (and so on their response
-``q``), which cuts the viscosity's derivative through the moves; the laws' leaves do not reach the unit fields, so the
-cut cannot be seen in them (stated, not a pass)."""
+openings' pressures and outlet flux after six steps from a cold prediction (the openings' relative pressures start at
+zero, so the first step's moves are the whole pressures), differentiated in the Windkessel's R_p, C and R_d, the
+inflow's amplitude and the viscosity, reverse and forward, against a central difference that rebuilds the node, at loss
+scales 1e-12 and 1e6 (the scale test), on the open node of each stage kind (IMEX Euler's projected CG with its unit
+fields solved in the program; RK3's fast solves). Its control: ``stop_gradient`` on IMEX Euler's unit fields (and so on
+their response ``q``), which cuts the viscosity's derivative through the moves; the laws' leaves do not reach the unit
+fields, so the cut cannot be seen in them (stated, not a pass).
+
+The gate found, on its first run, IMEX Euler's open node's reverse mode off (the viscosity's derivative 3.13 against the
+difference's 5.98, the inflow's amplitude off too; forward mode right): the projected CG's operator is self-adjoint
+under the open grid's half-weighted inner product, not the plain one reverse mode transposes in, so its transpose solve
+is the weighted one (``mime.nodes.flow.fvm._solve.projected_solve``)."""
 
 from __future__ import annotations
 
@@ -26,8 +31,9 @@ STEPS = 6
 #: truncation at a relative step of 1e-4 is about 1e-8).
 LINE = 1e-6
 SCALES = [1e-12, 1e6]
-#: The leaves, each by its place: the laws' parameters' rows and columns, or the viscosity.
+#: The leaves, each by its place: the laws' parameters' row and column, or the viscosity.
 LEAVES = {"proximal": (1, 0), "compliance": (1, 1), "distal": (1, 2), "amplitude": (0, 1), "viscosity": None}
+NAMES = tuple(LEAVES)
 
 
 def _parameters(dt: float) -> list[list[float]]:
@@ -54,15 +60,19 @@ def _loss(node, p):
     return (state["opening_pressure"][0] + state["opening_pressure"][1]) / tube_resistance(2.0) + state["opening_flux"][1]
 
 
-def _with(p, name: str, value):
-    if LEAVES[name] is None:
-        return {**p, "viscosity": value}
-    row, column = LEAVES[name]
-    return {**p, "opening_parameters": jnp.asarray(p["opening_parameters"]).at[row, column].set(value)}
+def _values(p):
+    """The leaves' values at ``p``, in :data:`NAMES`' order."""
+    parameters = jnp.asarray(p["opening_parameters"])
+    return jnp.stack([jnp.asarray(p["viscosity"]) if LEAVES[n] is None else parameters[LEAVES[n]] for n in NAMES])
 
 
-def _leaf(p, name: str):
-    return p["viscosity"] if LEAVES[name] is None else jnp.asarray(p["opening_parameters"])[LEAVES[name]]
+def _with(p, values):
+    """The step's constants with every leaf of :data:`NAMES` replaced by ``values``."""
+    parameters = jnp.asarray(p["opening_parameters"])
+    for k, name in enumerate(NAMES):
+        if LEAVES[name] is not None:
+            parameters = parameters.at[LEAVES[name]].set(values[k])
+    return {**p, "viscosity": values[NAMES.index("viscosity")], "opening_parameters": parameters}
 
 
 def _rebuilt(scheme: str, name: str, factor: float) -> float:
@@ -80,48 +90,45 @@ def _rebuilt(scheme: str, name: str, factor: float) -> float:
 
 
 @functools.cache
-def central(scheme: str, name: str, step: float = 1e-4) -> float:
-    """The central difference in ``name``, each side a node built afresh, per unit of the leaf."""
-    value = float(_leaf(_node(scheme)._step_constants(None), name))  # noqa: SLF001
-    return (_rebuilt(scheme, name, 1.0 + step) - _rebuilt(scheme, name, 1.0 - step)) / (2.0 * step * value)
+def central(scheme: str, step: float = 1e-4) -> np.ndarray:
+    """The central difference in each leaf, each side a node built afresh, per unit of the leaf."""
+    values = np.asarray(_values(_node(scheme)._step_constants(None)))  # noqa: SLF001
+    return np.asarray([(_rebuilt(scheme, name, 1.0 + step) - _rebuilt(scheme, name, 1.0 - step)) / (2.0 * step * value)
+                       for name, value in zip(NAMES, values, strict=True)])
 
 
-def reverse(scheme: str, name: str, scale: float) -> float:
+def reverse(scheme: str, scale: float) -> np.ndarray:
     node = _node(scheme)
     p = node._step_constants(None)  # noqa: SLF001
-    value = jnp.asarray(_leaf(p, name), dtype=jnp.float64)
-    return float(jax.jit(jax.grad(lambda v: scale * _loss(node, _with(p, name, v))))(value)) / scale
+    gradient = jax.jit(jax.grad(lambda v, s: s * _loss(node, _with(p, v))))(_values(p), jnp.asarray(scale))
+    return np.asarray(gradient) / scale
 
 
-def forward(scheme: str, name: str, scale: float) -> float:
+def forward(scheme: str) -> np.ndarray:
     node = _node(scheme)
     p = node._step_constants(None)  # noqa: SLF001
-    value = jnp.asarray(_leaf(p, name), dtype=jnp.float64)
-    _, tangent = jax.jit(lambda v, dv: jax.jvp(lambda x: _loss(node, _with(p, name, x)), (v,), (dv,)))(
-        value, jnp.asarray(scale))
-    return float(tangent) / scale
+    return np.asarray(jax.jit(jax.jacfwd(lambda v: _loss(node, _with(p, v))))(_values(p)))
+
+
+def _off(found: np.ndarray, expected: np.ndarray) -> dict[str, tuple[float, float]]:
+    """Each leaf whose derivative is off the line, with its value and the difference's."""
+    return {name: (float(f), float(e)) for name, f, e in zip(NAMES, found, expected, strict=True)
+            if not abs(f - e) <= LINE * abs(e)}
 
 
 @pytest.mark.parametrize("scheme", ["imex_euler", "rk3"])
-@pytest.mark.parametrize("name", sorted(LEAVES))
-@pytest.mark.parametrize("scale", SCALES)
-def test_the_reverse_gradient_with_ports_is_the_rebuilt_central_difference(float64, scheme, name, scale):
-    expected = central(scheme, name)
-    assert abs(reverse(scheme, name, scale) - expected) <= LINE * abs(expected), (reverse(scheme, name, scale),
-                                                                                  expected)
-
-
-@pytest.mark.parametrize("scheme", ["imex_euler", "rk3"])
-@pytest.mark.parametrize("name", sorted(LEAVES))
-def test_the_forward_tangent_with_ports_is_the_rebuilt_central_difference(float64, scheme, name):
-    expected = central(scheme, name)
-    found = forward(scheme, name, 1.0)
-    assert abs(found - expected) <= LINE * abs(expected), (found, expected)
+def test_the_gradient_with_ports_is_the_rebuilt_central_difference(float64, scheme):
+    """Each leaf's derivative, reverse at both loss scales and forward, within the line of the rebuilt difference."""
+    expected = central(scheme)
+    for scale in SCALES:
+        assert not _off(reverse(scheme, scale), expected), scale
+    assert not _off(forward(scheme), expected)
 
 
 def test_control_stop_gradient_on_the_unit_fields_fails_the_viscosity_from_a_cold_prediction(float64, monkeypatch):
     """The unit fields' derivative cut (``stop_gradient`` on each, so on their response ``q``): from a cold prediction
     the first step's moves are the whole pressures, and the viscosity's derivative through them is off the line."""
+    expected = central("imex_euler")
 
     def unit_field(self, solve, force, start):
         del self
@@ -129,6 +136,4 @@ def test_control_stop_gradient_on_the_unit_fields_fails_the_viscosity_from_a_col
         return tuple(jax.lax.stop_gradient(c) for c in unit), report
 
     monkeypatch.setattr(OpenFlowNode, "unit_field", unit_field)
-    expected = central("imex_euler", "viscosity")
-    found = reverse("imex_euler", "viscosity", 1.0)
-    assert abs(found - expected) > LINE * abs(expected), (found, expected)
+    assert "viscosity" in _off(reverse("imex_euler", 1.0), expected)

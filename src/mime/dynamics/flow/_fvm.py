@@ -225,7 +225,9 @@ class FVM(Dynamics):
     differentiability = GradientStatus.UNVERIFIED
     gradient = GradientRecord(
         where="in the tube's radius, centre and axis (the geometry leaves); in the viscosity, the density and the drive "
-              "the gradient gate checks it exact, reverse and forward, against a central difference that rebuilds",
+              "the gradient gate checks it exact, reverse and forward, against a central difference that rebuilds; on "
+              "an open vessel, in its laws' parameters, the inflow's amplitude and the viscosity, for both stage kinds "
+              "(FB15)",
         reason=f"{GEOMETRY}; one status is declared per entry, so the entry's is the geometry's",
         route="the dQ/dR gate: the radius in the gradient gate, its loss the box's whole axial flux, its central "
               "difference taken inside one discretisation (the layout's dead band; or from a declared range)")
