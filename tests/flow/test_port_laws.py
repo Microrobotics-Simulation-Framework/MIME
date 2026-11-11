@@ -130,6 +130,31 @@ def test_control_the_extremes_test_sees_a_booked_error_where_the_square_survives
     assert abs(residual) > rounding + floor
 
 
+#: CI's flaked draw (run 42989936874) of the shared distal law: its two fluxes equal and opposite, so each opening's
+#: pressure, ``(R_k + R_d) q_k + R_d q_j``, is a difference of terms a thousand times its size.
+_CANCELLING_DRAW = (50098404.29643129, 17220226.64075733, 72004899337.38588, 0.010000000000000004, 0.0,
+                    -4.139937718785167e-08, 4.139937718785167e-08)
+
+
+def test_a_shared_distal_draw_whose_off_diagonals_cancel_is_judged_on_its_terms():
+    """The flaked draw closes on the received work's own products in magnitude, the scale its rounding came from (on
+    CI and here its residual was 6.6e-23 J, past 64 eps of the work's result, 2.3e-9 J, the earlier scale, and within
+    64 eps of its products, 4.9e-6 J). The control: a loss booked 1e-6 too large is still seen there."""
+    law = PORT_LAWS["shared_distal"]
+    row = jnp.asarray([*_CANCELLING_DRAW[:3], 0.0])
+    dt, state, flux = _CANCELLING_DRAW[3], jnp.asarray([_CANCELLING_DRAW[4]]), jnp.asarray(_CANCELLING_DRAW[5:])
+    residual, _, rounding = books_residual(law, row, dt, state, flux)
+    assert abs(residual) <= rounding, (residual, rounding)
+
+    class _LossScaled(type(law)):
+        def books(self, parameters, state, ended, flux, pressure, dt):
+            held = super().books(parameters, state, ended, flux, pressure, dt)
+            return dataclasses.replace(held, loss=held.loss * (1.0 + 1e-6))
+
+    planted, _, planted_rounding = books_residual(_LossScaled(), row, dt, state, flux)
+    assert abs(planted) > planted_rounding, (planted, planted_rounding)
+
+
 @pytest.mark.parametrize("control", [_Flipped, _ConsistentlyNegative])
 def test_control_a_law_with_a_sign_error_fails_every_draw(control):
     """Each control fails every draw (structurally, at the limit dt -> 0 where the block is R_p); the second's books
@@ -200,3 +225,32 @@ def test_each_laws_row_kind_and_class():
     assert Windkessel.row is RowKind.PRESSURE and Windkessel.stores and not Windkessel.source
     assert Inflow.row is RowKind.FLUX and Inflow.source and not Inflow.stores
     assert GivenPressure.row is RowKind.PRESSURE and GivenPressure.source
+
+
+def test_the_port_system_solves_a_block_over_two_openings():
+    """The port system with one law over two openings (a block with off-diagonals) against the network solved
+    directly: a field of conductance ``G`` over three openings (symmetric, its rows and columns summing to zero), a
+    flux row at the first, the shared distal law's two pressure rows at the others; the fluxes and pressures are the
+    network's to rounding, and the split does not move with the distal resistance."""
+    from mime.nodes.flow.fvm._ports import SharedDistal, port_matrix
+
+    g = np.array([[-2.0, 1.2, 0.8], [1.2, -1.5, 0.3], [0.8, 0.3, -1.1]])
+    flux = 1.7
+    law = SharedDistal()
+    rows = [RowKind.FLUX, RowKind.PRESSURE, RowKind.PRESSURE]
+    coupling = [[True, False, False], [False, True, True], [False, True, True]]
+    splits = []
+    for distal in (5.0, 50.0):
+        _, b = law.affine(jnp.asarray([1.0, 3.0, distal, 0.0]), jnp.zeros(1), 0.0, 1.0)
+        block = jnp.zeros((3, 3)).at[1:, 1:].set(b)
+        reference = 1
+        response = jnp.asarray(g[:, [0, 2]])
+        solution = port_system(rows, jnp.asarray([-flux, 0.0, 0.0]), block, jnp.zeros(3), response, jnp.zeros(3),
+                               reference, coupling)
+        q, p = np.asarray(solution.fluxes), np.asarray(solution.pressures)
+        np.testing.assert_allclose(q, g @ (p - p[1]), atol=1e-12)
+        np.testing.assert_allclose(q[0], -flux, rtol=1e-12)
+        np.testing.assert_allclose(p[1:], np.asarray(b) @ q[1:], rtol=1e-12)
+        splits.append(q[1] / (q[1] + q[2]))
+        assert np.isfinite(np.linalg.cond(np.asarray(port_matrix(rows, block, response, reference, coupling))))
+    assert abs(splits[0] - splits[1]) < 1e-12, splits

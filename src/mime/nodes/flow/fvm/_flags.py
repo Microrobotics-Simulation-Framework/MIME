@@ -19,13 +19,19 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
 - the open box's own (``OPEN_FLAGS``): ``open_face_projection`` (``N_proj`` over the step's scale: a projector that is
-  not orthogonal under the books' inner product, its port faces at the wrong weight).
+  not orthogonal under the books' inner product, its port faces at the wrong weight); and ``port_kinetic_flux``, an
+  operator check of convection at the planes: the kinetic energy the books hold as crossing the openings (the one line
+  ``<node>.openings``, the scheme's own convective power) against what crosses each opening, the convective power split
+  by plane (``OpenMACGrid.opening_kinetic_fluxes``, exact to the field's divergence): a flux booked elsewhere, or
+  convection doing work inside the box. Its numerator is the planes' net (the books hold one line), its scale each
+  opening's flux in magnitude and the convective product's, so the scale does not cancel where in and out do. **It
+  sees no port work**: its reading is a function of the step's starting velocity alone. Its lines are about three
+  times the worst clean reading (15 eps in both dtypes, flat from D/h 8 to 16), measured, not derived.
 
-**Not built** (no flag is declared for them, pending or otherwise): the record's port work against the kinetic-energy
-flux through the openings, whose reading needs the scheme's convective power split by plane (one line an opening, so
-the energy in and out does not cancel), F2b's PR 3 with the openings' own rows; and the periodic box's three on the
-open box and on RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those
-runs' own draws."""
+**Not built** (no flag is declared for them, pending or otherwise): the periodic box's three on the open box and on
+RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those runs' own
+draws; and the record's rung-2 boundary flag, port work against the kinetic-energy flux, which ``port_kinetic_flux``
+is not."""
 
 from __future__ import annotations
 
@@ -137,6 +143,29 @@ def projection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any
     return jnp.where(stepped, _share(jnp.abs(term), _step_scale(before, after)), 0.0)
 
 
+def kinetic_flux_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any],
+                         after: Mapping[str, Any]) -> Array:
+    """``|W_KE + dt rho sum_k K_k| / (dt rho (sum_k |K_k| + <|C(u)|, |u|>))``: the kinetic energy the books hold as
+    crossing the openings, ``W_KE`` (the line ``<node>.openings``), against each opening's own, ``K_k`` out through it
+    (the convective power split by plane at the step's start, ``OpenMACGrid.opening_kinetic_fluxes``), over each
+    opening's flux in magnitude and the convective product's (the line's own rounding scale). On a discretely
+    divergence-free field the two agree to rounding; a flux booked in another term, or convection doing work inside the
+    box, reads above it. Zero on a step held past the CFL line and where convection is off."""
+    held = books.deliveries(node.constants())
+    line = next(d.law for d in held if d.kind == books.HOSTED and d.field == "kinetic_flux")
+    booked = jnp.asarray(after[f"{books.RECORDS}step_work"])[books.laws(held).index(line)]
+    if not node.constants()["convection"]:
+        return jnp.zeros((), dtype=booked.dtype)
+    grid = node.open_grid(p)
+    started = _velocity(before)
+    flux, size = grid.opening_kinetic_fluxes(started)
+    weight = node.delta_t * as_run_array(p["density"])
+    product = grid.inner_magnitude(grid.convection(started), started)
+    stepped = jnp.asarray(after["stopped_at"]) < 0
+    return jnp.where(stepped, _share(jnp.abs(booked + weight * jnp.sum(flux)), weight * (jnp.sum(size) + product)),
+                     0.0)
+
+
 #: The run that measured the lines: 200 draws a dtype of ``tests/flow/flag_cases.py``'s envelope (seeds 0 to 199), 60
 #: steps each, every flag read at every step.
 LINES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42769581278"
@@ -219,14 +248,34 @@ _OPEN_CLEAN = (f"drawn open runs (an inflow and a Windkessel with a downstream r
                f"{OPEN_MEASURED}")
 _UNIFORM = "the planes' faces at full weight in the inner product (the projector not orthogonal under it)"
 
+#: The run that measured the kinetic flag's lines (200 open draws a dtype, seeds 0 to 199, 60 steps each, every step
+#: read) and the run that measured its plants' rates (40 planted and 40 clean runs each, seeds from 3000).
+KINETIC_LINES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42958800740"
+KINETIC_RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42962620848"
+_IN_N_CONV = ("the kinetic energy crossing the openings left inside N_conv (its line booked as zero, N_conv as "
+              "-dt rho <C(u), u'>: the step identity still closing)")
+_END_HALF = "the end plane's convective half cell at a full cell (the open planes' operator gate's plant)"
+_START_HALF = "the start plane's convective half cell at a full cell (the open planes' operator gate's plant)"
+
 #: The open box's flags (``OpenFlowNode``): its own (the module says which are not built).
 OPEN_FLAGS: tuple[LedgerFlag, ...] = (
     LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading,
                {"float64": 2e-17, "float32": 1e-8},
                f"200 {_OPEN_CLEAN}: worst 2.4e-18 (float64) and 1.2e-9 (float32), every step judged",
                _evidence(_UNIFORM, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, OPEN_MEASURED)),
+    LedgerFlag("port_kinetic_flux", "|the kinetic energy booked as crossing the openings + each opening's own, summed| "
+                                    "over each opening's in magnitude and the convective product's",
+               kinetic_flux_reading, {"float64": 1e-14, "float32": 5e-6},
+               f"200 {_OPEN_CLEAN.replace(OPEN_MEASURED, KINETIC_LINES_MEASURED)}: worst 3.4e-15 (float64) and 1.8e-6 "
+               f"(float32), every step judged: rounding, the convective power's split by plane being exact to the "
+               f"field's divergence",
+               _evidence(_IN_N_CONV, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, KINETIC_RATES_MEASURED)
+               + _evidence(_END_HALF, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, KINETIC_RATES_MEASURED)
+               + _evidence(_START_HALF, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)},
+                           KINETIC_RATES_MEASURED)),
 )
 
 __all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "OPEN_FLAGS",
-           "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
-           "projection_reading", "stall_reading"]
+           "KINETIC_LINES_MEASURED", "KINETIC_RATES_MEASURED", "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED",
+           "FlagEvidence", "convection_reading",
+           "kinetic_flux_reading", "leak_reading", "projection_reading", "stall_reading"]

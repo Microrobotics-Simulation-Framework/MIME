@@ -28,6 +28,7 @@ from typing import ClassVar, override
 import jax
 import jax.numpy as jnp
 import numpy as np
+import _cache_ceiling
 import pytest
 from cases import CASES, Case
 from maddening.core.compliance.metadata import NodeMeta
@@ -51,6 +52,25 @@ from mime.vocabulary import register_namespace
 
 LAB_FIXTURE = "mime_lab_fixture"
 ROOT = Path(__file__).resolve().parents[2]
+
+#: How far above where a worker stands after giving its compiled programs back the node walk lets its resident memory
+#: grow before it gives them back again (tests/_cache_ceiling.py). Each entry's test builds and compiles its own graph
+#: and none is called again by the next, so a worker that walked the entries one after another held 2 to 3.4 GB of
+#: programs, and beside the helix reference's test (6 to 8 GB) the three other workers of CI's shard 9 brought the
+#: runner to 15.3 to 15.6 GB of its 16 (a probe, 2026-11-11).
+HEADROOM_MIB = 768
+LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
 
 
 def uncased(node_cases, registered) -> list[str]:

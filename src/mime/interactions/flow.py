@@ -1,9 +1,13 @@
 """Laws that drive a medium's flow: ``BodyForce``, the body force that stands in for a pressure drop on a periodic box
 (F0's B6 and B7: drives are laws, a body force bound to the medium with no surface); and the laws held at a flow's
-openings (decisions 7 and 8; A2's hybrid rows): ``Inflow``, a flux given at an opening, and ``Windkessel``, the RCR
-whose pressure is affine in the opening's flux over each stage. A law at an opening binds the medium and the opening's
-surface (``exp.attach(Windkessel(...), medium=blood, surface=tube.end)``) and builds no node: the flow holds it in
-its own step, through its registration."""
+openings (decisions 7 and 8; A2's hybrid rows): ``Inflow``, a flux given at an opening; ``Windkessel``, the RCR
+whose pressure is affine in the opening's flux over each stage; ``Valve``, a closed valve (no flux); and
+``SharedDistal``, two openings draining through their own resistances into one shared distal resistance, a law over
+several openings (the record's "F2's rows, 2", item 1). A law at an opening binds the medium and the opening's surface
+(``exp.attach(Windkessel(...), medium=blood, surface=tube.end)``); a law over several binds them all, as a tuple or a
+region's openings (``surface=(tree.end_0, tree.end_1)``, ``surface=tube.lumen``), and a law given another count of
+openings than it binds is refused. Each builds no node: the flow holds it in its own step, through its
+registration."""
 
 from __future__ import annotations
 
@@ -13,6 +17,8 @@ from typing import TYPE_CHECKING, Annotated, ClassVar, override
 from mime.gradients import GradientStatus
 from mime.nodes.flow._body_force import BodyForceNode
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
+from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
+from mime.nodes.flow.fvm._ports import Valve as ValveLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
 from mime.registry import (
     DESIGN,
@@ -115,11 +121,14 @@ _PORT_GRADIENT = GradientRecord(
 
 
 class _OpeningLaw(Interaction):
-    """What a law at an opening shares: its roles (the medium whose flow holds it, the opening's surface), its id
-    (its name and the opening: ``windkessel:tube.end``), and its plan, a registration with the medium's flow,
-    which holds it in its step as the port law ``port_law`` (``mime.nodes.flow.fvm._ports``)."""
+    """What a law at an opening shares: its roles (the medium whose flow holds it, the openings' surfaces), how many
+    openings it binds (``openings``, its port law's), its id (its name and the openings: ``windkessel:tube.end``,
+    ``shared_distal:tree.end_0+tree.end_1``), and its plan, a registration with the medium's flow, which holds it in
+    its step as the port law ``port_law`` (``mime.nodes.flow.fvm._ports``)."""
 
     port_law: ClassVar[str] = ""
+    #: How many openings it binds: ``surface=`` names that many (one surface, or a tuple or a region's openings).
+    openings: ClassVar[int] = 1
     family = None
     builds = {"": ()}
     roles = {"medium": RoleKind.MEDIUM, "surface": RoleKind.SURFACE}
@@ -141,9 +150,13 @@ class _OpeningLaw(Interaction):
 class Inflow(_OpeningLaw):
     """A volume flux into the flow at an opening, ``steady + amplitude cos(2 pi frequency t + phase)``:
     ``exp.attach(Inflow(steady=mL_per_s(1.0)), medium=blood, surface=tube.start)``. The flow holds the opening's flux
-    to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row): the whole
-    plane's flux, the wall's band included, so the lumen takes it less the band's Darcy share (about 0.1 to 1 %). A
-    source: the work it supplies, the pressure the flow returns times its flux, is booked under its name."""
+    to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row): the
+    opening's whole net flux, its lumen's, its band's and its solid's faces together, never the lumen's alone. So the
+    lumen carries the inflow less what the solid carries, which runs either way: a few per cent of it with the inflow
+    in steady flow at D/h 8; in pulsed flow, where the drive's frequency nears the stiff interior's damping rate, a
+    swing with the drive of up to about 30 % either way, the lumen then carrying up to about 1.3 times the inflow (the
+    FVM's validity gives the figures). A source: the work it supplies, the pressure the flow returns times its flux, is
+    booked under its name."""
 
     name = "inflow"
     version = "0.1.0"
@@ -210,4 +223,61 @@ class Windkessel(_OpeningLaw):
         return found
 
 
-__all__ = ["BodyForce", "Inflow", "Windkessel"]
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class Valve(_OpeningLaw):
+    """A closed valve at an opening: no flux through it, ``exp.attach(Valve(), medium=blood, surface=tree.end_1)``. The
+    flow holds its opening's net flux at zero (a flux row, q = 0), not each face's, and solves the pressure behind it;
+    workless, since that pressure does no work on a flux of zero. The lumen behind it still carries out what the solid's
+    faces on the opening bring back in, the solid's Darcy flow (a few per cent of the vessel's flow at the default stiff
+    interior, a hundred times less at ``Band(delta_in=0.01)``: the FVM's validity gives the figures). A valve that opens
+    and closes with the pressure across it is not built (decision 8's small Newton)."""
+
+    name = "valve"
+    version = "0.1.0"
+    port_law = ValveLaw.name
+    differentiability = GradientStatus.UNVERIFIED
+    gradient = _PORT_GRADIENT
+    references = ()
+    energy_class = EnergyClass.WORKLESS
+    setting_roles = {}
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class SharedDistal(_OpeningLaw):
+    """Two openings each through its own resistance, ``first`` and ``second`` (in the order ``surface=`` names them),
+    into one shared ``distal`` resistance to a distal pressure of zero: ``exp.attach(SharedDistal(first=...,
+    second=..., distal=...), medium=blood, surface=(tree.end_0, tree.end_1))``. Its pressures, ``p_k = R_k q_k + R_d
+    (q_1 + q_2)``, couple the two openings through the shared resistance (a block with off-diagonals, which the flow
+    solves whole each step). Dissipative: its block is symmetric and positive definite for positive settings."""
+
+    name = "shared_distal"
+    version = "0.1.0"
+    port_law = SharedDistalLaw.name
+    openings = SharedDistalLaw.openings
+    differentiability = GradientStatus.UNVERIFIED
+    gradient = _PORT_GRADIENT
+    references = ()
+    energy_class = EnergyClass.DISSIPATIVE
+    setting_roles = {"first": PHYSICAL, "second": PHYSICAL, "distal": PHYSICAL}
+
+    first: Annotated[Quantity, HydraulicResistance]
+    second: Annotated[Quantity, HydraulicResistance]
+    distal: Annotated[Quantity, HydraulicResistance]
+
+    @override
+    def definiteness(self) -> Definiteness | None:
+        return Definiteness.CONSTRUCTION
+
+    @override
+    def setting_problems(self, settings) -> list[str]:  # type: ignore[no-untyped-def]
+        found: list[str] = []
+        for name in ("first", "second", "distal"):
+            value = settings[name]
+            if not (isinstance(value, float) and value > 0.0):
+                found.append(f"{name} is {value!r}, not a value above zero")
+        return found
+
+
+__all__ = ["BodyForce", "Inflow", "SharedDistal", "Valve", "Windkessel"]
