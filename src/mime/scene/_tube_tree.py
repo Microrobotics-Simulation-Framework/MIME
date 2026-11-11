@@ -31,7 +31,7 @@ the segments join, so which tubes meet) is fixed. Tubes that do not share a poin
 legs) meet as well, found at the values it is made with; at a run's values the lumen counts the pairs that come within
 reach without meeting (``UnionDistance.unplanned``: a study that moves the radii or the points far enough), where its
 distance is not exact. Tubes that share no point and come within ``2 r`` across solid would be joined by the fillet
-(its closing fills the wall): a tree that does so is refused when planned (row #353), naming a smaller fillet or a
+(its closing fills the wall): a tree that does so is refused when planned, naming a smaller fillet or a
 thicker wall (:meth:`TubeTree.setting_problems`, from :meth:`TubeTree.wall_features`).
 
 **Tilted vessels** are its points turned (:meth:`TubeTree.turned`): nothing in it is aligned with an axis."""
@@ -242,7 +242,7 @@ class TubeTree(Geometry):
     # -- as a kind --------------------------------------------------------------------------------------------------
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
-        """Its rows, and the fillet's fusion refused (row #353): tubes that share no point with solid between them
+        """Its rows, and the fillet's fusion refused: tubes that share no point with solid between them
         thinner than the fillet's diameter, which its closing would fill, joining them."""
         found: list[str] = []
         for name, width in (("points", 3), ("radii", 2)):
@@ -283,7 +283,7 @@ class TubeTree(Geometry):
     @override
     def opening_names(self) -> Mapping[str, tuple[str, ...]]:
         """The lumen opens at its free ends (:meth:`end_names`), the root first: each an opening a flow's law may be
-        attached at (row #336)."""
+        attached at."""
         return {"lumen": tuple(name for name, _ in self.end_names())}
 
     @override

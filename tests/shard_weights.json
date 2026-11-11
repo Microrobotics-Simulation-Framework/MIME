@@ -133,7 +133,7 @@
   "tests/families/test_toy_family.py": 109,
   "tests/fields/test_coil_array_precision.py": 7,
   "tests/flow/test_field_suite.py": 103,
-  "tests/flow/test_fvm_curved_wall.py": 59,
+  "tests/flow/test_fvm_curved_wall.py": 70,
   "tests/flow/test_fvm_declaration.py": 31,
   "tests/flow/test_fvm_experiment.py": 412,
   "tests/flow/test_fvm_float32_floor.py": 65,

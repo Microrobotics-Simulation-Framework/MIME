@@ -412,7 +412,12 @@ class ImplicitFlowNode(MimeNode):
 
     def plan_size(self) -> int:
         """How many faces a tube tree's wall may run the union's candidates at (``mime.nodes.flow.fvm.plan_rung``): the
-        rung above the count the tree's values as built choose, made once per dtype."""
+        rung above the count the tree's values as built choose (:meth:`chosen_count`)."""
+        return plan_rung(self.chosen_count())
+
+    def chosen_count(self) -> int:
+        """How many faces the tree's values as built choose for the union's candidates (``ExactUnion.chosen``), made
+        once per dtype."""
         dtype = str(jnp.dtype(run_dtype()))
         cache = self._plan_sizes
         if dtype not in cache:
@@ -423,7 +428,7 @@ class ImplicitFlowNode(MimeNode):
             with cast(Any, jax).ensure_compile_time_eval():
                 points = jnp.concatenate([grid.face_points(k, run_dtype()).reshape(-1, 3) for k in range(3)])
                 chosen = tree.lumen().chosen(tree.parameters(), points, self.wall_floor(grid.spacing))
-                cache[dtype] = plan_rung(int(np.sum(np.asarray(chosen))))
+                cache[dtype] = int(np.sum(np.asarray(chosen)))
         return cache[dtype]
 
     def wall_floor(self, spacing: Any) -> Any:
