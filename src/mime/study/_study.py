@@ -940,7 +940,7 @@ def member_report(built: BuiltExperiment, point: Point) -> dict[str, Any]:
     group = built.report
     computed = point.computed if point.computed is not None else node_lines(built.graph, plans)
     report = report_of(plans, [line.node for line in group.nodes], (), group.external_inputs, group.warnings,
-                       point.physics_hash, group.lags, point.models, computed)
+                       point.physics_hash, group.lags, point.models, computed, solving=group.solving)
     return report_summary(report, run_layout(plans))
 
 

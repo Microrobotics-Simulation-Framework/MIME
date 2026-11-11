@@ -233,4 +233,8 @@ range is a study's point of its own, and a numerical setting, `dt`, the precisio
   A's locked sweep lie within tens of eps of each field's scale of their own runs (the tests hold them to the tolerance
   committed before they first ran); past step-out, where nearby trajectories separate, a study is read by its outputs (a
   mean spin, a bracket), not trajectory by trajectory.
-- Every bit-for-bit claim holds at one usable CPU count and one OpenBLAS thread count.
+- Every bit-for-bit claim holds at one usable CPU count and one OpenBLAS thread count; the comparisons themselves run on
+  one CPU model with one thread.
+- A multi-threaded run is judged on its own scale, not bit for bit: XLA's threads can move a small quantity's last bits
+  between two runs of one program (a ratio that is many orders of magnitude below its inputs differed in its last bits between two runs of the same build), so the
+  run is held to a tolerance set from the quantity's own scale.

@@ -29,11 +29,23 @@ from mime.core._node import jnp
 from mime.core.multibody._articulation import ROOT, Articulation
 from mime.core.multibody._kinematics import Model, articulation_of, body_poses, computing_dtype, constants, \
     joint_axes, placed_frame
+from mime.core.solves import SolveSite, register, solving
 
 type JointVector = Float[Array, " dofs"]
 
 #: ``jax.scipy.linalg.solve_triangular``, whose hints a strict checker reads as partly unknown.
 _solve_triangular: Any = cast(Any, jax.scipy.linalg).solve_triangular
+
+#: An articulated body's solves: the Cholesky factor of a joint-space matrix (the mass matrix, or the inverse dynamics' own
+#: matrix with the step's damping) and the two triangular solves that apply it. Not :func:`~mime.core.solves.dense_solve`:
+#: this is a Cholesky, not an LU, so moving it would change the arm's bits.
+ARTICULATED_SITE = register(SolveSite(
+    "articulated_cholesky", "dense", "mime.core.multibody._dynamics.cholesky_factor, cholesky_solve",
+    nodes=("DynamicArmNode",),
+    exempt="a Cholesky factor of the arm's joint-space matrix and two triangular solves, one system of a joint count "
+           "(an arm's, not a mesh's), which a step makes once and applies to its right-hand sides; not dense_solve's LU, "
+           "so moving it would change the arm's bits",
+    bound=12))
 
 
 def _skew(v: Array) -> Array:
@@ -175,10 +187,17 @@ def forward_dynamics(model: Model, q: JointVector, qd: JointVector, tau: JointVe
     if articulation.dofs == 0:
         return jnp.zeros(0, dtype=q.dtype)
     rhs = jnp.asarray(tau, dtype=q.dtype) - bias_forces(articulation, q, qd, gravity, link_forces)
-    factor = jnp.linalg.cholesky(mass_matrix(articulation, q))
+    factor = cholesky_factor(mass_matrix(articulation, q))
     return cholesky_solve(factor, rhs)
+
+
+def cholesky_factor(matrix: Array) -> Array:
+    """The lower Cholesky factor ``L`` of a symmetric positive-definite ``matrix``."""
+    with solving(ARTICULATED_SITE):
+        return jnp.linalg.cholesky(matrix)
 
 
 def cholesky_solve(lower: Array, rhs: Array) -> Array:
     """``x`` with ``L L^T x = rhs``, by two triangular solves."""
-    return _solve_triangular(lower.T, _solve_triangular(lower, rhs, lower=True), lower=False)
+    with solving(ARTICULATED_SITE):
+        return _solve_triangular(lower.T, _solve_triangular(lower, rhs, lower=True), lower=False)

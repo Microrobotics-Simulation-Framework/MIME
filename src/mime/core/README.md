@@ -11,6 +11,14 @@
 - **Quaternion helpers**, with a norm that is safe at zero rotation. The 0.2 version produced a NaN there.
 - **The switch functions** (`mime.core.switch`): every non-smooth operation a node's step evaluates, so that each one
   has a name. See [Switches](#switches).
+- **The solve sites** (`mime.core.solves`): every linear solve a node's step traces runs inside a JAX name scope that
+  changes no value, a shared function's (`projected_solve`, `reported_solve`, `dense_solve`, the Poisson transforms) or a
+  site registered with `register()` in the module that performs it (an exempt one gives its reason and a size bound).
+  `tests/saved/test_solve_walk.py` traces the step of every registered node kind in the switch scan's configurations
+  and fails on a solve outside a scope, one nested in a scope that does not own it, one over an exempt site's bound, and a
+  float32 value anywhere in a float64 run's step. It does not see a kind no configuration traces (that fails the
+  switch scan too), an `eigh`, a bare loop of matrix products, or a solve outside a step. A new solve goes through a shared
+  function or registers a site with its reason.
 - **Typed node state**: `NodeFields`, `typed_view` and `node_fields`, the static views by which a node types its
   state and inputs inside MADDENING's signatures. The convention is set out in
   [`nodes/README.md`](../nodes/README.md#typed-node-state).

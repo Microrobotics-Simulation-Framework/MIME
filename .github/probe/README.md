@@ -104,7 +104,15 @@ belongs on, from the compiled program and not from a guess:
 python .github/probe/mem_estimate.py --case module:function --path DIR --steps 10 --wrt node.leaf --output-json est.json
 ```
 
-It builds the case, then asks XLA for the compiled memory analysis of a chunk of `--steps` steps of the graph and, with
+**A raw JAX program** (a jitted function, not an experiment) is named with `--raw module:function` instead of `--case`; the
+factory returns `(function, arguments)` (arrays or `jax.ShapeDtypeStruct`s), and the estimate is XLA's compiled memory analysis
+of the function on the arguments' shapes (arguments, outputs, temporaries, less what aliases), on top of the resident set after
+the factory. The printed line says `estimate route: raw program`. Nothing is declared per arm beyond the line of
+`probe/estimate.txt` that names the factory. Its factor is the `raw_program` family's (mode `program`) in `mem_calibration.json`,
+calibrated on the cases the table holds for it, which are few (see the table's `scope`): a raw program unlike them is bounded
+no better than that, and the printed line says how many cases the factor rests on.
+
+For an experiment it builds the case, then asks XLA for the compiled memory analysis of a chunk of `--steps` steps of the graph and, with
 `--wrt`, of the reverse-mode derivative of that chunk (`jax.jit(f).lower(...).compile().memory_analysis()` on abstract
 shapes: nothing of the run is allocated; in reverse mode the larger of the checkpointed run and the plain chunk), adds the
 host's resident set after the build, the nodes' own `memory_estimate()` where they have one, and the fixed part of a process
