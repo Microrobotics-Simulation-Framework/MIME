@@ -370,7 +370,7 @@
     "gate_fa4_ellipse": "prediction missed: 3 of 200 clean draws read the major semi-axis 0.104 to 0.115 cells off the round tube's (predicted +-0.05, line 0.1); with the line moved to 0.15, control 200/200, clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42935478713); range 0.19 cells",
     "gate_fa5_stenosis": "held: +0.052, +0.059 cells (predicted +-0.1); control 200/200, clean 0/200; range 0.095 cells",
     "gate_fa6_bifurcation": "held: 0.0052 and 0.0055 from the reference 0.74700 (predicted 0.002 to 0.008); control 200/200, clean 0/200; range 0.016",
-    "reference_values": "the loop's split 0.747004 (in the predicted 0.7465 to 0.748), the stenosis's flux 0.0102679 (lubrication's 0.01032 at these cones: within 3 %, as predicted)",
+    "reference_values": "the loop's split 0.747004 (in the predicted 0.7465 to 0.748); the stenosis's flux 0.0102679, 3.2 % above lubrication's 0.0099501 at these cones (predicted within 3 %: just outside, lubrication's error at a slope of 0.25)",
     "gate_fa7_symmetric": "held: 0.0003 and 0.0009 (predicted <= 0.002); control 200/200, clean 0/200; range 0.0075",
     "gate_fa8_derivative": "failed on the first run (4.5 %, the union's reduction in reverse mode) and on 4 of 100 clean draws of the rates' (NaN, a discarded lane's singular step); after both fixes 3.9e-8 (predicted <= 1e-5), control 200/200, clean 0/100 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42935478713); range 1e-4",
     "gate_union_reverse": "held after both fixes: 0; the 1 % reverse-only plant 100/100, clean 0/50; the reduction put back 8/50 then 0/50 (not a control that fails every run)",
