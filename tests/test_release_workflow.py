@@ -309,8 +309,10 @@ class CiGh:
     def __call__(self, arguments: list[str]) -> str:
         if arguments[0] == "api" and "/actions/workflows/ci.yml/runs?" in arguments[1]:
             return json.dumps({"workflow_runs": self.runs})
-        if arguments[0] == "api" and (held := re.search(r"/actions/runs/(\d+)/jobs\?", arguments[1])):
-            return "\n".join(json.dumps(job) for job in self.jobs[int(held[1])])
+        if arguments[0] == "api" and (held := re.search(r"/actions/runs/(\d+)/jobs\?.*per_page=50&page=(\d+)", arguments[1])):
+            every = self.jobs[int(held[1])]
+            page = int(held[2])
+            return json.dumps({"total_count": len(every), "jobs": every[(page - 1) * 50:page * 50]})
         raise AssertionError(f"gh called with {arguments}")
 
 
@@ -664,3 +666,11 @@ def test_control_a_break_in_the_workflow_fails_naming_it(tmp_path, plant):
     copy.write_text(text.replace(old, new), encoding="utf-8")
     found = workflow_problems(copy, tmp_path / "scratch")
     assert any(problem in line for line in found), found
+
+
+def test_a_release_head_whose_run_holds_more_than_one_page_of_jobs_is_read_whole(capsys):
+    """The five lanes are on the second page of a run of 120 jobs: they are found, and a lane that failed there is named."""
+    filler = [{"name": f"shard {number}", "conclusion": "success"} for number in range(115)]
+    assert release.check_ci(REPOSITORY, COMMIT, CiGh([ci_run(5)], {5: filler + lanes()})) == 0
+    assert "green" in capsys.readouterr().out
+    assert release.check_ci(REPOSITORY, COMMIT, CiGh([ci_run(5)], {5: filler + lanes(**{"default_Python_3_12": "failure"})})) == 1

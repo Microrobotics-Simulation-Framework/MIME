@@ -234,6 +234,10 @@ class Region:
     path: str
     shape: str
     parameters: Mapping[str, Magnitude]
+    #: The surfaces the region may be opened at, as its geometry kind declares them (``Geometry.openings``), by their
+    #: paths in order along its declared axis (a straight tube's lumen: ``tube.start``, ``tube.end``); empty for a
+    #: region its kind declares no openings for.
+    openings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -271,6 +275,9 @@ class StepRule:
     #: The period the step must divide into a whole number of steps (s), where the dynamics' drive is periodic.
     period: float | None = None
     refusals: tuple[Problem, ...] = ()
+    #: Why a dynamics that should bound its step does not yet (``largest`` ``None``), said where ``dt="auto"`` is
+    #: refused for want of a bound (an open vessel's flow, whose step rule is not built).
+    unbounded: str = ""
 
 
 @dataclass(frozen=True)
@@ -815,9 +822,10 @@ class Dynamics(Entry):
     A dynamics with ``rungs`` has a ``rung`` setting with no default, as an interaction has; ``reserved_rungs`` maps a
     rung whose name and meaning are fixed but which is not built to the reason, and the build refuses it with that
     reason. ``limits`` states what its model leaves out, each line naming the anomaly that records it; its capability
-    record carries them. ``port`` names the port kind (``mime.vocabulary.port_kind``) its node's accepted inputs are
-    paired by when the energy ledger is attached, its node writing its step identity; empty for a dynamics the ledger
-    does not meter, with ``unmetered`` its reason. A dynamics a medium carries is a field kind, and declares itself
+    record carries them. ``port_kinds`` names the port kinds (``mime.vocabulary.port_kind``) its node's accepted inputs
+    are paired by when the energy ledger is attached, its node writing its step identity, each delivery by the one kind
+    whose deliveries name its interface (a flow's ``("fluid", "opening")``); empty for a dynamics the ledger does not
+    meter, with ``unmetered`` its reason. A dynamics a medium carries is a field kind, and declares itself
     under the solved-field contract (:meth:`field_declarations`), what it provides among it.
     """
 
@@ -825,7 +833,7 @@ class Dynamics(Entry):
     flags: ClassVar[frozenset[Capability]] = frozenset()
     publishes: ClassVar[Mapping[str, Port]] = _EMPTY
     accepts: ClassVar[Mapping[str, Port]] = _EMPTY
-    port: ClassVar[str] = ""
+    port_kinds: ClassVar[tuple[str, ...]] = ()
     unmetered: ClassVar[str] = ""
     registration_kinds: ClassVar[frozenset[str]] = frozenset()
     initial_state: ClassVar[Mapping[str, Dimension]] = MappingProxyType({})
@@ -870,6 +878,13 @@ class Dynamics(Entry):
         """What is wrong with the region a medium's dynamics fills (``None``: it fills none with a shape), as
         refusals: a solved field's domain holds only the regions its kind supports. The region reaches the build as
         ``ctx.region("medium")``."""
+        return []
+
+    def registration_problems(self, registrations: Sequence[ResolvedRegistration],
+                              region: Region | None) -> list[Problem]:
+        """What the laws registered with it rule out together, refused when planned (a flow whose openings' rows
+        have no solution). None by default."""
+        del registrations, region
         return []
 
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
@@ -1354,6 +1369,10 @@ class Geometry(Entry):
     directions: ClassVar[tuple[str, ...]] = ()
     patches: ClassVar[Mapping[str, str]] = MappingProxyType({})
     placement: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    #: The surfaces each region may be opened at (a medium's flow cut there, each an opening whose law is attached at
+    #: it), in order along the kind's declared axis, named by geometry and never by the role a law gives them (a
+    #: straight tube's lumen: ``("start", "end")``; a tree's: its root and its branch ends).
+    openings: ClassVar[Mapping[str, tuple[str, ...]]] = MappingProxyType({})
     native: ClassVar[Native | None] = None
     #: How far its :meth:`reach` may overstate its body's, as a share of its enclosing size: zero for a kind whose
     #: reach is its body's own; above zero for one whose reach is an envelope that holds its body (the screw's).

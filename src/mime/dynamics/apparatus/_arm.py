@@ -176,7 +176,7 @@ class Arm(ChainSegment):
     that takes its own description and publishes the same frame poses, so that mounts work unchanged."""
 
     name = "arm"
-    port = "joint"
+    port_kinds = ("joint",)
     version = "0.1.0"
     setting_roles = {
         "rung": DESIGN, "description": PHYSICAL, "initial_positions": DESIGN,

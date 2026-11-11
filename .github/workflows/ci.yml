@@ -424,7 +424,7 @@ jobs:
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest
         run: |
           set -o pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
@@ -444,7 +444,7 @@ jobs:
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest
         run: |
           set -eo pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
@@ -554,7 +554,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest
         run: |
           set -eo pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
@@ -564,7 +564,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest
         run: |
           set -o pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
@@ -681,7 +681,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest
         run: |
           set -eo pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
@@ -691,7 +691,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest
         run: |
           set -o pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \

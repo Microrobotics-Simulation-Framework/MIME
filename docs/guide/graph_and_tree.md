@@ -30,7 +30,7 @@ experiment tutorial_a0  (profile exploratory)
   structures
     tube  tube 0.1.0
       regions lumen, wall
-      surfaces inner_surface
+      surfaces end, inner_surface, start
       directions axis
   media
     water  fills tube.lumen
