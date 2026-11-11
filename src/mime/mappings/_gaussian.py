@@ -1,8 +1,9 @@
 """The exchange law's kernel as a MADDENING mapping kind on geometry edges (F3; the record's B8, body half point 2): a
 gather (``direction="gather"``: one face set of a field on the grid, in the grid's own shape, read at a partner's
 points) and a scatter (``"scatter"``: a value at each point, spread onto one face set as a force density), by the grid
-kind's weights (``MACGrid.exchange_stencil``) and either of the law's modes (``mime.nodes.flow.fvm._exchange``). Each
-edge reads its points from the partner's node (``geometry=(anchor, "points")``), in the grid's coordinates."""
+kind's weights (``MACGrid.exchange_stencil``) and any of the law's modes (``mime.nodes.flow.fvm._exchange``): the
+couple's (``"curl"``) reads and delivers a vector of three at each point. Each edge reads its points from the
+partner's node (``geometry=(anchor, "points")``), in the grid's coordinates."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from jax import Array
 from maddening.core.coupling.mapping import register_mapping
 from maddening.core.coupling.mapping_spec import MappingSpec
 
-from mime.nodes.flow.fvm._exchange import MODES, gather, scatter
+from mime.nodes.flow.fvm._exchange import MODES, VECTOR_MODES, gather, scatter
 from mime.nodes.flow.fvm._grid import MACGrid
 
 #: The kind's registered name: a Gaussian on the Cartesian MAC grid kind's face sets.
@@ -48,8 +49,9 @@ class GaussianMAC:
         return self.points if self.direction == "gather" else self.grid.cell_count
 
     def field_shapes(self) -> tuple[tuple[int, ...], tuple[int, ...]]:
-        """The grid's field in its own shape, the points' as one value each."""
-        grid, points = tuple(self.grid.cells), (self.points,)
+        """The grid's field in its own shape, the points' as one value each (three for the couple's mode)."""
+        grid = tuple(self.grid.cells)
+        points = (self.points, 3) if self.mode in VECTOR_MODES else (self.points,)
         return (grid, points) if self.direction == "gather" else (points, grid)
 
     def params_pytree(self) -> dict[str, Array]:

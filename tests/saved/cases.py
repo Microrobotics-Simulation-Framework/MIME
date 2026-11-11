@@ -85,10 +85,10 @@ def periodic_tube_flow(steady: bool = False, rk3: bool = False) -> Experiment:
     return experiment
 
 
-def point_body_flow() -> Experiment:
+def point_body_flow(self_history: str | None = None) -> Experiment:
     """A point sphere coupled two-way to the FVM (drag 0.5.0's stokes rung) in the periodic tube's steady drive, off the
     axis, slightly heavier than the water: IMEX Euler under Stokes, the exchange law's gathers and scatters on
-    MADDENING's geometry edges."""
+    MADDENING's geometry edges; its self-history the exact route, or ``self_history`` written."""
     from mime.dynamics import FVM, RigidInertial, Scheme
     from mime.interactions import BodyForce, Drag
     from mime.scene import PeriodicBox, Scene, Sphere, Tube, Z
@@ -110,7 +110,8 @@ def point_body_flow() -> Experiment:
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("bead.mass", kg(mass), reason="a bead 1.2 times water's density")
     experiment.declare("bead.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
-    experiment.attach(Drag.Stokes(), body="bead", medium="water")
+    experiment.attach(Drag.Stokes() if self_history is None else Drag.Stokes(self_history=self_history), body="bead",
+                      medium="water")
     experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
     return experiment
 

@@ -27,6 +27,8 @@ graph as node state, so the list holds the grid's workarounds too, until they ha
 
 The exchange law's kernel, `mime.gaussian_mac` (`_gaussian.py`): a gather or a scatter of one face set of the MAC grid
 by a Gaussian of a structural width, its weights the grid kind's (`MACGrid.exchange_stencil`), on a geometry edge that
-reads the partner's points; its first user is the point body (`Drag.Stokes`).
+reads the partner's points; in three modes, the kernel's average, its Laplacian and its antisymmetric dipole (a couple's
+reading, the fluid's rotation, and its delivery, a vector of three at each point); its first user is the point body
+(`Drag.Stokes`).
 
 Releases are explained in the [package manifest](../README.md#status).

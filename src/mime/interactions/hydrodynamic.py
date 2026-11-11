@@ -20,8 +20,8 @@ from mime.core import run_dtype, shape_named, switch
 from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
-from mime.nodes.hydro._point_drag import AVERAGES, FAXEN_FORCES, FLOOR, FORCES, HISTORY_LINE, LAPLACIANS, \
-    REYNOLDS_LINE, WALL_LINE, PointDragNode, free_space_margin
+from mime.nodes.hydro._point_drag import AVERAGES, COUPLE, FAXEN_FORCES, FLOOR, FORCES, HISTORY_LINE, LAPLACIANS, \
+    REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, ROUTES, WALL_LINE, PointDragNode, free_space_margins
 from mime.nodes.hydro._rft_drag import (
     COEFFICIENT_SETS,
     RFT_POINTS_PER_RADIUS,
@@ -95,6 +95,7 @@ from mime.walls import RESERVED
 
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
+    from mime.fields._solved import ExchangeFrame
 
 
 @register_setting_group
@@ -1402,13 +1403,18 @@ class Drag(UncoupledDrag):
     WIDTHS: ClassVar[tuple[float, ...]] = (1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
     setting_roles = {
         **UncoupledDrag.setting_roles,
-        "one_way": convention(PHYSICAL, "two-way: on the stokes rung the drag's reaction is scattered back onto the "
-                                        "medium's grid; one_way=True is the declared approximation, its reaction not "
-                                        "delivered"),
-        "width": convention(NUMERICAL, "on the stokes rung, none: the exchange kernel's width the narrowest of the "
-                                       "ladder (WIDTHS) at or above the rule's least width whose coupled one-step margin "
-                                       "clears the floor at the run's values (the validity line states the rule; the "
-                                       "build reports the width)"),
+        "one_way": convention(PHYSICAL, "two-way: on the stokes rung the drag's and the couple's reactions are "
+                                        "scattered back onto the medium's grid; one_way=True is the declared "
+                                        "approximation, its reactions not delivered"),
+        "kernel_width": convention(NUMERICAL, "on the stokes rung, none: the exchange kernel's width the narrowest of "
+                                              "the ladder (WIDTHS) at or above the rule's least width whose coupled "
+                                              "one-step margins clear the floor at the run's values (the validity line "
+                                              "states the rule; the build reports the width)"),
+        "self_history": convention(NUMERICAL, "on the stokes rung, 'exact': the body's own free-box flow advanced by "
+                                              "the grid's operator, which the rate terms' reading removes; "
+                                              "self_history='modes' the declared opt-in, fitted decay modes, cheaper "
+                                              "for many bodies, its gate the swap test against the exact route (exact "
+                                              "by default, the cheaper approximation declared)"),
         "near_field_share": convention(
             NUMERICAL, "on the mrs rung, every quadrature point of a source, the whole share: the share that holds each "
                        "registered hull kind's conformance case within the cross-kernel's reach (measured: at a "
@@ -1511,13 +1517,19 @@ class Drag(UncoupledDrag):
                           "the graded one's (on the gates' sphere it climbs towards the uniform sampling's as the "
                           "patch's edge nears the wall)",
              rung="mrs", group=False, written=("grading", "contact")),
-        Flag("below_floor", f"the point body's coupled one-step margin (M0 + M_c - M_inf)/M0 at the step's values was "
-                            f"under the floor of {FLOOR:g}, below which its one-step resistance grows as one over the "
-                            f"margin away from the exact sphere's (the build refuses a start below it: a study's "
-                            f"values can move it)", rung="stokes"),
-        Flag("history_flagged", f"the fitted self-history (the body's own field, which the rate terms' reading removes) "
-                                f"missed the free box's response by more than {HISTORY_LINE:g} of the one-step "
-                                f"response over its fitted range", rung="stokes"),
+        Flag("below_floor", f"the point body's coupled one-step margin (M0 + M_c - M_inf)/M0, the force's or the "
+                            f"couple's, at the step's values was under the floor of {FLOOR:g}, below which its one-step "
+                            f"resistance grows as one over the margin away from the exact sphere's (the build refuses a "
+                            f"start below it: a study's values can move it)", rung="stokes"),
+        Flag("history_flagged", f"with self_history='modes' (route 1), the fitted self-history (the body's own field, "
+                                f"which the rate terms' reading removes) missed the free box's response by more than "
+                                f"{HISTORY_LINE:g} of the one-step response over its fitted range, or the run went past "
+                                f"the range's last step (its span, in the build report), where the fit is unjudged",
+             rung="stokes"),
+        Flag("rate_feedback", f"the Maxey-Riley rate terms' load reversed its sign and grew in {RINGING_STEPS} steps in "
+                              f"a row: the lagged loop through what remains of the body's own field in the reading "
+                              f"(a wall's reflection of it) has a gain above one, as for a light body at a small step; "
+                              f"a larger step, a denser body or one_way=True are the routes", rung="stokes"),
         Flag("near_wall", f"the point body lay within {WALL_LINE:g} of its radii of the vessel's wall, where the point "
                           f"model reads -5.0 % at a = h and -8.9 % at a = 2h (the window spike, re-read): the MRS near "
                           f"field or a resolved body is the route", rung="stokes"),
@@ -1546,23 +1558,43 @@ class Drag(UncoupledDrag):
                               "rounding", rung="mrs", group=False, warns=True, written=("lubrication",)),
     )
     validity = (
-        *(line for line in UncoupledDrag.validity),
+        *(line for line in UncoupledDrag.validity if not line.startswith("each body's drag is computed alone")),
+        "surrogate and rft: each body's drag is computed alone, from its own pose and the medium's wall: a second body "
+        "in the same medium does not change it (the build reports the bodies that share a medium); on the mrs rung "
+        "bodies in one medium interact through their joint near field, on the stokes rung through the solved flow "
+        "(each rung's own lines)",
         f"stokes: a point sphere in a flow solved on a grid, coupled through the exchange law (a Gaussian kernel of "
-        f"width sigma, at least max(h, a/1.7), widened on {list(WIDTHS)} cells until the coupled one-step margin clears "
-        f"the floor {FLOOR:g} at the run's values: refused below it). Its one-step resistance against the exact "
-        f"unsteady Stokes sphere's (drag, Basset and added mass) was within -0.42..+0.61 above the floor over r = nu "
-        f"dt/h^2 of 0.03 to 30 [measured, free box, sigma = h and 1.5h]; the -0.42 at small steps is the Basset force, "
-        f"missing whatever the margin, which a Basset validity line covers: a sqrt(omega/nu) from the drive's "
-        f"frequency against Stokes drag, (a/R) alpha at Womersley alpha. The drag reads the flow with the kernel's "
-        f"steady self-field removed (the grid's undeveloped field acting as a history term); the fluid-acceleration "
-        f"force and the added mass read the flow without the body, the kernel's own field removed by its fitted "
-        f"free-box impulse response",
+        f"width sigma, at least max(h, a/1.7), widened on {list(WIDTHS)} cells until the coupled one-step margins, the "
+        f"force's and the couple's, clear the floor {FLOOR:g} at the run's values: refused below it). The floor is the "
+        f"one definiteness rule's for the affine (one-pass) scheme, whose one-step resistance was within -0.42..+0.61 "
+        f"of the exact unsteady Stokes sphere's (drag, Basset and added mass) above it over r = nu dt/h^2 of 0.03 to 30 "
+        f"[measured, free box, sigma = h and 1.5h; that scheme is a later PR's]. The lagged scheme this rung steps by "
+        f"reads its own field a step late, so its first step resists R0 (1 + lambda^2/9) against the exact R0 (1 + "
+        f"lambda + lambda^2/9), lambda = a/sqrt(nu dt): down to -0.60 at lambda = 3 [derived]; from rest under a step "
+        f"force at bodies just above the floor its largest error was 0.06 to 0.28 of the terminal speed, 0.01 to 0.02 "
+        f"at the end [measured by the rung's refuting review, a of h to 4h, r 0.03 to 3, near-massless and neutral]: for this "
+        f"scheme the floor is forward-compatible, not an accuracy bound. The missing lambda is the Basset force, which "
+        f"no memory law holds: the build reports a sqrt(omega/nu) of a drive's frequency against the line 0.3 (against "
+        f"Stokes drag the history force scales as it), and sees no transient and no body driven by a field in still "
+        f"fluid. The drag and the couple read the flow with the kernel's steady self-field removed (the grid's "
+        f"undeveloped field acting as a history term); the fluid-acceleration force and the added mass read the flow "
+        f"without the body, the body's own free-box flow removed exactly (route 2: advanced by the grid's operator, "
+        f"Hasimoto's image term relaxed at the box's slowest rate), or by fitted modes with self_history='modes' "
+        f"(route 1, its residual and span reported and flagged); under the field's steady limit the own field is the "
+        f"steady response to last step's force, exactly, and the margins are one",
+        "stokes: the couple: the fluid's rotation read by the kernel's antisymmetric dipole (its derivative, about the "
+        "sampled weights' own mean, so a couple carries no net force and a unit couple is one) and the couple "
+        "scattered back by its transpose, two-way, the body's rotation resisted by 8 pi mu a^3 (Faxén's second law); "
+        "no torque from the fluid's rotational acceleration",
         f"stokes: near a wall the point model holds to {WALL_LINE:g} radius (flagged within it); the particle "
         f"Reynolds number by the slip is flagged above {REYNOLDS_LINE:g}; point bodies in one medium interact through "
         f"its solved flow only, each one's scattered reaction read by the others a step later (lagged: no joint step "
         f"for several bodies), resolved to the kernel's width, and where several share a medium the build reports each "
         f"one's nearest starting separation in radii and their volume fraction in the grid's box (reported, not "
-        f"judged: no line on either is measured)",
+        f"judged). Two bodies' interaction against Rotne and Prager's far field in a free box (a = h = sigma, 4 and 8 "
+        f"radii apart, along and across their line of centres) was within 0.2 to 2.1 % of the cross term at 48 cells "
+        f"and 0.2 to 1.2 % at 64 [measured by the rung's refuting review]; the exact two-sphere solution's nearer terms (about "
+        f"15/(4 rho^4) along the line, 1.5 % of one body's speed at 4 radii) no point body carries",
         "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
         "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
@@ -1632,7 +1664,8 @@ class Drag(UncoupledDrag):
     near_field_dense_unknowns: int | None = None
     near_field_tolerance: float | None = None
     one_way: bool | None = None
-    width: float | None = None
+    kernel_width: float | None = None
+    self_history: str | None = None
 
     @classmethod
     def Stokes(cls, **settings: Any) -> Self:  # noqa: N802 - a rung's alias reads as a class
@@ -1665,7 +1698,8 @@ class Drag(UncoupledDrag):
                       for name in ("grading", "contact", "contact_gap") if getattr(self, name) is not None]
         if self.rung != "stokes":
             found += [f"{name}= is a setting of the stokes rung's exchange with a grid, and the {self.rung} rung "
-                      f"reads none" for name in ("one_way", "width") if getattr(self, name) is not None]
+                      f"reads none" for name in ("one_way", "kernel_width", "self_history")
+                      if getattr(self, name) is not None]
         else:
             found += [f"{name}= is a setting of another rung, and the stokes rung reads none"
                       for name in ("weights", "lubrication", "spacing", "blob", "patches", "wall_kind",
@@ -1675,17 +1709,21 @@ class Drag(UncoupledDrag):
             if written_way is not None and not isinstance(written_way, bool):
                 found.append(f"one_way={written_way!r} is a switch: write one_way=True for the declared one-way "
                              f"approximation, or leave it out for the two-way exchange")
-            width = cast(object, self.width)
+            width = cast(object, self.kernel_width)
             if width is not None and (isinstance(width, bool) or not isinstance(width, int | float)
                                       or not 1.0 <= float(width) <= self.WIDTHS[-1]):
-                found.append(f"width={width!r} is the exchange kernel's width in the grid's cells, a number from 1 to "
-                             f"{self.WIDTHS[-1]:g}: write width=1.5, or leave it out for the narrowest that clears "
-                             f"the floor")
+                found.append(f"kernel_width={width!r} is the exchange kernel's width in the grid's cells, a number from "
+                             f"1 to {self.WIDTHS[-1]:g}: write kernel_width=1.5, or leave it out for the narrowest that "
+                             f"clears the floor")
+            route = cast(object, self.self_history)
+            if route is not None and route not in ROUTES:
+                found.append(f"self_history={route!r} is one of {list(ROUTES)}: leave it out for the exact route, or "
+                             f"write self_history='modes' for the fitted one")
         return found
 
     def _stokes_plan(self, ctx: PlanContext) -> Plan:
-        """The stokes rung's plan: the body's pose and twist and the medium's face sets read, the drag and its
-        Maxey-Riley part delivered to the body, the scatter to the medium's exchange (unless one-way), the body
+        """The stokes rung's plan: the body's pose and twist and the medium's face sets read, the drag, the couple and
+        their Maxey-Riley part delivered to the body, the scatters to the medium's exchange (unless one-way), the body
         registered with the medium's field as an exchange partner."""
         problems = self._stokes_problems(ctx)
         delivers = {"resistance": Delivery("body", RESISTANCE.name),
@@ -1703,8 +1741,9 @@ class Drag(UncoupledDrag):
                     problems=tuple(problems))
 
     def _stokes_problems(self, ctx: PlanContext) -> list[Problem]:
-        """A body whose hull is not one sphere at its centre, and a medium whose flow takes no exchange."""
-        body, medium = ctx.bindings["body"], ctx.bindings["medium"]
+        """A body whose hull is not one sphere at its centre (a medium whose flow takes no exchange is refused by the
+        rung's support row, an open vessel by its flow)."""
+        body = ctx.bindings["body"]
         found: list[Problem] = []
         hull = ctx.geometry(of="body")
         centred = hull is not None and math.dist(hull.centre, (0.0, 0.0, 0.0)) <= 1e-12 * max(
@@ -1713,20 +1752,28 @@ class Drag(UncoupledDrag):
             held = f"{body} has no hull" if hull is None else f"its hull is {hull.label()}"
             found.append(Problem("drag.stokes-sphere", f"the stokes rung is a point sphere's law, and {held}",
                                  f"give {body} one Sphere part at its origin, or use Drag.MRS(...) for its shape"))
-        del medium  # a medium whose flow takes no exchange is refused by the rung's support row (support.unsupported)
         return found
+
+    @staticmethod
+    def stokes_scheme(frame: ExchangeFrame, values: Mapping[str, Magnitude], dt: float) -> str:
+        """The scheme the medium's flow steps by at these values (its written one, else the FVM's choice)."""
+        from mime.dynamics.flow._fvm import chosen_scheme
+
+        if frame.scheme is not None:
+            return frame.scheme
+        viscosity, density = float(cast(float, values["viscosity"])), float(cast(float, values["density"]))
+        return chosen_scheme(None, viscosity / density, frame.spacing, dt)
 
     @override
     def value_problems(self, values: Mapping[str, Magnitude], ctx: PlanContext) -> list[Problem]:
-        """The stokes rung's coupled one-step margin at the run's values: refused where no width on the ladder clears
-        the floor (or the written one does not)."""
+        """The stokes rung at the run's values: a flow stepped by RK3; a body the width rule puts past the widest kernel
+        (``drag.stokes-size``); a body whose coupled one-step margins stay under the floor at every allowed width
+        (``drag.stokes-floor``), with the remedies that raise them, measured at these values."""
         if self.rung != "stokes" or "medium" not in ctx.exchanges or ctx.geometry(of="body") is None:
             return []
-        from mime.dynamics.flow._fvm import takes_exchange
-
         frame = ctx.exchanges["medium"]
-        if not takes_exchange(frame, float(cast(float, values["viscosity"])), float(cast(float, values["density"])),
-                              ctx.dt):
+        scheme = self.stokes_scheme(frame, values, ctx.dt)
+        if scheme not in ("imex_euler", "steady"):
             return [Problem("drag.stokes-scheme",
                             f"medium {ctx.bindings['medium']!r}'s flow steps with RK3 at this step, whose explicit "
                             f"stages take no exchange deliveries yet",
@@ -1736,40 +1783,102 @@ class Drag(UncoupledDrag):
         if chosen is not None:
             return []
         body = ctx.bindings["body"]
+        hull = ctx.geometry(of="body")
+        assert hull is not None
+        radius = float(hull.kind.enclosing_radius(hull.settings))
+        h, widest = frame.spacing, self.WIDTHS[-1]
+        across = self.lumen_across(ctx)
+        cells = self.clearing_cells(ctx, values, radius, across) if across is not None else None
+        named = str(cells) if cells is not None else "..."
+        note = " plans it at this step" if cells is not None else " (none down to five cells across clears it here)"
+        if self.kernel_width is None and radius / (1.7 * h) > widest + 1e-12:
+            return [Problem("drag.stokes-size",
+                            f"{body}'s radius is {radius / h:.3g} cells, past the {1.7 * widest:g} cells the widest "
+                            f"kernel ({widest:g} cells) admits under the rule sigma >= a/1.7: no kernel on the ladder "
+                            f"is wide enough for it (a finer grid makes it larger in cells, and a larger step changes "
+                            f"nothing of it)",
+                            f"a coarser grid, FVM(cells_across={named}){note}; or a resolved body (Drag.Penalty) or "
+                            f"the MRS near field (Drag.MRS) for a body this large against the grid")]
+        larger = self.clearing_step(ctx, values, radius, tried[-1])
+        step = f"{larger:.3g} s clears it at {tried[-1]:g} cells" if larger is not None else \
+            f"... (no step up to {self.STEP_FACTORS[-1]:g} times this one clears it)"
         return [Problem("drag.stokes-floor",
                         f"{body}'s coupled one-step margin (M0 + M_c - M_inf)/M0 stays under the floor {FLOOR:g} at "
                         f"every kernel width tried ({', '.join(f'{w:g}' for w in tried)} cells: {margin:.3g} at the "
                         f"widest): below it the point body's one-step resistance grows as one over the margin away "
                         f"from the exact sphere's",
-                        "a finer grid (FVM(cells_across=...)) or a larger step (dt=...), both of which raise the "
-                        "margin; or a resolved body (Drag.Penalty) or the MRS near field for a body this large against "
-                        "the grid")]
+                        f"a larger step, dt={step} (a larger step raises the margin, a finer grid lowers it); a coarser "
+                        f"grid, FVM(cells_across={named}){note}; or a resolved body (Drag.Penalty) or the MRS near "
+                        f"field (Drag.MRS)")]
+
+    #: The multiples of the run's step the ``drag.stokes-floor`` refusal tries for the step it names.
+    STEP_FACTORS: ClassVar[tuple[float, ...]] = (2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0)
+
+    @staticmethod
+    def lumen_across(ctx: PlanContext) -> float | None:
+        """The lumen's diameter of the medium's tube (m), where it fills one."""
+        region = ctx.region("medium")
+        held = region.parameters.get("radius") if region is not None else None
+        return 2.0 * float(held) if isinstance(held, int | float) else None
+
+    def clearing_cells(self, ctx: PlanContext, values: Mapping[str, Magnitude], radius: float,
+                       across: float) -> int | None:
+        """The most cells across the lumen, fewer than the grid's, at which a width on the ladder clears the floor at
+        the run's step (the coarser grid a refusal names), or ``None`` down to five."""
+        viscosity, density = float(cast(float, values["viscosity"])), float(cast(float, values["density"]))
+        steady = self.stokes_scheme(ctx.exchanges["medium"], values, ctx.dt) == "steady"
+        cells = math.floor(across / ctx.exchanges["medium"].spacing + 1e-9) - 1
+        while cells >= 5:
+            h = across / cells
+            least = max(1.0, radius / (1.7 * h))
+            for width in (w for w in self.WIDTHS if w >= least - 1e-12):
+                if min(free_space_margins(radius, viscosity, density, h, width, ctx.dt, steady)) >= FLOOR:
+                    return cells
+            cells = min(cells - 1, math.floor(cells * 0.85))
+        return None
+
+    def clearing_step(self, ctx: PlanContext, values: Mapping[str, Magnitude], radius: float,
+                      width: float) -> float | None:
+        """The smallest multiple of the run's step (:data:`STEP_FACTORS`) at which the kernel of ``width`` cells clears
+        the floor, or ``None``."""
+        frame = ctx.exchanges["medium"]
+        viscosity, density = float(cast(float, values["viscosity"])), float(cast(float, values["density"]))
+        for factor in self.STEP_FACTORS:
+            if min(free_space_margins(radius, viscosity, density, frame.spacing, width, ctx.dt * factor)) >= FLOOR:
+                return ctx.dt * factor
+        return None
 
     @override
-    def judged_in_sum(self) -> bool:
-        """The stokes rung's drag: the flow carries the body (the drag's work on the body positive), and the fluid's
-        side pays for it (two-way: the dissipation is the sum of both receivers' rows) or the field supplies it (one
-        way, the reaction not delivered), so no one receiver's row is judged a gift."""
-        return self.rung == "stokes"
+    def judged_in_sum(self) -> str:
+        """The stokes rung's drag: the flow carries the body (the drag's work on the body is positive there) and the
+        fluid's side pays for it (two-way) or the field supplies it (one way), so no one receiver's row is judged a
+        gift; its node judges the law's power at one velocity each step instead (``cluster_gift_steps``)."""
+        if self.rung != "stokes":
+            return ""
+        return ("its sign judged by its node each step, not on this row (the flow carries the body): the law's power "
+                "at one velocity, its load on the body at the body's solved twist and its reaction against the reading "
+                "it was solved with, never above its rounding floor (cluster_gift_steps)")
 
     def stokes_width(self, ctx: PlanContext | BuildContext, values: Mapping[str, Magnitude]) -> tuple[
             float | None, float, tuple[float, ...]]:
         """The kernel's width in cells the stokes rung takes: the written one, or the narrowest on :data:`WIDTHS` at
-        or above max(1, a/(1.7 h)) whose free-space coupled one-step margin clears the floor at ``values``; with the
-        margin read there and the widths tried. ``None`` where none clears it."""
+        or above max(1, a/(1.7 h)) whose free-space coupled one-step margins (the force's and the couple's) clear the
+        floor at ``values``; with the least margin read there and the widths tried. ``None`` where none clears it."""
         frame = ctx.exchanges["medium"]
         hull = ctx.geometry(of="body")
         assert hull is not None
         radius = float(hull.kind.enclosing_radius(hull.settings))
         viscosity, density = float(cast(float, values["viscosity"])), float(cast(float, values["density"]))
+        dt = ctx.dt if isinstance(ctx, PlanContext) else ctx.timestep
+        steady = self.stokes_scheme(frame, values, dt) == "steady"
         least = max(1.0, radius / (1.7 * frame.spacing))
-        ladder = (float(self.width),) if self.width is not None else tuple(
+        ladder = (float(self.kernel_width),) if self.kernel_width is not None else tuple(
             w for w in self.WIDTHS if w >= least - 1e-12) or (self.WIDTHS[-1],)
         margin = float("nan")
         tried: list[float] = []
         for width in ladder:
             tried.append(width)
-            margin = free_space_margin(radius, viscosity, density, frame.spacing, width, ctx.dt)
+            margin = min(free_space_margins(radius, viscosity, density, frame.spacing, width, dt, steady))
             if margin >= FLOOR and width >= least - 1e-12:
                 return width, margin, tuple(tried)
         return None, margin, tuple(tried)
@@ -1906,8 +2015,9 @@ class Drag(UncoupledDrag):
         super().build(ctx, b)
 
     def _build_stokes(self, ctx: BuildContext, b: InteractionBuilder) -> None:
-        """The point body's node, its reads of the body, the exchange law's gathers (two a face set: the kernel's
-        average and its Laplacian) and scatters (the drag's reaction and its Faxén part), all at the points it holds."""
+        """The point body's node, its reads of the body, the exchange law's gathers (three a face set: the kernel's
+        average, its Laplacian and its dipole's rotation) and scatters (the drag's reaction, its Faxén part and the
+        couple's), all at the point it holds."""
         from mime.mappings import gaussian_mac
 
         frame = ctx.exchanges["medium"]
@@ -1925,7 +2035,8 @@ class Drag(UncoupledDrag):
             ctx.node_name(), ctx.timestep, radius=float(hull.kind.enclosing_radius(hull.settings)),
             viscosity=values["viscosity"], density=values["density"], spacing=frame.spacing, width_cells=width,
             origin=tuple(-c for c in frame.origin), initial_points=cast(tuple[float, ...], start),
-            one_way=bool(self.one_way),
+            one_way=bool(self.one_way), scheme=self.stokes_scheme(frame, values, ctx.timestep),
+            self_history=self.self_history or ROUTES[0], flow_cells=math.prod(frame.cells),
             drive_frequency=ctx.frequencies.get("medium", 0.0), **cast(dict[str, Any], vessel)))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(b.read("twist"), into=node["twist"])
@@ -1939,11 +2050,15 @@ class Drag(UncoupledDrag):
                      mapping=kernel(component, "average", "gather"), points="points")
             b.gather("faces", frame.faces[component], into=node[LAPLACIANS[component]],
                      mapping=kernel(component, "laplacian", "gather"), points="points", units="1/(m s)")
+            b.gather("faces", frame.faces[component], into=node[ROTATIONS[component]],
+                     mapping=kernel(component, "curl", "gather"), points="points", units="rad/s")
             if not self.one_way:
                 b.scatter(node[FORCES[component]], into=f"exchange_{axis}",
                           mapping=kernel(component, "average", "scatter"), points="points")
                 b.scatter(node[FAXEN_FORCES[component]], into=f"exchange_{axis}",
                           mapping=kernel(component, "laplacian", "scatter"), points="points")
+                b.scatter(node[COUPLE], into=f"exchange_{axis}", mapping=kernel(component, "curl", "scatter"),
+                          points="points")
         b.connect(node["resistance"], into=b.target("resistance"))
         b.connect(node["background_load"], into=b.target("background_load"))
         b.connect(node["added_resistance"], into=b.target("added_resistance"), part="maxey_riley")

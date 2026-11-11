@@ -17,14 +17,15 @@ from mime.core import run_dtype
 from mime.dynamics import FVM, RigidInertial
 from mime.dynamics.flow._fvm import Scheme
 from mime.experiment import Experiment
-from mime.interactions import Drag
+from mime.interactions import Drag, Inflow, Windkessel
 from mime.interactions.flow import BodyForce
 from mime.mappings import gaussian_mac
 from mime.nodes.flow.fvm import ImplicitFlowNode
-from mime.nodes.hydro._point_drag import AVERAGES, FAXEN_FORCES, FORCES, LAPLACIANS, PointDragNode
-from mime.scene import Capsule, PeriodicBox, Scene, Sphere, Tube, Z
+from mime.nodes.hydro._point_drag import AVERAGES, COUPLE, FAXEN_FORCES, FORCES, LAPLACIANS, ROTATIONS, PointDragNode
+from mime.scene import Capsule, PeriodicBox, Scene, Sphere, Tube, VesselRegion, Z
 from mime.things import Body, Medium, Part, State, Structure
-from mime.units import Pa_s, kg, kg_m2, kg_per_m3, m_per_s, m_per_s2, mm, rad_per_s, s, um
+from mime.units import Pa_s, Pa_s_per_m3, kg, kg_m2, kg_per_m3, m3_per_Pa, m_per_s, m_per_s2, mL_per_s, mm, rad_per_s, s, \
+    um
 
 WATER_MU, WATER_RHO = 1e-3, 1e3
 TUBE_RADIUS = 0.5e-3
@@ -39,11 +40,11 @@ def seed() -> int:
     return int(os.environ.get("DETECTION_SEED", "0"))
 
 
-def body_step(mass: float, resistance: Any, load: Any, velocity: Any, dt: float) -> Any:
-    """The rigid body's translational step, as ``RigidInertialNode.velocities`` takes it: ``V + (M/dt + R)^-1 (load -
-    R V)``."""
-    return velocity + jnp.linalg.solve(mass / dt * jnp.eye(3) + resistance[:3, :3], load[:3] - resistance[:3, :3] @
-                                       velocity)
+def body_step(mass: float, resistance: Any, load: Any, velocity: Any, dt: float, rows: slice = slice(0, 3)) -> Any:
+    """The rigid body's step of one block (translation by default; ``rows=slice(3, 6)`` the rotation, ``mass`` then
+    the moment of inertia), as ``RigidInertialNode.velocities`` takes it: ``V + (M/dt + R)^-1 (load - R V)``."""
+    block = resistance[rows, rows]
+    return velocity + jnp.linalg.solve(mass / dt * jnp.eye(3) + block, load[rows] - block @ velocity)
 
 
 class FreeBox:
@@ -52,7 +53,8 @@ class FreeBox:
     counter-force holds the box's net force at zero (the box's mean is no unbounded fluid's)."""
 
     def __init__(self, cells: int, radius_cells: float, dt_r: float, *, mass_ratio: float = 1.0,
-                 force: float = 0.0, faxen: bool = True, maxey_riley: bool = True, width: float = 1.0,
+                 force: float = 0.0, torque: float = 0.0, faxen: bool = True, maxey_riley: bool = True,
+                 width: float = 1.0, self_history: str = "exact", one_way: bool = False,
                  rate_reading: Callable[..., Any] | None = None) -> None:
         h = 1e-5
         self.h, self.cells = h, cells
@@ -67,18 +69,21 @@ class FreeBox:
         start = (side / 2 + 0.37 * h, side / 2 + 0.21 * h, side / 2 + 0.11 * h)
         self.drag = PointDragNode("drag", self.dt, radius=self.radius, viscosity=WATER_MU, density=WATER_RHO,
                                   spacing=h, width_cells=width, origin=(0.0, 0.0, 0.0), initial_points=start,
-                                  faxen=faxen,
-                                  maxey_riley=maxey_riley)
+                                  faxen=faxen, maxey_riley=maxey_riley, self_history=self_history, one_way=one_way)
         self.mass = mass_ratio * WATER_RHO * 4.0 / 3.0 * math.pi * self.radius ** 3
-        self.force = force
+        self.moment = 0.4 * self.mass * self.radius ** 2
+        self.force, self.torque = force, torque
         self.position = jnp.asarray(start, dtype=run_dtype())
         self.velocity = jnp.zeros(3, dtype=run_dtype())
+        self.spin = jnp.zeros(3, dtype=run_dtype())
         self.flow_state = self.flow.initial_state()
         self.drag_state = self.drag.initial_state()
         self.kernels = {(c, mode, direction): gaussian_mac(nx=cells, ny=cells, nz=cells, spacing=h, width_cells=width,
                                                            component=c, mode=mode, direction=direction, count=1)
-                        for c in range(3) for mode in ("average", "laplacian") for direction in ("gather", "scatter")}
+                        for c in range(3) for mode in ("average", "laplacian", "curl")
+                        for direction in ("gather", "scatter")}
         self.rate_reading = rate_reading
+        self.gathered: dict[str, Any] = {}
 
     def step(self) -> None:
         dtype = run_dtype()
@@ -88,10 +93,12 @@ class FreeBox:
             field = self.flow_state[f"velocity_{'xyz'[c]}"]
             gathered[average] = self.kernels[(c, "average", "gather")].apply(field, geom=points)
             gathered[laplacian] = self.kernels[(c, "laplacian", "gather")].apply(field, geom=points)
+            gathered[ROTATIONS[c]] = self.kernels[(c, "curl", "gather")].apply(field, geom=points)
         pose = jnp.concatenate([self.position, jnp.asarray([1.0, 0.0, 0.0, 0.0], dtype=dtype)])
-        twist = jnp.concatenate([self.velocity, jnp.zeros(3, dtype=dtype)])
+        twist = jnp.concatenate([self.velocity, self.spin])
         self.drag_state = self.drag.update(dict(self.drag_state), {"pose": pose, "twist": twist, **gathered},
                                            self.dt)
+        self.gathered = gathered
         if self.rate_reading is not None:
             self.drag_state = self.rate_reading(self, gathered)
         points = jnp.asarray(self.drag_state["points"], dtype=dtype)
@@ -100,8 +107,10 @@ class FreeBox:
         for c, axis in enumerate("xyz"):
             force = jnp.asarray(self.drag_state[FORCES[c]], dtype=dtype)
             faxen = jnp.asarray(self.drag_state[FAXEN_FORCES[c]], dtype=dtype)
+            couple = jnp.asarray(self.drag_state[COUPLE], dtype=dtype)
             exchange[f"exchange_{axis}"] = (self.kernels[(c, "average", "scatter")].apply(force, geom=points)
-                                            + self.kernels[(c, "laplacian", "scatter")].apply(faxen, geom=points))
+                                            + self.kernels[(c, "laplacian", "scatter")].apply(faxen, geom=points)
+                                            + self.kernels[(c, "curl", "scatter")].apply(couple, geom=points))
             total = total.at[c].set(force[0])
         volume = (self.cells * self.h) ** 3
         counter = -total / (WATER_RHO * volume)
@@ -111,22 +120,26 @@ class FreeBox:
         resistance = (jnp.asarray(self.drag_state["resistance"], dtype=dtype)
                       + jnp.asarray(self.drag_state["added_resistance"], dtype=dtype))
         self.velocity = body_step(self.mass, resistance, load, self.velocity, self.dt)
+        self.spin = body_step(self.moment, resistance, load.at[5].add(self.torque), self.spin, self.dt, slice(3, 6))
         self.position = self.position + self.dt * self.velocity
 
 
 def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 2e-4, cells_across: int = 16,
                      drive: float = 1.0, mass_ratio: float = 1.0, one_way: bool = False, steady: bool = False,
-                     width: float | None = None, scheme: str = "", flow: bool = True,
-                     hull: str = "sphere", viscosity: float = WATER_MU) -> Experiment:
+                     kernel_width: float | None = None, scheme: str = "", flow: bool = True,
+                     hull: str = "sphere", viscosity: float = WATER_MU, self_history: str | None = None,
+                     opened: bool = False) -> Experiment:
     """A point sphere of ``radius`` (m) ``offset`` (m) off a straight tube's axis, in water whose flow is the FVM
     (Stokes, IMEX Euler or its steady limit, or ``scheme="rk3"``) driven along the axis by a uniform ``drive``
-    (m/s^2); ``flow=False`` leaves the medium at rest with no field, ``hull="capsule"`` gives the body a capsule."""
+    (m/s^2); ``flow=False`` leaves the medium at rest with no field, ``hull="capsule"`` gives the body a capsule,
+    ``opened=True`` opens the vessel at its ends (an inflow at its start, a Windkessel at its end) in place of the
+    periodic box and its drive."""
     exp = Experiment("point_body", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(dt))
     exp.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(TUBE_RADIUS * 1e3),
                                                       wall=mm(0.1), length=mm(4.0))))
     chosen = Scheme.RK3() if scheme == "rk3" else Scheme.Steady() if steady else Scheme.IMEXEuler()
-    fields = {"flow": FVM(domain=PeriodicBox(length=mm(1.0)), stokes=True, cells_across=cells_across,
-                          scheme=chosen)} if flow else {}
+    domain = VesselRegion(margin=4) if opened else PeriodicBox(length=mm(1.0))
+    fields = {"flow": FVM(domain=domain, stokes=True, cells_across=cells_across, scheme=chosen)} if flow else {}
     exp.add_medium(Medium("water", fills="tube.lumen", fields=fields))
     exp.declare("water.viscosity", Pa_s(viscosity), reason="water")
     exp.declare("water.density", kg_per_m3(WATER_RHO), reason="water")
@@ -139,8 +152,13 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
     exp.declare("ball.mass", kg(mass), reason="a sphere of the drawn density")
     moment = 0.4 * mass * radius ** 2
     exp.declare("ball.inertia", kg_m2((moment, moment, moment)), reason="a uniform sphere")
-    exp.attach(Drag.Stokes(one_way=one_way, width=width), body="ball", medium="water")
-    if flow:
+    exp.attach(Drag.Stokes(one_way=one_way, kernel_width=kernel_width, self_history=self_history), body="ball",
+               medium="water")
+    if flow and opened:
+        exp.attach(Inflow(steady=mL_per_s(1e-3)), medium="water", surface="tube.start")
+        exp.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
+                   medium="water", surface="tube.end")
+    elif flow:
         exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(drive)), medium="water")
     return exp
 

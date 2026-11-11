@@ -189,13 +189,17 @@ class MACGrid:
         the box's corner): a Gaussian of width ``width_cells`` cells along each axis, sampled where the face set's
         values sit and normalised to a discrete sum of one (``1/h`` per axis, so that ``h^3`` times the sum of their
         product over the faces is one), truncated at :data:`TRUNCATION` widths, with one zero on each side for the
-        Laplacian's reach; its indices wrapped on the periodic axes (the grid kind's own: B2, C5 point 5)."""
+        Laplacian's reach; its indices wrapped on the periodic axes (the grid kind's own: B2, C5 point 5). Beside them,
+        the kernel's derivative along each axis (``slope``): the Gaussian's, ``-(x - x_bar) w / var``, about the sampled
+        weights' own mean ``x_bar`` and over their own variance ``var``, so that its sum is zero (a couple carries no
+        net force) and its first moment exactly minus one (a unit couple is one)."""
         h = self.spacing
         reach = math.ceil(TRUNCATION * float(width_cells))
         offsets = jnp.arange(-reach - 1, reach + 3)
         core = (offsets >= -reach) & (offsets <= reach + 1)
         indices: list[Array] = []
         weights: list[Array] = []
+        slopes: list[Array] = []
         for axis, count in enumerate(self.cells):
             shift = 0.0 if axis == component else 0.5
             scaled = points[:, axis] / h - shift
@@ -203,12 +207,16 @@ class MACGrid:
             lattice = base[:, None] + offsets[None, :]
             distance = lattice.astype(points.dtype) - scaled[:, None]
             gaussian = jnp.where(core[None, :], jnp.exp(-0.5 * (distance / width_cells) ** 2), 0.0)
-            weights.append(gaussian / (jnp.sum(gaussian, axis=1, keepdims=True) * h))
+            normalised = gaussian / jnp.sum(gaussian, axis=1, keepdims=True)
+            weights.append(normalised / h)
+            centred = distance - jnp.sum(distance * normalised, axis=1, keepdims=True)
+            variance = jnp.sum(centred * centred * normalised, axis=1, keepdims=True)
+            slopes.append(-centred * normalised / (variance * h * h))
             indices.append(jnp.mod(lattice, count))
         weight = jnp.stack(weights, axis=1)
         padded = jnp.pad(weight, ((0, 0), (0, 0), (1, 1)))
         curvature = (padded[:, :, 2:] + padded[:, :, :-2] - 2.0 * weight) / h ** 2
-        return ExchangeStencil(jnp.stack(indices, axis=1), weight, curvature)
+        return ExchangeStencil(jnp.stack(indices, axis=1), weight, curvature, jnp.stack(slopes, axis=1))
 
 
 #: How far the exchange kernel reaches, in its widths: the weight beyond is under exp(-32) of its peak.
@@ -220,11 +228,13 @@ class ExchangeStencil(NamedTuple):
     weights ``(n, 3, m)`` (per unit length) and their second differences ``(n, 3, m)`` (per unit length cubed), from
     which the kernel's average (``w_x w_y w_z``) and its Laplacian (``L w``, a sum of three separable products) are
     read: the seven-point Laplacian is self-adjoint, so a field's Laplacian read by the kernel is the field read by
-    the kernel's Laplacian."""
+    the kernel's Laplacian. ``slope`` ``(n, 3, m)`` (per unit length squared) is each axis's derivative of the 1-D
+    weights, from which the kernel's antisymmetric dipole (a couple's reading and delivery) is made."""
 
     lattice: Array
     weight: Array
     curvature: Array
+    slope: Array
 
 
 __all__ = ["TRUNCATION", "ExchangeStencil", "MACGrid", "Velocity"]

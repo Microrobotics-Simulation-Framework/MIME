@@ -389,7 +389,13 @@ class FVM(Dynamics):
                               region: Region | None) -> list[Problem]:
         """A periodic box takes no law at an opening; an open vessel takes one at each of its two ends and at nothing
         else, and their rows are well posed (``mime.nodes.flow.fvm._ports.well_posed``). A point body's exchange
-        registration (``Drag.Stokes``) is no law at an opening."""
+        registration (``Drag.Stokes``) is no law at an opening, and an open vessel takes none yet."""
+        partners = [r for r in registrations if r.kind == EXCHANGE_PARTNER]
+        if self.open and partners:
+            return [Problem("flow.open-exchange", f"{', '.join(r.id for r in partners)} exchanges with the flow, and an "
+                                                  f"open vessel's flow takes no exchange partners yet (a point body's "
+                                                  f"exchange with its openings comes with the one elimination)",
+                            "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...))")]
         registrations = [r for r in registrations if r.kind != EXCHANGE_PARTNER]
         if not self.open:
             return [Problem("flow.no-openings", f"{', '.join(r.id for r in registrations)} is attached at an opening "

@@ -397,10 +397,11 @@ def _receiver_lines(name: str, dynamics: Dynamics, held: Sequence[ledger.LedgerD
         notes = [f"supplied by {first.supplied_by.replace(',', ', ')}"] if first.supplied_by else []
         if first.check == ledger.CHECK_DEFINITE:
             notes.append("its resistance checked definite at each step")
-        if first.check == ledger.CHECK_CLUSTER:
-            notes.append("its cross loads judged in its cluster's sum by its node, the grand resistance's quadratic "
-                         "form at the step's starting twists, not on this row (one body drags another)")
         entry = laws[law].entry if law in laws else None
+        if first.check == ledger.CHECK_CLUSTER:
+            own = entry.judged_in_sum() if isinstance(entry, Interaction) else ""
+            notes.append(own or "its cross loads judged in its cluster's sum by its node, the grand resistance's "
+                                "quadratic form at the step's starting twists, not on this row (one body drags another)")
         if first.energy_class == ledger.UNMETERED and _unmetered_reason(entry) and first.supplied_by != law:
             notes.append(f"unmetered: {_unmetered_reason(entry)}")
         lines.append(f"  {law}: {first.energy_class} ({how})" + "".join(f"; {note}" for note in notes))

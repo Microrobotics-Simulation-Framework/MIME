@@ -1112,12 +1112,13 @@ class Interaction(Entry):
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         raise NotImplementedError
 
-    def judged_in_sum(self) -> bool:
-        """Whether the law's dissipation is judged only in the sum of its deliveries to every receiver, never on one
-        receiver's row: an exchange between a body and a field, whose drag does work on the body that the fluid's
-        side pays for (a flow carrying a body along). Its receivers then count no gift from its rows; it reports its
-        own. False by default."""
-        return False
+    def judged_in_sum(self) -> str:
+        """How the law's dissipative sign is judged where it is not judged on each receiver's row, as the build report
+        states it (an empty string by default: on each row). An exchange between a body and a field, whose drag does
+        work on the body that the fluid's side pays for (a flow carrying a body along), is judged by its node instead,
+        which counts the steps that gave energy in its ``cluster_gift_steps``; the run's account reads them for each of
+        its rows."""
+        return ""
 
     def definiteness(self) -> Definiteness | None:
         """For a dissipative law delivering an operator, where it is shown positive semidefinite: by its construction
