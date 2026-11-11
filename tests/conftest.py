@@ -139,13 +139,16 @@ def held_exclusively(path: Path) -> Iterator[None]:
 #: The tests that compile a union of tubes (its seams' march, its corners), by their files and by the names a case
 #: of another file gives them: each keeps its programs, some hundreds of MB, in its worker's caches for the rest of the
 #: run unless they are released, and a worker that ran several held several GB (CI's runners were lost at the end of a
-#: shard twice, runs 42964681870 and 42970695440, and in every stress run of 42979996849).
+#: shard twice, runs 42964681870 and 42970695440, and in every stress run of 42979996849). Clearing all of JAX's caches
+#: instead made a later test that reuses other programs rebuild them (the shape suite's share of probes, run
+#: 42989831801).
 TREE_FILES = frozenset({"tests/flow/test_fvm_general_wall.py", "tests/flow/test_fvm_tree_declaration.py",
                         "tests/scene/test_union_reverse.py", "tests/scene/test_union_tie.py",
                         "tests/scene/test_tube_tree.py", "tests/scene/test_exact_union.py",
                         "tests/scene/test_union_brute_force.py", "tests/scene/test_union_continuity.py",
                         "tests/two_builds/test_tree_walk.py"})
-TREE_NAMES = ("tube_tree", "tree_flow")
+#: The shape suite's tube tree tests are not among them (its heavy ones are marked ``memory_heavy``).
+TREE_NAMES = ("tree_flow", "geometry tube_tree")
 
 
 def compiles_a_tree(item: pytest.Item) -> bool:
@@ -153,10 +156,9 @@ def compiles_a_tree(item: pytest.Item) -> bool:
 
 
 def release_programs() -> None:
-    """Drop every compiled program the process holds (JAX's caches and the union's own), then return the memory."""
-    import jax
-
-    jax.clear_caches()
+    """Drop the union's own caches of compiled functions, then return the memory: JAX's caches hold a function's
+    programs by the function, so they should go with it [inference: not measured alone]; the worker's other programs
+    are kept, which the tests after it may reuse."""
     union = sys.modules.get("mime.scene._union")
     tree = sys.modules.get("mime.scene._tube_tree")
     for module, names in ((union, ("_compiled", "_checked")), (tree, ("_lumen", "_structural_lumen"))):
