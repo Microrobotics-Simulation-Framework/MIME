@@ -125,18 +125,20 @@ def prescribed_tube_flow() -> Experiment:
     return experiment
 
 
-def open_tube_flow() -> Experiment:
+def open_tube_flow(rk3: bool = False) -> Experiment:
     """The FVM on the open vessel: the same tube, one millimetre long, cut at its own ends, an inflow at its start
-    (steady and pulsatile) and an RCR Windkessel at its end; IMEX Euler with convection on."""
+    (steady and pulsatile) and an RCR Windkessel at its end; IMEX Euler with convection on, or RK3 (``rk3``: the open
+    node of the explicit stage kind, its laws held at each stage)."""
     from mime.dynamics import FVM, Scheme
     from mime.interactions import Inflow, Windkessel
     from mime.scene import Scene, Tube, VesselRegion, Z
     from mime.units import Pa_s, Pa_s_per_m3, kg_per_m3, m3_per_Pa, mL_per_s
 
-    experiment = Experiment("open_tube_flow", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    name = "open_rk3_tube_flow" if rk3 else "open_tube_flow"
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
     experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
                                                              length=mm(1.0))))
-    flow = FVM(domain=VesselRegion(margin=4), cells_across=8, scheme=Scheme.IMEXEuler())
+    flow = FVM(domain=VesselRegion(margin=4), cells_across=8, scheme=Scheme.RK3() if rk3 else Scheme.IMEXEuler())
     experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
@@ -438,6 +440,8 @@ CASES = (
     # The FVM on a tube tree's lumen, its wall the union's exact distance where the band reads it.
     Case("tree_flow", tree_flow),
     Case("open_tube_flow", open_tube_flow),
+    # The same open vessel stepped by RK3 (F2b's PR 4b).
+    Case("open_rk3_tube_flow", lambda: open_tube_flow(rk3=True)),
     # A law over the open vessel's two openings, and a closed valve at one (F2b's PR 3).
     Case("open_tube_loop", open_tube_loop),
     Case("closed_tube", closed_tube),

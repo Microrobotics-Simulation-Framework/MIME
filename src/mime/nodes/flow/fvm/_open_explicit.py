@@ -63,6 +63,7 @@ from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, WALL_COUNTS,
 from mime.nodes.flow.fvm._open import OpenMACGrid
 from mime.nodes.flow.fvm._open_node import BACKFLOW, KINETIC_FLUX, OPENING, REVERSAL_LINE, OpeningFields, \
     OpenFlowNode, check_open_deliveries, opening_role
+from mime.nodes.flow.fvm._open_node import EQUATIONS as OPEN_EQUATIONS
 from mime.nodes.flow.fvm._ports import LawBooks, PortSolution
 from mime.nodes.flow.fvm._schemes import StageKind, StepContext
 from mime.registry import Problem
@@ -70,6 +71,8 @@ from mime.registry import Problem
 #: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
 _LAX: Any = jax.lax
 _STEPPED = "mime.nodes.flow.fvm._open_explicit.OpenExplicitFlowNode.stepped"
+#: RK3's numerical terms (its convective term, zero on the open box: its power is all booked as the openings' flux).
+SCHEME_TERMS = ("convection",)
 _START = "mime.nodes.flow.fvm._open_explicit.OpeningStages.ready"
 
 
@@ -243,7 +246,7 @@ class OpenExplicitFlowNode(OpenFlowNode):
 
     STAGE_KIND = StageKind.EXPLICIT_PROJECTED
     SCHEME_FIELDS = ("velocity", "pressure", "pressure_ready")
-    LEDGER_TERMS = ("convection",)
+    LEDGER_TERMS = SCHEME_TERMS
     GRID_TERMS = ()
     GRID_ORDERS: ClassVar[Mapping[str, TermOrder]] = MappingProxyType({})
     #: None: no flag's line is measured on RK3's runs (the periodic RK3 node's, ``_flags`` says so).
@@ -255,7 +258,7 @@ class OpenExplicitFlowNode(OpenFlowNode):
         description="A medium's flow in a vessel open at the box's two z planes stepped by S1's explicit RK3: the "
                     "Cartesian MAC grid open along z, each opening (a patch of a plane) held by a law the step holds at "
                     "each of RK3's stages, coupled implicitly through the stage's affine response.",
-        governing_equations=OpenFlowNode.meta.governing_equations,
+        governing_equations=OPEN_EQUATIONS,
         assumptions=(
             "Inside, the periodic RK3 node's (ExplicitFlowNode's) stage: convection and viscosity explicit, the "
             "wall's penalty implicit and pointwise in each stage, the incremental projection each stage",
@@ -410,8 +413,8 @@ class OpenExplicitFlowNode(OpenFlowNode):
         for r in records:
             port_scale = port_scale + r.stage_dt * jnp.sum(jnp.abs(r.solution.pressures) * r.flux_size)
         for i, (law, held) in enumerate(zip(laws, bound, strict=True)):
-            work = sum((-r.stage_dt * r.solution.pressures[o] * r.flux[o] for r in records for o in held), start=zero)
-            ports.append(work)
+            ports.append(cast(Array, sum((-r.stage_dt * r.solution.pressures[o] * r.flux[o] for r in records
+                                          for o in held), start=zero)))
             own = [r.books[i] for r in records]
             start, end = own[0].storage_start, own[-1].storage_end
             loss = sum((b.loss for b in own), start=zero)
@@ -480,7 +483,7 @@ class OpenExplicitFlowNode(OpenFlowNode):
         unattributed = unattributed + sum((value for field, value in hosted_work.items() if field not in named),
                                           start=zero)
         return books.StepAccount(work=work, hosted=jnp.zeros((len(rows), 2), dtype=dtype), unattributed=unattributed,
-                                 terms=jnp.zeros(len(self.LEDGER_TERMS), dtype=dtype),
+                                 terms=jnp.zeros(len(SCHEME_TERMS), dtype=dtype),
                                  storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
                                  scale=rho * stage.scale + energy["scale"], operators={},
                                  claimed=None if claimed is None else claimed[0],

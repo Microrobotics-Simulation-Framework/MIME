@@ -19,7 +19,7 @@ the band reads it (``mime.nodes.flow.fvm.TreeSolid``), stepped by IMEX Euler or 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Annotated, Any, cast, override
@@ -338,7 +338,9 @@ class FVM(Dynamics):
         "normal on the plane's half cell (beta 1, declared), from the step's start velocity, explicit, normal only, "
         "first order in time in the term; its work dt <f, u'> booked under <node>.backflow, its sign held only while "
         "an inward face stays inward over the step (backflow_flagged, and the ledger's gift count, where it gave "
-        "energy); FB7 (with RK3, a later PR) measures its threshold, its tangential share and how it damps a genuine "
+        "energy); under RK3 it is read from each stage's start velocity and booked by RK3's quadrature at the stages' "
+        "starts, where none of its products can be positive, so its sign check cannot fire there (route 1 judges the "
+        "step); FB7 measures its threshold, its tangential share and how it damps a genuine "
         "reversal at the outlet, unmeasured here; "
         f"the outlet watch (decision 13), an observer the step's flow never reads: each opening's inflow through its "
         f"patch's inward faces (fluid-weighted) over its net outward flux, read only while that is outward "
@@ -548,16 +550,21 @@ class FVM(Dynamics):
                                                      "branches part further, or a finer spacing"))
         return found
 
-    def open_problems(self, region: Region | None, values: Mapping[str, float]) -> Any:
+    def open_problems(self, region: Region | None, values: Mapping[str, float]) -> Callable[[float, int], list[Problem]]:
         """An open vessel's step's refusals: RK3's explicit viscosity past its viscous number at the step (the CFL
         number is checked each step, its step rule not built)."""
+
+        def none(step: float, every: int) -> list[Problem]:
+            del step, every
+            return []
+
         if not isinstance(self.scheme, RK3Scheme) or region is None or "viscosity" not in values or \
                 "density" not in values:
-            return lambda step, every: []
+            return none
         try:
             spacing = self.open_spacing(region)
         except (RegionRefused, ValueError):
-            return lambda step, every: []  # the region's own refusal names it
+            return none  # the region's own refusal names it
         nu = values["viscosity"] / values["density"]
         limit = RK3.viscous_number * spacing ** 2 / nu
 
@@ -581,10 +588,10 @@ class FVM(Dynamics):
         if built is not None:
             return self.open_layout(built).spacing
         vessel = vessel_of(region)
-        start, end = (vessel.points[point] for _, point in vessel.ends[:2])
+        start, end = (np.asarray(vessel.points[point], dtype=np.float64) for _, point in vessel.ends[:2])
         given = self.spacing.value if self.spacing is not None else None
         return periodic_tube_layout(float(cast(float, region.parameters["radius"])),
-                                    float(np.linalg.norm(np.subtract(end, start))), cells_across=self.cells_across,
+                                    float(np.linalg.norm(end - start)), cells_across=self.cells_across,
                                     spacing=float(cast(float, given)) if given is not None else None,
                                     margin_cells=self.domain.margin).spacing
 

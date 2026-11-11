@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **RK3 with ports.** `FVM(domain=VesselRegion(), scheme=Scheme.RK3())` steps an open vessel by S1's explicit RK3
+  (`mime.nodes.flow.fvm.OpenExplicitFlowNode`, MIME-NODE-132): each stage takes the openings' predicted forces with the
+  pressure's weight before the penalty's pointwise solve and their moves after it, as its own pressure increment (the
+  unit fields the stage's fast solves); each law is held at each stage, backward Euler over the stage at its end, so the
+  laws are first order in time under RK3 and the exchange is workless by construction (the law's books against the
+  flow's, every step); a step whose pressure is unmade starts from the pressure consistent with the velocity and the
+  openings; RK3's explicit viscosity is refused past its viscous number (`flow.viscous-limit`). The ledger's route 1
+  counts a storing law's storage change with its receiver's, so a Windkessel giving back what it stored is not read as
+  a gift. `flow.open-scheme` is gone.
 - **The region builder: a vessel's region cut by planes, its cuts extended and bent onto the box's faces; the open tube
   tree; tilted open vessels; the backflow term; the outlet watch.** `FVM(domain=VesselRegion(around="j1", reach=mm(3),
   extension_diameters=4, bend_diameters=2))` cuts the vessel (a `Tube`, a `TubeTree`) by planes normal to its

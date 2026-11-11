@@ -45,7 +45,7 @@ def test_a_law_finds_the_one_field_providing_a_quantity_and_is_refused_where_non
 
 def test_the_flow_kinds_provide_the_velocity_by_their_solved_field_declarations():
     assert FVM.field_declarations() == (*(fvm_field(name) for name in SCHEMES),
-                                        *(fvm_field(name, opened=True) for name in ("imex_euler", "steady")))
+                                        *(fvm_field(name, opened=True) for name in SCHEMES))
     assert Womersley.field_declarations() == (Womersley.field,)
     assert {q for d in (*FVM.field_declarations(), *Womersley.field_declarations()) for q in d.provides} == {V}
 
