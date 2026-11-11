@@ -1,0 +1,101 @@
+{
+  "written": "2026-11-11, committed before any gate of PR 242's fix round ran on its code (the commit that adds this file is the timestamp): the tube tree's wall with its plan chosen in the program and made once a chunk, the contract judged independently, the tie guard, FA4's validity line, the ends as openings, the fusion refused",
+  "phase": "F2a PR 2b (#242), the fix round from its refuting review",
+  "labels": "the fix round's builder (Opus); from the review's probes (runs 42943765224, 42944368698, 42948523503) and the fix round's FA4 sweeps (runs 42953160158 and the grid's), named under seen_before",
+  "seen_before": [
+    "the review: the node's wall against the union's every candidate at every face where a field is not flat, 1.4e-15 in chi and 1.8e-15 to 2.4e-15 cells in phi at D/h 16 (P1 indep16), its independent contract caught the half-band mutant 40/40, clean 0/24 (the old held faces, not this code)",
+    "the review: the tie guard caught the reduction put back 50/50, clean 0/50 (P1 tie-*), on the union as the PR left it; this fix round does not change the union's selections",
+    "the review: the loop at D/h 16 6.1 s a step through built.run (the wall made every step), the tube on the loop's period 0.021 s a step; the wall's fields 6.58 s, the union on the old held faces 6.50 s (P3 cost-16)",
+    "the fix round's FA4 sweep, run 42953160158: at the worst turns and offsets the major semi-axis read 0.151 (D/h 16, vertex 2.88 cells), 0.080 (20), 0.065 (24), 0.127 (28, 5.04 cells), 0.083 (32), 0.089 (40, 7.2 cells): not monotone in the vertex's radius in cells, the vertex's sub-cell position moving with the resolution; the grid of offsets (the second sweep) sets the line"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 where stated"],
+    "platform": "GitHub runner, 4 vCPU, CPU",
+    "sizes_and_parameters": "steady Stokes (tolerance 1e-10, FA8 1e-12) through the node's own step; the filleted split-and-merge loop (daughters 0.4 and 0.3 D at 30 degrees) at D/h 8 (contract, FA8, reverse) and 16 (FA6, FA7); FA4's elliptic tube (semi-axes 0.5 and 0.3 D, a box four cells long) at FA4_DH; every vessel turned about z at random and moved by a sub-cell offset",
+    "seeds_and_draws": "the gates at CI's fixed seeds; the rates at drawn seeds (wall_cases.draw: a turn in [0, 2 pi), offsets in [0, 1) cells), the detection-rate harness's seed bases below"
+  },
+  "gate_contract": {
+    "claim": "the node's wall is the union's exact distance wherever a field the step reads is not flat: judged without the node's own selection, on every face whose plain minimum lies between -1.5 and 3.5 cells, the node's indicator and resistivity are those of the union's exact distance (every candidate at every face) within 1e-6 of their own scale and its distance within 1e-9 cells where either reading's fields are not flat; its counts are zero; the wall its chunk makes once (the run-constant) is the step's own bit for bit",
+    "kind": "equality (to the union's own rounding)",
+    "case": "tests/flow/test_fvm_general_wall.py::test_the_nodes_fields_are_the_exact_unions_wherever_a_field_is_not_flat",
+    "prediction": {"value": 1e-15, "band": [0.0, 1e-12], "unit": "cells (the distance); the indicator and the resistivity at the same order of their scales", "basis": "measured-before", "why": "the node's chosen faces run the same candidates as the exact union's, in another batch: what differs is the rounding of one distance read two ways; the run-constant is the same function of the same leaves"},
+    "metric": "the largest field difference where a field is not flat, the fields being what the step reads",
+    "control": {
+      "plant": "MIME_PLANT_WALL=minimum: the plain minimum everywhere (a carina's false wall about a cell too shallow); MIME_PLANT_WALL=floor: the candidates chosen only above half the band's fluid half (faces between half a cell and a cell into the fluid read the minimum, the review's half-band mutant transposed to this code)",
+      "environment_variable": "MIME_PLANT_WALL",
+      "expected_rate": "40/40 each",
+      "runs": 40,
+      "clean_expected": "0/20",
+      "resolution": "discriminating_range.py on the distance (an error added at the worst non-flat face): predicted at the line, 1e-9 cells"
+    },
+    "if_wrong": "a clean draw over the line names the face (its minimum, the union's and the node's depth in cells); the selection's floor or size is then wrong, and the fix is to choose more",
+    "cannot_discriminate_if": "no face where the minimum and the union differ lies within the judged band (the loop's carina and roots always put some there; the minimum plant's own rate shows it)"
+  },
+  "gate_tie": {
+    "claim": "at an exact tie of two tubes' distances (two capsules sharing a ball, read beyond it) the union's derivative in a radius is one operand's (-1 or 0), never their average, and reverse mode equals forward mode: the guard of FA8's first fix whatever XLA's fusion does",
+    "kind": "equality",
+    "case": "tests/scene/test_union_tie.py::test_at_an_exact_tie_the_derivative_is_one_operands",
+    "prediction": {"value": 0.0, "band": [0.0, 1e-12], "unit": "the derivative's distance from -1 or 0", "basis": "derived", "why": "the least is selected by one comparison (_lesser, _least), whose derivative is the selected operand's"},
+    "metric": "each tied point's derivative against the nearer of -1 and 0",
+    "control": {
+      "plant": "MIME_PLANT_UNION=reduction: jnp.min and jnp.minimum put back; their derivative averages tied operands, -0.5 at every tied point",
+      "environment_variable": "MIME_PLANT_UNION",
+      "expected_rate": "50/50",
+      "runs": 50,
+      "clean_expected": "0/50",
+      "resolution": "a tied point's derivative half a unit off: the line 1e-9 is far below it"
+    },
+    "if_wrong": "a clean draw off one operand's means a selection averages: the site is found and written by one comparison",
+    "cannot_discriminate_if": "fewer than eight points beyond both tubes' ends (asserted against)"
+  },
+  "gate_reverse": {
+    "claim": "reverse mode equals forward mode through the node's own wall (every face, the candidates chosen in the program) at CI's seed: the guard of reverse against forward, not of the tie rule (gate_tie's)",
+    "kind": "equality",
+    "case": "tests/scene/test_union_reverse.py::test_reverse_mode_is_forward_mode_on_a_batch_of_points",
+    "prediction": {"value": 0.0, "band": [0.0, 1e-12], "unit": "relative", "basis": "measured-before", "why": "0 at CI's draw on the held faces; the wall on every face runs the same selections"},
+    "metric": "relative difference of the directional derivatives in the first daughter's radii",
+    "control": {"plant": "MIME_PLANT_UNION=reverse-scaled: the selection's reverse derivative 1 % larger", "environment_variable": "MIME_PLANT_UNION", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/10", "resolution": "1 %"},
+    "if_wrong": "a clean draw off means a selection is computed twice; it is found as the first fix found jnp.min",
+    "cannot_discriminate_if": "no chosen face (the plan size printed is zero)"
+  },
+  "gate_walk": {
+    "claim": "the tube tree's program is one under the two-builds walk: the radii and the period's length moved by a relative 1e-6 keep it (tree_flow in the walk, no list line), because the wall is made in the program and only its plan's size, a rung, is held at build",
+    "kind": "equality (one program)",
+    "case": "tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[tree_flow] and tests/two_builds/test_tree_walk.py",
+    "prediction": {"value": "quiet", "band": ["quiet", "quiet"], "unit": "the walk's verdict", "basis": "derived", "why": "no array or literal of the step is made from a leaf at build: the selection and the reaches are traced, the rung moves only when the chosen count crosses it (about 1.4x apart)"},
+    "metric": "the trace form's comparison of the two builds' programs",
+    "control": {"plant": "the plan's size made the build's own count (plan_rung the identity): the moved leaves' builds differ in a shape", "environment_variable": "none (monkeypatched in tests/two_builds/test_tree_walk.py)", "expected_rate": "fires (deterministic: one case)", "runs": 1, "clean_expected": "quiet", "resolution": "a move that changes the chosen count by one face"},
+    "if_wrong": "a fire names the array or literal; it is made in the program, or held as a declared count",
+    "cannot_discriminate_if": "the moved leaf changes no chosen face (then the control is quiet too, and the walk is not evidence for that leaf)"
+  },
+  "gate_float32": {
+    "claim": "the loop at D/h 8 in float32 splits within 1e-5 of float64, no flag, its counts zero (CLAUDE.md's precision rule: a tree runs and is gated in both dtypes)",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_general_wall.py::test_the_loops_split_in_float32_is_float64s",
+    "prediction": {"value": 4e-7, "band": [0.0, 1e-5], "unit": "the split's difference", "basis": "measured-before", "why": "the review's P2: within 3.9e-7 at D/h 8 and 16; the line is float32's eps times a solve's growth of about 100"},
+    "metric": "the first daughter's share of the mid-plane's flux",
+    "control": {"plant": "MIME_PLANT_WALL=daughter in float32 alone (the first daughter a quarter cell out): the split moves about 0.02", "environment_variable": "MIME_PLANT_WALL", "expected_rate": "10/10", "runs": 10, "clean_expected": "0/10", "resolution": "1e-5"},
+    "if_wrong": "a float32 split off float64 past the line means a guard is missing: its operating point is read (a CG's floor, the union's allowances)",
+    "cannot_discriminate_if": "both dtypes NaN or flagged (asserted against)"
+  },
+  "gates_fa3_to_fa8_on_the_new_wall": {
+    "claim": "FA3, FA5, FA6, FA7 and FA8 hold their committed lines (predictions_general_wall.json) on the wall chosen in the program, and their controls still fail every run",
+    "kind": "as each gate's",
+    "case": "tests/flow/test_fvm_general_wall.py",
+    "prediction": {"value": "each within 1e-9 of its reading on the held faces at CI's seeds", "band": [0.0, 1e-9], "unit": "each gate's own", "basis": "derived", "why": "the contract holds the two walls to the union's rounding where a field is not flat"},
+    "metric": "each gate's own",
+    "control": {"plant": "each gate's committed plant", "environment_variable": "MIME_PLANT_WALL", "expected_rate": "20/20 each", "runs": 20, "clean_expected": "0/20 each", "resolution": "each gate's committed range"},
+    "if_wrong": "a reading moved past 1e-9 means the contract does not hold where that gate reads",
+    "cannot_discriminate_if": "as each gate's"
+  },
+  "bits": {
+    "cases": "released programs in both dtypes, the release tip against the head in one job on one CPU (bit_compare.py): the FVM's tube programs among them, whose node now declares a run-constant it makes for a tree only",
+    "prediction": "every array np.array_equal",
+    "controls": {"one_ulp": "one leaf one ulp up: differs"}
+  },
+  "costs": {
+    "prediction": "the loop at D/h 16 through built.run: a step about the tube's on the same period (0.02 to 0.06 s), the wall made once a chunk at about the review's 6.5 s, so a 4-step run about 1.5 to 2 s a step and a 32-step run about 0.2 to 0.3 s a step; peak about the old 2.7 GiB",
+    "measured_at": "the review's D/h 16 runs (6.1 s a step with the wall every step), not this code"
+  },
+  "outcomes": null
+}
