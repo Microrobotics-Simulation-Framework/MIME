@@ -424,7 +424,7 @@
   "tests/two_builds/test_outside_step.py": 54,
   "tests/two_builds/test_plants.py": 288,
   "tests/two_builds/test_run_constant_seam.py": 398,
-  "tests/two_builds/test_tree_walk.py": 70,
+  "tests/two_builds/test_tree_walk.py": 50,
   "tests/two_builds/test_two_builds_walk.py": 1163,
   "tests/two_builds/test_unit_fields.py": 7,
   "tests/unit/test_cholesky_resistance.py": 26,
