@@ -247,6 +247,7 @@ def test_autodiff_equals_the_difference_at_an_example_near_each_set_for_each_mov
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.memory_heavy
 def test_autodiff_equals_the_difference_at_an_example_near_each_of_the_tube_trees_sets(dtype):
     """The same at the tube tree's examples (:data:`SEPARATE`)."""
     _examples_pass(dtype, SEPARATE)
@@ -274,6 +275,7 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.memory_heavy
 def test_control_a_planted_wrong_tangent_fails_at_every_example_near_the_tube_trees_sets(dtype):
     """The same control at the tube tree's examples (:data:`SEPARATE`)."""
     _planted_tangent_fails(dtype, SEPARATE)

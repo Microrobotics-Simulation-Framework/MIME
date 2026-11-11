@@ -60,6 +60,7 @@ def _planted(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("seed", seed_list((1101,)))
+@pytest.mark.memory_heavy
 def test_reverse_mode_is_forward_mode_on_a_batch_of_points(seed, monkeypatch):
     _planted(monkeypatch)
     angle, offset = draw(seed)

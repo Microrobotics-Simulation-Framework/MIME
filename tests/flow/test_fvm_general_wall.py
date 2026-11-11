@@ -160,6 +160,7 @@ def measure_contract(seed: int, dh: int = 8) -> dict[str, float]:
 
 
 @pytest.mark.parametrize("seed", seeds(601))
+@pytest.mark.memory_heavy
 def test_the_nodes_fields_are_the_exact_unions_wherever_a_field_is_not_flat(seed):
     """The filleted loop at 8 cells a diameter, float64: on every face where a field is not flat by either reading,
     the node's indicator and resistivity are those of the union's exact distance (all its candidates at every face)
@@ -234,6 +235,7 @@ def test_fa6_the_loops_split_at_thirty_degrees_holds_its_reference(seed):
 
 
 @pytest.mark.parametrize("seed", seeds(1001, 1002))
+@pytest.mark.memory_heavy
 def test_fa7_the_symmetric_split_is_a_half(seed):
     split, state = _split(loop((0.4, 0.4)), 16, seed)
     print(f"\nseed {seed}: symmetric split {split:.5f}")
@@ -290,6 +292,7 @@ def measure_derivative(seed: int) -> dict[str, float]:
 
 
 @pytest.mark.parametrize("seed", seeds(1101))
+@pytest.mark.memory_heavy
 def test_fa8_the_first_daughters_flux_in_its_radius_is_the_central_difference(seed):
     """At 8 cells a diameter, float64: ``d Q_1 / d R_1`` along the first daughter's radii (both ends of its three
     segments), reverse mode through one steady step against ``(Q(R + e) - Q(R - e)) / 2e`` at ``e`` 5e-5 of the radius,
