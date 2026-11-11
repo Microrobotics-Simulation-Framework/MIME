@@ -82,7 +82,7 @@ jobs:
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
       - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
-        run: sudo apt-get install -y --no-install-recommends zsh fish
+        run: bash scripts/install_shells.sh
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: The compilation caches of the shards holding the selected files
