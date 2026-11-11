@@ -157,7 +157,7 @@ FRICTION_SWITCHES = (
         owner="contact.friction",
         indicator="a held point's friction pair: the squared force of its free minimiser, the force that would leave "
                   "its slip zero with the others held, less the square of its bound, mu times the point's normal "
-                  "force, N^2 (positive where it slides)",
+                  "force, in newtons squared (positive where it slides)",
         orders={"twist": 0, "pose": 0},
         route="none: Coulomb friction is a kink at stick-slip, the sticking and the sliding force meeting on the "
               "disk's boundary; a smoothed friction law would be another model of the contact (proposed for fitting, "

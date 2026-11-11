@@ -28,7 +28,7 @@ It says where the body may be and the force that keeps it there, and it adds no 
 that includes it declares (`Interaction.includes_lubrication`); the plan refuses a second law on the body that includes
 it. Its `margin` is where it engages: written, a numerical choice; unwritten (0.5.0), the roughness cutoff of the
 body's and the wall's surfaces (`Contact.engagement`, the root of the sum of the squares of each surface's declared
-`roughness`, 1 um each where none is declared), the gap below which the near-contact law's film is floored, so that a
+`roughness`, or the declared default where none is), the gap below which the near-contact law's film is floored, so that a
 body riding a film above it is held by the film alone.
 
 **Friction** (0.5.0), written as `friction=`:
@@ -42,7 +42,7 @@ is solved in the contact's own sweeps: each held point carries a sliding pair of
 row, which measure the slip of the body's own point (`v + omega x r`), bounded on the elliptic cone by `mu` times the
 point's normal force. One coefficient serves sticking and sliding; a point sticks exactly (a block on a slope stays put
 below `tan(theta) = mu`), and a body rolls without slipping where its sliding rows stick. Each pair's update is a scaled
-2 x 2 trust region, three repeats a visit; after the sweeps the forces are scaled to where the normal block does no work,
+trust region on its own block, repeated within each visit; after the sweeps the forces are scaled to where the normal block does no work,
 and each point's friction power at the solved twist is checked never positive (the guard), the step flagged
 `unconverged` where it is. Friction is booked in the energy ledger under its own name (`<contact>.friction`) as its
 traction on the slip it acts on, `mu N` times the slip distance while it slides and zero while it sticks, the sweeps'

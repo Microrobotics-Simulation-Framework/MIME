@@ -23,6 +23,7 @@ force of zero) are tested on purpose in ``tests/oracles/test_friction_suites.py`
 from __future__ import annotations
 
 import math
+import operator
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -76,7 +77,7 @@ def _draws() -> Any:
         return st.floats(math.log(low), math.log(high)).map(math.exp)
 
     def signed_or_zero(low: float, high: float) -> Any:
-        return st.one_of(st.just(0.0), log(low, high), log(low, high).map(lambda x: -x))
+        return st.one_of(st.just(0.0), log(low, high), log(low, high).map(operator.neg))
 
     turn = st.tuples(st.floats(0.0, math.pi), st.floats(0.0, 2 * math.pi), st.floats(0.0, 2 * math.pi)).map(_turn)
     return st.tuples(log(0.3, 3.0), st.floats(0.0, 1.4), st.floats(0.0, 2 * math.pi),
@@ -93,7 +94,7 @@ def _turn(angles: tuple[float, float, float]) -> tuple[float, float, float, floa
     """The unit quaternion turning by ``angles[2]`` about the axis at ``angles[0], angles[1]``."""
     axis = _unit(angles[0], angles[1])
     half = 0.5 * angles[2]
-    return (math.cos(half), *(math.sin(half) * c for c in axis))
+    return (math.cos(half), math.sin(half) * axis[0], math.sin(half) * axis[1], math.sin(half) * axis[2])
 
 
 def _placed(name: str, turn: tuple[float, ...]) -> Any:
@@ -385,15 +386,15 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
         first = np.cross(n, np.eye(3)[int(np.argmin(np.abs(n)))])
         first /= np.linalg.norm(first)
         along = math.cos(turn) * first + math.sin(turn) * np.cross(n, first) + 0.3 * n
-        r = 1e-3 * np.asarray(arm)
+        r = 1e-3 * np.asarray(arm, dtype=np.float64)
         rows = jnp.concatenate([jnp.asarray(n, dtype=dtype), jnp.asarray(np.cross(r, n), dtype=dtype)])[None]
         held = np.asarray(traction_rows(rows, jnp.asarray(r[None], dtype=dtype), jnp.zeros(3, dtype=dtype),
                                         jnp.asarray(along, dtype=dtype)), dtype=np.float64)[0]
-        v, w = 1e-2 * np.asarray(linear), 10.0 * np.asarray(angular)
+        v, w = 1e-2 * np.asarray(linear, dtype=np.float64), 10.0 * np.asarray(angular, dtype=np.float64)
         point = v + np.cross(w, r)
         for row in held[1:]:
-            t = row[:3]
-            if abs(np.linalg.norm(t) - 1.0) > 64 * eps or abs(np.dot(t, n)) > 64 * eps:
+            t = np.asarray(row[:3], dtype=np.float64)
+            if abs(float(np.linalg.norm(t)) - 1.0) > 64 * eps or abs(float(np.dot(t, n))) > 64 * eps:
                 failures.append(f"a frame row {t} is not a unit direction across the normal {n}")
             measured = float(row @ np.concatenate([v, w]))
             if abs(measured - float(t @ point)) > 64 * eps * (np.linalg.norm(v) + np.linalg.norm(w) * 1e-3):
