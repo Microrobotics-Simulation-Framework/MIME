@@ -1247,7 +1247,7 @@ def uniform(points: np.ndarray) -> np.ndarray:
 
 
 @dataclass(frozen=True)
-class Feature:
+class SurfaceFeature:
     """A feature of a kind's surface that its sampling may be graded towards (``mime.scene.graded``): its ``name``
     (``"rim"``, ``"crest"``), its ``form`` (:data:`FEATURE_FORMS`: an ``"edge"``, where two faces meet at an angle, its
     ``size`` zero; a ``"crest"``, a smooth ridge, its ``size`` its least radius of curvature across it, m), and
@@ -1421,9 +1421,10 @@ class Geometry(Entry):
         its own. A consumer that needs it of a kind that does not implement it refuses the kind by name."""
         raise NotImplementedError
 
-    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[Feature, ...]:
-        """The features of its surface a sampling may be graded towards (:class:`Feature`): its edges and crests, each
-        traced in its own frame by points no farther apart than ``resolution`` (m), from its settings in SI, at build.
+    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[SurfaceFeature, ...]:
+        """The features of its surface a sampling may be graded towards (:class:`SurfaceFeature`): its edges and crests,
+        each traced in its own frame by points no farther apart than ``resolution`` (m), from its settings in SI, at
+        build.
         A kind with none (a sphere, a capsule) does not implement it; a consumer that grades towards features refuses
         such a kind by name."""
         raise NotImplementedError

@@ -112,6 +112,14 @@ def differentiated(p: Mapping[str, Any]) -> bool:
 #: short (:func:`rechecked`): the cap lifted, the stall restarts raised.
 RECHECKED = "rechecked"
 
+#: What a recheck names as the cause of a node's stop short (``mime.study``'s gradient, from the recheck's own solves and
+#: the member's): ``floor-limited``, its recheck's solves stopped stagnated, and the node's solve stops a recheck's
+#: stagnation only at its rounding floor (:attr:`MimeNode.floor_stops`); ``stagnated``, they stopped stagnated where the
+#: node's solve does not test its floor, or the member's own had stagnated and the recheck's, past the stall, converged
+#: or reached the lifted cap; ``cap-limited``, a cap alone stopped them; ``not-finite``, a recheck's solve had a
+#: residual that was not finite.
+CAP_LIMITED, FLOOR_LIMITED, STAGNATED, NOT_FINITE = "cap-limited", "floor-limited", "stagnated", "not-finite"
+
 #: The nodes the enclosing recheck re-solves (:func:`rechecked_nodes`).
 _RECHECKED: ContextVar[frozenset[str]] = ContextVar("mime_rechecked", default=frozenset())
 
@@ -184,6 +192,10 @@ class MimeNode(SimulationNode):
     #: re-solves it with the cause removed (the cap lifted, the restarts raised). A solving node that does not is
     #: reported as not rechecked.
     rechecks: ClassVar[bool] = False
+    #: Whether, in a recheck, the node's solve stops a stagnation only where its residual is at its rounding floor
+    #: (``eps || |A| |x| + |b| ||``), running on past a stall above it: then a recheck that stagnates again is named
+    #: ``floor-limited``, and otherwise ``stagnated``, the floor untested.
+    floor_stops: ClassVar[bool] = False
     #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
@@ -266,6 +278,12 @@ class MimeNode(SimulationNode):
         step (``mime.build._maddening.params_one_ulp_up``), so that the step reads each rather than making it at every
         step. None by default."""
         return {}
+
+    def recheck_route(self, cause: str, dtype: str) -> str:
+        """What takes the node's solve past a stop short a recheck named ``cause`` (:data:`FLOOR_LIMITED`,
+        :data:`STAGNATED`, ...) in a run in ``dtype``; empty where the node names none."""
+        del cause, dtype
+        return ""
 
     def constants(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """The constructor's arguments, with the graph's live ``params`` written over them when given: what the step

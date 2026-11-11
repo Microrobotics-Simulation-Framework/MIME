@@ -9,7 +9,7 @@ import pytest
 from near_field_cases import RADIUS, bodies, mrs, spheres
 
 from mime.build import BuildRefused
-from mime.interactions import UncoupledDrag
+from mime.interactions import ForceSampling, UncoupledDrag
 from mime.scene import Cylinder
 from mime.units import m, ms
 
@@ -30,8 +30,8 @@ def placed() -> dict:
 
 
 def laws(graded: bool, *, kept: bool = False, wall: str = "free_space") -> dict:
-    grading = ({"contact": (0.0, 0.0, -1.0), "contact_gap": m(0.3e-3)} if wall == "plane" else
-               {"grading": "features"}) if graded else {}
+    grading = {"sampling": ForceSampling(contact=(0.0, 0.0, -1.0), contact_gap=m(0.3e-3)) if wall == "plane" else
+               ForceSampling(grading="features")} if graded else {}
     third = UncoupledDrag.MRS(spacing=m(SPACING), wall_kind=wall) if kept else mrs(SPACING, wall_kind=wall)
     return {"s0": mrs(SPACING, wall_kind=wall, **grading), "s1": mrs(SPACING, wall_kind=wall), "s2": third}
 

@@ -157,7 +157,7 @@ def test_on_the_iterative_route_the_gain_is_the_dense_routes_and_decides_the_sam
     with precision(dtype):
         for ratio in (0.001, 1.0):
             built, _, _, dense = step_of("triangle", 0.1, ratio)
-            rows.append((ratio, dense, step_of("triangle", 0.1, ratio, built, dense_unknowns=0)[3]))
+            rows.append((ratio, dense, step_of("triangle", 0.1, ratio, built, solve="gmres")[3]))
     for ratio, dense, iterative in rows:
         gains = float(dense["gain"]), float(iterative["gain"])
         print(f"\n{dtype}, the triangle at 0.1 a, tau/dt {ratio}: gain {gains[1]:.6f} on GMRES, {gains[0]:.6f} dense "
