@@ -1,7 +1,8 @@
-"""The open vessel through the experiment (F2b's PR 2): ``FVM(domain=VesselRegion())`` on a tube cut at its own ends,
-an ``Inflow`` at ``tube.start`` and a ``Windkessel`` at ``tube.end``, built, run and metered; the account names the
-inflow as what supplied the work, the Windkessel's stored energy and its loss by name; and the plan's refusals, each a
-way the openings cannot be stepped."""
+"""The open vessel through the experiment (F2b's PRs 2 and 3): ``FVM(domain=VesselRegion())`` on a tube cut at its own
+ends, an ``Inflow`` at ``tube.start`` and a ``Windkessel`` at ``tube.end``, built, run and metered; the account names the
+inflow as what supplied the work, the Windkessel's stored energy and its loss by name; the plan's refusals, each a way
+the openings cannot be stepped; a law over both openings (``SharedDistal``, ``surface=`` a tuple or the lumen's
+openings) and a closed ``Valve``."""
 
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import pytest
 from mime.build import BuildRefused
 from mime.dynamics import FVM, Scheme
 from mime.experiment import Experiment
-from mime.interactions import BodyForce, Inflow, Windkessel
+from mime.interactions import BodyForce, Inflow, SharedDistal, Valve, Windkessel
 from mime.nodes.flow.fvm import OpenFlowNode
 from mime.observations import EnergyLedger
 from mime.scene import PeriodicBox, Scene, Tube, VesselRegion, Z
@@ -138,3 +139,81 @@ def test_the_cfl_stop_on_an_open_vessel_names_its_own_routes(float64):
     assert problem is not None and problem.code == "flow.cfl-exceeded"
     assert "dt='auto' is refused here" in problem.action and "steady drive" not in problem.action
     assert "inflow's peak" in problem.action
+
+
+# -- a law over several openings (F2b's PR 3; the record's "F2's rows, 2", item 1) --------------------------------
+
+def loop(surface, *, distal=5.0, scheme=None, metered=True) -> Experiment:
+    """The tube closed on itself through a shared distal law across both its ends (``first`` at the start, ``second``
+    at the end), driven by a body force on its fluid: a loop, whose flux the shared resistance cannot change (the two
+    openings' fluxes sum to zero, so ``R_d (q_1 + q_2)`` vanishes) and the off-diagonals' sign can."""
+    exp = Experiment("open_loop", scene=Scene.new(up=Z, units="m"), dt=ms(2.0))
+    exp.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(RADIUS * 1e3), wall=mm(0.2),
+                                                      length=mm(LENGTH * 1e3))))
+    flow = FVM(domain=VesselRegion(), cells_across=8, stokes=True,
+               scheme=Scheme.Steady() if scheme is None else scheme)
+    exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
+    exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    exp.attach(SharedDistal(first=Pa_s_per_m3(RESISTANCE), second=Pa_s_per_m3(3.0 * RESISTANCE),
+                            distal=Pa_s_per_m3(distal * RESISTANCE)), medium="water", surface=surface)
+    if metered:
+        exp.observe(EnergyLedger())
+    return exp
+
+
+def test_a_law_over_two_openings_binds_both_and_its_shared_resistance_drops_out(float64, monkeypatch):
+    """The shared distal law attached across the tube's two ends, as a tuple and as the lumen's openings group: one
+    law, one row in the books (``shared_distal:tube.start+tube.end``), the books closing; the loop's flux the same at
+    two distal resistances a decade apart (the discriminator: the exact law's split does not move with R_d), and moved
+    by the off-diagonals dropped (each R_d folded into its own opening's row: the record's control (a))."""
+    fluxes = {}
+    for surface in (("tube.start", "tube.end"), "tube.lumen"):
+        for distal in (5.0, 50.0):
+            result = loop(surface, distal=distal).build().run(ms(6.0))
+            assert ledger_closes(result).passed
+            assert "shared_distal:" + ("tube.start+tube.end" if isinstance(surface, tuple) else "tube.lumen") \
+                in result.energy.lost
+            fluxes[surface, distal] = float(np.asarray(result.final["water.flow"]["opening_flux"])[1])
+    reference = fluxes["tube.lumen", 5.0]
+    assert all(abs(value / reference - 1.0) < 1e-9 for value in fluxes.values()), fluxes
+    from twin_cases import PLANTS as TWIN_PLANTS
+
+    TWIN_PLANTS["dropped"](monkeypatch.setattr)
+    dropped = float(np.asarray(loop("tube.lumen").build().run(ms(6.0)).final["water.flow"]["opening_flux"])[1])
+    assert abs(dropped / reference - 1.0) > 0.1, (dropped, reference)
+
+
+def test_a_law_given_another_count_of_openings_is_refused(float64):
+    """A one-opening law given two surfaces, and the two-opening law given one, are each refused naming the count."""
+    one = vessel(laws=())
+    one.attach(Windkessel(proximal=Pa_s_per_m3(RESISTANCE), compliance=m3_per_Pa(1e-13),
+                          distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface=("tube.start", "tube.end"))
+    assert "binding.opening-count" in refused(one)
+    two = vessel(laws=("start",))
+    two.attach(SharedDistal(first=Pa_s_per_m3(RESISTANCE), second=Pa_s_per_m3(RESISTANCE),
+                            distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface="tube.end")
+    assert "binding.opening-count" in refused(two)
+
+
+def test_a_saved_law_over_two_openings_loads_and_runs_bit_for_bit(float64, tmp_path):
+    exp = loop(("tube.start", "tube.end"), metered=False)
+    exp.save(tmp_path / "saved")
+    loaded = Experiment.load(tmp_path / "saved")
+    finals = [each.build().run(ms(4.0)).final["water.flow"] for each in (exp, loaded)]
+    assert np.array_equal(np.asarray(finals[0]["opening_flux"]), np.asarray(finals[1]["opening_flux"]))
+
+
+def test_a_closed_valve_holds_its_opening_shut(float64):
+    """A valve at the tube's end and a Windkessel at its start, the fluid pushed by a body force: no flux at either
+    end (the valve's row, and the incompressible field), the pressure behind the valve solved, the books closing."""
+    exp = vessel(laws=("start",), inflows=())
+    exp.attach(Valve(), medium="water", surface="tube.end")
+    exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    exp.observe(EnergyLedger())
+    result = exp.build().run(ms(20.0))
+    final = result.final["water.flow"]
+    assert np.max(np.abs(np.asarray(final["opening_flux"]))) < 1e-12 * FLUX
+    assert float(np.asarray(final["opening_pressure"])[1]) > 0.0
+    assert ledger_closes(result).passed

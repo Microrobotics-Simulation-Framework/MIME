@@ -85,3 +85,6 @@ interaction inflow 0.1.0 steady                           # physical: the flux t
 interaction windkessel 0.1.0 proximal                     # physical: the downstream bed's proximal resistance, nothing assumes one
 interaction windkessel 0.1.0 compliance                   # physical: the downstream bed's compliance, nothing assumes one
 interaction windkessel 0.1.0 distal                       # physical: the downstream bed's distal resistance, nothing assumes one
+interaction shared_distal 0.1.0 first                    # physical: the first opening's own resistance, nothing assumes one
+interaction shared_distal 0.1.0 second                   # physical: the second opening's own resistance, nothing assumes one
+interaction shared_distal 0.1.0 distal                   # physical: the shared downstream resistance, nothing assumes one

@@ -19,13 +19,17 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
 - the open box's own (``OPEN_FLAGS``): ``open_face_projection`` (``N_proj`` over the step's scale: a projector that is
-  not orthogonal under the books' inner product, its port faces at the wrong weight).
+  not orthogonal under the books' inner product, its port faces at the wrong weight); and ``port_kinetic_flux``, the
+  record's boundary flag (port work against the kinetic-energy flux, rung 2): the kinetic energy the books hold as
+  crossing the openings (the one line ``<node>.openings``, the scheme's own convective power) against what crosses
+  each opening, the convective power split by plane (``OpenMACGrid.opening_kinetic_fluxes``, exact to the field's
+  divergence), judged on each opening's own flux in magnitude so in and out do not cancel: a flux booked elsewhere,
+  or convection doing work inside the box. The port work is not in its scale: the reading is formed from convective
+  products alone, and judged on the scale it came from.
 
-**Not built** (no flag is declared for them, pending or otherwise): the record's port work against the kinetic-energy
-flux through the openings, whose reading needs the scheme's convective power split by plane (one line an opening, so
-the energy in and out does not cancel), F2b's PR 3 with the openings' own rows; and the periodic box's three on the
-open box and on RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those
-runs' own draws."""
+**Not built** (no flag is declared for them, pending or otherwise): the periodic box's three on the open box and on
+RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those runs' own
+draws."""
 
 from __future__ import annotations
 
@@ -137,6 +141,29 @@ def projection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any
     return jnp.where(stepped, _share(jnp.abs(term), _step_scale(before, after)), 0.0)
 
 
+def kinetic_flux_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any],
+                         after: Mapping[str, Any]) -> Array:
+    """``|W_KE + dt rho sum_k K_k| / (dt rho (sum_k |K_k| + <|C(u)|, |u|>))``: the kinetic energy the books hold as
+    crossing the openings, ``W_KE`` (the line ``<node>.openings``), against each opening's own, ``K_k`` out through it
+    (the convective power split by plane at the step's start, ``OpenMACGrid.opening_kinetic_fluxes``), over each
+    opening's flux in magnitude and the convective product's (the line's own rounding scale). On a discretely
+    divergence-free field the two agree to rounding; a flux booked in another term, or convection doing work inside the
+    box, reads above it. Zero on a step held past the CFL line and where convection is off."""
+    held = books.deliveries(node.constants())
+    line = next(d.law for d in held if d.kind == books.HOSTED and d.field == "kinetic_flux")
+    booked = jnp.asarray(after[f"{books.RECORDS}step_work"])[books.laws(held).index(line)]
+    if not node.constants()["convection"]:
+        return jnp.zeros((), dtype=booked.dtype)
+    grid = node.open_grid(p)
+    started = _velocity(before)
+    flux, size = grid.opening_kinetic_fluxes(started)
+    weight = node.delta_t * as_run_array(p["density"])
+    product = grid.inner_magnitude(grid.convection(started), started)
+    stepped = jnp.asarray(after["stopped_at"]) < 0
+    return jnp.where(stepped, _share(jnp.abs(booked + weight * jnp.sum(flux)), weight * (jnp.sum(size) + product)),
+                     0.0)
+
+
 #: The run that measured the lines: 200 draws a dtype of ``tests/flow/flag_cases.py``'s envelope (seeds 0 to 199), 60
 #: steps each, every flag read at every step.
 LINES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42769581278"
@@ -228,5 +255,5 @@ OPEN_FLAGS: tuple[LedgerFlag, ...] = (
 )
 
 __all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "OPEN_FLAGS",
-           "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
-           "projection_reading", "stall_reading"]
+           "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED", "FlagEvidence", "convection_reading",
+           "kinetic_flux_reading", "leak_reading", "projection_reading", "stall_reading"]

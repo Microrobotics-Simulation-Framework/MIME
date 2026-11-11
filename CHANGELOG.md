@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
+  `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
+  patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the
+  solid's included, in the nearest opening's patch), and laws that bind one opening or several: a law over several
+  states a block over them (`PortLaw.openings`, its rows' `B`), which the port system solves whole each step. Through
+  the experiment a law's `surface=` names its openings as a tuple, `surface=(tree.end_0, tree.end_1)`, or as a region's
+  declared openings, `surface=tube.lumen`, and a law given another count than it binds is refused
+  (`binding.opening-count`); `FVM.openings_of` reads the geometry kind's declared openings, and the build lays each on
+  the plane its surface faces. `exp.attach(Valve(), medium=blood, surface=...)`: a closed valve, a flux row of zero,
+  workless; gated against the walled-off vessel (the same vessel with that outlet capped by solid, whose own leak
+  through the cap explains the difference), with the stiff resistance that would stand in for it measured beside it
+  (its leak falls as one over its resistance while the port system's condition number grows with it).
+  `exp.attach(SharedDistal(first=..., second=..., distal=...), medium=blood, surface=(a, b))`: two openings each
+  through its own resistance into one shared distal resistance, its off-diagonals solved, its own books kept (a lagged
+  off-diagonal leaves a first-order residual in them). `port_kinetic_flux`, an active flag: the kinetic energy the
+  books hold as crossing the openings against each opening's own, the scheme's convective power split by plane (exact to
+  the field's divergence: the divergence form is conservative), each opening judged on its own flux so in and out do not
+  cancel. `OpenFlowNode.opening_solid_fluxes`: each opening's flux through the solid (an `Inflow`'s band share). Only a
+  Tube's two ends build through the experiment until the tube tree's wall is in the open box; two outlets are gated at
+  the node level on a rig of two parallel tubes.
+
 - **A flow open at the vessel's ends, and the laws at its openings: `VesselRegion`, `Inflow`, `Windkessel`, the
   `opening` port kind.** `FVM(domain=VesselRegion())` on a straight tube along z cuts the region the medium fills at the
   openings its geometry kind declares for it (`Geometry.openings`, read through `Region.openings`; named by geometry,
@@ -1010,6 +1031,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **A body force on the open vessel's fluid booked its work over the planes' half cells counted whole**: its pairing,
+  the fluid's momentum, now weighs each face as the open box's inner product does, so a driven open vessel's books close
+  (they failed at 5e12 of their floor; the open box was admitted with a body force and not gated with one).
 
 - **The FVM's stall flag is set from clean runs, in the solve's tolerance, and stops firing on correct float32 runs.** The
   stall detector `|N_Krylov| / D_visc` (`stall_flagged`, with the energy ledger attached) was flagged above a fixed

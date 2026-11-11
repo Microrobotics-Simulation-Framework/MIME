@@ -81,3 +81,18 @@ def test_the_projection_flag_is_quiet_and_catches_its_plant(dtype, monkeypatch, 
     assert int(final["stopped_at"]) < 0
     worst = float(np.max(np.abs(np.asarray(found))))
     assert (worst <= flag.line[dtype]) == (plant is None), worst
+
+
+@pytest.mark.parametrize("plant", [None, "kinetic_in_n_conv"])
+def test_the_kinetic_flux_flag_is_quiet_and_catches_its_plant(dtype, monkeypatch, plant):
+    """port_kinetic_flux on a drawn run: under its line clean, past it with the kinetic energy crossing the openings
+    left inside N_conv (the step identity still closing). Its rates over fresh draws are its evidence's."""
+    if plant:
+        PLANTS[plant](monkeypatch.setattr)
+    flag = next(f for f in OPEN_FLAGS if f.name == "port_kinetic_flux")
+    node = point_node(draw(SEEDS[0]))
+    final, found = scan(node, STEPS, lambda p, b, a: flag.reading(node, p, b, a))
+    assert int(final["stopped_at"]) < 0
+    assert ledger_closes(final).passed
+    worst = float(np.max(np.abs(np.asarray(found))))
+    assert (worst <= flag.line[dtype]) == (plant is None), worst

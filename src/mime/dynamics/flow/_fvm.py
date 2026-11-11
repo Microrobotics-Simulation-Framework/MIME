@@ -20,7 +20,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING, Annotated, cast, override
+from typing import TYPE_CHECKING, Annotated, Any, cast, override
 
 from mime.core import jnp, run_dtype
 from mime.gradients import GradientStatus
@@ -28,6 +28,8 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
     ExplicitFlowNode, ImplicitFlowNode, OpenFlowNode, periodic_tube_layout
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
+from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
+from mime.nodes.flow.fvm._ports import Valve as ValveLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
 from mime.nodes.flow.fvm._ports import port_law_named, well_posed
 from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, \
@@ -196,9 +198,9 @@ class FVM(Dynamics):
     port_kinds = (FLUID.name, OPENING.name)
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
                FLOW_OPENING.name: Port("openings")}
-    #: The laws a user attaches at an opening, by their port laws' names (``mime.interactions.Inflow``,
-    #: ``Windkessel``).
-    registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name})
+    #: The laws a user attaches at an opening or several, by their port laws' names (``mime.interactions.Inflow``,
+    #: ``Windkessel``, ``Valve``, ``SharedDistal``).
+    registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name, ValveLaw.name, SharedDistalLaw.name})
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
                               "true residual no longer falling), so the step's values hold only to the residual it "
@@ -394,13 +396,15 @@ class FVM(Dynamics):
         openings = self.openings_of(region)
         found: list[Problem] = []
         for registration in registrations:
-            if registration.subject not in openings:
+            unknown = [surface for surface in registration.surfaces if surface not in openings]
+            if unknown:
                 found.append(Problem("flow.opening-unknown", f"{registration.id} is attached at "
-                                                             f"{registration.subject!r}, which is not an opening of "
-                                                             f"the flow's region (its openings: {', '.join(openings)})",
+                                                             f"{', '.join(repr(u) for u in unknown)}, which is not an "
+                                                             f"opening of the flow's region (its openings: "
+                                                             f"{', '.join(openings)})",
                                      f"attach it at one of them, exp.attach(..., medium=..., "
                                      f"surface={openings[0]!r}) or surface={openings[1]!r}"))
-        held = {o: [r for r in registrations if r.subject == o] for o in openings}
+        held = {o: [r for r in registrations if o in r.surfaces] for o in openings}
         for opening, laws in held.items():
             if len(laws) != 1:
                 attached = f"{', '.join(r.id for r in laws)} are attached" if laws else "no law is attached"
@@ -410,8 +414,10 @@ class FVM(Dynamics):
         if found:
             return found
         laws = [held[o][0] for o in openings]
+        one = [port_law_named(r.kind).openings == 1 for r in laws]
         reason = well_posed([port_law_named(r.kind).row for r in laws],
-                            [port_law_named(r.kind).row_of(r.settings) for r in laws])
+                            [port_law_named(r.kind).row_of(r.settings) if alone else (0.0,) * 4
+                             for r, alone in zip(laws, one, strict=True)])
         return [Problem("flow.openings-ill-posed", reason,
                         f"attach a pressure law at one of the openings, exp.attach(Windkessel(proximal=..., "
                         f"compliance=..., distal=...), medium=..., surface={openings[1]!r}), whose pressure the "
@@ -580,12 +586,24 @@ class FVM(Dynamics):
 
 def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],
                 region: Region) -> None:
-    """The open vessel's node: the box along z from its start's plane to its end's, each opening's law from its
-    registration (its kind, its settings as a row of parameters, its id the ledger's name)."""
-    by_opening = {r.subject: r for r in registrations}
-    laws = [by_opening[opening] for opening in fvm.openings_of(region)]
-    start, end = (r.subject_parameters for r in laws)
-    length = -(float(cast(float, start["offset"])) + float(cast(float, end["offset"])))
+    """The open vessel's node: the box along z from its low plane to its high one, each opening on the plane its
+    surface faces (its normal into the vessel along the axis: the low plane; against it: the high one), each law from
+    its registration (its kind, its settings as a row of parameters, its id the ledger's name, the openings it binds
+    in the order written)."""
+    openings = fvm.openings_of(region)
+    at: dict[str, Mapping[str, Magnitude]] = {}
+    for registration in registrations:
+        given = registration.subjects_parameters or (registration.subject_parameters,)
+        at.update(zip(registration.surfaces, given, strict=True))
+    axis = _unit(region.parameters["axis"])
+    planes = tuple("low" if sum(float(n) * a for n, a in zip(cast(tuple[float, ...], at[o]["normal"]), axis,
+                                                             strict=True)) > 0.0 else "high" for o in openings)
+    low, high = (next(at[o] for o, plane in zip(openings, planes, strict=True) if plane == side)
+                 for side in ("low", "high"))
+    length = -(float(cast(float, low["offset"])) + float(cast(float, high["offset"])))
+    laws = sorted(registrations, key=lambda r: min(openings.index(s) for s in r.surfaces))
+    placed: dict[str, Any] = {} if planes == ("low", "high") and all(len(r.surfaces) == 1 for r in laws) else \
+        {"opening_planes": planes, "law_openings": tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws)}
     radius = float(region.parameters["radius"])  # type: ignore[arg-type]
     spacing = ctx.scalar("spacing") if fvm.spacing is not None else None
     layout = periodic_tube_layout(radius, length, cells_across=fvm.cells_across, spacing=spacing,
@@ -599,9 +617,10 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes,
         tolerance=fvm.tolerance, preconditioner=fvm.preconditioner, band=DEFAULT_BAND,
         interior=_INTERIOR_NAMES[fvm.wall.delta_in], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
-        openings=tuple(r.subject for r in laws), opening_laws=tuple(r.kind for r in laws),
+        openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
-        opening_law_ids=tuple(r.id for r in laws)))
+        opening_law_ids=tuple(r.id for r in laws),
+        **placed))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:

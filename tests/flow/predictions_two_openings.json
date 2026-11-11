@@ -1,0 +1,93 @@
+{
+ "written": "2026-11-11, committed before any gate of F2b PR 3 ran on Actions (the commit that adds this file is the timestamp): two openings at one plane; laws over several openings and surface= several; the closed valve and its walled-off gate against the stiff stand-in; the shared distal resistance (amendment 5); FB5, FB6, FA1 = FB14; the kinetic-energy flux split by plane (port_kinetic_flux)",
+ "phase": "F2b PR 3, two openings",
+ "labels": "predictions by the builder (Opus) from derivations and from a few local runs while writing (seen_before): a prediction near one of them is a fit to it and says so",
+ "seen_before": [
+  "the kinetic-energy split, scratch on 4 random projected fields of the open grid (float64): <C(u), u> + sum_k K_k at 3e-17 to 1.9e-16 of the planes' gross",
+  "the rig's draw 0 (D/h 8, float64, tolerance 1e-11, the default stiff interior 0.1h): the conductance G symmetric with zero row and column sums to 4e-16, its cross term G[1,2]/G[1,1] = -5.1 %; FB5's split 0.75872044429023 against the network on G 0.75872044429023 (5e-16) and the equal-tube network's 0.7549 (+0.38 %); the shared distal split at R_d 5 and 50 R_t the FB5 split to 2e-16, dropped 0.645 and 0.530",
+  "the same draw's valve against the capped reference: the inlet pressure 2.0e-3 apart at 0.1h and 3.4e-5 at 0.01h, the outlet's 1e-15; the valve's flux -3.4e-17 and 4e-20 of the inflow; the stand-in at 1e2, 1e4, 1e6, 1e8 R_t leaking 3.0e-2, 3.1e-4, 3.1e-6, 3.1e-8 of the inflow, the last step's CG 3 iterations at each",
+  "FA1 on the open tube (steady Stokes, offset (0.3, -0.2), float64): the deep solid's flux against Darcy at the run's drop 4.3e-4 and 3.4e-4 of it at D/h 8 and 12 (0.1h), 4.7e-6 and 3.6e-6 (0.01h); the oracle at the other depth 89 and 0.99 off; the solid's share beyond the band's half width 3.4 % and 1.0 % (0.1h), 0.20 % and 0.093 % (0.01h)",
+  "the loop (the shared distal law across a Tube's two ends, a body force driving it, steady Stokes, float64): the flux the same at R_d 5 and 50 R_t; its step identity failing at 5.1e12 of its floor before the open box's fluid momentum was weighted as its inner product (the drive's work on the planes' half cells counted whole), closing after"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "CPU, GitHub Actions runner (4 vCPU), the probe workflow",
+  "sizes_and_parameters": "the rig (tests/flow/twin_cases.py): two tubes of D = 1 (nu = rho = 1) mirror images across the box's middle plane, D/h 8 or 12, 2 or 3 diameters long, a sub-cell spread and lift, a steady inflow of mean speed one a tube, outlets 0.3 to 10 R_t with one at least twice the other; steady Stokes at tolerance 1e-11 (float64) and 1e-5 (float32); FB6 IMEX Euler, Stokes, dt 0.05, 40 steps a period of a pulsatile inflow (0.3 of its mean), 80 steps; FA1 the open tube of #235 (D/h 8 to 16, sub-cell offsets), steady Stokes between given pressures; the kinetic flag on #235's open draws (IMEX Euler, convection on, Re 1 to 100 through a narrowing, R_d 1 to 1e4 R_tube, 60 steps)",
+  "seeds_and_draws": "lines: 40 draws a dtype (seeds 0 to 39; the kinetic flag 200 a dtype, the solid's share 100 in float64); rates: 40 planted and 40 clean runs a control (seeds 3000 to 3039)"
+ },
+ "gate_fb5_two_outlets": {
+  "claim": "FB5: a steady inflow's split between two outlets, each a resistance, is the 0-D network's on the rig's own conductances (three given-pressure runs: the solid's flow between the outlets' patches included), to 100 solve tolerances",
+  "kind": "equality",
+  "case": "twin_cases.split_reading(draw(seed), tolerance)",
+  "prediction": {"value": 1e-3, "band": [0.0, 0.3], "unit": "of the line (100 tolerances)", "basis": "measured-before (float64, one draw) and derived (float32: the split's error a few tolerances)", "why": "both sides are the same linear field solved to the tolerance: the law run's port system and the given-pressure runs' superposition differ by the solves' residuals"},
+  "metric": "|split - the network's on G|, the split a share of the inflow",
+  "control": {"plant": "the solver's outlet laws swapped, the network's not (the split moves to its complement, at least 0.1 away on these draws)", "environment_variable": "TWIN_PLANT=swapped", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40"},
+  "estimates": "the equal-tube network (no cross term) within 0.2 to 1 % of the split: the solid's Darcy flow between the outlets' patches on their shared plane, the cross conductance 1 to 6 % of an outlet's at 0.1h",
+  "cannot_discriminate_if": "the outlets' resistances equal (a split of a half is its own complement): the draws keep one at least twice the other"
+ },
+ "gate_shared_distal": {
+  "claim": "amendment 5: the shared distal law's split is the network's on the rig's conductances at R_d 5 and 50 R_t alike (R_d drops out: both outlets see one distal pressure), to 100 solve tolerances",
+  "kind": "equality",
+  "case": "twin_cases.split_reading(draw(seed), tolerance, distal=(5.0, 50.0))",
+  "prediction": {"value": 1e-3, "band": [0.0, 0.3], "unit": "of the line", "basis": "measured-before (one draw) and derived", "why": "the law's block solved whole; its split is the two-resistance network's"},
+  "control": {"plant": "the off-diagonals dropped (each R_d folded into its own row, its books consistent with it): the record's 0.667 -> 0.5625 on its arithmetic case; here the split moves toward a half by 0.02 to 0.2", "environment_variable": "TWIN_PLANT=dropped", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40"},
+  "discriminator": "R_d varied alone (5 and 50 R_t): the exact split does not move, the dropped one does"
+ },
+ "gate_shared_lagged": {
+  "claim": "amendment 5, control (b): in pulsatile flow the shared distal law's own books close at every step on its own scale; lagged off-diagonals leave a first-order residual in them",
+  "kind": "acceptance",
+  "case": "test_fvm_two_openings.shared_pulsatile(lagged), 20 steps; the order from twin_lines.py lagged at dt 0.05 and 0.025 over one period",
+  "prediction": {"value": 0.05, "band": [0.0, 0.5], "unit": "of the law identity's floor (16 eps of its own scale), clean", "basis": "derived", "why": "its loss is dt p . q exactly"},
+  "control": {"plant": "the off-diagonals taken at the last step's fluxes (the row's a, the block diagonal), the books exact", "environment_variable": "TWIN_PLANT=lagged", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40"},
+  "order": {"value": 2.0, "band": [1.6, 2.4], "unit": "the worst lagged residual at dt over dt/2", "basis": "derived", "why": "a step's residual dt R_d q (q_old - q) over its scale dt p q is (q_old - q)/q, first order in dt"}
+ },
+ "gate_valve": {
+  "claim": "a closed valve (a flux row q = 0) on an outlet is the monolithic run with that outlet walled off (its tube capped by solid from mid-length), but for the cap's own leak: the inlet pressures differ by the open tube's resistance times the reference's flux through the capped tube's half of the plane, which explains the difference to a tenth of it beyond 100 solve tolerances; the valve's flux zero to its summation floor (4e3 eps of the inflow)",
+  "kind": "equality",
+  "case": "twin_cases.valve_reading(draw(seed), tolerance) at the stiff interior 0.01h",
+  "prediction": {"value": 0.03, "band": [0.0, 0.5], "unit": "of the line", "basis": "guess", "why": "the reference differs from the valve only by the cap's Darcy flow and the solid's around it, which moves the open tube's flux by its own size; what is left is that leak's path's own resistance and the cross conductance (0.05 % at 0.01h)"},
+  "control": {"plant": "the valve leaking 2 % of the inflow (TWIN_PLANT=leaking); the valve's row a pressure row of zero, an outlet left open (TWIN_PLANT=opened)", "expected_rate": "40/40 each, each dtype", "runs": 40, "clean_expected": "0/40"},
+  "if_wrong": "a clean miss means the leak does not explain the difference: report the residual and its size against the leak, and what else differs"
+ },
+ "stand_in": {
+  "claim": "the stiff resistance standing in for a closed valve (impedance-only's route) leaks as one over its resistance, grows the port system's condition number with it, and leaves the CG's iterations where they are (the port system is solved beside the CG): the reason for the flux row, measured",
+  "kind": "estimates",
+  "case": "twin_cases.stand_in_reading at 1e2, 1e4, 1e6 and 1e8 R_t, 4 draws a dtype",
+  "prediction": {"leak": "3 / (R_big / R_t) of the inflow", "condition": "growing as R_big, about 1e2 times the valve's at 1e2 R_t and 1e8 times at 1e8", "iterations": "equal across the stiffnesses and the valve", "float32": "the stand-in's pressure at 1e8 R_t off by about its condition number times eps (more than 1 in float32)", "basis": "derived"}
+ },
+ "gate_fb6": {
+  "claim": "FB6: the implicit coupling stays within three times the inflow's mean over 80 steps at loop gains R_p q from 0.3 to 10 on two outlets; the test-only explicit arm (each Windkessel's pressure from the last step's flux) does not, from gain 2.5",
+  "kind": "acceptance",
+  "case": "twin_cases.fb6_reading(draw(seed), gain, tolerance, explicit)",
+  "prediction": {"value": 1.3, "band": [1.0, 2.0], "unit": "largest outlet flux over the inflow's mean, implicit", "basis": "derived", "why": "backward Euler on the coupled port is A-stable; the pulsatile inflow peaks at 1.3 of its mean"},
+  "control": {"plant": "the explicit arm at gains drawn 2.5 to 10 (the spike: unstable from 1.9 with two outlets)", "environment_variable": "TWIN_PLANT=explicit", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40 (the implicit coupling at the same gains)"}
+ },
+ "gate_fa1_fb14": {
+  "claim": "FA1 = FB14: at each opening, the flux through its faces deep in the solid (beyond the band and its stiffening ramp) is Darcy's at the run's own pressure drop and the arm's own stiff interior, to 0.2 delta_in^2 of it; the solid's share beyond the band's half width reported per opening (what an Inflow's pinned flux carries outside the lumen)",
+  "kind": "equality",
+  "case": "open_cases.bypass_arm and bypass_reading, D/h 8 to 16, sub-cell offsets, both interiors",
+  "prediction": {"value": 0.03, "band": [0.0, 0.5], "unit": "of the line (0.2 delta_in^2)", "basis": "measured-before (D/h 8 and 12, one offset)", "why": "Brinkman's screening length sqrt(K) is delta_in h: the band's faster flow reaches the first stiff faces by (sqrt(K)/h)^2"},
+  "control": {"plant": "the oracle at the other stiff interior (the record's: an oracle kept at the nominal depth)", "environment_variable": "TWIN_PLANT=oracle", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40"},
+  "estimates": "the solid's share beyond the band's half width 1 to 4 % at 0.1h and D/h 8 to 16 (not the 0.1 to 1 % #235's text gave), 0.05 to 0.3 % at 0.01h",
+  "scheme": "IMEX Euler's steady limit only (R5-C-02's correction: the Darcy formula is not an oracle for RK3, which takes no openings)"
+ },
+ "flag_port_kinetic_flux": {
+  "claim": "port_kinetic_flux: the kinetic energy the books hold as crossing the openings against each opening's own (the convective power split by plane, exact to the field's divergence), over each opening's flux in magnitude and the convective product's: rounding on correct runs; caught every run with the flux left inside N_conv",
+  "kind": "acceptance",
+  "case": "_flags.kinetic_flux_reading over 60 steps of open_cases.point_node(draw(seed)); its line set at about three times the clean worst of 200 draws a dtype, then its rates on fresh seeds (a second probe)",
+  "prediction": {"value": "clean worst 1e-15 (float64), 1e-6 (float32)", "basis": "derived", "why": "the projector leaves the divergence at rounding; both sides are sums of the same products"},
+  "control": {"plant": "the kinetic energy crossing the openings left inside N_conv (the step identity still closing): its reading the planes' net over their gross, at least 1e-4 on every run's first steps (the drawn swirl differs at the two planes); the plane's convective half cell at full weight (end_full_cell, start_full_cell) read too, expected not every run (developed outflow at low Reynolds number leaves it no gradient to see)", "environment_variable": "TWIN_PLANT", "expected_rate": "40/40 each dtype for kinetic_in_n_conv; under 40/40 for the half cells", "runs": 40, "clean_expected": "0/40"},
+  "cannot_discriminate_if": "a run whose in and out kinetic-energy fluxes match to rounding at every step (identical profiles at both planes): its reading of the plant is the net, then zero"
+ },
+ "loop_experiment": {
+  "claim": "surface= several: the shared distal law across a Tube's two ends (a tuple, and the lumen's openings group), a body force driving the loop, built through the experiment: one law, one row, the books closing; the flux the same at R_d 5 and 50 R_t; the dropped off-diagonals moving it",
+  "kind": "acceptance",
+  "case": "tests/flow/test_fvm_openings.py",
+  "prediction": {"value": "the flux equal to 1e-9 across R_d; dropped moved by more than 10 %", "basis": "measured-before (float64)"}
+ },
+ "bits": {
+  "cases": "the released programs (script A and its metered form, the hull contact, the coupled toy, the dynamic and kinematic RPM arms, the four periodic flows, the nudged toy) and #235's open tube flow, both dtypes, base dface1d against the head in one job",
+  "prediction": "every array np.array_equal: the periodic node is untouched; the open node with one opening a plane forms its sums, its forces and its rows as before (a law's block placed on the diagonal, multiplied by ones and summed with exact zeros)"
+ },
+ "outcomes": null
+}

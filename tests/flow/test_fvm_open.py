@@ -99,3 +99,24 @@ def test_float32_is_within_its_line_of_float64():
                                     - np.asarray(finals["float32"][f"velocity_{x}"], dtype=np.float64))))
                 for x in "xyz") / speed
     assert worst <= FLOAT32_ENVELOPE, worst
+
+
+#: FA1 = FB14's line on the deep solid's flux against Darcy's, over Darcy's: a share of ``delta_in^2`` (the Brinkman
+#: screening length over the spacing, squared: how far the band's faster flow reaches into the stiff interior's first
+#: faces; measured 0.043 and 0.047 of it at D/h 8 while writing).
+FA1_PER_DEPTH_SQUARED = 0.2
+
+
+@pytest.mark.parametrize(("interior", "oracle"), [("0.1h", 0.1), ("0.01h", 0.01), ("0.01h", 0.1)])
+def test_the_solids_flux_at_each_opening_is_darcys(dtype, interior, oracle):
+    """FA1 = FB14 (R5-C-02): at each opening, the flux through its faces deep in the solid (beyond the band and its
+    stiffening ramp) is Darcy's at the run's own pressure drop and the arm's own stiff interior, to its line, steady
+    Stokes off the cells' centre; the control holds the oracle at the nominal 0.1h on the 0.01h arm (the record's: the
+    oracle kept at the nominal depth fails). The solid's share beyond the band's half width is reported per opening."""
+    from open_cases import bypass_arm, bypass_reading
+
+    node, final = bypass_arm(8, interior, offset=(0.3, -0.2), tolerance=1e-11 if dtype == "float64" else 1e-5)
+    found = bypass_reading(node, final, oracle)
+    held = float(interior.removesuffix("h"))
+    assert (found["error"] <= FA1_PER_DEPTH_SQUARED * held ** 2) == (oracle == held), found
+    assert all(0.0 < share < 0.1 for share in found["solid_share"]), found

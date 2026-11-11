@@ -279,6 +279,21 @@ def _interior_gift(setter: Setter) -> None:
 GIFT = {"float64": 1e-9, "float32": 0.5}
 
 
+def _kinetic_in_n_conv(setter: Setter) -> None:
+    """The kinetic energy convection carries through the openings left inside ``N_conv`` (its line booked as zero,
+    ``N_conv`` as ``-dt rho <C(u), u'>``): the step identity still closes; only the boundary flag can see it."""
+    real = OpenFlowNode.open_energy_terms
+
+    def planted(self: Any, *args: Any, **kwargs: Any) -> Any:
+        terms = dict(real(self, *args, **kwargs))
+        flux = terms["kinetic_flux"]
+        terms["convection"] = terms["convection"] - flux
+        terms["kinetic_flux"] = jnp.zeros_like(flux)
+        return terms
+
+    setter(OpenFlowNode, "open_energy_terms", planted)
+
+
 def _loss_in_n_wk(setter: Setter) -> None:
     real = Windkessel.books
 
@@ -294,7 +309,7 @@ PLANTS: dict[str, Callable[[Setter], None]] = {
     "gradient_full_cell": _gradient_full_cell, "weights_uniform": _uniform_weights,
     "laplacian_full_cell": _laplacian_full_cell, "end_full_cell": _full_cell_end, "start_full_cell": _full_cell_start,
     "inflow_scaled": _inflow_scaled, "port_gift": _port_gift, "unit_scaled": _unit(1.1), "unit_negated": _unit(-1.0),
-    "interior_gift": _interior_gift, "loss_in_n_wk": _loss_in_n_wk,
+    "interior_gift": _interior_gift, "loss_in_n_wk": _loss_in_n_wk, "kinetic_in_n_conv": _kinetic_in_n_conv,
 }
 
 
@@ -302,9 +317,10 @@ PLANTS: dict[str, Callable[[Setter], None]] = {
 #: 16 while writing; the planted end faces 0.084 to 0.34).
 FB1_LINE = {"float64": 1e-9, "float32": 1e-4}
 
-__all__ = ["FB1_LINE", "GIFT", "GIFT_SHARE", "INFLOW_LAW", "METERED", "OPENINGS_LAW", "PLANTS", "STEPS", "WINDKESSEL_LAW",
-           "NarrowedOpenNode", "OperatorDraw", "Point", "draw", "n_wk_sum", "open_node", "operator_draw", "operator_errors",
-           "point_node", "scan", "tube_resistance"]
+__all__ = ["FB1_LINE", "GIFT", "GIFT_SHARE", "INFLOW_LAW", "INTERIOR_FROM", "METERED", "OPENINGS_LAW", "PLANTS", "STEPS",
+           "WINDKESSEL_LAW", "NarrowedOpenNode", "OperatorDraw", "Point", "bypass_arm", "bypass_reading",
+           "darcy_permeability", "draw", "n_wk_sum", "open_node", "operator_draw", "operator_errors", "point_node",
+           "scan", "tube_resistance"]
 
 
 # -- the gates' readings, a step each (traced) ------------------------------------------------------------------
@@ -418,6 +434,58 @@ def fb1_difference(open_final: Any, periodic_final: Any) -> float:
     opened[2] = opened[2][..., :-1]
     speed = max(float(np.max(np.abs(c))) for c in periodic)
     return max(float(np.max(np.abs(a - b))) for a, b in zip(opened, periodic, strict=True)) / speed
+
+
+#: The stiff interior's depth, in band widths from the wall, from which every face is fully stiff (``_flags.INSIDE``).
+INTERIOR_FROM = 1.5
+
+
+def darcy_permeability(spacing: float, interior: float, band_depth: float = 0.3) -> float:
+    """The permeability (m^2) deep in the solid, beyond the band and its stiffening ramp: the band's and the interior's
+    resistivities in series, ``(delta h)^2 / (1 + (delta / delta_in)^2)`` (``_band.wall_fields``), ``delta_in``
+    the arm's own ``interior`` (in cells)."""
+    return (band_depth * spacing) ** 2 / (1.0 + (band_depth / interior) ** 2)
+
+
+def bypass_arm(cells: int, interior: str, *, length: float = 2.0, offset: tuple[float, float] = (0.0, 0.0),
+               tolerance: float = 1e-11) -> tuple[OpenFlowNode, dict[str, Any]]:
+    """FA1 = FB14's arm: the open tube with its ends at given pressures ``G L`` apart (G = 32: mean speed one), steady
+    Stokes at the stiff interior ``interior``, after its steady steps."""
+    gradient = 32.0
+    layout = periodic_tube_layout(0.5, length, cells_across=cells, offset_cells=offset)
+    node = NarrowedOpenNode("flow", 1.0, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
+                            spacing=layout.spacing, viscosity=1.0, density=1.0, tube_centre=layout.centre,
+                            tube_axis=(0.0, 0.0, 1.0), tube_radius=0.5, openings=("tube.start", "tube.end"),
+                            opening_laws=("pressure", "pressure"),
+                            opening_parameters=[[gradient * layout.cells[2] * layout.spacing, 0.0, 0.0, 0.0],
+                                                [0.0, 0.0, 0.0, 0.0]],
+                            scheme="steady", convection=False, tolerance=tolerance, interior=interior)
+    final, _ = scan(node, 2)
+    return node, final
+
+
+def bypass_reading(node: OpenFlowNode, final: Any, interior: float) -> dict[str, Any]:
+    """Each opening's flux through its faces deep in the solid against Darcy's at the run's own pressure drop and the
+    oracle's ``interior`` (``u = K (p_start - p_end) / (mu L)`` on each such face), over Darcy's; and each opening's
+    flux through the solid beyond the band's half width, a share of the opening's flux (the share an ``Inflow``'s
+    pinned flux carries outside the lumen)."""
+    p = node._step_constants(None)  # noqa: SLF001
+    grid = node.open_grid(p)
+    fields = node.fields(p, grid)
+    h = float(grid.spacing)
+    velocity = (jnp.asarray(final["velocity_x"]), jnp.asarray(final["velocity_y"]), jnp.asarray(final["velocity_z"]))
+    deep = INTERIOR_FROM * 2.0 * h
+    found = np.asarray(node.opening_solid_fluxes(p, velocity, deep), dtype=np.float64)
+    pressure = np.asarray(final["opening_pressure"], dtype=np.float64)
+    length = grid.cells[2] * h
+    speed = darcy_permeability(h, interior) * (pressure[0] - pressure[1]) / length
+    distance = np.asarray(fields.signed_distance[2], dtype=np.float64)
+    faces = [int(np.sum(distance[..., plane] >= deep)) for plane in (0, -1)]
+    oracle = np.asarray([-faces[0], faces[1]], dtype=np.float64) * h * h * speed
+    shares = np.asarray(node.opening_solid_fluxes(p, velocity), dtype=np.float64) / \
+        np.asarray(final["opening_flux"], dtype=np.float64)
+    return {"error": float(np.max(np.abs(found - oracle) / np.abs(oracle))), "found": found, "oracle": oracle,
+            "solid_share": shares}
 
 
 def monolithic_distance(node: OpenFlowNode, before: Any, after: Any) -> float:

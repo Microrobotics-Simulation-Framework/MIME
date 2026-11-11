@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -126,3 +127,32 @@ def test_each_laws_row_kind_and_class():
     assert Windkessel.row is RowKind.PRESSURE and Windkessel.stores and not Windkessel.source
     assert Inflow.row is RowKind.FLUX and Inflow.source and not Inflow.stores
     assert GivenPressure.row is RowKind.PRESSURE and GivenPressure.source
+
+
+def test_the_port_system_solves_a_block_over_two_openings():
+    """The port system with one law over two openings (a block with off-diagonals) against the network solved
+    directly: a field of conductance ``G`` over three openings (symmetric, its rows and columns summing to zero), a
+    flux row at the first, the shared distal law's two pressure rows at the others; the fluxes and pressures are the
+    network's to rounding, and the split does not move with the distal resistance."""
+    from mime.nodes.flow.fvm._ports import SharedDistal, port_matrix
+
+    g = np.array([[-2.0, 1.2, 0.8], [1.2, -1.5, 0.3], [0.8, 0.3, -1.1]])
+    flux = 1.7
+    law = SharedDistal()
+    rows = [RowKind.FLUX, RowKind.PRESSURE, RowKind.PRESSURE]
+    coupling = [[True, False, False], [False, True, True], [False, True, True]]
+    splits = []
+    for distal in (5.0, 50.0):
+        _, b = law.affine(jnp.asarray([1.0, 3.0, distal, 0.0]), jnp.zeros(1), 0.0, 1.0)
+        block = jnp.zeros((3, 3)).at[1:, 1:].set(b)
+        reference = 1
+        response = jnp.asarray(g[:, [0, 2]])
+        solution = port_system(rows, jnp.asarray([-flux, 0.0, 0.0]), block, jnp.zeros(3), response, jnp.zeros(3),
+                               reference, coupling)
+        q, p = np.asarray(solution.fluxes), np.asarray(solution.pressures)
+        np.testing.assert_allclose(q, g @ (p - p[1]), atol=1e-12)
+        np.testing.assert_allclose(q[0], -flux, rtol=1e-12)
+        np.testing.assert_allclose(p[1:], np.asarray(b) @ q[1:], rtol=1e-12)
+        splits.append(q[1] / (q[1] + q[2]))
+        assert np.isfinite(np.linalg.cond(np.asarray(port_matrix(rows, block, response, reference, coupling))))
+    assert abs(splits[0] - splits[1]) < 1e-12, splits

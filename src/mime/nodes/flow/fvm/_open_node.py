@@ -1,5 +1,7 @@
-"""The implicit flow node on a box open along its axis: the FVM's field in a straight vessel cut at its two ends, each
-end an opening whose law the step holds (F0's B6/B7; the record's "F2's rows, 2"; F2b's PR 2).
+"""The implicit flow node on a box open along its axis: the FVM's field in a vessel cut at the box's two planes, its
+openings patches of those planes, each opening's law held in the step (F0's B6/B7; the record's "F2's rows, 2"; F2b's
+PRs 2 and 3). A law binds one opening or several (a block over them: a shared distal resistance); a plane holds one
+opening or several, split between their centres (``mime.nodes.flow.fvm._open``'s layout).
 
 **A step** is :class:`ImplicitFlowNode`'s (IMEX Euler or its steady limit on the monolithic projected CG), on the open
 grid (``mime.nodes.flow.fvm._open``), with its openings coupled implicitly through the field's affine response
@@ -17,7 +19,7 @@ N_BE - N_conv - N_Krylov - N_proj``: each opening's law's work ``-dt p q`` under
 ``q`` and its absolute pressure ``p``: the field's forces are the pressures relative to the reference, whose difference
 is the reference's pressure times the net flux, zero to rounding); the kinetic energy convection carries through the
 openings, ``W_KE = dt rho <C(u), u>``, the scheme's own convective power (B9, decision 14), as one line under
-``<node>.openings``; ``N_conv = -dt rho <C(u), u' - u>``, convection at mixed time levels; ``N_Krylov`` the solve's
+``<node>.openings`` (its split by opening, exact to the field's divergence, is the ``port_kinetic_flux`` flag's); ``N_conv = -dt rho <C(u), u' - u>``, convection at mixed time levels; ``N_Krylov`` the solve's
 projected remainder against ``u'`` and ``N_proj = dt rho <G p', u'>`` its gradient part, ``p'`` the remainder's
 pressure: the half-weight faces keep the projector orthogonal, so ``N_proj`` is rounding (C13), booked apart so that its
 flag reads it. A law storing energy of its own (the Windkessel) keeps its own books beside the field's (its storage at
@@ -46,9 +48,9 @@ from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
     FlowFields, FlowRecords, check_deliveries
-from mime.nodes.flow.fvm._open import OpenMACGrid
-from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, port_law_named, port_system, \
-    reference_of, well_posed
+from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
+from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, port_law_named, \
+    port_system, reference_of, well_posed
 from mime.nodes.flow.fvm._schemes import StageParts, StepContext
 from mime.nodes.flow.fvm._solve import Stopping, preconditioner_named, projected_solve, recheck_stopping, \
     stagnation_window
@@ -75,7 +77,12 @@ OPEN_STEP = ("the open vessel's flow (FVM(domain=VesselRegion())) has no step ru
              "its CFL number checked each step")
 
 
+#: The planes' names, by their indices (``mime.nodes.flow.fvm._open.LOW`` and ``HIGH``).
+PLANES = ("low", "high")
+
+
 def opening_role(index: int) -> str:
+    """The hosted row of the node's ``index``-th law (its laws in their order, one or several openings each)."""
     return f"{OPENING}{index}"
 
 
@@ -83,13 +90,13 @@ class OpenFlowFields(TypedDict):
     """The open node's own fields beside the periodic node's (``FlowState``'s), with their units."""
 
     #: (``w``'s faces include the two planes: ``velocity_z`` is ``nx ny nz+1``.) The openings' pressures (absolute)
-    #: and outward fluxes the last step solved for, and each law's own state.
+    #: and outward fluxes the last step solved for, and each law's own state (a row a law).
     opening_pressure: ReadOnly[Annotated[Float[Array, "openings"], Units("Pa")]]
     #: Each opening's pressure relative to the gauge's reference opening (zero there): the field's own unknowns, which
     #: the next step's forces take, held apart so no move is formed as a difference of absolute pressures.
     opening_pressure_relative: ReadOnly[Annotated[Float[Array, "openings"], Units("Pa")]]
     opening_flux: ReadOnly[Annotated[Float[Array, "openings"], Units("m^3/s")]]
-    opening_state: ReadOnly[Annotated[Float[Array, "openings 1"], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    opening_state: ReadOnly[Annotated[Float[Array, "laws 1"], Units("1")]]  # noqa: F722 - a jaxtyping shape
     #: The unit fields, one a non-reference opening: the velocity a unit pressure there drives over a step (m/s/Pa).
     unit_x: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
     unit_y: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
@@ -115,7 +122,7 @@ class OpenPorts(NamedTuple):
     units: tuple[Velocity, ...]
     response: Array
     force: Velocity
-    #: Each opening's row's block ``b`` over the stage (zero for a flux row).
+    #: The laws' blocks over the stage placed in one over the openings (zero on a flux row's).
     blocks: Array
 
     @property
@@ -132,20 +139,22 @@ def _add(a: Velocity, b: Velocity, scale: Any = 1.0) -> Velocity:
 
 
 #: The openings' conditions, the periodic node's momentum equation (``ImplicitFlowNode``'s) holding inside.
-EQUATIONS = (r"\operatorname{p}_{n+1} = p_{k}, \quad p_{k} = \operatorname{a}_{k} + \operatorname{b}_{k} q_{k} \ \text{or} "
-             r"\ q_{k} = \operatorname{Q}_{k}")
+EQUATIONS = (r"\operatorname{p}_{n+1} = p_{k}, \quad p_{k} = \operatorname{a}_{k} + \sum_{j} \operatorname{B}_{kj} q_{j} \ "
+             r"\text{or} \ q_{k} = \operatorname{Q}_{k}")
 _STEPPED = "mime.nodes.flow.fvm._open_node.OpenFlowNode.stepped"
 
 
 class OpenFlowNode(ImplicitFlowNode):
-    """The flow field of a medium in a straight vessel along z cut at its two ends, each an opening whose law the step
-    holds, stepped by IMEX Euler (or its steady limit) on the monolithic projected CG (the module states the step)."""
+    """The flow field of a medium in a vessel cut at the box's two z planes, its openings patches of them, each held by a
+    law the step holds, stepped by IMEX Euler (or its steady limit) on the monolithic projected CG (the module states
+    the step)."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-129",
-        description="A medium's flow in a straight vessel open at its two ends: the periodic flow node's step on the "
-                    "Cartesian MAC grid open along z, each end an opening whose law (an inflow, a Windkessel) the "
-                    "step holds, coupled implicitly through the field's affine response.",
+        description="A medium's flow in a vessel open at the box's two z planes: the periodic flow node's step on the "
+                    "Cartesian MAC grid open along z, each opening (a patch of a plane) held by a law the step holds "
+                    "(an inflow, a Windkessel, a closed valve, or one law over several openings), coupled implicitly "
+                    "through the field's affine response.",
         governing_equations=EQUATIONS,
         assumptions=(
             "Inside, the periodic flow node's (ImplicitFlowNode's) momentum equation and its wall's band",
@@ -153,12 +162,15 @@ class OpenFlowNode(ImplicitFlowNode):
             "inner product, so the projector stays orthogonal; the pressure's field part is zero on the planes, whose "
             "pressures the openings' forces carry",
             "At an open plane the viscous flux is zero and convection's flux is the plane's own face value",
-            "Each opening k's law states its pressure affine in its outward volume flux over the stage (a, b), or the "
-            "flux itself (Q); the field's pressure on the opening's plane is its pressure, seen relative to one "
-            "reference opening (the gauge)",
+            "Each opening k's law states its pressure affine in the outward volume fluxes of the openings it binds "
+            "over the stage (a, B), or the flux itself (Q); the field's pressure on the opening's patch is its "
+            "pressure, seen relative to one reference opening (the gauge)",
+            "A plane holding several openings is split between their centres: each of its faces, the solid's "
+            "included, belongs to the nearest opening's patch",
             "The unit fields are solved in the program each step from the last, while the operator is fixed"),
         limitations=(
-            "A straight vessel along z only, one opening at each plane",
+            "Openings on the box's two z planes only; the experiment builds a straight vessel along z cut at its "
+            "two ends (a vessel's region with more openings comes with the tube tree's wall in the open box)",
             "IMEX Euler or its steady limit: RK3 with openings is not built",
             "No backflow stabilisation at an outlet yet: a reversing outlet at high Reynolds number is unguarded",
         ),
@@ -180,35 +192,58 @@ class OpenFlowNode(ImplicitFlowNode):
 
     def __init__(self, name: str, timestep: float, *, openings: Sequence[str], opening_laws: Sequence[str],
                  opening_parameters: Any, opening_law_ids: Sequence[str] = (), initial_opening_state: Any = None,
-                 **settings: Any) -> None:
+                 opening_planes: Sequence[str] | None = None, opening_centres: Sequence[Sequence[float]] = (),
+                 law_openings: Sequence[Sequence[int]] | None = None, **settings: Any) -> None:
+        names = tuple(str(o) for o in openings)
         laws = [port_law_named(str(law)) for law in opening_laws]
-        if len(tuple(openings)) != 2 or len(laws) != 2:
-            raise ValueError(f"an open box has two openings, its z planes, each with its law: not {tuple(openings)} "
-                             f"with {tuple(opening_laws)}")
+        planes = tuple(str(plane) for plane in opening_planes) if opening_planes is not None else \
+            PLANES if len(names) == 2 else ()
+        if len(planes) != len(names) or any(plane not in PLANES for plane in planes):
+            raise ValueError(f"each of the openings {names} lies on the box's low or high plane: give opening_planes, "
+                             f"one of {PLANES} an opening, not {planes}")
+        bound = tuple(tuple(int(i) for i in held) for held in law_openings) if law_openings is not None else \
+            tuple((k,) for k in range(len(laws)))
+        if len(bound) != len(laws) or sorted(i for held in bound for i in held) != list(range(len(names))):
+            raise ValueError(f"each opening of {names} is held by one law: the laws {tuple(opening_laws)} bind "
+                             f"{bound}")
+        for law, held in zip(laws, bound, strict=True):
+            if len(held) != law.openings:
+                raise ValueError(f"the port law {law.name!r} binds {law.openings} opening(s), not {len(held)}")
+        centres = tuple((float(centre[0]), float(centre[1])) for centre in opening_centres)
+        OpeningLayout(tuple(PLANES.index(plane) for plane in planes), centres)  # its own checks
         parameters = np.asarray(opening_parameters, dtype=np.float64)
-        if parameters.shape != (2, PARAMETERS):
-            raise ValueError(f"each opening's law takes a row of {PARAMETERS} parameters, not {parameters.shape}")
-        reason = well_posed([law.row for law in laws], [tuple(row) for row in parameters.tolist()])
+        if parameters.shape != (len(laws), PARAMETERS):
+            raise ValueError(f"each law takes a row of {PARAMETERS} parameters, not {parameters.shape}")
+        rows, waveforms = _opening_rows(laws, bound, parameters, len(names))
+        reason = well_posed(rows, waveforms)
         if reason:
             raise ValueError(reason)
         if settings.get("periodic_images", "own") != "own" or tuple(settings.get("tube_axis", (0.0, 0.0, 1.0))) != \
                 (0.0, 0.0, 1.0):
             raise ValueError("an open box's vessel lies along its z axis (tilted open vessels are not built yet)")
-        ids = tuple(str(i) for i in opening_law_ids) or tuple(f"{name}.{opening}" for opening in openings)
-        state = np.zeros((2, STATES)) if initial_opening_state is None else np.asarray(initial_opening_state)
-        super().__init__(name, timestep, openings=tuple(str(o) for o in openings),
-                         opening_laws=tuple(law.name for law in laws), opening_law_ids=ids,
-                         opening_parameters=parameters, initial_opening_state=state, **settings)
+        ids = tuple(str(i) for i in opening_law_ids) or tuple(f"{name}.{'+'.join(names[i] for i in held)}"
+                                                             for held in bound)
+        state = np.zeros((len(laws), STATES)) if initial_opening_state is None else np.asarray(initial_opening_state)
+        layout = {} if planes == PLANES and not centres and law_openings is None else \
+            {"opening_planes": planes, "opening_centres": centres, "law_openings": bound}
+        super().__init__(name, timestep, openings=names, opening_laws=tuple(law.name for law in laws),
+                         opening_law_ids=ids, opening_parameters=parameters, initial_opening_state=state, **layout,
+                         **settings)
 
     # -- the pieces of a step ------------------------------------------------------------------------------------
     @override
     def grid(self, p: Mapping[str, Any]) -> MACGrid:
+        return self.open_grid(p)
+
+    def layout(self) -> OpeningLayout:
         c = self.constants()
-        return OpenMACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), p["spacing"])
+        planes = tuple(PLANES.index(plane) for plane in c.get("opening_planes", PLANES))
+        centres = tuple((float(x), float(y)) for x, y in c.get("opening_centres", ()))
+        return OpeningLayout(planes, centres)
 
     def open_grid(self, p: Mapping[str, Any]) -> OpenMACGrid:
         c = self.constants()
-        return OpenMACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), p["spacing"])
+        return OpenMACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), p["spacing"], self.layout())
 
     @override
     def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid]:
@@ -218,12 +253,58 @@ class OpenFlowNode(ImplicitFlowNode):
     def laws(self) -> list[PortLaw]:
         return [port_law_named(law) for law in self.constants()["opening_laws"]]
 
+    def law_openings(self) -> tuple[tuple[int, ...], ...]:
+        """The openings each law binds, in the laws' order."""
+        c = self.constants()
+        held = c.get("law_openings")
+        return tuple(tuple(o) for o in held) if held is not None else tuple((k,) for k in range(len(c["opening_laws"])))
+
+    def opening_count(self) -> int:
+        return len(self.constants()["openings"])
+
+    def rows(self) -> list[RowKind]:
+        """Each opening's row kind, its law's."""
+        rows = [RowKind.FLUX] * self.opening_count()
+        for law, held in zip(self.laws(), self.law_openings(), strict=True):
+            for opening in held:
+                rows[opening] = law.row
+        return rows
+
     def reference(self) -> int:
-        return reference_of([law.row for law in self.laws()])
+        return reference_of(self.rows())
 
     def others(self) -> list[int]:
         reference = self.reference()
-        return [index for index in range(len(self.laws())) if index != reference]
+        return [index for index in range(self.opening_count()) if index != reference]
+
+    def law_rows(self, parameters: Array, law_state: Array, instant: Any, dt: Any) -> tuple[Array, Array]:
+        """The stage's rows over the openings: each opening's ``a`` and the laws' blocks placed in one ``B``."""
+        count = self.opening_count()
+        dtype = parameters.dtype
+        a = jnp.zeros(count, dtype=dtype)
+        block = jnp.zeros((count, count), dtype=dtype)
+        for index, (law, held) in enumerate(zip(self.laws(), self.law_openings(), strict=True)):
+            own_a, own_b = law.affine(parameters[index], law_state[index], instant, dt)
+            own_a, own_b = jnp.reshape(own_a, (len(held),)), jnp.reshape(own_b, (len(held), len(held)))
+            for i, row in enumerate(held):
+                a = a.at[row].set(own_a[i])
+                for j, column in enumerate(held):
+                    block = block.at[row, column].set(own_b[i, j])
+        return a, block
+
+    def coupling(self) -> list[list[bool]]:
+        """Which of ``B``'s entries a law places: its openings' with each other's."""
+        count = self.opening_count()
+        held = [[False] * count for _ in range(count)]
+        for openings in self.law_openings():
+            for i in openings:
+                for j in openings:
+                    held[i][j] = True
+        return held
+
+    def per_law(self, law: PortLaw, held: tuple[int, ...], values: Array) -> Array:
+        """``values`` over the openings as ``law`` takes them: a scalar for one opening, a vector for several."""
+        return values[held[0]] if law.openings == 1 else jnp.stack([values[i] for i in held])
 
     @override
     def fluxes(self, grid: MACGrid, fields: WallFields, axis: Array, velocity: Velocity) -> tuple[Array, Array, Array]:
@@ -247,9 +328,11 @@ class OpenFlowNode(ImplicitFlowNode):
         grid = self.open_grid(c)
         dtype = run_dtype()
         count = len(self.others())
+        openings = self.opening_count()
         unit = {f"unit_{x}": jnp.zeros((count, *grid.shape(k)), dtype=dtype) for k, x in enumerate("xyz")}
-        held = {**self.initial_fields(), "opening_pressure": jnp.zeros(2, dtype=dtype),
-                "opening_pressure_relative": jnp.zeros(2, dtype=dtype), "opening_flux": jnp.zeros(2, dtype=dtype),
+        held = {**self.initial_fields(), "opening_pressure": jnp.zeros(openings, dtype=dtype),
+                "opening_pressure_relative": jnp.zeros(openings, dtype=dtype),
+                "opening_flux": jnp.zeros(openings, dtype=dtype),
                 "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype), **unit}
         if not self.metered:
             return node_fields(held)
@@ -276,9 +359,10 @@ class OpenFlowNode(ImplicitFlowNode):
         tap = self.report_row(p, steps)
         magnitude = self.magnitude_of(p, grid, sigma)
         rho = as_run_array(p["density"])
-        laws = self.laws()
-        rows = [law.row for law in laws]
+        laws, bound = self.laws(), self.law_openings()
+        rows = self.rows()
         reference, others = self.reference(), self.others()
+        count = self.opening_count()
         parameters = as_run_array(p["opening_parameters"])
         law_state = jnp.asarray(state["opening_state"])
         predicted = jnp.asarray(state["opening_pressure_relative"])
@@ -297,20 +381,19 @@ class OpenFlowNode(ImplicitFlowNode):
             units: list[Velocity] = []
             reports = [report]
             for k, j in enumerate(others):
-                unit, unit_report = self.unit_field(one, grid.port_force(jnp.zeros(2, dtype=dtype).at[j].set(1.0), rho),
-                                                    held_units[k])
+                unit, unit_report = self.unit_field(one, grid.port_force(jnp.zeros(count, dtype=dtype).at[j].set(1.0),
+                                                                         rho), held_units[k])
                 units.append(unit)
                 reports.append(unit_report)
             response = jnp.stack([grid.opening_fluxes(unit) for unit in units], axis=1) if units else \
-                jnp.zeros((2, 0), dtype=dtype)
-            rowed = [law.affine(parameters[i], law_state[i], instant, dt) for i, law in enumerate(laws)]
-            solution = port_system(rows, jnp.stack([r[0] for r in rowed]), jnp.stack([r[1] for r in rowed]),
-                                   grid.opening_fluxes(base), response, predicted, reference)
+                jnp.zeros((count, 0), dtype=dtype)
+            a, blocks = self.law_rows(parameters, law_state, instant, dt)
+            solution = self.solve_ports(rows, a, blocks, grid.opening_fluxes(base), response, predicted, reference)
             solved = base
             for k, j in enumerate(others):
                 solved = _add(solved, units[k], solution.moved[j])
             solved_ports["ports"] = OpenPorts(solution, base, tuple(units), response,
-                                              grid.port_force(solution.relative, rho), jnp.stack([r[1] for r in rowed]))
+                                              grid.port_force(solution.relative, rho), blocks)
             return solved, combined(reports)
 
         context = StepContext(grid, operator, self.forcing(fields, boundary_inputs, scheme, dtype),
@@ -325,8 +408,9 @@ class OpenFlowNode(ImplicitFlowNode):
         ports = solved_ports["ports"]
         ended_velocity: Velocity = ended_state["velocity"]
         flux = grid.opening_fluxes(ended_velocity)
-        law_ended = jnp.stack([law.advanced(parameters[i], law_state[i], flux[i], ports.pressures[i], dt)
-                               for i, law in enumerate(laws)])
+        law_ended = jnp.stack([law.advanced(parameters[i], law_state[i], self.per_law(law, held, flux),
+                                            self.per_law(law, held, ports.pressures), dt)
+                               for i, (law, held) in enumerate(zip(laws, bound, strict=True))])
         report = stage.report
         flagged = (report[2] + report[3] + report[4] > 0).astype(dtype)
         axis = as_run_array(p["tube_axis"])
@@ -364,17 +448,30 @@ class OpenFlowNode(ImplicitFlowNode):
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
         return held, StepParts(stage, fields, energy)
 
+    def solve_ports(self, rows: Sequence[RowKind], a: Array, blocks: Array, base: Array, response: Array,
+                    predicted: Array, reference: int) -> PortSolution:
+        """The port system (``mime.nodes.flow.fvm._ports.port_system``) with each law's block in place."""
+        return port_system(rows, a, blocks, base, response, predicted, reference, self.coupling())
+
     def superposed_scale(self, grid: OpenMACGrid, ports: OpenPorts) -> Array:
         """Each opening's superposition's scale (m^3/s): ``h^2 (sum |w_base| + sum_j |m_j| sum |w_unit_j|)`` over its
-        plane's faces, the magnitude its face flux is summed from."""
-        planes = (0, -1)
-        rows: list[Array] = []
-        for plane in planes:
-            total = jnp.sum(jnp.abs(ports.base[2][..., plane]))
-            for unit, j in zip(ports.units, self.others(), strict=True):
-                total = total + jnp.abs(ports.solution.moved[j]) * jnp.sum(jnp.abs(unit[2][..., plane]))
-            rows.append(grid.spacing ** 2 * total)
-        return jnp.stack(rows)
+        patch's faces, the magnitude its face flux is summed from."""
+        total = grid.opening_fluxes_magnitude(ports.base)
+        for unit, j in zip(ports.units, self.others(), strict=True):
+            total = total + jnp.abs(ports.solution.moved[j]) * grid.opening_fluxes_magnitude(unit)
+        return total
+
+    def opening_solid_fluxes(self, p: Mapping[str, Any], velocity: Velocity, depth: Any = None) -> Array:
+        """The volume flux (m^3/s) out through each opening's faces that lie at least ``depth`` (m) into the solid: by
+        default the half band's width, where the lumen's flux ends (:meth:`fluxes`); the whole plane's flux an
+        ``Inflow`` pins holds this share (R5-C-02: one masked sum a step)."""
+        grid = self.open_grid(p)
+        fields = self.fields(p, grid)
+        if depth is None:
+            depth = 0.5 * band_named(self.constants()["band"]).width * grid.spacing
+        distance = fields.signed_distance[2]
+        solid = jnp.where(distance >= depth, velocity[2], 0.0)
+        return grid.opening_fluxes((velocity[0], velocity[1], solid))
 
     @override
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
@@ -391,6 +488,18 @@ class OpenFlowNode(ImplicitFlowNode):
             f"needs a smaller one (Poiseuille's centreline at the inflow's peak mean speed, twice it, over the narrowest "
             f"lumen's share of the vessel's area, bounds it); dt='auto' is refused here ({OPEN_STEP}); or the Stokes "
             f"approximation FVM(stokes=True) where convection is negligible"))
+
+    @staticmethod
+    @override
+    def fluid_momentum(grid: MACGrid, fluid: Velocity, velocity: Velocity, rho: Array) -> dict[str, Array]:
+        """The periodic node's, each face weighted as the books' inner product weighs it (the planes' half cells at a
+        half): a body force on the open box's fluid does its work over those weights."""
+        assert isinstance(grid, OpenMACGrid)
+        weights = grid.weights(velocity[0].dtype)
+        volume = grid.cell_volume
+        momentum = jnp.stack([rho * volume * jnp.sum(weights[c] * fluid[c] * velocity[c]) for c in range(3)])
+        size = jnp.stack([rho * volume * jnp.sum(jnp.abs(weights[c] * fluid[c] * velocity[c])) for c in range(3)])
+        return {"momentum": momentum, "momentum_size": size}
 
     def unit_field(self, solve: Any, force: Velocity, start: Velocity) -> tuple[Velocity, Array]:
         """The unit field a unit pressure at one opening drives over the step (``force`` its force), solved from
@@ -418,23 +527,29 @@ class OpenFlowNode(ImplicitFlowNode):
         change = _add(solved, before, -1.0)
         stores = self.scheme.stores_inertia
         zero = jnp.zeros((), dtype=solved[0].dtype)
-        laws = self.laws()
-        own = [law.books(parameters[i], law_state[i], law_ended[i], flux[i], ports.pressures[i], dt)
-               for i, law in enumerate(laws)]
+        laws, bound = self.laws(), self.law_openings()
+        own = [law.books(parameters[i], law_state[i], law_ended[i], self.per_law(law, held, flux),
+                         self.per_law(law, held, ports.pressures), dt)
+               for i, (law, held) in enumerate(zip(laws, bound, strict=True))]
         superposed = self.superposed_scale(grid, ports)
         # Each law's own scale (``mime.core.ledger.LAW_BOOKS``' last column): its terms' magnitudes, and the face flux's
-        # summation floor carried through its block. The law steps with the opening's face flux, a sum over the plane's
-        # N faces of the superposed field, and its pressure solves its row at the row's flux; the two fluxes differ by
-        # at most (N + 2) eps of the superposition's scale S (three sums of N terms, the faces' own rounding), so its
-        # identity's residual, dt b (q_row - q_face) q_face, is bounded by dt |b q| (N + 2) eps S, written here in the
-        # identity floor's units (IDENTITY_ULPS eps).
-        faces = grid.cells[0] * grid.cells[1]
+        # summation floor carried through its block. The law steps with its openings' face fluxes, each a sum over its
+        # patch's N faces of the superposed field, and its pressures solve its rows at the rows' fluxes; the two differ
+        # by at most (N + 2) eps of the superposition's scale S (three sums of N terms, the faces' own rounding), so
+        # its identity's residual, dt sum_k (B (q_row - q_face))_k q_face_k, is bounded by dt sum_k |(B q)_k| (N_k + 2)
+        # eps S_k, written here in the identity floor's units (IDENTITY_ULPS eps).
+        faces = grid.opening_faces()
+        pushed = jnp.stack([sum((ports.blocks[i, j] * flux[j] for j in range(len(faces)) if self.coupling()[i][j]),
+                                start=jnp.zeros((), dtype=flux.dtype)) for i in range(len(faces))])
         law_rows = [jnp.stack([b.storage_start, b.storage_end, b.loss, b.numerical,
-                               jnp.abs(dt * ports.pressures[i] * flux[i]) + jnp.abs(b.storage_start)
-                               + jnp.abs(b.storage_end) + jnp.abs(b.loss) + jnp.abs(b.numerical)
-                               + dt * jnp.abs(ports.blocks[i] * flux[i]) * (faces + 2) * superposed[i]
-                               / books.IDENTITY_ULPS if laws[i].stores else jnp.zeros((), dtype=flux.dtype)])
-                    for i, b in enumerate(own)]
+                               sum((jnp.abs(dt * ports.pressures[k] * flux[k]) for k in held),
+                                   start=jnp.zeros((), dtype=flux.dtype))
+                               + jnp.abs(b.storage_start) + jnp.abs(b.storage_end) + jnp.abs(b.loss)
+                               + jnp.abs(b.numerical)
+                               + sum((dt * jnp.abs(pushed[k]) * (faces[k] + 2) * superposed[k] for k in held),
+                                     start=jnp.zeros((), dtype=flux.dtype)) / books.IDENTITY_ULPS
+                               if laws[i].stores or laws[i].own_books else jnp.zeros((), dtype=flux.dtype)])
+                    for i, (b, held) in enumerate(zip(own, bound, strict=True))]
         terms = {
             **self.fluid_momentum(grid, fluid, solved, rho),
             "viscous": dt * rho * nu * inner(minus_laplacian, solved),
@@ -444,7 +559,8 @@ class OpenFlowNode(ImplicitFlowNode):
             "krylov": dt * rho * inner(projected, solved),
             "projection": dt * rho * inner(gradient, solved),
             KINETIC_FLUX: dt * rho * inner(stage.convection, before),
-            "ports": -dt * ports.pressures * flux,
+            "ports": jnp.stack([sum((-dt * ports.pressures[k] * flux[k] for k in held[1:]),
+                                    start=-dt * ports.pressures[held[0]] * flux[held[0]]) for held in bound]),
             "law_books": jnp.stack(law_rows),
         }
         # The openings' work is judged on its own magnitude, the pressures against the faces' flux in magnitude.
@@ -472,12 +588,16 @@ class OpenFlowNode(ImplicitFlowNode):
         c = self.constants()
         return tuple(str(law_id) for law_id, law in zip(c["opening_law_ids"], self.laws(), strict=True) if law.stores)
 
+    def keeps_books(self) -> bool:
+        """Whether some law the node holds keeps its own books (a storing law, or one over several openings)."""
+        return any(law.stores or law.own_books for law in self.laws())
+
     @override
     def law_storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array | None:
-        """Each held law's own storage at ``state``, a row per law: the Windkessels' capacitors; ``None`` where no
-        opening's law stores energy."""
-        laws = self.laws()
-        if not any(law.stores for law in laws) or not self.metered:
+        """Each held law's own storage at ``state``, a row per law: the Windkessels' capacitors, zero for a law that
+        keeps books and stores nothing; ``None`` where no opening's law keeps its own books."""
+        laws, bound = self.laws(), self.law_openings()
+        if not self.keeps_books() or not self.metered:
             return None
         held = books.deliveries(self.constants())
         rows = books.laws(held)
@@ -487,8 +607,8 @@ class OpenFlowNode(ImplicitFlowNode):
         for delivery in held:
             if delivery.kind == books.HOSTED and delivery.field.startswith(OPENING):
                 index = int(delivery.field.removeprefix(OPENING))
-                own = laws[index].books(parameters[index], law_state[index], law_state[index],
-                                        jnp.zeros((), dtype=run_dtype()), jnp.zeros((), dtype=run_dtype()), 0.0)
+                none = jnp.zeros(() if laws[index].openings == 1 else (len(bound[index]),), dtype=run_dtype())
+                own = laws[index].books(parameters[index], law_state[index], law_state[index], none, none, 0.0)
                 storage = storage.at[rows.index(delivery.law)].set(own.storage_start)
         return storage
 
@@ -507,7 +627,7 @@ class OpenFlowNode(ImplicitFlowNode):
                                                           energy["momentum_size"])
         hosted_work: dict[str, Array] = {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
                                          KINETIC_FLUX: energy[KINETIC_FLUX],
-                                         **{opening_role(i): energy["ports"][i] for i in range(2)}}
+                                         **{opening_role(i): energy["ports"][i] for i in range(len(self.laws()))}}
         stored = jnp.zeros((len(rows), len(books.LAW_BOOKS)), dtype=dtype)
         named: set[str] = set()
         for delivery in held:
@@ -520,11 +640,25 @@ class OpenFlowNode(ImplicitFlowNode):
         unattributed = unattributed + sum((value for field, value in hosted_work.items() if field not in named),
                                           start=jnp.zeros((), dtype=dtype))
         terms = jnp.stack([energy[name] for name in OPEN_TERMS])
-        storing = any(law.stores for law in self.laws())
+        storing = self.keeps_books()
         return books.StepAccount(work=work, hosted=jnp.zeros((len(rows), 2), dtype=dtype), unattributed=unattributed,
                                  terms=terms, storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
                                  scale=energy["scale"] + drive_scale, operators={},
                                  stored=stored if storing else None)
+
+
+def _opening_rows(laws: Sequence[PortLaw], bound: Sequence[tuple[int, ...]], parameters: np.ndarray,
+                  count: int) -> tuple[list[RowKind], list[tuple[float, ...]]]:
+    """Each opening's row kind, and each opening's waveform where its law is a one-opening flux row (its four
+    parameters), as ``well_posed`` reads them."""
+    rows: list[RowKind] = [RowKind.FLUX] * count
+    waveforms: list[tuple[float, ...]] = [(0.0, 0.0, 0.0, 0.0)] * count
+    for law, held, row in zip(laws, bound, parameters.tolist(), strict=True):
+        for opening in held:
+            rows[opening] = law.row
+            if law.openings == 1:
+                waveforms[opening] = tuple(row)
+    return rows, waveforms
 
 
 def combined(reports: Sequence[Array]) -> Array:
@@ -540,5 +674,5 @@ def check_open_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
     check_deliveries(plain)
 
 
-__all__ = ["FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "MeteredOpenFlowState", "OpenFlowState", "OpenFlowFields", "OpenFlowNode", "OpenPorts", "check_open_deliveries",
+__all__ = ["FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "MeteredOpenFlowState", "OpenFlowState", "OpenFlowFields", "OpenFlowNode", "OpenPorts", "check_open_deliveries",
            "combined", "opening_role"]

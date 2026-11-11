@@ -17,8 +17,7 @@ books its work, the pressure it returns times the flux the law gives, under the 
 - At every opening of a flow: an incompressible flow takes in what it lets out, so with no pressure law at any opening
   the inflows must cancel at every instant, or the build refuses them (`flow.openings-ill-posed`).
 - To impose a measured velocity profile across a short segment: the profile is the flow's, not the law's.
-- As a closed valve at an opening the flow leaves by (`Inflow(steady=...)` of zero there): it is admitted, and not
-  gated yet.
+- As a closed valve at an opening the flow leaves by: that is a `Valve`, gated against the walled-off vessel.
 
 **Where its values come from.** A declaration, a record or the body's parts, and what "declared" means: [the materials note](../../materials.md).
 
