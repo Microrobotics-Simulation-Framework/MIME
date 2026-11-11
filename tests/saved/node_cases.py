@@ -213,6 +213,12 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("observation", "labx.height", "0.1.0"): NodeCase(),
     ("dynamics", "fvm", "0.1.0"): FLOW,
     ("interaction", "body_force", "0.1.0"): NodeCase(),
+    ("interaction", "inflow", "0.1.0"): NodeCase(
+        no_node="held in its flow's step: the open flow's node, fvm's, takes it at construction from its registration, "
+                "its row verified by tests/flow/test_fvm_open.py (FB2) and tests/flow/test_port_laws.py"),
+    ("interaction", "windkessel", "0.1.0"): NodeCase(
+        no_node="held in its flow's step: the open flow's node, fvm's, takes it at construction from its registration, "
+                "its books verified by tests/flow/test_fvm_open.py (FB3) and its passivity by the port-law suite"),
     ("dynamics", "womersley", "0.1.0"): PRESCRIBED,
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.3.0"): RIGID_BODY,

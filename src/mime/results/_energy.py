@@ -338,6 +338,12 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
         dtype = records[f"{ledger.RECORDS}work"].dtype
         eps = float(np.finfo(dtype).eps)
         stored[name] = _scalar(ledger.stored(records))
+        if f"{ledger.RECORDS}law_storage" in records:  # each law holding energy of its own (a Windkessel's capacitor)
+            change = records[f"{ledger.RECORDS}law_storage"] - records[f"{ledger.RECORDS}law_storage_start"]
+            rows = ledger.laws(held)
+            for law in receiver.storing_laws():
+                stored[law] = _scalar(change[rows.index(law)])
+            numerical[f"{name} (its laws' own)"] = _sum(records[f"{ledger.RECORDS}law_numerical"])
         numerical[name] = _sum(records[f"{ledger.RECORDS}terms"])
         unattributed[name] = _scalar(records[f"{ledger.RECORDS}unattributed"])
         worst[name] = _scalar(records[f"{ledger.RECORDS}identity_worst"]) / (ledger.IDENTITY_ULPS * eps)
@@ -453,6 +459,13 @@ def _findings(name: str, records: Mapping[str, Any], identity: Scalar, between_f
             if not grouped and float(cast(float, between_floors)) > 1.0 else ""
         found.append(f"the step identity of {name} failed{owned}: its worst step is "
                      f"{float(cast(float, identity)):.3g} times its rounding floor")
+    if f"{ledger.RECORDS}law_identity_worst" in records:
+        held = np.asarray(records[f"{ledger.RECORDS}law_identity_worst"])
+        own = float(held) / (ledger.IDENTITY_ULPS * float(np.finfo(held.dtype).eps))
+        if own > 1.0:
+            found.append(f"a law {name} holds that stores energy of its own did not close its own books (the work it "
+                         f"took equals its storage's change, its loss and its numerical term): its worst step is "
+                         f"{own:.3g} times its rounding floor")
     return found
 
 

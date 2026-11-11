@@ -120,7 +120,7 @@ HOSTED_FIELDS = ("viscous", "penalty")
 DRIVE_FIELDS = ("body_force", "waveform")
 
 
-class _FlowFields(TypedDict):
+class FlowFields(TypedDict):
     velocity_x: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     velocity_y: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     velocity_z: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
@@ -141,7 +141,7 @@ class _FlowFields(TypedDict):
     negative_resistivity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
-class FlowState(_FlowFields, closed=True):
+class FlowState(FlowFields, closed=True):
     """The flow's state without the energy ledger."""
 
 
@@ -156,11 +156,11 @@ class _WallCounts(TypedDict):
     wall_inexact: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
-class TreeFlowState(_FlowFields, _WallCounts, closed=True):
+class TreeFlowState(FlowFields, _WallCounts, closed=True):
     """A flow walled by a tube tree, without the energy ledger: the flow's fields and the wall's report."""
 
 
-class _FlowRecords(books.LedgerRecords):
+class FlowRecords(books.LedgerRecords):
     """With the energy ledger attached: the stall detector, ``|N_Krylov| / D_visc``, and its flag, beside the ledger's
     records (``mime.core.ledger.LedgerRecords``)."""
 
@@ -168,11 +168,11 @@ class _FlowRecords(books.LedgerRecords):
     stall_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
-class MeteredFlowState(_FlowFields, _FlowRecords, closed=True):
+class MeteredFlowState(FlowFields, FlowRecords, closed=True):
     """A metered flow's state: the flow's fields, the stall detector and the ledger's records."""
 
 
-class MeteredTreeFlowState(_FlowFields, _WallCounts, _FlowRecords, closed=True):
+class MeteredTreeFlowState(FlowFields, _WallCounts, FlowRecords, closed=True):
     """A metered flow walled by a tube tree: the flow's fields, the wall's report, the stall detector and the ledger's
     records."""
 
@@ -215,6 +215,8 @@ class ImplicitFlowNode(MimeNode):
     the step)."""
 
     LEDGER_TERMS = ("backward_euler", "convection", "krylov")
+    #: The grid kind's own terms its identity books after the scheme's (none on a periodic box).
+    GRID_TERMS: ClassVar[tuple[str, ...]] = ()
     #: The stall, a convective term not formed from its velocity, the drive in a solid; and the openings' two, pending
     #: (``mime.nodes.flow.fvm._flags``).
     LEDGER_FLAGS = FLAGS
@@ -265,10 +267,10 @@ class ImplicitFlowNode(MimeNode):
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
                  solve_report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
-                 ledger: Sequence[str] = ()) -> None:
+                 ledger: Sequence[str] = (), **extra: Any) -> None:
         chosen = scheme_named(scheme)
         if chosen.stage_kind is not StageKind.MONOLITHIC_PROJECTED_CG or chosen.state_fields != ("velocity",) or \
-                chosen.ledger_terms != self.LEDGER_TERMS:
+                chosen.ledger_terms + self.GRID_TERMS != self.LEDGER_TERMS:
             raise ValueError(f"the {scheme} scheme is of the {chosen.stage_kind} stage kind, carries "
                              f"{chosen.state_fields} and books {chosen.ledger_terms}: this node steps the monolithic "
                              f"projected CG's schemes, whose state is the velocity and whose terms are "
@@ -318,7 +320,7 @@ class ImplicitFlowNode(MimeNode):
                          preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
                          periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
                          solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
-                         **({"wall_name": str(wall_name)} if wall_name else {}),
+                         **({"wall_name": str(wall_name)} if wall_name else {}), **extra,
                          **({"ledger": tuple(ledger)} if ledger else {}))
 
     @override
@@ -537,12 +539,22 @@ class ImplicitFlowNode(MimeNode):
     # -- the node's interface -------------------------------------------------------------------------------------
     @override
     def initial_state(self) -> NodeFields:
+        common = self.initial_fields()
+        held = node_fields(FlowState(**common)) if not self.walled_by_tree else node_fields(
+            TreeFlowState(**common, **self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=run_dtype()))))
+        if not self.metered:
+            return held
+        z = as_run_array(0.0)
+        return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z})
+
+    def initial_fields(self) -> dict[str, Array]:
+        """The flow's state fields at the run's start, without the ledger's."""
         c = self.constants()
-        grid = MACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), c["spacing"])
+        grid = self.grid(c)
         dtype = run_dtype()
-        zero = jnp.zeros(grid.cells, dtype=dtype)
-        given = tuple(jnp.asarray(c[key], dtype=dtype) if key in c else zero
-                      for key in ("initial_velocity_x", "initial_velocity_y", "initial_velocity_z"))
+        zero = grid.zeros(dtype)
+        given = tuple(jnp.asarray(c[key], dtype=dtype) if key in c else zero[k]
+                      for k, key in enumerate(("initial_velocity_x", "initial_velocity_y", "initial_velocity_z")))
         start = _held_of(self.scheme.start(grid, (given[0], given[1], given[2])))
         z = as_run_array(0.0)
         common: dict[str, Array] = dict(
@@ -550,11 +562,7 @@ class ImplicitFlowNode(MimeNode):
             solve_report=jnp.zeros(REPORT_SIZE, dtype=dtype), solve_report_sum=jnp.zeros(REPORT_SIZE, dtype=dtype),
             solve_flagged=z, cfl=z, stopped_at=jnp.asarray(-1, dtype=jnp.int32), stopped_cfl=z, lumen_flux=z,
             bypass_ratio=z, bypass_flagged=z, reynolds=z, reynolds_flagged=z, negative_resistivity=z)
-        held = node_fields(FlowState(**common)) if not self.walled_by_tree else node_fields(
-            TreeFlowState(**common, **self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=dtype))))
-        if not self.metered:
-            return held
-        return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z})
+        return common
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],

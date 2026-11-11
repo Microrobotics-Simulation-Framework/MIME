@@ -360,9 +360,10 @@ def test_control_a_break_in_the_completion_job_s_wiring_is_named(tmp_path, workf
 
 
 def _jobs_reply(lane: str, completion: list[tuple[str, str | None]]) -> str:
-    """The run's jobs as ``scripts/run_jobs.py`` prints them: the lane's shard jobs, all green, and ``completion``."""
+    """The run's jobs as the endpoint gives the one page of them: the lane's shard jobs, all green, and ``completion``."""
     others = [(f"{lane} tests (shard {n} of 3)", "success") for n in (1, 2, 3)] + [("shard count", "success")]
-    return "".join(json.dumps({"name": name, "conclusion": conclusion}) + "\n" for name, conclusion in [*others, *completion])
+    jobs = [{"name": name, "conclusion": conclusion} for name, conclusion in [*others, *completion]]
+    return json.dumps({"total_count": len(jobs), "jobs": jobs}) + "\n"
 
 
 def run_summary_check(tmp_path: Path, lane: str, reply: str, *, edit=lambda text: text) -> subprocess.CompletedProcess[str]:

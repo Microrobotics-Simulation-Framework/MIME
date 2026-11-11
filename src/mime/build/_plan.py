@@ -362,13 +362,18 @@ class Slot:
 @dataclass(frozen=True)
 class ResolvedRegistration:
     """A registration addressed to a dynamics: the registering interaction's id, the record's kind, the registered
-    thing, and by label the subject's state to read and the subject's targets to deliver into."""
+    thing (or surface), by label the subject's state to read and the subject's targets to deliver into, and the
+    registering interaction's settings (SI, and its plain numbers as written): what a dynamics holding the law in its
+    own step (a law at a flow's opening) builds it from."""
 
     id: str
     kind: str
     subject: str
     reads: Mapping[str, ResolvedRead]
     returns: Mapping[str, ResolvedTarget]
+    settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    #: Where the subject is a surface (a flow's opening): its shape's parameters, as its geometry gives them.
+    subject_parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
 
 
 def _plain_settings(entry: Entry, si_settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
@@ -1164,10 +1169,14 @@ class _Planner:
             if any(getattr(plan.entry, "rate", None) is not None for plan, _ in bounded):
                 return
             if not bounded:
+                missing = [f"{plan.thing!r}'s {plan.registered.cls.label()}: {rule.unbounded}" for plan, rule in rules
+                           if rule.unbounded]
                 if not unpredicted:
                     self.refuse("run.dt-auto-unset", RefusalClass.USER,
                                 "dt='auto' takes the base step from a field that bounds its own (a flow field with "
-                                "convection, or an explicit scheme), and nothing in this experiment does",
+                                "convection, or an explicit scheme), and "
+                                + (f"none here does yet: {'; '.join(missing)}" if missing else
+                                   "nothing in this experiment does"),
                                 "pass dt as a time to Experiment, such as dt=ms(1)")
                 return
             largest = min(cast(float, rule.largest) for _, rule in bounded)
@@ -1850,7 +1859,8 @@ class _Planner:
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
             self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}", error)
             return None
-        return Region(path, shape, parameters)
+        return Region(path, shape, parameters,
+                      tuple(f"{owner}.{surface}" for surface in type(plan.geometry).openings.get(part, ())))
 
     def literal_direction(self, value: object, what: str) -> tuple[float, float, float] | None:
         try:
@@ -3180,8 +3190,18 @@ class _Planner:
         if len(resolved_reads) != len(reads) or len(resolved_returns) != len(returns):
             return
         subject = plan.bindings[registration.subject]
+        parameters: dict[str, Magnitude] = {}
+        if cls.roles.get(registration.subject) is RoleKind.SURFACE:
+            owner, _, part = subject.partition(".")
+            geometry = self.geometries[owner]
+            try:
+                parameters = dict(geometry.geometry.surface_parameters(part, geometry.settings))
+            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
+                return
         dynamics.registrations.append(
-            ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns))
+            ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
+                                 _plain_settings(plan.entry, plan.settings), parameters))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()
@@ -3764,6 +3784,17 @@ class _Planner:
     def collect_registrations_and_slots(self) -> None:
         for dynamics in self.dynamics.values():
             dynamics.registrations.sort(key=lambda r: r.id)
+            entry = dynamics.entry
+            if not isinstance(entry, Dynamics):
+                continue
+            try:
+                problems = entry.registration_problems(tuple(dynamics.registrations), dynamics.regions.get("medium"))
+            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                self.defect(type(entry), f"registration_problems() raised {error!r}", error)
+                continue
+            for problem in problems:
+                self.refuse(problem.code, RefusalClass.USER, f"{dynamics.owner}'s {type(entry).label()}: "
+                                                              f"{problem.message}", problem.action)
         slots: dict[str, dict[str, Slot]] = {}
         for plan in self.readers:
             for read in plan.reads.values():

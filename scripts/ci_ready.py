@@ -37,12 +37,14 @@ label too).
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 MARKER = "The full matrix runs"
@@ -95,8 +97,20 @@ def newest_run(api: Api, repository: str, workflow: str, head: str) -> dict[str,
     return max(runs, key=lambda run: (str(run.get("created_at")), int(run.get("id", 0))), default=None)
 
 
+def _run_jobs_script() -> Any:
+    """``scripts/run_jobs.py``, the one place a run's jobs are read page by page."""
+    path = Path(__file__).resolve().with_name("run_jobs.py")
+    spec = importlib.util.spec_from_file_location("_ci_ready_run_jobs", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def jobs_of(api: Api, repository: str, run_id: int) -> list[dict[str, Any]]:
-    return (api(f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100") or {}).get("jobs") or []
+    run_jobs = _run_jobs_script()
+    url = f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest"
+    return run_jobs.all_jobs(lambda number: api(run_jobs.page_url(url, number)) or {"jobs": []})
 
 
 def head_of(api: Api, repository: str, number: str) -> str:

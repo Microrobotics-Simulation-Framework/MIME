@@ -152,6 +152,10 @@ MAGNETIC_MOMENT = CURRENT * LENGTH**2
 DYNAMIC_VISCOSITY = MASS / (LENGTH * TIME)
 TORQUE = FORCE * LENGTH
 ROTATIONAL_DAMPING = TORQUE * TIME
+PRESSURE = FORCE / LENGTH**2
+VOLUME_FLUX = VOLUME / TIME
+HYDRAULIC_RESISTANCE = PRESSURE * TIME / VOLUME
+COMPLIANCE = VOLUME / PRESSURE
 
 _NAMED = {
     DIMENSIONLESS: "dimensionless",
@@ -173,6 +177,10 @@ _NAMED = {
     DYNAMIC_VISCOSITY: "dynamic viscosity (Pa s)",
     TORQUE: "torque (N m)",
     ROTATIONAL_DAMPING: "rotational damping (N m s)",
+    PRESSURE: "pressure (Pa)",
+    VOLUME_FLUX: "volume flux (m^3/s)",
+    HYDRAULIC_RESISTANCE: "hydraulic resistance (Pa s/m^3)",
+    COMPLIANCE: "compliance (m^3/Pa)",
 }
 
 Length = LENGTH
@@ -194,6 +202,10 @@ MagneticMoment = MAGNETIC_MOMENT
 DynamicViscosity = DYNAMIC_VISCOSITY
 Torque = TORQUE
 RotationalDamping = ROTATIONAL_DAMPING
+Pressure = PRESSURE
+VolumeFlux = VOLUME_FLUX
+HydraulicResistance = HYDRAULIC_RESISTANCE
+Compliance = COMPLIANCE
 
 type Magnitude = float | tuple[float, ...]
 #: What a quantity holds: a declaration's magnitude, or a result's array of SI floats (read-only).
@@ -484,7 +496,8 @@ _SYMBOLS = {
     DIMENSIONLESS: "", LENGTH: "m", MASS: "kg", TIME: "s", CURRENT: "A", TEMPERATURE: "K", FREQUENCY: "Hz",
     VELOCITY: "m/s", ACCELERATION: "m/s^2", FORCE: "N", MAGNETIC_FLUX_DENSITY: "T", VOLUME: "m^3",
     DENSITY: "kg/m^3", MOMENT_OF_INERTIA: "kg m^2", MAGNETIC_MOMENT: "A m^2", DYNAMIC_VISCOSITY: "Pa s",
-    TORQUE: "N m", ROTATIONAL_DAMPING: "N m s",
+    TORQUE: "N m", ROTATIONAL_DAMPING: "N m s", PRESSURE: "Pa", VOLUME_FLUX: "m^3/s",
+    HYDRAULIC_RESISTANCE: "Pa s/m^3", COMPLIANCE: "m^3/Pa",
 }
 
 
@@ -688,6 +701,11 @@ mPa_s = Unit("mPa s", 1e-3, DYNAMIC_VISCOSITY, "Millipascal seconds (water near 
 N_m = Unit("N m", 1.0, TORQUE, "Newton metres: a torque.")
 N_m_s = Unit("N m s", 1.0, ROTATIONAL_DAMPING,
              "Newton metre seconds: a torque per angular velocity, a rotational damping.")
+Pa = Unit("Pa", 1.0, PRESSURE, "Pascals: a pressure.")
+m3_per_s = Unit("m^3/s", 1.0, VOLUME_FLUX, "Cubic metres per second: a volume flux.")
+mL_per_s = Unit("mL/s", 1e-6, VOLUME_FLUX, "Millilitres per second: a vessel's volume flux.")
+Pa_s_per_m3 = Unit("Pa s/m^3", 1.0, HYDRAULIC_RESISTANCE, "Pascal seconds per cubic metre: a hydraulic resistance.")
+m3_per_Pa = Unit("m^3/Pa", 1.0, COMPLIANCE, "Cubic metres per pascal: a vessel's or a Windkessel's compliance.")
 dimensionless = Unit("1", 1.0, DIMENSIONLESS, "A pure number, such as a ratio or a normalised wavenumber.")
 
 
@@ -736,7 +754,9 @@ def standard_gravity(*, reason: Basis | None = None) -> Quantity:
 
 
 __all__ = [
-    "ACCELERATION", "ANGULAR_VELOCITY", "AngularVelocity", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle", "CURRENT",
+    "ACCELERATION", "ANGULAR_VELOCITY", "AngularVelocity", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
+    "HydraulicResistance", "PRESSURE", "Pressure", "VOLUME_FLUX", "VolumeFlux", "Pa", "Pa_s_per_m3", "m3_per_Pa",
+    "m3_per_s", "mL_per_s", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle", "CURRENT",
     "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FIELD_GRADIENT", "FORCE", "FREQUENCY", "LENGTH",
     "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "ROTATIONAL_DAMPING", "TEMPERATURE",
     "TIME", "TORQUE", "VELOCITY", "VOLUME", "Acceleration", "Current", "Density", "DynamicViscosity", "FieldGradient",

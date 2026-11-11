@@ -10,7 +10,7 @@ one JSON object ``{"name", "conclusion"}`` per line on standard input, and check
 name beginning ``--prefix`` and that each concluded ``success``. The prefix names one Python (``default tests (Python 3.12, ``): the matrix job's own result is one for all three, and would turn a lane red
 for another Python's shard.
 
-    python3 scripts/run_jobs.py ".../jobs?filter=latest&per_page=100" \\
+    python3 scripts/run_jobs.py ".../jobs?filter=latest" \\
         | python3 scripts/check_shard_jobs.py --prefix "default tests (Python 3.12, " --shards 10
 
 Exits 0 when they all passed, 1 naming each that did not.

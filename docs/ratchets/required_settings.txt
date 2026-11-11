@@ -81,6 +81,10 @@ interaction drag 0.5.0 rung                              # design: the model is 
 interaction drag 0.5.0 weights                           # design: the surrogate's weights are named, never picked (its rung refuses none)
 observation phase_lag 0.1.0 about                        # design: the experimenter's choice
 observation swim_speed 0.1.0 along                       # design: the experimenter's choice
-dynamics fvm 0.1.0 domain                                 # physical: the domain the flow is solved on, the experiment's own choice (a periodic box's period)
+dynamics fvm 0.1.0 domain                                 # physical: the domain the flow is solved on, the experiment's own choice (a periodic box's period, or the vessel's region cut at its openings)
 interaction body_force 0.1.0 along                        # design: the direction the drive pushes the fluid, the experimenter's choice
 interaction body_force 0.1.0 steady                       # physical: the drive's own strength, nothing assumes one
+interaction inflow 0.1.0 steady                           # physical: the flux the opening takes in, nothing assumes one
+interaction windkessel 0.1.0 proximal                     # physical: the downstream bed's proximal resistance, nothing assumes one
+interaction windkessel 0.1.0 compliance                   # physical: the downstream bed's compliance, nothing assumes one
+interaction windkessel 0.1.0 distal                       # physical: the downstream bed's distal resistance, nothing assumes one

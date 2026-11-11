@@ -5,7 +5,7 @@ accepts, what a delivery into it is (:class:`DeliveryKind`): a load read at the 
 for, a flow handed in, or a delivered inertia. The receiver imposes its flow; each delivery imposes what its kind says
 it is. A kind states no pairing of its own: the pairing is ``mime.core.ledger``'s one rule, keyed by the delivery kind.
 Kinds are registered (:func:`register_port_kind`), open to labs; MIME's own are a rigid body's, a chain segment's
-joints', a delivered inertia's, a flow-in's and a fluid's.
+joints', a delivered inertia's, a flow-in's, a fluid's and a flow's openings'.
 
 An **energy class** (:class:`EnergyClass`) is one per law, its deliveries and reactions together: dissipative,
 potential or workless, each settled by an exact identity on the law alone in its family's suite. There is no source
@@ -28,6 +28,9 @@ from mime.vocabulary._mime import (
     CONFINEMENT,
     FLOW_BODY_FORCE,
     FLOW_MOMENTUM,
+    FLOW_OPENING_FLUX,
+    FLOW_OPENING_IMPEDANCE,
+    FLOW_OPENING_PRESSURE,
     FLOW_WAVEFORM,
     FRAME_ANGULAR_VELOCITIES,
     JOINT_VELOCITIES,
@@ -230,7 +233,14 @@ FLUID = register_port_kind(PortKind(
     "law's paired by the flow's step with its fluid's momentum at the instants it applies it; a drive's waveform "
     "reaches the momentum through the flow's own evaluation of it at its stage instants",
     mapped=frozenset({FLOW_WAVEFORM.name})))
+OPENING = register_port_kind(PortKind(
+    "opening", FLOW_OPENING_FLUX.name, MappingProxyType({
+        FLOW_OPENING_PRESSURE.name: DeliveryKind.LOAD, FLOW_OPENING_IMPEDANCE.name: DeliveryKind.SOLVED}),
+    "a medium's flow's openings, each its outward volume flux (a row per opening) against its pressure: a law at an "
+    "opening states a pressure row, its pressure affine in its flux over the stage (the offset a load, the block solved "
+    "with the flow), or a flux row, its flux given and paired with the pressure the flow returns; the laws are held in "
+    "the flow's step"))
 
-__all__ = ["DELIVERED_INERTIA", "ENERGY", "FLOW_IN", "FLUID", "JOINT", "POWER", "RIGID_BODY", "SPINNER", "Definiteness",
+__all__ = ["DELIVERED_INERTIA", "ENERGY", "FLOW_IN", "FLUID", "JOINT", "OPENING", "POWER", "RIGID_BODY", "SPINNER", "Definiteness",
            "DeliveryKind",
            "EnergyClass", "PortKind", "port_kind", "port_kinds", "register_port_kind"]

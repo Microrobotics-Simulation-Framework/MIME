@@ -126,6 +126,10 @@ CentreMagneticForce, _ = KEPT["magnetic.force", "0.1.0"]
 #: it exactly no work (in float32, on all but the few below its resolution: the family walk asks one failing draw).
 CENTRE_OF_MASS_READ = {CaseKind.CLOSED_LOOP: "MIME-ANO-137"}
 TOY = "a toy with no physics, which exercises the build: the toy family has one member, the toy drag"
+#: The laws held at a flow's openings: no body's family rig holds them; their family suite is the port-law suite.
+PORT_LAW = ("a law held at a flow's opening, which no body's family rig holds: its family suite is the port-law suite "
+            "(mime.testing.port_law_suite, tests/flow/test_port_laws.py: the passivity of the row the solver solves, "
+            "its own books), and its delivery is the flow field's, gated with the open box (tests/flow/test_fvm_open.py)")
 FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "magnetic.torque", "0.1.0"): FamilyCase(
         CentreMagneticTorque, torque, together=lambda: (CentreMagneticForce(),), fails=CENTRE_OF_MASS_READ),
@@ -154,6 +158,8 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "body_force", "0.1.0"): FamilyCase(
         no_family="a drive on a medium's fluid, which no body's family rig holds: its delivery is the flow field's "
                   "input, gated with the field (tests/flow/test_fvm_experiment.py)"),
+    ("interaction", "inflow", "0.1.0"): FamilyCase(no_family=PORT_LAW),
+    ("interaction", "windkessel", "0.1.0"): FamilyCase(no_family=PORT_LAW),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.lift", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.hold", "0.1.0"): FamilyCase(no_family=TOY),

@@ -45,7 +45,7 @@ def test_a_new_empty_field_of_mimes_fails_naming_it_until_it_has_its_own_line(tm
     listing(root, f"{EMPTY_ITEM}  # a plant, with its own reason")
     done = docs_check(root, plant="mime_empty")
     assert done.returncode == 0, done.stdout
-    assert re.search(r"none declared in MIME's pages: 15 fields, 0 of the list's 15 lines at the start reason",
+    assert re.search(r"none declared in MIME's pages: 16 fields, 0 of the list's 16 lines at the start reason",
                      done.stdout)
 
 
@@ -64,7 +64,7 @@ def test_a_field_of_a_lab_or_a_toy_is_outside_the_list_and_counted(tmp_path):
     assert done.returncode == 0, done.stdout
     assert "none declared in MIME's pages: 15 fields" in done.stdout
     assert re.search(r"none declared (\d+)", done.stdout) and int(re.search(r"none declared (\d+)",
-                                                                           done.stdout).group(1)) > 13
+                                                                           done.stdout).group(1)) > 14
 
 
 def test_a_new_line_with_the_shared_start_reason_fails_against_a_base_that_does_not_hold_it(tmp_path):

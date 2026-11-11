@@ -100,3 +100,21 @@ FLOW_WAVEFORM = define(Interface(
                 "(accelerations), frequency and phase, the force per unit mass on its fluid, which the field kind "
                 "evaluates at its own instants or responds to analytically. At most one law delivers it: a waveform is "
                 "not summed"))
+FLOW_OPENING_FLUX = define(Interface(
+    "flow.opening_flux", ReadKind.STATE, "m^3/s", "world", (), sign="out of the medium's flow (outward positive)",
+    magnitude=1e-9,
+    description="the volume flux through one of a medium's flow's openings, outward positive: the flow of the opening "
+                "port kind, a row per opening"))
+FLOW_OPENING_PRESSURE = define(Interface(
+    "flow.opening_pressure", TargetKind.LOAD, "Pa", "world", (), sign="on the medium's flow at the opening",
+    magnitude=1e3,
+    description="a pressure row's offset at one of a medium's flow's openings: the pressure a law gives there at zero "
+                "flux, read for the stage"))
+FLOW_OPENING_IMPEDANCE = define(Interface(
+    "flow.opening_impedance", TargetKind.OPERATOR, "Pa s/m^3", "world", (), magnitude=1e8,
+    description="a pressure row's block at one of a medium's flow's openings: the pressure's change with the outward "
+                "flux over the stage, solved with the flow"))
+FLOW_OPENING = define(Interface(
+    "flow.opening", TargetKind.REGISTRATION, "", None, (),
+    description="a law held at one of a medium's flow's openings, its pressure or its flux over each stage: the flow "
+                "includes it in its own step"))
