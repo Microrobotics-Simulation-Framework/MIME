@@ -131,7 +131,8 @@ plan's context for an interaction's or observation's setting; the build records 
 
 **For the energy ledger**: an `Interaction` declares its `energy_class` (`mime.vocabulary.EnergyClass`), its
 deliveries and reactions together, or none with its reason in `unmetered`, and a dissipative law where its operators
-are shown definite (`definiteness()`: by construction or at the state); a `Dynamics` names the `port` kind its node's
-inputs are paired by, or none with its reason in `unmetered`.
+are shown definite (`definiteness()`: by construction or at the state); a `Dynamics` names the `port_kinds` its node's
+inputs are paired by (each delivery by the one kind naming its interface; two kinds pairing one interface are refused at
+registration), or none with its reason in `unmetered`.
 
 Releases are explained in the [package manifest](../README.md#status).

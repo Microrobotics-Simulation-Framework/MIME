@@ -55,6 +55,10 @@ FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_sho
           "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0,
           "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2}
 LEDGER_FLOOR = 1e-9
+#: A field judged on another field's scale, by name: an open flow's unit fields' components across a tube along z are
+#: the solve's rounding, which moves by its own size across machines (flake cause 2), so each is judged on the unit
+#: field's own scale, its axial component's largest magnitude.
+SCALED_BY = {"unit_x": "unit_z", "unit_y": "unit_z"}
 #: The rft rung's least eigenvalue is of a matrix scaled to a unit diagonal, so its scale is one; for a straight body
 #: (the rod, the seed) it is the spin's rounding, of either sign, a few units in the last place, and is judged against
 #: that scale, never its own. The coil's, 0.79, is a real number and is held to 1e-10 of it.
@@ -151,7 +155,9 @@ def differences(found: dict, golden: dict) -> list[str]:
                 if want.shape != got.shape or not np.array_equal(want, got):
                     moved.append(f"{node}.{field} moved from its golden output")
                 continue
-            scale = max(float(np.max(np.abs(want), initial=0.0)), floor_of(field, str(golden.get("case", ""))))
+            scale = max(float(np.max(np.abs(want), initial=0.0)), floor_of(field, str(golden.get("case", ""))),
+                        float(np.max(np.abs(np.asarray(fields[SCALED_BY[field]])), initial=0.0))
+                        if field in SCALED_BY and SCALED_BY[field] in fields else 0.0)
             if want.shape != got.shape or float(np.max(np.abs(got - want), initial=0.0)) > RTOL * scale:
                 moved.append(f"{node}.{field} moved from its golden output")
     return moved

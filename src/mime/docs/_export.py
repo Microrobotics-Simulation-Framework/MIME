@@ -157,8 +157,10 @@ def entry_record(record: Registered) -> dict[str, JSON]:
             default = {"required": True}
         groups = [member.group for member in _members(hints.get(item.name))
                   if isinstance(member, type) and issubclass(member, SettingGroup)]
+        # A setting holding one of several groups (a flow's ``PeriodicBox | VesselRegion``) exports every one of them.
         fields[item.name] = {"type": item.type if isinstance(item.type, str) else inspect.formatannotation(item.type),
-                             "default": default, "group": groups[0] if groups else None}
+                             "default": default,
+                             "group": (groups[0] if len(groups) == 1 else cast(JSON, groups)) if groups else None}
     settings: dict[str, JSON] = {
         name: {"dimension": None if declared.dimension is None else encode(declared.dimension),
                "kind": None if declared.kind is None else declared.kind.name, "optional": declared.optional}

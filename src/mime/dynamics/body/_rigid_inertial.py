@@ -141,7 +141,7 @@ class RigidInertial(Dynamics):
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,
                        Capability.PROJECTS_CONFINEMENT, Capability.HOLDS_HULL})
     publishes = {POSE.name: Port("pose"), TWIST.name: Port("twist"), MASS_MATRIX.name: Port("mass_matrix")}
-    port = RIGID_BODY.name
+    port_kinds = (RIGID_BODY.name,)
     accepts = {APPLIED_WRENCH.name: Port("applied_wrench"), RESISTANCE.name: Port("resistance"),
                BACKGROUND_LOAD.name: Port("background_load"), CONFINEMENT.name: Port("confinement")}
     initial_state = {"position": LENGTH, "orientation": DIMENSIONLESS, "velocity": VELOCITY,

@@ -3,6 +3,8 @@ derivatives on its axis, where the normal is not defined, and their derivatives 
 on any axis, within the cylinder's resolution, the values and derivatives its record states; the tube's inner surface
 as the cylinder of its inner radius; a geometry kind checked against the shape protocol."""
 
+import math
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -52,12 +54,25 @@ def test_the_tubes_inner_surface_is_the_cylinder_of_its_inner_radius():
     tube = Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6), length=mm(100))
     settings = {"axis": (1.0, 0.0, 0.0), "inner_radius": 3.175e-3, "wall": 1.6e-3, "length": 0.1,
                 "centre": (0.0, 0.0, 0.0)}
-    assert Tube.surfaces == {"inner_surface": "cylinder"} and shape_named("cylinder") is CYLINDER
+    assert Tube.surfaces["inner_surface"] == "cylinder" and shape_named("cylinder") is CYLINDER
     assert tube.surface_parameters("inner_surface", settings) == {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0),
                                                                   "radius": 3.175e-3}
     assert tube.direction("axis", settings) == (1.0, 0.0, 0.0)
     assert tube.setting_problems(settings) == []
     assert isinstance(CYLINDER, Shape)
+
+
+def test_the_tubes_ends_are_its_lumens_openings_along_its_axis():
+    """#336: a straight tube's ends are named by geometry, ``start`` and ``end`` along its declared axis, each the
+    half-space the lumen lies in (its normal into the tube), and they are the lumen's declared openings in that order."""
+    tube = Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6), length=mm(100))
+    settings = {"axis": (1.0, 0.0, 0.0), "inner_radius": 3.175e-3, "wall": 1.6e-3, "length": 0.1,
+                "centre": (0.01, 0.0, 0.0)}
+    assert Tube.surfaces == {"inner_surface": "cylinder", "start": "half_space", "end": "half_space"}
+    assert Tube.openings == {"lumen": ("start", "end")}
+    start, end = (tube.surface_parameters(name, settings) for name in ("start", "end"))
+    assert start["normal"] == (1.0, 0.0, 0.0) and end["normal"] == (-1.0, 0.0, 0.0)
+    assert math.isclose(float(start["offset"]), -0.04) and math.isclose(float(end["offset"]), -0.06)
 
 
 def test_the_tubes_lumen_is_the_cylinder_with_its_axis_and_a_point_on_it():

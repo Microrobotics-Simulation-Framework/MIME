@@ -18,7 +18,14 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
   (``tests/flow/test_fvm_mms.py``, its controls a sign flip and one component scaled by 1.05) is what sees one;
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
-- ``open_face_projection`` and ``port_kinetic_flux``: pending until a medium has openings (F2b's PR 2 gates them)."""
+- the open box's own (``OPEN_FLAGS``): ``open_face_projection`` (``N_proj`` over the step's scale: a projector that is
+  not orthogonal under the books' inner product, its port faces at the wrong weight).
+
+**Not built** (no flag is declared for them, pending or otherwise): the record's port work against the kinetic-energy
+flux through the openings, whose reading needs the scheme's convective power split by plane (one line an opening, so
+the energy in and out does not cancel), F2b's PR 3 with the openings' own rows; and the periodic box's three on the
+open box and on RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those
+runs' own draws."""
 
 from __future__ import annotations
 
@@ -115,15 +122,20 @@ def leak_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], aft
     return _share(loss, booked)
 
 
-#: The openings' two, declared and not yet checks: no medium has an opening to plant at.
-PENDING = (
-    LedgerFlag("open_face_projection", "N_proj at the open faces over the step's scale", None, {},
-               "not measured", pending="no medium has openings yet (a periodic box only), so no plant can be gated: "
-                                       "F2b's PR 2 gates it with its measured rate"),
-    LedgerFlag("port_kinetic_flux", "a port's work against the kinetic-energy flux through its faces", None, {},
-               "not measured", pending="no medium has openings yet (a periodic box only), so no plant can be gated: "
-                                       "F2b's PR 2 gates it with its measured rate"),
-)
+def _step_scale(before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:
+    """The step's scale, from the running sum's two ends."""
+    return jnp.asarray(after[f"{books.RECORDS}scale"]) - jnp.asarray(before[f"{books.RECORDS}scale"])
+
+
+def projection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:
+    """``|N_proj|`` over the step's scale: the projection's own term at the open faces, rounding where the
+    projector is orthogonal under the inner product the books are formed in (the half-weight faces)."""
+    del p
+    terms = cast(tuple[str, ...], node.LEDGER_TERMS)
+    term = jnp.asarray(after[f"{books.RECORDS}step_terms"])[terms.index("projection")]
+    stepped = jnp.asarray(after["stopped_at"]) < 0
+    return jnp.where(stepped, _share(jnp.abs(term), _step_scale(before, after)), 0.0)
+
 
 #: The run that measured the lines: 200 draws a dtype of ``tests/flow/flag_cases.py``'s envelope (seeds 0 to 199), 60
 #: steps each, every flag read at every step.
@@ -196,9 +208,25 @@ FLAGS: tuple[LedgerFlag, ...] = (
                _evidence(_MASK, {"float64": (200, 200, 0, 200), "float32": (200, 200, 0, 200)}, RATES_MEASURED)
                + _evidence(_WEAK, {"float64": (0, 50, 0, 50), "float32": (0, 50, 0, 50)}, RATES_MEASURED),
                settle=30),
-    *PENDING,
 )
 
-__all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED",
-           "OPERATOR_MEASURED", "PENDING", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
-           "stall_reading"]
+#: The run that measured the open box's lines and rates: 200 drawn open runs a dtype (``tests/flow/open_cases.py``,
+#: seeds 0 to 199, 60 steps each) and each plant on 40 fresh draws (seeds from 3000), the same draws clean.
+OPEN_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42877559684"
+_OPEN_CLEAN = (f"drawn open runs (an inflow and a Windkessel with a downstream resistance of 1 to 1e4 times the "
+               f"vessel's, IMEX Euler, D/h 8 to 16, Re 1 to 100 through a narrowing of up to 0.4, a run held past the "
+               f"CFL line read on its steps before the hold; tests/flow/open_cases.py), 60 steps each, "
+               f"{OPEN_MEASURED}")
+_UNIFORM = "the planes' faces at full weight in the inner product (the projector not orthogonal under it)"
+
+#: The open box's flags (``OpenFlowNode``): its own (the module says which are not built).
+OPEN_FLAGS: tuple[LedgerFlag, ...] = (
+    LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading,
+               {"float64": 2e-17, "float32": 1e-8},
+               f"200 {_OPEN_CLEAN}: worst 2.4e-18 (float64) and 1.2e-9 (float32), every step judged",
+               _evidence(_UNIFORM, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, OPEN_MEASURED)),
+)
+
+__all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "OPEN_FLAGS",
+           "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED", "FlagEvidence", "convection_reading", "leak_reading",
+           "projection_reading", "stall_reading"]

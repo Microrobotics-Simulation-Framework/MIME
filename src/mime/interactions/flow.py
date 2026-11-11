@@ -1,29 +1,37 @@
 """Laws that drive a medium's flow: ``BodyForce``, the body force that stands in for a pressure drop on a periodic box
-(F0's B6 and B7: drives are laws, a body force bound to the medium with no surface)."""
+(F0's B6 and B7: drives are laws, a body force bound to the medium with no surface); and the laws held at a flow's
+openings (decisions 7 and 8; A2's hybrid rows): ``Inflow``, a flux given at an opening, and ``Windkessel``, the RCR
+whose pressure is affine in the opening's flux over each stage. A law at an opening binds the medium and the opening's
+surface (``exp.attach(Windkessel(...), medium=blood, surface=tube.end)``) and builds no node: the flow holds it in
+its own step, through its registration."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, override
+from typing import TYPE_CHECKING, Annotated, ClassVar, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.flow._body_force import BodyForceNode
+from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
+from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
 from mime.registry import (
     DESIGN,
     PHYSICAL,
     BuildContext,
     Delivery,
+    GradientRecord,
     Interaction,
     Plan,
     PlanContext,
+    Registration,
     RoleKind,
     SupportRow,
     convention,
     register_interaction,
     requires,
 )
-from mime.units import Acceleration, Frequency, Quantity
-from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM
+from mime.units import Acceleration, Compliance, Frequency, HydraulicResistance, Quantity, VolumeFlux
+from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_WAVEFORM, Definiteness, EnergyClass
 
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
@@ -98,4 +106,108 @@ class BodyForce(Interaction):
                 b.connect(node[label], into=b.target(label))
 
 
-__all__ = ["BodyForce"]
+
+#: Where a law at an opening is not yet in a gradient gate (FB15, the gradients with ports, is a later PR's).
+_PORT_GRADIENT = GradientRecord(
+    where="in its settings, through the flow's step that holds it",
+    reason="the gradient gate with ports (its settings, the unit fields and the port system) is not built yet",
+    route="F2b's gradient gate with ports: reverse and forward against a central difference that rebuilds")
+
+
+class _OpeningLaw(Interaction):
+    """What a law at an opening shares: its roles (the medium whose flow holds it, the opening's surface), its id
+    (its name and the opening: ``windkessel:tube.end``), and its plan, a registration with the medium's flow,
+    which holds it in its step as the port law ``port_law`` (``mime.nodes.flow.fvm._ports``)."""
+
+    port_law: ClassVar[str] = ""
+    family = None
+    builds = {"": ()}
+    roles = {"medium": RoleKind.MEDIUM, "surface": RoleKind.SURFACE}
+    id_roles = ("surface",)
+    support = (SupportRow(None, {"medium": requires(accepts=[FLOW_OPENING.name])},
+                          note="a medium whose flow field holds a law at each of its openings"),)
+
+    @override
+    def plan(self, ctx: PlanContext) -> Plan:
+        return Plan(nodes=(), registrations=(Registration("medium", FLOW_OPENING.name, self.port_law, "surface"),))
+
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        return None
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class Inflow(_OpeningLaw):
+    """A volume flux into the flow at an opening, ``steady + amplitude cos(2 pi frequency t + phase)``:
+    ``exp.attach(Inflow(steady=mL_per_s(1.0)), medium=blood, surface=tube.start)``. The flow holds the opening's flux
+    to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row): the whole
+    plane's flux, the wall's band included, so the lumen takes it less the band's Darcy share (about 0.1 to 1 %). A
+    source: the work it supplies, the pressure the flow returns times its flux, is booked under its name."""
+
+    name = "inflow"
+    version = "0.1.0"
+    port_law = InflowLaw.name
+    differentiability = GradientStatus.UNVERIFIED
+    gradient = _PORT_GRADIENT
+    references = ()
+    unmetered = ("a flux given at an opening is a source, which declares no class: the flow holds it in its step and "
+                 "books its work, the pressure the flow returns times the flux it gives, under its name")
+    setting_roles = {
+        "steady": PHYSICAL,
+        "amplitude": convention(PHYSICAL, "a steady inflow unless a pulsatile one is declared"),
+        "frequency": convention(PHYSICAL, "a steady inflow unless a pulsatile one is declared"),
+        "phase": convention(PHYSICAL, "the pulsatile part starts at its peak (radians)"),
+    }
+
+    steady: Annotated[Quantity, VolumeFlux]
+    amplitude: Annotated[Quantity | None, VolumeFlux] = None
+    frequency: Annotated[Quantity | None, Frequency] = None
+    phase: float = 0.0
+
+    @override
+    def setting_problems(self, settings) -> list[str]:  # type: ignore[no-untyped-def]
+        if (self.amplitude is None) != (self.frequency is None):
+            return ["a pulsatile inflow takes both its amplitude and its frequency"]
+        return []
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class Windkessel(_OpeningLaw):
+    """The three-element (RCR) Windkessel at an opening: a ``proximal`` resistance, then the ``compliance`` of a
+    capacitor drained by a ``distal`` resistance to a distal pressure of zero: ``exp.attach(Windkessel(proximal=...,
+    compliance=..., distal=...), medium=blood, surface=tube.end)``. The flow steps it by backward Euler at its own
+    instant (decision 8), so the exchange across the opening does no work of its own; its numerical dissipation
+    ``N_WK = (C/2)(Pc' - Pc)^2``, first order, is booked under its name with its capacitor's storage and its
+    resistances' loss. Dissipative: its per-stage block ``R_p + dt / (C + dt / R_d)`` is positive for positive
+    settings (the port-law suite's passivity check)."""
+
+    name = "windkessel"
+    version = "0.1.0"
+    port_law = WindkesselLaw.name
+    differentiability = GradientStatus.UNVERIFIED
+    gradient = _PORT_GRADIENT
+    references = ("Westerhof2009",)
+    energy_class = EnergyClass.DISSIPATIVE
+    setting_roles = {"proximal": PHYSICAL, "compliance": PHYSICAL, "distal": PHYSICAL}
+
+    proximal: Annotated[Quantity, HydraulicResistance]
+    compliance: Annotated[Quantity, Compliance]
+    distal: Annotated[Quantity, HydraulicResistance]
+
+    @override
+    def definiteness(self) -> Definiteness | None:
+        return Definiteness.CONSTRUCTION
+
+    @override
+    def setting_problems(self, settings) -> list[str]:  # type: ignore[no-untyped-def]
+        found: list[str] = []
+        for name in ("proximal", "compliance", "distal"):
+            value = settings[name]
+            if not (isinstance(value, float) and value > 0.0):
+                found.append(f"{name} is {value!r}, not a value above zero")
+        return found
+
+
+__all__ = ["BodyForce", "Inflow", "Windkessel"]

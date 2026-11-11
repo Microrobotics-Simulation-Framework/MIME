@@ -76,7 +76,7 @@ class Motor(ChainSegment):
     the axis. A part on ``<segment>.base`` rides on that frame."""
 
     name = "motor"
-    port = "spinner"
+    port_kinds = ("spinner",)
     version = "0.2.0"
     setting_roles = {
         "rung": DESIGN, "axis": PHYSICAL, "prescribed": DESIGN, "initial_angle": DESIGN,

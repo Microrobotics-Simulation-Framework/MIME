@@ -76,14 +76,18 @@ it applies it at, and the inertia its frames carry, paired by its change), `spin
 the loads on its frames, of which the rotor's axial torque is its own and the rest passes to its host),
 `delivered_inertia`, `flow_in` and `fluid` (a medium's fluid's momentum, `flow.momentum`, against the body force per
 unit mass each law driving it delivers, and the drive's waveform, which reaches it through the flow's own evaluation at
-its stage instants); `DeliveryKind`, `EnergyClass`,
+its stage instants) and `opening` (a flow's openings' outward volume fluxes, `flow.opening_flux`, a row per opening,
+against their pressures: a pressure row's offset a load, `flow.opening_pressure`, its block solved,
+`flow.opening_impedance`; a flux row is held in the flow's step, as the laws at its openings are, registered with it
+through `flow.opening`, so no delivery pairs through it yet: its laws are registrations, booked as the flow's
+hosted rows); `DeliveryKind`, `EnergyClass`,
 `Definiteness`, and `POWER` and `ENERGY`, what a delivery and its flow pair to.
 
 **What a kind checks, and who reads it.** A kind fixes the flow and the delivery kind of each interface it accepts,
 and pairs their units to watts; shape and sign live on the interface entries and are not compared, and an interface
 listed in `mapped` skips the unit pairing (its map is the receiver's own: a dynamic arm's Jacobian, a motor's
 axis, a flow's evaluation of a waveform). With the energy ledger attached the build reads a metered
-dynamics' kind (`Dynamics.port`) for how each delivery into it is paired, and the receiver's node refuses a delivery
+dynamics' kinds (`Dynamics.port_kinds`, each delivery paired by the one kind naming its interface) for how each delivery into it is paired, and the receiver's node refuses a delivery
 paired otherwise than it pairs that input; it reads each law's class and definiteness for its records and its run-time
 check. A declaration settles nothing by itself: each class is checked by an exact identity on the law alone (the energy
 case of its family's suite, `mime.testing`), and the registry walk requires every entry of MIME's to declare or state
