@@ -176,6 +176,8 @@ scene/_solids.py::_length TypeError 1  # invariant: MIME's own check, which no s
 scene/_solids.py::_lengths TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_union.py::ExactUnion.__post_init__ ValueError 2  # construction: a union's meeting pairs misnamed, raised where a script or a kind makes the union, outside every public call of an experiment
+sensing/_detector.py::Pinhole.__post_init__ ValueError 1  # construction: a script constructing a detector of no pixels, raised where the script calls it, outside every public call of an experiment
+sensing/_subjects.py::register_closed_form ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::Surrogate.resolve ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::evaluator_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
