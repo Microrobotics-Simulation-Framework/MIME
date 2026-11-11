@@ -798,6 +798,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thousands of times the right-hand side's; such a solve now ends flagged. The line does not close that case entirely:
   a growing iterate can still stop under it (measured in the entry's validity).
 
+- **CI runs each lane as twenty shards, and a test file the shard table does not list goes to the lightest shard.**
+  Two pushes on 2026-11-11 had a shard of two lanes each cancelled at its 30-minute limit: the table (2026-11-10) did not
+  list the test files added since, and a file outside it went by a hash of its path, so shards 14 and 10 held 2000 to
+  2400 s of them beside their own share. `tests/shard_weights.json` is rebuilt from the push run of `dface1d`, listing
+  every file its reports hold, `tests/_sharding.py` places a file the table lacks after the listed ones, on the shard with
+  the least time so far, at the table's 90th-percentile file weight (an assumption, replaced at the next rebuild), and
+  `scripts/shard_matrix.py`'s default is 20 (the repository variable and a manual run's input still win). Ten tests the
+  two runs showed over 30 s cold are listed in `tests/duration_allowlist.txt` with their reasons. Every lane runs cold
+  once: the compilation cache's keys name the shard count.
+
 - **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
   JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;
   it weighs 28876 s now), and `scripts/shard_matrix.py`'s default is 16 (the repository variable and a manual run's input

@@ -7,9 +7,12 @@ reports, and print the seconds each shard is then predicted to hold.
 
 A file's weight is the median over the lanes of its tests' summed times, rounded to whole seconds (each directory is
 one artifact, and a shard's, named ``...-shard-<n>`` or ``...-shard-<n>-attempt-<k>``, is its lane's); the table lists
-the files at or over ``--over`` seconds, and every other file goes by its hash. A file named by ``--split`` (or already
-under the table's ``split``) is listed by test as well: its tests at or over ``--over`` seconds, each the median over the
-lanes of that test's time, are what the deal places, so the file's tests spread over the shards. Run it in the project's
+every file the reports hold (``--over`` 0), so that a file it lacks is a new one, which ``tests/_sharding.py`` places on
+the lightest shard at an assumed weight instead of by hash. A file named by ``--split`` (or already under the table's
+``split``) is listed by test as well: its tests at or over ``--tests-over`` seconds, each the median over the lanes of
+that test's time, are what the deal places, so the file's tests spread over the shards. A shard that was cancelled
+uploads no report, and a lane that lacks one counts its files as 0 s there: copy another lane's report of that shard under
+the missing name first (``durations-<lane>-shard-<n>-attempt-1``) and say so in ``--source``. Run it in the project's
 environment: it loads ``tests/_sharding.py``, which imports pytest.
 """
 
@@ -87,7 +90,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("directories", nargs="+", type=Path,
                         help="the downloaded artifacts' directories, each holding a lane's or a shard's JUnit XML")
     parser.add_argument("--shards", type=int, required=True)
-    parser.add_argument("--over", type=float, default=1.0, help="list the files at or over this many seconds")
+    parser.add_argument("--over", type=float, default=0.0,
+                        help="list the files at or over this many seconds (0: every file the reports hold)")
+    parser.add_argument("--tests-over", type=float, default=1.0,
+                        help="list the tests of a split file at or over this many seconds")
     parser.add_argument("--split", action="append", default=[], metavar="FILE",
                         help="deal this test file by test (repeat for more); the files already split stay split")
     parser.add_argument("--source", required=True, help="the runs the times come from, for the table's record")
@@ -97,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         print("no JUnit XML in the directories given", file=sys.stderr)
         return 2
     times = medians(lanes)
-    seconds = {path: max(1, round(t)) for path, t in times.items() if t >= args.over}
+    seconds = {path: max(1, round(t)) for path, t in times.items() if path and t >= args.over}
     alone, split_files = {}, set(args.split)
     if TABLE.exists():  # the files that hold a shard of their own, and why, are kept while they are still listed
         old = json.loads(TABLE.read_text(encoding="utf-8"))
@@ -110,9 +116,9 @@ def main(argv: list[str] | None = None) -> int:
         names = sorted({n for lane in per_test for n in lane if n.split("::", 1)[0] == file})
         tests = {n.split("::", 1)[1]: max(1, round(statistics.median(lane.get(n, 0.0) for lane in per_test)))
                  for n in names if "::" in n}
-        split[file] = {n: t for n, t in tests.items() if t >= args.over}
-    table = {"source": args.source, "over": args.over, "seconds": seconds, **({"alone": alone} if alone else {}),
-             **({"split": {f: t for f, t in split.items() if t}} if split else {})}
+        split[file] = {n: t for n, t in tests.items() if t >= args.tests_over}
+    table = {"source": args.source, "over": args.over, "tests_over": args.tests_over, "seconds": seconds,
+             **({"alone": alone} if alone else {}), **({"split": {f: t for f, t in split.items() if t}} if split else {})}
     TABLE.write_text(json.dumps(table, indent=1) + "\n",
                      encoding="utf-8")
     spec = importlib.util.spec_from_file_location("_sharding", ROOT / "tests" / "_sharding.py")
