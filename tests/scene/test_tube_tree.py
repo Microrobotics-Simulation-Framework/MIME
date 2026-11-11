@@ -63,24 +63,101 @@ def test_a_malformed_tree_is_refused_with_its_code(points, segments, radii, fill
 
 def test_the_ys_junction_and_meeting_tubes():
     tree = y_tree("asymmetric")
-    assert [(j.name, j.ends) for j in tree.junctions] == [("j1", ((0, 1), (1, 0), (2, 0)))]
+    assert [(j.name, j.ends) for j in tree.junction_names()] == [("junction_0", ((0, 1), (1, 0), (2, 0)))]
     assert tree.meets() == ((0, 1), (0, 2), (1, 2))
     assert tree.lumen().corners == ((0, 1, 2),)
 
 
 def test_the_loops_junctions_and_its_tubes_that_meet_without_sharing_a_point():
     tree = loop_tree()
-    assert [j.name for j in tree.junctions] == ["j1", "j2", "j3", "j4", "j5", "j6"]
+    assert [j.name for j in tree.junction_names()] == [f"junction_{n}" for n in range(6)]
     sharing = {(i, j) for i in range(8) for j in range(i + 1, 8) if set(tree.segments[i]) & set(tree.segments[j])}
     assert sharing <= set(tree.meets())
     assert (1, 5) in set(tree.meets()) - sharing, "the daughter's two ends' balls come within reach across the middle"
+
+
+def renumbered(tree: TubeTree, order: list[int]) -> TubeTree:
+    """The same tree with its points listed in another order (``order[k]`` the old index of the new point ``k``)."""
+    new = {old: k for k, old in enumerate(order)}
+    points = np.asarray(tree.parameters()["points"]).reshape(-1, 3)[order]
+    return TubeTree.si(points, tuple((new[a], new[b]) for a, b in tree.segments), tree._radii(), tree.fillet)
+
+
+def junction_places(tree: TubeTree) -> list[tuple[str, tuple[float, ...]]]:
+    """Each junction's name with the position of the point it is at."""
+    points = np.asarray(tree.parameters()["points"]).reshape(-1, 3)
+    return [(j.name, tuple(points[tree.segments[j.ends[0][0]][j.ends[0][1]]])) for j in tree.junction_names()]
+
+
+def test_junctions_are_named_by_order_from_the_root_the_same_each_time():
+    """The order rule (breadth first from the first segment's start): the same tree written twice gives the same names,
+    and listing its points in another order does not move a name from the junction it names."""
+    for build in (lambda: y_tree("asymmetric"), loop_tree):
+        first, second = build(), build()
+        assert first.junction_names() == second.junction_names()
+        assert [j.name for j in first.junction_names()] == [f"junction_{n}" for n in range(len(first.junction_names()))]
+    tree = loop_tree()
+    shuffled = renumbered(tree, [0, 7, 6, 5, 4, 3, 2, 1])
+    assert junction_places(shuffled) == junction_places(tree), "the names follow the walk, not the points' numbers"
+    assert [p[2] for _, p in junction_places(tree)] == sorted(p[2] for _, p in junction_places(tree)), \
+        "the loop's junctions are numbered up the vessel from its root"
+
+
+def test_a_part_the_walk_does_not_reach_is_numbered_after_the_first():
+    two = TubeTree.si(((0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (2e-3, 0.0, 0.0), (0.0, 1e-3, 0.0), (1e-3, 1e-3, 0.0),
+                       (2e-3, 1e-3, 0.0)), ((0, 1), (1, 2), (3, 4), (4, 5)), ((1e-4, 1e-4),) * 4)
+    assert [(j.name, j.ends) for j in two.junction_names()] == [("junction_0", ((0, 1), (1, 0))),
+                                                                  ("junction_1", ((2, 1), (3, 0)))]
+
+
+def test_a_tree_names_some_or_all_of_its_junctions_and_the_rest_keep_their_order_names():
+    loop = loop_tree()
+    some = TubeTree.si(loop.parameters()["points"].reshape(-1, 3), loop.segments, loop._radii(), 0.0,
+                       junctions=("carina", "after_carina"))
+    assert [j.name for j in some.junction_names()] == ["carina", "after_carina", "junction_2", "junction_3",
+                                                       "junction_4", "junction_5"]
+    every = TubeTree.si(loop.parameters()["points"].reshape(-1, 3), loop.segments, loop._radii(), 0.0,
+                        junctions=("a", "b", "c", "d", "e", "f"))
+    assert [j.name for j in every.junction_names()] == ["a", "b", "c", "d", "e", "f"]
+    assert [j.ends for j in every.junction_names()] == [j.ends for j in loop.junction_names()]
+    assert some.centreline().junction("carina").ends == loop.junction_names()[0].ends
+    assert some.turned(np.eye(3)).junctions == ("carina", "after_carina")
+    assert TubeTree.si(loop.parameters()["points"].reshape(-1, 3), loop.segments, loop._radii(), 0.0,
+                       junctions=("junction_0", "junction_1")).junction_names() == loop.junction_names()
+
+
+Y_POINTS = mm((0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 1.5, 0.0, 2.6, -1.5, 0.0, 2.6))
+
+
+@pytest.mark.parametrize("tree, junctions, ends, said", [
+    ("loop", ("a", "a"), (), "named once each"),
+    ("loop", ("junction_1",), (), "named once each"),
+    ("y", ("root",), (), "an end's name"),
+    ("y", ("lumen",), (), "a region's"),
+    ("y", ("left",), ("left", "right"), "an end's name"),
+    ("y", ("Left",), (), "lower-case"),
+    ("y", ("a", "b"), (), "2 names"),
+    ("loop", ("a", "b", "c", "d", "e", "f", "g"), (), "7 names"),
+    ("y", (), ("junction_0", "right"), "named once each"),
+], ids=["twice", "default_of_another", "root", "region", "end", "not_words", "more_than_junctions_y",
+        "more_than_junctions_loop", "end_takes_default"])
+def test_junction_names_are_refused_where_they_repeat_collide_or_exceed(tree, junctions, ends, said):
+    if tree == "y":
+        shape = dict(points=Y_POINTS, segments=((0, 1), (1, 2), (1, 3)), radii=mm((0.5, 0.5, 0.4, 0.4, 0.3, 0.3)))
+    else:
+        loop = loop_tree()
+        shape = dict(points=loop.points, segments=loop.segments, radii=loop.radii)
+    with pytest.raises(ArgumentRefused) as raised:
+        TubeTree(**shape, junctions=junctions, ends=ends)
+    refusal = raised.value.refusals[0]
+    assert refusal.code == "call.tube_tree" and said in refusal.message
 
 
 def test_tubes_far_apart_do_not_meet():
     tree = TubeTree.si(((0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (0.0, 1e-3, 0.0), (1e-3, 1e-3, 0.0)), ((0, 1), (2, 3)),
                     ((1e-4, 1e-4), (1e-4, 1e-4)))
     assert tree.meets() == ()
-    assert tree.junctions == ()
+    assert tree.junction_names() == ()
     assert float(tree.fillet_radius(tree.parameters())) == 0.0
 
 

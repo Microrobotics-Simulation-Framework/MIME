@@ -41,6 +41,7 @@ from jax import Array
 from mime.core import jnp
 from mime.core import ledger as books
 from mime.core.ledger import TermOrder
+from mime.core.solves import dense_solve
 
 
 class RowKind(StrEnum):
@@ -306,7 +307,7 @@ def port_system(rows: Sequence[RowKind], a: Array, b: Array, base: Array, respon
     a, b, base, response, predicted = (jnp.asarray(x) for x in (a, b, base, response, predicted))
     dtype = base.dtype
     reduced, right, held, gauge = _reduced(rows, a, b, base, response, predicted, reference, coupling)
-    moves = jnp.linalg.solve(reduced, right) if others else jnp.zeros(0, dtype=dtype)
+    moves = dense_solve(reduced, right) if others else jnp.zeros(0, dtype=dtype)
     level = jnp.zeros((), dtype=dtype) if gauge else held[1] - jnp.dot(held[0], moves)
     moved = jnp.stack([moves[others.index(j)] if j != reference else jnp.zeros((), dtype=dtype) for j in range(count)])
     relative = jnp.stack([predicted[j] + moved[j] if j != reference else jnp.zeros((), dtype=dtype)

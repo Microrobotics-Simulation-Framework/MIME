@@ -10,7 +10,8 @@ and the motor's step identities, and the impulses split by the friction's share)
 sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
 no round-trip case's body is fine enough for (where the package has the hand-over); a sphere held with friction on a
 tube's floor (``friction_cases.on_the_floor``), alone and with the energy ledger, whose frictional hold and friction's
-books no other configuration takes (where the package has friction); and those steps traced and
+books no other configuration takes (where the package has friction); the point body with its fitted self-history
+(``self_history="modes"``), which no round-trip case writes; and those steps traced and
 scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
 configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
@@ -63,6 +64,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found["ledger/friction_arm"] = partial(metered, partial(friction_arm, "friction_arm_metered"))
     from mime.interactions import Drag
 
+    if "self_history" in getattr(Drag, "__dataclass_fields__", {}):  # a merge base before the fitted route has none
+        from cases import point_body_flow
+
+        found["drag/point_body_modes"] = partial(point_body_flow, "modes")
     if hasattr(Drag, "handover_window"):  # a merge base before lubrication's hand-over builds no such drag
         from lubrication_cases import above_plane
 

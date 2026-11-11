@@ -38,6 +38,7 @@ from mime.core import (
     typed_view,
 )
 from mime.core import ledger as books
+from mime.core.solves import dense_solve
 from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.nodes.body._contact import (
     CONVERGED,
@@ -749,7 +750,7 @@ class RigidInertialNode(MimeNode):
 
     def velocities(self, mass_matrix: Array, resistance: Array, twist: Array, load: Array, dt: float) -> Array:
         """The twist after the step, ``V + dV`` with ``(M/dt + R) dV = F - R V``."""
-        return twist + jnp.linalg.solve(mass_matrix / dt + resistance, load - resistance @ twist)
+        return twist + dense_solve(mass_matrix / dt + resistance, load - resistance @ twist)
 
     def held(self, p: Mapping[str, Any], position: Array, system: Array, moved: Array, dt: float) -> Array:
         """``moved`` with the confinement held inside the solve of ``system = M/dt + R``: where the body starts on its
@@ -766,7 +767,7 @@ class RigidInertialNode(MimeNode):
                             indicator=lambda: jnp.sqrt(jnp.sum(position * position)))
         resolution = CONTACT_ULPS * float(jnp.finfo(moved.dtype).eps) * (scale + inset)
         direction = jnp.concatenate([shape.outward_normal(parameters, position), jnp.zeros(3, dtype=moved.dtype)])
-        response = jnp.linalg.solve(system, direction)
+        response = dense_solve(system, direction)
         gap = -beyond
         closing = switch.maximum(gap, 0.0, owner="contact.closing", resolution=resolution, indicator=gap) / dt
         outward = jnp.dot(direction, moved) - closing
@@ -862,7 +863,7 @@ class RigidInertialNode(MimeNode):
         found = self.contacts(p, body, pose)
         closing = switch.maximum(found.gaps, 0.0, owner="contact.gap", indicator=found.gaps,
                                  resolution=lambda: switch.rounding(jnp.abs(found.gaps) + p["margin"]))
-        response = jnp.linalg.solve(system, found.rows.T)
+        response = dense_solve(system, found.rows.T)
         coupling, free = found.rows @ response, found.rows @ moved
         start = free + closing / dt
         forces = no_work(coupling, start, self.sweeps(coupling, start, HULL_SWEEPS, owner="contact.impulse"))
@@ -890,7 +891,7 @@ class RigidInertialNode(MimeNode):
         rows = traction_rows(found.rows, found.points, pose[:3], self.friction_along(p, dtype))
         points, count = rows.shape[:2]
         flat = rows.reshape(points * count, 6)
-        response = jnp.linalg.solve(system, flat.T)
+        response = dense_solve(system, flat.T)
         coupling = (flat @ response).reshape(points, count, points, count)
         start = (flat @ moved).reshape(points, count).at[:, NORMAL].add(closing / dt)
         traction = self.traction(p)
@@ -920,7 +921,7 @@ class RigidInertialNode(MimeNode):
             fresh = self.contacts(p, body, pose)
             found = joined([*(self.contacts_at(p, body, pose, earlier.local) for earlier in chosen), fresh])
             chosen.append(fresh)
-            response = jnp.linalg.solve(mass_matrix, found.rows.T)
+            response = dense_solve(mass_matrix, found.rows.T)
             shift = response @ self.sweeps(found.rows @ response, found.gaps, PROJECTION_SWEEPS, owner="contact.push")
             turn = quaternion.exponential(shift[3:])
             pose = jnp.concatenate([pose[:3] + shift[:3], quaternion.multiply(turn, pose[3:])])
