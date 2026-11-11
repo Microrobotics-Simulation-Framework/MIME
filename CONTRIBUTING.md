@@ -138,6 +138,10 @@ Giving each worker's compiled programs back before a memory-heavy test (#250) ad
 is set in every lane, so a program given back is read from it (compile seconds of the thirteen test files that use it,
 four lanes summed, 19.4k s before and 18.4k s after; cache-read seconds 976 and 977). The `openmaterica-main` and
 `maddening-main` shard jobs have 45 minutes, as their cold maximum is above 30 (comments in `ci.yml`).
+One shard of `maddening-main` still reached 45 minutes (run 43030205983, shard 10, at 83 %), and six reruns of it on probe runners
+finished in 12 to 20 minutes with at least 5.4 GB of memory free throughout: the job's own pytest took 163 s to start against
+27 to 41 s on the same shard in the other lanes, so its host was slow from the first second (inferred; the lanes' shard jobs now
+print the stolen CPU share). A re-run of that shard alone clears the lane.
 
 **A file the table does not list** (one added since the table was built) is placed after all the listed ones, in the order
 of its path, on the shard with the least time so far, at an assumed weight: the 90th percentile of the table's file weights
