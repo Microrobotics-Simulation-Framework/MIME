@@ -7,7 +7,10 @@
     "a smoke run of the built camera on a ballistic sphere beside a tube, on the laptop, while the code was written: frame_step 0, 3, 6, 9 and age 0, 1, 2 at a period of 3, and the ring's newest pose equal to the body's pose of the same step. Those clock numbers are therefore not predictions; the gates' draws are."
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "CPU (CI's lanes; Actions probe runners, 4 vCPU, for costs and bits)",
     "sizes_and_parameters": "a 10 um sphere beside a 60 um tube (the done case's scene: sphere_settling_tube's bodies and structures) seen across the tube at 160x120 for the gates, 320x240 and 640x480 for the costs; base step 1 ms; frame periods 1 to 6 steps, sub-frames 1 to 3",
     "seeds_and_draws": "Hypothesis draws of the period, the sub-frames and the steps taken; the node cached per (period, sub-frames) so a draw runs the compiled step"
@@ -16,9 +19,21 @@
     "claim": "frame_step, age and new_frame are exact over drawn frame periods, sub-frames and base steps: at the step with count n, new_frame is 1 exactly when n is a multiple of the period, frame_step is the last such n (-1 before any step), age is n - frame_step",
     "kind": "equality",
     "case": "tests/sensing/test_in_loop_clock.py: the camera node stepped directly, periods 1 to 6, 1 to 3 sub-frames, up to 40 steps",
-    "prediction": {"value": 0, "unit": "mismatching steps over all draws", "basis": "derived", "why": "integer arithmetic on the node's own count"},
+    "prediction": {
+      "value": 0,
+      "unit": "mismatching steps over all draws",
+      "basis": "derived",
+      "why": "integer arithmetic on the node's own count"
+    },
     "metric": "exact integer equality of the three outputs at every step",
-    "control": {"plant": "the frame condition off by one step ((n + 1) mod P, CAMERA_PLANT=latency)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "one step"},
+    "control": {
+      "plant": "the frame condition off by one step ((n + 1) mod P, CAMERA_PLANT=latency)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "one step"
+    },
     "if_wrong": "the clock is not the count's: read which output",
     "cannot_discriminate_if": "the period is 1 (every step is a frame step, so an off-by-one cannot show): the draws include periods above 1 every run"
   },
@@ -26,9 +41,21 @@
     "claim": "an in-loop frame equals the offline render of its recorded poses with the same key, bit for bit, in the same environment, in both dtypes",
     "kind": "equality",
     "case": "tests/sensing/test_in_loop_replay.py: the ballistic scene run step by step; the body's pose after each step is the recorded pose; render(...) with mime.sensing.frame_key(seed, frame step)",
-    "prediction": {"value": 0, "unit": "largest absolute difference in counts (every array equal)", "basis": "derived", "why": "the same function on the same inputs; XLA may fuse differently inside the compiled step, so a rounding difference is possible and is then reported, not hidden"},
+    "prediction": {
+      "value": 0,
+      "unit": "largest absolute difference in counts (every array equal)",
+      "basis": "derived",
+      "why": "the same function on the same inputs; XLA may fuse differently inside the compiled step, so a rounding difference is possible and is then reported, not hidden"
+    },
     "metric": "np.array_equal of the image",
-    "control": {"plant": "the ring off by one sub-frame (CAMERA_PLANT=ring); a wrong stream key (CAMERA_PLANT=key)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N each", "runs": 30, "clean_expected": "0/N", "resolution": "the sphere moves 20 um a step, 1.5 px in the image: a one-step ring error moves the silhouette by more than a count in the band; a key change changes every noisy pixel"},
+    "control": {
+      "plant": "the ring off by one sub-frame (CAMERA_PLANT=ring); a wrong stream key (CAMERA_PLANT=key)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N each",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "the sphere moves 20 um a step, 1.5 px in the image: a one-step ring error moves the silhouette by more than a count in the band; a key change changes every noisy pixel"
+    },
     "if_wrong": "inside the compiled step the arithmetic differs from the offline call: report the largest difference and where",
     "cannot_discriminate_if": "the body does not move between sub-frames (the ring error is then invisible): the gate's body moves 1.5 px a step"
   },
@@ -36,9 +63,21 @@
     "claim": "every body appears in the frame unlisted; a hidden body is absent and the build report names it; a body added to the experiment appears",
     "kind": "acceptance",
     "case": "tests/sensing/test_in_loop_scene.py: two spheres and a tube; the frame's darkness at each sphere's projected centre",
-    "prediction": {"value": 1, "unit": "bodies found at their projected centres, of those unlisted", "basis": "derived", "why": "the roster lists every body"},
+    "prediction": {
+      "value": 1,
+      "unit": "bodies found at their projected centres, of those unlisted",
+      "basis": "derived",
+      "why": "the roster lists every body"
+    },
     "metric": "the frame's counts at the projected centre against the backlight",
-    "control": {"plant": "a body dropped from the plan's wiring (CAMERA_PLANT=drop-body)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "an opaque sphere of 10 px radius is dark at its centre; the dropped body is full backlight"},
+    "control": {
+      "plant": "a body dropped from the plan's wiring (CAMERA_PLANT=drop-body)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "an opaque sphere of 10 px radius is dark at its centre; the dropped body is full backlight"
+    },
     "if_wrong": "the roster or the reads missed a body",
     "cannot_discriminate_if": "two bodies overlap in the image: the gate places them apart"
   },
@@ -46,9 +85,24 @@
     "claim": "a World mount and an apparatus-frame mount each put a body's silhouette centroid where project puts its pose through the mount's transform, within 0.1 px; a moving mount never uses a stale cache",
     "kind": "bounds",
     "case": "tests/sensing/test_in_loop_mounts.py: the ballistic scene with the camera in the world, and with the camera on a moving frame of the lab fixture's gantry",
-    "prediction": {"band": [0.0, 0.1], "unit": "pixels, silhouette centroid against project", "basis": "measured-before (the camera core's G3: centroid 0.01 px at 15 px radius)", "why": "the same projection and coverage as the offline renderer"},
+    "prediction": {
+      "band": [
+        0.0,
+        0.1
+      ],
+      "unit": "pixels, silhouette centroid against project",
+      "basis": "measured-before (the camera core's G3: centroid 0.01 px at 15 px radius)",
+      "why": "the same projection and coverage as the offline renderer"
+    },
     "metric": "centroid of (backlight - frame) against project(camera, pose, body position)",
-    "control": {"plant": "the static cache held under a moving mount (CAMERA_PLANT=stale-cache)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "the tube's wall edge moves with the camera by more than a pixel between frames"},
+    "control": {
+      "plant": "the static cache held under a moving mount (CAMERA_PLANT=stale-cache)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "the tube's wall edge moves with the camera by more than a pixel between frames"
+    },
     "if_wrong": "the mount's transform or the cache is wrong",
     "cannot_discriminate_if": "the frame does not move between the two frames compared: the gate's gantry moves"
   },
@@ -56,9 +110,21 @@
     "claim": "from_calibration on files OpenCV 4.10 wrote equals the camera built by hand, and project with the imported numbers matches cv2.projectPoints within the camera core's line (64 ulps of the pixel scale)",
     "kind": "equality",
     "case": "tests/sensing/test_calibration_import.py: YAML and XML files written by cv2.FileStorage once, sha256-pinned, with the points and pixels OpenCV gave",
-    "prediction": {"value": 0, "unit": "ulps beyond the line", "basis": "derived", "why": "the numbers are read, not computed; project's agreement with OpenCV is the camera core's G1"},
+    "prediction": {
+      "value": 0,
+      "unit": "ulps beyond the line",
+      "basis": "derived",
+      "why": "the numbers are read, not computed; project's agreement with OpenCV is the camera core's G1"
+    },
     "metric": "exact equality of the five coefficients and four matrix numbers; project against cv2's pixels",
-    "control": {"plant": "p1 and p2 swapped on import (CAMERA_PLANT=p-swap); k3 dropped (CAMERA_PLANT=k3-drop)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N each", "runs": 30, "clean_expected": "0/N", "resolution": "the files carry tangential and k3 terms large enough to move the projected pixels by more than the line"},
+    "control": {
+      "plant": "p1 and p2 swapped on import (CAMERA_PLANT=p-swap); k3 dropped (CAMERA_PLANT=k3-drop)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N each",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "the files carry tangential and k3 terms large enough to move the projected pixels by more than the line"
+    },
     "if_wrong": "a coefficient order or a file form is misread",
     "cannot_discriminate_if": "a file's p1 equals p2 or k3 is zero: the generated files have all five distinct and non-zero"
   },
@@ -66,9 +132,21 @@
     "claim": "each refusal comes, with its code: frame_period not a whole number of steps (naming the nearest two), rate=, a model beyond five coefficients, a size other than the camera's, recording frames (record= and history=True), a derivative through the camera, a batched study, a body or structure without a closed form, a hide naming nothing, a mount naming no frame",
     "kind": "acceptance",
     "case": "tests/sensing/test_in_loop_refusals.py",
-    "prediction": {"value": 1, "unit": "refusals with the expected code, of each", "basis": "derived", "why": "each is a declared check"},
+    "prediction": {
+      "value": 1,
+      "unit": "refusals with the expected code, of each",
+      "basis": "derived",
+      "why": "each is a declared check"
+    },
     "metric": "the refusal's code",
-    "control": {"plant": "each refusal removed in turn (CAMERA_PLANT=no-<name>)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N each", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic"},
+    "control": {
+      "plant": "each refusal removed in turn (CAMERA_PLANT=no-<name>)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N each",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "deterministic"
+    },
     "if_wrong": "a refusal is missing or carries another code",
     "cannot_discriminate_if": "the experiment is refused earlier for another reason: each case builds without the refused thing and with it"
   },
@@ -76,21 +154,67 @@
     "claim": "each new path is reached by a test, and a control shows it load-bearing: a camera whose shape setting is ignored fails; a body missing from the roster fails; a mount that is not wired fails; a recordable image is recorded",
     "kind": "acceptance",
     "case": "tests/sensing/test_in_loop_contract.py",
-    "prediction": {"value": 1, "unit": "contract paths reached, of each", "basis": "derived", "why": "each is a declared check"},
+    "prediction": {
+      "value": 1,
+      "unit": "contract paths reached, of each",
+      "basis": "derived",
+      "why": "each is a declared check"
+    },
     "metric": "the shape of the image in the layout against the detector; the reads of the build against the roster",
-    "control": {"plant": "output_shape ignored (CAMERA_PLANT=shape-ignored)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic"},
+    "control": {
+      "plant": "output_shape ignored (CAMERA_PLANT=shape-ignored)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "deterministic"
+    },
     "if_wrong": "a seam is not read",
     "cannot_discriminate_if": "the detector is square at class-level shape ()-like sizes: the gate's detector is 160x120"
   },
   "bits": {
     "cases": "every released program and every merged program with no camera (script A float64 and float32, the sphere in the tube, the energy ledger case), base = camera/core at 400d651, head = this branch's head, one job, one CPU, one thread (bit_compare.py)",
     "prediction": "every array np.array_equal: the contract changes add defaults and read nothing when no camera is attached",
-    "controls": {"repeat": "the head recorded twice: every array identical", "one_ulp": "the same program with one parameter one ulp up: arrays differ"}
+    "controls": {
+      "repeat": "the head recorded twice: every array identical",
+      "one_ulp": "the same program with one parameter one ulp up: arrays differ"
+    }
   },
   "costs": {
     "how": "through the built graph (node_measure.py or built.run), the done case's scene (a sphere and a tube), 320x240 and 640x480, float32 and float64, one thread per XLA CPU device",
     "prediction": "a non-frame step adds at most 0.1 ms to the same graph without the camera (the ring shift and the cond's hold); a frame step costs PR 1's disc-window frame (about 1.1 ms at 320x240, 2.5 ms at 640x480 in float32, float64 about 1.4x) plus the response and the noise draw, within 2x; a camera mounted on a moving frame renders the static tube in every frame: about 36 ms at 320x240 and 130 to 200 ms at 640x480 more (PR 1's uncached tube)",
     "measured_at": "the camera core's frame times, a different graph; this gate's sizes are measured, not fitted"
   },
-  "outcomes": null
+  "outcomes": null,
+  "gate_13_calibration_fit": {
+    "added": "2026-11-11, after the coordinator's correction put G13 in this PR, and after the clock and replay gates had run; committed before any fit of the sphere grid ran (the replay's own outcome is logged in 'outcomes' as a miss)",
+    "claim": "Study.fit recovers a camera's intrinsics and distortion (fx, fy, cx, cy, k1, k2) from a 3 x 3 grid of spheres on a tilted plane, rendered live by the in-loop camera with the detector's numbers as leaves; the fitted camera is labelled fitted, with its fit",
+    "kind": "estimates",
+    "case": "tests/sensing/test_calibration_fit.py: 64x48 detector, spheres of 7 mm radius 20 mm apart, 70 mm from a camera looking 25 degrees off the plane's normal; the target is the same camera's expected counts at the true numbers (noiseless), the declared noise one quantisation step over root twelve (0.29 counts)",
+    "prediction": {
+      "float64": {
+        "fx_fy_relative": 0.0001,
+        "cx_cy_px": 0.01,
+        "k1_k2_absolute": 0.0001
+      },
+      "float32": {
+        "fx_fy_relative": 0.01,
+        "cx_cy_px": 0.5,
+        "k1_k2_absolute": 0.01
+      },
+      "basis": "derived (float64): the data are the model's own noiseless counts, so the least-squares optimum is the truth and the recovered error is the optimiser's stop (the default tolerance 1e-9 of the values) times the conditioning of the Gauss-Newton system, which the Fisher information at the start bounds; 100 times the stop is the line. Guess (float32): the line scaled by the ratio of the dtypes' epsilons to the 1/3 power, no measurement behind it",
+      "why": "an estimate of a model's parameters from data it generated: it bounds nothing about a real camera; it shows the leaves are the fit's and the derivative through the loop is usable"
+    },
+    "metric": "the recovered numbers against the truth",
+    "control": {
+      "plant": "a wrong start (focal 10 % off, the centre 4 px off, k1 0.05 off) is recovered, each of 5 starts (positive control); a frozen leaf (fx left at its wrong declared value, not in start, CAMERA_PLANT=frozen-leaf) is not recovered",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N for the frozen leaf failing the line; 5/5 starts recovered",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "a frozen fx leaves a focal error of 10 %, 1000 times the line"
+    },
+    "if_wrong": "the fit stalls or stops at a line: read FitResult.ended and why; an insensitive axis in the Fisher information means the grid does not constrain it, and is dropped from the start with that said, not worked around",
+    "cannot_discriminate_if": "the grid is fronto-parallel (focal length and distance are then degenerate): the plane is tilted, and the Fisher information at the start is read to say which axes it resolves"
+  }
 }
