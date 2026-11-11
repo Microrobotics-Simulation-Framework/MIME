@@ -199,3 +199,16 @@ def test_fb16_control_a_unit_field_made_at_build_is_caught(float64, monkeypatch)
 
     monkeypatch.setattr(_open_node.OpenFlowNode, "unit_field", baked)
     assert two_builds_of(_imex_tree(), "water.viscosity", relative=1e-6).verdict == "bake"
+
+
+def test_two_ends_on_one_plane_exchanging_flow_through_the_solid_are_flagged(float64):
+    """The shared-plane exchange (#246's limit, large on a tree in a wide box against laws far above the branches'):
+    flagged at the stiff interior 0.1h, and at 0.01h (the shared plane's default) more than ten times smaller, in the
+    exchange and in the lumen's error against the openings' split, on a drawn tree of the two-outlet gate (laws 20 to
+    50 times the branches': the flag can still fire at 0.01h there, and says so)."""
+    from region_cases import draw, exchange_reading
+
+    default, stiff = exchange_reading(draw(1), 0.1), exchange_reading(draw(1), 0.01)
+    assert default["flagged"], default
+    assert max(abs(x) for x in stiff["exchange"]) < 0.1 * max(abs(x) for x in default["exchange"]), (default, stiff)
+    assert abs(default["lumen_minus_split"]) > 10.0 * abs(stiff["lumen_minus_split"])

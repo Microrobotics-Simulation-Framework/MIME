@@ -22,7 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   neighbours, its extension, bend and run and their series resistance, and the Reynolds number its extension develops.
   The backflow term (`f = min(w, 0) w / h` on the fluid of each outlet's half cell, from the step's start, normal only)
   is booked as `<node>.backflow`, its sign checked (`backflow_flagged`); the outlet watch, an observer, reads each
-  opening's reversed share while its net flux is outward (`opening_reversed`, `opening_reversed_flagged`). Renamed
+  opening's reversed share while its net flux is outward (`opening_reversed`, `opening_reversed_flagged`). Two openings
+  on one plane exchange flow through the solid between their patches: `opening_exchange` and
+  `opening_exchange_flagged` watch it, and where a built region's plane holds two openings the stiff interior is 0.01h
+  unless `Band(delta_in=...)` is written (`Band.delta_in` now defaults to none: 0.1h elsewhere). Renamed
   (unreleased): `port_kinetic_flux` is `opening_kinetic_flux`.
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a

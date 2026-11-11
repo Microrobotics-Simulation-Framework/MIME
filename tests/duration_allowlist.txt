@@ -1277,3 +1277,4 @@ tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[windkessel:ve
 tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[inflow:vessel.root.amplitude] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
 tests/flow/test_fvm_region.py::test_fb16_control_a_unit_field_made_at_build_is_caught # kept: FB16's control, a planted bake caught (two builds)
 tests/scene/test_region_builder.py::test_a_tilted_tube_at_any_rotation_reaches_both_faces_along_its_own_section # kept: the region builder over drawn tilts, azimuths and offsets (60 examples, never shrunk)
+tests/flow/test_fvm_region.py::test_two_ends_on_one_plane_exchanging_flow_through_the_solid_are_flagged # kept: the shared-plane exchange flag and its control, two open trees built and run

@@ -94,13 +94,21 @@ class RK3Scheme(SettingGroup):
 class Band(SettingGroup):
     """The wall's lift onto the grid (B3, B8.1): the one registered band, smooth, ``W`` 2h wide with its penalty depth
     ``delta`` 0.3h (the sweet spot whose wall shift is smooth in the wall's sub-cell position), and beyond it the
-    stiff interior ``delta_in``, in cells: 0.1 by default; 0.01 where the solid's bypass must be smaller (a clot's
-    pressure drop), at about ten times the iterations."""
+    stiff interior ``delta_in``, in cells: none written, 0.1, and 0.01 on a built region whose plane holds two openings
+    (the solid between their patches exchanges flow at 0.1); 0.01 where the solid's bypass must be smaller
+    (a clot's pressure drop), at about ten times the iterations."""
 
     group = "band"
-    setting_roles = {"delta_in": convention(NUMERICAL, "the default interior lets about a ninth of the band's Darcy "
-                                                       "velocity through the solid, at no extra cost (B3)")}
-    delta_in: float = 0.1
+    setting_roles = {"delta_in": convention(NUMERICAL, "none written: 0.1, which lets about a ninth of the band's Darcy "
+                                                       "velocity through the solid at no extra cost (B3); 0.01 where a "
+                                                       "built region's plane holds two openings")}
+    delta_in: float | None = None
+
+    def depth(self, shared_plane: bool = False) -> float:
+        """The stiff interior's depth (cells): as written, or by default 0.1, and 0.01 where ``shared_plane``."""
+        if self.delta_in is not None:
+            return self.delta_in
+        return SHARED_PLANE_INTERIOR if shared_plane else DEFAULT_DELTA_IN
 
 
 #: The bytes a cell a run of the step holds, by the stage kind (the monolithic projected CG's, the explicit one's) and
@@ -132,6 +140,8 @@ MARGIN_FLOOR = 3
 
 #: The stiff interior's depths in cells, by the node's name for each.
 _INTERIOR_NAMES = {depth: name for name, depth in INTERIORS.items()}
+#: The stiff interior none written takes, and the one it takes on a built region whose plane holds two openings.
+DEFAULT_DELTA_IN, SHARED_PLANE_INTERIOR = 0.1, 0.01
 #: How far a tube tree may fail to repeat over its period where the band reads it, as a share of the spacing: past it
 #: the tree is not periodic with the box (flow.tree-period).
 PERIOD_LINE = 1e-6
@@ -245,6 +255,14 @@ class FVM(Dynamics):
                                         "plane (VesselRegion(reach=...)) or lengthen the extension "
                                         "(VesselRegion(extension_diameters=...)); no profile relaxes it",
              written=("open",)),
+        Flag("opening_exchange_flagged", "two openings on one plane of an open vessel exchanged flow through the solid "
+                                         "between their patches: an opening's net flux through its patch's solid faces "
+                                         "over its own (opening_exchange) past the line the validity gives, so the "
+                                         "flow its law states is not the flow its lumen carries. A stiffer interior "
+                                         "(FVM(wall=Band(delta_in=0.01))), the ends moved further apart on their plane "
+                                         "(VesselRegion(extension_diameters=..., bend_diameters=...)), or a geometry "
+                                         "putting them on separate planes",
+             written=("open",)),
         Flag("backflow_flagged", "the backflow term on an open vessel's outlets gave the flow energy over a step "
                                  "(backflow_work above zero beyond its rounding): an inward face turned outward within "
                                  "the step, where the explicit term's sign does not hold; a smaller dt",
@@ -302,7 +320,19 @@ class FVM(Dynamics):
         "at an opening acts at the box's face: the extension's, bend's and run's Poiseuille resistance at the cut's "
         "radius is in series with it, reported per opening in the build report, as is the Reynolds number to which "
         "its extension is a laminar entrance length (0.06 Re diameters [recalled]); the bend's own loss beyond "
-        "Poiseuille's is not reported. The region builder's geometry is made at build from the vessel's values (its "
+        "Poiseuille's is not reported. Two openings on one plane (a tree's ends turned to one face) exchange flow "
+        "through the solid between their patches, so the flow a law states at an opening is not its lumen's: on a "
+        "drawn Y in its wide box, laws of 20 to 50 times the branches' resistance, the lumen leading to one end "
+        "carried 0.48 of the two daughters' flow against the openings' split of 0.26 at the default stiff interior "
+        "0.1h, and 0.27 against 0.26 at 0.01h [measured, one draw; the probe's draws in the PR]; flagged each step "
+        "(opening_exchange_flagged) where an opening's share through the solid beyond the band's half width passes "
+        "twice the lone opening's measured steady share at its stiff interior (3.7 % at 0.1h, 0.4 % at 0.01h, at 8 "
+        "cells across), scaled as (h / R)^2, derived from the lone opening and not fitted; so where a plane holds two "
+        "openings the stiff interior is 0.01h unless one is written (FVM(wall=Band(delta_in=0.1)) takes 0.1h, "
+        "flagged where it exchanges), stated in the build report; the builder "
+        "turns each cut to the nearer face by its tangent, so ends that point the same way along the axis share a "
+        "plane (a turn past 90 degrees would run back across the region), and one axis's two faces are all the "
+        "Cartesian kind opens in dev2. The region builder's geometry is made at build from the vessel's values (its "
         "tree and its paths leaves of the step, a derivative not carried through the builder); "
         "the backflow term (decision 12): on every opening but the upstream, f = min(w, 0) w / h along the outward "
         "normal on the plane's half cell (beta 1, declared), from the step's start velocity, explicit, normal only, "
@@ -407,7 +437,7 @@ class FVM(Dynamics):
                                  "the steady solve rests on linearity, so it needs the Stokes approximation",
                                  "write FVM(stokes=True, scheme=Scheme.Steady()), or step in time with "
                                  "Scheme.IMEXEuler()"))
-        if self.wall.delta_in not in _INTERIOR_NAMES:
+        if self.wall.delta_in is not None and self.wall.delta_in not in _INTERIOR_NAMES:
             found.append(Problem("flow.interior", f"the stiff interior's depth delta_in is one of "
                                                   f"{sorted(_INTERIOR_NAMES)} cells, not {self.wall.delta_in!r}",
                                  "write FVM(wall=Band(delta_in=0.1)), or 0.01"))
@@ -623,6 +653,17 @@ class FVM(Dynamics):
                     built = None
                 if built is not None:
                     lines = built.lines(query.values.get("viscosity"))
+                    if shared_plane(built):
+                        written = self.wall.delta_in
+                        lines = (*lines, (f"the stiff interior {self.wall.depth(True):g}h, as written: a plane holds two "
+                                          f"openings, whose patches exchange flow through the solid between them at "
+                                          f"the default 0.1h, flagged (opening_exchange_flagged)") if written is not None
+                                 else ("the stiff interior 0.01h, by default where a plane holds two openings: "
+                                       "their patches exchange flow through the solid between them at 0.1h; "
+                                       "FVM(wall=Band(delta_in=0.1)) takes 0.1h, flagged where it exchanges "
+                                       "(opening_exchange_flagged); the ends further apart "
+                                       "(VesselRegion(extension_diameters=..., bend_diameters=...)) or a geometry "
+                                       "putting them on separate planes lowers the exchange at either"))
             return StepRule(None, lambda step, every: [], lambda step, every: lines, unbounded=OPEN_STEP)
         if region is None or "viscosity" not in query.values or "density" not in query.values:
             return None
@@ -756,7 +797,7 @@ class FVM(Dynamics):
                                       spacing=spacing, margin_cells=self.domain.margin, lattice=lattice)
         viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
         scheme = chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
-        band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.delta_in]
+        band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.depth()]
         images = "own" if lattice == (0, 1) else "transverse"
         # The wall's band is booked under the wall's own region: the medium fills a tube's lumen, its solid that tube's
         # wall (B9: a region's loss under its own name).
@@ -785,7 +826,7 @@ class FVM(Dynamics):
             spacing=layout.spacing, viscosity=ctx.scalar_value("viscosity"), density=ctx.scalar_value("density"),
             tree_points=np.asarray(layout.points), tree_radii=radii, tree_fillet=fillet, tree_segments=segments,
             scheme=tree_scheme(self.scheme), convection=not self.stokes, tolerance=self.tolerance,
-            preconditioner=self.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[self.wall.delta_in],
+            preconditioner=self.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[self.wall.depth()],
             solve_report_rows=self.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall"))
 
 
@@ -830,7 +871,7 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         spacing=layout.spacing, viscosity=viscosity, density=density, tube_centre=layout.centre,
         tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes,
         tolerance=fvm.tolerance, preconditioner=fvm.preconditioner, band=DEFAULT_BAND,
-        interior=_INTERIOR_NAMES[fvm.wall.delta_in], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
+        interior=_INTERIOR_NAMES[fvm.wall.depth()], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
         backflow_openings=tuple(range(1, len(openings))), openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
@@ -854,7 +895,7 @@ def _open_region_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registra
         tree_points=np.asarray(layout.points[:len(built.points)]), tree_radii=built.radii, tree_fillet=built.fillet,
         tree_segments=built.segments, opening_paths=moved_paths(built.paths, [-c for c in layout.origin]),
         scheme=scheme, convection=not fvm.stokes, tolerance=fvm.tolerance,
-        preconditioner=fvm.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[fvm.wall.delta_in],
+        preconditioner=fvm.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[fvm.wall.depth(shared_plane(built))],
         solve_report_rows=fvm.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall",
         openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
@@ -864,6 +905,12 @@ def _open_region_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registra
                               for n in names),
         law_openings=tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws),
         backflow_openings=tuple(k for k, n in enumerate(names) if not by_name[n].upstream)))
+
+
+def shared_plane(built: BuiltRegion) -> bool:
+    """Whether a plane of the built region holds two openings or more."""
+    faces = [opening.face for opening in built.openings]
+    return any(faces.count(face) > 1 for face in set(faces))
 
 
 def vessel_of(region: Region) -> Vessel:

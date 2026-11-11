@@ -6,7 +6,8 @@
   "a Y (parent 0.5 mm, daughters 0.4 and 0.35 mm at 25 and 20 degrees, extension 1 D, D/h 6 at the narrowest lumen, steady Stokes, outlets Windkessels of 2e9 and 6e9 Pa s/m^3 each side): built in 12 s, its first run (compile) 29 s, a steady step 0.25 s on the loaded laptop; the split 0.694 to end_0, the root's flux the inflow to 1e-15, wall_inexact 0, the backflow work -1.8e-20 J (the solid's faces' Darcy inflow at the outlets), the watch 0 on every opening",
   "the same Y with each bend as a chain of 7.5-degree chords in the tree (before the swept paths): 16 segments, its first run not done in 10 minutes; with 15-degree chords 9 segments, 81 s to its first run; hence each opening's extension, bend and run as a swept path beside a tree of the vessel's own part",
   "local sanity of the two-outlet oracle before the probe, seed 1 (float64): with the region's tree and its paths given to the wall as two solids, the solid carried 7 times the lumen's flux (each solid's resistivity filled the other's lumen) while the split still met the network to 8e-4 (the laws' resistances dominate it), and the name-patch swap moved it by 1e-3: the split alone cannot see either, so the gate gains the daughters' own lumen flux (lumen_split); with the two joined as one solid the lumen carries 92 % of the inflow on that draw (the wide box's solid the rest), the dropped plant moved the split by 0.186",
-  "the same draw (seed 1) with one joined solid at the default stiff interior 0.1h: the daughters' lumens carry 0.413 and 0.449 of the inflow while the openings report 0.255 and 0.745 (the laws' split, 0.257 by the network): the solid between the two ends' patches on their shared plane carries the difference (#246's limit (ii), here large: the laws' resistances are 20 to 50 times the branches', so the branches' pressure drops are small against what the solid needs to carry it). The gate's rig moves to the stiff interior 0.01h (the solid's conductance a hundredth), the default's exchange re-measured as #246's limit"
+  "the same draw (seed 1) with one joined solid at the default stiff interior 0.1h: the daughters' lumens carry 0.413 and 0.449 of the inflow while the openings report 0.255 and 0.745 (the laws' split, 0.257 by the network): the solid between the two ends' patches on their shared plane carries the difference (#246's limit (ii), here large: the laws' resistances are 20 to 50 times the branches', so the branches' pressure drops are small against what the solid needs to carry it). The gate's rig moves to the stiff interior 0.01h (the solid's conductance a hundredth), the default's exchange re-measured as #246's limit",
+  "seed 1 with the exchange read beyond the band's half width: 0.467 and 0.320 of the ends' fluxes at 0.1h (line 0.073), 0.0133 and 0.0127 at 0.01h (line 0.0079): the flag fires at both; the exchange falls 35 times"
  ],
  "operating_point": {
   "dtype": [
@@ -142,5 +143,65 @@
    "exchange_default": "the lumen share minus the openings' split at the default interior: 0.1 to 0.3 on these draws (seen on one: 0.22), growing with the laws' resistance against the solid's conductance; at 0.01h a hundredth of it"
   }
  },
- "outcomes": null
+ "outcomes": null,
+ "gate_exchange_flag": {
+  "claim": "the shared-plane exchange flag (opening_exchange_flagged): raised on every drawn tree of the two-outlet gate at the stiff interior 0.1h; at 0.01h (the shared plane's default, row #367) the exchange more than ten times smaller, the flag's rate there measured, not assumed quiet; its line twice the lone opening's measured steady share at its interior (3.7 % at 0.1h, 0.4 % at 0.01h, at 8 cells across) scaled as (h / R)^2, derived and not fitted",
+  "kind": "acceptance",
+  "case": "region_cases.exchange_reading(draw(seed), interior) at 0.1 and 0.01",
+  "prediction": {
+   "default": {
+    "value": 0.6,
+    "band": [
+     0.2,
+     2.0
+    ],
+    "unit": "the largest |opening_exchange| at 0.1h",
+    "basis": "measured-before (one draw, seed 1: end_0's patch carried -0.158 of the inflow through its solid against its net 0.255)"
+   },
+   "stiff": {
+    "value": 0.013,
+    "band": [
+     0.002,
+     0.04
+    ],
+    "unit": "the largest |opening_exchange| at 0.01h",
+    "basis": "measured-before (seed 1: 0.0133 and 0.0127, above the line 0.0079: the flag fires there too)"
+   },
+   "why": "the exchange is the solid's Darcy flow between the patches, its conductance as delta_in squared"
+  },
+  "control": {
+   "plant": "the default stiff interior 0.1h (the drawn trees' own laws, 20 to 50 times the branches)",
+   "environment_variable": "EXCHANGE_PLANT=default (with EXCHANGE=1)",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "not quiet: the 0.01h arm's rate is a measurement (seed 1 fires at 0.01h); the gate is the 0.1h arm firing on every draw and the exchange falling more than ten times"
+  },
+  "cannot_discriminate_if": "a draw whose laws sit near the branches' resistance, where the exchange is small at either interior: the draws keep them at 20 to 50 times"
+ },
+ "gate_shared_interior_cost": {
+  "claim": "row #367's condition: the cost of the shared-plane default interior 0.01h against 0.1h on a drawn tree (IMEX Euler, convection on, pulsatile inflow at Re about 10), through the real node",
+  "kind": "estimates",
+  "case": "node_measure.py --case region_cases:cost_tree --arg interior=0.1 | 0.01 --steps 20",
+  "prediction": {
+   "iterations_ratio": {
+    "value": 10.0,
+    "band": [
+     3.0,
+     20.0
+    ],
+    "unit": "CG iterations a step at 0.01h over 0.1h",
+    "basis": "declared (Band's docstring, B3: about ten times the iterations)"
+   },
+   "time_ratio": {
+    "value": 6.0,
+    "band": [
+     2.0,
+     15.0
+    ],
+    "unit": "steady time a step",
+    "basis": "guess: the iterations dominate a step's cost, the unit fields' solves included"
+   }
+  },
+  "if_wrong": "a ratio past what the done case's budget holds: keep 0.1h with the flag, the done case declaring 0.01h itself, the cost reported for his word"
+ }
 }

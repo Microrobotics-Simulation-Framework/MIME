@@ -45,7 +45,7 @@ from mime.core import ledger as books
 from mime.core._node import rechecked
 from mime.core.ledger import TermOrder
 from mime.nodes.flow.fvm._band import PathSolid, RegionSolid, TreeSolid, TubeSolid, WallFields, band_named, \
-    negative_resistivity
+    interior_depth, negative_resistivity
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, WALL_COUNTS, ImplicitFlowNode, StepParts, \
@@ -74,6 +74,20 @@ BACKFLOW_BETA = 1.0
 REVERSAL_LINE = 0.05
 #: Where the outlet watch's line comes from, said beside it.
 REVERSAL_MEASURED = "declared, pending FB8's measurement"
+#: The solid's share of a lone opening's net flux beyond the band's half width in steady flow, measured at 8 cells
+#: across by the stiff interior (#246's FA1 = FB14 arms: 0.4 to 3.7 % at D/h 16 to 8 at 0.1h, 0.01 to 0.4 % at
+#: 0.01h): the bound the exchange flag's line is derived from.
+LONE_SOLID_SHARE = MappingProxyType({0.1: 0.037, 0.01: 0.004})
+#: The exchange flag's line over that bound, scaled to the run (declared).
+EXCHANGE_FACTOR = 2.0
+
+
+def exchange_line(cells_across: float, delta_in: float) -> float:
+    """The line on an opening's solid share where its plane holds another opening (``opening_exchange_flagged``):
+    ``EXCHANGE_FACTOR`` times the lone opening's measured share at the stiff interior, scaled to the narrowest lumen's
+    cells across as the solid's Darcy flux scales with ``(h / R)^2``; derived from the lone opening, not fitted to the
+    exchange it flags."""
+    return EXCHANGE_FACTOR * LONE_SOLID_SHARE[delta_in] * (8.0 / cells_across) ** 2
 #: The float32 flow's distance from float64's with ports, over the largest speed, measured on the built node over the
 #: open rig's draws (``tests/flow/open_cases.py``; the probe of the review's fix round): the envelope, not one point.
 FLOAT32_PORTS = ("the flow within 7.2e-4 of float64's over the largest speed on 190 drawn open runs inside the CFL line "
@@ -116,6 +130,11 @@ class OpenFlowFields(TypedDict):
     #: The backflow term's work over the step (J, ``dt rho <f, u'>``), and its sign check: one when it gave energy.
     backflow_work: ReadOnly[Annotated[Float[Array, ""], Units("J")]]  # noqa: F722 - a jaxtyping shape
     backflow_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: Each opening's net flux through its patch's faces at least the band's half width into the solid over its net
+    #: flux, where its plane holds another opening (zero elsewhere): the solid between two patches exchanging flow; and
+    #: the flag above :func:`exchange_line`.
+    opening_exchange: ReadOnly[Annotated[Float[Array, "openings"], Units("1")]]
+    opening_exchange_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     #: The unit fields, one a non-reference opening: the velocity a unit pressure there drives over a step (m/s/Pa).
     unit_x: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
     unit_y: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
@@ -309,6 +328,24 @@ class OpenFlowNode(ImplicitFlowNode):
         region's centreline gives them (round 5, item 14); none for a node made without them."""
         return tuple(self.constants().get("backflow_openings", ()))
 
+    def opening_exchange(self, p: Mapping[str, Any], grid: OpenMACGrid, fields: WallFields, velocity: Velocity,
+                         flux: Array) -> Array:
+        """Each opening's solid share where its plane holds another opening (:class:`OpenFlowFields`), zero where it
+        is alone on its plane or its net flux is zero."""
+        layout = grid.layout
+        shared = jnp.asarray([0.0 if layout.alone(k) else 1.0 for k in range(grid.opening_count)], dtype=flux.dtype)
+        depth = 0.5 * band_named(self.constants()["band"]).width * grid.spacing
+        solid = grid.opening_fluxes((velocity[0], velocity[1],
+                                     jnp.where(fields.signed_distance[2] >= depth, velocity[2], 0.0)))
+        moving = jnp.abs(flux) > 0.0
+        return shared * jnp.where(moving, solid / jnp.where(moving, jnp.abs(flux), 1.0), 0.0)
+
+    def exchange_line(self, p: Mapping[str, Any], grid: OpenMACGrid) -> float:
+        """:func:`exchange_line` at the run's narrowest lumen and stiff interior."""
+        c = self.constants()
+        radius = float(np.min(np.asarray(c["tree_radii"]))) if self.walled_by_tree else float(c["tube_radius"])
+        return exchange_line(2.0 * radius / float(c["spacing"]), interior_depth(c["interior"]))
+
     def backflow_force(self, grid: OpenMACGrid, fields: WallFields, velocity: Velocity) -> Velocity:
         """The backflow term at ``velocity`` (decision 12) on the fluid of the outlets' half cells (``1 - chi``, as the
         drive acts), zero where none is placed."""
@@ -400,7 +437,8 @@ class OpenFlowNode(ImplicitFlowNode):
                 "opening_flux": jnp.zeros(openings, dtype=dtype),
                 "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype),
                 "opening_reversed": jnp.zeros(openings, dtype=dtype), "opening_reversed_flagged": z,
-                "backflow_work": z, "backflow_flagged": z, **unit}
+                "backflow_work": z, "backflow_flagged": z, "opening_exchange": jnp.zeros(openings, dtype=dtype),
+                "opening_exchange_flagged": z, **unit}
         if self.walled_by_tree:
             held.update(self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=dtype)))
         if not self.metered:
@@ -499,6 +537,8 @@ class OpenFlowNode(ImplicitFlowNode):
         backflow_work = dt * as_run_array(p["density"]) * grid.inner(backflow, solved_velocity)
         backflow_size = dt * as_run_array(p["density"]) * grid.inner_magnitude(backflow, solved_velocity)
         gave = backflow_work > books.IDENTITY_ULPS * jnp.finfo(dtype).eps * backflow_size
+        exchange = self.opening_exchange(p, grid, fields, solved_velocity, flux)
+        exchanged = jnp.max(jnp.abs(exchange)) > self.exchange_line(p, grid)
         ended: dict[str, Array] = dict(
             velocity_x=solved_velocity[0], velocity_y=solved_velocity[1], velocity_z=solved_velocity[2],
             steps=steps + 1, solve_report=report,
@@ -516,7 +556,8 @@ class OpenFlowNode(ImplicitFlowNode):
             opening_pressure_relative=ports.solution.relative.astype(dtype), opening_flux=flux.astype(dtype),
             opening_state=law_ended.astype(dtype), opening_reversed=reversed_share.astype(dtype),
             opening_reversed_flagged=watched.astype(dtype), backflow_work=backflow_work.astype(dtype),
-            backflow_flagged=gave.astype(dtype),
+            backflow_flagged=gave.astype(dtype), opening_exchange=exchange.astype(dtype),
+            opening_exchange_flagged=exchanged.astype(dtype),
             **{f"unit_{x}": (jnp.stack([unit[k] for unit in ports.units]) if ports.units else
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})
         if fields.counts is not None:
@@ -763,7 +804,7 @@ def check_open_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
     check_deliveries(plain)
 
 
-__all__ = ["BACKFLOW", "BACKFLOW_BETA", "FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "REVERSAL_LINE",
+__all__ = ["BACKFLOW", "BACKFLOW_BETA", "EXCHANGE_FACTOR", "FLOAT32_PORTS", "LONE_SOLID_SHARE", "exchange_line", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "REVERSAL_LINE",
            "REVERSAL_MEASURED", "MeteredOpenFlowState", "MeteredOpenTreeFlowState", "OpenFlowState", "OpenFlowFields",
            "OpenFlowNode", "OpenPorts", "OpenTreeFlowState", "check_open_deliveries",
            "combined", "opening_role"]

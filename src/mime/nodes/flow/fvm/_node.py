@@ -450,8 +450,11 @@ class ImplicitFlowNode(MimeNode):
         leaves = cast(dict[str, Any], inherited.params_pytree())
         if not self.walled_by_tree:
             return leaves
-        grid = self.grid({"spacing": float(self.constants()["spacing"])})
-        faces = sum(int(np.prod(grid.face_points(k, run_dtype()).shape[:-1])) for k in range(3))
+        c = self.constants()
+        grid = self.grid({"spacing": float(c["spacing"])})
+        cells = int(c["cells_x"]) * int(c["cells_y"]) * int(c["cells_z"])
+        # An open grid's w holds a plane more than its cells (its periodic x and y hold none).
+        faces = 3 * cells + (int(c["cells_x"]) * int(c["cells_y"]) if not grid.periodic[2] else 0)
         return {**leaves, TREE_WALL: jnp.zeros(faces, dtype=run_dtype()),
                 TREE_WALL_COUNTS: jnp.zeros(len(WALL_COUNTS), dtype=run_dtype())}
 

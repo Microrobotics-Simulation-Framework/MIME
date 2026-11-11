@@ -161,6 +161,11 @@ class BuiltRegion:
             plane = "low" if opening.face < 0 else "high"
             near = self.neighbours(k)
             beside = "; ".join(f"{name} {distance:.3g} radii away" for name, distance in near) or "alone there"
+            if near:
+                beside += (" (the solid between their patches exchanges flow, opening_exchange_flagged watching it: a "
+                           "stiffer interior, FVM(wall=Band(delta_in=0.01)); the ends further apart, "
+                           "VesselRegion(extension_diameters=..., bend_diameters=...); or a geometry putting them on "
+                           "separate planes)")
             role = "the upstream opening (by the centreline, no backflow term)" if opening.upstream else \
                 "an outlet by the centreline (the backflow term on its half cell)"
             series = (f", a series resistance of {opening.series_resistance(viscosity):.4g} Pa s/m^3 (Poiseuille at "

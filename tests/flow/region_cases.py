@@ -509,6 +509,25 @@ def limits_reading(d: YDraw, *, pulse: float | None = None) -> dict[str, float]:
     return found
 
 
+def exchange_reading(d: YDraw, interior: float) -> dict[str, Any]:
+    """The shared-plane exchange on a drawn tree at the stiff interior ``interior`` (cells): each end's
+    ``opening_exchange``, the flag, its line, the lumen share against the openings' split, and the laws' resistance
+    over the larger branch's."""
+    from mime.nodes.flow.fvm._open_node import exchange_line
+
+    built = experiment(d, interior=interior).build()
+    result = built.run(ms(2.0))
+    final = result.final["water.flow"]
+    flux = np.asarray(final["opening_flux"])
+    c = built.graph.get_node("water.flow").constants()
+    larger = max(_branch(d.radii[1], d.lengths[0] + 4e-3), _branch(d.radii[2], d.lengths[1] + 4e-3))
+    return {"interior": interior, "exchange": [float(x) for x in np.asarray(final["opening_exchange"])],
+            "flagged": bool(float(final["opening_exchange_flagged"]) > 0.0),
+            "line": exchange_line(2.0 * min(d.radii) / float(c["spacing"]), interior),
+            "lumen_minus_split": lumen_split(d, built, result) - float(flux[1] / -flux[0]),
+            "laws_over_branch": min(d.first, d.second) / larger}
+
+
 #: The gate's line on ``|split - network|``: a tenth of the larger branch's share of its outlet's resistance.
 LINE = 0.01
 
@@ -529,6 +548,11 @@ def main() -> int:
     import json
 
     seed = int(os.environ.get("DETECTION_SEED", "0"))
+    if os.environ.get("EXCHANGE"):
+        # The exchange flag: quiet at the stiff interior 0.01h (clean), raised at the default 0.1h (planted).
+        reading = exchange_reading(draw(seed), 0.1 if os.environ.get("EXCHANGE_PLANT") else 0.01)
+        print(json.dumps({"seed": seed, **reading}))
+        return 1 if reading["flagged"] else 0
     if os.environ.get("WATCH"):
         # FB8: the far plane (clean) or, planted, the plane moved to 0.5 D after the throat; the watch firing fails.
         arm = os.environ.get("WATCH_PLANT") or os.environ["WATCH"]
@@ -563,3 +587,25 @@ def estimate_bend(extension: float = 4.0) -> Experiment:
 def estimate_watch(arm: str = "far") -> Experiment:
     """The memory estimate's case of an outlet watch arm."""
     return watch_experiment(stenosis_draw(0), arm)[0]
+
+
+def cost_tree(interior: float = 0.1, seed: int = 1) -> Experiment:
+    """The cost case of the shared-plane default (row #367's condition): a drawn tree of the two-outlet gate stepped by
+    IMEX Euler with convection on, a pulsatile inflow at Re about 10, its laws as drawn, at the stiff interior
+    ``interior`` (cells), for ``node_measure.py`` (time a step, the CG's iterations in ``solve_report_sum``)."""
+    from mime.units import Hz
+
+    d = draw(int(seed))
+    exp = Experiment("region_cost", scene=Scene.new(up=Z, units="m"), dt=ms(0.5))
+    exp.add_structure(Structure("vessel", geometry=tree_of(d)))
+    exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
+        domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across,
+        scheme=Scheme.IMEXEuler(), wall=Band(delta_in=float(interior)))}))
+    exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
+    exp.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
+    flux = 10.0 * (MU / RHO) * math.pi * d.radii[0] / 2.0
+    exp.attach(Inflow(steady=m3_per_s(flux), amplitude=m3_per_s(0.3 * flux), frequency=Hz(10.0)), medium="water",
+               surface="vessel.root")
+    exp.attach(SharedDistal(first=Pa_s_per_m3(d.first), second=Pa_s_per_m3(d.second), distal=Pa_s_per_m3(d.distal)),
+               medium="water", surface=("vessel.end_0", "vessel.end_1"))
+    return exp
