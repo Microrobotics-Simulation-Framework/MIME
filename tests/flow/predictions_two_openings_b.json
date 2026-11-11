@@ -44,5 +44,29 @@
   "cases": "as before, with #235's open tube flow",
   "prediction": "every array equal, the open tube flow's included: a one-opening law's row is formed as before (b_i q_i alone, no sum over its block)"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-11, after the second probe (B); the predictions above are as committed in 6186106",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42962620848",
+  "gate_valve_restated": {
+   "result": "held: worst 0.59 (float64) and 0.16 (float32) of the line, median 0.27 and 0.06; the valve's exchange 1.8e-4 to 7.0e-4 of the inflow; the valve's flux at most 5e-19 and 2.5e-10 of it",
+   "control": "leaking and opened 40/40 each dtype, clean 0/40"
+  },
+  "gate_fa1_restated": {
+   "result": "held: float32 worst 0.20 (0.1h) and 0.0017 (0.01h) of the line",
+   "control": "oracle 40/40 each dtype, clean 0/40"
+  },
+  "gate_fb6_restated": {
+   "result": "MISSED: the spike's explicit arm at dt/(R_d C) of one diverged at every gain drawn (0.34 to 9.6): at that ratio its forward capacitor's own amplification is about -3 on the rig whatever R_p; the implicit coupling held (worst 0.83); restated at a tenth in predictions_two_openings_c.json",
+   "control": "explicit 40/40 each dtype at gains 2.5 to 10, clean 0/40 (not discriminating R_p q at this ratio)"
+  },
+  "lagged_order_restated": {
+   "result": "held: 2.05 at a quarter period and 2.02 over the second half"
+  },
+  "flag_port_kinetic_flux_rates": {
+   "result": "every plant 40/40 each dtype, clean 0/40; the half cells caught every run (predicted not)"
+  },
+  "bits_restated": {
+   "result": "MISSED: #235's open tube flow still one ulp apart in its opening pressures and Windkessel's state; every released program equal"
+  }
+ }
 }

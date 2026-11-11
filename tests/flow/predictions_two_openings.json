@@ -89,5 +89,47 @@
   "cases": "the released programs (script A and its metered form, the hull contact, the coupled toy, the dynamic and kinematic RPM arms, the four periodic flows, the nudged toy) and #235's open tube flow, both dtypes, base dface1d against the head in one job",
   "prediction": "every array np.array_equal: the periodic node is untouched; the open node with one opening a plane forms its sums, its forces and its rows as before (a law's block placed on the diagonal, multiplied by ones and summed with exact zeros)"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-11, after the first probe (A) and the second (B); the predictions above are as committed in 7ef9335",
+  "runs": {
+   "A": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42958800740",
+   "B": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42962620848"
+  },
+  "gate_fb5_two_outlets": {
+   "result": "held: worst 3.9e-15 (float64, 3.9e-6 of the line) and 2.8e-7 (float32, 2.8e-4 of it) over 40 draws a dtype",
+   "control": "swapped 40/40 each dtype, clean 0/40 (A)",
+   "estimates": "MISSED above: the equal-tube network 0.05 to 1.76 % off (predicted 0.2 to 1 %); the cross conductance 2.5 to 9.1 % (predicted 1 to 6 %)"
+  },
+  "gate_shared_distal": {
+   "result": "held: worst 3.9e-15 (float64) and 1.3e-6 (float32, 1.3e-3 of the line)",
+   "control": "dropped 40/40 each dtype, clean 0/40 (A)"
+  },
+  "gate_shared_lagged": {
+   "result": "held: clean 0/40 flagged (A)",
+   "control": "lagged 40/40 each dtype (A)",
+   "order": "MISSED as stated: the worst residual 0.99 times at dt as at dt/2, being the first step's (a start at rest, its last fluxes zero); restated in predictions_two_openings_b.json, measured 2.05 and 2.02 (B)"
+  },
+  "gate_valve": {
+   "result": "MISSED in float64: the clean arm flagged 40/40, the reference's leak leaving 1.6 to 4.9 times the inlet pressures' difference unexplained (the valve's own patch exchanges flow with its neighbour through the solid, as large); held in float32 (0/40), its 100 tolerances covering it; restated in predictions_two_openings_b.json and held there (B)",
+   "control": "leaking and opened 40/40 each dtype (A and B)"
+  },
+  "stand_in": {
+   "result": "leak 1.4e-2 to 5.8e-2 of the inflow at 1e2 R_t, falling as 1 / R_big to 1.4e-8 to 6.2e-8 at 1e8; the port system's condition 6.8 (the valve) and 1.4e4 to 2.3e4 at 1e2 to 1.5e10 to 2.3e10 at 1e8; the CG's iterations equal in float64 and within 0.6 % in float32 (A); MISSED: float32 at 1e8 R_t within 2e-7 of the valve's inlet pressure, not off by more than one"
+  },
+  "gate_fb6": {
+   "result": "the implicit coupling within 0.83 of the inflow's mean at every gain 0.34 to 9.6 (A); MISSED as built: the explicit arm (the whole backward Euler row lagged) diverged at every gain, its loop gain not R_p q; the spike's arm at dt/(R_d C) of one also at every gain (B: its forward capacitor's own amplification); restated at a tenth in predictions_two_openings_c.json"
+  },
+  "gate_fa1_fb14": {
+   "result": "held in float64: worst 0.28 (0.1h) and 0.32 (0.01h) of the line (predicted 0.03: higher, inside the band); MISSED in float32 at 0.01h: 17/40 clean flagged, the line having no floor from the solve's tolerance; restated in predictions_two_openings_b.json and held there (B)",
+   "control": "oracle 40/40 each dtype (A and B)",
+   "estimates": "the solid's share beyond the band's half width 3.3 to 3.7 % (D/h 8), 1.0 to 1.1 % (12), 0.41 to 0.47 % (16) at 0.1h; 0.01 to 0.44 % at 0.01h (A); on #235's drawn open runs up to 31 % (D/h 8) and 21 to 22 % (12, 16), tracking omega (delta_in h)^2 / nu (log-log correlation 0.76; A, lines-solid)"
+  },
+  "flag_port_kinetic_flux": {
+   "result": "clean worst 3.4e-15 (float64) and 1.8e-6 (float32) over 200 draws a dtype (A); lines set at 1e-14 and 5e-6",
+   "control": "kinetic_in_n_conv, end_full_cell and start_full_cell each 40/40 each dtype, clean 0/40 (B): the half cells predicted not every run, caught every run"
+  },
+  "bits": {
+   "result": "every released program equal (22 programs, both dtypes; A and B); MISSED for #235's open tube flow (unreleased): one ulp apart in its opening pressures and its Windkessel's state (4.4e-16 and 1.2e-7), its velocities equal (A and B, after the one-law rows were restored)"
+  }
+ }
 }

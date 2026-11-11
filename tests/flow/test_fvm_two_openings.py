@@ -94,9 +94,10 @@ def test_a_closed_valve_is_the_walled_off_vessel(dtype, monkeypatch, plant):
 
 def test_the_stiff_stand_in_leaks_as_its_resistance_and_grows_its_conditioning(float64):
     """The stiff resistance standing in for the closed valve (impedance-only's route), reported as the PR measures it:
-    its leak falls as one over its resistance, the port system's condition number grows with it, the CG's iterations
-    do not move (the port system is solved beside the CG, never inside it)."""
-    found = stand_in_reading(draw(SEED), TOLERANCE["float64"], (1e2, 1e4))
+    its leak falls as one over its resistance (at 1e4 and 1e6 R_t, past the 1e2 where the leak still lowers the pressure
+    behind it by a few per cent), the port system's condition number grows with it, the CG's iterations do not move (the
+    port system is solved beside the CG, never inside it)."""
+    found = stand_in_reading(draw(SEED), TOLERANCE["float64"], (1e4, 1e6))
     valve, softer, stiffer = found
     assert abs(valve["leak"]) < 1e-12 and 0.0 < stiffer["leak"] < softer["leak"]
     assert abs(softer["leak"] / stiffer["leak"] - 1e2) < 1.0, found

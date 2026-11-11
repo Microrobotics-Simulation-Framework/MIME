@@ -12,5 +12,12 @@
   "prediction": {"implicit": "worst about 0.83 of the mean, every draw", "explicit": "unstable from a gain of about 1.9 (the spike's), stable below about 1", "basis": "the spike's two-outlet measurement"},
   "control": {"plant": "the explicit arm at gains 2.5 to 10", "expected_rate": "40/40 each dtype", "clean_expected": "0/40"}
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-11, after the third probe (C); the predictions above are as committed in e856fe3",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42966228504",
+  "gate_fb6_at_a_tenth": {
+   "result": "held: the implicit coupling within 0.83 of the inflow's mean at every draw (gains 0.34 to 9.6, dt/(R_d C) 0.12 to 8.9); the explicit arm stable up to a gain of 2.22 and unstable from 2.75 on the lines' draws (predicted from about 1.9: the threshold sits a little above it), identically in both dtypes",
+   "control": "explicit 40/40 each dtype at gains 2.5 to 10, clean 0/40"
+  }
+ }
 }
