@@ -72,5 +72,33 @@
     },
     "if_wrong": "an admitted size over its line means the counts or the headroom are short: refit and widen, never quietly reinstate a size line (#330's 'dense at every size' is the maintainer's)",
     "cannot_discriminate_if": "every size measured is refused (no admitted size), or the runner's MemAvailable differs between the check and the run by more than the headroom"
+  },
+  "outcomes": {
+    "written": "2026-11-11, after the gates ran; the predictions above unchanged",
+    "gate_7_floor_named": {
+      "result": "as predicted: through Study.gradient's recheck, float64 with the Krylov length planted to 1 on three spheres 0.2 mm apart named stagnated, its recheck converged (663 iterations) to -137.4093030033 against the clean run's -137.4093030017 and the derivative within 2e-10; the review's four spheres at restart 2 (a stall the restarts cured, named cap-limited on the PR) stagnated; four spheres 0.05 mm apart at restart 1 stagnated, its recheck at the lifted cap, not converged; float32 at 1e-9 floor-limited with 'run in float64'; float64 at 1e-15 floor-limited with the float64 route; float32 at restart 1 stagnated, converged",
+      "links": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42925968039",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42925275946"
+      ],
+      "measured_floor_ratios": "columns at their floor, through the node's own step: 0.33 to 2.72 of eps || |A| |x| + |b| || (coarse and 882-point spheres, both dtypes, to 7,938 unknowns)",
+      "control": "O2 (the floor test always passes) 5/5, O3 (it never passes) 5/5, O4 (a cured stall named cap-limited) 5/5, R7 (never floor-limited) 5/5, clean 0/2 each: https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42926701899",
+      "discriminating_range": "discriminating_range.py on the floor test, 100 draws of the node's joint systems: resolution 4.03 floors (grid 4.55), 0/100 false alarms, plant at 40: https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42926701899"
+    },
+    "gate_8_stall_restarts_exact": {
+      "result": "as predicted: 9 (restarts + 1) iterations exactly, 0 to 3 restarts, both dtypes (local and CI)",
+      "control": "A (<= on the count) 5/5, B (the window not begun again) 5/5, R8 (no stall restarts) 5/5, clean 0/2: https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42926701899"
+    },
+    "gate_9_memory_line": {
+      "result": "as predicted for the line; the counts fitted (DERIVATIVE_COUNTS: reverse 10.7 to 12.0 joint matrices, forward 2.7 to 4.0, a second axis 1.34; every measured case 0.69 to 1.06 of its estimate, margin 1.15, headroom 10 %). Admitted and under the line: a forward run of 8 spheres 9.14 GiB past the check against 12.37; a reverse derivative of 3 spheres 5.12 against 10.79; a forward-mode derivative of 6 spheres 7.12 against 8.81. Refused before any compile: 9 spheres' run (13.0 GiB) at build; 4 spheres in reverse mode (10.4 GiB) and 7 spheres in reverse mode (31.7 GiB) at the derivative's check; 7 spheres in forward mode at the study's second build, by the run's check against the memory its first builds left (8.43 GiB), the derivative's (11.7 GiB) not reached",
+      "links": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42934490372",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42923077932",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42924924124",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42925693316"
+      ],
+      "control": "the PR's estimate (a forward run's counts, no margin or headroom) admitted seven spheres in reverse mode, which then failed with run.out-of-memory on a 28.2 GiB buffer (the review's run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42919424390)"
+    },
+    "bits": "released 0.3.0 and 0.4.0 programs and 0.5.0's but mrs_graded every array equal in both dtypes, base 5e3c636 against the fix round's head, one CPU: https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42925508565"
   }
 }

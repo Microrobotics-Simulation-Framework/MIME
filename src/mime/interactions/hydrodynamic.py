@@ -1582,7 +1582,8 @@ class Drag(UncoupledDrag):
         "reach outnumber the wall's cell budget (WALL_CELL_SHARE), so default graded runs raise wall_cells_short on "
         "every step measured (the gates' sphere in either measure, the graded round-trip cylinder in the force "
         "spacing): the farthest of those cells took the image at their force points, and with every cell integrated "
-        "the largest resistance entry moved by 1.6e-4 of itself on the sphere and 1.6e-3 on the cylinder",
+        "the largest resistance entry moved by under two ten-thousandths of itself on the sphere and under two "
+        "thousandths on the cylinder",
         "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
         "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "

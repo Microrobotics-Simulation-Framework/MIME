@@ -165,9 +165,9 @@ summed over the run (a row a step only on a node built by hand with `solve_repor
 it warns of a solve that stopped short, forward or in the derivative, and rechecks the member, re-solving
 it with GMRES's cap lifted (to the larger of ten times itself and the FVM's `DEFAULT_CAP`) and its stall restarts raised, as the
 FVM's conjugate gradient is, each a stagnation that begins the solve's window again; past them a recheck's GMRES stops a
-stagnation only at its rounding floor (its least true residual within `FLOOR_MARGIN`, 4, of `eps || |A| |x| + |b| ||`:
-measured through the node, solves at their floor lay at 0.33 to 2.7 of it in either dtype, and stalls planted with a
-Krylov length of one at 6.7 and above), and above the floor runs on to the lifted cap. The recheck names each node's cause
+stagnation only at its rounding floor (its least true residual within `FLOOR_MARGIN` of `eps || |A| |x| + |b| ||`, set
+between where solves at their floor and planted stalls were measured to stop, `FLOOR_MEASURED`), and above the floor
+runs on to the lifted cap. The recheck names each node's cause
 from its own solves and the member's: `floor-limited` where its solves stopped stagnated, at their floor, which no cap
 lifts (the route out, by the run's dtype: float64 in float32, a tolerance at or above the floor in float64, or the dense
 route); `stagnated` where the member's stopped at a stall above the floor, which the recheck ran past (converged, the
@@ -225,7 +225,8 @@ their own size (the switch's comment gives the numbers). A graded body's fine ce
 outnumber the wall's cell budget, so default graded runs with `wall_refinement` raise `wall_cells_short` on every step
 measured (the gates' sphere in either measure, the graded round-trip cylinder in the force spacing): there it says the
 farthest of those cells took the image at their force points, not that the budget held; with every cell integrated
-the largest resistance entry moved by 1.6e-4 of itself on the sphere and 1.6e-3 on the cylinder. The build report states what
+the largest resistance entry moved by under two ten-thousandths of itself on the sphere and under two thousandths on
+the cylinder. The build report states what
 was graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the
 force points' mean spacing.
 
