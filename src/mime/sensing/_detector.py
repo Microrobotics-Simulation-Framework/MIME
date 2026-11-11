@@ -15,6 +15,7 @@ whose derivative is the implicit function's (exact where the steps converged). W
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, NamedTuple, cast
 
 import jax
@@ -178,6 +179,19 @@ class Pinhole:
     def __post_init__(self) -> None:
         if not (self.width > 0 and self.height > 0):
             raise ValueError(f"a detector is a whole number of pixels each way, not {self.width!r} by {self.height!r}")
+
+    @classmethod
+    def from_calibration(cls, file: str | Path, *, width: int | None = None, height: int | None = None) -> Pinhole:
+        """The detector a calibration file holds (what OpenCV's ``calibrateCamera`` gives, as ``cv2.FileStorage`` writes
+        it), labelled fitted: its ``distortion.source`` is the file's name and sha256. ``width`` and ``height`` are the
+        size the camera is for: the file's must equal them (``camera.calibration-size``), and they default to the
+        file's. A distortion model beyond the five coefficients is refused (``camera.calibration-model``)."""
+        from mime.sensing._calibration import checked_size, read_calibration
+
+        held = read_calibration(file)
+        size = checked_size(held, width, height)
+        return cls(size[0], size[1], held.fx, held.fy, held.cx, held.cy,
+                   BrownConrady(*held.distortion, source=held.source))
 
     def pixels(self, u: Any, v: Any) -> tuple[Any, Any]:
         """Normalised distorted coordinates of the pixel point ``(u, v)``."""

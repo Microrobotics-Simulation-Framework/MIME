@@ -34,6 +34,7 @@ class OutputLayout:
     reduces: str | None = None
     rule: Reduction | None = None
     after: float | None = None
+    recordable: bool = True
 
     @property
     def path(self) -> str:

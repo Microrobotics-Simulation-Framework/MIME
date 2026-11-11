@@ -327,6 +327,8 @@ def _output_problems(cls: type[Entry]) -> list[str]:
             found.append(f"{what}: dimension is a mime.units dimension and kind a mime.registry.OutputKind")
         if not all(isinstance(cast(object, size), int) and size >= 0 for size in output.shape):
             found.append(f"{what}: shape {output.shape!r} is a tuple of sizes")
+        if output.shape_from_settings and getattr(cls, "output_shape", None) is Observation.output_shape:
+            found.append(f"{what}: its shape comes from the entry's settings, and the entry overrides no output_shape")
         if (output.reduces is None) != (output.rule is None) or (
                 output.rule is not None and not isinstance(cast(object, output.rule), Reduction)):
             found.append(f"{what}: an output the graph reduces names the per-step output it reduces and its rule "
@@ -472,6 +474,10 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
     if switch_only and (role_names or getattr(held, "outputs", ()) or getattr(held, "reads", {})):
         found.append("an observation that meters energy is a switch: it binds no role, reads nothing and declares no "
                      "output (its account is the metered receivers' records)")
+    elif kind is EntryKind.OBSERVATION and getattr(held, "sees_scene", False) is True:
+        if role_names:
+            found.append("an observation that sees the scene binds no role: it reads the bodies its plan names from "
+                         "the roster")
     elif kind in (EntryKind.INTERACTION, EntryKind.OBSERVATION) and not switch_only:
         kinds = list(cast(Mapping[str, object], roles).values()) if isinstance(roles, Mapping) else []
         if not (kinds and all(isinstance(k, RoleKind) for k in kinds)):

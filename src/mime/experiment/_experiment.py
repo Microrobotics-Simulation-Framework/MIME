@@ -912,8 +912,9 @@ def run_layout(plans: PlanSet) -> Layout:
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
-                             output.dimension, output.shape, output.description, output.reduces, output.rule,
-                             float(cast(float, plan.settings[output.after])) if output.after is not None else None)
+                             output.dimension, cast(Observation, plan.entry).output_shape(output), output.description, output.reduces, output.rule,
+                             float(cast(float, plan.settings[output.after])) if output.after is not None else None,
+                             output.recordable)
                 for output in cls.outputs)))
     return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp())
 
@@ -1202,8 +1203,20 @@ class BuiltExperiment:
                         "run.record", RefusalClass.USER,
                         f"record= names {path!r}, which is no per-step output of this experiment's observations",
                         f"name a per-step output in record=[...]. {did_you_mean(path, per_step)}")])
+                if not per_step[path].recordable:
+                    raise self._unrecordable(path)
                 found[path] = per_step[path]
         return list(found.values())
+
+    @staticmethod
+    def _unrecordable(path: str) -> ArgumentRefused:
+        return ArgumentRefused([Refusal(
+            "camera.recorded-frames", RefusalClass.USER,
+            f"{path} is not recorded in the loop: a frame a step is an image of every pixel, and strided recording of "
+            f"frames is a later piece",
+            "record the poses (every body's pose is recorded) and the camera's frame_step, then render the frame again "
+            "with mime.sensing.render and the same key (mime.sensing.frame_key); leave history=False",
+            why="in-loop frames are not recorded; the poses are, and a re-render reproduces any frame exactly")])
 
     def _spacing(self, every: Quantity | None) -> int:
         if every is None:
@@ -1296,6 +1309,10 @@ class BuiltExperiment:
              stop: StopRequest | None, point: Overridden | None = None) -> RunResult:
         steps = self.steps_in(duration)
         recorded = self._recording(record)
+        if history:
+            for held in self.layout.per_step():
+                if not held.recordable:
+                    raise self._unrecordable(held.path)
         if every is not None and not (recorded or history):
             raise ArgumentRefused([Refusal(
                 "run.every", RefusalClass.USER,

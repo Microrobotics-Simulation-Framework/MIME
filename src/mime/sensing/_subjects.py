@@ -119,17 +119,18 @@ def _vector(settings: Mapping[str, Any], name: str, default: tuple[float, float,
 
 
 def _sphere(settings: Mapping[str, Any], region: str) -> Placed:
-    return Placed(SPHERE, {"radius": settings["radius"]}, (0.0, 0.0, 0.0), turn_onto((0.0, 0.0, 1.0)))
+    return Placed(SPHERE, {"radius": settings["radius"]}, _vector(settings, "centre", (0.0, 0.0, 0.0)),
+                  turn_onto((0.0, 0.0, 1.0)))
 
 
 def _capsule(settings: Mapping[str, Any], region: str) -> Placed:
-    return Placed(CAPSULE, {"radius": settings["radius"], "height": settings["height"]}, (0.0, 0.0, 0.0),
-                  turn_onto(_vector(settings, "axis", (0.0, 0.0, 1.0))))
+    return Placed(CAPSULE, {"radius": settings["radius"], "height": settings["height"]},
+                  _vector(settings, "centre", (0.0, 0.0, 0.0)), turn_onto(_vector(settings, "axis", (0.0, 0.0, 1.0))))
 
 
 def _cylinder(settings: Mapping[str, Any], region: str) -> Placed:
-    return Placed(CYLINDER, {"radius": settings["radius"], "length": settings["length"]}, (0.0, 0.0, 0.0),
-                  turn_onto(_vector(settings, "axis", (0.0, 0.0, 1.0))))
+    return Placed(CYLINDER, {"radius": settings["radius"], "length": settings["length"]},
+                  _vector(settings, "centre", (0.0, 0.0, 0.0)), turn_onto(_vector(settings, "axis", (0.0, 0.0, 1.0))))
 
 
 def _tube(settings: Mapping[str, Any], region: str) -> Placed:

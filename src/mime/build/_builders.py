@@ -228,6 +228,19 @@ class ObservationBuilder(_ReaderBuilder):
             raise EntryBuildError("an observation only reads")
         super().connect(source, into=into)
 
+    def mount(self, into: PortRef) -> None:
+        """The frame poses of the segment the observation is mounted on (``Plan.mounted_on``), into ``into``, an input
+        of one of its own nodes: its row ``ctx.mount.index`` is the frame."""
+        mount = self._plan.mount
+        if mount is None:
+            raise EntryBuildError("it takes a mount, and its plan declared none (Plan.mounted_on)")
+        self._mounted(("mount",), mount, into)
+
+    @override
+    def finish(self) -> list[str]:
+        return self._expect([("read", label) for label in self._plan.reads]
+                            + ([("mount",)] if self._plan.mount is not None else []))
+
 
 class DynamicsBuilder(RestrictedBuilder):
     """A dynamics' builder: its nodes, and for each registration addressed to it the registered thing's state into

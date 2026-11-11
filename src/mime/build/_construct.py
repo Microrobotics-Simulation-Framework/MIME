@@ -178,7 +178,8 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
         ("flag", flag.node, flag.field, None) for flag in cls.raises
         if flag.raised_by(rung, bool(plan.members), plan.entry)]
     if issubclass(cls, Observation):
-        held += [("output", output.node, output.field, output.shape) for output in cls.outputs]
+        held += [("output", output.node, output.field, cast(Observation, plan.entry).output_shape(output))
+                 for output in cls.outputs]
     found: list[str] = []
     for what, local, field, shape in held:
         node = built.get(plan.node_name(local))
@@ -201,7 +202,7 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
                         rates_read=plan.rates_read, mass_read=plan.mass_read,
                         members={member.owner: _context(member, plans) for member in plan.members},
-                        entry=plan.entry)
+                        entry=plan.entry, roster=plan.roster)
 
 
 def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder, list[str]]:
