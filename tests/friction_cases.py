@@ -71,7 +71,7 @@ def slope_inputs(mass: float, theta: float, dtype=None) -> dict:
 
 def on_the_floor(name: str = "friction_sphere", *, theta: float = 0.3, mu: float | None = 0.2, body=BALL,
                  density: float = DENSITY, fluid_density: float = 1.0, dt: float = 1e-3, margin: float | None = None,
-                 roughness: float | None = None) -> Experiment:
+                 roughness: float | None = None, spacing: float | None = None) -> Experiment:
     """``body`` on the floor of a tube whose axis is tilted ``theta`` up from x about -y (``axis(theta)``), so that
     gravity pulls down the tube's lowest line by ``g sin(theta)`` and into the floor by ``g cos(theta)``, held by the contact with ``Coulomb(mu)`` (none where
     ``mu`` is ``None``), its margin the contact's default (the roughness cutoff) unless written; in a gas of
@@ -95,6 +95,7 @@ def on_the_floor(name: str = "friction_sphere", *, theta: float = 0.3, mu: float
         experiment.declare("tube.roughness", m(roughness), reason="a declared roughness")
     experiment.attach(Gravity(), body=ball, medium=gas)
     contact = Contact.Projection(**({} if margin is None else {"margin": m(margin)}),
+                                 **({} if spacing is None else {"spacing": m(spacing)}),
                                  **({} if mu is None else {"friction": Coulomb(mu=mu)}))
     experiment.attach(contact, body=ball, surface=tube.inner_surface)
     return experiment
