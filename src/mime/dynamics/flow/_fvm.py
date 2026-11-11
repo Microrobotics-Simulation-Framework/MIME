@@ -33,8 +33,10 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
 from mime.nodes.flow.fvm._box import TreeLayout, period_mismatch, periodic_tree_layout
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
+from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
+from mime.nodes.flow.fvm._ports import Valve as ValveLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
-from mime.nodes.flow.fvm._ports import port_law_named, well_posed
+from mime.nodes.flow.fvm._ports import RowKind, port_law_named, well_posed
 from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, \
     STOKES_REYNOLDS
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, scheme_named
@@ -217,9 +219,9 @@ class FVM(Dynamics):
     port_kinds = (FLUID.name, OPENING.name)
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
                FLOW_OPENING.name: Port("openings")}
-    #: The laws a user attaches at an opening, by their port laws' names (``mime.interactions.Inflow``,
-    #: ``Windkessel``).
-    registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name})
+    #: The laws a user attaches at an opening or several, by their port laws' names (``mime.interactions.Inflow``,
+    #: ``Windkessel``, ``Valve``, ``SharedDistal``).
+    registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name, ValveLaw.name, SharedDistalLaw.name})
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
                               "true residual no longer falling), so the step's values hold only to the residual it "
@@ -274,14 +276,33 @@ class FVM(Dynamics):
         "openings (domain=VesselRegion()): a straight vessel along z cut at the two ends its geometry kind declares "
         "(a Tube's start and end), each an opening whose law the step holds, coupled implicitly through the field's "
         "affine response (one unit field a step for the opening that is not the gauge's reference, solved again from "
-        "the last), its rows a pressure (Windkessel) or a flux (Inflow); an Inflow pins the whole plane's flux, the "
-        "wall's band included (the band carries its Darcy share, about 0.1 to 1 % of it, so the lumen takes Q less "
-        "that share); the inflow's face flux held to it to its summation floor, (N + 2) eps of its superposition's "
+        "the last), its rows a pressure (Windkessel) or a flux (Inflow, Valve); an Inflow pins the opening's whole net "
+        "flux, the lumen's, the band's and the solid's faces on its plane together, never the lumen's alone, so the "
+        "lumen carries Q less what the solid carries, which runs either way (measured beyond the band's half width, "
+        "OpenFlowNode.opening_solid_fluxes): in steady flow 0.4 to 3.7 % of Q, with the inflow, at D/h 16 to 8 at the "
+        "default stiff interior 0.1h, 0.01 to 0.4 % at 0.01h; in pulsed flow it swings with the drive where the drive's "
+        "frequency nears the stiff interior's damping rate nu / (delta_in h)^2, the solid then no longer stiff against "
+        "it: on the open box's drawn runs (omega (delta_in h)^2 / nu 1.3e-3 to 0.95) from 32 % of Q against the "
+        "inflow to 19 % with it, the lumen then carrying up to 1.32 Q, the steady shares holding below "
+        "a ratio of about 4e-3; a heartbeat in a millimetre vessel sits at 7e-5 (blood, D/h 16) to 1e-3 (water, D/h 8); "
+        "the inflow's face flux held to it to its summation floor, (N + 2) eps of its superposition's "
         "scale over the plane's N faces, at any pressure level (a relative pressure's move is never formed from "
         "absolute pressures; gated to a downstream resistance of 1e4 times the vessel's); the Windkessel stepped by "
-        "backward Euler, its N_WK first order in dt; a flux row at an opening the flow leaves by (a closed valve, "
-        "an Inflow of no flux) is admitted and not gated yet (its gate, against the walled-off vessel, is F2b's third "
-        "PR's); IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
+        "backward Euler, its N_WK first order in dt; a Valve holds its opening's net flux at zero, not each face's: "
+        "the lumen behind it carries out what the solid's faces on the opening bring back in, the solid's Darcy flow, "
+        "falling as delta_in squared (on two parallel tubes, one outlet closed, D/h 8 to 12: 1.5 to 5.0 % of "
+        "the inflow at the default stiff interior 0.1h, 1.8e-4 to 7.0e-4 at 0.01h); gated against the walled-off "
+        "vessel (that outlet capped by solid, whose cap and the solid around it leak as much: 1.4 to 4.8 % at "
+        "0.1h), the inlet pressures within the two runs' solid flows carried through the open tube's resistance, so "
+        "the gate sees a valve error from about 8 % of the inflow at 0.1h and from 1e-3 (float64) and 2e-3 (float32) at "
+        "0.01h; "
+        "a law over several openings (SharedDistal) solved whole, its block's off-diagonals included; several openings "
+        "on one plane (a vessel with two outlets, gated at the node level until the tube tree's wall is in the open "
+        "box) split the plane between their centres, the solid's faces included, so the solid between their patches "
+        "carries Darcy flow from one to the other: on two parallel tubes at the default stiff interior the outlets' "
+        "cross conductance is 2.5 to 9 % of one's own (D/h 8 to 12), and a split differs from two independent "
+        "tubes' by up to 1.8 %; "
+        "IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
         "dt='auto' refused, the CFL checked each step; tilted open vessels not built; float32 behind its guards: "
         f"{FLOAT32_PORTS}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "
@@ -458,28 +479,34 @@ class FVM(Dynamics):
         openings = self.openings_of(region)
         found: list[Problem] = []
         for registration in registrations:
-            if registration.subject not in openings:
+            unknown = [surface for surface in registration.surfaces if surface not in openings]
+            if unknown:
                 found.append(Problem("flow.opening-unknown", f"{registration.id} is attached at "
-                                                             f"{registration.subject!r}, which is not an opening of "
-                                                             f"the flow's region (its openings: {', '.join(openings)})",
+                                                             f"{', '.join(repr(u) for u in unknown)}, which is not an "
+                                                             f"opening of the flow's region (its openings: "
+                                                             f"{', '.join(openings)})",
                                      f"attach it at one of them, exp.attach(..., medium=..., "
                                      f"surface={openings[0]!r}) or surface={openings[1]!r}"))
-        held = {o: [r for r in registrations if r.subject == o] for o in openings}
+        held = {o: [r for r in registrations if o in r.surfaces] for o in openings}
         for opening, laws in held.items():
             if len(laws) != 1:
                 attached = f"{', '.join(r.id for r in laws)} are attached" if laws else "no law is attached"
                 found.append(Problem("flow.opening-law", f"the flow's opening {opening!r} takes one law, and {attached}",
-                                     f"attach one law there, exp.attach(Windkessel(...) or Inflow(...), medium=..., "
-                                     f"surface={opening})"))
+                                     f"attach one law there, exp.attach(Inflow(...), Windkessel(...) or Valve(), "
+                                     f"medium=..., surface={opening}), or one over several openings, "
+                                     f"SharedDistal(...) with surface=(<opening>, <opening>)"))
         if found:
             return found
         laws = [held[o][0] for o in openings]
+        one = [port_law_named(r.kind).openings == 1 for r in laws]
         reason = well_posed([port_law_named(r.kind).row for r in laws],
-                            [port_law_named(r.kind).row_of(r.settings) for r in laws])
+                            [port_law_named(r.kind).row_of(r.settings) if alone else (0.0,) * 4
+                             for r, alone in zip(laws, one, strict=True)])
+        given = ", ".join(r.id for r in laws if port_law_named(r.kind).row is RowKind.FLUX)
         return [Problem("flow.openings-ill-posed", reason,
-                        f"attach a pressure law at one of the openings, exp.attach(Windkessel(proximal=..., "
-                        f"compliance=..., distal=...), medium=..., surface={openings[1]!r}), whose pressure the "
-                        f"flow's rows solve for")] if reason else []
+                        f"give one of the openings a pressure law in place of its flux law ({given}): "
+                        f"exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=..., "
+                        f"surface=<that opening>), whose pressure the flow's rows solve for")] if reason else []
 
     def field_for(self, scheme: str) -> SolvedField:
         """The solved-field contract's declarations of this FVM stepped by ``scheme`` (its ledger route and its steady
@@ -674,12 +701,24 @@ def tree_scheme(given: IMEXEulerScheme | SteadyScheme | RK3Scheme | None) -> str
 
 def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],
                 region: Region) -> None:
-    """The open vessel's node: the box along z from its start's plane to its end's, each opening's law from its
-    registration (its kind, its settings as a row of parameters, its id the ledger's name)."""
-    by_opening = {r.subject: r for r in registrations}
-    laws = [by_opening[opening] for opening in fvm.openings_of(region)]
-    start, end = (r.subject_parameters for r in laws)
-    length = -(float(cast(float, start["offset"])) + float(cast(float, end["offset"])))
+    """The open vessel's node: the box along z from its low plane to its high one, each opening on the plane its
+    surface faces (its normal into the vessel along the axis: the low plane; against it: the high one), each law from
+    its registration (its kind, its settings as a row of parameters, its id the ledger's name, the openings it binds
+    in the order written)."""
+    openings = fvm.openings_of(region)
+    at: dict[str, Mapping[str, Magnitude]] = {}
+    for registration in registrations:
+        given = registration.subjects_parameters or (registration.subject_parameters,)
+        at.update(zip(registration.surfaces, given, strict=True))
+    axis = _unit(region.parameters["axis"])
+    planes = tuple("low" if sum(float(n) * a for n, a in zip(cast(tuple[float, ...], at[o]["normal"]), axis,
+                                                             strict=True)) > 0.0 else "high" for o in openings)
+    low, high = (next(at[o] for o, plane in zip(openings, planes, strict=True) if plane == side)
+                 for side in ("low", "high"))
+    length = -(float(cast(float, low["offset"])) + float(cast(float, high["offset"])))
+    laws = sorted(registrations, key=lambda r: min(openings.index(s) for s in r.surfaces))
+    placed: dict[str, Any] = {} if planes == ("low", "high") and all(len(r.surfaces) == 1 for r in laws) else \
+        {"opening_planes": planes, "law_openings": tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws)}
     radius = float(region.parameters["radius"])  # type: ignore[arg-type]
     spacing = ctx.scalar("spacing") if fvm.spacing is not None else None
     layout = periodic_tube_layout(radius, length, cells_across=fvm.cells_across, spacing=spacing,
@@ -693,9 +732,10 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes,
         tolerance=fvm.tolerance, preconditioner=fvm.preconditioner, band=DEFAULT_BAND,
         interior=_INTERIOR_NAMES[fvm.wall.delta_in], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
-        openings=tuple(r.subject for r in laws), opening_laws=tuple(r.kind for r in laws),
+        openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
-        opening_law_ids=tuple(r.id for r in laws)))
+        opening_law_ids=tuple(r.id for r in laws),
+        **placed))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:

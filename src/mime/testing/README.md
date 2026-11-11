@@ -168,10 +168,11 @@ Also:
     on every run (coverage claimed, not shown), and a flag that cannot be gated yet is declared `pending` and never
     counted, and a run with no check does not pass. The flow's (`mime.nodes.flow.fvm._flags`): the stall, convection
     doing work beyond its time level's (not an error in the operator that keeps it skew: the manufactured-solution
-    gate's), the drive reaching into a solid; and the open box's (`OPEN_FLAGS`): `N_proj` at the open faces. No flag is
-    declared that is not measured: the record's port work against the kinetic-energy flux through the openings (it
-    needs the convective power split by plane) and the periodic box's three on the open box and on RK3 are not built,
-    and their routes are in `mime.nodes.flow.fvm._flags`;
+    gate's), the drive reaching into a solid; and the open box's (`OPEN_FLAGS`): `N_proj` at the open faces, and
+    `port_kinetic_flux`, convection's flux split by plane against the books' one line (an operator check of
+    convection at the planes, which sees no port work). No flag is declared that is not measured: the record's port
+    work against the kinetic-energy flux through the openings and the periodic box's three on the open box and on RK3
+    are not built, and their routes are in `mime.nodes.flow.fvm._flags`;
   - `term_orders(sums, terms, orders)`: each numerical term against the order its scheme declares (a
     `mime.core.ledger.TermOrder` per term, in dt and in the solve's tolerance, or the reason it has none), from a rig's
     sums at its setting, with dt halved and with the tolerance a hundredfold looser (`REFINEMENT`: a solve's stop
