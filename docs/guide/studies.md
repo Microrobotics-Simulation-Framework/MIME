@@ -17,6 +17,7 @@ Each axis is named by a handle's typed path, as the experiment declares it:
   command's);
 - a thing's value, as `declare` takes it: `"umr.mass"`, `"water.viscosity"`;
 - a law's setting, through the handle `attach` returns (still the law's id, a `str`): `drag.lubrication.epsilon`;
+- an observation's setting, by its id and the setting's path as a string: `"swim_speed:umr.after"`, `"camera:.detector.fx"`;
 - a body's initial state, `umr.initial.position`;
 - the run's base step and precision, `DT` and `PRECISION` from `mime.study`.
 
