@@ -1,0 +1,70 @@
+{
+ "written": "2026-11-10, committed before the fix round's gates ran on Actions (the commit that adds this file is the timestamp): the fix round of F2b's PR 2 from its refuting review (B2 the open planes' operator gate; M1 a relative pressure's move never formed from absolute pressures, FB2's floor derived; M2 the Windkessel's books on their own scale; M4 check (a) on the solver's block; M5 float32's figure re-measured; the draws' downstream resistance to 1e4 R_tube)",
+ "phase": "F2b PR 2, fix round (review B1, B2, M1 to M5, #336)",
+ "labels": "predictions by the fix round's builder (Opus); the numbers below were seen on a few local draws while writing (listed in seen_before), so a prediction near one of them is a fit to it and says so; the first round's predictions and outcomes stay in predictions_open_ports.json",
+ "seen_before": [
+  "the review's run 42861077815 (A) and 42862255699 (B): the viscous half-cell mutant 0/40 across the first round's gates, its effect up to 37 % of the peak speed; FB2 and the Windkessel's books growing with the pressure level over the drop along the tube (3.2 and 6.5 to 7 of their lines at R_d = 1e4 R_tube), float32's flow 4.3e-6 to 7.2e-5 of float64's on 8 draws",
+  "the operator gate while writing, 30 draws a dtype on the laptop: clean worst 0.088 (float64) and 0.13 (float32) of its line; the viscous mutant at least 6e11 (float64) and 1.2e3 (float32) of it, each convective one at least 4.6e11 and 860",
+  "the node while writing, draws 0 and 3 at their drawn R_d and at 1e4 R_tube, 30 steps: FB2 at most 0.012 (float64) and 0.021 (float32) of its derived floor; the Windkessel's own identity at most 0.03 of its floor on its own scale; the step identity at most 0.12; N_proj at rounding"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "CPU, GitHub Actions runner (4 vCPU), the probe workflow",
+  "sizes_and_parameters": "the open rig (tests/flow/open_cases.py): IMEX Euler with convection, D/h 8, 12 or 16, two diameters long, Re 1 to 100 through a narrowing of 0 to 0.4, an Inflow at the start and a Windkessel at the end (R_p 0.1 to 3 R_tube, R_d log-uniform 1 to 1e4 R_tube, dt/(R_d C) 0.1 to 3), dt a fraction 0.1 to 1 of the CFL line at the throat's peak, 60 steps; the operator gate: 4 to 12 cells across, 4 to 32 along, cells of 10 um to 1 mm, speeds 1 mm/s to 1 m/s",
+  "seeds_and_draws": "lines: 200 fresh draws a dtype (seeds 0 to 199); rates: 40 draws a control (seeds from 3000), the operator gate's 200 (seeds from 5000), the same draws clean; a run the node holds past the CFL line is judged on its steps before the hold in both arms"
+ },
+ "gate_b2_open_operator": {
+  "claim": "the open grid's Laplacian and convection equal their closed forms to rounding on every face, the planes' half cells included",
+  "kind": "equality",
+  "case": "tests/flow/test_fvm_open_operator.py; open_cases.operator_errors over operator_draw(seed)",
+  "prediction": {"value": 0.2, "band": [0.0, 0.5], "unit": "of the line (16 eps of each face's stencil magnitude, viscous; 32 eps of max|u|^2/h, convective)", "basis": "derived", "why": "a cosine mode with zero gradient at the planes is an eigenvector of the open Laplacian, the planes' half cells included; on a field linear in z the divergence form's face averages are exact; the line counts the stencil's roundings and the field's own"},
+  "control": {"plant": "each open plane's viscous half cell at a full cell (the review's mutant); the end plane's, and the start plane's, convective half cell at a full cell", "environment_variable": "OPEN_PLANT", "expected_rate": "200/200 each, each dtype", "runs": 200, "clean_expected": "0/200", "resolution": "a half cell's weight off by 1e-6 (float32) and 1e-12 (float64) or less: the mutants are half a cell"},
+  "cannot_discriminate_if": "a drawn mode with no variation along z (m = 0) or a convective field with b = 0: the draws exclude both"
+ },
+ "gate_fb2_derived": {
+  "claim": "FB2: the inflow's face flux is its waveform at every step to its floor derived from the roundings it carries, (N + 2) eps of the superposition's scale and the waveform's own, at any pressure level",
+  "kind": "equality",
+  "case": "open_cases.inflow_reading over 60 steps of point_node(draw(seed))",
+  "prediction": {"value": 0.05, "band": [0.0, 0.5], "unit": "of the derived floor", "basis": "derived", "why": "the first round's worst, 85 eps of the face's magnitude in float32, is under 0.25 of (N + 2) eps at N = 361 to 729; the level no longer enters a move"},
+  "control": {"plant": "the inflow 1e-3 above its waveform", "environment_variable": "OPEN_PLANT", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40"}
+ },
+ "gate_fb3_own_scale": {
+  "claim": "FB3: the Windkessel's own books close at every step to IDENTITY_ULPS eps of its own scale (its terms' magnitudes and the face flux's summation floor through its block), N_WK > 0",
+  "kind": "equality",
+  "case": "books_of(final)['law_identity'] over 60 steps",
+  "prediction": {"value": 0.05, "band": [0.0, 0.5], "unit": "of its floor", "basis": "derived", "why": "its residual is dt b (q_row - q_face) q_face, bounded by the scale's flux term, plus its own arithmetic"},
+  "control": {"plant": "a port gift of 5 % of the row's block b", "environment_variable": "OPEN_PLANT", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40", "resolution": "measured with discriminating_range.py on the law's own scale"}
+ },
+ "gates_re_measured": {
+  "claim": "FB1, FB4, FB13 (ledger_closes), the projection flag and N_WK's order hold on the widened draws as they held on the first round's",
+  "prediction": {"value": null, "band": [0.0, 0.5], "unit": "of each line", "basis": "measured-before", "why": "the first round's worst readings were 0.07 to 0.21 of their lines; a downstream resistance enters only the port system's level, which no move now carries"},
+  "control": {"plant": "each gate's first-round plant (the planes' gradient at a full cell; the unit field x1.1 and x-1; an interior gift; the planes at full weight; the distal loss in N_WK)", "expected_rate": "40/40 each, each dtype", "clean_expected": "0/40"}
+ },
+ "check_a_solver_block": {
+  "claim": "check (a) reads the block of the row the solver solves, at the draw's step and at dt -> 0: a Windkessel with its row's block flipped, and one with R_p's sign flipped in its row and books alike, each fail every draw",
+  "kind": "acceptance",
+  "case": "tests/flow/test_port_laws.py, port_law_suite over 200 draws",
+  "prediction": {"value": "200/200 each control, the Windkessel 200/200 passing", "basis": "derived", "why": "at dt -> 0 the Windkessel's block is R_p"}
+ },
+ "float32_envelope": {
+  "claim": "float32's flow against float64's, over the largest speed, on 200 drawn open runs of 60 steps: what the validity text states, measured, not the spike's single point",
+  "kind": "estimates",
+  "case": "the built node's own step in each dtype on the same draw",
+  "prediction": {"value": 3e-5, "band": [1e-6, 2e-4], "unit": "of the largest speed, the worst draw", "basis": "measured-before", "why": "the review's 8 draws read 4.3e-6 to 7.2e-5"}
+ },
+ "bits": {
+  "cases": "the released programs (script A and its metered form, the hull contact, the coupled toy, the dynamic and kinematic RPM arms, the four periodic flows, the nudged toy), both dtypes, base against head in one job",
+  "prediction": "every array np.array_equal: the fix touches the open node, the port laws, the storing laws' records (held only where a law stores), the step rule's dataclass and the regions' declared openings, none of which a released program computes with"
+ },
+ "outcomes": {
+  "written": "2026-11-10, after the fix round's probe ran; the predictions above are as committed in 696b937",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42877559684",
+  "gate_b2_open_operator": "held: the three plants caught 200/200 in each dtype, clean 0/200 (seeds from 5000); ranges 1e-12 (float64) and 1e-4 (float32) of the viscous half cell's weight, 1e-12 and 1e-3 of the convective one's; clean worst 0.088 and 0.13 of the line on 30 draws while writing, the CI test's 12 draws a dtype passing",
+  "gate_fb2_derived": "held: worst 0.031 (float64) and 0.15 (float32) of the derived floor over 200 draws a dtype, 0.031 and 0.044 at R_d over 1e3 R_tube; Q x 1.001 caught 40/40 each, clean 0/40; range 3.7e-13 and 1.9e-4 of Q",
+  "gate_fb3_own_scale": "held: worst 0.050 (float64) and 0.13 (float32) of its floor on its own scale, N_WK > 0 on 200/200; the gift of 5 % of the block caught 40/40 each, clean 0/40; range 1.9e-12 and 2.7e-4 of the block",
+  "gates_re_measured": "FB1 worst 1.2e-12 and 2.6e-6 (lines 1e-9, 1e-4), its plant 40/40, range 1.4e-9 and 1e-3; FB4 worst 0.13 and 0.12, against a cold monolithic solve 1.6e-8 and 1.6e-5, its plants 40/40 each, range 7.2e-7 and 2.7e-3; the projection flag worst 2.4e-18 and 1.2e-9 (lines 2e-17, 1e-8), its plant 40/40, range 1e-14 or less and 1e-5; FB13 ledger_closes 200/200 a dtype, its plant 40/40, range 3.7e-10 and 0.027 of the Poiseuille gradient, BUT its worst 0.25 (float64) and 0.68 (float32) of its floor: the predicted 0.5 MISSED in float32, its median rising by decade of R_d (0.012, 0.045, 0.10, 0.12); inference: the level times the net face flux, a sum over N faces judged at 16 eps of the planes' magnitude; route stated in the PR; N_WK's order: 40/40 three-case ensembles a dtype within the order-2 band (clean); its plant: the distal loss written into N_WK caught 40/40 each dtype; range 0.016 of the distal loss",
+  "check_a_solver_block": "held: the Windkessel 200/200 passing; its row's block flipped and R_p's sign flipped in row and books each fail 200/200 (tests/flow/test_port_laws.py)",
+  "float32_envelope": "the prediction (near 3e-5) MISSED: worst 7.2e-4 over the 190 runs inside the CFL line (1.1e-3 with the held ones read at their hold), median 3.3e-5, p90 1.3e-4, larger at the higher Reynolds numbers; draw 0 4.3e-6; the validity text now states this envelope",
+  "bits": "held: 22 programs, 420 arrays, all np.array_equal, base c816e40 against the fix round's code, one CPU"
+ }
+}

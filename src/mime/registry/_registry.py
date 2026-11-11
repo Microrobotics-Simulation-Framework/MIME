@@ -50,7 +50,7 @@ from mime.registry._entries import (
 )
 from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
-from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of
+from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of, port_kind
 from mime.vocabulary import lookup as interface_named
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
@@ -124,17 +124,18 @@ def _members(hint: object) -> tuple[object, ...]:
     return (hint,)
 
 
-def _group_of(hint: object) -> type[SettingGroup] | None:
-    """The setting group a setting's annotation holds (``Lubrication | None``), if any."""
-    groups = [m for m in _members(hint) if isinstance(m, type) and issubclass(m, SettingGroup)]
-    return groups[0] if len(groups) == 1 else None
+def _groups_of(hint: object) -> list[type[SettingGroup]]:
+    """The setting groups a setting's annotation holds (``Lubrication | None``; a flow's ``PeriodicBox |
+    VesselRegion``), if any."""
+    return [m for m in _members(hint) if isinstance(m, type) and issubclass(m, SettingGroup)]
 
 
 def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list[str]]:
     """The dimension each setting of ``cls`` declares in its annotation, and every problem with those declarations:
     a marker on a setting that does not hold a :class:`Quantity`, a :class:`Quantity` with no marker, a default of
     another dimension. A setting holding a :class:`SettingGroup` contributes its group's dimensioned settings as
-    ``<setting>.<field>``, optional where the setting may be ``None``."""
+    ``<setting>.<field>``, optional where the setting may be ``None`` or another group it may hold has no such field
+    (a flow's ``domain.length``, a periodic box's and not a vessel region's)."""
     try:
         hints = typing.get_type_hints(cls, include_extras=True)
     except Exception as error:  # noqa: BLE001 - a lab's annotation that does not resolve becomes a refusal naming it
@@ -144,17 +145,23 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
     problems: list[str] = []
     for setting in dataclasses.fields(cls):
         hint: object = hints.get(setting.name)
-        group = _group_of(hint)
-        if group is not None:
+        groups = _groups_of(hint)
+        if groups:
             if issubclass(cls, SettingGroup):
-                problems.append(f"setting {setting.name!r} holds the group {group.__name__}: a group holds no group")
+                problems.append(f"setting {setting.name!r} holds the group {groups[0].__name__}: a group holds no "
+                                f"group")
                 continue
-            inner, inner_problems = dimensioned_settings(group)
-            problems += [f"in its group {setting.name!r}: {problem}" for problem in inner_problems]
             optional = type(None) in _members(hint)
-            for name, declared in inner.items():
-                found[f"{setting.name}.{name}"] = dataclasses.replace(declared,
-                                                                      optional=declared.optional or optional)
+            for group in groups:
+                inner, inner_problems = dimensioned_settings(group)
+                problems += [f"in its group {setting.name!r}: {problem}" for problem in inner_problems]
+                for name, declared in inner.items():
+                    key = f"{setting.name}.{name}"
+                    held = found.get(key)
+                    if held is not None and held.dimension != declared.dimension:
+                        problems.append(f"setting {key!r} is of two dimensions in the groups {setting.name!r} holds")
+                    everywhere = all(name in _settings(other) for other in groups)
+                    found[key] = dataclasses.replace(declared, optional=declared.optional or optional or not everywhere)
             continue
         if typing.get_origin(hint) is Annotated:
             held, *metadata = typing.get_args(hint)
@@ -375,19 +382,32 @@ def _reynolds_problems(cls: type[Entry]) -> list[str]:
 
 def _energy_problems(kind: EntryKind, held: Any) -> list[str]:
     """What is wrong with what an interaction or a dynamics says of itself for the energy ledger: an interaction's
-    class an ``EnergyClass`` or none, a dynamics' port kind a name, and either's reason for being unmetered a string,
-    stated only where it declares no class or port kind."""
+    class an ``EnergyClass`` or none, a dynamics' port kinds a tuple of names (no two of them pairing one interface: a
+    delivery is paired by the one kind whose deliveries name its interface), and either's reason for being unmetered a
+    string, stated only where it declares no class or port kind."""
     if kind not in (EntryKind.INTERACTION, EntryKind.DYNAMICS):
         return []
     found: list[str] = []
     reason: object = getattr(held, "unmetered", "")
     if not isinstance(reason, str):
         found.append("unmetered: the reason the energy ledger cannot meter it, a string")
-    declared: object = getattr(held, "energy_class" if kind is EntryKind.INTERACTION else "port", None)
+    declared: object = getattr(held, "energy_class" if kind is EntryKind.INTERACTION else "port_kinds", None)
     if kind is EntryKind.INTERACTION and declared is not None and not isinstance(declared, EnergyClass):
         found.append("energy_class: a mime.vocabulary.EnergyClass, or None for a law the energy ledger cannot meter")
-    if kind is EntryKind.DYNAMICS and not isinstance(declared, str):
-        found.append("port: the name of a registered port kind (mime.vocabulary.port_kinds), or empty")
+    if kind is EntryKind.DYNAMICS:
+        names = cast(tuple[object, ...], declared) if isinstance(declared, tuple) else None
+        if names is None or not all(isinstance(name, str) and name for name in names):
+            found.append("port_kinds: a tuple of the names of registered port kinds (mime.vocabulary.port_kinds), or "
+                         "empty")
+        else:
+            paired: dict[str, str] = {}
+            for name in cast(tuple[str, ...], names):
+                held_kind = port_kind(name)
+                for interface in held_kind.deliveries if held_kind is not None else ():
+                    if interface in paired:
+                        found.append(f"port_kinds: {paired[interface]!r} and {name!r} both pair {interface!r}; a "
+                                     f"delivery is paired by one kind")
+                    paired[interface] = name
     if declared and reason:
         found.append("unmetered states a reason for being unmetered, and it declares "
                      + ("its class" if kind is EntryKind.INTERACTION else "a port kind"))
@@ -481,6 +501,13 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
         if not (isinstance(shaped, Mapping) and all(k in named and isinstance(v, str) for k, v in
                                                     cast(Mapping[object, object], shaped).items())):
             found.append("region_shapes: a mapping of some of its regions to the names of the shapes they are")
+        openings: object = getattr(held, "openings", None)
+        surfaced = set(cast(Mapping[object, object], surfaces)) if isinstance(surfaces, Mapping) else set[object]()
+        if not (isinstance(openings, Mapping) and all(
+                k in named and isinstance(v, tuple) and all(o in surfaced for o in cast(tuple[object, ...], v))
+                for k, v in cast(Mapping[object, object], openings).items())):
+            found.append("openings: a mapping of some of its regions to the tuple of its surfaces each may be opened "
+                         "at, in order along its declared axis")
     if kind is EntryKind.WALL_KIND:
         found += _wall_kind_problems(held)
     if kind is EntryKind.FIELD_PROVIDER:

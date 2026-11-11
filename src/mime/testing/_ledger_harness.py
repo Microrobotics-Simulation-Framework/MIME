@@ -77,6 +77,9 @@ def _record_failures(records: Mapping[str, np.ndarray], *, fed_unattributed: boo
     if worst > floor:
         what = "the part of its step it books by formula" if route_one else "the step identity's residual"
         found.append(f"{what} is {worst / floor:.3g} of its floor at its worst step")
+    if f"{r}law_identity_worst" in records and float(records[f"{r}law_identity_worst"]) > floor:
+        found.append(f"a law it holds that stores energy of its own did not close its own books: "
+                     f"{float(records[f'{r}law_identity_worst']) / floor:.3g} of its floor at its worst step")
     between = float(records[f"{r}between_worst"])
     if not grouped and between > floor:
         found.append(f"its storage jumped between steps by {between / floor:.3g} times its rounding floor, which no "
