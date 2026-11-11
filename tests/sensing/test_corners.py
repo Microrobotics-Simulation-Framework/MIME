@@ -34,12 +34,19 @@ def oracle() -> np.ndarray:
         z = CENTRE[2] + RADIUS * np.sin(phi)
         depth = y + DISTANCE
         points.append(np.stack([FOCAL * x / depth + (WIDTH - 1) / 2, FOCAL * -z / depth + (HEIGHT - 1) / 2], axis=-1))
-    hull = np.concatenate(points)
-    polygon = hull[ConvexHull(hull).vertices]
-    shares = np.zeros((HEIGHT, WIDTH))
-    for j in range(HEIGHT):
-        for i in range(WIDTH):
-            shares[j, i] = _clipped_area(polygon, i - 0.5, i + 0.5, j - 0.5, j + 0.5)
+    hull = ConvexHull(np.concatenate(points))
+    polygon = hull.points[hull.vertices]
+    # A pixel whose four corners are inside the hull is covered; the others within the hull's box are clipped.
+    v, u = np.mgrid[0:HEIGHT + 1, 0:WIDTH + 1] - 0.5
+    corners = np.stack([u.ravel(), v.ravel(), np.ones(u.size)], axis=-1) @ hull.equations.T
+    inside = np.all(corners <= 0.0, axis=-1).reshape(u.shape)
+    full = inside[:-1, :-1] & inside[:-1, 1:] & inside[1:, :-1] & inside[1:, 1:]
+    shares = full.astype(np.float64)
+    low, high = np.floor(polygon.min(axis=0)).astype(int) - 1, np.ceil(polygon.max(axis=0)).astype(int) + 1
+    for j in range(max(0, low[1]), min(HEIGHT, high[1] + 1)):
+        for i in range(max(0, low[0]), min(WIDTH, high[0] + 1)):
+            if not full[j, i]:
+                shares[j, i] = _clipped_area(polygon, i - 0.5, i + 0.5, j - 0.5, j + 0.5)
     return shares
 
 

@@ -8,6 +8,7 @@ not refused, every run (the parametrised test moves each number)."""
 from __future__ import annotations
 
 import dataclasses
+import functools
 
 import jax.numpy as jnp
 import numpy as np
@@ -52,6 +53,13 @@ def scene(moved: str = "", factor: float = 1.0) -> tuple[list[Subject], Pinhole,
 POSES = {"umr": (jnp.asarray((0.2e-3, 0.0, -2.4e-3)), jnp.asarray((1.0, 0.0, 0.0, 0.0)))}
 
 
+@functools.cache
+def prepared(dtype: str) -> object:
+    """The unmoved scene's cache, made once per dtype: a moved number's refusal comes from the key, before any render."""
+    held, camera, pose = scene()
+    return prepare(held, camera, pose)
+
+
 @pytest.fixture
 def keyed(monkeypatch: pytest.MonkeyPatch) -> None:
     if planted("key-without-cx"):
@@ -65,8 +73,7 @@ def keyed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize("moved", NUMBERS)
 def test_a_moved_number_makes_the_cache_stale(dtype, keyed, moved):
-    held, camera, pose = scene()
-    cache = prepare(held, camera, pose)
+    cache = prepared(dtype)
     after, camera, pose = scene(moved, 1.001)
     with pytest.raises(ArgumentRefused) as error:
         render(after, camera, pose, POSES, cache=cache)
@@ -76,8 +83,7 @@ def test_a_moved_number_makes_the_cache_stale(dtype, keyed, moved):
 @settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(moved=st.sampled_from(NUMBERS), size=st.floats(1e-3, 0.1), sign=st.sampled_from([-1.0, 1.0]))
 def test_moves_of_every_size_make_it_stale(dtype, keyed, moved, size, sign):
-    held, camera, pose = scene()
-    cache = prepare(held, camera, pose)
+    cache = prepared(dtype)
     after, camera, pose = scene(moved, 1.0 + sign * size)
     with pytest.raises(ArgumentRefused):
         render(after, camera, pose, POSES, cache=cache)
