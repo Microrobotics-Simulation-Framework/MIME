@@ -12,7 +12,9 @@ The flow is driven by laws bound to the medium (``BodyForce``) and by the laws a
 
 F1a builds the Cartesian MAC grid kind, IMEX Euler and its steady limit, Jacobi, the default smooth band, on one
 domain kind, the periodic box around a straight circular tube (aligned with z, or tilted in the x-z plane along a
-lattice direction of the box)."""
+lattice direction of the box). F2a adds a tube tree's lumen (``mime.scene.TubeTree``) in the periodic box, the tree
+periodic along z with the box's period and reaching past its two ends: its wall is the union's exact distance where
+the band reads it (``mime.nodes.flow.fvm.TreeSolid``), stepped by IMEX Euler or its steady limit."""
 
 from __future__ import annotations
 
@@ -20,12 +22,15 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING, Annotated, cast, override
+from typing import TYPE_CHECKING, Annotated, Any, cast, override
+
+import numpy as np
 
 from mime.core import jnp, run_dtype
 from mime.gradients import GradientStatus
 from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, STALL_PER_TOLERANCE, \
     ExplicitFlowNode, ImplicitFlowNode, OpenFlowNode, periodic_tube_layout
+from mime.nodes.flow.fvm._box import TreeLayout, period_mismatch, periodic_tree_layout
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
@@ -123,6 +128,22 @@ MARGIN_FLOOR = 3
 
 #: The stiff interior's depths in cells, by the node's name for each.
 _INTERIOR_NAMES = {depth: name for name, depth in INTERIORS.items()}
+#: How far a tube tree may fail to repeat over its period where the band reads it, as a share of the spacing: past it
+#: the tree is not periodic with the box (flow.tree-period).
+PERIOD_LINE = 1e-6
+#: The region shape a tube tree's lumen is.
+TREE = "tube_tree"
+
+
+def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
+    """A tube tree's lumen's parameters (``TubeTree.region_parameters``) as its points ``(k, 3)``, radii ``(n, 2)``
+    (m), segments and fillet share."""
+    parameters = region.parameters
+    points = np.asarray(parameters["points"], dtype=np.float64).reshape(-1, 3)
+    radii = np.asarray(parameters["radii"], dtype=np.float64).reshape(-1, 2)
+    flat = [int(round(float(i))) for i in cast(tuple[float, ...], parameters["segments"])]
+    segments = tuple((flat[k], flat[k + 1]) for k in range(0, len(flat), 2))
+    return points, radii, segments, float(cast(float, parameters["fillet"]))
 
 
 class Scheme:
@@ -347,14 +368,57 @@ class FVM(Dynamics):
         """Whether the flow's domain is open at the vessel's ends (a ``VesselRegion``)."""
         return isinstance(self.domain, VesselRegion)
 
+    def tree_layout(self, region: Region, spacing: float | None = None) -> TreeLayout:
+        """The periodic box a tube tree's lumen is held in: its period the domain's length, its spacing ``spacing`` or
+        the narrowest lumen's diameter over ``cells_across`` (a tree on an open domain is refused when planned)."""
+        points, radii, segments, _ = tree_of(region)
+        box = cast(PeriodicBox, self.domain)
+        return periodic_tree_layout(points, segments, radii, float(cast(float, box.length.value)),
+                                    cells_across=self.cells_across, spacing=spacing, margin_cells=box.margin)
+
+    def tree_problems(self, region: Region) -> list[Problem]:
+        """A tube tree is stepped by IMEX Euler or its steady limit (RK3 on a tree is not built) and must repeat over
+        the box's period where the band reads it."""
+        if isinstance(self.scheme, RK3Scheme):
+            return [Problem("flow.tree-scheme", "RK3 on a tube tree's wall is not built: a tree's flow steps by IMEX "
+                                                "Euler or its steady limit",
+                            "write FVM(scheme=Scheme.IMEXEuler()), or FVM(stokes=True, scheme=Scheme.Steady())")]
+        from mime.scene import TubeTree
+
+        _, radii, segments, fillet = tree_of(region)
+        given = self.spacing.value if self.spacing is not None else None
+        layout = self.tree_layout(region, float(cast(float, given)) if given is not None else None)
+        tree = TubeTree.si(np.asarray(layout.points), segments, radii, fillet)
+        lumen, parameters = tree.lumen(), tree.parameters()
+        reach = (BANDS[DEFAULT_BAND].width / 2.0 + 3.0) * layout.spacing + tree.fillet_radius_value()
+        def minimum(at: Any) -> Any:
+            return lumen.minimum(parameters, at)
+
+        mismatch = period_mismatch(minimum, layout, reach)
+        if mismatch > PERIOD_LINE * layout.spacing:
+            return [Problem("flow.tree-period",
+                            f"the tube tree's lumen does not repeat over the periodic box's length "
+                            f"{layout.cells[2] * layout.spacing:.6g} m: its distance one period on differs by "
+                            f"{mismatch / layout.spacing:.3g} cells where the wall's band reads it",
+                            "make the tree periodic along z with the box's period, its two ends reaching past the "
+                            "period's (PeriodicBox(length=...) the tree's period)")]
+        return []
+
     @override
     def region_problems(self, region: Region | None) -> list[Problem]:
         """The region must be a straight circular tube's (a cylinder), its axis along z or along a lattice direction
-        ``(a, 0, b)`` of the periodic box."""
+        ``(a, 0, b)`` of the periodic box; or a tube tree's lumen, periodic along z with the box."""
+        if region is not None and region.shape == TREE:
+            if self.open:
+                return [Problem("flow.region", f"the flow's medium fills {region.path}, a tube tree's lumen; an open "
+                                               f"vessel is a straight vessel cut at its two ends (open trees come later)",
+                                "run the tree on a periodic box, FVM(domain=PeriodicBox(length=...))")]
+            return self.tree_problems(region)
         if region is None or region.shape != "cylinder":
             fills = f"fills {region.path}, a {region.shape} region" if region is not None else "fills no region"
             return [Problem("flow.region", f"the flow's medium {fills}; the FVM's periodic box holds a straight "
-                                           f"circular tube's lumen", "fill a Tube's lumen: Medium(fills=tube.lumen)")]
+                                           f"circular tube's lumen or a tube tree's",
+                            "fill a Tube's lumen, Medium(fills=tube.lumen), or a TubeTree's")]
         if lattice_of(_unit(region.parameters["axis"])) is None:
             return [Problem("flow.box-axis", f"the tube's axis {_unit(region.parameters['axis'])} is not along z or a "
                                              f"lattice direction (a, 0, b) of the periodic box",
@@ -438,18 +502,27 @@ class FVM(Dynamics):
         region = query.region
         if self.open:  # an open vessel's step rule (the CFL from the inflow's peak) comes with the region builder
             return StepRule(None, lambda step, every: [], lambda step, every: (), unbounded=OPEN_STEP)
-        if region is None or region.shape != "cylinder" or "viscosity" not in query.values \
-                or "density" not in query.values or lattice_of(_unit(region.parameters["axis"])) is None:
+        if region is None or "viscosity" not in query.values or "density" not in query.values:
             return None
-        axis = _unit(region.parameters["axis"])
-        radius = float(region.parameters["radius"])  # type: ignore[arg-type]
-        nu = query.values["viscosity"] / query.values["density"]
         given = query.settings.get("spacing")
-        layout = periodic_tube_layout(radius, float(query.settings["domain.length"]),  # type: ignore[arg-type]
-                                      cells_across=self.cells_across,
-                                      spacing=float(given) if isinstance(given, (int, float)) else None,
-                                      margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
-        h = layout.spacing
+        spacing = float(given) if isinstance(given, (int, float)) else None
+        if region.shape == TREE:
+            # A tree's flow along any direction: the line along the diagonal, its least (g(n) a third); its peak from
+            # its widest lumen; its cells the tree's box's.
+            tree = self.tree_layout(region, spacing)
+            axis = (1.0, 1.0, 1.0)
+            radius = float(np.max(tree_of(region)[1]))
+            h, cells = tree.spacing, tree.cells
+        elif region.shape == "cylinder" and lattice_of(_unit(region.parameters["axis"])) is not None:
+            axis = _unit(region.parameters["axis"])
+            radius = float(region.parameters["radius"])  # type: ignore[arg-type]
+            layout = periodic_tube_layout(radius, float(query.settings["domain.length"]),  # type: ignore[arg-type]
+                                          cells_across=self.cells_across, spacing=spacing,
+                                          margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
+            h, cells = layout.spacing, layout.cells
+        else:
+            return None
+        nu = query.values["viscosity"] / query.values["density"]
         drive = axial_drive(query.drives, axis)
         wide = radius + WALL_REACH_CELLS * h
         peak = predicted_peak(drive, wide, nu)
@@ -475,7 +548,8 @@ class FVM(Dynamics):
                 bounds.append(line * h / peak)
             return min(bounds) if bounds else None
 
-        candidates = [self.scheme.group] if self.scheme is not None else [RK3.name, IMEXEuler.name]
+        candidates = [self.scheme.group] if self.scheme is not None else \
+            [IMEXEuler.name] if region.shape == TREE else [RK3.name, IMEXEuler.name]
         steps = {name: safe(name) for name in candidates}
         bounded = {name: step for name, step in steps.items() if step is not None}
         if self.scheme is None and IMEXEuler.name in steps and steps[IMEXEuler.name] is None:
@@ -483,7 +557,7 @@ class FVM(Dynamics):
         else:
             largest = max(bounded.values()) if bounded else None
 
-        cells = layout.cells[0] * layout.cells[1] * layout.cells[2]
+        count = cells[0] * cells[1] * cells[2]
         where, available = device_memory()
         coarser = (f"a coarser spacing (FVM(spacing=...) over {h:.4g} m: doubling it divides the cells by about "
                    f"eight)" if given is not None else
@@ -491,13 +565,13 @@ class FVM(Dynamics):
                    f"about eight)")
 
         def problems(step: float, every: int) -> list[Problem]:
-            name = chosen_scheme(self.scheme, nu, h, step)
+            name = tree_scheme(self.scheme) if region.shape == TREE else chosen_scheme(self.scheme, nu, h, step)
             found: list[Problem] = []
-            needed = memory_estimate(name, cells)
+            needed = memory_estimate(name, count)
             if available is not None and needed > available:
                 found.append(Problem(
                     "flow.memory",
-                    f"the flow's box is {layout.cells[0]} x {layout.cells[1]} x {layout.cells[2]} = {cells} cells at "
+                    f"the flow's box is {cells[0]} x {cells[1]} x {cells[2]} = {count} cells at "
                     f"{2.0 * radius / h:.4g} cells across the lumen, whose {name} run needs about "
                     f"{needed / 2 ** 30:.3g} GiB (the cells times the bytes a cell a CPU run was measured to hold, "
                     f"as the validity line says), more than {where}, {available / 2 ** 30:.3g} GiB",
@@ -527,12 +601,12 @@ class FVM(Dynamics):
             return found
 
         def report(step: float, every: int) -> tuple[str, ...]:
-            name = chosen_scheme(self.scheme, nu, h, step)
+            name = tree_scheme(self.scheme) if region.shape == TREE else chosen_scheme(self.scheme, nu, h, step)
             line = line_of(name)
             room = f"{available / 2 ** 30:.3g} GiB" if available is not None else "which the system does not report"
-            box = (f"the box: {layout.cells[0]} x {layout.cells[1]} x {layout.cells[2]} = {cells} cells of "
-                   f"{h:.4g} m, {2.0 * radius / h:.4g} across the lumen; the {name} run's memory about "
-                   f"{memory_estimate(name, cells) / 2 ** 20:.4g} MiB (the cells times the bytes a cell a CPU run was "
+            box = (f"the box: {cells[0]} x {cells[1]} x {cells[2]} = {count} cells of "
+                   f"{h:.4g} m, {2.0 * radius / h:.4g} across the {'widest ' if region.shape == TREE else ''}lumen; "
+                   f"the {name} run's memory about {memory_estimate(name, count) / 2 ** 20:.4g} MiB (the cells times the bytes a cell a CPU run was "
                    f"measured to hold), against {where}, {room}")
             return (box, *report_lines(name, step, every, nu * step / h ** 2,
                                        RK3.viscous_number if name == RK3.name else None,
@@ -547,6 +621,9 @@ class FVM(Dynamics):
         assert region is not None
         if self.open:
             _open_build(self, ctx, b, registrations, region)
+            return
+        if region.shape == TREE:
+            self.build_tree(ctx, b, region)
             return
         axis = _unit(region.parameters["axis"])
         lattice = lattice_of(axis)
@@ -576,6 +653,23 @@ class FVM(Dynamics):
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
             interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows,
             wall_name=wall))
+
+    def build_tree(self, ctx: BuildContext, b: DynamicsBuilder, region: Region) -> None:
+        """A tube tree's flow: its box from the tree (:meth:`tree_layout`), the tree's points moved into it."""
+        _, radii, segments, fillet = tree_of(region)
+        layout = self.tree_layout(region, ctx.scalar("spacing") if self.spacing is not None else None)
+        b.add_node(ImplicitFlowNode(
+            ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
+            spacing=layout.spacing, viscosity=ctx.scalar_value("viscosity"), density=ctx.scalar_value("density"),
+            tree_points=np.asarray(layout.points), tree_radii=radii, tree_fillet=fillet, tree_segments=segments,
+            scheme=tree_scheme(self.scheme), convection=not self.stokes, tolerance=self.tolerance,
+            preconditioner=self.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[self.wall.delta_in],
+            solve_report_rows=self.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall"))
+
+
+def tree_scheme(given: IMEXEulerScheme | SteadyScheme | RK3Scheme | None) -> str:
+    """The scheme a tube tree's flow steps with: the one named (never RK3: refused when planned), else IMEX Euler."""
+    return given.group if given is not None else IMEXEuler.name
 
 
 def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],

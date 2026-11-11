@@ -56,6 +56,7 @@ from mime.scene._sampling import (
 )
 from mime.scene._centreline import polyline, straight
 from mime.scene._resolution import (
+    CURVATURE_LINE,
     LAYER_LINES,
     ResolutionEntry,
     ResolutionReport,
@@ -117,7 +118,7 @@ __all__ = [
     "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
     "Helix", "polyline", "straight",
-    "Ball", "ExactUnion", "FILLET_SHARE", "LAYER_LINES", "Region", "ResolutionEntry", "ResolutionReport",
+    "Ball", "CURVATURE_LINE", "ExactUnion", "FILLET_SHARE", "LAYER_LINES", "Region", "ResolutionEntry", "ResolutionReport",
     "RoundCone", "TubeTree", "UnionDistance", "UnionNormal", "WallFeatures", "steady_layer", "stokes_layer",
     "wall_resolution",
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",

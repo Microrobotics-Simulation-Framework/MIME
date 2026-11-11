@@ -51,9 +51,13 @@ RTOL = 1e-10
 #: reaches some 1e-2 over its first steps): the components across a tube driven along it are the solve's rounding,
 #: some 1e-19, which moves by its own size across machines, and a velocity moved by a ten-billionth of the flow's
 #: speed is not rounding.
+#: The flow's bypass ratio, the solid's share of the lumen's flux, on the scale of a share (one): a tube tree's solid
+#: carries some 5e-4 of the flux, and that small flux moves with the solves' path (XLA's threads on a runner, the
+#: tree's wall's rounding) by 1e-9 of itself between runs of one program on one CPU model (runs 42968465331 and
+#: 42968836338), some 4e-13, while a share moved by a ten-billionth is not rounding.
 FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_short": 1e-4,
           "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0,
-          "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2}
+          "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2, "bypass_ratio": 1.0}
 LEDGER_FLOOR = 1e-9
 #: A field judged on another field's scale, by name: an open flow's unit fields' components across a tube along z are
 #: the solve's rounding, which moves by its own size across machines (flake cause 2), so each is judged on the unit

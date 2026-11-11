@@ -47,6 +47,7 @@ stepperonline.17hs19-2004s1  # a registered actuator's name: a motor's datasheet
 toy.coupled_body         # a registration kind of the toys
 tube.inner_surface       # a typed path in a family's rig: the tube's inner surface
 tube.lumen               # a typed path in a family's rig: the tube's lumen
+tube_tree.boundary  # the tube tree's case in the shape conformance suite: the set its probes are placed about (a tube's wall about the parent's middle), which no switch owns
 wall.roughness  # the name a plan reads the roughness of the wall a medium fills by (PlanContext.value(role, 'wall.roughness')), not a refusal code
 water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
