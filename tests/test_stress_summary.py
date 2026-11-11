@@ -31,22 +31,36 @@ def junit(cases: dict[str, str]) -> str:
 
 
 def write_runs(directory: Path, runs: list[dict[str, str] | None]) -> None:
+    """One part per run: ``stress-run-<k>-part-1``."""
     for k, cases in enumerate(runs, start=1):
         if cases is not None:
-            (directory / f"stress-run-{k}").mkdir()
-            (directory / f"stress-run-{k}" / "junit.xml").write_text(junit(cases), encoding="utf-8")
+            (directory / f"stress-run-{k}-part-1").mkdir()
+            (directory / f"stress-run-{k}-part-1" / "junit.xml").write_text(junit(cases), encoding="utf-8")
 
 
-def run_summary(tmp_path: Path, runs: list[dict[str, str] | None], seed: int = 100, capsys=None):
-    write_runs(tmp_path, runs)
+def read_page(tmp_path: Path, runs: int, parts: int, seed: int) -> tuple[int, str]:
     page = tmp_path / "page.md"
     import os
     os.environ["GITHUB_STEP_SUMMARY"] = str(page)
     try:
-        status = summary.main([str(tmp_path), "--runs", str(len(runs)), "--seed", str(seed)])
+        status = summary.main([str(tmp_path), "--runs", str(runs), "--parts", str(parts), "--seed", str(seed)])
     finally:
         del os.environ["GITHUB_STEP_SUMMARY"]
     return status, page.read_text(encoding="utf-8")
+
+
+def run_summary(tmp_path: Path, runs: list[dict[str, str] | None], seed: int = 100, capsys=None):
+    write_runs(tmp_path, runs)
+    return read_page(tmp_path, len(runs), 1, seed)
+
+
+def write_parts(directory: Path, runs: list[list[dict[str, str] | None]]) -> None:
+    """``runs[k - 1][p - 1]`` is the cases of run k's part p, or ``None`` for a job that left no report."""
+    for k, parts in enumerate(runs, start=1):
+        for p, cases in enumerate(parts, start=1):
+            if cases is not None:
+                (directory / f"stress-run-{k}-part-{p}").mkdir()
+                (directory / f"stress-run-{k}-part-{p}" / "junit.xml").write_text(junit(cases), encoding="utf-8")
 
 
 GOOD = {"test_a": "passed", "test_b": "passed"}
@@ -86,8 +100,8 @@ def test_a_run_without_a_report_is_failed_not_missing(tmp_path):
 
 def test_an_unparseable_report_is_failed(tmp_path):
     write_runs(tmp_path, [GOOD])
-    (tmp_path / "stress-run-1" / "junit.xml").write_text("<testsuites><oops", encoding="utf-8")
-    assert summary.read_report(tmp_path / "stress-run-1" / "junit.xml") is None
+    (tmp_path / "stress-run-1-part-1" / "junit.xml").write_text("<testsuites><oops", encoding="utf-8")
+    assert summary.read_report(tmp_path / "stress-run-1-part-1" / "junit.xml") is None
 
 
 def test_a_run_where_nothing_passed_is_failed_so_a_selection_that_only_skips_proves_nothing(tmp_path):
@@ -103,3 +117,37 @@ def test_a_skip_beside_a_pass_is_counted_but_does_not_fail(tmp_path):
 def test_more_failing_runs_than_shown_are_listed_by_number(tmp_path):
     status, page = run_summary(tmp_path, [{"test_a": "failed"}] * 5)
     assert status == 1 and "failed in 5 of 5 runs" in page and "...and runs 4, 5." in page
+
+
+A, B = {"test_a": "passed"}, {"test_b": "passed"}
+
+
+def test_a_run_split_into_parts_counts_each_test_once_per_run_and_passes_when_every_part_passes(tmp_path):
+    write_parts(tmp_path, [[A, B]] * 3)
+    status, page = read_page(tmp_path, 3, 2, 10)
+    assert status == 0 and "3 of 3 runs passed" in page
+    assert "| `tests.test_a::test_a` | 3/3 | 0 | 0 |" in page and "| `tests.test_a::test_b` | 3/3 | 0 | 0 |" in page
+
+
+def test_control_a_part_that_left_no_report_fails_its_run_naming_the_part_in_every_run(tmp_path):
+    """The control that the parts are judged: the part with no report is planted in each of 4 runs, and each run fails, though
+    the other part of the run passed (a summary that read only the first part would pass the runs where part 2 is gone)."""
+    write_parts(tmp_path, [[A, None]] * 4)
+    status, page = read_page(tmp_path, 4, 2, 10)
+    assert status == 1 and "0 of 4 runs passed" in page
+    assert page.count("part 2 of 2: no readable report") == 4 and "part 1 of 2" not in page
+    assert "| `tests.test_a::test_b` | **0/4** | 0 | 0 |" not in page  # absent from every report, so not a row at all
+
+
+def test_a_part_whose_tests_only_skipped_fails_its_run_though_the_other_part_passed(tmp_path):
+    write_parts(tmp_path, [[A, {"test_b": "skipped"}]] * 2)
+    status, page = read_page(tmp_path, 2, 2, 10)
+    assert status == 1 and page.count("part 2 of 2: no test passed") == 2
+
+
+def test_a_failure_in_the_second_part_names_the_run_seed_and_blob(tmp_path):
+    write_parts(tmp_path, [[A, B], [A, {"test_b": "failed"}], [A, B]])
+    status, page = read_page(tmp_path, 3, 2, 50)
+    assert status == 1 and "2 of 3 runs passed (FAILED)" in page
+    assert "run 2, seed `51`: part 2 of 2: 1 failed" in page and BLOB in page
+    assert "| `tests.test_a::test_b` | **2/3** | 1 | 0 |" in page
