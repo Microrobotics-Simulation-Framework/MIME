@@ -74,7 +74,7 @@ def _diagonal_spectrum(width_cells, side=_exchange.SPECTRUM_SIDE, component=2, o
         if product is not None:
             along = sines.reshape(shape[face])
             total = total + jnp.real(product * jnp.conj(product)) * (1.0 - along / safe)
-    return _exchange.KernelSpectrum(jnp.where(eigen == 0.0, 0.0, total) / side ** 3, eigen)
+    return _exchange.KernelSpectrum(jnp.where(eigen == 0.0, 0.0, total) / side ** 3, eigen, side)
 
 
 def test_the_couples_margin_is_the_flow_nodes_own(dtype, monkeypatch):

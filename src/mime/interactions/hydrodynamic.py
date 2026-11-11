@@ -1580,7 +1580,8 @@ class Drag(UncoupledDrag):
         f"undeveloped field acting as a history term); the fluid-acceleration force and the added mass read the flow "
         f"without the body, the body's own free-box flow removed exactly (route 2: advanced by the grid's operator, "
         f"Hasimoto's image term relaxed at the box's slowest rate), or by fitted modes with self_history='modes' "
-        f"(route 1, its residual and span reported and flagged); under the field's steady limit the own field is the "
+        f"(route 1, its residual and span reported and flagged; it reads the body's own field as if the body had not "
+        f"moved since each force, exact for a body at rest on the grid); under the field's steady limit the own field is the "
         f"steady response to last step's force, exactly, and the margins are one",
         "stokes: the couple: the fluid's rotation read by the kernel's antisymmetric dipole (its derivative, about the "
         "sampled weights' own mean, so a couple carries no net force and a unit couple is one) and the couple "

@@ -171,11 +171,13 @@ def box_side(width_cells: float) -> int:
 
 class KernelSpectrum(NamedTuple):
     """The kernel's free-box spectrum along one axis's face set (``h = mu = rho = 1``): each wavenumber's weight ``W =
-    |w_hat|^2 P_cc / N`` and the seven-point Laplacian's eigenvalue there, made in the program from the kernel's width
-    (traced), so that every self-response below is a sum over it and differentiable in the width."""
+    |w_hat|^2 P_cc / N`` and the seven-point Laplacian's eigenvalue there, so that every self-response below is a sum
+    over it; on a box of ``side`` cells. Every response is a sum of the weights times a function of the eigenvalue
+    alone, so a spectrum may be held aggregated by eigenvalue (:func:`aggregated`, one dimension)."""
 
     weight: Array
     eigenvalue: Array
+    side: int
 
 
 def _line(width_cells: Any, side: int, axis: int, face: int, offset: tuple[float, float, float], dtype: Any,
@@ -215,7 +217,7 @@ def kernel_spectrum(width_cells: Any, side: int = SPECTRUM_SIDE, component: int 
     safe = jnp.where(eigenvalue == 0.0, 1.0, eigenvalue)
     kept = jnp.where(eigenvalue == 0.0, 0.0, 1.0 - along / safe)
     weight = powers[0][:, None, None] * powers[1][None, :, None] * powers[2][None, None, :] * kept / side ** 3
-    return KernelSpectrum(weight, eigenvalue)
+    return KernelSpectrum(weight, eigenvalue, side)
 
 
 def couple_spectrum(width_cells: Any, side: int = SPECTRUM_SIDE, component: int = 2,
@@ -247,7 +249,20 @@ def couple_spectrum(width_cells: Any, side: int = SPECTRUM_SIDE, component: int 
     safe = jnp.where(eigenvalue == 0.0, 1.0, eigenvalue)
     norm = sum(jnp.real(force * jnp.conj(force)) for force in forces if not isinstance(force, float))
     kept = jnp.where(eigenvalue == 0.0, 0.0, norm - jnp.real(divergence * jnp.conj(divergence)) / safe)
-    return KernelSpectrum((kept / side ** 3).astype(dtype), eigenvalue)
+    return KernelSpectrum((kept / side ** 3).astype(dtype), eigenvalue, side)
+
+
+def aggregated(spectrum: KernelSpectrum) -> KernelSpectrum:
+    """``spectrum`` with its weights summed over the wavenumbers that share an eigenvalue (on the host, in its dtype):
+    every response is a sum of the weights times a function of the eigenvalue alone, so this holds the same sums with
+    some 6,500 terms on a 64-cell box in place of 262,144. A function of the kernel's width and the box alone, a
+    structural setting, made once where the node is built."""
+    eigenvalue = np.asarray(spectrum.eigenvalue).ravel()
+    weight = np.asarray(spectrum.weight).ravel()
+    keys, inverse = np.unique(np.round(eigenvalue.astype(np.float64), 10), return_inverse=True)
+    summed = np.bincount(inverse.ravel(), weights=weight.astype(np.float64), minlength=keys.shape[0])
+    dtype = weight.dtype
+    return KernelSpectrum(np.asarray(summed, dtype=dtype), np.asarray(keys, dtype=dtype), spectrum.side)
 
 
 def paired(spectrum: KernelSpectrum, reading: Any, delivery: Any) -> Array:
@@ -267,20 +282,19 @@ def steady_response(spectrum: KernelSpectrum, reading: Any = 0.0, delivery: Any 
     """The kernel's steady self-response in a free box (``1/(mu h)`` units): ``sum W / lambda``, with Hasimoto's term
     for the box's images (``images``). Equal to :func:`self_mobility`'s by the same operator (its oracle)."""
     lam = spectrum.eigenvalue
-    side = lam.shape[0]
     safe = jnp.where(lam == 0.0, 1.0, lam)
     weights = paired(spectrum, reading, delivery)
-    return jnp.sum(jnp.where(lam == 0.0, 0.0, weights / safe)) + (image_term(side) if images else 0.0)
+    return jnp.sum(jnp.where(lam == 0.0, 0.0, weights / safe)) + (image_term(spectrum.side) if images else 0.0)
 
 
 def step_response(spectrum: KernelSpectrum, r: Any, steps: Array, reading: Any = 0.0, delivery: Any = 0.0) -> Array:
     """The kernel's own field read ``steps`` backward-Euler steps after a unit force held for one step, from rest
     (``1/(mu h)`` units; ``r = nu dt / h^2``): ``r sum W (1 + r lambda)^-(j+1)``. Step 0 is the one-step mobility
     ``M_c`` the coupled resistance is made from."""
-    weights = paired(spectrum, reading, delivery)
-    decay = 1.0 / (1.0 + r * spectrum.eigenvalue)
+    weights = jnp.reshape(paired(spectrum, reading, delivery), (-1,))
+    decay = jnp.reshape(1.0 / (1.0 + r * spectrum.eigenvalue), (-1,))
     exponent = jnp.asarray(steps).astype(decay.dtype) + 1.0
-    return r * jnp.sum(weights[None] * decay[None] ** exponent[:, None, None, None], axis=(1, 2, 3))
+    return r * jnp.sum(weights[None, :] * decay[None, :] ** exponent[:, None], axis=1)
 
 
 def image_mode(r: Any, side: int) -> tuple[Any, Any]:
@@ -323,7 +337,7 @@ def self_history(spectrum: KernelSpectrum, r: Any, reading: Any = 0.0, delivery:
     another face set), whose spread the one fit carries. Deterministic and traced: a derivative in the width, ``r`` or
     the coefficients passes through the fit. N3 reads the grid's share from it."""
     dtype = spectrum.weight.dtype
-    side = spectrum.eigenvalue.shape[0]
+    side = spectrum.side
     span = jnp.maximum((side / 4.0) ** 2 / r, 8.0)
     fractions = jnp.linspace(0.0, 1.0, HISTORY_SAMPLES, dtype=dtype)
     samples = jnp.floor(jnp.expm1(fractions * jnp.log1p(span)))
@@ -426,6 +440,6 @@ def own_advance(box: OwnBox, field: Array, kernels: Sequence[Array], force: Arra
 
 __all__ = ["FREE_BOX_WIDTHS", "HASIMOTO", "HISTORY_LAMBDAS", "HISTORY_MODES", "HISTORY_RCOND", "HISTORY_SAMPLES",
            "JUDGED_PLACES", "MODES", "SIDE_WIDTHS", "SPECTRUM_SIDE", "VECTOR_MODES", "KernelSpectrum", "OwnBox", "SelfHistory",
-           "box_side", "couple_spectrum", "faxen", "gather", "image_mode", "image_term", "kernel_spectrum",
+           "aggregated", "box_side", "couple_spectrum", "faxen", "gather", "image_mode", "image_term", "kernel_spectrum",
            "levi_civita", "own_advance", "own_box", "own_kernels", "own_read", "paired", "scatter", "self_history",
            "self_mobility", "steady_free", "step_response", "steady_response"]

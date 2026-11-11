@@ -50,11 +50,12 @@ def body_step(mass: float, resistance: Any, load: Any, velocity: Any, dt: float,
 class FreeBox:
     """A point body in a free periodic box (the tube outside it, so no wall), stepped by hand in the graph's order
     (the drag's node, the flow's, the body's) through the real nodes and the mapping kind's own transfers; a uniform
-    counter-force holds the box's net force at zero (the box's mean is no unbounded fluid's)."""
+    counter-force holds the box's net force at zero (the box's mean is no unbounded fluid's). ``pinned`` holds the
+    body's point where it starts (its velocity still stepped), so that its own field is read where it was made."""
 
     def __init__(self, cells: int, radius_cells: float, dt_r: float, *, mass_ratio: float = 1.0,
                  force: float = 0.0, torque: float = 0.0, faxen: bool = True, maxey_riley: bool = True,
-                 width: float = 1.0, self_history: str = "exact", one_way: bool = False,
+                 width: float = 1.0, self_history: str = "exact", one_way: bool = False, pinned: bool = False,
                  rate_reading: Callable[..., Any] | None = None) -> None:
         h = 1e-5
         self.h, self.cells = h, cells
@@ -83,6 +84,7 @@ class FreeBox:
                         for c in range(3) for mode in ("average", "laplacian", "curl")
                         for direction in ("gather", "scatter")}
         self.rate_reading = rate_reading
+        self.pinned = pinned
         self.gathered: dict[str, Any] = {}
 
     def step(self) -> None:
@@ -121,7 +123,8 @@ class FreeBox:
                       + jnp.asarray(self.drag_state["added_resistance"], dtype=dtype))
         self.velocity = body_step(self.mass, resistance, load, self.velocity, self.dt)
         self.spin = body_step(self.moment, resistance, load.at[5].add(self.torque), self.spin, self.dt, slice(3, 6))
-        self.position = self.position + self.dt * self.velocity
+        if not self.pinned:
+            self.position = self.position + self.dt * self.velocity
 
 
 def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 2e-4, cells_across: int = 16,

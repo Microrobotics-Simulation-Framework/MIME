@@ -59,8 +59,9 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
     run_constants_given
 from mime.core.ledger import IDENTITY_ULPS
-from mime.nodes.flow.fvm._exchange import HISTORY_MODES, JUDGED_PLACES, box_side, couple_spectrum, faxen, image_mode, \
-    kernel_spectrum, own_advance, own_box, own_kernels, own_read, self_history, steady_response, step_response
+from mime.nodes.flow.fvm._exchange import HISTORY_MODES, JUDGED_PLACES, KernelSpectrum, aggregated, box_side, \
+    couple_spectrum, faxen, image_mode, kernel_spectrum, own_advance, own_box, own_kernels, own_read, self_history, \
+    steady_response, step_response
 
 #: The coupled one-step margin a definite point body is held above, the force's and the couple's alike (the floor
 #: sweep's knee: the one-step resistance within -0.42..+0.61 of the exact sphere's above it, growing as 1/margin below;
@@ -236,6 +237,18 @@ class PointDragNode(MimeNode):
                              "vessel_axis": tuple(float(c) for c in vessel_axis),
                              "vessel_radius": float(vessel_radius)} if vessel_radius > 0.0 else {}),
                          **({"drive_frequency": float(drive_frequency)} if drive_frequency > 0.0 else {}))
+        self.spectra = self.made_spectra()
+
+    def made_spectra(self) -> dict[str, KernelSpectrum]:
+        """The kernel's free-box spectra the responses sum over, aggregated by eigenvalue (``aggregated``) where the
+        node is built: the force's, the couple's and, on route 1, the places in the cell its fit is judged at. Functions
+        of the kernel's width and the box alone, structural; every leaf the responses read stays traced."""
+        width, side = float(self.constants()["width_cells"]), self.side
+        held = {"force": aggregated(kernel_spectrum(width, side)), "couple": aggregated(couple_spectrum(width, side))}
+        if self.route == "modes":
+            held.update({f"place_{face}_{i}": aggregated(kernel_spectrum(width, side, face, place))
+                         for face in range(3) for i, place in enumerate(JUDGED_PLACES)})
+        return held
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -334,10 +347,8 @@ class PointDragNode(MimeNode):
         steady_limit = c["scheme"] == "steady"
         r = mu / rho * dt / h ** 2
         drag, average, delivery = self.coefficients(p)
-        width = jnp.asarray(float(c["width_cells"]), dtype=mu.dtype)
         side = self.side
-        spectrum = kernel_spectrum(width, side)
-        dipole = couple_spectrum(width, side)
+        spectrum, dipole = self.spectra["force"], self.spectra["couple"]
         scale, turn = 1.0 / (mu * h), 1.0 / (mu * h ** 3)
         steady = steady_response(spectrum, drag / h ** 2, delivery / h ** 2) * scale
         one_step = steady if steady_limit else \
@@ -354,7 +365,7 @@ class PointDragNode(MimeNode):
             "couple_margin": (spin + couple_one_step - couple_steady) / spin,
             "image": jnp.asarray(image, dtype=mu.dtype) * scale, "image_decay": jnp.asarray(image_decay, dtype=mu.dtype)}
         if self.route == "modes":
-            places = [kernel_spectrum(width, side, face, place) for face in range(3) for place in JUDGED_PLACES]
+            places = [held for key, held in self.spectra.items() if key.startswith("place_")]
             history = self_history(spectrum, r, average / h ** 2, delivery / h ** 2, places)
             made.update({"amplitude": history.amplitude * scale, "decay": history.decay,
                          "residual": history.residual, "span": history.span})
@@ -471,7 +482,9 @@ class PointDragNode(MimeNode):
         # The rate terms' load reversing and growing step on step: a lagged loop through the body's own field ringing.
         previous = jnp.asarray(state["rate_load"], dtype=dtype)
         size, before_size = jnp.sum(rate_load * rate_load), jnp.sum(previous * previous)
-        noise = jnp.finfo(dtype).eps * r0 * (jnp.sum(jnp.abs(drag_reading)) + jnp.sum(jnp.abs(velocity)))
+        # Counted only above the rate load's own rounding: (m_f + m_a) times the readings' rounding over the step.
+        noise = IDENTITY_ULPS * jnp.finfo(dtype).eps * (share + added) * (
+            jnp.sum(jnp.abs(clean)) + jnp.sum(jnp.abs(jnp.asarray(state["clean_reading"], dtype=dtype)))) / dt
         reversing = started & (jnp.sum(rate_load * previous) < 0.0) & (size > before_size) & (before_size > noise ** 2)
         ringing = jnp.where(reversing, jnp.asarray(state["ringing"]) + 1.0, 0.0)
         relative = jnp.sqrt(jnp.sum((velocity - drag_reading) ** 2))

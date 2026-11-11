@@ -343,8 +343,10 @@ def test_the_lagged_exchanges_unpaired_work_falls_at_its_order(dtype):
     """Gate 13 (the review's M1): with the law's own dissipation booked (the fluid's viscous dissipation of the
     kernel's own field, M_inf f . f, taken out of it, which the fluid's row holds), the lagged exchange's unpaired work,
     both of the drag's rows plus that dissipation, summed over a fixed time, falls as the step does: ``term_orders`` at
-    its declared order (2 a step). The plant books the dissipation as R0 |V - u_d|^2 (the PR's, DISSIPATION), whose
-    unpaired work does not fall."""
+    its declared order (2 a step), at dt 50 and 25 us. The plant books the dissipation as R0 |V - u_d|^2 (the PR's,
+    DISSIPATION), whose unpaired work does not fall: the order check resolves it where the kernel's own term is a fair
+    share of the lag, (M_inf/M0)(m/m_f - 1) tau_f/(2 dt) [derived], which at gate 8's 0.2 ms falls to 0.2 for the
+    smallest, lightest drawn bodies (missed at one draw in ten); at 50 us it is at least 0.28 at every draw."""
     from mime.core.ledger import TermOrder
     from mime.testing import term_orders
 
@@ -356,7 +358,7 @@ def test_the_lagged_exchanges_unpaired_work_falls_at_its_order(dtype):
         if plant("DISSIPATION"):
             _wrap_stepped(_drag_dissipation)
         try:
-            result = _metered(radius, 2e-4 * dt_scale, ratio)
+            result = _metered(radius, 5e-5 * dt_scale, ratio)
         finally:
             _wrap_stepped(None)
         assert result.energy is not None
@@ -364,7 +366,7 @@ def test_the_lagged_exchanges_unpaired_work_falls_at_its_order(dtype):
         exchanged = abs(float(next(law.work for law in result.energy.laws
                                    if (law.law, law.receiver) == ("drag:ball", "water.flow"))))
         unpaired = work + float(np.asarray(result.final["drag:ball"]["dissipated"]))
-        print(f"F3 gate 13 [{dtype}] dt {2e-4 * dt_scale:.3g}: unpaired {unpaired:.4g} J, {unpaired / exchanged:.4g} of "
+        print(f"F3 gate 13 [{dtype}] dt {5e-5 * dt_scale:.3g}: unpaired {unpaired:.4g} J, {unpaired / exchanged:.4g} of "
               f"the work exchanged with the fluid")
         return {"unpaired": abs(unpaired)}
 
