@@ -1,0 +1,53 @@
+{
+  "written": "2026-11-11, committed before the forms probe ran (the commit that adds this file is the timestamp): the porous plug's resistivity in the wall's band, the forms measured against each other after the first measurements showed the approved share rule high on a pressure-driven plug",
+  "phase": "Lane F, dev2: the static porous plug (its forms, amending predictions_porous_plug.json)",
+  "labels": "predictions by the builder (Opus) from the band's algebra; the four forms: plain (its own band times 1/K), share (c / max(c, f), as approved), share and reach (its depth carried into the wall's solid by the wall's own depth), parallel (share and reach over max(f, 0.01): the face's Darcy conductance the fluid's part times K)",
+  "seen_before": [
+    "laptop, float64, D/h 16, 0.01h interior, a plug one diameter long filling the tube in a period of four, its flux against the series closed form, sqrt(K)/h 0.1 / 0.3 / 1: share +35.0 / +12.9 / +3.1 %; share and reach +21.0 / +12.1 / +3.0 %; parallel +0.06 / +1.4 / +1.6 % (with the floor 0.1: +1.6 / +2.1 / +1.9 %; 0.001: -0.7 / +1.2 / +1.5 %, 1022 iterations at 0.1)",
+    "the same, the long plug filling the period driven by the body force alone, against Brinkman: parallel -3.8 / -1.1 / +1.2 %; share (exploratory, before this file's parent) +2.2 / +3.1 / +2.2 %",
+    "the floor at D/h 16, 0.01h, an impermeable plug (sqrt(K)/h 1e-3) filling the tube: share 8.5e-4 of the open tube's flux, share and reach 1.1e-6",
+    "why the share rule is high on the finite plug: the pressure gradient across the plug acts on every face, not on the fluid's share as the body force does, so a face of the band with the plug's full 1/K carries the full Darcy flux on its whole width; and the band's solid half and the stiff interior's ramp (h to 3h into the wall) carry Darcy flow around a plug that stops at the wall"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "CPU, GitHub runners (4 vCPU)",
+    "sizes_and_parameters": "as predictions_porous_plug.json's: D = 1, nu = rho = 1, g = 8, steady Stokes, the default band; D/h 16, 32, 64; the 0.1h and 0.01h interiors",
+    "seeds_and_draws": "none drawn: each arm one case a sqrt(K)/h"
+  },
+  "gate_1_forms_finite_plug": {
+    "claim": "on a pressure-driven plug filling the tube (one diameter long in a period of four) the parallel form gives the series closed form within 2 % from D/h 16, the share form high by about 2h/R and more where the band's ring leaks",
+    "kind": "estimates",
+    "case": "probe/measure.py finite arms, each form",
+    "prediction": {
+      "value": "parallel within 2 % at D/h 16, 32 and 64 for sqrt(K)/h 0.1 to 1 (0.01h); share and share-and-reach +10 to +35 % at D/h 16 falling about as h/R; with 0.1h the share forms higher still (the ring's leak), parallel within 3 %",
+      "band": [-0.02, 0.02],
+      "unit": "relative flux, parallel at 0.01h",
+      "basis": "derived (the parallel layers' conductance) and measured-before at D/h 16 (seen_before)",
+      "why": "the plug's resistance is nearly the whole series"
+    }
+  },
+  "gate_2_forms_floor": {
+    "claim": "the floor, an impermeable plug's leak over the open tube's flux, with the reach (the forms that carry the plug into the wall's solid) against without",
+    "kind": "estimates",
+    "case": "probe/measure.py floor arms, each form",
+    "prediction": {
+      "value": "without the reach about 1e-3 at D/h 16 with 0.01h and 1e-2 with 0.1h, falling about as (h/D)^3; with it at most 1e-5 at D/h 16 with either interior, falling faster",
+      "band": [null, null],
+      "unit": "Q_leak / Q_open",
+      "basis": "measured-before at D/h 16, 0.01h (seen_before); derived for the rest (the ring's conductance, about 0.1 R h^3 at 0.01h)",
+      "why": "with the reach the leak runs only through the stiff interior beyond the plug's span"
+    }
+  },
+  "gate_3_forms_long_plug": {
+    "claim": "the parallel form's cost on a plug driven by the body force alone (a long plug filling the period, no pressure gradient): against Brinkman",
+    "kind": "estimates",
+    "prediction": {
+      "value": "parallel within 5 % at D/h 16, 3 % at 32, 2 % at 64, for sqrt(K)/h 0.03 to 3",
+      "band": [-0.05, 0.05],
+      "unit": "relative flux",
+      "basis": "measured-before at D/h 16 (seen_before); the band's area deficit about h/(4R) derived",
+      "why": "the body force acts on the fluid's share f, and the parallel form's 1/(f K) takes another f"
+    }
+  },
+  "outcomes": null
+}
