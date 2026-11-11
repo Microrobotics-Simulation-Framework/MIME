@@ -6,7 +6,8 @@ given to the optimiser as a constraint with its margin; the iterates are clipped
 intersected with its leaves' bounds; and the Fisher information of the residual with the declared noise is taken at
 the start (MADDENING's ``fim``), so an axis the residual cannot see is named before the first step.
 
-**The lines.** A refusal of the iterate's plan; a flag its run raised; a node's stop; each post-run Reynolds watch,
+**The lines.** A refusal of the iterate's plan; a flag its run raised (but one that reports a state the run is in,
+``touching``: ``mime.experiment._experiment.STATE_FLAGS``); a node's stop; each post-run Reynolds watch,
 read from the run's end, its number against the rung's declared bound (a line with a number, whose margin the step is
 limited by: the step's prediction of the body's twist, from its derivative, is read by the watch's own code); and the
 box. An iterate past any line is not taken: the step is halved toward the last iterate taken, and where a line's
@@ -245,11 +246,14 @@ class _Fit:
 
     def run_lines(self, tally: Any, final: Mapping[str, Any],
                   watches: Sequence[WatchPlan]) -> list[LineMargin]:
+        from mime.experiment._experiment import STATE_FLAGS
+
         counted, _, _ = (np.asarray(each) for each in tally)
         meanings = dict(self.prepared.meanings)
+        states = {i for i, flag in enumerate(self.built.layout.flags) if flag.name in STATE_FLAGS}
         found = [LineMargin(f"{test.node}.{test.field}", "run", float(counted[i]), 0.0, -float(counted[i]),
                             meanings.get(f"{test.node}.{test.field}", ""))
-                 for i, test in enumerate(self.prepared.tests) if int(counted[i]) > 0]
+                 for i, test in enumerate(self.prepared.tests) if int(counted[i]) > 0 and i not in states]
         found += [LineMargin(refusal.code, "run", 1.0, 0.0, -1.0, refusal.message)
                   for refusal in stopped_refusals(self.built.graph, final)]
         found += self.watch_lines(final, watches)

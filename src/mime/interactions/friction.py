@@ -77,9 +77,9 @@ class Coulomb(FrictionLaw):
     ``rolling``, the rolling resistance ``mu_r`` (a length), adds the rolling row kind: a torque about the surface's
     tangents at each point bounded by ``mu_r N``, so a sphere held still on a slope below ``tan(theta) = mu_r / a``
     stays put and one rolling on a flat slows at ``(5/7) mu_r g / a``. Unwritten, no rolling rows are built (the
-    program of the sliding pair alone); written, ``0`` included, they are, so ``mu_r`` is a study's axis. It does not
-    enter a synchronous rolling speed at all (the torque budget absorbs it until step-out): it is identified only from
-    stepped-out data, and its derivative at zero is one-sided, so a fit starts it above zero."""
+    program of the sliding pair alone); written, ``0`` included, they are, so ``mu_r`` is a study's axis, whose
+    derivative at zero is the slope into ``mu_r >= 0`` (measured). It does not enter a synchronous rolling speed at all
+    (the torque budget absorbs it until step-out): it is identified only from stepped-out data."""
 
     group = "coulomb"
     law = "coulomb"

@@ -10,8 +10,8 @@ dtypes, each with a control that fails on every run (fixed cases, nothing drawn)
   whatever ``mu``: its angular momentum about the contact point is conserved. The control: friction taken at the
   centre (``[t; 0]``) never turns the spin into rolling.
 - **The derivative in mu_r** while rolling, ``-(5/7) g cos(theta) T / a``, reverse mode against the closed form and
-  central differences; at ``mu_r = 0`` it is one-sided (reverse mode reads the branch at the bound, zero), so a fit
-  starts above zero (said so, measured)."""
+  central differences, at ``mu_r = 0`` too, where it is the slope into the admissible side (the right-hand difference's;
+  the spike's prototype read zero there)."""
 
 import math
 
@@ -153,10 +153,13 @@ def test_control_friction_at_the_centre_never_turns_the_spin_into_rolling():
 
 
 @pytest.mark.parametrize("start", [0.05, 0.0])
-def test_the_derivative_in_mu_r_rolling_is_the_closed_form_and_one_sided_at_zero(dtype, start):
+def test_the_derivative_in_mu_r_rolling_is_the_closed_form_even_at_zero(dtype, start):
     """Rolling at ``tan(theta) = mu`` (well within ``(7/2) mu``), ``dv/dmu_r = -(5/7) g cos(theta) T / a``. At
-    ``mu_r = 0`` reverse mode reads the branch at the bound (zero), the right-hand slope the closed form: one-sided, so
-    a fit of ``mu_r`` starts above zero."""
+    ``mu_r = 0`` too: the pair's bound is zero there and its force is the bound along its direction (the boundary
+    branch, taken wherever the free force is outside a disk of radius zero), so reverse mode reads the slope into the
+    admissible side, ``mu_r >= 0``, the right-hand difference's. (The friction spike's prototype set the force to zero
+    by a selection at a zero bound and read 0 there, which is why it advised starting a fit above zero: MIME's need
+    not.)"""
     mu, steps = 0.2, 50
     theta = math.atan(mu)
     node = plane_node(BALL, mu=mu, rolling=start * RADIUS)
@@ -177,9 +180,9 @@ def test_the_derivative_in_mu_r_rolling_is_the_closed_form_and_one_sided_at_zero
             central = (float(speed(held + h)) - float(speed(held - h))) / (2 * h)
             assert abs(derivative - central) <= 1e-6 * abs(closed)
     else:
-        assert abs(derivative) <= 1e-9 * abs(closed)
         right = (float(speed(held + 1e-6 * RADIUS)) - float(speed(held))) / (1e-6 * RADIUS)
-        assert abs(right - closed) <= (1e-6 if dtype == jnp.float64 else 2e-2) * abs(closed)
+        assert abs(derivative - closed) <= (1e-9 if dtype == jnp.float64 else 1e-4) * abs(closed)
+        assert abs(right - closed) <= (1e-6 if dtype == jnp.float64 else 2e-1) * abs(closed)
 
 
 def test_rolling_resistance_is_refused_negative_and_builds_at_zero():

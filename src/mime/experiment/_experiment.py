@@ -942,6 +942,9 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
 #: sample, or its search did not converge and held the sample (by up to the samples' shortfall).
 TOUCHING, UNCONVERGED, HELD_BY_SAMPLES, SUPPORT_SHORT_FLAG = ("touching", "unconverged", "held_by_samples",
                                                               "support_short")
+#: The flags that report a state the run is in, not a validity line it crossed: a fit's iterate that raises one is
+#: taken (a body held by its contact is the contact working, and friction is fitted on bodies that touch).
+STATE_FLAGS = frozenset({TOUCHING})
 
 
 def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:

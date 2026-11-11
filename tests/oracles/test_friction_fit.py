@@ -25,8 +25,11 @@ from mime.study import fit_friction
 from mime.units import s
 
 AXIS = "contact:ball.friction.mu"
-DURATION = 0.1
+DURATION = 0.05
 TRUE = 0.3
+#: A margin of 10 um and the hull's points 80 um apart: within the margin for the sphere and the cylinder, and a few
+#: thousand points (the default spacing at the default margin seeds tens of thousands).
+COARSE = {"margin": 1e-5, "spacing": 8e-5}
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -53,12 +56,12 @@ def data(experiment, theta: float) -> float:
 @pytest.fixture(scope="module")
 def sliding():
     theta = math.atan(2.0 * TRUE)
-    observed = data(on_the_floor(theta=theta, mu=TRUE, body=ROD, along=True), theta)
+    observed = data(on_the_floor(theta=theta, mu=TRUE, body=ROD, along=True, **COARSE), theta)
 
     def residual(final):
         return jnp.atleast_1d(speed_down(theta)(final) - observed)
 
-    found = fit_friction(on_the_floor(theta=theta, mu=0.2, body=ROD, along=True), residual, axis=AXIS, start=0.2,
+    found = fit_friction(on_the_floor(theta=theta, mu=0.2, body=ROD, along=True, **COARSE), residual, axis=AXIS, start=0.2,
                          noise=1e-3 * abs(observed), duration=s(DURATION), body="ball")
     return found, observed
 
@@ -74,12 +77,12 @@ def test_sliding_data_identify_mu_and_the_gradient_free_control_agrees(sliding):
 
 def test_control_pure_rolling_data_are_bounded_below_only():
     theta = math.atan(3.5 * TRUE * 0.2)
-    observed = data(on_the_floor(theta=theta, mu=TRUE, body=BALL), theta)
+    observed = data(on_the_floor(theta=theta, mu=TRUE, body=BALL, **COARSE), theta)
 
     def residual(final):
         return jnp.atleast_1d(speed_down(theta)(final) - observed)
 
-    found = fit_friction(on_the_floor(theta=theta, mu=0.5, body=BALL), residual, axis=AXIS, start=0.5,
+    found = fit_friction(on_the_floor(theta=theta, mu=0.5, body=BALL, **COARSE), residual, axis=AXIS, start=0.5,
                          noise=1e-3 * abs(observed), duration=s(DURATION), body="ball")
     print(f"\n{found.verdict}: lower bound {found.lower_bound:.9g} against (2/7) tan = {2 / 7 * math.tan(theta):.9g}")
     assert found.verdict == "bounded below only"

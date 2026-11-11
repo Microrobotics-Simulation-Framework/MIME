@@ -57,8 +57,8 @@ contacts), each with its conformance suite in `mime.testing`. **Rolling resistan
 (a length), adds a pair of angular rows `[0; t]` at each point, a torque about the surface's tangents bounded by the
 length times the normal force: a sphere on a flat slows while it rolls, and one on a slope stays put below the
 threshold the length over the radius sets. A synchronous rolling speed does not depend on it (the torque budget
-absorbs it until step-out), so only data past step-out identify it, and its derivative at zero is one-sided: a fit
-starts it above zero. **Identifying mu** (`mime.study.fit_friction`): `Study.fit` on the data a run gives, a
+absorbs it until step-out), so only data past step-out identify it; at zero its derivative is the slope into the
+admissible side. **Identifying mu** (`mime.study.fit_friction`): `Study.fit` on the data a run gives, a
 gradient-free search over the register's range on the same loss as its control, and a verdict: `identified`, `bounded
 below only` (data that stick or roll without slipping hold only a lower bound) or `confounded`; a fitted value ships
 as a named record pinned by its content's and its data's hashes, never a default. One contact per body, against a fixed structure's surface. Its rung is `projection`; `penalty`
