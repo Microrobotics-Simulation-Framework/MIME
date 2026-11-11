@@ -2,24 +2,32 @@
 fine box near a body by a wall, which hands back its near-wall reflection of the cluster's forces in place of the coarse
 grid's under-resolved one in what the near field reads. The coarse solve is untouched.
 
-**What it solves** (the patch spike's form, F2): the reflection field ``v = u - u_free`` of the cluster, steady
-Stokes-Brinkman on the box, ``-L v + G p + (1/K) v = -(1/K) u_free``, ``D v = 0``, every face given by the coarse grid's
-reflection (:func:`patch_boundary`), ``1/K`` the walls' band resampled from the same signed distance at the box's faces,
-and ``u_free`` the forces' own regularised Stokeslets (no blob in the patch). The viscosity divides out of the steady
-operator; it enters through ``u_free`` and the given values. The near field reads ``v`` at its points (trilinear: the
+**What it solves** (the patch spike's form, F2, under the step operator of the F5-patch interface): the reflection
+field ``v = u - u_own`` of the cluster, ``(shift - mu L + mu/K) v + G q = shift v_prev - (mu/K) u_own``, ``D v = 0``,
+every face given by the coarse grid's reflection (:func:`patch_boundary`); ``shift = rho/dt`` (zero: the steady limit),
+``1/K`` the walls' band resampled from the same signed distance at the box's faces, ``u_own`` the cluster's own field
+under the same operator, nonzero only where ``1/K`` is. The near field reads ``v`` at its points (trilinear: the
 measured default), or each force point's cell average (:func:`cell_read`).
 
-**Quasi-steady** (the first step's proposal, taken by the coordinator): the patch holds no field of its own between
-steps, only its warm start; the near field it serves is steady Stokes.
+**The own field, in two parts** (the interface's (a) and (b)). The current step's: linear in the forces, the step
+operator's regularised Stokeslet, MIME's regularised Stokeslet (the MRS's own blob) plus the Brinkman Stokeslet's
+difference from the Stokes one at ``alpha^2 = shift / mu``, which is regular at the force point (:func:`own_response`;
+the steady limit's is the regularised Stokeslet alone). The history's: the free field the cluster's past forces left,
+which has no closed form; the flow's own box hands it as a lattice field, sampled at the shell's faces
+(:func:`shell_sample`).
+
+**Columns and the base.** The patch's functions take one column of forces and are vmappable over a column axis (no
+branch on a value, no shape from data). A column takes no history: it is linear in its given values and its forces. The
+base column carries the history (:class:`PatchHistory`): the previous step's reflection field, moved with the patch and
+its uncovered slab filled from the coarse grid's previous reflection, and the own field's history at the shell.
 
 **Snapped, never recompiling** (C4 decided 2): the box's shape is the kind's; its corner (``origin``) is whole fine
 cells on the fine lattice from the flow grid's corner, state, so a move changes values and never a shape.
 
-**The forces' own Stokeslets on a shell.** ``u_free`` enters through ``(1/K) u_free``, nonzero in the band and the
-solid. It is evaluated on the faces from the band's fluid edge to :data:`SHELL_DEPTH` cells into the solid, at a
-capacity the kind holds (its overflow counted, never dropped silently): deeper, the stiff interior screens a face's
-source over about ``delta_in h`` (0.1 cell), so its effect on the band is about e^-10 of it [arithmetic]. A capacity of
-zero takes every interior face (exact, the measured reference).
+**The own field on a shell.** ``u_own`` enters through ``(mu/K) u_own``, nonzero in the band and the solid. It is evaluated
+on the faces from the band's fluid edge to :data:`SHELL_DEPTH` cells into the solid, at a capacity the kind holds (its
+overflow counted, never dropped silently): deeper, the stiff interior screens a face's source over about ``delta_in h``
+(0.1 cell), so its effect on the band is about e^-10 of it [arithmetic]. A capacity of zero takes every interior face.
 
 **One uniform dilation per patch** (decided 4 (5)), by whole fine cells (decided 4 (4)): the walls' signed distance is
 moved into the solid by ``l`` cells; :func:`blended_reflection` blends the two neighbouring whole-cell evaluations
@@ -27,7 +35,8 @@ linearly in the seam's continuous dilation, the second solve taken only where it
 
 **The transpose.** The patch's CG is its own transpose solve (the operator is symmetric, its start linear in its
 right-hand side): :func:`patch_reflection_transpose` reads back through the read's transpose, solves once, and
-transposes the solve-free remainder (the lift and the source) by JAX; it is the transpose to the CG's tolerance."""
+transposes the solve-free remainder (the lift and the column's source) by JAX; it is the transpose to the CG's
+tolerance."""
 
 from __future__ import annotations
 
@@ -55,23 +64,27 @@ _linear_transpose: Any = cast(Any, jax).linear_transpose
 
 #: How the near field reads the patch's field: at its force points, or each force point's cell average.
 READS = ("point", "cell")
-#: How far into the solid, in fine cells, the forces' own Stokeslets are evaluated: the stiff interior's ramp end and
-#: one cell beyond it.
+#: How far into the solid, in fine cells, the own field is evaluated: the stiff interior's ramp end and one cell beyond.
 SHELL_DEPTH = INTERIOR_RAMP_END + 1.0
-#: The bytes one chunk of the Stokeslets' pairs (faces against force points) may hold.
+#: The bytes one chunk of the own response's pairs (faces against force points) may hold.
 CHUNK_BYTES = 1 << 26
 #: The state the host node stores for the patch (the kind owns it; MADDENING 0.4 keeps state only in nodes): the
-#: corner in whole fine cells, the warm start (a column per component) and the last solve's report.
-STATE_FIELDS = ("patch_origin", "patch_start_x", "patch_start_y", "patch_start_z", "patch_report")
+#: corner in whole fine cells, the last step's reflection field (a column per component: its history and the next
+#: step's start) and the last solve's report.
+STATE_FIELDS = ("patch_origin", "patch_field_x", "patch_field_y", "patch_field_z", "patch_report")
 #: The given values' net flux over their absolute flux above which a solve is flagged.
 FLUX_SHARE_LINE = 1e-2
+#: Below ``alpha r`` of this the Brinkman difference is summed as its series (the closed form cancels there).
+SERIES_EDGE = 1.0
+#: The series' terms: the last is under ``1 / 20!`` of the first at the edge.
+SERIES_TERMS = 20
 
 
 @dataclass(frozen=True)
 class RefinementPatch:
     """The kind: a box of ``cells`` fine cells of side ``spacing`` (m), the coarse grid's band and interior by name, the
-    near field's read (:data:`READS`), the forces' own Stokeslets' capacity in faces (zero: every face) and depth into
-    the solid in cells (``None``: every face where the band or the solid is)."""
+    near field's read (:data:`READS`), the own field's capacity in faces (zero: every face) and depth into the solid in
+    cells (``None``: every face where the band or the solid is)."""
 
     cells: tuple[int, int, int]
     spacing: float
@@ -102,27 +115,30 @@ class RefinementPatch:
         return self.shell_capacity if self.shell_capacity > 0 else self.face_count()
 
     def initial_state(self, origin: Array, dtype: Any) -> dict[str, Array]:
+        """The state at a run's start: the corner, a field at rest, an empty report."""
         zero = self.grid().zeros(dtype)
-        return {"patch_origin": jnp.asarray(origin, dtype=jnp.int32), "patch_start_x": zero[0],
-                "patch_start_y": zero[1], "patch_start_z": zero[2], "patch_report": jnp.zeros(REPORT_SIZE, dtype=dtype)}
+        return {"patch_origin": jnp.asarray(origin, dtype=jnp.int32), "patch_field_x": zero[0],
+                "patch_field_y": zero[1], "patch_field_z": zero[2], "patch_report": jnp.zeros(REPORT_SIZE, dtype=dtype)}
 
-    def start_at(self, state: dict[str, Array], origin: Array) -> Velocity:
-        """The held warm start moved to ``origin`` (whole cells; the slab the move uncovers zero)."""
-        held = (state["patch_start_x"], state["patch_start_y"], state["patch_start_z"])
-        return shifted_start(held, jnp.asarray(origin, jnp.int32) - jnp.asarray(state["patch_origin"], jnp.int32))
+    def held_field(self, state: dict[str, Array], origin: Array, fill: Velocity) -> Velocity:
+        """The last step's reflection field moved to ``origin`` (whole cells), the slab the move uncovers taken from
+        ``fill`` (the coarse grid's previous reflection at the new faces, :func:`patch_faces`): the base column's history
+        and every column's start."""
+        held = (state["patch_field_x"], state["patch_field_y"], state["patch_field_z"])
+        return moved(held, jnp.asarray(origin, jnp.int32) - jnp.asarray(state["patch_origin"], jnp.int32), fill)
 
-    def advanced_state(self, origin: Array, solved: PatchSolve) -> dict[str, Array]:
-        """The state after a solve at ``origin``."""
-        return {"patch_origin": jnp.asarray(origin, dtype=jnp.int32), "patch_start_x": solved.start[0],
-                "patch_start_y": solved.start[1], "patch_start_z": solved.start[2], "patch_report": solved.report}
+    def advanced_state(self, origin: Array, field: Velocity, report: Array) -> dict[str, Array]:
+        """The state after a step at ``origin``: its reflection field (the composition's, not a product's) and report."""
+        return {"patch_origin": jnp.asarray(origin, dtype=jnp.int32), "patch_field_x": field[0],
+                "patch_field_y": field[1], "patch_field_z": field[2], "patch_report": report}
 
 
 class PatchPlacement(NamedTuple):
     """What a step freezes of the patch, made once a step (:func:`placed`): the corner in whole fine cells; the walls'
-    inverse permeability on the interior faces (m^-2), resampled there and dilated; the forces' own Stokeslets' faces
-    (flat interior indices, the face count where unused), their points (m), components and ``1/K``, and how many faces
-    wanted one; the near field's points ``(n, 3)`` and, for the cell read, its quadrature; the blob (``eps^2``, m^2) and
-    the viscosity (Pa s) of the forces' own Stokeslets."""
+    inverse permeability on the interior faces (m^-2), resampled there and dilated; the own field's faces (flat interior
+    indices, the face count where unused), their points (m), components and ``1/K``, and how many faces wanted one; the
+    near field's points ``(n, 3)`` and, for the cell read, its quadrature; the blob (``eps^2``, m^2), the viscosity
+    ``mu`` (Pa s) and the step's ``shift`` ``rho / dt`` (kg/m^3/s; zero: the steady limit)."""
 
     origin: Array
     resistivity: Velocity
@@ -135,15 +151,25 @@ class PatchPlacement(NamedTuple):
     quadrature: Quadrature | None
     blob: Array
     viscosity: Array
+    shift: Array
+
+
+class PatchHistory(NamedTuple):
+    """The base column's history: the last step's reflection field on the interior faces at this step's corner
+    (:meth:`RefinementPatch.held_field`), and the own field's history at the shell's faces ``(capacity,)``
+    (:func:`shell_sample` of the flow's own box)."""
+
+    field: Velocity
+    own: Array
 
 
 class PatchSolve(NamedTuple):
-    """One patch solve: the reflection at the read points ``(n, 3)``, the solved interior remainder (the next warm
-    start), the CG's report, the given values' net flux over their absolute flux before it was removed, and how many
-    reads or given values fell outside their lattice."""
+    """One patch solve: the reflection at the read points ``(n, 3)``, the reflection field on the interior faces, the
+    CG's report, the given values' net flux over their absolute flux before it was removed, and how many reads fell
+    outside the box."""
 
     values: Array
-    start: Velocity
+    field: Velocity
     report: Array
     flux_share: Array
     outside: Array
@@ -198,11 +224,11 @@ class _DilatedFaced:
 
 
 def placed(patch: RefinementPatch, solids: Sequence[Any], origin: Array, dilation: Array, points: Array, blob: Any,
-           viscosity: Any, quadrature: Quadrature | None = None) -> PatchPlacement:
+           viscosity: Any, shift: Any = 0.0, quadrature: Quadrature | None = None) -> PatchPlacement:
     """The patch at ``origin`` (whole fine cells) with the walls of ``solids`` resampled at its faces and dilated by
-    ``dilation`` whole fine cells; the near field's ``points`` (m, flow frame), its quadrature for the cell read, and
-    the forces' own Stokeslets' ``blob`` (``eps^2``, m^2: one value or one per force point, the MRS's own) and
-    ``viscosity`` (Pa s)."""
+    ``dilation`` whole fine cells; the near field's ``points`` (m, flow frame), its quadrature for the cell read; the
+    own response's ``blob`` (``eps^2``, m^2: one value or one per force point, the MRS's own), the ``viscosity`` (Pa s)
+    and the step's ``shift`` (``rho / dt``; zero, the steady limit)."""
     grid = patch.grid()
     dtype = points.dtype
     h = jnp.asarray(patch.spacing, dtype=dtype)
@@ -227,25 +253,64 @@ def placed(patch: RefinementPatch, solids: Sequence[Any], origin: Array, dilatio
     return PatchPlacement(origin, resistivity, index.astype(jnp.int32), face_points[safe],
                           jnp.asarray(components)[safe], jnp.where(used, flat_k[safe], 0.0),
                           jnp.sum(wanted.astype(jnp.int32)), points, quadrature, jnp.asarray(blob, dtype=dtype),
-                          jnp.asarray(viscosity, dtype=dtype))
+                          jnp.asarray(viscosity, dtype=dtype), jnp.asarray(shift, dtype=dtype))
 
 
-# -- the forces' own Stokeslets ---------------------------------------------------------------------------------------
-def own_stokeslets(placement: PatchPlacement, forces: Array) -> Array:
-    """The forces' own regularised Stokeslets at the shell's faces, each face its component, ``(capacity,)``: MIME's
-    MRS kernel, ``((r^2 + 2 eps^2) F + (r . F) r) / (8 pi mu (r^2 + eps^2)^(3/2))``, summed over the force points in
-    chunks of faces. Linear in ``forces``."""
+# -- the own field ----------------------------------------------------------------------------------------------------
+def _series_coefficients() -> tuple[np.ndarray, np.ndarray]:
+    """The Brinkman difference's series in ``R = alpha r``: ``(A - 1)/R = 2 sum c_m R^(m-1)`` and ``(B - 1)/R = -2 sum
+    d_m R^(m-1)``, ``c_m = (-1)^m (1/m! - 1/(m+1)! + 1/(m+2)!)``, ``d_m = (-1)^m (1/m! - 3/(m+1)! + 3/(m+2)!)``, from
+    ``A = 2 e^-R (1 + 1/R + 1/R^2) - 2/R^2`` and ``B = -2 e^-R (1 + 3/R + 3/R^2) + 6/R^2``."""
+    m = np.arange(1, SERIES_TERMS + 1)
+    f = np.array([math.factorial(int(k)) for k in range(SERIES_TERMS + 3)], dtype=np.float64)
+    sign = (-1.0) ** m
+    c = sign * (1.0 / f[m] - 1.0 / f[m + 1] + 1.0 / f[m + 2])
+    d = sign * (1.0 / f[m] - 3.0 / f[m + 1] + 3.0 / f[m + 2])
+    return 2.0 * c, -2.0 * d
+
+
+def brinkman_difference(big_r: Array) -> tuple[Array, Array]:
+    """``((A - 1)/R, (B - 1)/R)`` of the Brinkman Stokeslet against the Stokes one, ``8 pi mu u = [A F / r + B r (r.F) /
+    r^3]``, at ``R = alpha r``: the series below :data:`SERIES_EDGE`, the closed form above (where it does not cancel).
+    Both are regular at ``R = 0`` (``-4/3`` and ``0``)."""
+    a_terms, b_terms = _series_coefficients()
+    dtype = big_r.dtype
+    small = jnp.minimum(big_r, SERIES_EDGE)
+    powers = small[..., None] ** jnp.arange(SERIES_TERMS, dtype=dtype)
+    series_a = jnp.sum(jnp.asarray(a_terms, dtype=dtype) * powers, axis=-1)
+    series_b = jnp.sum(jnp.asarray(b_terms, dtype=dtype) * powers, axis=-1)
+    big = jnp.maximum(big_r, SERIES_EDGE)
+    decay = jnp.exp(-big)
+    closed_a = (2.0 * decay * (1.0 + 1.0 / big + 1.0 / big ** 2) - 2.0 / big ** 2 - 1.0) / big
+    closed_b = (-2.0 * decay * (1.0 + 3.0 / big + 3.0 / big ** 2) + 6.0 / big ** 2 - 1.0) / big
+    below = big_r < SERIES_EDGE
+    return jnp.where(below, series_a, closed_a), jnp.where(below, series_b, closed_b)
+
+
+def screening(placement: PatchPlacement) -> Array:
+    """``alpha = sqrt(shift / mu)`` (1/m), zero in the steady limit (its derivative held finite there)."""
+    shift = placement.shift
+    positive = shift > 0.0
+    return jnp.where(positive, jnp.sqrt(jnp.where(positive, shift, 1.0) / placement.viscosity), 0.0)
+
+
+def own_response(placement: PatchPlacement, forces: Array) -> Array:
+    """The current step's own field of ``forces`` ``(n, 3)`` at the shell's faces, each its component, ``(capacity,)``:
+    MIME's regularised Stokeslet ``((r^2 + 2 eps^2) F + (r . F) r) / (8 pi mu (r^2 + eps^2)^(3/2))`` plus the Brinkman
+    difference ``alpha [f_A F + f_B rhat (rhat . F)] / (8 pi mu)`` (:func:`brinkman_difference`), summed over the force
+    points in chunks of faces. Linear in ``forces``."""
     at = placement.shell_points
     count = at.shape[0]
     sources = placement.points.astype(at.dtype)
     forces = forces.astype(at.dtype)
-    size = max(1, min(count, CHUNK_BYTES // (max(1, sources.shape[0]) * 8 * at.dtype.itemsize)))
+    size = max(1, min(count, CHUNK_BYTES // (max(1, sources.shape[0]) * 12 * at.dtype.itemsize)))
     chunks = -(-count // size)
     pad = chunks * size - count
     held_at = jnp.concatenate([at, jnp.broadcast_to(at[:1], (pad, 3))]).reshape(chunks, size, 3)
     held_c = jnp.concatenate([placement.shell_components, jnp.zeros(pad, jnp.int32)]).reshape(chunks, size)
     eps2 = jnp.broadcast_to(placement.blob, (sources.shape[0],))[None, :]
     scale = 1.0 / (8.0 * math.pi * placement.viscosity)
+    alpha = screening(placement)
 
     def chunk(pair: tuple[Array, Array]) -> Array:
         x, component = pair
@@ -255,54 +320,68 @@ def own_stokeslets(placement: PatchPlacement, forces: Array) -> Array:
         along = jnp.sum(r * forces[None, :, :], axis=-1)
         force_c = forces.T[component]
         r_c = jnp.take_along_axis(r, component[:, None, None], axis=2)[..., 0]
-        return jnp.sum(s * ((r2 + 2.0 * eps2) * force_c + r_c * along), axis=1)
+        steady = s * ((r2 + 2.0 * eps2) * force_c + r_c * along)
+        distance = jnp.sqrt(jnp.maximum(r2, jnp.finfo(at.dtype).tiny))
+        part_a, part_b = brinkman_difference(alpha * distance)
+        screened = alpha * scale * (part_a * force_c
+                                    + part_b * r_c * along / jnp.maximum(r2, jnp.finfo(at.dtype).tiny))
+        return jnp.sum(steady + screened, axis=1)
 
     return _lax.map(chunk, (held_at, held_c)).reshape(-1)[:count]
 
 
-def source(patch: RefinementPatch, placement: PatchPlacement, forces: Array) -> Velocity:
-    """``-(1/K) u_free`` on the interior faces: the forces' own Stokeslets at the shell, zero elsewhere."""
+def source(patch: RefinementPatch, placement: PatchPlacement, forces: Array, history: PatchHistory | None = None
+           ) -> Velocity:
+    """The interior's drive: ``-(mu/K) u_own`` at the shell (the current step's own response, and the history's where
+    given), zero elsewhere, and the history's ``shift v_prev``."""
     grid = patch.grid()
     shapes = [grid.interior_shape(c) for c in range(3)]
     total = sum(int(np.prod(s)) for s in shapes)
-    held = own_stokeslets(placement, forces)
-    flat = jnp.zeros(total, dtype=held.dtype).at[placement.shell].add(-placement.shell_weight * held, mode="drop")
+    own = own_response(placement, forces)
+    if history is not None:
+        own = own + history.own
+    weight = placement.viscosity * placement.shell_weight
+    flat = jnp.zeros(total, dtype=own.dtype).at[placement.shell].add(-weight * own, mode="drop")
     ends = np.cumsum([0] + [int(np.prod(s)) for s in shapes])
     parts = [flat[ends[c]:ends[c + 1]].reshape(shapes[c]) for c in range(3)]
+    if history is not None:
+        parts = [parts[c] + placement.shift * history.field[c] for c in range(3)]
     return (parts[0], parts[1], parts[2])
 
 
 # -- the solve --------------------------------------------------------------------------------------------------------
-def _operators(grid: NestedMACGrid, resistivity: Velocity) -> tuple[Callable[[Velocity], Velocity],
-                                                                    Callable[[Velocity], Velocity], Velocity]:
-    """``-L + 1/K`` on the interior (given values zero), its magnitude, and its diagonal."""
-    k = resistivity
+def operators(grid: NestedMACGrid, placement: PatchPlacement) -> tuple[Callable[[Velocity], Velocity],
+                                                                       Callable[[Velocity], Velocity], Velocity]:
+    """``shift - mu L + mu/K`` on the interior (given values zero), its magnitude, and its diagonal."""
+    mu, shift = placement.viscosity, placement.shift
+    k = placement.resistivity
 
     def apply(x: Velocity) -> Velocity:
         lap = grid.laplacian(x)
-        return (-lap[0] + k[0] * x[0], -lap[1] + k[1] * x[1], -lap[2] + k[2] * x[2])
+        held = [shift * x[c] - mu * lap[c] + mu * k[c] * x[c] for c in range(3)]
+        return (held[0], held[1], held[2])
 
     def magnitude(x: Velocity) -> Velocity:
         lap = grid.laplacian_magnitude(x)
-        return (lap[0] + k[0] * x[0], lap[1] + k[1] * x[1], lap[2] + k[2] * x[2])
+        held = [shift * x[c] + mu * lap[c] + mu * k[c] * x[c] for c in range(3)]
+        return (held[0], held[1], held[2])
 
-    base = -grid.laplacian_diagonal()
-    return apply, magnitude, (base + k[0], base + k[1], base + k[2])
+    base = shift - mu * grid.laplacian_diagonal()
+    return apply, magnitude, (base + mu * k[0], base + mu * k[1], base + mu * k[2])
 
 
-def lifted_and_drive(patch: RefinementPatch, placement: PatchPlacement, boundary: Given, forces: Array
-                     ) -> tuple[Velocity, Velocity]:
-    """The solve-free part, linear in ``(boundary, forces)``: the given values made compatible and lifted (padded,
-    divergence-free), and the interior's right-hand side, the forces' source less the operator on the lift."""
+def lifted_and_drive(patch: RefinementPatch, placement: PatchPlacement, boundary: Given, forces: Array,
+                     history: PatchHistory | None = None) -> tuple[Velocity, Velocity]:
+    """The solve-free part, linear in ``(boundary, forces)`` without history: the given values made compatible and
+    lifted (padded, divergence-free), and the interior's right-hand side, the drive less the operator on the lift."""
     grid = patch.grid()
     lift = grid.lifted(grid.compatible(boundary))
-    drive = source(patch, placement, forces)
+    drive = source(patch, placement, forces, history)
     lap = grid.laplacian_padded(lift)
     inside = grid.interior_of(lift)
-    k = placement.resistivity
-    rhs = (drive[0] + lap[0] - k[0] * inside[0], drive[1] + lap[1] - k[1] * inside[1],
-           drive[2] + lap[2] - k[2] * inside[2])
-    return lift, rhs
+    mu, shift, k = placement.viscosity, placement.shift, placement.resistivity
+    rhs = [drive[c] + mu * lap[c] - (shift + mu * k[c]) * inside[c] for c in range(3)]
+    return lift, (rhs[0], rhs[1], rhs[2])
 
 
 def patch_stopping(patch: RefinementPatch, dtype: Any, tolerance: Any = None, cap: int = 5000,
@@ -332,30 +411,32 @@ def _read_transpose(patch: RefinementPatch, placement: PatchPlacement, cotangent
 
 
 def patch_reflection(patch: RefinementPatch, placement: PatchPlacement, boundary: Given, forces: Array,
-                     start: Velocity | None, stopping: Stopping, tap: Array) -> PatchSolve:
-    """The patch's reflection of ``forces`` ``(n, 3)`` (N, at the placement's points) at the read points, its given
-    values ``boundary`` (the coarse grid's reflection at them, :func:`patch_boundary`), warm-started at ``start``
-    (``None``: cold), through the FVM's projected CG (``tap``: its report block's input, zeros). Linear in
-    ``(boundary, forces)`` to the CG's tolerance."""
+                     start: Velocity | None, stopping: Stopping, tap: Array, history: PatchHistory | None = None
+                     ) -> PatchSolve:
+    """One column's reflection at the read points: ``forces`` ``(n, 3)`` (N, at the placement's points), its given
+    values ``boundary`` (the coarse grid's reflection there, :func:`patch_boundary`), the CG started from ``start``
+    (the step's frozen field, or ``None``: zero) through the FVM's projected CG (``tap``: its report block's input).
+    A column (``history`` ``None``) is linear in ``(boundary, forces)`` to the CG's tolerance; the base column takes the
+    step's ``history``."""
     grid = patch.grid()
-    lift, rhs = lifted_and_drive(patch, placement, boundary, forces)
-    apply, magnitude, diagonal = _operators(grid, placement.resistivity)
+    lift, rhs = lifted_and_drive(patch, placement, boundary, forces, history)
+    apply, magnitude, diagonal = operators(grid, placement)
     remainder, report = projected_solve(grid, apply, diagonal, rhs, start, stopping, tap, Jacobi(), magnitude)
     padded = grid.padded(remainder)
     field = (lift[0] + padded[0], lift[1] + padded[1], lift[2] + padded[2])
     values, outside = _read(patch, placement, field)
-    return PatchSolve(values, remainder, report, grid.flux_share(boundary), outside)
+    return PatchSolve(values, grid.interior_of(field), report, grid.flux_share(boundary), outside)
 
 
 def patch_reflection_transpose(patch: RefinementPatch, placement: PatchPlacement, cotangent: Array,
                                start: Velocity | None, stopping: Stopping, tap: Array
                                ) -> tuple[Given, Array, Array]:
-    """:func:`patch_reflection`'s transpose: a cotangent ``(n, 3)`` at the read points to the given values' and the
-    forces' cotangents, and the transpose solve's report. One CG solve (the operator's own transpose)."""
+    """A column's :func:`patch_reflection` transposed: a cotangent ``(n, 3)`` at the read points to the given values'
+    and the forces' cotangents, and the transpose solve's report. One CG solve (the operator's own transpose)."""
     grid = patch.grid()
     dtype = cotangent.dtype
     back = _read_transpose(patch, placement, cotangent)
-    apply, magnitude, diagonal = _operators(grid, placement.resistivity)
+    apply, magnitude, diagonal = operators(grid, placement)
     solved, report = projected_solve(grid, apply, diagonal, grid.interior_of(back), start, stopping, tap, Jacobi(),
                                      magnitude)
     shapes = [jax.ShapeDtypeStruct((grid.given_count(c),), dtype) for c in range(3)]
@@ -370,19 +451,21 @@ def patch_reflection_transpose(patch: RefinementPatch, placement: PatchPlacement
 
 
 def blended_reflection(patch: RefinementPatch, placements: tuple[PatchPlacement, PatchPlacement], weight: Array,
-                       boundary: Given, forces: Array, starts: tuple[Velocity | None, Velocity | None],
-                       stopping: Stopping, tap: Array) -> tuple[Array, PatchSolve, PatchSolve]:
+                       boundary: Given, forces: Array, start: Velocity | None, stopping: Stopping, tap: Array,
+                       history: tuple[PatchHistory, PatchHistory] | None = None
+                       ) -> tuple[Array, PatchSolve, PatchSolve]:
     """The two neighbouring whole-cell dilations' reflections blended by ``weight`` (the upper's, decided 4 (4)): the
-    second solve only where the weight is nonzero."""
-    lower = patch_reflection(patch, placements[0], boundary, forces, starts[0], stopping, tap)
+    second solve only where the weight is nonzero (a step's value, the same for every column)."""
+    lower = patch_reflection(patch, placements[0], boundary, forces, start, stopping, tap,
+                             None if history is None else history[0])
     dtype = lower.values.dtype
 
     def upper(_: Any) -> PatchSolve:
-        return patch_reflection(patch, placements[1], boundary, forces, starts[1], stopping, tap)
+        return patch_reflection(patch, placements[1], boundary, forces, start, stopping, tap,
+                                None if history is None else history[1])
 
     def skipped(_: Any) -> PatchSolve:
-        held = starts[1] if starts[1] is not None else patch.grid().zeros(dtype)
-        return PatchSolve(jnp.zeros_like(lower.values), held, jnp.zeros(REPORT_SIZE, dtype=dtype),
+        return PatchSolve(jnp.zeros_like(lower.values), lower.field, jnp.zeros(REPORT_SIZE, dtype=dtype),
                           jnp.zeros((), dtype=dtype), jnp.zeros((), dtype=lower.outside.dtype))
 
     higher = _lax.cond(weight > 0.0, upper, skipped, None)
@@ -390,24 +473,25 @@ def blended_reflection(patch: RefinementPatch, placements: tuple[PatchPlacement,
     return (1.0 - w) * lower.values + w * higher.values, lower, higher
 
 
-def shifted_start(start: Velocity, by: Array) -> Velocity:
-    """A warm start moved by ``by`` whole cells (the new corner less the old): each entry taken from ``i + by``, the
-    slab the move uncovers zero."""
+def moved(field: Velocity, by: Array, fill: Velocity) -> Velocity:
+    """A field on the interior faces moved by ``by`` whole cells (the new corner less the old): each entry taken from
+    ``i + by``, the slab the move uncovers from ``fill`` (the same faces at the new corner)."""
     held: list[Array] = []
-    for component in start:
-        moved = component
+    for component, refill in zip(field, fill, strict=True):
+        shifted = component
+        inside = jnp.ones(component.shape, dtype=bool)
         for axis in range(3):
-            moved = jnp.roll(moved, -by[axis], axis=axis)
+            shifted = jnp.roll(shifted, -by[axis], axis=axis)
             index = jnp.arange(component.shape[axis]) + by[axis]
-            inside = (index >= 0) & (index < component.shape[axis])
             shape = [1, 1, 1]
             shape[axis] = component.shape[axis]
-            moved = jnp.where(inside.reshape(shape), moved, 0.0)
-        held.append(moved)
+            inside = inside & ((index >= 0) & (index < component.shape[axis])).reshape(shape)
+        held.append(jnp.where(inside, shifted, refill))
     return (held[0], held[1], held[2])
 
 
-__all__ = ["CHUNK_BYTES", "FLUX_SHARE_LINE", "READS", "SHELL_DEPTH", "STATE_FIELDS", "PatchPlacement", "PatchSolve",
-           "RefinementPatch", "blended_reflection", "lifted_and_drive", "own_stokeslets", "patch_reflection",
-           "patch_reflection_transpose", "patch_stopping", "placed", "shifted_start", "snapped_origin", "source",
+__all__ = ["CHUNK_BYTES", "FLUX_SHARE_LINE", "READS", "SERIES_EDGE", "SERIES_TERMS", "SHELL_DEPTH", "STATE_FIELDS",
+           "PatchHistory", "PatchPlacement", "PatchSolve", "RefinementPatch", "blended_reflection",
+           "brinkman_difference", "lifted_and_drive", "moved", "operators", "own_response", "patch_reflection",
+           "patch_reflection_transpose", "patch_stopping", "placed", "screening", "snapped_origin", "source",
            "whole_cell_dilations"]

@@ -98,15 +98,41 @@ def regularised_free(targets: np.ndarray, sources: np.ndarray, eps_squared: np.n
     return out
 
 
+#: The pairs (targets against sources) one chunk of the image holds: its four terms' blocks fit in about 200 MB.
+IMAGE_PAIRS = 1 << 19
+
+
+@functools.cache
+def _image_chunk() -> Callable[..., Any]:
+    def chunk(targets: Any, sources: Any, eps: Any, forces: Any, offset: Any, viscosity: Any) -> Any:
+        parameters = {"normal": jnp.asarray(PLANE["normal"]), "offset": offset}
+        blocks = plane_image(targets, sources, parameters, viscosity, eps).matrix
+        return jnp.einsum("tsij,sj->ti", blocks, forces)
+    return jax.jit(chunk)
+
+
 def image_at(targets: np.ndarray, sources: np.ndarray, eps_squared: np.ndarray, forces: np.ndarray,
              wall: float, viscosity: float) -> np.ndarray:
-    """MIME's regularised plane image of ``forces`` at ``targets`` (the plane at ``z = wall``), ``(t, 3)``."""
-    parameters = {"normal": jnp.asarray(PLANE["normal"]), "offset": jnp.asarray(wall)}
+    """MIME's regularised plane image of ``forces`` at ``targets`` (the plane at ``z = wall``), ``(t, 3)``, in chunks of
+    targets and sources of at most :data:`IMAGE_PAIRS` pairs (each chunk padded to its full size, so one program)."""
     out = np.zeros((targets.shape[0], 3))
-    for start in range(0, targets.shape[0], 1024):
-        blocks = plane_image(jnp.asarray(targets[start:start + 1024]), jnp.asarray(sources), parameters, viscosity,
-                             jnp.asarray(eps_squared)).matrix
-        out[start:start + 1024] = np.einsum("tsij,sj->ti", np.asarray(blocks), forces)
+    per_source = min(sources.shape[0], 4096)
+    per_target = max(1, IMAGE_PAIRS // per_source)
+    chunk = _image_chunk()
+    for s0 in range(0, sources.shape[0], per_source):
+        held_s = np.zeros((per_source, 3)) + np.array([0.0, 0.0, 1.0])
+        held_f = np.zeros((per_source, 3))
+        held_e = np.ones(per_source)
+        count = min(per_source, sources.shape[0] - s0)
+        held_s[:count] = sources[s0:s0 + count]
+        held_f[:count] = forces[s0:s0 + count]
+        held_e[:count] = eps_squared[s0:s0 + count]
+        for t0 in range(0, targets.shape[0], per_target):
+            n = min(per_target, targets.shape[0] - t0)
+            held_t = np.zeros((per_target, 3)) + np.array([0.0, 0.0, 2.0])
+            held_t[:n] = targets[t0:t0 + n]
+            out[t0:t0 + n] += np.asarray(chunk(jnp.asarray(held_t), jnp.asarray(held_s), jnp.asarray(held_e),
+                                               jnp.asarray(held_f), jnp.asarray(wall), viscosity))[:n]
     return out
 
 
@@ -137,7 +163,7 @@ def built_patch(case: Case) -> tuple[RefinementPatch, Any, np.ndarray, MRSSphere
     quadrature = Quadrature(jnp.asarray(sphere.points + centre), jnp.asarray(sphere.weights),
                             jnp.asarray(sphere.owners, dtype=jnp.int32), jnp.asarray(sphere.area))
     placement = placed(patch, [PlaneSolid(0.0)], origin, case.dilation, jnp.asarray(sphere.force + centre),
-                       jnp.asarray(sphere.eps_squared), VISCOSITY, quadrature)
+                       jnp.asarray(sphere.eps_squared), VISCOSITY, quadrature=quadrature)
     return patch, placement, centre, sphere
 
 

@@ -133,6 +133,33 @@ def patch_boundary_transpose(grid: NestedMACGrid, origin: Array, coarse: MACGrid
             spread(cotangent[2], stencils[2], shapes[2]))
 
 
+def patch_faces(grid: NestedMACGrid, origin: Array, coarse: MACGrid, velocity: Velocity, corner: Array) -> Velocity:
+    """A coarse MAC field read trilinearly at the patch's interior faces (the slab a snap uncovers is filled from it)."""
+    dtype = velocity[0].dtype
+    corner_patch = origin.astype(dtype) * jnp.asarray(grid.spacing, dtype=dtype)
+    held: list[Array] = []
+    for component in range(3):
+        points = grid.face_points(component, dtype).reshape(-1, 3) + corner_patch
+        coordinates = _lattice_coordinates(points, jnp.asarray(coarse.spacing, dtype=dtype), component,
+                                           jnp.asarray(corner, dtype=dtype))
+        at = stencil(coordinates, tuple(velocity[component].shape), coarse.periodic)
+        held.append(sampled(velocity[component], at).reshape(grid.interior_shape(component)))
+    return (held[0], held[1], held[2])
+
+
+def shell_sample(points: Array, components: Array, coarse: MACGrid, velocity: Velocity, corner: Array) -> Array:
+    """A coarse MAC field read trilinearly at faces of several components: ``points`` ``(m, 3)`` (flow frame), each its
+    ``components`` entry's lattice (the own field's history at the patch's shell)."""
+    dtype = velocity[0].dtype
+    values: list[Array] = []
+    for component in range(3):
+        coordinates = _lattice_coordinates(points.astype(dtype), jnp.asarray(coarse.spacing, dtype=dtype), component,
+                                           jnp.asarray(corner, dtype=dtype))
+        values.append(sampled(velocity[component], stencil(coordinates, tuple(velocity[component].shape),
+                                                           coarse.periodic)))
+    return jnp.where(components == 0, values[0], jnp.where(components == 1, values[1], values[2]))
+
+
 def read_stencils(grid: NestedMACGrid, origin: Array, points: Array) -> tuple[Stencil, Stencil, Stencil]:
     """The trilinear stencils from the patch's padded components to ``points`` (``(n, 3)``, flow frame, m)."""
     dtype = points.dtype
@@ -188,5 +215,5 @@ def cell_read_transpose(grid: NestedMACGrid, origin: Array, quadrature: Quadratu
 
 
 __all__ = ["Given", "Quadrature", "Stencil", "boundary_stencils", "cell_read", "cell_read_transpose",
-           "patch_boundary", "patch_boundary_transpose", "patch_points", "patch_read", "patch_read_transpose",
-           "read_stencils", "sampled", "spread", "stencil"]
+           "patch_boundary", "patch_boundary_transpose", "patch_faces", "patch_points", "patch_read",
+           "patch_read_transpose", "read_stencils", "sampled", "shell_sample", "spread", "stencil"]
