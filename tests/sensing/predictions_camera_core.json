@@ -142,5 +142,104 @@
     "if_wrong": "an appearance from the wrong source",
     "cannot_discriminate_if": "the declared and the stage's appearance are the same (the gate makes them differ)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-11, after the gates ran (CI on #251 at 8400be3, the evidence probe at 3eaa84f, run 43033788290)",
+    "changes_after_seeing_data": [
+      "G2 (it ran before this file): the first draft's Newton from the distorted point left the first monotone branch on strong barrels; the bracketed radial solve replaced it; the oracle is restricted to the first branch, its tolerance scaled by the inverse's condition, and a flag where the oracle reaches the pixel only at a condition above 4 is allowed (FLAG_CONDITION).",
+      "G9 as committed (the whole frame's darkness, the translucent tube's silhouettes in it) failed in both dtypes (float64 2.7e-3 of the derivatives' size against 1e-4; float32 4.6 against 3e-2): central differences of the softplus-smoothed chord at a translucent silhouette need steps under GRAZING R. Re-scoped to the sphere's darkening and an opaque tube; on CI the opaque tube then failed on a centroid whose derivatives all vanish, judged against itself: judged on the aggregate's natural scale.",
+      "G15's disc float32 floor (64 ulps) missed: 6e-5 at 15 px, traced to the float32 rounding of the camera's rotation (the image moves about eps x f px); three reformulations of the disc's area left it unchanged to three digits; the floor is 8 eps f px. Float64 holds at the oracle's floor.",
+      "G7's float32 line (2e-5) missed on CI (3.9e-5): a chord's rounding times the attenuations; the line is 16 eps (sum of mu) x 0.1 m (4e-4 in float32).",
+      "The corner gate's 3 % missed: 13.8 % at the caps' outlines, which this view sees within a pixel of edge-on (their ellipses about half a pixel across); the line is 15 % there with the new thin_cap flag checked; the sides hold 3 %.",
+      "Row #361 (after this file): exact disc coverage a sphere's default, always windowed; G9 runs through it in a declared window.",
+      "Test files renamed (their basenames are other folders'): test_projection, test_gradients, test_refusals -> test_camera_*; oracles -> camera_oracles."
+    ],
+    "gates": {
+      "gate_3_silhouettes": {
+        "measured": "area, centroid and the 0.1 px move within their lines, both dtypes (CI on #251)",
+        "control": "principal-half 30/30 (clean 0/30), hard-edge 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_15_box_edge": {
+        "measured": {
+          "box_edge derivative per pixel": {
+            "15": 0.0143,
+            "6": 0.0277,
+            "3": 0.0646
+          },
+          "coverage per pixel": {
+            "15": 0.0048,
+            "6": 0.0115,
+            "3": 0.0279
+          },
+          "motion": {
+            "15": 0.0023,
+            "6": 0.0033,
+            "3": 0.0301
+          },
+          "disc derivative per pixel": 0.0001,
+          "disc coverage": "at the oracle's floor (4.6e-6 float64); float32 6e-5, the pose's rounding"
+        },
+        "control": "sigmoid 30/30 (0/30)",
+        "range": "the edge's distance moved 0.023 px caught every draw",
+        "verdict": "derivative better than predicted at 15 and 6 px (outside the bands' low ends), within at 3 px; coverage and motion within; disc's float32 floor missed and set on the pose's rounding"
+      },
+      "gate_5_noise": {
+        "measured": "within 4 standard errors, both dtypes",
+        "control": "gain 30/30 (0/30)",
+        "range": "a 1.5 % gain error caught every draw (predicted about 2 %)",
+        "verdict": "held"
+      },
+      "gate_6_grazing": {
+        "measured": "finite; bounded and nonzero after the fix",
+        "control": "first probe 0/30 (blind); after the fix 30/30 (clean 0/30), run 43042527357",
+        "verdict": "missed as committed (the control could not fail); fixed"
+      },
+      "gate_7_media": {
+        "measured": "float64 within 1e-10; float32 3.9e-5 on CI",
+        "control": "no-displacement 30/30 (0/30), infinite 30/30 (0/30)",
+        "range": "7.9e-10 relative in the water's attenuation",
+        "verdict": "float32 line missed and set on a chord's rounding x the attenuations"
+      },
+      "gate_9_gradients": {
+        "measured": "within both lines after the re-scope",
+        "control": "held-rays 20/20 (0/20)",
+        "verdict": "missed as committed; re-scoped (see changes)"
+      },
+      "gate_10_conventions": {
+        "measured": "hand numbers to 1e-6 (offsets 1e-5); GfCamera within 1e-3 px",
+        "control": "y-up 30/30 (0/30), units 30/30 (0/30)",
+        "range": "an aperture off by 1.0e-6 relative",
+        "verdict": "held"
+      },
+      "gate_11_refusals": {
+        "control": "screw-form 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_12_bits": {
+        "measured": "script_a float64, script_a float32, ledger float64: every array equal (base a7df764, head 3eaa84f)",
+        "verdict": "held; the harness's own controls not re-run"
+      },
+      "gate_cache": {
+        "control": "key-without-cx 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_corners": {
+        "measured": "sides within 3 %; caps' outlines 13.8 %",
+        "control": "no-corners 30/30 (0/30)",
+        "verdict": "missed (3 % predicted): a cap within a pixel of edge-on; thin_cap flag added, line 15 % there"
+      },
+      "gate_appearance": {
+        "control": "stage-first 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_2_undistortion_control": {
+        "control": "first probe 4/30 with its clean arm 4/30 (blind; a flake); after the fix: run 43042527357, arm detect-g2 (its rate in the pull request)",
+        "range": "a ray turned 1.4e-14 rad caught every draw"
+      },
+      "gate_1_projection_control": {
+        "control": "k1-sign 30/30 (0/30)",
+        "range": "a k1 error of 1e-12 (the lowest probed)"
+      }
+    }
+  }
 }
