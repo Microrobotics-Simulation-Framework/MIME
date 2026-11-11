@@ -729,7 +729,7 @@ jobs:
   # tests/cli/test_completion.py, alone: the shells it runs under (zsh and fish) are installed here and on no shard, since
   # `apt-get install` took 8 to 10 minutes on a slow mirror and a shard that held it beside its tests was cut at its 20
   # minutes. The shards deselect the file (`--deselect` in their Tests step); the lane's job under its own name needs this
-  # one, so a red run here is a red required check. `scripts/install_shells.sh` ends at 800 s at worst (it prints that),
+  # one, so a red run here is a red required check. `scripts/install_shells.sh` ends at 1055 s at worst (it prints that),
   # so 30 minutes holds it, the set-up before it and the file after it with a margin. Under CI the tests fail, not skip,
   # when a shell is missing, and scripts/check_no_skips.py fails the job on any skip.
   default-completion:
