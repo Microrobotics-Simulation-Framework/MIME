@@ -12,17 +12,26 @@ from __future__ import annotations
 
 import dataclasses
 
-import jax.numpy as jnp
 import numpy as np
 import pytest
 from open_cases import draw
-from rk3_open_cases import PLANTS, STEPS, books_of, drawn, inflow_reading, point_node, scan
+from rk3_open_cases import PLANTS, STEPS, books_of, drawn, fixed_point_distance, fixed_point_pair, inflow_reading, \
+    point_node, restart_distance, scan, start_node, transverse_kick
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import Windkessel
 from mime.testing import ledger_closes, term_orders
 
 SEEDS = (0, 1, 2)
+#: The fixed point's line over the largest speed: the steady solve's tolerance, 1e-11, carried through the operator.
+FIXED_POINT_LINE = 1e-9
+#: The start's line on the fluid's transverse speed over the mean, the spike's question 7 point (a straight tube, so the
+#: flow stays axial): rounding (1e-14 measured while writing at R_p 100 R_tube; the moves taken before the penalty, 0.13).
+KICK_LINE = 1e-10
+#: A restart's line on its first step against the uninterrupted run's, over the largest speed: the consistent pressure
+#: is not the carried one by RK3's split, first order (2e-4 to 2.7e-3 on draws 0 to 2 while writing); the interior at
+#: zero against the openings' prediction 1.8e-2 to 5.2e-2.
+RESTART_LINE = 6e-3
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -82,3 +91,47 @@ def test_r8_the_windkessel_under_rk3_is_first_order(float64):
     cases = [_n_wk_sum(dataclasses.replace(draw(seed), cells=8)) for seed in SEEDS]
     report = term_orders(cases, ["windkessel"], Windkessel.orders)
     assert report.passed, report.failures()
+
+
+@pytest.mark.parametrize("plant", [None, "forces_at_gamma"])
+def test_the_open_tubes_rk3_fixed_point_is_the_steady_open_solve(float64, monkeypatch, plant):
+    """RK3's fixed point is the discrete Brinkman problem whatever dt (B2): through a narrowing, Stokes, pressures given
+    at both ends, it is the steady open solve's on the same grid to the solve's tolerance (7.1e-13 while writing, 500
+    steps); the openings' forces at the drive's weight in place of the pressure's move it by order one (0.72)."""
+    if plant:
+        PLANTS[plant](monkeypatch.setattr)
+    distance = fixed_point_distance(*fixed_point_pair(steps=500))
+    assert (distance <= FIXED_POINT_LINE) == (plant is None), distance
+
+
+@pytest.mark.parametrize("plant", [None, "unit_penalised"])
+def test_the_start_and_the_stages_moves_kick_no_transverse_flow(float64, monkeypatch, plant):
+    """Decision 14 at the open-ports spike's question 7 point (R_p 100 R_tube, a pressure inlet 30 % above its mean at
+    the start): from the start consistent with the velocity and the openings the fluid's transverse speed stays at
+    rounding (a straight tube), the openings' moves taken after the penalty's solve as the stage's own pressure
+    increment; taken before it (the unit fields divided by the penalty), the plane's solid faces damped and the solid
+    behind them not, the fluid is kicked sideways (0.13 of the mean speed while writing)."""
+    if plant:
+        PLANTS[plant](monkeypatch.setattr)
+    node, speed = start_node(100.0)
+    kick = transverse_kick(node, speed)
+    assert (kick <= KICK_LINE) == (plant is None), kick
+
+
+def test_the_zero_start_under_the_gauge_is_measured_not_assumed(float64):
+    """The record's divergence from a zero start (the spike's, at R_p 100 R_tube) does not occur here: the field sees
+    the openings' pressures relative to the gauge's reference, so the level never reaches it, and the zero start's
+    increments are the stage's own. Measured: its transverse speed stays at rounding as the consistent start's does; what
+    it costs is the restart's offset (below)."""
+    node, speed = start_node(100.0)
+    assert transverse_kick(node, speed, zero=True) <= KICK_LINE
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_a_state_given_from_outside_restarts_from_its_consistent_pressure(float64, seed):
+    """A state given from outside with its pressure unmade restarts from the pressure consistent with its velocity and
+    its openings, within the split's first-order offset of the carried pressure; the interior pressure at zero against
+    the openings' prediction (the spike's arm that diverged) is off by an order more, on every draw."""
+    node = drawn(seed, ledger=False)
+    assert restart_distance(node, "consistent") <= RESTART_LINE
+    assert restart_distance(node, "mismatched") > RESTART_LINE

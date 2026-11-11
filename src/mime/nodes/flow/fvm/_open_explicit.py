@@ -6,10 +6,14 @@ openings coupled implicitly at each of its stages (F0's B6/B7, decisions 8, 11 a
 pressures the last stage solved (the prediction), with the pressure's weight ``alpha_k dt``; its projection is the
 field's affine response at the openings (:class:`OpeningStages`): the stage's solution ``u = u_0 + sum_j m_j U_j`` and
 its pressure's increment ``phi = phi_0 + sum_j m_j phi_j``, ``U_j`` the unit field of a unit pressure at the ``j``-th
-opening that is not the gauge's reference, ``U_j = P[alpha_k dt F_j / (1 + alpha_k dt Sigma)]`` (``F_j`` its force on
-its patch's half cells, divided by the penalty's pointwise solve as the stage is, ``P`` the projector: a fast solve
-each), ``m_j`` the move of its relative pressure from the prediction, solved with the laws' rows (``port_system``, the
-implicit node's). **Each law is held at the stage's own instant**, its end ``t_n + c_{k+1} dt`` (``_rk3.STAGE_ENDS``,
+opening that is not the gauge's reference, ``U_j = P[alpha_k dt F_j]`` (``F_j`` its force on its patch's half cells,
+``P`` the projector: a fast solve each), ``m_j`` the move of its relative pressure from the prediction, solved with the
+laws' rows (``port_system``, the implicit node's). **The moves are pressure increments and are taken as the stage takes
+its own**: the prediction's forces enter before the penalty's pointwise solve, as the last pressure's gradient does, and
+the moves after it, as the increment ``phi``'s gradient does, so that the openings' pressures and the field's are one
+pressure to the scheme (a unit field divided by the penalty, the plane's solid faces damped and the solid behind them
+not, kicked the transverse velocity to 0.13 of the mean speed in the fluid in the first steps at a proximal resistance
+of 100 times the vessel's, against rounding taken this way [measured while writing, the spike's question 7 point]). **Each law is held at the stage's own instant**, its end ``t_n + c_{k+1} dt`` (``_rk3.STAGE_ENDS``,
 where the stage's solution is), its rows backward Euler over ``alpha_k dt`` (a Windkessel's capacitor stepped from the
 stage's start to its end), and advanced by the stage's solved flux and pressure: the three stages advance it by ``dt``
 (``sum alpha_k = 1``), first order in time (R-8).
@@ -142,20 +146,20 @@ class OpeningStages:
         del k
         return self.grid.port_force(self.predicted, self.rho)
 
-    def units(self, stage_dt: Any) -> list[tuple[Velocity, Array, Velocity]]:
-        """Each unit field over the stage, its pressure's increment and the field its penalty was solved at."""
-        found: list[tuple[Velocity, Array, Velocity]] = []
+    def units(self, stage_dt: Any) -> list[tuple[Velocity, Array]]:
+        """Each unit field over the stage and its pressure's increment: the projection of the unit pressure's force
+        over the stage, ``P[alpha_k dt F_j]``, taken after the penalty's solve as the stage's own pressure increment
+        is (the module)."""
+        found: list[tuple[Velocity, Array]] = []
         for force in self.unit_forces:
-            held = cast(Velocity, tuple(stage_dt * force[c] / (1.0 + stage_dt * self.sigma[c]) for c in range(3)))
-            unit, phi = projection(self.grid, held, stage_dt)
-            found.append((unit, phi, held))
+            found.append(projection(self.grid, cast(Velocity, tuple(stage_dt * force[c] for c in range(3))), stage_dt))
         return found
 
     def rows_at(self, k: int, stage_dt: Any) -> tuple[Array, Array]:
         """The laws' rows over stage ``k``: backward Euler over ``alpha_k dt`` at the stage's end."""
         return self.node.law_rows(self.parameters, self.law_state, self.time + _rk3.STAGE_ENDS[k] * self.dt, stage_dt)
 
-    def solve(self, k: int, base: Velocity, units: Sequence[tuple[Velocity, Array, Velocity]], predicted: Array,
+    def solve(self, k: int, base: Velocity, units: Sequence[tuple[Velocity, Array]], predicted: Array,
               stage_dt: Any) -> tuple[PortSolution, Array]:
         """The stage's port system on its base and unit fields, and the laws' blocks it was solved with."""
         dtype = base[0].dtype
@@ -166,23 +170,24 @@ class OpeningStages:
                                      self.reference), blocks
 
     def project(self, k: int, held: Velocity, stage_dt: Any) -> tuple[Velocity, Array, Velocity]:
-        """Stage ``k``'s projection with its openings' rows solved (the module): the solution, the pressure's increment
-        and the field the penalty was solved at, each the base's plus the unit fields' at the solved moves."""
+        """Stage ``k``'s projection with its openings' rows solved (the module): the solution and the pressure's
+        increment, each the base's plus the unit fields' at the solved moves, and the field the penalty was solved at
+        (the stage's own: the moves are increments, taken after it)."""
         grid = self.grid
         base, phi = projection(grid, held, stage_dt)
         units = self.units(stage_dt)
         solution, blocks = self.solve(k, base, units, self.predicted, stage_dt)
-        velocity, total = base, held
+        velocity = base
         superposed = grid.opening_fluxes_magnitude(base)
-        for (unit, unit_phi, unit_held), j in zip(units, self.others, strict=True):
+        for (unit, unit_phi), j in zip(units, self.others, strict=True):
             moved = solution.moved[j]
-            velocity, total = _add(velocity, unit, moved), _add(total, unit_held, moved)
+            velocity = _add(velocity, unit, moved)
             phi = phi + moved * unit_phi
             superposed = superposed + jnp.abs(moved) * grid.opening_fluxes_magnitude(unit)
         self.advance_laws(grid.opening_fluxes(velocity), grid.opening_fluxes_magnitude(velocity), solution, blocks,
                           superposed, stage_dt)
         self.predicted = solution.relative
-        return velocity, phi, total
+        return velocity, phi, held
 
     def advance_laws(self, flux: Array, flux_size: Array, solution: PortSolution, blocks: Array, superposed: Array,
                      stage_dt: Any) -> None:
@@ -256,8 +261,9 @@ class OpenExplicitFlowNode(OpenFlowNode):
             "wall's penalty implicit and pointwise in each stage, the incremental projection each stage",
             "The grid is open along z as the implicit open node's is: the planes' faces evolved half cells at half "
             "weight, the pressure's field part zero on the planes, whose pressures the openings' forces carry",
-            "Each stage takes the openings' forces with the pressure's weight alpha_k dt; their unit fields are the "
-            "stage's projections of a unit pressure's force divided by the penalty's pointwise solve (fast solves)",
+            "Each stage takes the openings' predicted forces with the pressure's weight alpha_k dt before the penalty's "
+            "pointwise solve, and their moves after it, as its own pressure increment: the unit fields are the stage's "
+            "projections of a unit pressure's force (fast solves)",
             "Each law's rows are backward Euler over its stage's alpha_k dt at the stage's end instant, the law "
             "advanced by the stage's solved flux and pressure",
             "The run starts from a pressure consistent with its velocity and its openings, made in the program",

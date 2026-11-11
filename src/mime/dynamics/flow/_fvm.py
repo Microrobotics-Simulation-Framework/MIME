@@ -8,7 +8,7 @@ belongs to (B8.1): the grid kind's ``spacing`` (or ``cells_across``, the lumen's
 stiff interior ``delta_in`` the wall's), and the domain it lives on. ``stokes`` is physical: the Stokes approximation, convection off. The fluid's properties
 are never its settings: they come from the medium's material record or ``exp.declare`` (``viscosity``, ``density``).
 The flow is driven by laws bound to the medium (``BodyForce``) and by the laws at its openings, which its step holds
-(the open box: IMEX Euler or its steady limit; RK3 with openings is a later PR's).
+(the open box: IMEX Euler, its steady limit, or RK3 holding them at each of its stages).
 
 F1a builds the Cartesian MAC grid kind, IMEX Euler and its steady limit, Jacobi, the default smooth band, on one
 domain kind, the periodic box around a straight circular tube (aligned with z, or tilted in the x-z plane along a
@@ -373,7 +373,14 @@ class FVM(Dynamics):
         "carries Darcy flow from one to the other: on two parallel tubes at the default stiff interior the outlets' "
         "cross conductance is 2.5 to 9 % of one's own (D/h 8 to 12), and a split differs from two independent "
         "tubes' by up to 1.8 %; "
-        "IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
+        "IMEX Euler, its steady limit, or RK3 (Scheme.RK3(): each law held at each of its three stages, its rows "
+        "backward Euler over the stage's alpha_k dt at the stage's end, advanced by the stage's solved flux and "
+        "pressure, so the laws are first order in time under RK3 (a Windkessel's N_WK first order in dt); the "
+        "exchange workless by construction, the law's books against the flow's to rounding every step; its unit "
+        "fields the stage's fast solves, its start a pressure consistent with the velocity and the openings, made "
+        "in the program; RK3's explicit viscosity refused past its viscous number, flow.viscous-limit; its ledger "
+        "route 1, each step judged to have dissipated, a Windkessel's storage counted with the flow's); no step "
+        "rule yet: dt is given, "
         "dt='auto' refused, the CFL checked each step (a built region's along the diagonal, the least line); float32 "
         "behind its guards: "
         f"{FLOAT32_PORTS}",

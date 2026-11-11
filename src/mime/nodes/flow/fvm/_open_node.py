@@ -222,7 +222,7 @@ class OpenFlowNode(ImplicitFlowNode):
             "The unit fields are solved in the program each step from the last, while the operator is fixed"),
         limitations=(
             "Openings on the box's two z planes only: the region builder bends each cut onto one of them",
-            "IMEX Euler or its steady limit: RK3 with openings is not built",
+            "IMEX Euler or its steady limit (RK3 with openings is OpenExplicitFlowNode's)",
             "The backflow term is explicit from the step's start, first order in the term, its sign held only while "
             "an inward face stays inward over the step (backflow_flagged); it acts on the normal component only",
         ),

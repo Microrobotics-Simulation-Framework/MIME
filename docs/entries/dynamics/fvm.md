@@ -77,8 +77,9 @@ for the region the medium fills, named by geometry (a straight tube's `start` an
 role a law gives them. The box is open along its axis, the faces on its two planes
 evolved half cells, so its projector stays exact; the step holds the openings' laws and couples them implicitly
 through its affine response (one unit field a step, solved again from the last), and the build refuses openings whose
-rows have no solution. IMEX Euler and its steady limit step it; RK3 with openings, tilted open vessels and a step
-rule for the open box come later: `dt='auto'` is refused for it, saying so, and its CFL stop names a timestep from the
+rows have no solution. IMEX Euler and its steady limit step it, and RK3 (`scheme=Scheme.RK3()`), which holds the laws
+at each of its three stages, backward Euler over the stage, so its laws are first order in time; tilted open vessels and
+a step rule for the open box come later: `dt='auto'` is refused for it, saying so, and its CFL stop names a timestep from the
 inflow's peak.
 
 Each step of the implicit schemes reports its solve: the iterations, the true residual against the tolerance, and how

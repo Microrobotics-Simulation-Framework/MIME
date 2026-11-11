@@ -305,11 +305,32 @@ def _loss_in_n_wk(setter: Setter) -> None:
     setter(Windkessel, "books", planted)
 
 
+def _gauge_off(setter: Setter) -> None:
+    """FB12's control: the gauge off, each step's relative pressures formed as differences of the absolute ones (so the
+    field's unknowns and the moves carry the absolute pressures' rounding, ``eps |level|``), the moves and the rows'
+    fluxes from them."""
+    from mime.nodes.flow.fvm._ports import PortSolution
+
+    real = OpenFlowNode.solve_ports
+
+    def solve_ports(self: Any, rows: Any, a: Any, blocks: Any, base: Any, response: Any, predicted: Any,
+                    reference: int) -> Any:
+        solution = real(self, rows, a, blocks, base, response, predicted, reference)
+        relative = solution.pressures - solution.pressures[reference]
+        moved = relative - jnp.asarray(predicted)
+        others = [j for j in range(len(rows)) if j != reference]
+        fluxes = base + (response @ jnp.stack([moved[j] for j in others]) if others else 0.0)
+        return PortSolution(solution.pressures, relative, moved, fluxes)
+
+    setter(OpenFlowNode, "solve_ports", solve_ports)
+
+
 PLANTS: dict[str, Callable[[Setter], None]] = {
     "gradient_full_cell": _gradient_full_cell, "weights_uniform": _uniform_weights,
     "laplacian_full_cell": _laplacian_full_cell, "end_full_cell": _full_cell_end, "start_full_cell": _full_cell_start,
     "inflow_scaled": _inflow_scaled, "port_gift": _port_gift, "unit_scaled": _unit(1.1), "unit_negated": _unit(-1.0),
     "interior_gift": _interior_gift, "loss_in_n_wk": _loss_in_n_wk, "kinetic_in_n_conv": _kinetic_in_n_conv,
+    "gauge_off": _gauge_off,
 }
 
 
