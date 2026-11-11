@@ -114,5 +114,13 @@
     },
     "if_wrong": "a moved bit under a scope or under the inverse's move: report the arrays and revert that site to its bare call"
   },
-  "outcomes": null
+  "outcomes": {
+    "note": "written after the probe ran; the predictions above are unchanged. Every arm's outputs are complete; seven arms (bits_a, repeat, ulp, direct_solve_in_step, direct_lstsq_in_step, direct_pinv_in_step, direct_tridiagonal_in_step) were flagged UNDERESTIMATE by the memory route (peaks 0.75 to 1.55 GiB against bounds of 0.70 to 0.89 GiB: the estimate lines named one case per arm, and the bit arms also run a base tree's interpreter beside the head's); their calibration rows are in each arm's mem_check.json.",
+    "probe_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43009936481 (probe branch deleted after)",
+    "gate_1_walk_reach": "0 problems in all 302 steps of the 43 node classes (laptop, tests/saved/test_solve_walk.py: 9 passed); the registry and the walk agree both ways; nested_in_cg 30/30 float64 on the implicit and the open steps and 30/30 float32 on the implicit step, inside_exempt 30/30 float64 and float32; clean arm 0/30 flagged each",
+    "gate_2_forms": "direct_lstsq_in_step, direct_pinv_in_step, direct_tridiagonal_in_step 30/30 on the FVM steady step and the near field's dense step in float64 and 30/30 on the FVM step in float32, clean 0/30 each; direct_solve_in_step 30/30 likewise; bypass_dense 30/30 on the joint (float64, float32) and the open step; raw_poisson 30/30 implicit and explicit (float64), implicit (float32)",
+    "gate_3_dtype": "rounded_before_dense 30/30 and rounded_after_dense 30/30 on the joint and the open step; downcast_poisson 30/30 on the implicit, explicit and open steps; downcast_dense 30/30 (joint, open), downcast_cg 30/30 (implicit, open), downcast_gmres 30/30; clean 0/30 each",
+    "gate_4_bounds": "bound:mrs_per_body (largest order 237 on the traced configuration), bound:articulated_cholesky, bound:controller_ik, bound:near_field_own_blocks 30/30 each, clean 0/30",
+    "bits": "all_equal true on 48 programs (24 programs in both dtypes), base the release tip 1a81914 against head, one job, one CPU, one BLAS thread: bits_a 30 programs (nf_dense_2, nf_dense_3, nf_gmres_2, mrs_near_field, mrs_near_field_gmres, open_tube_flow, periodic/steady/rk3_tube_flow, script_a, script_a_metered, hull_contact, mrs_point_forces, mrs_free_space, dynamic_rpm, each float64 and float32), bits_b 18 (script_a_body, rigid_explicit, rft_tube, massive_rpm, the lubricated sphere and ellipsoid, the in-graph tracked controller, and the gradient programs grad_nf_dense_2 and grad_nf_gmres_2); controls: repeat (head against itself, 6 programs) all_equal true; one ulp up in the head only: all_equal false with arrays differing in every program (ulp_nf_dense_2 21 of 41 arrays, ulp_nf_gmres_2 24 of 43, ulp_grad_nf_dense_2 1 of 2, both dtypes)"
+  }
 }
