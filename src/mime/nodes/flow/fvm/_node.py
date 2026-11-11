@@ -601,7 +601,7 @@ class ImplicitFlowNode(MimeNode):
         fast solve), times the density, averaged over the cells within the region's radius of its axis,
         interpolated linearly between the two cell layers that bracket each plane. Their difference is the drop a
         Darcy reading of the region takes, its pressure's alone (a body force on the fluid drives it too); the
-        pressure is mean-free over the box, so only differences mean anything."""
+        pressure is mean-free over the box, so only differences mean anything. Zero on a plane outside an open box."""
         remainder = (rhs[0] - applied[0], rhs[1] - applied[1], rhs[2] - applied[2])
         pressure = as_run_array(p["density"]) * grid.pressure_of(remainder)
         points = grid.cell_points(pressure.dtype)
@@ -610,16 +610,23 @@ class ImplicitFlowNode(MimeNode):
         for region in self.porous_regions(p, grid):
             axis = jnp.asarray(region.axis, dtype=pressure.dtype)
             axis = axis / jnp.sqrt(jnp.sum(axis * axis))
-            offset = points - jnp.asarray(region.centre, dtype=pressure.dtype)
-            along = jnp.sum(offset * axis, axis=-1)
-            across = jnp.sum(offset * offset, axis=-1) - along * along
-            # Within the radius by the squared distance (no root, so no derivative is undefined on the axis).
-            within = ramp((region.radius * region.radius - across) / (2.0 * region.radius), grid.spacing)
             faces = []
             for side in (-1.0, 1.0):
                 plane = side * (0.5 * region.length + half)
-                weight = within * jnp.maximum(1.0 - jnp.abs(along - plane) / grid.spacing, 0.0)
-                faces.append(jnp.sum(weight * pressure) / jnp.sum(weight))
+                weight = jnp.zeros_like(pressure)
+                for shift in region.images:  # the plane wherever the box repeats it
+                    offset = points - jnp.asarray(shift, dtype=pressure.dtype) - jnp.asarray(region.centre,
+                                                                                               dtype=pressure.dtype)
+                    along = jnp.sum(offset * axis, axis=-1)
+                    across = jnp.sum(offset * offset, axis=-1) - along * along
+                    # Within the radius by the squared distance (no root, so no derivative is undefined on the axis).
+                    within = ramp((region.radius * region.radius - across) / (2.0 * region.radius), grid.spacing)
+                    weight = weight + within * jnp.maximum(1.0 - jnp.abs(along - plane) / grid.spacing, 0.0)
+                total = jnp.sum(weight)
+                # Zero where the plane lies outside an open box (a region reaching an opening, whose own pressure
+                # is then the reading).
+                faces.append(jnp.where(total > 0.0, jnp.sum(weight * pressure) / jnp.where(total > 0.0, total, 1.0),
+                                       0.0))
             rows.append(jnp.stack(faces))
         return jnp.stack(rows)
 

@@ -274,6 +274,11 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("wall kind", "tube", "0.1.0"): NodeCase(
         no_node="a wall kind: a solver's node evaluates the correction the solver registers for it (the "
                 "MRS node's, a read of the corrected table)"),
+    ("geometry", "plug", "0.1.0"): NodeCase(
+        no_node="a geometry kind: the flow's node that holds a porous region reads its centre, axis, radius and length"),
+    ("interaction", "darcy", "0.1.0"): NodeCase(
+        no_node="held in its flow's step: the flow's node, fvm's, takes the porous region at construction from its "
+                "registration, its gates in tests/flow/test_porous_plug.py"),
     ("geometry", "plane", "0.1.0"): NodeCase(
         no_node="a geometry kind: the nodes that read its region and direction hold their parameters"),
     ("geometry", "tube_tree", "0.1.0"): NodeCase(

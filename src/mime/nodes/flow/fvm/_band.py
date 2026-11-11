@@ -221,15 +221,20 @@ def plug_depth(points: Array, centre: Any, axis: Any, radius: Any, length: Any) 
     return -(outside + jnp.minimum(jnp.maximum(side, end), 0.0))
 
 
+#: The least fluid share of a face a porous region's resistivity is divided by (:func:`porous_field`): where a face
+#: holds less fluid than this (deep in the wall's band and its stiff interior), the region's resistivity is held at
+#: ``1 / (FLUID_FLOOR K)``. A declaration, not a fit: at 1e-1, 1e-2 and 1e-3 a plug filling a tube read its series
+#: flux within 2.1 %, 1.6 % and 1.5 % at D/h 16, the iterations rising at 1e-3 (the first step's measurement).
+FLUID_FLOOR = 1e-2
+
+
 def fluid_share(inside: Array, fluid: Array) -> Array:
     """A porous region's share of the fluid on a face, ``c / max(c, f)``: its own indicator ``c`` over the face's
-    fluid ``f = 1 - chi`` (the wall's), one wherever it covers the fluid there (in the wall's solid too), zero where
-    it does not reach. A plug against the wall then fills the fluid of the wall's band as the fluid fills it, so its
-    Darcy flux is carried by the fluid the drive acts on and not by the band's whole width; away from a wall it is its
-    own indicator (the first step's measurement of the forms)."""
-    larger = jnp.maximum(inside, fluid)
-    held = larger > 0.0
-    return jnp.where(held, inside / jnp.where(held, larger, 1.0), 0.0)
+    fluid ``f = 1 - chi`` (the wall's, held at least :data:`FLUID_FLOOR`, so the share falls to zero with ``c``
+    continuously where the face holds no fluid), one wherever it covers the fluid there (in the wall's solid too). A
+    plug against the wall then fills the fluid of the wall's band as the fluid fills it; away from a wall it is its own
+    indicator (the first step's measurement of the forms)."""
+    return inside / jnp.maximum(inside, jnp.maximum(fluid, FLUID_FLOOR))
 
 
 def wall_reach(phi: Array) -> Array:
@@ -239,11 +244,6 @@ def wall_reach(phi: Array) -> Array:
     return jnp.maximum(phi, 0.0)
 
 
-#: The least fluid share of a face a porous region's resistivity is divided by (:func:`porous_field`): where a face
-#: holds less fluid than this (deep in the wall's band and its stiff interior), the region's resistivity is held at
-#: ``1 / (FLUID_FLOOR K)``. A declaration, not a fit: at 1e-1, 1e-2 and 1e-3 a plug filling a tube read its series
-#: flux within 2.1 %, 1.6 % and 1.5 % at D/h 16, the iterations rising at 1e-3 (the first step's measurement).
-FLUID_FLOOR = 1e-2
 
 
 def porous_field(region: PorousRegion, points: Array, chi: Array, phi: Array, width: Any) -> Array:
