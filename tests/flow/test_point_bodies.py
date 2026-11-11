@@ -327,9 +327,11 @@ def test_the_run_dtype_is_the_fixtures(dtype):
 
 
 def _metered(radius: float, dt: float, ratio: float):  # noqa: ANN202
+    """Metered, lagged (declared): gate 8 and gate 13 are the lagged scheme's (one pass has its own,
+    ``test_one_elimination.py``)."""
     from mime.observations import EnergyLedger
 
-    exp = point_experiment(radius=radius, dt=dt, mass_ratio=ratio)
+    exp = point_experiment(radius=radius, dt=dt, mass_ratio=ratio, coupling="lagged")
     exp.observe(EnergyLedger())
     return exp.build().run(ms(4.0))
 
@@ -382,7 +384,8 @@ def test_the_drag_nodes_gift_count_sees_a_planted_gift_on_every_draw_and_none_on
             if planted:
                 _wrap_stepped(_gift_of(share))
             try:
-                result = point_experiment(radius=radius, dt=2e-4, mass_ratio=ratio).build().run(ms(4.0))
+                result = point_experiment(radius=radius, dt=2e-4, mass_ratio=ratio,
+                                          coupling="lagged").build().run(ms(4.0))
             finally:
                 _wrap_stepped(None)
             counts[planted] = float(np.asarray(result.final["drag:ball"]["cluster_gift_steps"]))
@@ -441,8 +444,9 @@ def _drag_dissipation(stepped):  # noqa: ANN001, ANN202 - the PR's booking: R0 |
 
 def test_a_derivative_through_the_exchange_law_matches_a_central_difference(float64):
     """Gate 9: the body's axial position after 10 steps in the fluid's viscosity (the flow's speed and the drag both
-    move with it), forward mode by ``Study.gradient``, against a central difference of two runs. The plant holds the
-    gathered flow out of the derivative (``stop_gradient`` on the reading), which must fail it."""
+    move with it), forward mode by ``Study.gradient``, against a central difference of two runs, lagged (declared; one
+    pass has its own, ``test_one_elimination.py``). The plant holds the gathered flow out of the derivative
+    (``stop_gradient`` on the reading), which must fail it."""
     import jax
 
     from mime.study import Study, along
@@ -454,7 +458,7 @@ def test_a_derivative_through_the_exchange_law_matches_a_central_difference(floa
     if plant("GRADIENT"):
         _hold_reading(jax.lax.stop_gradient)
     try:
-        exp = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0)
+        exp = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0, coupling="lagged")
         result = Study(exp).sweep(along({"water.viscosity": [Pa_s(1e-3)]}), duration=ms(2.0)).gradient(
             position, wrt=["water.viscosity"], mode="forward",
             acknowledged={"water.flow": "the derivative is in the viscosity, which the FVM's gradient gate checks "
@@ -465,7 +469,7 @@ def test_a_derivative_through_the_exchange_law_matches_a_central_difference(floa
     step = 1e-3 * WATER_MU
     ends = []
     for mu in (WATER_MU + step, WATER_MU - step):
-        moved = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0, viscosity=mu)
+        moved = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0, viscosity=mu, coupling="lagged")
         ends.append(float(moved.build().run(ms(2.0)).final["ball"]["pose"][2]))
     difference = (ends[0] - ends[1]) / (2.0 * step)
     print(f"F3 gate 9: derivative {derivative:.10g}, central difference {difference:.10g}, relative "
@@ -515,7 +519,7 @@ def _refused(exp) -> set[str]:  # noqa: ANN001
 def test_the_stokes_rung_refuses_a_body_that_is_no_sphere_a_medium_with_no_grid_and_rk3(float64):
     """The plan's refusals: a body whose hull is no sphere (drag.stokes-sphere), a medium with no flow on a grid (the
     rung's support row, support.unsupported), a flow stepped by RK3 (drag.stokes-scheme) and an open vessel's flow
-    (flow.open-exchange); the control, gate 3's experiment, plans."""
+    (flow.open-exchange, for a body lagged there); the control, gate 3's experiment, plans."""
     assert "drag.stokes-sphere" in _refused(point_experiment(hull="capsule"))
     assert "support.unsupported" in _refused(point_experiment(flow=False))
     assert "drag.stokes-scheme" in _refused(point_experiment(dt=1e-5, scheme="rk3"))
@@ -534,8 +538,8 @@ def test_a_tube_trees_flow_refuses_an_exchange_partner_by_name(float64, one_way)
 
 
 def _open_vessel():  # noqa: ANN202
-    """Gate 3's experiment with the flow's vessel open at its ends (an inflow and a Windkessel at them)."""
-    return point_experiment(opened=True)
+    """Gate 3's experiment, lagged, with the flow's vessel open at its ends (an inflow and a Windkessel at them)."""
+    return point_experiment(opened=True, coupling="lagged")
 
 
 def _shared_lines(one_way: bool) -> tuple[dict[str, str], float]:

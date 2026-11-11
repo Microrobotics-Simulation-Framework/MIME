@@ -162,6 +162,7 @@ drag.rft-coefficients         user
 drag.rft-indefinite           user
 drag.rft-wall-range           user
 drag.stokes-floor             user
+drag.stokes-one-pass          user
 drag.stokes-scheme            user
 drag.stokes-size              user
 drag.stokes-sphere            user
@@ -202,6 +203,7 @@ flow.memory                   user
 flow.no-openings              user
 flow.open-axis                user
 flow.open-exchange            user
+flow.open-exchange-axis       user
 flow.open-scheme              user
 flow.opening-law              user
 flow.opening-unknown          user

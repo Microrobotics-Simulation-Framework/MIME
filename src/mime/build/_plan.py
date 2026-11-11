@@ -378,12 +378,12 @@ class ResolvedRegistration:
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     #: Where the subject is a surface (a flow's opening): its shape's parameters, as its geometry gives them.
     subject_parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
-    #: The values the registering law gives the receiving dynamics (``Registration.parameters``).
-    parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     #: Where the subject is several surfaces (a law over several openings, ``subject`` their names joined by ``+``):
     #: each, and each one's parameters, in the order written; a single surface's alone otherwise.
     subjects: tuple[str, ...] = ()
     subjects_parameters: tuple[Mapping[str, Magnitude], ...] = ()
+    #: The values the registering law gives the receiving dynamics (``Registration.parameters``).
+    parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
 
     @property
     def surfaces(self) -> tuple[str, ...]:
@@ -808,6 +808,29 @@ class _Planner:
         return {role: approach for role, name in bindings.items() if roles[role] is RoleKind.BODY and media
                 for approach in (self.approach_of(name, media[0]),) if approach is not None}
 
+    def confining(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, tuple[str, ...]]:
+        """By each body role an entry binds, the ids of the laws attached in the experiment that hold that body off a
+        surface (a law whose class names that setting, ``Interaction.holds_off``: a contact, whose rule projects the
+        body's step), for ``PlanContext.confined``; a body none confines has no entry."""
+        found: dict[str, tuple[str, ...]] = {}
+        for role, name in bindings.items():
+            if roles[role] is not RoleKind.BODY:
+                continue
+            held: list[str] = []
+            for declaration in self.declarations:
+                if not isinstance(declaration, Attachment):
+                    continue
+                law_cls = type(cast(object, declaration.law))
+                law_roles = cast(Mapping[str, RoleKind], getattr(law_cls, "roles", {}))
+                if not isinstance(getattr(law_cls, "holds_off", None), str):
+                    continue
+                bound = {r: binding_name(value) for r, value in declaration.bindings.items()}
+                if name in (bound.get(r) for r, kind in law_roles.items() if kind is RoleKind.BODY):
+                    held.append(entry_id(cast(type[Interaction], law_cls), declaration.bindings))
+            if held:
+                found[role] = tuple(sorted(held))
+        return found
+
     def approach_of(self, body: str, medium: str) -> float | None:
         """The least margin (m) by which a law attached in the experiment holds ``body`` off a surface of the structure
         whose region ``medium`` fills (a law whose class names that setting, ``Interaction.holds_off``): the body's
@@ -1005,10 +1028,16 @@ class _Planner:
         alone = sorted(other.bindings["body"] for other in plans
                        if other is not plan and other.bindings["body"] not in scattering)
         named = ", ".join(repr(name) for name in scattering)
+
+        def held(other: EntryPlan) -> bool:
+            return other.plan is not None and any(r.kind == vocabulary.ONE_PASS_PARTNER for r in other.plan.registrations)
+
+        together = held(plan) and all(held(other) for other in stokes if other.bindings["body"] in scattering)
         line = f"{body!r}'s drag reads the medium {medium!r}'s solved flow, " + (
             f"into which {named} {'scatters its reaction' if len(scattering) == 1 else 'scatter their reactions'}: "
-            f"the bodies interact through the grid, resolved to the exchange kernel's width and read a step after "
-            f"they are scattered (lagged, no joint step)" if scattering
+            f"the bodies interact through the grid, resolved to the exchange kernel's width, " + (
+                "solved together within the step (one pass: the flow's one elimination closes every body's row)"
+                if together else "read a step after they are scattered (lagged, no joint step)") if scattering
             else "into which no other body in it scatters a reaction")
         if alone:
             line += f"; {', '.join(repr(name) for name in alone)} in the medium changes nothing of it"
@@ -1904,12 +1933,6 @@ class _Planner:
                         f"name one of its {noun}s, `<structure>.<{noun}>`. {did_you_mean(part, candidates)}")
             return None
         return path
-
-    @property
-    def metered(self) -> bool:
-        """Whether the experiment observes its energy: an observation that meters it is declared (``EnergyLedger``)."""
-        return any(isinstance(d, ObservationDeclaration) and getattr(type(d.observation), "meters_energy", False)
-                   for d in self.declarations)
 
     def exchange_frame_of(self, medium: str) -> ExchangeFrame | None:
         """The exchange frame of the field medium ``medium`` carries, where its dynamics gives one (SF-4: what a field
@@ -3026,7 +3049,7 @@ class _Planner:
                      for frame in (self.exchange_frame_of(name),) if frame is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
                               hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided,
-                              exchanges=exchanges, metered=self.metered)
+                              exchanges=exchanges, confined=self.confining(cls.roles, bindings))
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -3400,8 +3423,9 @@ class _Planner:
         dynamics.registrations.append(
             ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
                                  _plain_settings(plan.entry, plan.settings), each[0] if each else {},
-                                 subjects if len(subjects) > 1 else (), tuple(each) if len(subjects) > 1 else (),
-                                 dict(registration.parameters)))
+                                 subjects=subjects if len(subjects) > 1 else (),
+                                 subjects_parameters=tuple(each) if len(subjects) > 1 else (),
+                                 parameters=dict(registration.parameters)))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()

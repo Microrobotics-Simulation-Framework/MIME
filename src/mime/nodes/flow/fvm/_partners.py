@@ -47,9 +47,11 @@ from mime.nodes.flow.fvm._ports import PortSolution, RowKind, opening_rows, open
 
 #: A point body's deliveries into its field: its force's three components, then its couple's three.
 DELIVERIES = 6
-#: A partner's solution as the flow holds it, a row a body: its force and couple (N; N m), its twist as the field
-#: closed it (m/s; rad/s) and its reading at the solution (m/s; rad/s), ``G_F u'`` and ``Omega'``.
-SOLUTION = ("force", "twist", "reading")
+#: A partner's solution as the flow holds it (``flow.partner_solution``), a row a body: its force and couple (N; N m),
+#: its twist as the field closed it (m/s; rad/s) and its kernel's reading of the solved field (:func:`kernel_reading`).
+SOLUTION = ("force", "twist", "kernel")
+#: The columns of a row of the solution.
+SOLUTION_COLUMNS = 2 * DELIVERIES + 9
 
 
 class BodyPartner(NamedTuple):
@@ -75,7 +77,7 @@ def delivered(grid: MACGrid, held: Sequence[ExchangeStencil], values: Array, del
     """The force density (N/m^3) on each face set of a body's force and couple ``values`` (six): ``S f + L S (c f)``
     and the couple's dipole, the transposes of :func:`read`'s."""
     force, couple = values[:3], values[3:]
-    out = []
+    out: list[Array] = []
     for component in range(3):
         stencil = held[component]
         density = scatter(grid, component, force[component:component + 1], stencil, "average")
@@ -84,15 +86,21 @@ def delivered(grid: MACGrid, held: Sequence[ExchangeStencil], values: Array, del
     return (out[0], out[1], out[2])
 
 
-def read(grid: MACGrid, held: Sequence[ExchangeStencil], velocity: Velocity, reading: Any) -> Array:
-    """A body's reading of ``velocity`` (six): ``G u + c G L u`` on each face set (m/s), then the fluid's rotation
-    ``(1/2) G curl u`` (rad/s), each face set's share summed."""
-    linear = [gather(grid, component, velocity[component], held[component], "average")[0]
-              + reading * gather(grid, component, velocity[component], held[component], "laplacian")[0]
-              for component in range(3)]
+def kernel_reading(grid: MACGrid, held: Sequence[ExchangeStencil], velocity: Velocity) -> Array:
+    """The kernel's reading of ``velocity`` (nine): its average ``G u`` and its Laplacian's ``G L u`` on each face set
+    (m/s; 1/(m s)), then the fluid's rotation ``(1/2) G curl u`` (rad/s), each face set's share summed."""
+    average = [gather(grid, component, velocity[component], held[component], "average")[0] for component in range(3)]
+    laplacian = [gather(grid, component, velocity[component], held[component], "laplacian")[0] for component in range(3)]
     rotation = sum((gather(grid, component, velocity[component], held[component], "curl")[0] for component in range(3)),
                    start=jnp.zeros(3, dtype=velocity[0].dtype))
-    return jnp.concatenate([jnp.stack(linear), rotation])
+    return jnp.concatenate([jnp.stack(average), jnp.stack(laplacian), rotation])
+
+
+def read(grid: MACGrid, held: Sequence[ExchangeStencil], velocity: Velocity, reading: Any) -> Array:
+    """A body's reading of ``velocity`` (six): ``G u + c G L u`` on each face set (m/s), then the fluid's rotation
+    ``(1/2) G curl u`` (rad/s): the transposes of :func:`delivered`'s."""
+    kernel = kernel_reading(grid, held, velocity)
+    return jnp.concatenate([kernel[:3] + reading * kernel[3:6], kernel[6:]])
 
 
 class Openings(NamedTuple):
@@ -111,8 +119,8 @@ class Openings(NamedTuple):
 
 class Partnered(NamedTuple):
     """What the step's one elimination solved: the field at the solution and its base, every unit field (the openings'
-    then each body's six), every partner's deliveries, each body's twist as its row closed it, its reading at the
-    solution, the load and response it is handed (``F = load - resistance V'``), each body's solved force per unit mass
+    then each body's six), every partner's deliveries, each body's twist as its row closed it, its law's reading and
+    its kernel's reading (:func:`kernel_reading`) at the solution, the load and response it is handed (``F = load - resistance V'``), each body's solved force per unit mass
     on the face sets, the openings' answer (``None`` without openings) and the step's solves' report."""
 
     solved: Velocity
@@ -121,6 +129,7 @@ class Partnered(NamedTuple):
     deliveries: Array
     twists: Array
     readings: Array
+    kernels: Array
     handed_resistance: Array
     handed_load: Array
     forces: tuple[Velocity, ...]
@@ -176,8 +185,8 @@ def partnered_step(one: Callable[[Velocity, Velocity | None], tuple[Velocity, Ar
     first = count - DELIVERIES * len(bodies)
     for b, (body, stencil) in enumerate(zip(bodies, held, strict=True)):
         start = first + DELIVERIES * b
-        readings = jnp.stack([read(grid, stencil, unit, body.reading) for unit in units], axis=1)
-        matrix = readings.at[:, start:start + DELIVERIES].add(jnp.diag(body.law))
+        responses = jnp.stack([read(grid, stencil, unit, body.reading) for unit in units], axis=1)
+        matrix = responses.at[:, start:start + DELIVERIES].add(jnp.diag(body.law))
         partners.append(PartnerRows(matrix, -read(grid, stencil, base, body.reading),
                                     jnp.eye(DELIVERIES, dtype=dtype)))
     eliminated = exchange_system(partners)
@@ -198,10 +207,11 @@ def partnered_step(one: Callable[[Velocity, Velocity | None], tuple[Velocity, Ar
     for j, unit in enumerate(units):
         solved = _add(solved, unit, deliveries[j])
     twists = jnp.reshape(free, (len(bodies), DELIVERIES))
-    readings = []
-    forces = []
-    resistances = []
-    loads = []
+    readings: list[Array] = []
+    kernels: list[Array] = []
+    forces: list[Velocity] = []
+    resistances: list[Array] = []
+    loads: list[Array] = []
     for b, (body, stencil) in enumerate(zip(bodies, held, strict=True)):
         cols = slice(first + DELIVERIES * b, first + DELIVERIES * (b + 1))
         own_cols = slice(DELIVERIES * b, DELIVERIES * (b + 1))
@@ -209,7 +219,9 @@ def partnered_step(one: Callable[[Velocity, Velocity | None], tuple[Velocity, Ar
         force = deliveries[cols]
         resistances.append(response)
         loads.append(-(force - response @ twists[b]))
-        readings.append(read(grid, stencil, solved, body.reading))
+        kernel = kernel_reading(grid, stencil, solved)
+        kernels.append(kernel)
+        readings.append(jnp.concatenate([kernel[:3] + body.reading * kernel[3:6], kernel[6:]]))
         forces.append(_scaled(delivered(grid, stencil, force, body.delivery), 1.0 / density))
     solution = None
     if openings is not None and opened is not None:
@@ -220,9 +232,10 @@ def partnered_step(one: Callable[[Velocity, Velocity | None], tuple[Velocity, Ar
     empty = jnp.zeros((0, DELIVERIES), dtype=dtype)
     return Partnered(solved, base, tuple(units), deliveries, twists,
                      jnp.stack(readings) if readings else empty,
+                     jnp.stack(kernels) if kernels else jnp.zeros((0, 9), dtype=dtype),
                      jnp.stack(resistances) if resistances else jnp.zeros((0, DELIVERIES, DELIVERIES), dtype=dtype),
                      jnp.stack(loads) if loads else empty, tuple(forces), solution, total)
 
 
-__all__ = ["DELIVERIES", "SOLUTION", "BodyPartner", "Openings", "Partnered", "combined", "delivered", "partnered_step",
-           "read", "stencils"]
+__all__ = ["DELIVERIES", "SOLUTION", "SOLUTION_COLUMNS", "BodyPartner", "Openings", "Partnered", "combined", "delivered", "kernel_reading",
+           "partnered_step", "read", "stencils"]

@@ -333,8 +333,9 @@ class PlanContext:
         default_factory=dict[str, Mapping[str, tuple[str, ...]]])
     #: By each medium role, the exchange frame of the field its medium carries that takes exchange deliveries (SF-4).
     exchanges: Mapping[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
-    #: Whether the experiment observes its energy (an observation that meters it is attached: ``EnergyLedger``).
-    metered: bool = False
+    #: By each body role, the ids of the laws attached in the experiment that hold the body off a surface (a contact:
+    #: the body's step is then projected, not linear in its twist); a body none confines has no entry.
+    confined: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
@@ -455,6 +456,10 @@ class BuildContext:
     #: By each medium role of a law exchanging with its field, the highest frequency (Hz) of the drives bound to that
     #: medium, where one is pulsatile: a point body's Basset number is read from it.
     frequencies: Mapping[str, float] = field(default_factory=dict[str, float])
+    #: By each medium role of a law the medium's field holds in its one elimination (a one-pass exchange partner), the
+    #: row of that field's partners' solution that is its own (the field holds its partners in the order of their ids)
+    #: and how many rows it has.
+    partner_rows: Mapping[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""

@@ -102,7 +102,8 @@ from mime.registry import (
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
 from mime.vocabulary import BACKGROUND_LOAD, EXCHANGE_PARTNER, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
-    FLOW_FACES, FLOW_PARTNERS, POSE, RESISTANCE, TWIST, Capability, Definiteness, EnergyClass
+    FLOW_FACES, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, ONE_PASS_PARTNER, POSE, RESISTANCE, STEP_ROW, TWIST, Capability, \
+    Definiteness, EnergyClass
 from mime.walls import RESERVED
 
 if TYPE_CHECKING:
@@ -1492,6 +1493,14 @@ class Drag(UncoupledDrag):
         "one_way": convention(PHYSICAL, "two-way: on the stokes rung the drag's and the couple's reactions are "
                                         "scattered back onto the medium's grid; one_way=True is the declared "
                                         "approximation, its reactions not delivered"),
+        "coupling": convention(NUMERICAL, "on the stokes rung, none: one pass wherever the body's own step is linear in "
+                                          "its twist (the flow's one elimination holds the drag law and the body's "
+                                          "step's row, its force, couple and twist solved with the field within the "
+                                          "step: exact with IMEX Euler, the exchange workless), lagged where it is not "
+                                          "(a contact in the body's step, a dynamics that publishes no step row), the "
+                                          "build reporting which and why; coupling='lagged' the declared cheaper route "
+                                          "(the fluid's step takes the force of the step before; exact by default, the "
+                                          "cheaper approximation declared)"),
         "kernel_width": convention(NUMERICAL, "on the stokes rung, none: the exchange kernel's width the narrowest of "
                                               "the ladder (WIDTHS) at or above the rule's least width whose coupled "
                                               "one-step margins clear the floor at the run's values (the validity line "
@@ -1629,12 +1638,19 @@ class Drag(UncoupledDrag):
         f"force's and the couple's, clear the floor {FLOOR:g} at the run's values: refused below it). The floor is the "
         f"one definiteness rule's for the affine (one-pass) scheme, whose one-step resistance was within -0.42..+0.61 "
         f"of the exact unsteady Stokes sphere's (drag, Basset and added mass) above it over r = nu dt/h^2 of 0.03 to 30 "
-        f"[measured, free box, sigma = h and 1.5h; that scheme is a later PR's]. The lagged scheme this rung steps by "
-        f"reads its own field a step late, so its first step resists R0 (1 + lambda^2/9) against the exact R0 (1 + "
-        f"lambda + lambda^2/9), lambda = a/sqrt(nu dt): down to -0.60 at lambda = 3 [derived]; from rest under a step "
-        f"force at bodies just above the floor its largest error was 0.06 to 0.28 of the terminal speed, 0.01 to 0.02 "
-        f"at the end [measured by the rung's refuting review, a of h to 4h, r 0.03 to 3, near-massless and neutral]: for this "
-        f"scheme the floor is forward-compatible, not an accuracy bound. The missing lambda is the Basset force, which "
+        f"[measured, free box, sigma = h and 1.5h]. One pass is the default wherever the body's own step is linear in "
+        f"its twist: the flow's one elimination holds the drag law and the body's step's row (its stepping mass, its "
+        f"free load and its other laws' loads and resistances), so its force, couple and twist are the step's own "
+        f"(exact with IMEX Euler: the coupled step against a monolithic solve of the field, the openings and the "
+        f"bodies agrees to the solve's tolerance) and the exchange is workless. Lagged is taken where it is not linear "
+        f"(a contact projects the body's step; a dynamics that publishes no step row), the build saying why, and is "
+        f"the declared cheaper route (coupling='lagged'); an open vessel's flow holds its bodies one pass only (a "
+        f"lagged body there is refused). The lagged scheme reads its own field a step late, so its first step resists "
+        f"R0 (1 + lambda^2/9) against the exact R0 (1 + lambda + lambda^2/9), lambda = a/sqrt(nu dt): down to -0.60 at "
+        f"lambda = 3 [derived]; from rest under a step force at bodies just above the floor its largest error was 0.06 "
+        f"to 0.28 of the terminal speed, 0.01 to 0.02 at the end [measured by the rung's refuting review, a of h to 4h, "
+        f"r 0.03 to 3, near-massless and neutral]: for that scheme the floor is forward-compatible, not an accuracy "
+        f"bound. The missing lambda is the Basset force, which "
         f"no memory law holds: the build reports a sqrt(omega/nu) of a drive's frequency against the line 0.3 (against "
         f"Stokes drag the history force scales as it), and sees no transient and no body driven by a field in still "
         f"fluid. The drag and the couple read the flow with the kernel's steady self-field removed (the grid's "
@@ -1650,8 +1666,9 @@ class Drag(UncoupledDrag):
         "no torque from the fluid's rotational acceleration",
         f"stokes: near a wall the point model holds to {WALL_LINE:g} radius (flagged within it); the particle "
         f"Reynolds number by the slip is flagged above {REYNOLDS_LINE:g}; point bodies in one medium interact through "
-        f"its solved flow only, each one's scattered reaction read by the others a step later (lagged: no joint step "
-        f"for several bodies), resolved to the kernel's width, and where several share a medium the build reports each "
+        f"its solved flow only (one pass: every body's row closed together in the flow's step, each handed its own "
+        f"response with the others' twists at their solved values; lagged: each one's scattered reaction read by the "
+        f"others a step later), resolved to the kernel's width, and where several share a medium the build reports each "
         f"one's nearest starting separation in radii and their volume fraction in the grid's box (reported, not "
         f"judged). Two bodies' interaction against Rotne and Prager's far field in a free box (a = h = sigma, 4 and 8 "
         f"radii apart, along and across their line of centres) was within 0.2 to 2.1 % of the cross term at 48 cells "
@@ -1743,8 +1760,12 @@ class Drag(UncoupledDrag):
     sampling: ForceSampling | None = None
     near_field: NearField | None = None
     one_way: bool | None = None
+    coupling: str | None = None
     kernel_width: float | None = None
     self_history: str | None = None
+
+    #: The exchange's schemes on the stokes rung: one pass (the default where the body's step is linear) and lagged.
+    COUPLINGS: ClassVar[tuple[str, ...]] = ("one_pass", "lagged")
 
     @classmethod
     def Stokes(cls, **settings: Any) -> Self:  # noqa: N802 - a rung's alias reads as a class
@@ -1773,7 +1794,7 @@ class Drag(UncoupledDrag):
             found.append(f"sampling= is a setting of the mrs rung's force points, and the {self.rung} rung reads none")
         if self.rung != "stokes":
             found += [f"{name}= is a setting of the stokes rung's exchange with a grid, and the {self.rung} rung "
-                      f"reads none" for name in ("one_way", "kernel_width", "self_history")
+                      f"reads none" for name in ("one_way", "coupling", "kernel_width", "self_history")
                       if getattr(self, name) is not None]
         else:
             found += [f"{name}= is a setting of another rung, and the stokes rung reads none"
@@ -1791,6 +1812,14 @@ class Drag(UncoupledDrag):
                 found.append(f"kernel_width={width!r} is the exchange kernel's width in the grid's cells, a number from "
                              f"1 to {self.WIDTHS[-1]:g}: write kernel_width=1.5, or leave it out for the narrowest that "
                              f"clears the floor")
+            scheme = cast(object, self.coupling)
+            if scheme is not None and scheme not in self.COUPLINGS:
+                found.append(f"coupling={scheme!r} is one of {list(self.COUPLINGS)}: leave it out for one pass where "
+                             f"the body's step is linear (lagged, with its reason, where it is not), or write "
+                             f"coupling='lagged' for the cheaper route")
+            if scheme is not None and self.one_way:
+                found.append(f"coupling={scheme!r} is the two-way exchange's scheme, and one_way=True delivers "
+                             f"nothing to the flow: leave one of them out")
             route = cast(object, self.self_history)
             if route is not None and route not in HISTORY_ROUTES:
                 found.append(f"self_history={route!r} is one of {list(HISTORY_ROUTES)}: leave it out for the exact "
@@ -1808,23 +1837,80 @@ class Drag(UncoupledDrag):
         return held if isinstance(held, NearField) else NearField()
 
     def _stokes_plan(self, ctx: PlanContext) -> Plan:
-        """The stokes rung's plan: the body's pose and twist and the medium's face sets read, the drag, the couple and
-        their Maxey-Riley part delivered to the body, the scatters to the medium's exchange (unless one-way), the body
-        registered with the medium's field as an exchange partner."""
+        """The stokes rung's plan, by its exchange's scheme (:meth:`coupling_of`). Lagged (or one way): the body's pose
+        and twist and the medium's face sets read, the drag, the couple and their Maxey-Riley part delivered to the
+        body, the scatters to the medium's exchange (unless one-way), the body registered with the medium's field as an
+        exchange partner. One pass: the body registered with the field as a partner it holds in its one elimination
+        (``ONE_PASS_PARTNER``: the field reads the body's pose and own step's row, and returns the drag's resistance and
+        load into the body under this law's id); the body's pose and twist and the field's partners' solution read, the
+        Maxey-Riley part alone delivered."""
         problems = self._stokes_problems(ctx)
+        scheme, reason = self.coupling_of(ctx)
+        frame = ctx.exchanges.get("medium")
+        if self.coupling == "one_pass" and scheme == "lagged":
+            problems.append(Problem("drag.stokes-one-pass", f"coupling='one_pass' is written, and {reason}",
+                                    "leave coupling= out (the build then takes the lagged exchange and reports why), "
+                                    "or take the contact off the body"))
+        added = {"added_resistance": Delivery("body", RESISTANCE.name),
+                 "added_load": Delivery("body", BACKGROUND_LOAD.name)}
+        values = {"viscosity": Value("medium", "viscosity"), "density": Value("medium", "density")}
+        if scheme == "one_pass":
+            hull = ctx.geometry(of="body")
+            radius = float(hull.kind.enclosing_radius(hull.settings)) if hull is not None else 0.0
+            written = {"kernel_width": float(self.kernel_width)} if self.kernel_width is not None else {}
+            return Plan(reads={"pose": Read("body", POSE.name), "twist": Read("body", TWIST.name),
+                               "partner": Read("medium", FLOW_PARTNER_SOLUTION.name)},
+                        delivers=added, values=values,
+                        registrations=(Registration("medium", FLOW_PARTNERS.name, ONE_PASS_PARTNER, "body",
+                                                    reads={"pose": POSE.name, "step_row": STEP_ROW.name},
+                                                    returns={"resistance": RESISTANCE.name,
+                                                             "background_load": BACKGROUND_LOAD.name},
+                                                    parameters={"radius": radius, **written}),),
+                        problems=tuple(problems))
+        if frame is not None and not frame.lagged:
+            body = ctx.bindings["body"]
+            problems.append(Problem(
+                "flow.open-exchange", f"{body} takes the lagged exchange ({reason}), and an open vessel's flow holds "
+                                      f"its exchange partners in its one elimination only, which takes no lagged one",
+                "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...)); or, where the body's step can "
+                "be held, leave coupling= and one_way= out and take the contact off it"))
+            return Plan(reads={"pose": Read("body", POSE.name), "twist": Read("body", TWIST.name)}, values=values,
+                        problems=tuple(problems))
         delivers = {"resistance": Delivery("body", RESISTANCE.name),
-                    "background_load": Delivery("body", BACKGROUND_LOAD.name),
-                    "added_resistance": Delivery("body", RESISTANCE.name),
-                    "added_load": Delivery("body", BACKGROUND_LOAD.name)}
+                    "background_load": Delivery("body", BACKGROUND_LOAD.name), **added}
         if not self.one_way:
             delivers.update({f"exchange_{axis}": Delivery("medium", interface.name) for axis, interface in
                              zip("xyz", (FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z), strict=True)})
         return Plan(reads={"pose": Read("body", POSE.name), "twist": Read("body", TWIST.name),
                            "faces": Read("medium", FLOW_FACES.name)},
-                    delivers=delivers, values={"viscosity": Value("medium", "viscosity"),
-                                               "density": Value("medium", "density")},
+                    delivers=delivers, values=values,
                     registrations=(Registration("medium", FLOW_PARTNERS.name, EXCHANGE_PARTNER, "body"),),
                     problems=tuple(problems))
+
+    def coupling_of(self, ctx: PlanContext) -> tuple[str, str]:
+        """The stokes rung's exchange scheme, ``one_pass`` or ``lagged``, and why (the maintainer's rule, #350's
+        principle, exact by default): one pass wherever the body's own step is linear in its twist, so that the flow's
+        one elimination can hold its row; lagged where the law is one-way (nothing to hold), where ``coupling='lagged'``
+        is written (the declared cheaper route), where a law attached confines the body (a contact projects its step),
+        or where its dynamics publishes no step row (``body.step_row``). What the experiment observes never chooses it
+        (#360)."""
+        body = ctx.bindings["body"]
+        if self.one_way:
+            return "lagged", "one-way: nothing is delivered to the flow, so its step holds nothing of the body's"
+        if self.coupling == "lagged":
+            return "lagged", ("coupling='lagged' declared, the cheaper route: the fluid's step takes the force of the "
+                              "step before")
+        confined = ctx.confined.get("body", ())
+        if confined:
+            return "lagged", (f"{body}'s own step is not linear in its twist ({', '.join(confined)} projects it), so "
+                              f"the flow's one elimination cannot hold its row")
+        record = ctx.capabilities.get("body")
+        if record is None or STEP_ROW.name not in record.publishes:
+            return "lagged", (f"{body}'s dynamics publishes no step row ({STEP_ROW.name}) for the flow's one "
+                              f"elimination to hold")
+        return "one_pass", ("the body's own step is linear in its twist: the flow's one elimination holds the drag law "
+                            "and the body's step's row, its force, couple and twist solved with the field within the "
+                            "step (exact with IMEX Euler; the exchange workless)")
 
     def _stokes_problems(self, ctx: PlanContext) -> list[Problem]:
         """A body whose hull is not one sphere at its centre (a medium whose flow takes no exchange is refused by the
@@ -2113,15 +2199,26 @@ class Drag(UncoupledDrag):
         vessel = {} if not isinstance(tube, UniformTube) else {
             "vessel_centre": tube.centre, "vessel_axis": tube.axis, "vessel_radius": tube.radius}
         start = ctx.starts.get("body", {}).get("position", (0.0, 0.0, 0.0))
+        held = ctx.partner_rows.get("medium")
+        extra: dict[str, Any] = dict(vessel)
+        if held is not None:
+            extra.update(partner_row=held[0], partners=held[1])
+        elif not self.one_way:
+            extra["lagged_because"] = "declared" if self.coupling == "lagged" else "not_linear"
         node = b.add_response_node(PointDragNode(
             ctx.node_name(), ctx.timestep, radius=float(hull.kind.enclosing_radius(hull.settings)),
             viscosity=values["viscosity"], density=values["density"], spacing=frame.spacing, width_cells=width,
             origin=tuple(-c for c in frame.origin), initial_points=cast(tuple[float, ...], start),
             one_way=bool(self.one_way), scheme=self.stokes_scheme(frame, values, ctx.timestep),
             self_history=self.self_history or HISTORY_ROUTES[0], flow_cells=math.prod(frame.cells),
-            drive_frequency=ctx.frequencies.get("medium", 0.0), **cast(dict[str, Any], vessel)))
+            drive_frequency=ctx.frequencies.get("medium", 0.0), **extra))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(b.read("twist"), into=node["twist"])
+        if held is not None:
+            b.connect(b.read("partner"), into=node["partner_solution"])
+            b.connect(node["added_resistance"], into=b.target("added_resistance"), part="maxey_riley")
+            b.connect(node["added_load"], into=b.target("added_load"), part="maxey_riley")
+            return
 
         def kernel(component: int, mode: str, direction: str) -> object:
             return gaussian_mac(nx=frame.cells[0], ny=frame.cells[1], nz=frame.cells[2], spacing=frame.spacing,

@@ -37,9 +37,13 @@ def ledger_wiring_refusals(graph: GraphManager, plans: PlanSet, energy: EnergyBo
         return []
     receivers = {name: held for name in graph.node_names
                  for held in (ledger.deliveries(_params(graph.get_node(name))),) if held}
+    # A flow holding a body in its one elimination reads the body's other loads into its row: no delivery to it.
+    rows = {(name, field) for name in graph.node_names
+            for field in getattr(graph.get_node(name), "row_inputs", lambda: ())()}
+    edges = [edge for edge in graph_edges(graph) if (edge[2], edge[3]) not in rows]
     return [_refuse("post-build.ledger-inputs", f"with the energy ledger attached, {problem}: each law delivers into "
                                                 f"its own input on its receiver, once, and nothing else does")
-            for problem in misattributed(graph_edges(graph), receivers, plans.owner_of, energy.wiring)]
+            for problem in misattributed(edges, receivers, plans.owner_of, energy.wiring)]
 
 
 def _refuse(code: str, message: str) -> Refusal:

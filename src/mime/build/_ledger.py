@@ -382,7 +382,12 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
     for role, law_id, energy_class in getattr(own, "hosted_laws", lambda: ())():
         exchanged = host if role in getattr(type(own), "EXCHANGED", ()) else None
         source = law_id if law_id in registered and energy_class == ledger.UNMETERED else None
-        held.append(ledger.LedgerDelivery(role, law_id, energy_class, ledger.HOSTED, "", exchanged or source or ""))
+        # A registered law judged in the sum of its rows by its own node (a point body's drag held in a flow's step:
+        # the flow carries the body, so its fluid's row alone may be positive) is judged there, not on this row.
+        law = laws[law_id].entry if law_id in registered and law_id in laws else None
+        cluster = isinstance(law, Interaction) and bool(law.judged_in_sum())
+        held.append(ledger.LedgerDelivery(role, law_id, energy_class, ledger.HOSTED,
+                                          ledger.CHECK_CLUSTER if cluster else "", exchanged or source or ""))
     return tuple(held), problems
 
 

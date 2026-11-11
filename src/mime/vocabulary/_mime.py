@@ -120,16 +120,20 @@ FLOW_EXCHANGE_X = _exchange("flow.exchange_x", "x")
 FLOW_EXCHANGE_Y = _exchange("flow.exchange_y", "y")
 FLOW_EXCHANGE_Z = _exchange("flow.exchange_z", "z")
 FLOW_PARTNER_SOLUTION = define(Interface(
-    "flow.partner_solution", ReadKind.STATE, "N; N m; m/s; rad/s; m/s; rad/s", "world", (-1, 18), magnitude=1e-6,
-    description="what a flow holding point bodies in its one elimination solved for each in its step, a row a body: "
-                "the force and couple its drag law delivered to the fluid, the body's twist as the flow closed its "
-                "row, and its reading of the solved flow (the kernel's Faxén-paired average and the fluid's "
-                "rotation), which the drag's own node books and checks the step after"))
+    "flow.partner_solution", ReadKind.STATE, "N; N m; m/s; rad/s; m/s; 1/(m s); rad/s", "world", (-1, 21),
+    magnitude=1e-6,
+    description="what a flow holding point bodies in its one elimination solved for each in its step, a row a body in "
+                "the order of their laws' ids: the force and couple its drag law delivered to the fluid, the body's "
+                "twist as the flow closed its own step's row, and the solved flow as the body's exchange kernel reads "
+                "it at the point the force was delivered at (its average, its Laplacian's average and the fluid's "
+                "rotation), which the drag's own node books and reads its rate terms from the step after"))
 FLOW_PARTNERS = define(Interface(
     "flow.partners", TargetKind.REGISTRATION, "", None, (),
     description="the exchange partners a medium's field takes deliveries from through an exchange law (a point body's "
-                "drag): each registers with the field, which then takes their scattered force on its grid"))
-#: The registration kind of an exchange partner (:data:`FLOW_PARTNERS`).
+                "drag): each registers with the field, which then takes their scattered force on its grid (lagged) or "
+                "holds the law and the body's own step's row in its one elimination (one pass)"))
+#: The registration kind of a lagged exchange partner (:data:`FLOW_PARTNERS`): its law scatters the force of the step
+#: before onto the field's grid.
 EXCHANGE_PARTNER = "flow.exchange_partner"
 #: The registration kind of an exchange partner the flow holds in its step (:data:`FLOW_PARTNERS`): a point body whose
 #: drag law the flow's one elimination solves with the field, its own step's row closing its twist (one pass).

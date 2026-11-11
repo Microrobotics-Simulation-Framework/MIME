@@ -136,6 +136,12 @@ _INTERIOR_NAMES = {depth: name for name, depth in INTERIORS.items()}
 PERIOD_LINE = 1e-6
 #: The region shape a tube tree's lumen is.
 TREE = "tube_tree"
+#: The registration kinds of a point body's exchange with the flow: lagged (its law scatters onto the grid) and one
+#: pass (held in the flow's one elimination).
+PARTNER_KINDS = (EXCHANGE_PARTNER, ONE_PASS_PARTNER)
+#: The open vessel's axis its node lays along its grid's z: an exchange partner's point is carried into the grid by a
+#: translation alone where the vessel's axis is this one.
+OPEN_AXIS = (0.0, 0.0, 1.0)
 
 
 def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
@@ -487,18 +493,15 @@ class FVM(Dynamics):
         if self.open and lagged:
             return [Problem("flow.open-exchange", f"{', '.join(r.id for r in lagged)} exchanges with the flow lagged, "
                                                   f"and an open vessel's flow holds its exchange partners in its one "
-                                                  f"elimination only (one pass), which a body whose own step is not "
-                                                  f"linear in its twist (a contact or confinement in its step) cannot "
-                                                  f"join",
-                            "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...)), or take the contact "
-                            "or confinement off the body")]
-        held = [r for r in partners if r.kind == ONE_PASS_PARTNER]
-        if len(held) > 1:
-            return [Problem("flow.one-pass-bodies", f"{', '.join(r.id for r in held)} would each be held in the flow's "
-                                                    f"one elimination, and it holds one body until the body-set host "
-                                                    f"steps several bodies together",
-                            "keep one of them two-way and give the others one_way=True, or run without the energy "
-                            "observed (each body then lagged)")]
+                                                  f"elimination only, which takes no lagged one",
+                            "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...))")]
+        if self.open and partners and region is not None and not _along(region, OPEN_AXIS):
+            return [Problem("flow.open-exchange-axis", f"{', '.join(r.id for r in partners)} exchanges with the flow, "
+                                                       f"and an open vessel's flow lays the vessel along its grid's z: "
+                                                       f"a point body's pose is carried into the grid by a translation "
+                                                       f"only where the vessel's axis is +z (its axis is "
+                                                       f"{tuple(round(c, 6) for c in _unit(region.parameters['axis']))})",
+                            "lay the vessel along +z, Tube(axis=(0, 0, 1), ...), with the scene turned to match")]
         registrations = [r for r in registrations if r.kind not in PARTNER_KINDS]
         if not self.open:
             return [Problem("flow.no-openings", f"{', '.join(r.id for r in registrations)} is attached at an opening "
@@ -686,29 +689,76 @@ class FVM(Dynamics):
                                     spacing=float(given) if isinstance(given, (int, float)) else None,
                                     margin_cells=self.domain.margin, lattice=lattice)
 
-    def exchange_frame(self, node: str, region: Region | None,
-                       settings: Mapping[str, Magnitude]) -> ExchangeFrame | None:
+    def exchange_frame(self, node: str, region: Region | None, settings: Mapping[str, Magnitude],
+                       ends: Mapping[str, Mapping[str, Magnitude]] | None = None) -> ExchangeFrame | None:
         """What a partner exchanging with this field reads of it (SF-4): its grid, and the world point of the grid's
-        origin, the tube's axis point less where the layout puts the axis in the box. ``None`` where the region is no
-        straight tube the layout takes, or where the vessel is open (its node takes no exchange yet; the partner's plan
-        refuses it then)."""
-        if self.open or region is None or region.shape != "cylinder" or \
-                lattice_of(_unit(region.parameters["axis"])) is None:
+        origin, the tube's axis point less where the layout puts the axis in the box. An open vessel (laid along +z,
+        its ends' planes given as ``ends``, each opening's surface parameters) holds its partners in its one elimination
+        only (``lagged`` false), its grid's origin at its low plane. ``None`` where the region is no straight tube the
+        layout takes (a tube tree's flow refuses an exchange partner by name, ``flow.tree-exchange``)."""
+        if region is None or region.shape != "cylinder":
             return None
-        layout = self.layout_of(region, settings)
         point = shape_named(region.shape).axis_point(region.parameters)
         assert point is not None
+        if self.open:
+            if not _along(region, OPEN_AXIS) or ends is None or set(ends) != set(self.openings_of(region)):
+                return None
+            layout, low, _, _ = _open_layout(self, region, ends, settings.get("spacing")
+                                             if self.spacing is not None else None)
+            origin = (float(point[0]) - layout.centre[0], float(point[1]) - layout.centre[1],
+                      float(cast(float, low["offset"])))
+            return ExchangeFrame(node, "cartesian_mac_open_z", layout.cells, layout.spacing, origin,
+                                 ("velocity_x", "velocity_y", "velocity_z"), EXCHANGE_FIELDS,
+                                 self.scheme.group if self.scheme is not None else IMEXEuler.name, lagged=False)
+        if lattice_of(_unit(region.parameters["axis"])) is None:
+            return None
+        layout = self.layout_of(region, settings)
         origin = tuple(float(point[i]) - layout.centre[i] for i in range(3))
         return ExchangeFrame(node, "cartesian_mac", layout.cells, layout.spacing,
                              (origin[0], origin[1], origin[2]), ("velocity_x", "velocity_y", "velocity_z"),
                              EXCHANGE_FIELDS, None if self.scheme is None else self.scheme.group)
+
+    def held_partners(self, ctx: BuildContext, registrations: Sequence[ResolvedRegistration], spacing: float,
+                      scheme: str, origin: Sequence[float]) -> dict[str, Any]:
+        """The flow node's arguments for the point bodies it holds in its one elimination (``ONE_PASS_PARTNER``, in
+        the order of their ids): each one's radius, its kernel's width (the drag's rule at the run's values, the one
+        its own node reads: ``mime.nodes.hydro._point_drag.kernel_width``), its law's id and its body's node, and the
+        world point of the grid's origin."""
+        from mime.nodes.hydro._point_drag import kernel_width
+
+        held = [r for r in registrations if r.kind == ONE_PASS_PARTNER]
+        if not held:
+            return {}
+        viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
+        widths: list[float] = []
+        for registration in held:
+            written = registration.parameters.get("kernel_width")
+            width, _, _ = kernel_width(float(cast(float, registration.parameters["radius"])), viscosity, density,
+                                       spacing, ctx.timestep, scheme == Steady.name,
+                                       float(cast(float, written)) if written is not None else None)
+            assert width is not None, "the drag's plan refuses a body under the floor at every width"
+            widths.append(width)
+        return {"partner_radius": [float(cast(float, r.parameters["radius"])) for r in held], "partner_widths": widths,
+                "partner_ids": [r.id for r in held], "partner_bodies": [r.reads["pose"].node for r in held],
+                "partner_origin": tuple(float(c) for c in origin)}
+
+    @staticmethod
+    def connect_partners(b: DynamicsBuilder, node: Any, registrations: Sequence[ResolvedRegistration]) -> None:
+        """Each held body's pose and own step's row into the flow, and the response the flow hands it into the body's
+        resistance and background load, under its drag's id."""
+        held = [r for r in registrations if r.kind == ONE_PASS_PARTNER]
+        for k, registration in enumerate(held):
+            b.connect(b.read(registration, "pose"), into=node[f"partner_{k}_pose"])
+            b.connect(b.read(registration, "step_row"), into=node[f"partner_{k}_step_row"])
+            b.connect(node[f"partner_{k}_resistance"], into=b.target(registration, "resistance"))
+            b.connect(node[f"partner_{k}_load"], into=b.target(registration, "background_load"))
 
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         region = ctx.region("medium")
         assert region is not None
         if self.open:
-            _open_build(self, ctx, b, [r for r in registrations if r.kind != EXCHANGE_PARTNER], region)
+            _open_build(self, ctx, b, registrations, region)
             return
         if region.shape == TREE:
             self.build_tree(ctx, b, region)
@@ -718,6 +768,8 @@ class FVM(Dynamics):
         viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
         partners = any(registration.kind == EXCHANGE_PARTNER for registration in registrations)
         scheme = chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
+        frame = self.exchange_frame(ctx.node_name(), region, ctx.settings)
+        held = self.held_partners(ctx, registrations, layout.spacing, scheme, frame.origin) if frame else {}
         band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.delta_in]
         images = "own" if lattice == (0, 1) else "transverse"
         # The wall's band is booked under the wall's own region: the medium fills a tube's lumen, its solid that tube's
@@ -730,13 +782,14 @@ class FVM(Dynamics):
                 tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
                 convection=not self.stokes, band=band, interior=interior, periodic_images=images, wall_name=wall))
             return
-        b.add_node(ImplicitFlowNode(
+        node = b.add_node(ImplicitFlowNode(
             ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
             spacing=layout.spacing, viscosity=viscosity, density=density,
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
             interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows,
-            wall_name=wall, exchange=partners))
+            wall_name=wall, exchange=partners, **held))
+        self.connect_partners(b, node, registrations)
 
     def build_tree(self, ctx: BuildContext, b: DynamicsBuilder, region: Region) -> None:
         """A tube tree's flow: its box from the tree (:meth:`tree_layout`), the tree's points moved into it."""
@@ -763,34 +816,50 @@ def tree_scheme(given: IMEXEulerScheme | SteadyScheme | RK3Scheme | None) -> str
     return given.group if given is not None else IMEXEuler.name
 
 
-def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],
-                region: Region) -> None:
-    """The open vessel's node: the box along z from its low plane to its high one, each opening on the plane its
-    surface faces (its normal into the vessel along the axis: the low plane; against it: the high one), each law from
-    its registration (its kind, its settings as a row of parameters, its id the ledger's name, the openings it binds
-    in the order written)."""
+def _open_layout(fvm: FVM, region: Region, ends: Mapping[str, Mapping[str, Magnitude]],
+                 spacing: object) -> tuple[TubeLayout, Mapping[str, Magnitude], Mapping[str, Magnitude],
+                                           tuple[str, ...]]:
+    """The open vessel's box along z from its low plane to its high one, from its ends' planes (each opening's surface
+    parameters, ``ends``): its layout, its low and high planes' parameters, and each opening's plane (its normal into
+    the vessel along the axis: the low plane; against it: the high one)."""
     openings = fvm.openings_of(region)
-    at: dict[str, Mapping[str, Magnitude]] = {}
-    for registration in registrations:
-        given = registration.subjects_parameters or (registration.subject_parameters,)
-        at.update(zip(registration.surfaces, given, strict=True))
     axis = _unit(region.parameters["axis"])
-    planes = tuple("low" if sum(float(n) * a for n, a in zip(cast(tuple[float, ...], at[o]["normal"]), axis,
+    planes = tuple("low" if sum(float(n) * a for n, a in zip(cast(tuple[float, ...], ends[o]["normal"]), axis,
                                                              strict=True)) > 0.0 else "high" for o in openings)
-    low, high = (next(at[o] for o, plane in zip(openings, planes, strict=True) if plane == side)
+    low, high = (next(ends[o] for o, plane in zip(openings, planes, strict=True) if plane == side)
                  for side in ("low", "high"))
     length = -(float(cast(float, low["offset"])) + float(cast(float, high["offset"])))
-    laws = sorted(registrations, key=lambda r: min(openings.index(s) for s in r.surfaces))
+    radius = float(region.parameters["radius"])  # type: ignore[arg-type]
+    layout = periodic_tube_layout(radius, length, cells_across=fvm.cells_across,
+                                  spacing=float(spacing) if isinstance(spacing, (int, float)) else None,
+                                  margin_cells=fvm.domain.margin)
+    return layout, low, high, planes
+
+
+def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],
+                region: Region) -> None:
+    """The open vessel's node: the box along z from its low plane to its high one (:func:`_open_layout`), each opening
+    on the plane its surface faces, each law from its registration (its kind, its settings as a row of parameters, its
+    id the ledger's name, the openings it binds in the order written), and the point bodies it holds in its one
+    elimination beside them."""
+    openings = fvm.openings_of(region)
+    laws = [r for r in registrations if r.kind not in PARTNER_KINDS]
+    at: dict[str, Mapping[str, Magnitude]] = {}
+    for registration in laws:
+        given = registration.subjects_parameters or (registration.subject_parameters,)
+        at.update(zip(registration.surfaces, given, strict=True))
+    layout, low, _, planes = _open_layout(fvm, region, at, ctx.scalar("spacing") if fvm.spacing is not None else None)
+    laws = sorted(laws, key=lambda r: min(openings.index(s) for s in r.surfaces))
     placed: dict[str, Any] = {} if planes == ("low", "high") and all(len(r.surfaces) == 1 for r in laws) else \
         {"opening_planes": planes, "law_openings": tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws)}
-    radius = float(region.parameters["radius"])  # type: ignore[arg-type]
-    spacing = ctx.scalar("spacing") if fvm.spacing is not None else None
-    layout = periodic_tube_layout(radius, length, cells_across=fvm.cells_across, spacing=spacing,
-                                  margin_cells=fvm.domain.margin)
     viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
     scheme = fvm.scheme.group if fvm.scheme is not None else IMEXEuler.name
     wall = f"{region.path.rpartition('.')[0]}.wall"
-    b.add_node(OpenFlowNode(
+    point = shape_named(region.shape).axis_point(region.parameters)
+    assert point is not None
+    origin = (float(point[0]) - layout.centre[0], float(point[1]) - layout.centre[1], float(cast(float, low["offset"])))
+    held = fvm.held_partners(ctx, registrations, layout.spacing, scheme, origin)
+    node = b.add_node(OpenFlowNode(
         ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
         spacing=layout.spacing, viscosity=viscosity, density=density, tube_centre=layout.centre,
         tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes,
@@ -799,7 +868,8 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
-        **placed))
+        **placed, **held))
+    fvm.connect_partners(b, node, registrations)
 
 
 def memory_estimate(scheme: str, cells: int) -> float:
@@ -822,6 +892,11 @@ def host_line(scheme: str, axis: Sequence[float]) -> float | None:
         return None
     magnitude = [abs(float(c)) for c in axis]
     return line * max(magnitude) / sum(magnitude)
+
+
+def _along(region: Region, axis: Sequence[float]) -> bool:
+    """Whether the region's axis is ``axis`` (to within rounding)."""
+    return all(abs(c - a) <= 1e-12 for c, a in zip(_unit(region.parameters["axis"]), axis, strict=True))
 
 
 def _unit(vector: object) -> tuple[float, float, float]:

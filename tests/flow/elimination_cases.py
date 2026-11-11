@@ -39,14 +39,13 @@ class Body:
 
 
 def body_inputs(body: Body, b: int, dt: float, dtype: Any) -> dict[str, Any]:
-    """What body ``b``'s dynamics and other laws feed the flow: its pose and twist, its stepping mass (``diag(m I, J
-    I)``, an isotropic body's: no gyroscopic term), its free load ``M V / dt`` and its other loads."""
+    """What body ``b``'s dynamics and other laws feed the flow: its pose, its own step's row (its stepping mass ``diag(m
+    I, J I)``, an isotropic body's, no gyroscopic term, beside its free load ``M V / dt``) and its other loads."""
     mass = np.diag([body.mass] * 3 + [body.moment] * 3)
     twist = np.asarray(body.twist)
     return {f"partner_{b}_pose": jnp.asarray([*body.point, 1.0, 0.0, 0.0, 0.0], dtype=dtype),
-            f"partner_{b}_twist": jnp.asarray(twist, dtype=dtype),
-            f"partner_{b}_stepping_mass": jnp.asarray(mass, dtype=dtype),
-            f"partner_{b}_free_load": jnp.asarray(mass @ twist / dt, dtype=dtype),
+            f"partner_{b}_step_row": jnp.asarray(np.concatenate([mass, (mass @ twist / dt)[:, None]], axis=1),
+                                                 dtype=dtype),
             f"partner_{b}_loads": jnp.asarray(body.loads, dtype=dtype),
             f"partner_{b}_resistances": jnp.zeros((6, 6), dtype=dtype)}
 

@@ -67,7 +67,7 @@ from mime.nodes.flow.fvm._band import TreeSolid, TubeSolid, WallFields, band_nam
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._exchange import box_side, faxen, held_spectrum, steady_response
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._partners import DELIVERIES, BodyPartner, Partnered, partnered_step
+from mime.nodes.flow.fvm._partners import DELIVERIES, SOLUTION_COLUMNS, BodyPartner, Partnered, partnered_step
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
@@ -132,10 +132,11 @@ DRIVE_FIELDS = ("body_force", "waveform")
 #: (``mime.nodes.flow.fvm._exchange``): a node built with ``exchange=True`` takes them.
 EXCHANGE_FIELDS = ("exchange_x", "exchange_y", "exchange_z")
 #: A point body's inputs a flow holding it in its one elimination takes (``partner_<b>_<name>``, each with its shape and
-#: units): its pose and twist at the step's start and its own step's stepping mass and free load (the body publishes
-#: them), and the loads and resistances of its other laws, summed (the build delivers each to the flow as to the body).
-PARTNER_INPUTS = {"pose": ((7,), "m; 1"), "twist": ((6,), "m/s; rad/s"), "stepping_mass": ((6, 6), "kg; kg m^2"),
-                  "free_load": ((6,), "N; N m"), "loads": ((6,), "N; N m"), "resistances": ((6, 6), "N s/m; N s; N m s")}
+#: units): its pose and its own step's row at the step's start (``body.step_row``: its stepping mass beside its free
+#: load, as its dynamics publishes it), and the loads and resistances of its other laws, summed (the build delivers
+#: each to the flow as to the body: ``mime.build._construct``).
+PARTNER_INPUTS = {"pose": ((7,), "m; 1"), "step_row": ((6, 7), "kg; N"), "loads": ((6,), "N; N m"),
+                  "resistances": ((6, 6), "N s/m; N s; N m s")}
 #: The inputs among them the build sums each of the body's other laws' deliveries into, by the body's input.
 PARTNER_SUMS = {"applied_wrench": "loads", "background_load": "loads", "resistance": "resistances"}
 #: The prefix of a held point body's inputs, fields and hosted row.
@@ -451,6 +452,11 @@ class ImplicitFlowNode(MimeNode):
                                                   description=f"held point body {b}'s {name.replace('_', ' ')}")
                 for b in range(self.body_count) for name, (shape, units) in PARTNER_INPUTS.items()}
 
+    def row_inputs(self) -> tuple[str, ...]:
+        """The inputs each held body's row is read into (its pose and step's row, its other laws' loads and
+        resistances): state the flow reads, no delivery to it, so the energy ledger books none of them here."""
+        return tuple(self.partner_inputs())
+
     def body_partners(self, p: Mapping[str, Any], boundary_inputs: Mapping[str, Array], dt: Any,
                       dtype: Any) -> list[BodyPartner]:
         """Each held point body's law and own row over the step (``mime.nodes.flow.fvm._partners``): its point from
@@ -479,9 +485,9 @@ class ImplicitFlowNode(MimeNode):
                 return jnp.asarray(boundary_inputs.get(f"partner_{b}_{name}", jnp.zeros(shape, dtype=dtype)),
                                    dtype=dtype)
 
-            system = given("stepping_mass") / dt + given("resistances")
-            found.append(BodyPartner(given("pose")[:3] - origin, float(width), coefficient, coefficient, law, system,
-                                     given("free_load") + given("loads")))
+            row = given("step_row")
+            found.append(BodyPartner(given("pose")[:3] - origin, float(width), coefficient, coefficient, law,
+                                     row[:, :DELIVERIES] / dt + given("resistances"), row[:, DELIVERIES] + given("loads")))
         return found
 
     def exchanged(self, boundary_inputs: Mapping[str, Array], dtype: Any) -> Velocity | None:
@@ -747,7 +753,7 @@ class ImplicitFlowNode(MimeNode):
         dtype = run_dtype()
         held: dict[str, Array] = {f"partner_units_{x}": jnp.zeros((DELIVERIES * count, *grid.shape(k)), dtype=dtype)
                                   for k, x in enumerate("xyz")}
-        held["partner_solution"] = jnp.zeros((count, 3 * DELIVERIES), dtype=dtype)
+        held["partner_solution"] = jnp.zeros((count, SOLUTION_COLUMNS), dtype=dtype)
         for b in range(count):
             held[f"partner_{b}_resistance"] = jnp.zeros((DELIVERIES, DELIVERIES), dtype=dtype)
             held[f"partner_{b}_load"] = jnp.zeros(DELIVERIES, dtype=dtype)
@@ -770,7 +776,7 @@ class ImplicitFlowNode(MimeNode):
         forces = jnp.reshape(partnered.deliveries[first:], (count, DELIVERIES))
         ended: dict[str, Array] = {f"partner_units_{x}": jnp.stack([unit[k] for unit in units])
                                    for k, x in enumerate("xyz")}
-        ended["partner_solution"] = jnp.concatenate([forces, partnered.twists, partnered.readings], axis=1)
+        ended["partner_solution"] = jnp.concatenate([forces, partnered.twists, partnered.kernels], axis=1)
         for b in range(count):
             ended[f"partner_{b}_resistance"] = partnered.handed_resistance[b]
             ended[f"partner_{b}_load"] = partnered.handed_load[b]
