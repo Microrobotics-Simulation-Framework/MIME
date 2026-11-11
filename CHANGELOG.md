@@ -12,9 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rolling resistance and identifying mu (W2b's second part).** `Coulomb(mu=..., rolling=...)`: the rolling row
   kind, a pair `[0; t]` at each held point bounded by the length times the normal force, built only where written (`0`
   included, so it is a study's axis). `mime.study.fit_friction`: `Study.fit` on a run's data with a gradient-free
-  golden-section search over [0.01, 1.2] on the same loss as its control, and the verdict `identified`, `bounded below
-  only` or `confounded`; `FrictionFit.record` ships the estimate as a named record pinned by its content's and its
-  data's hashes.
+  search over [0.01, 1.2] on the same loss as its control (two log-spaced sweeps, then the vertex of the parabola
+  through the least loss and its neighbours), and the verdict `identified`, `bounded below only` or `confounded`;
+  `FrictionFit.record` ships the estimate as a named record pinned by its content's and its data's hashes. **A behaviour change of `Study.fit`**: a flag that reports a state the run is in, `touching`
+  (`mime.experiment._experiment.STATE_FLAGS`), is no longer a line a fit's iterate is judged past. It counted as one,
+  so every fit of a body its contact holds ended at its start, "at a line (`<body>.contact_forces`)": the contact
+  holding the body is the contact working, and friction is fitted on bodies that touch. Every other flag stays a line.
 - **Friction at the wall (`Contact(friction=Coulomb(mu=...))`, `mime.interactions.friction`).** Exact Coulomb in the
   contact's own sweeps: each held point carries a sliding pair `[t; r x t]` beside its normal row, which measures the
   slip of the body's own point, so a body rolls without slipping where its sliding rows stick; one coefficient, static
