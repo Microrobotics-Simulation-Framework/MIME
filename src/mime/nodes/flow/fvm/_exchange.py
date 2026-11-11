@@ -35,6 +35,7 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
+from mime.core.solves import SolveSite, register, solving
 from mime.nodes.flow.fvm._grid import ExchangeStencil, MACGrid
 
 #: The weights a reading or a delivery uses: the kernel's average, its seven-point Laplacian, or its antisymmetric
@@ -338,6 +339,16 @@ class SelfHistory(NamedTuple):
 JUDGED_PLACES = ((0.0, 0.0, 0.0), (0.5, 0.5, 0.5))
 
 
+#: The self-history's fit: the modes' amplitudes (the decays are fixed) by linear least squares over the sampled
+#: responses, made once a chunk in ``run_constants`` and held, so it is a fit of a model of the free box and no solve of the
+#: flow; ``HISTORY_MODES`` unknowns (the image term is one more).
+HISTORY_SITE = register(SolveSite(
+    "point_self_history", "lstsq", "mime.nodes.flow.fvm._exchange.self_history", nodes=("PointDragNode",),
+    exempt="a fit of the self-history's decay amplitudes to sampled responses of the free box, by the SVD's least squares, "
+           "made once a chunk in run_constants and held: the arithmetic of a model's coefficients, not of the flow",
+    bound=HISTORY_MODES + 1))
+
+
 def self_history(spectrum: KernelSpectrum, r: Any, reading: Any = 0.0, delivery: Any = 0.0,
                  places: Sequence[KernelSpectrum] = ()) -> SelfHistory:
     """**Fitted** (route 1): the free box's response of :func:`step_response` matched by :data:`HISTORY_MODES` modes
@@ -362,7 +373,8 @@ def self_history(spectrum: KernelSpectrum, r: Any, reading: Any = 0.0, delivery:
     total = steady_response(spectrum, reading, delivery, images=False)
     rows = jnp.concatenate([basis / scale, (decay / (1.0 - decay))[None, :] / total * 10.0])
     right = jnp.concatenate([targets / scale, jnp.ones(1, dtype=dtype) * 10.0])
-    amplitude = jnp.linalg.lstsq(rows, right, rcond=HISTORY_RCOND[np.dtype(dtype).name])[0]
+    with solving(HISTORY_SITE):
+        amplitude = jnp.linalg.lstsq(rows, right, rcond=HISTORY_RCOND[np.dtype(dtype).name])[0]
     judged = decay[None, :] ** (between[:, None] + 1.0) @ amplitude - step_response(spectrum, r, between, reading,
                                                                                       delivery)
     residual = jnp.maximum(jnp.max(jnp.abs(basis @ amplitude - targets)), jnp.max(jnp.abs(judged))) / scale

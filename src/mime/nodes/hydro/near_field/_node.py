@@ -32,6 +32,7 @@ from mime.nodes.hydro.mrs._node import (
     least_distance,
 )
 from mime.core.ledger import IDENTITY_ULPS
+from mime.core.solves import dense_solve
 from mime.nodes.hydro.mrs._quadrature import asymmetry, held_or_made, scaled_least_eigenvalue, unchanged
 from mime.nodes.hydro.mrs._solve import PRECISION
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
@@ -526,7 +527,8 @@ class JointDragNode(MimeNode):
         member = self._members[index]
 
         def made(theta: Mapping[str, Any]) -> Array:
-            return jnp.linalg.inv(member.self_interaction(theta))
+            free = member.self_interaction(theta)
+            return dense_solve(free, jnp.eye(free.shape[-1], dtype=free.dtype))
 
         return made
 
@@ -602,7 +604,8 @@ class JointDragNode(MimeNode):
             found[key] = made.astype(jnp.asarray(params[key]).dtype)
             inverse = f"{prefix}{HELD_INVERSE}"
             if inverse in params:
-                found[inverse] = jnp.linalg.inv(made).astype(jnp.asarray(params[inverse]).dtype)
+                found[inverse] = dense_solve(made, jnp.eye(made.shape[-1], dtype=made.dtype)).astype(
+                    jnp.asarray(params[inverse]).dtype)
             found.update({f"{prefix}{HELD_FROM}{name}": value for name, value in theta.items()})
         return found
 

@@ -37,6 +37,7 @@ import jax
 from jax import Array
 
 from mime.core import jnp
+from mime.core.solves import dense_solve
 
 _lax: Any = cast(Any, jax).lax
 
@@ -82,7 +83,7 @@ def _block_tridiagonal(T: Array, W: Array, E: Array, r: Array) -> Array:
         T_i, W_i, E_i, r_i = line
         G = T_i - W_i[:, None] * carry[:, :q]
         y = r_i + W_i[:, None] * carry[:, q:]
-        X = jnp.linalg.solve(G, jnp.concatenate([jnp.diag(E_i), y], axis=1))
+        X = dense_solve(G, jnp.concatenate([jnp.diag(E_i), y], axis=1))
         return X, X
 
     _, eliminated = _lax.scan(forward, jnp.zeros((q, q + r.shape[-1]), dtype=T.dtype), (T, W, E, r))
