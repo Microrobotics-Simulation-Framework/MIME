@@ -7,7 +7,10 @@
     "the earlier exploration listed the solve primitives the near field's step traces (lu, cholesky, triangular_solve, custom_linear_solve, fft) on the laptop, float64, and found nothing the registry did not then name"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "CPU: a GitHub runner (4 vCPU; one CPU and one BLAS thread pinned for the bit comparison)",
     "sizes_and_parameters": "the walk: the FVM tube D/h 8 (IMEX Euler with convection, the steady limit, RK3), the open tube D/h 8 with an Inflow and a Windkessel, two spheres of 1 mm a gap of 0.3 mm apart at a force spacing of 0.6 mm on the near field's dense route and on GMRES; the bits: the same programs run five steps, the near field also with three spheres",
     "seeds_and_draws": "no draws: a traced program is deterministic, so a control's rate across processes shows the harness (the process, its seed, its thread layout), not independent draws"
@@ -16,9 +19,21 @@
     "claim": "every solve primitive a registered node kind's step traces sits inside a registered mime-solve scope, and the registry and the walk agree both ways on which node kind reaches which site",
     "kind": "equality",
     "case": "tests/solve_sites/test_registry.py, the six cases, both dtypes, through the node's own advance",
-    "prediction": {"value": 0, "unit": "unregistered solves", "basis": "derived", "why": "each shared function wraps its whole body in its scope and the sites left in place (the per-body 6 x 6 factors) are wrapped where they are"},
+    "prediction": {
+      "value": 0,
+      "unit": "unregistered solves",
+      "basis": "derived",
+      "why": "each shared function wraps its whole body in its scope and the sites left in place (the per-body 6 x 6 factors) are wrapped where they are"
+    },
     "metric": "the count of solve primitives outside a registered scope, and the set difference of the sites reached and the sites claimed per node kind",
-    "control": {"plant": "bypass_dense and direct_solve_in_step (tests/solve_sites/solve_walk.py)", "environment_variable": "MIME_PLANT_SOLVE", "expected_rate": "30/30 each", "runs": 30, "clean_expected": "0/30", "resolution": "one solve primitive anywhere in a step"},
+    "control": {
+      "plant": "bypass_dense and direct_solve_in_step (tests/solve_sites/solve_walk.py)",
+      "environment_variable": "MIME_PLANT_SOLVE",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "one solve primitive anywhere in a step"
+    },
     "if_wrong": "an unnamed solve in a registered node kind's step: register it or move it to a shared function, and report which",
     "cannot_discriminate_if": "a step traces no solve primitive at all (the case would show nothing): the agreement test requires every claimed site to be reached"
   },
@@ -26,9 +41,21 @@
     "claim": "in a float64 run every operand and result inside a registered solve scope is float64 (complex128 for a transform's spectrum)",
     "kind": "equality",
     "case": "the same six cases, float64",
-    "prediction": {"value": 0, "unit": "narrower floats inside a solve scope", "basis": "derived", "why": "x64 is on, nothing in the solves casts down"},
+    "prediction": {
+      "value": 0,
+      "unit": "narrower floats inside a solve scope",
+      "basis": "derived",
+      "why": "x64 is on, nothing in the solves casts down"
+    },
     "metric": "the dtypes of the operands and results of every equation inside a scope",
-    "control": {"plant": "downcast_dense, downcast_cg, downcast_gmres", "environment_variable": "MIME_PLANT_SOLVE", "expected_rate": "30/30 each", "runs": 30, "clean_expected": "0/30", "resolution": "a single float32 cast inside one solve"},
+    "control": {
+      "plant": "downcast_dense, downcast_cg, downcast_gmres",
+      "environment_variable": "MIME_PLANT_SOLVE",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a single float32 cast inside one solve"
+    },
     "if_wrong": "a float32 value inside a solve in a float64 run is a silent downcast: name it and fix it or declare it",
     "cannot_discriminate_if": "a float32 run (x64 off): the walk is float64 only"
   },
@@ -37,5 +64,13 @@
     "prediction": "every array np.array_equal in both dtypes",
     "basis": "derived: a name scope changes operation metadata, not operations; dense_solve is jnp.linalg.solve in a scope",
     "if_wrong": "a moved bit under a name scope would mean XLA's fusion reads the metadata: report the arrays and revert that site to a bare call, keeping the registry for the others"
+  },
+  "outcomes": {
+    "note": "written after the gates ran; the predictions above are unchanged. The test file the predictions name as test_registry.py is tests/solve_sites/test_solve_sites.py (renamed: pytest refuses two test files of one basename without packages).",
+    "probe_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42975283937 (probe branch deleted after)",
+    "gate_1_clean_walk": "0 unregistered solves on the six cases in both dtypes; the registry and the walk agree both ways (laptop and CI)",
+    "gate_2_float64_walk": "0 narrower floats inside a solve scope on the six cases",
+    "controls": "bypass_dense 30/30, direct_solve_in_step 30/30, downcast_dense 30/30, downcast_cg 30/30, downcast_gmres 30/30 (lower bound 0.905 each), clean arm 0/30 flagged each; each plant also asserted caught in process on every case it touches",
+    "bits": "all_equal true on 30 programs (15 programs, float64 and float32): nf_dense_2, nf_dense_3, nf_gmres_2, mrs_near_field, mrs_near_field_gmres, open_tube_flow, periodic/steady/rk3_tube_flow, script_a, script_a_metered, hull_contact, mrs_point_forces, mrs_free_space, dynamic_rpm; base cf1eb5d, one CPU, one BLAS thread, one job"
   }
 }
