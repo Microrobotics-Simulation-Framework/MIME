@@ -28,6 +28,10 @@ from mime.testing import centreline_problems
 from mime.units import mm
 
 UNION_PLANT = os.environ.get("MIME_PLANT_UNION")
+#: The shift the curvature line is set for, in cells: FA4's line.
+CURVATURE_SHIFT = 0.1
+#: The sweep's major vertex's radius of curvature, b^2 / a, in diameters.
+VERTEX = 0.3 ** 2 / 0.5
 #: The shares of the wall shear's error each layer line is set for.
 LAYER_SHARES = {"wall shear within 5 %": 0.05, "wall shear within 2 %": 0.02}
 #: A kind that labels the centreline harness's lines; the tree's own centreline is what is held.
@@ -213,6 +217,26 @@ def test_the_layer_lines_are_the_sweeps_worst_arm():
         below = min(layer for layer in layers if layer > above)
         crossing = above + (worst[above] - share) / (worst[above] - worst[below]) * (below - above)
         assert crossing <= line <= math.ceil(crossing * 10.0) / 10.0 + 1e-12, (name, crossing)
+
+
+def test_the_curvature_line_is_the_sweeps():
+    """``CURVATURE_LINE`` against the elliptic section's sweep it is set from (FA4's reading, each semi-axis's shift less
+    a round tube's, cells, over turns and sub-cell offsets at resolutions putting the major vertex at 2.9 to 8.6
+    cells): every row at or above the line within 0.1 cells, and the line the least swept radius above the last one
+    with a row past 0.1, rounded up to a tenth of a cell. The reading is not monotone in the radius (5.04 cells read
+    0.117 between 4.32's 0.030 and 5.22's 0.076), so the line is the sweep's, at the radii it swept, not a bound
+    between them."""
+    held = json.loads(Path(__file__).with_name("curvature_sweep_rows.json").read_text())
+    worst: dict[float, float] = {}
+    for values in held["rows"]:
+        row = dict(zip(held["columns"], values, strict=True))
+        radius = VERTEX * row["dh"]
+        worst[radius] = max(worst.get(radius, 0.0), abs(row["major"]), abs(row["minor"]))
+    radii = sorted(worst)
+    assert all(worst[radius] <= CURVATURE_SHIFT for radius in radii if radius >= CURVATURE_LINE)
+    above = max(radius for radius in radii if worst[radius] > CURVATURE_SHIFT)
+    least = min(radius for radius in radii if radius > above)
+    assert least <= CURVATURE_LINE <= math.ceil(least * 10.0) / 10.0 + 1e-12, (above, least)
 
 
 def test_the_features_the_report_reads():

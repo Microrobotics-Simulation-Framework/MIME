@@ -24,6 +24,7 @@ The predictions are ``predictions_general_wall.json``'s, committed before these 
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import jax
@@ -50,7 +51,7 @@ from wall_cases import (
 
 from mime.core._node import RUN_CONSTANTS_GIVEN
 from mime.nodes.flow.fvm import MACGrid
-from mime.nodes.flow.fvm._band import INTERIOR_RAMP_END, band_named, interior_depth, interior_ramp, ramp
+from mime.nodes.flow.fvm._band import INTERIOR_RAMP_END, band_named, interior_depth, interior_ramp, ramp, wall_fields
 
 #: The wall's shift against the planar calibration, in cells (S1's line, as the tube's).
 SHIFT_LINE = 0.15
@@ -110,11 +111,13 @@ def measure_contract(seed: int, dh: int = 8) -> dict[str, float]:
     with in_dtype("float64"):
         placed = tree_node(loop(), dh, angle=angle, offset=offset)
         node = placed.node
-        if plant("floor"):
-            node.wall_floor = lambda spacing: 0.5 * type(node).wall_floor(node, spacing)
         grid = MACGrid(placed.layout.cells, placed.layout.spacing)
         held = dict(node._step_constants(None))  # noqa: SLF001 - the step's own constants
         fields = node.fields(held, grid)
+        if plant("floor"):
+            c = node.constants()
+            solid = dataclasses.replace(node.tree_solid(held, grid), floor=0.5 * node.wall_floor(grid.spacing))
+            fields = wall_fields(grid, [solid], band_named(c["band"]), interior_depth(c["interior"]), "float64")
         given = {**held, **node.params_pytree(), RUN_CONSTANTS_GIVEN: ()}
         given.update(node.run_constants(given))
         constant = max(float(jnp.max(jnp.abs(a - b))) for a, b in

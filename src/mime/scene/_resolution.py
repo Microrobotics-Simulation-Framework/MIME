@@ -7,9 +7,11 @@ Entries, each in cells of the spacing:
 
 - **the smallest wall radius**: the tightest curvature of the wall in the band, a sharp seam's zero (a fillet's radius
   where the wall is filleted), against :data:`CURVATURE_LINE`, from an elliptic section's sweep (FA4's: its major
-  vertex's shift against a round tube's, over turns and sub-cell offsets at resolutions putting the vertex at 3.6 to
-  8.6 cells; the rows are kept with the test that holds the line to them). It is measured on a wall curved about the
-  lumen; a fillet's, curved the other way, is read against the same line, unmeasured;
+  vertex's shift against a round tube's, over turns and sub-cell offsets at resolutions putting the vertex at 2.9 to
+  8.6 cells: up to 0.15 cells at 2.9 and 0.12 at 5.0, within 0.1 at every resolution swept from 5.2 to 8.6, the rows
+  kept with the test that holds the line to them). The reading is not monotone in the radius, so the line is the
+  sweep's, at the resolutions it swept. It is measured on a wall curved about the lumen; a fillet's, curved the other
+  way, is read against the same line, unmeasured;
 - **the narrowest lumen**: the smallest diameter, against the band's thin-feature estimate (a band two cells wide on
   each side over-conducts a gap narrower than about five cells);
 - **the narrowest solid**: the least solid between two tubes that share no point, and the sharpest wedge of solid
@@ -34,9 +36,9 @@ from mime.scene._tube_tree import WallFeatures
 #: arm, as the docstring says).
 LAYER_LINES = {"wall shear within 5 %": 2.7, "wall shear within 2 %": 4.5}
 #: The smallest wall radius's line, in cells of radius of curvature: at and above it an elliptic section's major
-#: vertex read within 0.1 cells of a round tube's shift over every turn and sub-cell offset the sweep drew (the
-#: docstring).
-CURVATURE_LINE = 6.0
+#: vertex read within 0.1 cells of a round tube's shift over every turn and sub-cell offset the sweep drew, at every
+#: resolution it swept (the docstring).
+CURVATURE_LINE = 5.3
 #: The narrowest lumen's line, in cells: the band's thin-feature estimate.
 LUMEN_LINE = 5.0
 #: The registered band's width in cells (the default band, two cells), which the wedge's entry is read against.

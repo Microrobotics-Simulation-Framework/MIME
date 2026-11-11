@@ -37,13 +37,13 @@ SHIFT_LINE = 0.15
 #: where the section is resolved, its least radius of curvature (the major vertex's, b^2 / a = 0.18 D) at or above the
 #: band's curvature line (``mime.scene.CURVATURE_LINE``). At 16 cells a diameter (2.88 cells at the vertex, below it)
 #: the prediction was missed (predictions_general_wall.json's outcomes: 3 clean draws of 200 read 0.104 to 0.115, and
-#: the sweep read 0.151 at 45 degrees and half a cell), so the gate runs at ``FA4_DH``.
+#: the sweep read 0.148 at 45 degrees and 0.55 of a cell), so the gate runs at ``FA4_DH``.
 SECTION_LINE = 0.1
-#: The resolution FA4 runs at: the least whole number of cells a diameter putting the major vertex at or above the
-#: curvature line.
-FA4_DH = math.ceil(CURVATURE_LINE / (0.3 ** 2 / 0.5))
-#: The turn and offset the sweep read worst at 16 cells a diameter.
-WORST = (math.radians(45.0), (0.5, 0.5, 0.0))
+#: The resolution FA4 runs at, its major vertex 7.9 cells, above the curvature line: of the resolutions the sweep read
+#: at three turns over a grid of offsets, the one with the most room under the line (its worst 0.053 cells).
+FA4_DH = 44
+#: The turn and offset the sweep read worst at ``FA4_DH``.
+WORST = (math.radians(45.0), (0.95, 0.95, 0.0))
 #: The helix: the tube's radius, its curvature times it, and its pitch over two pi (D = 1).
 TUBE, CURVED, PITCH = 0.5, 0.15, 0.35
 CENTRELINE_PLANT = 0.1
@@ -124,8 +124,8 @@ def test_fa4_the_elliptic_sections_semi_axes_shift_as_a_round_tubes(seed):
 
 
 def test_fa4_at_the_worst_turn_and_offset_measured():
-    """FA4 at the turn and offset the sweep read worst at 16 cells a diameter (45 degrees, half a cell each way), at
-    ``FA4_DH``, where the major vertex lies above the band's curvature line."""
+    """FA4 at the turn and offset the sweep read worst at ``FA4_DH`` (45 degrees, 0.95 of a cell each way), where the
+    major vertex lies above the band's curvature line."""
     read = measure_section(0, at=WORST)
     print(f"\nthe worst draw: {read['major']:+.4f}, {read['minor']:+.4f} cells at {FA4_DH} cells a diameter")
     assert abs(read["major"]) <= SECTION_LINE and abs(read["minor"]) <= SECTION_LINE
@@ -135,5 +135,6 @@ def test_below_the_curvature_line_the_resolution_report_flags_the_section():
     """At 16 cells a diameter the major vertex's radius of curvature (b^2 / a, 0.18 D) is 2.88 cells, under the band's
     curvature line, where the sweep read up to 0.15 cells: the resolution report flags it; at ``FA4_DH`` it does not."""
     vertex = 0.3 ** 2 / 0.5
+    assert vertex * FA4_DH >= CURVATURE_LINE
     assert ResolutionEntry("smallest wall radius", vertex * 16, CURVATURE_LINE, "").below is True
     assert ResolutionEntry("smallest wall radius", vertex * FA4_DH, CURVATURE_LINE, "").below is False
