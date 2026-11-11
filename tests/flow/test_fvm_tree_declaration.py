@@ -98,8 +98,8 @@ def test_the_trees_ends_are_openings_of_its_lumen_reachable_through_its_handle()
     assert TubeTree(**PERIODIC).opening_names() == {"lumen": ("root", "end_0")}
     assert "root" in experiment.tree().text() and "end_0" in experiment.tree().text()
     built = tree_experiment(TubeTree(**PERIODIC))
-    (flow,) = [entry for entry in built.plan().entries if "medium" in entry.regions]
-    assert flow.regions["medium"].openings == ("vessel.root", "vessel.end_0")
+    regions = [entry.regions["medium"] for entry in built.plan().entries if "medium" in entry.regions]
+    assert regions and {region.openings for region in regions} == {("vessel.root", "vessel.end_0")}
 
 
 def test_an_end_named_as_a_region_is_refused():
