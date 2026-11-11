@@ -21,7 +21,6 @@ so its change telescopes over a run."""
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, NamedTuple
@@ -30,6 +29,7 @@ import jax
 from jax import Array
 
 from mime.core import jnp, shape_named
+from mime.scene._sampling import counted
 from mime.core._quaternion import rotation_matrix
 from mime.nodes.flow.fvm._band import Band, ramp
 from mime.nodes.flow.fvm._grid import MACGrid
@@ -45,9 +45,11 @@ WINDOW_MARGIN = 3
 
 def window_cells(enclosing_radius: float, spacing: float, band: Band) -> int:
     """The window's side in cells for a body of ``enclosing_radius`` (m) on a grid of ``spacing``: every face whose
-    distance from the body is under the band's outer half (where its indicator is above zero) lies inside it."""
+    distance from the body is under the band's outer half (where its indicator is above zero) lies inside it. Counted
+    as the box's counts are (``mime.scene._sampling.counted``, the ceiling less a relative slack), so that a body
+    whose reach is a whole number of cells keeps its window when a study moves its size by a part in a million."""
     reach = enclosing_radius / spacing + 0.5 * band.width + WINDOW_MARGIN
-    return 2 * math.ceil(reach) + 1
+    return 2 * counted(reach) + 1
 
 
 @dataclass(frozen=True)

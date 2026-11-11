@@ -28,6 +28,7 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
     ExplicitFlowNode, ImplicitFlowNode, OpenFlowNode, periodic_tube_layout
 from mime.nodes.flow.fvm._box import TubeLayout
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
+from mime.nodes.flow.fvm._resolved_node import ResolvedFlowNode
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
 from mime.nodes.flow.fvm._ports import port_law_named, well_posed
@@ -193,7 +194,7 @@ class FVM(Dynamics):
         route="the dQ/dR gate: the radius in the gradient gate, its loss the box's whole axial flux, its central "
               "difference taken inside one discretisation (the layout's dead band; or from a declared range)")
     references = ("HarlowWelch1965", "Angot1999", "Womersley1955")
-    builds = {"": (ImplicitFlowNode, ExplicitFlowNode, OpenFlowNode)}
+    builds = {"": (ImplicitFlowNode, ExplicitFlowNode, OpenFlowNode, ResolvedFlowNode)}
     applies_to = frozenset({ThingKind.MEDIUM})
     port_kinds = (FLUID.name, OPENING.name)
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
@@ -649,7 +650,7 @@ def _resolved_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, resolved: S
     """The flow's node with the resolved bodies on its grid (``mime.nodes.flow.fvm._resolved_node``): each body's
     pose and twist read at the step's start, its load delivered back to it under its drag's id."""
     from mime.dynamics.flow._resolved import resolved_spec
-    from mime.nodes.flow.fvm._resolved_node import ResolvedFlowNode, ResolvedSpec
+    from mime.nodes.flow.fvm._resolved_node import ResolvedSpec
 
     del fvm
     band = BANDS[DEFAULT_BAND]

@@ -42,7 +42,7 @@ from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import as_run_array, jnp, node_input, run_dtype, shape_named
+from mime.core import Symbol, SymbolKind, as_run_array, jnp, node_input, run_dtype, shape_named
 from mime.core import ledger as books
 from mime.core.ledger import IDENTITY_ULPS
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth
@@ -55,6 +55,18 @@ from mime.nodes.flow.fvm._resolved import BodyFaces, ResolvedBody, body_faces, m
 BODY_FIELDS = ("load", "penalty", "momentum", "indicator", "share", "power", "dissipated", "gift_steps")
 #: The per-body inputs, ``body_<i>_<name>``: the body's pose and twist at the step's start.
 BODY_INPUTS = ("pose", "twist")
+#: A body's books in the step (the module's docstring states them): the penalty's load, its interior's momentum, its
+#: load, its indicator's volume, its displaced share, the law's power at one velocity, its dissipation and its gift
+#: steps.
+BODY_EQUATIONS = (r", \quad \mathbf{F}_p = \rho \sum \operatorname{penalty}_{b} (\mathbf{u}_{n+1} - \mathbf{u}_{b}), "
+                  r"\quad \mathbf{Q}_b = \rho \sum \operatorname{chi}_{b} \mathbf{u}_{n+1}, \quad \mathbf{F}_b = "
+                  r"\mathbf{F}_p + \frac{\mathbf{Q}_b - \mathbf{Q}_{b,n}}{h}, \quad V_\chi = \sum \operatorname{chi}_{b}, "
+                  r"\quad \mathbf{S}_b = \rho V_{b} \mathbf{g}, \quad P_b = \mathbf{F}_p \cdot \mathbf{u}_{b} - \rho \sum "
+                  r"\operatorname{penalty}_{b} (\mathbf{u}_{n+1} - \mathbf{u}_{b}) \cdot \mathbf{u}_{n+1}, \quad D_b = "
+                  r"-\sum h P_b, \quad n_b = \sum \operatorname{gift}(P_b)")
+#: Where the symbol rows' functions are.
+_STEP = "mime.nodes.flow.fvm._resolved_node.ResolvedFlowNode.stepped"
+_BOOKS = "mime.nodes.flow.fvm._resolved_node.ResolvedFlowNode.body_books"
 #: The identity pose: a body's input before anything is fed.
 REST_POSE = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
@@ -119,8 +131,7 @@ class ResolvedFlowNode(ImplicitFlowNode):
         description="A medium's flow on a periodic box holding a straight tube and resolved rigid bodies: each body's "
                     "solid the wall's band lifted from its shape's signed distance at its pose, its penalty driving its "
                     "interior to its rigid twist; each body's load the penalty's plus its interior's momentum change.",
-        governing_equations=EQUATIONS + r", \quad \mathbf{F}_b = \rho h^3 \sum \frac{\nu}{K_b} (\mathbf{u} - " \
-                                        r"\mathbf{u}_b) + \frac{d}{dt} \rho h^3 \sum \chi_b \mathbf{u}",
+        governing_equations=EQUATIONS + BODY_EQUATIONS,
         assumptions=(
             "Incompressible Newtonian fluid, its viscosity and density uniform, on the MAC grid of the implicit flow "
             "node, its wall a smooth Brinkman band",
@@ -138,6 +149,18 @@ class ResolvedFlowNode(ImplicitFlowNode):
             "cells from the wall and from each other (closer, the bands overlap: the near-wall resolved-body phase)",
         ),
         references=(Reference("HarlowWelch1965"), Reference("Angot1999"), Reference("KempeFrohlich2012")),
+    )
+
+    symbols = (
+        *ImplicitFlowNode.symbols,
+        Symbol(r"\mathbf{F}_b", SymbolKind.STATE, "body_{slot}_load", "N; N m", _STEP),
+        Symbol(r"\mathbf{F}_p", SymbolKind.STATE, "body_{slot}_penalty", "N; N m", _BOOKS),
+        Symbol(r"\mathbf{Q}_b", SymbolKind.STATE, "body_{slot}_momentum", "kg m/s; kg m^2/s", _BOOKS),
+        Symbol(r"V_\chi", SymbolKind.STATE, "body_{slot}_indicator", "m^3", _BOOKS),
+        Symbol(r"\mathbf{S}_b", SymbolKind.STATE, "body_{slot}_share", "N; N m", _STEP),
+        Symbol(r"P_b", SymbolKind.STATE, "body_{slot}_power", "W", _STEP),
+        Symbol(r"D_b", SymbolKind.STATE, "body_{slot}_dissipated", "J", _STEP),
+        Symbol(r"n_b", SymbolKind.STATE, "body_{slot}_gift_steps", "1", _STEP),
     )
 
     def __init__(self, name: str, timestep: float, *, bodies: Sequence[ResolvedSpec] | int = (),
