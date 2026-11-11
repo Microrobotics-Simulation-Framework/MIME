@@ -81,7 +81,7 @@ def test_the_union_is_exact_at_sixteen_cells_a_diameter(seed):
     plain = plain_minimum(tree, points)
     band = np.abs(plain) < 3.0 * h
     points, plain = points[band], plain[band]
-    exact = brute_distance(tree, points, BRUTE_SPACING * h, np.asarray(tree.points[1]), (REACH + 0.25) * D)
+    exact = brute_distance(tree, points, BRUTE_SPACING * h, tree.parameters()["points"][1], (REACH + 0.25) * D)
     judged = (np.abs(plain) < 2.0 * h) | (np.abs(exact) < 2.0 * h)
     distance, found = composed(tree, points, "float64")
     error = np.abs(distance - exact)[judged] / h

@@ -313,12 +313,19 @@ def capability(shape: Any, name: str) -> Callable[[Parameters, Any], Any]:
     raise KeyError(name)
 
 
-def _split(parameters: Parameters, dtype: Any) -> tuple[dict[str, Any], tuple[tuple[str, int], ...]]:
-    """The parameters as arrays of ``dtype`` and the integers, which are structural, as a hashable tuple."""
-    numeric = {key: jnp.asarray(value, dtype=dtype) for key, value in parameters.items()
-               if not (isinstance(value, int) and not isinstance(value, bool))}
-    whole = tuple(sorted((key, value) for key, value in parameters.items()
-                         if isinstance(value, int) and not isinstance(value, bool)))
+def _structural(value: object) -> bool:
+    """An integer, or a tuple whose every leaf is one (a tube tree's segments): structure, never traced."""
+    if isinstance(value, tuple):
+        items = cast(tuple[object, ...], value)
+        return bool(items) and all(_structural(item) for item in items)
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _split(parameters: Parameters, dtype: Any) -> tuple[dict[str, Any], tuple[tuple[str, Any], ...]]:
+    """The parameters as arrays of ``dtype`` and the integers (and tuples of them), which are structural, as a
+    hashable tuple."""
+    numeric = {key: jnp.asarray(value, dtype=dtype) for key, value in parameters.items() if not _structural(value)}
+    whole = tuple(sorted((key, value) for key, value in parameters.items() if _structural(value)))
     return numeric, whole
 
 
@@ -339,7 +346,7 @@ def _planted(f: Callable[..., Any], scale: float) -> Callable[..., Any]:
 
 
 @partial(_jit, static_argnames=("shape", "name", "whole", "planted"))
-def _derivative(shape: str, name: str, whole: tuple[tuple[str, int], ...], planted: float, numeric: dict[str, Any],
+def _derivative(shape: str, name: str, whole: tuple[tuple[str, Any], ...], planted: float, numeric: dict[str, Any],
                 point: Any, numeric_tangent: dict[str, Any], point_tangent: Any) -> tuple[Any, Any]:
     f = capability(shape_named(shape), name)
 
@@ -351,7 +358,7 @@ def _derivative(shape: str, name: str, whole: tuple[tuple[str, int], ...], plant
 
 
 @partial(_jit, static_argnames=("shape", "name", "whole"))
-def _jacobian(shape: str, name: str, whole: tuple[tuple[str, int], ...], numeric: dict[str, Any], point: Any) -> Any:
+def _jacobian(shape: str, name: str, whole: tuple[tuple[str, Any], ...], numeric: dict[str, Any], point: Any) -> Any:
     """The capability's Jacobian in the point: the derivative's scale along any direction, which the inputs give."""
     f = capability(shape_named(shape), name)
 
@@ -362,16 +369,16 @@ def _jacobian(shape: str, name: str, whole: tuple[tuple[str, int], ...], numeric
 
 
 @partial(_jit, static_argnames=("shape", "name", "whole"))
-def _value(shape: str, name: str, whole: tuple[tuple[str, int], ...], numeric: dict[str, Any], point: Any) -> Any:
+def _value(shape: str, name: str, whole: tuple[tuple[str, Any], ...], numeric: dict[str, Any], point: Any) -> Any:
     return capability(shape_named(shape), name)({**numeric, **dict(whole)}, point)
 
 
 #: The owners each traced evaluation of ``_indicators`` collected, in order, by its static arguments.
-_OWNERS: dict[tuple[str, tuple[tuple[str, int], ...]], list[str]] = {}
+_OWNERS: dict[tuple[str, tuple[tuple[str, Any], ...]], list[str]] = {}
 
 
 @partial(_jit, static_argnames=("shape", "whole"))
-def _indicators(shape: str, whole: tuple[tuple[str, int], ...], numeric: dict[str, Any], point: Any) -> list[Any]:
+def _indicators(shape: str, whole: tuple[tuple[str, Any], ...], numeric: dict[str, Any], point: Any) -> list[Any]:
     """Each switch's indicator nearest zero, as the shape's distance and normal evaluate them at ``point``: collected
     while the evaluation is traced, so its owners are recorded once per trace."""
     held, evaluated = {**numeric, **dict(whole)}, shape_named(shape)
@@ -691,6 +698,45 @@ register_shape_case(ShapeCase(
         [p["offset"] + offset, (2.0 * draw[0] - 1.0) * p["offset"], (2.0 * draw[1] - 1.0) * p["offset"]]),
         _rounding("offset")),),
     moved=("offset", "normal"),
+))
+
+def _tube_tree(radius: float, fillet: float) -> Parameters:
+    """A Y in its own frame: a parent of ``radius`` along -x from the origin, three radii long, and daughters of 0.8
+    and 0.6 of it at plus and minus thirty degrees, two radii long, filleted at ``fillet`` of the smaller daughter."""
+    c, s = math.cos(math.pi / 6.0), math.sin(math.pi / 6.0)
+    points = ((-3.0 * radius, 0.0, 0.0), (0.0, 0.0, 0.0), (2.0 * radius * c, 2.0 * radius * s, 0.0),
+              (2.0 * radius * c, -2.0 * radius * s, 0.0))
+    radii = (radius, radius, 0.8 * radius, 0.8 * radius, 0.6 * radius, 0.6 * radius)
+    return {"points": tuple(x for point in points for x in point), "radii": radii, "fillet": fillet,
+            "segments": ((0, 1), (1, 2), (1, 3))}
+
+
+def _tube_tree_turned(parameters: Parameters, turn: np.ndarray, shift: np.ndarray) -> Parameters:
+    points = np.asarray(parameters["points"], dtype=np.float64).reshape(-1, 3) @ _rotation(turn).T + shift
+    return {**parameters, "points": tuple(float(x) for x in points.reshape(-1))}
+
+
+def _tube_tree_place(parameters: Parameters, offset: float, draw: np.ndarray) -> np.ndarray:
+    """A point ``offset`` out from the parent's wall about its middle (a radius or more from its end ball, the junction
+    and its axis): no seam, corner or medial set within the case's reach."""
+    radius = float(parameters["radii"][0])
+    return np.array([-(1.5 + draw[0]) * radius, 0.0, 0.0]) + _around_x(radius + offset, draw[1])
+
+
+register_shape_case(ShapeCase(
+    shape="tube_tree",
+    # The union's composed distance at its seams and corners is gated against a brute force and closed forms
+    # (tests/scene/test_exact_union.py); this case holds the shape's derivatives on a tube's wall, its probes about the
+    # parent's middle, where the union is that tube's round cone. Its size is a fifth of the parent's radius, so no
+    # probe reaches the axis, the end ball or the junction.
+    parameters=st.fixed_dictionaries({"radius": _length(1e-5, 5e-3), "fillet": st.floats(0.0, 0.2)}).map(
+        lambda held: _tube_tree(held["radius"], held["fillet"])),
+    size=lambda parameters: 0.2 * float(parameters["radii"][0]),
+    turned=_tube_tree_turned,
+    sets=(SwitchSet("tube_tree.boundary", _tube_tree_place,
+                    lambda p, dtype: switch.ROUNDING_ULPS * float(jnp.finfo(dtype).eps) * float(p["radii"][0])),),
+    moved=("fillet",),
+    plain=("fillet",),
 ))
 
 register_shape_case(ShapeCase(

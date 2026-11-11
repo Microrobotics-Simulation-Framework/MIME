@@ -1823,7 +1823,8 @@ class _Planner:
                         "structure")
             return None
         held = cast(Any, type(geometry.geometry))
-        candidates: tuple[str, ...] = tuple(held.surfaces) if names == "surfaces" else tuple(getattr(held, names))
+        candidates: tuple[str, ...] = (tuple(geometry.geometry.surface_names()) if names == "surfaces"
+                                       else tuple(getattr(held, names)))
         if part not in candidates:
             self.refuse("binding.unknown", RefusalClass.USER,
                         f"{where}{path!r}: {geometry.registered.cls.label()} has no {noun} {part!r}",
@@ -1862,7 +1863,7 @@ class _Planner:
             self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}", error)
             return None
         return Region(path, shape, parameters,
-                      tuple(f"{owner}.{surface}" for surface in type(plan.geometry).openings.get(part, ())))
+                      tuple(f"{owner}.{surface}" for surface in plan.geometry.opening_names().get(part, ())))
 
     def literal_direction(self, value: object, what: str) -> tuple[float, float, float] | None:
         try:
@@ -2781,7 +2782,7 @@ class _Planner:
             return sorted(self.providers)
         if kind is RoleKind.SURFACE:
             return sorted(f"{owner}.{surface}" for owner, plan in self.geometries.items()
-                          for surface in type(plan.geometry).surfaces)
+                          for surface in plan.geometry.surface_names())
         return sorted(n for n, t in self.things.items() if t.kind is kind.thing_kind)
 
     def record_of(self, kind: RoleKind, name: str) -> CapabilityRecord | None:
@@ -3594,7 +3595,7 @@ class _Planner:
         if extent is None and not holds_hull:
             return  # refused as undeclared
         geometry = self.geometries[owner]
-        shape = type(geometry.geometry).surfaces[part]
+        shape = geometry.geometry.surface_names()[part]
         try:
             parameters = geometry.geometry.surface_parameters(part, geometry.settings)
         except Exception as error:  # noqa: BLE001
