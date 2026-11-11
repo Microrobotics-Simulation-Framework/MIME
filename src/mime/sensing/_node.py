@@ -185,8 +185,13 @@ class CameraNode(MountedNode):
                 reach = float(np.asarray(_projected_reach(camera, pose0, origin, subject.enclosing())))
                 subject = scene.subject_of({**each, "window": scene.frame_window(reach, camera.width, camera.height)})
             made.append(subject)
-        cache = static_cache(made, camera, pose0) if cast(int, held["mount_index"]) < 0 else None
+        cache = static_cache(made, camera, pose0) if self.holds_cache() else None
         return camera, tuple(_prepared(made, None)[0]), cache
+
+    def holds_cache(self) -> bool:
+        """Whether the build holds the static structure's image: only where the camera is fixed in the world, where the
+        camera and the static structure share a frame. A camera on a frame that may move never does."""
+        return cast(int, self.constants()["mount_index"]) < 0
 
     def _spec(self) -> Mapping[str, Any]:
         return cast(Mapping[str, Any], json.loads(cast(str, self.constants()["spec"])))

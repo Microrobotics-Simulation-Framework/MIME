@@ -49,14 +49,14 @@ FLAG_MEANINGS = {
 @dataclass(frozen=True, kw_only=True)
 class Detector(SettingGroup):
     """A pinhole detector of ``width`` by ``height`` pixels with focal lengths ``fx``, ``fy`` and principal point ``cx``,
-    ``cy`` in pixels, and OpenCV's five distortion coefficients ``(k1, k2, p1, p2, k3)``. ``source`` says where the
+    ``cy`` in pixels, and OpenCV's five distortion coefficients ``k1, k2, p1, p2, k3``. ``source`` says where the
     numbers come from: ``"declared"``, or a calibration file's name and sha256 (``fitted: ...``), which
     ``Pinhole.from_calibration`` writes. A declaration is not a calibration."""
 
     group = "detector"
     setting_roles = {
         "width": PHYSICAL, "height": PHYSICAL, "fx": PHYSICAL, "fy": PHYSICAL, "cx": PHYSICAL, "cy": PHYSICAL,
-        "distortion": convention(PHYSICAL, "no lens distortion unless declared or fitted"),
+        **dict.fromkeys(("k1", "k2", "p1", "p2", "k3"), convention(PHYSICAL, "no lens distortion unless declared or fitted")),
         "source": convention(PHYSICAL, "the numbers are a declaration unless a calibration file is the source")}
     width: int
     height: int
@@ -64,7 +64,11 @@ class Detector(SettingGroup):
     fy: float
     cx: float
     cy: float
-    distortion: tuple[float, float, float, float, float] = (0.0, 0.0, 0.0, 0.0, 0.0)
+    k1: float = 0.0
+    k2: float = 0.0
+    p1: float = 0.0
+    p2: float = 0.0
+    k3: float = 0.0
     source: str = "declared"
 
     @staticmethod
@@ -72,12 +76,11 @@ class Detector(SettingGroup):
         d = pinhole.distortion
         return Detector(width=pinhole.width, height=pinhole.height, fx=float(pinhole.fx), fy=float(pinhole.fy),
                         cx=float(pinhole.cx), cy=float(pinhole.cy),
-                        distortion=(float(d.k1), float(d.k2), float(d.p1), float(d.p2), float(d.k3)), source=d.source)
+                        k1=float(d.k1), k2=float(d.k2), p1=float(d.p1), p2=float(d.p2), k3=float(d.k3), source=d.source)
 
     def pinhole(self) -> Pinhole:
-        k1, k2, p1, p2, k3 = self.distortion
         return Pinhole(self.width, self.height, self.fx, self.fy, self.cx, self.cy,
-                       BrownConrady(k1, k2, p1, p2, k3, source=self.source))
+                       BrownConrady(self.k1, self.k2, self.p1, self.p2, self.k3, source=self.source))
 
 
 @register_setting_group
@@ -305,7 +308,7 @@ class Camera(Observation):
         mount = ctx.mount
         initial = [c for name in bodies for c in cast(tuple[float, ...], ctx.roster.bodies[name].pose)]
         node = b.add_node(CameraNode(
-            ctx.node_name(), ctx.timestep, spec=scene.dumps(spec), intrinsics=(d.fx, d.fy, d.cx, d.cy, *d.distortion), bodies=bodies, initial_poses=initial, period=period,
+            ctx.node_name(), ctx.timestep, spec=scene.dumps(spec), intrinsics=(d.fx, d.fy, d.cx, d.cy, d.k1, d.k2, d.p1, d.p2, d.k3), bodies=bodies, initial_poses=initial, period=period,
             sub_frames=self.sub_frames, seed=ctx.seeds["noise"], placement=placement,
             mount_index=mount.index if mount is not None else -1, mount_count=mount.count if mount is not None else 0,
             initial_mount_pose=mount.initial_pose if mount is not None else (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)))

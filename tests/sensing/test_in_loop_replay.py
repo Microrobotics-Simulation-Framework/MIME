@@ -5,7 +5,8 @@ body's, one after each step (what a recording keeps); the frame made at step ``n
 ``n - K + 1`` to ``n`` (the body's start before the first).
 
 **The controls**: the ring read one step late (``CAMERA_PLANT=ring``: a frame exposed over the previous step's poses) and
-a wrong stream key (``CAMERA_PLANT=key``, the seed plus one) each fail the equality, every run."""
+a wrong stream key (``CAMERA_PLANT=key``, the seed plus one) and a shift of one count over a band of rows
+(``CAMERA_PLANT=shift``, planted in the node's image) each fail it, every run."""
 
 from __future__ import annotations
 
@@ -18,6 +19,14 @@ from mime.units import ms
 
 if planted("ring"):
     plant_node({"exposed": lambda self, before, ring: before})
+if planted("shift"):
+    held_render = CameraNode._rendered  # noqa: SLF001
+
+    def shifted(self, *arguments):
+        image, expected, flags = held_render(self, *arguments)
+        return image.at[:12].add(1.0), expected, flags
+
+    CameraNode._rendered = shifted  # noqa: SLF001
 if planted("key"):
     plant_node({"key_of": lambda self, seed, count: jax.random.fold_in(jax.random.PRNGKey(seed + 1), count)})
 
@@ -42,19 +51,30 @@ def test_a_frame_is_the_offline_render_of_its_recorded_poses(dtype):
         state = built.current_state()
         after.append(np.asarray(state["ball"]["pose"]))
         if int(state["camera:"]["new_frame"]):
-            frames.append((n, np.asarray(state["camera:"]["image"])))
-    assert [n for n, _ in frames] == [0, 3, 6]
-    differences = []
-    for n, image in frames:
+            frames.append((n, np.asarray(state["camera:"]["image"]), np.asarray(state["camera:"]["expected"], dtype=np.float64)))
+    assert [n for n, _, _ in frames] == [0, 3, 6]
+    wide = dtype == "float64"
+    floor = 64 * float(np.finfo(np.float64 if wide else np.float32).eps) * 1000.0
+    for n, image, expected in frames:
         rows = np.stack([after[n - 1] if n >= 1 else start, after[n]])
         replay = render([wall, ball], camera, camera_pose, {"ball": (rows[:, :3], rows[:, 3:])},
                         exposure=Exposure(2), response=Response(), key=frame_key(seed, n),
                         cache=static_cache([wall, ball], camera, camera_pose))
-        gap = np.abs(np.asarray(replay.image) - image)
-        differences.append((float(gap.max()), float((gap > 0).mean())))
-    print("largest difference in counts and share of pixels differing, per frame:", differences, "dtype", dtype)
-    # The compiled step and the eager offline call are not one XLA program: a pixel whose noisy value lies within a few
-    # ulps of a rounding boundary rounds the other way (one count). The line is derived: a pixel is that near a boundary
-    # with probability about 4 ulps of its count (6e-5 relative in float32, a count of 1e3) over one count, 2.4e-4.
-    assert max(g for g, _ in differences) <= 1.0, differences
-    assert max(share for _, share in differences) <= 1e-3, differences
+        moved = np.abs(np.asarray(replay.expected, dtype=np.float64) - expected)
+        flipped = int((np.asarray(replay.image) != image).sum())
+        # The mechanism: the replay and the in-loop frame are two compiled programs, so the noisy value (the counts
+        # before noise and rounding, the shot term and the read term added) differs in its last bits, up to one unit in
+        # the last place of its own size at any pixel, and by more at the edge pixels, where the counts before noise were
+        # measured to differ by 3.3e-3 counts at most (28 float32 epsilons of the full scale; the gaps below). A pixel
+        # whose noisy value has a rounding boundary (a half count) between the two values rounds to another count: a
+        # boundary falls in a gap of width g with probability g, boundaries one a count apart. So the flips expected
+        # are the sum of the gaps, which is at most the sum of each pixel's unit in the last place plus the measured
+        # gaps in `expected`; the line is that and four standard deviations of a Poisson count of it, plus one.
+        unit = float(np.sum(np.spacing(np.abs(np.asarray(replay.image, dtype=np.float64 if wide else np.float32)))))
+        assert moved.max() <= floor, (n, moved.max(), floor)
+        expected_flips = float(moved.sum()) + unit
+        assert flipped <= expected_flips + 4.0 * np.sqrt(expected_flips) + 1.0, (n, flipped, expected_flips)
+        assert np.abs(np.asarray(replay.image) - image).max() <= 1.0
+        if wide:
+            assert flipped == 0, (n, flipped)
+        print(f"frame {n} {dtype}: {flipped} pixels flipped, expected {expected_flips:.4g}, largest gap {moved.max():.3g}")
