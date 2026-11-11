@@ -164,10 +164,11 @@ def series_lengths(d: YDraw) -> tuple[float, float]:
 
 def lumen_split(d: YDraw, built: Any, result: Any) -> float:
     """The share of the two daughters' lumen flux that the daughter leading to ``end_0`` carries, read from the
-    geometry, not from any opening: each daughter's fluid flux (``1 - chi``) through the z plane of faces nearest 0.6
-    of the way from the junction to its end, over the cells within its section's reach (its radius over the cosine of
-    its angle from z, and two cells) of its axis there; the share of the two, so that the solid's bypass, in proportion
-    to each, cancels. A mix-up of an opening's name and its patch moves it to about the split's complement."""
+    geometry, not from any opening: the fluid's flux (``1 - chi``) through one z plane of faces 0.6 of the way from the
+    junction to the nearer daughter end, each face counted for the daughter whose axis is nearer there in units of its
+    section's reach (its radius over the cosine of its angle from z, and two cells) and within it; the share of the
+    two, so that the solid's bypass, in proportion to each, cancels. A mix-up of an opening's name and its patch moves
+    it to about the split's complement."""
     node = built.graph.get_node("water.flow")
     c = node.constants()
     h = float(c["spacing"])
@@ -178,15 +179,19 @@ def lumen_split(d: YDraw, built: Any, result: Any) -> float:
     w = np.asarray(result.final["water.flow"]["velocity_z"])
     nx, ny = w.shape[:2]
     x, y = np.meshgrid((np.arange(nx) + 0.5) * h, (np.arange(ny) + 0.5) * h, indexing="ij")
-    fluxes = []
-    for point, radius in ((2, d.radii[1]), (3, d.radii[2])):
-        junction, end = world[1] - origin, world[point] - origin
+    junction = world[1] - origin
+    ends = [world[2] - origin, world[3] - origin]
+    k = int(round((junction[2] + 0.6 * (min(e[2] for e in ends) - junction[2])) / h))
+    scaled = []
+    for end, radius in zip(ends, (d.radii[1], d.radii[2]), strict=True):
         direction = (end - junction) / np.linalg.norm(end - junction)
-        k = int(round((junction + 0.6 * (end - junction))[2] / h))
         crossing = junction + direction * (k * h - junction[2]) / direction[2]
-        near = np.hypot(x - crossing[0], y - crossing[1]) <= radius / abs(direction[2]) + 2.0 * h
-        fluxes.append(float(np.sum(np.where(near, (1.0 - chi[..., k]) * w[..., k], 0.0))))
-    return fluxes[0] / (fluxes[0] + fluxes[1])
+        scaled.append(np.hypot(x - crossing[0], y - crossing[1]) / (radius / abs(direction[2]) + 2.0 * h))
+    flux = []
+    for own, other in ((0, 1), (1, 0)):
+        near = (scaled[own] <= 1.0) & (scaled[own] <= scaled[other])
+        flux.append(float(np.sum(np.where(near, (1.0 - chi[..., k]) * w[..., k], 0.0))))
+    return flux[0] / (flux[0] + flux[1])
 
 
 @contextmanager
@@ -308,7 +313,7 @@ def watch_experiment(d: StenosisDraw, arm: str, cells_across: int = 8) -> tuple[
         speed = d.reynolds * nu / D
         peak = 2.0 * speed / d.throat ** 2
         dt = 0.9 * (0.4 / 3.0) * h / peak
-        steps = math.ceil(1.2 * length / speed / dt)
+        steps = 20 * math.ceil(1.2 * length / speed / dt / 20.0)  # whole chunks of the reading's 20 steps
         inflow = Inflow(steady=m3_per_s(speed * area))
         flow = FVM(domain=VesselRegion(extension_diameters=extension), cells_across=cells_across, scheme=Scheme.IMEXEuler())
     exp = Experiment(f"watch_{arm}", scene=Scene.new(up=Z, units="m"), dt=s(dt))
@@ -569,8 +574,19 @@ def main() -> int:
     return 1 if gate_fails(reading) else 0
 
 
+def guarded() -> int:
+    """:func:`main`, a crash exiting 2 (``detection_rate.py`` counts it inconclusive, never caught)."""
+    import traceback
+
+    try:
+        return main()
+    except Exception:  # noqa: BLE001 - a probe's crash is reported, not counted as a catch
+        traceback.print_exc()
+        return 2
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(guarded())
 
 
 def estimate_y(seed: int = 0) -> Experiment:
