@@ -102,7 +102,7 @@ def mrs(spacing: float, **settings: Any) -> Interaction:
     """Drag 0.5.0's mrs rung in free space at ``spacing`` (m), the rung's defaults otherwise."""
     wall = settings.pop("wall_kind", "free_space")
     if wall != "free_space":  # the hand-over between bodies sharing a medium comes with the joint node's (W2a's PR 2)
-        settings.setdefault("lubrication", False)
+        settings.setdefault("near_contact", False)
     return Drag.MRS(spacing=m(spacing), wall_kind=wall, **settings)
 
 

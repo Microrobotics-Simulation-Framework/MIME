@@ -13,7 +13,7 @@ from mime.interactions.flow import BodyForce, Inflow, Windkessel
 from mime.interactions.gravity import Gravity
 from mime.interactions.hydrodynamic import Drag, ForceSampling, Lubrication, NearField, PointForceDrag, UncoupledDrag
 from mime.interactions.magnetic import Magnetic, MagneticForce, MagneticTorque
-from mime.nodes.hydro.mrs._handover import roughness_cutoff
+from mime.nodes.hydro.near_contact import roughness_cutoff
 from mime.registry import Interaction
 
 #: The versions of the interactions kept registered after a later version changed what they compute, by name and

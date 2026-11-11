@@ -33,11 +33,15 @@ from script_a import (
 from mime import Body, Experiment, Medium, State, Structure
 from mime.data import asset
 from mime.dynamics import RigidInertial
-from mime.interactions import Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Scene, Tube, X, Z
 from mime.things import Part
 from mime.units import A_m2, Hz, m, m_per_s, m_per_s2, mm, ms, rad_per_s
+
+#: The drag 0.4.0, kept registered: its surrogate rung keeps the near-wall lubrication blend this experiment ran with,
+#: which drag 0.5.0 retired (lubrication.retired) until the surrogate is retrained far field only.
+KeptDrag, _ = KEPT["drag", "0.4.0"]
 
 __all__ = ["a0"]
 
@@ -65,7 +69,7 @@ def a0(name: str = "script_a0", *, frequency=Hz(3.0), dt=ms(0.5), mode: Any = "g
                         ("umr.magnet_centre", m((0.0, 0.0, 0.0))), ("water.density", WATER),
                         ("water.viscosity", VISCOSITY)):
         exp.declare(path, value, reason=REASON)
-    exp.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON)),
+    exp.attach(KeptDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON)),
                body=umr, medium=water)
     exp.attach(Magnetic.Torque(), body=umr, field="rpm.magnetic")
     exp.attach(Magnetic.Force(), body=umr, field="rpm.magnetic")

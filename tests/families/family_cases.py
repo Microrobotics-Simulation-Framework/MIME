@@ -90,8 +90,9 @@ def surrogate(read, settings):
 
 
 def a_drag() -> Drag:
-    """Script A's drag: the packaged surrogate, with lubrication."""
-    return Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
+    """Script A's drag on drag 0.5.0: the packaged surrogate, without the lubrication blend, which 0.5.0 retired (the
+    kept versions' cases below keep it)."""
+    return Drag.Surrogate(weights=asset("dejongh_mlp_v2"))
 
 
 def uncoupled_drag() -> UncoupledDrag:

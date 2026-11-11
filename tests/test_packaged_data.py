@@ -24,7 +24,9 @@ ROOT = Path(__file__).resolve().parent.parent
 PINNED = "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
 WEIGHTS = "src/mime/data/mlp_cholesky_weights_v2.npz"
 SCRIPT_A = "tests/differential/references/script_a/"
-TRACKED = (WEIGHTS, "tests/differential/references/port_drag.npz", "tests/differential/references/port_nodes.npz",
+TRACKED = (WEIGHTS, "src/mime/data/sphere_plane_resistance.json", "src/mime/data/derivations/sphere_plane_resistance.json",
+           "tests/differential/references/sphere_plane_graded_mfs.json",
+           "tests/differential/references/sphere_tube_mfs.json", "tests/differential/references/port_drag.npz", "tests/differential/references/port_nodes.npz",
            "tests/differential/references/port_table.npz", "tests/differential/references/port_table_provenance.json",
            "tests/differential/references/port_table_axis_far.npz",
            "tests/differential/references/port_table_axis_far_provenance.json",

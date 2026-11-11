@@ -169,7 +169,7 @@ from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, St
 from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
-from mime.interactions import Drag, Lubrication, Magnetic
+from mime.interactions import Drag, Magnetic
 from mime.materials import Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
 from mime.scene import Box, Scene, Screw, Tube, X, Z
@@ -198,7 +198,7 @@ exp.declare("umr.inertia", kg_m2((1.7158e-10, 4.2689e-10, 4.2689e-10)))
 field = exp.add_apparatus(Apparatus("field", fields={
     "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
     commands={"frequency": Hz(5.0), "amplitude": mT(1.2)}))
-exp.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))), body=umr, medium=water)
+exp.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2")), body=umr, medium=water)
 exp.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
 swim = exp.observe(SwimSpeed(umr, along=tube.axis, after=s(2.0)))
 AFTER

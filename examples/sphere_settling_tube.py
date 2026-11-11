@@ -13,13 +13,12 @@ early in the fall against Stokes's free-space speed, and writes the run's view a
 **What the drag includes, and where it stops.** The drag includes the tube's wall, from its table, down to a gap of
 about one sample spacing (2.5 um here, a quarter of the radius). Closer than that the coarse MRS alone is too fast on
 the last approach to the floor, and the contact, not the fluid, holds the ball on the floor (the run flags
-``near_wall`` there). Drag 0.5.0 models near-contact lubrication (its hand-over to a thin film), and this demo writes
-it off, ``lubrication=False``, for two reasons: at this spacing the hand-over gap (0.75 of 2.5 um) is 0.19 of the
-ball's radius, past the film's window (0.15 of it), where the build's rule would leave it out anyway; and at this scale
-the default roughness (1 um on each surface, a cutoff of 1.41 um) floors the film across the lift's band (from 0.94 um
-up), so the film would be the roughness's, not the gap's. A finer spacing (2 um or less) and a declared roughness well
-under a third of the hand-over gap bring it in; its numbers would be measured again. A flat floor's wall (so a dish)
-is a later release's.
+``near_wall`` there). Drag 0.5.0 models near-contact lubrication (its hand-over to the near-contact law, a sphere's
+exact increment), and this demo writes it off, ``near_contact=False``, for two reasons: at this scale the default
+roughness (1 um on each surface, a cutoff of 1.41 um) floors the law's gaps across the lift's band (from 0.94 um up),
+so its increment would be the roughness's, not the gap's; and the ball fills a sixth of the tube's radius, below the
+ratios its form in a tube was measured at (0.22 to 0.34). A declared roughness well under a third of the hand-over gap
+brings it in; its numbers would be measured again. A flat floor's wall (so a dish) is a later release's.
 
 **The physics is the infinite tube's; the end caps are drawn, not computed.** The table is the image system of a
 Stokeslet in an infinitely long tube (Liron and Shahar 1978), so the two caps, short closed tubes 4 radii either side
@@ -65,9 +64,9 @@ STEP_MS, DURATION_MS, EARLY_MS = 2.0, 80.0, (2.0, 6.0)
 #: What the run states beside its numbers, and the view's caption.
 LIMIT = ("The drag includes the tube's wall, from its table, down to a gap of about one sample spacing (2.5 um). "
          "Closer than that the coarse MRS alone is too fast on the last approach, and the contact, not the fluid, "
-         "holds the ball on the floor: drag 0.5.0 models near-contact lubrication, and this demo writes it off, its "
-         "hand-over gap at this spacing lying past the film's window. A flat floor's wall (so a dish) is a later "
-         "release's. The end caps are drawn, not computed: the physics is the infinite tube's.")
+         "holds the ball on the floor: drag 0.5.0 models near-contact lubrication, and this demo writes it off, the "
+         "default roughness flooring its gaps at this scale. A flat floor's wall (so a dish) is a later release's. The "
+         "end caps are drawn, not computed: the physics is the infinite tube's.")
 
 
 def sphere_settling_tube() -> Experiment:
@@ -88,10 +87,10 @@ def sphere_settling_tube() -> Experiment:
         position=um((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(RADIUS_UM)))}))
     exp.declare("ball.parts.steel.density", kg_per_m3(STEEL), reason="steel")
-    # The coarse MRS alone, as the docstring says why: the hand-over gap is past the film's window at this spacing, and
-    # the default roughness would floor the film across the lift's band at this scale.
+    # The coarse MRS alone, as the docstring says why: the default roughness would floor the near-contact law's gaps
+    # across the lift's band at this scale, and the ball fills less of the tube than its form there was measured at.
     exp.attach(Drag.MRS(spacing=um(SPACING_UM), blob=0.1, quadrature_refinement=20, wall_kind="tube",
-                        lubrication=False), body=ball, medium=water)
+                        near_contact=False), body=ball, medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
     exp.attach(Contact.Projection(margin=um(MARGIN_UM), spacing=um(MARGIN_UM)), body=ball,
                surface=tube.inner_surface)
