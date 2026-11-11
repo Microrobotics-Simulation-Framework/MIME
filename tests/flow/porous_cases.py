@@ -120,8 +120,8 @@ def steady(node: ImplicitFlowNode) -> dict[str, Any]:
     return run(node, 1)
 
 
-def experiment(*, permeability: float = 1e-10, radius: float = 0.5, length: float = 1.0, centre: tuple = (0, 0, 0),
-               period: float = 4.0, cells_across: int = 16, delta_in: float = 0.1, scheme: Any = "steady",
+def experiment(*, permeability: float = 1e-10, radius: float = 0.5, length: float = 0.5, centre: tuple = (0, 0, 0),
+               period: float = 2.0, cells_across: int = 8, delta_in: float = 0.1, scheme: Any = "steady",
                plug: bool = True, axis: Any = +Z) -> Experiment:
     """A plug in a periodic water-filled tube of 1 mm (lengths in mm), driven by a body force of 1 m/s^2, through the
     experiment: ``Structure("clot", geometry=Plug(...))``, its permeability declared, ``Darcy`` attached."""

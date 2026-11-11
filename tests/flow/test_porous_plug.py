@@ -292,3 +292,35 @@ def test_a_plug_in_a_tilted_tube_is_refused():
     exp.declare("clot.permeability", m2(1e-12), reason="a test's value")
     exp.attach(Darcy(), medium="water", structure="clot")
     assert "flow.porous-axis" in _codes(exp)
+
+
+def test_a_plug_in_an_open_vessel_reads_darcys_drop_on_its_faces(float64):
+    """The open vessel (an inflow at its start, a Windkessel at its end, no body force), two millimetres long, a plug
+    half a millimetre long filling it at 16 cells across: its face pressures' drop is Darcy's at the inflow (measured
+    -3.9 % on a vessel twice as long, its own drop between its openings -4.0 % of the series at this resolution)."""
+    from mime.dynamics import FVM, Scheme
+    from mime.experiment import Experiment
+    from mime.interactions import Inflow, Windkessel
+    from mime.scene import Scene, Tube, VesselRegion
+    from mime.things import Medium
+    from mime.units import Pa_s, Pa_s_per_m3, kg_per_m3, m3_per_Pa, mL_per_s
+
+    radius, h = 0.5e-3, 1e-3 / 16
+    K = h ** 2
+    exp = Experiment("open_plug", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    exp.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2), length=mm(2.0))))
+    exp.add_structure(Structure("clot", geometry=Plug(axis=+Z, radius=mm(0.5), length=mm(0.5))))
+    exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": FVM(domain=VesselRegion(margin=4),
+                                                                           cells_across=16, stokes=True,
+                                                                           scheme=Scheme.Steady())}))
+    exp.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    exp.declare("clot.permeability", m2(K), reason="a gate's value")
+    exp.attach(Inflow(steady=mL_per_s(1e-3)), medium="water", surface="tube.start")
+    exp.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
+               medium="water", surface="tube.end")
+    exp.attach(Darcy(), medium="water", structure="clot")
+    final = exp.build().run(ms(1.0)).final["water.flow"]
+    faces = np.asarray(final["porous_face_pressure"], np.float64)[0]
+    darcy = 1e-9 * plug_resistance(K, 0.5e-3, radius, 1e-3)
+    assert abs((faces[0] - faces[1]) / darcy - 1.0) < 0.06
