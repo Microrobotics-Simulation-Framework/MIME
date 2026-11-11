@@ -22,6 +22,9 @@ from mime.nodes.flow.fvm._partners import DELIVERIES, delivered, read, stencils
 from mime.nodes.flow.fvm._ports import RowKind
 
 WATER_MU, WATER_RHO = 1e-3, 1e3
+#: The monolithic step's matrix is formed this many columns at a time (the step's linearisation applied to unit
+#: vectors), so that its memory is the matrix's own and not the batched step's over every column at once.
+COLUMNS = 256
 
 
 @dataclass(frozen=True)
@@ -83,7 +86,8 @@ def monolithic_step(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping
     unknowns the field's every face, each opening's pressure relative to the reference with the level, and each body's
     force, couple and twist: the field's projected momentum ``P A u + (I - P) u = P (rhs + openings' forces + bodies'
     forces)``, each opening's row, each body's law ``(M0 - M_inf) f + G_F u' = V'`` and own row ``S V' + f = r``.
-    Its matrix by the step's own operators applied to unit vectors (``jax.jacfwd``), solved by one LU."""
+    Its matrix by the step's own operators applied to unit vectors (its linearisation, :data:`COLUMNS` columns at a
+    time), solved by one LU."""
     with jax.enable_x64(True):
         p = {k: (jnp.asarray(v, dtype=jnp.float64) if isinstance(v, (np.ndarray, jax.Array, float)) else v)
              for k, v in p.items()}
@@ -157,8 +161,16 @@ def monolithic_step(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping
             return jnp.concatenate(out)
 
         zero = jnp.zeros(n, dtype=jnp.float64)
-        matrix = np.asarray(jax.jacfwd(residual)(zero))
-        solution = np.linalg.solve(matrix, -np.asarray(residual(zero)))
+        offset, linear = jax.linearize(residual, zero)
+        columns = jax.jit(jax.vmap(linear))
+        chunk = min(n, COLUMNS)
+        transposed = []
+        for start in range(0, n, chunk):
+            basis = jnp.zeros((chunk, n), dtype=jnp.float64).at[jnp.arange(chunk), jnp.minimum(
+                start + jnp.arange(chunk), n - 1)].set(1.0)
+            transposed.append(np.asarray(columns(basis))[:min(chunk, n - start)])
+        matrix = np.concatenate(transposed, axis=0).T
+        solution = np.linalg.solve(matrix, -np.asarray(offset))
         u = tuple(np.asarray(c) for c in _unflat(jnp.asarray(solution[:faces]), shapes))
         start = faces
         pressures = fluxes = np.zeros(0)

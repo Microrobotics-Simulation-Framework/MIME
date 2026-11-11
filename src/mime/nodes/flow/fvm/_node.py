@@ -143,6 +143,9 @@ PARTNER_SUMS = {"applied_wrench": "loads", "background_load": "loads", "resistan
 PARTNER = "partner_"
 #: The fields a flow holding point bodies returns to each (``partner_<b>_<name>``): the load and response it is handed.
 PARTNER_HANDED = ("resistance", "load")
+#: The count of held point bodies from which the build report names the lagged exchange as the cheaper route: six unit
+#: solves a body a step against the lagged exchange's none (the cost measured in F3's second PR).
+HELD_SUGGESTS_LAGGED = 3
 
 
 class FlowFields(TypedDict):
@@ -1109,7 +1112,28 @@ class ImplicitFlowNode(MimeNode):
                              f"((pi^2/4) nu) = {tau:.3g} s), is above the solve's tolerance {c['tolerance']:.3g}: a "
                              f"run near its steady state stops short of it by about that share; run in float64 "
                              f"(JAX_ENABLE_X64=1), or with a larger dt")
+        lines += self.held_lines()
         return lines
+
+    def held_lines(self) -> list[str]:
+        """The point bodies the flow holds in its one elimination, and what holding them costs a step: a unit field a
+        delivery, six a body, each a projected solve warm-started from the last step's, and the bodies' unit fields
+        held between steps; where the bodies are many (:data:`HELD_SUGGESTS_LAGGED` or more), coupling='lagged' named
+        as the cheaper route."""
+        count = self.body_count
+        if not count:
+            return []
+        c = self.constants()
+        faces = sum(int(np.prod(self.grid(c).shape(k))) for k in range(3))
+        held = DELIVERIES * count * faces * int(jnp.dtype(run_dtype()).itemsize)
+        line = (f"the flow holds {count} point bod{'y' if count == 1 else 'ies'} in its one elimination (one pass: "
+                f"{', '.join(str(i) for i in c['partner_ids'])}): {DELIVERIES * count} unit fields solved a step "
+                f"beside its own solve, each warm-started from the last step's, and {held / 2 ** 20:.3g} MiB of them "
+                f"held between steps")
+        if count >= HELD_SUGGESTS_LAGGED:
+            line += (f"; with {count} bodies the lagged exchange, Drag.Stokes(coupling='lagged') on each, takes one "
+                     f"solve a step in all and is the cheaper route (its error first order in the step)")
+        return [line]
 
     @override
     def recheck_route(self, cause: str, dtype: str) -> str:
