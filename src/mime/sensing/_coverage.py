@@ -1,11 +1,14 @@
 """Pixel integration, its own stage: how much of each pixel a body's image covers, by the camera's box filter.
 
-- **The box edge.** An edge function ``g`` with a distance (``mime.sensing._forms``) and its gradient along the image's
-  axes (by ``jvp``) give a straight line within the pixel: at ``g / |grad g|`` pixels from its centre, with normal
-  ``grad g / |grad g|``. The coverage is the exact area of the pixel's square on the body's side of that line: the box
-  filter exactly where the silhouette is straight across the pixel. Its accuracy falls with the silhouette's curvature
-  across a pixel (a sphere's derivative within 2.6 % at a radius of 15 px, 5.5 % at 6 and 8 % at 3, measured
-  against an exact boundary integral by the design's fourth review), which the small-silhouette flag reports.
+- **The box edge.** Each of a form's pieces (``mime.sensing._forms``) gives, from its edge function ``g`` and its
+  gradient along the image's axes (by ``jvp``), a straight line within the pixel: at ``g / |grad g|`` pixels from its
+  centre, with normal ``grad g / |grad g|``. The pieces' lines are composed by the form's own composition (a least for a
+  union, a greatest for an intersection) on that one scale, the distance in pixels, and the coverage is the exact area
+  of the pixel's square on the body's side of the composed line: the box filter exactly where the silhouette is
+  straight across the pixel. Its accuracy falls with the silhouette's curvature across a pixel (a sphere's coverage
+  and its derivative per pixel, as a relative L2 over its edge's band, within 0.5 % and 1.4 % at a radius of 15 px,
+  1.2 % and 2.8 % at 6, 2.8 % and 6.5 % at 3, measured against an exact oracle, ``tests/sensing/test_box_edge.py``),
+  which the small-silhouette flag reports.
 - **Corner sub-samples.** Where two of a body's pieces cross one pixel (a cylinder seen side-on, its cap meeting its
   side at a right angle: 24 % coverage error with one straight edge), the pixel is split into ``s x s`` sub-pixels, each
   its own box edge at its own centre, the ray there taken along the ray table's derivatives.
@@ -16,7 +19,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 import jax
 
@@ -46,23 +49,62 @@ def square_below(a: Any, b: Any, c: Any) -> Any:
     return jnp.where(c <= 0.0, lower(jnp.minimum(c, 0.0)), 1.0 - lower(jnp.minimum(-c, 0.0)))
 
 
-def line(g: Any, gu: Any, gv: Any) -> tuple[Any, Any, Any]:
-    """The edge's line within the pixel: its distance from the centre in pixels (positive where the centre is outside
-    the body) and its normal's two components, from ``g`` and its derivatives along ``u`` and ``v``."""
+class Line(NamedTuple):
+    """An edge's straight line within a pixel: its distance from the pixel's centre in pixels (positive where the
+    centre is outside the body) and its unit normal's two components, along ``u`` and ``v``."""
+
+    distance: Any
+    nu: Any
+    nv: Any
+
+
+def line(g: Any, gu: Any, gv: Any) -> Line:
+    """The edge's line within the pixel, from ``g`` and its derivatives along ``u`` and ``v``."""
     length = jnp.sqrt(jnp.maximum(gu * gu + gv * gv, FLAT))
-    return g / length, gu / length, gv / length
+    return Line(g / length, gu / length, gv / length)
+
+
+def lesser(a: Line, b: Line) -> Line:
+    """The nearer-inside of two pieces' lines (a union's): the one at the lesser distance, its normal with it."""
+    first = a.distance <= b.distance
+    return Line(*(jnp.where(first, x, y) for x, y in zip(a, b, strict=True)))
+
+
+def greater(a: Line, b: Line) -> Line:
+    """The farther-out of two pieces' lines (an intersection's)."""
+    first = a.distance >= b.distance
+    return Line(*(jnp.where(first, x, y) for x, y in zip(a, b, strict=True)))
+
+
+#: A piece lying inside another's region (a cap inside its bounding ball) is read only where the bound's line is within
+#: this many pixels: beyond it the inner piece's outline cannot reach the pixel (half its diagonal, and a margin for
+#: the bound's own first-order distance).
+BOUND_REACH = 1.5
+#: The distance a piece is given where it cannot reach the pixel: far outside.
+OUTSIDE_PX = 1e6
+
+
+def beyond(inner: Line, bound: Line) -> Line:
+    """``inner``'s line where ``bound``'s is within ``BOUND_REACH`` pixels, else far outside (``OUTSIDE_PX``): a piece
+    whose outline lies inside another's region cannot cross a pixel beyond that region."""
+    far = bound.distance > BOUND_REACH
+    return Line(jnp.where(far, OUTSIDE_PX, inner.distance), jnp.where(far, 1.0, inner.nu), jnp.where(far, 0.0, inner.nv))
+
+
+def covered(edge: Line, size: float = 1.0) -> Any:
+    """The share of a square ``size`` pixels a side, centred where the line was read, on the body's side of it."""
+    au, av = jnp.abs(edge.nu), jnp.abs(edge.nv)
+    return square_below(jnp.maximum(au, av), jnp.minimum(au, av), -edge.distance / size)
 
 
 def box(g: Any, gu: Any, gv: Any, size: float = 1.0) -> Any:
     """The share of a square ``size`` pixels a side, centred where ``g`` is evaluated, on the body's side of the edge."""
-    distance, nu, nv = line(g, gu, gv)
-    au, av = jnp.abs(nu), jnp.abs(nv)
-    return square_below(jnp.maximum(au, av), jnp.minimum(au, av), -distance / size)
+    return covered(line(g, gu, gv), size)
 
 
-def near(g: Any, gu: Any, gv: Any) -> Any:
+def near(edge: Line) -> Any:
     """Whether the edge's line crosses the pixel."""
-    return jnp.abs(line(g, gu, gv)[0]) < CORNER_REACH
+    return jnp.abs(edge.distance) < CORNER_REACH
 
 
 def sub_offsets(samples: int) -> list[tuple[float, float]]:
@@ -181,6 +223,6 @@ def _holds_origin(quad: list[tuple[Any, Any]]) -> Any:
         ((sides[0] < 0) & (sides[1] < 0) & (sides[2] < 0) & (sides[3] < 0))
 
 
-def sigmoid(g: Any, gu: Any, gv: Any, width: float = 1.0) -> Any:
+def sigmoid(edge: Line, size: float = 1.0, width: float = 1.0) -> Any:
     """The soft edge the design replaced, ``sigma(-d / w)`` at ``w`` pixels: the box edge gate's control."""
-    return jax.nn.sigmoid(-line(g, gu, gv)[0] / width)
+    return jax.nn.sigmoid(-edge.distance / (width * size))

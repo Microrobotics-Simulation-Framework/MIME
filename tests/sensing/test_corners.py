@@ -1,95 +1,116 @@
-"""Corner sub-samples: a cylinder seen side-on, its image the convex hull of its two caps' ellipses, whose corners
-meet its sides nearly at right angles; each pixel's coverage against the hull's exact area in that pixel (the caps'
-ellipses drawn with 4 000 points each, the hull clipped to each pixel's square), in both dtypes, through a pinhole
-without distortion. With one straight edge a right-angled corner's pixel is off by up to 24 % (the design's fourth
-review); with 4 x 4 sub-samples the gate's line is 15 %. The prediction was 3 % and missed: 13.8 % is measured, at the
-caps' outlines, which this view sees within a pixel of edge-on (their ellipses about half a pixel across, where a cap's
-edge function changes faster across the ellipse than a sub-pixel's straight line follows), so the gate also checks that
-the view raises ``thin_cap``; the sides are within the line.
+"""The capped cylinder's silhouette, pixel by pixel: rods turned towards the line of sight (their caps opening from edge-on),
+rolled in the image and moved by a fraction of a pixel, against the exact image (the hull of the rims' images,
+``hull_oracle``), in both dtypes, through a pinhole without distortion; the review's turns (0 to 20 degrees) and drawn
+ones (0 to 30, any roll and offset).
 
-**The control** (``CAMERA_PLANT=no-corners``) renders without sub-samples: the corner pixels then miss the line, every
-run."""
+**The line**, per pixel: ``1 / s^2`` with ``s x s`` sub-samples (6.25 % at the default 4). Once a corner or a cap's
+outline is in view every pixel takes its sub-samples, each its own straight line from the pieces' composed distance in
+pixels; a sub-pixel's line is exact where the outline is straight across it and off by the outline's curvature
+otherwise (``0.118 h^2 / rho`` for a sub-pixel of side ``h``, small here), and where the outline turns within a
+sub-pixel (a cap's ellipse's end, where a side meets it, its radius ``b^2 / a`` a fraction of a sub-pixel) the turn
+lies in at most two of a pixel's sub-pixels along the outline, each missing at most half of itself: ``h^2`` in all.
+**Thin caps:** a cap whose ellipse is narrower than two sub-pixels is not resolved (its first-order line is a sub-pixel
+off inside it and past its ends); the view raises ``thin_cap``, and the pixels about that cap are judged by the flag,
+not the line. The flag must be raised exactly where a cap is that thin (its width computed here from the rim's
+geometry), so a miss above the line near an unflagged cap fails.
+
+The review found the cylinder's composed edge taking the wrong piece (a least of raw values whose gradients differ
+thirteenfold at a cap seen near edge-on): 13.8 to 29 % at turns of 0 to 10 degrees, unflagged at 6 and 10. **The
+control** (``CAMERA_PLANT=raw-composition``) renders with that code (the least of raw values, sub-samples only where two
+pieces cross a pixel): the review's turns fail every run."""
 
 from __future__ import annotations
 
-import numpy as np
-from camera_cases import planted
-from scipy.spatial import ConvexHull
+import math
 
+import hull_oracle
+import jax
 import jax.numpy as jnp
+import numpy as np
+import pytest
+from camera_cases import planted
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
+
+import mime.sensing._coverage as coverage
+import mime.sensing._render as render_module
 from mime.sensing import Appearance, CameraPose, Pinhole, Subject, render
 
 WIDTH, HEIGHT, FOCAL, DISTANCE = 96, 64, 900.0, 30e-3
 RADIUS, LENGTH = 0.31e-3, 2.07e-3
-CENTRE = (0.113e-3, 0.0, 0.071e-3)
+CENTRE = np.array((0.113e-3, 0.0, 0.071e-3))
+SAMPLES = coverage.CORNER_SAMPLES
+LINE = 1.0 / SAMPLES ** 2
+REVIEWED = [0.0, 2.0, 4.0, 6.0, 10.0, 20.0]
 
 
-def oracle() -> np.ndarray:
-    """The exact share of each pixel inside the cylinder's image."""
-    phi = np.linspace(0, 2 * np.pi, 4000, endpoint=False)
-    points = []
-    for end in (-LENGTH / 2, LENGTH / 2):
-        x = CENTRE[0] + end + 0 * phi
-        y = CENTRE[1] + RADIUS * np.cos(phi)
-        z = CENTRE[2] + RADIUS * np.sin(phi)
-        depth = y + DISTANCE
-        points.append(np.stack([FOCAL * x / depth + (WIDTH - 1) / 2, FOCAL * -z / depth + (HEIGHT - 1) / 2], axis=-1))
-    hull = ConvexHull(np.concatenate(points))
-    polygon = hull.points[hull.vertices]
-    # A pixel whose four corners are inside the hull is covered; the others within the hull's box are clipped.
-    v, u = np.mgrid[0:HEIGHT + 1, 0:WIDTH + 1] - 0.5
-    corners = np.stack([u.ravel(), v.ravel(), np.ones(u.size)], axis=-1) @ hull.equations.T
-    inside = np.all(corners <= 0.0, axis=-1).reshape(u.shape)
-    full = inside[:-1, :-1] & inside[:-1, 1:] & inside[1:, :-1] & inside[1:, 1:]
-    shares = full.astype(np.float64)
-    low, high = np.floor(polygon.min(axis=0)).astype(int) - 1, np.ceil(polygon.max(axis=0)).astype(int) + 1
-    for j in range(max(0, low[1]), min(HEIGHT, high[1] + 1)):
-        for i in range(max(0, low[0]), min(WIDTH, high[0] + 1)):
-            if not full[j, i]:
-                shares[j, i] = _clipped_area(polygon, i - 0.5, i + 0.5, j - 0.5, j + 0.5)
-    return shares
+def _raw_box_coverage(subject, p, o, d, du, dv, corner_samples):
+    """The box edge as the review found it: the least of raw values, its line read through ``jvp``, sub-samples only
+    where two pieces' lines cross the pixel."""
+    form = subject.placed.form
+
+    def edges(dx, dy, dz):
+        return form.edge(p, o, (dx, dy, dz)), form.pieces(p, o, (dx, dy, dz))
+
+    (g, pieces), linear = jax.linearize(edges, *d)
+    gu, pieces_u = linear(*du)
+    gv, pieces_v = linear(*dv)
+    single = coverage.box(g, gu, gv)
+    if not form.corners or corner_samples <= 1:
+        return single
+    corner = sum(coverage.near(coverage.line(*piece)).astype(g.dtype)
+                 for piece in zip(pieces, pieces_u, pieces_v, strict=True)) >= 2.0
+    total = jnp.zeros_like(g)
+    for su, sv in coverage.sub_offsets(corner_samples):
+        moved = tuple(d[i] + su * du[i] + sv * dv[i] for i in range(3))
+        scale = 1.0 / jnp.sqrt(sum(c * c for c in moved))
+        h, sub_linear = jax.linearize(lambda x, y, z: form.edge(p, o, (x, y, z)), *(c * scale for c in moved))
+        total = total + coverage.box(h, sub_linear(*du), sub_linear(*dv), 1.0 / corner_samples)
+    return jnp.where(corner, total / corner_samples ** 2, single)
 
 
-def _clipped_area(polygon: np.ndarray, u0: float, u1: float, v0: float, v1: float) -> float:
-    """The area of a convex polygon inside an axis-aligned square (Sutherland-Hodgman, then the shoelace)."""
-    held = polygon
-    for axis, bound, keep_below in ((0, u1, True), (0, u0, False), (1, v1, True), (1, v0, False)):
-        if len(held) == 0:
-            return 0.0
-        out = []
-        for a, b in zip(held, np.roll(held, -1, axis=0), strict=True):
-            a_in = a[axis] <= bound if keep_below else a[axis] >= bound
-            b_in = b[axis] <= bound if keep_below else b[axis] >= bound
-            if a_in:
-                out.append(a)
-            if a_in != b_in:
-                t = (bound - a[axis]) / (b[axis] - a[axis])
-                out.append(a + t * (b - a))
-        held = np.asarray(out)
-    if len(held) < 3:
-        return 0.0
-    x, y = held[:, 0], held[:, 1]
-    return float(abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))) / 2)
+def _axis(turn: float, roll: float) -> np.ndarray:
+    """Along x, turned by ``turn`` degrees about z (towards the line of sight), then rolled by ``roll`` degrees about
+    the line of sight (y)."""
+    a, r = math.radians(turn), math.radians(roll)
+    return np.array([math.cos(a) * math.cos(r), math.sin(a), math.cos(a) * math.sin(r)])
 
 
-def test_corner_pixels_are_within_the_line(dtype):
+def judged(turn: float, roll: float, offset: tuple[float, float], monkeypatch: pytest.MonkeyPatch) -> None:
+    if planted("raw-composition"):
+        monkeypatch.setattr(render_module, "_box_coverage", _raw_box_coverage)
+    axis = _axis(turn, roll)
+    centre = CENTRE + np.array([offset[0], 0.0, -offset[1]]) * DISTANCE / FOCAL
     camera = Pinhole(WIDTH, HEIGHT, FOCAL, FOCAL, (WIDTH - 1) / 2, (HEIGHT - 1) / 2)
-    s = np.sqrt(0.5)
+    s = math.sqrt(0.5)
     pose = CameraPose(jnp.asarray([0.0, -DISTANCE, 0.0]), jnp.asarray([s, -s, 0.0, 0.0]))
-    body = Subject("rod", "cylinder", {"radius": RADIUS, "length": LENGTH, "axis": (1.0, 0.0, 0.0)},
+    body = Subject("rod", "cylinder", {"radius": RADIUS, "length": LENGTH, "axis": tuple(axis)},
                    appearance=Appearance.opaque(), moving=True)
-    samples = 1 if planted("no-corners") else 4
-    frame = render([body], camera, pose, {"rod": (jnp.asarray(CENTRE), jnp.asarray((1.0, 0.0, 0.0, 0.0)))},
-                   corner_samples=samples)
+    frame = render([body], camera, pose, {"rod": (jnp.asarray(centre), jnp.asarray((1.0, 0.0, 0.0, 0.0)))})
     covered = 1.0 - np.asarray(frame.transmission, dtype=np.float64)
-    exact = oracle()
-    edge = (exact > 0) & (exact < 1)
-    ends = np.zeros_like(edge)
-    for end in (-LENGTH / 2, LENGTH / 2):
-        u = FOCAL * (CENTRE[0] + end) / DISTANCE + (WIDTH - 1) / 2
-        ends[:, max(0, int(u) - 2):int(u) + 3] = True
-    worst_corner = float(np.max(np.abs(covered - exact)[edge & ends]))
-    worst_side = float(np.max(np.abs(covered - exact)[edge & ~ends]))
-    assert worst_corner <= 0.15, worst_corner
-    assert worst_side <= 0.03, worst_side
-    assert bool(frame.flags["thin_cap:rod"])
+    rims = hull_oracle.cylinder_outline(centre, axis, RADIUS, LENGTH)
+    exact = hull_oracle.shares(rims, FOCAL, DISTANCE, WIDTH, HEIGHT)
+    # The pixels about each thin cap (its rim's image's box and two pixels about it) are judged by the flag.
+    judged_here = np.ones_like(exact, dtype=bool)
+    thin = False
+    for end, rim in zip((-LENGTH / 2, LENGTH / 2), rims, strict=True):
+        if hull_oracle.minor_axis(centre + end * axis, axis, RADIUS, FOCAL, DISTANCE) < 2.0 / SAMPLES:
+            thin = True
+            image = hull_oracle.project(rim, FOCAL, DISTANCE, WIDTH, HEIGHT)
+            low, high = np.floor(image.min(axis=0)).astype(int) - 2, np.ceil(image.max(axis=0)).astype(int) + 2
+            judged_here[max(0, low[1]):high[1] + 1, max(0, low[0]):high[0] + 1] = False
+    worst = float(np.max(np.abs(covered - exact)[judged_here]))
+    floor = 2 * float(jnp.finfo(frame.transmission.dtype).eps) * FOCAL
+    assert worst <= LINE + floor, (worst, LINE)
+    assert bool(frame.flags["thin_cap:rod"]) == thin
+
+
+@pytest.mark.parametrize("turn", REVIEWED)
+def test_the_reviews_turned_rods(dtype, turn, monkeypatch):
+    judged(turn, 0.0, (0.0, 0.0), monkeypatch)
+
+
+@settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(turn=st.floats(0.0, 30.0), roll=st.floats(0.0, 90.0), du=st.floats(0.0, 1.0), dv=st.floats(0.0, 1.0))
+def test_turned_rods_drawn(dtype, turn, roll, du, dv, monkeypatch):
+    judged(turn, roll, (du, dv), monkeypatch)

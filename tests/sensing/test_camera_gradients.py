@@ -1,19 +1,23 @@
 """G9, gradients on aggregates: the total darkness and the darkness centroid, as autodiff derivatives in the sphere's
 position, the focal length, the principal point's u and the first radial coefficient, against central differences of
-the same render, through a distorted lens, in both dtypes:
+the same render, through a distorted lens:
 
-- **the sphere's darkening** (the frame without it less the frame with it), Landers' sphere in mid-lumen of script A's
-  translucent tube seen across it;
-- **an opaque tube's darkness**: the cylinders' box edges in the intrinsics.
+- **the whole frame** (float64): Landers' sphere in mid-lumen of script A's translucent tube seen across it, the
+  tube's translucent silhouettes included;
+- **the sphere's darkening** (the frame without it less the frame with it), both dtypes;
+- **an opaque tube's darkness**: the cylinders' box edges in the intrinsics, both dtypes.
 
 Per-pixel derivatives are G15's (the box edge's own differences disagree per pixel by 3 to 15 %, where an edge crosses
-a pixel's corner); aggregates integrate those jumps away. A translucent silhouette is not an aggregate's edge here: its
-chord rises as a square root, sampled at the pixel's centre and smoothed by the grazing softplus over a few
-thousandths of the radius (G6), so central differences there need steps under that width, which float32 cannot take.
+a pixel's corner); aggregates integrate those jumps away. A translucent silhouette's chord rises as a square root,
+sampled at the pixel's centre and smoothed by the grazing softplus over ``GRAZING^2 R / 2`` in distance (5e-7 of the
+radius, 3e-5 px at the tube's wall), so its central differences need steps under that width: the whole frame takes
+steps of 1e-5 of each parameter's scale in float64 (the differences converge on the autodiff as the step's square: 0.10,
+1.5e-3, 1.7e-5, 1.6e-7 at 1e-2, 1e-4, 1e-5, 1e-6, measured by the review), and float32, whose rounding is above that
+width, judges the darkening and the opaque tube only.
 
-The steps move the image by about 1e-4 px in float64 and 1e-2 px in float32. **The control**
-(``CAMERA_PLANT=held-rays``) holds the ray table out of the derivative: the intrinsics' derivatives then miss the
-rays' own motion, every run."""
+The darkening and the opaque tube's steps move the image by about 1e-4 px in float64 and 1e-2 px in float32. **The
+control** (``CAMERA_PLANT=held-rays``) holds the ray table out of the derivative: the intrinsics' derivatives then miss
+the rays' own motion, every run."""
 
 from __future__ import annotations
 
@@ -61,24 +65,32 @@ def darkening(theta: jax.Array) -> jax.Array:
 
 
 @jax.jit
+def whole_frame(theta: jax.Array) -> jax.Array:
+    camera, pose = _camera(theta)
+    held = tube_subjects(Appearance.attenuating(200.0), Appearance.attenuating(20.0))
+    held.append(Subject("umr", "sphere", {"radius": 0.7e-3}, appearance=Appearance.opaque(), parent="water",
+                        moving=True, window=16))
+    return _moments(1.0 - render(held, camera, pose, {"umr": (theta[:3], jnp.asarray((1.0, 0.0, 0.0, 0.0)))}).transmission)
+
+
+@jax.jit
 def opaque_tube(theta: jax.Array) -> jax.Array:
     camera, pose = _camera(theta)
     held = [Subject("tube", "tube", TUBE, "wall", Appearance.opaque())]
     return _moments(1.0 - render(held, camera, pose).transmission)
 
 
-@pytest.mark.parametrize("case", ["darkening", "opaque_tube"])
-def test_aggregate_derivatives_agree_with_central_differences(dtype, case, monkeypatch):
+def judged(dtype: str, case: str, monkeypatch: pytest.MonkeyPatch) -> None:
     if planted("held-rays"):
         original = render_module.ray_table
         monkeypatch.setattr(render_module, "ray_table",
                             lambda camera, pose: jax.lax.stop_gradient(original(camera, pose)))
-        darkening.clear_cache()
-        opaque_tube.clear_cache()
-    function = {"darkening": darkening, "opaque_tube": opaque_tube}[case]
-    parameters = range(6) if case == "darkening" else range(3, 6)
+        for held in (darkening, opaque_tube, whole_frame):
+            held.clear_cache()
+    function = {"darkening": darkening, "opaque_tube": opaque_tube, "whole_frame": whole_frame}[case]
+    parameters = range(3, 6) if case == "opaque_tube" else range(6)
     fine = dtype == "float64"
-    steps = SCALES * (1e-4 if fine else 1e-2)
+    steps = SCALES * ((1e-5 if case == "whole_frame" else 1e-4) if fine else 1e-2)
     theta = jnp.asarray(THETA)
     jacobian = np.asarray(jax.jacfwd(function)(theta), dtype=np.float64)
     # Each aggregate judged against its own natural scale where its derivatives all vanish (a centroid that a band
@@ -94,6 +106,15 @@ def test_aggregate_derivatives_agree_with_central_differences(dtype, case, monke
         # that a component near zero is not judged against itself.
         worst = max(worst, float(np.max(np.abs(jacobian[:, k] - difference) * SCALES[k] / size)))
     if planted("held-rays"):
-        darkening.clear_cache()
-        opaque_tube.clear_cache()
+        for held in (darkening, opaque_tube, whole_frame):
+            held.clear_cache()
     assert worst <= (1e-4 if fine else 3e-2), worst
+
+
+@pytest.mark.parametrize("case", ["darkening", "opaque_tube"])
+def test_aggregate_derivatives_agree_with_central_differences(dtype, case, monkeypatch):
+    judged(dtype, case, monkeypatch)
+
+
+def test_the_whole_translucent_frame_in_float64(float64, monkeypatch):
+    judged(float64, "whole_frame", monkeypatch)

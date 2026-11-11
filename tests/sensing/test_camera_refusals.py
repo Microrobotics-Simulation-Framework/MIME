@@ -1,8 +1,8 @@
 """G11, refusals: the kinds without a closed form (the ellipsoid and the box, which have no run-time shape yet; the screw
 and the helix, which need the sampled route) are refused for the camera with their reasons, as is a lab's kind with no
 closed form registered; a route override naming a route not built; a subject written against its kind; subjects named
-twice, a parent no subject is, a cycle of parents, a moving subject with no pose; a stale static cache and one given
-while its numbers are traced.
+twice, a parent no subject is, a cycle of parents, a moving subject with no pose, a stage's display opacity outside 0
+to 1; a stale static cache and one given while its numbers are traced.
 
 **The control** (``CAMERA_PLANT=screw-form``) registers a closed form for the screw: its refusal then fails to come,
 every run."""
@@ -16,7 +16,7 @@ from camera_cases import TUBE, across, planted, tube_subjects
 
 import mime.sensing._subjects as subjects_module
 from mime.build import ArgumentRefused
-from mime.sensing import Appearance, Pinhole, Subject, static_cache, render
+from mime.sensing import Appearance, Display, Pinhole, Subject, render, static_cache
 
 
 def code(error: pytest.ExceptionInfo[ArgumentRefused]) -> set[str]:
@@ -59,6 +59,18 @@ def test_names_parents_and_poses_are_checked():
         with pytest.raises(ArgumentRefused) as error:
             render(held, camera, pose, {})
         assert code(error) == {"camera.subject"}
+
+
+def test_a_display_opacity_outside_zero_to_one_is_refused():
+    """A stage's display opacity above one would transmit more than the backlight where a body covers it (the review's
+    minor 9): refused, by the subject's name."""
+    camera, pose = across(32)
+    held = [Subject("ball", "sphere", {"radius": 1e-3}, pose=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0)))]
+    for opacity in (-0.2, 1.5):
+        with pytest.raises(ArgumentRefused) as error:
+            render(held, camera, pose, {}, stage={"ball": Display(opacity=opacity)})
+        assert code(error) == {"camera.subject"} and "'ball'" in str(error.value)
+    render(held, camera, pose, {}, stage={"ball": Display(opacity=0.5)})
 
 
 def test_a_stale_cache_and_a_traced_one_are_refused():

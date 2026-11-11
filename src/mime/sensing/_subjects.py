@@ -271,6 +271,9 @@ def resolve(subjects: Sequence[Subject], stage: Mapping[str, Display] | None = N
     problems = [f"{name!r} names two subjects" for name in sorted({n for n in names if names.count(n) > 1})]
     problems += [f"{s.name!r}'s parent {s.parent!r} is no subject" for s in subjects
                  if s.parent is not None and s.parent not in names]
+    problems += [f"{name!r}'s display opacity on the stage is {held.opacity!r}, outside 0 to 1"
+                 for name, held in sorted((stage or {}).items())
+                 if held.opacity is not None and not 0.0 <= float(held.opacity) <= 1.0]
     if problems:
         raise ArgumentRefused([Refusal("camera.subject", RefusalClass.USER, problem,
                                        "give each subject one name, and a parent among them: Subject(..., parent=name)")

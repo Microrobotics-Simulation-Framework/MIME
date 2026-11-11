@@ -77,11 +77,20 @@ def test_the_displaced_medium_rule_is_the_closed_form(dtype, monkeypatch):
     footprint = 0.1 / focal
     clear = np.minimum.reduce([np.abs(outer_edge), np.abs(lumen_edge), np.abs(ball_edge)]) > 2.0 * footprint
     assert clear.sum() > 0.8 * clear.size and (ball_edge < -2.0 * footprint).sum() > 100
-    # Judged on the scale it came from: a chord's rounding is a few units in the last place of the ray's parameter
-    # (the camera 0.1 m away), times each attenuation (float32: about 4e-4 of the transmission; float64 under 1e-12).
+    # Judged on the scale it came from. Each body multiplies the transmission by exp(-(mu - mu_parent) L) along its chord
+    # L; a chord's ends are the ray's parameter t (about 0.1 m) rounded, eps t between them, and its half-length is
+    # the root of R^2 less the squared distance of the ray's nearest point p from the axis or centre, p = o + t d
+    # rounded absolutely by eps t (o and t d are each about 0.1 m), which moves the chord by 2 (R / h) eps t, h the
+    # half-length. At pixels 2 px clear of every silhouette h is at least sqrt(R^2 - (R - c)^2), c two pixels'
+    # footprint: the line is eps t sum |mu - mu_parent| (1 + 2 R / h), plus the exponentials' and products' rounding
+    # (4 eps). (In float32 1.3e-4; measured 3.9e-5 on CI.)
     eps = float(np.finfo(dtype).eps)
-    tolerance = max(1e-10 if dtype == "float64" else 2e-5, 16 * eps * (WALL + WATER + SPHERE) * 0.1)
-    assert float(np.max(np.abs(found[clear] / expected[clear] - 1.0))) <= tolerance
+    clearance, far = 2.0 * footprint, 0.1 + TUBE["inner_radius"] + TUBE["wall"]
+    line = 4 * eps
+    for radius, contrast in ((TUBE["inner_radius"] + TUBE["wall"], WALL), (TUBE["inner_radius"], abs(WATER - WALL)),
+                             (RADIUS, abs(SPHERE - WATER))):
+        line += eps * far * contrast * (1 + 2 * radius / math.sqrt(radius ** 2 - (radius - clearance) ** 2))
+    assert float(np.max(np.abs(found[clear] / expected[clear] - 1.0))) <= line
 
 
 def test_an_opaque_body_is_coverage_and_finite_everywhere(dtype):

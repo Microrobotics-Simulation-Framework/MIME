@@ -18,21 +18,25 @@ stages:
   (`beyond_distortion`). `project` is OpenCV's `projectPoints` on the same model.
 - **The closed-form route** (`_forms.py`), on the sphere, the capsule, the capped cylinder and the straight tube's
   wall and lumen: each gives its chord along a ray (the grazing square root through a declared softplus, `GRAZING`, so
-  values and derivatives stay finite at a tangent ray) and an **edge function with a distance**, negative where the
-  ray meets the body and vanishing linearly on its silhouette. A capped cylinder is the convex hull of its cap discs:
-  its edge function is the least of its caps' and of its side's beyond its span, whose zero set is the hull's outline
-  exactly.
+  values and derivatives stay finite at a tangent ray) and its **pieces**, edge functions with a distance, negative
+  where the ray meets the piece and vanishing linearly on its outline, composed by the form's own rule (a capped
+  cylinder is the convex hull of its cap discs: the least of its caps and of its side within its span), whose zero set
+  is the outline exactly. Everything is taken on the ray, never its whole line: a body behind the camera covers
+  nothing, and one straddling the camera's plane only what its part in front shows.
 - **The route is chosen by capability**: a kind with a closed form registered (`register_closed_form`) takes the closed-form route;
   any other is refused with its reason (`camera.no-closed-form`: the ellipsoid and the box have no run-time shape yet;
   the screw and the helix need the sampled route, not built yet). `route=` is an override only.
-- **Pixel integration** (`_coverage.py`), its own stage. **The box edge**: an edge function's line within the pixel
-  comes through `jvp` along the ray table's derivatives (at `g / |grad g|` px, normal `grad g / |grad g|`), and the
-  coverage is the exact share of the pixel's square on the body's side of it. **Corner sub-samples**: where two of a
-  body's pieces cross a pixel (a cylinder seen side-on), the pixel is split into sub-pixels (`CORNER_SAMPLES` a side),
-  each its own box edge. **Exact disc coverage**, a sphere's default (exact by default): the share of each pixel
-  inside the ball's conic, exactly, the pixel's corners undistorted and its sides taken straight between them; always in
-  a window about the silhouette (sized from its silhouette at its pose where none is declared, a declared size under a
-  derivative), its overflow flagged. The box edge is a sphere's declared opt-in (`coverage="box_edge"`), which the notes name.
+- **Pixel integration** (`_coverage.py`), its own stage. **The box edge**: each piece's straight line within the pixel
+  comes through `jvp` along the ray table's derivatives (at `g / |grad g|` px, normal `grad g / |grad g|`); the lines
+  are composed by the form's rule on that one scale, the distance in pixels (raw values do not share a scale: a cap
+  seen near edge-on changes thirteen times faster across the image than its side), and the coverage is the exact share
+  of the pixel's square on the body's side of the composed line. **Corner sub-samples**: once two of a body's pieces
+  cross a pixel, or a cap's outline does, every pixel of it is split into sub-pixels (`CORNER_SAMPLES` a side), each
+  its own box edge. **Exact disc coverage**, a sphere's default (exact by default): the share of each pixel inside the
+  ball's conic, exactly, the pixel's corners undistorted and its sides taken straight between them; always in a window
+  (its silhouette's bounding box about its projected centre where none is declared, a declared size under a
+  derivative), each axis clipped to the image on its own; for a ball reaching behind the camera (no ellipse), the box
+  edge on the ray. The box edge is a sphere's declared opt-in (`coverage="box_edge"`), which the notes name.
 - **Appearance belongs to materials.** A subject's declared `Appearance` (opaque, or attenuating per metre) wins;
   where none is declared, the stage's `displayColor` and `displayOpacity` for it (`display`, read with inheritance);
   with neither, opaque and mid-grey, and the note "appearance defaulted for: ...". Each subject's source is reported
@@ -51,17 +55,22 @@ stages:
   from the key it is given (the same key, the same frame: record the poses and render again), gain and offset,
   quantisation to `bits`; the expected counts before noise are the differentiable output. Every number is a
   declaration, never a measurement of a camera.
-- **The static cache** (`static_cache`): the static subjects' transmission and the ray table, once per camera, keyed by the
-  sha256 of every number they were made from. A cache whose key differs from the camera's and the static subjects'
-  numbers now is refused (`camera.cache-stale`), and one given while those numbers are traced too
-  (`camera.cache-traced`): it carries no derivative in the intrinsics or the structure.
-- **A subject's window** (`window=`, its half-size in pixels): its pixels rendered in a square about its projected
-  centre, a static ray list of fixed size; `window_overflow` is raised when its projected reach leaves the window.
+- **The static cache** (`static_cache`): the static subjects' transmission and flags and the ray table, once per
+  camera, keyed by the sha256 of every input they were made from (every field of the camera, its pose, each static
+  subject and its parent's appearance, read from the dataclasses' fields; the corner sub-samples; the renderer's
+  constants). A cache whose key differs from the render's inputs now is refused (`camera.cache-stale`), and one given
+  while those numbers are traced too (`camera.cache-traced`): it carries no derivative in the intrinsics or the
+  structure.
+- **A subject's window** (`window=`, its half-size in pixels): its pixels rendered in a rectangle about its projected
+  centre, a static ray list of fixed size; `window_overflow` is raised whenever part of its silhouette (its enclosing
+  ball's) that lies in the image lies outside the window.
 
 **Flags** (`Capture.flags`, JAX values, never silent): `beyond_distortion`, `saturated`, and per moving subject
 `outside_parent`, `small_silhouette` (a box-edged silhouette under `SMALL_SILHOUETTE_PX`, where the box edge's accuracy
-falls), `window_overflow`, `behind`, `ghosting` (its sub-frames a pixel or more apart), `thin_cap` (a cylinder's cap seen within
-a pixel of edge-on, its outline resolved to about a seventh of a pixel there).
+falls), `window_overflow`, `behind` (its enclosing ball reaches the camera's plane; what is behind is not imaged),
+`ghosting` (its sub-frames `GHOSTING_PX` or more apart), `thin_cap` (a cylinder's cap in view whose ellipse is
+narrower than two sub-pixels, `THIN_CAP_SUBPIXELS`: the sub-samples do not resolve it, and a pixel there may miss by
+about a sub-pixel's area).
 
 ## What it does not do yet
 
@@ -72,10 +81,22 @@ intersections) are raw `jnp` operations, written for a node that renders inside 
 
 ## Accuracy and cost, measured
 
-- **The box edge**, against an exact oracle (each pixel's exact area, the boundary integral of its derivative), on a
-  sphere through a pinhole: within the lines its gate states by silhouette radius (`tests/sensing/test_box_edge.py`,
-  whose predictions are `tests/sensing/predictions_camera_core.json`); exact disc coverage to the oracle's quadrature,
-  and in float32 to the rounding of the camera's pose.
+Against exact oracles, through a pinhole; each line's number, its derivation and its measurement are in the test's
+docstring (`tests/sensing/`), the predictions and outcomes in `predictions_camera_core.json` and
+`predictions_fix_round.json`:
+
+- **The box edge on a sphere**: coverage and its derivative per pixel within lines by silhouette radius
+  (`test_box_edge.py`); **exact disc coverage** to the oracle's quadrature in float64, and in float32 to the rounding
+  of the camera's rotation and of the disc's own arithmetic.
+- **A capped cylinder**, per pixel against the hull of its rims' images, turned towards the line of sight, rolled and
+  moved by a fraction of a pixel (`test_corners.py`): within a line set by the corner sub-samples (one sub-pixel's area),
+  except about a cap whose ellipse is narrower than two sub-pixels, which `thin_cap` reports.
+- **A capsule**, per pixel against the hull of its end balls' silhouettes (`test_capsule.py`): within the straight
+  line's error on its outline's least curvature radius; its chord against a bisection of the ray's distance from its
+  segment.
+- **Not shown:** a translucent silhouette's per-pixel coverage (its aggregates' derivatives are, in float64,
+  `test_camera_gradients.py`), exact disc coverage through a distorted lens, and the capsule's and the cylinder's
+  per-pixel derivatives.
 - **Frame times** on GitHub's runners are in the pull request that added this package: a runner's time, not a bound.
 
 ## Status

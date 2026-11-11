@@ -8,8 +8,9 @@ its origin (the pinhole) and the unit quaternion ``(w, x, y, z)`` turning optica
 
 **The ray table** is traced from the intrinsics' leaves, so a derivative in the focal length, the principal point or a
 distortion coefficient flows through every ray. Each pixel's ray is the undistorted direction through its centre, by
-Newton's method on the distortion: ``UNDISTORT_STEPS`` steps with their derivative held, then one step with it flowing,
-whose derivative is the implicit function's (exact where the steps converged). With each ray come its derivatives along
+Newton's method on the distortion with its derivative held; its convergence is judged on the point the ray is made
+from, and one more step's derivative (not its value) flows, the implicit function's (exact where the steps converged).
+With each ray come its derivatives along
 ``u`` and ``v`` (one ``jvp`` each), from which the pixel integration reads an edge's line within the pixel."""
 
 from __future__ import annotations
@@ -116,8 +117,8 @@ class BrownConrady:
         """The undistorted normalised point on the first monotone branch whose distortion is ``(xd, yd)``, and whether
         it was found there. The radius by a bracketed Newton solve of the radial map on ``[0, validity radius]``
         (a step leaving the bracket bisects it), ``steps`` (``UNDISTORT_STEPS``) of them, then ``TANGENTIAL_STEPS`` Newton steps of
-        the whole map for the tangential terms, all with their derivative held; then one more Newton step with it flowing,
-        whose derivative is the implicit function's."""
+        the whole map for the tangential terms, all with their derivative held. ``found`` judges the point returned;
+        one more Newton step adds its derivative to it, the implicit function's, and not its value."""
         held = lax.stop_gradient(self)
         hx, hy = lax.stop_gradient(xd), lax.stop_gradient(yd)
         distorted = jnp.sqrt(hx * hx + hy * hy)
@@ -148,8 +149,10 @@ class BrownConrady:
         residual = jnp.sqrt((fx - hx) ** 2 + (fy - hy) ** 2)
         eps = float(jnp.finfo(residual.dtype).eps)
         found = (residual <= 1024.0 * eps * (1.0 + distorted)) & (x * x + y * y < turn * turn)
-        x, y = self._newton(x, y, xd, yd)
-        return x, y, found
+        # A step taken after the check could move the point it judged: near the fold, where the Jacobian is nearly
+        # singular, by a pixel. So the step's value is dropped and only its derivative kept.
+        step_x, step_y = self._newton(x, y, xd, yd)
+        return x + (step_x - lax.stop_gradient(step_x)), y + (step_y - lax.stop_gradient(step_y)), found
 
     def monotone(self, x: Any, y: Any) -> Any:
         """Whether the radial distortion is still increasing at ``(x, y)``: inside its validity radius, where the
