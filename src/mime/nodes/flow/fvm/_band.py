@@ -222,19 +222,42 @@ def plug_depth(points: Array, centre: Any, axis: Any, radius: Any, length: Any) 
 
 
 def fluid_share(inside: Array, fluid: Array) -> Array:
-    """A porous region's share of the fluid on a face: its own indicator ``c`` over the face's fluid ``f = 1 - chi``
-    (the wall's), the part of the fluid it fills, ``min(c, f) / f``; zero where the face holds no fluid. A plug
-    against the wall then fills the fluid of the wall's band as the fluid fills it, so its Darcy flux is carried by
-    the fluid the drive acts on and not by the band's whole width (the first step's measurement of the two forms)."""
-    held = fluid > 0.0
-    return jnp.where(held, jnp.minimum(inside, fluid) / jnp.where(held, fluid, 1.0), 0.0)
+    """A porous region's share of the fluid on a face, ``c / max(c, f)``: its own indicator ``c`` over the face's
+    fluid ``f = 1 - chi`` (the wall's), one wherever it covers the fluid there (in the wall's solid too), zero where
+    it does not reach. A plug against the wall then fills the fluid of the wall's band as the fluid fills it, so its
+    Darcy flux is carried by the fluid the drive acts on and not by the band's whole width; away from a wall it is its
+    own indicator (the first step's measurement of the forms)."""
+    larger = jnp.maximum(inside, fluid)
+    held = larger > 0.0
+    return jnp.where(held, inside / jnp.where(held, larger, 1.0), 0.0)
 
 
-def porous_field(region: PorousRegion, points: Array, chi: Array, width: Any) -> Array:
-    """A porous region's inverse permeability on faces at ``points`` whose wall indicator is ``chi`` (m^-2): ``1/K``
-    times its share of the fluid (:func:`fluid_share`), its own indicator the band's ramp on its depth."""
-    inside = ramp(region.depth(points), width)
-    return fluid_share(inside, 1.0 - chi) / jnp.asarray(region.permeability, dtype=points.dtype)
+def wall_reach(phi: Array) -> Array:
+    """How far a porous region's depth is carried into the wall's solid behind it: the wall's own depth there
+    (``phi``, positive in the solid), so a region reaching the wall reads inside the solid as it does where the solid
+    begins, and the band's and the stiff interior's ramp (porous by construction) carry no flow around it."""
+    return jnp.maximum(phi, 0.0)
+
+
+#: The least fluid share of a face a porous region's resistivity is divided by (:func:`porous_field`): where a face
+#: holds less fluid than this (deep in the wall's band and its stiff interior), the region's resistivity is held at
+#: ``1 / (FLUID_FLOOR K)``. A declaration, not a fit: at 1e-1, 1e-2 and 1e-3 a plug filling a tube read its series
+#: flux within 2.1 %, 1.6 % and 1.5 % at D/h 16, the iterations rising at 1e-3 (the first step's measurement).
+FLUID_FLOOR = 1e-2
+
+
+def porous_field(region: PorousRegion, points: Array, chi: Array, phi: Array, width: Any) -> Array:
+    """A porous region's inverse permeability on faces at ``points`` whose wall indicator is ``chi`` and whose wall's
+    signed distance is ``phi`` (m^-2): ``s / K``, its share of the fluid (:func:`fluid_share`) over the face's fluid
+    ``f = 1 - chi`` (at least :data:`FLUID_FLOOR`), its own indicator the band's ramp on its depth carried into the
+    wall's solid (:func:`wall_reach`). In the wall's band the region and the wall's smeared solid lie side by side
+    along the wall, so the face's Darcy conductance is the fluid's part times ``K``: a pressure-driven Darcy flux is
+    then carried by the band's fluid, not its whole width (the plain share leaves it the whole width, a flux about
+    ``2h/R`` high). Away from a wall it is the region's own indicator over ``K``."""
+    inside = ramp(region.depth(points) + wall_reach(phi), width)
+    fluid = 1.0 - chi
+    weight = fluid_share(inside, fluid) / jnp.maximum(fluid, FLUID_FLOOR)
+    return weight / jnp.asarray(region.permeability, dtype=points.dtype)
 
 
 @dataclass(frozen=True)
@@ -323,13 +346,18 @@ def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: B
     walls = (inverse[0], inverse[1], inverse[2])
     if not regions:
         return WallFields((chis[0], chis[1], chis[2]), walls, (distances[0], distances[1], distances[2]), counts)
-    porous = tuple(tuple(porous_field(region, held[component], chis[component], width) for component in range(3))
-                   for region in regions)
-    summed = [walls[component] + sum((field[component] for field in porous[1:]), start=porous[0][component])
-              for component in range(3)]
+    porous = tuple(tuple(porous_field(region, held[component], chis[component], distances[component], width)
+                         for component in range(3)) for region in regions)
+    summed = [resistivities_added(walls[component], [field[component] for field in porous]) for component in range(3)]
     return WallFields((chis[0], chis[1], chis[2]), (summed[0], summed[1], summed[2]),
                       (distances[0], distances[1], distances[2]), counts,
                       tuple((field[0], field[1], field[2]) for field in porous), walls)
+
+
+def resistivities_added(walls: Array, porous: Sequence[Array]) -> Array:
+    """The walls' resistivity and each porous region's on one face set, combined by adding (B5.3: one rule, no
+    precedence table)."""
+    return walls + sum(porous[1:], start=porous[0])
 
 
 def negative_resistivity(fields: WallFields, permeabilities: Sequence[Any] = ()) -> Array:
@@ -345,7 +373,7 @@ def negative_resistivity(fields: WallFields, permeabilities: Sequence[Any] = ())
     return found | jnp.any(jnp.stack([*sampled, *given]))
 
 
-__all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_INTERIOR", "INTERIORS", "INTERIOR_RAMP_END", "PLAN_QUANTUM", "Band",
+__all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_INTERIOR", "FLUID_FLOOR", "INTERIORS", "INTERIOR_RAMP_END", "PLAN_QUANTUM", "Band",
            "FacedSolid", "PorousRegion", "TreeSolid", "TubeSolid", "WallFields", "band_named", "fluid_share",
            "interior_depth", "interior_ramp", "negative_resistivity", "plan_rung", "plug_depth", "porous_field", "ramp",
-           "wall_fields"]
+           "resistivities_added", "wall_fields", "wall_reach"]

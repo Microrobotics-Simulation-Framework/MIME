@@ -63,7 +63,7 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_ar
 from mime.core import ledger as books
 from mime.core._node import STAGNATED, rechecked
 from mime.nodes.flow.fvm._band import PorousRegion, TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
-    negative_resistivity, plan_rung, wall_fields
+    negative_resistivity, plan_rung, ramp, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
@@ -156,6 +156,9 @@ class FlowFields(TypedDict):
     reynolds: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     reynolds_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     negative_resistivity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: With porous regions, each region's mean pressure on its two end faces (Pa), upstream along its axis first
+    #: (``ImplicitFlowNode.porous_face_pressures``): the drop a Darcy reading takes; absent where there are none.
+    porous_face_pressure: NotRequired[ReadOnly[Annotated[Float[Array, "n 2"], Units("Pa")]]]  # noqa: F722
 
 
 class FlowState(FlowFields, closed=True):
@@ -590,6 +593,33 @@ class ImplicitFlowNode(MimeNode):
         return [PorousRegion(*(as_run_array(p[porous_leaf(index, name)]) for name in POROUS_LEAVES), images=images)
                 for index in range(len(self.porous_laws))]
 
+    def porous_face_pressures(self, p: Mapping[str, Any], grid: MACGrid, applied: Velocity,
+                              rhs: Velocity) -> Array:
+        """Each porous region's mean pressure (Pa) on its two end faces, the plane ``L/2`` behind its centre along its
+        axis and the one ahead: the pressure recovered from the step's solution (``MACGrid.pressure_of`` of its
+        right-hand side less the operator applied to it, one fast solve), times the density, averaged over the
+        cells within the region's radius of its axis, interpolated linearly between the two cell layers that bracket
+        each plane. What a reading of the region's Darcy drop takes; mean-free over the box, so only differences mean
+        anything."""
+        remainder = (rhs[0] - applied[0], rhs[1] - applied[1], rhs[2] - applied[2])
+        pressure = as_run_array(p["density"]) * grid.pressure_of(remainder)
+        points = grid.cell_points(pressure.dtype)
+        rows: list[Array] = []
+        for region in self.porous_regions(p, grid):
+            axis = jnp.asarray(region.axis, dtype=pressure.dtype)
+            axis = axis / jnp.sqrt(jnp.sum(axis * axis))
+            offset = points - jnp.asarray(region.centre, dtype=pressure.dtype)
+            along = jnp.sum(offset * axis, axis=-1)
+            across = jnp.sum(offset * offset, axis=-1) - along * along
+            # Within the radius by the squared distance (no root, so no derivative is undefined on the axis).
+            within = ramp((region.radius * region.radius - across) / (2.0 * region.radius), grid.spacing)
+            faces = []
+            for side in (-0.5, 0.5):
+                weight = within * jnp.maximum(1.0 - jnp.abs(along - side * region.length) / grid.spacing, 0.0)
+                faces.append(jnp.sum(weight * pressure) / jnp.sum(weight))
+            rows.append(jnp.stack(faces))
+        return jnp.stack(rows)
+
     def permeabilities(self, p: Mapping[str, Any]) -> list[Array]:
         """Each porous region's permeability as the step reads it (m^2)."""
         return [as_run_array(p[porous_leaf(index, "permeability")]) for index in range(len(self.porous_laws))]
@@ -806,6 +836,9 @@ class ImplicitFlowNode(MimeNode):
             reynolds=reynolds.astype(dtype),
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
             negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype))
+        if self.porous_laws:
+            pressure = self.porous_face_pressures(p, grid, operator(stage.shift)(stage.solved), stage.rhs)
+            ended["porous_face_pressure"] = pressure.astype(dtype)
         held = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
             TreeFlowState(**ended, **self.wall_report(fields.counts)))
         if self.metered:
