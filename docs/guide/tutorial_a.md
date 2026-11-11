@@ -64,8 +64,10 @@ amplitude:
 
 ## The laws, and building
 
-What acts on the body is attached, each law to the things it reads. The drag is the surrogate with lubrication, the torque is
-the field's on the body's moment, and gravity and the contact keep the body in the tube:
+What acts on the body is attached, each law to the things it reads. The drag is the surrogate with lubrication, on the drag
+0.4.0 (`KeptDrag`, kept registered: the drag 0.5.0 retired the surrogate's lubrication blend until the surrogate is
+retrained, and the reproduction keeps the blend it ran with), the torque is the field's on the body's moment, and gravity
+and the contact keep the body in the tube:
 
 <!-- mime-include: examples/script_a.py#laws -->
 

@@ -30,9 +30,18 @@ from mime.nodes.hydro._rft_drag import (
     default_coefficients,
 )
 from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
-from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS, WINDOW, least_radius, window_text
+from mime.nodes.hydro.mrs._handover import (
+    GRADED_SPHERE_TEXT,
+    HANDOVER_SPACINGS,
+    TUBE_RATIOS_TEXT,
+    UNIFORM_SPHERE_TEXT,
+    WINDOW,
+    least_radius,
+    window_text,
+)
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
+from mime.nodes.hydro.near_contact import FORMS as NEAR_CONTACT_FORMS
 from mime.nodes.hydro.near_field import DERIVATIVE_MEASURED, MEMORY_HEADROOM, MEMORY_MARGIN, MEMORY_MEASURED, ROUTES, \
     JointDragNode, member_prefix
 from mime.scene import KEPT, quadrature, quadrature_counts, quadrature_owners, sampled_points
@@ -1506,20 +1515,23 @@ class Drag(UncoupledDrag):
             NUMERICAL, "on the mrs rung, none: a medium's near field solved by one dense LU at every size, the "
                        "cross-kernel integrating every quadrature point of a source (each of NearField's settings states "
                        "its own)"),
-        "lubrication": determined(
+        "near_contact": determined(
             NUMERICAL, "on the mrs rung, in a medium whose wall opens (a plane, a tube) about a body whose hull kind "
-                       "has a support and whose least radius of curvature holds the hand-over gap within the film's "
-                       "window (HANDOVER_SPACINGS of the force spacing, the written one or the family's, at most "
-                       "WINDOW of that radius): on, lubrication's hand-over, the MRS's own completion in the gap (the "
-                       "coarse MRS evaluated with the body's near contact opened to the hand-over gap, plus the thin "
-                       "film's increment); a body past the window (a crest or an edge sharper than the spacing "
-                       "resolves), False, the coarse MRS with its sampling, the build reporting the gap against the "
-                       "radius; written False, the coarse MRS alone, a declared numerical choice whose validity line "
-                       "is its near-wall error; on the surrogate rung, none unless Lubrication(epsilon=...) is "
-                       "written (its blend)",
-            by="default_lubrication"),
+                       "has a support: on, lubrication's hand-over, the MRS's own completion in the gap (the coarse "
+                       "MRS evaluated with the body's near contact opened to the hand-over gap, plus the near-contact "
+                       "law's increment, by the form the body's kind declares: a sphere's exact increment, or the thin "
+                       "film's); for the film's form only where the body's least radius of curvature holds the "
+                       "hand-over gap within the film's window (HANDOVER_SPACINGS of the force spacing, the written "
+                       "one or the family's, at most WINDOW of that radius), and past it (a crest or an edge sharper "
+                       "than the spacing resolves) False, the coarse MRS with its sampling, the build reporting the "
+                       "gap against the radius; written False, the coarse MRS alone, a declared numerical choice whose "
+                       "validity line is its near-wall error",
+            by="default_near_contact"),
+        "lubrication": convention(
+            DESIGN, "none: the surrogate's blend of the sphere-wall asymptotes is retired in drag 0.5.0, and written on "
+                    "either rung it is refused (lubrication.retired); drag 0.4.0 keeps it"),
     }
-    mrs_settings = (*UncoupledDrag.mrs_settings, "sampling", "near_field")
+    mrs_settings = (*UncoupledDrag.mrs_settings, "sampling", "near_field", "near_contact")
     #: The values ``grading`` takes beside none.
     gradings: ClassVar[tuple[str, ...]] = ("features",)
     raises = (
@@ -1576,26 +1588,34 @@ class Drag(UncoupledDrag):
         Flag("reynolds_flagged", f"the particle Reynolds number by the body's diameter and its speed relative to the "
                                  f"flow it reads was above {REYNOLDS_LINE:g}, the line up to which Stokes drag is "
                                  f"declared", rung="stokes"),
-        Flag("handover_window", "with lubrication's hand-over, the hand-over gap lay past WINDOW of the contact's smaller "
-                                "radius of curvature: the film's form was measured within about 7 % up to it, 15 to 19 "
-                                "% at force spacings of 0.45 to 0.6 of the radius and about 30 % at 0.9 (a sphere and "
-                                "a spheroid), so the near-wall resistance there is outside the measured reach",
-             rung="mrs", group=False, written=("lubrication",)),
+        Flag("handover_window", "with lubrication's hand-over in the film's form, the hand-over gap lay past WINDOW of the "
+                                "contact's smaller radius of curvature: the film's form was measured within about 7 % "
+                                "up to it, 15 to 19 % at force spacings of 0.45 to 0.6 of the radius and about 30 % at "
+                                "0.9 (a sphere and a spheroid), so the near-wall resistance there is outside the "
+                                "measured reach (the sphere's form has no window)",
+             rung="mrs", group=False, written=("near_contact",)),
         Flag("film_annulus", "with lubrication's hand-over and the contact opened, the film's patch reached round the "
                              "lumen (a body nearly filling it): the contact is a ring, which the film's point form "
                              "does not cover, so the film there is the point contact's and the axial resistance is "
-                             "not the ring's", rung="mrs", group=False, written=("lubrication",)),
+                             "not the ring's", rung="mrs", group=False, written=("near_contact",)),
         Flag("handover_far_side", "with lubrication's hand-over in a tube and the contact opened, the body's width "
                                   "across the lumen filled more than FAR_SIDE_FILL of its diameter: opening the near "
                                   "contact by dilating the tube opens the far side as well, which moves the coarse "
                                   "MRS's axial entry past 7 % (measured on a sphere at the deepest opening the window "
                                   "allows: -6.3 % at a/R 0.5, -8.9 % at 0.55, -18 % at 0.67, -37 % at 0.8)",
-             rung="mrs", group=False, written=("lubrication",)),
-        Flag("film_unsolved", "with lubrication's hand-over, the film's solve was not finite or its residual lay past "
+             rung="mrs", group=False, written=("near_contact",)),
+        Flag("handover_tube_ratio", "with lubrication's hand-over in the sphere's form in a tube and the contact "
+                                    "opened, the sphere's radius over the tube's lay past TESTED_TUBE_RATIO (0.34), the "
+                                    "largest ratio the form was gated at: the rolling along the axis misses by -12 % "
+                                    "of the plane's rate at 0.34 and was measured -18 % at 0.40 and -25 % at 0.46 "
+                                    "(the sphere's form in a tube is tested from 0.22 to 0.34, MIME-ANO-154 open above "
+                                    "it)", rung="mrs", group=False, written=("near_contact",)),
+        Flag("film_unsolved", "with lubrication's hand-over in the film's form, the film's solve was not finite or its "
+                              "residual lay past "
                               "FILM_RESIDUAL_ULPS of the dtype's resolution (1e4 units in the last place: 2.2e-12 "
                               "relative in float64, 1.2e-3 in float32, so a float32 solve wrong by less than about a "
                               "tenth of a per cent passes unflagged): that step's film is not the thin film's to "
-                              "rounding", rung="mrs", group=False, warns=True, written=("lubrication",)),
+                              "rounding", rung="mrs", group=False, warns=True, written=("near_contact",)),
     )
     validity = (
         *(line for line in UncoupledDrag.validity if not line.startswith("each body's drag is computed alone")),
@@ -1681,33 +1701,44 @@ class Drag(UncoupledDrag):
         f"of it (MEMORY_HEADROOM): a GPU's limit, or on a CPU the smaller of the host's available memory and the limit "
         f"of the control group the process runs in, where one is set. Measured on CPUs, not a bound; a GPU's is not "
         f"measured",
-        "mrs: with lubrication (on by default near a wall that opens), the near-wall resistance is the coarse MRS "
+        "mrs: with near_contact (on by default near a wall that opens), the near-wall resistance is the coarse MRS "
         "evaluated once with the body's near contact opened to the hand-over gap (HANDOVER_SPACINGS of the force "
-        "spacing, the finest graded spacing where graded), never closer, plus the thin film's increment between the "
-        "contact's gap and the opened one (Reynolds' equation on the gap's second-order form): the MRS's own "
-        "completion in the gap, not physics beyond Stokes flow. It is taken only where the hand-over gap lies within "
-        "WINDOW of the body's least radius of curvature (the build's rule: a body past it, a crest or an edge sharper "
-        "than the spacing resolves, is the coarse MRS's, the build reporting the gap against the radius, and "
-        "lubrication=True written there is refused, drag.lubrication-window). Within the window, a sphere above a "
-        "plane against exact answers: every entry within 7 % on its own diagonal scale at force spacings of 0.15 and "
-        "0.2 radii, but the normal at 0.06 radii, -6.8 to -7.3 % over orientations at 0.2; the coupling of rotation "
-        "and translation judged against its own size is over-counted below the hand-over gap (MIME-ANO-154: a sphere "
-        "spun on the wall translates up to 43 % too fast per rotation at 0.2 radii, the excess falling as one over "
-        "the logarithm of the gap, 25 % at a thousandth of the radius). The coarse MRS's share at the hand-over gap, "
-        "a sphere above a plane with the image at the force points: 5.6 to 6.1 % at blob 0.1, 3.5 to 4.2 % at 0.05 "
-        "(the default near a wall with lubrication), 2.6 to 3.4 % at 0.025. In a tube the contact is opened by "
-        "dilating the lumen, which opens its far side as well: past FAR_SIDE_FILL of the diameter the step raises "
-        "handover_far_side",
-        "mrs: with lubrication, below the composite roughness of the body's and the wall's surfaces (each a declared "
-        "length, DEFAULT_ROUGHNESS where none is declared, never fitted) the film's gap is floored: its resistance "
+        "spacing, the finest graded spacing where graded), never closer, plus the near-contact law's increment between "
+        "the contact's gap and the opened one: the MRS's own completion in the gap, not physics beyond Stokes flow. The "
+        "law's form is the body's kind's. A sphere's (the Sphere kind declares it) is its exact increment: against a "
+        "plane, the exact sphere-plane resistance from MIME's table of the bispherical solutions "
+        "(sphere_plane_resistance: Brenner's, Jeffery's, Dean and O'Neill's, O'Neill's); in a tube, the hybrid of the "
+        "plane's exact remainder and the elliptic contact's singular terms with the body's own curvature (Cox's; Claeys "
+        "and Brady's). Its error is the coarse MRS's own at the hand-over gap, which the opening leaves: a sphere above "
+        "a plane at the family's spacing (tests/oracles/test_near_contact.py), the normal entry up to +2.8 % at and "
+        "below the hand-over gap, every other entry and the rolling rate within 1.2 %; " f"{UNIFORM_SPHERE_TEXT}; in a "
+        f"tube, {TUBE_RATIOS_TEXT} (the rolling along the axis worst near that rate's zero crossing): the form is "
+        "gated from 0.22 to TESTED_TUBE_RATIO (0.34), and past it a step within the opening's band raises "
+        "handover_tube_ratio (MIME-ANO-154 open there). A sphere's sampling graded towards its contact is refused the "
+        f"form (drag.near-contact-graded): {GRADED_SPHERE_TEXT}. Every other kind takes the thin film's form "
+        "(Reynolds' equation on the gap's second-order form), only where the hand-over gap lies within WINDOW of the "
+        "body's least radius of curvature (the build's rule: a body past it, a crest or an edge sharper than the "
+        "spacing resolves, is the coarse MRS's, the build reporting the gap against the radius, and near_contact=True "
+        "written there is refused, drag.lubrication-window); within it, measured on a sphere given the film's form, "
+        "every entry within 7 % on its own diagonal scale, but the coupling of rotation and translation judged against "
+        "its own size over-counted below the hand-over gap (MIME-ANO-154, open for every kind but the sphere: up to 43 "
+        "% too fast per rotation). The coarse MRS's share at the hand-over gap, a sphere above a plane with the image "
+        "at the force points: 5.6 to 6.1 % at blob 0.1, 3.5 to 4.2 % at 0.05 (the default near a wall with the "
+        "hand-over), 2.6 to 3.4 % at 0.025. In a tube the contact is opened by dilating the lumen, which opens its far "
+        "side as well: past FAR_SIDE_FILL of the diameter the step raises handover_far_side",
+        "mrs: with near_contact, below the composite roughness of the body's and the wall's surfaces (each a declared "
+        "length, DEFAULT_ROUGHNESS where none is declared, never fitted) the law's gap is floored: its resistance "
         "stops growing there and a contact carries the gap; the near-wall resistance owns every hydrodynamic coupling "
-        "of rotation and translation down to that cutoff (film_coupling reports the film's own share), a contact "
-        "none. One point contact a body (its deepest point against the wall); a lumen the body nearly fills is a ring "
-        "contact the point form does not cover (film_annulus); several contacts of one body, a ring's film, and a "
-        "body between two walls (no two-wall kind) are later items",
+        "of rotation and translation down to that cutoff (contact_coupling reports the law's own share), a contact "
+        "none. An ambient flow the opened geometry reads has its zero on the opened wall (the near-contact seam's "
+        "convention, AMBIENT_ZERO; measured on a sphere in a shear flow with the exact increment: the force-free speed "
+        "+7.8 % and spin +3.1 % at a hand-over gap of 0.15 radii, shrinking with it), though no drag rung reads an "
+        "ambient flow yet. One point contact a body (its deepest point against the wall); a lumen the body nearly fills "
+        "is a ring contact the point form does not cover (film_annulus, the film's); several contacts of one body, a "
+        "ring's form, and a body between two walls (no two-wall kind) are later items",
     )
 
-    lubrication: Lubrication | bool | None = None  # pyright: ignore[reportIncompatibleVariableOverride] - the mrs rung's hand-over is a switch, the surrogate's blend a group
+    near_contact: bool | None = None
     sampling: ForceSampling | None = None
     near_field: NearField | None = None
     one_way: bool | None = None
@@ -1727,15 +1758,14 @@ class Drag(UncoupledDrag):
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
-        found = super().setting_problems(settings) if self.rung != "stokes" else []
-        written = cast(object, self.lubrication)
-        if self.rung == "mrs" and written is not None and not isinstance(written, bool):
-            found.append(f"lubrication={written!r} on the mrs rung: its lubrication is the hand-over to the thin film, "
-                         f"on by default near a wall that opens, so write lubrication=False to leave it out (a "
-                         f"Lubrication(epsilon=...) blend is the surrogate rung's)")
-        if self.rung != "mrs" and isinstance(written, bool):
-            found.append(f"lubrication={written!r} on the {self.rung} rung: True or False is the mrs rung's hand-over; "
-                         f"the surrogate's lubrication is its blend, lubrication=Lubrication(epsilon=mm(0.15))")
+        found = [] if self.rung == "stokes" else [problem for problem in super().setting_problems(settings)
+                                                  if not problem.startswith("lubrication")]  # the blend is retired here
+        near = cast(object, self.near_contact)
+        if self.rung == "mrs" and near is not None and not isinstance(near, bool):
+            found.append(f"near_contact={near!r} is not True or False: the mrs rung's hand-over to the near-contact "
+                         f"law, on by default near a wall that opens, so write near_contact=False to leave it out")
+        if self.rung == "rft" and near is not None:
+            found.append("near_contact= is a setting of the mrs rung, and the rft rung reads none")
         if self.rung == "rft" and self.near_field is not None:
             found.append("near_field= is a setting of the mrs rung's near field, and the rft rung reads none")
         if self.rung != "mrs" and self.sampling is not None:
@@ -1747,7 +1777,8 @@ class Drag(UncoupledDrag):
         else:
             found += [f"{name}= is a setting of another rung, and the stokes rung reads none"
                       for name in ("weights", "lubrication", "spacing", "blob", "patches", "wall_kind",
-                                   "coefficients", "quadrature_refinement", "wall_refinement", "near_field")
+                                   "coefficients", "quadrature_refinement", "wall_refinement", "near_field",
+                                   "near_contact")
                       if getattr(self, name) is not None]
             written_way = cast(object, self.one_way)
             if written_way is not None and not isinstance(written_way, bool):
@@ -1961,12 +1992,13 @@ class Drag(UncoupledDrag):
 
     surrogate_settings = ("weights",)
 
-    def default_lubrication(self, ctx: PlanContext) -> bool | None:
+    def default_near_contact(self, ctx: PlanContext) -> bool | None:
         """On the mrs rung, on where the medium's wall opens (``WallCorrection.opened``: a plane, a tube) about a body
-        whose hull kind has a support (its curvature at the contact), and whose least radius of curvature holds the
-        hand-over gap within the film's window (:meth:`handover_window`); False past the window, the build's rule (a
-        contact the film does not cover is the coarse MRS's); none elsewhere (a hull whose window cannot be judged
-        among them), and on the surrogate rung."""
+        whose hull kind has a support (its curvature at the contact): for a kind with a closed form (a sphere), always;
+        for the film's form, where the body's least radius of curvature holds the hand-over gap within the film's
+        window (:meth:`handover_window`), and False past the window, the build's rule (a contact the film does not
+        cover is the coarse MRS's); none elsewhere (a hull whose window cannot be judged among them), and on the
+        surrogate rung."""
         if self.rung != "mrs" or ctx.region("medium") is None:
             return None
         hull = ctx.geometry(of="body")
@@ -1977,6 +2009,8 @@ class Drag(UncoupledDrag):
         correction = wall_correction_named(wall.name, wall.version)
         if correction.opened is None or correction.region is None:
             return None
+        if near_contact_form(hull) != "film":
+            return True
         window = self.handover_window(ctx)
         return None if window is None else window[0] <= WINDOW * window[1]
 
@@ -2003,19 +2037,18 @@ class Drag(UncoupledDrag):
         return HANDOVER_SPACINGS * spacing * share, least_radius(hull.kind, hull.settings, spacing, patches)
 
     def lubricated(self, ctx: PlanContext) -> bool:
-        """Whether the mrs rung hands its near contact over to the film: ``lubrication`` written True, or not
-        written and its default on."""
+        """Whether the mrs rung hands its near contact over to the near-contact law: ``near_contact`` written True, or
+        not written and its default on."""
         if self.rung != "mrs":
             return False
-        written = cast(object, self.lubrication)
-        return written is True if written is not None else self.default_lubrication(ctx) is True
+        written = cast(object, self.near_contact)
+        return written is True if written is not None else self.default_near_contact(ctx) is True
 
     @override
     def includes_lubrication(self) -> bool:
-        """The mrs rung with its hand-over includes the near-wall film, as the surrogate with its blend does."""
-        if self.rung == "mrs":
-            return self.lubrication is True
-        return super().includes_lubrication()
+        """The mrs rung with its hand-over includes the near-wall lubrication (the near-contact law's increment); the
+        surrogate's blend is retired here, so it includes none."""
+        return self.rung == "mrs" and self.near_contact is True
 
     @override
     def default_blob(self, ctx: PlanContext) -> float | None:
@@ -2044,15 +2077,17 @@ class Drag(UncoupledDrag):
         coarser of this build's and the family's) against the body's least radius of curvature."""
         if self.rung != "mrs":
             return {}
-        if self.lubrication is not True:
-            hull = ctx.geometry(of="body")
-            if self.lubrication is not False or hull is None or not implements(hull.kind, "support") \
-                    or not implements(hull.kind, "sampling") or ctx.region("medium") is None:
+        hull = ctx.geometry(of="body")
+        if self.near_contact is not True:
+            if self.near_contact is not False or hull is None or not implements(hull.kind, "support") \
+                    or not implements(hull.kind, "sampling") or ctx.region("medium") is None \
+                    or near_contact_form(hull) != "film":
                 return {}
             handover, radius = self._window_at(hull, max(ctx.scalar("spacing"), self._family_spacing(hull)))
             return {"handover_declined": window_text(handover, radius)} if handover > WINDOW * radius else {}
         return {"lubrication": True, "handover_spacing": float(spacing),
-                "roughness_body": ctx.values.get("roughness_body"), "roughness_wall": ctx.values.get("roughness_wall")}
+                "roughness_body": ctx.values.get("roughness_body"), "roughness_wall": ctx.values.get("roughness_wall"),
+                "near_contact_form": "film" if hull is None else near_contact_form(hull)}
 
     def joins_near_field(self) -> bool:
         """Whether this drag, with others of its version in its medium, is built as their joint near field: the mrs
@@ -2176,16 +2211,28 @@ class Drag(UncoupledDrag):
         sampled = self._sampled()
         if self.lubricated(ctx):
             found = [problem for problem in found if problem.code != "drag.mrs-on-wall"]
-            window = self.handover_window(ctx) if cast(object, self.lubrication) is True else None
+            hull = ctx.geometry(of="body")
+            film = hull is not None and near_contact_form(hull) == "film"
+            if hull is not None and near_contact_form(hull) == "sphere" and self.graded():
+                body = ctx.bindings["body"]
+                found.append(Problem(
+                    "drag.near-contact-graded",
+                    f"{body} takes the sphere's exact near-contact form, and its force points are graded "
+                    f"(sampling=ForceSampling(...)): the hand-over gap then sits at the finest graded spacing, where "
+                    f"the graded MRS's own error, which the opening leaves, is the form's error: {GRADED_SPHERE_TEXT}, "
+                    f"so a sphere takes the form at a uniform spacing only",
+                    "leave the sampling out, Drag.MRS(spacing=...), for the sphere's form at a uniform spacing, or "
+                    "write near_contact=False for the graded MRS alone near the wall"))
+            window = self.handover_window(ctx) if cast(object, self.near_contact) is True and film else None
             if window is not None and window[0] > WINDOW * window[1]:
                 body = ctx.bindings["body"]
                 found.append(Problem(
                     "drag.lubrication-window",
-                    f"lubrication=True asks the thin film to carry {body}'s gaps below the hand-over gap, and "
+                    f"near_contact=True asks the thin film to carry {body}'s gaps below the hand-over gap, and "
                     f"{window_text(*window)}, past the film's window ({WINDOW:g} of it): the film's form is measured "
                     f"within about 7 % inside the window and about 30 % at 4.5 times it, and a contact the film does not "
                     f"cover is the coarse MRS's, with its graded sampling at a sharp edge",
-                    f"leave lubrication unwritten, which gives {body}'s gaps to the coarse MRS and reports why, or "
+                    f"leave near_contact unwritten, which gives {body}'s gaps to the coarse MRS and reports why, or "
                     f"write a force spacing at most {WINDOW / HANDOVER_SPACINGS:.3g} of that radius, "
                     f"Drag.MRS(spacing=mm({window[1] * WINDOW / HANDOVER_SPACINGS * 1e3:.3g}))"))
         if not self.graded():
@@ -2313,6 +2360,8 @@ class Drag(UncoupledDrag):
         if self.rung == "stokes":
             return self._stokes_plan(ctx)
         found = super().plan(ctx)
+        if self.lubrication is not None:
+            found = dataclasses.replace(found, problems=(*found.problems, self._retired()))
         if not self.lubricated(ctx):
             return found
         values = dict(found.values)
@@ -2321,6 +2370,29 @@ class Drag(UncoupledDrag):
         if ctx.value("medium", "wall.roughness") is not None:
             values["roughness_wall"] = Value("medium", "roughness", wall=True)
         return dataclasses.replace(found, values=values)
+
+    def _retired(self) -> Problem:
+        """``lubrication=`` written on drag 0.5.0 (``lubrication.retired``), its way out by the rung it was written on:
+        on the mrs rung the hand-over's own switch, ``near_contact``, at the value written (so ``lubrication=False``
+        keeps the hand-over off), and on the surrogate the blend on drag 0.4.0."""
+        written = cast(object, self.lubrication)
+        if self.rung == "mrs":
+            action = (f"write near_contact={written!r}, the mrs rung's hand-over by its name since drag 0.5.0's "
+                      f"near-contact law (near_contact=False leaves it off, the coarse MRS alone; unwritten, it is on "
+                      f"near a wall that opens)" if isinstance(written, bool) else
+                      "leave lubrication out: the mrs rung's near-wall lubrication is its hand-over, near_contact (on by "
+                      "default near a wall that opens; near_contact=False leaves it off)")
+        elif self.rung == "surrogate":
+            action = ("keep the blend on drag 0.4.0, kept registered: KeptDrag, _ = KEPT['drag', '0.4.0'] (KEPT from "
+                      "mime.interactions), then KeptDrag.Surrogate(weights=asset('dejongh_mlp_v2'), "
+                      "lubrication=Lubrication(epsilon=mm(0.15))); or leave lubrication out, the surrogate without the "
+                      "blend")
+        else:
+            action = f"write Drag.RFT(...) with no lubrication=: the {self.rung} rung reads none"
+        return Problem("lubrication.retired",
+                       f"lubrication= is the surrogate's blend of the sphere-wall asymptotes, which drag {self.version} "
+                       f"retired: the mrs rung's hand-over (near_contact) is the near-wall lubrication now, and the "
+                       f"surrogate's is retrained far field only, not yet", action)
 
     def _build_near_field(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the
@@ -2339,7 +2411,7 @@ class Drag(UncoupledDrag):
             member = ctx.members[owner]
             entry = cast(UncoupledDrag, member.entry)
             arguments = entry._mrs_arguments(member)
-            for key in ("lubrication", "handover_spacing", "roughness_body", "roughness_wall"):
+            for key in ("lubrication", "handover_spacing", "roughness_body", "roughness_wall", "near_contact_form"):
                 arguments.pop(key, None)  # no hand-over in a medium's near field yet (validity: W2a's PR 2)
             correction = wall_correction_named(arguments["wall_kind"], arguments["wall_kind_version"])
             names = {f"{WALL}{name}" for name in correction.parameters}
@@ -2365,6 +2437,13 @@ class Drag(UncoupledDrag):
             b.connect(b.read(f"{owner}/mass_matrix"), into=node[f"mass_matrix_{i}"])
             b.connect(node[f"resistance_{i}"], into=b.target(f"{owner}/resistance"))
             b.connect(node[f"background_load_{i}"], into=b.target(f"{owner}/background_load"))
+
+
+def near_contact_form(hull: Hull) -> str:
+    """The near-contact law's form for ``hull``'s kind: the closed form it declares (``Geometry.near_contact``), or
+    the thin film's."""
+    declared = getattr(hull.kind, "near_contact", "")
+    return declared if declared in NEAR_CONTACT_FORMS else "film"
 
 
 def _direction(value: object) -> bool:

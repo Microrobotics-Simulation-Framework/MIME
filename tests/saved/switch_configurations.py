@@ -62,9 +62,16 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     if hasattr(Drag, "handover_window"):  # a merge base before lubrication's hand-over builds no such drag
         from lubrication_cases import above_plane
 
+        from mime.scene import Ellipsoid
+        from mime.units import mm
+
         # a coarse blob: the step's structure (its raw sites) is the same at any blob, and each worker that runs the
-        # scan holds every configuration's traced step, the quadrature's arrays in it
+        # scan holds every configuration's traced step, the quadrature's arrays in it. The sphere takes the
+        # near-contact law's sphere form; a mild ellipsoid, within the film's window, the film's
         found["drag/lubricated_sphere"] = partial(above_plane, 0.2, blob=0.25)
+        if hasattr(Ellipsoid, "near_contact"):  # a merge base before the near-contact seam has no forms to tell apart
+            found["drag/lubricated_ellipsoid"] = partial(above_plane, 0.16, blob=0.25, name="lubricated_ellipsoid",
+                                                         kind=Ellipsoid(semi_axes=mm((1.1, 1.0, 0.95))))
     return found
 
 

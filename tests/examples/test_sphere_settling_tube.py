@@ -146,7 +146,7 @@ def test_the_run_and_its_view_state_the_limit(example, written, tmp_path):
     from mime import viz
 
     for line in ("down to a gap of about one sample spacing", "this demo writes it off",
-                 "the contact, not the fluid, holds the ball on the floor", "past the film's window"):
+                 "the contact, not the fluid, holds the ball on the floor", "default roughness"):
         assert line in " ".join(example.__doc__.split()) and line in example.LIMIT, line
     assert written.recording is not None
     page, result = viz.web(written.recording.parent, tmp_path / "view.html", caption=example.LIMIT)

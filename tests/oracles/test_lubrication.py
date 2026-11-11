@@ -56,6 +56,7 @@ import numpy as np
 import pytest
 from lubrication_cases import (
     FINE,
+    compared,
     RADIUS,
     TUBE,
     VISCOSITY,
@@ -85,6 +86,14 @@ from mime.units import m
 #: every program while its node lives, so a worker running the gates one after another grows by each.
 HEADROOM_MIB = 1024
 LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
+
+
+@pytest.fixture(autouse=True)
+def the_film_on_the_sphere(monkeypatch):
+    """Every gate here is the thin film's form (``mime.nodes.hydro.near_contact``'s ``"film"``), which every kind but
+    the sphere takes: the sphere is its gates' body (its exact answers are known), so it is given the film's form here,
+    as a kind that declares no closed form has (the sphere's own form is gated in ``test_near_contact.py``)."""
+    monkeypatch.setattr(Sphere, "near_contact", "")
 
 
 @pytest.fixture(autouse=True)
@@ -250,7 +259,7 @@ def increment_ratios(plant: str | None = None) -> tuple[dict[float, dict[str, fl
     exact = {g: np.asarray(held[f"fine {g}"]["resistance"]) for g in (0.15, *INCREMENT_BAND)}
     band = {}
     for gap in INCREMENT_BAND:
-        film, wanted = scaled(found[gap]["film_increment"]), exact[gap] - exact[0.15]
+        film, wanted = scaled(found[gap]["contact_increment"]), exact[gap] - exact[0.15]
         band[gap] = {name: float(film[i, j] / wanted[i, j]) for name, (i, j) in ENTRIES.items()}
     deep = {}
     for near, far in DEEP_PAIRS:
@@ -434,7 +443,7 @@ def test_gate7_the_term_doubled_moves_the_speed_by_what_the_six_by_six_predicts(
     single, doubled = at_gaps(0.2, gaps), at_gaps(0.2, gaps, plant="increment_x2")
     load = np.asarray([0.0, 0.0, -1.0, 0.0, 0.0, 0.0])
     for gap in gaps:
-        predicted = np.linalg.solve(single[gap]["resistance"] + single[gap]["film_increment"], load)
+        predicted = np.linalg.solve(single[gap]["resistance"] + single[gap]["contact_increment"], load)
         got = np.linalg.solve(doubled[gap]["resistance"], load)
         moved = np.linalg.solve(single[gap]["resistance"], load)
         print(f"\nh/a {gap}: speed x1 {moved[2]:.6g}, x2 {got[2]:.6g}, predicted {predicted[2]:.6g}")
@@ -443,45 +452,6 @@ def test_gate7_the_term_doubled_moves_the_speed_by_what_the_six_by_six_predicts(
 
 
 # -- gate 8 ----------------------------------------------------------------------------------------------------------
-
-def compared(built, pose_of, gaps, leaf_names, step=1e-6, forward_too=True):
-    """Reverse, forward and Richardson's central difference of a weighted sum of the resistance in each leaf, at each
-    gap; each leaf stepped by ``step`` of its size. The loss takes the pose and the weights as arguments, so that each
-    derivative compiles once for every gap. Without ``forward_too`` the forward column repeats the reverse one (the
-    controls judge the reverse alone)."""
-    node, state, leaves, _ = stepper(built)
-
-    def loss(values, pose, along, weights):
-        held = {**leaves, **{k: v for k, v in zip(leaf_names, values[:-1], strict=True)}}
-        moved = pose + values[-1] * along
-        return jnp.sum(weights * node.update(state, {"pose": moved}, 1e-3, params=held)["resistance"])
-
-    value, reverse_of = jax.jit(loss), jax.jit(jax.grad(loss))
-    forward_of = jax.jit(jax.jacfwd(loss)) if forward_too else reverse_of
-    found = []
-    for gap in gaps:
-        pose = pose_of(gap)
-        scale = np.asarray(node.update(state, {"pose": pose}, 1e-3, params=leaves)["resistance"])
-        weights = jnp.asarray((1.0 + 0.1 * np.arange(36).reshape(6, 6) / 36.0)
-                              / np.sqrt(np.abs(np.outer(np.diag(scale), np.diag(scale)))))
-        along = jnp.zeros(7).at[2 if float(pose[2]) != 0.0 else 0].set(1.0)
-        at = jnp.asarray([*(leaves[k] for k in leaf_names), 0.0])
-        reverse = np.asarray(reverse_of(at, pose, along, weights))
-        forward = np.asarray(forward_of(at, pose, along, weights))
-        here = []
-        for i, name in enumerate((*leaf_names, "position")):
-            size = RADIUS if name in ("position", "wall_offset", "wall_radius") else abs(float(at[i]))
-            h = step * size
-            e = jnp.zeros_like(at).at[i].set(h)
-            coarse = (float(value(at + e, pose, along, weights)) - float(value(at - e, pose, along, weights))) / (2 * h)
-            fine = (float(value(at + e / 2, pose, along, weights)) - float(value(at - e / 2, pose, along, weights))) / h
-            # each derivative on the loss's scale per unit relative move of its leaf, so that a leaf the resistance
-            # does not read at this gap (the roughness above the cutoff) is judged against the others
-            here.append((gap, name, reverse[i] * size, forward[i] * size, (4 * fine - coarse) / 3 * size))
-        scale = max(max(abs(d), abs(r)) for _, _, r, _, d in here)
-        found += [(*row, scale) for row in here]
-    return found
-
 
 #: Gaps straddling the hand-over gap (h_m = 0.15 radii at s/a 0.2, the lift's band 0.075 to 0.225) and the cutoff (a
 #: roughness of 2 um on each surface: 2.83 um, its band 1.41 to 4.24 um), in radii.
@@ -578,7 +548,7 @@ def test_gate12_the_reader_gives_the_films_cutoff_and_the_film_stops_growing_bel
     gaps = (0.002, 0.001, 0.0005)  # radii: 2, 1 and 0.5 um, below the floor's band (1.41 to 4.24 um)
     found = at_gaps(0.2, gaps, roughness=roughness)
     for gap, out in found.items():
-        assert float(out["film_cutoff"]) == pytest.approx(cutoff, rel=1e-12), gap
+        assert float(out["contact_cutoff"]) == pytest.approx(cutoff, rel=1e-12), gap
     floor = cutoff * (1.0 - ROUGHNESS_WIDTH)  # below the band's lower end the film's gap is the cutoff itself
     normals = [float(found[g]["resistance"][2, 2]) for g in gaps if g * RADIUS < floor]
     print(f"\ncutoff {cutoff:.4g} m; normal entries below the floor's band {normals}")
@@ -610,7 +580,7 @@ def test_gate12_the_floored_normal_moves_with_the_walls_roughness_as_its_leading
     with planted():
         for wall in walls:
             node, state, leaves, step = stepper(above_plane(0.2, roughness=body, wall_roughness=wall).build())
-            found[wall] = float(step(plane_pose(gap * RADIUS), leaves)["film_increment"][2, 2])
+            found[wall] = float(step(plane_pose(gap * RADIUS), leaves)["contact_increment"][2, 2])
     cutoffs = {wall: roughness_cutoff(body, wall) for wall in walls}
     measured = found[walls[0]] / found[walls[1]]
     predicted = (1 / cutoffs[walls[0]] - 1 / handover) / (1 / cutoffs[walls[1]] - 1 / handover)
@@ -621,7 +591,7 @@ def test_gate12_the_floored_normal_moves_with_the_walls_roughness_as_its_leading
 def test_gate12_control_a_film_whose_cutoff_is_not_the_readers_is_caught():
     roughness = 2e-6
     out = at_gaps(0.2, (0.002,), roughness=roughness, plant="cutoff_body_only")[0.002]
-    assert float(out["film_cutoff"]) != pytest.approx(roughness_cutoff(roughness, roughness), rel=1e-6)
+    assert float(out["contact_cutoff"]) != pytest.approx(roughness_cutoff(roughness, roughness), rel=1e-6)
 
 
 def test_the_tube_is_opened_by_dilation_and_its_contact_found_off_the_axis():
@@ -674,7 +644,7 @@ FILM_ENTRIES = ((2, 2), (0, 0), (4, 4), (0, 4))
 def film_at(case, radius: float, gap: float):
     node, state, leaves, _ = case
     held = {**leaves, "shape_radius": radius}
-    return node.update(state, {"pose": plane_pose(gap, lowest=radius)}, 1e-3, params=held)["film_increment"]
+    return node.update(state, {"pose": plane_pose(gap, lowest=radius)}, 1e-3, params=held)["contact_increment"]
 
 
 @pytest.mark.memory_heavy
@@ -751,14 +721,14 @@ def test_a_body_past_the_films_window_is_the_coarse_mrss_by_the_builds_rule_and_
     MRS, and its build report says why with the gap against the radius. The sphere at a spacing of 0.3 radii (hand-over
     gap 0.225 radii) is past it too; at 0.2 (0.15) it is within, and takes the hand-over."""
     screw = screw_in_tube()
-    assert taken_default(screw, "lubrication") is False
+    assert taken_default(screw, "near_contact") is False
     node = stepper(screw.build())[0]
     assert not node.lubricated
     lines = [line for line in node.built_lines(None, None) if "hand-over is not taken" in line]
     print("\n" + "\n".join(lines))
     assert len(lines) == 1 and "past the film's window" in lines[0]
-    assert taken_default(above_plane(0.3, lubrication=None), "lubrication") is False
-    assert taken_default(above_plane(0.2, lubrication=None), "lubrication") is True
+    assert taken_default(above_plane(0.3, lubrication=None), "near_contact") is False
+    assert taken_default(above_plane(0.2, lubrication=None), "near_contact") is True
 
 
 def test_lubrication_written_on_past_the_window_is_refused_naming_the_spacing_that_brings_it_in():
@@ -775,7 +745,7 @@ def test_control_the_rule_removed_gives_fl9s_default_to_the_film(monkeypatch):
     import mime.interactions.hydrodynamic as hydrodynamic
 
     monkeypatch.setattr(hydrodynamic, "WINDOW", math.inf)
-    assert taken_default(screw_in_tube(), "lubrication") is True
+    assert taken_default(screw_in_tube(), "near_contact") is True
 
 
 def test_a_shared_flowing_medium_collects_both_refusals_at_once():

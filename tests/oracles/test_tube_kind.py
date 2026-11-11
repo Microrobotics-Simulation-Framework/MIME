@@ -131,7 +131,7 @@ def off_axis(kind, spacing):
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-14, 1e-14, 1e-14)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(lubrication=False, spacing=spacing, blob=0.5, wall_kind="tube"), body="ball", medium="water")
+    experiment.attach(Drag.MRS(near_contact=False, spacing=spacing, blob=0.5, wall_kind="tube"), body="ball", medium="water")
     return experiment.build()
 
 

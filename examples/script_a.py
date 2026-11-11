@@ -30,7 +30,7 @@ from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, St
 from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
-from mime.interactions import KEPT, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
 from mime.scene import Box, Scene, Screw, Tube, X, Z
@@ -62,6 +62,9 @@ REFERENCE = "the 0.2 line's script A (MIME-port041 at 6485516)"
 #: registered for reproductions like this one); a new experiment writes Contact.Projection(...), which holds the body's
 #: hull, its orientation read.
 CentreContact, _ = KEPT["contact", "0.1.0"]
+#: The drag 0.4.0, kept registered: its surrogate rung keeps the near-wall lubrication blend this script ran with, which
+#: drag 0.5.0 retired (lubrication.retired) until the surrogate is retrained far field only.
+KeptDrag, _ = KEPT["drag", "0.4.0"]
 #: FL-9: R 1.56 mm, L 7.47 mm, nu 2.33, modulation 0.33, two starts (de Jongh et al. 2025, Table 1).
 FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
             starts=2)
@@ -106,7 +109,7 @@ def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
     # endregion field
 
     # region: laws
-    experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
+    experiment.attach(KeptDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
@@ -166,7 +169,7 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": frequency, "amplitude": mT(1.2)}))
-    experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
+    experiment.attach(KeptDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
@@ -201,7 +204,7 @@ def exploring_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": frequency, "amplitude": mT(1.2)}))
-    experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
+    experiment.attach(KeptDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)

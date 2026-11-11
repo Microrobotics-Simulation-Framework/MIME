@@ -1388,6 +1388,10 @@ class Geometry(Entry):
     #: convergence); a fitted stand-in's measured error. The conformance suite holds each kind to it against a dense
     #: quadrature of its body.
     support_error: ClassVar[float] = 0.0
+    #: The closed form the near-contact law takes for a contact of this kind's body (``"sphere"``: a sphere's exact
+    #: increment, ``mime.nodes.hydro.near_contact``), the plan's choice of the law's form, named in the build report;
+    #: empty for a kind with none, whose contacts take the law's general form.
+    near_contact: ClassVar[str] = ""
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
