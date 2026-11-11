@@ -22,7 +22,7 @@ import json
 import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -124,7 +124,8 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
     vertex = x1 - 0.5 * (x1 - x0) * (y2 - y0) / bend if bend > 0.0 else x1
     control = math.exp(min(max(vertex, x0), x2))
 
-    data = experiment.build().run(duration, override={axis: estimate}, history=True).history[body]
+    history = experiment.build().run(duration, override={axis: estimate}, history=True).history
+    data: Mapping[str, Any] = {} if history is None else cast(Mapping[str, Any], history[body])
     forces = np.asarray(data["contact_forces"], dtype=np.float64)
     slips = np.asarray(data["contact_slip"], dtype=np.float64)
     traction = np.asarray(data["contact_traction"], dtype=np.float64)

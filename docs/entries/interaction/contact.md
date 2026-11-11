@@ -54,7 +54,7 @@ always did. The seams for what is left out (`mime.interactions.friction`): `Fric
 static coefficient above the kinetic), `NormalLaw` with `Hold()` its default (restitution, soft contact; `Hold`'s
 `adhesion` reserved), the row kinds (rolling resistance built, spin declared) and the point sets (line and patch
 contacts), each with its conformance suite in `mime.testing`. **Rolling resistance**, `Coulomb(mu=..., rolling=...)`
-(a length), adds a pair of angular rows `[0; t]` at each point, a torque about the surface's tangents bounded by the
+(a length), adds a pair of angular rows at each point (no force, the tangent's turn), a torque about the surface's tangents bounded by the
 length times the normal force: a sphere on a flat slows while it rolls, and one on a slope stays put below the
 threshold the length over the radius sets. A synchronous rolling speed does not depend on it (the torque budget
 absorbs it until step-out), so only data past step-out identify it; at zero its derivative is the slope into the

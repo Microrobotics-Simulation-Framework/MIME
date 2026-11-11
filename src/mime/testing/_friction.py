@@ -371,7 +371,11 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
         from mime.interactions import Contact
         from mime.interactions.friction import Coulomb
 
-        law = type("Reserved", (Coulomb,), {"rows": (kind,), "held_rows": lambda self: (kind,)})(mu=0.3)
+        def reserved(self: object) -> tuple[str, ...]:
+            del self
+            return (kind,)
+
+        law = type("Reserved", (Coulomb,), {"rows": (kind,), "held_rows": reserved})(mu=0.3)
         found = Contact.Projection(margin=1e-4, friction=law).setting_problems({"margin": 1e-4})
         if record.reason in found:
             return VerificationResult("row kind", "PASS", detail=f"{kind}: reserved, refused with its reason")
