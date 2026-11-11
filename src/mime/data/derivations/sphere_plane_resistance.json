@@ -1,0 +1,60 @@
+{
+ "asset": "sphere_plane_resistance",
+ "sha256": "5c6ed8ff9fd2f8e7e2b15027d1c8f742a650906702b73d87adb0d1f7aba7e0e1",
+ "builder": "scripts/sphere_plane_table.py (MIME), its parts built on GitHub's runners (probe run 42949957251, 12 shares and the checks) and merged by its merge command",
+ "builder_version": "none: a script, named by its commit and its hash below",
+ "commit": "91e3ff7",
+ "sources": {
+  "scripts/sphere_plane_table.py": "64275410fdd94842d71590af06a68b4ac8826ee74010d95b4914d289fb6f6dd6"
+ },
+ "dirty": null,
+ "inputs": [],
+ "parameters": {
+  "range": [
+   0.001,
+   10.0
+  ],
+  "knots": 97,
+  "terms_per_alpha": 40.0,
+  "terms_margin": 24,
+  "collocation": "Gauss-Legendre nodes in mu, the series' length plus an eighth (at least 16), at phi 0.7",
+  "traction": "Gauss-Legendre, twice the collocation's nodes, four angles"
+ },
+ "checks": [
+  {
+   "name": "the solver's normal and spin against Brenner's and Jeffery's series at d 0.3, 0.03, 0.003",
+   "measured": 2.084332706431269e-12,
+   "tolerance": "at most 1e-10 relative",
+   "passed": true
+  },
+  {
+   "name": "the coupling's reciprocity (force per rotation against torque per translation) at every knot and midpoint",
+   "measured": 5.285303306123978e-10,
+   "tolerance": "at most 1e-9 relative",
+   "passed": true
+  },
+  {
+   "name": "the no-slip condition at nodes not collocated, every knot and midpoint",
+   "measured": 3.3314394819285124e-10,
+   "tolerance": "at most 1e-9 of the motion's speed",
+   "passed": true
+  },
+  {
+   "name": "each entry's change with the series' length and the nodes x1.25 and the traction's nodes x2, at d 1e-3 and 0.01",
+   "measured": 3.806559512042895e-10,
+   "tolerance": "at most 1e-8 relative",
+   "passed": true
+  }
+ ],
+ "domain": {
+  "d": [
+   0.001,
+   10.0
+  ],
+  "unit": "the gap over the sphere's radius"
+ },
+ "notes": [
+  "the bispherical solutions: Brenner (1961) and Jeffery (1915) summed in closed form, Dean and O'Neill's (1963) and O'Neill's (1964) problems solved in their representation by collocation; scripts/sphere_plane_table.py's docstring holds the method",
+  "the predictions for these checks were committed before the build ran (tests/oracles/predictions_w2a_1b.json)"
+ ]
+}

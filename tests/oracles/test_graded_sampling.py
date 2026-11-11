@@ -173,7 +173,7 @@ def test_the_contact_is_turned_into_a_turned_parts_frame_so_its_patch_faces_the_
     settings = {"radius": 0.5e-3, "height": 2e-3, "axis": (0.0, 1.0, 0.0)}
     hull = Hull("ball", "shell", kind, settings, (0.0, 0.0, 0.0), tuple(tuple(float(c) for c in row) for row in rotation),
                 {})
-    drag = Drag.MRS(lubrication=False, spacing=m(0.25e-3), blob=0.25, wall_kind="plane", contact=(0.0, 0.0, -1.0),
+    drag = Drag.MRS(near_contact=False, spacing=m(0.25e-3), blob=0.25, wall_kind="plane", contact=(0.0, 0.0, -1.0),
                     contact_gap=m(0.1e-3))
     density = drag._density({"contact_gap": 0.1e-3}, hull, 0.25e-3)  # noqa: SLF001 - the drag's own density
     assert density is not None

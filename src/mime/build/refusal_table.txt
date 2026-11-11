@@ -291,6 +291,7 @@ load.stage-writer             environment
 load.units                    user
 load.unknown-entry            environment
 load.version                  environment
+lubrication.retired           user
 lubrication.twice             user
 maddening.compile             internal
 maddening.dtype               internal

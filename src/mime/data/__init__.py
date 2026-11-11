@@ -1,5 +1,6 @@
-"""Package data shipped in the wheel: small default assets, each pinned by its sha256 (surrogate weights, copies of
-OpenMaterica's example records, three electromagnetic navigation systems' calibrations).
+"""Package data shipped in the wheel: small default assets, each pinned by its sha256 (surrogate weights, the exact
+sphere-plane resistance table, copies of OpenMaterica's example records, three electromagnetic navigation systems'
+calibrations).
 
 An experiment names a packaged asset with ``asset("dejongh_mlp_v2")``, which holds the name and the sha256 the
 experiment is written against. Whatever reads the asset's contents reads them through :func:`asset_bytes`, which
@@ -43,6 +44,11 @@ PACKAGED: Mapping[str, PackagedAsset] = MappingProxyType({
         "mlp_cholesky_weights_v2.npz", "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345",
         "the Cholesky MLP drag surrogate's weights and normalisation for de Jongh screw bodies in a tube, version 2 "
         "(trained in the 0.2 line on regularised-Stokeslet BEM resistances with a cylinder-wall table)"),
+    "sphere_plane_resistance": PackagedAsset(
+        "sphere_plane_resistance.json", "5c6ed8ff9fd2f8e7e2b15027d1c8f742a650906702b73d87adb0d1f7aba7e0e1",
+        "the exact resistance of a sphere near a plane wall at gaps of 1e-3 to 10 radii, five entries at 97 knots and "
+        "their midpoints, from the bispherical solutions (Brenner 1961, Jeffery 1915, Dean and O'Neill 1963, O'Neill "
+        "1964), computed by MIME (scripts/sphere_plane_table.py): the near-contact law's sphere form reads it"),
     "openmaterica_example_water": PackagedAsset(
         "records/water.json", "36add4875e58ade4810d8924cdc5fa7a0dbce28f621c02e4d98fb3516bc92761",
         "OpenMaterica's example record example/water 1.0.1 (its main at commit eb722a9b): liquid water's density "

@@ -19,6 +19,7 @@ from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
 from mime.nodes.hydro import _film
 from mime.nodes.hydro.mrs import MRSDragNode, _handover
+from mime.nodes.hydro.near_contact import _sphere
 from mime.scene import Plane, Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
@@ -29,12 +30,13 @@ RADIUS, VISCOSITY, TUBE = 1e-3, 1e-3, 2e-3
 FINE = 1e-9
 
 
-def above_plane(spacing: float, *, blob: float | None = None, lubrication: bool | None = True,
+def above_plane(spacing: float | None, *, blob: float | None = None, lubrication: bool | None = True,
                 roughness: float = FINE, kind: Any = None, name: str = "lubricated_sphere",
                 wall_roughness: float | None = None) -> Experiment:
     """``kind`` (a sphere of ``RADIUS`` by default) a radius above the plane z = 0, the medium filling the half-space,
-    with ``Drag.MRS`` at ``spacing`` (of the radius) and the hand-over ``lubrication`` (unwritten where ``None``: the
-    build's rule), both surfaces' roughness declared (the wall's ``wall_roughness`` where given)."""
+    with ``Drag.MRS`` at ``spacing`` (of the radius; the family's where ``None``) and the hand-over ``near_contact``
+    as ``lubrication`` (unwritten where ``None``: the build's rule), both surfaces' roughness declared (the wall's
+    ``wall_roughness`` where given)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=m(0.0))))
     experiment.add_medium(Medium("water", fills=floor.half_space))
@@ -42,12 +44,13 @@ def above_plane(spacing: float, *, blob: float | None = None, lubrication: bool 
                       "plane", wall_roughness)
 
 
-def in_tube(spacing: float, *, blob: float | None = None, lubrication: bool | None = True, roughness: float = FINE,
-            kind: Any = None, name: str = "lubricated_tube", flow: Any = None) -> Experiment:
-    """As :func:`above_plane`, in a straight tube of radius ``TUBE`` along z, the body on its axis; the water carrying
-    ``flow`` where given (a field kind, its density declared)."""
+def in_tube(spacing: float | None, *, blob: float | None = None, lubrication: bool | None = True,
+            roughness: float = FINE, kind: Any = None, name: str = "lubricated_tube", flow: Any = None,
+            tube: float = TUBE) -> Experiment:
+    """As :func:`above_plane`, in a straight tube of radius ``tube`` (``TUBE`` by default) along z, the body on its
+    axis; the water carrying ``flow`` where given (a field kind, its density declared)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
-    experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=m(TUBE), wall=mm(0.5),
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=m(tube), wall=mm(0.5),
                                                              length=mm(200.0))))
     experiment.add_medium(Medium("water", fills="tube.lumen") if flow is None else
                           Medium("water", fills="tube.lumen", fields={"flow": flow}))
@@ -56,7 +59,7 @@ def in_tube(spacing: float, *, blob: float | None = None, lubrication: bool | No
     return _with_body(experiment, spacing, blob, lubrication, roughness, kind, (0.0, 0.0, 0.0), "tube", "tube")
 
 
-def _with_body(experiment: Experiment, spacing: float, blob: float | None, lubrication: bool | None,
+def _with_body(experiment: Experiment, spacing: float | None, blob: float | None, lubrication: bool | None,
                roughness: float, kind: Any, at: tuple[float, float, float], wall: str, wall_kind: str,
                wall_roughness: float | None = None) -> Experiment:
     experiment.declare("water.viscosity", mPa_s(VISCOSITY * 1e3), reason="water")
@@ -70,9 +73,11 @@ def _with_body(experiment: Experiment, spacing: float, blob: float | None, lubri
     experiment.declare("ball.roughness", m(roughness), reason="the gate's declared roughness")
     experiment.declare(f"{wall}.roughness", m(roughness if wall_roughness is None else wall_roughness),
                        reason="the gate's declared roughness")
-    settings: dict[str, Any] = {"spacing": m(spacing * RADIUS), "wall_kind": wall_kind}
+    settings: dict[str, Any] = {"wall_kind": wall_kind}
+    if spacing is not None:
+        settings["spacing"] = m(spacing * RADIUS)
     if lubrication is not None:
-        settings["lubrication"] = lubrication
+        settings["near_contact"] = lubrication
     if blob is not None:
         settings["blob"] = blob
     experiment.attach(Drag.MRS(**settings), body="ball", medium="water")
@@ -98,9 +103,11 @@ def plane_pose(gap: float, orientation: tuple[float, ...] = (1.0, 0.0, 0.0, 0.0)
     return jnp.asarray((0.0, 0.0, lowest + gap, *orientation))
 
 
-def tube_pose(gap: float, orientation: tuple[float, ...] = (1.0, 0.0, 0.0, 0.0), reach: float = RADIUS) -> Any:
-    """The pose with the body ``gap`` (m) from the tube's wall along -x, ``reach`` its extent across the axis."""
-    return jnp.asarray((-(TUBE - reach - gap), 0.0, 0.0, *orientation))
+def tube_pose(gap: float, orientation: tuple[float, ...] = (1.0, 0.0, 0.0, 0.0), reach: float = RADIUS,
+              tube: float = TUBE) -> Any:
+    """The pose with the body ``gap`` (m) from the wall of a tube of radius ``tube`` along -x, ``reach`` its extent
+    across the axis."""
+    return jnp.asarray((-(tube - reach - gap), 0.0, 0.0, *orientation))
 
 
 def scaled(resistance: np.ndarray, radius: float = RADIUS) -> np.ndarray:
@@ -116,12 +123,16 @@ def translation_per_rotation(resistance: np.ndarray, radius: float = RADIUS) -> 
 
 
 #: The plants a gate's control switches on by ``W2A_PLANT``: the increment scaled, its coupling counted twice, its
-#: normal negated, the lift's floor without its derivative or a hard max, the film's elimination 1 % off, the cutoff
-#: from the body's roughness alone, the film's curvature floored at one over a held size (the floor the first build
-#: had), the wall's curvature added to the body's rather than taken from it, the body's size read from the search's
-#: build-time number (a constant of the program).
+#: normal negated, the opening without its derivative or a hard max, the film's elimination 1 % off, the cutoff from
+#: the body's roughness alone, the film's curvature floored at one over a held size (the floor the first build had),
+#: the wall's curvature added to the body's rather than taken from it, the body's size read from the search's
+#: build-time number (a constant of the program); and for the sphere's form: the plane's singular terms kept in a tube
+#: (the elliptic contact's curvatures all the body's own), the contact's coefficients from the gap's curvature alone
+#: (the body's taken as the gap's), and the table's continuation below its edge matched in value only (a kink in its
+#: slope there).
 PLANTS = ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite", "lift_stopped", "hard_max", "wrong_solve",
-          "cutoff_body_only", "held_floor", "wall_sign", "baked_size")
+          "cutoff_body_only", "held_floor", "wall_sign", "baked_size", "plane_in_tube", "relative_coefficients",
+          "edge_kink")
 
 
 @contextmanager
@@ -131,9 +142,10 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
     name = plant if plant is not None else os.environ.get("W2A_PLANT") or None
     if name is not None and name not in PLANTS:
         raise ValueError(f"no plant {name!r}; the plants are {PLANTS}")
-    held = {"increment": _handover.increment, "smooth_floor": _handover.smooth_floor,
+    held = {"increment": _handover.increment, "opening": _handover.opening,
             "roughness_cutoff": _handover.roughness_cutoff, "solve_film": _film.solve_film,
-            "relative_curvature": _handover.relative_curvature, "near_contact": _handover.near_contact}
+            "relative_curvature": _handover.relative_curvature, "near_contact": _handover.near_contact,
+            "singular": _sphere.singular, "table": _sphere.table}
     try:
         if name in ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite"):
             def increment(*arguments: Any, **settings: Any) -> Any:
@@ -150,20 +162,19 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
                 return found._replace(resistance=value)
             _handover.increment = increment
         elif name == "lift_stopped":
-            _handover.smooth_floor = lambda value, floor, width: jax.lax.stop_gradient(
-                held["smooth_floor"](value, floor, width))
+            _handover.opening = lambda gap, resolved: jax.lax.stop_gradient(held["opening"](gap, resolved))
         elif name == "hard_max":
-            _handover.smooth_floor = lambda value, floor, width: jnp.maximum(value, floor)
+            _handover.opening = lambda gap, resolved: jnp.maximum(gap, resolved) - gap
         elif name == "wrong_solve":
             _film.solve_film = lambda *arguments: 1.01 * held["solve_film"](*arguments)
         elif name == "cutoff_body_only":
             _handover.roughness_cutoff = lambda body, wall: 2.0 * body
         elif name == "held_floor":
-            def floored(contact: Any, delta: Any, cutoff: Any, handover: Any, reach: Any, *rest: Any,
-                        **settings: Any) -> Any:
+            def floored(form: str, contact: Any, delta: Any, cutoff: Any, resolved: Any, viscosity: Any, centre: Any,
+                        reach: Any, *rest: Any) -> Any:
                 size = jax.lax.stop_gradient(reach)
-                return held["increment"](contact._replace(k1=jnp.maximum(contact.k1, 1.0 / size)), delta, cutoff,
-                                         handover, size, *rest, **settings)
+                return held["increment"](form, contact._replace(k1=jnp.maximum(contact.k1, 1.0 / size)), delta,
+                                         cutoff, resolved, viscosity, centre, size, *rest)
             _handover.increment = floored
         elif name == "wall_sign":
             _handover.relative_curvature = lambda body, wall: body + wall
@@ -171,14 +182,69 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
             def baked(search: Any, *arguments: Any) -> Any:
                 return held["near_contact"](search, *arguments[:-1], jnp.asarray(search.size))
             _handover.near_contact = baked
+        elif name == "plane_in_tube":
+            def plane(k1: Any, k2: Any, b1: Any, b2: Any, *rest: Any) -> Any:
+                own = 0.5 * (b1 + b2)
+                return held["singular"](own, own, own, own, *rest)
+            _sphere.singular = plane
+        elif name == "relative_coefficients":
+            _sphere.singular = lambda k1, k2, b1, b2, *rest: held["singular"](k1, k2, k1, k2, *rest)
+        elif name == "edge_kink":
+            def kinked() -> Any:
+                table = held["table"]()
+                edge = table.edge
+                value = table.below[0] + table.below[1] * edge * np.log(edge) + table.below[2] * edge
+                return table._replace(below=np.stack([value, np.zeros_like(value), np.zeros_like(value)]))
+            _sphere.table = kinked
         yield name
     finally:
         _handover.increment = held["increment"]
-        _handover.smooth_floor = held["smooth_floor"]
+        _handover.opening = held["opening"]
         _handover.roughness_cutoff = held["roughness_cutoff"]
         _film.solve_film = held["solve_film"]
         _handover.relative_curvature = held["relative_curvature"]
         _handover.near_contact = held["near_contact"]
+        _sphere.singular = held["singular"]
+        _sphere.table = held["table"]
+
+
+def compared(built, pose_of, gaps, leaf_names, step=1e-6, forward_too=True):
+    """Reverse, forward and Richardson's central difference of a weighted sum of the resistance in each leaf, at each
+    gap; each leaf stepped by ``step`` of its size. The loss takes the pose and the weights as arguments, so that each
+    derivative compiles once for every gap. Without ``forward_too`` the forward column repeats the reverse one (the
+    controls judge the reverse alone)."""
+    node, state, leaves, _ = stepper(built)
+
+    def loss(values, pose, along, weights):
+        held = {**leaves, **{k: v for k, v in zip(leaf_names, values[:-1], strict=True)}}
+        moved = pose + values[-1] * along
+        return jnp.sum(weights * node.update(state, {"pose": moved}, 1e-3, params=held)["resistance"])
+
+    value, reverse_of = jax.jit(loss), jax.jit(jax.grad(loss))
+    forward_of = jax.jit(jax.jacfwd(loss)) if forward_too else reverse_of
+    found = []
+    for gap in gaps:
+        pose = pose_of(gap)
+        scale = np.asarray(node.update(state, {"pose": pose}, 1e-3, params=leaves)["resistance"])
+        weights = jnp.asarray((1.0 + 0.1 * np.arange(36).reshape(6, 6) / 36.0)
+                              / np.sqrt(np.abs(np.outer(np.diag(scale), np.diag(scale)))))
+        along = jnp.zeros(7).at[2 if float(pose[2]) != 0.0 else 0].set(1.0)
+        at = jnp.asarray([*(leaves[k] for k in leaf_names), 0.0])
+        reverse = np.asarray(reverse_of(at, pose, along, weights))
+        forward = np.asarray(forward_of(at, pose, along, weights))
+        here = []
+        for i, name in enumerate((*leaf_names, "position")):
+            size = RADIUS if name in ("position", "wall_offset", "wall_radius") else abs(float(at[i]))
+            h = step * size
+            e = jnp.zeros_like(at).at[i].set(h)
+            coarse = (float(value(at + e, pose, along, weights)) - float(value(at - e, pose, along, weights))) / (2 * h)
+            fine = (float(value(at + e / 2, pose, along, weights)) - float(value(at - e / 2, pose, along, weights))) / h
+            # each derivative on the loss's scale per unit relative move of its leaf, so that a leaf the resistance
+            # does not read at this gap (the roughness above the cutoff) is judged against the others
+            here.append((gap, name, reverse[i] * size, forward[i] * size, (4 * fine - coarse) / 3 * size))
+        scale = max(max(abs(d), abs(r)) for _, _, r, _, d in here)
+        found += [(*row, scale) for row in here]
+    return found
 
 
 def turned(angle: float, axis: tuple[float, float, float]) -> tuple[float, float, float, float]:
@@ -203,7 +269,7 @@ def screw_in_tube(lubrication: bool | None = None, spacing: float | None = None)
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
     settings: dict[str, Any] = {"wall_kind": "tube"}
     if lubrication is not None:
-        settings["lubrication"] = lubrication
+        settings["near_contact"] = lubrication
     if spacing is not None:
         settings["spacing"] = m(spacing)
     experiment.attach(Drag.MRS(**settings), body="ball", medium="water")

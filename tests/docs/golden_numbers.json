@@ -6,7 +6,7 @@
     "labx": 4
   },
   "refusal_scan": {
-    "literal_codes": 539,
+    "literal_codes": 540,
     "files": 114,
     "variable_calls": 64,
     "tuple_codes": 51

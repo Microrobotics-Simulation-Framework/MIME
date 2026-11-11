@@ -630,6 +630,7 @@ class Sphere(Solid):
     region_shapes = {"solid": "sphere"}
     patches = {"surface": "solid"}
     native = Native("Sphere", {"radius": "radius"})
+    near_contact = "sphere"
     radius: Annotated[Quantity, Length]
 
     @override

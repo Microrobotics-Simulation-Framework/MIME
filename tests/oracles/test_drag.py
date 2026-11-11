@@ -550,8 +550,7 @@ def test_a_medium_whose_region_has_no_axis_is_refused_with_that_reason():
 
 
 def test_weights_whose_hash_is_not_the_packaged_files_are_refused():
-    text = refusal(script_a(drag=Drag.Surrogate(weights=Asset("dejongh_mlp_v2", "0" * 64),
-                                                lubrication=Lubrication(epsilon=mm(0.15)))), "setting.value")
+    text = refusal(script_a(drag=Drag.Surrogate(weights=Asset("dejongh_mlp_v2", "0" * 64))), "setting.value")
     assert f"has sha256 {SHA}, and the experiment asks for {'0' * 64}" in text
     assert "the surrogate rung reads its weights" in refusal(script_a(drag=Drag.Surrogate()), "setting.value")
     named_by_path = Drag.Surrogate(weights=scene_asset("dejongh_mlp_v2"))
@@ -561,7 +560,10 @@ def test_weights_whose_hash_is_not_the_packaged_files_are_refused():
 
 
 def test_the_alias_saves_as_the_written_rung():
-    written = Drag(rung="surrogate", weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
+    from mime.interactions.hydrodynamic import UncoupledDrag
+
+    # script A keeps drag 0.4.0, whose surrogate keeps the blend (drag 0.5.0 retired it)
+    written = UncoupledDrag(rung="surrogate", weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
     assert script_a(drag=written).document() == script_a().document()
     (drag,) = [d for d in script_a().document()["interactions"] if d["name"] == "drag"]
     assert drag["settings"] == {"rung": "surrogate", "weights": {"asset": "dejongh_mlp_v2", "sha256": SHA},

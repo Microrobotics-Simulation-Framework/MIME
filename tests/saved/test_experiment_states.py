@@ -27,7 +27,7 @@ from hypothesis import HealthCheck, Phase, settings
 from hypothesis import strategies as st
 from hypothesis.errors import Flaky
 from hypothesis.stateful import RuleBasedStateMachine, initialize, precondition, rule, run_state_machine_as_test
-from script_a import EPSILON, EXTENT, INERTIA, LENGTH, MASS, MOMENT, NU, RADIUS, VISCOSITY, VOLUME, WATER, fl9, script_a
+from script_a import EXTENT, INERTIA, LENGTH, MASS, MOMENT, NU, RADIUS, VISCOSITY, VOLUME, WATER, fl9, script_a
 
 import mime.saved._folder as folder_module
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
@@ -36,7 +36,7 @@ from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.experiment import _experiment
 from mime.fields import UniformRotating
-from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import Contact, Drag, Gravity, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Scene, Tube, X, Z
 from mime.testing.toys import (
@@ -77,8 +77,7 @@ LAWS = {
     "gravity": lambda body, medium: (Gravity(), {"body": body, "medium": medium}),
     "contact": lambda body, medium: (Contact.Projection(margin=mm(0.1)), {"body": body,
                                                                           "surface": "tube.inner_surface"}),
-    "surrogate drag": lambda body, medium: (Drag.Surrogate(weights=asset("dejongh_mlp_v2"),
-                                                           lubrication=Lubrication(epsilon=EPSILON)),
+    "surrogate drag": lambda body, medium: (Drag.Surrogate(weights=asset("dejongh_mlp_v2")),
                                             {"body": body, "medium": medium}),
 }
 UNCHANGED = "a refused build changed the experiment"

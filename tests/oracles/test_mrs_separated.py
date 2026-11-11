@@ -263,7 +263,7 @@ def tube_ball(law, ratio: float, radius_mm: float = 1.0) -> Experiment:
 
 @pytest.mark.parametrize("ratio", [0.2, 0.4])
 def test_the_confined_sphere_drags_as_haberman_and_sayre_say(ratio):
-    r = resistance_at(tube_ball(Drag.MRS(lubrication=False, wall_kind="tube"), ratio).build(), "body", IDENTITY)
+    r = resistance_at(tube_ball(Drag.MRS(near_contact=False, wall_kind="tube"), ratio).build(), "body", IDENTITY)
     factor = r[2, 2] / (6 * math.pi * MU * ratio * 1e-3)
     miss = factor / haberman_sayre(ratio) - 1
     print(f"\nat {ratio} of the radius: K {factor:.5f} against {haberman_sayre(ratio):.5f}, {miss:+.4%}")
@@ -277,7 +277,7 @@ def test_control_free_spaces_correction_in_the_tubes_place_fails_the_confined_sp
     planted = dataclasses.replace(TUBE_CORRECTION, correction=lambda points, parameters, viscosity, eps_squared=None:
                                   UNBOUNDED.correction(points, {}, viscosity, eps_squared))
     monkeypatch.setitem(_walls._corrections, (TUBE_CORRECTION.name, TUBE_CORRECTION.version), planted)
-    r = resistance_at(tube_ball(Drag.MRS(lubrication=False, wall_kind="tube"), 0.2).build(), "body", IDENTITY)
+    r = resistance_at(tube_ball(Drag.MRS(near_contact=False, wall_kind="tube"), 0.2).build(), "body", IDENTITY)
     miss = r[2, 2] / (6 * math.pi * MU * 0.2e-3) / haberman_sayre(0.2) - 1
     assert abs(miss) > 10 * CONFINED[0.2]
 
@@ -349,7 +349,7 @@ def pill_in_a_tube(wall_refinement: int | None = None) -> Experiment:
                                   velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     e.declare("body.mass", kg(1e-7), reason="a millimetre body's order")
     e.declare("body.inertia", kg_m2((1e-14, 1e-14, 1e-14)), reason="a millimetre body's order")
-    e.attach(Drag.MRS(lubrication=False, spacing=mm(PILL_SPACING * 1e3), wall_kind="tube", wall_refinement=wall_refinement), body="body",
+    e.attach(Drag.MRS(near_contact=False, spacing=mm(PILL_SPACING * 1e3), wall_kind="tube", wall_refinement=wall_refinement), body="body",
              medium="water")
     return e
 
@@ -406,7 +406,7 @@ def test_control_the_held_value_read_with_stale_positions_is_caught(ball, monkey
 
 @pytest.mark.parametrize("where", ["free space", "the tube"])
 def test_the_held_values_derivative_in_the_radius_is_the_made_values_and_the_differences(where, pills, ball):
-    built = ball if where == "free space" else tube_ball(Drag.MRS(lubrication=False, wall_kind="tube"), 0.2).build()
+    built = ball if where == "free space" else tube_ball(Drag.MRS(near_contact=False, wall_kind="tube"), 0.2).build()
     node = drag_node(built, "body")
     leaves = dict(parameter_leaves(built.graph)["drag:body"])
     radius = leaves["shape_radius"]

@@ -868,19 +868,19 @@ class _Planner:
             self.declared.append(group)
 
     def near_field_lubricated(self, medium: str, members: Sequence[EntryPlan]) -> bool:
-        """Whether a body of the medium's near field takes lubrication's hand-over (its drag's ``lubrication``, on by
+        """Whether a body of the medium's near field takes lubrication's hand-over (its drag's ``near_contact``, on by
         default near a wall that opens), refused if so (``drag.lubrication-near-field``): the hand-over is built for
         one body against its wall; between bodies sharing a medium it comes with the joint node's pair correction, and
         until then their drags write it off, so that no default leaves a body's gap uncovered."""
-        lubricated = sorted(plan.owner for plan in members if getattr(plan.entry, "lubrication", None) is True)
+        lubricated = sorted(plan.owner for plan in members if getattr(plan.entry, "near_contact", None) is True)
         if not lubricated:
             return False
         self.refuse("drag.lubrication-near-field", RefusalClass.USER,
                     f"medium {medium!r}'s near field couples the bodies of {', '.join(m.owner for m in members)}, and "
                     f"{', '.join(lubricated)} take lubrication's hand-over (on by default near a wall that opens), "
                     f"which is built for one body against its wall, not yet for bodies sharing a medium",
-                    "write lubrication=False on the drags of a medium shared by two bodies or more, Drag.MRS("
-                    "lubrication=False), which keeps their coarse MRS at its near-wall validity line; or put the body "
+                    "write near_contact=False on the drags of a medium shared by two bodies or more, Drag.MRS("
+                    "near_contact=False), which keeps their coarse MRS at its near-wall validity line; or put the body "
                     "near the wall in a medium of its own, exp.add_medium(Medium(...))")
         return True
 
