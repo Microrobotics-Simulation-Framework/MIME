@@ -102,10 +102,13 @@ class BrownConrady:
             low, high = jnp.where(here, previous, low), jnp.where(here, end, high)
             found = found | here
             previous = end
-        for _ in range(60):
+        def bisect(_: Any, bracket: tuple[Any, Any]) -> tuple[Any, Any]:
+            low, high = bracket
             middle = 0.5 * (low + high)
             positive = self._slope(middle) > 0.0
-            low, high = jnp.where(positive, middle, low), jnp.where(positive, high, middle)
+            return jnp.where(positive, middle, low), jnp.where(positive, high, middle)
+
+        low, _ = lax.fori_loop(0, 60, bisect, (low, high))
         return jnp.where(found, low, cap)
 
     def undistort(self, xd: Any, yd: Any, steps: int | None = None) -> tuple[Any, Any, Any]:
@@ -124,17 +127,21 @@ class BrownConrady:
             r2 = r * r
             return r * (1.0 + r2 * (held.k1 + r2 * (held.k2 + r2 * held.k3)))
 
-        low, high = jnp.zeros_like(distorted), jnp.broadcast_to(turn, distorted.shape)
-        r = jnp.minimum(distorted, high)
-        for _ in range(UNDISTORT_STEPS if steps is None else steps):
+        def radial_step(_: Any, carry: tuple[Any, Any, Any]) -> tuple[Any, Any, Any]:
+            low, high, r = carry
             value = radial(r) - distorted
             low, high = jnp.where(value < 0.0, r, low), jnp.where(value < 0.0, high, r)
             stepped = r - value / jnp.maximum(held._slope(r * r), 1e-30)
-            r = jnp.where((stepped >= low) & (stepped <= high), stepped, 0.5 * (low + high))
+            return low, high, jnp.where((stepped >= low) & (stepped <= high), stepped, 0.5 * (low + high))
+
+        def tangential_step(_: Any, point: tuple[Any, Any]) -> tuple[Any, Any]:
+            return held._newton(point[0], point[1], hx, hy)
+
+        high = jnp.broadcast_to(turn, distorted.shape)
+        _, _, r = lax.fori_loop(0, UNDISTORT_STEPS if steps is None else steps, radial_step,
+                                (jnp.zeros_like(distorted), high, jnp.minimum(distorted, high)))
         scale = jnp.where(distorted > 0.0, r / jnp.where(distorted > 0.0, distorted, 1.0), 1.0)
-        x, y = hx * scale, hy * scale
-        for _ in range(TANGENTIAL_STEPS):
-            x, y = held._newton(x, y, hx, hy)
+        x, y = lax.fori_loop(0, TANGENTIAL_STEPS, tangential_step, (hx * scale, hy * scale))
         x, y = lax.stop_gradient(x), lax.stop_gradient(y)
         fx, fy = held.distort(x, y)
         residual = jnp.sqrt((fx - hx) ** 2 + (fy - hy) ** 2)

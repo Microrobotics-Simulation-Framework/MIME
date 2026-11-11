@@ -138,18 +138,20 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
                    start=jnp.zeros_like(g))
     corner = crossing >= 2.0
 
+    def edge(dx: Any, dy: Any, dz: Any) -> Any:
+        return form.edge(p, o, (dx, dy, dz))
+
+    def one(total: Any, offset: Any) -> tuple[Any, None]:
+        su, sv = offset[0], offset[1]
+        moved: tuple[Any, Any, Any] = (d[0] + su * du[0] + sv * dv[0], d[1] + su * du[1] + sv * dv[1],
+                                       d[2] + su * du[2] + sv * dv[2])
+        scale = 1.0 / jnp.sqrt(forms.dot(moved, moved))
+        h, sub_linear = _jax.linearize(edge, moved[0] * scale, moved[1] * scale, moved[2] * scale)
+        return total + coverage.box(h, sub_linear(*du), sub_linear(*dv), 1.0 / corner_samples), None
+
     def sub_sampled() -> Any:
-        total = jnp.zeros_like(g)
-        for su, sv in coverage.sub_offsets(corner_samples):
-            moved: tuple[Any, Any, Any] = (d[0] + su * du[0] + sv * dv[0], d[1] + su * du[1] + sv * dv[1],
-                                           d[2] + su * du[2] + sv * dv[2])
-            scale = 1.0 / jnp.sqrt(forms.dot(moved, moved))
-
-            def edge(dx: Any, dy: Any, dz: Any) -> Any:
-                return form.edge(p, o, (dx, dy, dz))
-
-            h, sub_linear = _jax.linearize(edge, moved[0] * scale, moved[1] * scale, moved[2] * scale)
-            total = total + coverage.box(h, sub_linear(*du), sub_linear(*dv), 1.0 / corner_samples)
+        offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=g.dtype)
+        total, _ = lax.scan(one, jnp.zeros_like(g), offsets)
         return jnp.where(corner, total / corner_samples ** 2, single)
 
     # The sub-samples only where some pixel holds a corner: a tube whose ends are out of view pays nothing for them.
