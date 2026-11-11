@@ -1688,6 +1688,9 @@ class Drag(UncoupledDrag):
         f"feature; a first-order body: in Stokes flow a sphere at a/R 0.375 reads its drag 6.0 % under Haberman and "
         f"Sayre at 3 cells a radius and 0.8 % at 6, as a radius 0.07 and 0.02 cells smaller [measured, the rung's gate "
         f"1]; refused under {PENALTY_THIN_LINE:g} cells a radius ({PENALTY_THIN_BASIS})",
+        "penalty: past Stokes flow the default N is not converged: a sphere held on a tube's axis (a/R 0.22) at a "
+        "particle Reynolds number of 360 reads its drag 11 % lower at N = 9 than at N = 6 [measured through the node], "
+        "so a body at such a Reynolds number takes feature_cells=9 or finer; whether 9 is converged is unmeasured",
         f"penalty: its load the penalty's force and torque plus the interior fluid's momentum change taken from the "
         f"field (the field formulation; the rigid-interior shortcut diverges at a density ratio of 1.2 where this "
         f"holds), coupled lagged, a declared form: the field solved at the body's twist at the step's start, the body "
