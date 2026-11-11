@@ -161,6 +161,10 @@ drag.patches                  user
 drag.rft-coefficients         user
 drag.rft-indefinite           user
 drag.rft-wall-range           user
+drag.stokes-floor             user
+drag.stokes-scheme            user
+drag.stokes-size              user
+drag.stokes-sphere            user
 drag.wall-kind                user
 drag.wall-range               user
 dynamics.wrong-thing          user
@@ -197,6 +201,7 @@ flow.interior                 user
 flow.memory                   user
 flow.no-openings              user
 flow.open-axis                user
+flow.open-exchange            user
 flow.open-scheme              user
 flow.opening-law              user
 flow.opening-unknown          user

@@ -62,6 +62,9 @@ HELD: dict[str, set[str]] = {
     "bound_robot_with_parts": {"things/UMR/parts/Shell/solid/settings/semi_axes/value"},
     "mrs_solids": {"things/brick/parts/shell/solid/settings/size/value",
                    "things/egg/parts/shell/solid/settings/semi_axes/value"},
+    # The grid's spacing, which the point body's drag consumes at build (its exchange kernel's tables and the
+    # self-field it removes); a field's setting is written where it is, never overridden, so a new box is a rebuild.
+    "point_body_flow": {"things/water/fields/flow/settings/domain/settings/length/value"},
 }
 #: The keys whose numbers are not moved: a direction, a version, the seed.
 SKIPPED = {"orientation", "up", "schema", "mime", "seed"}
