@@ -136,6 +136,37 @@ def held_exclusively(path: Path) -> Iterator[None]:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+#: The tests that compile a union of tubes (its seams' march, its corners), by their files and by the names a case
+#: of another file gives them: each keeps its programs, some hundreds of MB, in its worker's caches for the rest of the
+#: run unless they are released, and a worker that ran several held several GB (CI's runners were lost at the end of a
+#: shard twice, runs 42964681870 and 42970695440, and in every stress run of 42979996849).
+TREE_FILES = frozenset({"tests/flow/test_fvm_general_wall.py", "tests/flow/test_fvm_tree_declaration.py",
+                        "tests/scene/test_union_reverse.py", "tests/scene/test_union_tie.py",
+                        "tests/scene/test_tube_tree.py", "tests/scene/test_exact_union.py",
+                        "tests/scene/test_union_brute_force.py", "tests/scene/test_union_continuity.py",
+                        "tests/two_builds/test_tree_walk.py"})
+TREE_NAMES = ("tube_tree", "tree_flow")
+
+
+def compiles_a_tree(item: pytest.Item) -> bool:
+    return item.nodeid.split("::")[0] in TREE_FILES or any(name in item.nodeid for name in TREE_NAMES)
+
+
+def release_programs() -> None:
+    """Drop every compiled program the process holds (JAX's caches and the union's own), then return the memory."""
+    import jax
+
+    jax.clear_caches()
+    union = sys.modules.get("mime.scene._union")
+    tree = sys.modules.get("mime.scene._tube_tree")
+    for module, names in ((union, ("_compiled", "_checked")), (tree, ("_lumen", "_structural_lumen"))):
+        for name in names:
+            cached = getattr(module, name, None) if module is not None else None
+            if cached is not None and hasattr(cached, "cache_clear"):
+                cached.cache_clear()
+    return_memory()
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
     """A test marked ``memory_heavy`` runs, setup to teardown, while no other worker of the run is running one: CI's
@@ -145,15 +176,20 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
     The memory a heavy test frees stays with its worker unless it is handed back: the worker that ran the 8 GB arm
     battery held 8 GB for the rest of the run, 5 GB of it free and unreturned, which is as much to a runner as a second
     heavy test. So the test's garbage is collected and glibc's free memory returned (``malloc_trim``) before the lock
-    is let go."""
+    is let go. A test that compiles a tube tree's union releases its programs after it (:func:`release_programs`)."""
     if item.get_closest_marker(MEMORY_HEAVY) is None:
-        return (yield)
+        if not compiles_a_tree(item):
+            return (yield)
+        try:
+            return (yield)
+        finally:
+            release_programs()
     path = memory_lock_path()
     with held_exclusively(path) if path is not None else contextlib.nullcontext():
         try:
             return (yield)
         finally:
-            return_memory()
+            release_programs() if compiles_a_tree(item) else return_memory()
 
 
 def return_memory() -> None:
