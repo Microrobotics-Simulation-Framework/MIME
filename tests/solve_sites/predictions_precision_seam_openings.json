@@ -6,7 +6,10 @@
     "tests/saved/test_solve_walk.py passed on the tree merged with #246 (the previous head, c5e9948) on the laptop: every step of every registered node class, the open flow node's among them, held its solves in a registered scope. No bit comparison of #246's cases had been read."
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "CPU: a GitHub runner, one CPU and one BLAS thread pinned for the bit comparison",
     "sizes_and_parameters": "the saved cases open_tube_flow (an Inflow and a Windkessel), open_tube_loop and closed_tube (#246's several openings at one plane), each run 20 ms",
     "seeds_and_draws": "no draws"
@@ -15,7 +18,12 @@
     "claim": "the port system's elimination through dense_solve moves no bit of the open flow node's programs",
     "kind": "equality",
     "case": "open_tube_flow, open_tube_loop, closed_tube, float64 and float32, base the release tip a7df7647 against head, one job (.github/probe/bit_compare.py), with a one-ulp control on the near field",
-    "prediction": {"value": "every array np.array_equal", "unit": "arrays", "basis": "derived", "why": "a name scope changes metadata, not operations"},
+    "prediction": {
+      "value": "every array np.array_equal",
+      "unit": "arrays",
+      "basis": "derived",
+      "why": "a name scope changes metadata, not operations"
+    },
     "metric": "numpy.array_equal per array",
     "control": {
       "plant": "the near field's start velocity one ulp up in the head's run only (ulp_nf_dense_2)",
@@ -28,5 +36,9 @@
     "if_wrong": "revert the port system's solve to its bare call and report the arrays",
     "cannot_discriminate_if": "both sides NaN: bit_compare reports equal_nan beside equal, and the arrays are read for finiteness; a case whose arrays include no solved quantity"
   },
-  "outcomes": null
+  "outcomes": {
+    "note": "written after the probe ran; the predictions above are unchanged. The memory route flagged the arm UNDERESTIMATE (one case in the estimate line; the comparison also runs a base tree); outputs complete.",
+    "probe_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43044578276 (probe branch deleted after)",
+    "gate_1_openings_bits": "open_tube_flow (23 arrays), open_tube_loop and closed_tube (26 arrays each) equal in float64 and float32, 0 differing; control ulp_nf_dense_2 differs in both dtypes (21 of 41 arrays); base the release tip a7df7647, one job, one CPU, one BLAS thread. The overall all_equal is false only because of the control. tests/saved/test_solve_walk.py: 10 passed on the tree merged with a7df7647 (the walk had already passed on the tree with #246; the one hand-resolved hunk was the port system's solve in the reduced-system form, routed to dense_solve)."
+  }
 }
