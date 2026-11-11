@@ -187,19 +187,33 @@ def test_a_law_over_two_openings_binds_both_and_its_shared_resistance_drops_out(
 
 def test_a_law_given_another_count_of_openings_is_refused(float64):
     """A one-opening law given two surfaces, and the two-opening law given one, are each refused naming the count; a
-    region with no declared openings given as a law's openings is refused."""
+    region with no declared openings given as a law's openings is refused. Each alone: the flow does not then say that
+    no law is attached at the openings the refused law named (it is missing from the flow's laws only because it was
+    refused)."""
     one = vessel(laws=())
     one.attach(Windkessel(proximal=Pa_s_per_m3(RESISTANCE), compliance=m3_per_Pa(1e-13),
                           distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface=("tube.start", "tube.end"))
-    assert "binding.opening-count" in refused(one)
+    assert refused(one) == ["binding.opening-count"]
     two = vessel(laws=("start",))
     two.attach(SharedDistal(first=Pa_s_per_m3(RESISTANCE), second=Pa_s_per_m3(RESISTANCE),
                             distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface="tube.end")
-    assert "binding.opening-count" in refused(two)
+    assert refused(two) == ["binding.opening-count"]
     wall = vessel(laws=())
     wall.attach(SharedDistal(first=Pa_s_per_m3(RESISTANCE), second=Pa_s_per_m3(RESISTANCE),
                              distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface="tube.wall")
-    assert "binding.no-openings" in refused(wall)
+    assert refused(wall) == ["binding.no-openings"]
+
+
+def test_a_flux_law_at_every_opening_is_refused_naming_the_laws_to_replace(float64):
+    """An Inflow at the start and a Valve at the end have no solution; the route names both flux laws and never sends a
+    Windkessel to the opening the Valve holds."""
+    exp = vessel(laws=("start",))
+    exp.attach(Valve(), medium="water", surface="tube.end")
+    with pytest.raises(BuildRefused) as raised:
+        exp.build()
+    (refusal,) = [r for r in raised.value.refusals if r.code == "flow.openings-ill-posed"]
+    assert "inflow:tube.start" in refusal.action and "valve:tube.end" in refusal.action, refusal.action
+    assert "surface='tube.end'" not in refusal.action, refusal.action
 
 
 def test_a_saved_law_over_two_openings_loads_and_runs_bit_for_bit(float64, tmp_path):

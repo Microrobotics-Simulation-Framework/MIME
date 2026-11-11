@@ -15,6 +15,16 @@ reference, a monolithic run with two openings).
 
 **The draws** (:func:`draw`): D/h 8 or 12, two to three diameters long, a sub-cell spread and lift, the outlets'
 resistances 0.3 to 10 R_t with one at least twice the other (a split away from a half, which a swapped control needs).
+
+**Every run is metered** (the record's rung 1: the ledger on in every lane F gate), its deliveries as the build makes them
+(:func:`metered`), and every gate's reading carries whether each of its runs' books closed at every step (``closes``,
+``mime.testing.ledger_closes``), which its pass requires: so a force at an opening that disagrees with the pressure its
+law holds there (the reviewer's mutant, :data:`PLANTS`' ``patch_force``) fails the step identity on every run, whatever
+the gate's own reading sees.
+
+**The mirror's limit:** the rig is invariant under swapping the two outlets' patches, so a mix-up between an opening's
+name and its patch reads the same as the right one; a rig with unequal branches (the tube tree's, through the
+experiment) is what can see it.
 """
 
 from __future__ import annotations
@@ -31,7 +41,9 @@ from open_cases import scan, tube_resistance
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import OpenFlowNode, periodic_tube_layout
+from mime.nodes.flow.fvm import _open as open_module
 from mime.nodes.flow.fvm._ports import LawBooks, RowKind, SharedDistal, Valve, port_matrix
+from mime.testing import ledger_closes
 
 _SEED = 60_000
 START, END_0, END_1 = "tube.start", "tube.end_0", "tube.end_1"
@@ -101,22 +113,41 @@ def layout_of(point: Point) -> dict[str, Any]:
             "twin_offset": offset, "centres": centres}
 
 
+def metered(node: OpenFlowNode) -> tuple[str, ...]:
+    """The deliveries the rig's node takes metered, as the build makes them (``mime.build._ledger``): each law it holds
+    in its step under its id and class (the viscosity's, the wall's, each opening's law's, the kinetic flux's line), a
+    law at an opening that declares no class a source supplying its own work."""
+    laws = set(node.constants()["opening_law_ids"])
+    return tuple(books.LedgerDelivery(role, law, energy_class, books.HOSTED, "",
+                                      law if law in laws and energy_class == books.UNMETERED else "").encoded()
+                 for role, law, energy_class in node.hosted_laws())
+
+
 def twin_node(point: Point, laws: tuple[str, ...], parameters: Any, *, law_openings: Any = None, dt: float = 1.0,
               plug: float | None = None, openings: tuple[str, ...] = (START, END_0, END_1), ids: tuple[str, ...] = (),
               **settings: Any) -> TwinNode:
     """The rig's node with ``laws`` (rows of ``parameters``) at its openings: by default ``start`` and the two ends,
     a law each in their order; ``openings`` two (``start``, ``tube.end``) for the plugged reference, its end the whole
-    high plane."""
+    high plane. Metered (:func:`metered`) unless ``ledger=`` is given."""
     held = layout_of(point)
     three = len(openings) == 3
-    return TwinNode("flow", dt, cells_x=held["cells_x"], cells_y=held["cells_y"], cells_z=held["cells_z"],
-                    spacing=held["spacing"], viscosity=1.0, density=1.0, tube_centre=held["tube_centre"],
-                    tube_axis=(0.0, 0.0, 1.0), tube_radius=0.5, openings=openings, opening_laws=laws,
-                    opening_parameters=parameters, opening_law_ids=ids,
-                    opening_planes=("low", "high", "high") if three else ("low", "high"),
-                    opening_centres=((held["centres"][0][0], held["centres"][0][1]), *held["centres"]) if three
-                    else (), law_openings=law_openings, twin_offset=held["twin_offset"],
-                    **({"twin_plug": plug} if plug is not None else {}), **settings)
+
+    def made(**extra: Any) -> TwinNode:
+        return TwinNode("flow", dt, cells_x=held["cells_x"], cells_y=held["cells_y"], cells_z=held["cells_z"],
+                        spacing=held["spacing"], viscosity=1.0, density=1.0, tube_centre=held["tube_centre"],
+                        tube_axis=(0.0, 0.0, 1.0), tube_radius=0.5, openings=openings, opening_laws=laws,
+                        opening_parameters=parameters, opening_law_ids=ids,
+                        opening_planes=("low", "high", "high") if three else ("low", "high"),
+                        opening_centres=((held["centres"][0][0], held["centres"][0][1]), *held["centres"]) if three
+                        else (), law_openings=law_openings, twin_offset=held["twin_offset"],
+                        **({"twin_plug": plug} if plug is not None else {}), **settings, **extra)
+
+    return made() if "ledger" in settings else made(ledger=metered(made()))
+
+
+def closes(*finals: dict[str, Any]) -> bool:
+    """Whether each run's books closed at every step (``ledger_closes``: the step identity, each law's own books)."""
+    return all(ledger_closes(final).passed for final in finals)
 
 
 def _row(*values: float) -> list[float]:
@@ -157,14 +188,18 @@ def runs(node: OpenFlowNode, rows: list[Any], steps: int = 3) -> list[dict[str, 
     return [dict(compiled(jnp.asarray(np.asarray(row, dtype=np.float64), dtype=dtype))) for row in rows]
 
 
-def conductance(point: Point, tolerance: float, **settings: Any) -> np.ndarray:
+def conductance_runs(point: Point, tolerance: float, **settings: Any) -> tuple[np.ndarray, bool]:
     """The rig's conductance over its three openings, steady Stokes (m^3/s per Pa): column ``j`` the outward fluxes
     a unit pressure at opening ``j`` drives with the others at zero, each from its own given-pressure run (three
-    solves of one compiled program, never the law run's own unit fields)."""
+    solves of one compiled program, never the law run's own unit fields); and whether the three runs' books closed."""
     node = twin_node(point, ("pressure", "pressure", "pressure"), [_row(0.0)] * 3, scheme="steady",
                      convection=False, tolerance=tolerance, **settings)
     finals = runs(node, [[_row(1.0 if k == j else 0.0) for k in range(3)] for j in range(3)])
-    return np.stack([np.asarray(final["opening_flux"], dtype=np.float64) for final in finals], axis=1)
+    return np.stack([np.asarray(final["opening_flux"], dtype=np.float64) for final in finals], axis=1), closes(*finals)
+
+
+def conductance(point: Point, tolerance: float, **settings: Any) -> np.ndarray:
+    return conductance_runs(point, tolerance, **settings)[0]
 
 
 def tube_resistance_of(point: Point, tolerance: float) -> float:
@@ -227,8 +262,9 @@ def split_reading(point: Point, tolerance: float, *, swapped: bool = False, dist
     """FB5 (``distal`` empty) and the shared distal gate (``distal``, its distal resistances in ``R_t``): the first
     outlet's share of the inflow against the 0-D network's on the rig's own conductances, each split's difference; the
     network with two equal tubes beside it (what the conductances' cross terms add, the solid's flow between the
-    outlets' patches). ``swapped``: the solver's outlet laws swapped, never the network's."""
-    g = conductance(point, tolerance)
+    outlets' patches); and whether every run's books closed. ``swapped``: the solver's outlet laws swapped, never the
+    network's."""
+    g, closed = conductance_runs(point, tolerance)
     resistance = 1.0 / float(g[1, 0])
     first, second = point.first * resistance, point.second * resistance
     flows = network_flows(g, FLUX, lambda _: (np.diag([first, second]), np.zeros(2)))
@@ -242,45 +278,79 @@ def split_reading(point: Point, tolerance: float, *, swapped: bool = False, dist
     splits = [split_of(final) for final in finals]
     return {"splits": splits, "oracle": oracle, "errors": [abs(x - oracle) for x in splits],
             "equal_tubes": network_split(resistance, first, second), "resistance": resistance,
-            "cross": float(g[1, 2] / g[1, 1])}
+            "cross": float(g[1, 2] / g[1, 1]), "closes": closed and closes(*finals)}
 
 
-#: The valve gate's stiff interior: the walled-off reference's cap leaks the solid's Darcy flow, a hundred times less
-#: at 0.01h than at the default 0.1h (``delta_in^2``).
-VALVE_INTERIOR = "0.01h"
+#: The splits' line, in the solves' tolerance: the law run's split against the network on the rig's conductances, each a
+#: steady solve to that tolerance.
+SPLIT_PER_TOLERANCE = 100.0
 
 
-def valve_reading(point: Point, tolerance: float) -> dict[str, Any]:
-    """The closed valve against the walled-off vessel: the rig with the second outlet closed by a valve against the
-    monolithic run with the second tube capped by solid from mid-length (two openings: the start and the whole high
-    plane), at :data:`VALVE_INTERIOR`. Each run carries a flow of the solid's own at the closed outlet, which moves its
-    open tube's flux by its size: the reference's leak, its flux through the capped tube's half of the high plane (the
-    cap's Darcy flow and the solid's around it); and the valve's exchange, the flux its closed patch's lumen carries
-    out while its solid faces carry it back in from the neighbouring patch (the valve holds the patch's net flux at
-    zero, not each face's). The inlet pressures' difference (``moved``, over the reference's) is judged against those
-    two flows carried through the open tube's resistance ``R_t`` (on the rig's conductances), ``bound``; and the
-    valve's flux, over the inflow."""
-    g = conductance(point, tolerance, interior=VALVE_INTERIOR)
+def split_passes(found: dict[str, Any], tolerance: float) -> bool:
+    """Whether FB5 or the shared distal gate holds on ``found`` (:func:`split_reading`): every split within its line of
+    the network's, and every run's books closed."""
+    return found["closes"] and all(error <= SPLIT_PER_TOLERANCE * tolerance for error in found["errors"])
+
+
+#: The stiff interiors the valve is gated at: the default (``Band()``'s 0.1h), where the solid's Darcy flow at a closed
+#: outlet is a few per cent of the inflow, and 0.01h (``Band(delta_in=0.01)``), where it is a hundred times less (it
+#: falls as ``delta_in^2``).
+VALVE_INTERIORS = ("0.1h", "0.01h")
+
+
+def walled_reference(point: Point, tolerance: float, interior: str) -> dict[str, Any]:
+    """What the closed valve is judged against at ``interior``: the rig's conductances (``R_t`` and the open outlet's
+    resistance from them) and the monolithic run with the second tube capped by solid from mid-length (two openings:
+    the start and the whole high plane), its leak (its flux through the capped tube's half of the high plane, the cap's
+    Darcy flow and the solid's around it), and whether those runs' books closed."""
+    g, closed = conductance_runs(point, tolerance, interior=interior)
     resistance = 1.0 / float(g[1, 0])
     first = point.first * resistance
-    closed = twin_node(point, ("inflow", "windkessel", "valve"), [_row(FLUX), resistor(first), _row()],
-                       scheme="steady", convection=False, tolerance=tolerance, interior=VALVE_INTERIOR)
-    valve = steady(closed)
-    velocity = (jnp.asarray(valve["velocity_x"]), jnp.asarray(valve["velocity_y"]), jnp.asarray(valve["velocity_z"]))
-    exchange = float(np.asarray(closed.opening_solid_fluxes(closed._step_constants(None), velocity))[2])  # noqa: SLF001
     walled = steady(twin_node(point, ("inflow", "windkessel"), [_row(FLUX), resistor(first)],
                               openings=(START, "tube.end"), plug=0.5 * point.length, scheme="steady",
-                              convection=False, tolerance=tolerance, interior=VALVE_INTERIOR))
+                              convection=False, tolerance=tolerance, interior=interior))
     held = layout_of(point)
     w = np.asarray(walled["velocity_z"], dtype=np.float64)[..., -1]
     leak = held["spacing"] ** 2 * float(np.sum(w[held["cells_x"] // 2:, :]))
+    return {"resistance": resistance, "first": first, "walled": walled, "leak": leak,
+            "closes": closed and closes(walled)}
+
+
+def valve_node(point: Point, tolerance: float, interior: str, first: float) -> TwinNode:
+    """The rig with the second outlet closed by a valve, the first a resistance ``first``, at ``interior``."""
+    return twin_node(point, ("inflow", "windkessel", "valve"), [_row(FLUX), resistor(first), _row()], scheme="steady",
+                     convection=False, tolerance=tolerance, interior=interior)
+
+
+def valve_judged(reference: dict[str, Any], node: TwinNode, valve: dict[str, Any]) -> dict[str, Any]:
+    """The valve run ``valve`` of ``node`` against ``reference`` (:func:`walled_reference`): the inlet pressures'
+    difference (``moved``, over the reference's), the bound the two runs' own solid flows set on it (``bound``: the
+    reference's leak and the valve's exchange, the flux its closed patch's lumen carries out while its solid faces carry
+    it back in from the neighbouring patch, carried through the open tube's resistance ``R_t``), the valve's flux over
+    the inflow, and whether every run's books closed."""
+    resistance, walled, leak = reference["resistance"], reference["walled"], reference["leak"]
+    velocity = (jnp.asarray(valve["velocity_x"]), jnp.asarray(valve["velocity_y"]), jnp.asarray(valve["velocity_z"]))
+    exchange = float(np.asarray(node.opening_solid_fluxes(node._step_constants(None), velocity))[2])  # noqa: SLF001
     at_valve = np.asarray(valve["opening_pressure"], dtype=np.float64)
     at_wall = np.asarray(walled["opening_pressure"], dtype=np.float64)
     moved = at_valve[0] - at_wall[0]
     return {"moved": moved / at_wall[0], "bound": resistance * (abs(leak) + abs(exchange)) / at_wall[0],
             "pressure": abs(moved - resistance * leak) / at_wall[0], "leak": leak / FLUX, "exchange": exchange / FLUX,
             "valve_flux": float(np.asarray(valve["opening_flux"])[2]) / FLUX,
-            "outlet": (at_valve[1] - at_wall[1]) / at_wall[1], "resistance": resistance}
+            "outlet": (at_valve[1] - at_wall[1]) / at_wall[1], "resistance": resistance,
+            "open_share": resistance / (resistance + reference["first"]),
+            "closes": reference["closes"] and closes(valve)}
+
+
+def valve_reading(point: Point, tolerance: float, interior: str = VALVE_INTERIORS[0]) -> dict[str, Any]:
+    """The closed valve against the walled-off vessel at ``interior``. Each run carries a flow of the solid's own at the
+    closed outlet, which moves its open tube's flux by its size: the reference's leak through its cap and the solid
+    around it; the valve's exchange (the valve holds its patch's net flux at zero, not each face's). Both are the
+    solid's Darcy flow, falling as ``delta_in^2``. The inlet pressures' difference is judged against those two flows
+    carried through the open tube's resistance (:func:`valve_judged`)."""
+    reference = walled_reference(point, tolerance, interior)
+    node = valve_node(point, tolerance, interior, reference["first"])
+    return valve_judged(reference, node, steady(node))
 
 
 #: The valve gate's lines: the inlet pressures' difference within ``MARGIN`` times the two runs' own solid flows carried
@@ -291,18 +361,40 @@ def valve_reading(point: Point, tolerance: float) -> dict[str, Any]:
 MARGIN, SOLVES, SHUT_ULPS = 1.1, 100.0, 4e3
 
 
+def valve_line(found: dict[str, Any], tolerance: float) -> float:
+    """The first clause's line on ``found`` (:func:`valve_reading`): what the inlet pressures may differ by."""
+    return MARGIN * found["bound"] + SOLVES * tolerance
+
+
+def valve_line_holds(found: dict[str, Any], tolerance: float) -> bool:
+    """The first clause alone: the inlet pressures within the line the two runs' solid flows set."""
+    return abs(found["moved"]) <= valve_line(found, tolerance)
+
+
 def valve_passes(found: dict[str, Any], tolerance: float, dtype: str) -> bool:
-    """Whether the valve gate holds on ``found`` (:func:`valve_reading`) at the solves' ``tolerance`` in ``dtype``."""
-    return abs(found["moved"]) <= MARGIN * found["bound"] + SOLVES * tolerance \
-        and abs(found["valve_flux"]) <= SHUT_ULPS * float(np.finfo(dtype).eps)
+    """Whether the valve gate holds on ``found`` (:func:`valve_reading`) at the solves' ``tolerance`` in ``dtype``: the
+    first clause, the valve's flux zero to its floor, and every run's books closed."""
+    return valve_line_holds(found, tolerance) and abs(found["valve_flux"]) <= SHUT_ULPS * float(np.finfo(dtype).eps) \
+        and found["closes"]
+
+
+#: The stand-in's stiff interior (where the valve's exchange is small beside its leak: 0.01h).
+STAND_IN_INTERIOR = "0.01h"
+
+
+def scaled_condition(matrix: np.ndarray) -> float:
+    """The condition number of ``matrix`` with each row divided by its 2-norm: a flux row is in m^3/(s Pa) and a
+    pressure row is dimensionless, so the raw number mixes units and moves with them."""
+    return float(np.linalg.cond(matrix / np.linalg.norm(matrix, axis=1)[:, None]))
 
 
 def stand_in_reading(point: Point, tolerance: float, stiffness: tuple[float, ...] = (1e2, 1e4, 1e6, 1e8)
                      ) -> list[dict[str, float]]:
     """The stiff resistance that stands in for the closed valve (impedance-only's route), at each ``stiffness`` times
-    ``R_t``: its leak over the inflow, its inlet pressure against the valve's, the port system's condition number
-    (the matrix it solves, ``port_matrix``) and the run's CG iterations; the valve's own first, its stiffness zero."""
-    g = conductance(point, tolerance, interior=VALVE_INTERIOR)
+    ``R_t``: its leak over the inflow, its inlet pressure against the valve's, the port system's condition number with
+    its rows scaled (:func:`scaled_condition`, of the matrix it solves, ``port_matrix``), the run's CG iterations, and
+    whether its books closed; the valve's own first, its stiffness zero."""
+    g = conductance(point, tolerance, interior=STAND_IN_INTERIOR)
     resistance = 1.0 / float(g[1, 0])
     first = point.first * resistance
     found: list[dict[str, float]] = []
@@ -310,7 +402,7 @@ def stand_in_reading(point: Point, tolerance: float, stiffness: tuple[float, ...
     for stiff in (0.0, *stiffness):
         laws = ("inflow", "windkessel", "valve" if stiff == 0.0 else "windkessel")
         node = twin_node(point, laws, [_row(FLUX), resistor(first), _row() if stiff == 0.0 else resistor(stiff * resistance)],
-                         scheme="steady", convection=False, tolerance=tolerance, interior=VALVE_INTERIOR)
+                         scheme="steady", convection=False, tolerance=tolerance, interior=STAND_IN_INTERIOR)
         final = steady(node)
         p = node._step_constants(None)  # noqa: SLF001
         grid = node.open_grid(p)
@@ -323,8 +415,8 @@ def stand_in_reading(point: Point, tolerance: float, stiffness: tuple[float, ...
         if stiff == 0.0:
             reference = pressure
         found.append({"stiffness": stiff, "leak": float(np.asarray(final["opening_flux"])[2]) / FLUX,
-                      "pressure": (pressure - reference) / reference, "condition": float(np.linalg.cond(matrix)),
-                      "iterations": float(np.asarray(final["solve_report_sum"])[0])})
+                      "pressure": (pressure - reference) / reference, "scaled_condition": scaled_condition(matrix),
+                      "iterations": float(np.asarray(final["solve_report_sum"])[0]), "closes": float(closes(final))})
     return found
 
 
@@ -349,7 +441,8 @@ def fb6_reading(point: Point, gain: float, tolerance: float, explicit: bool, rat
     """FB6: the rig's two outlets, each an RCR whose proximal resistance is ``gain`` over the step's response
     (``R_p q``), its distal resistance 3 and 6 times a tube's Poiseuille resistance and ``dt / (R_d C)`` ``ratio``,
     under a pulsatile inflow, 80 IMEX Euler steps (Stokes): the largest outlet flux over the inflow's mean, or infinity
-    where a flux is not finite; ``explicit``, the test-only explicit arm (the spike's: the capacitor stepped forward,
+    where a flux is not finite, and whether the run's books closed (the implicit arm's are judged; the explicit arm's
+    pressures are not the field's response, so its books are no evidence); ``explicit``, the test-only explicit arm (the spike's: the capacitor stepped forward,
     the proximal drop lagged a step). At ``dt / (R_d C)`` of one the explicit arm's forward capacitor alone is
     unstable whatever ``R_p`` (its amplification ``-R_d q``): the first probe's arm, unstable at every gain from
     0.34."""
@@ -362,10 +455,16 @@ def fb6_reading(point: Point, gain: float, tolerance: float, explicit: bool, rat
                      convection=False, tolerance=tolerance)
     if explicit:
         node.__class__ = ExplicitNode
-    _, fluxes = scan(node, FB6_STEPS, lambda p, before, after: after["opening_flux"])
+    final, fluxes = scan(node, FB6_STEPS, lambda p, before, after: after["opening_flux"])
     held = np.asarray(fluxes, dtype=np.float64)[:, 1:]
     finite = bool(np.all(np.isfinite(held)))
-    return {"largest": float(np.max(np.abs(held))) / FLUX if finite else float("inf"), "finite": finite}
+    return {"largest": float(np.max(np.abs(held))) / FLUX if finite else float("inf"), "finite": finite,
+            "closes": closes(final)}
+
+
+def fb6_passes(found: dict[str, Any]) -> bool:
+    """FB6 on ``found`` (:func:`fb6_reading`): the outlets' fluxes within :data:`FB6_LINE` and the books closed."""
+    return found["largest"] <= FB6_LINE and found["closes"]
 
 
 #: FB6's line: a stable run's outlet fluxes stay within three times the inflow's mean.
@@ -446,15 +545,31 @@ def law_books(final: dict[str, Any]) -> float:
     return float(final[f"{books.RECORDS}law_identity_worst"]) / (books.IDENTITY_ULPS * float(np.finfo(dtype).eps))
 
 
-#: The leaking valve's flux, a share of the rig's inflow.
+#: The leaking valve's flux, a share of the rig's inflow (the valve's shut clause catches it).
 LEAK = 2e-2
+#: The leak the first clause alone is judged on, at each interior: above what it resolves there (the two runs' solid
+#: flows, through the open tube's share of the inlet pressure; a leak lowers the inlet pressure by about its own share
+#: of the inflow).
+LINE_LEAK = {"0.1h": 0.2, "0.01h": 3e-3}
 
 
-def _leaking(setter: Setter) -> None:
-    """The valve's row holding a flux of :data:`LEAK` of the inflow out, not zero."""
+def leaking(share: float) -> Callable[[Setter], None]:
+    """The plant: the valve's row holding a flux of ``share`` of the inflow out, not zero."""
+
+    def planted(setter: Setter) -> None:
+        def affine(self: Any, parameters: Any, state: Any, time: Any, dt: Any) -> Any:
+            return jnp.asarray(share * FLUX, dtype=parameters.dtype), jnp.zeros((), dtype=parameters.dtype)
+
+        setter(Valve, "affine", affine)
+
+    return planted
+
+
+def _leaking_by_row(setter: Setter) -> None:
+    """The valve's row holding the flux its first parameter gives (a leaf: one compiled program for every size)."""
 
     def affine(self: Any, parameters: Any, state: Any, time: Any, dt: Any) -> Any:
-        return jnp.asarray(LEAK * FLUX, dtype=parameters.dtype), jnp.zeros((), dtype=parameters.dtype)
+        return parameters[0], jnp.zeros((), dtype=parameters.dtype)
 
     setter(Valve, "affine", affine)
 
@@ -464,10 +579,38 @@ def _opened(setter: Setter) -> None:
     setter(Valve, "row", RowKind.PRESSURE)
 
 
-PLANTS: dict[str, Callable[[Setter], None]] = {"dropped": _dropped, "leaking": _leaking, "opened": _opened}
+#: The reviewer's mutant's size: the force's share above its pressure.
+PATCH_FORCE = 0.01
 
-__all__ = ["END_0", "END_1", "FB6_DT", "FB6_LINE", "FB6_RATIO", "FB6_STEPS", "FLUX", "LEAK", "PLANTS", "START", "VALVE_INTERIOR",
-           "ExplicitNode", "LaggedNode", "Point", "TwinNode", "Twins", "conductance", "draw", "fb6_reading", "law_books",
-           "layout_of", "network_flows", "network_split", "outlets", "resistor", "response_gain", "runs",
-           "shared_split", "split_of", "split_reading", "stand_in_reading", "steady", "tube_resistance_of", "twin_node",
-           "valve_passes", "valve_reading"]
+
+def _patch_force(setter: Setter) -> None:
+    """The reviewer's mutant: where a plane holds several openings, the last one's patch takes the force of
+    ``1 + PATCH_FORCE`` times its pressure, so the force a patch applies is not the pressure its law holds on the faces
+    its flux is read from (the field does work its books do not hold)."""
+    real = open_module.OpenMACGrid.port_force
+
+    def port_force(self: Any, pressures: Any, density: Any) -> Any:
+        force = real(self, pressures, density)
+        members = [k for k, held in enumerate(self.layout.planes) if held == open_module.HIGH]
+        if len(members) < 2:
+            return force
+        k = members[-1]
+        p = jnp.asarray(pressures)
+        mask = jnp.asarray(self.layout.masks(self.cells)[k], dtype=p.dtype)
+        extra = -PATCH_FORCE * (2.0 / (density * self.spacing)) * p[k] * mask
+        return (force[0], force[1], force[2].at[..., -1].add(extra))
+
+    setter(open_module.OpenMACGrid, "port_force", port_force)
+
+
+PLANTS: dict[str, Callable[[Setter], None]] = {"dropped": _dropped, "leaking": leaking(LEAK), "opened": _opened,
+                                               "patch_force": _patch_force, "leaking_by_row": _leaking_by_row}
+
+__all__ = ["END_0", "END_1", "FB6_DT", "FB6_LINE", "FB6_RATIO", "FB6_STEPS", "FLUX", "LEAK", "LINE_LEAK", "MARGIN",
+           "PATCH_FORCE", "PLANTS", "SHUT_ULPS", "SOLVES", "SPLIT_PER_TOLERANCE", "START", "STAND_IN_INTERIOR",
+           "VALVE_INTERIORS", "ExplicitNode", "LaggedNode", "Point", "TwinNode", "Twins", "closes", "conductance",
+           "conductance_runs", "draw", "fb6_passes", "fb6_reading", "law_books", "layout_of", "leaking", "metered",
+           "network_flows", "network_split", "outlets", "resistor", "response_gain", "runs", "scaled_condition",
+           "shared_split", "split_of", "split_passes", "split_reading", "stand_in_reading", "steady",
+           "tube_resistance_of", "twin_node", "valve_judged", "valve_line", "valve_line_holds", "valve_node",
+           "valve_passes", "valve_reading", "walled_reference"]

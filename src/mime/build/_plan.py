@@ -634,6 +634,9 @@ class _Planner:
         self.settings = settings
         self.declarations = declarations
         self.refusals: list[Refusal] = []
+        #: Whether a law's openings were refused at their binding: it then registers with no flow, so a flow's own
+        #: judgement of its openings' laws would name the law the user did attach as missing.
+        self.openings_unbound = False
         self.things: dict[str, Thing] = {}
         self.dynamics: dict[str, EntryPlan] = {}
         self.providers: dict[str, EntryPlan] = {}
@@ -2799,6 +2802,11 @@ class _Planner:
         """The openings a law at a flow's openings binds (``reader.openings`` of them, the record's "F2's rows, 2", item
         1): one surface, several (a tuple, or their names joined by ``+``, as a saved file writes them), or a region's
         declared openings (``surface=tube.lumen``); joined by :data:`SURFACES_JOINED`, or a refusal."""
+        found = self._openings_bound(where, role, value, count, reader)
+        self.openings_unbound = self.openings_unbound or found is None
+        return found
+
+    def _openings_bound(self, where: str, role: str, value: Any, count: int, reader: type[Entry]) -> str | None:
         parts: list[Any]
         if isinstance(value, (tuple, list)):
             parts = list(cast(Sequence[Any], value))
@@ -3888,8 +3896,8 @@ class _Planner:
         for dynamics in self.dynamics.values():
             dynamics.registrations.sort(key=lambda r: r.id)
             entry = dynamics.entry
-            if not isinstance(entry, Dynamics):
-                continue
+            if not isinstance(entry, Dynamics) or (self.openings_unbound and entry.registration_kinds):
+                continue  # a law refused at its openings' binding is missing from the registrations judged here
             try:
                 problems = entry.registration_problems(tuple(dynamics.registrations), dynamics.regions.get("medium"))
             except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it

@@ -1,0 +1,59 @@
+{
+ "written": "2026-11-11, committed before the fix round's probe ran (the commit that adds this file is the timestamp): the two-tube rig metered in every gate, the valve gated at the default stiff interior with its first clause's plant and resolution, the stand-in's conditioning row-scaled, the solid's share of an Inflow's flux by sign, the bits",
+ "phase": "F2b PR 3, two openings: the fix round after the refuting review",
+ "labels": "predictions by the fix round (Opus) from the review's measurements and the builder's runs, each saying which; derived where the mechanism is stated",
+ "seen_before": [
+  "the review's run 42971994645: the mutant patch_force (one patch of a plane holding several at 1.01 times its pressure's force) caught by the FB5 split 40/40 (float64) and 20/40 (float32), the valve gate 0/80, the step identity on the metered FB5 law run 80/80 at 1.5e10 to 1.8e11 (float64) and 28 to 331 (float32) times its floor, clean 80/80 closing at most 0.16 of the floor (seeds 6000 to 6039); the valve's first clause alone against a leak of 3e-3 of the inflow at 0.01h 40/40 each dtype, readings 3.1 to 61 (float64) and 1.54 to 2.87 (float32) over its line (seeds 7000 to 7039); the stand-in's port matrix row-scaled 5.6 to 6.2 at every stiffness, the valve's 6.2",
+  "the review's run 42972402272: the closed valve at the default 0.1h, seeds 0 to 19 each dtype: its lumen's exchange 1.5 to 5.0 % of the inflow, the walled-off reference's leak 1.4 to 4.8 %, the inlet pressures 0.08 to 1.8 % apart, the gate passing 20/20 at worst 0.55 of its line",
+  "the builder's run 42958800740 (lines-solid, 100 float64 draws of #235's open runs): the start's solid share at the last step negative on 67 of 100 (the review's count), up to -0.31; |share| at worst over a run up to 0.31",
+  "a local check of draw 0 in float64 (this fix round, before this file): FB5 clean closes, the mutant fails the identity with the split 5.6e-4 off; the valve at 0.1h exchange -3.5 %, leak 4.8 %, moved 0.20 %, line 2.9 %; at 0.01h exchange -4.5e-4, leak 6.4e-4, moved 3.3e-5, line 3.7e-4; both pass, every run closing"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "CPU, GitHub runner (4 vCPU)",
+  "sizes_and_parameters": "the two-tube rig (tests/flow/twin_cases.py): D/h 8 or 12, two or three diameters long, the outlets 0.3 to 10 R_t, steady Stokes, solve tolerance 1e-11 (float64) and 1e-5 (float32), stiff interior 0.1h (the default) unless named 0.01h; every run metered as the build meters it; FB6 IMEX Euler at a drawn loop gain 0.3 to 10 and dt/(R_d C) 0.1 to 10; #235's open draws for the solid share (IMEX Euler with convection, D/h 8 to 16, Re 1 to 100, 60 steps, 0.1h)",
+  "seeds_and_draws": "lines: seeds 0 to 39 a dtype (0 to 19 seen by the review at 0.1h); rates: 40 planted and 40 clean runs a control a dtype, seeds from 8000 (mutant), 8100 (leaking, opened), 8200 (the line's plant); resolution: 40 draws a dtype and interior, seeds from 8300; solid share: seeds 0 to 99 (seen by the builder at their last step); stand-in: seeds 0 to 3"
+ },
+ "gate_1_metered_rig": {
+  "claim": "every run of every rig gate closes its books at every step (ledger_closes: the step identity and each law's own), clean: FB5's conductance and law runs, the shared distal split's, the valve's three runs at both interiors, FB6's implicit arm",
+  "kind": "equality",
+  "prediction": {"value": "0/40 flagged a dtype; the worst identity under 0.3 of its floor", "basis": "measured-before for FB5's law run (the review: at most 0.16 of the floor); derived for the rest: the same node and identity, a Windkessel's own books closed in #235's FB3, a valve workless (its flux row zero), a given pressure a source"},
+  "if_wrong": "a clean run whose books fail is a bug in the rig's metering (a delivery missing or mis-classed) or in the node's books on a plane with several openings: read which record fails before anything else",
+  "cannot_discriminate_if": "a run is unmetered (ledger_closes then fails, saying so: no silent pass)"
+ },
+ "gate_2_mutant_through_the_rig": {
+  "claim": "the review's mutant patch_force is caught by the rig's gates, each requiring its runs' books to close (FB5, the shared distal split, the valve at 0.1h)",
+  "kind": "acceptance",
+  "control": {"plant": "patch_force: the last patch of a plane holding several takes 1.01 times its pressure's force", "environment_variable": "FIX_PLANT", "expected_rate": "40/40 each dtype", "clean_expected": "0/40 each dtype"},
+  "prediction": {"value": "40/40 each dtype by the identity (FB5's and the shared split's runs); the split alone as the review measured (40/40 float64, about 20/40 float32); the valve gate 40/40 too, through its conductance runs' books (a unit given pressure at the second end, whose force disagrees with it), never through the valve run's own (on the valve's patch the factor only rescales the pressure the flux row solves, and does no work on a net flux of zero: the flow does not move)", "basis": "measured-before (the review, run 42971994645), derived for the valve"}
+ },
+ "gate_3_valve_at_the_default_interior": {
+  "claim": "at the default stiff interior 0.1h the closed valve is the walled-off vessel to the two runs' own solid flows carried through the open tube's resistance (MARGIN 1.1, beyond 100 tolerances), its flux zero to its floor, every run closing",
+  "kind": "bounds",
+  "prediction": {"value": "passes on 40/40 a dtype, worst |moved| over the line 0.6 [0.3, 0.9]; the exchange 1 to 6 % of the inflow, the leak 1 to 6 %, |moved| under 2 %", "basis": "measured-before (the review's 20 draws a dtype at 0.1h); the solid's Darcy flow at 0.1h is a hundred times 0.01h's (delta_in squared: the builder's 1.8e-4 to 7e-4 there)"},
+  "control": {"plant": "leaking (2 % of the inflow) and opened (the valve's row a pressure row of zero)", "environment_variable": "FIX_PLANT", "expected_rate": "40/40 each, each dtype (the flux clause reads the row's own value, whatever the interior)", "clean_expected": "0/40"}
+ },
+ "gate_4_valve_line_alone": {
+  "claim": "the valve gate's first clause alone (the inlet pressures against the two runs' solid flows) fails a valve leaking LINE_LEAK of the inflow, 0.2 at 0.1h and 3e-3 at 0.01h, on every run, and passes the clean valve",
+  "kind": "acceptance",
+  "control": {"plant": "line: the valve's row holding LINE_LEAK of the inflow out, the first clause alone judged (clean judged the same way)", "environment_variable": "FIX_PLANT (FIX_CLAUSE=line)", "expected_rate": "40/40 each interior, each dtype", "clean_expected": "0/40",
+              "resolution": "derived: a leak of e lowers the inlet pressure by about e of itself (the open tube and its outlet both carry e less), while the line is 1.1 times the open tube's share of the inlet pressure (0.09 to 0.77 over the draws) times the two solid flows plus 100 tolerances; so the smallest leak caught on every draw is the largest line plus the clean |moved|: at 0.1h 0.03 to 0.12 of the inflow (either dtype); at 0.01h 3e-4 to 1.5e-3 in float64 and 1.2e-3 to 2.5e-3 in float32 (100 tolerances are 1e-3)"},
+  "prediction": {"value": "planted readings at 0.1h 2 to 20 times the line; at 0.01h as the review's (3 to 60 float64, 1.5 to 3 float32)", "basis": "derived (above), measured-before at 0.01h"},
+  "if_wrong": "a miss at 0.1h means the leak does not move the inlet pressure by its own share (another path carries it); read the planted run's open-tube flux"
+ },
+ "gate_5_stand_in": {
+  "claim": "the stiff stand-in for a closed valve differs from it only by its leak: the port matrix row-scaled has the valve's condition number at every stiffness (1e2 to 1e8 R_t), its leak falls as 1/R_big, the CG's iterations equal",
+  "kind": "estimates",
+  "prediction": {"value": "scaled condition 5 to 7 at every stiffness, within 0.5 of the valve's own; the leak's ratio between stiffnesses a decade of stiffness apart 10 within 1 %; iterations equal in float64", "basis": "measured-before (the review's run 42971994645, arm standin)"}
+ },
+ "gate_6_solid_share_by_sign": {
+  "claim": "on #235's drawn open runs the solid's share of the Inflow's whole-plane flux swings with the drive and runs either way: the lumen then carries more than Q where the share is negative",
+  "kind": "estimates",
+  "prediction": {"value": "the start's share over a run's steps negative at some step on at least 60 of 100 draws, its least -0.1 to -0.35, its largest 0.1 to 0.35; omega (delta_in h)^2 / nu over the draws 1e-4 to 1; on the draws under 4e-3 the share stays between 0 and 0.04 (the steady values)", "basis": "measured-before at the last step (the builder's run, the review's count); the swing derived from the solid's damping rate nu / (delta_in h)^2 against the drive's omega"}
+ },
+ "bits": {
+  "cases": "the builder's twelve programs (script A and its metered form, the hull contact, the coupled toy, the dynamic and kinematic RPM arms, the four periodic flows, the nudged toy, #235's open tube flow) x 2 dtypes, base the release branch's tip eb28b30 against this head, one job (bit_compare.py)",
+  "prediction": "the eleven released programs every array equal; #235's open tube flow one ulp apart in its opening pressures and its Windkessel's state, its velocities equal, as runs 42958800740 and 42962620848 found against dface1d (a compiled-program effect: the review's eager runs were equal)"
+ },
+ "outcomes": null
+}

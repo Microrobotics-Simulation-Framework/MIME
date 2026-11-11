@@ -31,7 +31,7 @@ from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
 from mime.nodes.flow.fvm._ports import Valve as ValveLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
-from mime.nodes.flow.fvm._ports import port_law_named, well_posed
+from mime.nodes.flow.fvm._ports import RowKind, port_law_named, well_posed
 from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, \
     STOKES_REYNOLDS
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, scheme_named
@@ -419,8 +419,9 @@ class FVM(Dynamics):
             if len(laws) != 1:
                 attached = f"{', '.join(r.id for r in laws)} are attached" if laws else "no law is attached"
                 found.append(Problem("flow.opening-law", f"the flow's opening {opening!r} takes one law, and {attached}",
-                                     f"attach one law there, exp.attach(Windkessel(...) or Inflow(...), medium=..., "
-                                     f"surface={opening})"))
+                                     f"attach one law there, exp.attach(Inflow(...), Windkessel(...) or Valve(), "
+                                     f"medium=..., surface={opening}), or one over several openings, "
+                                     f"SharedDistal(...) with surface=(<opening>, <opening>)"))
         if found:
             return found
         laws = [held[o][0] for o in openings]
@@ -428,10 +429,11 @@ class FVM(Dynamics):
         reason = well_posed([port_law_named(r.kind).row for r in laws],
                             [port_law_named(r.kind).row_of(r.settings) if alone else (0.0,) * 4
                              for r, alone in zip(laws, one, strict=True)])
+        given = ", ".join(r.id for r in laws if port_law_named(r.kind).row is RowKind.FLUX)
         return [Problem("flow.openings-ill-posed", reason,
-                        f"attach a pressure law at one of the openings, exp.attach(Windkessel(proximal=..., "
-                        f"compliance=..., distal=...), medium=..., surface={openings[1]!r}), whose pressure the "
-                        f"flow's rows solve for")] if reason else []
+                        f"give one of the openings a pressure law in place of its flux law ({given}): "
+                        f"exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=..., "
+                        f"surface=<that opening>), whose pressure the flow's rows solve for")] if reason else []
 
     def field_for(self, scheme: str) -> SolvedField:
         """The solved-field contract's declarations of this FVM stepped by ``scheme`` (its ledger route and its steady
