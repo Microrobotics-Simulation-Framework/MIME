@@ -21,7 +21,8 @@ from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
 from mime.nodes.hydro._point_drag import AVERAGES, COUPLE, FAXEN_FORCES, FLOOR, FORCES, HISTORY_LINE, LAPLACIANS, \
-    REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, ROUTES, WALL_LINE, PointDragNode, free_space_margins
+    REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, WALL_LINE, PointDragNode, free_space_margins
+from mime.nodes.hydro._point_drag import ROUTES as HISTORY_ROUTES
 from mime.nodes.hydro._rft_drag import (
     COEFFICIENT_SETS,
     RFT_POINTS_PER_RADIUS,
@@ -1759,9 +1760,9 @@ class Drag(UncoupledDrag):
                              f"1 to {self.WIDTHS[-1]:g}: write kernel_width=1.5, or leave it out for the narrowest that "
                              f"clears the floor")
             route = cast(object, self.self_history)
-            if route is not None and route not in ROUTES:
-                found.append(f"self_history={route!r} is one of {list(ROUTES)}: leave it out for the exact route, or "
-                             f"write self_history='modes' for the fitted one")
+            if route is not None and route not in HISTORY_ROUTES:
+                found.append(f"self_history={route!r} is one of {list(HISTORY_ROUTES)}: leave it out for the exact "
+                             f"route, or write self_history='modes' for the fitted one")
         return found
 
     def _sampled(self) -> ForceSampling:
@@ -2090,7 +2091,7 @@ class Drag(UncoupledDrag):
             viscosity=values["viscosity"], density=values["density"], spacing=frame.spacing, width_cells=width,
             origin=tuple(-c for c in frame.origin), initial_points=cast(tuple[float, ...], start),
             one_way=bool(self.one_way), scheme=self.stokes_scheme(frame, values, ctx.timestep),
-            self_history=self.self_history or ROUTES[0], flow_cells=math.prod(frame.cells),
+            self_history=self.self_history or HISTORY_ROUTES[0], flow_cells=math.prod(frame.cells),
             drive_frequency=ctx.frequencies.get("medium", 0.0), **cast(dict[str, Any], vessel)))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(b.read("twist"), into=node["twist"])
