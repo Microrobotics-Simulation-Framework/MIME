@@ -82,9 +82,6 @@ class Detector(SettingGroup):
     def fitted(self, values: Mapping[str, float], how: str) -> Detector:
         """This detector with the numbers a fit found (``values``, by setting name: ``fx``, ``k1``, ...), labelled fitted
         with how it was fitted: ``source`` is then ``"fitted: <how>"``, and a declared camera is never mistaken for it."""
-        unknown = sorted(set(values) - {"fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3"})
-        if unknown:
-            raise ValueError(f"a detector has no setting {unknown[0]!r}")
         return dataclasses.replace(self, source=f"fitted: {how}", **{k: float(v) for k, v in values.items()})
 
     def pinhole(self) -> Pinhole:
