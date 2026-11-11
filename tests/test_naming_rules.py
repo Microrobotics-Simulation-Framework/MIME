@@ -152,6 +152,8 @@ OLD_NAME_LINES = [
      "the old alias, kept to refuse a script that writes it by naming the new one"),
     (r"tests/build/test_breaking_changes\.py", r"Drag\.B" + "EM",
      "the test of the old alias's refusal"),
+    (r"tests/duration_allowlist\.txt", r"^tests/saved/test_form_v2\.py::\S+\[b" + r"em_ball\] # kept: ",
+     "the node id of a test over the version-2 folders, whose parameter is a folder's name from before the rename"),
 ]
 SKIPPED_DIRECTORIES = {".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build", "site"}
 
