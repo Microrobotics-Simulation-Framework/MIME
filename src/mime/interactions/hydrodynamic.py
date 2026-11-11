@@ -1699,9 +1699,11 @@ class Drag(UncoupledDrag):
         "hull's centroid, its volume the hull's, under the drag's part drag:<body>.displaced; a body moved through the "
         "cells carries a ripple in its force and more in its force's derivative in its position (gate 5: the drag's "
         "spread through a cell 0.17 % at 6 cells a radius, its change a cell 0.5 %) [measured]; the free body only: "
-        "within about two cells of the wall its band meets the wall's, the near-wall resolved-body phase's, not this "
-        "rung's; a delivered added mass on it is refused (drag.penalty-added-mass), its grid carrying the fluid's "
-        "inertia",
+        "a sphere at 6 cells a radius beside a tube's wall (a/R 0.222), spun force-free, translates within 4.2 % of "
+        "the MRS's rate (its near-contact law on) at a gap of 4 cells and 8.3 % at 3, 23 % at 2, its wall-normal "
+        "resistance 3.7, 6.1 and 12 % under [measured through the node]: within 3 cells of the wall the body is the "
+        "near-wall resolved-body phase's, not this rung's; a delivered added mass on it is refused "
+        "(drag.penalty-added-mass), its grid carrying the fluid's inertia",
         "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
         "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
