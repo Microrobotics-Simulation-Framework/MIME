@@ -113,11 +113,13 @@ def convection_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any
 
 def leak_reading(node: Any, p: Mapping[str, Any], before: Mapping[str, Any], after: Mapping[str, Any]) -> Array:
     """The wall's penalty loss in the solid's interior (the signed distance at least :data:`INSIDE` band widths into
-    the solid), ``dt rho <Sigma u', u'>`` there, over the wall's whole loss as the ledger booked it."""
+    the solid), ``dt rho <Sigma u', u'>`` there, over the wall's whole loss as the ledger booked it; the wall's own
+    resistivity, without a porous region's (booked under its own law)."""
     del before
     grid = node.grid(p)
     fields = node.fields(p, grid)
-    sigma = node.resistivity(p, fields)
+    nu, walls = node.kinematic(p), fields.walls
+    sigma = (nu * walls[0], nu * walls[1], nu * walls[2])
     ended = _velocity(after)
     depth = INSIDE * band_named(node.constants()["band"]).width * grid.spacing
     inside = tuple(jnp.where(fields.signed_distance[c] >= depth, sigma[c] * ended[c], 0.0) for c in range(3))

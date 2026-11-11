@@ -62,7 +62,7 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_ar
     run_constants_given, run_dtype
 from mime.core import ledger as books
 from mime.core._node import STAGNATED, rechecked
-from mime.nodes.flow.fvm._band import TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
+from mime.nodes.flow.fvm._band import PorousRegion, TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
     negative_resistivity, plan_rung, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
@@ -121,8 +121,14 @@ TREE_WALL = "tree_wall"
 TREE_WALL_COUNTS = "tree_wall_counts"
 #: The fields a held state still writes: the stop's own record.
 _STOP_RECORD = frozenset({STOP_FIELD, "stopped_cfl"})
-#: The hosted laws a metered node books, by the field their delivery names: the fluid's viscosity and the wall's band.
+#: The hosted laws a metered node books, by the field their delivery names: the fluid's viscosity and the wall's band;
+#: and each porous region's Darcy drag, ``porous_<i>`` (:func:`porous_role`).
 HOSTED_FIELDS = ("viscous", "penalty")
+#: The prefix of a porous region's hosted field and of its leaves (``porous_0``, ``porous_0_permeability``).
+POROUS = "porous_"
+#: A porous region's leaves, each ``porous_<i>_<name>``: its cylinder's centre, axis (in the box's frame), radius and
+#: length (m), and the permeability of the material filling it (m^2).
+POROUS_LEAVES = ("centre", "axis", "radius", "length", "permeability")
 #: The inputs a law driving the fluid delivers into: its body force, read where the scheme reads its drive at the
 #: step's end, and its waveform, read where the scheme evaluates its drive at its own stage instants.
 DRIVE_FIELDS = ("body_force", "waveform")
@@ -206,6 +212,16 @@ def _velocity(state: Mapping[str, Array]) -> Velocity:
     return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
 
 
+def porous_role(index: int) -> str:
+    """The hosted field a porous region's Darcy drag is booked under, by its place among the node's regions."""
+    return f"{POROUS}{index}"
+
+
+def porous_leaf(index: int, name: str) -> str:
+    """A porous region's leaf ``name`` (:data:`POROUS_LEAVES`), by its place among the node's regions."""
+    return f"{POROUS}{index}_{name}"
+
+
 def _scheme_state(state: Mapping[str, Array]) -> SchemeState:
     """The scheme's state (keyed by its ``state_fields``) from the node's: the velocity's three face sets as one."""
     return {"velocity": _velocity(state)}
@@ -217,6 +233,25 @@ def _held_of(scheme_state: SchemeState) -> dict[str, Array]:
     held = {name: value for name, value in scheme_state.items() if name != "velocity"}
     velocity: Velocity = scheme_state["velocity"]
     return {"velocity_x": velocity[0], "velocity_y": velocity[1], "velocity_z": velocity[2], **held}
+
+
+def porous_leaves(porous: Sequence[Mapping[str, Any]], laws: Sequence[str], given: Mapping[str, Any]) -> dict[str, Any]:
+    """Each porous region's leaves (:data:`POROUS_LEAVES`), flat, from ``porous`` (a mapping a region, by leaf), its
+    centre and axis as three floats and the rest as floats; none where the node is made again from its own arguments,
+    which carry them flat (``given``). Refuses a count of regions other than of ``laws``, the names their drags are
+    booked under."""
+    held: dict[str, Any] = {}
+    for index, region in enumerate(porous):
+        for name in POROUS_LEAVES:
+            value = region[name]
+            held[porous_leaf(index, name)] = (tuple(float(c) for c in value) if name in ("centre", "axis")
+                                              else float(value))
+    flat = {**given, **held}
+    count = sum(1 for index in range(len(laws)) if porous_leaf(index, "permeability") in flat)
+    if count != len(laws) or porous_leaf(len(laws), "permeability") in flat:
+        raise ValueError(f"a flow's porous regions are named by their laws, one a region: {len(laws)} laws "
+                         f"({list(laws)}) for the regions given")
+    return held
 
 
 class ImplicitFlowNode(MimeNode):
@@ -278,7 +313,8 @@ class ImplicitFlowNode(MimeNode):
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
                  solve_report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
-                 exchange: bool = False, ledger: Sequence[str] = (), **extra: Any) -> None:
+                 exchange: bool = False, porous: Sequence[Mapping[str, Any]] = (), porous_laws: Sequence[str] = (),
+                 ledger: Sequence[str] = (), **extra: Any) -> None:
         chosen = scheme_named(scheme)
         if chosen.stage_kind is not StageKind.MONOLITHIC_PROJECTED_CG or chosen.state_fields != ("velocity",) or \
                 chosen.ledger_terms + self.GRID_TERMS != self.LEDGER_TERMS:
@@ -318,6 +354,7 @@ class ImplicitFlowNode(MimeNode):
             at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
         if tolerance is None:
             tolerance = default_tolerance(run_dtype())
+        regions = porous_leaves(porous, porous_laws, extra)
         initial: dict[str, Any] = {}
         for key, value in (("initial_velocity_x", initial_velocity_x), ("initial_velocity_y", initial_velocity_y),
                            ("initial_velocity_z", initial_velocity_z)):
@@ -332,7 +369,8 @@ class ImplicitFlowNode(MimeNode):
                          periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
                          solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
                          **({"wall_name": str(wall_name)} if wall_name else {}),
-                         **({"exchange": True} if exchange else {}), **extra,
+                         **({"exchange": True} if exchange else {}), **extra, **regions,
+                         **({"porous_laws": tuple(str(law) for law in porous_laws)} if porous_laws else {}),
                          **({"ledger": tuple(ledger)} if ledger else {}))
 
     @override
@@ -359,7 +397,18 @@ class ImplicitFlowNode(MimeNode):
                                             description=f"the tube tree's wall's counts (wall_unrefined, "
                                                         f"wall_unconverged, wall_unplanned); {made}")}
         held_keys = {*self.constants(), *((TREE_WALL, TREE_WALL_COUNTS) if self.walled_by_tree else ())}
-        return {**super().param_specs(), **{key: spec for key, spec in wall.items() if key in held_keys},
+        porous = ("a porous region's {what}, in the box's frame; its value is sampled in the program each step, and a "
+                  "geometry derivative through the band carries the band's ripple")
+        regions = {porous_leaf(index, name): spec for index in range(len(self.porous_laws)) for name, spec in (
+            ("centre", ParamSpec(units="m", description=porous.format(what="cylinder's midpoint"))),
+            ("axis", ParamSpec(units="1", description=porous.format(what="cylinder's direction"))),
+            ("radius", ParamSpec(units="m", bounds=(0.0, None), description=porous.format(what="cylinder's radius"))),
+            ("length", ParamSpec(units="m", bounds=(0.0, None), description=porous.format(what="cylinder's length"))),
+            ("permeability", ParamSpec(units="m^2", bounds=(0.0, None),
+                                       description="the Darcy permeability K of the material filling a porous "
+                                                   "region; the step reads 1/K, checked a finite number above zero "
+                                                   "at sampling (negative_resistivity)")))}
+        return {**super().param_specs(), **{key: spec for key, spec in wall.items() if key in held_keys}, **regions,
                 "spacing": ParamSpec(trainable=False, units="m", description=fixed),
                 "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None),
                                        description="the fluid's dynamic viscosity, mu; the step uses mu / rho"),
@@ -531,10 +580,31 @@ class ImplicitFlowNode(MimeNode):
         return [TubeSolid(as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"]), as_run_array(p["tube_radius"]),
                           shifts)]
 
+    @property
+    def porous_laws(self) -> tuple[str, ...]:
+        """The names the porous regions' drags are booked under, one a region in order: none for a flow with none."""
+        return tuple(str(law) for law in self.constants().get("porous_laws", ()))
+
+    def porous_images(self, grid: MACGrid) -> tuple[tuple[Any, Any, Any], ...]:
+        """The shifts a porous region is read at, so that one near the box's end along z, the axis the box repeats
+        along, reaches past it, and one filling the period has no ends: the box's period along z either way."""
+        period = grid.cells[2] * grid.spacing
+        return ((0.0, 0.0, 0.0), (0.0, 0.0, period), (0.0, 0.0, -period))
+
+    def porous_regions(self, p: Mapping[str, Any], grid: MACGrid) -> list[PorousRegion]:
+        """The porous regions at the step's leaves (:class:`PorousRegion`)."""
+        images = self.porous_images(grid)
+        return [PorousRegion(*(as_run_array(p[porous_leaf(index, name)]) for name in POROUS_LEAVES), images=images)
+                for index in range(len(self.porous_laws))]
+
+    def permeabilities(self, p: Mapping[str, Any]) -> list[Array]:
+        """Each porous region's permeability as the step reads it (m^2)."""
+        return [as_run_array(p[porous_leaf(index, "permeability")]) for index in range(len(self.porous_laws))]
+
     def fields(self, p: Mapping[str, Any], grid: MACGrid) -> WallFields:
         c = self.constants()
         return wall_fields(grid, self.solids(p, grid), band_named(c["band"]), interior_depth(c["interior"]),
-                           run_dtype())
+                           run_dtype(), regions=self.porous_regions(p, grid))
 
     @staticmethod
     def kinematic(p: Mapping[str, Any]) -> Array:
@@ -742,7 +812,7 @@ class ImplicitFlowNode(MimeNode):
             lumen_flux=lumen, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
             reynolds=reynolds.astype(dtype),
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
-            negative_resistivity=negative_resistivity(fields).astype(dtype))
+            negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype))
         held = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
             TreeFlowState(**ended, **self.wall_report(fields.counts)))
         if self.metered:
@@ -789,6 +859,7 @@ class ImplicitFlowNode(MimeNode):
             "backward_euler": 0.5 * rho * inner(change, change) if stores else zero,
             "convection": -dt * rho * inner(stage.convection, solved),
             "krylov": dt * rho * inner(remainder, solved),
+            **self.porous_losses(fields, solved, nu, rho, dt, grid),
         }
         # The drive's products are judged on the laws' own magnitude (drive_work's), counted once.
         scale = rho * (dt * (size(stage.rhs, solved) + size(applied, solved)
@@ -796,6 +867,24 @@ class ImplicitFlowNode(MimeNode):
                              + size(penalised, solved))
                        + (size(before, before) + size(solved, solved) + size(before, solved) if stores else 0.0))
         return {**terms, "scale": scale}
+
+    @staticmethod
+    def porous_losses(fields: WallFields, solved: Velocity, nu: Array, rho: Array, dt: float,
+                      grid: MACGrid) -> dict[str, Array]:
+        """With porous regions, each region's Darcy loss ``dt rho nu <(s/K) u', u'>`` under its own field
+        (:func:`porous_role`), and the wall's band's alone in place of every region's under ``penalty``: the loss each
+        region's law is booked for. Their sum is the penalty's whole loss to rounding (the operator's ``nu`` times the
+        summed field). None where there are none, and ``penalty`` is the whole."""
+        if not fields.porous:
+            return {}
+        inner = grid.inner
+        walls = fields.walls
+        losses = {"penalty": dt * rho * inner((nu * walls[0] * solved[0], nu * walls[1] * solved[1],
+                                               nu * walls[2] * solved[2]), solved)}
+        for index, field in enumerate(fields.porous):
+            losses[porous_role(index)] = dt * rho * inner((nu * field[0] * solved[0], nu * field[1] * solved[1],
+                                                           nu * field[2] * solved[2]), solved)
+        return losses
 
     @staticmethod
     def fluid_momentum(grid: MACGrid, fluid: Velocity, velocity: Velocity, rho: Array) -> dict[str, Array]:
@@ -818,7 +907,8 @@ class ImplicitFlowNode(MimeNode):
         name (``water.flow.viscosity``) and the wall's band under the wall's own (``wall_name``, as the build gives it:
         ``tube.wall``; the node's ``.wall`` otherwise), both dissipative. The drive is delivered, not held."""
         wall = str(self.constants().get("wall_name", "")) or f"{self.name}.wall"
-        return (("viscous", f"{self.name}.viscosity", books.DISSIPATIVE), ("penalty", wall, books.DISSIPATIVE))
+        return (("viscous", f"{self.name}.viscosity", books.DISSIPATIVE), ("penalty", wall, books.DISSIPATIVE),
+                *((porous_role(index), law, books.DISSIPATIVE) for index, law in enumerate(self.porous_laws)))
 
     def drive_work(self, held: Sequence[books.LedgerDelivery], boundary_inputs: Mapping[str, Array],
                    rows: Sequence[str], dt: float, momentum: Array, size: Array) -> tuple[Array, Array, Array]:
@@ -877,8 +967,13 @@ class ImplicitFlowNode(MimeNode):
 
     @classmethod
     def stall_ratio(cls, energy: Mapping[str, Array]) -> Array:
-        """``|N_Krylov| / D_visc``: zero where both are zero (rest, no drive), infinite where only the dissipation is."""
+        """``|N_Krylov| / D_visc``: zero where both are zero (rest, no drive), infinite where only the dissipation is.
+        With porous regions their Darcy losses join the viscous one: a flow through a plug dissipates mostly there,
+        and the solve's residual scales with the whole."""
         krylov, viscous = jnp.abs(energy["krylov"]), energy["viscous"]
+        porous = [value for name, value in energy.items() if name.startswith(POROUS)]
+        if porous:
+            viscous = viscous + sum(porous[1:], start=porous[0])
         return jnp.where((viscous == 0.0) & (krylov > 0.0), jnp.inf, cls.ratio(krylov, viscous, viscous))
 
     @override
@@ -899,7 +994,8 @@ class ImplicitFlowNode(MimeNode):
             exchanged, plain, exchange_scale = self.exchange_work(held, boundary_inputs, rows, dt, self.grid(p),
                                                                   parts.stage.solved)
             work, unattributed, drive_scale = work + exchanged, unattributed + plain, drive_scale + exchange_scale
-        hosted_work = {"viscous": -energy["viscous"], "penalty": -energy["penalty"]}
+        hosted_work = {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
+                       **{porous_role(index): -energy[porous_role(index)] for index in range(len(self.porous_laws))}}
         named: set[str] = set()
         for delivery in held:
             if delivery.kind == books.HOSTED:
@@ -972,7 +1068,17 @@ class ImplicitFlowNode(MimeNode):
 
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
         """The step the CFL check stopped the run at, with the CFL it read and the timestep that keeps the line. A state
-        that is not finite is the run's own refusal's to name (the first node and field that went so), so none here."""
+        that is not finite is the run's own refusal's to name (the first node and field that went so), so none here,
+        unless a porous region's permeability was not a finite number above zero where it was sampled
+        (``negative_resistivity``), which is named first: its resistivity is then no drag, whatever the run did with
+        it."""
+        if self.porous_laws and float(np.asarray(state.get("negative_resistivity", 0.0))) > 0.0:
+            return Problem("flow.permeability",
+                           f"a porous region's permeability ({', '.join(self.porous_laws)}) was not a finite number "
+                           f"above zero where the flow sampled it, so its resistivity 1/K was no drag: its value as "
+                           f"the run held it (a declared range's, a study's or a fit's) is a basic mistake",
+                           "give each porous region a permeability above zero, exp.declare('<structure>.permeability', "
+                           "...), and keep a range or a study's values above zero")
         step = int(np.asarray(state[STOP_FIELD])) if STOP_FIELD in state else -1
         if step < 0 or not all(np.isfinite(np.asarray(state[f"velocity_{c}"])).all() for c in "xyz"):
             return None
@@ -995,16 +1101,18 @@ class ImplicitFlowNode(MimeNode):
 
 
 def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
-    """Refuse a delivery the flow does not take: a hosted law other than its viscosity and its wall's band, or a
-    delivered one into anything but its drive's inputs (``fluid``'s loads)."""
+    """Refuse a delivery the flow does not take: a hosted law other than its viscosity, its wall's band and its porous
+    regions' drags, or a delivered one into anything but its drive's inputs (``fluid``'s loads)."""
     for delivery in held:
-        hosted = delivery.kind == books.HOSTED and delivery.field in HOSTED_FIELDS
+        hosted = delivery.kind == books.HOSTED and (delivery.field in HOSTED_FIELDS
+                                                     or delivery.field.startswith(POROUS))
         driven = delivery.kind == books.LOAD and delivery.field in (*DRIVE_FIELDS, *EXCHANGE_FIELDS)
         if not (hosted or driven):
             raise ValueError(f"the flow node hosts {list(HOSTED_FIELDS)} and is driven through {list(DRIVE_FIELDS)}: "
                              f"it takes no delivery {delivery}")
 
 
-__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
+__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "POROUS", "POROUS_LEAVES", "STALL_SECTION", "STOKES_REYNOLDS",
            "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
-           "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries"]
+           "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries", "porous_leaf", "porous_leaves",
+           "porous_role"]

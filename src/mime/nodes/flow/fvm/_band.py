@@ -40,7 +40,7 @@ import jax
 import numpy as np
 from jax import Array
 
-from mime.core import jnp
+from mime.core import CYLINDER, jnp, switch
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.scene import ExactUnion
 from mime.walls import TubeWall
@@ -175,6 +175,69 @@ class TreeSolid:
 
 
 @dataclass(frozen=True)
+class PorousRegion:
+    """A porous region of the medium (a clot, a plug): a solid circular cylinder of ``radius`` and ``length`` along
+    ``axis`` through ``centre`` (its midpoint), filled with a material of permeability ``K`` (m^2), each traced (the
+    node's leaves); ``images`` are the box's periods along which a copy of it may come within reach of a face (m), so
+    that a plug filling the period has no ends. What it adds to the step is :func:`porous_field`."""
+
+    centre: Any
+    axis: Any
+    radius: Any
+    length: Any
+    permeability: Any
+    images: tuple[tuple[Any, Any, Any], ...] = ((0.0, 0.0, 0.0),)
+
+    def depth(self, points: Array) -> Array:
+        """How deep each point lies inside the region (m): its exact distance from the surface, positive inside and
+        negative outside, at the nearest of its images."""
+        deepest: Array | None = None
+        for shift in self.images:
+            found = plug_depth(points - jnp.asarray(shift, dtype=points.dtype), self.centre, self.axis, self.radius,
+                               self.length)
+            # Two images are equally near only beyond the band's reach of both, where the field is flat: the kink
+            # reaches nothing.
+            deepest = found if deepest is None else jnp.maximum(deepest, found)
+        assert deepest is not None
+        return deepest
+
+
+def plug_depth(points: Array, centre: Any, axis: Any, radius: Any, length: Any) -> Array:
+    """Minus the exact signed distance from a solid circular cylinder's surface: from the point's distance out of the
+    round side, ``s = r - R`` (``mime.core``'s cylinder, which holds the axis), and out of the end planes, ``e = |z| -
+    L/2``, outside the length of their positive parts and inside the larger of the two. Its derivative is continuous
+    except on the medial set inside (``s = e``) and the axis, deeper than the band reaches but within a cell of the
+    rims."""
+    dtype = points.dtype
+    unit = jnp.asarray(axis, dtype=dtype)
+    unit = unit / switch.nonzero_norm(unit)
+    centred = jnp.asarray(centre, dtype=dtype)
+    side = CYLINDER.signed_distance({"centre": centred, "axis": unit, "radius": jnp.asarray(radius, dtype=dtype)},
+                                    points)
+    end = jnp.abs(jnp.sum((points - centred) * unit, axis=-1)) - 0.5 * jnp.asarray(length, dtype=dtype)
+    out_side, out_end = jnp.maximum(side, 0.0), jnp.maximum(end, 0.0)
+    squared = out_side * out_side + out_end * out_end
+    outside = jnp.where(squared > 0.0, jnp.sqrt(jnp.where(squared > 0.0, squared, 1.0)), 0.0)
+    return -(outside + jnp.minimum(jnp.maximum(side, end), 0.0))
+
+
+def fluid_share(inside: Array, fluid: Array) -> Array:
+    """A porous region's share of the fluid on a face: its own indicator ``c`` over the face's fluid ``f = 1 - chi``
+    (the wall's), the part of the fluid it fills, ``min(c, f) / f``; zero where the face holds no fluid. A plug
+    against the wall then fills the fluid of the wall's band as the fluid fills it, so its Darcy flux is carried by
+    the fluid the drive acts on and not by the band's whole width (the first step's measurement of the two forms)."""
+    held = fluid > 0.0
+    return jnp.where(held, jnp.minimum(inside, fluid) / jnp.where(held, fluid, 1.0), 0.0)
+
+
+def porous_field(region: PorousRegion, points: Array, chi: Array, width: Any) -> Array:
+    """A porous region's inverse permeability on faces at ``points`` whose wall indicator is ``chi`` (m^-2): ``1/K``
+    times its share of the fluid (:func:`fluid_share`), its own indicator the band's ramp on its depth."""
+    inside = ramp(region.depth(points), width)
+    return fluid_share(inside, 1.0 - chi) / jnp.asarray(region.permeability, dtype=points.dtype)
+
+
+@dataclass(frozen=True)
 class WallFields:
     """What the step reads of a solid, sampled on each velocity component's faces: the band's indicator ``chi`` (the
     body force acts on ``1 - chi``), the inverse permeability ``1/K`` (m^-2) of every region summed, and the signed
@@ -186,6 +249,17 @@ class WallFields:
     #: A tube tree's counts, summed over the face sets (:class:`TreeSolid`): ``(unrefined, unconverged, unplanned)``;
     #: ``None`` for a wall whose distance is exact by construction (a straight tube's).
     counts: Array | None = None
+    #: Each porous region's own inverse permeability (:func:`porous_field`), in the order given; the walls' alone is
+    #: then :attr:`walls`.
+    porous: tuple[Velocity, ...] = ()
+    #: The walls' own inverse permeability where porous regions add theirs; ``None`` where there are none, and the
+    #: sum is the walls' own.
+    walls_only: Velocity | None = None
+
+    @property
+    def walls(self) -> Velocity:
+        """The walls' own inverse permeability, without the porous regions'."""
+        return self.inverse_permeability if self.walls_only is None else self.walls_only
 
 
 @runtime_checkable
@@ -207,11 +281,13 @@ def interior_ramp(phi: Array, band: Band, h: Any, end: float) -> Array:
 
 
 def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: Band, interior: float, dtype: Any,
-                offset: Callable[[Array], Array] | None = None) -> WallFields:
+                offset: Callable[[Array], Array] | None = None,
+                regions: Sequence[PorousRegion] = ()) -> WallFields:
     """Each solid's fields on ``grid``'s faces, the regions' resistivities added. The band's width and depth scale
     with the spacing; the interior adds ``(delta / delta_in)^2`` over a second ramp beyond the band, ending
     :data:`INTERIOR_RAMP_END` cells into the solid. A solid held per face set (:class:`FacedSolid`, one a wall) gives
-    its counts too."""
+    its counts too. Each porous region (:class:`PorousRegion`) adds its own (:func:`porous_field`); it is no solid, so
+    the drive acts on its fluid and the fluxes' masks do not see it."""
     h = grid.spacing
     width = band.width * h
     stiffening = (band.depth / interior) ** 2
@@ -244,16 +320,32 @@ def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: B
         chis.append(chi)
         inverse.append(resistivity)
         distances.append(phi)
-    return WallFields((chis[0], chis[1], chis[2]), (inverse[0], inverse[1], inverse[2]),
-                      (distances[0], distances[1], distances[2]), counts)
+    walls = (inverse[0], inverse[1], inverse[2])
+    if not regions:
+        return WallFields((chis[0], chis[1], chis[2]), walls, (distances[0], distances[1], distances[2]), counts)
+    porous = tuple(tuple(porous_field(region, held[component], chis[component], width) for component in range(3))
+                   for region in regions)
+    summed = [walls[component] + sum((field[component] for field in porous[1:]), start=porous[0][component])
+              for component in range(3)]
+    return WallFields((chis[0], chis[1], chis[2]), (summed[0], summed[1], summed[2]),
+                      (distances[0], distances[1], distances[2]), counts,
+                      tuple((field[0], field[1], field[2]) for field in porous), walls)
 
 
-def negative_resistivity(fields: WallFields) -> Array:
+def negative_resistivity(fields: WallFields, permeabilities: Sequence[Any] = ()) -> Array:
     """Whether any region's sampled resistivity is negative: the positivity a source must keep, checked at sampling
-    (the band's form keeps it by construction; a later source may not)."""
-    return jnp.any(jnp.stack([jnp.any(k < 0.0) for k in fields.inverse_permeability]))
+    (the band's form keeps it by construction; a later source may not). With porous regions, also where one's sampled
+    resistivity is not a finite number at or above zero, or its permeability (``permeabilities``, as given) is not a
+    finite number above zero: a region that reaches no face is checked too."""
+    found = jnp.any(jnp.stack([jnp.any(k < 0.0) for k in fields.inverse_permeability]))
+    if not fields.porous:
+        return found
+    sampled = [jnp.any(~(k >= 0.0) | ~jnp.isfinite(k)) for field in fields.porous for k in field]
+    given = [jnp.any(~(jnp.asarray(k) > 0.0) | ~jnp.isfinite(jnp.asarray(k))) for k in permeabilities]
+    return found | jnp.any(jnp.stack([*sampled, *given]))
 
 
 __all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_INTERIOR", "INTERIORS", "INTERIOR_RAMP_END", "PLAN_QUANTUM", "Band",
-           "FacedSolid", "TreeSolid", "TubeSolid", "WallFields", "band_named", "interior_depth", "interior_ramp",
-           "negative_resistivity", "plan_rung", "ramp", "wall_fields"]
+           "FacedSolid", "PorousRegion", "TreeSolid", "TubeSolid", "WallFields", "band_named", "fluid_share",
+           "interior_depth", "interior_ramp", "negative_resistivity", "plan_rung", "plug_depth", "porous_field", "ramp",
+           "wall_fields"]

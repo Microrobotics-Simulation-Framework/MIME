@@ -47,7 +47,7 @@ from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negativ
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
-    FlowFields, FlowRecords, check_deliveries
+    FlowFields, FlowRecords, check_deliveries, porous_role
 from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, port_law_named, \
     port_system, reference_of, well_posed
@@ -246,6 +246,11 @@ class OpenFlowNode(ImplicitFlowNode):
         return OpenMACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), p["spacing"], self.layout())
 
     @override
+    def porous_images(self, grid: MACGrid) -> tuple[tuple[Any, Any, Any], ...]:
+        """None but the region itself: the open box does not repeat along its axis, whose ends are its openings."""
+        return ((0.0, 0.0, 0.0),)
+
+    @override
     def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid]:
         return [TubeSolid(as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"]), as_run_array(p["tube_radius"]),
                           ((0.0, 0.0, 0.0),))]
@@ -432,7 +437,7 @@ class OpenFlowNode(ImplicitFlowNode):
             lumen_flux=lumen, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
             reynolds=reynolds.astype(dtype),
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
-            negative_resistivity=negative_resistivity(fields).astype(dtype),
+            negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype),
             opening_pressure=ports.pressures.astype(dtype),
             opening_pressure_relative=ports.solution.relative.astype(dtype), opening_flux=flux.astype(dtype),
             opening_state=law_ended.astype(dtype),
@@ -558,6 +563,7 @@ class OpenFlowNode(ImplicitFlowNode):
             "convection": -dt * rho * inner(stage.convection, change),
             "krylov": dt * rho * inner(projected, solved),
             "projection": dt * rho * inner(gradient, solved),
+            **self.porous_losses(fields, solved, nu, rho, dt, grid),
             KINETIC_FLUX: dt * rho * inner(stage.convection, before),
             "ports": jnp.stack([sum((-dt * ports.pressures[k] * flux[k] for k in held[1:]),
                                     start=-dt * ports.pressures[held[0]] * flux[held[0]]) for held in bound]),
@@ -626,6 +632,8 @@ class OpenFlowNode(ImplicitFlowNode):
         work, unattributed, drive_scale = self.drive_work(held, boundary_inputs, rows, dt, energy["momentum"],
                                                           energy["momentum_size"])
         hosted_work: dict[str, Array] = {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
+                                         **{porous_role(index): -energy[porous_role(index)]
+                                            for index in range(len(self.porous_laws))},
                                          KINETIC_FLUX: energy[KINETIC_FLUX],
                                          **{opening_role(i): energy["ports"][i] for i in range(len(self.laws()))}}
         stored = jnp.zeros((len(rows), len(books.LAW_BOOKS)), dtype=dtype)
