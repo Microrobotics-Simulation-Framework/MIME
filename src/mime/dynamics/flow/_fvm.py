@@ -721,13 +721,6 @@ class FVM(Dynamics):
             interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows,
             wall_name=wall, exchange=partners))
 
-
-def takes_exchange(frame: ExchangeFrame, viscosity: float, density: float, dt: float) -> bool:
-    """Whether the FVM a frame describes steps with a scheme whose node takes exchange deliveries at these values: the
-    monolithic projected CG's (IMEX Euler, its steady limit); RK3's explicit stages take none yet."""
-    scheme = frame.scheme if frame.scheme is not None else chosen_scheme(None, viscosity / density, frame.spacing, dt)
-    return scheme_named(scheme).stage_kind is StageKind.MONOLITHIC_PROJECTED_CG
-
     def build_tree(self, ctx: BuildContext, b: DynamicsBuilder, region: Region) -> None:
         """A tube tree's flow: its box from the tree (:meth:`tree_layout`), the tree's points moved into it."""
         _, radii, segments, fillet = tree_of(region)
@@ -739,6 +732,13 @@ def takes_exchange(frame: ExchangeFrame, viscosity: float, density: float, dt: f
             scheme=tree_scheme(self.scheme), convection=not self.stokes, tolerance=self.tolerance,
             preconditioner=self.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[self.wall.delta_in],
             solve_report_rows=self.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall"))
+
+
+def takes_exchange(frame: ExchangeFrame, viscosity: float, density: float, dt: float) -> bool:
+    """Whether the FVM a frame describes steps with a scheme whose node takes exchange deliveries at these values: the
+    monolithic projected CG's (IMEX Euler, its steady limit); RK3's explicit stages take none yet."""
+    scheme = frame.scheme if frame.scheme is not None else chosen_scheme(None, viscosity / density, frame.spacing, dt)
+    return scheme_named(scheme).stage_kind is StageKind.MONOLITHIC_PROJECTED_CG
 
 
 def tree_scheme(given: IMEXEulerScheme | SteadyScheme | RK3Scheme | None) -> str:
