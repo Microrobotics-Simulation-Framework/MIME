@@ -52,7 +52,7 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, run_dtype
 from mime.core import ledger as books
-from mime.core._node import rechecked
+from mime.core._node import STAGNATED, rechecked
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, interior_depth, negative_resistivity, \
     wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
@@ -679,6 +679,18 @@ class ImplicitFlowNode(MimeNode):
                              f"run near its steady state stops short of it by about that share; run in float64 "
                              f"(JAX_ENABLE_X64=1), or with a larger dt")
         return lines
+
+    @override
+    def recheck_route(self, cause: str, dtype: str) -> str:
+        """A stagnation (the CG does not test its floor in a recheck, so a floor and a stall are not told apart): the
+        tolerance at or above the solve's rounding floor, and in a float32 run float64."""
+        if cause != STAGNATED:
+            return ""
+        if dtype == "float32":
+            return ("leave the flow's tolerance unwritten (float32's stop takes the solve's own floor where its "
+                    "tolerance is out of reach) or write it at or above the floor, FVM(tolerance=...), or run in "
+                    "float64")
+        return "write the flow's tolerance at or above the solve's rounding floor, FVM(tolerance=...)"
 
     def run_problem(self, end: int) -> Problem | None:
         """A run that would end past the last row of the derivative solves' per-step reports (``solve_report_rows``)

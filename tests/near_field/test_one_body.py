@@ -93,8 +93,8 @@ ITERATIVE_LINES = {"float64": 1e-8, "float32": 5e-5}
 def test_on_the_iterative_route_one_member_gives_dev1s_resistance_to_the_solves_tolerance(dtype, tube):
     with precision(dtype):
         built = lone(tube).build()
-        dev1, joint = pair(built, dense_unknowns=0)
-        _, moved = pair(built, 1.0 + PLANTS[dtype], dense_unknowns=0)
+        dev1, joint = pair(built, solve="gmres")
+        _, moved = pair(built, 1.0 + PLANTS[dtype], solve="gmres")
     found, control = entrywise(joint, dev1), entrywise(moved, dev1)
     print(f"\n{dtype}, {'tube' if tube else 'free space'}, GMRES: the joint node against dev1 {found:.3g} (line "
           f"{ITERATIVE_LINES[dtype]:g}); the radius {PLANTS[dtype]:g} up {control:.3g}")
