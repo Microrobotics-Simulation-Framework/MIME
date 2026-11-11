@@ -246,14 +246,34 @@ _OPEN_CLEAN = (f"drawn open runs (an inflow and a Windkessel with a downstream r
                f"{OPEN_MEASURED}")
 _UNIFORM = "the planes' faces at full weight in the inner product (the projector not orthogonal under it)"
 
+#: The run that measured the kinetic flag's lines (200 open draws a dtype, seeds 0 to 199, 60 steps each, every step
+#: read) and the run that measured its plants' rates (40 planted and 40 clean runs each, seeds from 3000).
+KINETIC_LINES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42958800740"
+KINETIC_RATES_MEASURED = "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42962620848"
+_IN_N_CONV = ("the kinetic energy crossing the openings left inside N_conv (its line booked as zero, N_conv as "
+              "-dt rho <C(u), u'>: the step identity still closing)")
+_END_HALF = "the end plane's convective half cell at a full cell (the open planes' operator gate's plant)"
+_START_HALF = "the start plane's convective half cell at a full cell (the open planes' operator gate's plant)"
+
 #: The open box's flags (``OpenFlowNode``): its own (the module says which are not built).
 OPEN_FLAGS: tuple[LedgerFlag, ...] = (
     LedgerFlag("open_face_projection", "|N_proj| over the step's scale", projection_reading,
                {"float64": 2e-17, "float32": 1e-8},
                f"200 {_OPEN_CLEAN}: worst 2.4e-18 (float64) and 1.2e-9 (float32), every step judged",
                _evidence(_UNIFORM, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, OPEN_MEASURED)),
+    LedgerFlag("port_kinetic_flux", "|the kinetic energy booked as crossing the openings + each opening's own, summed| "
+                                    "over each opening's in magnitude and the convective product's",
+               kinetic_flux_reading, {"float64": 1e-14, "float32": 5e-6},
+               f"200 {_OPEN_CLEAN.replace(OPEN_MEASURED, KINETIC_LINES_MEASURED)}: worst 3.4e-15 (float64) and 1.8e-6 "
+               f"(float32), every step judged: rounding, the convective power's split by plane being exact to the "
+               f"field's divergence",
+               _evidence(_IN_N_CONV, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, KINETIC_RATES_MEASURED)
+               + _evidence(_END_HALF, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, KINETIC_RATES_MEASURED)
+               + _evidence(_START_HALF, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)},
+                           KINETIC_RATES_MEASURED)),
 )
 
 __all__ = ["CONVECTION_LINE_MEASURED", "CONVECTION_RATES_MEASURED", "FLAGS", "INSIDE", "LINES_MEASURED", "OPEN_FLAGS",
-           "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED", "FlagEvidence", "convection_reading",
+           "KINETIC_LINES_MEASURED", "KINETIC_RATES_MEASURED", "OPEN_MEASURED", "OPERATOR_MEASURED", "RATES_MEASURED",
+           "FlagEvidence", "convection_reading",
            "kinetic_flux_reading", "leak_reading", "projection_reading", "stall_reading"]

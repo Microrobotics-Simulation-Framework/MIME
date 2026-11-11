@@ -1,0 +1,16 @@
+{
+ "written": "2026-11-11, committed before the third probe ran (the commit that adds this file is the timestamp): FB6's explicit arm at a dt / (R_d C) where its proximal loop gain decides its stability",
+ "phase": "F2b PR 3, two openings: the third probe (FB6)",
+ "labels": "predictions by the builder (Opus) after the second probe, a fit to its mechanism, which says so",
+ "seen_before": [
+  "run 42962620848: the spike's explicit arm at dt / (R_d C) of one diverged at every loop gain drawn, from 0.34 (40/40 over 2.5 to 10, and every one of the lines' 40 draws over 0.3 to 10): at that ratio its forward capacitor's own amplification, -R_d q, is about -3 on the rig whatever R_p; the implicit coupling held at every gain (worst 0.83 of the inflow's mean)"
+ ],
+ "operating_point": "as predictions_two_openings.json; dt / (R_d C) a tenth for the explicit arm (the spike's two-outlet case: 0.13), drawn log-uniform 0.1 to 10 for the implicit coupling's lines",
+ "gate_fb6_at_a_tenth": {
+  "claim": "FB6: the implicit coupling within three times the inflow's mean at loop gains 0.3 to 10 and dt / (R_d C) 0.1 to 10; the test-only explicit arm at dt / (R_d C) a tenth stable at low gains and unstable at gains 2.5 to 10",
+  "kind": "acceptance",
+  "prediction": {"implicit": "worst about 0.83 of the mean, every draw", "explicit": "unstable from a gain of about 1.9 (the spike's), stable below about 1", "basis": "the spike's two-outlet measurement"},
+  "control": {"plant": "the explicit arm at gains 2.5 to 10", "expected_rate": "40/40 each dtype", "clean_expected": "0/40"}
+ },
+ "outcomes": null
+}

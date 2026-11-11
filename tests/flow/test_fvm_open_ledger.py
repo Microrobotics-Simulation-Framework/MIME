@@ -63,7 +63,7 @@ def test_control_a_loss_written_into_n_wk_fails_its_order(float64, monkeypatch):
 
 def test_the_open_flags_are_declared_and_none_claims_coverage_unshown():
     assert not flag_problems(OPEN_FLAGS)
-    assert [flag.name for flag in OPEN_FLAGS] == ["open_face_projection"]
+    assert [flag.name for flag in OPEN_FLAGS] == ["open_face_projection", "port_kinetic_flux"]
     assert all(flag.active and not flag.pending for flag in OPEN_FLAGS)
     assert OpenFlowNode.LEDGER_FLAGS is OPEN_FLAGS
 

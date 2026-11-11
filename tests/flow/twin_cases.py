@@ -339,21 +339,25 @@ def response_gain(point: Point, dt: float, tolerance: float) -> float:
     return float(np.max(np.abs(np.asarray(jnp.stack([grid.opening_fluxes(u) for u in units], axis=1)))))
 
 
-#: FB6's step and run: 40 steps a period of the pulsatile inflow, two periods.
-FB6_DT, FB6_STEPS = 0.05, 80
+#: FB6's step and run: 40 steps a period of the pulsatile inflow, two periods; ``dt / (R_d C)`` a tenth (the spike's
+#: two-outlet case: 0.13), where only the proximal coupling's loop gain decides the explicit arm's stability.
+FB6_DT, FB6_STEPS, FB6_RATIO = 0.05, 80, 0.1
 
 
-def fb6_reading(point: Point, gain: float, tolerance: float, explicit: bool) -> dict[str, float]:
+def fb6_reading(point: Point, gain: float, tolerance: float, explicit: bool, ratio: float = FB6_RATIO
+                ) -> dict[str, float]:
     """FB6: the rig's two outlets, each an RCR whose proximal resistance is ``gain`` over the step's response
-    (``R_p q``), its distal resistance 3 and 6 times a tube's Poiseuille resistance and ``dt / (R_d C)`` one, under a
-    pulsatile inflow, 80 IMEX Euler steps (Stokes): the largest outlet flux over the inflow's mean, or
-    infinity where a flux is not finite; ``explicit``, the test-only explicit arm (the spike's: the capacitor stepped
-    forward, the proximal drop lagged a step)."""
+    (``R_p q``), its distal resistance 3 and 6 times a tube's Poiseuille resistance and ``dt / (R_d C)`` ``ratio``,
+    under a pulsatile inflow, 80 IMEX Euler steps (Stokes): the largest outlet flux over the inflow's mean, or infinity
+    where a flux is not finite; ``explicit``, the test-only explicit arm (the spike's: the capacitor stepped forward,
+    the proximal drop lagged a step). At ``dt / (R_d C)`` of one the explicit arm's forward capacitor alone is
+    unstable whatever ``R_p`` (its amplification ``-R_d q``): the first probe's arm, unstable at every gain from
+    0.34."""
     proximal = gain / response_gain(point, FB6_DT, tolerance)
     distal = tube_resistance(point.length)
     period = 40.0 * FB6_DT
-    rows = [_row(FLUX, 0.3 * FLUX, 1.0 / period), _row(proximal, FB6_DT / (3.0 * distal), 3.0 * distal),
-            _row(proximal, FB6_DT / (6.0 * distal), 6.0 * distal)]
+    rows = [_row(FLUX, 0.3 * FLUX, 1.0 / period), _row(proximal, FB6_DT / (3.0 * distal * ratio), 3.0 * distal),
+            _row(proximal, FB6_DT / (6.0 * distal * ratio), 6.0 * distal)]
     node = twin_node(point, ("inflow", "windkessel", "windkessel"), rows, dt=FB6_DT, scheme="imex_euler",
                      convection=False, tolerance=tolerance)
     if explicit:
@@ -462,7 +466,7 @@ def _opened(setter: Setter) -> None:
 
 PLANTS: dict[str, Callable[[Setter], None]] = {"dropped": _dropped, "leaking": _leaking, "opened": _opened}
 
-__all__ = ["END_0", "END_1", "FB6_DT", "FB6_LINE", "FB6_STEPS", "FLUX", "LEAK", "PLANTS", "START", "VALVE_INTERIOR",
+__all__ = ["END_0", "END_1", "FB6_DT", "FB6_LINE", "FB6_RATIO", "FB6_STEPS", "FLUX", "LEAK", "PLANTS", "START", "VALVE_INTERIOR",
            "ExplicitNode", "LaggedNode", "Point", "TwinNode", "Twins", "conductance", "draw", "fb6_reading", "law_books",
            "layout_of", "network_flows", "network_split", "outlets", "resistor", "response_gain", "runs",
            "shared_split", "split_of", "split_reading", "stand_in_reading", "steady", "tube_resistance_of", "twin_node",
