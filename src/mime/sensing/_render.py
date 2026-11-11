@@ -517,3 +517,10 @@ def appearance_sources(subjects: Sequence[Subject], stage: Mapping[str, Any] | N
     """Where each subject's appearance comes from (the implicit clear lumens among them), and the build note."""
     _, sources, notes = _prepared(subjects, stage)
     return sources, notes
+
+
+#: The renderer's parts the in-loop camera's node calls, under public names: the node holds the static structure's image
+#: and the rays itself, guarded by its leaves, and sizes each disc subject's window from its pose at the start.
+prepared = _prepared
+projected_reach = _projected_reach
+static_part = _static

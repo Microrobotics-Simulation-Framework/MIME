@@ -71,8 +71,7 @@ def spec_of(width: int = 16, height: int = 12) -> dict[str, Any]:
     from mime.sensing import Subject
 
     ball = Subject("ball", "sphere", {"radius": 1e-3}, moving=True)
-    return {"width": width, "height": height, "fx": 20.0, "fy": 20.0, "cx": (width - 1) / 2, "cy": (height - 1) / 2,
-            "distortion": [0.0] * 5, "source": "declared", "subjects": [scene.subject_spec(ball, 8)],
+    return {"width": width, "height": height, "source": "declared", "subjects": [scene.subject_spec(ball, 8)],
             "body_subjects": {"ball": ["ball"]},
             "response": {"full_scale": 1000.0, "gain": 1.0, "offset": 0.0, "read_noise": 2.0, "shot_noise": True,
                          "bits": 12, "psf": 0.0}}
@@ -80,7 +79,8 @@ def spec_of(width: int = 16, height: int = 12) -> dict[str, Any]:
 
 def bare_node(period: int, sub_frames: int = 1, seed: int = 7) -> CameraNode:
     """A camera node on its own: the sphere ``ball`` in the world, the camera at the origin looking along +z."""
-    return CameraNode("camera", 1e-3, spec=scene.dumps(spec_of()), bodies=["ball"],
+    return CameraNode("camera", 1e-3, spec=scene.dumps(spec_of()), fx=20.0, fy=20.0, cx=7.5, cy=5.5, k1=0.0, k2=0.0,
+                      p1=0.0, p2=0.0, k3=0.0, bodies=["ball"],
                       initial_poses=(0.0, 0.0, 0.1, 1.0, 0.0, 0.0, 0.0), period=period, sub_frames=sub_frames,
                       seed=seed, placement=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
 

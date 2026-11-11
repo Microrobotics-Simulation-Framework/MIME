@@ -411,6 +411,41 @@ def rigid_explicit() -> Experiment:
                       spin=rad_per_s((150.0, 100.0, -100.0)), dynamics=RigidInertialExplicit())
 
 
+def camera_scene(name: str = "camera_scene", mount: Any = None, gantry: bool = False) -> Experiment:
+    """A steel ball moving along a tube seen by the in-loop camera, which sees the whole scene: the tube drawn, the ball
+    read from its dynamics, a frame every two steps. With ``gantry``, the camera rides the carriage of the lab fixture's
+    gantry, a drive moving it (a camera that may move, so the static structure is rendered in every frame)."""
+    import math
+
+    from mime.dynamics import RigidInertial
+    from mime.observations import Camera, Detector, Mounted, World
+    from mime.scene import Scene, Tube, X, Z
+    from mime.things import Part
+    from mime.units import kg_per_m3, um
+
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), dt=ms(1))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=um(60), wall=um(10),
+                                                            length=um(480))))
+    experiment.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
+        position=um((-50.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((2e-3, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(20)))}))
+    experiment.declare("ball.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    looking = (math.sqrt(0.5), -math.sqrt(0.5), 0.0, 0.0)
+    if gantry:
+        from mime.things import Apparatus
+
+        experiment.add_apparatus(Apparatus(
+            "stage", chain={"gantry": importlib.import_module("mime_lab_fixture").Gantry(
+                travel=X, at=m((0.0, -1e-3, 0.0)))},
+            commands={"gantry.position": Ramp(m(0.0), to=m(1.0), rate=m(0.004) / s(1.0))}))
+        mount = Mounted(frame="stage.gantry.carriage", orientation=looking)
+    experiment.observe(Camera(
+        detector=Detector(width=32, height=24, fx=150.0, fy=150.0, cx=15.5, cy=11.5, k1=-0.05),
+        mount=mount or World(position=m((0.0, -1e-3, 0.0)), orientation=looking), frame_period=ms(2),
+        sub_frames=2, absorbers=(("tube", 3000.0),)))
+    return experiment
+
+
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
@@ -459,6 +494,9 @@ CASES = (
     Case("kinematic_rpm", kinematic_rpm_kept),
     # The lab fixture's gantry, a chain segment with no URDF, carrying a magnet: mounts work on it unchanged.
     Case("gantry_magnet", gantry_magnet),
+    # The in-loop camera: the whole scene seen from the world, and from a gantry's carriage that a drive moves.
+    Case("camera_scene", camera_scene),
+    Case("camera_on_gantry", lambda: camera_scene("camera_on_gantry", gantry=True), lab=True),
     # A0's apparatus closed by its controller, a callback every 2 ms, its writes 1 ms late: the arm's joint positions
     # are the graph's one external input, which the run feeds.
     Case("tracked_rpm", tracked_rpm),

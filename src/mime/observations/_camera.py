@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -77,6 +78,14 @@ class Detector(SettingGroup):
         return Detector(width=pinhole.width, height=pinhole.height, fx=float(pinhole.fx), fy=float(pinhole.fy),
                         cx=float(pinhole.cx), cy=float(pinhole.cy),
                         k1=float(d.k1), k2=float(d.k2), p1=float(d.p1), p2=float(d.p2), k3=float(d.k3), source=d.source)
+
+    def fitted(self, values: Mapping[str, float], how: str) -> Detector:
+        """This detector with the numbers a fit found (``values``, by setting name: ``fx``, ``k1``, ...), labelled fitted
+        with how it was fitted: ``source`` is then ``"fitted: <how>"``, and a declared camera is never mistaken for it."""
+        unknown = sorted(set(values) - {"fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3"})
+        if unknown:
+            raise ValueError(f"a detector has no setting {unknown[0]!r}")
+        return dataclasses.replace(self, source=f"fitted: {how}", **{k: float(v) for k, v in values.items()})
 
     def pinhole(self) -> Pinhole:
         return Pinhole(self.width, self.height, self.fx, self.fy, self.cx, self.cy,
@@ -177,7 +186,7 @@ class Camera(Observation):
                recordable=False),
         Output("expected", DIMENSIONLESS, "the held frame's counts before noise and quantisation, rows by columns: the "
                                           "differentiable output", shape_from_settings=True, recordable=False),
-        Output("frame_step", DIMENSIONLESS, "the count of the step the held frame was made at (-1 before the first)"),
+        Output("frame_step", DIMENSIONLESS, "the count of the step the held frame was made at (none before the first step)"),
         Output("age", DIMENSIONLESS, "the base steps since the held frame was made (zero on a frame step)"),
         Output("new_frame", DIMENSIONLESS, "one on a step a frame was made at, zero otherwise"),
     )
@@ -244,11 +253,13 @@ class Camera(Observation):
         found = self._found(ctx)
         for name in found.unknown_hidden:
             problems.append(Problem("camera.hide", f"hide names {name!r}, which is no body or structure of the experiment",
-                                    f"hide only what the experiment declares: {sorted({*ctx.roster.bodies, *ctx.roster.structures})}"))
+                                    f"write `hide=(...)` with names the experiment declares: "
+                                    f"{', '.join(sorted({*ctx.roster.bodies, *ctx.roster.structures}))}"))
         unknown = sorted({n for n, _ in self.absorbers} - {s.name for s in found.subjects})
         for name in unknown:
             problems.append(Problem("camera.hide", f"absorbers names {name!r}, which is no subject the camera images",
-                                    f"name one of {sorted(s.name for s in found.subjects)}"))
+                                    f"write `absorbers=((name, per_metre),)` with one of "
+                                    f"{', '.join(sorted(s.name for s in found.subjects))}"))
         for name, code, message in found.refused:
             problems.append(Problem(code, f"{name!r} cannot be imaged: {message.split(': ', 1)[-1]}",
                                     f"hide it with hide=({name!r},) until the sampled route lands, or give its kind a "
@@ -308,7 +319,8 @@ class Camera(Observation):
         mount = ctx.mount
         initial = [c for name in bodies for c in cast(tuple[float, ...], ctx.roster.bodies[name].pose)]
         node = b.add_node(CameraNode(
-            ctx.node_name(), ctx.timestep, spec=scene.dumps(spec), intrinsics=(d.fx, d.fy, d.cx, d.cy, d.k1, d.k2, d.p1, d.p2, d.k3), bodies=bodies, initial_poses=initial, period=period,
+            ctx.node_name(), ctx.timestep, spec=scene.dumps(spec), fx=d.fx, fy=d.fy, cx=d.cx, cy=d.cy, k1=d.k1, k2=d.k2, p1=d.p1, p2=d.p2, k3=d.k3,
+            bodies=bodies, initial_poses=initial, period=period,
             sub_frames=self.sub_frames, seed=ctx.seeds["noise"], placement=placement,
             mount_index=mount.index if mount is not None else -1, mount_count=mount.count if mount is not None else 0,
             initial_mount_pose=mount.initial_pose if mount is not None else (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)))

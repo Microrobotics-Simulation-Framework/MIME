@@ -40,16 +40,15 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, quaternion, \
+from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
     typed_view
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode
 from mime.sensing import _scene as scene
 from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays
 from mime.sensing._coverage import CORNER_SAMPLES
-from mime.sensing._render import (Exposure, Response, StaticCache, _prepared, _projected_reach, _static, exposed, frame_key,
-                                  static_cache)
+from mime.sensing._render import (Exposure, Response, StaticCache, exposed, frame_key, prepared, projected_reach,
+                                  static_cache, static_part)
 from mime.sensing._detector import ray_table
 from mime.sensing._subjects import Subject
 
@@ -58,12 +57,18 @@ _jax: Any = cast(Any, jax)
 
 #: The flags a frame raises, each a state field of the node holding, on a frame step, the number of subjects (or pixels,
 #: or the share of saturated ones) it raised for in that frame, and zero at every other step.
+#: The detector's nine numbers, the node's leaves, in the order a Pinhole and OpenCV give them.
+INTRINSICS = ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3")
+#: How far a focal length may move from the build's, as a share: the box a fit stays in, and what the disc windows are
+#: sized for. Past it the silhouette could leave its window, which a flag would report, so the leaf's bounds keep it in.
+FOCAL_SHARE = 0.25
+#: How far a distortion coefficient may move from the build's: the radial ones by this, the tangential ones by a fifth.
+DISTORTION_BOX = 0.3
 FLAG_FIELDS = ("beyond_distortion", "saturated", "outside_parent", "small_silhouette", "window_overflow", "behind",
                "ghosting", "thin_cap")
 
-EQUATIONS = (r"\mathrm{frame}_{k} = \mathbb{1}\left[n \bmod P = 0\right], \quad "
-             r"I = \mathrm{render}\left(\mathbf{x}_{n-K+1 \ldots n}, \mathbf{q}_{n-K+1 \ldots n}, \mathbf{c}, "
-             r"\mathrm{key}(s, n)\right), \quad \mathrm{age} = n - n_{f}")
+EQUATIONS = (r"n_{f} = P \, \mathrm{floor}(n / P), \quad a = n - n_{f}, \quad "
+             r"I = \mathrm{render}\left(\mathbf{p}, \mathbf{c}, s, n_{f}\right)")
 
 _NODE = "mime.sensing._node.CameraNode"
 
@@ -142,19 +147,20 @@ class CameraNode(MountedNode):
     symbols = (
         Symbol("n", SymbolKind.STATE, "steps", "1", f"{_NODE}.advance"),
         Symbol("P", SymbolKind.PARAMETER, "period", "1", f"{_NODE}.advance"),
-        Symbol("K", SymbolKind.PARAMETER, "sub_frames", "1", f"{_NODE}.advance"),
         Symbol("s", SymbolKind.PARAMETER, "seed", "1", f"{_NODE}.advance"),
         Symbol("n_{f}", SymbolKind.STATE, "frame_step", "1", f"{_NODE}.advance"),
-        Symbol(r"\mathrm{age}", SymbolKind.STATE, "age", "1", f"{_NODE}.advance"),
-        Symbol(r"\mathrm{frame}_{k}", SymbolKind.STATE, "new_frame", "1", f"{_NODE}.advance"),
+        Symbol("a", SymbolKind.STATE, "age", "1", f"{_NODE}.advance"),
         Symbol("I", SymbolKind.STATE, "image", "1", f"{_NODE}.advance"),
+        Symbol(r"\mathbf{p}", SymbolKind.INPUT, "pose_{body}", POSE_UNITS, f"{_NODE}.advance"),
         Symbol(r"\mathbf{c}", SymbolKind.PARAMETER, "placement", POSE_UNITS, f"{_NODE}.camera_pose"),
     )
 
-    def __init__(self, name: str, timestep: float, *, spec: str, intrinsics: Sequence[float], bodies: Sequence[str],
-                 initial_poses: Sequence[float], period: int, sub_frames: int, seed: int, placement: Sequence[float], mount_index: int = -1,
+    def __init__(self, name: str, timestep: float, *, spec: str, fx: float, fy: float, cx: float, cy: float, k1: float,
+                 k2: float, p1: float, p2: float, k3: float, bodies: Sequence[str], initial_poses: Sequence[float],
+                 period: int, sub_frames: int, seed: int, placement: Sequence[float], mount_index: int = -1,
                  mount_count: int = 0, initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)) -> None:
-        super().__init__(name, timestep, spec=spec, intrinsics=tuple(float(c) for c in intrinsics), bodies=tuple(bodies),
+        super().__init__(name, timestep, spec=spec, fx=float(fx), fy=float(fy), cx=float(cx), cy=float(cy), k1=float(k1),
+                         k2=float(k2), p1=float(p1), p2=float(p2), k3=float(k3), bodies=tuple(bodies),
                          initial_poses=tuple(float(c) for c in initial_poses), period=int(period),
                          sub_frames=int(sub_frames), seed=int(seed), placement=tuple(float(c) for c in placement),
                          mount_index=int(mount_index), mount_count=int(mount_count),
@@ -168,7 +174,10 @@ class CameraNode(MountedNode):
         fixed in the world, the static structure's cache."""
         held = self.constants()
         spec = json.loads(cast(str, held["spec"]))
-        camera = detector_of(spec, held["intrinsics"])
+        intrinsics = self.build_intrinsics()
+        camera = detector_of(spec, intrinsics)
+        reach_camera = detector_of(spec, (intrinsics[0] * (1.0 + FOCAL_SHARE), intrinsics[1] * (1.0 + FOCAL_SHARE),
+                                          *intrinsics[2:]))
         poses = np.asarray(held["initial_poses"], dtype=np.float64).reshape(-1, 7)
         bodies = cast(tuple[str, ...], held["bodies"])
         initial = np.asarray(held["placement"], dtype=np.float64)
@@ -182,11 +191,16 @@ class CameraNode(MountedNode):
             if subject.moving and subject.coverage == "disc" and subject.window is None:
                 at = poses[bodies.index(owner[subject.name])]
                 origin = _composed(at, np.concatenate([np.asarray(subject.placed.centre), [1.0, 0.0, 0.0, 0.0]]))[:3]
-                reach = float(np.asarray(_projected_reach(camera, pose0, origin, subject.enclosing())))
+                reach = float(np.asarray(projected_reach(reach_camera, pose0, origin, subject.enclosing())))
                 subject = scene.subject_of({**each, "window": scene.frame_window(reach, camera.width, camera.height)})
             made.append(subject)
         cache = static_cache(made, camera, pose0) if self.holds_cache() else None
-        return camera, tuple(_prepared(made, None)[0]), cache
+        return camera, tuple(prepared(made, None)[0]), cache
+
+    def build_intrinsics(self) -> tuple[float, ...]:
+        """The detector's nine numbers as the node was built with them."""
+        held = self.constants()
+        return tuple(float(held[name]) for name in INTRINSICS)
 
     def holds_cache(self) -> bool:
         """Whether the build holds the static structure's image: only where the camera is fixed in the world, where the
@@ -206,13 +220,28 @@ class CameraNode(MountedNode):
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
         return {**super().param_specs(),
-                "intrinsics": ParamSpec(units="1", description="the detector's fx, fy, cx, cy (pixels) and k1, k2, p1, p2, "
-                                                               "k3: the numbers a calibration fits"),
+                **self.intrinsic_specs(),
                 "placement": ParamSpec(trainable=False, units=POSE_UNITS,
                                        description="the camera's pose in the world, or on its mount frame: held with "
                                                    "the static structure's cache, so a move needs a new build"),
                 "initial_poses": ParamSpec(trainable=False, units=POSE_UNITS,
                                            description="the bodies' poses at the start, which fill the ring")}
+
+    def intrinsic_specs(self) -> dict[str, ParamSpec]:
+        """The detector's nine leaves, each bounded about its build value: a focal length by ``FOCAL_SHARE``, a centre by
+        a fifth of the image, a distortion coefficient by ``DISTORTION_BOX`` (a tangential one a fifth of it). The box
+        keeps a fit where the disc windows, sized for it, hold the silhouettes."""
+        spec = self._spec()
+        held = dict(zip(INTRINSICS, self.build_intrinsics(), strict=True))
+        size = {"cx": spec["width"], "cy": spec["height"]}
+        box: dict[str, float] = {"fx": FOCAL_SHARE * abs(held["fx"]), "fy": FOCAL_SHARE * abs(held["fy"]),
+                                 "cx": 0.2 * size["cx"], "cy": 0.2 * size["cy"], "k1": DISTORTION_BOX,
+                                 "k2": DISTORTION_BOX, "k3": DISTORTION_BOX, "p1": DISTORTION_BOX / 5,
+                                 "p2": DISTORTION_BOX / 5}
+        units = {name: "1" for name in INTRINSICS}
+        return {name: ParamSpec(units=units[name], bounds=(held[name] - box[name], held[name] + box[name]),
+                                description=f"the detector's {name}: a leaf a calibration fits, within its box")
+                for name in INTRINSICS}
 
     # -- the step ---------------------------------------------------------------------------------------------------
 
@@ -251,18 +280,18 @@ class CameraNode(MountedNode):
         build's cache holds them, and is used only where ``intrinsics`` equal the numbers it was made from (a leaf a study
         moved is not), compared at the step; a derivative in the intrinsics takes the uncached path (the cache carries
         none), by a custom rule. A camera on a frame that may move has no cache: it renders them in every frame."""
-        camera, subjects, cache = self._held
+        _, subjects, cache = self._held
         spec = self._spec()
 
         def fresh(x: Array) -> tuple[Rays, Array, dict[str, Any]]:
             moved = detector_of(spec, x)
             rays = ray_table(moved, pose)
             flags: dict[str, Any] = {}
-            return rays, _static(subjects, rays, moved, pose, dtype, CORNER_SAMPLES, flags), flags
+            return rays, static_part(subjects, rays, moved, pose, dtype, CORNER_SAMPLES, flags), flags
 
         if cache is None:
             return fresh(intrinsics)
-        build = jnp.asarray(np.asarray(self.constants()["intrinsics"]), dtype=dtype)
+        build = jnp.asarray(np.asarray(self.build_intrinsics()), dtype=dtype)
 
         def cached() -> tuple[Rays, Array, dict[str, Any]]:
             return cache.rays, cache.transmission, dict(cache.flags)
@@ -329,7 +358,7 @@ class CameraNode(MountedNode):
         ring = self.pushed(held["ring"], poses)
         exposure = self.exposed(held["ring"], ring)
         pose = self.camera_pose(cast(Mapping[str, Array], given), dtype)
-        intrinsics = jnp.asarray(p["intrinsics"], dtype=dtype)
+        intrinsics = jnp.stack([jnp.asarray(p[name], dtype=dtype) for name in INTRINSICS])
         key = self.key_of(seed, count)
 
         def make() -> tuple[Array, Array, dict[str, Array]]:
@@ -343,7 +372,7 @@ class CameraNode(MountedNode):
         frame_step = jnp.where(frame, count, held["frame_step"])
         return node_fields(CameraState(
             steps=count + 1, frame_step=frame_step, age=count - frame_step, new_frame=frame.astype(jnp.int32),
-            image=image, expected=expected, ring=ring, **cast(Any, flags)))
+            image=image, expected=expected, ring=ring, **flags))
 
 
 def period_steps(period: float, dt: float) -> int | None:

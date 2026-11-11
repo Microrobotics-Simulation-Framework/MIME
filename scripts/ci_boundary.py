@@ -65,7 +65,7 @@ MADDENING_ADAPTERS = (
     "src/mime/build/_checks.py", "src/mime/build/_construct.py", "src/mime/build/_derived.py", "src/mime/build/_key.py",
     "src/mime/build/_maddening.py", "src/mime/build/_probes.py", "src/mime/build/_report.py", "src/mime/build/_run.py",
     "src/mime/control/_run.py", "src/mime/core/_node.py", "src/mime/core/ledger.py", "src/mime/docs/_symbols.py",
-    "src/mime/experiment/_experiment.py", "src/mime/experiment/_mermaid.py",
+    "src/mime/experiment/_experiment.py", "src/mime/experiment/_mermaid.py", "src/mime/sensing/_node.py",
     "src/mime/testing/_energy.py", "src/mime/testing/_families.py", "src/mime/testing/_ledger_harness.py",
     "src/mime/testing/_nodes.py", "src/mime/testing/_port_laws.py",
     "src/mime/testing/toys/_nodes.py",

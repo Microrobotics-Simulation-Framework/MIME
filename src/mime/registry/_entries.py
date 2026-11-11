@@ -1219,6 +1219,11 @@ class Observation(Entry):
         raise NotImplementedError
 
 
+def forward_only_of(cls: type[Entry]) -> str | None:
+    """Why a run through an entry of class ``cls`` is forward only (:attr:`Observation.forward_only`), or ``None``."""
+    return cls.forward_only if issubclass(cls, Observation) else None
+
+
 @dataclass(frozen=True, kw_only=True)
 class Drive(Entry):
     """A command generator: one node whose numbers are ``params`` leaves, with one exclusive edge into the command it
