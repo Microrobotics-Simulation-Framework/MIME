@@ -207,7 +207,7 @@ account names each as left out of it (`result.energy.unmetered`), as does `resul
 Each node that solves a linear system, by name, with the line `solve arithmetic of <node>: as today`: the arithmetic its
 solves ran in before this line existed, unchanged (the run's dtype, except in the arm-tracking controller, which computes
 in single precision whatever the run's). The nodes are the ones whose class a registered solve site names
-(`mime.core.solves`): the FVM's flow nodes (implicit, explicit, open), the near field's joint node, the MRS and RFT drag
+(`mime.core.solves`): the FVM's flow nodes (implicit, explicit, open), the near field's joint node, the MRS, RFT and point drag
 nodes, the rigid bodies, the dynamic arm and the arm-tracking controller. Static, no traced array holds it, so it
 changes no program. The line is where a declared solve precision will report once one exists. Nothing to do about it.
 

@@ -1,0 +1,32 @@
+{
+  "written": "2026-11-11, committed before the point-bodies addendum's probe ran: the release tip took the point drag coupled two-way to the FVM (#239), whose fitted self-history (route 'modes') solves a linear least squares by the SVD inside run_constants; the solve walk found it outside every scope and it is registered as the exempt site point_self_history",
+  "phase": "the precision seam, small form, point bodies addendum (row #357)",
+  "labels": "the builder's prediction, from the code's structure: a name scope changes metadata, not operations",
+  "seen_before": [
+    "tests/saved/test_solve_walk.py on the tree merged with #239 on the laptop failed with one finding, svd outside every registered scope in PointDragNode, and nothing else: the exchange law's FFTs are made when the node is built (held spectra), not in a step, and route 2's own-box advance holds no solve primitive. No bit comparison had been read."
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: a GitHub runner, one CPU and one BLAS thread pinned for the bit comparison",
+    "sizes_and_parameters": "the saved case point_body_flow (a 50 um point sphere in the periodic tube's steady drive, 8 cells across, dt 0.25 ms) on the exact route and with self_history='modes', and open_tube_flow, each run 20 ms",
+    "seeds_and_draws": "no draws"
+  },
+  "gate_1_point_bits": {
+    "claim": "the fit's least squares inside a name scope moves no bit of the point-body programs",
+    "kind": "equality",
+    "case": "point_body_flow, point_body_modes, open_tube_flow, float64 and float32, base the release tip d7cfdbee against head, one job (.github/probe/bit_compare.py), with a one-ulp control on the near field",
+    "prediction": {"value": "every array np.array_equal", "unit": "arrays", "basis": "derived", "why": "a name scope changes metadata, not operations"},
+    "metric": "numpy.array_equal per array",
+    "control": {
+      "plant": "the near field's start velocity one ulp up in the head's run only (ulp_nf_dense_2)",
+      "environment_variable": "none: the dump script reads the tree it runs in",
+      "expected_rate": "arrays differ",
+      "runs": 1,
+      "clean_expected": "equal",
+      "resolution": "one ulp"
+    },
+    "if_wrong": "revert the scope at the least squares and report the arrays",
+    "cannot_discriminate_if": "both sides NaN: bit_compare reports equal_nan beside equal and the arrays are read for finiteness; point_body_modes records no field that the fit reaches (the fitted modes drive the force, which is recorded)"
+  },
+  "outcomes": null
+}

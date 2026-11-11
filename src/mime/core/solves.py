@@ -45,8 +45,8 @@ jnp: Any = jax.numpy
 SCOPE = "mime-solve"
 
 #: What a site eliminates with: ``cg`` (the FVM's guarded conjugate gradient), ``gmres``, ``dense`` (an LU or a
-#: Cholesky factor of a matrix held whole), ``transform`` (a transform that inverts an operator that is diagonal in it).
-KINDS = ("cg", "gmres", "dense", "transform")
+#: Cholesky factor of a matrix held whole), ``transform`` (a transform that inverts an operator that is diagonal in it), ``lstsq`` (a linear least squares by the SVD).
+KINDS = ("cg", "gmres", "dense", "transform", "lstsq")
 
 #: The primitives that are a linear solve's own, wherever a program reaches them: each must run inside a registered scope.
 #: ``svd`` is what ``lstsq`` and ``pinv`` solve with. Not here, and so not seen: ``eigh`` (a spectral radius or a
@@ -62,6 +62,7 @@ OWNED: dict[str, frozenset[str]] = {
     "gmres": frozenset({"custom_linear_solve", "triangular_solve"}),
     "dense": frozenset({"lu", "cholesky", "triangular_solve", "custom_linear_solve"}),
     "transform": frozenset({"fft"}),
+    "lstsq": frozenset({"svd"}),
 }
 
 #: The primitives that carry a system's matrix as their first operand, whose last dimension is the system's order: what
