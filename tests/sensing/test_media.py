@@ -77,7 +77,10 @@ def test_the_displaced_medium_rule_is_the_closed_form(dtype, monkeypatch):
     footprint = 0.1 / focal
     clear = np.minimum.reduce([np.abs(outer_edge), np.abs(lumen_edge), np.abs(ball_edge)]) > 2.0 * footprint
     assert clear.sum() > 0.8 * clear.size and (ball_edge < -2.0 * footprint).sum() > 100
-    tolerance = 1e-10 if dtype == "float64" else 2e-5
+    # Judged on the scale it came from: a chord's rounding is a few units in the last place of the ray's parameter
+    # (the camera 0.1 m away), times each attenuation (float32: about 4e-4 of the transmission; float64 under 1e-12).
+    eps = float(np.finfo(dtype).eps)
+    tolerance = max(1e-10 if dtype == "float64" else 2e-5, 16 * eps * (WALL + WATER + SPHERE) * 0.1)
     assert float(np.max(np.abs(found[clear] / expected[clear] - 1.0))) <= tolerance
 
 

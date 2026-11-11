@@ -81,7 +81,10 @@ def test_aggregate_derivatives_agree_with_central_differences(dtype, case, monke
     steps = SCALES * (1e-4 if fine else 1e-2)
     theta = jnp.asarray(THETA)
     jacobian = np.asarray(jax.jacfwd(function)(theta), dtype=np.float64)
-    size = np.max(np.abs(jacobian[:, list(parameters)] * SCALES[None, list(parameters)]), axis=1)
+    # Each aggregate judged against its own natural scale where its derivatives all vanish (a centroid that a band
+    # across the whole image does not move): a pixel for a centroid, a hundredth of one row's darkness for the total.
+    natural = np.array([float(np.asarray(function(theta))[0]) / (100 * HEIGHT), 1.0, 1.0])
+    size = np.maximum(np.max(np.abs(jacobian[:, list(parameters)] * SCALES[None, list(parameters)]), axis=1), natural)
     worst = 0.0
     for k in parameters:
         step = jnp.zeros(6).at[k].set(steps[k])

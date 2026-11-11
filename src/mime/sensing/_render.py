@@ -307,7 +307,36 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
         small = camera.fx * subject.feature() / depth < SMALL_SILHOUETTE_PX
         flags[f"small_silhouette:{name}"] = flags.get(f"small_silhouette:{name}", False) | small
     flags[f"behind:{name}"] = flags.get(f"behind:{name}", False) | (depth < subject.enclosing())
+    if subject.placed.form.corners:
+        flags[f"thin_cap:{name}"] = flags.get(f"thin_cap:{name}", False) | _thin_cap(subject, rotation, origin, camera,
+                                                                                      pose, dtype)
     return factor, pixel
+
+
+#: A cap whose ellipse is thinner than this many pixels across (seen within a pixel of edge-on) and in view raises
+#: ``thin_cap``: its outline is resolved to about a seventh of a pixel's area by the corner sub-samples there (the cap's
+#: edge function changes across its ellipse faster than a sub-pixel's line follows), measured on a side-on cylinder.
+THIN_CAP_PX = 1.0
+
+
+def _thin_cap(subject: Subject, rotation: Any, origin: Any, camera: Pinhole, pose: CameraPose, dtype: Any) -> Any:
+    """Whether a capped cylinder shows a cap in view seen nearly edge-on: the cap's ellipse's minor axis (twice
+    ``f R |cos|`` over its depth, the cosine between the line of sight and the axis) under ``THIN_CAP_PX``."""
+    radius, half = subject.placed.parameters["radius"], subject.placed.parameters["length"] / 2.0
+    axis = rotation[:, 2]
+    position = jnp.asarray(pose.position, dtype=dtype)
+    found = jnp.zeros((), dtype=bool)
+    for end in (-1.0, 1.0):
+        centre = origin + end * half * axis
+        sight = centre - position
+        distance = jnp.sqrt(jnp.sum(sight * sight))
+        pixel, depth = project(camera, pose, centre)
+        across = 2.0 * camera.fx * radius * jnp.abs(jnp.sum(sight * axis)) / (distance * depth)
+        reach = camera.fx * radius / depth
+        seen = (pixel[0] > -reach) & (pixel[0] < camera.width + reach) & (pixel[1] > -reach) \
+            & (pixel[1] < camera.height + reach) & (depth > 0)
+        found = found | (seen & (across < THIN_CAP_PX))
+    return found
 
 
 def _static(subjects: Sequence[Subject], rays: Rays, camera: Pinhole, pose: CameraPose, dtype: Any,
