@@ -378,6 +378,8 @@ class ResolvedRegistration:
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     #: Where the subject is a surface (a flow's opening): its shape's parameters, as its geometry gives them.
     subject_parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    #: Where the subject is a body: its hull (a resolved body's solid, which a flow holding it on its grid lifts).
+    hull: Hull | None = None
 
 
 def _plain_settings(entry: Entry, si_settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
@@ -1197,7 +1199,8 @@ class _Planner:
             values = {label: float(value.value) for label, value in plan.values.items()
                       if isinstance(value.value, (int, float))}
             try:
-                rule = dynamics.time_step(StepQuery(plan.regions.get("medium"), values, dict(plan.settings), drives))
+                rule = dynamics.time_step(StepQuery(plan.regions.get("medium"), values, dict(plan.settings), drives,
+                                                    tuple(plan.registrations)))
             except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
                 self.defect(type(dynamics), f"time_step() raised {error!r}", error)
                 continue
@@ -1888,7 +1891,8 @@ class _Planner:
         frame_of = getattr(plan.entry, "exchange_frame", None) if plan is not None else None
         if plan is None or frame_of is None:
             return None
-        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings))
+        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings,
+                                                   tuple(plan.registrations)))
 
     def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
         """The fields carried in the region medium ``medium`` fills, by their ids (``water.flow``): its own and those of
@@ -3277,9 +3281,10 @@ class _Planner:
             except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
                 self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
                 return
+        hull = self.hull_of(subject) if cls.roles.get(registration.subject) is RoleKind.BODY else None
         dynamics.registrations.append(
             ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
-                                 _plain_settings(plan.entry, plan.settings), parameters))
+                                 _plain_settings(plan.entry, plan.settings), parameters, hull))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()
@@ -3514,9 +3519,14 @@ class _Planner:
         if plan.section is not Section.INTERACTION or not isinstance(entry, Interaction) or \
                 set(plan.values) != set(plan.plan.values) or plan.context is None:
             return
+        # The exchange frames as they stand now, every registration made: a resolved body's asks its medium's grid for
+        # the spacing it needs, so a frame taken while the entries were planned may be coarser than the one built.
+        exchanges = {role: frame for role, frame in plan.context.exchanges.items()
+                     for fresh in (self.exchange_frame_of(plan.bindings[role]),) if fresh is not None
+                     for frame in (fresh,)}
+        context = dataclasses.replace(plan.context, exchanges=exchanges) if exchanges else plan.context
         try:
-            problems = entry.value_problems({label: value.value for label, value in plan.values.items()},
-                                            plan.context)
+            problems = entry.value_problems({label: value.value for label, value in plan.values.items()}, context)
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
             self.defect(type(entry), f"value_problems() raised {error!r}", error)
             return

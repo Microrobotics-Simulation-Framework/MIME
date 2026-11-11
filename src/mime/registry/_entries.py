@@ -258,6 +258,9 @@ class StepQuery:
     values: Mapping[str, float]
     settings: Mapping[str, Magnitude]
     drives: tuple[DriveQuery, ...] = ()
+    #: The registrations addressed to the dynamics (``mime.build.ResolvedRegistration``): a field resolving a body on its
+    #: grid takes the spacing the body asks.
+    registrations: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -362,6 +362,12 @@ class ImplicitFlowNode(MimeNode):
         return wall_fields(grid, self.solids(p, grid), band_named(c["band"]), interior_depth(c["interior"]),
                            run_dtype())
 
+    def step_fields(self, p: Mapping[str, Any], grid: MACGrid, boundary_inputs: Mapping[str, Array]) -> WallFields:
+        """The solid's fields a step reads: the wall's (:meth:`fields`); a node with bodies on its grid adds theirs at
+        the poses its inputs give."""
+        del boundary_inputs
+        return self.fields(p, grid)
+
     @staticmethod
     def kinematic(p: Mapping[str, Any]) -> Array:
         """``nu = mu / rho`` (m^2/s), made in the step from the two leaves (never at build)."""
@@ -514,7 +520,7 @@ class ImplicitFlowNode(MimeNode):
         scheme: TimeScheme[StageParts] = self.scheme
         grid = self.grid(p)
         dtype = run_dtype()
-        fields = self.fields(p, grid)
+        fields = self.step_fields(p, grid, boundary_inputs)
         sigma = self.resistivity(p, fields)
         operator = self.operator_of(p, grid, sigma)
         stopping = Stopping(tolerance=as_run_array(p["tolerance"]), at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
