@@ -447,10 +447,10 @@ class ExactUnion:
         reached = _stop(_lax.fori_loop(0, NEWTON_STEPS, stepped, jnp.concatenate([on_seam, multipliers], -1)))
         reached = _finite_or(reached, jnp.concatenate([held_points, jnp.zeros((*points.shape[:-1], 2), dtype)], -1))
         residual, jacobian = kkt(reached)
-        z = _implicit(reached, _stop(jacobian) + _ridge(dtype, 5), residual)
         converged = (_stop(jnp.max(jnp.abs(residual), axis=-1))
                      <= self._allowance(parameters, held_points, CONVERGED_ULPS))
         kept = converged & self._kept(parameters, reached[..., :3], (i, j), radius, slack)
+        z = _implicit(reached, _stop(jacobian) + _ridge(dtype, 5), _kept_only(kept, residual))
         seam = jnp.where(kept[..., None], z[..., :3], held_points)
         return Seam(jnp.where(kept, _length(points - seam), jnp.inf), converged, reached_seam)
 
@@ -494,12 +494,12 @@ class ExactUnion:
         values, gradients = walls(reached)
         held_gradients = _stop(gradients)
         gram = held_gradients @ jnp.swapaxes(held_gradients, -1, -2) + _ridge(dtype, 3)
-        step = _implicit(jnp.zeros_like(values), gram, values)
-        c = reached + (jnp.swapaxes(held_gradients, -1, -2) @ step[..., None])[..., 0]
         converged = (_stop(jnp.max(jnp.abs(values), axis=-1))
                      <= self._allowance(parameters, held_points, CONVERGED_ULPS))
         kept = converged & self._kept(parameters, reached, corner, radius,
                                       self._allowance(parameters, held_points, KEPT_ULPS))
+        step = _implicit(jnp.zeros_like(values), gram, _kept_only(kept, values))
+        c = reached + (jnp.swapaxes(held_gradients, -1, -2) @ step[..., None])[..., 0]
         c = jnp.where(kept[..., None], c, held_points)
         return jnp.where(kept, _length(points - c), jnp.inf)
 
@@ -611,6 +611,14 @@ def _implicit(reached: Array, jacobian: Array, residual: Array) -> Array:
     value is the root's, and its tangent is the implicit function theorem's, ``-J^-1 dF``, through the residual's
     dependence on the point and the parameters."""
     return reached - jnp.linalg.solve(jacobian, residual[..., None])[..., 0]
+
+
+def _kept_only(kept: Array, residual: Array) -> Array:
+    """``residual`` where its lane is ``kept``, held out of every derivative elsewhere: a lane whose point is discarded
+    passes no derivative back into its implicit step, whose matrix may be singular there (a search that reached no
+    proper point), so reverse mode's solve against it, at a zero cotangent, makes no NaN that the parameters would
+    gather."""
+    return jnp.where(kept[..., None], residual, _stop(residual))
 
 
 def _finite_or(value: Array, fallback: Array) -> Array:

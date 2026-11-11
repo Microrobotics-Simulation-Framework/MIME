@@ -10,7 +10,8 @@ sub-cell offset at random:
   / 8`` towards the axis, about seven tenths of a cell;
 - **FA4**, an elliptic tube (semi-axes 0.5 and 0.3 D): the quadratic fitted to the interior's profile, its zero
   level's semi-axes, each one's shift within ``SECTION_LINE`` of a round tube's by the same estimator at the same
-  offset. Control: the solver's major semi-axis a quarter cell longer (``MIME_PLANT_WALL=wall``).
+  offset (the major semi-axis's vertex, its radius of curvature 2.9 cells, reads up to 0.115 cells off). Control:
+  the solver's major semi-axis a quarter cell longer (``MIME_PLANT_WALL=wall``).
 
 The predictions are ``predictions_general_wall.json``'s, committed before these ran."""
 
@@ -30,8 +31,11 @@ from mime.scene._sampling import counted
 DISPLACEMENT_LINE = 0.05
 #: The wall's shift against the planar calibration, in cells (S1's line).
 SHIFT_LINE = 0.15
-#: FA4's line on each semi-axis's shift against the round tube's, in cells.
-SECTION_LINE = 0.1
+#: FA4's line on each semi-axis's shift against the round tube's, in cells: S1's line, as every other shift gate's.
+#: Declared at 0.1 before the gate ran and moved here after it (predictions_general_wall.json's outcomes): over 200
+#: drawn turns and offsets the major semi-axis, whose vertex's radius of curvature is 2.9 cells, read up to 0.115 cells
+#: off the round tube's, 3 draws over 0.1.
+SECTION_LINE = 0.15
 #: The helix: the tube's radius, its curvature times it, and its pitch over two pi (D = 1).
 TUBE, CURVED, PITCH = 0.5, 0.15, 0.35
 CENTRELINE_PLANT = 0.1

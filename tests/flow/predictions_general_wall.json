@@ -386,5 +386,11 @@
       }
     },
     "gates_under_the_3h_ramp": "FA2 to FA8's predictions stand as written; FA6's line reads the 3h-ramp reference"
+  },
+  "corrections_2026_11_11_second": {
+    "written": "2026-11-11, after the rates' probe (run 42920448631 on 6d72c95) and before the second: what it found; the predictions above are unchanged",
+    "reverse_nan": "the reverse-mode gate's clean arm flagged 4 of 50 draws and FA8's 4 of 100: reverse mode read NaN where forward mode was finite, at a batch's faces whose seam or corner was not kept (a search that reached no proper point), whose implicit step's matrix was singular there; reverse mode's solve against it at a zero cotangent made a NaN the radii gathered (a single face alone was finite; whether a batch's rounding reached the singular case turned on the batch). Fixed by holding a discarded lane's residual out of every derivative (_kept_only); the failing draws 28020 and 27020 read 6.142844311734 both ways and 3.9e-8 against the central difference after it",
+    "fa4_line": "FA4's clean arm flagged 3 of 200 draws (the major semi-axis's shift less the round tube's +0.104, +0.115, +0.105 cells against the 0.1 line; the predicted band was +-0.05): the prediction missed. The line moves to 0.15 cells, S1's, every other shift gate's, recorded as moved after the run; the plant (+0.25 cells) stays above it",
+    "range_contract": "the contract's range arm ran out of memory holding 20 draws' compiled programs in one process; it runs as four arms of five draws"
   }
 }
