@@ -523,6 +523,16 @@ def test_the_stokes_rung_refuses_a_body_that_is_no_sphere_a_medium_with_no_grid_
     point_experiment().build()
 
 
+@pytest.mark.parametrize("one_way", [False, True])
+def test_a_tube_trees_flow_refuses_an_exchange_partner_by_name(float64, one_way):
+    """A point body in a tube tree's flow (#242's wall, which carries no exchange frame) is refused by the flow's own
+    registration check, ``flow.tree-exchange``, with its route, two-way or one-way; never an entry's defect (a
+    KeyError in the drag's build, before this check). The control, the same body in a straight tube's flow, builds."""
+    codes = _refused(point_experiment(tree=True, dt=1e-5, one_way=one_way))
+    assert codes == {"flow.tree-exchange"}, codes
+    point_experiment(dt=1e-5, one_way=one_way).build()
+
+
 def _open_vessel():  # noqa: ANN202
     """Gate 3's experiment with the flow's vessel open at its ends (an inflow and a Windkessel at them)."""
     return point_experiment(opened=True)

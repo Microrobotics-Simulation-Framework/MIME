@@ -22,13 +22,17 @@ from mime.interactions.flow import BodyForce
 from mime.mappings import gaussian_mac
 from mime.nodes.flow.fvm import ImplicitFlowNode
 from mime.nodes.hydro._point_drag import AVERAGES, COUPLE, FAXEN_FORCES, FORCES, LAPLACIANS, ROTATIONS, PointDragNode
-from mime.scene import Capsule, PeriodicBox, Scene, Sphere, Tube, VesselRegion, Z
+from mime.scene import Capsule, PeriodicBox, Scene, Sphere, Tube, TubeTree, VesselRegion, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Pa_s, Pa_s_per_m3, kg, kg_m2, kg_per_m3, m3_per_Pa, m_per_s, m_per_s2, mL_per_s, mm, rad_per_s, s, \
     um
 
 WATER_MU, WATER_RHO = 1e-3, 1e3
 TUBE_RADIUS = 0.5e-3
+#: A tube tree narrowing to 0.8 of its radius over half its 1 mm period and back (``tests/flow/
+#: test_fvm_tree_declaration.py``'s), its parent reaching past both ends.
+NARROWING = dict(points=mm((0.0, 0.0, -0.5, 0.0, 0.0, 0.25, 0.0, 0.0, 0.5, 0.0, 0.0, 0.75, 0.0, 0.0, 1.5)),
+                 segments=((0, 1), (1, 2), (2, 3), (3, 4)), radii=mm((0.5, 0.5, 0.5, 0.4, 0.4, 0.5, 0.5, 0.5)))
 
 
 def plant(name: str) -> str:
@@ -131,15 +135,16 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
                      drive: float = 1.0, mass_ratio: float = 1.0, one_way: bool = False, steady: bool = False,
                      kernel_width: float | None = None, scheme: str = "", flow: bool = True,
                      hull: str = "sphere", viscosity: float = WATER_MU, self_history: str | None = None,
-                     opened: bool = False) -> Experiment:
+                     opened: bool = False, tree: bool = False) -> Experiment:
     """A point sphere of ``radius`` (m) ``offset`` (m) off a straight tube's axis, in water whose flow is the FVM
     (Stokes, IMEX Euler or its steady limit, or ``scheme="rk3"``) driven along the axis by a uniform ``drive``
     (m/s^2); ``flow=False`` leaves the medium at rest with no field, ``hull="capsule"`` gives the body a capsule,
     ``opened=True`` opens the vessel at its ends (an inflow at its start, a Windkessel at its end) in place of the
-    periodic box and its drive."""
+    periodic box and its drive; ``tree=True`` makes the vessel a tube tree narrowing over its period."""
     exp = Experiment("point_body", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(dt))
-    exp.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(TUBE_RADIUS * 1e3),
-                                                      wall=mm(0.1), length=mm(4.0))))
+    geometry = TubeTree(**NARROWING) if tree else Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(TUBE_RADIUS * 1e3),
+                                                       wall=mm(0.1), length=mm(4.0))
+    exp.add_structure(Structure("tube", geometry=geometry))
     chosen = Scheme.RK3() if scheme == "rk3" else Scheme.Steady() if steady else Scheme.IMEXEuler()
     domain = VesselRegion(margin=4) if opened else PeriodicBox(length=mm(1.0))
     fields = {"flow": FVM(domain=domain, stokes=True, cells_across=cells_across, scheme=chosen)} if flow else {}

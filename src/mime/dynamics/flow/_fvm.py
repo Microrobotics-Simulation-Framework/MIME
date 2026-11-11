@@ -477,6 +477,12 @@ class FVM(Dynamics):
         else, and their rows are well posed (``mime.nodes.flow.fvm._ports.well_posed``). A point body's exchange
         registration (``Drag.Stokes``) is no law at an opening, and an open vessel takes none yet."""
         partners = [r for r in registrations if r.kind == EXCHANGE_PARTNER]
+        if partners and region is not None and region.shape == TREE:
+            return [Problem("flow.tree-exchange", f"{', '.join(r.id for r in partners)} exchanges with the flow, and a "
+                                                  f"tube tree's flow takes no exchange partners yet (the exchange law "
+                                                  f"reads its grid from a straight tube's periodic box or open vessel)",
+                            "put the body in a straight Tube's flow, FVM(domain=PeriodicBox(length=...)), or give it a "
+                            "drag that reads no grid, Drag.MRS(...)")]
         if self.open and partners:
             return [Problem("flow.open-exchange", f"{', '.join(r.id for r in partners)} exchanges with the flow, and an "
                                                   f"open vessel's flow takes no exchange partners yet (a point body's "
