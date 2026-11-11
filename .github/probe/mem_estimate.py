@@ -8,6 +8,8 @@ killed by memory).
 
     python .github/probe/mem_estimate.py --case module:function [--path DIR] [--arg name=value]... [--dtype float32]
         [--steps 10] [--wrt node.leaf]... [--history N] [--output-json FILE] [--require actions|local]
+    python .github/probe/mem_estimate.py --raw module:function [--path DIR] [--arg name=value]... [--dtype float32]
+        [--output-json FILE] [--require actions|local]
     python .github/probe/mem_estimate.py --from-file probe/estimate.txt --arm "$PROBE_ARM" --require actions
 
 ``--case`` is a factory returning an ``Experiment`` or a built experiment (as ``node_measure.py`` takes it). The estimate is
@@ -21,7 +23,18 @@ killed by memory).
 * with the nodes' **own estimates** where a node has one (``memory_estimate()``, past the fixed part);
 * the **fixed part** of a process (the interpreter, JAX and MIME imported, about 0.7 GiB).
 
-The estimate is the largest of the build's peak and the run's (resident set after the build plus the program's bytes), and
+**The raw-program route.** An arm that runs a raw JAX program (a jitted function, not an experiment) names it with ``--raw``
+instead: ``module:function`` is a factory that returns ``(function, arguments)``, the function a jitted one with its static
+arguments bound (``functools.partial``) and ``arguments`` a tuple of arrays or ``jax.ShapeDtypeStruct``s. Its estimate is
+XLA's compiled memory analysis of that function on the arguments' shapes (``jax.jit(function).lower(*arguments).compile()
+.memory_analysis()``: arguments, outputs, temporaries, less what aliases, plus code), added to the process's resident set
+after the factory returns; the factory's own peak is the other candidate, and the larger is the estimate. The printed line
+says ``estimate route: raw program``; there is no node, so no family and no node estimate, and nothing is declared per arm
+beyond the factory and its ``--arg``s. It is multiplied by the factor of the family ``raw_program`` (mode ``program``) of
+``mem_calibration.json``, which rests on the cases the table holds for it (one, when it was added): a raw program of a
+shape the table has not seen is bounded no better than that, and the printed line says how many cases there are.
+
+For an experiment the estimate is the largest of the build's peak and the run's (resident set after the build plus the program's bytes), and
 of the nodes' own. In reverse mode the program is the larger of the checkpointed run (MIME's ``differentiated_run``) and the
 plain chunk (``--plain`` or ``--checkpointed`` choose one). **It is multiplied by a calibration factor** of
 ``mem_calibration.json`` before the route is read, **per family of nodes and per mode** (forward or reverse): the graph's
@@ -77,6 +90,8 @@ FIXED_GIB = 0.7
 ACTIONS_GIB = 12.0
 LOCAL_GIB = 48.0
 ROUTES = ("actions", "local", "modal")
+#: The raw-program route's family and mode in ``mem_calibration.json`` (no node belongs to it: a raw program has none).
+RAW_FAMILY, RAW_MODE = "raw_program", "program"
 CALIBRATION = Path(__file__).with_name("mem_calibration.json")
 #: No family's factor goes under this: the estimator's own noise (the fixed part alone varies 0.65 to 0.73 GiB) is of that order.
 MIN_FACTOR = 1.10
@@ -267,10 +282,46 @@ def estimate_case(arguments: argparse.Namespace) -> dict[str, Any]:
     return {
         "case": arguments.case, "args": parse_arguments(arguments.arg), "steps": arguments.steps, "dtype": arguments.dtype,
         "wrt": arguments.wrt, "history_steps": arguments.history, "mode": "reverse" if arguments.wrt else "forward",
-        "families": families, "nodes_of_no_family": unknown,
+        "estimate_route": "experiment", "families": families, "nodes_of_no_family": unknown,
         "program_bytes": parts, "state_bytes": nbytes(state), "history_bytes": history,
         "rss_before_build_gib": started_kib / 2**20, "rss_after_build_gib": after_build_kib / 2**20,
         "build_peak_gib": build_peak_kib / 2**20, "node_estimates_gib": {k: v / GIB for k, v in own.items()},
+        "candidates_gib": {k: v / GIB for k, v in candidates.items()}, "dominant": largest,
+        "estimate_gib": max(candidates.values()) / GIB,
+        "estimator_peak_gib": kib_of("VmHWM") / 2**20,
+    }
+
+
+def estimate_raw(arguments: argparse.Namespace) -> dict[str, Any]:
+    """The estimate of a raw JAX program, in GiB, from XLA's compiled memory analysis of it on its arguments' shapes
+    (nothing is run). ``--raw module:function`` is a factory returning ``(function, arguments)``. Run it in its own process."""
+    import jax
+
+    jax.config.update("jax_enable_x64", arguments.dtype == "float64")
+    if arguments.path:
+        sys.path.insert(0, str(Path(arguments.path).resolve()))
+    module, _, name = arguments.raw.partition(":")
+    factory = getattr(importlib.import_module(module), name)
+    started_kib = kib_of("VmRSS")
+    made = factory(**parse_arguments(arguments.arg))
+    if not (isinstance(made, tuple) and len(made) == 2 and callable(made[0]) and isinstance(made[1], (tuple, list))):
+        raise SystemExit(f"mem_estimate: --raw {arguments.raw} must return (function, arguments): a callable and a tuple of "
+                         f"arrays or jax.ShapeDtypeStructs")
+    function, program_arguments = made
+    after_factory_kib = kib_of("VmRSS")
+    factory_peak_kib = kib_of("VmHWM")
+    parts = program_bytes(function, *[abstract(item) for item in program_arguments])
+    table = calibration()
+    candidates = {"factory peak": factory_peak_kib * 1024,
+                  "run (resident after the factory + the program's bytes)": after_factory_kib * 1024 + parts["total"]}
+    largest = max(candidates, key=lambda key: candidates[key])
+    return {
+        "case": f"raw {arguments.raw}", "args": parse_arguments(arguments.arg), "steps": None, "dtype": arguments.dtype,
+        "wrt": [], "history_steps": 0, "mode": RAW_MODE, "estimate_route": "raw program",
+        "families": [RAW_FAMILY] if RAW_FAMILY in table.get("families", {}) else [], "nodes_of_no_family": [],
+        "program_bytes": {"raw program": parts}, "state_bytes": 0, "history_bytes": 0,
+        "rss_before_build_gib": started_kib / 2**20, "rss_after_build_gib": after_factory_kib / 2**20,
+        "build_peak_gib": factory_peak_kib / 2**20, "node_estimates_gib": {},
         "candidates_gib": {k: v / GIB for k, v in candidates.items()}, "dominant": largest,
         "estimate_gib": max(candidates.values()) / GIB,
         "estimator_peak_gib": kib_of("VmHWM") / 2**20,
@@ -288,15 +339,21 @@ def judge(found: dict[str, Any]) -> dict[str, Any]:
 
 
 def describe(found: dict[str, Any]) -> str:
-    lines = [f"mem_estimate: {found['case']} {found['args'] or ''} {found['dtype']}, {found['steps']} steps"
-             + (f", reverse in {', '.join(found['wrt'])}" if found["wrt"] else ", forward")]
+    raw = found.get("estimate_route") == "raw program"
+    lines = [f"mem_estimate: {found['case']} {found['args'] or ''} {found['dtype']}"
+             + (", compiled program" if raw else f", {found['steps']} steps"
+                + (f", reverse in {', '.join(found['wrt'])}" if found["wrt"] else ", forward"))]
+    if raw:
+        lines.append("  estimate route: raw program (XLA's compiled memory analysis of the function on its arguments' shapes: "
+                     "arguments, outputs, temporaries, less what aliases)")
     for kind, parts in found["program_bytes"].items():
         if kind == "reverse":
             continue
         lines.append(f"  {kind} program (XLA, compiled not run): {parts['total'] / GIB:.2f} GiB "
                      f"(temporaries {parts['temp'] / GIB:.2f}, arguments {parts['argument'] / GIB:.2f}, "
-                     f"outputs {parts['output'] / GIB:.2f})")
-    lines.append(f"  host: {found['rss_after_build_gib']:.2f} GiB resident after the build (peak {found['build_peak_gib']:.2f})"
+                     f"outputs {parts['output'] / GIB:.2f}, aliased {parts['alias'] / GIB:.2f})")
+    lines.append(f"  host: {found['rss_after_build_gib']:.2f} GiB resident after the {'factory' if raw else 'build'} "
+                 f"(peak {found['build_peak_gib']:.2f})"
                  + (f", history {found['history_bytes'] / GIB:.2f} GiB" if found["history_bytes"] else ""))
     for name, value in found["node_estimates_gib"].items():
         lines.append(f"  node {name}'s own estimate: {value:.2f} GiB (with the fixed part)")
@@ -370,7 +427,9 @@ def from_file(path: Path, arm: str, require: str | None, arms: list[str] | None 
             "bound_gib": max([f["bound_gib"] for f in found_lines] or [0.0]),
             "families": sorted({fam for f in found_lines for fam in f["families"]}),
             "uncalibrated": any(f["nodes_of_no_family"] or not f["families"] for f in found_lines),
-            "mode": "reverse" if any(f["mode"] == "reverse" for f in found_lines) else "forward",
+            "mode": ("reverse" if any(f["mode"] == "reverse" for f in found_lines)
+                     else RAW_MODE if found_lines and all(f["mode"] == RAW_MODE for f in found_lines) else "forward"),
+            "estimate_routes": sorted({f.get("estimate_route", "experiment") for f in found_lines}),
             "calibration_factor": max([f["calibration_factor"] for f in found_lines] or [0.0]),
             "cases": [{k: f[k] for k in ("case", "args", "mode", "families", "estimate_gib", "bound_gib", "calibration_factor",
                                          "calibration_basis", "nodes_of_no_family")} for f in found_lines],
@@ -449,6 +508,8 @@ def _main(argv: list[str] | None = None) -> int:
         argv, command = argv[:split], argv[split + 1:]
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--case", help="module:function returning an Experiment (or a built one)")
+    parser.add_argument("--raw", help="module:function returning (function, arguments): a raw JAX program, estimated from "
+                                      "XLA's compiled memory analysis (instead of --case)")
     parser.add_argument("--path", help="a directory to put on sys.path before importing the case")
     parser.add_argument("--arg", action="append", default=[], help="name=value for the factory (JSON value, else string)")
     parser.add_argument("--dtype", choices=("float32", "float64"), default="float64")
@@ -479,9 +540,9 @@ def _main(argv: list[str] | None = None) -> int:
         if arguments.arms_file is not None and arguments.arms_file.exists():
             arms = [line.strip() for line in arguments.arms_file.read_text(encoding="utf-8").splitlines() if line.strip()]
         return from_file(arguments.from_file, arguments.arm, arguments.require, arms, arguments.summary_json)
-    if not arguments.case:
-        parser.error("give --case or --from-file")
-    found = judge(estimate_case(arguments))
+    if bool(arguments.case) == bool(arguments.raw):
+        parser.error("give one of --case, --raw or --from-file")
+    found = judge(estimate_raw(arguments) if arguments.raw else estimate_case(arguments))
     print(describe(found))
     if arguments.output_json is not None:
         arguments.output_json.parent.mkdir(parents=True, exist_ok=True)
