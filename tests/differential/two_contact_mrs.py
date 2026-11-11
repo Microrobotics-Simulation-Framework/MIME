@@ -5,7 +5,11 @@ force spacing and blob with the hand-over off (drag 0.5.0's mrs rung, the tube's
 (above 0.75 of its spacing). A finer model of the same family: the gate it serves bounds the coarse rung's two-contact
 composition against it and says nothing about hardware. Not collected; run from the repository's root:
 
-    python tests/differential/two_contact_mrs.py <spacing_mm> <blob> <out.json> <h1_mm,h2_mm> [...]
+    python tests/differential/two_contact_mrs.py across <spacing_mm> <blob> <out.json> <h1_mm,h2_mm> [...]
+    python tests/differential/two_contact_mrs.py floor <spacing_mm> <blob> <out.json>
+
+``floor`` is the separating case (``lubrication_cases.floor_body``): an ellipsoid flatter than the wall lying across
+the tube's floor, two contacts on one side, each row of ``FLOOR_ROWS`` (two contacts closed; one closed).
 
 Each row: the 6 x 6 about the body's centre in SI, the gaps and the least scaled eigenvalue; the file the force
 points' and the quadrature's counts."""
@@ -24,15 +28,17 @@ def main() -> None:
     import jax
 
     jax.config.update("jax_enable_x64", True)
-    from lubrication_cases import across, across_tube, stepper
+    from lubrication_cases import FLOOR_ROWS, across, across_tube, floor_body, on_floor, stepper
 
-    spacing, blob, out, pairs = float(sys.argv[1]) * 1e-3, float(sys.argv[2]), Path(sys.argv[3]), sys.argv[4:]
+    case = sys.argv[1]
+    spacing, blob, out, pairs = float(sys.argv[2]) * 1e-3, float(sys.argv[3]), Path(sys.argv[4]), sys.argv[5:]
     start = time.perf_counter()
-    node, state, leaves, step = stepper(across_tube(spacing, False, blob).build())
+    made = across_tube if case == "across" else floor_body
+    node, state, leaves, step = stepper(made(spacing, False, blob).build())
     rows = {}
-    for pair in pairs:
+    for pair in pairs or (sorted(FLOOR_ROWS) if case == "floor" else []):
         h1, h2 = (float(v) * 1e-3 for v in pair.split(","))
-        found = step(across(h1, h2), leaves)
+        found = step(across(h1, h2) if case == "across" else on_floor(pair), leaves)
         rows[pair] = {"resistance": np.asarray(found["resistance"]).tolist(), "h1": h1, "h2": h2,
                       "least_eigenvalue": float(found["least_eigenvalue"])}
         print(pair, rows[pair]["least_eigenvalue"], flush=True)

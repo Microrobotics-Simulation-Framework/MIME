@@ -1,0 +1,35 @@
+{
+  "written": "2026-11-11, committed before the separating case's reference or gate ran (the commit that adds this file is the timestamp): gate 5 at a case that discriminates and separates the causes (the coordinator's word)",
+  "phase": "W2a PR 1b-ii-a, gate 5 again: several contacts on one body at a discriminating, separating case",
+  "labels": "the builder's, from the multi-contact spike's numbers (BRIEF_W2A gate 5: the per-contact lift as accurate with two contacts as with one, non-additivity 0.1 to 0.4 %; 'one at a time' and S4's subtraction 56 to 630 % off and indefinite with two contacts closed below about half a spacing) and from this PR's first gate 5 case (the lift 13 and 16 % off at the far-side, window-edge case, where two controls could not discriminate). Not run.",
+  "seen_before": [
+    "this PR's first gate 5 case (ellipsoid (0.95, 0.65, 0.65) mm across a 1 mm tube, coarse s 0.088 mm, gaps 0.45 to 0.68 of it): lift 16.0 / 13.1 %, one at a time 11.7 / 11.4 %, subtraction 5.5 / 5.2 %, per-body lift 304 / 316 % against a finer MRS (s 0.05 mm, blob 0.1)",
+    "the design script (the node's own search at the pose, blob 0.25): an ellipsoid (1.3, 0.5, 1.6) mm lying across a 2 mm tube's floor touches it at two points (x = -1.15 and +1.15 mm), the gap's curvatures 1.03 and 0.34 /mm (radii 0.97 and 2.95 mm), the far side off, both contacts classed point"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "the laptop's heavy slot (the reference, through the probe launcher's local route under its cap) and the gate's coarse builds",
+    "sizes_and_parameters": "an ellipsoid of semi-axes (1.3, 0.5, 1.6) mm lying across the floor of a straight tube of radius 2 mm (long axis across, shortest up), drag 0.5.0's mrs rung at a force spacing of 0.13 mm (hand-over gap 0.0975 mm, 0.10 of the contacts' smaller radius, inside the window), blob 0.05, roughness 1 nm; gaps of the -x and +x contacts (0.05, 0.05) and (0.05, 0.045) mm, 0.38 and 0.35 of the coarse spacing; one-contact rows (0.35, 0.05) and (0.35, 0.045); the reference MIME's MRS at 0.06 mm and blob 0.1, the hand-over off, resolving gaps from 0.045 mm",
+    "seeds_and_draws": "none: the poses are fixed, the controls deterministic"
+  },
+  "gate_5_additivity": {
+    "claim": "the several-contact law adds no error of its own: the two-contact lift's error against the finer MRS equals the sum of its two contacts' one-contact errors (each at its own gap, the other contact 0.35 mm off), every entry on sqrt(R_ii R_jj)",
+    "kind": "bounds against a finer model of the same family (never hardware)",
+    "case": "tests/oracles/test_elliptic_gates.py::test_gate5_separating_two_contacts_add_their_one_contact_errors_and_each_control_fails",
+    "prediction": {"band": [0.0, 0.03], "unit": "worst entry of (two-contact error) - (sum of one-contact errors)", "basis": "derived", "why": "the spike's non-additivity 0.1 to 0.4 %, plus the one-contact rows' contacts sitting on the body a little apart from the two-contact rows' (the body translated to open the other contact) and the reference's own difference between poses, about 1 to 2 %"},
+    "metric": "additivity, which separates the law's composition from the form's own one-contact error",
+    "control": {"plant": "one_at_a_time (each contact opened alone, the coarse MRS at the actual gaps), subtraction (S4's route b: the coarse MRS at the actual gaps plus each contact's one-contact correction), per_body_lift (the body moved off the nearer contact)", "environment_variable": "W2A_PLANT", "expected_rate": "N/N each: additivity past 0.15 (five times the line), or indefinite, or unformable", "clean_expected": "0/N"},
+    "if_wrong": "additivity past 3 % with the controls failing: the law composes contacts with an error of its own (the soft least gap, the shares, the collateral opening); controls passing: the case does not discriminate either, and the gaps go lower",
+    "cannot_discriminate_if": "the coarse MRS at the actual gaps is regular there (it was at 0.45 to 0.68 spacings), so 'one at a time' and the subtraction stay near the lift"
+  },
+  "gate_5_errors": {
+    "claim": "the two-contact and one-contact lifts' own errors against the finer MRS, reported (the elliptic form inside its window and the coarse MRS at the hand-over gap)",
+    "kind": "estimates",
+    "prediction": {"band": [0.0, 0.15], "unit": "worst entry on sqrt(R_ii R_jj)", "basis": "measured-before (the spheroids' graded rows at 0.075 b, entries up to 17 %; the coarse MRS's normal 3 to 6 % at the hand-over gap)"}
+  },
+  "first_case": {
+    "claim": "the first case's misses (16.0 and 13.1 % against the committed 10 %) are, as hypotheses, (a) the elliptic form at its window's edge and (b) the lumen dilated about a body filling 95 % of its diameter (handover_far_side); the separating case has neither, so its one-contact errors and its additivity say which",
+    "prediction": "(a) and (b) not separable from the first case alone; if the separating case's additivity holds and its errors fall under 10 %, the first case's miss was its window's edge or its far side, not the composition"
+  },
+  "outcomes": null
+}

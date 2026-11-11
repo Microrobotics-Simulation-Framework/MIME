@@ -102,6 +102,30 @@ def across_tube(spacing: float, near_contact: bool | None, blob: float = ACROSS_
                    kind=Ellipsoid(semi_axes=m(ACROSS_AXES)), name="ellipsoid_across")
 
 
+#: Gate 5's separating case: an ellipsoid flatter than the tube's wall lying across its floor (its long axis along x,
+#: across the tube, its shortest along y, up), touching the wall at two points on the same side, its width along each
+#: contact's normal under FAR_SIDE_FILL of the diameter; the tube's radius TUBE. Its rows: the gaps (mm) of its -x and +x
+#: contacts and the centre (m) that gives them (solved on its cross-section z = 0, which holds the deepest points): two
+#: contacts closed, and one closed with the other 0.35 mm off, past twice the opening's band.
+FLOOR_AXES = (1.3e-3, 0.5e-3, 1.6e-3)
+FLOOR_ROWS = {"0.05,0.05": (0.0, -1.341641e-3), "0.05,0.045": (4.246e-6, -1.344730e-3),
+              "0.35,0.05": (0.227326e-3, -1.133789e-3), "0.35,0.045": (0.234479e-3, -1.133254e-3)}
+
+
+def on_floor(row: str) -> Any:
+    """The pose of gate 5's separating case at ``row`` (:data:`FLOOR_ROWS`)."""
+    x, y = FLOOR_ROWS[row]
+    return jnp.asarray((x, y, 0.0, 1.0, 0.0, 0.0, 0.0))
+
+
+def floor_body(spacing: float, near_contact: bool | None, blob: float = ACROSS_BLOB) -> Experiment:
+    """Gate 5's separating case at a force ``spacing`` (m) and ``blob``, the hand-over on, off or unwritten."""
+    from mime.scene import Ellipsoid
+
+    return in_tube(spacing / RADIUS, blob=blob, lubrication=near_contact, kind=Ellipsoid(semi_axes=m(FLOOR_AXES)),
+                   name="ellipsoid_on_floor")
+
+
 def drag_node(built: BuiltExperiment) -> MRSDragNode:
     node = built.graph.get_node("drag:ball")
     assert isinstance(node, MRSDragNode), type(node)

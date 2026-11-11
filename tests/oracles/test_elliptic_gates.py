@@ -30,13 +30,26 @@ import hashlib
 import json
 import math
 import os
+from typing import Any
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from lubrication_cases import RADIUS, VISCOSITY, above_plane, across, across_tube, compared, planted, stepper
+from lubrication_cases import (
+    FLOOR_ROWS,
+    RADIUS,
+    VISCOSITY,
+    above_plane,
+    across,
+    across_tube,
+    compared,
+    floor_body,
+    on_floor,
+    planted,
+    stepper,
+)
 
 from mime.core import as_run_array
 from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS, handed_over
@@ -334,3 +347,137 @@ def test_gate8_two_contacts_forward_and_reverse_equal_the_difference():
     for gap, name, reverse, forward, difference, scale in found:
         print(f"\nh1/a {gap} {name}: reverse {reverse:.10g} forward {forward:.10g} difference {difference:.10g}")
         assert abs(reverse - difference) <= 1e-5 * scale and abs(forward - difference) <= 1e-5 * scale, (gap, name)
+
+
+# -- gate 5, the separating case -------------------------------------------------------------------------------------
+
+FLOOR = REFERENCES / "ellipsoid_on_floor_mrs.json"
+#: The separating case's coarse force spacing (m): the hand-over gap 0.0975 mm, 0.10 of the contacts' smaller radius of
+#: curvature (0.97 mm), inside the form's window; the gaps 0.045 and 0.05 mm, 0.35 and 0.38 of the spacing.
+FLOOR_COARSE = 0.13e-3
+#: The several-contact law's line (predictions_w2a_1b2_gate5.json): the two-contact lift's error less the sum of its two
+#: contacts' one-contact errors, each entry on ``sqrt(R_ii R_jj)``; a control fails past CONTROL_FACTOR times it.
+ADDITIVITY_LINE = 0.03
+CONTROL_FACTOR = 5.0
+#: The mirror x -> -x on a twist: vectors (-x, y, z), rotations (x, -y, -z).
+MIRROR = np.diag([-1.0, 1.0, 1.0, 1.0, -1.0, -1.0])
+TWO = ("0.05,0.05", "0.05,0.045")
+
+
+def floor_rows() -> dict:
+    return {row: np.asarray(value["resistance"]) for row, value in json.loads(FLOOR.read_text())["rows"].items()}
+
+
+def distinct_contacts(node, leaves, pose) -> tuple[list, Any, float, float, Any]:
+    """The node's distinct near contacts within twice the band at ``pose``: their slots, the found contacts, the hand-over
+    gap, the body's size and the cutoff."""
+    wall = node._wall()
+    constants = {name: leaves.get(f"wall_{name}", node.constants()[f"wall_{name}"]) for name in wall.parameters}
+    points = node._sampling.samples(node._kind, node._kind_parameters(leaves)).points
+    found = handed_over(node._search, node._kind, node._kind_parameters(leaves), points, as_run_array(pose), wall,
+                        constants, leaves, leaves["viscosity"], node.near_contact_form)
+    reach = float(np.max(np.linalg.norm(np.asarray(points), axis=-1)))
+    held = found.contacts.contacts
+    slots: list[int] = []
+    for k in range(found.contacts.merged.shape[0]):
+        point = np.asarray(held.point[k])
+        if float(held.gap[k]) < 2.0 * float(found.handover) and \
+                all(np.linalg.norm(point - np.asarray(held.point[j])) > 0.05 * reach for j in slots):
+            slots.append(k)
+    return slots, held, float(found.handover), reach, found.cutoff
+
+
+def floor_forms(lifted, coarse) -> dict[str, dict[str, np.ndarray | None]]:
+    """At each two-contact row: the lift and the three controls (6 x 6 in SI, or ``None`` where unformable), and the
+    one-contact rows' lift and coarse MRS."""
+    node, _, leaves, step = lifted
+    _, _, cleaves, cstep = coarse
+    lift = {row: np.array(step(on_floor(row), leaves)["resistance"]) for row in FLOOR_ROWS}
+    alone = {row: np.array(cstep(on_floor(row), cleaves)["resistance"]) for row in FLOOR_ROWS}
+    viscosity = leaves["viscosity"]
+
+    def own(contact: Any, delta: float, centre: Any, reach: float, cutoff: Any) -> np.ndarray:
+        return np.asarray(increment(node.near_contact_form, contact, jnp.asarray(delta), cutoff, viscosity, centre,
+                                    jnp.asarray(reach)).resistance)
+
+    def one_contact(gap: str, mirrored: bool) -> np.ndarray:
+        correction = lift[f"0.35,{gap}"] - alone[f"0.35,{gap}"]
+        return MIRROR @ correction @ MIRROR if mirrored else correction
+
+    out: dict[str, dict[str, np.ndarray | None]] = {}
+    for row in TWO:
+        pose = on_floor(row)
+        slots, held, handover, reach, cutoff = distinct_contacts(node, leaves, pose)
+        assert len(slots) == 2, (row, slots)
+        true = alone[row]
+        one_at_a_time = true.copy()
+        for k in slots:
+            contact = jax.tree_util.tree_map(lambda v: v[k], held)
+            delta = float(opening(jnp.asarray(float(held.gap[k])), jnp.asarray(handover)))
+            outward = -np.asarray(held.frame[k][2])
+            # this contact's wall moved out by delta, the tube translated (one surface: the other contact's wall moves
+            # by delta times the cosine between their normals, about a third of it here)
+            moved = {**cleaves, "wall_centre": jnp.asarray(cleaves["wall_centre"]) + jnp.asarray(outward * delta)}
+            one_at_a_time += np.array(cstep(pose, moved)["resistance"]) - true + own(contact, delta, pose[:3], reach,
+                                                                                    cutoff)
+        left, right = row.split(",")
+        subtraction = true + one_contact(right, False) + one_contact(left, True)
+        gaps = {k: float(held.gap[k]) for k in slots}
+        nearer = min(slots, key=gaps.__getitem__)
+        move = max(0.0, handover - gaps[nearer])
+        moved_pose = pose.at[:3].add(jnp.asarray(np.asarray(held.frame[nearer][2]) * move))
+        moved_slots, moved_held, *_ = distinct_contacts(node, leaves, moved_pose)
+        per_body: np.ndarray | None = np.array(cstep(moved_pose, cleaves)["resistance"])
+        for k in slots:
+            point = np.asarray(held.point[k])
+            j = min(moved_slots, key=lambda i: float(np.linalg.norm(np.asarray(moved_held.point[i]) - point)))
+            after = float(moved_held.gap[j])
+            if after <= 0.0:
+                per_body = None
+                break
+            contact = jax.tree_util.tree_map(lambda v: v[k], held)
+            per_body = per_body + own(contact, after - gaps[k], pose[:3], reach, cutoff)
+        out[row] = {"lift": lift[row], "one_at_a_time": one_at_a_time, "subtraction": subtraction,
+                    "per_body_lift": per_body}
+    out["one_contact"] = {row: lift[row] for row in FLOOR_ROWS if row.startswith("0.35")}
+    return out
+
+
+def additivity(form: np.ndarray, reference: dict[str, np.ndarray], lift_one: dict[str, np.ndarray], row: str) -> float:
+    """How far a two-contact form's error at ``row`` is from the sum of its two contacts' one-contact errors, the worst
+    entry on ``sqrt(R_ii R_jj)``."""
+    left, right = row.split(",")
+    single = {gap: lift_one[f"0.35,{gap}"] - reference[f"0.35,{gap}"] for gap in (left, right)}
+    summed_errors = single[right] + MIRROR @ single[left] @ MIRROR
+    held = reference[row]
+    scale = np.sqrt(np.abs(np.outer(np.diag(held), np.diag(held))))
+    return float(np.max(np.abs((form - held) - summed_errors) / scale))
+
+
+@pytest.mark.memory_heavy
+def test_gate5_separating_two_contacts_add_their_one_contact_errors_and_each_control_fails():
+    """The separating case (``lubrication_cases.floor_body``): two contacts on one side, inside the form's window, the
+    far side off. The several-contact law's claim: the two-contact lift's error against the finer MRS is the sum of its
+    two contacts' one-contact errors (measured at the same gaps, the other contact 0.35 mm off), within ADDITIVITY_LINE;
+    each control (``W2A_PLANT``) misses that by more than CONTROL_FACTOR times it, or is indefinite or unformable."""
+    reference = floor_rows()
+    plant = os.environ.get("W2A_PLANT") or None
+    lifted, coarse = stepper(floor_body(FLOOR_COARSE, True).build()), stepper(floor_body(FLOOR_COARSE, False).build())
+    forms = floor_forms(lifted, coarse)
+    one = forms["one_contact"]
+    for row in sorted(one):
+        held = reference[row]
+        scale = np.sqrt(np.abs(np.outer(np.diag(held), np.diag(held))))
+        print(f"\none contact {row} mm: worst entry {float(np.max(np.abs(one[row] - held) / scale)):.4f}")
+    for row in TWO:
+        held = reference[row]
+        scale = np.sqrt(np.abs(np.outer(np.diag(held), np.diag(held))))
+        report = {name: (None if value is None else (round(float(np.max(np.abs(value - held) / scale)), 4),
+                                                    round(additivity(value, reference, one, row), 4), definite(value)))
+                  for name, value in forms[row].items()}
+        print(f"\ntwo contacts {row} mm (error, additivity, definite): {report}")
+    for row in TWO:
+        judged_form = forms[row][plant] if plant in forms[row] else forms[row]["lift"]
+        assert judged_form is not None, (row, plant, "cannot be formed")
+        assert definite(judged_form), (row, plant)
+        assert additivity(judged_form, reference, one, row) <= ADDITIVITY_LINE, (row, plant)
