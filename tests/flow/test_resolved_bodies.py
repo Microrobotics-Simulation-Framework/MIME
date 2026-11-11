@@ -158,8 +158,9 @@ def _ripple() -> tuple[float, float]:
     drags, slopes = [], []
     for offset in offsets:
         centre = held.centre + np.asarray((0.0, 0.0, offset * h))
-        drags.append(float(held.column(2, centre)[2]))
-        slopes.append(float(jax.grad(lambda z: held.column(2, jnp.asarray(centre).at[2].set(z))[2])(centre[2])))
+        drag, slope = jax.value_and_grad(lambda z: held.column(2, jnp.asarray(centre).at[2].set(z))[2])(centre[2])
+        drags.append(float(drag))
+        slopes.append(float(slope))
     mean = float(np.mean(drags))
     return (max(drags) - min(drags)) / mean, max(abs(slope) for slope in slopes) * h / mean
 
@@ -291,6 +292,7 @@ def test_an_open_vessel_takes_no_resolved_body_yet(float64):
 
 
 def test_a_tube_trees_flow_takes_no_resolved_body_yet(float64):
-    """A tube tree's node holds the tree's solid alone: a resolved body in its flow is refused, not dropped."""
+    """A tube tree's node holds the tree's solid alone: a resolved body in its flow is refused by name, naming the
+    straight tube and the MRS (without the refusal the build stopped on an entry defect, its reads unconnected)."""
     found = _refusals(r3_experiment(1.0, tree=True))
     assert "flow.tree-resolved" in found, found
