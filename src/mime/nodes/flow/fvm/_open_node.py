@@ -443,6 +443,10 @@ class OpenFlowNode(ImplicitFlowNode):
             opening_state=law_ended.astype(dtype),
             **{f"unit_{x}": (jnp.stack([unit[k] for unit in ports.units]) if ports.units else
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})
+        if self.porous_laws:
+            applied = operator(stage.shift)(stage.solved)
+            ended["porous_face_pressure"] = self.porous_face_pressures(p, grid, applied, _add(stage.rhs, ports.force)
+                                                                       ).astype(dtype)
         held = node_fields(ended)
         energy: dict[str, Array] = {}
         if self.metered:

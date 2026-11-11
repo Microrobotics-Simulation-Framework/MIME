@@ -595,15 +595,17 @@ class ImplicitFlowNode(MimeNode):
 
     def porous_face_pressures(self, p: Mapping[str, Any], grid: MACGrid, applied: Velocity,
                               rhs: Velocity) -> Array:
-        """Each porous region's mean pressure (Pa) on its two end faces, the plane ``L/2`` behind its centre along its
-        axis and the one ahead: the pressure recovered from the step's solution (``MACGrid.pressure_of`` of its
-        right-hand side less the operator applied to it, one fast solve), times the density, averaged over the
-        cells within the region's radius of its axis, interpolated linearly between the two cell layers that bracket
-        each plane. What a reading of the region's Darcy drop takes; mean-free over the box, so only differences mean
-        anything."""
+        """Each porous region's mean pressure (Pa) before and after it along its axis, on the planes a band's half width
+        outside its end faces (``L/2 + W/2`` from its centre), where its resistivity has gone: the pressure recovered
+        from the step's solution (``MACGrid.pressure_of`` of its right-hand side less the operator applied to it, one
+        fast solve), times the density, averaged over the cells within the region's radius of its axis,
+        interpolated linearly between the two cell layers that bracket each plane. Their difference is the drop a
+        Darcy reading of the region takes, its pressure's alone (a body force on the fluid drives it too); the
+        pressure is mean-free over the box, so only differences mean anything."""
         remainder = (rhs[0] - applied[0], rhs[1] - applied[1], rhs[2] - applied[2])
         pressure = as_run_array(p["density"]) * grid.pressure_of(remainder)
         points = grid.cell_points(pressure.dtype)
+        half = 0.5 * band_named(self.constants()["band"]).width * grid.spacing
         rows: list[Array] = []
         for region in self.porous_regions(p, grid):
             axis = jnp.asarray(region.axis, dtype=pressure.dtype)
@@ -614,8 +616,9 @@ class ImplicitFlowNode(MimeNode):
             # Within the radius by the squared distance (no root, so no derivative is undefined on the axis).
             within = ramp((region.radius * region.radius - across) / (2.0 * region.radius), grid.spacing)
             faces = []
-            for side in (-0.5, 0.5):
-                weight = within * jnp.maximum(1.0 - jnp.abs(along - side * region.length) / grid.spacing, 0.0)
+            for side in (-1.0, 1.0):
+                plane = side * (0.5 * region.length + half)
+                weight = within * jnp.maximum(1.0 - jnp.abs(along - plane) / grid.spacing, 0.0)
                 faces.append(jnp.sum(weight * pressure) / jnp.sum(weight))
             rows.append(jnp.stack(faces))
         return jnp.stack(rows)
@@ -758,6 +761,8 @@ class ImplicitFlowNode(MimeNode):
             solve_report=jnp.zeros(REPORT_SIZE, dtype=dtype), solve_report_sum=jnp.zeros(REPORT_SIZE, dtype=dtype),
             solve_flagged=z, cfl=z, stopped_at=jnp.asarray(-1, dtype=jnp.int32), stopped_cfl=z, lumen_flux=z,
             bypass_ratio=z, bypass_flagged=z, reynolds=z, reynolds_flagged=z, negative_resistivity=z)
+        if self.porous_laws:
+            common["porous_face_pressure"] = jnp.zeros((len(self.porous_laws), 2), dtype=dtype)
         return common
 
     @override
