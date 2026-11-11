@@ -232,9 +232,9 @@ def cross_loads(off_diagonal: Array, twists: Array) -> Array:
 OWN_BLOCKS = register(SolveSite(
     "near_field_own_blocks", "dense", "mime.nodes.hydro.near_field._contract.lagged_gain",
     nodes=("JointDragNode",),
-    exempt="six unknowns a body, factored on gradient-stopped values to read the lagged scheme's gain and amplification, "
-           "which the step judges and reports and its resistance never reads: a precision recipe has nothing to change "
-           "in the answer"))
+    exempt="six unknowns a body, factored on gradient-stopped values to read the lagged scheme's gain and amplification: "
+           "a judgement's input (the gain sets ``gain_stop``), not the resistance",
+    bound=6))
 
 
 def lagged_gain(own: Array, off_diagonal: Array, masses: Array, dt: float) -> Array:

@@ -3,23 +3,33 @@
 **What a walk finds.** Every equation of a traced step and of every program it holds (a ``jit``, a ``cond`` branch, a
 ``scan`` or ``while`` body, a ``custom_linear_solve``'s sub-programs), with the name stack it ran under: the stack of
 the equation joined to the stacks of the equations that hold it, since a ``jit`` traced once keeps its inner stack
-apart from its caller's. A solve primitive (``mime.core.solves.SOLVE_PRIMITIVES``) with no registered ``mime-solve``
-scope in that stack is a solve that went through no shared function; a scope no site is registered under is a name
-nobody registered. In a float64 run, every equation inside a registered scope is float64 (or complex128) in its
-operands and its results.
+apart from its caller's. A solve primitive (``mime.core.solves.SOLVE_PRIMITIVES``) is judged by its **innermost**
+``mime-solve`` scope: none is a solve that went through no shared function; a site whose kind does not own the primitive
+(``OWNED``) is a raw solve nested in another solve; an exempt site is also held to its declared size. A scope no site is
+registered under is a name nobody registered. In a float64 run, no equation of the step holds a floating value narrower
+than float64 (:func:`narrow_anywhere`), inside a solve's scope or outside it, except in the steps of a node kind that
+reaches a site declared ``narrower``.
 
-**The cases** (:func:`cases`): the node kinds the registry names, each as it is built for the gates that already
-trace them, a step as ``jax.make_jaxpr`` of the node's own ``advance``.
+**What it does not see.** A solve in a node kind no configuration traces; a solve written as a bare loop of matrix
+products (a Jacobi or Richardson ``fori_loop`` has no primitive of its own); an ``eigh``, which uses a matrix and does not
+solve one. ``tests/saved/test_solve_walk.py`` walks every registered node kind's step in the switch scan's configurations
+and fails for a registered kind that none traces.
 
-**The plants** (:data:`PLANTS`): a direct ``jnp.linalg.solve`` added to a node's step; a shared function bypassed for
-the raw solve; a downcast to float32 inside a registered solve. ``MIME_PLANT_SOLVE`` names one, and the clean tests then
-fail: the probe's detection rate is measured on that."""
+**The cases** (:func:`cases`): the six steps the plants are applied to and the clean walk is read on in both dtypes, each
+as it is built for the gates that already trace them, a step as ``jax.make_jaxpr`` of the node's own ``advance``.
+
+**The plants** (:data:`PLANTS`), each a way a solve could skip the seam: a direct solve added to a node's step (an LU, a
+least squares, a pseudo-inverse, a tridiagonal solve); a shared function bypassed for the raw solve; a raw solve nested
+in the conjugate gradient's operator, and a raw one written inside an exempt site's scope; a downcast inside a registered
+solve, in the Poisson transform among them; a float32 round trip completed in the caller before ``dense_solve`` or on its
+answer after it. ``MIME_PLANT_SOLVE`` names one, and the clean tests then fail: the probe's detection rate is measured on
+that."""
 
 from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,7 +37,7 @@ import jax
 import jax.numpy as jnp
 
 from mime.core import solves
-from mime.core.solves import SCOPE, SOLVE_PRIMITIVES, SOLVE_SITES
+from mime.core.solves import MATRIX_PRIMITIVES, OWNED, SCOPE, SOLVE_PRIMITIVES, SOLVE_SITES, SolveSite
 
 PLANT_VAR = "MIME_PLANT_SOLVE"
 _SCOPED = re.compile(rf"{re.escape(SCOPE)}\.([A-Za-z0-9_.]+)")
@@ -39,6 +49,13 @@ class Equation:
     stack: str
     scopes: tuple[str, ...]
     dtypes: frozenset[str]
+    #: The order of the system a matrix primitive holds (its first operand's last dimension), 0 for any other.
+    order: int = 0
+
+    @property
+    def innermost(self) -> str | None:
+        """The registered or unregistered site whose scope this equation sits closest inside."""
+        return self.scopes[-1] if self.scopes else None
 
 
 def _programs(equation: Any) -> Iterator[Any]:
@@ -56,20 +73,39 @@ def walk(jaxpr: Any, outer: str = "") -> Iterator[Equation]:
         floats = frozenset(
             str(v.aval.dtype) for v in (*equation.invars, *equation.outvars)
             if hasattr(getattr(v, "aval", None), "dtype") and jnp.issubdtype(v.aval.dtype, jnp.inexact))
-        yield Equation(equation.primitive.name, stack, tuple(_SCOPED.findall(stack)), floats)
+        first = getattr(equation.invars[0], "aval", None) if equation.invars else None
+        order = int(first.shape[-1]) if equation.primitive.name in MATRIX_PRIMITIVES and getattr(first, "shape", None) else 0
+        yield Equation(equation.primitive.name, stack, tuple(_SCOPED.findall(stack)), floats, order)
         for inner in _programs(equation):
             yield from walk(inner, stack)
 
 
-def unregistered(jaxpr: Any) -> list[str]:
-    """Each solve primitive outside every registered scope, and each scope nobody registered, as text."""
+def solve_problems(jaxpr: Any, sites: Mapping[str, SolveSite] | None = None) -> list[str]:
+    """What a program holds that the rule forbids, as text. Each solve primitive is judged by its **innermost** solve
+    scope, so that an enclosing scope is never a pass for what runs inside it:
+
+    - a solve primitive outside every scope: a solve that went through no shared function;
+    - a solve primitive its innermost site's kind does not own (a raw ``lu`` inside the conjugate gradient's operator);
+    - a solve inside an exempt site whose order is over the site's declared bound (a raw 30 x 30 inside the six-unknown
+      blocks' scope);
+    - a scope nobody registered."""
+    sites = SOLVE_SITES if sites is None else sites
     found: list[str] = []
     for equation in walk(jaxpr):
-        names = [name for name in equation.scopes if name not in SOLVE_SITES]
-        if names:
-            found.append(f"{equation.primitive} in the scope of {names}, which no module registered")
-        if equation.primitive in SOLVE_PRIMITIVES and not equation.scopes:
+        for name in equation.scopes:
+            if name not in sites:
+                found.append(f"{equation.primitive} in the scope of {name!r}, which no module registered")
+        if equation.primitive not in SOLVE_PRIMITIVES:
+            continue
+        site = sites.get(equation.innermost) if equation.innermost else None
+        if equation.innermost is None:
             found.append(f"{equation.primitive} outside every registered solve scope: {equation.stack!r}")
+        elif site is not None and equation.primitive not in OWNED[site.kind]:
+            found.append(f"{equation.primitive} inside {site.name!r} (kind {site.kind!r}), which owns only "
+                         f"{sorted(OWNED[site.kind])}: {equation.stack!r}")
+        elif site is not None and site.exempt and equation.order > site.bound:
+            found.append(f"{equation.primitive} of order {equation.order} inside the exempt site {site.name!r}, whose "
+                         f"bound is {site.bound}: {equation.stack!r}")
     return found
 
 
@@ -78,10 +114,22 @@ def sites_reached(jaxpr: Any) -> set[str]:
 
 
 def downcasts(jaxpr: Any, wide: str = "float64") -> list[str]:
-    """Each equation inside a registered solve scope that holds a floating value narrower than ``wide``."""
+    """Each equation inside a registered solve scope that holds a floating value narrower than ``wide``, except in the
+    scope of a site declared ``narrower`` by design."""
     narrow = {wide, "complex128"}
+    by_design = {name for name, site in SOLVE_SITES.items() if site.narrower}
     return [f"{equation.primitive} in {equation.scopes} holds {sorted(equation.dtypes - narrow)}"
-            for equation in walk(jaxpr) if equation.scopes and equation.dtypes - narrow]
+            for equation in walk(jaxpr)
+            if equation.scopes and equation.dtypes - narrow and equation.innermost not in by_design]
+
+
+def narrow_anywhere(jaxpr: Any, wide: str = "float64") -> list[str]:
+    """Each equation of a float64 run's step, inside a scope or not, that holds a floating value narrower than
+    ``wide``: a narrowing completed outside the solve (a round trip before ``dense_solve``, an answer rounded after it)
+    is seen as well as one inside."""
+    narrow = {wide, "complex128"}
+    return [f"{equation.primitive} holds {sorted(equation.dtypes - narrow)}: {equation.stack!r}"
+            for equation in walk(jaxpr) if equation.dtypes - narrow]
 
 
 # -- the cases ----------------------------------------------------------------------------------------------------------
@@ -150,6 +198,20 @@ def _downcast_dense(matrix: Any, rhs: Any) -> Any:
         return jnp.linalg.solve(matrix.astype(jnp.float32), rhs.astype(jnp.float32)).astype(matrix.dtype)
 
 
+def _round_trip(x: Any) -> Any:
+    return x.astype(jnp.float32).astype(x.dtype)
+
+
+def _rounded_before(matrix: Any, rhs: Any) -> Any:
+    """The caller rounds its operands through float32, and the shared function then sees float64."""
+    return solves.dense_solve(_round_trip(matrix), rhs)
+
+
+def _rounded_after(matrix: Any, rhs: Any) -> Any:
+    """The shared function's float64 answer, rounded through float32 by its caller."""
+    return _round_trip(solves.dense_solve(matrix, rhs))
+
+
 def _narrowed(solve: Callable[..., Any]) -> Callable[..., Any]:
     """``solve``'s answer rounded through float32, whatever it returns first (an array, or a pair or triple of them)."""
     def narrow(x: Any) -> Any:
@@ -169,6 +231,26 @@ def _patch(patch: Any, module: str, name: str, value: Any) -> None:
     patch.setattr(importlib.import_module(module), name, value)
 
 
+def _extra_solve(form: str, anchor: Any, order: int = 2) -> Any:
+    """A solve of ``form`` of the given order, tied to ``anchor`` (so that its operands are traced values), as a scalar
+    to add to something with a zero weight."""
+    dtype = anchor.dtype
+    matrix = jnp.eye(order, dtype=dtype) * (1.0 + 0.0 * jnp.sum(anchor))
+    ones = jnp.ones((order,), dtype=dtype)
+    if form == "solve":
+        found = jnp.linalg.solve(matrix, ones)
+    elif form == "lstsq":
+        found = jnp.linalg.lstsq(matrix, ones)[0]
+    elif form == "pinv":
+        found = jnp.linalg.pinv(matrix) @ ones
+    elif form == "tridiagonal":
+        zeros = jnp.zeros((order,), dtype=dtype)
+        found = jax.lax.linalg.tridiagonal_solve(zeros, jnp.diagonal(matrix), zeros, ones[:, None])[:, 0]
+    else:
+        raise ValueError(form)
+    return jnp.sum(found)
+
+
 def bypass_dense(patch: Any) -> None:
     """Both dense callers take ``jnp.linalg.solve`` raw, as a new solve written without the shared function would."""
     _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _raw)
@@ -179,6 +261,16 @@ def downcast_dense(patch: Any) -> None:
     """The dense helper's elimination run in float32 inside its own scope, whatever the run's dtype."""
     _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _downcast_dense)
     _patch(patch, "mime.nodes.flow.fvm._ports", "dense_solve", _downcast_dense)
+
+
+def rounded_before_dense(patch: Any) -> None:
+    _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _rounded_before)
+    _patch(patch, "mime.nodes.flow.fvm._ports", "dense_solve", _rounded_before)
+
+
+def rounded_after_dense(patch: Any) -> None:
+    _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _rounded_after)
+    _patch(patch, "mime.nodes.flow.fvm._ports", "dense_solve", _rounded_after)
 
 
 def downcast_cg(patch: Any) -> None:
@@ -193,36 +285,106 @@ def downcast_gmres(patch: Any) -> None:
     _patch(patch, "mime.nodes.hydro.near_field._gmres", "gmres", _narrowed(_gmres.gmres))
 
 
-def direct_solve_in_step(patch: Any) -> None:
-    """A direct ``jnp.linalg.solve`` in a node's step: every node's ``advance`` adds one to what it returns."""
-    import importlib
+def downcast_poisson(patch: Any) -> None:
+    """Both grid kinds' Poisson transform run on a float32 source inside its scope."""
+    from mime.nodes.flow.fvm._grid import POISSON_SITE, MACGrid
+    from mime.nodes.flow.fvm._open import OpenMACGrid
 
-    for module, cls in (("mime.nodes.flow.fvm._node", "ImplicitFlowNode"),
-                        ("mime.nodes.hydro.near_field._node", "JointDragNode")):
-        node_class = getattr(importlib.import_module(module), cls)
-        advance = node_class.advance
+    for grid in (MACGrid, OpenMACGrid):
+        def planted(self: Any, source: Any, _original: Any = grid.poisson) -> Any:
+            with solves.solving(POISSON_SITE):
+                return _original(self, source.astype(jnp.float32)).astype(source.dtype)
 
-        def planted(self: Any, *args: Any, _advance: Any = advance, **kwargs: Any) -> Any:
-            out = dict(_advance(self, *args, **kwargs))
-            key = next(k for k, v in out.items() if jnp.issubdtype(jnp.asarray(v).dtype, jnp.floating))
-            first = jnp.asarray(out[key])
-            ones = jnp.ones((2,), dtype=first.dtype)
-            extra = jnp.linalg.solve(jnp.eye(2, dtype=first.dtype) * (1.0 + 0.0 * jnp.sum(first)), ones)
-            out[key] = first + 0.0 * jnp.sum(extra)
-            return out
+        patch.setattr(grid, "poisson", planted)
 
-        patch.setattr(node_class, "advance", planted)
 
+def raw_poisson(patch: Any) -> None:
+    """The periodic grid's Poisson transform written without its scope: the same transform, as a new one written
+    without the seam would be."""
+    from mime.nodes.flow.fvm._grid import MACGrid
+
+    def planted(self: Any, source: Any) -> Any:
+        symbol = self._poisson_symbol(source.dtype)  # noqa: SLF001
+        solved = -jnp.fft.rfftn(source) / symbol
+        solved = solved.at[0, 0, 0].set(0.0)
+        return jnp.fft.irfftn(solved, s=source.shape).astype(source.dtype)
+
+    patch.setattr(MACGrid, "poisson", planted)
+
+
+def nested_in_cg(patch: Any) -> None:
+    """A raw 8 x 8 ``jnp.linalg.solve`` inside the conjugate gradient's operator, in the scope of the FVM's CG."""
+    from mime.nodes.flow.fvm import _solve
+
+    original = _solve.guarded_cg
+
+    def planted(operator: Any, b: Any, *args: Any, **kwargs: Any) -> Any:
+        x, report = original(operator, b, *args, **kwargs)
+        anchor = jax.tree_util.tree_leaves(x)[0]
+        return jax.tree_util.tree_map(lambda a: a + 0.0 * _extra_solve("solve", anchor, 8), x), report
+
+    _patch(patch, "mime.nodes.flow.fvm._solve", "guarded_cg", planted)
+
+
+def inside_exempt(patch: Any) -> None:
+    """A raw 30 x 30 solve written inside the near field's own-blocks scope, an exempt site of six unknowns."""
+    original = jnp.linalg.inv
+
+    def planted(a: Any) -> Any:
+        found = original(a)
+        return found + 0.0 * _extra_solve("solve", found, 30)
+
+    patch.setattr(jnp.linalg, "inv", planted)
+
+
+def direct_in_step(form: str) -> Callable[[Any], None]:
+    """A direct solve of ``form`` in a node's step: every node's ``advance`` adds one to what it returns."""
+    def apply(patch: Any) -> None:
+        import importlib
+
+        for module, cls in (("mime.nodes.flow.fvm._node", "ImplicitFlowNode"),
+                            ("mime.nodes.hydro.near_field._node", "JointDragNode")):
+            node_class = getattr(importlib.import_module(module), cls)
+            advance = node_class.advance
+
+            def planted(self: Any, *args: Any, _advance: Any = advance, **kwargs: Any) -> Any:
+                out = dict(_advance(self, *args, **kwargs))
+                key = next(k for k, v in out.items() if jnp.issubdtype(jnp.asarray(v).dtype, jnp.floating))
+                first = jnp.asarray(out[key])
+                out[key] = first + 0.0 * _extra_solve(form, first)
+                return out
+
+            patch.setattr(node_class, "advance", planted)
+
+    return apply
+
+
+type Plant = tuple[Callable[[Any], None], str, tuple[str, ...], str]
 
 DENSE_CASES = ("JointDragNode/dense", "OpenFlowNode/two openings")
-#: The plants by name: what applies it, the check that must catch it, and the cases whose programs it touches (each is
-#: caught on every one of them).
-PLANTS: dict[str, tuple[Callable[[Any], None], str, tuple[str, ...]]] = {
-    "bypass_dense": (bypass_dense, "unregistered", DENSE_CASES),
-    "direct_solve_in_step": (direct_solve_in_step, "unregistered", ("ImplicitFlowNode/steady", "JointDragNode/dense")),
-    "downcast_dense": (downcast_dense, "downcasts", DENSE_CASES),
-    "downcast_cg": (downcast_cg, "downcasts", ("ImplicitFlowNode/steady", "OpenFlowNode/two openings")),
-    "downcast_gmres": (downcast_gmres, "downcasts", ("JointDragNode/gmres",)),
+STEPS = ("ImplicitFlowNode/steady", "JointDragNode/dense")
+POISSON_CASES = ("ImplicitFlowNode/steady", "ExplicitFlowNode/rk3", "OpenFlowNode/two openings")
+#: The plants by name: what applies it, the check that must catch it (``problems``, ``downcasts`` or ``narrow``), the
+#: cases whose programs it touches (each is caught on every one of them), and the text its finding must hold (so that a
+#: plant is caught for the reason it is planted, not by another check).
+PLANTS: dict[str, Plant] = {
+    "bypass_dense": (bypass_dense, "problems", DENSE_CASES, "outside every registered solve scope"),
+    "direct_solve_in_step": (direct_in_step("solve"), "problems", STEPS, "outside every registered solve scope"),
+    "direct_lstsq_in_step": (direct_in_step("lstsq"), "problems", STEPS, "svd outside every registered solve scope"),
+    "direct_pinv_in_step": (direct_in_step("pinv"), "problems", STEPS, "svd outside every registered solve scope"),
+    "direct_tridiagonal_in_step": (direct_in_step("tridiagonal"), "problems", STEPS,
+                                   "tridiagonal_solve outside every registered solve scope"),
+    "raw_poisson": (raw_poisson, "problems", ("ImplicitFlowNode/steady", "ExplicitFlowNode/rk3"),
+                    "fft"),
+    "nested_in_cg": (nested_in_cg, "problems", ("ImplicitFlowNode/steady", "OpenFlowNode/two openings"),
+                     "inside 'fvm_cg' (kind 'cg'), which owns only"),
+    "inside_exempt": (inside_exempt, "problems", ("JointDragNode/dense",), "inside the exempt site 'near_field_own_blocks'"),
+    "downcast_dense": (downcast_dense, "downcasts", DENSE_CASES, "float32"),
+    "downcast_cg": (downcast_cg, "downcasts", ("ImplicitFlowNode/steady", "OpenFlowNode/two openings"), "float32"),
+    "downcast_gmres": (downcast_gmres, "downcasts", ("JointDragNode/gmres",), "float32"),
+    "downcast_poisson": (downcast_poisson, "downcasts", POISSON_CASES, "float32"),
+    "rounded_before_dense": (rounded_before_dense, "narrow", DENSE_CASES, "float32"),
+    "rounded_after_dense": (rounded_after_dense, "narrow", DENSE_CASES, "float32"),
 }
 
 

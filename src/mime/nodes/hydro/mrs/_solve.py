@@ -37,7 +37,7 @@ from typing import Any
 from jax import Array
 
 from mime.core import jnp
-from mime.core.solves import SolveSite, register
+from mime.core.solves import SolveSite, register, solving
 
 #: Matrix products here, and the node's placement of the samples, are taken at full precision: on a GPU the default is
 #: a reduced one (TF32), which the 0.2 line found moved its results by 15%.
@@ -49,13 +49,17 @@ PRECISION = "highest"
 #: started, and the resistance differed between processes at rounding (MIME-ANO-125). A piece of at most this length is
 #: one block on either, and the pieces are added in a fixed order, so a sum no longer than this is the one it was.
 DEPTH = 248
+#: The order of the largest system :func:`point_forces` solves, ``3N`` for the ``N`` samples of one body: declared, and
+#: checked on the systems the walk's configurations trace (``tests/saved/test_solve_walk.py``).
+PER_BODY_BOUND = 3 * 1024
 #: dev1's per-body solve (``point_forces``), on a released path whose summation order was tuned for bit stability (DEPTH,
 #: ANO-125): listed, and left as it is.
 PER_BODY_SITE = register(SolveSite(
-    "mrs_per_body", "dense", "mime.nodes.hydro.mrs._solve.point_forces",
-    exempt="a released path (v0.3.0.dev1) whose bits are held: it stays a direct solve until an A/B run shows it "
-           "unchanged through the shared helper",
-    unwalked="the per-body drag node is released and untouched, so its step carries no scope for the walk to read"))
+    "mrs_per_body", "dense", "mime.nodes.hydro.mrs._solve.point_forces", nodes=("MRSDragNode",),
+    exempt="a released path (v0.3.0.dev1), the same ``jnp.linalg.solve`` it has always been, run inside a scope of its own "
+           "and walked: whether it moves under the shared helper is decided with the recipe that would change it, by an "
+           "A/B run of its bits",
+    bound=PER_BODY_BOUND))
 
 
 def blob_squared(weights: Array, blob: Any) -> Array:
@@ -87,7 +91,8 @@ def rigid_motions(points: Array, centre: Array) -> Array:
 
 def point_forces(matrix: Array, motions: Array) -> Array:
     """``A^-1 M``: the force at each sample for each unit motion, ``3N x 6``, by the linear-solve rule."""
-    return jnp.linalg.solve(matrix, motions)
+    with solving(PER_BODY_SITE):
+        return jnp.linalg.solve(matrix, motions)
 
 
 def force_sums(motions: Array, forces: Array) -> Array:

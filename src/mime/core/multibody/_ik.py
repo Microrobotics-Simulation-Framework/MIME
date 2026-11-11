@@ -12,6 +12,7 @@ from jaxtyping import Bool, Float
 
 from mime.core._node import jnp
 from mime.core._quaternion import safe_norm
+from mime.core.solves import SolveSite, register, solving
 from mime.core.multibody._kinematics import Model, articulation_of, body_poses, computing_dtype, constants, \
     jacobian_at, placed_frame
 from mime.core.multibody._se3 import Pose, pose_error
@@ -33,11 +34,21 @@ class InverseKinematics(NamedTuple):
     within_limits: Bool[Array, ""]
 
 
+#: The damped least-squares step's solve: ``rows x rows`` for the frame's six rows or fewer. The arm-tracking controller
+#: runs it in single precision (``mime.control._arm_tracking``), whatever the run's dtype, as the 0.2 line's did.
+IK_SITE = register(SolveSite(
+    "controller_ik", "dense", "mime.core.multibody._ik.damped_least_squares", nodes=("ControllerNode",),
+    exempt="a damped step on the frame's Jacobian rows (six at most), in the arithmetic of the controller that calls it",
+    narrower="the arm-tracking controller computes in single precision whatever the run's dtype (as the 0.2 line's did)",
+    bound=6))
+
+
 def damped_least_squares(jacobian: Array, error: Array, damping: Any) -> Array:
     """The step ``J^T (J J^T + damping^2 1)^-1 e``: the least-squares step for ``e``, damped where ``J`` loses rank."""
     rows = jacobian.shape[0]
     damped = jacobian @ jacobian.T + damping * damping * jnp.eye(rows, dtype=jacobian.dtype)
-    return jacobian.T @ jnp.linalg.solve(damped, error)
+    with solving(IK_SITE):
+        return jacobian.T @ jnp.linalg.solve(damped, error)
 
 
 def inverse_kinematics(model: Model, frame: str, target: Pose, q_initial: Float[Array, " dofs"], *,

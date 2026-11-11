@@ -26,7 +26,7 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, quaternion, \
     switch, typed_view
 from mime.core import ledger as books
-from mime.core.multibody import ROOT, Articulation, cholesky_solve, compose, forward_kinematics, \
+from mime.core.multibody import ROOT, Articulation, cholesky_factor, cholesky_solve, compose, forward_kinematics, \
     frame_angular_jacobians, frame_forces, frame_motions, inverse_dynamics, mass_matrix
 from mime.core.multibody._kinematics import body_poses, constants
 from mime.nodes.actuation._chain import POSE_UNITS, RATE_UNITS, MountInputs, SegmentNode, flattened
@@ -401,7 +401,7 @@ class DynamicArmNode(SegmentNode):
             # impulse to the problem's least without friction's bound on those joints, so they add no kinetic
             # energy; where every such joint can stick, they are its solution.
             index = np.asarray(rubbing)
-            still = -cholesky_solve(jnp.linalg.cholesky(inverse[index[:, None], index[None, :]]), free[index])
+            still = -cholesky_solve(cholesky_factor(inverse[index[:, None], index[None, :]]), free[index])
             largest = jnp.ones((), dtype=dtype)
             for share in (still / (dt * friction)) ** 2:
                 largest = switch.maximum(largest, share, owner="arm.stick",
@@ -527,7 +527,7 @@ class DynamicArmNode(SegmentNode):
         bias = inverse_dynamics(articulation, q, turned_qd, None, self.weight(p, base),
                                 self.loads(articulation, q, base, wrenches))
         system = inertia if ending is articulation else mass_matrix(ending, q)
-        factor = jnp.linalg.cholesky(system + dt * jnp.diag(jnp.asarray(p["damping"], dtype=q.dtype)))
+        factor = cholesky_factor(system + dt * jnp.diag(jnp.asarray(p["damping"], dtype=q.dtype)))
         free = cholesky_solve(factor, inertia @ turned_qd + dt * (torques - bias))
         inverse = cholesky_solve(factor, jnp.eye(dofs, dtype=q.dtype))
         if self.metered:
