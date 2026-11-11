@@ -3810,7 +3810,11 @@ anomalies:
       0.001) and +16 % at 0.15 radii, against the film's +43 % and +33 %; every entry on its own diagonal scale within
       5 % at 0.15 radii and within 7 % at 0.2 radii but the rotations about the wall's axes, +7.3 % at 0.06 radii. In a tube a non-sphere's form is not measured against
       an independent reference. A body touching its wall at several points sums one increment a contact, the wall
-      opened once; two contacts across a lumen were measured against a finer MRS of the same family: GATE5_TEXT. A line
+      opened once; two contacts across a lumen (an
+      ellipsoid of 0.95 by 0.65 mm across a 1 mm tube, both ends below the hand-over gap) were measured against a finer
+      MRS of the same family: the worst entry 13 and 16 % off, the committed 10 % missed, the elliptic form at its window's
+      edge and the dilated lumen about a body filling 95 % of its diameter not separated; at those gaps (0.45 to 0.68 of
+      the coarse spacing) composing the contacts one at a time or by subtraction could not be told from it. A line
       contact (a cylinder's or a capsule's side) and a ring (a body nearly filling a lumen) have no form yet: a body that
       can make one is refused the hand-over written on and left out unwritten.
     severity: major

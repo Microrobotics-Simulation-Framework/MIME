@@ -73,5 +73,16 @@
     "claim": "unchanged from #245: roughness_cutoff's reader gives the cutoff the law uses; continuity through it",
     "prediction": "green, unchanged"
   },
-  "outcomes": null
+  "outcomes": {
+    "_note": "added after the gates ran; the predictions above are unchanged. Measured on the laptop's heavy slot (float64, the probe launcher's local route) and on Actions (round 2).",
+    "gate_1_elliptic_spheroids": "held: worst rate 22.46 % lying, 16.67 % at 30 degrees (band 15-25 %); worst entry 33.3 % and 17.9 % (band 12-35 %); probe B's 22.5 / 17.0 / 28.5 / 17.9 reproduced. Pinned. Control increment_x2: rate 0.50, entry 1.02 (caught).",
+    "gate_1_elliptic_sphere": "held: gate 2's worst +21.9 % at s 0.2 (0.06 a), +15.6 % at s 0.15 (band 15-32 %); gate 1 within 7 % but the rotations at s 0.2, 0.06 a, +7.30 to +7.33 % over 5 orientations (pinned); the band ratios xx 1.13-1.15, zz 0.98, rotations 1.39-1.43, coupling 1.53-1.59 (the film's 0.69-0.84 and 1.77-1.83); between deep gaps within 8e-4 of the asymptotes.",
+    "gate_3_form": "held: exponents -0.9994 to -0.9981, limit 1.0005; control sphere_law: limit 0.487 (caught).",
+    "gate_4_definite": "held: 0 of 25 indefinite in each of sphere above plane, ellipsoid above plane (eight slots), sphere in tube.",
+    "gate_5_two_contacts": "see the PR body (the case changed before any gate 5 run: the body (0.95, 0.65, 0.65) mm, the coarse spacing 0.088 mm, the reference at 0.05 mm and blob 0.1, pairs (0.05, 0.05) and (0.04, 0.06) mm, because the planned reference at 0.04 mm and blob 0.05 passed 12.6 GiB in its estimate)",
+    "gate_8_gradients": "held: plane and tube (the sphere given the elliptic form, eight slots) and the two-contact tube (wall radius and position) to about 1e-9; controls lift_stopped 0.032 and hard_max 0.022 of the scale (caught).",
+    "bits": "see the PR body (round 2)",
+    "gate_11_refusals_and_flags": "held: both refusals reached with the route; unwritten, left out with the reason; the line and ring flags 1 at every step at 0.1, 0.03 and 0.005 a, the point's 0.",
+    "gate_12_cutoff": "held: unchanged."
+  }
 }
