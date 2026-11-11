@@ -358,7 +358,25 @@
     "prediction": "the tree's wall fields at D/h 16 (the loop): 5 to 25 s an evaluation on a runner, once a step; at D/h 32 about four times (the planned faces grow with the wall's area); the tube's step unchanged",
     "measured_at": "D/h 8 and 16 on the laptop (seen_before)"
   },
-  "outcomes": null,
+  "outcomes": {
+    "written": "2026-11-11, after the gates' and the rates' runs (probe runs 42912350837, 42915981178, 42920448631 and 42935478713); the predictions above are unchanged",
+    "gate_r1_plant": "held at the draws run (shift +0.0004, +0.0092, +0.0215 against the planar +0.0190; the plant +0.256): no rate measured, the ramp not adopted",
+    "gate_r2_stenosis_occlusion": "FAILED at 0.1h on the stenosis: bypass 9.65e-4 against 9.43e-4 (+2.3 %, outside the predicted 0.1 to 0.95 x) and the flux -0.44 % (past the 3e-3 line); held at 0.01h (bypass 4.80e-5 against 1.03e-4, flux -7.3e-4) and on the occlusion (0.917, 0.902). By row #315 the h-to-3h ramp stays",
+    "gate_r3_float32": "held: no flag, within 2.5e-7 (tube) and 5.9e-8 (stenosis) of float64",
+    "gate_r4_iterations": "held: 1.027 steady and 1.025 IMEX Euler",
+    "gate_contract": "held: 1.35e-15 cells, counts 0; control 200/200, clean 0/100 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42920448631); range 1e-9 cells (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42935478713)",
+    "gate_fa2_curved": "held: displacement +0.0016 and +0.0011 cells (predicted +-0.03), the free radius's shift -0.021 and -0.020 off the planar calibration; control 200/200, clean 0/200; range 0.050 cells",
+    "gate_fa3_taper": "held: +0.023, +0.021 cells (predicted +-0.06); control 200/200, clean 0/200; range 0.134 cells",
+    "gate_fa4_ellipse": "prediction missed: 3 of 200 clean draws read the major semi-axis 0.104 to 0.115 cells off the round tube's (predicted +-0.05, line 0.1); with the line moved to 0.15, control 200/200, clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42935478713); range 0.19 cells",
+    "gate_fa5_stenosis": "held: +0.052, +0.059 cells (predicted +-0.1); control 200/200, clean 0/200; range 0.095 cells",
+    "gate_fa6_bifurcation": "held: 0.0052 and 0.0055 from the reference 0.74700 (predicted 0.002 to 0.008); control 200/200, clean 0/200; range 0.016",
+    "reference_values": "the loop's split 0.747004 (in the predicted 0.7465 to 0.748), the stenosis's flux 0.0102679 (lubrication's 0.01032 at these cones: within 3 %, as predicted)",
+    "gate_fa7_symmetric": "held: 0.0003 and 0.0009 (predicted <= 0.002); control 200/200, clean 0/200; range 0.0075",
+    "gate_fa8_derivative": "failed on the first run (4.5 %, the union's reduction in reverse mode) and on 4 of 100 clean draws of the rates' (NaN, a discarded lane's singular step); after both fixes 3.9e-8 (predicted <= 1e-5), control 200/200, clean 0/100 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42935478713); range 1e-4",
+    "gate_union_reverse": "held after both fixes: 0; the 1 % reverse-only plant 100/100, clean 0/50; the reduction put back 8/50 then 0/50 (not a control that fails every run)",
+    "bits": "held: 406 arrays in 26 programs equal (the FVM's six among them) on 6d72c95 and on b4bd419; the one-ulp control differs (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42935478713)",
+    "costs": "loop 1.37 s a step at D/h 8 and 5.60 s at 16 on a runner (predicted 5 to 25 s at 16), the tube 0.003 s; peak 2.5 and 2.7 GiB against 0.65"
+  },
   "corrections_2026_11_11": {
     "written": "2026-11-11, after the first gates' run (probe run 42912350837 on 91d22db) and before the second: what the first run changed, and the predictions it adds; the predictions above are unchanged",
     "ramp": "R2 failed on the stenosis at the 0.1h interior (bypass 9.65e-4 against 9.43e-4, the flux -0.44 % past its 3e-3 line), so by row #315 the h-to-3h ramp stays (78a1118) and the ramp's gates leave the PR; FA2 to FA8 are judged under the h-to-3h ramp from here",
