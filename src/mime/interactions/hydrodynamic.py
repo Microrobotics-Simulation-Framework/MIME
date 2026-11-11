@@ -2068,6 +2068,11 @@ class Drag(UncoupledDrag):
         """The stokes rung's drag: the flow carries the body (the drag's work on the body is positive there) and the
         fluid's side pays for it (two-way) or the field supplies it (one way), so no one receiver's row is judged a
         gift; its node judges the law's power at one velocity each step instead (``cluster_gift_steps``)."""
+        if self.rung == "penalty":
+            return ("its sign judged by the medium's field, which holds it, each step, not on these rows (the flow carries "
+                    "the body, and the fluid's row holds the exchange): the penalty's load on the body at the twist the "
+                    "field was solved at, with its work on the fluid, its relative dissipation, never above its "
+                    "rounding floor (body_<i>_gift_steps)")
         if self.rung != "stokes":
             return ""
         return ("its sign judged by its node each step, not on this row (the flow carries the body): the law's power "

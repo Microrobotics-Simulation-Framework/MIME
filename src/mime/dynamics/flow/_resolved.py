@@ -52,13 +52,14 @@ def finest_spacing(hull: Hull | None, settings: Mapping[str, Magnitude]) -> floa
     return None if radius is None else radius / feature_cells(settings)
 
 
-def resolved_spec(hull: Hull, spacing: float, band: Band) -> ResolvedSpec:
-    """The node's description of the hull's body on a grid of ``spacing`` (its window sized for the band)."""
+def resolved_spec(hull: Hull, law: str, spacing: float, band: Band) -> ResolvedSpec:
+    """The node's description of the hull's body, resolved by the drag ``law``, on a grid of ``spacing`` (its window
+    sized for the band)."""
     region = solid_region(hull)
     assert region is not None, "the drag's plan refuses a hull that is not resolvable"
     shape, parameters = region
     rotation = tuple(float(value) for row in hull.rotation for value in row)
-    return ResolvedSpec(hull.body, shape, {key: _number(value) for key, value in parameters.items()},
+    return ResolvedSpec(hull.body, law, shape, {key: _number(value) for key, value in parameters.items()},
                         (float(hull.centre[0]), float(hull.centre[1]), float(hull.centre[2])), rotation,
                         window_cells(hull.kind.enclosing_radius(hull.settings), spacing, band),
                         float(hull.kind.volume(hull.settings)))

@@ -14,9 +14,18 @@ plus the interior's momentum and angular momentum change, ``(Q' - Q)/dt``, ``Q' 
 indicator and ``Q`` the value the step before held (at a run's first step the start's field on the start's indicator),
 so the change telescopes over a run. The steady limit stores no inertia, so its load is the penalty's alone.
 
+**The ledger.** The node holds each body's penalty as a law in its step, booked under the body's drag
+(``body_<i>`` its role): its work on the fluid, ``-dt rho <nu/K (u' - u_b), u'>``, which is the law's relative
+dissipation less the exchange with the body at the twist the field was solved at; the body books the load it takes
+under the same law. **Its sign is judged here, at one velocity** (``body_<i>_gift_steps``): the penalty's load on the
+body at that twist, ``dt xi . F``, with its work on the fluid, is ``-dt rho <nu/K (u' - u_b), u' - u_b>`` (``body_<i>_power``,
+never above its rounding floor), summed in ``body_<i>_dissipated``. The rest of the law's row is the lagged exchange's
+unpaired work (the twist the body reached against the one the field was solved at) and the interior's momentum change
+on the body's twist, whose energy the fluid's storage holds (the interior fluid, which moves with the body).
+
 **The displaced share** (the record's Part D tail, item 2): the field's drive acts on its fluid alone, never inside a
 solid, so the solved field's load on a body lacks the share ``rho V_b f`` a uniform drive ``f`` (a pressure drop's
-stand-in, or the fluid's weight) puts on the fluid the body displaces. The node gives it apart (``share_<i>``, at the
+stand-in, or the fluid's weight) puts on the fluid the body displaces. The node gives it apart (``body_<i>_share``, at the
 hull's centroid, its volume the hull's, not the indicator's), delivered to the body as a part of its drag's own,
 ``<id>.displaced``: the solver never takes it."""
 
@@ -34,6 +43,8 @@ from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from mime.core import as_run_array, jnp, node_input, run_dtype, shape_named
+from mime.core import ledger as books
+from mime.core.ledger import IDENTITY_ULPS
 from mime.nodes.flow._waveform import WAVEFORM_SIZE
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
@@ -41,23 +52,23 @@ from mime.nodes.flow.fvm._node import EQUATIONS, FlowFields, ImplicitFlowNode, S
 from mime.nodes.flow.fvm._resolved import BodyFaces, ResolvedBody, body_faces, moments, placed, pose_turn, \
     rigid_velocity, scattered, united
 
-#: The per-body fields a resolved node holds, ``<name>_<i>`` for its ``i``-th body.
-BODY_FIELDS = ("load", "penalty", "momentum", "volume", "share")
-#: The per-body inputs, ``<name>_<i>``: the body's pose and twist at the step's start.
+#: The per-body fields a resolved node holds, ``body_<i>_<name>`` for its ``i``-th body.
+BODY_FIELDS = ("load", "penalty", "momentum", "indicator", "share", "power", "dissipated", "gift_steps")
+#: The per-body inputs, ``body_<i>_<name>``: the body's pose and twist at the step's start.
 BODY_INPUTS = ("pose", "twist")
 #: The identity pose: a body's input before anything is fed.
 REST_POSE = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
 
 class ResolvedFlowState(FlowFields, extra_items=ReadOnly[Float[Array, "..."]]):  # noqa: F722 - a jaxtyping shape
-    """The flow's fields, and for each resolved body ``i``: ``load_<i>`` (its load, force and torque about its centre,
-    N and N m: what it takes this step), ``penalty_<i>`` (the penalty's part of it), ``momentum_<i>`` (its interior's
+    """The flow's fields, and for each resolved body ``i``: ``body_<i>_load`` (its load, force and torque about its centre,
+    N and N m: what it takes this step), ``body_<i>_penalty`` (the penalty's part of it), ``body_<i>_momentum`` (its interior's
     momentum and angular momentum on the step's indicator, kg m/s and kg m^2/s: what the next step's change is taken
-    from) and ``volume_<i>`` (its indicator's volume on the axial faces, m^3)."""
+    from) and ``body_<i>_indicator`` (its indicator's volume on the axial faces, m^3)."""
 
 
 class ResolvedFlowInputs(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):  # noqa: F722 - a jaxtyping shape
-    """The drive's, and ``pose_<i>`` and ``twist_<i>`` for each resolved body, from its state at the step's start."""
+    """The drive's, and ``body_<i>_pose`` and ``body_<i>_twist`` for each resolved body, from its state at the step's start."""
 
     body_force: NotRequired[ReadOnly[Float[Array, "3"]]]
     waveform: NotRequired[ReadOnly[Float[Array, "7"]]]
@@ -70,6 +81,7 @@ class ResolvedSpec:
     window's side in cells, and its hull's volume (m^3)."""
 
     name: str
+    law: str
     shape: str
     parameters: Mapping[str, float | tuple[float, ...]]
     centre: tuple[float, float, float]
@@ -80,7 +92,7 @@ class ResolvedSpec:
     def arguments(self, index: int) -> dict[str, Any]:
         """The node's arguments for it, ``body_<index>_<name>``."""
         prefix = f"body_{index}_"
-        held: dict[str, Any] = {f"{prefix}name": self.name, f"{prefix}shape": self.shape,
+        held: dict[str, Any] = {f"{prefix}name": self.name, f"{prefix}law": self.law, f"{prefix}shape": self.shape,
                                 f"{prefix}centre": tuple(float(v) for v in self.centre),
                                 f"{prefix}rotation": tuple(float(v) for v in self.rotation),
                                 f"{prefix}window": int(self.window), f"{prefix}volume": float(self.volume)}
@@ -159,9 +171,9 @@ class ResolvedFlowNode(ImplicitFlowNode):
     def own_inputs(self) -> dict[str, Any]:
         own = super().own_inputs()
         for index in range(self.count):
-            own[f"pose_{index}"] = node_input("m; 1", (7,), description=f"resolved body {index}'s pose at the step's "
+            own[f"body_{index}_pose"] = node_input("m; 1", (7,), description=f"resolved body {index}'s pose at the step's "
                                                                        f"start: position (m) and unit quaternion")
-            own[f"twist_{index}"] = node_input("m/s; rad/s", (6,), description=f"resolved body {index}'s twist at the step's "
+            own[f"body_{index}_twist"] = node_input("m/s; rad/s", (6,), description=f"resolved body {index}'s twist at the step's "
                                                                         f"start: velocity (m/s) and angular velocity "
                                                                         f"(rad/s)")
         return own
@@ -181,8 +193,8 @@ class ResolvedFlowNode(ImplicitFlowNode):
 
     @override
     def step_fields(self, p: Mapping[str, Any], grid: MACGrid, boundary_inputs: Mapping[str, Array]) -> WallFields:
-        """The wall's fields united with each body's at its pose (``pose_<i>``), and the penalty's push towards its
-        twist (``twist_<i>``)."""
+        """The wall's fields united with each body's at its pose (``body_<i>_pose``), and the penalty's push towards its
+        twist (``body_<i>_twist``)."""
         wall = super().step_fields(p, grid, boundary_inputs)
         c = self.constants()
         band, interior = band_named(c["band"]), interior_depth(c["interior"])
@@ -194,8 +206,8 @@ class ResolvedFlowNode(ImplicitFlowNode):
         all_faces: list[tuple[BodyFaces, BodyFaces, BodyFaces]] = []
         twists: list[Array] = []
         for index, body in enumerate(self.bodies(p)):
-            pose = jnp.asarray(boundary_inputs.get(f"pose_{index}", jnp.asarray(REST_POSE)), dtype=dtype)
-            twist = jnp.asarray(boundary_inputs.get(f"twist_{index}", jnp.zeros(6)), dtype=dtype)
+            pose = jnp.asarray(boundary_inputs.get(f"body_{index}_pose", jnp.asarray(REST_POSE)), dtype=dtype)
+            twist = jnp.asarray(boundary_inputs.get(f"body_{index}_twist", jnp.zeros(6)), dtype=dtype)
             position, turn = pose_turn(pose)
             faces = tuple(body_faces(grid, component, body, position + origin, turn, band, interior)
                           for component in range(3))
@@ -262,23 +274,87 @@ class ResolvedFlowNode(ImplicitFlowNode):
         for index in range(self.count):
             penalty, momentum, displaced = self.body_books(p, fields, parts.stage.solved, index)
             started = self.body_books(p, fields, before, index)[1]
-            previous = jnp.where(first, started, jnp.asarray(state[f"momentum_{index}"]))
+            previous = jnp.where(first, started, jnp.asarray(state[f"body_{index}_momentum"]))
             load = penalty + (momentum - previous) / dt if inertia else penalty
             force = rho * as_run_array(p[f"body_{index}_volume"]) * drive
-            pose = jnp.asarray(boundary_inputs.get(f"pose_{index}", jnp.asarray(REST_POSE)), dtype=run_dtype())
+            pose = jnp.asarray(boundary_inputs.get(f"body_{index}_pose", jnp.asarray(REST_POSE)), dtype=run_dtype())
             buoyancy = pose_turn(pose)[1] @ as_run_array(p[f"body_{index}_centre"])
             share = jnp.concatenate([force, jnp.cross(buoyancy, force)])
-            held = {**held, f"load_{index}": load, f"penalty_{index}": penalty, f"momentum_{index}": momentum,
-                    f"volume_{index}": displaced, f"share_{index}": share}
+            # The law's power at one velocity: its load on the body at the twist the field was solved at, with its
+            # work on the fluid; minus its relative dissipation, never above the products' rounding.
+            _, work, size = self.penalty_work(p, fields, parts.stage.solved, index, dt)
+            on_body = dt * penalty * fields.twists[index]
+            power = jnp.sum(on_body) + work
+            floor = IDENTITY_ULPS * jnp.finfo(power.dtype).eps * (jnp.sum(jnp.abs(on_body)) + size)
+            held = {**held, f"body_{index}_load": load, f"body_{index}_penalty": penalty, f"body_{index}_momentum": momentum,
+                    f"body_{index}_indicator": displaced, f"body_{index}_share": share, f"body_{index}_power": power / dt,
+                    f"body_{index}_dissipated": jnp.asarray(state[f"body_{index}_dissipated"]) - power,
+                    f"body_{index}_gift_steps": jnp.asarray(state[f"body_{index}_gift_steps"]) + (power > floor).astype(
+                        power.dtype)}
         return held, parts
+
+    @override
+    def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
+        """The flow's own laws, and each resolved body's penalty under its drag's id (``body_<i>``), dissipative."""
+        c = self.constants()
+        return (*super().hosted_laws(),
+                *((f"body_{index}", str(c[f"body_{index}_law"]), books.DISSIPATIVE) for index in range(self.count)))
+
+    @override
+    def hosted_fields(self) -> tuple[str, ...]:
+        return (*super().hosted_fields(), *(f"body_{index}" for index in range(self.count)))
+
+    @override
+    def hosted_work(self, energy: Mapping[str, Array]) -> dict[str, Array]:
+        held = super().hosted_work(energy)
+        held.update({f"body_{index}": energy[f"body_{index}"] for index in range(self.count)})
+        return held
+
+    def penalty_work(self, p: Mapping[str, Any], fields: ResolvedFields, solved: Velocity, index: int,
+                     dt: float) -> tuple[Array, Array, Array]:
+        """Body ``index``'s penalty over the step on the fluid: ``dt rho <nu/K u', u'>`` (its share of the step's
+        penalty term), its work ``-dt rho <nu/K (u' - u_b), u'>``, and that work's magnitude."""
+        rho, nu = as_run_array(p["density"]), self.kinematic(p)
+        volume = self.grid(p).cell_volume
+        twist = fields.twists[index]
+        own = jnp.zeros((), dtype=solved[0].dtype)
+        work = jnp.zeros((), dtype=solved[0].dtype)
+        size = jnp.zeros((), dtype=solved[0].dtype)
+        for component in range(3):
+            faces = fields.faces[index][component]
+            on = placed(solved[component], faces)
+            sigma = nu * faces.inverse_permeability
+            own = own + dt * rho * volume * jnp.sum(sigma * on * on)
+            product = sigma * (on - rigid_velocity(faces, component, twist)) * on
+            work = work - dt * rho * volume * jnp.sum(product)
+            size = size + dt * rho * volume * jnp.sum(jnp.abs(product))
+        return own, work, size
+
+    @override
+    def energy_terms(self, p: Mapping[str, Any], grid: MACGrid, before: Velocity, stage: Any, sigma: Velocity,
+                     fields: WallFields, dt: float) -> dict[str, Array]:
+        """The flow's terms with the bodies' penalty apart from the wall's: each body's work on the fluid under
+        ``body_<i>``, the wall's penalty the rest of the step's."""
+        terms = super().energy_terms(p, grid, before, stage, sigma, fields, dt)
+        if not isinstance(fields, ResolvedFields):
+            return terms
+        penalty, scale = terms["penalty"], terms["scale"]
+        for index in range(self.count):
+            own, work, size = self.penalty_work(p, fields, stage.solved, index, dt)
+            penalty = penalty - own
+            terms[f"body_{index}"] = work
+            scale = scale + size
+        return {**terms, "penalty": penalty, "scale": scale}
 
     @override
     def initial_fields(self) -> dict[str, Array]:
         held = super().initial_fields()
         z6 = jnp.zeros(6, dtype=run_dtype())
         for index in range(self.count):
-            held.update({f"load_{index}": z6, f"penalty_{index}": z6, f"momentum_{index}": z6,
-                         f"volume_{index}": as_run_array(0.0), f"share_{index}": z6})
+            zero = as_run_array(0.0)
+            held.update({f"body_{index}_load": z6, f"body_{index}_penalty": z6, f"body_{index}_momentum": z6,
+                         f"body_{index}_indicator": zero, f"body_{index}_share": z6, f"body_{index}_power": zero,
+                         f"body_{index}_dissipated": zero, f"body_{index}_gift_steps": zero})
         return held
 
 

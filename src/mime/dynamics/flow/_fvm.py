@@ -656,16 +656,16 @@ def _resolved_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, resolved: S
     specs = []
     for registration in resolved:
         assert registration.hull is not None, "the drag's plan refuses a body with no hull"
-        specs.append(resolved_spec(registration.hull, layout.spacing, band))
+        specs.append(resolved_spec(registration.hull, registration.id, layout.spacing, band))
     point = shape_named(region.shape).axis_point(region.parameters)
     assert point is not None
     origin = tuple(layout.centre[i] - float(point[i]) for i in range(3))
     node = b.add_node(ResolvedFlowNode(ctx.node_name(), ctx.timestep, bodies=specs, origin=origin, **settings))
     for index, registration in enumerate(resolved):
-        b.connect(b.read(registration, "pose"), into=node[f"pose_{index}"])
-        b.connect(b.read(registration, "twist"), into=node[f"twist_{index}"])
-        b.connect(node[f"load_{index}"], into=b.target(registration, "load"))
-        b.connect(node[f"share_{index}"], into=b.target(registration, "displaced"), part="displaced")
+        b.connect(b.read(registration, "pose"), into=node[f"body_{index}_pose"])
+        b.connect(b.read(registration, "twist"), into=node[f"body_{index}_twist"])
+        b.connect(node[f"body_{index}_load"], into=b.target(registration, "load"))
+        b.connect(node[f"body_{index}_share"], into=b.target(registration, "displaced"), part="displaced")
 
 
 def takes_exchange(frame: ExchangeFrame, viscosity: float, density: float, dt: float) -> bool:
