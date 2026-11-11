@@ -104,13 +104,27 @@ def test_an_entry_registered_without_a_case_fails_the_walk(registered):
         "interaction toy.uncased 0.1.0"]
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
-def test_every_case_round_trips_through_a_fresh_process(case, tmp_path):
+#: The tube tree's case, whose round trip peaks at 2.1 GiB (``tests/memory_peaks.json``, over the line): it is its own
+#: test below, marked ``memory_heavy``, so that marking it does not make every other case's round trip take its turn.
+TREE_FLOW = next(case for case in CASES if case.name == "tree_flow")
+
+
+def _round_trips(case: Case, tmp_path) -> None:
     _needs_lab_fixture(case)
     if case.refused:
         assert refused_round_trip_failures(case.make(), tmp_path, case.refused) == []
     else:
         assert round_trip_failures(case.make(), tmp_path) == []
+
+
+@pytest.mark.parametrize("case", [c for c in CASES if c is not TREE_FLOW], ids=lambda case: case.name)
+def test_every_case_round_trips_through_a_fresh_process(case, tmp_path):
+    _round_trips(case, tmp_path)
+
+
+@pytest.mark.memory_heavy
+def test_the_tree_flow_case_round_trips_through_a_fresh_process(tmp_path):
+    _round_trips(TREE_FLOW, tmp_path)
 
 
 @pytest.mark.parametrize("case", [c for c in CASES if not c.refused], ids=lambda case: case.name)

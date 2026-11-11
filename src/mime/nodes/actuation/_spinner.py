@@ -25,6 +25,7 @@ from typing import Any
 from jax import Array
 
 from mime.core import jnp
+from mime.core.solves import dense_solve
 
 
 def spun(inertia: Any, damping: Any, spin: Array, torque: Array, axis: Array, host: Array, dt: Any) -> Array:
@@ -83,7 +84,7 @@ def cayley(mass: Array, gyroscopic: Array, velocity: Array, dt: Any) -> Array:
     ``(M - dt G / 2) v' = (M + dt G / 2) v``. With ``G`` skew the map is the Cayley transform of ``M^-1 G``, which
     keeps ``v^T M v`` to rounding at every step size: the term does no work, and the scheme adds none."""
     half = 0.5 * dt * gyroscopic
-    return jnp.linalg.solve(mass - half, (mass + half) @ velocity)
+    return dense_solve(mass - half, (mass + half) @ velocity)
 
 
 __all__ = ["cayley", "deviator_torque", "gyroscopic_matrix", "momentum", "relative_rate", "rotor_rate", "skew", "spun",

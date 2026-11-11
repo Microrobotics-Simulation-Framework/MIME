@@ -370,15 +370,25 @@ stress: tests/oracles/test_spinner.py tests/test_x.py::test_y[a] runs=30 python=
   shards have met flakes the others did not, so ask for it when that is the question);
 - `seed=N` is the first run's Hypothesis seed; absent, a random one. Run *k* uses `N + k - 1`.
 
+**A large set is split across parallel jobs.** Each run (one seed) is dealt over *n* jobs by the seconds of
+`tests/shard_weights.json`, the table the default lane's shards are dealt by: the files longest first onto the lightest job, *n*
+being the changed set's seconds over 1000, rounded up (never more than its files, nor than 250 jobs over the runs). Every job
+of a run uses that run's seed and every changed test runs in exactly one job of each run, so it runs as many times as
+`runs=` says; a file is never divided, so a file over the 1000 seconds is a job of its own. A small set is one job a run, as
+before, and a description that narrows the set (`only`) keeps working. A file the table lacks takes the weight the shard deal
+assumes for a new file.
+
 Editing the description does not start a run: remove the label and add it again. Anything the line cannot use, and a
 selection that is empty, fails the `stress selection` job by name; a stress run that ran nothing is not a pass.
 
 **Read it** on the run's page: the `stress summary` job lists, per test, how many of the runs it passed (tests that did
 not pass every run first), then for each failure the run, its Hypothesis seed, the falsifying example and the
 `@reproduce_failure` blob, and every run's seed. It fails if any run failed, or had no report, or passed no test. Each
-run is a job (`stress run k of n`) set up as the default lane is, with the compilation caches the last push to `release/v0.3.0`
-saved for the shards holding the selected files, restored and never saved (at most three shards' worth; the rest of the
-files compile cold, so a first run can be slower). Each run's JUnit report is a run artifact, `stress-run-<k>`.
+run is split into jobs (`stress run k of n, part p of m`), each set up as the default lane is, with the compilation caches the
+last push to `release/v0.3.0` saved for the shards holding its part's files, restored and never saved (at most three shards'
+worth; the rest of the files compile cold, so a first run can be slower). Each job's JUnit report is a run artifact,
+`stress-run-<k>-part-<p>`, and the summary judges every part of every run: a part with no report, or in which nothing passed,
+fails its run.
 
 **Repeat a failing seed locally** on the same Python, with the tests the summary names:
 
