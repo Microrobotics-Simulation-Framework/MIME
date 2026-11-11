@@ -7,7 +7,8 @@ composition against it and says nothing about hardware. Not collected; run from 
 
     python tests/differential/two_contact_mrs.py <spacing_mm> <blob> <out.json> <h1_mm,h2_mm> [...]
 
-Each row: the 6 x 6 about the body's centre in SI, the gaps, the force points' count and the least scaled eigenvalue."""
+Each row: the 6 x 6 about the body's centre in SI, the gaps and the least scaled eigenvalue; the file the force
+points' and the quadrature's counts."""
 
 import json
 import sys
@@ -35,11 +36,11 @@ def main() -> None:
         rows[pair] = {"resistance": np.asarray(found["resistance"]).tolist(), "h1": h1, "h2": h2,
                       "least_eigenvalue": float(found["least_eigenvalue"])}
         print(pair, rows[pair]["least_eigenvalue"], flush=True)
-    points = int(np.asarray(node.body({k: leaves[k] for k in node.body_leaf_names()}).points).shape[0])
-    out.write_text(json.dumps({"spacing": spacing, "blob": blob, "force_points": points, "rows": rows}, indent=1,
-                              sort_keys=True)
-                   + "\n")
-    print(f"{points} force points, {time.perf_counter() - start:.1f} s")
+    body = node.body({k: leaves[k] for k in node.body_leaf_names()})
+    forces, points = int(np.asarray(body.force).shape[0]), int(np.asarray(body.points).shape[0])
+    out.write_text(json.dumps({"spacing": spacing, "blob": blob, "force_points": forces, "quadrature_points": points,
+                               "rows": rows}, indent=1, sort_keys=True) + "\n")
+    print(f"{forces} force points, {points} quadrature points, {time.perf_counter() - start:.1f} s")
 
 
 if __name__ == "__main__":
