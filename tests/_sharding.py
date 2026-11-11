@@ -11,11 +11,16 @@ file's shard is a function of its path and of the committed table ``shard_weight
 - a file the table lists under ``split`` (one so heavy that, whole, it would be the slowest shard however many shards
   there are) is dealt by test: its tests the table lists, with their seconds, enter the same longest-first deal under
   their node ids, and a test of it the table does not list goes by a hash of its node id;
-- every other file goes by a hash of its path.
+- a file the table does not list at all (one added since the table was built: ``scripts/shard_weights.py`` lists every
+  file its reports hold) is placed after all of those, in the order of its path, each on the shard with the least time so
+  far, at an assumed weight, ``new_file_weight``: the 90th percentile of the table's file weights. A hash would put a
+  new heavy file on whichever shard it fell on, however loaded that shard already was, and a push's shard ran past the
+  job's limit that way. The assumed weight is a guess, not a measurement; the next rebuild of the table replaces it.
 
 Adding or deleting a test moves no file, and shard ``i`` of a pull request holds the files of shard ``i`` of its base
-unless the table changed, so the compilation cache the base saved for a shard is the one its programs are in (adding a
-test to a split file moves no listed test either). A file's tests stay together, as MADDENING's split keeps them: a
+unless the table changed or the pull request added a file (that file takes a shard, and the files the table does not
+list that sort after its path may follow it to another), so the compilation cache the base saved for a shard is the one
+its programs are in (adding a test to a split file moves no listed test either). A file's tests stay together, as MADDENING's split keeps them: a
 test that reuses the programs another test of its file compiled (a control beside the property it controls) stays in the
 shard that compiles them, and module fixtures are built in one shard. The exception is the ``split`` files, the few
 whose weight exceeds a shard's mean: each shard that gets some of their tests compiles the programs those tests
@@ -31,9 +36,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from pathlib import Path
 
 import pytest
@@ -117,20 +123,44 @@ def load_split(path: Path = WEIGHTS_FILE) -> dict[str, dict[str, int]]:
     return split
 
 
-def deal(weights: dict[str, int], of: int) -> dict[str, int]:
-    """``{test file: shard}`` for the listed files: longest first, each onto the lightest shard."""
+def load_seconds(path: Path = WEIGHTS_FILE) -> dict[str, int]:
+    """``{test file: seconds}``, the table's ``seconds`` as written (a file split by test keeps its total here)."""
+    load_weights(path)  # the table's checks
+    return json.loads(path.read_text(encoding="utf-8"))["seconds"]
+
+
+def new_file_weight(path: Path = WEIGHTS_FILE) -> int:
+    """The seconds a file the table does not list is assumed to take: the 90th percentile (nearest rank) of the table's
+    file weights, so a new file is taken for a heavy one, not a typical one. The table holds every file its reports held,
+    including the many that take a second, so this is the weight of a file near the heavy end, not a mean."""
+    seconds = sorted(load_seconds(path).values())
+    return seconds[math.ceil(0.9 * len(seconds)) - 1]
+
+
+def deal(weights: dict[str, int], of: int, new_files: Iterable[str] = (), new_weight: int = 0) -> dict[str, int]:
+    """``{test file: shard}``: the listed files longest first, each onto the lightest shard; then ``new_files``, the
+    files the table does not list, in the order of their paths, each onto the lightest shard at ``new_weight`` seconds
+    (a shard that holds a file alone, its load more than the others' together, takes none)."""
     load = [0] * of
     shards: dict[str, int] = {}
     for path, seconds in sorted(weights.items(), key=lambda kv: (-kv[1], kv[0])):
         lightest = min(range(of), key=lambda k: (load[k], k))
         shards[path] = lightest + 1
         load[lightest] += seconds
+    # A shard whose listed load exceeds all the others' together holds one file alone (the weight ``load_weights`` gives
+    # such a file): it takes no new file, unless every shard is so (one shard).
+    open_shards = [k for k in range(of) if load[k] <= sum(load) - load[k]] or list(range(of))
+    for path in sorted(set(new_files) - set(shards)):
+        lightest = min(open_shards, key=lambda k: (load[k], k))
+        shards[path] = lightest + 1
+        load[lightest] += new_weight
     return shards
 
 
 def shard_of(nodeid: str, of: int, dealt: dict[str, int], split: Collection[str] = ()) -> int:
     """The shard of a test: by its node id when its file is one of ``split`` (its listed tests by the deal), otherwise by
-    its file, the node id's path relative to the root with ``/`` on every platform."""
+    its file, the node id's path relative to the root with ``/`` on every platform. What ``dealt`` does not hold goes by a
+    hash: a test of a split file the table does not list, and any file the caller did not pass to ``deal`` as new."""
     path = nodeid.split("::", 1)[0]
     if path in split:
         return dealt[nodeid] if nodeid in dealt else by_hash(nodeid, of)
@@ -139,14 +169,17 @@ def shard_of(nodeid: str, of: int, dealt: dict[str, int], split: Collection[str]
 
 class Plugin:
     def __init__(self, shard: int, of: int, weights: dict[str, int], record: str | None,
-                 split: Collection[str] = ()):
+                 split: Collection[str] = (), new_weight: int = 0):
         self.shard, self.of, self.record = shard, of, record
+        self.weights, self.new_weight = weights, new_weight
         self.dealt = deal(weights, of)
         self.split = frozenset(split)
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, config: pytest.Config, items: list[pytest.Item]) -> None:
         collected = [item.nodeid for item in items]
+        new_files = {item.nodeid.split("::", 1)[0] for item in items} - self.weights.keys() - self.split
+        self.dealt = deal(self.weights, self.of, new_files, self.new_weight)
         keep = [item for item in items if shard_of(item.nodeid, self.of, self.dealt, self.split) == self.shard]
         drop = [item for item in items if shard_of(item.nodeid, self.of, self.dealt, self.split) != self.shard]
         if drop:
@@ -164,5 +197,5 @@ class Plugin:
 
 def register(config: pytest.Config, spec: str) -> None:
     shard, of = parse(spec)
-    config.pluginmanager.register(Plugin(shard, of, load_weights(), config.getoption(RECORD_OPTION), load_split()),
-                                  "mime-test-shard")
+    config.pluginmanager.register(Plugin(shard, of, load_weights(), config.getoption(RECORD_OPTION), load_split(),
+                                         new_file_weight()), "mime-test-shard")

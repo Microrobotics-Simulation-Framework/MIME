@@ -39,41 +39,22 @@ shard_matrix = _script("shard_matrix")
 #: The shard counts the recorded artifacts are made for: one, a pair, a count that does not divide the files, and
 #: today's default. A lane may run as any whole number of shards from ``scripts/shard_matrix.py``'s bounds.
 COUNTS = (1, 2, 3, 6)
-CONFTEST = """import sys
-sys.path.insert(0, {tests!r})
-import _sharding
-
-
-def pytest_addoption(parser):
-    parser.addoption("--mime-shard")
-    parser.addoption("--mime-shard-record")
-
-
-def pytest_configure(config):
-    if config.getoption("--mime-shard"):
-        _sharding.register(config, config.getoption("--mime-shard"))
-"""
-
-
 def shard_files(of: int) -> list[str]:
-    """One test file name per shard of ``of``, found by the hash that places a file outside the weights' table: the
-    split is by file, so a project of these files has a shard that holds each."""
-    names: dict[int, str] = {}
-    candidate = 0
-    while len(names) < of:
-        name = f"test_s{candidate}.py"
-        names.setdefault(_sharding.by_hash(name, of), name)
-        candidate += 1
-    return [names[shard] for shard in range(1, of + 1)]
+    """``of`` test file names, none in the project's table: each is a new file, and the plugin places new files one at a
+    time on the lightest shard, so a project of these files has a shard that holds each (the table's two listed files,
+    which the project does not hold, weigh what a new file is assumed to, and so take two shards' places first)."""
+    return [f"test_s{number}.py" for number in range(of)]
 
 
 def record_shards(tmp_path: Path, of: int) -> list[Path]:
     """Run a project of ``of`` small test files once per shard of ``of``, as a shard job does, with the shard plugin of
-    ``tests/_sharding.py``: its record, its JUnit report and a passing outcome in a directory each. Every shard holds
-    one file of two tests."""
+    ``tests/_sharding.py``, on a table that lists none of the project's files: its record, its JUnit report and a passing
+    outcome in a directory each. Every shard holds one file of two tests."""
     project = tmp_path / "project"
     project.mkdir()
-    (project / "conftest.py").write_text(CONFTEST.format(tests=str(ROOT / "tests")), encoding="utf-8")
+    table = _split_table(tmp_path, {"seconds": {"test_listed_a.py": 1, "test_listed_b.py": 1}})
+    (project / "conftest.py").write_text(SPLIT_CONFTEST.format(tests=str(ROOT / "tests"), table=str(table)),
+                                         encoding="utf-8")
     for name in shard_files(of):
         (project / name).write_text("def test_a():\n    pass\n\n\ndef test_b():\n    pass\n", encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_XDIST", "MIME_CI_PLANT", "MIME_TEST_JAX"))}
@@ -349,12 +330,58 @@ def test_a_file_the_table_gives_a_shard_of_its_own_has_it_to_itself_and_would_no
     assert any(shard == plain[alone[0]] and other != alone[0] for other, shard in plain.items())
 
 
-def test_a_files_tests_share_its_shard_and_a_file_outside_the_table_goes_by_its_hash():
+def test_a_files_tests_share_its_shard_and_a_file_nobody_passed_as_new_goes_by_its_hash():
     dealt = _sharding.deal(_sharding.load_weights(), 6)
     listed = next(iter(dealt))
     assert {_sharding.shard_of(f"{listed}::test_{i}[{i}]", 6, dealt) for i in range(9)} == {dealt[listed]}
     added = "tests/test_new.py"
     assert added not in dealt and _sharding.shard_of(f"{added}::test_added", 6, dealt) == _sharding.by_hash(added, 6)
+
+
+def test_a_file_the_table_does_not_list_goes_to_the_lightest_shard_at_the_assumed_weight_not_by_its_hash(tmp_path):
+    """The table lists three files (100, 60 and 50 s on shards 1, 2 and 3); the weight a new file is assumed to have is the
+    table's 90th percentile (nearest rank), 100 s. The new files, in the order of their paths, take the lightest shard each
+    time: shard 3 (50 s, then 150), then 2 (60 s, then 160), then 1 (100 s). The control is the hash, which places them
+    otherwise: a file by hash ignores how loaded its shard already is, which is how a push's shard ran past its limit."""
+    path = _split_table(tmp_path, {"seconds": {"tests/a.py": 100, "tests/b.py": 60, "tests/c.py": 50}})
+    weights, assumed = _sharding.load_weights(path), _sharding.new_file_weight(path)
+    assert assumed == 100
+    new = ["tests/new_1.py", "tests/new_2.py", "tests/new_3.py"]
+    dealt = _sharding.deal(weights, 3, new, assumed)
+    assert [dealt[file] for file in ("tests/a.py", "tests/b.py", "tests/c.py")] == [1, 2, 3]
+    assert [dealt[file] for file in new] == [3, 2, 1]
+    assert [_sharding.shard_of(f"{file}::test_x", 3, dealt) for file in new] == [3, 2, 1]
+    assert [_sharding.by_hash(file, 3) for file in new] != [3, 2, 1], "the control: by hash these would not be placed so"
+    assert dealt == _sharding.deal(weights, 3, reversed(new), assumed), "the order the files are given in moves none"
+    assert _sharding.deal(weights, 3, ["tests/a.py"], assumed)["tests/a.py"] == 1, "a listed file is never re-placed"
+
+
+def test_the_table_assumes_for_a_new_file_the_weight_of_its_90th_percentile_file():
+    seconds = _sharding.load_seconds()
+    ranked = sorted(seconds.values())
+    assumed = _sharding.new_file_weight()
+    assert assumed == ranked[-(-9 * len(ranked) // 10) - 1]
+    assert sum(1 for weight in ranked if weight > assumed) <= 0.1 * len(ranked) <= sum(1 for w in ranked if w >= assumed)
+
+
+def test_a_new_file_never_lands_on_the_shard_of_a_file_the_table_gives_to_itself_and_goes_to_the_lightest():
+    """With the committed table, at the counts a lane may run as: a hundred new files are placed after the listed ones,
+    none on a shard that holds a file alone, and the first on the shard the listed files load least."""
+    weights, assumed = _sharding.load_weights(), _sharding.new_file_weight()
+    alone = list(_sharding.load_alone())
+    new = [f"tests/new_{number:03d}.py" for number in range(100)]
+    for of in (*range(2, 13), 16, 20, 24, 32):
+        listed = _sharding.deal(weights, of)
+        dealt = _sharding.deal(weights, of, new, assumed)
+        assert all(dealt[path] == listed[path] for path in listed), "the listed files stay where the table puts them"
+        taken = {dealt[path] for path in alone}
+        assert not taken & {dealt[file] for file in new}
+        load = [sum(w for path, w in weights.items() if listed[path] == shard) for shard in range(1, of + 1)]
+        assert dealt[new[0]] == 1 + min(range(of), key=lambda k: (load[k], k))
+        placed = [sum(assumed for file in new if dealt[file] == shard) for shard in range(1, of + 1)]
+        if of > 2:  # the new files are spread: the shards they land on end within one assumed weight of each other
+            ends = [load[k] + placed[k] for k in range(of) if k + 1 not in taken]
+            assert max(ends) - min(ends) <= assumed
 
 
 SPLIT_TABLE = {"seconds": {"tests/big.py": 60, "tests/mid.py": 20, "tests/small.py": 10},
@@ -378,7 +405,7 @@ def pytest_configure(config):
         table = Path({table!r})
         config.pluginmanager.register(_sharding.Plugin(
             shard, of, _sharding.load_weights(table), config.getoption("--mime-shard-record"),
-            _sharding.load_split(table)))
+            _sharding.load_split(table), _sharding.new_file_weight(table)))
 """
 
 
@@ -494,6 +521,23 @@ def test_the_weights_script_splits_the_files_it_is_told_to_keeps_them_split_and_
     assert "predicted seconds per shard: 30, 20, 20, 20" in out
     assert shard_weights.main([*reports, "--shards", "4", "--source", "x"]) == 0  # a file stays split
     assert "split" in json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))
+
+
+def test_the_weights_script_lists_every_file_the_reports_hold_so_that_a_file_the_table_lacks_is_a_new_one(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(shard_weights, "TABLE", tmp_path / "table.json")
+    reports = [str(path) for path in _lane_reports(tmp_path)]
+    for directory in (tmp_path / "durations-a-shard-1-attempt-1", tmp_path / "durations-b-shard-1-attempt-1"):
+        report = directory / "r.xml"
+        report.write_text(report.read_text(encoding="utf-8").replace(
+            "</testsuite>", '<testcase classname="tests.quick" name="test_q" file="tests/quick.py" time="0.2"/></testsuite>'),
+            encoding="utf-8")
+    assert shard_weights.main([*reports, "--shards", "4", "--source", "x"]) == 0
+    table = json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))
+    assert table["seconds"]["tests/quick.py"] == 1 and set(table["seconds"]) == {
+        "tests/h.py", "tests/m.py", "tests/s.py", "tests/quick.py"}
+    assert shard_weights.main([*reports, "--shards", "4", "--over", "5", "--source", "x"]) == 0
+    assert "tests/quick.py" not in json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))["seconds"]
 
 
 @pytest.mark.parametrize("spec", ["0/4", "5/4", "1/0", "a/4", "1/4/2", " 1/4", "1/4:weighted"])
