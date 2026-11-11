@@ -136,8 +136,13 @@ jobs:
             echo "::warning::this probe declares no memory estimate (probe/estimate.txt): nothing checks it against the runner's 16 GB"
             exit 0
           fi
+          mkdir -p probe/out
+          arms=()
+          if [ -f probe/arms.txt ]; then arms=(--arms-file probe/arms.txt); fi
           rc=0
-          python .github/probe/mem_estimate.py --from-file probe/estimate.txt --arm "$PROBE_ARM" --require actions || rc=$?
+          # A timeout of its own: the estimator builds the case at full size, and the job's minutes beyond the script's are few.
+          timeout 1800 python .github/probe/mem_estimate.py --from-file probe/estimate.txt --arm "$PROBE_ARM" "${arms[@]}" \
+            --summary-json probe/out/mem_estimate.json --require actions || rc=$?
           if [ "$rc" -ge 128 ]; then
             echo "::error::the estimate itself was killed (signal $((rc - 128))): this probe needs more than a runner holds; run it on the maintainer's machine under the cap, or past 48 GiB on Modal with his word"
             exit 1
@@ -151,7 +156,20 @@ jobs:
         run: |
           mkdir -p probe/out
           test -f probe/run.sh || { echo "::error::this branch has no probe/run.sh"; exit 1; }
-          timeout --kill-after=60 19200 bash probe/run.sh
+          python .github/probe/mem_estimate.py --measure-peak probe/out/mem_peak.json -- timeout --kill-after=60 19200 bash probe/run.sh
+      # After the script: its peak (the largest process of its tree) against the estimate the route was read from. A peak over
+      # the bound is an underestimate: the step fails and records the comparison, with a row for mem_calibration.json.
+      - name: Memory against the estimate
+        if: ${{ always() }}
+        run: |
+          if [ ! -f probe/out/mem_estimate.json ] || [ ! -f probe/out/mem_peak.json ]; then
+            echo "::warning::no estimate or no measured peak for this arm: nothing to compare"
+            exit 0
+          fi
+          python .github/probe/mem_estimate.py --compare probe/out/mem_estimate.json probe/out/mem_peak.json --check-json probe/out/mem_check.json || {
+            echo "::error::this arm's peak exceeded its memory bound (an underestimate of the estimator): see probe/out/mem_check.json for the row to add to the calibration"
+            exit 1
+          }
       - name: What the artifact is called
         id: name
         if: ${{ always() }}

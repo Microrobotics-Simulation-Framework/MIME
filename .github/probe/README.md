@@ -106,19 +106,33 @@ python .github/probe/mem_estimate.py --case module:function --path DIR --steps 1
 
 It builds the case, then asks XLA for the compiled memory analysis of a chunk of `--steps` steps of the graph and, with
 `--wrt`, of the reverse-mode derivative of that chunk (`jax.jit(f).lower(...).compile().memory_analysis()` on abstract
-shapes: nothing of the run is allocated), adds the host's resident set after the build, the nodes' own `memory_estimate()`
-where they have one, and the fixed part of a process (about 0.7 GiB), and multiplies the largest by the calibration factor
-of `mem_calibration.json` before reading the route. A probe declares its cases in `probe/estimate.txt`, one line each,
-`<arm or *>: <the arguments above>`; the workflow's step "Memory estimate and route" runs the lines of its arm before the
-script and stops the job with the route if a case is beyond a runner (a probe with no `probe/estimate.txt` runs, with a
-warning).
+shapes: nothing of the run is allocated; in reverse mode the larger of the checkpointed run and the plain chunk), adds the
+host's resident set after the build, the nodes' own `memory_estimate()` where they have one, and the fixed part of a process
+(about 0.7 GiB), and multiplies the largest by a calibration factor before reading the route. The factor is **per family of
+nodes and per mode** (forward or reverse), from `mem_calibration.json`: the graph's nodes name their families (the MRS drag and
+near field; the FVM), each family's factor is the largest measured/estimated ratio among its completed cases of that mode,
+rounded up to 0.05 and never under 1.10, and a graph with a node of no calibrated family takes the table's stated conservative
+factor for uncalibrated cases. The printed line says which, and over how many cases. A probe declares its cases in
+`probe/estimate.txt`, one line each, `<arm or *>: <the arguments above>`; the workflow's step "Memory estimate and route" runs
+the lines of its arm before the script and stops the job with the route if a case is beyond a runner. A probe with no
+`probe/estimate.txt` runs, with a warning; **an arm with no line of its own and no `*` line is refused by name**, and a line
+naming an arm that `probe/arms.txt` does not list is refused too (a typo would otherwise estimate as nothing).
+
+**After the run.** The script runs under `mem_estimate.py --measure-peak`, which records the peak resident set of the largest
+process in its tree (one process's peak, not the sum of parallel ones) in `probe/out/mem_peak.json`; the step "Memory against
+the estimate" compares it with the bound the route was read from, writes `probe/out/mem_check.json` and **fails the arm if the
+peak is over the bound**, naming it an underestimate. The check file holds a row ready for `mem_calibration.json`: the
+calibration grows from real runs (add the row with its own name and `where`, and the family's factor follows the rule, which
+`tests/test_probe_mem_estimate.py` checks against the table).
 
 **What the calibration is evidence of.** `mem_calibration.json` holds the cases the estimator was checked against, each with
-its estimate, the peak measured on that case and their ratio, and the factor (never under 1, at least the largest ratio of a
-case that was underestimated). It rests on a few cases of one family (the MRS drag and its near field, on a CPU) and says
-so in its `scope`; a case of another family is outside what the factor was measured on. A measured peak marked as a lower
-bound is a run that was killed: the estimator is not underestimating it so long as it reads at least that. An estimate that
-jumps unexpectedly is a reason to look for the probe's own bug before sending the probe to a bigger machine.
+its family, mode, estimate, the peak measured on that case (with `measured_mib` where the source reported MiB) and their ratio,
+and each family's factor. Two families are calibrated, the MRS drag (with its near field) and the FVM, each on a handful of
+cases on a CPU, and the table says in its `scope` which of them were fitted to the same peaks and which reverse cases are lower
+bounds from killed runs. A case of any other family is outside what was measured and takes the conservative factor. A measured
+peak marked as a lower bound is a run that was killed: the estimator is not underestimating it so long as it reads at least
+that. An estimate that jumps unexpectedly is a reason to look for the probe's own bug before sending the probe to a bigger
+machine.
 
 ## What this does not tell
 
