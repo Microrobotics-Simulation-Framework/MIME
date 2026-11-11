@@ -27,7 +27,7 @@ from mime.fields import KEPT as KEPT_FIELDS
 from mime.fields import UniformRotating
 from mime.observations import PhaseLag
 from mime.dynamics.body import RigidInertialExplicit, RigidInertialMoments
-from mime.interactions import KEPT
+from mime.interactions import KEPT, Drag
 from mime.experiment import Experiment
 from mime.interactions import Lubrication
 from mime.interactions.hydrodynamic import PointForceDrag, UncoupledDrag
@@ -82,6 +82,28 @@ def periodic_tube_flow(steady: bool = False, rk3: bool = False) -> Experiment:
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
     experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0), amplitude=m_per_s2(0.5), frequency=Hz(2.0)),
                       medium="water")
+    return experiment
+
+
+def tree_flow() -> Experiment:
+    """The FVM on a tube tree's lumen in its periodic box (``TubeTree``, filleted): a vessel narrowing to 0.8 of its
+    radius over half its period and back, its parent reaching a radius past each end of the period, steady Stokes under
+    a body force on the fluid; the throat twelve cells across, so the wall is the union's exact distance at its
+    junctions."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import BodyForce
+    from mime.scene import PeriodicBox, Scene, TubeTree, Z
+    from mime.units import Pa_s, kg_per_m3, m_per_s2
+
+    experiment = Experiment("tree_flow", scene=Scene.new(up=Z, units="m"), dt=ms(5.0))
+    tree = TubeTree(points=mm((0.0, 0.0, -0.5, 0.0, 0.0, 0.25, 0.0, 0.0, 0.5, 0.0, 0.0, 0.75, 0.0, 0.0, 1.5)),
+                    segments=((0, 1), (1, 2), (2, 3), (3, 4)), radii=mm((0.5, 0.5, 0.5, 0.4, 0.4, 0.5, 0.5, 0.5)))
+    experiment.add_structure(Structure("vessel", geometry=tree))
+    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=12, stokes=True, scheme=Scheme.Steady())
+    experiment.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(0.01)), medium="water")
     return experiment
 
 
@@ -283,14 +305,22 @@ def hull_contact_kept() -> Experiment:
 
 
 def script_a_with_drag() -> Experiment:
-    """Script A, with the drag surrogate and its lubrication, the body moving as in the body side's case."""
+    """Script A, with the drag surrogate and its lubrication (drag 0.4.0, kept registered, which keeps the blend), the
+    body moving as in the body side's case: drag 0.4.0's golden output comes from it."""
     return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
 
 
+def script_a_unblended() -> Experiment:
+    """Script A with drag 0.5.0's surrogate rung, which has no blend (retired in 0.5.0, ``lubrication.retired``), the
+    body moving as in the body side's case: drag 0.5.0's golden output, and its surrogate rung's round trip."""
+    return script_a("script_a_unblended", velocity=m_per_s((1e-3, 0.0, 0.0)),
+                    drag=Drag.Surrogate(weights=asset("dejongh_mlp_v2")))
+
+
 def script_a_uncoupled_drag() -> Experiment:
-    """Script A with the drag kept registered, 0.4.0 (``UncoupledDrag``): what a folder saved before the near field
-    names, and the case drag 0.4.0's golden output came from; 0.5.0's surrogate rung is 0.4.0's, and its golden output
-    comes from script A's case."""
+    """Script A with the drag kept registered, 0.4.0 (``UncoupledDrag``), under its own name: what a folder saved before
+    the near field names. Script A itself is on 0.4.0 since 0.5.0 retired the blend, so 0.4.0's golden output comes from
+    script A's case, the same program."""
     return script_a("script_a_uncoupled", velocity=m_per_s((1e-3, 0.0, 0.0)),
                     drag=UncoupledDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(
                         epsilon=EPSILON)))
@@ -384,8 +414,11 @@ def rigid_explicit() -> Experiment:
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
-    # Script A's surrogate on drag 0.4.0, kept registered: drag 0.4.0's golden output, its values from before the near
-    # field (script A's on 0.4.0); after script A, so that the entries script A uses keep their golden outputs' case.
+    # Script A's body on drag 0.5.0's surrogate rung, unblended: drag 0.5.0's golden output (its first case) and the
+    # rung's one round trip; after script A, so that the entries script A uses keep their golden outputs' case.
+    Case("script_a_unblended", script_a_unblended),
+    # Script A's surrogate on drag 0.4.0 under the name a folder saved before the near field carries: what such a
+    # folder names (script A itself is on 0.4.0 since 0.5.0 retired the blend, so 0.4.0's golden output is its).
     Case("script_a_uncoupled", script_a_uncoupled_drag),
     # Script A's surrogate on drag 0.3.0, kept registered: what a folder saved before the separated quadrature names.
     Case("script_a_kept", script_a_kept_drag),
@@ -402,6 +435,8 @@ CASES = (
     # The same tube stepped by RK3, and its prescribed flow: the second scheme and the second flow field kind.
     Case("rk3_tube_flow", lambda: periodic_tube_flow(rk3=True)),
     Case("prescribed_tube_flow", prescribed_tube_flow),
+    # The FVM on a tube tree's lumen, its wall the union's exact distance where the band reads it.
+    Case("tree_flow", tree_flow),
     Case("open_tube_flow", open_tube_flow),
     # A law over the open vessel's two openings, and a closed valve at one (F2b's PR 3).
     Case("open_tube_loop", open_tube_loop),

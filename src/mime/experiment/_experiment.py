@@ -764,16 +764,23 @@ def _handle_of(thing: Any) -> Any:
     """A thing's handle, as ``add_*`` returns it: a structure's with its geometry's regions, surfaces and directions, an
     apparatus's with its fields and commands, a body's with its dynamics' initial state."""
     if isinstance(thing, Structure):
-        geometry = type(thing.geometry) if thing.geometry is not None else None
+        geometry = thing.geometry
         if geometry is None:
             return StructureHandle(thing.name)
-        return StructureHandle(thing.name, getattr(geometry, "regions", ()), getattr(geometry, "surfaces", {}),
+        # Its surfaces as the instance names them (a tube tree's ends are its own), its regions and directions the kind's.
+        return StructureHandle(thing.name, getattr(geometry, "regions", ()), _surfaces_of(geometry),
                                getattr(geometry, "directions", ()))
     if isinstance(thing, Apparatus):
         return ApparatusHandle(thing.name, thing.fields, thing.commands)
     if isinstance(thing, Body):
         return BodyHandle(thing.name, getattr(type(thing.dynamics), "initial_state", {}))
     return MediumHandle(thing.name)
+
+
+def _surfaces_of(geometry: Any) -> Mapping[str, str]:
+    """A geometry's surfaces by name: its own (``Geometry.surface_names``), or a kind's class's where it has none."""
+    named = getattr(geometry, "surface_names", None)
+    return cast(Mapping[str, str], named() if callable(named) else getattr(geometry, "surfaces", {}))
 
 
 def _pulled(source: str | PathLike[str], accept_licences: Collection[str], yes: bool,

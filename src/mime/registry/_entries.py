@@ -1363,9 +1363,23 @@ class Geometry(Entry):
     #: convergence); a fitted stand-in's measured error. The conformance suite holds each kind to it against a dense
     #: quadrature of its body.
     support_error: ClassVar[float] = 0.0
+    #: The closed form the near-contact law takes for a contact of this kind's body (``"sphere"``: a sphere's exact
+    #: increment, ``mime.nodes.hydro.near_contact``), the plan's choice of the law's form, named in the build report;
+    #: empty for a kind with none, whose contacts take the law's general form.
+    near_contact: ClassVar[str] = ""
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
+
+    def surface_names(self) -> Mapping[str, str]:
+        """Its surfaces by name, each mapped to the shape its free side is evaluated with: the class's ``surfaces``,
+        and for a kind whose settings name surfaces of their own (a tube tree's ends), those too."""
+        return self.surfaces
+
+    def opening_names(self) -> Mapping[str, tuple[str, ...]]:
+        """The surfaces each region may be opened at, among :meth:`surface_names`: the class's ``openings``, and for a
+        kind whose settings name its ends (a tube tree's), those."""
+        return self.openings
 
     def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         """The parameters of the shape ``region_shapes`` names for ``region``, in SI."""

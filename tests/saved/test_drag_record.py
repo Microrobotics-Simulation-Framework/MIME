@@ -12,9 +12,9 @@ lose the setting, so the 0.5.0 assertion can fail."""
 
 from unittest import mock
 
+from cases import script_a_unblended
 from mrs_cases import mrs_free_space
 from rft_cases import rft_free_space, rft_kept
-from script_a import script_a
 
 from mime.interactions import Drag
 from mime.interactions.hydrodynamic import UncoupledDrag
@@ -53,10 +53,10 @@ def test_on_0_4_0_the_record_holds_coefficients_only_for_the_rung_that_reads_it(
 
 
 def test_on_0_5_0_the_record_holds_coefficients_on_every_rung():
-    for experiment in (script_a(), rft_free_space()):
+    for experiment in (script_a_unblended(), rft_free_space()):
         assert all("coefficients" in settings for settings in _drag_settings(experiment, "0.5.0"))
 
 
 def test_the_control_with_0_4_0s_rule_on_0_5_0_a_program_off_the_rft_rung_loses_it():
     with mock.patch.object(Drag, "unrecorded_settings", UncoupledDrag.unrecorded_settings):
-        assert all("coefficients" not in settings for settings in _drag_settings(script_a(), "0.5.0"))
+        assert all("coefficients" not in settings for settings in _drag_settings(script_a_unblended(), "0.5.0"))

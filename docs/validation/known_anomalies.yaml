@@ -3744,7 +3744,7 @@ anomalies:
     planned_resolution: "Open: an acceptance test of sign and frame against measured hardware data (the measured Navion_2 campaign, re-read with its script) would settle which side is flipped. This entry changes no code."
 
   - anomaly_id: MIME-ANO-154
-    title: "Below the hand-over gap the lift form over-counts the coupling of rotation and translation against its own size, at every gap: a sphere spun on a plane translates up to 43 % too fast, the excess falling only as one over the logarithm of the gap"
+    title: "Below the hand-over gap the thin film's form of the near-contact law over-counts the coupling of rotation and translation against its own size, at every gap: open for every kind but the sphere, whose exact form closes it near a plane and in a tube at sphere-to-tube ratios of 0.22 to 0.34; open for a sphere in a tube above 0.34, where its rolling along the axis misses by -18 % at 0.40 and -25 % at 0.46"
     description: >
       Drag 0.5.0's lubrication hand-over (the lift form: the coarse MRS with the contact opened to the hand-over gap h_m,
       plus the thin film's increment TF(h) - TF(h_m)) holds every entry of a sphere's resistance above a plane within 7 % of
@@ -3771,22 +3771,50 @@ anomalies:
       surfaces' signed distances on a patch of one, two and three times the film's width at h_m, moves the coupling
       at 0.01 radii from +48 % through -13 % to -54 % and puts the normal 7.9 to 14 % off at 0.06: no patch holds every
       entry, so it was not taken.
+
+      Closed for spheres by W2a's PR 1b-i: the near-contact law (mime.nodes.hydro.near_contact) gives a sphere its exact
+      increment, the plane's exact remainder from MIME's table of the bispherical solutions (sphere_plane_resistance)
+      with the contact's own singular terms (the body's curvature in them), in place of the film. Measured through the
+      node at drag 0.5.0's family spacing (a 1 mm sphere, 0.251 radii, h_m 0.188 radii, blob 0.05, float64): above a
+      plane the sphere spun on the wall translates within 1.2 % of the exact rate at every gap 0.3 to 0.001 radii
+      against the graded MFS, every entry within 2.8 % (the normal, the coarse MRS's own at the hand-over gap); in a
+      straight tube at sphere-to-tube ratios 0.22, 0.28 and 0.34, the rolling round the circumference within 3.3 % of
+      the plane's rate and along the axis -3.6, -7.0 and -12 % against an independent tube MFS (the plane's form there,
+      44 to 57 % round the circumference), every diagonal entry within 4.7 % of the MFS where it resolves the entry. The
+      rolling along the axis there, -3.6, -7.0 and -11.9 % of the plane's rate at the family's spacing (-2.7, -5.2 and
+      -8.9 % at a spacing of 0.2 radii; gaps of 0.1 to 0.0075 radii; a finer spacing lowers it), is a stated limit, the
+      maintainer's decision (design row #360), stated in the validity line and the build report. The tube is closed only
+      within 0.22 to 0.34. Above 0.34 it is open: the rolling along the axis misses the tube MFS by
+      -18 % of the plane's rate at a ratio of 0.40 and -25 % at 0.46 (the PR's review's tube MFS rows, resolved: levels
+      B against C within 0.65 % on that scale; pinned by tests/oracles/test_near_contact.py), round the circumference
+      and the normal within 4 % and 6 %; a step there within the opening's band raises handover_tube_ratio, and the
+      build report says so. The thin film's form, which every other kind still takes, is unchanged: its numbers above
+      are the film's on a sphere given that form.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       A body rolling on a wall by hydrodynamics alone (the rolling arm's stage 1) moves by this coupling: at every gap
       below the hand-over gap its speed per rotation is over-counted, by up to 43 % at the window's widest spacing and
       still by a fifth at a thousandth of the radius.
-    resolution_status: open
+    resolution_status: partially_resolved
     affected_versions: ">=0.3.0.dev2"
     affected_components:
-      - "entry: interaction drag 0.5.0, rung mrs; with lubrication, at every gap below the hand-over gap"
+      - "entry: interaction drag 0.5.0, rung mrs; with near_contact in the thin film's form (every kind but the sphere), at every gap below the hand-over gap"
+      - "entry: interaction drag 0.5.0, rung mrs; with near_contact in the sphere's form in a tube past a sphere-to-tube ratio of 0.34 (handover_tube_ratio), at every gap within the opening's band"
+    verification:
+      - "tests/oracles/test_near_contact.py::test_gate2_a_sphere_spun_on_the_plane_translates_at_the_exact_rate_at_every_gap"
+      - "tests/oracles/test_near_contact.py::test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates"
+      - "tests/oracles/test_near_contact.py::test_gate1_every_entry_within_its_line_at_every_gap_and_drawn_orientation"
+      - "tests/oracles/test_near_contact.py::test_above_the_gated_ratio_the_step_is_flagged_and_the_along_axis_miss_is_the_measured_one"
     residual_risk: >
-      Measured on a sphere above a plane at four spacings (0.1 to 0.2 radii); an elongated contact and a tube are not
-      measured for the coupling. Each entry on its own diagonal scale is within 7 % (gate 1), so a result that does not
-      rest on the coupling against its own size is not affected beyond that.
-    workaround: "For rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
-    planned_resolution: "Open, for the maintainer's choice before W2b's rolling arm relies on the coupling (both routes measured in W2a's fix round): a smaller hand-over gap (its numbers in the workaround: the miss roughly halves from a spacing of 0.2 radii to 0.1, at six times the step), or the film's next order in the gap over the radius (not built; the miss is a constant at h_m, so an order that does not change the film's patch does not remove it)."
+      For every kind but the sphere: the film's form was measured on a sphere given it, above a plane at four spacings
+      (0.1 to 0.2 radii), and the MIME-ANO-154 probes measured it on prolate spheroids lying on a plane, the rolling
+      rate up to 86 % off at aspect 2 (238 % in aspect 4's small roll about its long axis) at a hand-over gap of 0.15 of
+      the minor semi-axis. Each entry on its own diagonal scale is within 7 % on the sphere, so a result that does not
+      rest on the coupling against its own size is less affected. A sphere in a tube is gated at ratios 0.22 to 0.34 and
+      measured at 0.40 and 0.46, where the miss along the axis grows with the ratio; past 0.46 it is not measured.
+    workaround: "For a sphere near a plane, or in a tube at a sphere-to-tube ratio up to 0.34, none is needed; in a tube above 0.34 none is built: the step raises handover_tube_ratio and the rolling along the axis carries the measured miss (at 0.34 it was -8.9 % at a hand-over gap of 0.15 radii against -12 % at the family's 0.188, so a finer force spacing narrows it there). For another kind's rolling, read the speed per rotation from a ladder of force spacings: the over-count falls with the spacing (at 0.01 radii: +41 % at a spacing of 0.2 radii, +33 % at 0.15, +30 % at 0.133, +23 % at 0.1; in the band at 0.06 radii: +43 %, +27 %, +21 %, +8 %), at a cost that grows with the force points (a step 0.5 s at 0.2, 1.1 s at 0.133, 3.3 s at 0.1 on a runner)."
+    planned_resolution: "Resolved for spheres near a plane and in a tube at sphere-to-tube ratios of 0.22 to 0.34 by the near-contact law's sphere form. Open for a sphere in a tube above 0.34 (flagged, handover_tube_ratio), a known limitation: the hybrid's miss along the axis grows with the hand-over gap against the lumen's radius [inference, not measured], so a finer force spacing there, or the tube's own exact remainder in place of the plane's, are the routes, neither built. Open for other kinds, a known limitation: a closed form from the contact's curvatures alone (the elliptic contact's singular terms, which the near-contact seam takes as another form) waits on the maintainer's word on the follow-up probe's spheroids, where it removes the film's failures on the long-axis roll and costs accuracy on tilted bodies; across the alpha releases, a per-body remainder from a fine reference."
 
   - anomaly_id: MIME-ANO-155
     title: "Reverse mode through MADDENING's run_scan in a shape leaf remakes the MRS rung's held matrix at every backward step: 32 to 660 s for a gradient MIME's chunked run takes in about a minute"
@@ -3819,3 +3847,43 @@ anomalies:
       of the force points), so the gap between the two paths grows with it.
     workaround: "Take the derivative through MIME's own path, Study.gradient or the chunked run (mime.build._maddening.chunk_function), which makes the held matrix once a run, not through graph.run_scan."
     planned_resolution: "Open, MADDENING Ask 51: its scan's run-constant seam extended to a held value that depends on a traced leaf, so that a node's held matrix is made once a run through run_scan as it is through MIME's chunked run. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-156
+    title: "The MRS rung's resistance differentiated in a sphere's radius near a wall misses two builds' difference, by a few per cent at half a radius and by a quarter or more nearer, with or without the hand-over"
+    description: >
+      Drag 0.5.0's mrs rung on a 1 mm sphere at a written force spacing of 0.251 mm (blob 0.05, float64, the node's own
+      step): the derivative of the node's resistance in the sphere's radius leaf (shape_radius), by reverse mode, equals
+      the central difference of the same build with the leaf moved by a relative 1e-3 to the difference's own
+      truncation, and misses the central difference of two builds at a radius 1e-3 larger and smaller. With the
+      hand-over off (near_contact=False), above a plane: the normal +0.7, +1.7 and +3.3 % at gaps of 0.5, 0.3 and 0.15
+      radii, the couplings of a translation along the wall and a rotation +4.1 to +5.2 % (y's -2.0 % at 0.15), and at
+      0.05 radii, a fifth of the spacing, the normal -60 % and a coupling -164 %; in a straight tube at a sphere-to-tube
+      ratio of 0.28, the normal -3.0 to -7.2 %, round the circumference's translation -1 to -12 % and its coupling -0.8
+      to -33 %, along the axis's coupling +4.2 to +62 % at 0.5 to 0.15 radii. With the hand-over on (its default near a
+      wall that opens): above the plane the normal and the coupling within -4.2 and -5.4 %; in the tube the normal +1.8,
+      +7.7, +24.5 and +8.1 % at 0.5, 0.3, 0.15 and 0.05 radii, the coupling along the axis -29 % at 0.05 [measured: W2a
+      PR 1b-i's fix round, probe run 42980019668, arm radius-off, reproducing its review's runs 42968413012 and
+      42972714723]. The near-contact law's own increment matches two builds to 2.3e-6 (tests/oracles/test_near_contact.py's
+      gate 13), so the miss is the MRS rung's.
+
+      Not established: what the build holds that depends on the radius and that the leaf does not move. Not the count of
+      force points: the three builds hold 338 each [measured, the same arm]. A value the build fixes from the radius
+      otherwise (the quadrature's counts, the wall's image cells chosen at the build, a table read at a fixed point) would
+      give this [inference]; mime.testing.two_builds_of with run=False compares the two builds' programs, not a value they
+      hold, so it cannot see one.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A gradient study or a fit in a sphere's radius near a wall follows the derivative the node returns, which is the
+      derivative of one build's resistance and not of the resistance a rebuild at the new radius gives: a descent can stop
+      where a rebuild's resistance is not stationary, or step the wrong way where the two differ in sign. Nothing is
+      flagged. Forward runs at a fixed radius are not affected.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "entry: interaction drag 0.5.0, rung mrs; a derivative in a sphere's radius near a wall, with the hand-over on or off"
+    residual_risk: >
+      Measured on one sphere at one force spacing, above a plane and in one tube; other kinds' shape leaves, other
+      spacings and the far field are not measured, and whether the drag 0.4.0 mrs rung shares it is not measured.
+    workaround: "Take a derivative in a shape leaf near a wall from two builds' difference (the study's own finite-difference route) rather than through the node, or check the node's derivative against one before relying on it."
+    planned_resolution: "Open, before a fit or a descent in a shape leaf relies on the MRS rung near a wall: find the held value that depends on the radius (the two builds' force points and quadratures compared first), and make it a leaf or make the two-builds check run the step. This entry changes no code."

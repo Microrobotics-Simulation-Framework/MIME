@@ -24,7 +24,7 @@ from unittest import mock
 import pytest
 from mrs_cases import mrs_tube
 from rft_cases import R6_TUBE, SMALL_HELIX, SMALL_SETTINGS, helix_body
-from script_a import EPSILON, script_a
+from script_a import script_a
 
 from mime.build import BuildRefused
 from mime.build._declarations import ValueDeclaration
@@ -32,7 +32,6 @@ from mime.build._plan import _Planner
 from mime.data import asset
 from mime.dynamics import FVM, RigidInertial, Womersley
 from mime.experiment import Experiment
-from mime.interactions import Lubrication
 from mime.registry import EntryKind, register_dynamics, registered
 from mime.scene import PeriodicBox, Sphere
 from mime.things import Body, Medium, Part, State
@@ -57,17 +56,23 @@ class Elsewise(Womersley):
     field = dataclasses.replace(Womersley.field, provides=(CONCENTRATION.name,))
 
 
+def _off(cls: Any) -> dict[str, Any]:
+    """The near-contact law's hand-over off where the version has it: it is not built for bodies sharing a medium yet,
+    and these cases are the coarse MRS's."""
+    return {"near_contact": False} if hasattr(cls, "default_near_contact") else {}
+
+
 def mrs(cls: Any) -> Experiment:
     experiment = mrs_tube()
     experiment.remove("drag:ball")
-    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
+    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube", **_off(cls)), body="ball", medium="water")
     return experiment
 
 
 #: A case for each rung, made with the drag version's own class.
 CASES: dict[str, Callable[[Any], Experiment]] = {
     "surrogate": lambda cls: script_a(velocity=m_per_s((1e-3, 0.0, 0.0)), drag=cls.Surrogate(
-        weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON))),
+        weights=asset("dejongh_mlp_v2"))),
     "mrs": mrs,
     "rft": lambda cls: helix_body("rft_tube", SMALL_HELIX, SMALL_SETTINGS, cls.RFT(wall_kind="tube"), tube=R6_TUBE,
                                   velocity=m_per_s((1e-3, 0.0, 0.0)), spin=rad_per_s((3.0, -1.0, 2.0))),
@@ -89,7 +94,7 @@ def joint(cls: Any) -> Experiment:
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("bead.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("bead.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
-    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="bead", medium="water")
+    experiment.attach(cls.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube", **_off(cls)), body="bead", medium="water")
     return experiment
 
 

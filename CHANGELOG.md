@@ -42,6 +42,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Only a Tube's two ends build through the experiment until the tube tree's wall is in the open box; two outlets are
   gated at the node level on a rig of two parallel tubes, every run of it metered and its books judged (the ledger on
   in every gate).
+- **The near-contact law, one seam for every rung, and a sphere's exact form (`mime.nodes.hydro.near_contact`).** A
+  rung declares the gap it resolves down to and evaluates itself with the contact opened to it (`opening`); the law
+  adds the increment to the true gap from the contact's geometry (`NearContact`: its point, frame, gap, and the gap's
+  and the body's own principal curvatures) by the form the body's kind declares (`Geometry.near_contact`), which the
+  plan picks and the build report names. **A sphere's form** (`Sphere.near_contact = "sphere"`) is exact: the plane's
+  exact remainder from the new packaged table `sphere_plane_resistance` (MIME's, from the bispherical solutions:
+  Brenner 1961, Jeffery 1915, Dean and O'Neill 1963, O'Neill 1964; built by `scripts/sphere_plane_table.py`, its
+  sha256 pinned, its derivation record shipped; read as its singular terms plus a C2 spline in `ln(h/a)`, continued C1
+  below its range), plus the contact's own elliptic singular terms with the body's curvature (Cox 1974, Claeys and
+  Brady 1989): exact against a plane, the hybrid in a tube. Drag 0.5.0's mrs rung takes it for a sphere near a wall
+  that opens at any spacing (the film's window is the film's); every other kind keeps the thin film's form, its
+  numbers unchanged, MIME-ANO-154 open for it (now `partially_resolved`: closed for spheres near a plane and in a
+  tube). In a tube the sphere's form is gated at sphere-to-tube ratios of 0.22 to 0.34, every entry of its 6 x 6
+  against an independent tube MFS where the MFS resolves it; past 0.34 a step within the opening's band raises the new
+  flag `handover_tube_ratio` and the build report says so (the rolling along the axis measured -18 % at 0.40 and -25 %
+  at 0.46, MIME-ANO-154 open there). A sphere whose force points are graded towards its contact is refused the form
+  (`drag.near-contact-graded`, its measured error named), and the build line states the form's measured error at
+  uniform spacings. The table's file holds no times or versions (they go to its build's log), and its script pins the
+  kernels its numbers are made in, so that a rebuild reproduces its sha256; a test rebuilds three knots and compares.
+  The seam's roughness cutoff (`roughness_cutoff`) and the ambient's zero on the opened wall (`ambient_point`,
+  `AMBIENT_ZERO`; no drag rung reads an ambient flow yet) are the same for every rung. The gates' oracles, the graded
+  and the tube methods of fundamental solutions of the MIME-ANO-154 probes, are committed with their scripts
+  (`tests/differential/graded_mfs.py`, `tube_mfs.py`).
+- **Drag 0.5.0's near-contact setting and fields renamed, and its surrogate blend retired.** The mrs rung's hand-over
+  is `Drag.MRS(near_contact=True | False)` (was `lubrication=`); its state fields are `contact_increment`,
+  `contact_coupling` and `contact_cutoff` (were `film_*`; `film_residual`, `film_unsolved` and `film_annulus` stay the
+  film's). `lubrication=` written on drag 0.5.0 is the surrogate's blend, which 0.5.0 retires: refused
+  (`lubrication.retired`), its way out by the rung it was written on: on the mrs rung `near_contact=` at the value
+  written (so `lubrication=False` keeps the hand-over off), on the surrogate drag 0.4.0, which keeps the blend. Drag
+  0.5.0's surrogate rung has its own round-trip case again (script A unblended). Script A, A0, the inertia arms and the tests built on
+  them pin drag 0.4.0 (`KEPT["drag", "0.4.0"]`), their programs bit for bit. Drag 0.5.0 is unreleased; no released
+  program changes.
 
 - **A flow open at the vessel's ends, and the laws at its openings: `VesselRegion`, `Inflow`, `Windkessel`, the
   `opening` port kind.** `FVM(domain=VesselRegion())` on a straight tube along z cuts the region the medium fills at the
@@ -72,6 +104,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convective half cells). Not built, and no flag declared for them: the port work against the kinetic-energy flux
   through the openings (it needs the convective power split by plane), and the periodic box's flags on the open box and
   on RK3 (RK3 declares none). Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
+
+- **The FVM on a tube tree's wall** (F2a's second part). A medium filling a `TubeTree`'s lumen
+  (`Medium(fills=vessel.lumen)`) takes the FVM on a periodic box: the tree periodic along z with the box's period and
+  reaching past its two ends (`flow.tree-period` refuses one that does not repeat where the band reads it), held in its
+  box with its spacing from the narrowest lumen, stepped by IMEX Euler or its steady limit (RK3 on a tree is refused,
+  `flow.tree-scheme`). The node takes the tree as its leaves (`tree_points`, `tree_radii`, `tree_fillet`, with
+  `tree_segments` its structure) and makes its wall from them in the program: the union's exact distance (`ExactUnion`)
+  wherever a field the step reads is not flat, its candidates run at the faces where its check fails within the band's
+  fluid half, chosen in the program at the run's values (`ExactUnion.evaluate_chosen`), only how many may run held at
+  build (a rung above the build's own count, as the cell counts are held), the plain minimum elsewhere; the wall is
+  constant over a run, so a chunk makes it once (the node's run-constants `tree_wall`, `tree_wall_counts`), and a
+  moved radius or period keeps one program. Its state reports where the distance is not exact (`wall_unrefined`,
+  `wall_unconverged`, `wall_unplanned`, and the warning flag `wall_inexact`), and its build reports the wall's
+  resolution entries below their lines (`wall_resolution`: the least radius of curvature, the narrowest lumen); a
+  straight tube's state and programs are unchanged. Gated through the node, steady
+  Stokes, every vessel turned about its period's axis at random and moved by a sub-cell offset: a helical tube's lumen
+  not displaced against Dean's first-order profile, an elliptic section's semi-axes, a taper against lubrication, a 75 %
+  stenosis and the split-and-merge loop's split at 30 degrees against Richardson references, the symmetric split a half,
+  and a daughter's flux's derivative in its radius against a central difference within one discretisation.
+- **`TubeTree` is the geometry kind `tube_tree`**: declared in quantities, `TubeTree(points=mm(...), segments=...,
+  radii=mm(...), fillet=0.1, ends=(...))`, three lengths a point and two radii a segment, flat (`TubeTree.si` takes them
+  in SI as nested tuples); its regions the `lumen` (the shape `tube_tree`) and the `wall`; its free ends named by
+  geometry, never by a law's role: `root` at the first segment's start, the others `end_0`, `end_1`, ... in the order of
+  their points or as `ends` names them (`TubeTree.end_names`), each a surface reached through the structure's handle
+  (`vessel.root`) and an opening of the lumen (`Geometry.opening_names`, per instance beside the class's `openings`).
+  A tree whose fillet would fuse tubes that share no point (solid between them thinner than its diameter) is refused
+  when planned (`setting.value`), naming a smaller fillet or a thicker wall. The round-trip case `tree_flow`.
 
 - **Composed walls in `mime.scene`: the seam-aware union, the fillet as its closing, the tube tree** (F2a's first
   part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
@@ -779,7 +838,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   others); the force points' grading is `sampling=ForceSampling(grading=..., contact=..., contact_gap=...)` and the
   near field's joint solve `near_field=NearField(solve=..., tolerance=..., share=...)`, both exported from
   `mime.interactions` (`near_field_share`, `near_field_tolerance`, `near_field_dense_unknowns`, `grading`, `contact`
-  and `contact_gap` are gone); near contact (`lubrication=`) stays until its seam's form is decided. A group's setting
+  and `contact_gap` are gone); near contact stays a flat switch, `near_contact=` (the near-contact law's entry). A group's setting
   may declare a default computed by the entry's own method (`contact_gap`'s, the closest approach), which the build takes
   and records at `<setting>.<field>`, and registration checks the method is the entry's. `mime.registry.Feature` is
   `SurfaceFeature`. Registered: MIME-ANO-155, a reverse-mode derivative in a shape leaf through MADDENING's own
@@ -790,6 +849,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paired by the one kind whose deliveries name its interface, and two kinds pairing one interface are refused at
   registration. The rigid body, the arm, the motor and the FVM (now `("fluid", "opening")`) declare theirs; a lab's
   dynamics writes `port_kinds = ("rigid_body",)` where it wrote `port = "rigid_body"`.
+
+- `TubeTree.features()` is `TubeTree.wall_features()`: `features` is every geometry kind's surface features, which a
+  sampling grades towards.
 
 - **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
   interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its
@@ -1088,6 +1150,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A body force on the open vessel's fluid booked its work over the planes' half cells counted whole**: its pairing,
   the fluid's momentum, now weighs each face as the open box's inner product does, so a driven open vessel's books close
   (they failed at 5e12 of their floor; the open box was admitted with a body force and not gated with one).
+- **The union's derivative in reverse mode** (`ExactUnion`): on a batch of thousands of points it read 4 to 50 % off
+  forward mode and the central difference, where two tubes' distances tie exactly (a shared end ball): `jnp.min` and
+  `jnp.minimum` find the least's derivative by comparing it again with their operands, which XLA computed twice in
+  fusions that rounded them differently. The least is now selected by one comparison, its derivative the selected
+  operand's: a guard holds every exact tie's derivative to one operand's (the reduction put back reads their average,
+  caught on every run), and a gate holds reverse to forward mode on the node's wall (a reverse-only error its control).
+  And reverse mode made a NaN on a batch where a discarded seam's or corner's implicit step was singular: a discarded
+  lane now passes no derivative into it.
 
 - **The FVM's stall flag is set from clean runs, in the solve's tolerance, and stops firing on correct float32 runs.** The
   stall detector `|N_Krylov| / D_visc` (`stall_flagged`, with the energy ledger attached) was flagged above a fixed

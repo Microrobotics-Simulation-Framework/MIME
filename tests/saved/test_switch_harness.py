@@ -1079,8 +1079,9 @@ def guard_points(graph):
     them on the tube's axis (the sweeps'); the drag on the axis; the swim speed
     before it has observed; the phase lag in no field before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; the coil array read away from its sources (its source offsets', and its reader's distances'); and
     the drag's MRS samples on FL-9's screw and on an ellipsoid, where each kind's surface element (each sample's
-    ``nonzero_norm``) is; and the drag's hand-over above a plane, a sphere within the lift's band (the near contact's
-    search, its support and its width along the normal)."""
+    ``nonzero_norm``) is; and the drag's hand-over above a plane within the lift's band, a sphere (the near contact's
+    search, its support and its width along the normal) and a mild ellipsoid, which takes the film's form (its reach's
+    ``nonzero_norm``, and the film's solves)."""
 
     def body(state):
         unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
@@ -1193,6 +1194,16 @@ def guard_points(graph):
         return {key: value for key, value in out.items() if key != "wall_accepted"}
 
     lubricated_pose = jnp.asarray((0.0, 0.0, 1.02e-3, 1.0, 0.0, 0.0, 0.0))
+    egg_graph = lubricated_ellipsoid_graph()
+
+    def egg_handover(pose):
+        """The hand-over in the film's form, a mild ellipsoid above a plane within the lift's band."""
+        node = egg_graph.get_node("drag:ball")
+        out = node.fresh_update(node_state(egg_graph, "drag:ball"), {"pose": pose}, DT,
+                                params=parameter_leaves(egg_graph)["drag:ball"])
+        return {key: value for key, value in out.items() if key != "wall_accepted"}
+
+    egg_pose = jnp.asarray((0.0, 0.0, 1.0e-3, 1.0, 0.0, 0.0, 0.0))  # its lowest point 0.05 mm off the plane
 
     def tube_read(points):
         """The tube wall kind's correction at samples on the tube's axis, where its rule on the axis is."""
@@ -1239,6 +1250,8 @@ def guard_points(graph):
         "the MRS above a plane": (lambda: plane_elements(plane_pose), lambda: jax.jacfwd(plane_elements)(plane_pose)),
         "the MRS's hand-over above a plane, within the lift": (
             lambda: lubricated_elements(lubricated_pose), lambda: jax.jacfwd(lubricated_elements)(lubricated_pose)),
+        "the MRS's hand-over in the film's form, an ellipsoid within the lift": (
+            lambda: egg_handover(egg_pose), lambda: jax.jacfwd(egg_handover)(egg_pose)),
         "the tube's read on the axis": (lambda: tube_read(on_the_tube_axis),
                                         lambda: jax.jacfwd(tube_read)(on_the_tube_axis)),
         "a log-log table read past its range": (lambda: logarithmic(not_positive),
@@ -1267,6 +1280,19 @@ def lubricated_plane_graph():
     from lubrication_cases import above_plane
 
     return above_plane(0.2, blob=0.25).build().graph  # the step's structure at a coarse blob, its arrays small
+
+
+@cache
+def lubricated_ellipsoid_graph():
+    """A mild ellipsoid above a plane, within the film's window: the near-contact law's film form (the switch scan's
+    configuration ``drag/lubricated_ellipsoid``)."""
+    from lubrication_cases import above_plane
+
+    from mime.scene import Ellipsoid
+    from mime.units import mm
+
+    return above_plane(0.16, blob=0.25, name="lubricated_ellipsoid",
+                       kind=Ellipsoid(semi_axes=mm((1.1, 1.0, 0.95)))).build().graph
 
 
 def tracking_points():

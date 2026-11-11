@@ -55,7 +55,11 @@ Also:
   was trained, to the centre of mass, `L / 2` along the body's x axis taken as the helix's (MIME-ANO-112, resolved);
   0.1.0 delivered it about the end. Its accuracy against the MRS it was checked against is MIME-ANO-114's: up to 16%
   in swim speed between 0.2 and 0.32 of the tube's radius. `Lubrication` is a group of settings (`mime.registry.SettingGroup`),
-  which the saved form writes by its group name.
+  which the saved form writes by its group name. Drag 0.5.0 retires the blend: written on 0.5.0 it is refused
+  (`lubrication.retired`), and script A, A0 and the experiments compared against them keep drag 0.4.0
+  (`KEPT["drag", "0.4.0"]`) until the surrogate is retrained far field only. 0.5.0's near-wall lubrication is the mrs
+  rung's `near_contact`, its hand-over to the near-contact law (`mime.nodes.hydro.near_contact`: a sphere's exact
+  increment, the thin film's for other kinds).
 
 It passes the hydrodynamic family's suite (`mime.testing.HYDRODYNAMIC`), whose analytic oracle and second member, a
 Stokes sphere, is registered by MIME's tests only; no public `Drag.Stokes` is built yet.
@@ -129,7 +133,8 @@ it, script A's and A0's reproductions; 0.4.0 is kept for the folders saved with 
 derived from (0.5.0's loops round otherwise: a held body's float32 velocity moves by about a millionth of its size, its rows' forces
 by up to two parts in a thousand of their scale and its net force by under a thousandth of the momentum rate, float64
 by a hundred-billionth or less: `tests/oracles/test_contact_loops.py`). **A contact handles admissibility only**: it never adds near-wall lubrication,
-which a drag that includes it declares (`Interaction.includes_lubrication`: the surrogate rung with `lubrication=`),
+which a drag that includes it declares (`Interaction.includes_lubrication`: the surrogate rung with `lubrication=` on
+drag 0.4.0 and before, the mrs rung with `near_contact=True` on 0.5.0),
 and the plan refuses two laws on one body that include it (`lubrication.twice`). Friction at the contact is left to
 the near-contact physics' design; its seam is the sweeps' rows.
 

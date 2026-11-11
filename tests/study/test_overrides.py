@@ -64,17 +64,19 @@ def test_a_leaf_the_compiled_step_does_not_read_is_refused_with_a_rebuild_as_its
 
 def test_a_structural_setting_and_a_numerical_one_are_refused_with_their_routes():
     """Drag 0.4.0's lubrication (the surrogate's blend, a design setting there) is a setting the program is built
-    from; drag 0.5.0's is a numerical choice (the mrs rung's hand-over, the MRS's completion in the gap, whose
-    validity line is its near-wall error; the surrogate's blend shares the setting), so overriding it is a variant, as
-    the step and the rung are."""
+    from; drag 0.5.0's near_contact is a numerical choice (the mrs rung's hand-over, the MRS's completion in the gap,
+    whose validity line is its near-wall error), so overriding it is a variant, as the step and the rung are (script A
+    itself keeps drag 0.4.0, whose blend 0.5.0 retired)."""
     kept = script_a("script_a", start=REFERENCE_START, drag=UncoupledDrag.Surrogate(
         weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON))).build()
     with pytest.raises(BuildRefused) as structural:
         kept.run(s(0.1), override={"drag:umr.lubrication": None})
     assert structural.value.codes() == ["override.structural"]
     assert "Study" in structural.value.refusals[0].action
-    built = reproduction_arm().build()
-    for override in ({"drag:umr.lubrication": None}, {DT: ms(0.25)}, {"drag:umr.rung": "mrs"}):
+    from mime.interactions import Drag
+
+    built = script_a("script_a_050", start=REFERENCE_START, drag=Drag.Surrogate(weights=asset("dejongh_mlp_v2"))).build()
+    for override in ({"drag:umr.near_contact": True}, {DT: ms(0.25)}, {"drag:umr.rung": "mrs"}):
         with pytest.raises(BuildRefused) as variant:
             built.run(s(0.1), override=override)
         assert variant.value.codes() == ["override.variant"] and "variant" in variant.value.refusals[0].message

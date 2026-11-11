@@ -144,6 +144,7 @@ drag.mrs-indefinite           user
 drag.mrs-on-wall              user
 drag.mrs-quadrature           user
 drag.mrs-resistance           user
+drag.near-contact-graded      user
 drag.near-field-gain          user
 drag.near-field-indefinite    user
 drag.near-field-memory        user
@@ -207,6 +208,8 @@ flow.region                   user
 flow.resolution               user
 flow.solve-report-rows        user
 flow.steady-convection        user
+flow.tree-period              user
+flow.tree-scheme              user
 flow.viscous-limit            user
 frame.gravity-invalid         user
 frame.gravity-missing         user
@@ -293,6 +296,7 @@ load.stage-writer             environment
 load.units                    user
 load.unknown-entry            environment
 load.version                  environment
+lubrication.retired           user
 lubrication.twice             user
 maddening.compile             internal
 maddening.dtype               internal
