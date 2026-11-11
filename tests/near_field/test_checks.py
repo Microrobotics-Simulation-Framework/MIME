@@ -16,6 +16,7 @@ import pytest
 from near_field_cases import NODE, bodies, joint_node, mrs, precision, rebuilt, spheres, start_inputs
 
 from mime.build._maddening import parameter_leaves
+from mime.interactions import NearField
 from mime.nodes.hydro.near_field import JointDragNode
 from mime.nodes.hydro.near_field._node import WHY_CLUSTER, WHY_MEMBER
 
@@ -102,7 +103,7 @@ def test_on_the_iterative_route_each_plant_stops_and_the_unplanted_steps_are_the
     with precision(dtype):
         for gap in (0.05, 0.3):
             dense = step_with(configuration(gap, 0), None)[1]
-            built = configuration(gap, 0, near_field_dense_unknowns=0)
+            built = configuration(gap, 0, near_field=NearField(solve="gmres"))
             rows.append((gap, dense, step_with(built, None)[1], step_with(built, OwnIndefinite),
                          step_with(built, CrossDoubled)))
     for gap, dense, clean, (own_node, own), (cross_node, cross) in rows:

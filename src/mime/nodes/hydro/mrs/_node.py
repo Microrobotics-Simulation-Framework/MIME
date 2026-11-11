@@ -104,12 +104,15 @@ NEAR_WALL = 1.0
 #: patch's edge within 0.05 force spacings of the wall about 10 degrees before the edge itself reaches the nearest point.
 OFF_PATCH_BAND = 0.05
 #: How a graded run's wall self-image measures each cell's distance from the wall when it blends the integrated image
-#: in (decision #308): ``"cell"``, in the cell's own size, ``sqrt(area)``, decided and shipped; ``"force_spacing"``, in
-#: the force spacing, as a uniform run's. Measured through the node on the gate's sphere, its contact graded for half a
-#: force spacing and the image integrated, against Brenner's series at half a spacing: +5.24 % (cell) and +3.33 %
-#: (force spacing) at blob 0.1, +1.67 % and -0.04 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The one switch
-#: between them; a uniform run reads neither.
-GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "cell"
+#: in: ``"force_spacing"``, in the force spacing, as a uniform run's (decision #329, superseding #308's ``"cell"``);
+#: ``"cell"``, in the cell's own size, ``sqrt(area)``. Measured through the node on the gate's sphere, its contact
+#: graded for half a force spacing and the image integrated, against Brenner's series at half a spacing: +3.33 % (force
+#: spacing) and +5.24 % (cell) at blob 0.1, -0.04 % and +1.67 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The
+#: one switch between them; a uniform run reads neither. A graded body's wall budget follows its density
+#: (:attr:`MRSDragNode.wall_budget`, decision #353), so default graded runs raise no ``wall_cells_short``: under the
+#: share of every cell (76 of the gate's sphere's 301 cells, 21 of ``mrs_graded``'s cylinder's 84) both raised it on
+#: every step, the sphere in either measure.
+GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "force_spacing"
 #: What the build report says was mapped near a wall, for a wall kind without figures of its own
 #: (``WallCorrection.near_wall_text``).
 NEAR_WALL_MAPPED = "every indefinite resistance mapped lay within half a force spacing of the wall (MIME-ANO-130)"
@@ -147,8 +150,20 @@ WALL_REACH = 2.0
 #: the 0.1 mm margin, eight rolls: within two spacings of the wall lay at most 14.6% of the cells at 0.278 mm, 16.2% at
 #: 0.3, 23.7% at 0.4, 44% at 0.6 and 63% at 0.829. A cell's row is padded to :data:`WALL_CELL_CAP`, so a budget pays
 #: only below about 0.41 (the kept points over the padded row, at every spacing measured); 0.25 holds the cells within
-#: the reach from 0.4 mm down, and a coarser spacing flags that it is short.
+#: the reach from 0.4 mm down, and a coarser spacing flags that it is short. A graded body's budget follows its density
+#: (decision #353): every cell of its graded patch, finer than the force spacing and crowding the reach where it faces
+#: the wall, and this share of the rest; the gate's sphere then budgets 160 of its 301 cells (113 in the patch) and
+#: ``mrs_graded``'s cylinder 78 of 84 (76), and neither raises ``wall_cells_short`` on any step, which is kept for a
+#: real shortfall. :data:`WALL_BUDGET_MEASURED` gives the change's cost.
 WALL_CELL_SHARE = 0.25
+#: What decision #353's budget costs, measured through the node (``built.run``, six steps, the budget before and after
+#: in one job on a GitHub runner, probe run 42944303576, both dtypes).
+WALL_BUDGET_MEASURED = (
+    "the gate's graded sphere (301 cells, 113 in the patch, wall_refinement 2, half a spacing from a plane, blob 0.1): "
+    "a budget of 160 cells against 76, no step short against six of six, a step's time 1.26 times in float64 (0.206 "
+    "against 0.164 s) and 1.29 in float32, the run's peak memory within its noise, the largest resistance entry moved by "
+    "1.6e-4 of itself; mrs_graded's cylinder (84 cells, 76 in the patch): 78 against 21, no step short against six of "
+    "six, 1.07 and 1.47 times a step's time (8.0 against 7.5 ms in float64), the largest entry moved by 1.6e-3")
 #: The most wall points a cell's image is integrated on, in multiples of the mean over the cells, rounded up
 #: (:func:`mime.nodes.hydro.mrs._quadrature.capped_cells`): a tensor grid crowds some cells (at 0.4 mm on FL-9 the widest
 #: holds 67 points against a mean of 9), and a step reads every target against every cell padded to the widest, so
@@ -337,9 +352,8 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     every cell is integrated and blended, ``chunks`` the whole quadrature's by its owners. Also whether a cell
     within the reach was left out of the budget. A step with no cell within the reach reads no more than the image at
     the force points (a ``cond``, whose two branches agree there, every weight zero). ``gap`` is in force spacings, or
-    in a graded run in the measure :data:`GRADED_WALL_MEASURE` selects (each cell's own size, ``sqrt(area)``, as
-    shipped): the switch's mechanics are
-    ``mime.nodes.hydro._near_singular``'s, shared with the near field's cross-kernel."""
+    in a graded run in the measure :data:`GRADED_WALL_MEASURE` selects (the force spacing, as a uniform run's): the
+    switch's mechanics are ``mime.nodes.hydro._near_singular``'s, shared with the near field's cross-kernel."""
     return within_reach(gap, WALL_REACH,
                         lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
                                                  parameters, viscosity, eps_squared),
@@ -900,10 +914,20 @@ class MRSDragNode(MimeNode):
     @cached_property
     def wall_budget(self) -> int:
         """How many cells a step integrates the wall's image over at most, the nearest the wall: ``wall_cells`` where
-        given, else :data:`WALL_CELL_SHARE` of the cells, rounded up."""
+        given, else :data:`WALL_CELL_SHARE` of the cells, rounded up; on a graded sampling the budget follows its
+        density: every cell of the graded patch, finer than the force spacing and crowding the reach
+        where it faces the wall, and the share of the rest (:attr:`graded_cells`)."""
         held = int(self.constants().get("wall_cells") or 0)
-        found = held if held > 0 else math.ceil(WALL_CELL_SHARE * self.sample_count)
+        graded = self.graded_cells
+        found = held if held > 0 else graded + math.ceil(WALL_CELL_SHARE * (self.sample_count - graded))
         return max(1, min(found, self.sample_count))
+
+    @cached_property
+    def graded_cells(self) -> int:
+        """How many cells hold a point of the graded patch (zero on a uniform sampling)."""
+        if self._patch is None or self._owners is None:
+            return 0
+        return int(np.unique(self._owners[self._patch]).size)
 
     @cached_property
     def wall_capped(self) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
@@ -1241,8 +1265,8 @@ class MRSDragNode(MimeNode):
             return [f"lubrication's hand-over is not taken: at the force spacing it would take, {declined}, past the "
                     f"film's window ({WINDOW:g} of it), where the build's rule gives every gap to the coarse MRS at its "
                     f"near-wall validity line (a sharp edge is the MRS's with its graded sampling, "
-                    f"grading='features'); a force spacing at most {WINDOW / HANDOVER_SPACINGS:.3g} of that radius "
-                    f"brings the contact into the window"]
+                    f"ForceSampling(grading='features')); a force spacing at most "
+                    f"{WINDOW / HANDOVER_SPACINGS:.3g} of that radius brings the contact into the window"]
         if not self.lubricated or start is None or "pose" not in start:
             return []
         leaves = self.params_pytree()
@@ -1339,9 +1363,12 @@ class MRSDragNode(MimeNode):
                  if used is not None else "")
         promoted = (f" (wall_refinement={written} written, which leaves a cell of this body with no wall point, so the "
                     f"next finer that leaves none)" if used is not None and written != used else "")
+        graded = (f" (a graded body's budget, {self.wall_budget} of its {self.sample_count} cells: every cell of its "
+                  f"graded patch, {self.graded_cells}, and {WALL_CELL_SHARE:g} of the rest)"
+                  if self.graded and not self.wall_every else "")
         return (f"the image at the force points, and where a cell lies within {WALL_REACH:g} force spacings of the "
                 f"wall integrated over {which} on a wall quadrature{finer}{promoted}, of up to {table.shape[1]} points "
-                f"a cell, blended to the point image by the distance")
+                f"a cell, blended to the point image by the distance{graded}")
 
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
         """Why the node stopped a run, from its state at the run's end: the step whose resistance turned indefinite
@@ -1530,7 +1557,7 @@ class MRSDragNode(MimeNode):
 
 __all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "GRADED_WALL_MEASURE", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
            "OFF_PATCH_BAND", "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
-           "WALL_CELL_SHARE", "WALL_REACH",
+           "WALL_BUDGET_MEASURED", "WALL_CELL_SHARE", "WALL_REACH",
            "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",
            "floating_leaves", "judged", "path_name",
            "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",

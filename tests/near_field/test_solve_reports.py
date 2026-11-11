@@ -21,6 +21,7 @@ import pytest
 from near_field_cases import NODE, bodies, joint_node, mrs, precision, rebuilt, spheres, start_inputs
 
 from mime.build._maddening import chunk_function, full_state, graph_params
+from mime.interactions import NearField
 from mime.nodes.hydro.near_field import _contract, _gmres, _node
 from mime.nodes.hydro.near_field._gmres import REPORT_FIELDS, Stopping
 from mime.units import ms
@@ -32,7 +33,7 @@ LEAF = "m1_shape_radius"
 
 
 def pair(**settings):
-    return bodies("reported", spheres(0.3e-3, 2), mrs(SPACING, near_field_dense_unknowns=0, **settings),
+    return bodies("reported", spheres(0.3e-3, 2), mrs(SPACING, near_field=NearField(solve="gmres", **settings)),
                   velocity=(1e-4, 0.0, 0.0))
 
 
@@ -53,10 +54,10 @@ def transpose_capped(monkeypatch) -> None:
         planted.planted = True
         return solve(matrix, b, tap, precondition, planted, stopping)
 
-    def gmres(operator, b, precondition, stopping):
+    def gmres(operator, b, precondition, stopping, magnitude=None):
         if getattr(precondition, "planted", False):
             stopping = Stopping(stopping.tolerance, restart=stopping.restart, cap=1)
-        return real(operator, b, precondition, stopping)
+        return real(operator, b, precondition, stopping, magnitude)
 
     monkeypatch.setattr(_contract, "reported_solve", marked)
     monkeypatch.setattr(_gmres, "gmres", gmres)
@@ -145,7 +146,7 @@ def test_a_run_whose_solves_stagnate_is_flagged_and_warned_of_with_its_count(dty
     default tolerance, which raises neither."""
     for tolerance, flagged in ((1e-30, True), (None, False)):
         with precision(dtype):
-            built = pair(**({"near_field_tolerance": tolerance} if tolerance is not None else {})).build()
+            built = pair(**({"tolerance": tolerance} if tolerance is not None else {})).build()
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
                 result = built.run(ms(5.0))
