@@ -55,5 +55,32 @@
   "cases": "the builder's twelve programs (script A and its metered form, the hull contact, the coupled toy, the dynamic and kinematic RPM arms, the four periodic flows, the nudged toy, #235's open tube flow) x 2 dtypes, base the release branch's tip eb28b30 against this head, one job (bit_compare.py)",
   "prediction": "the eleven released programs every array equal; #235's open tube flow one ulp apart in its opening pressures and its Windkessel's state, its velocities equal, as runs 42958800740 and 42962620848 found against dface1d (a compiled-program effect: the review's eager runs were equal)"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-11, after the fix round's probe (D); the predictions above are as committed in ea49a90",
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42983180346",
+  "memory": "every arm's script ran to its end; every arm's memory check failed as an underestimate of the case declared for it (one compiled program of an open tube, bound 0.79 GiB) against processes that hold many compiled rig programs and cached references: peaks 0.95 to 2.83 GiB, far under a runner's 16 GB (the route, actions, held). The calibration rows are in each arm's mem_check.json, not added to the table: the declared case did not model the arm, so they would raise the FVM factor for a reason that is not the estimator's",
+  "gate_1_metered_rig": {
+   "result": "held: every gate's runs closed their books on 40/40 draws a dtype (FB5, the shared split, the valve at 0.1h and 0.01h, FB6's implicit arm at gains 0.3 to 10 and dt/(R_d C) 0.1 to 10, worst outlet flux 0.83 of the inflow's mean); every gate passed 40/40. The worst identity over its floor was not recorded by the arm (closes or not only): that part of the prediction is unjudged"
+  },
+  "gate_2_mutant_through_the_rig": {
+   "result": "held: patch_force caught 40/40 in each dtype, clean 0/40; FB5's and the shared split's books failed on every planted run, the valve gate's 40/40 through its conductance runs (as restated before the commit); the split alone caught it 40/40 (float64) and 15/40 (float32: the review's 20/40)"
+  },
+  "gate_3_valve_at_the_default_interior": {
+   "result": "held: 40/40 a dtype pass at 0.1h, worst 0.545 (float64) and 0.526 (float32) of the line, medians 0.23 and 0.22; the exchange 1.51 to 5.00 % of the inflow, the leak 1.37 to 4.79 %, |moved| 0.047 to 1.84 %; the valve's flux at most 2e-17 (float64) and 1.3e-8 (float32) of the inflow; at 0.01h the exchange 1.78e-4 to 7.03e-4, the leak 1.62e-4 to 6.38e-4, worst 0.594 (float64) and 0.155 (float32) of the line",
+   "control": "leaking 40/40, opened 40/40, each dtype, clean 0/40"
+  },
+  "gate_4_valve_line_alone": {
+   "result": "held: the line plant caught 40/40 at each interior in each dtype, clean 0/40; planted readings over the line 3.5 to 79 (0.1h, float64), 3.5 to 57 (0.1h, float32), 3.2 to 74 (0.01h, float64), 1.55 to 2.89 (0.01h, float32): **the 0.1h band (2 to 20) and the 0.01h float64 one (3 to 60) missed on top**, the lower ends held (the leak lowers the inlet pressure by about its own share; the line is smaller on some draws than derived)",
+   "resolution": "discriminating_range.py, 40 draws a dtype and interior in two halves, no false alarm: at 0.1h refined 0.073 and 0.063 (float64) and 0.078 and 0.063 (float32) of the inflow; at 0.01h 1.0e-3 and 8.8e-4 (float64), 2.1e-3 and 1.9e-3 (float32): inside the derived bands. From the clean lines (line plus |moved|): at most 0.100 (0.1h), 1.3e-3 (0.01h, float64), 2.3e-3 (0.01h, float32)"
+  },
+  "gate_5_stand_in": {
+   "result": "held but for one sub-prediction: the row-scaled condition 5.60 to 6.16 at every stiffness, the valve's 6.15 to 6.16, in both dtypes; **within 0.5 of the valve's missed at 1e2 R_t on one draw (0.56 apart)**, within 0.01 from 1e4 R_t up; the leak a hundredfold less at a hundredfold the stiffness (100.0), as 1/R_big; CG iterations equal in float64, within one in float32"
+  },
+  "gate_6_solid_share_by_sign": {
+   "result": "held but for its steady sub-band: 79 of 100 draws negative at some step; the least -0.316, the largest 0.190 (the lumen then carrying up to 1.32 Q); omega (delta_in h)^2 / nu 1.3e-3 to 0.95 over the draws; log-log correlation of the largest swing with the ratio 0.91; under a ratio of 4e-3 (10 draws) the share from -3.5e-4 to 0.043: **the band 0 to 0.04 missed at both ends by a little** (0.043 is D/h 8's steady 3.7 % with a small swing)"
+  },
+  "bits": {
+   "result": "held: the eleven released programs every array equal against eb28b30 in both dtypes; #235's open tube flow one ulp apart in opening_pressure (4.4e-16, 1.2e-7) and opening_state (2.2e-16, 1.2e-7), its velocities equal"
+  }
+ }
 }

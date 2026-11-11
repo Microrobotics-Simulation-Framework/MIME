@@ -17,18 +17,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the experiment a law's `surface=` names its openings as a tuple, `surface=(tree.end_0, tree.end_1)`, or as a region's
   declared openings, `surface=tube.lumen`, and a law given another count than it binds is refused
   (`binding.opening-count`); `FVM.openings_of` reads the geometry kind's declared openings, and the build lays each on
-  the plane its surface faces. `exp.attach(Valve(), medium=blood, surface=...)`: a closed valve, a flux row of zero,
-  workless; gated against the walled-off vessel (the same vessel with that outlet capped by solid, whose own leak
-  through the cap explains the difference), with the stiff resistance that would stand in for it measured beside it
-  (its leak falls as one over its resistance while the port system's condition number grows with it).
+  the plane its surface faces; a law refused at its openings' binding is refused alone (the flow no longer adds that
+  no law is attached at the openings it named), and the routes name every law an opening takes.
+  `exp.attach(Valve(), medium=blood, surface=...)`: a closed valve, a flux row of zero, workless. It holds its
+  opening's net flux at zero, not each face's: the lumen behind it carries out what the solid's faces on the opening
+  bring back in, the solid's Darcy flow, falling as the square of the stiff interior's depth (on two parallel tubes,
+  1.5 to 5.0 % of the inflow at the default stiff interior, 1.8e-4 to 7.0e-4 at `Band(delta_in=0.01)`).
+  It is gated at the default interior against the walled-off vessel (that outlet capped by solid, whose cap and the
+  solid around it leak as much), the inlet pressures within the two runs' solid flows carried through the open tube's
+  resistance, which sees a valve error from about 8 % of the inflow there (from 1e-3 in float64 and 2e-3 in
+  float32 at `Band(delta_in=0.01)`). The stiff resistance that would stand in for it differs
+  from it only by its leak, exactly one over its resistance: the port system's condition number with its rows scaled
+  is the valve's at every stiffness (the raw number mixes a flux row's units with a pressure row's).
   `exp.attach(SharedDistal(first=..., second=..., distal=...), medium=blood, surface=(a, b))`: two openings each
   through its own resistance into one shared distal resistance, its off-diagonals solved, its own books kept (a lagged
-  off-diagonal leaves a first-order residual in them). `port_kinetic_flux`, an active flag: the kinetic energy the
-  books hold as crossing the openings against each opening's own, the scheme's convective power split by plane (exact to
-  the field's divergence: the divergence form is conservative), each opening judged on its own flux so in and out do not
-  cancel. `OpenFlowNode.opening_solid_fluxes`: each opening's flux through the solid (an `Inflow`'s band share). Only a
-  Tube's two ends build through the experiment until the tube tree's wall is in the open box; two outlets are gated at
-  the node level on a rig of two parallel tubes.
+  off-diagonal leaves a first-order residual in them). `port_kinetic_flux`, an active flag, an operator check of
+  convection at the planes: the kinetic energy the books hold as crossing the openings against each opening's own, the
+  scheme's convective power split by plane (exact to the field's divergence: the divergence form is conservative), the
+  planes' net judged on each opening's flux in magnitude, so its scale does not cancel; it sees no port work (the
+  record's port work against the kinetic-energy flux stays not built), and its lines are about three times the clean
+  worst, measured. `OpenFlowNode.opening_solid_fluxes`: each opening's flux through the solid, which for an `Inflow`
+  (it pins the opening's whole net flux, never the lumen's alone) runs either way: with the inflow in steady flow, and
+  in pulsed flow swinging with the drive, the lumen then carrying up to 1.32 times the inflow (the FVM's validity).
+  Only a Tube's two ends build through the experiment until the tube tree's wall is in the open box; two outlets are
+  gated at the node level on a rig of two parallel tubes, every run of it metered and its books judged (the ledger on
+  in every gate).
 
 - **A flow open at the vessel's ends, and the laws at its openings: `VesselRegion`, `Inflow`, `Windkessel`, the
   `opening` port kind.** `FVM(domain=VesselRegion())` on a straight tube along z cuts the region the medium fills at the

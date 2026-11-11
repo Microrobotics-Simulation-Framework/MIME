@@ -19,17 +19,19 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
 - the open box's own (``OPEN_FLAGS``): ``open_face_projection`` (``N_proj`` over the step's scale: a projector that is
-  not orthogonal under the books' inner product, its port faces at the wrong weight); and ``port_kinetic_flux``, the
-  record's boundary flag (port work against the kinetic-energy flux, rung 2): the kinetic energy the books hold as
-  crossing the openings (the one line ``<node>.openings``, the scheme's own convective power) against what crosses
-  each opening, the convective power split by plane (``OpenMACGrid.opening_kinetic_fluxes``, exact to the field's
-  divergence), judged on each opening's own flux in magnitude so in and out do not cancel: a flux booked elsewhere,
-  or convection doing work inside the box. The port work is not in its scale: the reading is formed from convective
-  products alone, and judged on the scale it came from.
+  not orthogonal under the books' inner product, its port faces at the wrong weight); and ``port_kinetic_flux``, an
+  operator check of convection at the planes: the kinetic energy the books hold as crossing the openings (the one line
+  ``<node>.openings``, the scheme's own convective power) against what crosses each opening, the convective power split
+  by plane (``OpenMACGrid.opening_kinetic_fluxes``, exact to the field's divergence): a flux booked elsewhere, or
+  convection doing work inside the box. Its numerator is the planes' net (the books hold one line), its scale each
+  opening's flux in magnitude and the convective product's, so the scale does not cancel where in and out do. **It
+  sees no port work**: its reading is a function of the step's starting velocity alone. Its lines are about three
+  times the worst clean reading (15 eps in both dtypes, flat from D/h 8 to 16), measured, not derived.
 
 **Not built** (no flag is declared for them, pending or otherwise): the periodic box's three on the open box and on
 RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those runs' own
-draws."""
+draws; and the record's rung-2 boundary flag, port work against the kinetic-energy flux, which ``port_kinetic_flux``
+is not."""
 
 from __future__ import annotations
 

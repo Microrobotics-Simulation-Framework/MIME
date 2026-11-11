@@ -150,10 +150,13 @@ class _OpeningLaw(Interaction):
 class Inflow(_OpeningLaw):
     """A volume flux into the flow at an opening, ``steady + amplitude cos(2 pi frequency t + phase)``:
     ``exp.attach(Inflow(steady=mL_per_s(1.0)), medium=blood, surface=tube.start)``. The flow holds the opening's flux
-    to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row): the whole
-    plane's flux, the wall's band and solid included, so the lumen takes it less the solid's share (its size in the
-    FVM's validity: a few per cent at D/h 8 in steady flow). A source: the work it supplies, the pressure the flow
-    returns times its flux, is booked under its name."""
+    to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row): the
+    opening's whole net flux, its lumen's, its band's and its solid's faces together, never the lumen's alone. So the
+    lumen carries the inflow less what the solid carries, which runs either way: a few per cent of it with the inflow
+    in steady flow at D/h 8; in pulsed flow, where the drive's frequency nears the stiff interior's damping rate, a
+    swing with the drive of up to about 30 % either way, the lumen then carrying up to about 1.3 times the inflow (the
+    FVM's validity gives the figures). A source: the work it supplies, the pressure the flow returns times its flux, is
+    booked under its name."""
 
     name = "inflow"
     version = "0.1.0"
@@ -224,9 +227,11 @@ class Windkessel(_OpeningLaw):
 @dataclass(frozen=True, kw_only=True)
 class Valve(_OpeningLaw):
     """A closed valve at an opening: no flux through it, ``exp.attach(Valve(), medium=blood, surface=tree.end_1)``. The
-    flow holds its flux at zero (a flux row, q = 0) and solves the pressure behind it; workless, since that pressure
-    does no work on a flux of zero. A valve that opens and closes with the pressure across it is not built (decision
-    8's small Newton)."""
+    flow holds its opening's net flux at zero (a flux row, q = 0), not each face's, and solves the pressure behind it;
+    workless, since that pressure does no work on a flux of zero. The lumen behind it still carries out what the solid's
+    faces on the opening bring back in, the solid's Darcy flow (a few per cent of the vessel's flow at the default stiff
+    interior, a hundred times less at ``Band(delta_in=0.01)``: the FVM's validity gives the figures). A valve that opens
+    and closes with the pressure across it is not built (decision 8's small Newton)."""
 
     name = "valve"
     version = "0.1.0"
