@@ -610,7 +610,7 @@ class ImplicitFlowNode(MimeNode):
         for region in self.porous_regions(p, grid):
             axis = jnp.asarray(region.axis, dtype=pressure.dtype)
             axis = axis / jnp.sqrt(jnp.sum(axis * axis))
-            faces = []
+            faces: list[Array] = []
             for side in (-1.0, 1.0):
                 plane = side * (0.5 * region.length + half)
                 weight = jnp.zeros_like(pressure)
@@ -1078,6 +1078,14 @@ class ImplicitFlowNode(MimeNode):
                              f"((pi^2/4) nu) = {tau:.3g} s), is above the solve's tolerance {c['tolerance']:.3g}: a "
                              f"run near its steady state stops short of it by about that share; run in float64 "
                              f"(JAX_ENABLE_X64=1), or with a larger dt")
+        if self.porous_laws:
+            from mime.nodes.flow.fvm._porous import porous_lines
+
+            regions = [{name: c[porous_leaf(index, name)] for name in POROUS_LEAVES}
+                       for index in range(len(self.porous_laws))]
+            tube = None if self.walled_by_tree else {name: c[f"tube_{name}"] for name in ("centre", "axis", "radius")}
+            lines += porous_lines(self.porous_laws, regions, float(c["spacing"]), str(c["interior"]), tube,
+                                  int(c["cells_z"]) * float(c["spacing"]))
         return lines
 
     @override
