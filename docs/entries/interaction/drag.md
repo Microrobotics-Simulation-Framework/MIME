@@ -142,9 +142,13 @@ contact the dense route's mostly was. The build report says which route a cluste
 
 **Memory.** On either route the build estimates the run's peak memory past the process's fixed part, as so many of its
 joint matrices and of its members' held blocks, the counts measured through the node on a CPU (the drag's validity line
-says how), reports it, and refuses a cluster whose run would not fit in the memory a run can have
-(`drag.near-field-memory`): a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the
-control group the process runs in. The estimate is measured, not a bound, and a GPU's is not measured.
+says how), and a gradient study's derivative's in forward and in reverse mode (`DERIVATIVE_COUNTS`: reverse mode holds
+about eleven joint matrices, forward mode about four along one axis and more for each further axis, a batch of the
+study's points as many times as it has points), and reports them. It refuses a cluster whose run would not fit, at
+build, and a derivative that would not, before the study compiles it (`drag.near-field-memory`, the mode named): the
+estimate times `MEMORY_MARGIN`, the measurements' largest miss, against the memory a run can have less `MEMORY_HEADROOM`
+of it (a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the control group the
+process runs in). The estimate is measured, not a bound, and a GPU's is not measured.
 
 **GMRES's stop.** Each GMRES solve stops on its true residual, recomputed from its answer at every restart, relative to
 its own right-hand side, at `NearField`'s `tolerance` (`DEFAULT_TOLERANCE` by the run's dtype); the solves of a derivative

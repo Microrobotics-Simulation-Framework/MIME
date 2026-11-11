@@ -76,10 +76,13 @@ CAP = 600
 #: (``floor_stop``), and what set it.
 FLOOR_MARGIN = 4.0
 FLOOR_MEASURED = (
-    "explored on the node's joint system of three coarse spheres (1,152 unknowns, 0.2 and 0.05 mm apart): at a tolerance "
-    "of 1e-30, under every floor, each column's least true residual was 0.55 to 2.7 times eps || |A| |x| + |b| || in "
-    "float64 and float32 (relative residuals 9e-16 to 1.3e-14 and 3.2e-7 to 4.2e-6); stalls planted with a Krylov "
-    "length of 1 stopped 6.7 to 6.6e5 times above it in float32 and 2e8 to 3.6e14 in float64")
+    "measured through the node's own step on a GitHub runner (probe run 42925275946), at a tolerance under every floor "
+    "(1e-9 in float32, 1e-15 in float64), MIME's sphere coarse (0.4 mm spacing: pairs 1 to 0.03 mm apart, a triangle, "
+    "four in a line 0.05 mm apart) and at 882 force points (pairs 1 and 0.05 mm apart, three in a line, to 7,938 "
+    "unknowns): each column stopped at its floor lay at 0.33 to 2.72 times eps || |A| |x| + |b| || in either dtype. "
+    "Stalls planted with a Krylov length of 1, explored on the node's joint matrix of three coarse spheres, stopped 6.7 "
+    "to 6.6e5 times above it in float32 and 2e8 to 3.6e14 in float64; through Study.gradient's recheck (run "
+    "42925968039) each such stall ran on past the floor test, never named floor-limited")
 
 
 @dataclass(frozen=True)

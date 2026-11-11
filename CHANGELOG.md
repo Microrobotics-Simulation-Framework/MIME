@@ -266,7 +266,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refusal on both routes** (`drag.near-field-memory`): the run's peak, estimated from counts of the joint matrix and of
   the members' held blocks measured through the node, against the memory a run can have (the FVM's: a GPU's limit, or on a
   CPU the smaller of the available memory and the control group's limit), so that no cluster that cannot fit runs, on
-  either route. **A gradient study rechecks it** (design #337): the joint node declares `rechecks`, and a member whose
+  either route; **and a gradient study's derivative** (`JointDragNode.derivative_problem`, before the study compiles it,
+  `mime.study._gradient.derivative_refusals`): reverse mode, forward mode by its axes and a batch by its points, counted
+  through the node (`DERIVATIVE_COUNTS`), each refused where `MEMORY_MARGIN` times the estimate passes the memory less
+  `MEMORY_HEADROOM` of it. **A gradient study rechecks it** (design #337): the joint node declares `rechecks`, and a member whose
   solve stopped short is re-solved with GMRES's cap lifted and its stall restarts raised (`Stopping.stall_restarts`, new
   for GMRES and none in a run: a stagnation begins the window again), by the FVM's CG's rule, and a stagnation past them
   stopping a solve only at its rounding floor (`Stopping.floor_stop`: the least true residual within `FLOOR_MARGIN` of

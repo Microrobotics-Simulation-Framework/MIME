@@ -28,7 +28,11 @@ from mime.nodes.hydro.near_field._mrs import CROSS_SHARE, REACH, MRSOperator, cr
 from mime.nodes.hydro.near_field._node import (
     CONTACT_GAP,
     DEFAULT_TOLERANCE,
+    DERIVATIVE_COUNTS,
+    DERIVATIVE_MEASURED,
     MEMORY_COUNTS,
+    MEMORY_HEADROOM,
+    MEMORY_MARGIN,
     MEMORY_MEASURED,
     ROUTES,
     JointDragInputs,
@@ -37,7 +41,8 @@ from mime.nodes.hydro.near_field._node import (
     member_prefix,
 )
 
-__all__ = ["BODY_FRAME_CONSTANT", "CONTACT_GAP", "CROSS_KERNEL", "CROSS_SHARE", "DEFAULT_TOLERANCE", "MEMORY_COUNTS",
+__all__ = ["BODY_FRAME_CONSTANT", "CONTACT_GAP", "CROSS_KERNEL", "CROSS_SHARE", "DEFAULT_TOLERANCE",
+           "DERIVATIVE_COUNTS", "DERIVATIVE_MEASURED", "MEMORY_COUNTS", "MEMORY_HEADROOM", "MEMORY_MARGIN",
            "MEMORY_MEASURED", "OVERLAP_RESOLUTION", "PRECONDITIONER", "REACH", "ROUTES", "BodyOperator",
            "Joint", "JointDragInputs", "JointDragNode", "JointDragState", "MRSOperator", "Placed", "blocks_of",
            "booked_work", "cross_image", "cross_loads", "cross_weight", "grand_resistance", "grand_resistance_by_gmres",

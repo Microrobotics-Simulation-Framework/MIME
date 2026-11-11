@@ -81,14 +81,17 @@ def test_a_medium_mixing_the_kept_uncoupled_drag_with_the_near_field_is_refused(
 
 @pytest.mark.parametrize("route", ["dense", "gmres"])
 def test_a_cluster_whose_run_will_not_fit_is_refused_on_either_route(route, monkeypatch):
-    """The joint node's memory estimate against a planted memory a byte under it is refused before any step
-    (``drag.near-field-memory``), and a byte over it builds (the control), on either route."""
+    """The joint node's memory estimate, times ``MEMORY_MARGIN``, against a planted memory whose share past
+    ``MEMORY_HEADROOM`` falls a byte under it is refused before any step (``drag.near-field-memory``), and a byte over it
+    builds (the control), on either route: the check keeps its headroom (the review's M3: admitted clusters had peaked at
+    the whole of the memory)."""
     from mime.nodes.hydro.near_field import _node
 
     law = mrs(SPACING, **({"near_field": NearField(solve="gmres")} if route == "gmres" else {}))
     needed = joint_node(cluster(2, law=law).build()).memory_estimate()
-    assert needed > 0.0
-    for room, fits in ((int(needed) - 1, False), (int(needed) + 1, True)):
+    assert needed > 0.0 and _node.MEMORY_MARGIN > 1.0 and _node.MEMORY_HEADROOM > 0.0
+    line = int(_node.MEMORY_MARGIN * needed / (1.0 - _node.MEMORY_HEADROOM))
+    for room, fits in ((line - 1, False), (line + 2, True)):
         monkeypatch.setattr(_node, "device_memory", lambda room=room: ("a planted memory", room))
         if fits:
             assert joint_node(cluster(2, law=law).build()).route == route
@@ -102,11 +105,11 @@ def test_a_cluster_whose_run_will_not_fit_is_refused_on_either_route(route, monk
 
 @pytest.mark.parametrize(("route", "mode"), [("dense", "forward"), ("dense", "reverse"), ("gmres", "reverse")])
 def test_a_derivative_whose_memory_will_not_fit_is_refused_before_the_study_compiles_it(route, mode, monkeypatch):
-    """M3 of #240's review: the memory check covers a gradient study's derivative. With a planted memory the run fits
-    and the derivative's estimate (``DERIVATIVE_COUNTS``, times ``MEMORY_MARGIN``, against the memory less
-    ``MEMORY_HEADROOM``) does not, the build passes and ``Study.gradient`` is refused (``drag.near-field-memory``, the
-    mode named) before anything is compiled; a byte more than the derivative's line and the node admits it (the
-    control). A derivative holds more than its run, reverse mode more than forward."""
+    """M3 of #240's review: the memory check covers a gradient study's derivative. With a planted memory a byte under
+    the derivative's line (``DERIVATIVE_COUNTS``, times ``MEMORY_MARGIN``, against the memory less ``MEMORY_HEADROOM``)
+    from the study's derivative check on, ``Study.gradient`` is refused (``drag.near-field-memory``, the mode named)
+    before anything is compiled; a byte more than the line and the node admits it (the control). Reverse mode holds
+    more than forward. (The derivative is counted past the check, its builds made; the run from before its build.)"""
     from mime.nodes.hydro.near_field import _node
     from mime.study import Study, along
     from mime.study import _gradient
@@ -114,25 +117,30 @@ def test_a_derivative_whose_memory_will_not_fit_is_refused_before_the_study_comp
 
     law = mrs(SPACING, **({"near_field": NearField(solve="gmres")} if route == "gmres" else {}))
     node = joint_node(cluster(2, law=law).build())
-    run, forward, reverse = (node.memory_estimate(each) for each in (_node.RUN, "forward", "reverse"))
-    assert 0.0 < run < forward < reverse
+    assert 0.0 < node.memory_estimate("forward") < node.memory_estimate("reverse")
     needed = _node.MEMORY_MARGIN * node.memory_estimate(mode)
     line = int(needed / (1.0 - _node.MEMORY_HEADROOM))
-    monkeypatch.setattr(_node, "device_memory", lambda: ("a planted memory", line - 1))
-    experiment = cluster(2, law=law)
-    experiment.build()
+    room = {"held": 2 ** 50}
+    monkeypatch.setattr(_node, "device_memory", lambda: ("a planted memory", room["held"]))
+    checks = _gradient.derivative_refusals
+
+    def checked(*arguments: object) -> object:
+        room["held"] = line - 1
+        return checks(*arguments)  # type: ignore[arg-type]
 
     def compiled(*_: object, **__: object) -> None:
         raise AssertionError("the derivative was compiled")
 
+    monkeypatch.setattr(_gradient, "derivative_refusals", checked)
     monkeypatch.setattr(_gradient, "prepare", compiled)
+    experiment = cluster(2, law=law)
     with pytest.raises(BuildRefused) as refused:
         Study(experiment).sweep(along({"water.viscosity": [mPa_s(1.0)]}), duration=ms(2.0)).gradient(
             lambda final: final["s1"]["twist"][0], mode=mode)
     found = [each for each in refused.value.refusals if each.code == "drag.near-field-memory"]
     assert len(found) == 1 and f"derivative in {mode} mode" in found[0].message and "a planted memory" in found[0].message
-    monkeypatch.setattr(_node, "device_memory", lambda: ("a planted memory", line + 2))
-    assert node.derivative_problem(mode, 1, 1, 2) is None and node.memory_problem() is None
+    room["held"] = line + 2
+    assert node.derivative_problem(mode, 1, 1, 2) is None
 
 
 #: The fit's own configuration, two of MIME's spheres at 882 force points each a radius apart (5,292 unknowns), and what
@@ -145,6 +153,12 @@ MEASURED_PEAK_GIB = {("dense", "float64"): (1.048, 1.071), ("gmres", "float64"):
                      ("dense", "float32"): (0.884, 0.760), ("gmres", "float32"): (1.143, 1.007)}
 #: The fit's residual band over its 882-point cases (the measured peak over the estimate: 0.92 to 1.13).
 FIT_BAND = (0.92, 1.13)
+#: A gradient study's derivative on the same configuration (``DERIVATIVE_COUNTS``), forward mode along one axis and
+#: reverse mode, GiB, written out (a golden value: a count edited without a refit moves it), with what the probe measured
+#: there past the check on a runner (float64; float32 at three spheres only, so none here).
+DERIVATIVE_ESTIMATE_GIB = {("dense", "float64"): (0.8304, 2.2514), ("gmres", "float64"): (0.9609, 2.4997),
+                           ("dense", "float32"): (0.3161, 1.1142), ("gmres", "float32"): (0.3443, 1.1299)}
+DERIVATIVE_MEASURED_GIB = {("dense", "float64"): (0.77, 2.14), ("gmres", "float64"): (0.96, 2.45)}
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
@@ -171,6 +185,15 @@ def test_the_memory_estimate_is_what_the_fit_measured_and_gmres_holds_the_invers
         for peak in MEASURED_PEAK_GIB[(route, dtype)]:
             assert FIT_BAND[0] <= peak / (needed / 2 ** 30) <= FIT_BAND[1], (route, dtype, peak)
     assert estimate["gmres"] - estimate["dense"] >= held_blocks
+    from mime.nodes.hydro.near_field._node import MEMORY_MARGIN
+
+    for route in ("dense", "gmres"):
+        with precision(dtype):
+            node = assembled(members, names, solve=route)
+            found = tuple(node.memory_estimate(mode) / 2 ** 30 for mode in ("forward", "reverse"))
+        assert found == pytest.approx(DERIVATIVE_ESTIMATE_GIB[(route, dtype)], rel=1e-3), (route, dtype, found)
+        for measured, held in zip(DERIVATIVE_MEASURED_GIB.get((route, dtype), ()), found, strict=False):
+            assert measured <= MEMORY_MARGIN * held, (route, dtype, measured, held)
 
 
 def test_the_route_is_dense_unless_gmres_is_declared():

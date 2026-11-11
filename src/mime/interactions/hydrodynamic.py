@@ -30,7 +30,8 @@ from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
 from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS, WINDOW, least_radius, window_text
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
-from mime.nodes.hydro.near_field import MEMORY_MEASURED, ROUTES, JointDragNode, member_prefix
+from mime.nodes.hydro.near_field import DERIVATIVE_MEASURED, MEMORY_HEADROOM, MEMORY_MARGIN, MEMORY_MEASURED, ROUTES, \
+    JointDragNode, member_prefix
 from mime.scene import KEPT, quadrature, quadrature_counts, quadrature_owners, sampled_points
 from mime.scene._sampling import FINEST, quadrature_arrays
 from mime.scene._grading import (
@@ -1587,9 +1588,13 @@ class Drag(UncoupledDrag):
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
         "the force oracles' (the two-sphere series, Rotne and Prager's mobility, the dense assembly)",
         f"mrs: the near field's memory, on either route: the run's peak past the process's fixed part, so many of its "
-        f"joint matrices and of its members' held blocks ({MEMORY_MEASURED}), reported at build and refused past the "
-        f"memory a run can have (drag.near-field-memory): a GPU's limit, or on a CPU the smaller of the host's "
-        f"available memory and the limit of the control group the process runs in, where one is set",
+        f"joint matrices and of its members' held blocks ({MEMORY_MEASURED}), and a gradient study's derivative's, "
+        f"forward or reverse mode ({DERIVATIVE_MEASURED}), reported at build and refused (drag.near-field-memory), a "
+        f"run at build and a derivative before the study compiles it, where {MEMORY_MARGIN:g} times the estimate "
+        f"(MEMORY_MARGIN, the measurements' largest miss) passes the memory a run can have less {MEMORY_HEADROOM:.0%} "
+        f"of it (MEMORY_HEADROOM): a GPU's limit, or on a CPU the smaller of the host's available memory and the limit "
+        f"of the control group the process runs in, where one is set. Measured on CPUs, not a bound; a GPU's is not "
+        f"measured",
         "mrs: with lubrication (on by default near a wall that opens), the near-wall resistance is the coarse MRS "
         "evaluated once with the body's near contact opened to the hand-over gap (HANDOVER_SPACINGS of the force "
         "spacing, the finest graded spacing where graded), never closer, plus the thin film's increment between the "

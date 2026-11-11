@@ -109,17 +109,29 @@ RUN = "run"
 #: member: reverse mode; forward mode along one direction, and per direction past the first. A batch of members holds as
 #: many times as much. :data:`DERIVATIVE_MEASURED` says how they were measured.
 DERIVATIVE_COUNTS: dict[tuple[str, str], dict[str, tuple[float, float]]] = {
-    ("dense", "float64"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
-    ("dense", "float32"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
-    ("gmres", "float64"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
-    ("gmres", "float32"): {"reverse": (0.0, 0.0), "forward": (0.0, 0.0), "direction": (0.0, 0.0)},
+    ("dense", "float64"): {"reverse": (10.79, 0.0), "forward": (3.98, 0.0), "direction": (1.34, 0.0)},
+    ("dense", "float32"): {"reverse": (10.68, 0.0), "forward": (3.03, 0.0), "direction": (1.34, 0.0)},
+    ("gmres", "float64"): {"reverse": (11.98, 0.0), "forward": (3.08, 3.05), "direction": (1.34, 0.0)},
+    ("gmres", "float32"): {"reverse": (10.83, 0.0), "forward": (2.72, 0.58), "direction": (1.34, 0.0)},
 }
-DERIVATIVE_MEASURED = ""
-#: The memory refusal's margin on an estimate, the largest measured peak over its estimate among the fits' cases
-#: (:data:`MEMORY_MEASURED`, :data:`DERIVATIVE_MEASURED`), so that the estimate it compares is at least what each
-#: measured case held; and its headroom, the share of the memory a run can have that it keeps free for what the counts
-#: do not hold (another process, the operating system's rounding of what is available).
-MEMORY_MARGIN = 1.0
+DERIVATIVE_MEASURED = (
+    "measured through Study.gradient on GitHub runners (4 vCPU, 16 GB; probe runs 42923077932, 42924924124 and "
+    "42925693316): MIME's sphere at 882 force points, 2 to 4 in a line a radius apart (5,292 to 10,584 unknowns), 2 "
+    "steps, the derivative of the bodies' relative velocity in the viscosity, as the process's resident peak past the "
+    "check (the kernel's high-water mark reset there), non-negative least squares on the joint matrix's bytes and the "
+    "held blocks'. Reverse mode holds 10.3 to 12.0 joint matrices (dense float64 10.3, 10.9 and 10.8 at 2, 3 and 4 "
+    "spheres), forward mode along one axis 2.1 to 4.6, a second axis 1.34 more (dense float64, three spheres: declared "
+    "for the other routes and dtypes, not measured there); two points at once 1.85 and 1.83 times one (reverse, "
+    "forward), counted as twice; 8 and 32 steps 1.02 to 1.09 times 2 (the chunked checkpoints keep a step's inputs). "
+    "Every case 0.69 to 1.06 times its estimate. The review's seven spheres in reverse mode failed on one buffer of "
+    "11.05 joint matrices, as reverse mode's count has it")
+#: The memory refusal's margin on an estimate, the largest measured peak over its estimate among the fits' cases rounded
+#: up (1.13, a forward run's on the laptop, :data:`MEMORY_MEASURED`; a derivative's at most 1.06, a runner's forward run
+#: 1.04), so that the estimate it compares is at least what each measured case held; and its headroom, the share of the
+#: memory a run can have that it keeps free for what the counts do not hold (another process, the operating system's
+#: rounding of what is available). Measured on runners: every case the line admitted peaked under it
+#: (:data:`DERIVATIVE_MEASURED`'s and the gate's probe, ``tests/near_field/predictions_drag050_fixround.json``).
+MEMORY_MARGIN = 1.15
 MEMORY_HEADROOM = 0.1
 MEMORY_MEASURED = ("measured on a laptop CPU with 16 threads as the process's peak resident memory over a build and two "
                    "runs through built.run, less a two-sphere run's peak (396 unknowns: 0.65 to 0.73 GiB, the "
