@@ -7,15 +7,20 @@ well-posedness."""
 
 from __future__ import annotations
 
+import dataclasses
+import itertools
 import math
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
+from hypothesis import Phase, given, settings
 
 from mime.nodes.flow.fvm._ports import PORT_LAWS, GivenPressure, Inflow, RowKind, Windkessel, port_system, \
     waveforms_cancel, well_posed
-from mime.testing import port_law_suite
+from mime.testing import PORT_LAW_DRAWS, port_law_suite
+from mime.testing._port_laws import books_residual
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +59,75 @@ class _ConsistentlyNegative(Windkessel):
     def books(self, parameters, state, ended, flux, pressure, dt):
         flipped = parameters.at[0].multiply(-1.0)
         return super().books(flipped, state, ended, flux, pressure, dt)
+
+
+_WINDKESSEL_ROW = (1e7, 5.269861293567362e-12, 3560477528.4278646)
+_WINDKESSEL_DT = 0.0007657869934001185
+#: Flake run 42971163347's draw: a state of 2.2e-313 and a flux of -4.6e-157, neither of which a vessel bed has.
+_UNDERFLOWN_DRAW = (*_WINDKESSEL_ROW, _WINDKESSEL_DT, 2.2250738585e-313, -4.634435157709434e-157)
+_EXTREMES = (0.0, 2.2250738585e-313, 1e-200, 1e-160, 1e-154, 1e-100, 1e100, 1e154, 1e160)
+
+
+def _windkessel_extreme_books(state, flux, loss_error=1.0):
+    law = Windkessel() if loss_error == 1.0 else _LossScaled(loss_error)
+    row = jnp.asarray([*_WINDKESSEL_ROW, 0.0])
+    return books_residual(law, row, _WINDKESSEL_DT, jnp.asarray([state]), jnp.asarray(flux))
+
+
+class _LossScaled(Windkessel):
+    """The Windkessel whose loss is booked `factor` times too large: the planted error the extremes test must see."""
+
+    def __init__(self, factor):
+        self.factor = factor
+
+    def books(self, parameters, state, ended, flux, pressure, dt):
+        held = super().books(parameters, state, ended, flux, pressure, dt)
+        return dataclasses.replace(held, loss=held.loss * self.factor)
+
+
+def test_the_windkessels_books_at_numerical_extremes_close_to_the_floor_underflow_gives_them():
+    """The draws stay at what a vessel bed has (`mime.testing.PORT_LAW_DRAWS`); this is the extremes on purpose, and
+    it is not a draw the suite filters out. Where a state or a flux is subnormal, or small enough that its square
+    (`q**2`, the loss) falls below the smallest normal number, the loss is flushed to zero and the books are off by what
+    was flushed: at most the smallest normal number times the coefficients that multiply a square (`dt R_p`, `dt / R_d`,
+    `C`), judged on top of the rounding on the inputs' scale (CLAUDE.md, the property tests' second cause). Where a
+    square overflows (a state or flux above about 1e154) the books are not finite: the law announces it and books
+    no wrong finite number. Between, the books close to rounding. Flake run 42971163347's draw is among them."""
+    tiny = np.finfo(np.float64).tiny
+    row_p, compliance, row_d = _WINDKESSEL_ROW
+    floor = tiny * (_WINDKESSEL_DT * row_p + _WINDKESSEL_DT / row_d + compliance)
+    cases = list(itertools.product(_EXTREMES, [0.0, *_EXTREMES, *(-value for value in _EXTREMES[1:])]))
+    cases.append(_UNDERFLOWN_DRAW[4:])
+    for state, flux in cases:
+        residual, scale, rounding = _windkessel_extreme_books(state, flux)
+        if max(abs(state), abs(flux)) >= 1e154:
+            assert not math.isfinite(residual) or abs(residual) <= rounding + floor, (state, flux)
+        else:
+            assert math.isfinite(residual) and abs(residual) <= rounding + floor, (state, flux, residual, scale)
+    residual, _, rounding = _windkessel_extreme_books(*_UNDERFLOWN_DRAW[4:])
+    assert 0.0 < abs(residual) <= floor and rounding < abs(residual), "the flaked draw is the flushed loss, nothing more"
+
+
+@settings(max_examples=2000, deadline=None, database=None, phases=(Phase.generate,))
+@given(PORT_LAW_DRAWS["windkessel"]())
+def test_the_windkessels_draws_are_what_a_vessel_bed_has(drawn):
+    """Every draw is in the declared ranges, a state or a flux either exactly zero or at least 1e-2 Pa or 1e-13 m^3/s
+    in size: none is subnormal (the flaked draw's state is 2.2e-313), the floor the suite's tolerance (no absolute
+    part) cannot judge."""
+    proximal, compliance, distal, dt, state, flux = drawn
+    assert 1e7 * (1 - 1e-12) <= proximal <= 1e10 * (1 + 1e-12) and 1e-12 * (1 - 1e-12) <= compliance <= 1e-8 * (1 + 1e-12)
+    assert 1e8 * (1 - 1e-12) <= distal <= 1e11 * (1 + 1e-12) and 1e-5 * (1 - 1e-12) <= dt <= 1e-2 * (1 + 1e-12)
+    assert state == 0.0 or 1e-2 * (1 - 1e-12) <= state <= 2e4 * (1 + 1e-12)
+    assert flux == 0.0 or 1e-13 * (1 - 1e-12) <= abs(flux) <= 1e-5 * (1 + 1e-12)
+
+
+@pytest.mark.parametrize("state, flux", [(1e-100, 1e-100), (1e-100, -1e-100), (1e100, 1e-154), (1e100, 1e-100)])
+def test_control_the_extremes_test_sees_a_booked_error_where_the_square_survives(state, flux):
+    """Where the squares are normal, the extremes test has the resolution to see a loss booked 1e-3 too large; at a
+    subnormal input it has none, by design (the flushed loss is below the floor), so no control is claimed there."""
+    residual, _, rounding = _windkessel_extreme_books(state, flux, loss_error=1.001)
+    floor = np.finfo(np.float64).tiny * (_WINDKESSEL_DT * _WINDKESSEL_ROW[0])
+    assert abs(residual) > rounding + floor
 
 
 @pytest.mark.parametrize("control", [_Flipped, _ConsistentlyNegative])
