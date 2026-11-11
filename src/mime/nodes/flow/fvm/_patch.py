@@ -490,7 +490,59 @@ def moved(field: Velocity, by: Array, fill: Velocity) -> Velocity:
     return (held[0], held[1], held[2])
 
 
-__all__ = ["CHUNK_BYTES", "FLUX_SHARE_LINE", "READS", "SERIES_EDGE", "SERIES_TERMS", "SHELL_DEPTH", "STATE_FIELDS",
+# -- the numbers F5's build report reads (scope 7) --------------------------------------------------------------------
+#: The near-contact window's lines (decided 4 (2)): the contact's local radius at least this many fine cells (about
+#: 7 % on the lift), the hand-over gap between these fine cells and at most this share of the local radius.
+WINDOW_RADIUS_CELLS = 20.0
+WINDOW_HANDOVER_CELLS = (2.0, 3.0)
+WINDOW_HANDOVER_SHARE = 0.1
+#: The coarse grid's own error the patch's faces carry in (its floor), measured on the axis of the straight tube by the
+#: patch spike.
+COARSE_FLOOR_MEASURED = (
+    "measured by the patch spike on the straight periodic tube's axis, MIME's 338-point sphere, the patch's faces given "
+    "by the coarse grid: wall-normal -0.8, -1.9, -3.5 % at a/R 0.1, 0.2, 0.3 for D/h 16, -0.5 and -0.9 % at a/R 0.2 and "
+    "0.3 for D/h 32; wall-parallel -1.2, -3.0, -5.8 % (D/h 16) and -0.8, -1.5 % (D/h 32)")
+
+
+class PatchNumbers(NamedTuple):
+    """The patch's numbers at a build (scope 7): its fine cell (m) and the coarse-to-fine ratio; how far its box reaches
+    beyond the body, in coarse cells (the least over the axes); the near-contact window's numbers (the contact's local
+    radius in fine cells, the hand-over gap in fine cells, in local radii and in force spacings); and whether each of the
+    window's lines holds (a flag, never a refusal: item 59's Q2)."""
+
+    fine_cell: float
+    ratio: float
+    beyond_body_coarse_cells: float
+    local_radius_cells: float
+    handover_cells: float
+    handover_radii: float
+    handover_spacings: float
+    radius_holds: bool
+    handover_holds: bool
+
+
+def rule_two_cell(local_radius: float) -> float:
+    """The fine cell rule 2 gives for the smallest local radius served (decided 4 (6)): the radius over
+    :data:`WINDOW_RADIUS_CELLS`."""
+    return local_radius / WINDOW_RADIUS_CELLS
+
+
+def patch_numbers(patch: RefinementPatch, coarse_spacing: float, body_reach: float, local_radius: float,
+                  handover: float, force_spacing: float) -> PatchNumbers:
+    """The numbers for a body of ``body_reach`` (m, its extent from its centre) with a contact of ``local_radius`` (m),
+    the hand-over gap ``handover`` (m) and the MRS's ``force_spacing`` (m), on a coarse grid of ``coarse_spacing``."""
+    h = patch.spacing
+    beyond = (0.5 * min(patch.cells) * h - body_reach) / coarse_spacing
+    radius_cells = local_radius / h
+    handover_cells = handover / h
+    low, high = WINDOW_HANDOVER_CELLS
+    return PatchNumbers(h, coarse_spacing / h, beyond, radius_cells, handover_cells, handover / local_radius,
+                        handover / force_spacing, radius_cells >= WINDOW_RADIUS_CELLS,
+                        low <= handover_cells <= high and handover <= WINDOW_HANDOVER_SHARE * local_radius * (1 + 1e-12))
+
+
+__all__ = ["CHUNK_BYTES", "COARSE_FLOOR_MEASURED", "FLUX_SHARE_LINE", "READS", "WINDOW_HANDOVER_CELLS",
+           "WINDOW_HANDOVER_SHARE", "WINDOW_RADIUS_CELLS", "PatchNumbers", "patch_numbers", "rule_two_cell", "SERIES_EDGE", "SERIES_TERMS", "SHELL_DEPTH", "STATE_FIELDS",
            "PatchHistory", "PatchPlacement", "PatchSolve", "RefinementPatch", "blended_reflection",
            "brinkman_difference", "lifted_and_drive", "moved", "operators", "own_response", "patch_reflection",
            "patch_reflection_transpose", "patch_stopping", "placed", "screening", "snapped_origin", "source",
