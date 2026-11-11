@@ -139,9 +139,6 @@ TREE = "tube_tree"
 #: The registration kinds of a point body's exchange with the flow: lagged (its law scatters onto the grid) and one
 #: pass (held in the flow's one elimination).
 PARTNER_KINDS = (EXCHANGE_PARTNER, ONE_PASS_PARTNER)
-#: The open vessel's axis its node lays along its grid's z: an exchange partner's point is carried into the grid by a
-#: translation alone where the vessel's axis is this one.
-OPEN_AXIS = (0.0, 0.0, 1.0)
 
 
 def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
@@ -495,13 +492,6 @@ class FVM(Dynamics):
                                                   f"and an open vessel's flow holds its exchange partners in its one "
                                                   f"elimination only, which takes no lagged one",
                             "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...))")]
-        if self.open and partners and region is not None and not _along(region, OPEN_AXIS):
-            return [Problem("flow.open-exchange-axis", f"{', '.join(r.id for r in partners)} exchanges with the flow, "
-                                                       f"and an open vessel's flow lays the vessel along its grid's z: "
-                                                       f"a point body's pose is carried into the grid by a translation "
-                                                       f"only where the vessel's axis is +z (its axis is "
-                                                       f"{tuple(round(c, 6) for c in _unit(region.parameters['axis']))})",
-                            "lay the vessel along +z, Tube(axis=(0, 0, 1), ...), with the scene turned to match")]
         registrations = [r for r in registrations if r.kind not in PARTNER_KINDS]
         if not self.open:
             return [Problem("flow.no-openings", f"{', '.join(r.id for r in registrations)} is attached at an opening "
@@ -701,7 +691,7 @@ class FVM(Dynamics):
         point = shape_named(region.shape).axis_point(region.parameters)
         assert point is not None
         if self.open:
-            if not _along(region, OPEN_AXIS) or ends is None or set(ends) != set(self.openings_of(region)):
+            if ends is None or set(ends) != set(self.openings_of(region)):
                 return None
             layout, low, _, _ = _open_layout(self, region, ends, settings.get("spacing")
                                              if self.spacing is not None else None)
@@ -892,11 +882,6 @@ def host_line(scheme: str, axis: Sequence[float]) -> float | None:
         return None
     magnitude = [abs(float(c)) for c in axis]
     return line * max(magnitude) / sum(magnitude)
-
-
-def _along(region: Region, axis: Sequence[float]) -> bool:
-    """Whether the region's axis is ``axis`` (to within rounding)."""
-    return all(abs(c - a) <= 1e-12 for c, a in zip(_unit(region.parameters["axis"]), axis, strict=True))
 
 
 def _unit(vector: object) -> tuple[float, float, float]:

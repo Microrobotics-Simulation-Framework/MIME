@@ -203,7 +203,6 @@ flow.memory                   user
 flow.no-openings              user
 flow.open-axis                user
 flow.open-exchange            user
-flow.open-exchange-axis       user
 flow.open-scheme              user
 flow.opening-law              user
 flow.opening-unknown          user

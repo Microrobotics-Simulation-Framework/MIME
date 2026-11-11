@@ -135,16 +135,15 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
                      drive: float = 1.0, mass_ratio: float = 1.0, one_way: bool = False, steady: bool = False,
                      kernel_width: float | None = None, scheme: str = "", flow: bool = True,
                      hull: str = "sphere", viscosity: float = WATER_MU, self_history: str | None = None,
-                     opened: bool = False, tree: bool = False, coupling: str | None = None,
-                     axis: tuple[float, float, float] = (0.0, 0.0, 1.0)) -> Experiment:
+                     opened: bool = False, tree: bool = False, coupling: str | None = None) -> Experiment:
     """A point sphere of ``radius`` (m) ``offset`` (m) off a straight tube's axis, in water whose flow is the FVM
     (Stokes, IMEX Euler or its steady limit, or ``scheme="rk3"``) driven along the axis by a uniform ``drive``
     (m/s^2); ``flow=False`` leaves the medium at rest with no field, ``hull="capsule"`` gives the body a capsule,
     ``opened=True`` opens the vessel at its ends (an inflow at its start, a Windkessel at its end) in place of the
     periodic box and its drive; ``tree=True`` makes the vessel a tube tree narrowing over its period; ``coupling`` is the
-    drag's (one pass by default, ``"lagged"`` the declared route); ``axis`` the straight tube's (and its drive's)."""
+    drag's (one pass by default, ``"lagged"`` the declared route)."""
     exp = Experiment("point_body", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(dt))
-    geometry = TubeTree(**NARROWING) if tree else Tube(axis=axis, inner_radius=mm(TUBE_RADIUS * 1e3),
+    geometry = TubeTree(**NARROWING) if tree else Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(TUBE_RADIUS * 1e3),
                                                        wall=mm(0.1), length=mm(4.0))
     exp.add_structure(Structure("tube", geometry=geometry))
     chosen = Scheme.RK3() if scheme == "rk3" else Scheme.Steady() if steady else Scheme.IMEXEuler()
@@ -169,7 +168,7 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
         exp.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
                    medium="water", surface="tube.end")
     elif flow:
-        exp.attach(BodyForce(along=axis, steady=m_per_s2(drive)), medium="water")
+        exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(drive)), medium="water")
     return exp
 
 

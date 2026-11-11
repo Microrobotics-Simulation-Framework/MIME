@@ -267,15 +267,14 @@ def test_the_plan_holds_a_free_body_one_pass_and_lags_one_whose_step_is_not_line
 def test_an_open_vessels_flow_holds_a_body_one_pass_and_refuses_a_lagged_one_by_name(float64):
     """An open vessel's flow holds its partners in its one elimination only: a free body plans one pass beside the
     openings; a one-way body, a contact's body (lagged) and one with coupling='lagged' are refused by name
-    (flow.open-exchange), with the route; a vessel laid along another axis than +z is refused by name
-    (flow.open-exchange-axis). The control: the same free body in the open vessel along +z plans."""
+    (flow.open-exchange), with the route. The control: the same free body in the open vessel plans (an open vessel is
+    laid along +z, flow.open-axis, so a pose is carried into its grid by a translation)."""
     from mime.vocabulary import ONE_PASS_PARTNER
 
     assert ONE_PASS_PARTNER in _kinds(point_experiment(opened=True))
     for exp in (point_experiment(opened=True, one_way=True), point_experiment(opened=True, coupling="lagged"),
                 _contact(point_experiment(opened=True))):
         assert _refused(exp) == {"flow.open-exchange"}
-    assert _refused(point_experiment(opened=True, axis=(1.0, 0.0, 0.0))) == {"flow.open-exchange-axis"}
 
 
 def test_a_derivative_through_the_one_elimination_matches_a_central_difference(float64, monkeypatch):
