@@ -35,6 +35,8 @@ core/multibody/_mass_matrix.py::MassMatrix.__post_init__ ValueError 4  # constru
 core/multibody/_tree.py::MultibodyTree.body KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/multibody/_tree.py::MultibodyTree.joint KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/multibody/_urdf.py::read_urdf DescriptionRefused 1  # caught where it is raised and refused with its code (chain.description, by the arm's segment and the controller's read)
+core/solves.py::SolveSite.__post_init__ ValueError 2  # registration: a solve site's registration at import, outside every public call
+core/solves.py::register ValueError 1  # registration: a solve site's registration at import, outside every public call
 core/switch.py::Declaration.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/switch.py::static_select TypeError 1  # invariant: an entry's static_select given a traced mask, inside a node's build
 core/tables/_compile.py::_role AssertionError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class

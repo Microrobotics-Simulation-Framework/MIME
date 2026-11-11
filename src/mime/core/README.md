@@ -11,6 +11,11 @@
 - **Quaternion helpers**, with a norm that is safe at zero rotation. The 0.2 version produced a NaN there.
 - **The switch functions** (`mime.core.switch`): every non-smooth operation a node's step evaluates, so that each one
   has a name. See [Switches](#switches).
+- **The solve sites** (`mime.core.solves`): every linear solve a node's step traces is registered by the shared function
+  that performs it (`projected_solve`, `reported_solve`, `dense_solve`, the Poisson transforms), which runs inside a JAX
+  name scope that changes no value. `tests/solve_sites` traces each registered node kind's step and fails on a solve
+  outside a registered scope, and on a float32 value inside a registered solve in a float64 run. A new solve goes through
+  a shared function or registers a site with its reason.
 - **Typed node state**: `NodeFields`, `typed_view` and `node_fields`, the static views by which a node types its
   state and inputs inside MADDENING's signatures. The convention is set out in
   [`nodes/README.md`](../nodes/README.md#typed-node-state).

@@ -30,7 +30,8 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.flow.fvm._grid import MACGrid, Velocity
+from mime.core.solves import solving
+from mime.nodes.flow.fvm._grid import POISSON_SITE, MACGrid, Velocity
 
 #: The weight the ends' half cells carry in the inner product.
 HALF = 0.5
@@ -235,12 +236,13 @@ class OpenMACGrid(MACGrid):
     def poisson(self, source: Array) -> Array:
         """``phi`` with ``D G phi = source``, the planes held at zero, by the fast transform."""
         nx, ny, nz = self.cells
-        basis = jnp.asarray(_sine_basis(nz), dtype=source.dtype)
-        across = jnp.fft.rfft2(source, axes=(0, 1))
-        modes = jnp.einsum("jm,abj->abm", basis, across, precision=_HIGHEST)
-        modes = modes / self._symbol(source.dtype)
-        back = jnp.einsum("jm,abm->abj", basis, modes, precision=_HIGHEST)
-        return jnp.fft.irfft2(back, s=(nx, ny), axes=(0, 1)).astype(source.dtype)
+        with solving(POISSON_SITE):
+            basis = jnp.asarray(_sine_basis(nz), dtype=source.dtype)
+            across = jnp.fft.rfft2(source, axes=(0, 1))
+            modes = jnp.einsum("jm,abj->abm", basis, across, precision=_HIGHEST)
+            modes = modes / self._symbol(source.dtype)
+            back = jnp.einsum("jm,abm->abj", basis, modes, precision=_HIGHEST)
+            return jnp.fft.irfft2(back, s=(nx, ny), axes=(0, 1)).astype(source.dtype)
 
     @override
     def project(self, velocity: Velocity) -> Velocity:

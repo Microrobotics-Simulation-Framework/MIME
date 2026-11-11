@@ -32,6 +32,7 @@ from mime.nodes.hydro.mrs._node import (
     least_distance,
 )
 from mime.core.ledger import IDENTITY_ULPS
+from mime.core.solves import SolveSite, register, solving
 from mime.nodes.hydro.mrs._quadrature import asymmetry, held_or_made, scaled_least_eigenvalue, unchanged
 from mime.nodes.hydro.mrs._solve import PRECISION
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
@@ -84,6 +85,12 @@ HELD_INVERSE = "held_inverse"
 #: iterations, none flagged), and in float32 the two were within a factor of two either way, eight spheres there
 #: stopping stagnated in 8 of 48 columns, flagged. The dense route is exact to rounding, held to W3a's gates.
 ROUTES = ("dense", "gmres")
+#: The inverse of each member's own free part (``6 x 6``), GMRES's preconditioner block.
+HELD_INVERSE_SITE = register(SolveSite(
+    "near_field_held_inverse", "dense", "mime.nodes.hydro.near_field._node.JointDragNode._inverse_made",
+    nodes=("JointDragNode",),
+    exempt="six unknowns a body, inverted to precondition GMRES, whose stop is on the true residual: the inverse's "
+           "rounding changes the iterations it takes, not what it stops on"))
 #: GMRES's relative tolerance on each solve's true residual, by the run's dtype: an accuracy-bearing numerical setting,
 #: ``Drag.MRS(near_field=NearField(solve="gmres", tolerance=...))``. Float64's holds the grand resistance within 1e-10
 #: of the dense route's on the gates' configurations. Float32's sits above the floor its own arithmetic leaves the residual at, measured on
@@ -526,7 +533,8 @@ class JointDragNode(MimeNode):
         member = self._members[index]
 
         def made(theta: Mapping[str, Any]) -> Array:
-            return jnp.linalg.inv(member.self_interaction(theta))
+            with solving(HELD_INVERSE_SITE):
+                return jnp.linalg.inv(member.self_interaction(theta))
 
         return made
 
@@ -602,7 +610,8 @@ class JointDragNode(MimeNode):
             found[key] = made.astype(jnp.asarray(params[key]).dtype)
             inverse = f"{prefix}{HELD_INVERSE}"
             if inverse in params:
-                found[inverse] = jnp.linalg.inv(made).astype(jnp.asarray(params[inverse]).dtype)
+                with solving(HELD_INVERSE_SITE):
+                    found[inverse] = jnp.linalg.inv(made).astype(jnp.asarray(params[inverse]).dtype)
             found.update({f"{prefix}{HELD_FROM}{name}": value for name, value in theta.items()})
         return found
 
