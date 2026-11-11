@@ -23,7 +23,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from resolved_cases import (FreeBox, HeldSphere, deeper_band, haberman_sayre, patched, plant, r3_experiment,
+from resolved_cases import (WATER_RHO, FreeBox, HeldSphere, deeper_band, haberman_sayre, patched, plant, r3_experiment,
                             r3_history, rigid_interior, shift_cells, stable)
 
 from dataclasses import dataclass
@@ -98,6 +98,23 @@ def test_a_neutral_sphere_in_a_uniformly_driven_free_box_accelerates_with_the_fl
     error = acceleration / box.g - 1.0
     print(f"F4 gate 3 [{dtype}]: the second half's acceleration over g - 1 = {error:.3g}")
     assert abs(error) < 0.005, error
+
+
+def test_a_neutral_sphere_held_in_a_closed_tube_under_a_drive_across_it_takes_no_net_load(dtype):
+    """Gate 3's second control: a sphere of 6 cells a radius held at rest on the tube's axis (a/R 0.375, the steady
+    Stokes step) under a drive across the axis, which the wall stops: the pressure the drive builds pushes the body
+    through the field, and its displaced share cancels that push, so a neutral body in a closed vessel stays at rest.
+    The plant leaves the share out."""
+    held = HeldSphere(0.375, 6.0)
+    g = 1.0
+    load, share = held.at_rest((g, 0.0, 0.0))
+    total = np.asarray(load[:3]) + (0.0 if plant("NO_SHARE") else np.asarray(share[:3]))
+    scale = WATER_RHO * 4.0 / 3.0 * math.pi * held.radius ** 3 * g
+    along, across = abs(total[0]) / scale, float(np.max(np.abs(total[1:]))) / scale
+    print(f"F4 gate 3b [{dtype}]: the net load over rho V g along the drive {along:.3g}, across {across:.3g}; the "
+          f"field's push {float(load[0]) / scale:.4g}, the share {float(share[0]) / scale:.4g}")
+    assert along < 0.1, along
+    assert across < 0.1, across
 
 
 # -- gate 4: the books ----------------------------------------------------------------------------------------------

@@ -98,6 +98,14 @@ class HeldSphere:
         share = moved["body_0_share"] - alpha * driven["body_0_share"]
         return -(load + share)
 
+    def at_rest(self, drive: Any) -> tuple[Any, Any]:
+        """The held body's steady load and its displaced share at rest under the drive ``drive`` (m/s^2, a vector)."""
+        dtype = run_dtype()
+        state = jax.jit(lambda pose, force: self.node.update(
+            dict(self.node.initial_state()), {"body_0_pose": pose, "body_0_twist": jnp.zeros(6, dtype=dtype),
+                                              "body_force": force}, 1.0))(self.pose(), jnp.asarray(drive, dtype=dtype))
+        return state["body_0_load"], state["body_0_share"]
+
     def k(self) -> float:
         """The axial drag over Stokes's, ``R_zz / (6 pi mu a)``."""
         return float(self.column(2)[2]) / (6.0 * math.pi * WATER_MU * self.radius)
