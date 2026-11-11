@@ -127,6 +127,18 @@ sixteen predicts 23.8 minutes for the slowest shard on the slowest lane's second
 19.6 (14.1). The minutes are the lane's test seconds in the shard times 0.284 (the median over the 146 shard jobs of those two
 runs that finished, shard 1 apart; 0.320 is their 90th percentile, and the highest 0.355).
 
+The table was rebuilt once more on 2026-11-11, from the push at d7c4106, after four more PRs had added test files and the
+pushes of that day cancelled a shard of `openmaterica-main` and `maddening-main` at 30 minutes. In that run the largest
+shard of each lane held 4858 s (`default` on 3.12), 4716 (3.13), 4405 (3.14), 4847 (`maddening-main`) and 4469
+(`openmaterica-main`) of test time; on the new table the same run's seconds put the largest at 4366, 3392, 3224, 4024 and
+4190, which at 0.284 minutes per second is 20.7 minutes at most. The cache-less lanes were not slow for want of a cache
+(a push starts every lane empty, `default` included): their test seconds and JAX compile seconds match `default`'s within
+8 %, and the push's job times vary with the runner's CPU (`default` on 3.12: 19.9 minutes on an EPYC 7763, 12.8 on a 9V45).
+Giving each worker's compiled programs back before a memory-heavy test (#250) added no compile time: the cache directory
+is set in every lane, so a program given back is read from it (compile seconds of the thirteen test files that use it,
+four lanes summed, 19.4k s before and 18.4k s after; cache-read seconds 976 and 977). The `openmaterica-main` and
+`maddening-main` shard jobs have 45 minutes, as their cold maximum is above 30 (comments in `ci.yml`).
+
 **A file the table does not list** (one added since the table was built) is placed after all the listed ones, in the order
 of its path, on the shard with the least time so far, at an assumed weight: the 90th percentile of the table's file weights
 (268 s on the table of this writing; `tests/_sharding.py`, `new_file_weight`), a guess for a heavy file rather than a
