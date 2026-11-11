@@ -12,6 +12,10 @@ shadow, a subject named in `absorbers` attenuates by Beer-Lambert, and every oth
 `Pinhole.from_calibration(file)` read them from a calibration file, which labels them fitted with the file's name and
 sha256.
 
+**Required settings.** `detector`, `mount` and `frame_period` have no default, and omitting one is refused: the detector is
+the declared camera model (MIME assumes none), the mount is where the camera is, and the period is the experimenter's
+choice of clock.
+
 **Its clock.** It runs on the base step and renders a frame every `frame_period`, a whole number of base steps (any
 other period is refused, naming the nearest two; `rate=` is refused). The exposure is the `sub_frames` base steps ending
 at the frame step. Between frames the image is held. Its outputs are `image` (counts), `expected` (the counts before
