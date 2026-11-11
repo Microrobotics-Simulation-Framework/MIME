@@ -8,7 +8,9 @@ reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's s
 apparatus with its masses mounted and that friction arm, each with the energy ledger, whose metered steps (the arm's
 and the motor's step identities, and the impulses split by the friction's share) no other configuration takes; a
 sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
-no round-trip case's body is fine enough for (where the package has the hand-over); and those steps traced and
+no round-trip case's body is fine enough for (where the package has the hand-over); a sphere held with friction on a
+tube's floor (``friction_cases.on_the_floor``), alone and with the energy ledger, whose frictional hold and friction's
+books no other configuration takes (where the package has friction); and those steps traced and
 scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
 configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
@@ -50,6 +52,13 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
                                                        controller=tracking(orientation_feedback=True, iterations=1))
     found["chain/friction_arm"] = friction_arm
     found["contact/rod_hull"] = rod_contact
+    from mime.interactions import Contact
+
+    if hasattr(Contact, "engagement"):  # a merge base before friction at the wall builds no frictional hold
+        from friction_cases import on_the_floor
+
+        found["contact/friction_sphere"] = on_the_floor
+        found["ledger/friction_sphere"] = partial(metered, partial(on_the_floor, "friction_sphere_metered"))
     found["ledger/massive_rpm"] = partial(metered, partial(massive_rpm, "massive_rpm_metered"))
     found["ledger/friction_arm"] = partial(metered, partial(friction_arm, "friction_arm_metered"))
     from mime.interactions import Drag

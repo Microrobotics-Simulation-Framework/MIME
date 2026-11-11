@@ -438,3 +438,44 @@ nodes/hydro/near_contact/_sphere.py remainder truncation 1  # the interval index
 nodes/hydro/near_contact/_sphere.py remainder where 1  # below the table's lower edge the continuation, matched to the spline's value and slope there (C1, measured by tests/oracles/test_near_contact.py::test_the_continuation_below_the_tables_range_is_c1_at_its_edge), so the derivative is continuous through the edge and no status moves (the near-contact gradient gate across the edge, tests/oracles/test_near_contact.py::test_gate8_forward_and_reverse_equal_the_difference)
 nodes/hydro/near_contact/_sphere.py singular sqrt 1  # the contact's mean curvature, the root of the product of its two principal curvatures, each above zero for a sphere's contact with a plane or a lumen wider than it, continuous with its first two derivatives, so no status moves (tests/oracles/test_near_contact.py::test_gate8_forward_and_reverse_equal_the_difference)
 scene/_solids.py Ellipsoid.samples nested_remat2 1  # the ellipsoid's area elements (switch.nonzero_norm of the scaled normal), traced under the MRS node's checkpoint of its hand-over's solve: remat changes what reverse mode keeps, not the derivative; the shape suite evaluates it outside the checkpoint
+nodes/body/_friction.py cone_residual stop_gradient 1 cleared_by tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms  # contact_residual with friction, the cone's natural-map residual as a report on stopped values: no derivative passes through it, and the derivative in mu through the frictional hold is the closed form's with it (the standing test)
+nodes/body/_friction.py cone_residual stop_gradient 2 cleared_by tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms  # the coefficient read as a value inside the stopped report, as the line above
+nodes/body/_friction.py cone_residual abs 1  # inside the stopped report: the normal rows' unmet complementarity's magnitude
+nodes/body/_friction.py cone_residual minimum 1  # inside the stopped report: each normal row's unmet complementarity
+nodes/body/_friction.py cone_residual minimum 2  # inside the stopped report: the disk's projection, a pair's trial force clipped to its bound
+nodes/body/_friction.py cone_residual maximum 1  # inside the stopped report: the worst row group of each point
+nodes/body/_friction.py cone_residual max 1  # inside the stopped report: the worst over the points, its numerator
+nodes/body/_friction.py cone_residual max 2  # inside the stopped report: the fastest held point's speed, its denominator
+nodes/body/_friction.py cone_residual sqrt 1  # inside the stopped report: a pair's trial force's length, zero at a free point, whose derivative is never taken
+nodes/body/_friction.py cone_residual sqrt 2  # inside the stopped report: a pair's natural-map residual's length, as the line above
+nodes/body/_friction.py cone_residual sqrt 3  # inside the stopped report: the free step's linear speed, zero for a body at rest
+nodes/body/_friction.py cone_residual sqrt 4  # inside the stopped report: the free step's angular speed, as the line above
+nodes/body/_friction.py cone_residual sqrt 5  # inside the stopped report: each row's lever, as the line above
+nodes/body/_friction.py friction_power stop_gradient 1 cleared_by tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms  # contact_friction_power, the power guard's reading as a report on stopped values: no derivative passes through it (the standing test: the derivative in mu through the hold is the closed form's)
+nodes/body/_friction.py disk_update nested_scan 1  # the friction pair's update, its switch.where (contact.friction), traced in the frictional sweeps, an XLA loop's body (_contact.repeated): the loop unrolls while a switch collector is open, so the harness's rows and the owners' check read each update's values
+nodes/body/_friction.py disk_update.<locals>.newton nested_scan 1  # the trust region's Newton steps on the secular equation, an XLA loop's body (_contact.repeated) with no switch of its own (its domain guards fed where the boundary is not taken), traced in the frictional sweeps' loop: it unrolls while a switch collector is open
+nodes/body/_friction.py point_update nested_scan 1  # a held point's own updates (contact.impulse, contact.friction), traced in the frictional sweeps, an XLA loop's body (_contact.repeated): the loop unrolls while a switch collector is open, so the harness's rows and the owners' check read each update's values
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held stop_gradient 1 cleared_by tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms  # the gap's rounding band (CONTACT_ULPS units in the last place of the coordinates the gap is formed from), a numerical floor of the allowance on stopped values: no derivative passes through it
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held abs 1  # inside the stopped band: the body's centre's largest coordinate
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held abs 2  # inside the stopped band: each point's largest coordinate
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held max 1  # inside the stopped band: the body's centre's largest coordinate
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held max 2  # inside the stopped band: each point's largest coordinate
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held maximum 1  # inside the stopped report: contact_residual, the cone's residual or the power guard's reading at the same line, whichever is larger; no derivative passes through it
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held stop_gradient 2 cleared_by tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms  # contact_slip, each point's slip speed, a report on stopped values
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held stop_gradient 3 cleared_by tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms  # contact_slip's mask, the normal force read as a value: a report
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held stop_gradient 4 cleared_by tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms  # contact_residual returned as the report it is
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held sqrt 1  # inside the stopped report: contact_slip, a point's slip speed, zero where it sticks
+nodes/body/_rigid_inertial.py RigidInertialNode.frictional_held where 1  # inside the stopped report: contact_slip read zero at a point with no normal force (free)
+nodes/body/_rigid_inertial.py RigidInertialNode._friction_books abs 1  # the energy ledger's step scale (the magnitude of the arithmetic friction's books are formed by), a record of a metered body's that no edge reads and no state its step takes
+nodes/body/_rigid_inertial.py RigidInertialNode._friction_books abs 2  # the energy ledger's step scale, as the line above
+scene/_solids.py _round nested_scan 1  # the sphere's support (a closed form, no switch of its own: its norm is a nonzero_norm), traced in the contact 0.5.0's Newton steps, an XLA loop's body (_contact.repeated): the loop unrolls while a switch collector is open
+nodes/body/_friction.py friction_power sqrt 1  # inside the stopped report (the power guard's reading): the free step's linear speed, zero for a body at rest, whose derivative is never taken
+nodes/body/_friction.py friction_power sqrt 2  # inside the stopped report (the power guard's reading): the free step's angular speed, as the line above
+nodes/body/_friction.py friction_power sqrt 3  # inside the stopped report (the power guard's reading): each point's longest lever, as the line above
+nodes/body/_friction.py friction_power max 1  # inside the stopped report (the power guard's reading): each point's longest lever over its rows
+nodes/body/_friction.py friction_power max 2  # inside the stopped report (the power guard's reading): the fastest held point's speed
+nodes/body/_friction.py friction_power max 3  # inside the stopped report (the power guard's reading): a pair's force's largest component, which its length is taken on
+nodes/body/_friction.py friction_power abs 1  # inside the stopped report (the power guard's reading): the magnitudes of a pair's force's components
+nodes/body/_friction.py friction_power sqrt 4  # inside the stopped report (the power guard's reading): a pair's force's length on its largest component, zero at a free point
+nodes/body/_friction.py friction_power sqrt 5  # inside the stopped report (the power guard's reading): a pair's free and solved slips' length, zero at rest
+nodes/body/_friction.py friction_power max 4  # inside the stopped report (the power guard's reading): the worst point's reading

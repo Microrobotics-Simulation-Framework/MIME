@@ -16,6 +16,12 @@ brings the elbow to rest, so that the start lies away from the solution and reac
 shoulder's first update and what the sweeps leave after it (on an arm that sticks everywhere the start is the solution,
 and no output shows it).
 
+The frictional hold's two switches are placed on a held ball with Coulomb friction, pressed into the wall:
+``contact.friction`` sliding at the speed whose sticking traction's square is the row's offset above its bound's, so
+that the pair's update sits on the stick-slip boundary; ``contact.slip``, which only a metered body's books read, on
+the same ball with the ledger attached, sliding so that its traction times the slip the step leaves is the offset, the
+books' per-law work its output.
+
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
 the law's order there, not one a run meets. The arm's limits are placed on A0's apparatus, kinematic. ``contact.scale``'s row measures nothing, as its
@@ -882,17 +888,90 @@ def hull_rows(declared) -> list[SwitchRow]:
     ]
 
 
+#: The frictional hold's coefficient on the held ball, and the speed it is pressed into the wall at.
+FRICTION_MU, PRESSED = 0.3, 1e-3
+
+
+def friction_ball_step(sliding: float, metered: bool = False):
+    """The held ball (one group, its lowest point straight below its centre on the shrunk wall), with Coulomb friction
+    ``FRICTION_MU``, pressed into the wall at ``PRESSED`` and moving along the tube's axis at ``sliding``: its pose and
+    twist after one step; ``metered``, with the energy ledger attached (its contact and its friction hosted), and the
+    books' per-law work (``ledger_work``) besides."""
+    from mime.core import ledger
+    from mime.nodes.body import RigidInertialNode
+
+    first, _ = lowest_two()
+    pose = ball_below(first, 0.0, upright(first))
+    reference = held_ball([[first]], pose, loops=True)
+    books = (ledger.LedgerDelivery("confinement", "contact:umr", ledger.DISSIPATIVE, ledger.HOSTED).encoded(),
+             ledger.LedgerDelivery("friction", "contact:umr.friction", ledger.DISSIPATIVE, ledger.HOSTED).encoded())
+    node = RigidInertialNode("umr", DT, **{**{key: value for key, value in reference.constants().items()
+                                              if key not in ("name", "timestep")},
+                                           "friction": "coulomb", "friction_mu": FRICTION_MU,
+                                           "friction_law": "contact:umr.friction", **({"ledger": books} if metered
+                                                                                       else {})})
+    state = {**node.initial_state(), "pose": jnp.asarray(pose),
+             "twist": jnp.asarray((sliding, 0.0, -PRESSED, 0.0, 0.0, 0.0))}
+    out = node.fresh_update(state, {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)),
+                                    "background_load": jnp.zeros(6)}, DT)
+    held = {"pose": out["pose"], "twist": out["twist"]}
+    return {**held, "ledger_work": out["ledger_work"]} if metered else held
+
+
+@cache
+def friction_scale() -> tuple[float, float]:
+    """The held ball's normal force pressed at ``PRESSED`` and the sticking traction per unit of sliding speed, read
+    from its own step (a coefficient far past any limit): what places ``contact.friction``'s indicator."""
+    from mime.nodes.body import RigidInertialNode
+
+    first, _ = lowest_two()
+    pose = ball_below(first, 0.0, upright(first))
+    reference = held_ball([[first]], pose, loops=True)
+    node = RigidInertialNode("umr", DT, **{**{key: value for key, value in reference.constants().items()
+                                              if key not in ("name", "timestep")},
+                                           "friction": "coulomb", "friction_mu": 1e6,
+                                           "friction_law": "contact:umr.friction"})
+    state = {**node.initial_state(), "pose": jnp.asarray(pose), "twist": jnp.asarray((1e-3, 0.0, -PRESSED, 0, 0, 0))}
+    out = node.fresh_update(state, {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)),
+                                    "background_load": jnp.zeros(6)}, DT)
+    return float(jnp.sum(out["contact_forces"])), float(jnp.max(jnp.linalg.norm(out["contact_traction"], axis=-1))) / 1e-3
+
+
+def friction_rows(declared) -> list[SwitchRow]:
+    """The frictional hold's switches on the held ball: ``contact.friction``, the ball pressed into the wall and sliding
+    along it at the speed whose sticking traction's square is ``offset`` above its bound's (``FRICTION_MU`` times its
+    normal force, squared), so that the pair's update sits on the stick-slip boundary at the row's offset; and
+    ``contact.slip``, which only a metered body's books read: its row on the same ball measures nothing, as its
+    declaration says."""
+    def at_the_cone(offset: float):
+        normal, per_speed = friction_scale()
+        bound = FRICTION_MU * normal
+        return friction_ball_step(math.sqrt(bound * bound + offset) / per_speed)
+
+    def at_rest(offset: float):
+        """Sliding so that the step's own traction times the slip it leaves is ``offset``: the slip after the step is
+        the free one less the bound over the point's compliance (``1 / per_speed``)."""
+        normal, per_speed = friction_scale()
+        bound = FRICTION_MU * normal
+        return friction_ball_step(offset / bound + bound / per_speed, metered=True)
+
+    bound = FRICTION_MU * friction_scale()[0]
+    return [SwitchRow(declared["contact.friction"], at_the_cone, 1e-3 * bound * bound),
+            SwitchRow(declared["contact.slip"], at_rest, 1e-3 * bound * 1e-3)]
+
+
 def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
             *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared),
-            *hull_rows(declared), *lag_and_ramp_rows(declared)]
+            *hull_rows(declared), *friction_rows(declared), *lag_and_ramp_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
 OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.closing", "contact.scale",
                  "contact.project", "contact.rule", "contact.rule_outward", "contact.point", "contact.search",
-                 "contact.gap", "contact.impulse", "contact.push", "cylinder.axis", "cylinder.axis_norm",
+                 "contact.gap", "contact.impulse", "contact.push", "contact.friction", "contact.slip", "cylinder.axis",
+                 "cylinder.axis_norm",
                  "cylinder.support", "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp",
                  "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",

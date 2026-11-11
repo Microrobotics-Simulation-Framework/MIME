@@ -182,7 +182,12 @@ def numerical_default_targets(error: BuildRefused) -> set[str]:
 #: why. A listed case that builds fails, naming its line to delete.
 PLACED = {"gantry_magnet": (("provider.reader-inside",), "the gantry's placement and travel at their conventions (the "
                                                          "origin, unturned, along +x) put the magnet on the body, "
-                                                         "where the dipole's field is singular")}
+                                                         "where the dipole's field is singular"),
+          "hull_contact_looped": (("confinement.spacing-short",), "the contact's margin at its default, the roughness "
+                                                                  "cutoff (1.4 um), is finer than FL-9's samples at "
+                                                                  "the default spacing (a 64th of its size) fall short "
+                                                                  "of its body (2.5 um): a body held at its roughness "
+                                                                  "writes its spacing, as the refusal says")}
 
 
 @pytest.fixture

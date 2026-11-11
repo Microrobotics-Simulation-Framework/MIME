@@ -215,6 +215,7 @@ frame.up-missing              user
 frame.up-not-y-or-z           user
 frame.up-on-experiment        user
 frame.up-twice                user
+friction.no-hull              user
 generator.near-wall-edge-open user
 generator.no-cases            user
 generator.outside-domain      user

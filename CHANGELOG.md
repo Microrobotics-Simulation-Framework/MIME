@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Friction at the wall (`Contact(friction=Coulomb(mu=...))`, `mime.interactions.friction`).** Exact Coulomb in the
+  contact's own sweeps: each held point carries a sliding pair `[t; r x t]` beside its normal row, which measures the
+  slip of the body's own point, so a body rolls without slipping where its sliding rows stick; one coefficient, static
+  and kinetic alike, on the elliptic cone. Each point's pair is solved by a scaled 2 x 2 trust region (no product
+  leaves float32's range, every untaken branch fed values it cannot overflow on), three inner repeats a visit, the
+  forces then scaled along their ray to where the normal block does no work; the guard is each point's friction power
+  at the solved twist, never positive, which raises `unconverged` where it trips. Friction is booked under its own name
+  (`<contact>.friction`) as its traction on the slip it acts on (`mu N` times the slip distance sliding, zero sticking),
+  the sweeps' remainder its own numerical column; the contact takes the rest. Friction acts on the contact's own normal
+  force alone, never on a film's pressure; the contact's `margin` now defaults to the roughness cutoff of the body's
+  and the wall's surfaces (`Contact.engagement`, the near-contact law's), so a body riding a film above it feels none.
+  The frictional hold's allowance takes the gap less its rounding band: in float32 a coordinate frozen a part of an ulp
+  above the wall was otherwise left an approach speed that a squeeze film turned into a load the contact lost (71 % of
+  a sphere's at 0.36 us; with the band float32's error is float64's). The seams for what is left out, each a declared
+  protocol with a default and a conformance suite in `mime.testing` (`friction_law_suite`, `normal_law_suite`,
+  `row_kind_suite`): `FrictionLaw` (default `Coulomb`), `NormalLaw` (default `Hold()`, its `adhesion` reserved),
+  `ROW_KINDS` (sliding built; rolling resistance next; spin declared), `POINT_SETS` (point contacts; line and patch
+  reserved). The state of a frictional body adds `contact_traction`, `contact_slip` and `contact_friction_power`. A
+  contact without friction compiles the program it always did; the contact 0.4.0 and 0.1.0, kept, are frictionless and
+  keep their margin required. Refused: `friction.no-hull` (a body held as a sphere of its extent has no point for
+  friction to act at). Registered: MIME-ANO-157, the frictionless hold's float32 allowance at sub-microsecond steps.
+
 - **The near-contact law, one seam for every rung, and a sphere's exact form (`mime.nodes.hydro.near_contact`).** A
   rung declares the gap it resolves down to and evaluates itself with the contact opened to it (`opening`); the law
   adds the increment to the true gap from the contact's geometry (`NearContact`: its point, frame, gap, and the gap's

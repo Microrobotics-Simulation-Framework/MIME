@@ -4,12 +4,13 @@ points held against the surface by impulses through the step's system and projec
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple, cast, override
 
 import jax
 import numpy as np
-from jax import Array
+from jax import Array, lax
 from numpy.typing import NDArray
 from jaxtyping import Float
 from maddening.core.compliance.metadata import DiscretizationOrder, NodeMeta, Reference
@@ -39,6 +40,7 @@ from mime.core import (
 from mime.core import ledger as books
 from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.nodes.body._contact import (
+    CONVERGED,
     START_APART,
     Contacts,
     Hull,
@@ -54,6 +56,18 @@ from mime.nodes.body._contact import (
     start_count,
 )
 from mime.nodes.body._contact import sweeps as _sweeps
+from mime.nodes.body._friction import (
+    NORMAL,
+    SLIDING,
+    Traction,
+    cone_residual,
+    friction_power,
+    frictional_sweeps,
+    normal_work_free,
+    power_floor,
+    slip,
+    traction_rows,
+)
 from mime.registry import Geometry, implements
 from mime.units import Magnitude
 
@@ -86,13 +100,16 @@ class StepParts(NamedTuple):
     """What the energy ledger's books read of a step, besides the state it takes and returns: the mass matrix ``M`` at
     the step's start (in the world), the matrix of its solve ``M'/dt + R``, the twist the solve gives with no
     confinement, the twist the confinement held in the solve, and the orientation before the projection after the
-    step."""
+    step; with friction, each held point's friction forces (``K x 2`` a pair, N over the step) and the slips they act
+    on at the solved twist (m/s)."""
 
     mass_matrix: Array
     system: Array
     free: Array
     solved: Array
     before_projection: Array
+    friction: Array | None = None
+    friction_slip: Array | None = None
 
 
 class RigidInertialState(TypedDict, closed=True):
@@ -138,6 +155,38 @@ class MeteredRigidContactState(_BodyRecords, closed=True):
     contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
     contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
     contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+
+
+class RigidFrictionState(TypedDict, closed=True):
+    """A body held by its hull with friction at its points: :class:`RigidContactState`'s fields, and each group's
+    friction at its point (``contact_traction``, the force along the surface in the world, N, zero where the point was
+    free), the slip of the body's point there at the solved twist (``contact_slip``, m/s, zero where it was free) and
+    the friction power guard's reading (``contact_friction_power``: the largest point's friction power at the solved
+    twist over its scale, never above ``_friction.power_floor`` at a converged solve)."""
+
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
+    contact_points: ReadOnly[Annotated[HeldPoints, Units("m")]]
+    contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
+    contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
+    contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    contact_traction: ReadOnly[Annotated[Float[Array, "groups 3"], Units("N")]]  # noqa: F722 - a jaxtyping shape
+    contact_slip: ReadOnly[Annotated[Float[Array, "groups"], Units("m/s")]]
+    contact_friction_power: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+
+
+class MeteredRigidFrictionState(_BodyRecords, closed=True):
+    """A metered body held by its hull with friction: :class:`RigidFrictionState`'s fields, and its records."""
+
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
+    contact_points: ReadOnly[Annotated[HeldPoints, Units("m")]]
+    contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
+    contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
+    contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    contact_traction: ReadOnly[Annotated[Float[Array, "groups 3"], Units("N")]]  # noqa: F722 - a jaxtyping shape
+    contact_slip: ReadOnly[Annotated[Float[Array, "groups"], Units("m/s")]]
+    contact_friction_power: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
 
 
 class RigidInertialInputs(TypedDict, closed=True):
@@ -187,6 +236,29 @@ SEARCH_HELD = ("made when the node is built, from the hull's shape as built: whe
 #: Squared distances within this share of the hull's squared size are one tie when its points are grouped, broken by
 #: the lower index, as the sampling's choice of samples breaks them (``mime.scene``'s ``TIE``).
 GROUP_TIE = 1e-12
+#: The friction laws a hull contact's solve holds, by the name its constant ``friction`` takes, each with its row
+#: pairs beside the normal row (``_friction.Traction``): Coulomb's sliding pair, bounded by ``mu`` times the normal force.
+FRICTION_LAWS = {"coulomb": (SLIDING,)}
+#: The surfaces a frictional hold lays its frame out on (``friction_along``): a tube's axis lies across every normal of
+#: its wall, and a plane takes a direction across its normal fixed when the node is built.
+FRAMED = frozenset({"cylinder", "half_space"})
+#: The role a frictional hold's friction is booked under, beside the confinement's (``hosted_laws``).
+FRICTION_ROLE = "friction"
+#: The sweeps of a frictional hold, by hull kind (``FRICTION_SWEEPS_DEFAULT`` for a kind not listed): declarations,
+#: each from its kind's measurement through the node's hold (the step's change still to come, against 4,000 sweeps',
+#: under 1e-3 of the contact's whole change at the 99th percentile of 1,000 draws a dtype, or the bound where its tail
+#: is longer, the residual and ``unconverged`` taking the rest).
+FRICTION_SWEEPS: dict[str, int] = {}
+FRICTION_SWEEPS_DEFAULT = 20
+
+
+def _plane_frame(surface: Mapping[str, object]) -> tuple[float, float, float]:
+    """A direction across a half-space's normal as built (``surface_normal``), fixed when the node is built: what a
+    frictional hold's frame is laid out from on a plane (the frame only lays the rows out; the cone is round)."""
+    normal = np.asarray(surface[f"{SURFACE}normal"], dtype=np.float64)
+    normal = normal / np.linalg.norm(normal)
+    across = np.cross(normal, np.eye(3)[int(np.argmin(np.abs(normal)))])
+    return cast(tuple[float, float, float], tuple(float(c) for c in across / np.linalg.norm(across)))
 
 
 def hull_vertices(points: np.ndarray) -> NDArray[np.int64]:
@@ -249,6 +321,24 @@ def point_groups(points: np.ndarray, count: int) -> np.ndarray:
     for g, held_by in enumerate(members):
         rows[g, :len(held_by)] = held_by
     return rows
+
+
+class FrictionalHold(NamedTuple):
+    """A frictional hold's step (``RigidInertialNode.frictional_held``): the held twist, each group's point and normal
+    force, the solve's residual (the cone's, raised past ``CONVERGED`` where the power guard trips), how far each point
+    stood shallower than its seed, each point's friction in the world and its slip speed, the guard's reading, and for
+    the ledger each point's friction forces and the slips they act on, pair by pair."""
+
+    solved: Array
+    points: Array
+    forces: Array
+    residual: Array
+    short: Array
+    traction: Array
+    slip: Array
+    power: Array
+    impulses: Array
+    rates: Array
 
 
 class RigidInertialNode(MimeNode):
@@ -361,6 +451,7 @@ class RigidInertialNode(MimeNode):
                  hull_counts: Sequence[Sequence[int]] = (), hull_centre: Sequence[float] = (0.0, 0.0, 0.0),
                  hull_rotation: Sequence[float] = _IDENTITY, hull_groups: np.ndarray | None = None,
                  contact_loops: bool = False, publishes_mass_matrix: bool = False, ledger: Sequence[str] = (),
+                 friction: str = "", friction_mu: float = 0.0, friction_law: str = "",
                  **constants: object) -> None:
         surface = {key: value for key, value in constants.items() if key.startswith(SURFACE)}
         settings = {key.removeprefix(HULL): value for key, value in constants.items() if key.startswith(HULL)}
@@ -383,12 +474,18 @@ class RigidInertialNode(MimeNode):
                                  f"{velocity_rule!r}")
         elif surface:
             raise TypeError(f"surface parameters {sorted(surface)} with no surface_shape")
+        if friction and (friction not in FRICTION_LAWS or surface_shape not in FRAMED or not hull_kind
+                         or not (math.isfinite(friction_mu) and friction_mu >= 0.0) or not friction_law):
+            raise ValueError(f"friction {friction!r} is held at a hull's points against its surface: it takes a law of "
+                             f"{sorted(FRICTION_LAWS)}, a coefficient from 0 on (friction_mu, {friction_mu!r}), the "
+                             f"ledger's name of the law (friction_law) and a hull contact (hull_kind) against a "
+                             f"surface its frame is laid out on ({sorted(FRAMED)})")
         metering = books.deliveries({books.LEDGER: ledger})
         hosted = [d.law for d in metering if d.kind == books.HOSTED]
-        if ledger and len(hosted) != (1 if surface_shape else 0):
-            raise ValueError(f"a metered body holds its confinement's law in its step, one hosted delivery for it: "
-                             f"{'one confinement' if surface_shape else 'no confinement'}, and the ledger hosts "
-                             f"{hosted or 'none'}")
+        if ledger and len(hosted) != ((2 if friction else 1) if surface_shape else 0):
+            raise ValueError(f"a metered body holds in its step the contact and the laws its solve hosts, one hosted "
+                             f"delivery each: {'no confinement' if not surface_shape else 'one confinement'}"
+                             f"{' and its friction' if friction else ''}, and the ledger hosts {hosted or 'none'}")
         checked = [d.law for d in metering if d.check == books.CHECK_DEFINITE and d.field != "resistance"]
         unpaired = [f"{d.law} into {d.field} as {d.kind}" for d in metering
                     if d.kind != books.HOSTED and _PAIRED_AS.get(d.field) != d.kind]
@@ -442,7 +539,10 @@ class RigidInertialNode(MimeNode):
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
                          margin=margin, velocity_rule=velocity_rule, **hull, **surface,
                          **{f"{HULL}{name}": value for name, value in settings.items()},
-                         **({"publishes_mass_matrix": True} if publishes_mass_matrix else {}), ledger=ledger)
+                         **({"publishes_mass_matrix": True} if publishes_mass_matrix else {}),
+                         **({"friction": friction, "friction_mu": float(friction_mu), "friction_law": friction_law}
+                            if friction else {}), ledger=ledger)
+        self._frame = _plane_frame(surface) if friction and surface_shape == "half_space" else None
 
     def _body_points(self, hull: Mapping[str, Any], settings: Mapping[str, object]) -> np.ndarray:
         """The hull's points in the body's frame at its settings as built, in float64: what its groups are made of."""
@@ -460,6 +560,35 @@ class RigidInertialNode(MimeNode):
         """Whether the body is held by its hull's points: a confinement with a hull kind."""
         own = self.constants()
         return bool(own["surface_shape"]) and bool(own.get("hull_kind"))
+
+    @property
+    def holds_friction(self) -> bool:
+        """Whether the hull's points are held with friction (a frictional contact's ``friction``): a structural choice
+        made when the node is built, so that a frictionless hold's program is the one it was."""
+        return bool(self.constants().get("friction"))
+
+    def traction(self, p: Mapping[str, Any]) -> Traction:
+        """The frictional hold's row pairs and their coefficients (``friction_mu``, a leaf a study may move)."""
+        return Traction(FRICTION_LAWS[cast(str, self.constants()["friction"])], (p["friction_mu"],))
+
+    def friction_along(self, p: Mapping[str, Any], dtype: Any) -> Array:
+        """The direction a frictional hold's frame is laid out from (``_friction.traction_rows``): a tube's axis, across
+        every normal of its wall; a plane's direction across its normal, fixed when the node is built."""
+        if self._frame is not None:
+            return jnp.asarray(self._frame, dtype=dtype)
+        return jnp.asarray(p[f"{SURFACE}axis"], dtype=dtype)
+
+    @property
+    def friction_sweeps(self) -> int:
+        """The frictional hold's sweeps: its hull kind's declaration (:data:`FRICTION_SWEEPS`)."""
+        return FRICTION_SWEEPS.get(cast(str, self.constants().get("hull_kind", "")), FRICTION_SWEEPS_DEFAULT)
+
+    @override
+    def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
+        """The laws the body holds in its step beside its confinement: a frictional contact's friction, booked under its
+        own name (``friction_law``) as the work of its traction on the slip it acts on; none for a frictionless hold."""
+        own = self.constants()
+        return ((FRICTION_ROLE, cast(str, own["friction_law"]), books.DISSIPATIVE),) if own.get("friction") else ()
 
     def _search_values(self) -> dict[str, float]:
         """The values of :data:`SEARCH_LEAVES` as the node was built, as Python numbers, the tolerance for the run's
@@ -534,6 +663,9 @@ class RigidInertialNode(MimeNode):
                          for name in (key.removeprefix(HULL) for key in own if key.startswith(HULL))})
             held.update(hull_centre=ParamSpec(units="m", trainable=False, description=placed),
                         hull_rotation=ParamSpec(units="1", trainable=False, description=placed))
+        if self.holds_friction:
+            held["friction_mu"] = ParamSpec(bounds=(0.0, None), units="1",
+                                            description="the contact's friction coefficient, static and kinetic in one")
         if self.holds_hull:
             held["extent"] = ParamSpec(trainable=False, description="held by its hull's points, so the step reads no "
                                                                     "extent")
@@ -570,6 +702,13 @@ class RigidInertialNode(MimeNode):
         p = self.constants()
         pose, twist = as_run_array(p["initial_pose"]), as_run_array(p["initial_twist"])
         constants = {key: as_run_array(p[key]) for key in ("mass", "inertia")}
+        if self.holds_friction:
+            groups = len(self.groups)
+            return self._published(constants, books.with_records(self, node_fields(RigidFrictionState(
+                pose=pose, twist=twist, contact_points=as_run_array(np.zeros((groups, 3))),
+                contact_forces=as_run_array(np.zeros(groups)), contact_short=as_run_array(np.zeros(groups)),
+                contact_residual=as_run_array(np.zeros(())), contact_traction=as_run_array(np.zeros((groups, 3))),
+                contact_slip=as_run_array(np.zeros(groups)), contact_friction_power=as_run_array(np.zeros(()))))))
         if self.holds_hull:
             groups = len(self.groups)
             return self._published(constants, books.with_records(self, node_fields(RigidContactState(
@@ -725,6 +864,46 @@ class RigidInertialNode(MimeNode):
         return (moved + response @ forces, found.points, forces, residual(coupling, start, forces, found.rows, moved),
                 found.short)
 
+    def frictional_held(self, p: Mapping[str, Any], body: Array, pose: Array, system: Array, moved: Array,
+                        dt: float) -> FrictionalHold:
+        """``moved`` with the hull held in the solve of ``system`` with friction at its points (``_friction``): each
+        point's normal row and its friction pairs, solved by the frictional sweeps, the forces scaled to where the normal
+        block does no work, with the reports (:class:`FrictionalHold`). Each point's allowance is its gap less the gap's
+        rounding band, ``CONTACT_ULPS`` units in the last place of the coordinates the gap is formed from (the body's
+        centre's, the point's) and the margin: below about
+        ``sqrt(ulp / a)`` of a step (``a`` the point's acceleration under its load) a float32 coordinate stops moving a
+        part of an ulp above the shrunk wall, and an allowance of that part over the step left the twist an approach
+        speed the position never takes, which a resistance near the wall turned into a load the contact, and its
+        friction, then lost (the first step's probe: 71 % of a sphere's load in glycerol at 0.36 us)."""
+        found = self.contacts(p, body, pose)
+        dtype = moved.dtype
+        band = lax.stop_gradient(CONTACT_ULPS * jnp.finfo(dtype).eps * (
+            jnp.max(jnp.abs(pose[:3])) + jnp.max(jnp.abs(found.points), axis=-1) + p["margin"]))
+        reach = found.gaps - band
+        closing = switch.maximum(reach, 0.0, owner="contact.gap", indicator=reach,
+                                 resolution=lambda: switch.rounding(jnp.abs(found.gaps) + p["margin"]))
+        rows = traction_rows(found.rows, found.points, pose[:3], self.friction_along(p, dtype))
+        points, count = rows.shape[:2]
+        flat = rows.reshape(points * count, 6)
+        response = jnp.linalg.solve(system, flat.T)
+        coupling = (flat @ response).reshape(points, count, points, count)
+        start = (flat @ moved).reshape(points, count).at[:, NORMAL].add(closing / dt)
+        traction = self.traction(p)
+        forces = normal_work_free(coupling, start, frictional_sweeps(coupling, start, traction, self.friction_sweeps,
+                                                                     loops=self.loops))
+        rates = slip(coupling, start, forces)
+        pairs = np.asarray([row for pair in traction.pairs for row in pair])
+        power = friction_power(coupling, start, forces, traction.pairs, rows, moved)
+        left = jnp.maximum(cone_residual(coupling, start, forces, traction, found.rows, moved),
+                           CONVERGED * power / power_floor(dtype))
+        along = jnp.einsum("kr,krj->kj", forces[:, pairs], rows[:, pairs, :3])
+        sliding = lax.stop_gradient(rates[:, np.asarray(SLIDING)])
+        speed = jnp.where(lax.stop_gradient(forces[:, NORMAL]) > 0.0, jnp.sqrt(jnp.sum(sliding * sliding, axis=-1)),
+                          0.0)
+        return FrictionalHold(moved + response @ forces.reshape(-1), found.points, forces[:, NORMAL],
+                              lax.stop_gradient(left), found.short, along, speed, power, forces[:, pairs],
+                              rates[:, pairs])
+
     def hull_projected(self, p: Mapping[str, Any], body: Array, pose: Array, twist: Array,
                        mass_matrix: Array) -> tuple[Array, Array]:
         """``pose`` moved back inside the shrunk surface by ``HULL_PASSES`` passes of the least change of pose in
@@ -788,6 +967,18 @@ class RigidInertialNode(MimeNode):
         pose, twist = held["pose"], held["twist"]
         position, orientation = pose[:3], pose[3:]
         mass_matrix, system, free = self.stepped(p, pose, twist, cast(Mapping[str, Array], given), dt)
+        if self.holds_friction:
+            body = self.hull_points(p, twist.dtype)
+            hold = self.frictional_held(p, body, pose, system, free, dt)
+            orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * hold.solved[3:]),
+                                                                    orientation))
+            ended, carried = self.hull_projected(p, body, jnp.concatenate([position + dt * hold.solved[:3],
+                                                                           orientation]), hold.solved, mass_matrix)
+            return (node_fields(RigidFrictionState(
+                pose=ended, twist=carried, contact_points=hold.points, contact_forces=hold.forces,
+                contact_short=hold.short, contact_residual=hold.residual, contact_traction=hold.traction,
+                contact_slip=hold.slip, contact_friction_power=hold.power)),
+                StepParts(mass_matrix, system, free, hold.solved, orientation, hold.impulses, hold.rates))
         if self.holds_hull:
             body = self.hull_points(p, twist.dtype)
             moved, points, forces, left, short = self.hull_held(p, body, pose, system, free, dt)
@@ -877,11 +1068,20 @@ class RigidInertialNode(MimeNode):
         hosted = jnp.zeros((len(rows), 2), dtype=dtype)
         operators: dict[int, Array] = {}
         configuration = shift
+        rubbed = None if parts.friction is None or parts.friction_slip is None else \
+            self._friction_books(parts.friction, parts.friction_slip, dt)
         for index, delivery in enumerate(held):
             row = rows.index(delivery.law)
+            if delivery.kind == books.HOSTED and delivery.field == FRICTION_ROLE and rubbed is not None:
+                actual, ideal, magnitude = rubbed
+                work = work.at[row].add(ideal)
+                hosted = hosted.at[row].set(jnp.stack([jnp.zeros((), dtype=dtype), ideal - actual]))
+                size = size + magnitude
+                continue
             if delivery.kind == books.HOSTED:
                 force = system @ (solved - free)
-                work = work.at[row].add(books.paired_work(books.HOSTED, force, solution=solved, dt=dt))
+                paired = books.paired_work(books.HOSTED, force, solution=solved, dt=dt)
+                work = work.at[row].add(paired if rubbed is None else paired - rubbed[0])
                 rule = 0.5 * p["mass"] * (jnp.dot(solved[:3], solved[:3]) - jnp.dot(carried[:3], carried[:3]))
                 hosted = hosted.at[row].set(jnp.stack([rule, shift]))
                 configuration = jnp.zeros((), dtype=dtype)
@@ -908,6 +1108,24 @@ class RigidInertialNode(MimeNode):
             work=work, hosted=hosted, unattributed=unattributed,
             terms=jnp.stack([backward_euler, gyroscopic_term, configuration]),
             storage_start=self.storage(p, state), storage_end=self.storage(p, ended), scale=size, operators=operators)
+
+    @staticmethod
+    def _friction_books(forces: Array, slips: Array, dt: float) -> tuple[Array, Array, Array]:
+        """A frictional hold's friction in the books: its paired work, ``dt sum l . u`` over each point's pairs (the
+        traction on the slip it acts on at the solved twist); the work exact Coulomb does with those forces, ``-dt sum
+        |l| |u|`` (anti-parallel: ``mu lambda_n`` times the slip sliding, zero sticking), which friction is booked; and
+        the arithmetic's magnitude. The first less the second, ``dt sum (l . u + |l| |u|)``, never negative and zero at
+        the exact solution, is the sweeps' unconverged remainder, friction's own numerical column (the power guard's
+        numerator, summed)."""
+        pairs = forces.reshape(forces.shape[0], -1, 2)
+        rates = slips.reshape(slips.shape[0], -1, 2)
+        actual = dt * jnp.sum(pairs * rates)
+        products = (pairs[..., :, None] * rates[..., None, :]).reshape(-1, 4)
+        ideal = jnp.zeros((), dtype=forces.dtype)
+        for product in products:
+            ideal = ideal - dt * switch.norm(product, owner="contact.slip", resolution=0.0,
+                                             indicator=lambda product=product: jnp.sqrt(jnp.sum(product * product)))
+        return actual, ideal, dt * jnp.sum(jnp.abs(pairs) * jnp.abs(rates))
 
     @staticmethod
     def _paired(field: str, effort: Array, change: Array, solved: Array, dt: float) -> tuple[Array, Array]:

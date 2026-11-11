@@ -16,7 +16,9 @@ dynamics' step identity with the energy ledger attached, on drawn states (``step
 gate's tool (``ledger_closes``, one check that a metered run's books close at every step; the ratio flags a node
 declares, ``run_flags`` and ``judge_flags``; the order check of a scheme's numerical terms, ``term_orders``); the
 port-law family suite (``port_law_suite``: a law at a flow's opening passive, its block's symmetric part positive
-semidefinite over draws, and its own books closing);
+semidefinite over draws, and its own books closing); the contact's conformance suites (``friction_law_suite``,
+``normal_law_suite``, ``row_kind_suite``: a friction law passive, its sticking limits and derivative right, a normal law
+never pulling or letting a point past the wall, a row kind measuring what it declares);
 MADDENING's node verification for every node an entry builds (``assert_nodes_verified``: ``verify_node``, and
 ``verify_node_order`` where a node declares an order), and the comparison of what an entry builds with its ``builds``
 (``builds_failures``); the graph-invariant helpers (a built graph's canonical text, and order invariance); the saved
@@ -44,6 +46,7 @@ from mime.testing._energy import PORT_CASES, PORT_DRAWS, PortCase, dynamics_rig,
 from mime.testing._ledger_harness import FlagReading, FlagReport, OrderCheck, OrderReport, active_flags, flag_problems, \
     flag_readings, judge_flags, ledger_closes, run_flags, term_orders
 from mime.testing._port_laws import PORT_LAW_DRAWS, port_law_suite
+from mime.testing._friction import friction_law_suite, normal_law_suite, row_kind_suite
 from mime.testing._loopback import Certificates, ConnectProxy, LoopbackStore, Seen, certificates
 from mime.testing._families import (
     OUTWARD_SPEED,
@@ -212,6 +215,9 @@ __all__ = [
     "term_orders",
     "PORT_LAW_DRAWS",
     "port_law_suite",
+    "friction_law_suite",
+    "normal_law_suite",
+    "row_kind_suite",
     "OUTWARD_SPEED",
     "PORT_CASES",
     "PORT_DRAWS",
