@@ -767,6 +767,16 @@ def _settle(group: Group, points: Sequence[Point], axes: Sequence[Axis], duratio
     built.spacing(every)
     controller = built.plans.controller
     group.batched = controller is None or controller.mode is not Mode.CALLBACK
+    forward_only = [(each.owner, each.registered.cls.forward_only) for each in built.plans.entries
+                    if getattr(each.registered.cls, "forward_only", None)]
+    if group.batched and forward_only and len(group.members) > 1:
+        owner, why = forward_only[0]
+        raise BuildRefused([Refusal(
+            "camera.batched", RefusalClass.USER,
+            f"{len(group.members)} points of a study run together, vmapped, through {owner}, which is forward only: {why}",
+            "render the frames offline with mime.sensing.render (it vmaps), from the poses of each point's run; or run "
+            "the points one at a time",
+            why="under vmap a cond is a select, so every step would render a frame")])
     size = len(group.members) if batch is None else min(batch, len(group.members))
     group.batches = tuple(min(size, len(group.members) - start) for start in range(0, len(group.members), size)) \
         if group.batched else (1,) * len(group.members)

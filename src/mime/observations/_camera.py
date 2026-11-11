@@ -143,14 +143,19 @@ class Camera(Observation):
 
     name = "camera"
     version = "0.1.0"
-    differentiability = GradientStatus.CUT
+    differentiability = GradientStatus.UNVERIFIED
     gradient = GradientRecord(
-        where="every output: the frame is rendered under a cond on frame steps from a ring of poses, and a derivative "
-              "that reaches it is refused",
-        reason="the in-loop clock holds the image between frames, so the image is not a function a derivative could pass "
-               "through in the loop; the renderer under it is differentiable offline",
-        route="differentiate the offline renderer, mime.sensing.render, in the recorded poses and the intrinsics; the "
-              "closed loop through checkpointed renders is a later piece")
+        where="expected, the frame's counts before noise and quantisation, in forward mode: the poses and the detector's "
+              "nine numbers; image, frame_step, age and new_frame carry none (a rounding and counts)",
+        reason="the renderer's derivative is checked offline against central differences (the camera core's G9) and "
+               "the fit of a sphere grid's intrinsics recovers them in the loop (G13), but the in-loop path through "
+               "the cond and the held frame has no check of its own on a moving body's pose",
+        route="the derivative of expected in the pose of a moving body against central differences through the loop, "
+              "with the switches the renderer evaluates declared (mime.core.switch)")
+    forward_only: ClassVar[str] = ("the frame is rendered under a cond on frame steps (a select under vmap, so a batched "
+                                   "study would render at every step) and reverse mode would keep every frame step's "
+                                   "render: differentiate the offline renderer, mime.sensing.render, in the recorded "
+                                   "poses, or fit in forward mode")
     references = ()
     builds = {"": (CameraNode,)}
     roles = {}
@@ -167,6 +172,8 @@ class Camera(Observation):
     outputs = (
         Output("image", DIMENSIONLESS, "the held frame, in counts, rows by columns", shape_from_settings=True,
                recordable=False),
+        Output("expected", DIMENSIONLESS, "the held frame's counts before noise and quantisation, rows by columns: the "
+                                          "differentiable output", shape_from_settings=True, recordable=False),
         Output("frame_step", DIMENSIONLESS, "the count of the step the held frame was made at (-1 before the first)"),
         Output("age", DIMENSIONLESS, "the base steps since the held frame was made (zero on a frame step)"),
         Output("new_frame", DIMENSIONLESS, "one on a step a frame was made at, zero otherwise"),
@@ -189,7 +196,7 @@ class Camera(Observation):
     @override
     def output_shape(self, output: Output) -> tuple[int, ...]:
         detector = self._detector()
-        return (detector.height, detector.width) if output.field == "image" else output.shape
+        return (detector.height, detector.width) if output.shape_from_settings else output.shape
 
     @override
     def setting_problems(self, settings: Mapping[str, Any]) -> list[str]:
@@ -287,8 +294,7 @@ class Camera(Observation):
         sensor = self.sensor or Sensor()
         bodies = [name for name, names in found.bodies.items() if names and ctx.roster.bodies[name].pose is not None]
         spec = {
-            "width": d.width, "height": d.height, "fx": d.fx, "fy": d.fy, "cx": d.cx, "cy": d.cy,
-            "distortion": list(d.distortion), "source": d.source,
+            "width": d.width, "height": d.height, "source": d.source,
             "subjects": [scene.subject_spec(s, None) for s in found.subjects],
             "body_subjects": {name: list(found.bodies[name]) for name in bodies},
             "response": {"full_scale": sensor.full_scale, "gain": sensor.gain, "offset": sensor.offset,
@@ -299,7 +305,7 @@ class Camera(Observation):
         mount = ctx.mount
         initial = [c for name in bodies for c in cast(tuple[float, ...], ctx.roster.bodies[name].pose)]
         node = b.add_node(CameraNode(
-            ctx.node_name(), ctx.timestep, spec=scene.dumps(spec), bodies=bodies, initial_poses=initial, period=period,
+            ctx.node_name(), ctx.timestep, spec=scene.dumps(spec), intrinsics=(d.fx, d.fy, d.cx, d.cy, *d.distortion), bodies=bodies, initial_poses=initial, period=period,
             sub_frames=self.sub_frames, seed=ctx.seeds["noise"], placement=placement,
             mount_index=mount.index if mount is not None else -1, mount_count=mount.count if mount is not None else 0,
             initial_mount_pose=mount.initial_pose if mount is not None else (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)))

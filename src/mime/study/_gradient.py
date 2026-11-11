@@ -667,6 +667,16 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
                                                                             declarations))))) for write in writes)
             chosen = mode if mode != "auto" else ("forward" if scalars <= FORWARD_UP_TO else "reverse")
             callback = built.plans.controller is not None and built.plans.controller.mode is Mode.CALLBACK
+            forward_only = [(each.owner, each.registered.cls.forward_only) for each in built.plans.entries
+                            if getattr(each.registered.cls, "forward_only", None)]
+            if chosen == "reverse" and forward_only:
+                owner, why = forward_only[0]
+                raise BuildRefused([Refusal(
+                    "camera.reverse", RefusalClass.USER,
+                    f"reverse mode is asked of a run through {owner}, which is forward only: {why}",
+                    "take forward mode (mode='forward', with a few axes), or differentiate the offline renderer, "
+                    "mime.sensing.render, in the poses recorded from the run",
+                    why="the in-loop camera renders under a cond on frame steps")])
             with precision(leader.declared.x64):
                 refused = derivative_refusals(built.graph, chosen, scalars,
                                               len(indices) if group.batched and not callback else 1, group.steps)

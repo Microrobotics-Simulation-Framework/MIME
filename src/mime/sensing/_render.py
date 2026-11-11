@@ -407,6 +407,12 @@ def respond(transmission: Any, response: Response, key: Any) -> tuple[Any, Any, 
     return expected, image, jnp.mean((noisy >= top).astype(expected.dtype))
 
 
+def frame_key(seed: int, step: Any) -> Any:
+    """The noise key of the frame made at ``step`` (the in-loop camera's count at that step) by the stream whose seed is
+    ``seed``: rendering the recorded poses again with it reproduces the frame."""
+    return jax.random.fold_in(jax.random.PRNGKey(seed), step)
+
+
 def for_display(image: Any, response: Response) -> Any:
     """The quantised counts as a display's grey levels in ``[0, 1]`` (full scale white), for a viewer; a controller
     reads the counts."""
@@ -453,6 +459,16 @@ def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses
         rays = ray_table(camera, pose)
         flags = {}
         static = _static(held, rays, camera, pose, dtype, corner_samples, flags)
+    return exposed(held, camera, pose, rays, static, flags, poses or {}, exposure, response, key, corner_samples)
+
+
+def exposed(held: Sequence[Subject], camera: Pinhole, pose: CameraPose, rays: Rays, static: Any, flags: dict[str, Any],
+            poses: Mapping[str, Any], exposure: Exposure, response: Response, key: Any,
+            corner_samples: int = coverage.CORNER_SAMPLES) -> Capture:
+    """The moving subjects at ``poses`` (one per sub-frame) over the static structure's transmission ``static`` and the
+    ``rays`` it was made with, through the exposure and the response: ``render`` after its static part. The in-loop
+    camera calls it with the static part it holds."""
+    dtype = jnp.result_type(camera.fx, float)
     by_name = {s.name: s for s in held}
     frames = exposure.sub_frames
     flags["beyond_distortion"] = jnp.sum(rays.beyond)
@@ -463,10 +479,10 @@ def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses
         for subject in held:
             if not subject.moving:
                 continue
-            position, orientation = _pose_at(poses or {}, subject, k, frames)
+            position, orientation = _pose_at(poses, subject, k, frames)
             parent = by_name[subject.parent] if subject.parent is not None else None
             parent_pose = None if parent is None else parent.pose if not parent.moving else \
-                _pose_at(poses or {}, parent, k, frames)
+                _pose_at(poses, parent, k, frames)
             factor, pixel = _factor(subject, parent, parent_pose, rays, position, orientation, camera, pose, dtype,
                                     corner_samples, static.shape, flags)
             centres[subject.name].append(pixel)
