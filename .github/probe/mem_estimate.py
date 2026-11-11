@@ -150,7 +150,8 @@ def factor_for(families: list[str], unknown: list[str], mode: str, table: dict[s
         fitted = sum(1 for c in done if c.get("against_a_fit"))
         parts.append(f"{family}, {mode}: {entry[mode]:.2f} over {len(done)} cases ({fitted} fitted to the same peaks)")
     if unknown or not families:
-        conservative = float(table["uncalibrated"][mode])
+        stated = table["uncalibrated"]
+        conservative = float(stated.get(mode, max(stated["forward"], stated["reverse"])))
         chosen.append(conservative)
         parts.append(f"UNCALIBRATED ({'nodes of no calibrated family: ' + ', '.join(unknown) if unknown else 'no node of a calibrated family'})"
                      f": the stated conservative {conservative:.2f}, no case behind it")
