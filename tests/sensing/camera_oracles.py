@@ -29,7 +29,7 @@ HERE = Path(__file__).parent
 
 
 def projection(size: float, seed: int) -> bool:
-    import test_projection as gate
+    import test_camera_projection as gate
 
     from mime.sensing import BrownConrady, CameraPose, Pinhole, project
 

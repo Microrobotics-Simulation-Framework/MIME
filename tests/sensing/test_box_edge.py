@@ -36,12 +36,13 @@ def theta_for(radius_px: int) -> np.ndarray:
     return np.array([OFFSET_PX[0] * DISTANCE / focal, 0.0, -OFFSET_PX[1] * DISTANCE / focal, focal])
 
 
-def image(theta: jax.Array, mode: str) -> jax.Array:
+def image(theta: jax.Array, mode: str, window: int | None = None) -> jax.Array:
     """The sphere's coverage image at ``theta`` (its centre's world x, depth offset y and z, and the focal length)."""
     camera = Pinhole(WIDTH, HEIGHT, theta[3], theta[3], (WIDTH - 1) / 2, (HEIGHT - 1) / 2)
     s = np.sqrt(0.5)
     pose = CameraPose(jnp.asarray([0.0, -DISTANCE, 0.0]), jnp.asarray([s, -s, 0.0, 0.0]))
-    ball = Subject("ball", "sphere", {"radius": RADIUS}, appearance=Appearance.opaque(), moving=True, coverage=mode)
+    ball = Subject("ball", "sphere", {"radius": RADIUS}, appearance=Appearance.opaque(), moving=True, coverage=mode,
+                   window=window)
     frame = render([ball], camera, pose, {"ball": (theta[:3], jnp.asarray((1.0, 0.0, 0.0, 0.0)))})
     return 1.0 - frame.transmission
 
@@ -59,8 +60,10 @@ def measured(radius_px: int, mode: str, monkeypatch: pytest.MonkeyPatch) -> tupl
         monkeypatch.setattr(coverage, "box", lambda g, gu, gv, size=1.0: coverage.sigmoid(g, gu, gv, 1.0 * size))
     areas, derivatives = truth(radius_px)
     theta = jnp.asarray(theta_for(radius_px))
-    covered = np.asarray(image(theta, mode), dtype=np.float64)
-    jacobian = np.asarray(jax.jacfwd(lambda t: image(t, mode))(theta), dtype=np.float64)
+    # Exact disc coverage is always windowed: under a derivative its window is declared (the silhouette and its edge).
+    window = radius_px + 4 if mode == "disc" else None
+    covered = np.asarray(image(theta, mode, window), dtype=np.float64)
+    jacobian = np.asarray(jax.jacfwd(lambda t: image(t, mode, window))(theta), dtype=np.float64)
     jacobian = np.moveaxis(jacobian, -1, 0)
     band = (areas > 0) & (areas < 1)
     coverage_error = float(np.linalg.norm((covered - areas)[band]) / np.linalg.norm(areas[band]))

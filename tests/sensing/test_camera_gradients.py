@@ -53,8 +53,9 @@ def darkening(theta: jax.Array) -> jax.Array:
     camera, pose = _camera(theta)
     held = tube_subjects(Appearance.attenuating(200.0), Appearance.attenuating(20.0))
     without = render(held, camera, pose).transmission
+    # The sphere's exact disc coverage, its default, in a declared window (a derivative cannot size one).
     held.append(Subject("umr", "sphere", {"radius": 0.7e-3}, appearance=Appearance.opaque(), parent="water",
-                        moving=True))
+                        moving=True, window=16))
     within = render(held, camera, pose, {"umr": (theta[:3], jnp.asarray((1.0, 0.0, 0.0, 0.0)))}).transmission
     return _moments(without - within)
 

@@ -42,7 +42,7 @@ def test_a_route_not_built_is_refused():
 
 
 @pytest.mark.parametrize("written", [{"region": "lumen"}, {"coverage": "disc", "kind": "capsule"},
-                                     {"window": 8}, {"coverage": "soft"}])
+                                     {"window": 0}, {"coverage": "soft"}])
 def test_a_subject_written_against_its_kind_is_refused(written):
     arguments = {"name": "thing", "kind": "sphere", "settings": {"radius": 1e-3, "height": 1e-3}, **written}
     with pytest.raises(ArgumentRefused) as error:
@@ -82,3 +82,22 @@ def test_a_stale_cache_and_a_traced_one_are_refused():
     with pytest.raises(ArgumentRefused) as error:
         jax.grad(through)(jnp.asarray(camera.fx))
     assert code(error) == {"camera.cache-traced"}
+
+
+def test_exact_disc_coverage_is_a_spheres_default_and_windowed(dtype):
+    """A sphere takes exact disc coverage unless the box edge is declared (which the note names); its window is sized
+    from its silhouette where none is declared, and a traced pose with no declared window is refused."""
+    from mime.sensing import appearance_sources
+
+    camera, pose = across(32)
+    ball = Subject("ball", "sphere", {"radius": 1e-3}, appearance=Appearance.opaque(), moving=True)
+    boxed = Subject("other", "sphere", {"radius": 1e-3}, appearance=Appearance.opaque(), coverage="box")
+    assert ball.coverage == "disc" and boxed.coverage == "box"
+    assert appearance_sources([boxed])[1] == ("the box edge in place of exact disc coverage (opt-in) for: other",)
+    frame = render([ball], camera, pose, {"ball": (jnp.zeros(3), jnp.asarray((1.0, 0.0, 0.0, 0.0)))})
+    assert not bool(frame.flags["window_overflow:ball"]) and "small_silhouette:ball" not in frame.flags
+    with pytest.raises(ArgumentRefused) as error:
+        jax.grad(lambda x: jnp.sum(render([ball], camera, pose, {"ball": (jnp.stack([x, 0.0, 0.0]),
+                                                                          jnp.asarray((1.0, 0.0, 0.0, 0.0)))}
+                                          ).transmission))(jnp.asarray(0.0))
+    assert code(error) == {"camera.subject"}

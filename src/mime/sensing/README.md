@@ -29,8 +29,10 @@ stages:
   comes through `jvp` along the ray table's derivatives (at `g / |grad g|` px, normal `grad g / |grad g|`), and the
   coverage is the exact share of the pixel's square on the body's side of it. **Corner sub-samples**: where two of a
   body's pieces cross a pixel (a cylinder seen side-on), the pixel is split into sub-pixels (`CORNER_SAMPLES` a side),
-  each its own box edge. **Exact disc coverage** (a sphere's `coverage="disc"`): the share of each pixel inside the ball's conic,
-  exactly, the pixel's corners undistorted and its sides taken straight between them.
+  each its own box edge. **Exact disc coverage**, a sphere's default (exact by default): the share of each pixel
+  inside the ball's conic, exactly, the pixel's corners undistorted and its sides taken straight between them; always in
+  a window about the silhouette (sized from its silhouette at its pose where none is declared, a declared size under a
+  derivative), its overflow flagged. The box edge is a sphere's declared opt-in (`coverage="box"`), which the notes name.
 - **Appearance belongs to materials.** A subject's declared `Appearance` (opaque, or attenuating per metre) wins;
   where none is declared, the stage's `displayColor` and `displayOpacity` for it (`display`, read with inheritance);
   with neither, opaque and mid-grey, and the note "appearance defaulted for: ...". Each subject's source is reported
@@ -53,7 +55,7 @@ stages:
   sha256 of every number they were made from. A cache whose key differs from the camera's and the static subjects'
   numbers now is refused (`camera.cache-stale`), and one given while those numbers are traced too
   (`camera.cache-traced`): it carries no derivative in the intrinsics or the structure.
-- **A moving subject's window** (`window=`, its half-size in pixels): its pixels rendered in a square about its projected
+- **A subject's window** (`window=`, its half-size in pixels): its pixels rendered in a square about its projected
   centre, a static ray list of fixed size; `window_overflow` is raised when its projected reach leaves the window.
 
 **Flags** (`Frame.flags`, JAX values, never silent): `beyond_distortion`, `saturated`, and per moving subject

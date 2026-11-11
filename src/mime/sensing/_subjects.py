@@ -194,8 +194,10 @@ class Subject:
     or ``"lumen"``), its declared ``appearance`` (``None``: from the stage, else the default), the ``parent`` medium it
     sits in (a subject's name; its displaced medium), whether it is ``moving`` (its pose given per sub-frame), its fixed
     ``pose`` otherwise (a position and a unit quaternion ``(w, x, y, z)``, the world's identity by default), the
-    ``coverage`` its silhouette's pixels take (``"box"``, or ``"disc"`` for a sphere's exact conic) and, for a moving
-    subject, an optional square ``window`` (its half-size in pixels) its pixels are rendered in."""
+    ``coverage`` its silhouette's pixels take (a sphere's exact conic, ``"disc"``, by default, always in a window; the box
+    edge, ``"box"``, every other kind's and a sphere's declared opt-in) and an optional square ``window`` (its half-size
+    in pixels) its pixels are rendered in: for exact disc coverage sized from its silhouette at its pose where none is
+    declared, its overflow flagged."""
 
     name: str
     kind: str
@@ -206,7 +208,7 @@ class Subject:
     moving: bool = False
     pose: tuple[tuple[float, float, float], tuple[float, float, float, float]] = ((0.0, 0.0, 0.0),
                                                                                    (1.0, 0.0, 0.0, 0.0))
-    coverage: str = "box"
+    coverage: str = ""
     window: int | None = None
     route: str | None = None
     #: The depth of penetration outside its parent within which a subject counts as inside it (a contact's tolerance:
@@ -220,10 +222,12 @@ class Subject:
         problems: list[str] = []
         if self.region not in regions:
             problems.append(f"a {self.kind} images the regions {', '.join(regions)}, not {self.region!r}")
+        if not self.coverage:
+            object.__setattr__(self, "coverage", "disc" if self.kind == "sphere" else "box")
         if self.coverage not in ("box", "disc") or (self.coverage == "disc" and self.kind != "sphere"):
-            problems.append(f"coverage {self.coverage!r}: \"box\", or \"disc\" for a sphere")
-        if self.window is not None and (not self.moving or self.window < 1):
-            problems.append("a window is a moving subject's, of at least one pixel")
+            problems.append(f"coverage {self.coverage!r}: \"box\", or \"disc\" for a sphere (its default)")
+        if self.window is not None and self.window < 1:
+            problems.append("a window is at least one pixel")
         if problems:
             raise ArgumentRefused([Refusal("camera.subject", RefusalClass.USER, f"subject {self.name!r}: {problem}",
                                            "write it as its kind declares it: Subject(name, kind, settings, region=, "
@@ -286,7 +290,9 @@ def resolve(subjects: Sequence[Subject], stage: Mapping[str, Display] | None = N
         held.append(Subject(subject.name, subject.kind, subject.settings, subject.region, appearance, subject.parent,
                             subject.moving, subject.pose, subject.coverage, subject.window, subject.route,
                             subject.tolerance))
-    notes = (f"appearance defaulted for: {', '.join(defaulted)}",) if defaulted else ()
+    boxed = [s.name for s in subjects if s.kind == "sphere" and s.coverage == "box"]
+    notes = ((f"appearance defaulted for: {', '.join(defaulted)}",) if defaulted else ()) + \
+        ((f"the box edge in place of exact disc coverage (opt-in) for: {', '.join(boxed)}",) if boxed else ())
     return Resolved(tuple(held), sources, notes)
 
 

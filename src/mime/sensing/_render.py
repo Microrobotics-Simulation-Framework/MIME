@@ -88,6 +88,7 @@ class StaticCache:
     transmission: Any
     rays: Rays
     names: tuple[str, ...]
+    flags: Mapping[str, Any]
 
 
 def _rotation(q: Any, dtype: Any) -> Any:
@@ -249,19 +250,77 @@ def cache_key(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, dt
     return hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
 
 
+def _window_of(subject: Subject, camera: Pinhole, pose: CameraPose, origin: Any) -> int | None:
+    """A subject's window's half-size in pixels: its declared one, or for exact disc coverage (always windowed) its
+    silhouette's reach at its pose with a margin, which needs the pose and the camera as numbers; ``None`` for a
+    box-edged subject with none declared (it is rendered over the whole frame)."""
+    if subject.window is not None or subject.coverage != "disc":
+        return subject.window
+    try:
+        reach = float(np.asarray(_projected_reach(camera, pose, origin, subject.enclosing())))
+    except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
+        raise ArgumentRefused([Refusal(
+            "camera.subject", RefusalClass.USER,
+            f"subject {subject.name!r}'s exact disc coverage is windowed, and its window cannot be sized from a traced "
+            "pose or camera", "declare its half-size in pixels: Subject(..., window=24), or take the box edge: "
+            "Subject(..., coverage=\"box\")",
+            why="a window's size is fixed when the program is made; a derivative traces the numbers it would be made "
+                "from")]) from error
+    return math.ceil(1.1 * reach) + 2
+
+
+def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, Any] | None, rays: Rays, position: Any,
+            orientation: Any, camera: Pinhole, pose: CameraPose, dtype: Any, corner_samples: int, shape: Any,
+            flags: dict[str, Any]) -> tuple[Any, Any]:
+    """One subject's factor on the whole image (``1 - c + c tau``; ones outside its window), and its projected centre;
+    its flags written into ``flags``."""
+    rotation, origin = _local(subject, position, orientation, dtype)
+    pixel, depth = project(camera, pose, origin)
+    window = _window_of(subject, camera, pose, origin)
+    if window is not None:
+        size = min(2 * window + 1, camera.height, camera.width)
+        start = (jnp.round(pixel[1]).astype(jnp.int32) - window, jnp.round(pixel[0]).astype(jnp.int32) - window)
+        start = (jnp.clip(start[0], 0, camera.height - size), jnp.clip(start[1], 0, camera.width - size))
+        seen_rays = _window_rays(rays, start, size)
+    else:
+        start, seen_rays = None, rays
+    seen = _seen(subject, seen_rays, rotation, origin, dtype, camera, pose, start, corner_samples)
+    assert subject.appearance is not None
+    chord = forms.chord(seen.interval)
+    factor = 1.0 - seen.coverage + seen.coverage * _transmits(
+        subject.appearance, parent.appearance if parent is not None else None, chord, dtype)
+    name = subject.name
+    if parent is not None and parent_pose is not None:
+        parent_rotation, parent_origin = _local(parent, parent_pose[0], parent_pose[1], dtype)
+        o = _into(parent_rotation, tuple(seen_rays.origin[i] - parent_origin[i] for i in range(3)))
+        inside = parent.placed.form.interval(_parameters(parent, dtype), o, _into(parent_rotation, seen_rays.direction))
+        limit = 2.0 * subject.enclosing() * math.sqrt(2.0 * subject.tolerance)
+        outside = jnp.sum((chord - forms.overlap(seen.interval, inside)) > limit)
+        flags[f"outside_parent:{name}"] = flags.get(f"outside_parent:{name}", 0) + outside
+    if start is not None and window is not None:
+        factor = lax.dynamic_update_slice(jnp.ones(shape, dtype=factor.dtype), factor, start)
+        reach = _projected_reach(camera, pose, origin, subject.enclosing())
+        flags[f"window_overflow:{name}"] = flags.get(f"window_overflow:{name}", False) | (reach + 1.5 > window)
+    if subject.coverage == "box":
+        small = camera.fx * subject.feature() / depth < SMALL_SILHOUETTE_PX
+        flags[f"small_silhouette:{name}"] = flags.get(f"small_silhouette:{name}", False) | small
+    flags[f"behind:{name}"] = flags.get(f"behind:{name}", False) | (depth < subject.enclosing())
+    return factor, pixel
+
+
 def _static(subjects: Sequence[Subject], rays: Rays, camera: Pinhole, pose: CameraPose, dtype: Any,
-            corner_samples: int) -> Any:
+            corner_samples: int, flags: dict[str, Any] | None = None) -> Any:
     by_name = {s.name: s for s in subjects}
-    total = jnp.ones_like(rays.direction[0])
+    held_flags: dict[str, Any] = {} if flags is None else flags
+    shape = rays.direction[0].shape
+    total = jnp.ones(shape, dtype=dtype)
     for subject in subjects:
         if subject.moving:
             continue
-        rotation, origin = _local(subject, subject.pose[0], subject.pose[1], dtype)
-        seen = _seen(subject, rays, rotation, origin, dtype, camera, pose, None, corner_samples)
-        assert subject.appearance is not None
-        parent = by_name[subject.parent].appearance if subject.parent is not None else None
-        tau = _transmits(subject.appearance, parent, forms.chord(seen.interval), dtype)
-        total = total * (1.0 - seen.coverage + seen.coverage * tau)
+        parent = by_name[subject.parent] if subject.parent is not None else None
+        factor, _ = _factor(subject, parent, parent.pose if parent is not None and not parent.moving else None, rays,
+                            subject.pose[0], subject.pose[1], camera, pose, dtype, corner_samples, shape, held_flags)
+        total = total * factor
     return total
 
 
@@ -277,9 +336,10 @@ def prepare(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, *, s
     held, _, _ = _prepared(subjects, stage)
     dtype = jnp.result_type(camera.fx, float)
     rays = lax.stop_gradient(ray_table(camera, pose))
-    transmission = lax.stop_gradient(_static(held, rays, camera, pose, dtype, corner_samples))
+    flags: dict[str, Any] = {}
+    transmission = lax.stop_gradient(_static(held, rays, camera, pose, dtype, corner_samples, flags))
     return StaticCache(cache_key(held, camera, pose, dtype), transmission, rays,
-                       tuple(s.name for s in held if not s.moving))
+                       tuple(s.name for s in held if not s.moving), flags)
 
 
 def _psf(image: Any, sigma: float) -> Any:
@@ -357,12 +417,14 @@ def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses
                 "make it again with prepare(subjects, camera, pose), or render without it",
                 why="a changed parameter (an override, a moved camera) changes the structure's image")])
         static, rays = cache.transmission, cache.rays
+        flags: dict[str, Any] = dict(cache.flags)
     else:
         rays = ray_table(camera, pose)
-        static = _static(held, rays, camera, pose, dtype, corner_samples)
+        flags = {}
+        static = _static(held, rays, camera, pose, dtype, corner_samples, flags)
     by_name = {s.name: s for s in held}
     frames = exposure.sub_frames
-    flags: dict[str, Any] = {"beyond_distortion": jnp.sum(rays.beyond)}
+    flags["beyond_distortion"] = jnp.sum(rays.beyond)
     total = jnp.zeros_like(static)
     centres: dict[str, list[Any]] = {s.name: [] for s in held if s.moving}
     for k in range(frames):
@@ -371,42 +433,12 @@ def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses
             if not subject.moving:
                 continue
             position, orientation = _pose_at(poses or {}, subject, k, frames)
-            rotation, origin = _local(subject, position, orientation, dtype)
-            pixel, depth = project(camera, pose, origin)
-            centres[subject.name].append(pixel)
-            if subject.window is not None:
-                size = min(2 * subject.window + 1, camera.height, camera.width)
-                start = (jnp.round(pixel[1]).astype(jnp.int32) - subject.window,
-                         jnp.round(pixel[0]).astype(jnp.int32) - subject.window)
-                start = (jnp.clip(start[0], 0, camera.height - size), jnp.clip(start[1], 0, camera.width - size))
-                seen_rays = _window_rays(rays, start, size)
-            else:
-                size, start, seen_rays = 0, None, rays
-            seen = _seen(subject, seen_rays, rotation, origin, dtype, camera, pose, start, corner_samples)
-            assert subject.appearance is not None
             parent = by_name[subject.parent] if subject.parent is not None else None
-            chord = forms.chord(seen.interval)
-            factor = 1.0 - seen.coverage + seen.coverage * _transmits(
-                subject.appearance, parent.appearance if parent is not None else None, chord, dtype)
-            if parent is not None:
-                parent_rotation, parent_origin = (_local(parent, parent.pose[0], parent.pose[1], dtype)
-                                                  if not parent.moving else
-                                                  _local(parent, *_pose_at(poses or {}, parent, k, frames), dtype))
-                o = _into(parent_rotation, tuple(seen_rays.origin[i] - parent_origin[i] for i in range(3)))
-                inside = parent.placed.form.interval(_parameters(parent, dtype), o,
-                                                     _into(parent_rotation, seen_rays.direction))
-                limit = 2.0 * subject.enclosing() * math.sqrt(2.0 * subject.tolerance)
-                outside = jnp.sum((chord - forms.overlap(seen.interval, inside)) > limit)
-                flags[f"outside_parent:{subject.name}"] = flags.get(f"outside_parent:{subject.name}", 0) + outside
-            if start is not None:
-                factor = lax.dynamic_update_slice(jnp.ones_like(static), factor, start)
-                reach = _projected_reach(camera, pose, origin, subject.enclosing())
-                flags[f"window_overflow:{subject.name}"] = flags.get(
-                    f"window_overflow:{subject.name}", False) | (reach + 1.5 > subject.window)
-            if subject.coverage == "box":
-                small = camera.fx * subject.feature() / depth < SMALL_SILHOUETTE_PX
-                flags[f"small_silhouette:{subject.name}"] = flags.get(f"small_silhouette:{subject.name}", False) | small
-            flags[f"behind:{subject.name}"] = flags.get(f"behind:{subject.name}", False) | (depth < subject.enclosing())
+            parent_pose = None if parent is None else parent.pose if not parent.moving else \
+                _pose_at(poses or {}, parent, k, frames)
+            factor, pixel = _factor(subject, parent, parent_pose, rays, position, orientation, camera, pose, dtype,
+                                    corner_samples, static.shape, flags)
+            centres[subject.name].append(pixel)
             product = product * factor
         total = total + product
     for name, held_centres in centres.items():
