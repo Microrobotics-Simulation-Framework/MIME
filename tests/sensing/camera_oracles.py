@@ -72,7 +72,7 @@ def edge_distance(size: float, seed: int) -> bool:
         theta[0] += (seed % 97) * 1e-3 * gate.DISTANCE / theta[3]
         areas = gate.sphere_oracle.areas(theta, gate.RADIUS, gate.DISTANCE, (gate.WIDTH - 1) / 2,
                                           (gate.HEIGHT - 1) / 2, (gate.HEIGHT, gate.WIDTH))
-        covered = np.asarray(gate.image(jnp.asarray(theta), "box"))
+        covered = np.asarray(gate.image(jnp.asarray(theta), "box_edge"))
     finally:
         coverage.line = held
     band = (areas > 0) & (areas < 1)
@@ -115,13 +115,13 @@ def media(size: float, seed: int) -> bool:
 def aperture(size: float, seed: int) -> bool:
     from mime.scene import write_camera
     from mime.scene._pxr import Usd, UsdGeom
-    from mime.sensing import BrownConrady, CameraPose, Pinhole, camera_prim
+    from mime.sensing import BrownConrady, CameraPose, Pinhole, to_camera_prim
 
     rng = np.random.default_rng(seed)
     width = int(rng.integers(100, 1000))
     camera = Pinhole(width, 480, 800.0, 820.0, 315.5, 243.25, BrownConrady())
     stage = Usd.Stage.CreateInMemory()
-    held = camera_prim(camera, CameraPose(jnp.zeros(3), jnp.asarray((1.0, 0.0, 0.0, 0.0))), pitch=5e-6)
+    held = to_camera_prim(camera, CameraPose(jnp.zeros(3), jnp.asarray((1.0, 0.0, 0.0, 0.0))), pitch=5e-6)
     prim = write_camera(stage, "/camera", held, meters_per_unit=1e-3)
     written = UsdGeom.Camera(prim).GetHorizontalApertureAttr().Get() * (1.0 + size)
     return bool(abs(written / (width * 5e-6 * 1e4) - 1.0) > 1e-6)

@@ -258,7 +258,7 @@ def project(camera: Pinhole, pose: CameraPose, points: Any) -> tuple[Any, Any]:
 PIXEL_PITCH = 5e-6
 
 
-def camera_prim(camera: Pinhole, pose: CameraPose, *, pitch: float = PIXEL_PITCH) -> CameraPrim:
+def to_camera_prim(camera: Pinhole, pose: CameraPose, *, pitch: float = PIXEL_PITCH) -> CameraPrim:
     """The camera's numbers as its stage prim holds them (``mime.scene.write_camera`` writes them)."""
     d = camera.distortion
     position = tuple(float(c) for c in np.asarray(pose.position, dtype=np.float64))

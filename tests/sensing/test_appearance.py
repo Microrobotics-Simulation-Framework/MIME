@@ -15,7 +15,7 @@ import numpy as np
 from camera_cases import across, planted
 
 import mime.sensing._render as render_module
-from mime.sensing import Appearance, Display, Source, Subject, appearance_sources, render
+from mime.sensing import Appearance, Display, AppearanceSource, Subject, appearance_sources, render
 
 STAGE = {"declared": Display(opacity=0.9), "staged": Display(colour=(0.2, 0.6, 0.8), opacity=0.4)}
 
@@ -43,7 +43,7 @@ def plant(monkeypatch) -> None:
 def test_each_subjects_source_and_the_note(monkeypatch):
     plant(monkeypatch)
     sources, notes = appearance_sources(subjects(), STAGE)
-    assert sources == {"declared": Source.DECLARED, "staged": Source.STAGE, "bare": Source.DEFAULT}
+    assert sources == {"declared": AppearanceSource.DECLARED, "staged": AppearanceSource.STAGE, "bare": AppearanceSource.DEFAULT}
     assert notes == ("appearance defaulted for: bare",)
 
 

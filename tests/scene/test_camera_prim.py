@@ -19,7 +19,7 @@ import pytest
 import mime.scene._camera as camera_module
 from mime.scene import display_primvars, read_camera, write_camera
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
-from mime.sensing import BrownConrady, CameraPose, Pinhole, camera_prim, display, from_camera_prim, project
+from mime.sensing import BrownConrady, CameraPose, Pinhole, to_camera_prim, display, from_camera_prim, project
 
 PLANT = os.environ.get("CAMERA_PLANT", "")
 MM = 1e-3
@@ -34,7 +34,7 @@ def written(monkeypatch: pytest.MonkeyPatch):
     pose = CameraPose(jnp.asarray([0.01, -0.1, 0.002]), jnp.asarray([s, -s, 0.0, 0.0]))
     stage = Usd.Stage.CreateInMemory()
     UsdGeom.SetStageMetersPerUnit(stage, MM)
-    held = camera_prim(camera, pose, pitch=5e-6)
+    held = to_camera_prim(camera, pose, pitch=5e-6)
     prim = write_camera(stage, "/World/camera", held, meters_per_unit=MM * (10.0 if PLANT == "units" else 1.0))
     # The stage is returned with its prim: a prim of a stage nothing holds has expired.
     return camera, pose, held, prim, stage

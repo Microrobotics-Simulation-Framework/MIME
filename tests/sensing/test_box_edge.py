@@ -77,7 +77,7 @@ def measured(radius_px: int, mode: str, monkeypatch: pytest.MonkeyPatch) -> tupl
 
 @pytest.mark.parametrize("radius_px", [15, 6, 3])
 def test_the_box_edge_within_its_measured_lines(dtype, radius_px, monkeypatch):
-    pixel, covered, motion = measured(radius_px, "box", monkeypatch)
+    pixel, covered, motion = measured(radius_px, "box_edge", monkeypatch)
     lines = BOX[radius_px]
     assert pixel <= lines[0] and covered <= lines[1] and motion <= lines[2], (pixel, covered, motion)
 
@@ -103,13 +103,13 @@ def test_the_silhouette_matches_its_conic(dtype, monkeypatch):
     theta = theta_for(15)
     shift = 0.5 if planted("principal-half") else 0.0
     _, centre, area = sphere_oracle.ellipse(theta, RADIUS, DISTANCE, (WIDTH - 1) / 2 - shift, (HEIGHT - 1) / 2)
-    covered = np.asarray(image(jnp.asarray(theta), "box"), dtype=np.float64)
+    covered = np.asarray(image(jnp.asarray(theta), "box_edge"), dtype=np.float64)
     v, u = np.mgrid[0:HEIGHT, 0:WIDTH]
     found = np.array([np.sum(u * covered), np.sum(v * covered)]) / covered.sum()
     assert abs(covered.sum() / area - 1) <= 0.003
     assert float(np.max(np.abs(found - centre))) <= 0.01
     moved = theta + np.array([0.1 * DISTANCE / theta[3], 0.0, 0.0, 0.0])
-    after = np.asarray(image(jnp.asarray(moved), "box"), dtype=np.float64)
+    after = np.asarray(image(jnp.asarray(moved), "box_edge"), dtype=np.float64)
     _, centre_after, _ = sphere_oracle.ellipse(moved, RADIUS, DISTANCE, (WIDTH - 1) / 2, (HEIGHT - 1) / 2)
     step = np.sum(u * after) / after.sum() - found[0]
     expected = centre_after[0] - (centre[0] + shift)

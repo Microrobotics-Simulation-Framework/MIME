@@ -16,7 +16,7 @@ from camera_cases import TUBE, across, planted, tube_subjects
 
 import mime.sensing._subjects as subjects_module
 from mime.build import ArgumentRefused
-from mime.sensing import Appearance, Pinhole, Subject, prepare, render
+from mime.sensing import Appearance, Pinhole, Subject, static_cache, render
 
 
 def code(error: pytest.ExceptionInfo[ArgumentRefused]) -> set[str]:
@@ -64,7 +64,7 @@ def test_names_parents_and_poses_are_checked():
 def test_a_stale_cache_and_a_traced_one_are_refused():
     camera, pose = across(32)
     held = tube_subjects(Appearance.attenuating(200.0), Appearance.attenuating(20.0))
-    cache = prepare(held, camera, pose)
+    cache = static_cache(held, camera, pose)
     moved = Pinhole(camera.width, camera.height, camera.fx * 1.001, camera.fy, camera.cx, camera.cy)
     with pytest.raises(ArgumentRefused) as error:
         render(held, moved, pose, cache=cache)
@@ -91,8 +91,8 @@ def test_exact_disc_coverage_is_a_spheres_default_and_windowed(dtype):
 
     camera, pose = across(32)
     ball = Subject("ball", "sphere", {"radius": 1e-3}, appearance=Appearance.opaque(), moving=True)
-    boxed = Subject("other", "sphere", {"radius": 1e-3}, appearance=Appearance.opaque(), coverage="box")
-    assert ball.coverage == "disc" and boxed.coverage == "box"
+    boxed = Subject("other", "sphere", {"radius": 1e-3}, appearance=Appearance.opaque(), coverage="box_edge")
+    assert ball.coverage == "disc" and boxed.coverage == "box_edge"
     assert appearance_sources([boxed])[1] == ("the box edge in place of exact disc coverage (opt-in) for: other",)
     frame = render([ball], camera, pose, {"ball": (jnp.zeros(3), jnp.asarray((1.0, 0.0, 0.0, 0.0)))})
     assert not bool(frame.flags["window_overflow:ball"]) and "small_silhouette:ball" not in frame.flags

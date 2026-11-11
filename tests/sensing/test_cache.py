@@ -19,7 +19,7 @@ from hypothesis import strategies as st
 
 import mime.sensing._render as render_module
 from mime.build import ArgumentRefused
-from mime.sensing import Appearance, BrownConrady, CameraPose, Pinhole, Subject, prepare, render
+from mime.sensing import Appearance, BrownConrady, CameraPose, Pinhole, Subject, static_cache, render
 
 NUMBERS = ["fx", "fy", "cx", "cy", "k1", "position", "orientation", "inner_radius", "wall", "length", "centre",
            "wall_attenuation", "water_attenuation"]
@@ -57,7 +57,7 @@ POSES = {"umr": (jnp.asarray((0.2e-3, 0.0, -2.4e-3)), jnp.asarray((1.0, 0.0, 0.0
 def prepared(dtype: str) -> object:
     """The unmoved scene's cache, made once per dtype: a moved number's refusal comes from the key, before any render."""
     held, camera, pose = scene()
-    return prepare(held, camera, pose)
+    return static_cache(held, camera, pose)
 
 
 @pytest.fixture
@@ -91,7 +91,7 @@ def test_moves_of_every_size_make_it_stale(dtype, keyed, moved, size, sign):
 
 def test_a_cached_frame_is_the_uncached_one(dtype):
     held, camera, pose = scene()
-    cached = render(held, camera, pose, POSES, cache=prepare(held, camera, pose)).transmission
+    cached = render(held, camera, pose, POSES, cache=static_cache(held, camera, pose)).transmission
     uncached = render(held, camera, pose, POSES).transmission
     tolerance = 1e-12 if dtype == "float64" else 1e-6
     assert float(np.max(np.abs(np.asarray(cached) - np.asarray(uncached)))) <= tolerance

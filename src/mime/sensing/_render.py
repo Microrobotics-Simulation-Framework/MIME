@@ -34,7 +34,7 @@ from mime.sensing import _coverage as coverage
 from mime.sensing import _detector as detector
 from mime.sensing import _forms as forms
 from mime.sensing._detector import CameraPose, Pinhole, Rays, project, ray_table
-from mime.sensing._subjects import Appearance, Look, Subject, Source, order, resolve
+from mime.sensing._subjects import Appearance, Look, Subject, AppearanceSource, order, resolve
 
 lax: Any = jax.lax
 #: JAX's transforms, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
@@ -69,7 +69,7 @@ class Response:
     psf: float = 0.0
 
 
-class Frame(NamedTuple):
+class Capture(NamedTuple):
     """A rendered frame: the quantised counts (``image``), the counts expected before noise and quantisation
     (``expected``, the differentiable output), the transmitted share before the PSF (``transmission``), and the flags."""
 
@@ -265,7 +265,7 @@ def _window_of(subject: Subject, camera: Pinhole, pose: CameraPose, origin: Any)
             "camera.subject", RefusalClass.USER,
             f"subject {subject.name!r}'s exact disc coverage is windowed, and its window cannot be sized from a traced "
             "pose or camera", "declare its half-size in pixels: Subject(..., window=24), or take the box edge: "
-            "Subject(..., coverage=\"box\")",
+            "Subject(..., coverage=\"box_edge\")",
             why="a window's size is fixed when the program is made; a derivative traces the numbers it would be made "
                 "from")]) from error
     return math.ceil(1.1 * reach) + 2
@@ -303,7 +303,7 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
         factor = lax.dynamic_update_slice(jnp.ones(shape, dtype=factor.dtype), factor, start)
         reach = _projected_reach(camera, pose, origin, subject.enclosing())
         flags[f"window_overflow:{name}"] = flags.get(f"window_overflow:{name}", False) | (reach + 1.5 > window)
-    if subject.coverage == "box":
+    if subject.coverage == "box_edge":
         small = camera.fx * subject.feature() / depth < SMALL_SILHOUETTE_PX
         flags[f"small_silhouette:{name}"] = flags.get(f"small_silhouette:{name}", False) | small
     flags[f"behind:{name}"] = flags.get(f"behind:{name}", False) | (depth < subject.enclosing())
@@ -355,13 +355,13 @@ def _static(subjects: Sequence[Subject], rays: Rays, camera: Pinhole, pose: Came
     return total
 
 
-def _prepared(subjects: Sequence[Subject], stage: Mapping[str, Any] | None) -> tuple[list[Subject], dict[str, Source],
+def _prepared(subjects: Sequence[Subject], stage: Mapping[str, Any] | None) -> tuple[list[Subject], dict[str, AppearanceSource],
                                                                                      tuple[str, ...]]:
     resolved = resolve(list(subjects) + _implicit_lumens(subjects), stage)
     return order(resolved.subjects), dict(resolved.sources), resolved.notes
 
 
-def prepare(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, *, stage: Mapping[str, Any] | None = None,
+def static_cache(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, *, stage: Mapping[str, Any] | None = None,
             corner_samples: int = coverage.CORNER_SAMPLES) -> StaticCache:
     """The static subjects' transmission for this camera, once, keyed by the hash of what it was made from."""
     held, _, _ = _prepared(subjects, stage)
@@ -432,7 +432,7 @@ def _pose_at(poses: Mapping[str, Any], subject: Subject, k: int, frames: int) ->
 def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses: Mapping[str, Any] | None = None, *,
            exposure: Exposure = Exposure(), response: Response = Response(), key: Any = None,
            cache: StaticCache | None = None, stage: Mapping[str, Any] | None = None,
-           corner_samples: int = coverage.CORNER_SAMPLES) -> Frame:
+           corner_samples: int = coverage.CORNER_SAMPLES) -> Capture:
     """One frame of ``subjects`` seen by ``camera`` at ``pose``: the moving subjects at ``poses`` (a position and an
     orientation each, or ``sub_frames`` of each), the static ones at their own, through the exposure and the response;
     noise drawn from ``key`` (none without one). Pure JAX: differentiable in the poses, the intrinsics and the subjects'
@@ -445,7 +445,7 @@ def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses
             raise ArgumentRefused([Refusal(
                 "camera.cache-stale", RefusalClass.USER,
                 "the static cache was made from other numbers than this camera's and its static subjects'",
-                "make it again with prepare(subjects, camera, pose), or render without it",
+                "make it again with static_cache(subjects, camera, pose), or render without it",
                 why="a changed parameter (an override, a moved camera) changes the structure's image")])
         static, rays = cache.transmission, cache.rays
         flags: dict[str, Any] = dict(cache.flags)
@@ -479,7 +479,7 @@ def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses
     transmission = static * total / frames
     expected, image, saturated = respond(transmission, response, key)
     flags["saturated"] = saturated
-    return Frame(image, expected, transmission, flags)
+    return Capture(image, expected, transmission, flags)
 
 
 def _projected_reach(camera: Pinhole, pose: CameraPose, origin: Any, radius: float) -> Any:
@@ -496,7 +496,7 @@ def _projected_reach(camera: Pinhole, pose: CameraPose, origin: Any, radius: flo
     return 1.05 * widened * jnp.max(jnp.linalg.norm(pixels - centre, axis=-1))
 
 
-def appearance_sources(subjects: Sequence[Subject], stage: Mapping[str, Any] | None = None) -> tuple[dict[str, Source],
+def appearance_sources(subjects: Sequence[Subject], stage: Mapping[str, Any] | None = None) -> tuple[dict[str, AppearanceSource],
                                                                                                      tuple[str, ...]]:
     """Where each subject's appearance comes from (the implicit clear lumens among them), and the build note."""
     _, sources, notes = _prepared(subjects, stage)

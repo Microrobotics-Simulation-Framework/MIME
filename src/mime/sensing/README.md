@@ -32,7 +32,7 @@ stages:
   each its own box edge. **Exact disc coverage**, a sphere's default (exact by default): the share of each pixel
   inside the ball's conic, exactly, the pixel's corners undistorted and its sides taken straight between them; always in
   a window about the silhouette (sized from its silhouette at its pose where none is declared, a declared size under a
-  derivative), its overflow flagged. The box edge is a sphere's declared opt-in (`coverage="box"`), which the notes name.
+  derivative), its overflow flagged. The box edge is a sphere's declared opt-in (`coverage="box_edge"`), which the notes name.
 - **Appearance belongs to materials.** A subject's declared `Appearance` (opaque, or attenuating per metre) wins;
   where none is declared, the stage's `displayColor` and `displayOpacity` for it (`display`, read with inheritance);
   with neither, opaque and mid-grey, and the note "appearance defaulted for: ...". Each subject's source is reported
@@ -51,16 +51,17 @@ stages:
   from the key it is given (the same key, the same frame: record the poses and render again), gain and offset,
   quantisation to `bits`; the expected counts before noise are the differentiable output. Every number is a
   declaration, never a measurement of a camera.
-- **The static cache** (`prepare`): the static subjects' transmission and the ray table, once per camera, keyed by the
+- **The static cache** (`static_cache`): the static subjects' transmission and the ray table, once per camera, keyed by the
   sha256 of every number they were made from. A cache whose key differs from the camera's and the static subjects'
   numbers now is refused (`camera.cache-stale`), and one given while those numbers are traced too
   (`camera.cache-traced`): it carries no derivative in the intrinsics or the structure.
 - **A subject's window** (`window=`, its half-size in pixels): its pixels rendered in a square about its projected
   centre, a static ray list of fixed size; `window_overflow` is raised when its projected reach leaves the window.
 
-**Flags** (`Frame.flags`, JAX values, never silent): `beyond_distortion`, `saturated`, and per moving subject
+**Flags** (`Capture.flags`, JAX values, never silent): `beyond_distortion`, `saturated`, and per moving subject
 `outside_parent`, `small_silhouette` (a box-edged silhouette under `SMALL_SILHOUETTE_PX`, where the box edge's accuracy
-falls), `window_overflow`, `behind`, `ghosting` (its sub-frames a pixel or more apart).
+falls), `window_overflow`, `behind`, `ghosting` (its sub-frames a pixel or more apart), `thin_cap` (a cylinder's cap seen within
+a pixel of edge-on, its outline resolved to about a seventh of a pixel there).
 
 ## What it does not do yet
 
