@@ -1,0 +1,117 @@
+{
+  "written": "2026-11-11, committed before the fix round's probe arms (control and clean rates, the paired frame times, the bits) and before CI ran its gates; some gates ran locally while being written, listed in seen_before: the camera core's fix round (the composed edge, thin caps, the disc's window, the undistortion's last step, the cache's key, bodies behind the camera, the capsule's gate, the flags' gate, the reverse frame's cost)",
+  "phase": "camera lane PR 1, its fix round after the refuting review (B1 to B3, M1 to M5, the review's item 1 notes)",
+  "labels": "the fix round's predictions: derivations where a line is derived, the local measurements in seen_before where a number was seen first, guesses where they say so",
+  "seen_before": [
+    "B1, the review's thin-cap sweep (its script, float64, the gate's view, turns 0 to 30 degrees) on the fix's stages: pieces composed in pixels with sub-samples only where two pieces cross, 2.6, 14.0, 2.7, 5.0, 4.2, 2.7 % at 0, 2, 4, 6, 10, 20 degrees (the 2-degree miss at a cap 1.36 px across: a pixel inside a narrow cap's ellipse, whose first-order distance is inflated past the corner reach, never sub-sampled); every pixel sub-sampled once a corner or a cap is in view: 2.6, 7.3, 8.1, 4.7, 1.7, 1.9, 1.6, 0.7, 0.6, 0.3, 0.3, 0.1 % at 0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30 degrees, the caps' ellipses 0.57, 0.25, 0.08, 0.40, 0.73 px across at the misses above 2.6 %; with 16 sub-samples the 1- and 2-degree misses fell to 2.2 and 1.7 % (resolution, not mechanism)",
+    "B1, a cap's edge scaled by the ray's angle to its rim (tried, withdrawn): 9.4, 9.3, 7.2, 8.8, 10.7, 5.7 % at 0 to 6 degrees, worse",
+    "M3, the capsule against the hull oracle (float64, offsets 0.3 and 0.7 px): worst per pixel 0.85 to 1.18 %, times the outline's least curvature radius 0.078 to 0.110 (the derived 0.118)",
+    "B3, the review's three failing float32 lenses: the new premise passes all three with the fix; the old last step fails the first two under it (1.08 px off its pixel; past the fold); the old premise fails all three with the fix too (pixels 0.002 to 0.007 px from their float32 solution that the float64 oracle calls unreachable)",
+    "G15's float32 disc floor (15 px): 0.545 eps f as is, 0.346 with the rotation exact; with the camera's distance exact (2^-5) and the oracle at the float32-rounded inputs 0.52 and 0.31: the position's rounding moves it by about 0.03 eps f, so the review's attribution to it does not hold here",
+    "test_corners' first local run (before this file): the review's 2-degree view failed at 7.6 % (a phantom streak above a thin cap's end, outside the region the thin cap excused) and a drawn view (turn 0, roll 62 degrees) at 7.6 %: a cap's own value falls towards zero near its plane's vanishing line however far the cap is, so its first-order line read as near and the least took it (phantoms along the side, 22 px from the outline). Each cap is now read only within its bounding ball's silhouette (1.5 px): that view 2.3 %. test_capsule passed every case (36 with test_corners' others).",
+    "Local runs while writing (float64 and float32): test_flags, test_behind and test_window passed (28 tests); test_window's first tolerance (64 eps) failed at 1e-13 (float64) and 4e-5 (float32): the corners' undistortion converges by its own extent, so the line was rederived as 8 eps |x| f"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: CI's lanes and GitHub's 4-vCPU probe runners; the laptop for development runs only",
+    "sizes_and_parameters": "the corner gate's view (96x64, f 900 px, 30 mm, a rod R 0.31 mm, L 2.07 mm; a capsule of the same size); 4 x 4 corner sub-samples; G2's 48x36 drawn lenses (|k1| to 0.4, tangential to 3e-3); the frame probe's scenes (script A's tube across from 100 mm, 320x240 and 640x480, float32, Brown-Conrady k1 -0.05, k2 0.01)",
+    "seeds_and_draws": "Hypothesis at physical scales, never filtered: turns 0 to 30 degrees, rolls 0 to 90, sub-pixel offsets; capsule tilts 0 to 89"
+  },
+  "gate_b1_turned_rods": {
+    "claim": "a capped cylinder's per-pixel coverage within 1 / s^2 of the exact image wherever no cap's ellipse is narrower than two sub-pixels, and thin_cap raised exactly where one is",
+    "kind": "bounds",
+    "case": "tests/sensing/test_corners.py: the review's turns (0, 2, 4, 6, 10, 20 degrees) and 30 drawn views a run, both dtypes",
+    "prediction": {"band": [0.0, 0.0625], "unit": "per-pixel coverage, worst pixel", "basis": "derived (the line); the sweep in seen_before for where it sits (2.6 % at most outside thin caps)",
+                   "why": "the pieces' lines composed in pixels take the right piece; with every pixel sub-sampled, a sub-pixel's line is wrong only where the outline turns within it"},
+    "metric": "the worst per-pixel coverage error against the hull of the rims' images",
+    "control": {"plant": "the review's code (a least of raw values, sub-samples only where two pieces cross)", "environment_variable": "CAMERA_PLANT=raw-composition",
+                "expected_rate": "N/N on the review's turns", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic views; the review's misses 13.8 to 29 % against a 6.25 % line"},
+    "if_wrong": "a miss above the line at a view with no thin cap: a turn the sub-samples do not resolve, or a wrong piece still taken; read the pixel's pieces",
+    "cannot_discriminate_if": "the view shows no cap (both out of view): the turns are drawn so that both caps are in view"
+  },
+  "gate_thin_cap": {
+    "claim": "thin_cap is raised exactly where a cap in view has an ellipse narrower than two sub-pixels (its width from the rim's geometry, computed apart)",
+    "kind": "equality",
+    "case": "tests/sensing/test_corners.py, the same views",
+    "prediction": {"value": "flag == thinness on every view", "basis": "derived (the flag's own formula and the oracle's agree)"},
+    "control": {"plant": "the raw-composition plant fails the line first; a flag that is wrong fails the equality", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N"}
+  },
+  "gate_b2_window": {
+    "claim": "exact disc coverage's window holds the whole silhouette that lies in the image (each axis clipped on its own), and window_overflow fires whenever part of it lies outside the window",
+    "kind": "equality",
+    "case": "tests/sensing/test_window.py: 17 px in 48x36, 300 px in 640x480, a sphere at the image's corner, a declared window too small",
+    "prediction": {"band": [0.0, 1.0], "unit": "fraction of the line 8 eps |x| f (the corners' undistortion's convergence)", "basis": "derived"},
+    "control": {"plant": "the window cut square to the image's shorter side", "environment_variable": "CAMERA_PLANT=square-window", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N",
+                "resolution": "deterministic; the 640x480 case loses about a fifth of its silhouette under the plant"}
+  },
+  "gate_b3_undistortion": {
+    "claim": "G2's clean arm passes every run in both dtypes; every ray the table does not flag is a solution of the distortion on its first branch",
+    "kind": "bounds",
+    "case": "tests/sensing/test_undistortion.py::test_each_ray_is_the_distortions_inverse, 60 drawn lenses a run plus the review's three float32 lenses",
+    "prediction": {"value": "clean 0/30 in float32 and in float64; planted (undistort-truncated) 30/30 in each; the last step's value restored (step-after-check) 30/30 in float32",
+                   "basis": "derived (the point returned is the point judged) and the review's lenses in seen_before"},
+    "control": {"plant": "undistort-truncated; step-after-check", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N"},
+    "if_wrong": "a clean failure: read whether the table's point is a solution (the defect) or the oracle cannot judge it (the premise)"
+  },
+  "gate_m1_cache_walk": {
+    "claim": "the static cache's key moves with every input that moves the static image or its flags",
+    "kind": "equality",
+    "case": "tests/sensing/test_cache.py::test_the_key_walks_every_input, both dtypes",
+    "prediction": {"value": "every moved image has a moved key; the walk covers every field and render parameter", "basis": "derived (the key reads every dataclass field)"},
+    "control": {"plant": "the window, the tolerance, the corner sub-samples each left out of the key", "environment_variable": "CAMERA_PLANT=key-omits-window | key-omits-tolerance | key-omits-corner-samples",
+                "expected_rate": "N/N each", "runs": 30, "clean_expected": "0/N"}
+  },
+  "gate_m2_behind": {
+    "claim": "a body wholly behind the camera covers nothing; a ball straddling the camera's plane shows only its part in front",
+    "kind": "bounds",
+    "case": "tests/sensing/test_behind.py: sphere (disc and box edge), capsule, cylinder 5 mm behind; a ball straddling the plane in a 60 px focal length field",
+    "prediction": {"value": "no pixel covered behind; the straddling ball exact away from its outline, on it within 1 / SUB + 0.118 / rho", "basis": "derived"},
+    "control": {"plant": "each body along the ray's whole line", "environment_variable": "CAMERA_PLANT=whole-line", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N"}
+  },
+  "gate_m3_capsule": {
+    "claim": "the capsule's per-pixel coverage within 0.118 / rho + 2 / f (+ 2 eps f) of its exact image, and its chord within 16 eps of the depth",
+    "kind": "bounds",
+    "case": "tests/sensing/test_capsule.py: the review's tilts and 30 drawn tilts, rolls and offsets a run, both dtypes",
+    "prediction": {"band": [0.0, 1.0], "unit": "fraction of the line", "basis": "derived; seen_before: 0.66 to 0.93 of the arc term in float64"},
+    "control": {"plant": "the segment clamped at half its length (the review's mutant)", "environment_variable": "CAMERA_PLANT=capsule-half", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N"}
+  },
+  "gate_m4_flags": {
+    "claim": "window_overflow, small_silhouette, behind, ghosting and beyond_distortion each fire where their condition holds and not where it does not",
+    "kind": "equality",
+    "case": "tests/sensing/test_flags.py, both dtypes",
+    "control": {"plant": "the flag under test silenced at its source", "environment_variable": "CAMERA_PLANT=flag-off", "expected_rate": "N/N each flag", "runs": 30, "clean_expected": "0/N"}
+  },
+  "gate_m5_reverse": {
+    "claim": "the cause of the windowed disc's and cylinder's slower reverse frame since the first step, located by a paired run on one runner",
+    "kind": "estimates",
+    "case": "probe arm frames-paired: the first step's code (7f44f82), the reviewed head (400d651) and this fix's head, interleaved twice, with ablations on this head (the first step's disc arithmetic; the first step's undistortion; the sub-samples unrolled without the cond)",
+    "prediction": {"value": "the reviewed head reproduces the review's 2.2 to 2.4x (disc) and 1.4 to 1.7x (cylinder); with the first step's disc arithmetic the disc window's reverse comes within 1.25x of the first step's; the undistortion's ablation moves it under 10 %; the cylinder on this head is slower than on the reviewed head (four pieces' lines a sub-sample, every pixel sub-sampled) by 1.2 to 2.5x, and unrolling moves it by under 20 %",
+                   "basis": "guess (the disc's float32-stable edge integral, a3e937b's rewrite, carries about twice the arithmetic to transpose)"},
+    "if_wrong": "the disc ablation leaves the gap: the cause is elsewhere in the diff (the corners' loops, the cond in _seen); read the HLO counts"
+  },
+  "gate_6_grazing_extended": {
+    "claim": "G6's control (a hard clamp) is caught on the sphere, the capsule and the cylinder in both dtypes",
+    "kind": "acceptance",
+    "case": "tests/sensing/test_grazing.py, its six nodes",
+    "control": {"plant": "hard-clamp", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N on each node", "runs": 30, "clean_expected": "0/N",
+                "resolution": "float32 resolves 1e-6 R past the tangent (h2 about 2e-6 R^2, sixteen units in the last place of R^2)"}
+  },
+  "gate_9_whole_frame": {
+    "claim": "the whole translucent frame's aggregates' derivatives agree with central differences at 1e-5 of each scale in float64",
+    "kind": "bounds",
+    "case": "tests/sensing/test_camera_gradients.py::test_the_whole_translucent_frame_in_float64",
+    "prediction": {"band": [0.0, 0.0001], "basis": "measured-before (the review: 1.67e-5 at 1e-5 steps)"},
+    "control": {"plant": "held-rays", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N"}
+  },
+  "float32_lines": {
+    "claim": "G7's float32 line derived from a chord's rounding (eps t sum |mu - mu_parent| (1 + 2 R / h) + 4 eps, 1.3e-4); G15's float32 disc floor from the rotation's rounding and the disc's own arithmetic (2 eps f)",
+    "kind": "bounds",
+    "prediction": {"value": "G7 measured about 3.9e-5 (under its line); G15 about 0.55 eps f (under 2 eps f)", "basis": "derived, with the measurements in seen_before"}
+  },
+  "bits": {
+    "cases": "script A float64 and float32, the energy ledger case float64: the release tip merged here (d7cfdbe) against this head, one job, one CPU, one thread (bit_compare.py), with the one-ulp control",
+    "prediction": "every array np.array_equal (no program without a camera imports mime.sensing); the one-ulp control differs",
+    "controls": {"one_ulp": "the head's first floating state array one ulp up after the run: arrays differ"}
+  },
+  "outcomes": null
+}
