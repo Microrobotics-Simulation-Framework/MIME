@@ -77,9 +77,16 @@ class FrictionFit:
 
 def _owner(axis: str) -> str:
     """The contact's id an axis ``<contact id>.friction.<coefficient>`` belongs to."""
+    from mime.build import Refusal, RefusalClass
+    from mime.build._refusals import ArgumentRefused
+
     head, found, _ = axis.rpartition(".friction.")
     if not found:
-        raise ValueError(f"a friction axis is '<contact id>.friction.<coefficient>', not {axis!r}")
+        raise ArgumentRefused([Refusal("fit.start", RefusalClass.USER,
+                                       f"fit_friction starts from a friction coefficient's axis, "
+                                       f"'<contact id>.friction.<coefficient>', not {axis!r}",
+                                       "name the contact's coefficient: `fit_friction(..., "
+                                       "axis='contact:ball.friction.mu', ...)`")])
     return head
 
 

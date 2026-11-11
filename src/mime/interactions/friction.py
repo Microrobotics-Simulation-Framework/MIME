@@ -110,7 +110,7 @@ class Coulomb(FrictionLaw):
         dimensioned value)."""
         found = {"mu": float(self.mu)}
         if self.rolling is not None:
-            found["mu_r"] = float(si(self.rolling, LENGTH, what="Coulomb's rolling="))
+            found["mu_r"] = float(cast(float, si(self.rolling, LENGTH, what="Coulomb's rolling=")))  # a scalar length
         return found
 
     @override

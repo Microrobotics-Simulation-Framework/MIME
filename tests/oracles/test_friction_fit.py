@@ -96,3 +96,12 @@ def test_a_fitted_value_ships_as_a_hash_pinned_record_never_a_default(sliding):
     assert record == again and len(record["sha256"]) == 64 and record["label"].startswith("estimated from")
     assert record != found.record("the_block", np.asarray([observed * (1 + 1e-12)]).tobytes())
     assert dataclasses.fields(Coulomb)[0].name == "mu" and dataclasses.fields(Coulomb)[0].default is dataclasses.MISSING
+
+
+def test_an_axis_that_is_no_friction_coefficients_is_refused_before_any_run():
+    from mime.build._refusals import ArgumentRefused
+
+    with pytest.raises(ArgumentRefused) as refused:
+        fit_friction(on_the_floor(theta=0.1, mu=TRUE, body=BALL, **COARSE), lambda final: final, axis="ball.mass",
+                     start=0.2, noise=1e-3, duration=s(DURATION), body="ball")
+    assert refused.value.codes() == ["fit.start"] and "contact:ball.friction.mu" in str(refused.value)
