@@ -378,6 +378,8 @@ class ResolvedRegistration:
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     #: Where the subject is a surface (a flow's opening): its shape's parameters, as its geometry gives them.
     subject_parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    #: The values the registering law gives the receiving dynamics (``Registration.parameters``).
+    parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     #: Where the subject is several surfaces (a law over several openings, ``subject`` their names joined by ``+``):
     #: each, and each one's parameters, in the order written; a single surface's alone otherwise.
     subjects: tuple[str, ...] = ()
@@ -444,6 +446,8 @@ class EntryPlan:
     rates_read: bool = True
     #: Whether a plan reads this body's mass matrix (``body.mass_matrix``), which its dynamics publishes only then.
     mass_read: bool = False
+    #: Whether a plan reads this body's own step's row (``body.step_row``), which its dynamics publishes only then.
+    row_read: bool = False
     #: For a member of a joint group (a medium's near field), the id of the group's plan, which builds for it: a
     #: member builds no node, and its reads and deliveries are the group's.
     joined: str = ""
@@ -1901,14 +1905,32 @@ class _Planner:
             return None
         return path
 
+    @property
+    def metered(self) -> bool:
+        """Whether the experiment observes its energy: an observation that meters it is declared (``EnergyLedger``)."""
+        return any(isinstance(d, ObservationDeclaration) and getattr(type(d.observation), "meters_energy", False)
+                   for d in self.declarations)
+
     def exchange_frame_of(self, medium: str) -> ExchangeFrame | None:
         """The exchange frame of the field medium ``medium`` carries, where its dynamics gives one (SF-4: what a field
-        that takes exchange deliveries tells its partners), from the dynamics' plan: its region and settings in SI."""
+        that takes exchange deliveries tells its partners), from the dynamics' plan: its region and settings in SI,
+        and the parameters of each opening of the region, as its geometry gives them (where the field is open)."""
         plan = self.dynamics.get(medium)
         frame_of = getattr(plan.entry, "exchange_frame", None) if plan is not None else None
         if plan is None or frame_of is None:
             return None
-        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings))
+        region = plan.regions.get("medium")
+        ends: dict[str, Mapping[str, Magnitude]] = {}
+        owner = region.path.partition(".")[0] if region is not None else ""
+        if region is not None and owner in self.geometries:
+            geometry = self.geometries[owner]
+            for surface in region.openings:
+                try:
+                    ends[surface] = dict(geometry.geometry.surface_parameters(surface.partition(".")[2] or surface,
+                                                                              geometry.settings))
+                except Exception:  # noqa: BLE001 - a geometry's defect is refused where its openings are bound
+                    return None
+        return cast(ExchangeFrame | None, frame_of(plan.node_name(), region, plan.settings, ends))
 
     def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
         """The fields carried in the region medium ``medium`` fills, by their ids (``water.flow``): its own and those of
@@ -3004,7 +3026,7 @@ class _Planner:
                      for frame in (self.exchange_frame_of(name),) if frame is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
                               hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided,
-                              exchanges=exchanges)
+                              exchanges=exchanges, metered=self.metered)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -3192,6 +3214,8 @@ class _Planner:
         if read.interface == vocabulary.MASS_MATRIX.name:
             self.mass_reads.add(dynamics.owner)
             dynamics.mass_read = True
+        if read.interface == vocabulary.STEP_ROW.name:
+            dynamics.row_read = True
         return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
 
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
@@ -3376,7 +3400,8 @@ class _Planner:
         dynamics.registrations.append(
             ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
                                  _plain_settings(plan.entry, plan.settings), each[0] if each else {},
-                                 subjects if len(subjects) > 1 else (), tuple(each) if len(subjects) > 1 else ()))
+                                 subjects if len(subjects) > 1 else (), tuple(each) if len(subjects) > 1 else (),
+                                 dict(registration.parameters)))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()

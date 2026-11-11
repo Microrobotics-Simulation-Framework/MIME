@@ -121,6 +121,9 @@ class Registration:
     subject: str
     reads: Mapping[str, str] = field(default_factory=dict[str, str])
     returns: Mapping[str, str] = field(default_factory=dict[str, str])
+    #: Values the registering law gives the receiving dynamics in SI, which it holds the law with (a point body's
+    #: radius, from its hull).
+    parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
 
 
 @dataclass(frozen=True)
@@ -330,6 +333,8 @@ class PlanContext:
         default_factory=dict[str, Mapping[str, tuple[str, ...]]])
     #: By each medium role, the exchange frame of the field its medium carries that takes exchange deliveries (SF-4).
     exchanges: Mapping[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
+    #: Whether the experiment observes its energy (an observation that meters it is attached: ``EnergyLedger``).
+    metered: bool = False
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
@@ -436,6 +441,9 @@ class BuildContext:
     spin_asymmetry: tuple[float, ...] = ()
     rates_read: bool = True
     mass_read: bool = False
+    #: Whether a plan reads this body's own step's row (``body.step_row``: a flow holding it in its one elimination),
+    #: which a body publishes only then.
+    row_read: bool = False
     members: Mapping[str, BuildContext] = field(default_factory=dict[str, "BuildContext"])
     #: The entry the context is for: what a group's entry builds each member's part from.
     entry: Any = None

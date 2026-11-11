@@ -199,7 +199,7 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
                         plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls), plan.mount,
                         dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
-                        rates_read=plan.rates_read, mass_read=plan.mass_read,
+                        rates_read=plan.rates_read, mass_read=plan.mass_read, row_read=plan.row_read,
                         members={member.owner: _context(member, plans) for member in plan.members},
                         entry=plan.entry, exchanges=dict(plan.exchanges),
                         starts={role: dict(body.initial) for role, name in plan.bindings.items() if plan.exchanges

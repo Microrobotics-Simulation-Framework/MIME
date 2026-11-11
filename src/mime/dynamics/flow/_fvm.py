@@ -53,7 +53,7 @@ from mime.scene import PeriodicBox, VesselRegion
 from mime.things import ThingKind
 from mime.units import Length, Quantity
 from mime.vocabulary import EXCHANGE_PARTNER, FLOW_BODY_FORCE, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
-    FLOW_FACES, FLOW_OPENING, FLOW_PARTNERS, FLOW_WAVEFORM, FLUID, OPENING
+    FLOW_FACES, FLOW_OPENING, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, FLOW_WAVEFORM, FLUID, ONE_PASS_PARTNER, OPENING
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -222,12 +222,12 @@ class FVM(Dynamics):
                FLOW_OPENING.name: Port("openings"), FLOW_EXCHANGE_X.name: Port("exchange_x"),
                FLOW_EXCHANGE_Y.name: Port("exchange_y"), FLOW_EXCHANGE_Z.name: Port("exchange_z"),
                FLOW_PARTNERS.name: Port("partners")}
-    publishes = {FLOW_FACES.name: Port("velocity_x")}
+    publishes = {FLOW_FACES.name: Port("velocity_x"), FLOW_PARTNER_SOLUTION.name: Port("partner_solution")}
     #: The laws a user attaches at an opening or several, by their port laws' names (``mime.interactions.Inflow``,
     #: ``Windkessel``, ``Valve``, ``SharedDistal``), and the exchange partners a point body's law registers
     #: (``Drag.Stokes``).
     registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name, ValveLaw.name, SharedDistalLaw.name,
-                                    EXCHANGE_PARTNER})
+                                    EXCHANGE_PARTNER, ONE_PASS_PARTNER})
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
                               "true residual no longer falling), so the step's values hold only to the residual it "
@@ -476,19 +476,30 @@ class FVM(Dynamics):
         """A periodic box takes no law at an opening; an open vessel takes one at each of its two ends and at nothing
         else, and their rows are well posed (``mime.nodes.flow.fvm._ports.well_posed``). A point body's exchange
         registration (``Drag.Stokes``) is no law at an opening, and an open vessel takes none yet."""
-        partners = [r for r in registrations if r.kind == EXCHANGE_PARTNER]
+        partners = [r for r in registrations if r.kind in PARTNER_KINDS]
         if partners and region is not None and region.shape == TREE:
             return [Problem("flow.tree-exchange", f"{', '.join(r.id for r in partners)} exchanges with the flow, and a "
                                                   f"tube tree's flow takes no exchange partners yet (the exchange law "
                                                   f"reads its grid from a straight tube's periodic box or open vessel)",
                             "put the body in a straight Tube's flow, FVM(domain=PeriodicBox(length=...)), or give it a "
                             "drag that reads no grid, Drag.MRS(...)")]
-        if self.open and partners:
-            return [Problem("flow.open-exchange", f"{', '.join(r.id for r in partners)} exchanges with the flow, and an "
-                                                  f"open vessel's flow takes no exchange partners yet (a point body's "
-                                                  f"exchange with its openings comes with the one elimination)",
-                            "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...))")]
-        registrations = [r for r in registrations if r.kind != EXCHANGE_PARTNER]
+        lagged = [r for r in partners if r.kind == EXCHANGE_PARTNER]
+        if self.open and lagged:
+            return [Problem("flow.open-exchange", f"{', '.join(r.id for r in lagged)} exchanges with the flow lagged, "
+                                                  f"and an open vessel's flow holds its exchange partners in its one "
+                                                  f"elimination only (one pass), which a body whose own step is not "
+                                                  f"linear in its twist (a contact or confinement in its step) cannot "
+                                                  f"join",
+                            "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...)), or take the contact "
+                            "or confinement off the body")]
+        held = [r for r in partners if r.kind == ONE_PASS_PARTNER]
+        if len(held) > 1:
+            return [Problem("flow.one-pass-bodies", f"{', '.join(r.id for r in held)} would each be held in the flow's "
+                                                    f"one elimination, and it holds one body until the body-set host "
+                                                    f"steps several bodies together",
+                            "keep one of them two-way and give the others one_way=True, or run without the energy "
+                            "observed (each body then lagged)")]
+        registrations = [r for r in registrations if r.kind not in PARTNER_KINDS]
         if not self.open:
             return [Problem("flow.no-openings", f"{', '.join(r.id for r in registrations)} is attached at an opening "
                                                 f"and the flow's periodic box has none",

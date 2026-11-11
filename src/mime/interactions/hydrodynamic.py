@@ -21,7 +21,8 @@ from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
 from mime.nodes.hydro._point_drag import AVERAGES, COUPLE, FAXEN_FORCES, FLOOR, FORCES, HISTORY_LINE, LAPLACIANS, \
-    REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, WALL_LINE, PointDragNode, free_space_margins
+    KERNEL_WIDTHS, REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, WALL_LINE, PointDragNode, free_space_margins, \
+    kernel_width
 from mime.nodes.hydro._point_drag import ROUTES as HISTORY_ROUTES
 from mime.nodes.hydro._rft_drag import (
     COEFFICIENT_SETS,
@@ -1485,7 +1486,7 @@ class Drag(UncoupledDrag):
             "exchange deliveries (the FVM)"))
     #: The kernel widths, in cells, the stokes rung's build chooses among: the narrowest at or above max(1, a/(1.7 h))
     #: whose coupled one-step margin clears the floor at the run's values.
-    WIDTHS: ClassVar[tuple[float, ...]] = (1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
+    WIDTHS: ClassVar[tuple[float, ...]] = KERNEL_WIDTHS
     setting_roles = {
         **UncoupledDrag.setting_roles,
         "one_way": convention(PHYSICAL, "two-way: on the stokes rung the drag's and the couple's reactions are "
@@ -1956,17 +1957,8 @@ class Drag(UncoupledDrag):
         viscosity, density = float(cast(float, values["viscosity"])), float(cast(float, values["density"]))
         dt = ctx.dt if isinstance(ctx, PlanContext) else ctx.timestep
         steady = self.stokes_scheme(frame, values, dt) == "steady"
-        least = max(1.0, radius / (1.7 * frame.spacing))
-        ladder = (float(self.kernel_width),) if self.kernel_width is not None else tuple(
-            w for w in self.WIDTHS if w >= least - 1e-12) or (self.WIDTHS[-1],)
-        margin = float("nan")
-        tried: list[float] = []
-        for width in ladder:
-            tried.append(width)
-            margin = min(free_space_margins(radius, viscosity, density, frame.spacing, width, dt, steady))
-            if margin >= FLOOR and width >= least - 1e-12:
-                return width, margin, tuple(tried)
-        return None, margin, tuple(tried)
+        written = float(self.kernel_width) if self.kernel_width is not None else None
+        return kernel_width(radius, viscosity, density, frame.spacing, dt, steady, written, self.WIDTHS)
 
     def default_contact_gap(self, ctx: PlanContext) -> Quantity | None:
         """The gap a written contact is graded for when none is written: the experiment's closest approach to the

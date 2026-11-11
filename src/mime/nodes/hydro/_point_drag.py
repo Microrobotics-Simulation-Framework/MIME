@@ -586,6 +586,31 @@ class PointDragNode(MimeNode):
         return _lax.stop_gradient(gap)
 
 
+#: The kernel widths, in cells, the stokes rung chooses among: the narrowest at or above max(1, a/(1.7 h)) whose
+#: coupled one-step margins clear the floor at the run's values.
+KERNEL_WIDTHS: tuple[float, ...] = (1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
+
+
+def kernel_width(radius: float, viscosity: float, density: float, spacing: float, dt: float, steady: bool,
+                 written: float | None = None, ladder: Sequence[float] = KERNEL_WIDTHS
+                 ) -> tuple[float | None, float, tuple[float, ...]]:
+    """The exchange kernel's width in cells a point body of ``radius`` takes: ``written``, or the narrowest on
+    ``ladder`` at or above max(1, a/(1.7 h)) whose free-space coupled one-step margins (the force's and the couple's)
+    clear the floor; with the least margin read there and the widths tried. ``None`` where none clears it. The drag's
+    node and a flow holding the body in its step read the one width from here."""
+    least = max(1.0, radius / (1.7 * spacing))
+    tried_ladder = (float(written),) if written is not None else tuple(
+        w for w in ladder if w >= least - 1e-12) or (ladder[-1],)
+    margin = float("nan")
+    tried: list[float] = []
+    for width in tried_ladder:
+        tried.append(width)
+        margin = min(free_space_margins(radius, viscosity, density, spacing, width, dt, steady))
+        if margin >= FLOOR and width >= least - 1e-12:
+            return width, margin, tuple(tried)
+    return None, margin, tuple(tried)
+
+
 def free_space_margins(radius: float, viscosity: float, density: float, spacing: float, width_cells: float, dt: float,
                        steady_limit: bool = False, faxen_on: bool = True) -> tuple[float, float]:
     """The coupled one-step margins a point body of ``radius`` reads in a free box, the force's and the couple's (the
@@ -610,5 +635,5 @@ def free_space_margins(radius: float, viscosity: float, density: float, spacing:
 
 
 __all__ = ["AVERAGES", "BASSET_LINE", "COUPLE", "FAXEN_FORCES", "FLOOR", "FORCES", "GIFT_STEPS", "HISTORY_LINE",
-           "LAPLACIANS", "REYNOLDS_LINE", "RESPONSES", "RINGING_STEPS", "ROTATIONS", "ROUTES", "WALL_LINE",
-           "PointDragInputs", "PointDragNode", "PointDragState", "free_space_margins"]
+           "KERNEL_WIDTHS", "LAPLACIANS", "REYNOLDS_LINE", "RESPONSES", "RINGING_STEPS", "ROTATIONS", "ROUTES", "WALL_LINE",
+           "PointDragInputs", "PointDragNode", "PointDragState", "free_space_margins", "kernel_width"]
