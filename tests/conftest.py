@@ -178,7 +178,14 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
     The memory a heavy test frees stays with its worker unless it is handed back: the worker that ran the 8 GB arm
     battery held 8 GB for the rest of the run, 5 GB of it free and unreturned, which is as much to a runner as a second
     heavy test. So the test's garbage is collected and glibc's free memory returned (``malloc_trim``) before the lock
-    is let go. A test that compiles a tube tree's union releases its programs after it (:func:`release_programs`)."""
+    is let go. A test that compiles a tube tree's union releases its programs after it (:func:`release_programs`).
+
+    A marked test also starts from a worker that holds only what it needs: the programs JAX compiled for the tests the
+    worker ran before are given back (``_cache_ceiling.give_back_programs``) once the lock is held. The helix reference's
+    5.7 GB test started in workers that already held 2.5 to 2.9 GB of earlier tests' programs and peaked at 7.5 to
+    8.0 GB, and with the other three workers at 1.9 to 3.7 GB each the shard's machine-wide memory reached 15.3 to
+    15.6 GB of a runner's 16 (a probe on Python 3.12 and 3.14, 2026-11-11). Started from a clean worker the test begins
+    at 1.5 to 1.6 GB. A test that is both marked and compiles a tree does both, the give-back first."""
     if item.get_closest_marker(MEMORY_HEAVY) is None:
         if not compiles_a_tree(item):
             return (yield)
@@ -186,8 +193,11 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
             return (yield)
         finally:
             release_programs()
+    import _cache_ceiling
+
     path = memory_lock_path()
     with held_exclusively(path) if path is not None else contextlib.nullcontext():
+        _cache_ceiling.give_back_programs()
         try:
             return (yield)
         finally:
