@@ -26,7 +26,7 @@ import numpy as np
 import scipy.linalg
 from scipy.spatial import cKDTree
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # tests/, where plane_oracles lives
 from plane_oracles import blake, free_stokeslet  # noqa: E402
 
 CURVATURE_SHARE = 0.4

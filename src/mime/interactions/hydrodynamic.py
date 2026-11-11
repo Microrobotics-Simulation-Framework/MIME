@@ -1884,8 +1884,8 @@ class Drag(UncoupledDrag):
                     "drag.near-contact-graded",
                     f"{body} takes the sphere's exact near-contact form, and its force points are graded "
                     f"(sampling=ForceSampling(...)): the hand-over gap then sits at the finest graded spacing, where "
-                    f"the graded MRS's own error, which the opening leaves, is the form's error: {GRADED_SPHERE_TEXT} "
-                    f"(design #341: a sphere takes the form at a uniform spacing, no grading)",
+                    f"the graded MRS's own error, which the opening leaves, is the form's error: {GRADED_SPHERE_TEXT}, "
+                    f"so a sphere takes the form at a uniform spacing only",
                     "leave the sampling out, Drag.MRS(spacing=...), for the sphere's form at a uniform spacing, or "
                     "write near_contact=False for the graded MRS alone near the wall"))
             window = self.handover_window(ctx) if cast(object, self.near_contact) is True and film else None
@@ -2050,7 +2050,7 @@ class Drag(UncoupledDrag):
                       "lubrication=Lubrication(epsilon=mm(0.15))); or leave lubrication out, the surrogate without the "
                       "blend")
         else:
-            action = f"leave lubrication out: the {self.rung} rung reads none"
+            action = f"write Drag.RFT(...) with no lubrication=: the {self.rung} rung reads none"
         return Problem("lubrication.retired",
                        f"lubrication= is the surrogate's blend of the sphere-wall asymptotes, which drag {self.version} "
                        f"retired: the mrs rung's hand-over (near_contact) is the near-wall lubrication now, and the "

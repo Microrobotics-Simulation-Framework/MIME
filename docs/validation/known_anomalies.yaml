@@ -3844,3 +3844,38 @@ anomalies:
       of the force points), so the gap between the two paths grows with it.
     workaround: "Take the derivative through MIME's own path, Study.gradient or the chunked run (mime.build._maddening.chunk_function), which makes the held matrix once a run, not through graph.run_scan."
     planned_resolution: "Open, MADDENING Ask 51: its scan's run-constant seam extended to a held value that depends on a traced leaf, so that a node's held matrix is made once a run through run_scan as it is through MIME's chunked run. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-156
+    title: "The MRS rung's resistance differentiated in a sphere's radius misses two builds' difference near a wall, by up to a quarter, with or without the hand-over"
+    description: >
+      Drag 0.5.0's mrs rung on a 1 mm sphere at a written force spacing of 0.251 mm (blob 0.05, float64, the node's own
+      step): the derivative of the node's resistance in the sphere's radius leaf (shape_radius), by reverse mode, equals
+      the central difference of the same build with the leaf moved by a relative 1e-3 to about 1e-6, and misses the
+      central difference of two builds at a radius 1e-3 larger and smaller. With the hand-over off (near_contact=False),
+      above a plane at gaps of 0.5 to 0.15 radii the normal by 0.7 to 3.3 % and the couplings of a translation along the
+      wall and a rotation by 4.1 to 5.2 %; in a straight tube at a sphere-to-tube ratio of 0.28, the normal by 3 to 7 %.
+      With the hand-over on (its default near a wall that opens), in that tube at 0.15 radii the normal by +24.5 % and at
+      0.05 by +8.1 %, above the plane by -4.2 % (the normal) and -5.4 % (the coupling) at 0.15 [measured: the review of
+      W2a PR 1b-i, probe runs 42968413012 and 42972714723]. The near-contact law's own increment matches two builds to
+      1e-6 (tests/oracles/test_near_contact.py's gate 13), so the miss is the MRS rung's.
+
+      Not established: what the build holds that depends on the radius and that the leaf does not move. A value the build
+      fixes from the radius (the force points' count or their layout at the written spacing, the quadrature's, a table
+      read at a fixed point) would give this; mime.testing.two_builds_of with run=False compares the two builds'
+      programs, not a value they hold, so it cannot see one.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A gradient study or a fit in a sphere's radius near a wall follows the derivative the node returns, which is the
+      derivative of one build's resistance and not of the resistance a rebuild at the new radius gives: a descent can stop
+      where a rebuild's resistance is not stationary, or step the wrong way where the two differ in sign. Nothing is
+      flagged. Forward runs at a fixed radius are not affected.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "entry: interaction drag 0.5.0, rung mrs; a derivative in a sphere's radius near a wall, with the hand-over on or off"
+    residual_risk: >
+      Measured on one sphere at one force spacing, above a plane and in one tube; other kinds' shape leaves, other
+      spacings and the far field are not measured, and whether the drag 0.4.0 mrs rung shares it is not measured.
+    workaround: "Take a derivative in a shape leaf near a wall from two builds' difference (the study's own finite-difference route) rather than through the node, or check the node's derivative against one before relying on it."
+    planned_resolution: "Open, before a fit or a descent in a shape leaf relies on the MRS rung near a wall: find the held value that depends on the radius (the two builds' force points and quadratures compared first), and make it a leaf or make the two-builds check run the step. This entry changes no code."

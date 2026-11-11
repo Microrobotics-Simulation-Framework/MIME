@@ -21,7 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Brady 1989): exact against a plane, the hybrid in a tube. Drag 0.5.0's mrs rung takes it for a sphere near a wall
   that opens at any spacing (the film's window is the film's); every other kind keeps the thin film's form, its
   numbers unchanged, MIME-ANO-154 open for it (now `partially_resolved`: closed for spheres near a plane and in a
-  tube). The seam's roughness cutoff (`roughness_cutoff`) and the ambient's zero on the opened wall (`ambient_point`,
+  tube). In a tube the sphere's form is gated at sphere-to-tube ratios of 0.22 to 0.34, every entry of its 6 x 6
+  against an independent tube MFS where the MFS resolves it; past 0.34 a step within the opening's band raises the new
+  flag `handover_tube_ratio` and the build report says so (the rolling along the axis measured -18 % at 0.40 and -25 %
+  at 0.46, MIME-ANO-154 open there). A sphere whose force points are graded towards its contact is refused the form
+  (`drag.near-contact-graded`, its measured error named), and the build line states the form's measured error at
+  uniform spacings. The table's file holds no times or versions (they go to its build's log), and its script pins the
+  kernels its numbers are made in, so that a rebuild reproduces its sha256; a test rebuilds three knots and compares.
+  The seam's roughness cutoff (`roughness_cutoff`) and the ambient's zero on the opened wall (`ambient_point`,
   `AMBIENT_ZERO`; no drag rung reads an ambient flow yet) are the same for every rung. The gates' oracles, the graded
   and the tube methods of fundamental solutions of the MIME-ANO-154 probes, are committed with their scripts
   (`tests/differential/graded_mfs.py`, `tube_mfs.py`).
@@ -29,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is `Drag.MRS(near_contact=True | False)` (was `lubrication=`); its state fields are `contact_increment`,
   `contact_coupling` and `contact_cutoff` (were `film_*`; `film_residual`, `film_unsolved` and `film_annulus` stay the
   film's). `lubrication=` written on drag 0.5.0 is the surrogate's blend, which 0.5.0 retires: refused
-  (`lubrication.retired`), naming drag 0.4.0, which keeps it. Script A, A0, the inertia arms and the tests built on
+  (`lubrication.retired`), its way out by the rung it was written on: on the mrs rung `near_contact=` at the value
+  written (so `lubrication=False` keeps the hand-over off), on the surrogate drag 0.4.0, which keeps the blend. Drag
+  0.5.0's surrogate rung has its own round-trip case again (script A unblended). Script A, A0, the inertia arms and the tests built on
   them pin drag 0.4.0 (`KEPT["drag", "0.4.0"]`), their programs bit for bit. Drag 0.5.0 is unreleased; no released
   program changes.
 

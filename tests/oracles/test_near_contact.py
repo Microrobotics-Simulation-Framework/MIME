@@ -120,19 +120,15 @@ def test_the_table_is_the_packaged_file_pinned():
 
 def test_the_tables_build_checks_hold():
     """The solver against Brenner's and Jeffery's series, the coupling's reciprocity, the no-slip condition at nodes not
-    collocated, and the change with the series' length and the quadrature, as the build recorded them; and its
-    derivation record's checks passed."""
+    collocated, and the change with the series' length and the quadrature, as the build measured them: its derivation
+    record's checks, each within its tolerance (the file holds the numbers the law reads, the checks the record and the
+    build's log)."""
     from mime.assets import shipped_derivations
 
-    checks = table_file()["checks"]
-    series = max(abs(v[k]) for v in checks["series"].values() for k in ("normal_over_brenner", "spin_over_jeffery"))
-    growth = max(abs(x) for v in checks["growth"].values() for part in v.values() for x in part.values())
-    print(f"\nseries {series:.2g}, reciprocity {checks['reciprocity_worst']:.2g}, no-slip elsewhere "
-          f"{checks['unmet_elsewhere_worst']:.2g}, growth {growth:.2g}")
-    assert series <= 1e-10 and checks["reciprocity_worst"] <= 1e-9 and checks["unmet_elsewhere_worst"] <= 1e-9
-    assert growth <= 1e-8
     record = shipped_derivations()[_sphere.TABLE]
-    assert record.sha256 == TABLE_SHA256 and record.failed() == ()
+    for check in record.checks:
+        print(f"\n{check.name}: {check.measured:.2g} ({check.tolerance})")
+    assert record.sha256 == TABLE_SHA256 and len(record.checks) == 4 and record.failed() == ()
 
 
 def midpoint_errors(read) -> np.ndarray:
@@ -226,7 +222,8 @@ def test_the_script_rebuilds_the_files_knots_byte_for_byte():
     made in pinned kernels, so a rebuild matches it: each knot's five entries, its gap and its solve's record equal
     the shipped file's, float for float."""
     held = table_file()
-    assert "python" not in held and all("seconds" not in solve for solve in held["solves"])
+    assert set(held) == {"description", "entries", "range", "knots", "d", *_sphere.ENTRIES, "midpoints", "solves"}
+    assert all(set(solve) == {"terms", "nodes"} for solve in held["solves"])
     done = subprocess.run([sys.executable, str(Path(__file__).parents[2] / "scripts" / "sphere_plane_table.py"),
                            "knots", *map(str, REBUILT_KNOTS)], capture_output=True, text=True, check=False, timeout=600)
     assert done.returncode == 0, done.stderr[-2000:]

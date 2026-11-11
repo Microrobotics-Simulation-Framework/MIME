@@ -13,10 +13,10 @@ condition on both surfaces and ``div u = 0`` there (a harmonic function, so zero
 mu, by least squares, rather than by the papers' recurrences. Force and torque are the traction integrated over the
 sphere (Gauss-Legendre in mu, the trapezoid rule in phi, exact for the orders the integrands hold).
 
-**Checks the script records** (``checks``): the same solver's normal and spin against Brenner's and Jeffery's series;
-the coupling computed both ways (the force per rotation and the torque per translation, reciprocal); the no-slip
-condition at nodes that were not collocated; each knot's change when N and the nodes grow by a quarter (at the
-smallest gaps, where the series is longest); and the traction's quadrature doubled.
+**Checks the script records** (``checks``, in the build's log and the derivation record): the same solver's normal and
+spin against Brenner's and Jeffery's series; the coupling computed both ways (the force per rotation and the torque per
+translation, reciprocal); the no-slip condition at nodes that were not collocated; each knot's change when N and the
+nodes grow by a quarter (at the smallest gaps, where the series is longest); and the traction's quadrature doubled.
 
 **The table.** Five functions of the gap ``d = h / a``, for a unit sphere in a medium of unit viscosity, the force and
 torque it exerts on the fluid per unit motion about its centre (MIME's resistance convention), the wall's normal +z:
@@ -25,14 +25,17 @@ torque it exerts on the fluid per unit motion about its centre (MIME's resistanc
 about the normal). The knots are uniform in ``ln d`` from ``D_LOW`` to ``D_HIGH``; the midpoints between them are
 computed too, for the test that holds the interpolation to them (``tests/oracles/test_near_contact.py``).
 
-**Reproducible bytes.** The file holds the numbers and nothing of the run that made them: each solve's time and the
-environment's versions go to the build's log beside the parts (``sphere_plane_parts/log.json``), so that a rebuild can
-match the shipped file's sha256. Its numbers are made in the processor's own kernels (LAPACK's, XLA's, NumPy's), which
-differ between processors in their last bits: measured, two builds on GitHub's runners of different processors
-differed in 64 of the 193 rows, by up to 2e-10 relative. The script pins them before it imports NumPy or JAX
-(:data:`PINNED`: OpenBLAS's Haswell kernels, XLA's and NumPy's code no newer than AVX2), so that a rebuild on any
-x86-64 processor with AVX2 makes the same bytes; ``tests/oracles/test_near_contact.py`` rebuilds a few knots and
-compares them with the shipped file's.
+**Reproducible bytes.** The file holds the numbers the law reads and the series' sizes, and nothing of the run that
+made them: each solve's time, its residuals (rounding's, whose last bits follow the processor's BLAS kernels), the
+checks and the environment's versions go to the build's log beside the parts (``sphere_plane_parts/log.json``), and
+the checks to the derivation record, so that a rebuild can match the shipped file's sha256. The numbers are made in the
+processor's own kernels (LAPACK's, XLA's, NumPy's), which differ between processors in their last bits: measured on
+GitHub's runners, two unpinned builds differed in 64 of their 193 rows by up to 2e-10 relative, and the entries of a
+knot by up to 5e-11 between processors with XLA's code unpinned. The script pins them before it imports NumPy or JAX
+(:data:`PINNED`): OpenBLAS's SandyBridge kernels (its Haswell and Zen kernels, pinned, segfault on AMD's processors
+with AVX-512, measured; SandyBridge's run on every x86-64 processor with AVX), NumPy's dispatch and XLA's code no newer
+than AVX2, XLA on one thread. ``tests/oracles/test_near_contact.py`` rebuilds a few knots and compares them with the
+shipped file's, float for float.
 
 Not collected; run once, in float64 (the smallest gaps take a few minutes each and about 4 GB):
 
@@ -49,9 +52,9 @@ from __future__ import annotations
 import os
 
 #: The kernels the numbers are made in, pinned before NumPy and JAX are imported (the module's docstring): OpenBLAS's
-#: Haswell kernels, NumPy's dispatch no newer than AVX2, and XLA's code no newer than AVX2 on one thread (so that its
-#: sums do not follow the processor's count of cores); XLA's flags are added to any the environment sets.
-PINNED = {"OPENBLAS_CORETYPE": "Haswell", "NPY_DISABLE_CPU_FEATURES": "X86_V4 AVX512_ICL AVX512_SPR"}
+#: SandyBridge kernels, NumPy's dispatch no newer than AVX2, and XLA's code no newer than AVX2 on one thread (so that
+#: its sums do not follow the processor's count of cores); XLA's flags are added to any the environment sets.
+PINNED = {"OPENBLAS_CORETYPE": "SandyBridge", "NPY_DISABLE_CPU_FEATURES": "X86_V4 AVX512_ICL AVX512_SPR"}
 XLA_PINNED = ("--xla_cpu_max_isa=AVX2", "--xla_cpu_multi_thread_eigen=false")
 os.environ.update(PINNED)
 os.environ["XLA_FLAGS"] = " ".join([os.environ.get("XLA_FLAGS", ""),
@@ -221,8 +224,13 @@ def solve(d: float, problem: str, terms: int | None = None, nodes: int | None = 
 
 
 def held(solved: dict) -> dict:
-    """What the file keeps of a solve: its numbers, not its time (which goes to the log)."""
-    return {k: v for k, v in solved.items() if k not in ("loads", "seconds")}
+    """What the file keeps of a solve: the series' length and the nodes; its residuals and its time go to the log."""
+    return {k: solved[k] for k in ("terms", "nodes")}
+
+
+def logged(solved: dict) -> dict:
+    """What the build's log keeps of a solve: its residuals at the nodes used and at others, and its time."""
+    return {k: solved[k] for k in ("unmet", "unmet_elsewhere", "seconds")}
 
 
 def traction_load(series: Bispherical, problem: str, coefficients: np.ndarray, nodes: int) -> tuple[list, list]:
@@ -287,8 +295,7 @@ def entry(d: float, **settings: int) -> dict:
     along = solve(d, "along", **settings)
     (force_u, torque_u), (force_w, torque_w) = along["loads"]
     return {"d": d, "zz": 6.0 * math.pi * brenner(d), "xx": force_u[0], "ryry": torque_w[1], "x_ry": force_w[0],
-            "ry_x": torque_u[1], "rzrz": 8.0 * math.pi * jeffery(d), "solve": held(along),
-            "seconds": along["seconds"]}
+            "ry_x": torque_u[1], "rzrz": 8.0 * math.pi * jeffery(d), "solve": held(along), "log": logged(along)}
 
 
 def knots() -> np.ndarray:
@@ -339,12 +346,13 @@ def build_part(share: int, shares: int) -> None:
         [("midpoint", i, float(d)) for i, d in enumerate(midpoints())]
     points.sort(key=lambda point: point[2])
     PARTS.mkdir(exist_ok=True)
-    log = {"environment": environment(), "seconds": {}}
+    log = {"environment": environment(), "solves": {}}
     for kind, i, d in points[share::shares]:
         found = entry(d)
-        log["seconds"][f"{kind}_{i:03d}"] = found.pop("seconds")
+        log["solves"][f"{kind}_{i:03d}"] = found["log"]
         (PARTS / f"{kind}_{i:03d}.json").write_text(json.dumps(found))
-        print(kind, i, d, {k: found[k] for k in ("xx", "x_ry", "ry_x", "ryry")}, found["solve"], flush=True)
+        print(kind, i, d, {k: found[k] for k in ("xx", "x_ry", "ry_x", "ryry")}, found["solve"], found["log"],
+              flush=True)
     (PARTS / f"log_{share:02d}_of_{shares:02d}.json").write_text(json.dumps(log, indent=1))
 
 
@@ -369,13 +377,15 @@ def merge() -> None:
         "range": [D_LOW, D_HIGH], "knots": KNOTS,
         "d": [row["d"] for row in held], **{name: [row[name] for row in held] for name in names},
         "midpoints": {"d": [row["d"] for row in middle], **{name: [row[name] for row in middle] for name in names}},
-        "checks": {**json.loads((PARTS / "checks.json").read_text()), "reciprocity_worst": worst,
-                   "unmet_elsewhere_worst": max(row["solve"]["unmet_elsewhere"] for row in held + middle)},
         "solves": [row["solve"] for row in held + middle],
     }
     OUT.write_text(json.dumps(record, indent=1) + "\n")
+    checks = {**json.loads((PARTS / "checks.json").read_text()), "reciprocity_worst": worst,
+              "unmet_elsewhere_worst": max(row["log"]["unmet_elsewhere"] for row in held + middle)}
     logs = {path.name: json.loads(path.read_text()) for path in sorted(PARTS.glob("log_*.json"))}
-    (PARTS / "log.json").write_text(json.dumps({"merged_by": environment(), "parts": logs}, indent=1) + "\n")
+    (PARTS / "log.json").write_text(json.dumps({"merged_by": environment(), "checks": checks, "parts": logs},
+                                               indent=1) + "\n")
+    print(json.dumps(checks, indent=1))
 
 
 if __name__ == "__main__":
