@@ -94,40 +94,56 @@ CI runs each test lane (`default` on three Pythons, `maddening-main` and `openma
 split by test file (`tests/_sharding.py`), and the lane's own job, which branch protection requires for `default` on 3.12
 and 3.14 (the other lanes: "CI: which lanes a pull request runs"), waits for them and
 checks that together they ran every collected test, with none failed or skipped (`scripts/check_shards.py`). How many
-shards is a setting, **sixteen unless set**:
+shards is a setting, **twenty unless set**:
 
 - the repository variable **`MIME_CI_SHARDS`** (Settings, Secrets and variables, Actions, Variables) sets it for every
-  run; unset or empty means 16;
+  run; unset or empty means 20;
 - a manual run's **`shards`** input (Actions, CI, Run workflow) sets it for that run and wins over the variable;
 - it is a whole number from **1 to 32**. Anything else fails the `shard count` job by name, and the lanes with it, so
   no run starts on a count nobody chose.
 
 The trade-off: every shard job costs about the same job-minutes whatever the count (its own setup is about 30 s), so
 more shards shorten a run's wall time and put more jobs against the organisation's concurrent limit (60 on the Team
-plan), and fewer shards do the opposite. Each lane is its shards, one completion-tests job and its own job: 18 jobs at
-the default 16. A push's run is five lanes and 3 other jobs (`shard count`, `typecheck`, `no private name or path`): 93
-jobs at the default 16, more than the 60 at once, so a push's last lanes wait for runners. A pull request's full run is two
-lanes (`default` on Python 3.12 and 3.14) and those 3: 39 jobs, and more where its diff starts the other lanes. Lower the
+plan), and fewer shards do the opposite. Each lane is its shards, one completion-tests job and its own job: 22 jobs at
+the default 20. A push's run is five lanes and 3 other jobs (`shard count`, `typecheck`, `no private name or path`): 113
+jobs at the default 20, more than the 60 at once, so a push's last lanes wait for runners. A pull request's full run is two
+lanes (`default` on Python 3.12 and 3.14) and those 3: 47 jobs, and more where its diff starts the other lanes. Lower the
 count when several runs queue behind one another, raise it for a single run's speed. The compilation cache is kept per
 shard count, so changing the count starts that count's caches cold.
 
-**Why sixteen** (the rebuilt table, 2026-11-09; predicted slowest shard job of a lane, the median of 40000 draws of the
+**Why twenty, after sixteen** (sixteen was chosen on the table of 2026-11-09; predicted slowest shard job of a lane, the median of 40000 draws of the
 runner noise measured on the ten-shard run, which predicts the 20.9 minutes that run's lanes took at the median): ten 20.6
 minutes, twelve 17.3, fourteen 15.8, sixteen 14.1, eighteen 13.1, twenty 11.9, twenty-four 10.2; the first step of two shards
 takes off 3.3 minutes and each one after it 1.0 to 1.7, while the jobs a pull request holds rise by four each. Beyond about eighteen a single test (`tests/oracles/test_closed_loop.py`, about 470 s) is the floor.
 The table was rebuilt again on 2026-11-10, when the suite weighed 49586 s a lane against 28876 s the day before (the 16 shards of the
 first table had run 10 to 25 minutes, two of them cancelled at their 30-minute limit): at sixteen the slowest shard of a lane is predicted
 at 16.0 minutes on the median lane's seconds and 19.2 on the slowest lane's, from the five lanes' own seconds under the new deal.
+The pushes of 2026-11-11 (runs 42939711722 and 42942952966) cancelled a shard of two lanes each at 30 minutes, with 5307 and
+5547 s of tests in it against 3400 predicted: the suite had gained test files since the table (the scene tests of #232, the open
+flow's of #235) and a file the table did not list went by a hash of its path, so shards 14 and 10 took 2000 to 2400 s of
+unlisted files besides their own share. Two changes: the table now lists every file its reports hold and a file it does not
+list is placed on the lightest shard at an assumed weight (below), and the count is twenty, because the rebuilt table at
+sixteen predicts 23.8 minutes for the slowest shard on the slowest lane's seconds (18.2 on the median lane's), and at twenty
+19.6 (14.1). The minutes are the lane's test seconds in the shard times 0.284 (the median over the 146 shard jobs of those two
+runs that finished, shard 1 apart; 0.320 is their 90th percentile, and the highest 0.355).
+
+**A file the table does not list** (one added since the table was built) is placed after all the listed ones, in the order
+of its path, on the shard with the least time so far, at an assumed weight: the 90th percentile of the table's file weights
+(268 s on the table of this writing; `tests/_sharding.py`, `new_file_weight`), a guess for a heavy file rather than a
+typical one, and never on a shard the table gives to one file alone. It replaces the hash, which put a new heavy file on
+whichever shard it fell on. A pull request that adds a file moves the shards of the files the table does not list that sort
+after its path, so those restore a cache their base did not save; the listed files move nowhere. The next rebuild replaces
+the guess with a measurement. The rebuild lists every file its reports hold (`--over` 0), so that "not listed" means "new".
 
 The split works for any count: `tests/shard_weights.json` lists the files with their seconds, dealt longest first, and a
 file stays whole on one shard, so its tests share the programs it compiles. A file heavier than a shard's mean would be
 the floor of the slowest shard however many shards there are, so such a file is dealt **by test** instead (the table's
 `split`, written by `scripts/shard_weights.py --split FILE`): its tests spread over the shards, and each shard that gets
-some of them compiles the programs they share once more. **At sixteen no file is that heavy** (the heaviest,
-`tests/saved/test_registry_walk.py`, weighs 2745 s against a mean of 3244), so the table splits none, and splitting
-`test_registry_walk.py` at sixteen would cost more than it saves; `tests/test_sharding.py` fails when a file passes the
+some of them compiles the programs they share once more. **At the default no file is that heavy** (the heaviest,
+`tests/saved/test_registry_walk.py`, weighs 2452 s against a mean of 2841), so the table splits only the lubrication oracle's file, and splitting
+`test_registry_walk.py` would cost more than it saves; `tests/test_sharding.py` fails when a file passes the
 mean at the default count, and `scripts/shard_weights.py` prints the files that pass it at the count it is given (from
-nineteen shards, `test_registry_walk.py` does). Rebuild the table from a push run's reports when the suite has changed
+twenty-four shards, `test_registry_walk.py` does). Rebuild the table from a push run's reports when the suite has changed
 much (`gh run download <run> --pattern 'durations-*'`, then `scripts/shard_weights.py`, its docstring has the command).
 
 ## The development branch's name

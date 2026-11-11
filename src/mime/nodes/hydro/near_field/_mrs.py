@@ -60,7 +60,7 @@ REACH = 4.0
 #: resistance off the integrated one, past the 0.5 % line, for five kinds of six (the box 4.6 % at one cell and 12 % at
 #: a third of one, the screw 1.8 % and 2.7 %, the capsule 1.0 %, the cylinder 0.65 %, the ellipsoid 0.53 %); every
 #: point holds them all, at three to four times a quarter's cost a step near contact. A lower share is the drag's
-#: ``near_field_share``, a cost setting, its shortfall reported.
+#: ``NearField(share=...)``, a cost setting, its shortfall reported.
 CROSS_SHARE = 1.0
 
 

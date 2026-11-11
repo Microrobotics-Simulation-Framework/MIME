@@ -18,6 +18,7 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_input, \
     run_constants_given, run_dtype
+from mime.core._node import FLOOR_LIMITED, STAGNATED, rechecked
 from mime.nodes.hydro.mrs._node import (
     CONFINED_ASYMMETRY_LIMIT,
     HELD,
@@ -48,7 +49,7 @@ from mime.nodes.hydro.near_field._contract import (
     pair_gaps,
     quadratic_form,
 )
-from mime.nodes.hydro.near_field._gmres import CAP, REPORT_SIZE, RESTART, Stopping
+from mime.nodes.hydro.near_field._gmres import CAP, REPORT_SIZE, RESTART, Stopping, recheck_stopping
 from mime.nodes.hydro.near_field._mrs import CROSS_SHARE, REACH, MRSOperator, Quadrature
 from mime.registry import Problem
 
@@ -67,26 +68,25 @@ MEMBER = "m{}_"
 HELD_MATRIX = "held_matrix"
 #: The leaf holding the inverse of a member's free part, made with it: its preconditioner block on the iterative route.
 HELD_INVERSE = "held_inverse"
-#: The takeover line: the most joint unknowns (three a force point, summed over the members) the dense route takes; past
-#: it the joint solve is GMRES. A numerical setting, ``Drag.MRS(near_field_dense_unknowns=...)``: declared, not fitted,
-#: its value pending the maintainer's re-decision, since neither memory nor time places it as measured. **Memory**:
+#: The joint solve's routes, ``Drag.MRS(near_field=NearField(solve=...))``: ``"dense"``, one dense LU, at every size by
+#: default; ``"gmres"``, a declared choice (decision #330, superseding the takeover line of 16,000 unknowns: no size
+#: line, the memory refusal the only bound, :data:`MEMORY_COUNTS`). Neither memory nor time places a line. **Memory**:
 #: through the node GMRES holds more than the dense route, not less: a run's peak, MIME's sphere of 882 force points in
 #: a line, 1.11 to 1.35 times the dense route's at 3,042 to 21,168 unknowns in either dtype, a radius and a twentieth of
 #: one apart (12.08 against 10.14 GiB at 21,168 unknowns in float64, a radius apart). Both routes' peaks grow as about
-#: two joint matrices, and GMRES holds its members' inverses besides (:data:`MEMORY_COUNTS`): the bare solve's factor of
-#: two (the LU against GMRES on a matrix handed to them) does not carry to the node. **Time**: the bare solve on a quiet
-#: CPU in float64 had the dense LU faster or tied at 3,042, 4,056 and 8,112 unknowns and GMRES faster at 5,292 and from
-#: 10,584. Through the node (``built.run``, one run a case on a laptop CPU shared with other work, 16 threads, so the
-#: ratios are the load's as much as the methods'): a radius apart, GMRES's step was the shorter at every size, 1.3 to
-#: 2.8 times in float64 and 1.2 to 4.1 in float32 (7 to 20 iterations); a twentieth of a radius apart, the dense route's
-#: was the shorter at four sizes of five in float64 (GMRES's 1.2 to 1.5 times as long; at 5,292 it was 1.5 times the
-#: shorter; 52 to 103 iterations, none flagged), and in float32 the two were within a factor of two either way, eight
-#: spheres there stopping stagnated in 8 of 48 columns, flagged. Below the line the dense route keeps its exactness and
-#: W3a's gates; on either route a run that will not fit is refused (:data:`MEMORY_COUNTS`).
-DENSE_UNKNOWNS = 16_000
+#: two joint matrices, and GMRES holds its members' inverses besides: the bare solve's factor of two (the LU against
+#: GMRES on a matrix handed to them) does not carry to the node. **Time**: the bare solve on a quiet CPU in float64 had
+#: the dense LU faster or tied at 3,042, 4,056 and 8,112 unknowns and GMRES faster at 5,292 and from 10,584. Through the
+#: node (``built.run``, one run a case on a laptop CPU shared with other work, 16 threads, so the ratios are the load's
+#: as much as the methods'): a radius apart, GMRES's step was the shorter at every size, 1.3 to 2.8 times in float64 and
+#: 1.2 to 4.1 in float32 (7 to 20 iterations); a twentieth of a radius apart, the dense route's was the shorter at four
+#: sizes of five in float64 (GMRES's 1.2 to 1.5 times as long; at 5,292 it was 1.5 times the shorter; 52 to 103
+#: iterations, none flagged), and in float32 the two were within a factor of two either way, eight spheres there
+#: stopping stagnated in 8 of 48 columns, flagged. The dense route is exact to rounding, held to W3a's gates.
+ROUTES = ("dense", "gmres")
 #: GMRES's relative tolerance on each solve's true residual, by the run's dtype: an accuracy-bearing numerical setting,
-#: ``Drag.MRS(near_field_tolerance=...)``. Float64's holds the grand resistance within 1e-10 of the dense route's on
-#: the gates' configurations. Float32's sits above the floor its own arithmetic leaves the residual at, measured on
+#: ``Drag.MRS(near_field=NearField(solve="gmres", tolerance=...))``. Float64's holds the grand resistance within 1e-10
+#: of the dense route's on the gates' configurations. Float32's sits above the floor its own arithmetic leaves the residual at, measured on
 #: MIME's sphere (pairs a radius to a twentieth of one apart, a triangle, a line of four, a cube of eight): the least
 #: true residual float32 reached, at any restart length, was the residual float32 reads at float64's answer rounded to
 #: it, 8e-7 for a pair a radius apart to 6.6e-6 for one a twentieth of one apart, the near-contact line; a floor, not a
@@ -102,6 +102,37 @@ DEFAULT_TOLERANCE = {"float64": 1e-10, "float32": 1e-5}
 #: (``drag.near-field-memory``), on either route; :data:`MEMORY_MEASURED` says how they were measured.
 MEMORY_COUNTS = {("dense", "float64"): (2.01, 6.0), ("dense", "float32"): (2.11, 5.4),
                  ("gmres", "float64"): (2.01, 10.5), ("gmres", "float32"): (2.20, 7.9)}
+#: The mode of a forward run, against a derivative's ``"forward"`` and ``"reverse"`` (:meth:`JointDragNode.memory_estimate`).
+RUN = "run"
+#: A gradient study's derivative's peak past the memory check (``mime.study``'s, before it compiles the derivative), by
+#: route and the run's dtype, as so many joint matrices and held free parts as :data:`MEMORY_COUNTS` counts them, for one
+#: member: reverse mode; forward mode along one direction, and per direction past the first. A batch of members holds as
+#: many times as much. :data:`DERIVATIVE_MEASURED` says how they were measured.
+DERIVATIVE_COUNTS: dict[tuple[str, str], dict[str, tuple[float, float]]] = {
+    ("dense", "float64"): {"reverse": (10.79, 0.0), "forward": (3.98, 0.0), "direction": (1.34, 0.0)},
+    ("dense", "float32"): {"reverse": (10.68, 0.0), "forward": (3.03, 0.0), "direction": (1.34, 0.0)},
+    ("gmres", "float64"): {"reverse": (11.98, 0.0), "forward": (3.08, 3.05), "direction": (1.34, 0.0)},
+    ("gmres", "float32"): {"reverse": (10.83, 0.0), "forward": (2.72, 0.58), "direction": (1.34, 0.0)},
+}
+DERIVATIVE_MEASURED = (
+    "measured through Study.gradient on GitHub runners (4 vCPU, 16 GB; probe runs 42923077932, 42924924124 and "
+    "42925693316): MIME's sphere at 882 force points, 2 to 4 in a line a radius apart (5,292 to 10,584 unknowns), 2 "
+    "steps, the derivative of the bodies' relative velocity in the viscosity, as the process's resident peak past the "
+    "check (the kernel's high-water mark reset there), non-negative least squares on the joint matrix's bytes and the "
+    "held blocks'. Reverse mode holds 10.3 to 12.0 joint matrices (dense float64 10.3, 10.9 and 10.8 at 2, 3 and 4 "
+    "spheres), forward mode along one axis 2.1 to 4.6, a second axis 1.34 more (dense float64, three spheres: declared "
+    "for the other routes and dtypes, not measured there); two points at once 1.85 and 1.83 times one (reverse, "
+    "forward), counted as twice; 8 and 32 steps 1.02 to 1.09 times 2 (the chunked checkpoints keep a step's inputs). "
+    "Every case 0.69 to 1.06 times its estimate. The review's seven spheres in reverse mode failed on one buffer of "
+    "11.05 joint matrices, as reverse mode's count has it")
+#: The memory refusal's margin on an estimate, the largest measured peak over its estimate among the fits' cases rounded
+#: up (1.13, a forward run's on the laptop, :data:`MEMORY_MEASURED`; a derivative's at most 1.06, a runner's forward run
+#: 1.04), so that the estimate it compares is at least what each measured case held; and its headroom, the share of the
+#: memory a run can have that it keeps free for what the counts do not hold (another process, the operating system's
+#: rounding of what is available). Measured on runners: every case the line admitted peaked under it
+#: (:data:`DERIVATIVE_MEASURED`'s and the gate's probe, ``tests/near_field/predictions_drag050_fixround.json``).
+MEMORY_MARGIN = 1.15
+MEMORY_HEADROOM = 0.1
 MEMORY_MEASURED = ("measured on a laptop CPU with 16 threads as the process's peak resident memory over a build and two "
                    "runs through built.run, less a two-sphere run's peak (396 unknowns: 0.65 to 0.73 GiB, the "
                    "process's fixed part, its imports and compiles, which the estimate leaves out), least squares over "
@@ -191,16 +222,18 @@ class JointDragNode(MimeNode):
     starting twists stay in the state, so that each body's block and load are derived from it and the next step judges
     this one's books.
 
-    **The solve, by the cluster's size**: up to the takeover line (``dense_unknowns``, :data:`DENSE_UNKNOWNS` by
-    default) one dense LU of the joint matrix, whose factors serve every right-hand side; past it GMRES on every column
-    at once (``mime.nodes.hydro.near_field._gmres``), each body's held free part's inverse its preconditioner block
+    **The solve, by its route** (``solve``, :data:`ROUTES`): ``"dense"``, the default at every size, one dense LU of
+    the joint matrix, whose factors serve every right-hand side; ``"gmres"``, declared, GMRES on every column at once
+    (``mime.nodes.hydro.near_field._gmres``), each body's held free part's inverse its preconditioner block
     (made once per build in its frame, as the free part is, and turned to its pose), each solve's tolerance
     (``tolerance``, :data:`DEFAULT_TOLERANCE` by the run's dtype) relative to its own right-hand side, its stop on the
     true residual, never silent. Its report, the FVM's (``REPORT_FIELDS``): the primal's each step a state field
     (``solve_report``, with its running sum) and a flag (``solve_flagged``: at its cap, stagnated, or a residual not
     finite; the dense route never raises it); the tangent solves' as the tangents of those fields; the transpose solves'
     as the gradient of the ``solve_report`` leaf, zeros the step reads (summed over the run, or a row a step with
-    ``solve_report_rows``).
+    ``solve_report_rows``). **A recheck** (``rechecks``: a gradient study's member whose solve stopped short) re-solves
+    with GMRES's cap lifted and its stall restarts raised (:func:`~mime.nodes.hydro.near_field._gmres.recheck_stopping`),
+    as the FVM's CG; what is left short then is GMRES's floor, which no cap lifts.
 
     **Judged before the bodies take it** (each held out of every derivative): the gap between each pair of bodies,
     estimated from their force points and their surfaces' normals there (:func:`pair_gaps`): where one body's points
@@ -247,6 +280,8 @@ class JointDragNode(MimeNode):
                     Reference("Smith2018", "the nearest-neighbour discretisation, force points apart from the "
                                            "quadrature")),
     )
+    rechecks = True
+    floor_stops = True
     symbols = (
         Symbol(r"\mathbf{R}", SymbolKind.STATE, "resistance", "N s/m; N s; N m s", _ADVANCE),
         Symbol(r"\mu", SymbolKind.PARAMETER, "viscosity", "Pa s", _ADVANCE),
@@ -255,7 +290,7 @@ class JointDragNode(MimeNode):
 
     def __init__(self, name: str, timestep: float, *, members: Sequence[str], viscosity: float, wall_kind: str,
                  wall_kind_version: str, reach: float = REACH, cross_share: float = CROSS_SHARE,
-                 dense_unknowns: int | None = None, tolerance: float | None = None, restart: int = RESTART,
+                 solve: str = "dense", tolerance: float | None = None, restart: int = RESTART,
                  cap: int = CAP, solve_report_rows: int = 0, solve_report: object = None, **constants: object) -> None:
         del solve_report  # a node made again from its own arguments: its report leaf is zeros, made below
         held = tuple(str(member) for member in members)
@@ -275,12 +310,10 @@ class JointDragNode(MimeNode):
                                      wall_kind_version=wall_kind_version, **walls, **cast(dict[str, Any], mine[i]))
                          for i, body in enumerate(held)]
         self._operators = [MRSOperator(member, float(cross_share)) for member in self._members]
-        line = cast(object, DENSE_UNKNOWNS if dense_unknowns is None else dense_unknowns)  # a script is not checked
-        if isinstance(line, bool) or not isinstance(line, int) or line < 0:
-            raise ValueError(f"dense_unknowns is the most joint unknowns the dense route takes, a whole number at or "
-                             f"above zero, not {line!r}")
-        settings: dict[str, Any] = {} if dense_unknowns is None else {"dense_unknowns": int(dense_unknowns)}
-        self._line, self._iterative = line, sum(3 * op.count for op in self._operators) > line
+        if cast(object, solve) not in ROUTES:  # a script is not checked
+            raise ValueError(f"the joint solve's route is one of {ROUTES}, not {solve!r}")
+        settings: dict[str, Any] = {} if solve == "dense" else {"solve": solve}
+        self._iterative = solve == "gmres"
         if self._iterative:
             if tolerance is None:
                 tolerance = DEFAULT_TOLERANCE[str(jnp.dtype(run_dtype()))]
@@ -312,13 +345,8 @@ class JointDragNode(MimeNode):
         return sum(3 * op.count for op in self._operators)
 
     @property
-    def dense_unknowns(self) -> int:
-        """The takeover line the node was built with: the most joint unknowns the dense route takes."""
-        return self._line
-
-    @property
     def iterative(self) -> bool:
-        """Whether the joint system is past the takeover line, and solved by GMRES (decided when built)."""
+        """Whether the joint system is solved by GMRES (its route, declared when built)."""
         return self._iterative
 
     @property
@@ -326,28 +354,68 @@ class JointDragNode(MimeNode):
         """The joint solve's route, ``"dense"`` or ``"gmres"`` (decided when built)."""
         return "gmres" if self._iterative else "dense"
 
-    def memory_estimate(self) -> float:
-        """The bytes a run of the node holds at its peak past the process's fixed part, in the run's dtype
-        (:data:`MEMORY_COUNTS`)."""
-        matrices, held = MEMORY_COUNTS[(self.route, str(jnp.dtype(run_dtype())))]
+    @override
+    def recheck_route(self, cause: str, dtype: str) -> str:
+        """A floor: float64 in a float32 run, in float64 a tolerance at or above it; a stall: GMRES's restart length is
+        not a setting; and either way the dense route, an LU with no tolerance to stop short of."""
+        dense = ("take the dense route, Drag.MRS(near_field=NearField(solve='dense')), the default, an LU with no "
+                 "tolerance to stop short of")
+        if cause == FLOOR_LIMITED:
+            return (f"run in float64, or {dense}" if dtype == "float32" else
+                    f"write a tolerance at or above the floor, Drag.MRS(near_field=NearField(solve='gmres', "
+                    f"tolerance=...)), or {dense}")
+        return dense if cause == STAGNATED else ""
+
+    def memory_estimate(self, mode: str = RUN, directions: int = 1, members: int = 1) -> float:
+        """The bytes the node's run holds at its peak past the process's fixed part, in the run's dtype: a forward run
+        (``mode`` :data:`RUN`, :data:`MEMORY_COUNTS`), or a gradient study's derivative of ``members`` batched members,
+        in ``"forward"`` mode along ``directions`` tangents or in ``"reverse"`` mode (:data:`DERIVATIVE_COUNTS`)."""
+        dtype = str(jnp.dtype(run_dtype()))
+        if mode == RUN:
+            matrices, held = MEMORY_COUNTS[(self.route, dtype)]
+        else:
+            counts = DERIVATIVE_COUNTS[(self.route, dtype)]
+            matrices, held = counts[mode]
+            if mode == "forward":
+                more, more_held = counts["direction"]
+                matrices, held = matrices + (directions - 1) * more, held + (directions - 1) * more_held
+            matrices, held = members * matrices, members * held
         return (matrices * _itemsize() * self.unknowns ** 2
                 + held * 8 * sum((3 * op.count) ** 2 for op in self._operators))
 
-    def memory_problem(self) -> Problem | None:
+    def memory_problem(self, mode: str = RUN, directions: int = 1, members: int = 1) -> Problem | None:
         """A joint system whose run would not fit in the memory a run can have (a GPU's limit; on a CPU the smaller of
-        the host's available memory and its control group's limit), refused before its first step on either route."""
+        the host's available memory and its control group's limit), refused before its first step on either route:
+        its estimate (:meth:`memory_estimate`) times :data:`MEMORY_MARGIN` against that memory less
+        :data:`MEMORY_HEADROOM` of it. A forward run is checked at build; a gradient study's derivative before the
+        study compiles it (:meth:`derivative_problem`)."""
         where, available = device_memory()
-        needed = self.memory_estimate()
-        if available is None or needed <= available:
+        needed = MEMORY_MARGIN * self.memory_estimate(mode, directions, members)
+        if available is None or needed <= (1.0 - MEMORY_HEADROOM) * available:
             return None
+        what = "run" if mode == RUN else (
+            f"derivative in {mode} mode{f' along {directions} directions' if mode == 'forward' and directions > 1 else ''}"
+            f"{f' of {members} members at once' if members > 1 else ''}")
         return Problem(
             "drag.near-field-memory",
             f"the medium's near field couples {len(self.members)} bodies ({', '.join(self.members)}) into a joint "
-            f"system of {self.unknowns} unknowns, whose run on the {self.route} route needs about "
+            f"system of {self.unknowns} unknowns, whose {what} on the {self.route} route needs about "
             f"{needed / 2 ** 30:.3g} GiB (its joint matrix and its members' held blocks times the counts a CPU run was "
-            f"measured to hold, as the drag's validity line says), more than {where}, {available / 2 ** 30:.3g} GiB",
-            "write a coarser spacing on the bodies' drag, Drag.MRS(spacing=...), fewer bodies in the medium, or a "
-            "machine with more memory")
+            f"measured to hold, times {MEMORY_MARGIN:g}, the measurements' largest miss, as the drag's validity line "
+            f"says), more than {where}, {available / 2 ** 30:.3g} GiB, less the {MEMORY_HEADROOM:.0%} of it the check "
+            f"keeps free",
+            "write a coarser spacing on the bodies' drag, Drag.MRS(spacing=...), fewer bodies in the medium"
+            + (", the derivative in forward mode along few axes, study.gradient(..., mode='forward'), which holds "
+               "fewer matrices than reverse mode, or fewer of the study's points at once" if mode != RUN else "")
+            + ", or a machine with more memory")
+
+    def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
+        """A gradient study's derivative of ``members`` members at once in ``mode`` (``"forward"`` along
+        ``directions`` tangents, or ``"reverse"``) over ``steps`` steps that would not fit (:meth:`memory_problem`),
+        refused before the study compiles it. The steps do not enter: measured, reverse mode's chunked checkpoints
+        hold a step's inputs, not its matrices (:data:`DERIVATIVE_MEASURED`)."""
+        del steps
+        return self.memory_problem(mode, directions, members)
 
     def _wall(self) -> WallCorrection:
         return wall_correction_named(self.constants()["wall_kind"], self.constants()["wall_kind_version"])
@@ -613,6 +681,7 @@ class JointDragNode(MimeNode):
         tap = self.report_row(p, steps) if iterative else None
         constants = self.constants()
         restart, cap = (int(constants["restart"]), int(constants["cap"])) if iterative else (0, 0)
+        again = rechecked(p)
 
         def solve(held: Sequence[Array], leaves: Sequence[Mapping[str, Any]], poses: Array, viscosity: Array,
                   parameters: Mapping[str, Any], reach: Array, inverses: Sequence[Array] | None, tap: Array | None,
@@ -628,8 +697,9 @@ class JointDragNode(MimeNode):
                           for i, (op, inverse) in enumerate(zip(operators, inverses, strict=True))]
                 transposed = [op.preconditioner(inverse, turns[i], held_viscosity, transpose=True)
                               for i, (op, inverse) in enumerate(zip(operators, inverses, strict=True))]
+                stopping = Stopping(tolerance, restart=restart, cap=cap)
                 grand, report = grand_resistance_by_gmres(joint, blocks, transposed,
-                                                     Stopping(tolerance, restart=restart, cap=cap), tap)
+                                                          recheck_stopping(stopping) if again else stopping, tap)
             return (grand, joint.accepted, jnp.any(joint.wall_short), jnp.any(joint.cross_short), gaps,
                     *self.body_gaps(joint.placed), report)
 
@@ -803,14 +873,14 @@ class JointDragNode(MimeNode):
         constants = self.constants()
         if self.iterative:
             solve = (f"solved each step by GMRES on the cluster's grand resistance's {6 * len(self.members)} "
-                     f"right-hand sides at once, past the dense route's {self.dense_unknowns} unknowns (the takeover "
-                     f"line, near_field_dense_unknowns), each body's held free part's inverse its preconditioner, "
-                     f"each solve to a relative tolerance of {float(constants['tolerance']):.3g} on its true residual "
-                     f"(near_field_tolerance; a restart every {int(constants['restart'])} iterations, a cap of "
-                     f"{int(constants['cap'])}; a solve that stops short raises solve_flagged and is warned of)")
+                     f"right-hand sides at once, as its drags declare (NearField(solve='gmres')), each body's held "
+                     f"free part's inverse its preconditioner, each solve to a relative tolerance of "
+                     f"{float(constants['tolerance']):.3g} on its true residual (NearField's tolerance; a restart every "
+                     f"{int(constants['restart'])} iterations, a cap of {int(constants['cap'])}; a solve that stops "
+                     f"short raises solve_flagged and is warned of)")
         else:
-            solve = (f"solved each step by one dense LU for the cluster's grand resistance, within the dense route's "
-                     f"{self.dense_unknowns} unknowns (the takeover line, near_field_dense_unknowns; past it, GMRES)")
+            solve = ("solved each step by one dense LU for the cluster's grand resistance, the dense route at every "
+                     "size (NearField(solve='gmres') declares GMRES)")
         lines = [f"the medium's near field couples {', '.join(self.members)} in one joint system (force points: "
                  f"{counts}; {self.unknowns} unknowns), {solve}, each body's step lagged: its own coupled 6 x 6 "
                  f"implicit, the others' loads from the step before",
@@ -855,8 +925,11 @@ class JointDragNode(MimeNode):
         room = f"{available / 2 ** 30:.3g} GiB" if available is not None else "which the system does not report"
         return (f"its joint matrix in the run's dtype {_itemsize() * self.unknowns ** 2 / 2 ** 20:.4g} MiB; the run's "
                 f"memory on the {self.route} route about {self.memory_estimate() / 2 ** 20:.4g} MiB past the "
-                f"process's fixed part (the counts a CPU run was measured to hold, as the drag's validity line says), "
-                f"against {where}, {room}")
+                f"process's fixed part, a gradient study's derivative of one point about "
+                f"{self.memory_estimate('forward') / 2 ** 20:.4g} MiB in forward mode along one axis and "
+                f"{self.memory_estimate('reverse') / 2 ** 20:.4g} MiB in reverse mode (the counts a CPU run was "
+                f"measured to hold, as the drag's validity line says), against {where}, {room}, refused past "
+                f"{MEMORY_MARGIN:g} times the estimate against {1.0 - MEMORY_HEADROOM:.0%} of it")
 
     def run_problem(self, end: int) -> Problem | None:
         """A run that would end past the last row of the derivative solves' per-step reports (``solve_report_rows``) is
@@ -929,5 +1002,6 @@ def _itemsize() -> int:
     return int(jnp.zeros(()).dtype.itemsize)
 
 
-__all__ = ["CONTACT_GAP", "DENSE_UNKNOWNS", "EQUATIONS", "HELD_MATRIX", "MEMORY_COUNTS", "MEMORY_MEASURED",
+__all__ = ["CONTACT_GAP", "DERIVATIVE_COUNTS", "DERIVATIVE_MEASURED", "EQUATIONS", "HELD_MATRIX", "MEMORY_COUNTS",
+           "MEMORY_HEADROOM", "MEMORY_MARGIN", "MEMORY_MEASURED", "ROUTES",
            "JointDragInputs", "JointDragNode", "JointDragState", "member_prefix"]

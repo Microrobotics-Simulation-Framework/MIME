@@ -11,18 +11,27 @@ ca.pem  # a test certificate authority's certificate file
 coils.magnetic           # a typed path in a family's rig: the coils' magnetic field
 commands.jsonl           # the command log a live session writes into its run folder (mime.live)
 doi.org  # a host doi.org answers to, compared with an address's
+domain.length  # a setting of a group, read in SI by an entry's build (ctx.scalar): the periodic box's period
 dx.doi.org  # a host doi.org answers to, compared with an address's
 files.enabled  # the records API's field a draft is saved naming while its files are still to come
 fluid.dynamic_viscosity  # an OpenMaterica record field a value is read from
+half_space.boundary  # the half-space's case in the shape conformance suite: the set its probes are placed about, which no switch owns
 locations.toml  # the user's or lab's locations file
 lubrication.epsilon      # a setting group's setting, as an entry reads it in SI
 magnetic.remanence       # an OpenMaterica record field a value is read from
+memory.limit_in_bytes  # a file name: cgroup v1's memory limit, read for the memory a CPU run can have
+memory.max  # a file name: cgroup v2's memory limit, read for the memory a CPU run can have
+mermaid.min.js  # the file name of Mermaid's single-file build, shipped in mime/experiment/_mermaid_lib/
 mime.asset_adapters  # the entry-point group an asset adapter is registered through
 mime.entries             # the entry-point group a load finds namespaces by
 model-viewer.min.js  # the web viewer's script, inlined into a page from mime/viz/_viewer/ (mime.viz._web)
 no-locations-file.toml  # the empty locations file the adapter harness points MIME at
+plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
+plotly.offline  # a module name: plotly's bundled plotly.js, imported when a page inlines it
+plotly.subplots  # a module name: plotly's subplot helper, imported when a figure is drawn
 pyproject.toml           # the project's metadata, whose pins the number rule reads releases from
 pytest.xfail             # the type JUnit gives an expected failure's skip, which the evidence resolver reads
+sampling.contact_gap     # a setting group's setting, as an entry reads it in SI
 scipy.spatial            # SciPy's module, imported by its name (mime.viz._meshes)
 screw.inertia            # a value the surrogate generator's experiment declares: its body's inertia
 screw.mass               # a value the surrogate generator's experiment declares: its body's mass
@@ -30,6 +39,7 @@ server.csr  # a test server certificate's request file
 server.ext  # a test server certificate's extensions file
 server.key  # a test server certificate's key file
 server.pem  # a test server certificate file
+smooth_2h_0.3h  # the name of the flow's one registered band, (W 2h, delta 0.3h)
 source.push              # a node's field in a toy experiment
 stand.magnetic           # a typed path in a family's rig: the stand's magnetic field
 stand.magnetic_moment    # a value in a family's rig: the stand's magnet's moment
@@ -37,15 +47,6 @@ stepperonline.17hs19-2004s1  # a registered actuator's name: a motor's datasheet
 toy.coupled_body         # a registration kind of the toys
 tube.inner_surface       # a typed path in a family's rig: the tube's inner surface
 tube.lumen               # a typed path in a family's rig: the tube's lumen
+wall.roughness  # the name a plan reads the roughness of the wall a medium fills by (PlanContext.value(role, 'wall.roughness')), not a refusal code
 water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
-mermaid.min.js  # the file name of Mermaid's single-file build, shipped in mime/experiment/_mermaid_lib/
-domain.length  # a setting of a group, read in SI by an entry's build (ctx.scalar): the periodic box's period
-smooth_2h_0.3h  # the name of the flow's one registered band, (W 2h, delta 0.3h)
-half_space.boundary  # the half-space's case in the shape conformance suite: the set its probes are placed about, which no switch owns
-plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
-plotly.subplots  # a module name: plotly's subplot helper, imported when a figure is drawn
-plotly.offline  # a module name: plotly's bundled plotly.js, imported when a page inlines it
-memory.max  # a file name: cgroup v2's memory limit, read for the memory a CPU run can have
-memory.limit_in_bytes  # a file name: cgroup v1's memory limit, read for the memory a CPU run can have
-wall.roughness  # the name a plan reads the roughness of the wall a medium fills by (PlanContext.value(role, 'wall.roughness')), not a refusal code

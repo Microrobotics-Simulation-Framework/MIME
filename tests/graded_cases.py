@@ -1,6 +1,7 @@
 """The experiments graded sampling is tested in, and its wrong-way control: a sphere held a gap above a
-plane wall with ``Drag.MRS(contact=..., contact_gap=...)`` or a cylinder tilted so its rim is nearest it with
-``grading="features"``, and the density that grades the wrong way (coarser where the grading is finer)."""
+plane wall with ``Drag.MRS(sampling=ForceSampling(contact=..., contact_gap=...))`` or a cylinder tilted so its rim is
+nearest it with ``ForceSampling(grading="features")``, and the density that grades the wrong way (coarser where the
+grading is finer)."""
 
 import math
 from collections.abc import Iterator
@@ -13,7 +14,7 @@ import numpy as np
 import mime.interactions.hydrodynamic as hydrodynamic
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
-from mime.interactions import Drag
+from mime.interactions import Drag, ForceSampling
 from mime.scene import Cylinder, Plane, Scene, Sphere, Z
 from mime.scene import _sampling
 from mime.scene._grading import GradedDensity
@@ -34,9 +35,13 @@ def rim_drop() -> float:
 
 
 def above_plane(kind: Any, centre: tuple[float, float, float], orientation: tuple[float, ...], *, blob: float,
-                name: str = "graded", spacing: float = SPACING, **drag: Any) -> Experiment:
+                name: str = "graded", spacing: float = SPACING, grading: str | None = None, contact: Any = None,
+                contact_gap: Any = None, **drag: Any) -> Experiment:
     """``kind`` the hull of a body ``ball`` at ``centre`` and ``orientation`` above the plane z = 0, the medium filling
-    the half-space above it, with ``Drag.MRS`` in the plane wall kind at ``spacing`` (m) and ``drag``'s settings."""
+    the half-space above it, with ``Drag.MRS`` in the plane wall kind at ``spacing`` (m) and ``drag``'s settings, its
+    force points graded by ``ForceSampling(grading=..., contact=..., contact_gap=...)`` where any of those is given."""
+    if (grading, contact, contact_gap) != (None, None, None):
+        drag["sampling"] = ForceSampling(grading=grading, contact=contact, contact_gap=contact_gap)
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=m(0.0))))
     experiment.add_medium(Medium("water", fills=floor.half_space))

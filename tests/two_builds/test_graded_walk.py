@@ -21,7 +21,7 @@ from mrs_cases import fl9, free_space, mrs
 import mime.scene._grading as grading
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
-from mime.interactions import Drag
+from mime.interactions import Drag, ForceSampling
 from mime.scene import Helix, Plane, Scene, Z
 from mime.testing import two_builds_of
 from mime.things import Body, Medium, Part, State, Structure
@@ -30,7 +30,7 @@ from mime.units import kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
 def screw() -> Experiment:
     return free_space("graded_screw_walk", {"ball": fl9()},
-                      mrs(mm(0.6), blob=0.25, quadrature_refinement=8, grading="features"))
+                      mrs(mm(0.6), blob=0.25, quadrature_refinement=8, sampling=ForceSampling(grading="features")))
 
 
 def helix() -> Experiment:
@@ -44,8 +44,9 @@ def helix() -> Experiment:
                       velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-9), reason="a sub-millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-17, 1e-17, 1e-17)), reason="a sub-millimetre body's order")
-    experiment.attach(Drag.MRS(near_contact=False, spacing=mm(0.03), blob=0.25, wall_kind="plane", contact=(0.0, 0.0, -1.0),
-                               contact_gap=mm(0.015)), body="ball", medium="water")
+    experiment.attach(Drag.MRS(near_contact=False, spacing=mm(0.03), blob=0.25, wall_kind="plane",
+                               sampling=ForceSampling(contact=(0.0, 0.0, -1.0), contact_gap=mm(0.015))),
+                      body="ball", medium="water")
     return experiment
 
 
@@ -55,7 +56,7 @@ WALKED: dict[str, tuple[Any, tuple[str, ...]]] = {
     "screw": (screw, ("ball.parts.shell.radius", "ball.parts.shell.length", "ball.parts.shell.wavenumber",
                       "ball.parts.shell.modulation", "drag:ball.blob")),
     "helix": (helix, ("ball.parts.shell.radius", "ball.parts.shell.pitch", "ball.parts.shell.filament_radius",
-                      "drag:ball.blob", "drag:ball.contact_gap", "drag:ball.spacing")),
+                      "drag:ball.blob", "drag:ball.sampling.contact_gap", "drag:ball.spacing")),
 }
 #: The pairs measured to choose other force points with the rounding made exact (the fix round's probe).
 CONTROL = {"screw": "ball.parts.shell.length", "helix": "ball.parts.shell.filament_radius"}
