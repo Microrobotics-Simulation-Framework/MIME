@@ -811,7 +811,7 @@ class PointForceDrag(Interaction):
             **{f"{SHAPE}{name}": value for name, value in settings.items()})
 
     def _handover_arguments(self, ctx: BuildContext, spacing: float) -> dict[str, Any]:
-        """The node's arguments for lubrication's hand-over at the local force ``spacing`` (m): none here, where the
+        """The node's arguments for the near-contact hand-over at the local force ``spacing`` (m): none here, where the
         mrs rung takes none."""
         return {}
 
@@ -883,7 +883,7 @@ SEPARATED_SAMPLES: Mapping[str, int] = MappingProxyType({"sphere": 338, "screw":
 SEPARATED_COMPACT_SAMPLES = 338
 SEPARATED_BLOB: Mapping[str, float] = MappingProxyType({"sphere": 0.1, "screw": 0.25})
 SEPARATED_COMPACT_BLOB = 0.1
-#: A compact body's blob near a wall with lubrication's hand-over (drag 0.5.0): a labelled default, measured on a sphere
+#: A compact body's blob near a wall with the near-contact hand-over (drag 0.5.0): a labelled default, measured on a sphere
 #: above a plane through the drag's node (W2a's first step): the coarse MRS's worst entry at the hand-over gap, 3.5 to
 #: 4.2 % at this blob against 5.6 to 6.1 % at 0.1, at 1.3 to 2.4 times the build and the step (the quadrature's points
 #: grow as one over the blob squared, and the step rebuilds them).
@@ -1488,7 +1488,7 @@ class Drag(UncoupledDrag):
                        "its own)"),
         "near_contact": determined(
             NUMERICAL, "on the mrs rung, in a medium whose wall opens (a plane, a tube) about a body whose hull kind "
-                       "has a support: on, lubrication's hand-over, the MRS's own completion in the gap (the coarse "
+                       "has a support: on, the near-contact hand-over, the MRS's own completion in the gap (the coarse "
                        "MRS evaluated with the body's near contact opened to the hand-over gap, plus the near-contact "
                        "law's increment, by the form the body's kind declares: a sphere's exact increment, or the thin "
                        "elliptic point contact's); for the elliptic form only where the body's least radius of "
@@ -1542,31 +1542,31 @@ class Drag(UncoupledDrag):
                           "the graded one's (on the gates' sphere it climbs towards the uniform sampling's as the "
                           "patch's edge nears the wall)",
              rung="mrs", group=False, written=("sampling",)),
-        Flag("handover_window", "with lubrication's hand-over in the elliptic form, the hand-over gap lay past WINDOW of a "
+        Flag("handover_window", "with the near-contact hand-over in the elliptic form, the hand-over gap lay past WINDOW of a "
                                 "contact's smaller radius of curvature: the form was measured on spheroids at a "
                                 "hand-over gap of 0.15 and 0.075 of the minor semi-axis (the rolling rate's worst miss "
                                 "7 to 22 % and 4 to 15 %), never past it, so the near-wall resistance there is outside "
                                 "the measured reach (the sphere's form has no window)",
              rung="mrs", group=False, written=("near_contact",)),
-        Flag("near_contact_line", "with lubrication's hand-over and the wall opened, a contact within reach of the "
+        Flag("near_contact_line", "with the near-contact hand-over and the wall opened, a contact within reach of the "
                                   "opening was a line (the body's surface flat within the band along the gap's slower "
                                   "direction over its whole extent, a cylinder's or a capsule's side): the near-contact "
                                   "law has no form for a line yet, so the increment there is the point form's, whose "
                                   "singular terms are not the line's (the plan refuses a body that can make one, "
                                   "drag.near-contact-line)", rung="mrs", group=False, written=("near_contact",)),
-        Flag("near_contact_ring", "with lubrication's hand-over and the wall opened, a contact within reach of the "
+        Flag("near_contact_ring", "with the near-contact hand-over and the wall opened, a contact within reach of the "
                                   "opening was a ring (the gap's footprint reaching round a quarter turn of the lumen, a "
                                   "body nearly filling it): the near-contact law has no form for a ring yet, so the "
                                   "increment there is the point form's and the axial resistance is not the ring's (the "
                                   "plan refuses a body that makes one in every pose, drag.near-contact-ring)",
              rung="mrs", group=False, written=("near_contact",)),
-        Flag("handover_far_side", "with lubrication's hand-over in a tube and the contact opened, the body's width "
+        Flag("handover_far_side", "with the near-contact hand-over in a tube and the contact opened, the body's width "
                                   "across the lumen filled more than FAR_SIDE_FILL of its diameter: opening the near "
                                   "contact by dilating the tube opens the far side as well, which moves the coarse "
                                   "MRS's axial entry past 7 % (measured on a sphere at the deepest opening the window "
                                   "allows: -6.3 % at a/R 0.5, -8.9 % at 0.55, -18 % at 0.67, -37 % at 0.8)",
              rung="mrs", group=False, written=("near_contact",)),
-        Flag("handover_tube_ratio", "with lubrication's hand-over in the sphere's form in a tube and the contact "
+        Flag("handover_tube_ratio", "with the near-contact hand-over in the sphere's form in a tube and the contact "
                                     "opened, the sphere's radius over the tube's lay past TESTED_TUBE_RATIO (0.34), the "
                                     "largest ratio the form was gated at: the rolling along the axis misses by -12 % "
                                     "of the plane's rate at 0.34 and was measured -18 % at 0.40 and -25 % at 0.46 "

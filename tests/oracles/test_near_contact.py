@@ -53,7 +53,7 @@ from lubrication_cases import (
 from plane_oracles import brenner
 
 from mime.data import asset, asset_bytes
-from mime.nodes.hydro._film import smooth_floor
+from mime.nodes.hydro.near_contact import smooth_floor
 from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS
 from mime.nodes.hydro.near_contact import AMBIENT_ZERO, LIFT_WIDTH, NearContact, ambient_point, increment, opening
 from mime.nodes.hydro.near_contact import _sphere
@@ -257,7 +257,7 @@ def plane_contact(gap: float, radius: float, angle: float, centre_offset: np.nda
 def test_on_a_plane_the_sphere_form_is_the_tables_increment_to_rounding():
     """The seam's sphere form at a plane contact (the gap's and the body's curvatures all one over the radius), any
     frame, about a centre off the sphere's: the plane table's exact increment between the two gaps, carried there."""
-    from mime.nodes.hydro._film import about
+    from mime.nodes.hydro.near_contact import about
 
     radius, viscosity = 2e-3, 1.3e-3
     for gap, delta, angle in ((1e-5, 3e-4, 0.4), (4e-4, 1e-4, 2.0), (2.5e-6, 6e-4, -1.1)):

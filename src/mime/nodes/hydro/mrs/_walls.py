@@ -111,7 +111,7 @@ class WallCorrection:
     regularised: bool = False
     cost_text: str = ""
     near_wall_text: str = ""
-    #: How lubrication's hand-over opens a near contact with this wall (``mime.nodes.hydro.mrs._handover``): the
+    #: How the near-contact hand-over opens a near contact with this wall (``mime.nodes.hydro.mrs._handover``): the
     #: constants with the wall moved ``delta`` (m) away from the medium along its normal everywhere (a plane
     #: translated, a tube dilated), a JAX function of both; ``None`` for a wall that cannot be opened, with which the
     #: drag takes no hand-over.

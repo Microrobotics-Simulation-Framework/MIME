@@ -33,8 +33,7 @@ import math
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.hydro._film import about
-from mime.nodes.hydro.near_contact._seam import CURVATURE_FLOOR, Increment, NearContact, floored
+from mime.nodes.hydro.near_contact._seam import CURVATURE_FLOOR, Increment, NearContact, about, floored
 
 _PI = math.pi
 

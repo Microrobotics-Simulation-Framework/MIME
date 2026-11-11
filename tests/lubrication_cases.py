@@ -1,4 +1,4 @@
-"""The experiments lubrication's hand-over is gated in (``tests/oracles/test_lubrication.py``): a body above a plane
+"""The experiments the near-contact hand-over is gated in (``tests/oracles/test_lubrication.py``): a body above a plane
 wall or in a straight tube, with drag 0.5.0's mrs rung and its hand-over on, each surface's roughness declared; the
 drag node's state at poses (its own step); and the plants the gates' controls switch on by ``W2A_PLANT`` (read when a
 case is built, so that ``.github/probe/detection_rate.py`` can fan a control out over fresh processes)."""

@@ -1185,7 +1185,7 @@ def guard_points(graph):
     lubricated_graph = lubricated_plane_graph()
 
     def lubricated_elements(pose):
-        """The drag's MRS rung above a plane with lubrication's hand-over, the sphere within the lift's band: the near
+        """The drag's MRS rung above a plane with the near-contact hand-over, the sphere within the lift's band: the near
         contact's search, the support and the body's width (their norms), and the film's solves."""
         built = lubricated_graph
         node = built.get_node("drag:ball")

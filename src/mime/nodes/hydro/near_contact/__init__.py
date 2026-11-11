@@ -7,7 +7,8 @@ several held as :class:`NearContacts`, found by the seam's own search, ``_search
 the bispherical solutions, with the contact's own singular terms, so exact against a plane and the hybrid in a tube),
 or the elliptic point contact's (``"elliptic"``, every other kind: its singular terms from its curvatures alone,
 MIME-ANO-154 open for it). Each contact is classed (:func:`classified`): the forms serve point contacts; a line or a
-ring has no form yet. The roughness cutoff below which a contact carries the gap (:func:`roughness_cutoff`) and the
+ring has no form yet. The roughness cutoff below which a contact carries the gap (:func:`roughness_cutoff`; each surface's roughness
+:data:`DEFAULT_ROUGHNESS` where none is declared) and the
 ambient flow's zero on the opened wall (:func:`ambient_point`) are the seam's, the same for every rung. ``_seam``'s
 docstring holds the contract, ``_sphere``'s and ``_elliptic``'s the forms and their sources."""
 
@@ -15,6 +16,7 @@ from mime.nodes.hydro.near_contact._seam import (
     AMBIENT_ZERO,
     CLASSES,
     CURVATURE_FLOOR,
+    DEFAULT_ROUGHNESS,
     FORMS,
     LIFT_WIDTH,
     LINE_SHARE,
@@ -25,6 +27,7 @@ from mime.nodes.hydro.near_contact._seam import (
     Increment,
     NearContact,
     NearContacts,
+    about,
     ambient_point,
     classified,
     floored,
@@ -32,13 +35,16 @@ from mime.nodes.hydro.near_contact._seam import (
     increment,
     merged,
     opening,
+    principal,
     roughness_cutoff,
     shares,
+    smooth_floor,
     summed,
     surface_opening,
+    tangent_frame,
 )
 
-__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "FORMS", "LIFT_WIDTH", "LINE_SHARE", "MERGE_SHARE",
-           "RING_SHARE", "ROUGHNESS_WIDTH", "SOFT_SHARE", "Increment", "NearContact", "NearContacts",
-           "ambient_point", "classified", "floored", "in_band", "increment", "merged", "opening", "roughness_cutoff",
-           "shares", "summed", "surface_opening"]
+__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "DEFAULT_ROUGHNESS", "FORMS", "Increment", "LIFT_WIDTH",
+           "LINE_SHARE", "MERGE_SHARE", "NearContact", "NearContacts", "RING_SHARE", "ROUGHNESS_WIDTH", "SOFT_SHARE",
+           "about", "ambient_point", "classified", "floored", "in_band", "increment", "merged", "opening",
+           "principal", "roughness_cutoff", "shares", "smooth_floor", "summed", "surface_opening", "tangent_frame"]

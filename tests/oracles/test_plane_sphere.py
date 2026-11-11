@@ -13,7 +13,7 @@ more from the wall every entry lies within 3.7% of its oracle, at spacings of 0.
 At half a spacing the normal entry, the squeeze, is the first to go: integrated over the cells, 2.6% and 4.6% off at a
 spacing of 0.3 radii, 5.0% and 14.8% at 0.2 (the sphere's grid pole facing the wall the worse), and at the force points
 it overshoots and then collapses below about half a spacing; that is the drag's near-wall validity line (the drag
-raises ``near_wall`` within a spacing), not this image's, and lubrication's hand-over is what closes it.
+raises ``near_wall`` within a spacing), not this image's, and the near-contact hand-over is what closes it.
 
 - **The entries** (float64): each within ``ENTRY_LINE`` of its oracle, the coupling judged on ``sqrt(R_tt R_rr)``, the
   scale it couples (far from the wall it is near zero, and its relative error noise). The line holds the coarse MRS's

@@ -2,8 +2,7 @@
 contact's (every kind but the sphere takes it), body to wall, against exact answers and its controls: W2a's gates 1-4
 and 7-14, predictions committed first (``tests/oracles/predictions_w2a.json``, the fix round's
 ``predictions_w2a_fix.json``; since the film was retired as a per-step increment, ``predictions_w2a_1b2.json``). The
-gates' body is a sphere given the elliptic form (its exact answers are known); the thin film itself is kept as the
-elliptic form's cross-check (gate 3's line contact, the film alone).
+gates' body is a sphere given the elliptic form (its exact answers are known); the thin film's form is retired.
 
 - **Gate 1, a sphere above a plane, every gap, drawn orientations:** the lifted resistance's normal entry against
   Brenner's series at every gap (0.002 to 0.3 radii), and every entry against the method of fundamental solutions
@@ -21,8 +20,8 @@ elliptic form's cross-check (gate 3's line contact, the film alone).
   and Brenner's asymptote at 0.01 radii and below, where its own error is under about 2 %. Below the hand-over gap the
   committed 10 % is missed at every gap (MIME-ANO-154), each pinned. Control: the film's coupling counted twice.
 - **Gate 3, the form:** the normal entry's local exponent in the gap is -1 and its limit ``R_zz h / (6 pi mu a^2)`` is 1
-  as the gap closes (the node, roughness 1 nm); the film alone on a line contact goes as ``h^-3/2``. Controls: a sphere's
-  law on the line contact (the exponent), the radius off by two (the limit).
+  as the gap closes (the node, roughness 1 nm). The line contact's ``h^-3/2`` is W2a's next pull request's (1b-ii-b),
+  with the line's form.
 - **Gate 4, definiteness:** drawn poses of a sphere and an ellipsoid above the plane and of a sphere in a tube are
   definite. Control: an indefinite increment stops the run (NaN).
 - **Gate 7, the register's x2 control:** the term doubled moves the force-free speed under a normal load to what the
@@ -79,7 +78,6 @@ from lubrication_cases import (
 )
 from plane_oracles import brenner
 
-from mime.nodes.hydro._film import film
 from mime.interactions import roughness_cutoff
 from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS, LIFT_WIDTH, ROUGHNESS_WIDTH
 from mime.scene import Z, Ellipsoid, Sphere
@@ -363,28 +361,6 @@ def test_gate3_the_sphere_normal_goes_as_one_over_the_gap_and_its_limit_is_one()
     print(f"\nexponents {exponents}, limit {limit:.5f}")
     assert np.all(np.abs(exponents + 1.0) <= 0.05), exponents
     assert abs(limit - 1.0) <= 0.03, limit
-
-
-def film_normal(gaps, k1, k2) -> np.ndarray:
-    return np.asarray([float(film(jnp.asarray(g), jnp.asarray(k1), jnp.asarray(k2), jnp.asarray(1.0), jnp.asarray(1.0),
-                                  jnp.asarray(1e-6)).resistance[2, 2]) for g in gaps])
-
-
-LINE_GAPS = (1e-4, 2e-4, 4e-4, 8e-4)
-
-
-def test_gate3_the_film_on_a_line_contact_goes_as_the_gap_to_minus_three_halves():
-    exponents = np.diff(np.log(film_normal(LINE_GAPS, 1.0, 0.0))) / np.diff(np.log(LINE_GAPS))
-    print(f"\nline contact exponents {exponents}")
-    assert np.all(np.abs(exponents + 1.5) <= 0.05), exponents
-
-
-def test_gate3_controls_a_spheres_law_on_the_line_and_a_radius_off_by_two():
-    sphere_law = np.diff(np.log(film_normal(LINE_GAPS, 1.0, 1.0))) / np.diff(np.log(LINE_GAPS))
-    assert np.all(np.abs(sphere_law + 1.5) > 0.3), sphere_law
-    halved = float(film_normal((1e-4,), 0.5, 0.5)[0] * 1e-4 / (6 * math.pi))
-    print(f"\nthe sphere's law on the line: {sphere_law}; the limit with the radius doubled {halved:.4f}")
-    assert abs(halved - 1.0) > 1.0, halved
 
 
 # -- gate 4 ----------------------------------------------------------------------------------------------------------

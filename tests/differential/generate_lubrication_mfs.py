@@ -1,5 +1,5 @@
 """Writes ``references/lubrication_mfs.json``: the unit sphere's 6 x 6 resistance above a plane wall at the gaps
-lubrication's hand-over gate judges against it (``tests/oracles/test_lubrication.py``), by the method of fundamental
+the near-contact hand-over gate judges against it (``tests/oracles/test_lubrication.py``), by the method of fundamental
 solutions (``plane_oracles.mfs``, sharing no code with MIME), at its coarse and fine settings, with Brenner's series
 beside the normal entry. Below a gap of about 0.05 radii the method's rings grow past a few GiB, so the gate judges the
 normal entry alone there, against Brenner. Not collected; run once, in float64, where a few GiB are free:

@@ -98,7 +98,7 @@ differential against the 0.2 port's node on fixed inputs (`tests/differential/`)
 rung declares the gap it resolves down to and evaluates itself with the contact opened to it, and the law adds the
 increment to the true gap from the contact's geometry (`NearContact`), by the form the body's kind declares: a sphere's
 exact increment (MIME's table of the bispherical solutions, `sphere_plane_resistance`, with the contact's own singular
-terms), or the thin film's (`_film.py`). The roughness cutoff and the ambient's zero on the opened wall are the seam's.
+terms), or the elliptic point contact's (`_elliptic.py`), the thin film retired. The roughness cutoff and the ambient's zero on the opened wall are the seam's.
 
 **`hydro/`**: `SurrogateDragNode`, the drag surrogate's resistance with its lubrication correction
 in one node (the 0.2 line's `MLPResistanceNode` and `LubricationCorrectionNode`), the tube's axis, a point on it and

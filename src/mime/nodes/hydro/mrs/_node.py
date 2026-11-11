@@ -40,7 +40,6 @@ from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, wall_correction_named
 from mime.nodes.hydro.mrs._handover import (
     CURVATURE_FLOOR,
-    DEFAULT_ROUGHNESS,
     ELLIPTIC_TEXT,
     HANDOVER_SPACINGS,
     LIFT_WIDTH,
@@ -55,7 +54,7 @@ from mime.nodes.hydro.mrs._handover import (
     search_for,
     slots_for,
 )
-from mime.nodes.hydro.near_contact import CLASSES, FORMS, shares
+from mime.nodes.hydro.near_contact import CLASSES, DEFAULT_ROUGHNESS, FORMS, shares
 from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.registry import Problem, Samples, Sampling
 
@@ -304,12 +303,11 @@ class SeparatedDragState(TypedDict, closed=True):
     contact_cutoff: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
 
 
-#: The leaves a node with lubrication's hand-over holds for its near contact's search, made when it is built from the
+#: The leaves a node with the near-contact hand-over holds for its near contact's search, made when it is built from the
 #: hull's force points as built (``mime.nodes.hydro.mrs._handover.Search``), with their units: as the body's hull
 #: contact holds its own (``mime.nodes.body._rigid_inertial.SEARCH_LEAVES``), values of the step, not constants of its
-#: program. The film's reach, the body's size, is traced from the shape's settings, so that a shape's derivative
-#: carries it.
-FILM_LEAVES = {"film_search_apart_squared": "m^2", "film_search_tolerance": "m"}
+#: program. The body's size is traced from the shape's settings, so that a shape's derivative carries it.
+CONTACT_SEARCH_LEAVES = {"contact_search_apart_squared": "m^2", "contact_search_tolerance": "m"}
 #: The state fields a node with the hand-over adds (zero where the near-contact law is not evaluated): the summed
 #: increment and its coupling block, the least gap of the body's contacts, the cutoff, and the step's flags.
 HANDOVER_FIELDS = ("contact_increment", "contact_coupling", "contact_gap", "handover_window", "near_contact_line",
@@ -695,11 +693,11 @@ class MRSDragNode(MimeNode):
         self._search: Search | None = None
         if lubrication:
             if quadrature_owners is None or handover_spacing is None:
-                raise ValueError("lubrication's hand-over runs on a separated quadrature (quadrature_owners) with the "
+                raise ValueError("the near-contact hand-over runs on a separated quadrature (quadrature_owners) with the "
                                  "force spacing it hands over at (handover_spacing)")
             if wall.opened is None or wall.region is None:
                 raise ValueError(f"the wall kind {wall_kind} {wall_kind_version} gives no opening (WallCorrection."
-                                 f"opened, region), so lubrication's hand-over cannot open a contact with it")
+                                 f"opened, region), so the near-contact hand-over cannot open a contact with it")
             form = near_contact_form or "elliptic"
             if form not in FORMS:
                 raise ValueError(f"no near-contact form {form!r}; the forms are {FORMS}")
@@ -720,7 +718,7 @@ class MRSDragNode(MimeNode):
             raise ValueError(f"graded_patch names whether each of the {len(self._owners)} points of the separated "
                              f"quadrature lies in the graded patch; it has shape {self._patch.shape}")
         if lubrication:
-            self._search = self._film_search(wall)
+            self._search = self._contact_search(wall)
 
     @property
     def lubricated(self) -> bool:
@@ -742,7 +740,7 @@ class MRSDragNode(MimeNode):
         return {name: p[f"{SHAPE}{name}"] if name in self._traced else constants[f"{SHAPE}{name}"]
                 for name in (key.removeprefix(SHAPE) for key in constants if key.startswith(SHAPE))}
 
-    def _film_search(self, wall: WallCorrection) -> Search:
+    def _contact_search(self, wall: WallCorrection) -> Search:
         """The near contact's search, from the kind's force points in its own frame as built, in float64."""
         constants = self.constants()
         region = cast(Any, wall.region)
@@ -756,14 +754,14 @@ class MRSDragNode(MimeNode):
                           constants["part_rotation"], constants["part_centre"], shape,
                           slots_for(cast(str, constants["near_contact_form"])))
 
-    def _film_values(self) -> dict[str, float]:
-        """The search's leaves as the node was built (:data:`FILM_LEAVES`), the tolerance for the run's dtype."""
+    def _contact_search_values(self) -> dict[str, float]:
+        """The search's leaves as the node was built (:data:`CONTACT_SEARCH_LEAVES`), the tolerance for the run's dtype."""
         from mime.core import run_dtype
         from mime.nodes.body._contact import search_tolerance
 
         search = cast(Search, self._search)
-        apart = {"film_search_apart_squared": search.apart_squared} if search.starts > 1 else {}
-        return {**apart, "film_search_tolerance": search_tolerance(run_dtype(), search.size)}
+        apart = {"contact_search_apart_squared": search.apart_squared} if search.starts > 1 else {}
+        return {**apart, "contact_search_tolerance": search_tolerance(run_dtype(), search.size)}
 
     @property
     def graded(self) -> bool:
@@ -800,10 +798,10 @@ class MRSDragNode(MimeNode):
                 f"numerical choice, measured)"))
             held["roughness_body"] = ParamSpec(units="m", description="the roughness of the body's surface, declared")
             held["roughness_wall"] = ParamSpec(units="m", description="the roughness of the wall's surface, declared")
-            held.update({key: ParamSpec(units=FILM_LEAVES[key], trainable=False, description=(
+            held.update({key: ParamSpec(units=CONTACT_SEARCH_LEAVES[key], trainable=False, description=(
                 "made when the node is built, from the hull's force points as built: where the near contact's search "
-                "starts and when it stops, and the film's reach; outside every derivative"))
-                for key in self._film_values()})
+                "starts and when it stops; outside every derivative"))
+                for key in self._contact_search_values()})
         found = {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
                  "part_centre": ParamSpec(units="m", trainable=False, description=placed),
                  "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data,
@@ -834,7 +832,7 @@ class MRSDragNode(MimeNode):
         held = {HELD: as_run_array(self.held_in_body_frame),
                 **{f"{HELD_FROM}{key}": leaves[key] for key in self.body_leaf_names()}} \
             if self._owners is not None else {}
-        film = {key: as_run_array(value) for key, value in self._film_values().items()} if self.lubricated else {}
+        film = {key: as_run_array(value) for key, value in self._contact_search_values().items()} if self.lubricated else {}
         return {**leaves, **self._wall_arguments(), **held, **film}
 
     @override
@@ -1230,7 +1228,7 @@ class MRSDragNode(MimeNode):
         graded = self._graded_lines()
         if self._owners is None or self._free() or self._wall().distance is None or spacing is None or \
                 start is None or "pose" not in start:
-            return graded + (self._film_lines(None) if self.constants().get("handover_declined") else [])
+            return graded + (self._handover_lines(None) if self.constants().get("handover_declined") else [])
         judged = self.judged_at(start["pose"])
         lines = [f"the body's least distance from the wall at its start is {(judged.gap or 0.0) * 1e3:.4g} mm, "
                  f"{(judged.gap or 0.0) / spacing:.3g} of the force spacing ({spacing * 1e3:.4g} mm): a step with the "
@@ -1274,17 +1272,17 @@ class MRSDragNode(MimeNode):
         if integrated is not None:
             lines.append(integrated)
         lines.append(self._image_text())
-        return graded + lines + self._film_lines(start)
+        return graded + lines + self._handover_lines(start)
 
-    def _film_lines(self, start: Mapping[str, Any] | None) -> list[str]:
-        """What the build reports of lubrication's hand-over: the near-contact law's form, the hand-over gap against the
+    def _handover_lines(self, start: Mapping[str, Any] | None) -> list[str]:
+        """What the build reports of the near-contact hand-over: the near-contact law's form, the hand-over gap against the
         force spacing, at the start the body's contacts within reach of the opening with each one's class and, for the
         elliptic form, the hand-over gap against its smaller radius of curvature (the form's measured window), the
         roughness cutoff, where its floor reaches the lift's band, and who owns the coupling; or, where the build's
         rule left the hand-over out (``handover_declined``), why."""
         declined = str(self.constants().get("handover_declined", ""))
         if declined:
-            return [f"lubrication's hand-over is not taken: {declined}; every gap is the coarse MRS's at its near-wall "
+            return [f"the near-contact hand-over is not taken: {declined}; every gap is the coarse MRS's at its near-wall "
                     f"validity line (a sharp edge is the MRS's with its graded sampling, "
                     f"ForceSampling(grading='features'))"]
         if not self.lubricated or start is None or "pose" not in start:
@@ -1338,16 +1336,16 @@ class MRSDragNode(MimeNode):
                         f"past the form's measured window, {WINDOW:g} of it: a step there raises handover_window"))
         floored = cutoff * (1.0 + ROUGHNESS_WIDTH)
         lifted = handover * (1.0 - LIFT_WIDTH)
-        rough = ([f"lubrication's roughness floor reaches the lift's band: the cutoff's floor spans up to "
+        rough = ([f"the near-contact roughness floor reaches the lift's band: the cutoff's floor spans up to "
                   f"{floored * 1e6:.4g} um and the lift's band starts at {lifted * 1e6:.4g} um, so the law's two gaps "
                   f"are floored where they meet and its increment is the roughness's, not the gap's, there (a "
                   f"declared roughness under a third of the hand-over gap, {handover / 3.0 * 1e6:.4g} um, or a coarser "
                   f"force spacing, keeps them apart)"] if floored > lifted else [])
-        return [f"lubrication's hand-over: the wall is opened so that each of the body's near contacts stands at or "
+        return [f"the near-contact hand-over: the wall is opened so that each of the body's near contacts stands at or "
                 f"above {handover * 1e3:.4g} mm ({HANDOVER_SPACINGS:g} of the force spacing, {spacing * 1e3:.4g} mm) "
                 f"before the coarse MRS is evaluated, plus the near-contact law's increments, by its form {form!r}: "
                 f"{law}; {counted}; {reach}",
-                f"lubrication's roughness cutoff: {cutoff * 1e6:.4g} um, the root of the sum of the squares of the "
+                f"the near-contact roughness cutoff: {cutoff * 1e6:.4g} um, the root of the sum of the squares of the "
                 f"body's {float(leaves['roughness_body']) * 1e6:.4g} um and the wall's "
                 f"{float(leaves['roughness_wall']) * 1e6:.4g} um (each a declaration, never fitted): below it the "
                 f"law's gap is floored, its resistance stops growing and a contact carries the gap; the near-wall "

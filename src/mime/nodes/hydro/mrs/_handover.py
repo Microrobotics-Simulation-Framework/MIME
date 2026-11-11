@@ -1,4 +1,4 @@
-"""Lubrication's hand-over on the MRS rung (drag 0.5.0's ``near_contact``): the MRS's side of the near-contact seam
+"""The near-contact hand-over on the MRS rung (drag 0.5.0's ``near_contact``): the MRS's side of the near-contact seam
 (``mime.nodes.hydro.near_contact``), the near-field model's completion in the gap, keeping the MRS's near-wall accuracy
 at a coarse spacing, which a fine enough MRS would reach alone at far greater cost; not physics beyond Stokes flow.
 
@@ -24,7 +24,7 @@ second probe), and is not measured past it: beyond :data:`WINDOW` of a contact's
 raises ``handover_window``. The sphere's form is exact at every gap, and has no window.
 
 **The roughness cutoff** is the seam's (``roughness_cutoff``): the roughness of each surface is a declared length,
-never fitted (:data:`DEFAULT_ROUGHNESS` where none is declared).
+never fitted (the seam's ``DEFAULT_ROUGHNESS`` where none is declared).
 
 **Who owns the coupling.** The near-wall resistance (the coarse MRS plus the law's increments) owns every hydrodynamic
 coupling of rotation and translation at every gap down to the cutoff, and below it the law's coupling stays at its
@@ -45,7 +45,6 @@ import jax
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.hydro._film import tangent_frame
 from mime.nodes.hydro.near_contact import (
     CURVATURE_FLOOR,
     LIFT_WIDTH,
@@ -58,6 +57,7 @@ from mime.nodes.hydro.near_contact import (
     shares,
     summed,
     surface_opening,
+    tangent_frame,
 )
 from mime.nodes.hydro.near_contact._search import (
     GROUPS,
@@ -74,9 +74,6 @@ _lax: Any = cast(Any, jax).lax
 #: The hand-over gap in force spacings (the finest graded spacing where graded): a labelled default, measured on a sphere
 #: above a plane through the drag's node (W2a's first step; the module's docstring).
 HANDOVER_SPACINGS = 0.75
-#: Each surface's roughness where none is declared (m): a declaration, never fitted (sources span about 0.03 to a few
-#: micrometres).
-DEFAULT_ROUGHNESS = 1e-6
 #: The hand-over gap over the contact's smaller radius of curvature beyond which the form's measured reach (about 7 %)
 #: is left (``handover_window``).
 WINDOW = 0.15
@@ -231,7 +228,7 @@ def _capable(kind: Geometry, settings: Mapping[str, Any], spacing: float, patche
 
 
 def window_text(handover: float, radius: float) -> str:
-    """Where the hand-over gap ``handover`` lies against the film's window over the least ``radius`` of curvature."""
+    """Where the hand-over gap ``handover`` lies against the elliptic form's window over the least ``radius`` of curvature."""
     return (f"the hand-over gap {handover * 1e3:.4g} mm is {handover / radius:.4g} of the body's least radius of "
             f"curvature, {radius * 1e3:.4g} mm")
 
@@ -307,7 +304,7 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
                     cutoff, flags[0], flags[1], flags[2], flags[3], flags[4])
 
 
-__all__ = ["CURVATURE_FLOOR", "DEFAULT_ROUGHNESS", "ELLIPTIC_TEXT", "FAR_SIDE_FILL", "GRADED_SPHERE_TEXT", "GROUPS",
+__all__ = ["CURVATURE_FLOOR", "ELLIPTIC_TEXT", "FAR_SIDE_FILL", "GRADED_SPHERE_TEXT", "GROUPS",
            "HANDOVER_SPACINGS", "LIFT_WIDTH", "RADIUS_FLOOR", "RATIO_ROUNDING", "ROUGHNESS_WIDTH", "TESTED_TUBE_RATIO",
            "TUBE_RATIOS_TEXT", "UNIFORM_SPHERE_TEXT", "WINDOW", "Capable", "Handover", "Increment", "Search", "capable", "handed_over",
            "handover_gap", "least_radius", "relative_curvature", "search_for", "slots_for", "window_text"]

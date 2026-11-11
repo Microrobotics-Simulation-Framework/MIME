@@ -39,7 +39,7 @@ radii, a blob of 0.1 and float64.
   turned at 0.3 radii, 14.8% with a pole of the sphere's sampling grid facing the wall and 5.0% turned at 0.2 radii.
   The error depends on the orientation, so a body that turns sees more than one of these.
 - `near_wall` is raised within one spacing, where the point image's normal entry is already +3.6% and rising; the last
-  spacing is what lubrication's hand-over closes, not this image.
+  spacing is what the near-contact hand-over closes, not this image.
 - float32 against float64 holds to 5e-6 of an entry's diagonal scale for a plane through the origin. The height is
   `y . n - offset` in the working dtype, so a displaced plane costs precision as the offset grows over the body's
   size: 8e-7 at offset 0, 2e-5 at 0.5 m and 1.7e-4 at 5 m for a 1 mm sphere (5,000 radii, past the 1e-4 line). Nothing

@@ -35,8 +35,12 @@ next pull request): a rung that meets one says so.
 **The forms** (:data:`FORMS`), the plan's choice by the body's kind (``Geometry.near_contact``), named in the build
 report: ``"sphere"``, a sphere's exact increment (``mime.nodes.hydro.near_contact._sphere``); ``"elliptic"``, the
 elliptic point contact's singular terms from its curvatures alone (``mime.nodes.hydro.near_contact._elliptic``), every
-other point contact's, with MIME-ANO-154 open for it. The thin film (``mime.nodes.hydro._film``) is no form: it is
-retired as a per-step increment and kept as the elliptic form's cross-check."""
+other point contact's, with MIME-ANO-154 open for it. The thin film's form (Reynolds' equation on the gap's second-order
+form, W2a's first pull request) is retired: its point contacts' coefficients are the published ones.
+
+**Where the law's frame comes from** (:func:`tangent_frame`, :func:`principal`, :func:`about`): a frame across the
+contact's normal, the gap's principal directions in it, and a resistance about the contact carried to the body's centre
+in the world frame."""
 
 from __future__ import annotations
 
@@ -48,7 +52,6 @@ import jax
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.hydro._film import smooth_floor
 
 _tree_util: Any = cast(Any, jax).tree_util
 _vmap: Any = cast(Any, jax).vmap
@@ -62,6 +65,9 @@ ROUGHNESS_WIDTH = 0.5
 FORMS = ("sphere", "elliptic")
 #: The classes of a contact (:func:`classified`): the law's forms serve the first.
 CLASSES = ("point", "line", "ring")
+#: Each surface's roughness where none is declared (m): a declaration, never fitted (sources span about 0.03 to a few
+#: micrometres); a pair's cutoff is :func:`roughness_cutoff` of the two.
+DEFAULT_ROUGHNESS = 1e-6
 #: Where a rung evaluated at the opened geometry puts the ambient flow's zero: on the opened wall.
 AMBIENT_ZERO = "opened wall"
 #: The elliptic form's gap curvatures are held at least this over the body's size (its reach from its own origin), so
@@ -122,6 +128,55 @@ class Increment(NamedTuple):
 
     resistance: Array
     residual: Array
+
+
+def smooth_floor(value: Array, floor: Array, width: Array) -> Array:
+    """A smooth ``max(value, floor)``: ``value`` itself from ``floor + width`` up, ``floor`` from ``floor - width``
+    down, and between them ``floor + width g(t)``, ``t = (value - floor) / width``, ``g`` the integral of the smoothstep
+    (``g(t) = 2 v^3 - v^4``, ``v = (t + 1) / 2``): never below either, continuous with two derivatives. A contact's dilation
+    to the resolved gap, and the law's floor at the surfaces' roughness."""
+    t = (value - floor) / width
+    v = jnp.clip(0.5 * (t + 1.0), 0.0, 1.0)
+    return jnp.where(t >= 1.0, value, floor + width * (2.0 * v ** 3 - v ** 4))
+
+
+def tangent_frame(normal: Array) -> Array:
+    """Two unit directions across ``normal`` and orthogonal to each other (rows, ``2 x 3``), from the coordinate
+    direction least along it: a frame across a direction cannot be continuous in every direction; the contact's own frame
+    (:func:`principal`) is the gap's, whatever this one is, but at a contact equally curved every way."""
+    first = jnp.cross(normal, jnp.eye(3, dtype=normal.dtype)[jnp.argmin(jnp.abs(normal))])
+    first = first / jnp.sqrt(jnp.sum(first * first))
+    return jnp.stack([first, jnp.cross(normal, first)])
+
+
+def principal(curvature: Array, tangent: Array, normal: Array) -> tuple[Array, Array, Array]:
+    """The contact's frame (rows: the larger curvature's direction, the smaller's, ``normal``) and its curvatures
+    ``k1 >= k2`` from the gap's ``2 x 2`` ``curvature`` in the ``tangent`` frame; at a contact curved equally every way
+    (within rounding of the mean) the tangent frame itself, the law's forms being the same in every frame there."""
+    mean = 0.5 * (curvature[0, 0] + curvature[1, 1])
+    half = 0.5 * (curvature[0, 0] - curvature[1, 1])
+    split_squared = half * half + curvature[0, 1] * curvature[0, 1]
+    resolution = (64.0 * jnp.finfo(curvature.dtype).eps * jnp.abs(mean)) ** 2
+    open_ = split_squared > resolution
+    split = jnp.where(open_, jnp.sqrt(jnp.where(open_, split_squared, 1.0)), 0.0)
+    angle = jnp.where(open_, 0.5 * jnp.arctan2(curvature[0, 1], jnp.where(open_, half, 1.0)), 0.0)
+    c, s = jnp.cos(angle), jnp.sin(angle)
+    frame = jnp.stack([c * tangent[0] + s * tangent[1], -s * tangent[0] + c * tangent[1], normal])
+    return frame, mean + split, mean - split
+
+
+def about(resistance: Array, frame: Array, arm: Array) -> Array:
+    """``resistance`` (6 x 6 about a point, in ``frame``, whose rows are its axes in the world) in the world frame and
+    about the point ``arm`` back from it (``arm`` the point less the new centre): ``T^T B R B^T T``, ``B`` the frame's
+    rotation to the world on both blocks and ``T`` the twist about the centre carried to the point."""
+    turn = frame.T
+    zero = jnp.zeros((3, 3), dtype=resistance.dtype)
+    rotation = jnp.block([[turn, zero], [zero, turn]])
+    world = rotation @ resistance @ rotation.T
+    cross = jnp.stack([jnp.stack([0.0 * arm[0], -arm[2], arm[1]]), jnp.stack([arm[2], 0.0 * arm[0], -arm[0]]),
+                       jnp.stack([-arm[1], arm[0], 0.0 * arm[0]])])
+    carry = jnp.eye(6, dtype=resistance.dtype).at[:3, 3:].set(-cross)
+    return carry.T @ world @ carry
 
 
 def roughness_cutoff(*roughness: Any) -> Any:
@@ -242,7 +297,7 @@ def summed(form: str, found: NearContacts, share: Array, delta: Array, cutoff: A
     return Increment(jnp.einsum("k,kij->ij", share, each.resistance), jnp.max(each.residual))
 
 
-__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "FORMS", "LIFT_WIDTH", "LINE_SHARE", "MERGE_SHARE",
-           "RING_SHARE", "ROUGHNESS_WIDTH", "SOFT_SHARE", "Increment", "NearContact", "NearContacts",
-           "ambient_point", "classified", "floored", "in_band", "increment", "merged", "opening", "roughness_cutoff",
-           "shares", "summed", "surface_opening"]
+__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "DEFAULT_ROUGHNESS", "FORMS", "Increment", "LIFT_WIDTH",
+           "LINE_SHARE", "MERGE_SHARE", "NearContact", "NearContacts", "RING_SHARE", "ROUGHNESS_WIDTH", "SOFT_SHARE",
+           "about", "ambient_point", "classified", "floored", "in_band", "increment", "merged", "opening",
+           "principal", "roughness_cutoff", "shares", "smooth_floor", "summed", "surface_opening", "tangent_frame"]

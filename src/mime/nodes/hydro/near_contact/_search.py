@@ -19,8 +19,15 @@ from jax import Array
 
 from mime.core import jnp, quaternion, shape_named
 from mime.nodes.body._contact import START_APART, Hull, Pair, Wall, pair_contacts, spacing_of, start_count
-from mime.nodes.hydro._film import principal, tangent_frame
-from mime.nodes.hydro.near_contact._seam import LIFT_WIDTH, NearContact, NearContacts, classified, merged
+from mime.nodes.hydro.near_contact._seam import (
+    LIFT_WIDTH,
+    NearContact,
+    NearContacts,
+    classified,
+    merged,
+    principal,
+    tangent_frame,
+)
 from mime.registry import Geometry
 
 _lax: Any = cast(Any, jax).lax
@@ -96,7 +103,7 @@ def near_contacts(search: Search, kind: Geometry, parameters: Mapping[str, Any],
                   spacing: Array) -> Found:
     """The body's deepest point against the region's wall in each of the search's groups: ``points`` the kind's force
     points in its own frame (traced, so that they move with its settings), ``parameters`` the kind's settings, ``pose``
-    the body's, ``region`` the shape's parameters; ``leaves`` the search's held numbers (``film_search_*``); ``reach``
+    the body's, ``region`` the shape's parameters; ``leaves`` the search's held numbers (``contact_search_*``); ``reach``
     the body's size (traced); ``resolved`` the rung's resolved gap and ``spacing`` the points' spacing, at which each
     contact is classed. The slots found at one point share it (``merged``)."""
     dtype = pose.dtype
@@ -105,9 +112,9 @@ def near_contacts(search: Search, kind: Geometry, parameters: Mapping[str, Any],
     kind_pose = jnp.concatenate([pose[:3] + rotation @ jnp.asarray(search.centre, dtype=dtype),
                                  quaternion.multiply(pose[3:], jnp.asarray(search.turned, dtype=dtype))])
     # one start reads no separation, and the step keeps no shortfall (the contact's report): neither is then a leaf
-    apart = leaves["film_search_apart_squared"] if search.starts > 1 else jnp.zeros((), dtype=dtype)
+    apart = leaves["contact_search_apart_squared"] if search.starts > 1 else jnp.zeros((), dtype=dtype)
     hull = Hull(points, search.groups, kind_pose, kind, parameters, search.places, apart, jnp.zeros((), dtype=dtype),
-                leaves["film_search_tolerance"], search.starts)
+                leaves["contact_search_tolerance"], search.starts)
     zero = jnp.zeros((), dtype=dtype)
     # the search's Newton steps unrolled (the contact 0.4.0's program), so that every guard it reaches is evaluated
     # on values where the switch harness reads it

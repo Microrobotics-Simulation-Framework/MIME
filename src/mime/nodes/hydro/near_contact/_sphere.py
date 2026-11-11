@@ -32,8 +32,7 @@ from jax import Array
 
 from mime.core import jnp
 from mime.data import asset, asset_bytes
-from mime.nodes.hydro._film import about
-from mime.nodes.hydro.near_contact._seam import Increment, NearContact, floored
+from mime.nodes.hydro.near_contact._seam import Increment, NearContact, about, floored
 
 #: The packaged table's asset name.
 TABLE = "sphere_plane_resistance"
