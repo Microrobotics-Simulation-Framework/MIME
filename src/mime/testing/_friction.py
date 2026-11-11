@@ -277,17 +277,27 @@ def _sphere_limits(law: Any, stepper: Callable[..., Any], drawn: tuple[Any, ...]
         if abs(held - limit) > 1e3 * eps * limit:
             found.append(f"sphere: sliding, its traction {held:.9g} N is not the limit {limit:.9g} N, at {shown}")
 
+        # along the whole sticking traction's direction (one point shared by eight groups splits it in no unique
+        # way, so no one group's is the body's): the sliding force's direction, where the speed's derivative in mu is
+        # about the normal force over the mass, over the step
+        pulled = jnp.sum(stuck["contact_traction"], axis=0)
+        direction = pulled / jnp.sqrt(jnp.sum(pulled * pulled))
+
         def along(coefficient: Any) -> Any:
             ended = stepper(pose, twist, load, coefficient)
-            return jnp.sum(ended["twist"][:3] * stuck["contact_traction"][0])
+            return jnp.sum(ended["twist"][:3] * direction)
 
         derivative = float(cast(Any, jax).grad(along)(mu))
         h = float(mu) * (1e-6 if mu.dtype == jnp.float64 else 1e-2)
         central = (float(along(mu + h)) - float(along(mu - h))) / (2 * h)
         tolerance = 1e-6 if mu.dtype == jnp.float64 else 2e-2
-        if not abs(derivative - central) <= tolerance * max(abs(central), 1e-30):
+        # judged on the scale it came from: the derivative's own (the normal force over the mass, over the step) and
+        # the central difference's rounding (the speed's rounding over its step)
+        scale = normal * _DT / _body("sphere")[2]
+        rounding = 64 * eps * float(np.linalg.norm(np.asarray(twist[:3], dtype=np.float64)) + _G * _DT) / h
+        if not abs(derivative - central) <= tolerance * scale + rounding:
             found.append(f"sphere: sliding, its derivative in mu {derivative:.9g} against the central difference "
-                         f"{central:.9g}, at {shown}")
+                         f"{central:.9g} (its scale {scale:.3g}), at {shown}")
     del weight
     return found
 

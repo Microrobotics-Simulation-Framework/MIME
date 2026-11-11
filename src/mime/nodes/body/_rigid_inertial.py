@@ -244,12 +244,15 @@ FRICTION_LAWS = {"coulomb": (SLIDING,)}
 FRAMED = frozenset({"cylinder", "half_space"})
 #: The role a frictional hold's friction is booked under, beside the confinement's (``hosted_laws``).
 FRICTION_ROLE = "friction"
-#: The sweeps of a frictional hold, by hull kind (``FRICTION_SWEEPS_DEFAULT`` for a kind not listed): declarations,
-#: each from its kind's measurement through the node's hold (the step's change still to come, against 4,000 sweeps',
-#: under 1e-3 of the contact's whole change at the 99th percentile of 1,000 draws a dtype, or the bound where its tail
-#: is longer, the residual and ``unconverged`` taking the rest).
-FRICTION_SWEEPS: dict[str, int] = {}
-FRICTION_SWEEPS_DEFAULT = 20
+#: The sweeps of a frictional hold, by hull kind (``FRICTION_SWEEPS_DEFAULT`` for a kind not listed): declarations from
+#: each kind's measurement through the node's hold (W2b's probe: 1,000 draws a kind and dtype of one step's problem on
+#: a tube's floor, the change still to come in the held twist against 4,000 sweeps', over the hold's whole change). Under
+#: 1e-3 at the 99th percentile: a sphere after 1 sweep, an ellipsoid 3, a capsule 5, a cylinder 10, each held at 20 with
+#: none past CONVERGED; a box held by its samples after 160 and FL-9's screw past 320, so they take the bound, 80, where
+#: 0.9 % of the box's and 0.9 % of the screw's draws stay past CONVERGED (raising unconverged) and the power guard trips
+#: on 0.2 % and 0.65 % (float64; float32 alike), the residual and the flag taking the rest.
+FRICTION_SWEEPS: dict[str, int] = {"sphere": 20, "ellipsoid": 20, "capsule": 20, "cylinder": 20}
+FRICTION_SWEEPS_DEFAULT = 80
 
 
 def _plane_frame(surface: Mapping[str, object]) -> tuple[float, float, float]:
