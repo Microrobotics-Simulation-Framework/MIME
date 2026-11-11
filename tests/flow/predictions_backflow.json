@@ -14,29 +14,36 @@
       "float64"
     ],
     "platform": "CPU, GitHub Actions runner (4 vCPU), the probe workflow; the explicit form's arms on a probe branch at f392fdd (#258's pushed head, the explicit form), the implicit form's on the head carrying this file",
-    "sizes_and_parameters": "the spike's case in MIME (probe/backflow_case.py): D 1 mm, the tube 4 D along z, the stenosis as eight conical segments on the cosine, water (nu 1e-6, rho 1e3), Inflow(steady=Q_m, amplitude=1.5 Q_m, phase=-pi/2), Windkessel(1e8 Pa s/m^3, 1e-11 m^3/Pa, 1e9 Pa s/m^3), VesselRegion(extension_diameters=0), cells_across 16, IMEX Euler, dt = T / ceil(T / (0.8 h / peak)), peak = 2 U_m 2.5 / 0.25 (12,450 steps a period at mean Re 300); FB8's reversing rig and FB9's tube as in tests/flow/region_cases.py",
-    "seeds_and_draws": "the spike's case one run a form; the reversing rig seeds 0 to 5; the sign control 20 drawn reversing rigs (seeds 3000 to 3019); bits on named programs"
+    "sizes_and_parameters": "the spike's case in MIME (probe/backflow_case.py): D 1 mm, the tube 4 D along z, the stenosis as eight conical segments on the cosine, water (nu 1e-6, rho 1e3), Inflow(steady=Q_m, amplitude=1.5 Q_m, phase=-pi/2), Windkessel(1e8 Pa s/m^3, 1e-11 m^3/Pa, 1e9 Pa s/m^3), VesselRegion(extension_diameters=0), cells_across 16, IMEX Euler at its own line: a region's flow reads IMEX Euler's CFL line along the diagonal (0.4 / 3), so dt = T / ceil(T / (0.9 (0.4/3) h / (1.25 s U_m))), s the spike's RK3 largest speed over the mean (7.45 at mean Re 300, 8.1 at 100): 38,686 steps a period at mean Re 300 (3.2 times the spike's 12,450), 14,021 at 100; a wall-time budget of 16,500 s a run (a runner's limit), its reach recorded; FB8's reversing rig and FB9's tube as in tests/flow/region_cases.py",
+    "seeds_and_draws": "the spike's case one run a form; the reversing rig seeds 0 to 5; the sign control 20 drawn reversing rigs (seeds 3000 to 3019); bits on named programs",
+    "amended_before_any_run": "2026-11-12: the first version of this file set the case at the spike's step, which IMEX Euler's line for a region's flow (0.4 / 3 along the diagonal) refuses (the CFL check stops the run); amended before any gate ran, no arm launched"
   },
   "gate_spike_case_imex": {
-    "claim": "item 1's first condition, the part 4a can show (RK3's is 4b's): the open-ports spike's case under IMEX Euler holds at least 2.25 periods with the lagged implicit term, as long as with the explicit one",
+    "claim": "item 1's first condition, the part 4a can show (RK3's run of the case, 2.25 periods at the spike's step, is 4b's): the open-ports spike's case under IMEX Euler at its own CFL line holds with the lagged implicit term at least as far as with the explicit one, through the forward peak where the term-removed spike run diverged (0.26 of a period), and as far as a runner's budget reaches toward 2.25 periods",
     "kind": "acceptance",
-    "case": "probe/backflow_case.py --reynolds 300 --periods 2.25 --form implicit | explicit | off",
+    "case": "probe/backflow_case.py --reynolds 300 --periods 2.25 --form implicit | explicit | off (each to 2.25 periods or its wall-time budget)",
     "prediction": {
       "implicit": {
-        "value": 2.25,
+        "value": 1.2,
         "band": [
-          2.25,
+          0.5,
           2.25
         ],
-        "unit": "periods held (finite, no CFL stop)"
+        "unit": "periods reached, finite, no CFL stop, within the budget (a runner's speed, a guess of 0.2 to 0.3 s a step at 32 x 32 x 64 cells)",
+        "basis": "guess"
       },
       "explicit": {
-        "value": 2.25,
+        "value": 1.2,
         "band": [
-          2.25,
+          0.5,
           2.25
         ],
-        "unit": "periods held"
+        "unit": "periods reached, as the implicit arm",
+        "basis": "guess"
+      },
+      "implicit_against_explicit": {
+        "value": "holds as far, or both cut by the budget within 10 % of each other's steps",
+        "basis": "derived: the implicit form's damping on an inward face is the explicit form's at the step's start velocity"
       },
       "off": {
         "value": 0.3,
@@ -47,8 +54,7 @@
         "unit": "periods held before it diverges or the CFL line stops it",
         "basis": "guess"
       },
-      "basis": "guess for IMEX Euler (the spike ran RK3); the implicit form's damping on an inward face is the explicit form's at the step's start velocity, so it holds at least as long",
-      "why": "the term removes the kinetic energy entering through the outlet's inward faces, the mechanism that diverged without it (an inference from the term curing it in the spike); IMEX Euler's first-order damping may hold the off arm longer than RK3's 0.26 of a period"
+      "why": "the term removes the kinetic energy entering through the outlet's inward faces, the mechanism that diverged without it (an inference from the term curing it in the spike); IMEX Euler's first-order damping and its 3.2 times smaller step may hold the off arm longer than RK3's 0.26 of a period"
     },
     "also_read": {
       "watch": "the outlet watch's largest reversed share while the net flux is outward, every form: at least 0.05 (FB8's firing case: the spike saw 544 of 729 faces reversed while forward), basis guess",
@@ -59,13 +65,13 @@
       "expected_rate": "diverges or stops before 2.25 periods (one run)",
       "clean_expected": "the implicit and explicit arms hold"
     },
-    "if_wrong": "an implicit arm that fails before 2.25 periods, or before the explicit arm, goes back to the maintainer before #258 merges (his condition)",
+    "if_wrong": "an implicit arm that diverges or stops by the CFL line before the explicit arm does goes back to the maintainer before #258 merges (his condition); a budget that cuts both short of 2.25 periods is stated as the reach, the rest left to 4b's RK3 run",
     "cannot_discriminate_if": "the off arm also holds 2.25 periods under IMEX Euler: then this case shows no instability for either form to cure under IMEX, and says only that neither form broke it"
   },
   "gate_reversal_damping": {
     "claim": "item 1's second condition: a genuine reversal at the outlet is damped by the lagged implicit term about as much as by the explicit one",
     "kind": "estimates",
-    "case": "probe/backflow_case.py --reynolds 100 --periods 2 (the same tube at mean Re 100: the whole flow reversing, the stenotic jet reaching the outlet) for the three forms; probe/reversal.py on FB8's reversing rig (Stokes, alpha 0.5) for the three forms",
+    "case": "probe/backflow_case.py --reynolds 100 --periods 2 (the same tube, its step as above, 14,021 a period at mean Re 100: the whole flow reversing, the stenotic jet reaching the outlet) for the three forms; probe/reversal.py on FB8's reversing rig (Stokes, alpha 0.5) for the three forms",
     "metric": "against the term removed, over the second period: the outlet's largest inward flux through its patch (fluid-weighted, h^2 sum max(-w_n, 0)), damping = 1 - (its largest with the term) / (its largest without); the outlet pressure's RMS difference from the term-removed run over its RMS; on the Stokes rig the term's work over the outlet law's",
     "prediction": {
       "re100_damping_implicit_over_explicit": {
