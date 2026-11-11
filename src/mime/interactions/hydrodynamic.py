@@ -1439,8 +1439,9 @@ PENALTY_LAGGED_BASIS = ("the coupling spike's R3, a sphere of 3 cells a radius o
 #: The thinnest-feature line, in cells across the radius of a resolved body's smallest feature, under which the build
 #: refuses (drag.penalty-thin), and its basis.
 PENALTY_THIN_LINE = 3.0
-PENALTY_THIN_BASIS = ("provisional: a sphere at 3 cells a radius reads its Stokes drag 6.9 % under Haberman and Sayre "
-                      "(the coupling spike's R3); F4's measurement sets the line")
+PENALTY_THIN_BASIS = ("measured in Stokes flow through the node: a sphere at 3 cells a radius reads its drag 6.0 % under "
+                      "Haberman and Sayre at a/R 0.375 and 1.5 % at 0.222, at 2 a radius 13 %; a thin disc broadside "
+                      "4.1 % under the MRS at 3 cells across its thickness and 6.9 % at 2 (F4's first step's probe)")
 
 
 @register_interaction
