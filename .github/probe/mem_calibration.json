@@ -1,5 +1,172 @@
 {
-  "scope": "provisional",
-  "factor": 1.0,
-  "cases": []
+  "scope": "FIFTEEN CASES, BUT ONE REVERSE-MODE CASE MEASURED TO COMPLETION: the factor rests on it (1.30), and the two reverse cases that were killed give only lower bounds the estimate lies above. The near-field forward cases (against_a_fit) were measured when the near-field node's own memory estimate was fitted to the same peaks, and agree by construction in part. A few cases of one family on a CPU (the MRS drag and its near field), checked against peaks measured on runners and a laptop. The factor is the largest measured/estimated ratio rounded up, never under 1; the estimate times it lies over the measured peak on these cases only, by construction of the factor; a case of another family is outside what it was measured on. A measured peak marked as a lower bound belongs to a run that was killed: its ratio shows an underestimate only when over 1.",
+  "estimate": "mem_estimate.py at the time of the calibration: the largest of the build's peak, the resident set after the build plus the compiled program's bytes (reverse where measured in reverse), and the nodes' own estimates",
+  "factor": 1.3,
+  "cases": [
+    {
+      "dominant": "run",
+      "name": "ano0375_fwd",
+      "what": "sphere near a plane, MRS drag, graded force points (685), forward step near the wall, float64",
+      "estimate_gib": 1.992,
+      "measured_gib": 1.94,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 0.974,
+      "where": "a CI runner probe: process peak (VmHWM), compile included"
+    },
+    {
+      "dominant": "run",
+      "name": "ano0375_rev",
+      "what": "the same, reverse mode through a 10-step chunk in the plane's offset",
+      "estimate_gib": 3.157,
+      "measured_gib": 4.1,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.299,
+      "where": "a CI runner probe: process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "ano019_fwd",
+      "what": "the same at a finer hand-over (2357 force points), forward step near the wall",
+      "estimate_gib": 6.368,
+      "measured_gib": 6.1,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 0.958,
+      "where": "a CI runner probe: process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "ano019_rev",
+      "what": "the same finer case, reverse mode through a 10-step chunk in the plane's offset",
+      "estimate_gib": 17.43,
+      "measured_gib": 14.8,
+      "measured_is_lower_bound": true,
+      "against_a_fit": false,
+      "ratio": 0.849,
+      "where": "a CI runner probe killed by the runner's memory: 14.8 GiB was resident at the kill, so the peak is at least that"
+    },
+    {
+      "dominant": "run",
+      "name": "r240_7",
+      "what": "7 spheres of 882 force points in the near field (18,522 unknowns), dense route, reverse mode, 2 steps",
+      "estimate_gib": 29.473,
+      "measured_gib": 28.25,
+      "measured_is_lower_bound": true,
+      "against_a_fit": false,
+      "ratio": 0.959,
+      "where": "a CI runner probe that failed on one allocation of 30,329,573,152 bytes: the peak is at least that"
+    },
+    {
+      "dominant": "node near_field:water's own estimate + fixed part",
+      "name": "n223_2_dense_f64",
+      "what": "2 spheres of 882 force points in the near field (5,292 unknowns), dense route, float64, forward run of 3 steps with history",
+      "estimate_gib": 1.745,
+      "measured_gib": 1.73,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.991,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "node near_field:water's own estimate + fixed part",
+      "name": "n223_4_dense_f64",
+      "what": "4 spheres of 882 force points in the near field (10,584 unknowns), dense route, float64, forward run of 3 steps with history",
+      "estimate_gib": 3.63,
+      "measured_gib": 3.61,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.995,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_6_dense_f64",
+      "what": "6 spheres of 882 force points in the near field (15,876 unknowns), dense route, float64, forward run of 3 steps with history",
+      "estimate_gib": 6.456,
+      "measured_gib": 6.44,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.997,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_8_dense_f64",
+      "what": "8 spheres of 882 force points in the near field (21,168 unknowns), dense route, float64, forward run of 3 steps with history",
+      "estimate_gib": 10.019,
+      "measured_gib": 10.14,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 1.012,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_2_gmres_f64",
+      "what": "2 spheres of 882 force points in the near field (5,292 unknowns), gmres route, float64, forward run of 3 steps with history",
+      "estimate_gib": 2.375,
+      "measured_gib": 2.33,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.981,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_4_gmres_f64",
+      "what": "4 spheres of 882 force points in the near field (10,584 unknowns), gmres route, float64, forward run of 3 steps with history",
+      "estimate_gib": 4.652,
+      "measured_gib": 4.62,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.993,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_6_gmres_f64",
+      "what": "6 spheres of 882 force points in the near field (15,876 unknowns), gmres route, float64, forward run of 3 steps with history",
+      "estimate_gib": 8.037,
+      "measured_gib": 7.91,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.984,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_8_gmres_f64",
+      "what": "8 spheres of 882 force points in the near field (21,168 unknowns), gmres route, float64, forward run of 3 steps with history",
+      "estimate_gib": 12.169,
+      "measured_gib": 12.08,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.993,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_8_dense_f32",
+      "what": "8 spheres of 882 force points in the near field (21,168 unknowns), dense route, float32, forward run of 3 steps with history",
+      "estimate_gib": 6.537,
+      "measured_gib": 6.51,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.996,
+      "where": "a laptop run, process peak (VmHWM)"
+    },
+    {
+      "dominant": "run",
+      "name": "n223_8_gmres_f32",
+      "what": "8 spheres of 882 force points in the near field (21,168 unknowns), GMRES route, float32, forward run of 3 steps with history",
+      "estimate_gib": 7.924,
+      "measured_gib": 7.81,
+      "measured_is_lower_bound": false,
+      "against_a_fit": true,
+      "ratio": 0.986,
+      "where": "a laptop run, process peak (VmHWM)"
+    }
+  ]
 }
