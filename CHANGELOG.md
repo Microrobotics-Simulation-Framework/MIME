@@ -186,7 +186,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   grading or contact is written (`Flag.written`, new). In graded runs the wall's self-image measures each cell's
   distance from the wall in the force spacing, as a uniform run's (design #329, superseding #308's cell's own size;
   `GRADED_WALL_MEASURE` in `mime.nodes.hydro.mrs._node`, one switch: at the gate's sphere +3.33 % against +5.24 % at blob
-  0.1, -0.04 % against +1.67 % at 0.025) and a written `wall_refinement` is taken from the finest spacing. The build reports
+  0.1, -0.04 % against +1.67 % at 0.025) and a written `wall_refinement` is taken from the finest spacing; the wall's cell
+  budget follows the graded density (decision #353: every cell of the graded patch and `WALL_CELL_SHARE` of the rest),
+  so a default graded run raises no `wall_cells_short`, which is kept for a real shortfall. The build reports
   what was graded, the counts and the finest spacing. **What grading buys, measured**, against a uniform sampling of
   the graded count as well where that arm was run (the count-matched uniform arm, design #329's standard control, which
   the sphere's oracle runs; the cylinder's rim's figures have none, so its gain may be the count's): the sphere's contact

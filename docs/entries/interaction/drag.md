@@ -221,12 +221,11 @@ in the force spacing, as a uniform run's (`GRADED_WALL_MEASURE`, one switch in t
 cell's own size, was the first build's), and a written `wall_refinement` counts from the finest spacing: a graded contact half
 a force spacing from a plane, the image integrated, measured farther from Brenner's series than the uniform sampling at
 a blob of a tenth, the compact default, and nearer at a fortieth, and nearer at both than with the cells measured in
-their own size (the switch's comment gives the numbers). A graded body's fine cells within the image's reach
-outnumber the wall's cell budget, so default graded runs with `wall_refinement` raise `wall_cells_short` on every step
-measured (the gates' sphere in either measure, the graded round-trip cylinder in the force spacing): there it says the
-farthest of those cells took the image at their force points, not that the budget held; with every cell integrated
-the largest resistance entry moved by under two ten-thousandths of itself on the sphere and under two thousandths on
-the cylinder. The build report states what
+their own size (the switch's comment gives the numbers). A graded body's wall budget follows its density (decision
+#353): every cell of its graded patch, finer than the force spacing and crowding the image's reach where it faces the
+wall, and `WALL_CELL_SHARE` of the rest, so the gates' graded sphere and the graded round-trip cylinder raise
+`wall_cells_short` on no step; the flag is kept for a real shortfall. The build report gives the budget, and
+`WALL_BUDGET_MEASURED` the change's cost. The build report states what
 was graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the
 force points' mean spacing.
 

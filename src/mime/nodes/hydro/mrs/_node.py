@@ -108,12 +108,10 @@ OFF_PATCH_BAND = 0.05
 #: ``"cell"``, in the cell's own size, ``sqrt(area)``. Measured through the node on the gate's sphere, its contact
 #: graded for half a force spacing and the image integrated, against Brenner's series at half a spacing: +3.33 % (force
 #: spacing) and +5.24 % (cell) at blob 0.1, -0.04 % and +1.67 % at 0.025, the uniform sampling +1.47 % and -2.18 %. The
-#: one switch between them; a uniform run reads neither. A graded body's fine cells within the reach outnumber what
-#: :data:`WALL_CELL_SHARE` budgets for, so its steps raise ``wall_cells_short`` on default graded runs: the gate's
-#: sphere (76 cells of 301 budgeted) on every step in either measure, ``mrs_graded``'s cylinder (21 of 84) on every step
-#: in the force spacing and on none in the cell's own size. Measured through the node, in both dtypes: every cell
-#: integrated moved the largest resistance entry by 1.6e-4 of itself (the sphere) and 1.6e-3 (the cylinder), against
-#: 1.8e-2 and 7.3e-3 for this switch; the sphere's normal entry alone from +3.33287 % to +3.33277 %.
+#: one switch between them; a uniform run reads neither. A graded body's wall budget follows its density
+#: (:attr:`MRSDragNode.wall_budget`, decision #353), so default graded runs raise no ``wall_cells_short``: under the
+#: share of every cell (76 of the gate's sphere's 301 cells, 21 of ``mrs_graded``'s cylinder's 84) both raised it on
+#: every step, the sphere in either measure.
 GRADED_WALL_MEASURE: Literal["cell", "force_spacing"] = "force_spacing"
 #: What the build report says was mapped near a wall, for a wall kind without figures of its own
 #: (``WallCorrection.near_wall_text``).
@@ -152,12 +150,20 @@ WALL_REACH = 2.0
 #: the 0.1 mm margin, eight rolls: within two spacings of the wall lay at most 14.6% of the cells at 0.278 mm, 16.2% at
 #: 0.3, 23.7% at 0.4, 44% at 0.6 and 63% at 0.829. A cell's row is padded to :data:`WALL_CELL_CAP`, so a budget pays
 #: only below about 0.41 (the kept points over the padded row, at every spacing measured); 0.25 holds the cells within
-#: the reach from 0.4 mm down, and a coarser spacing flags that it is short. A graded body's cells are counted against
-#: the same share, so default graded runs with ``wall_refinement`` raise ``wall_cells_short`` on every step measured
-#: (:data:`GRADED_WALL_MEASURE`'s comment): there it says the farthest cells within the reach took the image at their
-#: force points, at the cost measured there, not that the budget held. Whether a graded run's budget follows its
-#: density is the maintainer's open question.
+#: the reach from 0.4 mm down, and a coarser spacing flags that it is short. A graded body's budget follows its density
+#: (decision #353): every cell of its graded patch, finer than the force spacing and crowding the reach where it faces
+#: the wall, and this share of the rest; the gate's sphere then budgets 160 of its 301 cells (113 in the patch) and
+#: ``mrs_graded``'s cylinder 78 of 84 (76), and neither raises ``wall_cells_short`` on any step, which is kept for a
+#: real shortfall. :data:`WALL_BUDGET_MEASURED` gives the change's cost.
 WALL_CELL_SHARE = 0.25
+#: What decision #353's budget costs, measured through the node (``built.run``, six steps, the budget before and after
+#: in one job on a GitHub runner, probe run 42944303576, both dtypes).
+WALL_BUDGET_MEASURED = (
+    "the gate's graded sphere (301 cells, 113 in the patch, wall_refinement 2, half a spacing from a plane, blob 0.1): "
+    "a budget of 160 cells against 76, no step short against six of six, a step's time 1.26 times in float64 (0.206 "
+    "against 0.164 s) and 1.29 in float32, the run's peak memory within its noise, the largest resistance entry moved by "
+    "1.6e-4 of itself; mrs_graded's cylinder (84 cells, 76 in the patch): 78 against 21, no step short against six of "
+    "six, 1.07 and 1.47 times a step's time (8.0 against 7.5 ms in float64), the largest entry moved by 1.6e-3")
 #: The most wall points a cell's image is integrated on, in multiples of the mean over the cells, rounded up
 #: (:func:`mime.nodes.hydro.mrs._quadrature.capped_cells`): a tensor grid crowds some cells (at 0.4 mm on FL-9 the widest
 #: holds 67 points against a mean of 9), and a step reads every target against every cell padded to the widest, so
@@ -1357,9 +1363,9 @@ class MRSDragNode(MimeNode):
                  if used is not None else "")
         promoted = (f" (wall_refinement={written} written, which leaves a cell of this body with no wall point, so the "
                     f"next finer that leaves none)" if used is not None and written != used else "")
-        graded = (" (a graded body's cells within the reach outnumber the budget, so its steps raise "
-                  "wall_cells_short, every step on the default graded runs measured: the farthest of them take the "
-                  "image at their force points)" if self.graded and not self.wall_every else "")
+        graded = (f" (a graded body's budget, {self.wall_budget} of its {self.sample_count} cells: every cell of its "
+                  f"graded patch, {self.graded_cells}, and {WALL_CELL_SHARE:g} of the rest)"
+                  if self.graded and not self.wall_every else "")
         return (f"the image at the force points, and where a cell lies within {WALL_REACH:g} force spacings of the "
                 f"wall integrated over {which} on a wall quadrature{finer}{promoted}, of up to {table.shape[1]} points "
                 f"a cell, blended to the point image by the distance{graded}")
@@ -1551,7 +1557,7 @@ class MRSDragNode(MimeNode):
 
 __all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "GRADED_WALL_MEASURE", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
            "OFF_PATCH_BAND", "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
-           "WALL_CELL_SHARE", "WALL_REACH",
+           "WALL_BUDGET_MEASURED", "WALL_CELL_SHARE", "WALL_REACH",
            "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",
            "floating_leaves", "judged", "path_name",
            "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",

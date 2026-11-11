@@ -1578,12 +1578,10 @@ class Drag(UncoupledDrag):
         "written, the wall's self-image measures a graded cell's distance in the force spacing, as a uniform run's "
         "(GRADED_WALL_MEASURE): on the gates' sphere graded for half a force spacing from a plane, "
         "farther from Brenner's series than the uniform sampling at a blob of a tenth, the compact default, and nearer "
-        "at a fortieth (GRADED_WALL_MEASURE's comment gives the numbers); a graded body's fine cells within the image's "
-        "reach outnumber the wall's cell budget (WALL_CELL_SHARE), so default graded runs raise wall_cells_short on "
-        "every step measured (the gates' sphere in either measure, the graded round-trip cylinder in the force "
-        "spacing): the farthest of those cells took the image at their force points, and with every cell integrated "
-        "the largest resistance entry moved by under two ten-thousandths of itself on the sphere and under two "
-        "thousandths on the cylinder",
+        "at a fortieth (GRADED_WALL_MEASURE's comment gives the numbers); a graded body's wall budget follows its "
+        "density, every cell of its graded patch and WALL_CELL_SHARE of the rest, so the gates' sphere and the graded "
+        "round-trip cylinder raise wall_cells_short on no step (it is kept for a real shortfall), at the cost "
+        "WALL_BUDGET_MEASURED gives",
         "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
         "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
         "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
