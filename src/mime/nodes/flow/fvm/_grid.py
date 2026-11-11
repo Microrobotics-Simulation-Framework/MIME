@@ -78,6 +78,11 @@ class MACGrid:
     def cell_count(self) -> int:
         return int(np.prod(self.cells))
 
+    def shape(self, component: int) -> tuple[int, int, int]:
+        """The ``component``-th face set's shape: the cells' on a periodic box."""
+        del component
+        return self.cells
+
     @property
     def cell_volume(self) -> Any:
         return self.spacing ** 3
@@ -220,11 +225,16 @@ class MACGrid:
             centred = distance - jnp.sum(distance * normalised, axis=1, keepdims=True)
             variance = jnp.sum(centred * centred * normalised, axis=1, keepdims=True)
             slopes.append(-centred * normalised / (variance * h * h))
-            indices.append(jnp.mod(lattice, count))
+            indices.append(self.stencil_indices(axis, component, lattice))
         weight = jnp.stack(weights, axis=1)
         padded = jnp.pad(weight, ((0, 0), (0, 0), (1, 1)))
         curvature = (padded[:, :, 2:] + padded[:, :, :-2] - 2.0 * weight) / h ** 2
         return ExchangeStencil(jnp.stack(indices, axis=1), weight, curvature, jnp.stack(slopes, axis=1))
+
+    def stencil_indices(self, axis: int, component: int, lattice: Array) -> Array:
+        """A stencil's lattice along ``axis`` as indices into the ``component``-th face set: wrapped, the box periodic."""
+        del component
+        return jnp.mod(lattice, self.cells[axis])
 
 
 #: How far the exchange kernel reaches, in its widths: the weight beyond is under exp(-32) of its peak.

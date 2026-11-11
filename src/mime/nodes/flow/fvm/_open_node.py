@@ -42,6 +42,7 @@ from typing_extensions import Annotated, ReadOnly, TypedDict
 from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, run_dtype
 from mime.core import ledger as books
 from mime.core._node import rechecked
+from mime.core.elimination import exchange_system
 from mime.core.ledger import TermOrder
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negative_resistivity
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
@@ -49,8 +50,9 @@ from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
     FlowFields, FlowRecords, check_deliveries
 from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
-from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, port_law_named, \
-    port_system, reference_of, well_posed
+from mime.nodes.flow.fvm._partners import BodyPartner, Openings, Partnered, combined, partnered_step
+from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, opening_rows, \
+    openings_solved, port_law_named, reference_of, well_posed
 from mime.nodes.flow.fvm._schemes import StageParts, StepContext
 from mime.nodes.flow.fvm._solve import Stopping, preconditioner_named, projected_solve, recheck_stopping, \
     stagnation_window
@@ -333,7 +335,8 @@ class OpenFlowNode(ImplicitFlowNode):
         held = {**self.initial_fields(), "opening_pressure": jnp.zeros(openings, dtype=dtype),
                 "opening_pressure_relative": jnp.zeros(openings, dtype=dtype),
                 "opening_flux": jnp.zeros(openings, dtype=dtype),
-                "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype), **unit}
+                "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype), **unit,
+                **self.partner_fields()}
         if not self.metered:
             return node_fields(held)
         z = as_run_array(0.0)
@@ -370,6 +373,9 @@ class OpenFlowNode(ImplicitFlowNode):
         instant = time + scheme.drive_instants[0] * dt
         held_units = [(state["unit_x"][k], state["unit_y"][k], state["unit_z"][k]) for k in range(len(others))]
         solved_ports: dict[str, OpenPorts] = {}
+        bodies = self.body_partners(p, boundary_inputs, dt, dtype) if self.body_count else []
+        held_bodies = self.held_partner_units(state) if bodies else []
+        partnered: dict[str, Partnered] = {}
 
         def solve(shift: Any, rhs: Velocity, guess: Velocity | None) -> tuple[Velocity, Array]:
             def one(b: Velocity, start: Velocity | None) -> tuple[Velocity, Array]:
@@ -377,6 +383,11 @@ class OpenFlowNode(ImplicitFlowNode):
                                        start if c["scaling_start"] else None, stopping, tap, preconditioner,
                                        magnitude(shift))
 
+            if bodies:
+                return self.solve_with_bodies(one, grid, _add(rhs, grid.port_force(predicted, rho)), guess, bodies,
+                                              [*held_units, *held_bodies], rho, solved_ports, partnered,
+                                              (rows, reference, others, count, predicted),
+                                              self.law_rows(parameters, law_state, instant, dt))
             base, report = one(_add(rhs, grid.port_force(predicted, rho)), guess)
             units: list[Velocity] = []
             reports = [report]
@@ -439,26 +450,59 @@ class OpenFlowNode(ImplicitFlowNode):
             **{f"unit_{x}": (jnp.stack([unit[k] for unit in ports.units]) if ports.units else
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})
         held = node_fields(ended)
+        solved_partners = partnered.get("step")
+        if solved_partners is not None:
+            held = {**held, **self.partner_ended(grid, bodies, solved_partners, len(others))}
         energy: dict[str, Array] = {}
         if self.metered:
             energy = self.open_energy_terms(p, grid, velocity, stage, sigma, fields, dt, ports, flux, law_state,
-                                            law_ended, parameters)
+                                            law_ended, parameters, solved_partners)
             stall = self.stall_ratio(energy)
             line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
         return held, StepParts(stage, fields, energy)
 
+    def solve_with_bodies(self, one: Any, grid: OpenMACGrid, rhs: Velocity, guess: Velocity | None,
+                          bodies: Sequence[BodyPartner], held: Sequence[Velocity], rho: Array,
+                          solved_ports: dict[str, OpenPorts], partnered: dict[str, Partnered],
+                          layout: tuple[Sequence[RowKind], int, Sequence[int], int, Array],
+                          laws: tuple[Array, Array]) -> tuple[Velocity, Array]:
+        """The step's solve with point bodies held beside the openings: one elimination over both
+        (``mime.nodes.flow.fvm._partners.partnered_step``), the openings' unit fields first."""
+        rows, reference, others, count, predicted = layout
+        a, blocks = laws
+        dtype = predicted.dtype
+        unit_forces = [grid.port_force(jnp.zeros(count, dtype=dtype).at[j].set(1.0), rho) for j in others]
+        result = partnered_step(one, grid, rhs, guess, bodies, held, rho,
+                                Openings(rows, a, blocks, predicted, reference, self.coupling(), unit_forces))
+        assert result.openings is not None
+        units = result.units[:len(others)]
+        response = jnp.stack([grid.opening_fluxes(unit) for unit in units], axis=1) if units else \
+            jnp.zeros((count, 0), dtype=dtype)
+        solved_ports["ports"] = OpenPorts(result.openings, result.base, tuple(units), response,
+                                          grid.port_force(result.openings.relative, rho), blocks)
+        partnered["step"] = result
+        return result.solved, result.report
+
     def solve_ports(self, rows: Sequence[RowKind], a: Array, blocks: Array, base: Array, response: Array,
                     predicted: Array, reference: int) -> PortSolution:
-        """The port system (``mime.nodes.flow.fvm._ports.port_system``) with each law's block in place."""
-        return port_system(rows, a, blocks, base, response, predicted, reference, self.coupling())
+        """The openings alone as the one elimination's partner (``mime.core.elimination``; their rows
+        ``mime.nodes.flow.fvm._ports.opening_rows``), each law's block in place."""
+        partner, held, gauge = opening_rows(rows, a, blocks, base, response, predicted, reference, self.coupling())
+        deliveries = exchange_system([partner]).deliveries if len(rows) > 1 else jnp.zeros(0, dtype=base.dtype)
+        return openings_solved(len(rows), reference, held, gauge, deliveries, base, response, predicted)
 
-    def superposed_scale(self, grid: OpenMACGrid, ports: OpenPorts) -> Array:
+    def superposed_scale(self, grid: OpenMACGrid, ports: OpenPorts, partnered: Partnered | None = None) -> Array:
         """Each opening's superposition's scale (m^3/s): ``h^2 (sum |w_base| + sum_j |m_j| sum |w_unit_j|)`` over its
-        patch's faces, the magnitude its face flux is summed from."""
+        patch's faces, the magnitude its face flux is summed from (each held body's unit fields with their deliveries
+        too)."""
         total = grid.opening_fluxes_magnitude(ports.base)
         for unit, j in zip(ports.units, self.others(), strict=True):
             total = total + jnp.abs(ports.solution.moved[j]) * grid.opening_fluxes_magnitude(unit)
+        if partnered is not None:
+            first = len(ports.units)
+            for k, unit in enumerate(partnered.units[first:]):
+                total = total + jnp.abs(partnered.deliveries[first + k]) * grid.opening_fluxes_magnitude(unit)
         return total
 
     def opening_solid_fluxes(self, p: Mapping[str, Any], velocity: Velocity, depth: Any = None) -> Array:
@@ -509,7 +553,8 @@ class OpenFlowNode(ImplicitFlowNode):
     # -- the step identity ------------------------------------------------------------------------------------------
     def open_energy_terms(self, p: Mapping[str, Any], grid: OpenMACGrid, before: Velocity, stage: StageParts,
                           sigma: Velocity, fields: WallFields, dt: float, ports: OpenPorts, flux: Array,
-                          law_state: Array, law_ended: Array, parameters: Array) -> dict[str, Array]:
+                          law_state: Array, law_ended: Array, parameters: Array,
+                          partnered: Partnered | None = None) -> dict[str, Array]:
         """Each term of the step's identity (J), the openings' laws' work and own books, the fluid's momentum the
         drive is paired with, and the magnitude of the arithmetic forming them (``scale``)."""
         fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2])
@@ -520,6 +565,9 @@ class OpenFlowNode(ImplicitFlowNode):
         minus_laplacian = (-laplacian[0], -laplacian[1], -laplacian[2])
         penalised = (sigma[0] * solved[0], sigma[1] * solved[1], sigma[2] * solved[2])
         forced = _add(stage.rhs, ports.force)
+        partner_forces = partnered.forces if partnered is not None else ()
+        for force in partner_forces:
+            forced = _add(forced, force)
         applied = self.operator_of(p, grid, sigma)(stage.shift)(solved)
         remainder = _add(forced, applied, -1.0)
         gradient = grid.gradient(grid.pressure_of(remainder))
@@ -531,7 +579,7 @@ class OpenFlowNode(ImplicitFlowNode):
         own = [law.books(parameters[i], law_state[i], law_ended[i], self.per_law(law, held, flux),
                          self.per_law(law, held, ports.pressures), dt)
                for i, (law, held) in enumerate(zip(laws, bound, strict=True))]
-        superposed = self.superposed_scale(grid, ports)
+        superposed = self.superposed_scale(grid, ports, partnered)
         # Each law's own scale (``mime.core.ledger.LAW_BOOKS``' last column): its terms' magnitudes, and the face flux's
         # summation floor carried through its block. The law steps with its openings' face fluxes, each a sum over its
         # patch's N faces of the superposed field, and its pressures solve its rows at the rows' fluxes; the two differ
@@ -571,6 +619,9 @@ class OpenFlowNode(ImplicitFlowNode):
                              + size(stage.convection, before) + nu * size(minus_laplacian, solved)
                              + size(penalised, solved) + size(gradient, solved))
                        + (size(before, before) + size(solved, solved) + size(before, solved) if stores else 0.0))
+        if partner_forces:
+            terms["partners"] = jnp.stack([dt * rho * inner(force, solved) for force in partner_forces])
+            scale = scale + rho * dt * sum((size(force, solved) for force in partner_forces), start=zero)
         return {**terms, "scale": scale + port_scale + law_scale}
 
     @override
@@ -627,7 +678,8 @@ class OpenFlowNode(ImplicitFlowNode):
                                                           energy["momentum_size"])
         hosted_work: dict[str, Array] = {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
                                          KINETIC_FLUX: energy[KINETIC_FLUX],
-                                         **{opening_role(i): energy["ports"][i] for i in range(len(self.laws()))}}
+                                         **{opening_role(i): energy["ports"][i] for i in range(len(self.laws()))},
+                                         **{f"partner_{b}": energy["partners"][b] for b in range(self.body_count)}}
         stored = jnp.zeros((len(rows), len(books.LAW_BOOKS)), dtype=dtype)
         named: set[str] = set()
         for delivery in held:
@@ -659,13 +711,6 @@ def _opening_rows(laws: Sequence[PortLaw], bound: Sequence[tuple[int, ...]], par
             if law.openings == 1:
                 waveforms[opening] = tuple(row)
     return rows, waveforms
-
-
-def combined(reports: Sequence[Array]) -> Array:
-    """One report for a step's solves: the iterations and counts summed, the residual the worst."""
-    total = sum(reports[1:], start=reports[0])
-    worst = jnp.max(jnp.stack([report[1] for report in reports]))
-    return total.at[1].set(worst)
 
 
 def check_open_deliveries(held: Sequence[books.LedgerDelivery]) -> None:

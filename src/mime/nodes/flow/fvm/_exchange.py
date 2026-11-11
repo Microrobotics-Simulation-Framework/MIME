@@ -93,7 +93,7 @@ def scatter(grid: MACGrid, component: int, values: Array, stencil: ExchangeStenc
     for the couple's mode, a couple) times the mode's weights, summed onto the faces; a force (N) becomes a force
     density (N/m^3). The transpose of :func:`gather` in :meth:`MACGrid.inner`."""
     index = stencil.lattice
-    density = jnp.zeros(grid.cells, dtype=values.dtype)
+    density = jnp.zeros(grid.shape(component), dtype=values.dtype)
     for coefficient, column, (wx, wy, wz) in _terms(stencil, mode, component):
         each = coefficient * (values[:, column] if mode in VECTOR_MODES else values)
         spread = each[:, None, None, None] * wx[:, :, None, None] * wy[:, None, :, None] * wz[:, None, None, :]

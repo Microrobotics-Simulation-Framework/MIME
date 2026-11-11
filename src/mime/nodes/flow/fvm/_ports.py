@@ -11,7 +11,8 @@ own affine response, and calls :meth:`PortLaw.advanced` with the stage's solved 
 opening, vectors for several); the law books its own terms (:meth:`PortLaw.books`). A hybrid form is guaranteed only
 for standard (power-conserving) relations: the stated limit that stays.
 
-**The port system** (:func:`port_system`). The field sees each opening's pressure relative to one reference opening
+**The openings' rows** (:func:`opening_rows`), the field's partner in its one elimination over its exchange partners
+(``mime.core.elimination``, with any point bodies). The field sees each opening's pressure relative to one reference opening
 (the gauge, decision 9: an incompressible field's effort is defined up to a constant, the laws see absolute pressures);
 its fluxes are affine in those differences through its unit fields' response ``R``: ``q = q0 + R m``, ``m`` the
 differences' move from those the step was solved at; the laws' blocks are placed in one block ``B`` over the openings. The rows are solved for the moves first, the reference's
@@ -41,7 +42,7 @@ from jax import Array
 from mime.core import jnp
 from mime.core import ledger as books
 from mime.core.ledger import TermOrder
-from mime.core.solves import dense_solve
+from mime.core.elimination import PartnerRows
 
 
 class RowKind(StrEnum):
@@ -290,35 +291,45 @@ class PortSolution(NamedTuple):
     fluxes: Array
 
 
-def port_system(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response: Array, predicted: Array,
-                reference: int, coupling: Sequence[Sequence[bool]] | None = None) -> PortSolution:
-    """The openings' pressures and fluxes solving each opening's row with the field's affine response: the fluxes
-    ``q = base + R m``, ``m`` the moves of the pressures relative to ``reference`` (``R`` a column for each opening but
-    the reference) from ``predicted``, those the step was solved at (relative, zero at the reference); ``b`` the laws'
-    blocks placed in one over the openings. Rows: a pressure row ``p_i - (b q)_i = a_i`` with ``p_i = level +
-    predicted_i + m_i``, a flux row ``q_i = a_i``; the reference's own
-    row is a pressure row where any is (``reference_of``) and gives the level once the moves are solved from the
-    others' rows (each other pressure row less the reference's, so the level leaves them); with no pressure row the
-    gauge sets the level to zero and the reference's flux row, which the others' imply, is dropped. ``coupling`` names
-    which entries of ``b`` a law places (structural: one law's openings with each other; the diagonal by default), so a
-    row sums only its own law's terms and a law at one opening forms its row as ``b_i q_i`` alone."""
-    count = len(rows)
-    others = [index for index in range(count) if index != reference]
+def opening_rows(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response: Array, predicted: Array,
+                 reference: int, coupling: Sequence[Sequence[bool]] | None = None
+                 ) -> tuple[PartnerRows, tuple[Array, Array], bool]:
+    """The openings as one exchange partner (``mime.core.elimination``): each opening's row but the reference's over
+    every partner's deliveries ``x`` (the moves of the pressures relative to ``reference`` first, a column for each
+    opening but the reference, then any other partner's), the reference's own row, which gives the level once ``x`` is
+    solved, and whether the gauge sets the level. The fluxes are ``q = base + response x`` (``response`` a column a
+    delivery); ``b`` the laws' blocks placed in one over the openings. Rows: a pressure row ``p_i - (b q)_i = a_i``
+    with ``p_i = level + predicted_i + m_i``, a flux row ``q_i = a_i``; the reference's own row is a pressure row where
+    any is (``reference_of``) and gives the level once the moves are solved from the others' rows (each other pressure
+    row less the reference's, so the level leaves them); with no pressure row the gauge sets the level to zero and the
+    reference's flux row, which the others' imply, is dropped. ``coupling`` names which entries of ``b`` a law places
+    (structural: one law's openings with each other; the diagonal by default), so a row sums only its own law's terms
+    and a law at one opening forms its row as ``b_i q_i`` alone. So a move is formed from the rows' own terms and never
+    as the difference of two absolute pressures."""
     a, b, base, response, predicted = (jnp.asarray(x) for x in (a, b, base, response, predicted))
-    dtype = base.dtype
     reduced, right, held, gauge = _reduced(rows, a, b, base, response, predicted, reference, coupling)
-    moves = dense_solve(reduced, right) if others else jnp.zeros(0, dtype=dtype)
-    level = jnp.zeros((), dtype=dtype) if gauge else held[1] - jnp.dot(held[0], moves)
-    moved = jnp.stack([moves[others.index(j)] if j != reference else jnp.zeros((), dtype=dtype) for j in range(count)])
+    return PartnerRows(reduced, right), held, gauge
+
+
+def openings_solved(count: int, reference: int, held: tuple[Array, Array], gauge: bool, deliveries: Array,
+                    base: Array, response: Array, predicted: Array) -> PortSolution:
+    """The openings' answer from every partner's solved ``deliveries`` (the openings' moves first): each pressure,
+    absolute and relative to the reference, each relative pressure's move, and each flux by its row."""
+    base, response, predicted = (jnp.asarray(x) for x in (base, response, predicted))
+    dtype = base.dtype
+    others = [index for index in range(count) if index != reference]
+    level = jnp.zeros((), dtype=dtype) if gauge else held[1] - jnp.dot(held[0], deliveries)
+    moved = jnp.stack([deliveries[others.index(j)] if j != reference else jnp.zeros((), dtype=dtype)
+                       for j in range(count)])
     relative = jnp.stack([predicted[j] + moved[j] if j != reference else jnp.zeros((), dtype=dtype)
                           for j in range(count)])
-    return PortSolution(level + relative, relative, moved, base + response @ moves)
+    return PortSolution(level + relative, relative, moved, base + response @ deliveries)
 
 
 def _reduced(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response: Array, predicted: Array,
              reference: int, coupling: Sequence[Sequence[bool]] | None
              ) -> tuple[Array, Array, tuple[Array, Array], bool]:
-    """The port system's rows over the moves (:func:`port_system`): the matrix and right-hand side of every opening's
+    """The openings' rows over the deliveries (:func:`opening_rows`): the matrix and right-hand side of every opening's
     row but the reference's, the reference's own row, and whether the gauge sets the level."""
     count = len(rows)
     others = [index for index in range(count) if index != reference]
@@ -360,7 +371,7 @@ def _reduced(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response:
 
 def port_matrix(rows: Sequence[RowKind], b: Array, response: Array, reference: int,
                 coupling: Sequence[Sequence[bool]] | None = None) -> Array:
-    """The matrix :func:`port_system` solves for the moves (its rows' coefficients, the reference's eliminated): what
+    """The matrix the openings' rows (:func:`opening_rows`) solve for the moves (its rows' coefficients, the reference's eliminated): what
     its conditioning is read from (a stiff resistance standing in for a closed valve grows it with the resistance)."""
     response = jnp.asarray(response)
     count = len(rows)
@@ -384,5 +395,5 @@ def passive(law: PortLaw, parameters: Array, dt: Any) -> Array:
 
 
 __all__ = ["PARAMETERS", "PORT_LAWS", "STATES", "SUM_ZERO", "GivenPressure", "Inflow", "LawBooks", "PortLaw", "PortSolution",
-           "RowKind", "SharedDistal", "Valve", "Windkessel", "block", "passive", "port_law_named", "port_matrix", "port_system",
-           "reference_of", "waveforms_cancel", "well_posed"]
+           "RowKind", "SharedDistal", "Valve", "Windkessel", "block", "opening_rows", "openings_solved", "passive",
+           "port_law_named", "port_matrix", "reference_of", "waveforms_cancel", "well_posed"]
