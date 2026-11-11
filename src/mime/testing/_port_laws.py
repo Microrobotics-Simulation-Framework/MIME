@@ -92,19 +92,25 @@ def books_residual(law: PortLaw, row: Any, dt: float, state: Any, given: Any) ->
     """One stage's books at ``(row, dt, state, given)``, ``given`` the flux at each of a pressure row's openings or the
     pressure at each of a flux row's: the residual of the work received, ``dt p . q``, against the storage's change, the
     loss and the numerical term (J), the scale of the inputs it is judged on, and the rounding it is allowed there
-    (``64 eps`` of that scale: no absolute part)."""
+    (``64 eps`` of that scale: no absolute part). The work received is judged on its own products in magnitude,
+    ``dt sum_i |q_i| (|a_i| + sum_j |B_ij| |q_j|)``, never on its result: where a block's off-diagonals nearly cancel its
+    diagonal (a shared distal resistance with opposite fluxes, ``p = R q + R_d (q_1 + q_2)``), the pressures are small
+    beside the terms that formed them, and their rounding is those terms' (the property tests' second cause)."""
     a, b = law.affine(row, state, 0.0, dt)
     if law.row is RowKind.PRESSURE:
         flux = given
-        pressure = a + (b @ flux if law.openings > 1 else b * flux)
+        several = law.openings > 1
+        pressure = a + (b @ flux if several else b * flux)
+        size = jnp.abs(a) + (jnp.abs(b) @ jnp.abs(flux) if several else jnp.abs(b) * jnp.abs(flux))
     else:
         flux, pressure = a, given
+        size = jnp.abs(jnp.asarray(pressure))
     ended = law.advanced(row, state, flux, jnp.asarray(pressure), dt)
     books = law.books(row, state, ended, flux, jnp.asarray(pressure), dt)
     received = dt * jnp.sum(pressure * flux)
     parts = (books.storage_end - books.storage_start, books.loss, books.numerical)
     residual = float(received - sum(parts))
-    scale = float(abs(received) + sum(abs(float(part)) for part in parts)) + \
+    scale = float(dt * jnp.sum(size * jnp.abs(flux))) + sum(abs(float(part)) for part in parts) + \
         float(abs(books.storage_end) + abs(books.storage_start))
     return residual, scale, 64.0 * float(np.finfo(np.asarray(received).dtype).eps) * scale
 

@@ -130,6 +130,31 @@ def test_control_the_extremes_test_sees_a_booked_error_where_the_square_survives
     assert abs(residual) > rounding + floor
 
 
+#: CI's flaked draw (run 42989936874) of the shared distal law: its two fluxes equal and opposite, so each opening's
+#: pressure, ``(R_k + R_d) q_k + R_d q_j``, is a difference of terms a thousand times its size.
+_CANCELLING_DRAW = (50098404.29643129, 17220226.64075733, 72004899337.38588, 0.010000000000000004, 0.0,
+                    -4.139937718785167e-08, 4.139937718785167e-08)
+
+
+def test_a_shared_distal_draw_whose_off_diagonals_cancel_is_judged_on_its_terms():
+    """The flaked draw closes on the received work's own products in magnitude, the scale its rounding came from (on
+    CI and here its residual was 6.6e-23 J, past 64 eps of the work's result, 2.3e-9 J, the earlier scale, and within
+    64 eps of its products, 4.9e-6 J). The control: a loss booked 1e-6 too large is still seen there."""
+    law = PORT_LAWS["shared_distal"]
+    row = jnp.asarray([*_CANCELLING_DRAW[:3], 0.0])
+    dt, state, flux = _CANCELLING_DRAW[3], jnp.asarray([_CANCELLING_DRAW[4]]), jnp.asarray(_CANCELLING_DRAW[5:])
+    residual, _, rounding = books_residual(law, row, dt, state, flux)
+    assert abs(residual) <= rounding, (residual, rounding)
+
+    class _LossScaled(type(law)):
+        def books(self, parameters, state, ended, flux, pressure, dt):
+            held = super().books(parameters, state, ended, flux, pressure, dt)
+            return dataclasses.replace(held, loss=held.loss * (1.0 + 1e-6))
+
+    planted, _, planted_rounding = books_residual(_LossScaled(), row, dt, state, flux)
+    assert abs(planted) > planted_rounding, (planted, planted_rounding)
+
+
 @pytest.mark.parametrize("control", [_Flipped, _ConsistentlyNegative])
 def test_control_a_law_with_a_sign_error_fails_every_draw(control):
     """Each control fails every draw (structurally, at the limit dt -> 0 where the block is R_p); the second's books

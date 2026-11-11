@@ -2,18 +2,17 @@
 and in its fix round's ``predictions_two_openings_d.json``), on the rig of two parallel tubes from one inlet plane
 (``twin_cases.py``), every run metered and its books judged: FB5, the two outlets' split is the 0-D network's on the
 rig's own conductances; amendment 5, the shared distal resistance's split unmoved by R_d, its off-diagonals dropped or
-lagged each caught; the closed valve against the walled-off vessel at the default stiff interior, its first clause
-alone against a leak above its resolution at each interior, and the stiff resistance that stands in for it; FB6, the
-implicit coupling stable where the test-only explicit arm is not. Each with its control on CI's draw; the controls'
+lagged each caught; the closed valve against the walled-off vessel at the default stiff interior, its controls and its
+first clause alone against a leak above its resolution at each interior, and the stiff resistance that stands in for
+it; FB6, the implicit coupling stable where the test-only explicit arm is not. Each with its control on CI's draw; the controls'
 rates over fresh draws are measured on Actions (the PR's evidence table)."""
 
 from __future__ import annotations
 
 import pytest
 from open_cases import scan
-from twin_cases import FLUX, LINE_LEAK, PLANTS, VALVE_INTERIORS, LaggedNode, closes, draw, fb6_passes, fb6_reading, \
-    law_books, leaking, split_passes, split_reading, stand_in_reading, twin_node, valve_line_holds, valve_passes, \
-    valve_reading
+from twin_cases import FLUX, LINE_LEAK, PLANTS, LaggedNode, closes, draw, fb6_passes, fb6_reading, law_books, \
+    leaking, split_passes, split_reading, stand_in_reading, twin_node, valve_line_holds, valve_passes, valve_runs
 
 from mime.core import ledger as books
 
@@ -86,30 +85,31 @@ def test_the_shared_distal_laws_books_close_and_a_lagged_off_diagonal_does_not(d
     assert closes(final) == (not lagged)
 
 
-@pytest.mark.parametrize("plant", [None, "leaking", "opened"])
-def test_a_closed_valve_is_the_walled_off_vessel(dtype, monkeypatch, plant):
+def test_a_closed_valve_is_the_walled_off_vessel(dtype, monkeypatch):
     """The closed valve on the rig's second outlet against the monolithic run with that tube capped by solid, at the
     default stiff interior (0.1h): the inlet pressures differ by no more than the two runs' own solid flows at the
     closed outlet carry through the open tube's resistance (the cap's leak; the closed patch's exchange through the
     solid with its neighbour, 1.5 to 5 % of the inflow there), each measured in its run, beyond the solves' own; the
-    valve's flux zero to rounding; every run's books closing. The controls: a valve leaking 2 % of the inflow, and the
-    valve's row a pressure row of zero (an outlet left open)."""
-    planted(monkeypatch, plant)
-    found = valve_reading(draw(SEED), TOLERANCE[dtype])
-    assert valve_passes(found, TOLERANCE[dtype], dtype) == (plant is None), found
+    valve's flux zero to rounding; every run's books closing. The controls, each against the same reference: a valve
+    leaking 2 % of the inflow and the valve's row a pressure row of zero (an outlet left open), each failing the gate;
+    and a valve leaking ``LINE_LEAK`` (above the line's resolution there: a leak lowers the inlet pressure by about its
+    own share), failing the first clause on its own, the flux clause set aside."""
+    found = valve_runs(draw(SEED), TOLERANCE[dtype], "0.1h",
+                       {"clean": None, "leaking": PLANTS["leaking"], "opened": PLANTS["opened"],
+                        "line": leaking(LINE_LEAK["0.1h"])}, monkeypatch.context)
+    assert valve_passes(found["clean"], TOLERANCE[dtype], dtype), found["clean"]
+    assert not valve_passes(found["leaking"], TOLERANCE[dtype], dtype), found["leaking"]
+    assert not valve_passes(found["opened"], TOLERANCE[dtype], dtype), found["opened"]
+    assert not valve_line_holds(found["line"], TOLERANCE[dtype]), found["line"]
 
 
-@pytest.mark.parametrize("interior", VALVE_INTERIORS)
-def test_the_valve_line_alone_sees_a_leak_above_its_resolution(dtype, monkeypatch, interior):
-    """The valve gate's first clause on its own (the inlet pressures against the two runs' solid flows), with the
-    valve's flux clause set aside: the clean valve passes the whole gate and a valve leaking ``LINE_LEAK`` of the
-    inflow (above what the line resolves at that interior: a leak lowers the inlet pressure by about its own share)
-    fails the line."""
-    found = valve_reading(draw(SEED), TOLERANCE[dtype], interior)
-    assert valve_passes(found, TOLERANCE[dtype], dtype), found
-    leaking(LINE_LEAK[interior])(monkeypatch.setattr)
-    found = valve_reading(draw(SEED), TOLERANCE[dtype], interior)
-    assert not valve_line_holds(found, TOLERANCE[dtype]), found
+def test_the_valve_line_at_the_stiff_interior_sees_a_leak_above_its_resolution(dtype, monkeypatch):
+    """At the stiff interior 0.01h the clean valve passes the whole gate and a valve leaking ``LINE_LEAK`` (3e-3 of the
+    inflow, above the line's resolution there: 1e-3 in float64, 2e-3 in float32) fails the first clause on its own."""
+    found = valve_runs(draw(SEED), TOLERANCE[dtype], "0.01h", {"clean": None, "line": leaking(LINE_LEAK["0.01h"])},
+                       monkeypatch.context)
+    assert valve_passes(found["clean"], TOLERANCE[dtype], dtype), found["clean"]
+    assert not valve_line_holds(found["line"], TOLERANCE[dtype]), found["line"]
 
 
 def test_the_stiff_stand_in_differs_from_the_valve_only_by_its_leak(float64):

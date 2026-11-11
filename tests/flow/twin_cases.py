@@ -188,13 +188,14 @@ def runs(node: OpenFlowNode, rows: list[Any], steps: int = 3) -> list[dict[str, 
     return [dict(compiled(jnp.asarray(np.asarray(row, dtype=np.float64), dtype=dtype))) for row in rows]
 
 
-def conductance_runs(point: Point, tolerance: float, **settings: Any) -> tuple[np.ndarray, bool]:
-    """The rig's conductance over its three openings, steady Stokes (m^3/s per Pa): column ``j`` the outward fluxes
-    a unit pressure at opening ``j`` drives with the others at zero, each from its own given-pressure run (three
-    solves of one compiled program, never the law run's own unit fields); and whether the three runs' books closed."""
+def conductance_runs(point: Point, tolerance: float, columns: tuple[int, ...] = (0, 1, 2), **settings: Any
+                     ) -> tuple[np.ndarray, bool]:
+    """The rig's conductance over its three openings, steady Stokes (m^3/s per Pa): column ``j`` (of ``columns``) the
+    outward fluxes a unit pressure at opening ``j`` drives with the others at zero, each from its own given-pressure
+    run (solves of one compiled program, never the law run's own unit fields); and whether the runs' books closed."""
     node = twin_node(point, ("pressure", "pressure", "pressure"), [_row(0.0)] * 3, scheme="steady",
                      convection=False, tolerance=tolerance, **settings)
-    finals = runs(node, [[_row(1.0 if k == j else 0.0) for k in range(3)] for j in range(3)])
+    finals = runs(node, [[_row(1.0 if k == j else 0.0) for k in range(3)] for j in columns])
     return np.stack([np.asarray(final["opening_flux"], dtype=np.float64) for final in finals], axis=1), closes(*finals)
 
 
@@ -302,8 +303,8 @@ def walled_reference(point: Point, tolerance: float, interior: str) -> dict[str,
     """What the closed valve is judged against at ``interior``: the rig's conductances (``R_t`` and the open outlet's
     resistance from them) and the monolithic run with the second tube capped by solid from mid-length (two openings:
     the start and the whole high plane), its leak (its flux through the capped tube's half of the high plane, the cap's
-    Darcy flow and the solid's around it), and whether those runs' books closed."""
-    g, closed = conductance_runs(point, tolerance, interior=interior)
+    Darcy flow and the solid's around it), and whether those runs' books closed (``R_t`` from the start's column)."""
+    g, closed = conductance_runs(point, tolerance, (0,), interior=interior)
     resistance = 1.0 / float(g[1, 0])
     first = point.first * resistance
     walled = steady(twin_node(point, ("inflow", "windkessel"), [_row(FLUX), resistor(first)],
@@ -353,6 +354,22 @@ def valve_reading(point: Point, tolerance: float, interior: str = VALVE_INTERIOR
     return valve_judged(reference, node, steady(node))
 
 
+def valve_runs(point: Point, tolerance: float, interior: str, plants: dict[str, Callable[[Setter], None] | None],
+               context: Callable[[], Any]) -> dict[str, dict[str, Any]]:
+    """The closed valve with each of ``plants`` (a name and its plant, ``None`` for the clean valve) against one
+    walled-off reference at ``interior`` (its runs made once): each reading (:func:`valve_judged`), each plant applied
+    within ``context()`` (a ``MonkeyPatch.context``, undone before the next)."""
+    reference = walled_reference(point, tolerance, interior)
+    found: dict[str, dict[str, Any]] = {}
+    for name, plant in plants.items():
+        with context() as patch:
+            if plant is not None:
+                plant(patch.setattr)
+            node = valve_node(point, tolerance, interior, reference["first"])
+            found[name] = valve_judged(reference, node, steady(node))
+    return found
+
+
 #: The valve gate's lines: the inlet pressures' difference within ``MARGIN`` times the two runs' own solid flows carried
 #: through the open tube's resistance, beyond the solves' own (``SOLVES`` tolerances of the inlet pressure); the
 #: valve's flux zero to its summation floor over the inflow, ``(N + 2) eps S``, with ``N`` under 2,000 faces a patch on
@@ -394,22 +411,26 @@ def stand_in_reading(point: Point, tolerance: float, stiffness: tuple[float, ...
     ``R_t``: its leak over the inflow, its inlet pressure against the valve's, the port system's condition number with
     its rows scaled (:func:`scaled_condition`, of the matrix it solves, ``port_matrix``), the run's CG iterations, and
     whether its books closed; the valve's own first, its stiffness zero."""
-    g = conductance(point, tolerance, interior=STAND_IN_INTERIOR)
+    g = conductance_runs(point, tolerance, (0,), interior=STAND_IN_INTERIOR)[0]
     resistance = 1.0 / float(g[1, 0])
     first = point.first * resistance
     found: list[dict[str, float]] = []
+    valve = twin_node(point, ("inflow", "windkessel", "valve"), [_row(FLUX), resistor(first), _row()],
+                      scheme="steady", convection=False, tolerance=tolerance, interior=STAND_IN_INTERIOR)
+    stiff_rows = [[_row(FLUX), resistor(first), resistor(stiff * resistance)] for stiff in stiffness]
+    stand_in = twin_node(point, ("inflow", "windkessel", "windkessel"), stiff_rows[0], scheme="steady",
+                         convection=False, tolerance=tolerance, interior=STAND_IN_INTERIOR)
+    held = [(0.0, valve, np.asarray(valve.constants()["opening_parameters"]), steady(valve))]
+    held += [(stiff, stand_in, np.asarray(rows, dtype=np.float64), final)
+             for stiff, rows, final in zip(stiffness, stiff_rows, runs(stand_in, stiff_rows), strict=True)]
     reference = 0.0
-    for stiff in (0.0, *stiffness):
-        laws = ("inflow", "windkessel", "valve" if stiff == 0.0 else "windkessel")
-        node = twin_node(point, laws, [_row(FLUX), resistor(first), _row() if stiff == 0.0 else resistor(stiff * resistance)],
-                         scheme="steady", convection=False, tolerance=tolerance, interior=STAND_IN_INTERIOR)
-        final = steady(node)
+    for stiff, node, parameters, final in held:
         p = node._step_constants(None)  # noqa: SLF001
         grid = node.open_grid(p)
         units = [tuple(jnp.asarray(final[f"unit_{x}"])[k] for x in "xyz") for k in range(len(node.others()))]
         response = jnp.stack([grid.opening_fluxes(unit) for unit in units], axis=1)
-        _, block = node.law_rows(jnp.asarray(p["opening_parameters"]), jnp.asarray(final["opening_state"]), 0.0,
-                                 node.delta_t)
+        _, block = node.law_rows(jnp.asarray(parameters, dtype=response.dtype), jnp.asarray(final["opening_state"]),
+                                 0.0, node.delta_t)
         matrix = np.asarray(port_matrix(node.rows(), block, response, node.reference(), node.coupling()), np.float64)
         pressure = float(np.asarray(final["opening_pressure"], dtype=np.float64)[0])
         if stiff == 0.0:
@@ -423,8 +444,9 @@ def stand_in_reading(point: Point, tolerance: float, stiffness: tuple[float, ...
 def response_gain(point: Point, dt: float, tolerance: float) -> float:
     """The largest flux a unit pressure at an outlet drives over one IMEX Euler step on the rig (m^3/s per Pa): what
     ``R_p q``, FB6's loop gain, is measured in."""
+    # A measurement of the rig's response that sets FB6's gain, not a gate's run: unmetered.
     node = twin_node(point, ("inflow", "windkessel", "windkessel"), [_row(FLUX), resistor(1.0), resistor(1.0)], dt=dt,
-                     scheme="imex_euler", convection=False, tolerance=tolerance)
+                     scheme="imex_euler", convection=False, tolerance=tolerance, ledger=())
     final, _ = scan(node, 1)
     grid = node.open_grid(node._step_constants(None))  # noqa: SLF001
     units = [tuple(jnp.asarray(final[f"unit_{x}"])[k] for x in "xyz") for k in range(2)]
@@ -441,8 +463,9 @@ def fb6_reading(point: Point, gain: float, tolerance: float, explicit: bool, rat
     """FB6: the rig's two outlets, each an RCR whose proximal resistance is ``gain`` over the step's response
     (``R_p q``), its distal resistance 3 and 6 times a tube's Poiseuille resistance and ``dt / (R_d C)`` ``ratio``,
     under a pulsatile inflow, 80 IMEX Euler steps (Stokes): the largest outlet flux over the inflow's mean, or infinity
-    where a flux is not finite, and whether the run's books closed (the implicit arm's are judged; the explicit arm's
-    pressures are not the field's response, so its books are no evidence); ``explicit``, the test-only explicit arm (the spike's: the capacitor stepped forward,
+    where a flux is not finite, and whether the run's books closed (the implicit arm's; the explicit arm runs
+    unmetered, its pressures not the field's response, so its books would be no evidence); ``explicit``, the test-only
+    explicit arm (the spike's: the capacitor stepped forward,
     the proximal drop lagged a step). At ``dt / (R_d C)`` of one the explicit arm's forward capacitor alone is
     unstable whatever ``R_p`` (its amplification ``-R_d q``): the first probe's arm, unstable at every gain from
     0.34."""
@@ -451,15 +474,16 @@ def fb6_reading(point: Point, gain: float, tolerance: float, explicit: bool, rat
     period = 40.0 * FB6_DT
     rows = [_row(FLUX, 0.3 * FLUX, 1.0 / period), _row(proximal, FB6_DT / (3.0 * distal * ratio), 3.0 * distal),
             _row(proximal, FB6_DT / (6.0 * distal * ratio), 6.0 * distal)]
+    # The explicit arm runs unmetered: its pressures are not the field's response, so its books are no evidence.
     node = twin_node(point, ("inflow", "windkessel", "windkessel"), rows, dt=FB6_DT, scheme="imex_euler",
-                     convection=False, tolerance=tolerance)
+                     convection=False, tolerance=tolerance, **({"ledger": ()} if explicit else {}))
     if explicit:
         node.__class__ = ExplicitNode
     final, fluxes = scan(node, FB6_STEPS, lambda p, before, after: after["opening_flux"])
     held = np.asarray(fluxes, dtype=np.float64)[:, 1:]
     finite = bool(np.all(np.isfinite(held)))
     return {"largest": float(np.max(np.abs(held))) / FLUX if finite else float("inf"), "finite": finite,
-            "closes": closes(final)}
+            "closes": (not explicit) and closes(final)}
 
 
 def fb6_passes(found: dict[str, Any]) -> bool:
@@ -612,5 +636,5 @@ __all__ = ["END_0", "END_1", "FB6_DT", "FB6_LINE", "FB6_RATIO", "FB6_STEPS", "FL
            "conductance_runs", "draw", "fb6_passes", "fb6_reading", "law_books", "layout_of", "leaking", "metered",
            "network_flows", "network_split", "outlets", "resistor", "response_gain", "runs", "scaled_condition",
            "shared_split", "split_of", "split_passes", "split_reading", "stand_in_reading", "steady",
-           "tube_resistance_of", "twin_node", "valve_judged", "valve_line", "valve_line_holds", "valve_node",
+           "tube_resistance_of", "twin_node", "valve_judged", "valve_line", "valve_line_holds", "valve_node", "valve_runs",
            "valve_passes", "valve_reading", "walled_reference"]
