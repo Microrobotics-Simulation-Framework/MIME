@@ -20,8 +20,8 @@ from mime.units import Length, Magnitude, Quantity, m
 class Plug(Geometry):
     """A solid circular cylinder placed in the world: ``radius`` and ``length`` along ``axis`` through ``centre``, its
     midpoint. A structure of this kind is a region of a vessel that a porous material fills, a clot
-    (``exp.attach(Darcy(), medium=blood, structure=clot)``), its one region its ``volume``. Its distance is no shape
-    a law reads by name: a flow that holds a porous region samples the volume's exact distance on its own grid
+    (``exp.attach(Darcy(), medium=blood, structure=clot)``), its one region its ``solid``. Its distance is no shape
+    a law reads by name: a flow that holds a porous region samples the solid's exact distance on its own grid
     (``mime.nodes.flow.fvm.plug_depth``), from these settings. On a stage it is USD's own ``Cylinder``."""
 
     name = "plug"
@@ -33,7 +33,7 @@ class Plug(Geometry):
     differentiability = GradientStatus.EXACT
     references = ()
     builds = {"": ()}
-    regions = ("volume",)
+    regions = ("solid",)
     directions = ("axis",)
     placement = {"centre": "origin", "axis": "z_axis"}
     native = Native("Cylinder", {"radius": "radius", "height": "length"}, {"axis": "Z"})

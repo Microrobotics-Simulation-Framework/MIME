@@ -24,11 +24,10 @@ the flow can afford. Its bulk Darcy flux and pressure drop still hold through th
 spacing; its profile across the layer is resolved from about a cell; its face against free fluid (a plug with a gap
 round it) acts as a wall the band smears, shifted outward by a fraction of a cell where the layer is sub-cell; a plug
 driven by a body force alone, with no pressure drop across it (a porous medium filling a periodic box), reads a few
-per cent low. The flow's entry gives the measured figures, and the build report states the run's own: its `sqrt(K)` in
-cells where the layer is under a cell, and for a plug that closes a straight tube its Darcy flux against the floor,
-the flux the wall's porous solid leaks around a plug that lets nothing through, measured at the run's resolution and
-stiff interior. That leak is the wall's numerical porosity, not the clot's: the flow's other "Darcy flow" (the wall's
-stiff interior's bypass) is that leak.
+per cent low. A plug closing a straight tube is resolved down to a `sqrt(K)` of a hundredth of a cell and unmeasured
+below. The flow's entry gives the measured figures, and the build report states the run's own: its `sqrt(K)` in cells
+where the layer is under a cell, and that its flux is unmeasured where `sqrt(K)` is under a hundredth of a cell. The
+flow's other "Darcy flow", the wall's stiff interior's bypass, is the wall's numerical porosity, not the clot's.
 
 **When not to use it.**
 - For a clot that cores, moves or breaks: the region is static (an evolving permeability is a dynamics' state, later).
@@ -39,7 +38,7 @@ stiff interior's bypass) is that leak.
 
 **Where its values come from.** The structure's `permeability` (in square metres, above zero), declared in the experiment with its
 reason: no OpenMaterica record holds a permeability yet. A value of zero or below is refused where it is declared
-(`value.not-positive`), and a run whose value a study or a range moved there is refused after it (`flow.permeability`).
+(`value.not-positive`), and a run whose value a study or a range moved there is refused after it (`flow.permeability-not-positive`).
 A declaration, a record or the body's parts, and what "declared" means: [the materials note](../../materials.md).
 
 **Versions.** `darcy` 0.1.0 is its first.

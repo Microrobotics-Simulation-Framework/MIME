@@ -6,7 +6,7 @@ describes: "0.1.0"
 A solid circular cylinder placed in the world, `radius` and `length` along `axis` through `centre` (its midpoint): as a
 structure, a region of a vessel that a porous material fills, a clot,
 `Structure("clot", geometry=Plug(axis=+Z, radius=..., length=..., centre=...))`. Its one region is its
-`volume`. It gives no samples, volume or inertia: it is not a body's part. Its role is the law bound to it: with
+`solid`. It gives no samples, volume or inertia: it is not a body's part. Its role is the law bound to it: with
 [Darcy's law](../interaction/darcy.md) attached, a medium's flow holds it as a porous region, reading its centre,
 axis, radius and length and sampling its exact distance on the flow's own grid. On a stage it is written as USD's own
 `Cylinder`, its `height` holding `length`, its axis the prim's z axis.

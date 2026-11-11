@@ -165,7 +165,7 @@ def test_a_run_whose_permeability_is_not_above_zero_is_refused_after_it(float64)
     state = steady(node)
     assert float(state["negative_resistivity"]) == 1.0
     problem = node.stop_problem(state)
-    assert problem is not None and problem.code == "flow.permeability"
+    assert problem is not None and problem.code == "flow.permeability-not-positive"
 
 
 def test_a_declared_permeability_of_zero_or_below_is_refused_at_the_build():
@@ -259,6 +259,17 @@ def test_float32_gives_the_plugs_flux_within_its_rounding_of_float64(case):
                 node = plug_node(16, [dict(radius=0.5 * R, length=100.0, permeability=(1.0 / 16) ** 2)])
             fluxes.append(box_flux(node, steady(node)))
     assert abs(fluxes[1] / fluxes[0] - 1.0) < FLOAT32_LINE
+
+
+def test_the_build_report_says_where_the_plugs_layer_is_under_a_cell_and_where_its_flux_is_unmeasured():
+    h = 1.0 / 16
+    said = {}
+    for root in (2.0, 0.1, 0.003):
+        node = plug_node(16, [dict(radius=R, length=1.0, permeability=(root * h) ** 2)], length_cells=4)
+        said[root] = [line for line in node.built_lines(None, None) if LAW in line]
+    assert said[2.0] == []
+    assert len(said[0.1]) == 1 and "are resolved (measured down to sqrt(K)/h 0.01)" in said[0.1][0]
+    assert len(said[0.003]) == 1 and "unmeasured here" in said[0.003][0]
 
 
 def _codes(exp) -> set[str]:

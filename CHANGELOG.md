@@ -11,19 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
-  `length`; its region `volume`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
+  `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
   `um2` and the dimension `AREA`; no OpenMaterica record holds one yet), and `exp.attach(Darcy(), medium=...,
   structure=...)`: the medium's flow holds it in its step as a resistivity `mu / K` added to the wall's (B5's seam,
   `wall_fields`), on IMEX Euler or its steady limit, on a periodic box (a straight tube along z or a tube tree) or an
   open vessel. Its resistivity in the wall's band is its share of the fluid over the face's fluid fraction
   (`FLUID_FLOOR`, 0.01, at least), carried into the wall's solid behind it, so a pressure-driven Darcy flux is carried by
   the band's fluid and the band's solid does not leak round a plug that closes the vessel (the plug's forms measured
-  against each other: the PR's table). Its loss is booked under its id; its sampled permeability not a finite number above
-  zero is flagged at sampling and refuses the run after it (`flow.permeability`); each step reports its mean pressure on
-  the planes a band's half width outside its two ends (`porous_face_pressure`). The build reports its `sqrt(K)` in cells
-  where its Brinkman layer is under one, and for a plug closing a straight tube its Darcy flux against the measured floor
-  of the wall's leak. Refused: a structure of another kind (`flow.porous-kind`), RK3 (`flow.porous-scheme`), a tilted
-  box (`flow.porous-axis`). The stall detector's denominator takes the porous losses beside the viscous one.
+  against each other: the PR's table). Its loss is booked under its id; its sampled permeability not a finite number
+  above zero is flagged at sampling and refuses the run after it (`flow.permeability-not-positive`); each step reports
+  its mean pressure on the planes a band's half width outside its two ends (`porous_face_pressure`). The build reports
+  its `sqrt(K)` in cells where its Brinkman layer is under one, and that its flux is unmeasured where `sqrt(K)/h` is
+  under 0.01: a plug closing a straight tube is resolved down to `sqrt(K)/h` 0.01 (within 0.3 % at D/h 32, a `K` of
+  about 1e-13 m^2 in a 1 mm vessel) and unmeasured below. Refused: a structure of another kind (`flow.porous-kind`),
+  RK3 (`flow.porous-scheme`), a tilted box (`flow.porous-axis`). The stall detector's denominator takes the porous
+  losses beside the viscous one.
 
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and

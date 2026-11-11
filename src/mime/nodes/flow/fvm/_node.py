@@ -1050,9 +1050,10 @@ class ImplicitFlowNode(MimeNode):
     def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
         """The validity lines fixed when the node is built, each reported where it is crossed (never a refusal): a tube
         tree's wall's resolution entries below their lines (``mime.scene.wall_resolution``: its least radius of
-        curvature, its narrowest lumen), the lumen's resolution in cells under the band's calibration, and float32's
+        curvature, its narrowest lumen), the lumen's resolution in cells under the band's calibration, float32's
         rounding floor near a steady state above the monolithic solve's tolerance (a node with no such solve has no
-        such line)."""
+        such line), and each porous region's Brinkman layer under a cell, its flux unmeasured where it is under the
+        range measured (``_porous.porous_lines``)."""
         del start, closest_approach
         c = self.constants()
         radius = float(np.min(c["tree_radii"])) if self.walled_by_tree else float(c["tube_radius"])
@@ -1083,9 +1084,7 @@ class ImplicitFlowNode(MimeNode):
 
             regions = [{name: c[porous_leaf(index, name)] for name in POROUS_LEAVES}
                        for index in range(len(self.porous_laws))]
-            tube = None if self.walled_by_tree else {name: c[f"tube_{name}"] for name in ("centre", "axis", "radius")}
-            lines += porous_lines(self.porous_laws, regions, float(c["spacing"]), str(c["interior"]), tube,
-                                  int(c["cells_z"]) * float(c["spacing"]))
+            lines += porous_lines(self.porous_laws, regions, float(c["spacing"]))
         return lines
 
     @override
@@ -1119,7 +1118,7 @@ class ImplicitFlowNode(MimeNode):
         (``negative_resistivity``), which is named first: its resistivity is then no drag, whatever the run did with
         it."""
         if self.porous_laws and float(np.asarray(state.get("negative_resistivity", 0.0))) > 0.0:
-            return Problem("flow.permeability",
+            return Problem("flow.permeability-not-positive",
                            f"a porous region's permeability ({', '.join(self.porous_laws)}) was not a finite number "
                            f"above zero where the flow sampled it, so its resistivity 1/K was no drag: its value as "
                            f"the run held it (a declared range's, a study's or a fit's) is a basic mistake",

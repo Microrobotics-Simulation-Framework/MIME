@@ -33,7 +33,7 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
 from mime.nodes.flow.fvm._box import TreeLayout, TubeLayout, period_mismatch, periodic_tree_layout
 from mime.nodes.flow.fvm._band import FLUID_FLOOR
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
-from mime.nodes.flow.fvm._porous import POROUS_MEASURED, RESOLVED_CELLS
+from mime.nodes.flow.fvm._porous import FLUX_MEASURED_DOWN_TO, POROUS_MEASURED, RESOLVED_CELLS
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
 from mime.nodes.flow.fvm._ports import Valve as ValveLaw
@@ -360,12 +360,11 @@ class FVM(Dynamics):
         "IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
         "dt='auto' refused, the CFL checked each step; tilted open vessels not built; float32 behind its guards: "
         f"{FLOAT32_PORTS}",
-        f"porous regions (Darcy, a Plug's volume of declared permeability K): a resistivity mu / K added to the wall's, "
+        f"porous regions (Darcy, a Plug's solid of declared permeability K): a resistivity mu / K added to the wall's, "
         f"on IMEX Euler or its steady limit in a box along z; in the wall's band its share of the fluid over the face's "
         f"fluid fraction (at least {FLUID_FLOOR:g}, declared) and carried into the wall's solid behind it. {POROUS_MEASURED}. "
         f"No OpenMaterica record gives a permeability yet: it is declared. The build reports the run's sqrt(K) in cells "
-        f"where it is under {RESOLVED_CELLS:g}, and for a plug closing a straight tube its Darcy flux against the floor "
-        f"(the wall's leak round a plug that lets nothing through, measured)",
+        f"where it is under {RESOLVED_CELLS:g}, and says where it is below {FLUX_MEASURED_DOWN_TO:g}: unmeasured",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "
         f"float64 and {STALL_PER_TOLERANCE['float32']:g} in float32 (stall_flagged), is written with the energy ledger "
         f"attached (exp.observe(EnergyLedger())); a run without it has no stall report. The reading scales with the "
@@ -592,7 +591,7 @@ class FVM(Dynamics):
             if porous_cylinder(registration.geometry) is None:
                 named = f"a {type(kind).name} geometry" if kind is not None else "no geometry"
                 found.append(Problem("flow.porous-kind", f"{registration.id} binds {registration.subject!r}, which has "
-                                                         f"{named}: the flow holds a porous region of a Plug's volume",
+                                                         f"{named}: the flow holds a porous region of a Plug's solid",
                                      f"give {registration.subject!r} a Plug geometry, Structure("
                                      f"{registration.subject!r}, geometry=Plug(axis=..., radius=..., length=..., "
                                      f"centre=...))"))
