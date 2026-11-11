@@ -1,0 +1,72 @@
+{
+  "written": "2026-11-11, committed before any gate of W2a PR 1b-i ran and before the table's build ran on Actions (the commit that adds this file is the timestamp): the near-contact seam, a sphere's exact sphere-plane increment from a MIME-computed table (the hybrid in a tube), the blend's retirement",
+  "phase": "W2a PR 1b-i: the near-contact seam (design rows #324, #341, #345 to #347, #354); gates 1, 2 and 8 on a sphere at the default spacing; gate 2 in a tube",
+  "labels": "predictions by the builder from the first ANO-154 probe's arm 1 (its exact increment was its graded MFS table), probe B's arm 1 (the hybrid in a tube) and the builder's prototype of the table's solver (scratch, laptop, float64); none of the gates below has run",
+  "seen_before": [
+    "probe 1 arm 1 (the first MIME-ANO-154 probe, runs 42863747612 and 42864051476; float64, a 1 mm sphere above a plane, s/a 0.2, h_m 0.15 a, blob 0.05, uniform): the lift form with an exact increment (the graded MFS's) meets gate 2 within 1.0 % at 16 gaps 0.3 to 0.001 a, gate 1's worst the normal +3.2 % (0.15), every other entry under 1 %",
+    "probe B arm 1 (the follow-up probe, runs 42939805130, 42941252533 and 42942082331; s/a 0.2, h_m 0.15 a): the hybrid against the tube MFS, worst over 0.1 to 0.0075 a on the plane-rate scale: along -2.7 / -5.2 / -8.9 %, across -3.1 / -2.7 / -2.0 %, normal +3.6 / +3.6 / +3.9 % at a/R 0.22 / 0.28 / 0.34; the plane version across +44 / +52 / +57 %; the hybrid with relative-curvature coefficients across -5.1 / -8.3 / -13.6 %",
+    "the builder's prototype of the table's solver (scripts/sphere_plane_table.py and an uncommitted first version, laptop, float64): the normal against Brenner's series 3e-15 (d 0.3) and 1e-11 (0.03); the spin against Jeffery's 1e-15; the coupling both ways equal to 2e-12; xx, ryry, x_ry at d 0.3 within 2e-7 to 1e-6 of tests/differential/references/lubrication_mfs.json; at d 0.01 within 5e-6 to 4e-5 of probe 1's graded MFS (its level B against C 5e-6 to 5e-5); at d 1e-3: xx 87.4627, x_ry -12.5440, ryry 78.866 (the graded MFS 87.376, -12.630, 78.780, its own B-C 7.5e-4 to 5.3e-3; GCB's asymptote 87.52, -12.60, 79.04)",
+    "drag 0.5.0's family spacing for a 1 mm sphere near a plane, read from the plan at the base (dface1d): 0.251 mm (s/a 0.251, h_m 0.188 a), lubrication then False (past the film's window, 0.15 a)"
+  ],
+  "operating_point": {
+    "dtype": ["float64 (every gate)", "float32 against float64 (gate 10's line, unchanged)"],
+    "platform": "CI's default lane and GitHub runners (4 vCPU, 16 GB) for the probes, the table's build and the controls' rates",
+    "sizes_and_parameters": "a sphere of radius a = 1 mm in water (1 mPa s) above the plane z = 0, or in a straight tube at a/R 0.22, 0.28, 0.34; drag 0.5.0's mrs rung at its family spacing (the plan's, 0.251 mm for this sphere: h_m 0.188 a) and its lubricated blob (0.05); roughness 1 nm on both surfaces but gate 8's cutoff arm (2 um)",
+    "seeds_and_draws": "gate 1: orientations drawn by DETECTION_SEED, 5 a run; controls' rates with .github/probe/detection_rate.py on Actions"
+  },
+  "table_build": {
+    "claim": "the table's solver reproduces Brenner's and Jeffery's closed-form series, its coupling is reciprocal, its no-slip condition holds off the collocation nodes, it is converged in its length and its traction quadrature, and its cubic spline in ln d reads the off-knot midpoints",
+    "kind": "equality to the solver's rounding (the series), estimates (convergence)",
+    "prediction": {"band": [0.0, 1e-9], "unit": "relative: normal and spin against the series at d 0.3, 0.03, 0.003; reciprocity at every knot and midpoint; the change with N and the nodes x1.25 at d 1e-3 and 0.01; the traction nodes x2", "basis": "measured-before (prototype) at d 0.3, 0.03, 0.01, 1e-3"},
+    "spline": {"band": [0.0, 1e-6], "unit": "relative error of each entry at the 96 midpoints (97 knots over d 1e-3 to 10)", "basis": "guess: a C2 cubic in ln d at a step of 0.096 on the smooth remainders"},
+    "control": {"plant": "the spline replaced by its knots' linear interpolation", "expected_rate": "deterministic: past 1e-6 at most midpoints"}
+  },
+  "table_against_graded_mfs": {
+    "claim": "the table against probe 1's graded MFS (an independent method, Poisson-disk points and Blake's image) at its gaps 0.3 to 0.005 a, within the MFS's own resolution",
+    "kind": "estimates (two methods agree to the coarser one's resolution)",
+    "prediction": {"band": [0.0, 3.0], "unit": "|table - MFS| over the MFS's level-B-against-C difference, each of xx, ryry, x_ry and the rate U / (a Omega), floored at 2e-4 relative; at 0.002 and 0.001 the MFS is unresolved (normal -1.9 % and -6.5 % against Brenner) and the table reads within 1 % of it on xx and ryry, 1.5 % on x_ry", "basis": "measured-before at d 0.01, 0.3"},
+    "control": {"plant": "the coupling's sign flipped in the table", "expected_rate": "deterministic"}
+  },
+  "gate_1_plane": {
+    "claim": "a sphere above a plane at drag 0.5.0's family spacing (s/a 0.251, h_m 0.188 a), the sphere's exact increment: every diagonal entry within 7 % of the exact answer at every gap 0.3 to 0.001 a, each coupling within 7 % of its own size, over drawn orientations",
+    "kind": "bounds",
+    "case": "tests/oracles/test_near_contact.py, the drag node's own step; the oracle the graded MFS (probe 1, level C; the normal Brenner's series, the spin Jeffery's)",
+    "prediction": {"band": [0.0, 0.07], "outcome_predicted": "the normal +2 to +5 % at gaps at and below h_m (the coarse MRS's own point read there, opened), every other entry within 1.5 %, at every draw", "basis": "measured-before (probe 1 arm 1 at s/a 0.2; the ratio h_m / s is the same 0.75)"},
+    "control": {"plant": "the increment x1.1 (W2A_PLANT=increment_x1.1)", "expected_rate": "N/N: the increment judged on its own scale (against the table's own increment between the gap and the lifted gap) at every gap below h_m; gate 1's 7 % line itself sees x1.1 only where a tenth of the increment exceeds the line less the measured error (the normal below about 0.01 a)"},
+    "cannot_discriminate_if": "the gap lies above the lift's band (0.282 a): no increment acts, so the plant moves nothing there"
+  },
+  "gate_2_plane": {
+    "claim": "a force-free sphere spun on the plane translates at the exact rate per rotation within 10 % at every gap 0.3 to 0.001 a (MIME-ANO-154's metric), at the family spacing",
+    "kind": "bounds",
+    "prediction": {"band": [0.0, 0.1], "outcome_predicted": "within 2 % at every gap", "basis": "measured-before (probe 1 arm 1: -1.0 % worst at s/a 0.2)"},
+    "oracle_resolution": "the graded MFS's rate, level B against C: 5e-5 at 0.01, 7.6e-4 at 0.005, 1.1e-3 at 0.002, 6e-3 at 0.001",
+    "control": {"plant": "the increment's coupling counted twice (coupling_twice)", "expected_rate": "N/N at every gap below h_m"}
+  },
+  "gate_8": {
+    "claim": "forward and reverse mode equal Richardson's central differences, in the plane's offset and the body's height, across the hand-over gap, the table's lower edge (1e-3 a, roughness 1 nm) and the roughness cutoff (2 um on each surface)",
+    "kind": "equality to the difference's truncation",
+    "prediction": {"band": [0.0, 1e-5], "unit": "|AD - FD| over the largest derivative at that gap", "basis": "derived: the lift and the floor are C2, the spline C2, the continuation matched C1 at the edge"},
+    "control": {"plant": "lift_stopped (stop_gradient on the lift); hard_max (the lift's floor a hard max); edge_kink (the continuation below the table's edge matched in value only)", "expected_rate": "N/N each at the gaps straddling its boundary"}
+  },
+  "gate_2_tube": {
+    "claim": "a sphere in a straight tube at a/R 0.22, 0.28, 0.34 (at the wall along -x), the hybrid (the plane table's remainder plus the elliptic contact's singular terms with the body's own curvatures): the rate per rotation along the axis and round the circumference, judged on the plane-rate scale, and the normal, against probe B's tube MFS at 0.1 to 0.0075 a (resolved), at the family spacing",
+    "kind": "bounds",
+    "prediction": {"band": [0.0, 0.1], "outcome_predicted": "across within 4 %; along within 10 % (worst at 0.34, near the rate's zero crossing); the normal within 6 %", "basis": "measured-before (probe B at s/a 0.2); the family spacing (h_m 0.188 a) may move each by a few per cent"},
+    "control": {"plant": "the plane version (the plane's singular terms kept, plane_in_tube) and the relative-curvature coefficients (relative_coefficients)", "expected_rate": "N/N each: across +44 to +57 % and -5 to -14 %, past the 4 % line at every ratio"}
+  },
+  "seam": {
+    "claim": "on a plane the hybrid is the plane table to rounding; the ambient read with its zero on the opened wall (#346)",
+    "kind": "equality",
+    "prediction": {"band": [0.0, 1e-12], "unit": "relative, entry by entry", "basis": "derived: the elliptic singular terms with k = b = 1/a carried to the centre are the sphere-plane's"}
+  },
+  "costs": {
+    "prediction": "the sphere's form costs the contact's search and a spline read: near the wall at most the film's step (207 ms at s/a 0.2, the fix round's runner) and within 5 % of the step far from it; reverse mode in the plane's offset and the radius no costlier than the film's (probe 1: 4.06 s and 56.6 s for 10 steps at s/a 0.2)",
+    "measured_at": "node_measure.py through the node, on a runner, at the family spacing"
+  },
+  "bits": {
+    "cases": "released drag 0.3.0 and 0.4.0 programs (both dtypes), script A and A0 now on drag 0.4.0, and 0.5.0's with the hand-over off, base release tip against the head, one CPU (bit_compare.py)",
+    "prediction": "every array equal; 0.5.0 programs that move: a sphere near a wall with the hand-over on (the sphere's form in place of the film), and a sphere at its family spacing near a wall (the hand-over now on: the film's window is the film's, not the sphere form's)",
+    "controls": {"one_ulp": "the same program with one parameter one ulp up: arrays differ"}
+  },
+  "outcomes": null
+}
