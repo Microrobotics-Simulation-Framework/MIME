@@ -52,6 +52,8 @@ import jax
 from jax import Array
 
 from mime.core import jnp
+from mime.core import solves
+from mime.core.solves import SolveSite, register
 from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, REPORT_FIELDS, REPORT_SIZE, STALL_RESTARTS
 from mime.nodes.hydro.mrs._solve import PRECISION
 
@@ -60,6 +62,10 @@ _vmap: Any = cast(Any, jax).vmap
 _solve_triangular: Any = cast(Any, jax).scipy.linalg.solve_triangular
 
 type Operator = Callable[[Array], Array]
+
+#: The solve site of :func:`reported_solve`: every GMRES solve of the near field runs inside it.
+GMRES_SITE = register(SolveSite("near_field_gmres", "gmres", "mime.nodes.hydro.near_field._gmres.reported_solve",
+                                nodes=("JointDragNode",)))
 
 #: How a column ended, as the loop carries it.
 _RUNNING, _CONVERGED, _STAGNATED, _AT_CAP, _NOT_FINITE, _AT_ZERO = 0, 1, 2, 3, 4, 5
@@ -287,32 +293,33 @@ def reported_solve(matrix: Array, b: Array, tap: Array, precondition: Operator, 
     blocks are coupled to the field by exact zeros, so that each has a defined tangent whenever anything in the solve
     is differentiated."""
 
-    def matvec(pair: tuple[Array, Array]) -> tuple[Array, Array]:
-        x, block = pair
-        y = jnp.matmul(matrix, x, precision=PRECISION)
-        return y, block + 0.0 * y[0, 0]
+    with solves.solving(GMRES_SITE):
+        def matvec(pair: tuple[Array, Array]) -> tuple[Array, Array]:
+            x, block = pair
+            y = jnp.matmul(matrix, x, precision=PRECISION)
+            return y, block + 0.0 * y[0, 0]
 
-    def solving(preconditioner: Operator, transpose: bool) -> Callable[..., tuple[Array, Array]]:
-        def magnitude(x: Array) -> Array:
-            held = jnp.abs(matrix)
-            return jnp.matmul(held.T if transpose else held, x, precision=PRECISION)
+        def solving(preconditioner: Operator, transpose: bool) -> Callable[..., tuple[Array, Array]]:
+            def magnitude(x: Array) -> Array:
+                held = jnp.abs(matrix)
+                return jnp.matmul(held.T if transpose else held, x, precision=PRECISION)
 
-        def solve(operator: Callable[[tuple[Array, Array]], tuple[Array, Array]],
-                  pair: tuple[Array, Array]) -> tuple[Array, Array]:
-            rhs, block = pair
+            def solve(operator: Callable[[tuple[Array, Array]], tuple[Array, Array]],
+                      pair: tuple[Array, Array]) -> tuple[Array, Array]:
+                rhs, block = pair
 
-            def field(x: Array) -> Array:
-                return operator((x, block))[0]
+                def field(x: Array) -> Array:
+                    return operator((x, block))[0]
 
-            return gmres(field, rhs, preconditioner, stopping, magnitude if stopping.floor_stop else None)
+                return gmres(field, rhs, preconditioner, stopping, magnitude if stopping.floor_stop else None)
 
-        return solve
+            return solve
 
-    coupled_rhs = b + 0.0 * tap[0]
-    coupled_tap = tap + 0.0 * b[0, 0]
-    solved, report = _lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solving(precondition, False),
-                                              transpose_solve=solving(transposed, True))
-    return solved, report
+        coupled_rhs = b + 0.0 * tap[0]
+        coupled_tap = tap + 0.0 * b[0, 0]
+        solved, report = _lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solving(precondition, False),
+                                                  transpose_solve=solving(transposed, True))
+        return solved, report
 
 
 __all__ = ["CAP", "FLOOR_MARGIN", "FLOOR_MEASURED", "REPORT_FIELDS", "REPORT_SIZE", "RESTART", "STAGNATION_FACTOR", "STAGNATION_WINDOW", "Stopping",

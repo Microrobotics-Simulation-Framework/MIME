@@ -1,0 +1,95 @@
+{
+  "written": "2026-11-11, committed before any gate of #239's fix round ran (the commit that adds this file is the timestamp): the couple two-way, the exact self-history (route 2) by default and the fitted modes (route 1) opt-in, the stokes drag's sign judged by its node, the law's own dissipation booked, the steady limit's own self-history",
+  "phase": "F3, PR 1's fix round (#239, its review REVIEW_239 and the maintainer's row #349)",
+  "labels": "the fix round's builder (Opus), from derivations, the review's measurements (its probe runs 42943593349, 42943780445, 42944325991, 42945663263) and the light checks listed below, run on this laptop while writing; every number seen before this file is listed",
+  "seen_before": [
+    "the couple's pair through the exchange functions: the transpose identity 5.4e-15 relative (float64, 20^3 box, 3 points), a unit couple's scattered density carrying net force 3e-17 and torque 1 - 2e-12 (float64)",
+    "the couple's steady self-rotation by its spectrum against a direct FFT solve of the scattered density through the MAC projector on a 64 box: equal to six figures at widths 1, 1.5 and 2 cells (0.0040434, 0.00114615, 0.000475975 in 1/(mu h^3)); against the continuum Gaussian dipole's 1/(8 pi 6 sqrt(pi) sigma^3): +8 %, +3.4 %, +1.8 %",
+    "route 2's own field after a unit impulse, read 0 to 5 steps later, against the spectral step response: 1e-15 relative (float64, r = 0.3, a 64 box, Faxén coefficients drawn); route 1's fit at that point: residual 2.7e-7, span 853 steps",
+    "the smoke run (gate 3's experiment, 40 um, offset 0.1 mm, dt 0.2 ms, 8 ms, float64): margins 0.4513 (the force) and 0.9751 (the couple); slip 2.66e-7 m/s against V 7.80e-3 (3.4e-5 of V); route 1 and route 2 gave V equal to 7e-11 relative; no gift step, no ringing",
+    "the free box (24^3, a = h, r = 50, the Faxén pair on, a force and a torque, 40 steps, float64): V / (M0 F) = 0.8821 (Hasimoto's 1 - 2.837/24 = 0.8818), Omega / (T / (8 pi mu a^3)) = 0.99971"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (GitHub runners for rates and measurements; this laptop for single gate runs)",
+    "sizes_and_parameters": "water (mu 1e-3, rho 1e3); tube radius 0.5 mm, D/h 16 unless stated; free boxes 24 to 48 cells; sphere radius 30 um to 2h; IMEX Euler or its steady limit, Stokes; dt 0.05 to 0.5 ms",
+    "seeds_and_draws": "each gate's draws seeded by DETECTION_SEED, at physical scales (radii 0.8 to 1.2 h or 30 to 50 um, density ratios 1.5 to 3 or as stated)"
+  },
+  "gate_2_still_fluid_pair_on": {
+    "claim": "one point body in a free box, two-way, with the Faxén pair the rung builds, pulled by a force and turned by a torque: at steady state its speed is M0 F less Hasimoto's term and its rotation T / (8 pi mu a^3)",
+    "kind": "estimates",
+    "case": "tests/flow/test_point_bodies.py::test_one_body_in_still_fluid_coupled_moves_as_it_would_uncoupled (FreeBox 24^3, r = 50, a 0.8 to 1.2 h)",
+    "prediction": {"value": 5e-4, "band": [0.0, 2e-3], "unit": "|V - V_expected| / (M0 F) and |W - T/(8 pi mu a^3)| / (T/(8 pi mu a^3))", "basis": "measured-before (the free box above)"},
+    "control": {"plant": "the constant correction omitted (CORRECTION); the Faxén delivery at the volume average's coefficient, the review's one-sided mutant (ONESIDED); the couple's correction omitted (COUPLE_CORRECTION)", "expected_rate": "every run each: 0.4 (M_inf/M0) for the first; about 1e-2 for the second [guess]; about 0.1 (K_inf/K0) for the third"}
+  },
+  "gate_3_uniform_drive_full_range": {
+    "claim": "a neutrally buoyant point body in the driven tube, offsets up to 0.2 mm (the original range), moves with the fluid up to Maxey and Riley's own slip, the slip the law gives on the run's own readings (the drag's and the flow without the body's, so the Faxén slip (a^2/6 - a^2/10) lap u included)",
+    "kind": "equality",
+    "prediction": {"value": 1e-12, "band": [0.0, 1e-9], "unit": "|s - s_law| / |V|, float64 (float32: 1e-6, band to 1e-5)", "basis": "derived: the node's step is that recurrence; the review replayed it to 6e-16"},
+    "metric": "the slip against the law's own slip from the readings; the law's slip itself reported (up to about 2e-4 of V at the far draws, the review)",
+    "control": {"plant": "the Maxey-Riley terms off (MAXEY_RILEY)", "expected_rate": "every run (a slip of a few per cent of V)"}
+  },
+  "gate_5_added_mass_replayed": {
+    "claim": "one-way, a heavy body in the accelerating fluid follows the backward-Euler recurrence of (m + m_f/2) dw/dt = (m_f - m) g - R0 w on the run's own readings (the review's m2: the flow's reading, not g (n+1) dt)",
+    "kind": "equality",
+    "prediction": {"value": 1e-12, "band": [0.0, 1e-9], "unit": "|V - V_law| / |w_inf|, float64 (float32: 1e-5)", "basis": "derived; the review's replay 1.8e-15 (float64), 1.3e-6 (float32)"},
+    "control": {"plant": "the added mass off (ADDED_MASS)", "expected_rate": "every run"}
+  },
+  "gate_8_gift_judged": {
+    "claim": "the stokes drag's sign is judged each step by its node, the law's power at one velocity never above its rounding floor, and the run's account carries it on both of the drag's rows (gift_steps 0)",
+    "kind": "acceptance",
+    "prediction": {"value": "gift_steps 0 on both rows, both dtypes", "basis": "derived: -R0 |V - u_d|^2 - R_r |W - Omega_d|^2 exactly"},
+    "control": {"plant": "the review's energy gift, +0.5 R0 V on the drag's background load (GIFT)", "expected_rate": "every run, both dtypes (the gift 0.5 R0 V^2 against a floor of 16 eps R0 V^2)"}
+  },
+  "gate_13_lagged_residual_order": {
+    "claim": "with the law's own dissipation booked (the fluid's dissipation of the kernel's own field taken out of it), the lagged exchange's unpaired work (both rows plus the law's dissipation) summed over a fixed time falls as dt: term_orders' order 2 a step",
+    "kind": "estimates",
+    "case": "gate 8's experiment at dt 0.2 and 0.1 ms over 4 ms, radius 30 to 50 um and density ratio 1.5 to 3 drawn",
+    "prediction": {"value": 1.9, "band": [1.41, 2.83], "unit": "the ratio of |unpaired| at dt to at dt/2", "basis": "measured-before by the review on gate 8's point (1.87 to 2.01 a halving with the self-field term removed)"},
+    "control": {"plant": "the law's dissipation booked as R0 |V - u_d|^2 (the fluid's own dissipation of the kernel's field left in it: the PR's) (DISSIPATION)", "expected_rate": "every run: the ratio under 1 (0.02 to 0.65 in the review's table)"}
+  },
+  "gate_10_couple_margin": {
+    "claim": "the couple's coupled one-step margin the build computes equals the one the flow node's own step gives (a unit couple scattered in a free box, one IMEX Euler step and the steady limit, read by the dipole), and it stays above the floor wherever the width rule lets a body be",
+    "kind": "equality",
+    "prediction": {"value": 1e-7, "band": [0.0, 1e-5], "unit": "|margin_spectrum - margin_node|, float64 (the node's CG at 1e-10)", "basis": "derived"},
+    "metric": "the margin itself, over a/sigma 1 to 1.7, r 0.03 to 30, widths 1 and 1.5: predicted at least 0.5 [derived: the continuum's 1 - (a/(2.2 sigma))^3 at a = 1.7 sigma, 0.54]",
+    "control": {"plant": "the couple's spectrum without the projector's cross terms (SPECTRUM)", "expected_rate": "every run"}
+  },
+  "gate_11_rotlet": {
+    "claim": "a torqued point body in a free box, two-way, at steady state: the flow it scatters along a line through it across its axis is the rotlet's, T x r / (8 pi mu r^3), in the periodic box (the continuum Gaussian dipole's Fourier series), from 3 to 8 cells",
+    "kind": "estimates",
+    "case": "FreeBox 32^3, a = sigma = h, r = 50, a torque along z; the x faces along y through the body",
+    "prediction": {"value": 1e-2, "band": [0.0, 3e-2], "unit": "max |u - u_rotlet| / |u_rotlet| over the line, 3 to 8 cells", "basis": "guess: the MAC Laplacian's (kh)^2/12 at k ~ 1/r"},
+    "control": {"plant": "the couple scattered with its sign flipped (COUPLE_SIGN)", "expected_rate": "every run (error 2)"}
+  },
+  "gate_12_swap": {
+    "claim": "route 1 (the fitted modes) against route 2 (the exact own field) on one body's force history through the node: the own fields they remove agree within the fit's stated residual of the one-step response times the summed force",
+    "kind": "bounds",
+    "case": "FreeBox 24^3, r drawn 0.03 to 3, width 1 or 1.5, a force stepped and oscillating, 30 steps",
+    "prediction": {"value": 0.1, "band": [0.0, 1.0], "unit": "max over steps of |own_1 - own_2| / (residual M_c sum |f|)", "basis": "guess"},
+    "control": {"plant": "route 1's modes made at a step 10 % longer than the run's (SWAP_STEP)", "expected_rate": "every run"}
+  },
+  "gate_14_light_body": {
+    "claim": "a light body (density 0.05 of water's, Maxey-Riley on) from rest in the driven tube stays finite and settles to a slip under 5 % of the flow's speed under each accepted scheme (the steady limit at dt 50 us, the review's diverging arm, and IMEX Euler), the ringing flag never raised",
+    "kind": "acceptance",
+    "prediction": {"value": "finite, slip under 0.05 of the flow at the end, rate_feedback 0", "basis": "derived: the own field removed exactly in free space, the wall's reflection left (gain about 0.4 on the axis)"},
+    "control": {"plant": "under the steady limit the own field left in the rate terms' reading (the PR's reading, OWN_FIELD)", "expected_rate": "every run: diverged (the review: 14 % a step) and rate_feedback raised"}
+  },
+  "measure_cost": {
+    "claim": "the point body's step against the flow's alone, through built.run (gate 3's experiment, 100 steps): route 2 (exact) and route 1 (modes, its fit made once a chunk)",
+    "kind": "estimates",
+    "prediction": {"value": "route 2 adds 0.3 to 1.5 times the D/h 16 flow's step; route 1 adds under 0.2 times; the review measured +10.3 to 10.6 times before the responses were made once a chunk", "basis": "guess: a 64^3 half spectrum, about twenty complex operations an entry, a step"}
+  },
+  "outcomes": {
+      "gate_2_still_fluid_pair_on": "held: 3.5e-4 (speed) and 3.1e-4 (rotation), both dtypes; controls 20/20 each in both dtypes, the review's one-sided mutant included, clean 0/20 (probe run 42963684677 (c77e579))",
+      "gate_3_uniform_drive_full_range": "held: 2.2e-16 (f64), 6.0e-8 (f32) of V on offsets to 0.2 mm; the law's own slip 2.2e-5 of V; Maxey-Riley off 20/20 both, clean 0/20 (probe run 42963684677 (c77e579))",
+      "gate_5_added_mass_replayed": "held: 3.9e-15 (f64), 3.1e-6 (f32); added mass off 20/20 both, clean 0/20 (probe run 42963684677 (c77e579))",
+      "gate_8_gift_judged": "held: gift_steps 0 on both rows, both dtypes; the review's gift 10/10 both, clean 0/10; discriminating range 0.1 R0 V caught at every draw (refined 0.042) (probe run 42963684677 (c77e579))",
+      "gate_13_lagged_residual_order": "at the committed point (0.2 and 0.1 ms) the ratio was 1.83 (held), but the plant was missed at 1 draw in 10 (probe run 42963684677 (c77e579)): the smallest, lightest drawn body put the kernel's own term at 0.2 of the lag, under the order check's resolution; moved to 50 and 25 us (ratio 1.957 both dtypes), where the plant was caught 10/10 in both dtypes, clean 0/10 (probe run 42968519319 (6dad373))",
+      "gate_10_couple_margin": "held: node and spectrum equal to 8 figures; margins 0.52 to 0.995 over the rule's domain; the one-step rotational resistance against the exact rotating sphere's -0.714 to +0.0002 (reported); SPECTRUM plant 10/10 both, clean 0/10 (probe run 42963684677 (c77e579), probe run 42968519319 (6dad373))",
+      "gate_11_rotlet": "held, near the band's edge: 2.9e-2 in both dtypes (the closest faces, 3 cells out, carry it); the couple's sign flipped 10/10 both, clean 0/10 (probe run 42963684677 (c77e579))",
+      "gate_12_swap": "with the body moving, the clean arm failed at 2 draws in 20 in float64 (probe run 42963684677 (c77e579)): beside a fit residual of 1e-8 (width 1.5) the routes differed by 1.4 and 4.9 times it, route 1 reading its own field as if the body had not moved; the gate now holds the body's point (2.2e-5 f64, 0.067 f32 of the bound) and prints the moving body's difference; the plant 20/20 both, clean 0/20 (probe run 42968519319 (6dad373)); discriminating range a step 1.3e-3 long caught at every draw (refined 1.1e-3)",
+      "gate_14_light_body": "the steady arm held (slip 1.9e-9 f64, 4.9e-7 f32 at the review's arm); the IMEX arm's lead 3.363e-4 against (m_f - m) g/R0 = 3.378e-4 m/s (the prediction's slip under 0.05 was wrong for it: Maxey and Riley's lead is 7 %, as the review measured; the gate asserts finiteness and no ringing there); with densities 0.05 to 0.2 and radii 30 to 50 um drawn the plant was missed at 2 draws in 10 (31 and 33 um, where the PR's reading was itself stable) and one float32 clean draw raised the ringing flag below its rounding (probe run 42963684677 (c77e579)); the gate is held at the review's arm (40 um, 0.05) with its offset drawn and the flag's floor set at the rate load's rounding: the plant 10/10 both, clean 0/10 (probe run 42968519319 (6dad373))",
+      "measure_cost": "one runner per arm, the steady runs' minimum, 100 steps (probe run 42968519319 (6dad373)): D/h 16 float64, the flow alone 7.8 ms a step, with route 2 24.2 (+16, 2.1 times), with route 1 14.1 (+6.3); float32 within the runners' spread (6.9 alone, 5.0 each route); D/h 32 float64 82.7 alone, 80.7 route 2 (loaded), 86.1 route 1. Before the responses were summed by eigenvalue (probe run 42963684677 (c77e579)) route 1 cost 138 ms a step (the fit remade each chunk, an unchunked run cut into some 64). Reverse mode in the radius, checkpointed, finite: peak 2168 MiB at 10 steps, 2248 at 40 (route 2), 1837 at 10 (route 1)"
+  }
+}

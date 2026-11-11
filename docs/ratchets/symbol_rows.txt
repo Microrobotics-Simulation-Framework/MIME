@@ -100,6 +100,11 @@ DynamicMotorNode \boldsymbol{\omega}  # pinned at landing (phase 7a4)
 DynamicMotorNode \mathbf{H}  # pinned at landing (phase 7a4's review fixes)
 DynamicMotorNode \mathbf{C}  # pinned at landing (phase 7a4's review fixes)
 DynamicMotorNode \mathbf{Q}  # pinned at landing (phase 7a4's review fixes)
+PointDragNode \mathbf{f}  # pinned at landing
+PointDragNode \mu  # pinned at landing
+PointDragNode a  # pinned at landing
+PointDragNode \mathbf{V}  # pinned at landing
+PointDragNode \mathbf{u}  # pinned at landing
 SourceReactionNode \mathbf{W}  # pinned at landing
 SourceReactionNode \mathbf{F}  # pinned at landing
 SourceReactionNode \boldsymbol{\tau}  # pinned at landing

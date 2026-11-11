@@ -135,7 +135,7 @@ def test_a_malformed_reynolds_declaration_is_refused_at_registration_naming_what
 
 def test_the_drag_declares_a_bound_with_its_basis_for_each_rung_and_the_declaration_is_well_formed():
     assert _reynolds_problems(Drag) == []
-    assert sorted(r.rung for r in Drag.reynolds if r.rung) == ["mrs", "rft", "surrogate"]
+    assert sorted(r.rung for r in Drag.reynolds if r.rung) == ["mrs", "rft", "stokes", "surrogate"]
     assert all(r.upper > 0.0 and "Oseen" in r.basis for r in Drag.reynolds)
 
 

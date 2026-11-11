@@ -254,14 +254,15 @@ def test_the_toy_family_page_prints_its_contract_its_members_and_a_comparison_wi
 
 
 def test_the_hydrodynamic_family_page_prints_its_contract_its_rungs_and_their_comparison(built):
-    """Its second built rung, the MRS, starts the comparison, the rft rung the third, the rft rung the third: a row for each rung, no cell blank."""
+    """Its second built rung, the MRS, starts the comparison, the rft rung the third, the stokes rung the fourth: a row for each rung, no cell blank."""
     page = text_of(built, "pages/families/hydrodynamic.md")
     assert "the resistance dissipates" in page and "## Members" in page
     assert "[`surrogate`](../entries/interaction/drag.md#rung-surrogate)" in page
     assert "[`mrs`](../entries/interaction/drag.md#rung-mrs)" in page
     assert "[`rft`](../entries/interaction/drag.md#rung-rft)" in page
+    assert "[`stokes`](../entries/interaction/drag.md#rung-stokes)" in page
     rows = [line for line in page.split("## Comparison", 1)[1].splitlines() if line.startswith("| [")]
-    assert [row.split("`")[1] for row in rows] == ["drag surrogate", "drag mrs", "drag rft"]
+    assert [row.split("`")[1] for row in rows] == ["drag surrogate", "drag mrs", "drag rft", "drag stokes"]
     assert all(all(cell.strip() for cell in row.strip("|").split("|")) for row in rows)
 
 
@@ -275,7 +276,7 @@ def test_a_family_whose_members_are_not_alternatives_is_not_compared(built):
 def test_the_at_a_glance_block_links_the_other_homes_and_copies_none_of_them(built):
     page = text_of(built, "pages/entries/interaction/drag.md")
     glance = page.split("## At a glance", 1)[1].split("\n## ", 1)[0]
-    assert "[`hydrodynamic`](../../families/hydrodynamic.md), with 3 built rungs among its members" in glance
+    assert "[`hydrodynamic`](../../families/hydrodynamic.md), with 4 built rungs among its members" in glance
     assert "(../../nodes/SurrogateDragNode.md)" in glance and "(../../nodes/MRSDragNode.md#governing-equations)" in glance
     assert "Undocumented, so with no equations to link: [`SurrogateDragNode`](../../nodes/SurrogateDragNode.md)" in glance
     assert "$$" not in page

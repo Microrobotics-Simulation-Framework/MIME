@@ -6,7 +6,8 @@ lanes the shards run in (the same Python, set-up and condition as the lane's sha
 alone, a skip failing it, a timeout above the install script's worst case), the shards' share (no shard installs a
 shell, each deselects the file, and the option really keeps the file out of a collection), the lane's job under its own
 name needing the job and checking it, the check that reads the job's report, and the install script itself
-(``scripts/install_shells.sh``) against fake ``sudo``, ``dpkg`` and ``apt-get``.
+(``scripts/install_shells.sh``) against fake ``sudo``, ``dpkg`` and ``apt-get``, its fallback to other Ubuntu mirrors included
+(the runners could not resolve the Ubuntu archive for hours on 2026-11-11).
 
 The completion tests fail, not skip, under CI when a shell is missing (``shell_path``), so a shard that kept the file
 by mistake is red by name; the controls are fixed plants, each failing on every run."""
@@ -526,8 +527,12 @@ def fake_tools(folder: Path, apt_body: str, *, recorded: bool = False) -> dict[s
 def run_install(tmp_path: Path, apt_body: str, *, recorded: bool = False,
                 **settings: str) -> tuple[subprocess.CompletedProcess[str], int]:
     environment = fake_tools(tmp_path / "bin", apt_body, recorded=recorded) | settings
-    if not recorded:  # the recorded runs wait for nothing, so they keep the script's own pause
+    if not recorded:  # the recorded runs wait for nothing, so they keep the script's own pause and mirrors
         environment.setdefault("SHELLS_PAUSE_SECONDS", "0")
+        environment.setdefault("SHELLS_FALLBACK_MIRRORS", "")  # the tests of the first source alone have no fallback
+    release = tmp_path / "os-release"
+    release.write_text("VERSION_CODENAME=noble\n", encoding="utf-8")
+    environment.setdefault("SHELLS_OS_RELEASE", str(release))
     done = subprocess.run(["bash", str(INSTALL)], env=environment, capture_output=True, text=True, check=False, timeout=120)
     counted = Path(environment["COUNT_FILE"])
     return done, len(counted.read_text().splitlines()) if counted.exists() else 0
@@ -542,14 +547,14 @@ def lines(tmp_path: Path, suffix: str) -> list[str]:
 def test_an_attempt_that_stalls_is_cut_and_made_again_and_the_second_installs(tmp_path):
     done, attempts = run_install(tmp_path, '[ "$attempt" -ge 2 ] && exit 0\nexec sleep 30\n', SHELLS_ATTEMPT_SECONDS="1")
     assert done.returncode == 0 and attempts == 2, done
-    assert "attempt 1 of 3 failed or ran over 1 s" in done.stdout and "installed on attempt 2 of 3" in done.stdout
+    assert "attempt 1 of 2 failed or ran over 1 s" in done.stdout and "installed on attempt 2 of 2" in done.stdout
 
 
 @needs_posix
 def test_control_without_the_cut_a_stalled_attempt_is_waited_for(tmp_path):
     """The same stall with a limit longer than it: nothing is cut, so the one attempt is the only one."""
     done, attempts = run_install(tmp_path, "sleep 2\nexit 0\n", SHELLS_ATTEMPT_SECONDS="60")
-    assert done.returncode == 0 and attempts == 1 and "attempt 1 of 3" in done.stdout
+    assert done.returncode == 0 and attempts == 1 and "attempt 1 of 2" in done.stdout
 
 
 @needs_posix
@@ -573,35 +578,107 @@ def test_control_the_last_attempt_is_cut_at_its_own_limit_and_the_step_then_fail
 def test_a_failing_install_is_tried_the_set_number_of_times_and_then_fails_the_step(tmp_path):
     done, attempts = run_install(tmp_path, "exit 100\n", SHELLS_ATTEMPTS="2", SHELLS_ATTEMPT_SECONDS="5")
     assert done.returncode == 1 and attempts == 2, done
-    assert "were not installed in 2 attempts" in done.stdout
+    assert "were not installed from the runner's configured sources" in done.stdout
     assert len(lines(tmp_path, "dpkg")) == 1, "the half-done install is repaired between attempts, not after the last"
 
 
 @needs_posix
 def test_the_defaults_are_the_ones_the_step_documents_and_the_worst_case_is_inside_the_job(tmp_path):
     """Run with no ``SHELLS_*`` setting, against a ``timeout`` and a ``sleep`` that record their arguments: the first
-    attempts are cut at 120 s, the last at 360 s, ``dpkg --configure -a`` at 60 s, a pause of 15 s follows each failed
+    attempt is cut at 120 s, the last at 360 s, ``dpkg --configure -a`` at 60 s, a pause of 15 s follows each failed
     attempt that is not the last, apt gets what it needs (as root, unattended, without its recommendations, zsh and
-    fish), and the worst case that the script prints is under the job's 20 minutes and under 15."""
-    done, attempts = run_install(tmp_path, '[ "$attempt" -ge 3 ] && exit 0\nexit 100\n', recorded=True)
-    assert done.returncode == 0 and attempts == 3, done
+    fish), the runner's own sources are all it reads while they install, and the worst case that the script prints (the
+    fallback's cuts included) is under 18 minutes, which leaves the job's 30 minutes its margin."""
+    done, attempts = run_install(tmp_path, '[ "$attempt" -ge 2 ] && exit 0\nexit 100\n', recorded=True)
+    assert done.returncode == 0 and attempts == 2, done
     assert lines(tmp_path, "calls") == [
         "timeout --kill-after=10 120 apt-get", "timeout --kill-after=10 60 dpkg", "sleep 15",
-        "timeout --kill-after=10 120 apt-get", "timeout --kill-after=10 60 dpkg", "sleep 15",
         "timeout --kill-after=10 360 apt-get"]
-    assert lines(tmp_path, "apt") == ["install -y --no-install-recommends zsh fish"] * 3
-    assert lines(tmp_path, "dpkg") == ["dpkg --configure -a"] * 2
-    assert lines(tmp_path, "sudo") == ["sudo timeout"] * 5, "every apt-get (3) and dpkg (2) runs as root, under the cut"
+    assert lines(tmp_path, "apt") == ["install -y --no-install-recommends zsh fish"] * 2, "no mirror is read while the first source installs"
+    assert lines(tmp_path, "dpkg") == ["dpkg --configure -a"]
+    assert lines(tmp_path, "sudo") == ["sudo timeout"] * 3, "every apt-get (2) and dpkg (1) runs as root, under the cut"
     worst = int(re.search(r"worst case ([0-9]+) s", done.stdout).group(1))
-    assert worst == (120 + 10 + 60 + 10 + 15) * 2 + 360 + 10 and worst < 15 * 60, worst
+    first_source = (120 + 10 + 60 + 10 + 15) + 360 + 10
+    fallback = (60 + 10) + (60 + 10 + 120 + 10) * 2  # the repair, then two mirrors, an update and an install each
+    assert worst == first_source + fallback == 1055 and worst < 18 * 60, worst
+
+
+#: An ``apt-get`` that fails against the runner's sources and succeeds against a mirror (an argument ``-o Dir::Etc::sourcelist=``),
+#: keeping each mirror's sources file as ``$COUNT_FILE.sources.<n>``. ``$resolve`` is what a failure against the sources says.
+MIRROR_ONLY = (
+    'list=""\nfor arg in "$@"; do case "$arg" in Dir::Etc::sourcelist=*) list=${arg#*=};; esac; done\n'
+    'if [ -n "$list" ]; then\n  cp "$list" "$COUNT_FILE.sources.$(wc -l < "$COUNT_FILE")"\n  %s\n  exit 0\nfi\n'
+    '%sexit 100\n')
+
+
+@needs_posix
+def test_when_the_first_source_fails_the_shells_come_from_another_mirror_and_the_log_names_it(tmp_path):
+    done, attempts = run_install(tmp_path, MIRROR_ONLY % ("", ""), SHELLS_FALLBACK_MIRRORS="http://one.invalid/ubuntu")
+    assert done.returncode == 0, done
+    apt = lines(tmp_path, "apt")
+    assert [line.split()[0] for line in apt if "sourcelist" not in line] == ["install"] * 2, "the first source is tried first, twice"
+    update, install = [line for line in apt if "sourcelist" in line]
+    for call, verb in ((update, "update"), (install, "install -y --no-install-recommends zsh fish")):
+        assert call.endswith(verb) and "Dir::Etc::sourceparts=-" in call, "only the mirror's sources are read: " + call
+    sources = (tmp_path / "bin" / f"count.sources.{attempts - 1}").read_text().splitlines()
+    assert sources == [f"deb http://one.invalid/ubuntu {pocket} main universe" for pocket in ("noble", "noble-updates", "noble-security")]
+    assert "installed from the fallback mirror http://one.invalid/ubuntu (noble, -updates and -security pockets)" in done.stdout
+    assert len(lines(tmp_path, "dpkg")) == 2, "the first source's half-done install is repaired between attempts and before the mirror"
+
+
+@needs_posix
+def test_a_host_that_does_not_resolve_sends_the_run_to_the_mirror_without_the_remaining_attempts(tmp_path):
+    said = 'echo "E: Failed to fetch http://archive.ubuntu.com/ubuntu/pool/main/z/zsh.deb  Temporary failure resolving \'archive.ubuntu.com\'"\n'
+    done, _ = run_install(tmp_path, MIRROR_ONLY % ("", said), SHELLS_ATTEMPTS="3", SHELLS_FALLBACK_MIRRORS="http://one.invalid/ubuntu")
+    assert done.returncode == 0 and "installed from the fallback mirror http://one.invalid/ubuntu" in done.stdout, done
+    assert [line for line in lines(tmp_path, "apt") if "sourcelist" not in line] == ["install -y --no-install-recommends zsh fish"]
+    assert "do not resolve" in done.stdout
+
+
+@needs_posix
+def test_control_a_failure_that_is_not_a_resolve_failure_keeps_every_attempt_on_the_first_source(tmp_path):
+    """The same run with a failure that does not say it was a resolve failure: all three attempts are made, so the test above
+    can only pass because the script read the resolve failure."""
+    done, _ = run_install(tmp_path, MIRROR_ONLY % ("", 'echo "E: Unable to locate package zsh"\n'), SHELLS_ATTEMPTS="3",
+                          SHELLS_FALLBACK_MIRRORS="http://one.invalid/ubuntu")
+    assert done.returncode == 0, done
+    assert len([line for line in lines(tmp_path, "apt") if "sourcelist" not in line]) == 3
+
+
+@needs_posix
+def test_a_mirror_whose_update_stalls_is_cut_and_the_next_mirror_installs(tmp_path):
+    body = MIRROR_ONLY % ('grep -q two.invalid "$list" || exec sleep 30', "")
+    done, _ = run_install(tmp_path, body, SHELLS_FALLBACK_MIRRORS="http://one.invalid/ubuntu http://two.invalid/ubuntu",
+                          SHELLS_FALLBACK_UPDATE_SECONDS="1")
+    assert done.returncode == 0, done
+    assert "apt-get from the fallback mirror http://one.invalid/ubuntu failed or ran over its cut" in done.stdout
+    assert "installed from the fallback mirror http://two.invalid/ubuntu" in done.stdout
+
+
+@needs_posix
+def test_the_step_fails_when_the_first_source_and_every_mirror_fail(tmp_path):
+    done, _ = run_install(tmp_path, "exit 100\n", SHELLS_FALLBACK_MIRRORS="http://one.invalid/ubuntu http://two.invalid/ubuntu")
+    assert done.returncode == 1, done
+    assert "were not installed: 2 attempts on the configured sources, then 2 fallback mirrors" in done.stdout
+    assert "installed" not in done.stdout.replace("were not installed", "")
+
+
+@needs_posix
+def test_the_defaults_bound_the_fallback_s_cuts_and_name_the_release_and_both_mirrors(tmp_path):
+    done, _ = run_install(tmp_path, MIRROR_ONLY % ("", ""), recorded=True)
+    assert done.returncode == 0, done
+    assert lines(tmp_path, "calls")[-3:] == [
+        "timeout --kill-after=10 60 dpkg", "timeout --kill-after=10 60 apt-get", "timeout --kill-after=10 120 apt-get"], lines(tmp_path, "calls")
+    assert "installed from the fallback mirror https://mirrors.edge.kernel.org/ubuntu (" in done.stdout
 
 
 @needs_posix
 def test_an_apt_that_cannot_get_its_lock_is_not_asked_again_at_once(tmp_path):
-    """apt exits 100 at once while another process holds its lock; the retries must be spaced, not three in a row."""
-    done, attempts = run_install(tmp_path, "exit 100\n", recorded=True)
-    assert done.returncode == 1 and attempts == 3, done
-    assert [line for line in lines(tmp_path, "calls") if line.startswith("sleep")] == ["sleep 15", "sleep 15"]
+    """apt exits 100 at once while another process holds its lock; the retries on one source must be spaced, not in a row."""
+    done, _ = run_install(tmp_path, "exit 100\n", recorded=True)
+    assert done.returncode == 1, done
+    assert [line for line in lines(tmp_path, "calls") if line.startswith("sleep")] == ["sleep 15"]
+    assert len([line for line in lines(tmp_path, "apt") if line.startswith("install")]) == 2
 
 
 @needs_posix
@@ -612,5 +689,5 @@ def test_a_dpkg_that_hangs_is_cut_and_does_not_hold_the_next_attempt(tmp_path):
     environment |= {"SHELLS_DPKG_SECONDS": "1", "SHELLS_PAUSE_SECONDS": "0"}
     started = time.monotonic()
     done = subprocess.run(["bash", str(INSTALL)], env=environment, capture_output=True, text=True, check=False, timeout=120)
-    assert done.returncode == 0 and "installed on attempt 2 of 3" in done.stdout, done
+    assert done.returncode == 0 and "installed on attempt 2 of 2" in done.stdout, done
     assert time.monotonic() - started < 15

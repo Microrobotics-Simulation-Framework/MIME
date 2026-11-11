@@ -201,3 +201,13 @@ A run's result gives the account itself, `result.energy` ([the results note](../
 With the energy ledger, each node that receives loads and that the build leaves unmetered, by name, with its reason (a
 dynamics that names no port kind: the prescribed flow, `Womersley()`, which stores nothing, a toy, a lab's). A run's
 account names each as left out of it (`result.energy.unmetered`), as does `result.text()`. Empty without the ledger, and where every receiver is metered.
+
+## `solving`
+
+Each node that solves a linear system, by name, with the line `solve arithmetic of <node>: as today`: the arithmetic its
+solves ran in before this line existed, unchanged (the run's dtype, except in the arm-tracking controller, which computes
+in single precision whatever the run's). The nodes are the ones whose class a registered solve site names
+(`mime.core.solves`): the FVM's flow nodes (implicit, explicit, open), the near field's joint node, the MRS, RFT and point drag
+nodes, the rigid bodies, the dynamic arm and the arm-tracking controller. Static, no traced array holds it, so it
+changes no program. The line is where a declared solve precision will report once one exists. Nothing to do about it.
+
