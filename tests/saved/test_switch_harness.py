@@ -57,6 +57,7 @@ selection, whose fallback reaches the derivative."""
 
 import dataclasses
 import math
+from contextlib import contextmanager
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
@@ -892,6 +893,47 @@ def hull_rows(declared) -> list[SwitchRow]:
 FRICTION_MU, PRESSED = 0.3, 1e-3
 
 
+def friction_ball_pose() -> np.ndarray:
+    """The held ball's pose with its lowest point straight below its centre on the shrunk wall."""
+    first, _ = lowest_two()
+    return ball_below(first, 0.0, upright(first))
+
+
+def with_friction(reference, mu: float = FRICTION_MU, **extra):
+    """``reference``'s node with Coulomb friction ``mu`` on its contact (``extra`` its other settings)."""
+    from mime.nodes.body import RigidInertialNode
+
+    return RigidInertialNode("umr", DT, **{**{key: value for key, value in reference.constants().items()
+                                              if key not in ("name", "timestep")},
+                                           "friction": "coulomb", "friction_mu": mu,
+                                           "friction_law": "contact:umr.friction", **extra})
+
+
+@contextmanager
+def one_frictional_sweep():
+    """The frictional hold at one sweep while a guard point is traced: one reaches every guard of the sweeps (the
+    ball's one point is solved in one, the rod's takes no force), and the unrolled sweeps' programs stay small."""
+    import mime.nodes.body._rigid_inertial as rigid
+
+    held = dict(rigid.FRICTION_SWEEPS)
+    rigid.FRICTION_SWEEPS.update(sphere=1, cylinder=1)
+    try:
+        yield
+    finally:
+        rigid.FRICTION_SWEEPS.clear()
+        rigid.FRICTION_SWEEPS.update(held)
+
+
+def frictional_nodes(on_the_axis: int):
+    """The held ball (one group, its lowest point) and the rod held by its point ``on_the_axis``, each with Coulomb
+    friction, their sweeps unrolled (``_contact.repeated``: inside an XLA loop's body a guard's condition is a tracer,
+    which the coverage checks cannot read)."""
+    first, _ = lowest_two()
+    ball = with_friction(held_ball([[first]], friction_ball_pose()))
+    rod = with_friction(hull_node(ROD, ROD_SETTINGS, BALL_SPACING, groups=[[on_the_axis]], mass=HULL_MASS))
+    return ball, rod
+
+
 def friction_ball_step(sliding: float, metered: bool = False):
     """The held ball (one group, its lowest point straight below its centre on the shrunk wall), with Coulomb friction
     ``FRICTION_MU``, pressed into the wall at ``PRESSED`` and moving along the tube's axis at ``sliding``: its pose and
@@ -934,7 +976,8 @@ def friction_scale() -> tuple[float, float]:
     state = {**node.initial_state(), "pose": jnp.asarray(pose), "twist": jnp.asarray((1e-3, 0.0, -PRESSED, 0, 0, 0))}
     out = node.fresh_update(state, {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)),
                                     "background_load": jnp.zeros(6)}, DT)
-    return float(jnp.sum(out["contact_forces"])), float(jnp.max(jnp.linalg.norm(out["contact_traction"], axis=-1))) / 1e-3
+    pulled = float(jnp.max(jnp.linalg.norm(out["contact_friction_forces"], axis=-1)))
+    return float(jnp.sum(out["contact_forces"])), pulled / 1e-3
 
 
 def friction_rows(declared) -> list[SwitchRow]:
@@ -1155,7 +1198,8 @@ def test_control_a_step_traced_before_the_setting_opened_fails(graph):
 def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); a body held by its hull's points, one of
-    them on the tube's axis (the sweeps'); the drag on the axis; the swim speed
+    them on the tube's axis (the sweeps'); the frictional hold, the held ball sticking and the rod's point on the tube's
+    axis (the trust region's, the point's update's and the work scaling's); the drag on the axis; the swim speed
     before it has observed; the phase lag in no field before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; the coil array read away from its sources (its source offsets', and its reader's distances'); and
     the drag's MRS samples on FL-9's screw and on an ellipsoid, where each kind's surface element (each sample's
     ``nonzero_norm``) is; and the drag's hand-over above a plane within the lift's band, a sphere (the near contact's
@@ -1178,6 +1222,22 @@ def guard_points(graph):
         out = rod.fresh_update({**rod.initial_state(), **state}, unloaded, DT)
         return {"pose": out["pose"], "twist": out["twist"]}
 
+    friction_ball, friction_rod = frictional_nodes(on_the_axis)
+    ball_pose = friction_ball_pose()
+
+    def held_with_friction(twist):
+        """The frictional hold: the held ball pressed into the wall at ``twist``, its pair sticking (the trust region's
+        guards with its boundary not taken); and the rod held by a cap's centre on the tube's axis, where the point's
+        normal row has no length and no normal force is taken (the point's update's and the work scaling's guards)."""
+        unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
+        with one_frictional_sweep():
+            ball = friction_ball.fresh_update({**friction_ball.initial_state(), "pose": jnp.asarray(ball_pose),
+                                               "twist": twist}, unloaded, DT)
+            rod_out = friction_rod.fresh_update({**friction_rod.initial_state(), "pose": body_state["pose"],
+                                                 "twist": twist}, unloaded, DT)
+        return {"ball": ball["twist"], "rod": rod_out["twist"]}
+
+    pressed_still = jnp.asarray((0.0, 0.0, -PRESSED, 0.0, 0.0, 0.0))
     screw_node = hull_node(*HELD_SCREW, 4e-4, mass=HULL_MASS)
     shell_node = hull_node(*HELD_SHELL, 4e-4, mass=HULL_MASS)
     at_the_wall = {"pose": jnp.asarray((ALONG, 0.0, -(TUBE_RADIUS - HULL_MARGIN - 2.0748e-3), 1.0, 0.0, 0.0, 0.0)),
@@ -1316,6 +1376,8 @@ def guard_points(graph):
                                                            lambda: jax.jacfwd(held_rod)(body_state)),
         "the hull contact on FL-9 and an ellipsoid at the wall": (lambda: held_at_the_wall(at_the_wall),
                                                                   lambda: jax.jacfwd(held_at_the_wall)(at_the_wall)),
+        "the frictional hold sticking, and its point on the tube's axis": (
+            lambda: held_with_friction(pressed_still), lambda: jax.jacfwd(held_with_friction)(pressed_still)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
         "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
@@ -1403,7 +1465,9 @@ def swim_at_twist(graph, twist):
 
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free",
                                    "the hull contact, its point on the tube's axis",
-                                   "the hull contact on FL-9 and an ellipsoid at the wall", "the drag on the axis",
+                                   "the hull contact on FL-9 and an ellipsoid at the wall",
+                                   "the frictional hold sticking, and its point on the tube's axis",
+                                   "the drag on the axis",
                                    "the swim speed before observing", "the solids' shapes on their sets",
                                    "the screw on its focal set", "the dipole away from its centre",
                                    "the coil array away from its sources",

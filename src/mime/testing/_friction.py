@@ -3,10 +3,13 @@ body node's own frictional hold (``mime.interactions.friction``'s seams; decided
 the run's dtype. A law of a lab's passes them with its own oracle beside them (Coulomb's: ``tests/oracles/
 test_friction.py``, breakaway at ``tan(theta) = mu``).
 
-- :func:`friction_law_suite`: **passivity**, each held point's friction power at the solved twist never above its floor
-  (``_friction.power_floor``: the spike's guard, which caught a planted sign flip in every draw where the kinetic
-  energy missed most); **the sticking limits**, a sphere's point whose sticking traction is within the law's limit
-  sticks (its slip at rounding) and one past it slides on the limit, anti-parallel to its slip (the law's
+- :func:`friction_law_suite`: **passivity, never silent**, each held point's friction power at the solved twist never
+  above its floor (``_friction.power_floor``: the spike's guard, which caught a planted sign flip in every draw where
+  the kinetic energy missed most) and the step not unconverged, at a converged count; a planted sign flip raises one of
+  the two in every draw of every body where friction acts, the clean solve's friction above the guard's line of the
+  load (the guard, or ``unconverged`` where the flip lifts the body off and leaves no friction to read: two draws in
+  915 of a box's in W2b's probe); **the sticking limits**, a sphere's point whose sticking traction is within the
+  law's limit sticks (its slip at rounding) and one past it slides on the limit, anti-parallel to its slip (the law's
   ``limit(load, speed)`` read against the solve); **its derivative** in the law's coefficient, reverse mode against
   central differences, on sliding draws.
 - :func:`normal_law_suite`: the normal force never below the law's least (``NormalLaw.least``), no point past the
@@ -14,7 +17,8 @@ test_friction.py``, breakaway at ``tan(theta) = mu``).
 - :func:`row_kind_suite`: a built row kind's rows measure what it declares (sliding: the slip of the body's own point,
   ``t . (v + omega x r)``, on a frame across the normal); a reserved kind is refused by the contact with its reason.
 
-Draws (a sphere of 1 mm and a cylinder 1 mm by 3 mm lying on the plane ``z >= 0``, 2000 kg/m^3, a step of 1 ms): a
+Draws (a sphere of 1 mm, a cylinder 1 mm by 3 mm and a box 1 by 1 by 0.5 mm held by its samples, on the plane
+``z >= 0``, 2000 kg/m^3, a step of 1 ms): a
 load of 0.3 to 3 weights at up to 1.4 rad from the normal in any azimuth, linear speeds along the plane of 1e-6 to 5e-2
 m/s or none, angular speeds of 1e-3 to 50 rad/s or none, any orientation, and a coefficient log-uniform on [0.01, 1.2]
 (the register's range). Nothing below a body's scale is drawn: the numerical extremes (a bound at rounding, a normal
@@ -33,18 +37,23 @@ from maddening.testing.verification import VerificationResult
 from mime.core import jnp
 
 #: The bodies the suites hold on the plane, by name: kind, settings, mass and principal moments.
-BODIES = ("sphere", "cylinder")
+BODIES = ("sphere", "cylinder", "box")
 _DT = 1e-3
 _G = 9.81
 
 
 def _body(name: str) -> tuple[Any, dict[str, Any], float, tuple[float, ...], float]:
-    from mime.scene import Cylinder, Sphere
+    from mime.scene import Box, Cylinder, Sphere
     from mime.units import mm
 
     if name == "sphere":
         mass = 2000.0 * 4.0 / 3.0 * math.pi * 1e-3 ** 3
         return Sphere(radius=mm(1.0)), {"radius": 1e-3}, mass, (0.4 * mass * 1e-6,) * 3, 1e-3
+    if name == "box":
+        a, b, c = 1e-3, 1e-3, 5e-4
+        mass = 2000.0 * a * b * c
+        return (Box(size=mm((1.0, 1.0, 0.5))), {"size": (a, b, c)}, mass,
+                (mass * (b * b + c * c) / 12.0, mass * (a * a + c * c) / 12.0, mass * (a * a + b * b) / 12.0), c / 2)
     radius, length = 5e-4, 3e-3
     mass = 2000.0 * math.pi * radius ** 2 * length
     side = mass * (3 * radius ** 2 + length ** 2) / 12.0
@@ -102,12 +111,19 @@ def _placed(name: str, turn: tuple[float, ...]) -> Any:
     centre a radius up; a cylinder's by its support along -z."""
     q = np.asarray(turn, dtype=np.float64)
     q = q / np.linalg.norm(q)
-    _, settings, _, _, lowest = _body(name)
+    kind, settings, _, _, lowest = _body(name)
+    w, x, y, z = q
+    rot = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                    [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                    [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
+    if name == "box":
+        # held by its samples (a kind with no support): its lowest sample on the plane
+        from mime.scene._sampling import quadrature_arrays, quadrature_counts
+
+        patches = tuple(kind.patches)
+        points = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, 2e-4, patches))[0]
+        lowest = float(np.max(-(np.asarray(points, dtype=np.float64) @ rot.T)[:, 2]))
     if name == "cylinder":
-        w, x, y, z = q
-        rot = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
-                        [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
-                        [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
         axis = rot @ np.asarray(settings["axis"])
         across = math.sqrt(max(0.0, 1.0 - axis[2] ** 2))
         lowest = settings["length"] / 2 * abs(axis[2]) + settings["radius"] * across
@@ -153,11 +169,16 @@ def _drawn(name: str, drawn: tuple[Any, ...], dtype: Any) -> tuple[Any, Any, Any
             jnp.asarray(load, dtype=dtype), jnp.asarray(mu, dtype=dtype), weight)
 
 
-#: The sweeps the suites solve at: enough to converge every drawn problem (the spike's reference was 4,000; its
+#: The sweeps the suites solve at: enough to converge almost every drawn problem (the spike's reference was 4,000; its
 #: four-corner box, the slowest, reached 1e-6 of its change by 89 at the 99th percentile), so that a law's passivity is
 #: judged at its solution. At the declared count a trip of the guard on an unconverged iterate raises unconverged
 #: (the frictional hold's residual), which the sweep-count measurement reports.
 SUITE_SWEEPS = 400
+#: Where a clean solve is left unconverged at the suite's count (its residual past ``CONVERGED``), the counts it is
+#: solved again at, in turn, and judged at the first it converges at, or the last: a box face down on the plane,
+#: rocking at 1 rad/s with mu 1, six of its eight points held in no unique share, read 0.12 at 400 sweeps, 0.013 at
+#: 1,600 and 3e-5 at 6,400 (float64; about one box draw in 1,200 of the suite's).
+SUITE_DEEPER = (1600, 6400, 25600)
 
 
 def _converged(names: tuple[str, ...], sweeps: int) -> dict[str, int | None]:
@@ -188,12 +209,17 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     run's dtype (the module's cases), solved at ``sweeps`` (converged): passivity on every body, the sticking limits
     and the derivative on the sphere. Every draw is judged, none stops the run: the detail counts the draws that
     failed, a control's rate. ``plant``, for a control, replaces ``_friction.disk_update`` while the suite runs (the
-    sign flip: ``lambda x: -x`` on its force)."""
+    sign flip: ``lambda x: -x`` on its force); the clean solve beside it says where friction acts, its friction above
+    the guard's line of the load (below it a plant moves the step by less than any check resolves: a load within
+    1e-8 rad of the normal, the solve's friction 1e-8 of it), and the detail counts those draws apart. Unplanted, a
+    draw left unconverged at ``sweeps`` is solved again at :data:`SUITE_DEEPER`'s counts and judged at its solution
+    (the detail counts them)."""
     import jax
     from hypothesis import HealthCheck, Phase, given, settings
 
     import mime.nodes.body._friction as friction_module
     from mime.interactions.friction import Coulomb
+    from mime.nodes.body._contact import CONVERGED
     from mime.nodes.body._friction import power_floor
 
     held = Coulomb(mu=0.3) if law is None else law
@@ -201,17 +227,29 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     floor = power_floor(dtype)
     eps = float(jnp.finfo(dtype).eps)
     original = friction_module.disk_update
-    if plant is not None:
-        def planted(block: Any, load: Any, bound: Any) -> Any:
-            return plant(original(block, load, bound))
-
-        friction_module.disk_update = planted
     failures: list[str] = []
     judged: list[bool] = []
     rubbed: list[bool] = []
+    acted = dict.fromkeys(bodies, 0)
+    flagged = dict.fromkeys(bodies, 0)
+    under = dict.fromkeys(bodies, 0)
+    solved_deeper = dict.fromkeys(bodies, 0)
+    quiet: list[str] = []
     declared = _converged(bodies, sweeps)
     try:
+        clean: dict[str, Callable[..., dict[str, Any]]] = {}
+        if plant is not None:
+            # the clean solve, traced before the plant goes in (a step is traced at its first call)
+            clean = {name: _stepper(held_node(name), dtype) for name in bodies}
+            for name, stepper in clean.items():
+                stepper(*_drawn(name, _AT_REST, dtype)[:4])
+
+            def planted(block: Any, load: Any, bound: Any) -> Any:
+                return plant(original(block, load, bound))
+
+            friction_module.disk_update = planted
         steppers = {name: _stepper(held_node(name), dtype) for name in bodies}
+        deeper: dict[tuple[str, int], Callable[..., dict[str, Any]]] = {}
 
         @settings(max_examples=max_examples, deadline=None, database=None, phases=(Phase.generate,),
                   suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much])
@@ -222,12 +260,37 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
             for name, stepper in steppers.items():
                 pose, twist, load, mu, weight = _drawn(name, drawn, dtype)
                 out = stepper(pose, twist, load, mu)
-                power = float(out["contact_friction_power"])
-                traction = np.asarray(out["contact_traction"], dtype=np.float64)
-                any_friction = any_friction or bool(np.max(np.linalg.norm(traction, axis=-1)) > 0.0)
-                if not power <= floor:
-                    found.append(f"{name}: friction's power at the solved twist {power:.3g} over its scale, above "
-                                 f"its floor {floor:.3g}, at {drawn}")
+                # judged at its solution: solved again at the deeper counts while unconverged (a planted arm is
+                # judged at the suite's count, where its flags must rise)
+                deepened = False
+                for count in [count for count in SUITE_DEEPER if count > sweeps and plant is None]:
+                    if not float(out["contact_residual"]) > CONVERGED:
+                        break
+                    if (name, count) not in deeper:
+                        deeper[name, count] = _traced_at(name, count, dtype)
+                    out = deeper[name, count](pose, twist, load, mu)
+                    deepened = True
+                solved_deeper[name] += int(deepened)
+                power = float(out["contact_friction_power_ratio"])
+                left = float(out["contact_residual"])
+                loaded = float(np.linalg.norm(np.asarray(load[:3], dtype=np.float64)))
+                reference = clean[name](pose, twist, load, mu) if name in clean else out
+                pulled = _pulled(reference)
+                acts = pulled > floor * loaded
+                any_friction = any_friction or acts
+                # the step is never silent: the guard reads friction pushing, or unconverged rises (the residual,
+                # where a planted flip lifts the body off and leaves no friction to read)
+                raised = not power <= floor or left > CONVERGED
+                acted[name] += int(acts)
+                flagged[name] += int(acts and raised)
+                under[name] += int(not acts)
+                if acts and not raised:
+                    quiet.append(f"{name} at {drawn}: friction {pulled:.3g} N over the load {loaded:.3g} N, power "
+                                 f"{power:.3g}, residual {left:.3g}")
+                if raised:
+                    found.append(f"{name}: flagged, friction's power at the solved twist {power:.3g} over its scale "
+                                 f"(its floor {floor:.3g}) and the residual {left:.3g} (CONVERGED {CONVERGED:g}), at "
+                                 f"{drawn}")
                 if name == "sphere" and plant is None:
                     found += _sphere_limits(held, stepper, (pose, twist, load, mu), out, weight, eps, drawn)
             rubbed.append(any_friction)
@@ -240,14 +303,40 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
         _restored(declared)
         jax.clear_caches()
     failed = judged.count(False)
-    acted = rubbed.count(True)
+    counts = (f"flagged/with friction by body: "
+              f"{', '.join(f'{name} {flagged[name]}/{acted[name]}' for name in bodies)}; "
+              f"friction under the guard's line of the load, by body: "
+              f"{', '.join(f'{name} {under[name]}' for name in bodies)}; solved past {sweeps} sweeps to converge, by "
+              f"body: {', '.join(f'{name} {solved_deeper[name]}' for name in bodies)}")
     if failed:
         return VerificationResult("friction law", "FAIL", detail=f"{type(held).__name__}: failed on {failed} of "
-                                                                 f"{len(judged)} draws ({acted} with friction); "
-                                                                 f"first: {failures[0]}")
+                                                                 f"{len(judged)} draws ({rubbed.count(True)} with "
+                                                                 f"friction); {counts}; first: {failures[0]}"
+                                                                 + (f"; with friction and quiet: {quiet[:3]}" if quiet
+                                                                    else ""))
     return VerificationResult("friction law", "PASS", detail=f"{type(held).__name__}: passive, its limits held and its "
-                                                             f"derivative right on {len(judged)} draws ({acted} with "
-                                                             f"friction)")
+                                                             f"derivative right on {len(judged)} draws "
+                                                             f"({rubbed.count(True)} with friction); {counts}")
+
+
+#: A draw at rest on the plane (a weight straight down, no motion), the clean steps' first call.
+_AT_REST = (1.0, 0.0, 0.0, (0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0), 0.3)
+
+
+def _traced_at(name: str, count: int, dtype: Any) -> Callable[..., dict[str, Any]]:
+    """``name``'s step at ``count`` sweeps, traced there (at its first call), the suite's count restored after."""
+    held = _converged((name,), count)
+    try:
+        stepper = _stepper(held_node(name), dtype)
+        stepper(*_drawn(name, _AT_REST, dtype)[:4])
+    finally:
+        _restored(held)
+    return stepper
+
+
+def _pulled(out: dict[str, Any]) -> float:
+    """The body's whole friction, the length of its points' tractions' sum."""
+    return float(np.linalg.norm(np.sum(np.asarray(out["contact_friction_forces"], dtype=np.float64), axis=0)))
 
 
 def _sphere_limits(law: Any, stepper: Callable[..., Any], drawn: tuple[Any, ...], out: dict[str, Any], weight: float,
@@ -261,10 +350,10 @@ def _sphere_limits(law: Any, stepper: Callable[..., Any], drawn: tuple[Any, ...]
     if normal <= 0.0:
         return []
     stuck = stepper(pose, twist, load, jnp.asarray(1e6, dtype=mu.dtype))
-    needed = float(np.max(np.linalg.norm(np.asarray(stuck["contact_traction"], dtype=np.float64), axis=-1)))
-    traction = np.asarray(out["contact_traction"], dtype=np.float64)
+    needed = float(np.max(np.linalg.norm(np.asarray(stuck["contact_friction_forces"], dtype=np.float64), axis=-1)))
+    traction = np.asarray(out["contact_friction_forces"], dtype=np.float64)
     held = float(np.max(np.linalg.norm(traction, axis=-1)))
-    slip = float(np.max(np.asarray(out["contact_slip"], dtype=np.float64)))
+    slip = float(np.max(np.asarray(out["contact_slip_speed"], dtype=np.float64)))
     speed = float(np.linalg.norm(np.asarray(twist[:3], dtype=np.float64))
                   + 1e-3 * np.linalg.norm(np.asarray(twist[3:], dtype=np.float64))) + _G * _DT
     limit = float(law.limit(normal, slip)) if hasattr(law, "limit") else float(mu) * normal
@@ -280,7 +369,7 @@ def _sphere_limits(law: Any, stepper: Callable[..., Any], drawn: tuple[Any, ...]
         # along the whole sticking traction's direction (one point shared by eight groups splits it in no unique
         # way, so no one group's is the body's): the sliding force's direction, where the speed's derivative in mu is
         # about the normal force over the mass, over the step
-        pulled = jnp.sum(stuck["contact_traction"], axis=0)
+        pulled = jnp.sum(stuck["contact_friction_forces"], axis=0)
         direction = pulled / jnp.sqrt(jnp.sum(pulled * pulled))
 
         def along(coefficient: Any) -> Any:
@@ -288,9 +377,14 @@ def _sphere_limits(law: Any, stepper: Callable[..., Any], drawn: tuple[Any, ...]
             return jnp.sum(ended["twist"][:3] * direction)
 
         derivative = float(cast(Any, jax).grad(along)(mu))
-        h = float(mu) * (1e-6 if mu.dtype == jnp.float64 else 1e-2)
+        # the sweeps leave the solve's dependence on mu non-smooth at their remainder (eight groups share the sphere's
+        # point, and which takes its force is a tie the sweeps break), measured at about 1e-8 of the speed at the
+        # suite's count: the difference is taken at 1e-4 of mu and judged at 1e-3 of the scale (float32: 1e-2, 2e-2),
+        # its span kept on the sliding side of the stick threshold (mu times needed over limit; a span across it reads
+        # the kink, not the derivative: a float32 draw at mu 1.0005, its threshold 1.004, read 0.69 of it at 1e-2)
+        h = float(mu) * min(1e-4 if mu.dtype == jnp.float64 else 1e-2, 0.5 * (needed / limit - 1.0))
         central = (float(along(mu + h)) - float(along(mu - h))) / (2 * h)
-        tolerance = 1e-6 if mu.dtype == jnp.float64 else 2e-2
+        tolerance = 1e-3 if mu.dtype == jnp.float64 else 2e-2
         # judged on the scale it came from: the derivative's own (the normal force over the mass, over the step) and
         # the central difference's rounding (the speed's rounding over its step)
         scale = normal * _DT / _body("sphere")[2]
@@ -419,4 +513,5 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
     return VerificationResult("row kind", "PASS", detail=f"{kind}: its rows measure the slip of the body's own point")
 
 
-__all__ = ["BODIES", "SUITE_SWEEPS", "friction_law_suite", "held_node", "normal_law_suite", "row_kind_suite"]
+__all__ = ["BODIES", "SUITE_DEEPER", "SUITE_SWEEPS", "friction_law_suite", "held_node", "normal_law_suite",
+           "row_kind_suite"]

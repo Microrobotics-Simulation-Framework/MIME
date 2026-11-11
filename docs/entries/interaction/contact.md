@@ -48,8 +48,8 @@ and each point's friction power at the solved twist is checked never positive (t
 traction on the slip it acts on, `mu N` times the slip distance while it slides and zero while it sticks, the sweeps'
 unconverged remainder its own numerical column; the contact takes the rest. It acts on the contact's own normal force
 alone, never on a lubricating film's pressure; the film's coupling of rotation and translation is in the resistance the
-rows are solved through. The state adds each point's friction (`contact_traction`), its slip speed (`contact_slip`) and
-the guard's reading (`contact_friction_power`). Unwritten, the contact is frictionless and compiles the program it
+rows are solved through. The state adds each point's friction (`contact_friction_forces`), its slip speed
+(`contact_slip_speed`) and the guard's reading (`contact_friction_power_ratio`). Unwritten, the contact is frictionless and compiles the program it
 always did. The seams for what is left out (`mime.interactions.friction`): `FrictionLaw` (a speed-dependent law, a
 static coefficient above the kinetic), `NormalLaw` with `Hold()` its default (restitution, soft contact; `Hold`'s
 `adhesion` reserved), the row kinds (rolling resistance next, spin declared) and the point sets (line and patch

@@ -3788,7 +3788,8 @@ class _Planner:
                    + ", ".join(f"{key} {value:g}" for key, value in sorted(rubbing.coefficients.items()))
                    + f") solved in its sweeps on its own normal force alone, never a film's, booked under "
                      f"{plan.owner}.friction, each point's friction power at the solved twist checked never positive "
-                     f"(contact_traction, contact_slip, contact_friction_power), and adding no lubrication")
+                     f"(contact_friction_forces, contact_slip_speed, contact_friction_power_ratio), and adding no "
+                     f"lubrication")
         line = (f"{holding}, keeping {hull.label()} {confinement.margin * 1e3:.4g} mm from {surface}, its orientation "
                 f"read; the samples fall up to {short * 1e6:.3g} um short of the body; {held_as}; the points it holds, "
                 f"their forces and the solve's residual are {body}'s "

@@ -167,8 +167,8 @@ ROW_KINDS: Mapping[str, RowKind] = {
     "rolling": RowKind("rolling", 2, "[0; t]", "the body's rotation about the surface's tangents at the point",
                        "mu_r N, mu_r a length", "N m", "m", False,
                        "rolling resistance comes with W2b's second pull request, as Coulomb(rolling=...)"),
-    "spin": RowKind("spin", 1, "[0; n]", "the body's rotation about the normal at the point", "mu_s N, mu_s a length",
-                    "N m", "m", False,
+    "spin": RowKind("spin", 1, "[0; n]", "the body's rotation about the normal at the point",
+                    "mu_spin N, mu_spin a length", "N m", "m", False,
                     "spin friction needs a finite contact patch: zero for a rigid point contact, declared for soft "
                     "contact (0.4.0) or a phenomenological row kind where a case needs it"),
 }

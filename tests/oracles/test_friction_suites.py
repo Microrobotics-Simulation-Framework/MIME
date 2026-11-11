@@ -2,9 +2,13 @@
 the default implementations (``Coulomb``, ``Hold()``, the sliding rows), in both dtypes, with the controls that fail them
 on every draw where friction acts (decided Fr6: every implementation of a seam passes its suite and its own oracle):
 
-- a sign flip of friction (the pair's force negated) is caught by the power guard in every such draw, on the sphere
-  and on the cylinder held at its rims, both dtypes (the spike's control, which the kinetic energy missed in most
-  draws); ``W2B_PLANT=flip`` plants it for ``.github/probe/detection_rate.py``;
+- a sign flip of friction (the pair's force negated) is flagged in every such draw of every body, the sphere, the
+  cylinder held at its rims and a box held by its samples, both dtypes: by the power guard, or by ``unconverged``
+  where the flip lifts the body off and leaves no friction to read (the spike's control, which the kinetic energy
+  missed in most draws); the clean suite raises neither on any draw; ``W2B_PLANT=flip`` plants it for
+  ``.github/probe/detection_rate.py``. Friction acts where the clean solve's friction is above the guard's line of the
+  load; the draws under it (a load within about 1e-8 rad of the normal and no motion, where the solve's friction is
+  1e-8 of the load and a flip of it moves the step below any check's resolution) are counted apart, never dropped;
 - the reserved row kinds (rolling resistance, spin) are refused by the contact with their reasons, and an adhesion
   written into ``Hold`` is refused as reserved.
 
@@ -44,23 +48,29 @@ def test_coulomb_passes_the_friction_law_suite(dtype):
     result = friction_law_suite(Coulomb(mu=0.3), plant=flipped if planted else None)
     print(f"\n{result.detail}")
     assert result.status == "PASS", result.detail
+    assert all(flagged == 0 for flagged, _ in _by_body(result.detail).values()), result.detail
 
 
-def test_control_a_sign_flip_of_friction_fails_every_draw_where_friction_acts(dtype):
+def test_control_a_sign_flip_of_friction_is_flagged_in_every_draw_of_every_body_where_friction_acts(dtype):
+    """The planted sign flip raises the guard, or ``unconverged`` where it lifts the body off, in every draw of every
+    body where friction acts (the clean solve's friction above the guard's line of the load); the clean suite (above)
+    raises neither on any draw."""
     result = friction_law_suite(Coulomb(mu=0.3), plant=flipped, max_examples=100)
     print(f"\n{result.detail}")
     assert result.status == "FAIL"
-    failed, judged, acted = (int(word) for word in _counts(result.detail))
-    assert acted > 0 and failed == acted, result.detail
+    counts = _by_body(result.detail)
+    assert set(counts) == {"sphere", "cylinder", "box"}, result.detail
+    assert all(acted > 0 and flagged == acted for flagged, acted in counts.values()), result.detail
 
 
-def _counts(detail: str) -> tuple[str, str, str]:
-    """The failed, judged and with-friction counts of a suite's failing detail."""
+def _by_body(detail: str) -> dict[str, tuple[int, int]]:
+    """The flagged and with-friction draws of each body, from a suite's detail."""
     import re
 
-    found = re.search(r"failed on (\d+) of (\d+) draws \((\d+) with friction\)", detail)
+    found = re.search(r"flagged/with friction by body: ([^;]*)", detail)
     assert found is not None, detail
-    return found.group(1), found.group(2), found.group(3)
+    return {name: (int(flagged), int(acted)) for name, flagged, acted in
+            re.findall(r"(\w+) (\d+)/(\d+)", found.group(1))}
 
 
 def test_hold_passes_the_normal_law_suite(dtype):
@@ -101,6 +111,23 @@ def test_a_bound_at_rounding_or_zero_gives_no_traction_and_nothing_non_finite(dt
         assert np.all(np.isfinite(np.asarray(derivative)))
 
 
+def test_a_free_point_at_rest_steps_with_the_frictionless_derivative(dtype):
+    """A sphere a micrometre above the plane, at rest: its pair's bound and its load are both zero, a tie the pair
+    takes on its boundary, so the step's derivative in the twist is the frictionless hold's, bit for bit (the free
+    minimiser's derivative there read friction at a point with no normal force)."""
+    pose = jnp.asarray([0.0, 0.0, 1e-3 + 1e-6, 1.0, 0.0, 0.0, 0.0], dtype)
+    inputs = {"applied_wrench": jnp.zeros(6, dtype), "resistance": jnp.zeros((6, 6), dtype),
+              "background_load": jnp.zeros(6, dtype)}
+
+    def twist_after(node):
+        return lambda twist: node.update({**node.initial_state(), "pose": pose, "twist": twist}, inputs, 1e-3)["twist"]
+
+    rest = jnp.zeros(6, dtype)
+    held = jax.jacfwd(twist_after(held_node("sphere")))(rest)
+    free = jax.jacfwd(twist_after(held_node("sphere", friction=False)))(rest)
+    assert np.array_equal(np.asarray(held), np.asarray(free)), np.asarray(held) - np.asarray(free)
+
+
 def test_a_free_point_gives_no_traction_and_a_finite_derivative(dtype):
     """A sphere a micrometre above the plane, sliding: no normal force, no friction, and reverse mode through its step in
     the coefficient finite (zero)."""
@@ -116,4 +143,4 @@ def test_a_free_point_gives_no_traction_and_a_finite_derivative(dtype):
 
     derivative = jax.grad(speed)(jnp.asarray(0.3, dtype))
     assert float(derivative) == 0.0
-    assert float(jnp.max(jnp.abs(node.update(state, inputs, 1e-3)["contact_traction"]))) == 0.0
+    assert float(jnp.max(jnp.abs(node.update(state, inputs, 1e-3)["contact_friction_forces"]))) == 0.0
