@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the valve's at every stiffness (the raw number mixes a flux row's units with a pressure row's).
   `exp.attach(SharedDistal(first=..., second=..., distal=...), medium=blood, surface=(a, b))`: two openings each
   through its own resistance into one shared distal resistance, its off-diagonals solved, its own books kept (a lagged
-  off-diagonal leaves a first-order residual in them). `port_kinetic_flux`, an active flag, an operator check of
+  off-diagonal leaves a first-order residual in them). `opening_kinetic_flux`, an active flag, an operator check of
   convection at the planes: the kinetic energy the books hold as crossing the openings against each opening's own, the
   scheme's convective power split by plane (exact to the field's divergence: the divergence form is conservative), the
   planes' net judged on each opening's flux in magnitude, so its scale does not cancel; it sees no port work (the

@@ -140,6 +140,23 @@ class PathSolid:
         return path_distance(jnp.asarray(self.paths, dtype=points.dtype), points)
 
 
+@dataclass(frozen=True)
+class RegionSolid:
+    """The solid around a built region's one lumen: the vessel's own part (a :class:`TreeSolid`) and each opening's
+    swept path (a :class:`PathSolid`) joined, the lesser of the two distances on every face, so that one solid region
+    holds them (the solids :func:`wall_fields` is given are separate regions whose resistivities add: given apart,
+    each one's solid would fill the other's lumen)."""
+
+    tree: TreeSolid
+    paths: PathSolid
+    region: str = "wall"
+
+    def face_distances(self, points: tuple[Array, Array, Array]) -> tuple[tuple[Array, Array, Array], Array]:
+        held, counts = self.tree.face_distances(points)
+        joined = tuple(jnp.minimum(held[k], self.paths.signed_distance(points[k])) for k in range(3))
+        return (joined[0], joined[1], joined[2]), counts
+
+
 #: The least of the plan's sizes (:func:`plan_rung`), in faces.
 PLAN_QUANTUM = 256
 
@@ -222,7 +239,7 @@ def interior_ramp(phi: Array, band: Band, h: Any, end: float) -> Array:
     return ramp(phi - 0.5 * (start + end) * h, (end - start) * h)
 
 
-def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | PathSolid | FacedSolid], band: Band, interior: float, dtype: Any,
+def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: Band, interior: float, dtype: Any,
                 offset: Callable[[Array], Array] | None = None) -> WallFields:
     """Each solid's fields on ``grid``'s faces, the regions' resistivities added. The band's width and depth scale
     with the spacing; the interior adds ``(delta / delta_in)^2`` over a second ramp beyond the band, ending
@@ -246,7 +263,7 @@ def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | PathSolid | FacedSol
     inverse: list[Array] = []
     distances: list[Array] = []
     for component in range(3):
-        phis = [faced[index][component] if index in faced else cast(TubeSolid | PathSolid, solid).signed_distance(faces[component])
+        phis = [faced[index][component] if index in faced else cast(TubeSolid, solid).signed_distance(faces[component])
                 for index, solid in enumerate(solids)]
         phi = phis[0]
         for other in phis[1:]:
@@ -271,5 +288,5 @@ def negative_resistivity(fields: WallFields) -> Array:
 
 
 __all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_INTERIOR", "INTERIORS", "INTERIOR_RAMP_END", "PLAN_QUANTUM", "Band",
-           "FacedSolid", "TreeSolid", "TubeSolid", "WallFields", "band_named", "interior_depth", "interior_ramp",
+           "FacedSolid", "PathSolid", "RegionSolid", "TreeSolid", "TubeSolid", "WallFields", "band_named", "interior_depth", "interior_ramp",
            "negative_resistivity", "plan_rung", "ramp", "wall_fields"]

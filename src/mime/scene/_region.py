@@ -354,7 +354,7 @@ def build_region(vessel: Vessel, *, around: int | None, reach: float | None, ext
                         "face", f"the openings {first.name} and {second.name} share a plane with their "
                                             f"centres {apart * 1e3:.4g} mm apart: a lumen crosses the line midway "
                                             f"between them, where the plane is split between its openings",
-                        "lengthen the extensions (VesselRegion(extension=...)) so the branches part further before "
+                        "lengthen the extensions (VesselRegion(extension_diameters=...)) so the branches part further before "
                         "they turn, or cut the region nearer the junction (reach=...)")
     return _as_tree(kept, vessel, tuple(openings), np.asarray(rows), (low, high), a)
 

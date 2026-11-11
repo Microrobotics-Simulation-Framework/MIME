@@ -31,7 +31,7 @@ FLUX = 1e-9
 def tree_vessel(*, region=None, laws=None, cells_across=6, ledger=True, tree=None) -> Experiment:
     exp = Experiment("open_tree", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
     exp.add_structure(Structure("vessel", geometry=tree if tree is not None else TubeTree(**Y)))
-    flow = FVM(domain=region if region is not None else VesselRegion(extension=1.0), cells_across=cells_across,
+    flow = FVM(domain=region if region is not None else VesselRegion(extension_diameters=1.0), cells_across=cells_across,
                stokes=True, scheme=Scheme.Steady())
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": flow}))
     exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
@@ -79,7 +79,7 @@ def test_a_tree_with_no_root_is_refused_naming_its_upstream():
 
 
 def test_a_cut_around_the_junction_is_named_after_the_end_beyond_it(float64):
-    built = tree_vessel(region=VesselRegion(around="j1", reach=mm(1.0), extension=1.0)).build()
+    built = tree_vessel(region=VesselRegion(around="j1", reach=mm(1.0), extension_diameters=1.0)).build()
     c = built.graph.get_node("water.flow").constants()
     assert c["openings"] == ("vessel.root", "vessel.end_0", "vessel.end_1")
     assert _refused(tree_vessel(region=VesselRegion(around="j7", reach=mm(1.0)))) == ["flow.region-cut"]
@@ -96,7 +96,7 @@ def test_the_outlet_watch_acts_on_nothing(float64, monkeypatch):
         runs.append(tree_vessel(ledger=False).build().run(ms(2.0)).final["water.flow"])
     for name in ("velocity_x", "velocity_y", "velocity_z", "opening_pressure", "opening_flux", "backflow_work"):
         np.testing.assert_array_equal(np.asarray(runs[0][name]), np.asarray(runs[1][name]))
-    assert float(runs[0]["outlet_reversed_flagged"]) == 0.0 and float(runs[1]["outlet_reversed_flagged"]) == 1.0
+    assert float(runs[0]["opening_reversed_flagged"]) == 0.0 and float(runs[1]["opening_reversed_flagged"]) == 1.0
 
 
 def test_a_tilted_tube_is_built_with_bends_and_runs(float64):
@@ -139,29 +139,34 @@ def test_the_two_outlet_shared_distal_law_binds_each_end_by_name(float64):
 
 
 def test_a_backflow_term_of_the_wrong_sign_is_flagged_and_its_gift_counted(float64, monkeypatch):
-    """R-15's sign check: the term pushing an outlet's inward faces in (beta -1) gives the flow energy wherever a face
-    takes flow in (here the solid's Darcy flow at the outlets' planes): ``backflow_flagged`` and the ledger's gift count
-    for ``<node>.backflow``; the right sign raises neither."""
+    """R-15's sign check: an inflow reversing from its first step (Stokes, IMEX Euler) turns both outlets' flow
+    inward, where the term works against it (negative, booked under ``<node>.backflow``); the term pushing the inflow
+    in (beta -1) gives the flow energy: ``backflow_flagged`` and the ledger's gift count. The right sign raises
+    neither."""
     from mime.nodes.flow.fvm import _open_node
 
-    clean = tree_vessel().build().run(ms(2.0))
+    def reversing() -> Experiment:
+        return _imex_tree(stokes=True, amplitude=2.0, phase=math.pi)
+
+    clean = reversing().build().run(ms(3.0))
     monkeypatch.setattr(_open_node, "BACKFLOW_BETA", -1.0)
-    flipped = tree_vessel().build().run(ms(2.0))
+    flipped = reversing().build().run(ms(3.0))
     assert float(clean.final["water.flow"]["backflow_work"]) < 0.0
     assert float(clean.final["water.flow"]["backflow_flagged"]) == 0.0
     assert float(flipped.final["water.flow"]["backflow_flagged"]) == 1.0
     assert ledger_closes(clean).passed and not ledger_closes(flipped).passed
 
 
-def _imex_tree() -> Experiment:
+def _imex_tree(*, stokes: bool = False, amplitude: float = 0.3, phase: float = 0.0) -> Experiment:
     exp = Experiment("open_tree_imex", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
     exp.add_structure(Structure("vessel", geometry=TubeTree(**Y)))
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
-        domain=VesselRegion(extension=1.0), cells_across=6, scheme=Scheme.IMEXEuler())}))
+        domain=VesselRegion(extension_diameters=1.0), cells_across=6, stokes=stokes, scheme=Scheme.IMEXEuler())}))
     exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
     exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
-    exp.attach(Inflow(steady=m3_per_s(FLUX), amplitude=m3_per_s(0.3 * FLUX), frequency=Hz(5.0)), medium="water",
-               surface="vessel.root")
+    exp.attach(Inflow(steady=m3_per_s(FLUX), amplitude=m3_per_s(amplitude * FLUX), frequency=Hz(5.0), phase=phase),
+               medium="water", surface="vessel.root")
+    exp.observe(EnergyLedger())
     for end, resistance in (("end_0", 2e9), ("end_1", 6e9)):
         exp.attach(Windkessel(proximal=Pa_s_per_m3(resistance), compliance=m3_per_Pa(1e-14),
                               distal=Pa_s_per_m3(resistance)), medium="water", surface=f"vessel.{end}")

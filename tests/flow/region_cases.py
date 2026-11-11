@@ -3,7 +3,7 @@ by the CI tests and the detection-rate probes.
 
 **The rig** (:func:`experiment`): a Y (``mime.scene.TubeTree``) of unequal daughters, drawn (:func:`draw`), turned as a
 whole from z by up to 20 degrees about a drawn axis and moved by part of a cell (a vessel aligned with no grid axis and
-on no symmetry plane), filled by water, its region the whole vessel (``VesselRegion(extension=...)``), stepped by the
+on no symmetry plane), filled by water, its region the whole vessel (``VesselRegion(extension_diameters=...)``), stepped by the
 steady Stokes limit; an ``Inflow`` at the root and one ``SharedDistal`` across the two ends (``surface=(end_0,
 end_1)``), metered.
 
@@ -29,7 +29,7 @@ from typing import Any
 
 import numpy as np
 
-from mime.dynamics import FVM, Scheme
+from mime.dynamics import FVM, Band, Scheme
 from mime.experiment import Experiment
 from mime.interactions import Inflow, SharedDistal
 from mime.nodes.flow.fvm import _ports
@@ -111,11 +111,17 @@ def tree_of(d: YDraw) -> TubeTree:
     return TubeTree.si(points, ((0, 1), (1, 2), (1, 3)), radii).turned(turn, np.asarray(d.offset) * spacing)
 
 
-def experiment(d: YDraw, *, distal_scale: float = 1.0) -> Experiment:
+#: The gate's stiff interior: 0.01h, so that the solid's Darcy flow between the two ends' patches on their shared plane
+#: (#246's limit, which grows with the laws' impedance against the solid's conductance) stays a hundredth of the default
+#: interior's, below the gate's lines; its size at the default is #246's limit, re-measured (``limits_reading``).
+GATE_INTERIOR = 0.01
+
+
+def experiment(d: YDraw, *, distal_scale: float = 1.0, interior: float = GATE_INTERIOR) -> Experiment:
     exp = Experiment("region_y", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
     exp.add_structure(Structure("vessel", geometry=tree_of(d)))
-    flow = FVM(domain=VesselRegion(extension=d.extension), cells_across=d.cells_across, stokes=True,
-               scheme=Scheme.Steady())
+    flow = FVM(domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across, stokes=True,
+               scheme=Scheme.Steady(), wall=Band(delta_in=interior))
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": flow}))
     exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
     exp.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
@@ -156,9 +162,54 @@ def series_lengths(d: YDraw) -> tuple[float, float]:
     return by_name["end_0"], by_name["end_1"]
 
 
+def lumen_split(d: YDraw, built: Any, result: Any) -> float:
+    """The share of the two daughters' lumen flux that the daughter leading to ``end_0`` carries, read from the
+    geometry, not from any opening: each daughter's fluid flux (``1 - chi``) through the z plane of faces nearest 0.6
+    of the way from the junction to its end, over the cells within its section's reach (its radius over the cosine of
+    its angle from z, and two cells) of its axis there; the share of the two, so that the solid's bypass, in proportion
+    to each, cancels. A mix-up of an opening's name and its patch moves it to about the split's complement."""
+    node = built.graph.get_node("water.flow")
+    c = node.constants()
+    h = float(c["spacing"])
+    world = np.asarray(tree_of(d).parameters()["points"]).reshape(-1, 3)
+    origin = world[2] - np.asarray(c["opening_paths"])[1][0:3]
+    grid = node.open_grid(c)
+    chi = np.asarray(node.fields(c, grid).chi[2])
+    w = np.asarray(result.final["water.flow"]["velocity_z"])
+    nx, ny = w.shape[:2]
+    x, y = np.meshgrid((np.arange(nx) + 0.5) * h, (np.arange(ny) + 0.5) * h, indexing="ij")
+    fluxes = []
+    for point, radius in ((2, d.radii[1]), (3, d.radii[2])):
+        junction, end = world[1] - origin, world[point] - origin
+        direction = (end - junction) / np.linalg.norm(end - junction)
+        k = int(round((junction + 0.6 * (end - junction))[2] / h))
+        crossing = junction + direction * (k * h - junction[2]) / direction[2]
+        near = np.hypot(x - crossing[0], y - crossing[1]) <= radius / abs(direction[2]) + 2.0 * h
+        fluxes.append(float(np.sum(np.where(near, (1.0 - chi[..., k]) * w[..., k], 0.0))))
+    return fluxes[0] / (fluxes[0] + fluxes[1])
+
+
 @contextmanager
 def planted(plant: str | None) -> Iterator[None]:
-    """``dropped``: the shared distal law's block made diagonal (each ``R_d`` in its own row), its books with it."""
+    """``dropped``: the shared distal law's block made diagonal (each ``R_d`` in its own row), its books with it;
+    ``swapped``: the two ends' patches exchanged (each opening's patch the other's lumen's), a name-patch mix-up."""
+    if plant == "swapped":
+        from mime.nodes.flow.fvm import _open
+
+        masks = _open.OpeningLayout.masks
+
+        def swapped(self: Any, cells: Any) -> Any:
+            held = masks(self, cells)
+            if len(self.planes) == 3:
+                held = held[[0, 2, 1]]
+            return held
+
+        _open.OpeningLayout.masks = swapped  # type: ignore[method-assign]
+        try:
+            yield
+        finally:
+            _open.OpeningLayout.masks = masks  # type: ignore[method-assign]
+        return
     if plant != "dropped":
         yield
         return
@@ -188,16 +239,13 @@ def split_reading(d: YDraw, plant: str | None = None, *, distal_scale: float = 1
     port system's flux at the root."""
     with planted(plant):
         built = experiment(d, distal_scale=distal_scale).build()
-        node = built.graph.get_node("water.flow")
-        if plant == "swapped":
-            centres = list(node.params["opening_centres"])
-            centres[1], centres[2] = centres[2], centres[1]
-            node.params["opening_centres"] = tuple(centres)
         result = built.run(ms(2.0))
     flux = np.asarray(result.final["water.flow"]["opening_flux"], dtype=np.float64)
     split = float(flux[1] / -flux[0])
     network = network_split(d)
-    return {"split": split, "network": network, "error": split - network, "closes": bool(ledger_closes(result).passed),
+    lumen = lumen_split(d, built, result)
+    return {"split": split, "network": network, "error": split - network, "lumen": lumen, "lumen_error": lumen - split,
+            "closes": bool(ledger_closes(result).passed),
             "root": float(-flux[0] / FLUX),
             "backflow_flagged": float(np.asarray(result.final["water.flow"]["backflow_flagged"])) > 0.0}
 
@@ -254,7 +302,7 @@ def watch_experiment(d: StenosisDraw, arm: str, cells_across: int = 8) -> tuple[
         period = 2.0 * math.pi / omega
         dt, steps, mean = period / 40.0, 80, 0.5 * nu / D * area
         inflow = Inflow(steady=m3_per_s(mean), amplitude=m3_per_s(1.5 * mean), frequency=Hz(1.0 / period))
-        flow = FVM(domain=VesselRegion(extension=extension), cells_across=cells_across, stokes=True,
+        flow = FVM(domain=VesselRegion(extension_diameters=extension), cells_across=cells_across, stokes=True,
                    scheme=Scheme.IMEXEuler())
     else:
         speed = d.reynolds * nu / D
@@ -262,7 +310,7 @@ def watch_experiment(d: StenosisDraw, arm: str, cells_across: int = 8) -> tuple[
         dt = 0.9 * (0.4 / 3.0) * h / peak
         steps = math.ceil(1.2 * length / speed / dt)
         inflow = Inflow(steady=m3_per_s(speed * area))
-        flow = FVM(domain=VesselRegion(extension=extension), cells_across=cells_across, scheme=Scheme.IMEXEuler())
+        flow = FVM(domain=VesselRegion(extension_diameters=extension), cells_across=cells_across, scheme=Scheme.IMEXEuler())
     exp = Experiment(f"watch_{arm}", scene=Scene.new(up=Z, units="m"), dt=s(dt))
     exp.add_structure(Structure("vessel", geometry=stenosis_tree(d, cells_across)))
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": flow}))
@@ -295,7 +343,7 @@ def watch_reading(d: StenosisDraw, arm: str) -> dict[str, float | bool]:
         held = chunk.state["water.flow"]
         if chunk.steps > steps // 2:
             samples.append({"reversed": float(np.asarray(held["opening_reversed"])[1]),
-                            "flagged": float(np.asarray(held["outlet_reversed_flagged"])),
+                            "flagged": float(np.asarray(held["opening_reversed_flagged"])),
                             "flux": float(np.asarray(held["opening_flux"])[1]),
                             "port": abs(float(np.asarray(held["opening_pressure"])[1] * np.asarray(held["opening_flux"])[1])),
                             "backflow": abs(float(np.asarray(held["backflow_work"]))) / dt,
@@ -311,12 +359,168 @@ def watch_reading(d: StenosisDraw, arm: str) -> dict[str, float | bool]:
             "steps": steps}
 
 
+#: FB9's tube: tilted 30 degrees from z at an azimuth of 40 degrees (on no symmetry plane), 3 mm long, D 1 mm, Re 50
+#: (a laminar entrance length of about 3 D), its inflow entering through the run, the bend and the extension.
+BEND_TILT, BEND_AZIMUTH, BEND_REYNOLDS = 30.0, 40.0, 50.0
+
+
+def bend_experiment(extension: float, cells_across: int = 8) -> tuple[Experiment, int, float, np.ndarray]:
+    """FB9's experiment, its step count and step, and the tube's axis: IMEX Euler, convection on, a steady inflow at
+    the start, a Windkessel at the end, run for 1.2 times the region's length over the mean speed."""
+    from mime.interactions import Windkessel
+    from mime.scene import Tube
+    from mime.units import m3_per_Pa, mm, s
+
+    theta, phi = math.radians(BEND_TILT), math.radians(BEND_AZIMUTH)
+    axis = np.asarray([math.sin(theta) * math.cos(phi), math.sin(theta) * math.sin(phi), math.cos(theta)])
+    nu = 1e-6
+    speed = BEND_REYNOLDS * nu / D
+    h = D / cells_across
+    length = (3.0 + 2.0 * (extension + 2.0 * math.radians(BEND_TILT) * 2.0 + 1.5)) * D
+    dt = 0.9 * (0.4 / 3.0) * h / (2.2 * speed)
+    steps = math.ceil(1.2 * length / speed / dt)
+    exp = Experiment("bend", scene=Scene.new(up=Z, units="m"), dt=s(dt))
+    exp.add_structure(Structure("tube", geometry=Tube(axis=tuple(axis), inner_radius=mm(0.5), wall=mm(0.2),
+                                                      length=mm(3.0), centre=mm((0.013, -0.021, 0.007)))))
+    exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": FVM(
+        domain=VesselRegion(extension_diameters=extension), cells_across=cells_across, scheme=Scheme.IMEXEuler())}))
+    exp.declare("water.viscosity", Pa_s(nu * RHO), reason="water near 20 C")
+    exp.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
+    exp.attach(Inflow(steady=m3_per_s(speed * math.pi * (D / 2.0) ** 2)), medium="water", surface="tube.start")
+    resistance = 8.0 * nu * RHO * length / (math.pi * (D / 2.0) ** 4)
+    exp.attach(Windkessel(proximal=Pa_s_per_m3(resistance), compliance=m3_per_Pa(1e-16), distal=Pa_s_per_m3(resistance)),
+               medium="water", surface="tube.end")
+    return exp, steps, dt, axis
+
+
+def _interpolated(component: np.ndarray, offset: tuple[float, float, float], h: float, points: np.ndarray) -> np.ndarray:
+    """``component`` (on faces at ``(index + offset) h``) trilinearly at ``points`` (box frame, m)."""
+    at = points / h - np.asarray(offset)
+    low = np.floor(at).astype(int)
+    frac = at - low
+    found = np.zeros(len(points))
+    for corner in range(8):
+        bits = [(corner >> k) & 1 for k in range(3)]
+        index = [np.clip(low[:, k] + bits[k], 0, component.shape[k] - 1) for k in range(3)]
+        weight = np.prod([frac[:, k] if bits[k] else 1.0 - frac[:, k] for k in range(3)], axis=0)
+        found += weight * component[index[0], index[1], index[2]]
+    return found
+
+
+def bend_reading(extension: float) -> dict[str, float | bool]:
+    """FB9: the axial velocity across the start's cut (the extension's end, where the region of interest begins),
+    sampled at 0, 0.2, 0.4 and 0.6 R on eight angles: its centreline over Poiseuille's (2 U), and its asymmetry, the
+    largest difference between opposite points over 2 U; whether the books closed."""
+    from mime.units import s
+
+    exp, steps, dt, axis = bend_experiment(extension)
+    exp.observe(EnergyLedger())
+    built = exp.build()
+    result = built.run(s(steps * dt))
+    node = built.graph.get_node("water.flow")
+    c = node.constants()
+    final = result.final["water.flow"]
+    h = float(c["spacing"])
+    cut_box = np.asarray(c["opening_paths"])[0][0:3]
+    across = np.cross(axis, [0.3, 0.5, 0.8])
+    across = across / np.linalg.norm(across)
+    second = np.cross(axis, across)
+    speed = BEND_REYNOLDS * 1e-6 / D
+    radii, angles = (0.0, 0.2, 0.4, 0.6), np.arange(8) * math.pi / 4.0
+    points = np.asarray([cut_box + 0.5 * D * r * (math.cos(a) * across + math.sin(a) * second)
+                         for r in radii for a in angles])
+    u = _interpolated(np.asarray(final["velocity_x"]), (0.0, 0.5, 0.5), h, points)
+    v = _interpolated(np.asarray(final["velocity_y"]), (0.5, 0.0, 0.5), h, points)
+    w = _interpolated(np.asarray(final["velocity_z"]), (0.5, 0.5, 0.0), h, points)
+    axial = (u * axis[0] + v * axis[1] + w * axis[2]).reshape(len(radii), len(angles))
+    opposite = np.abs(axial[:, :4] - axial[:, 4:])
+    return {"centreline": float(np.mean(axial[0]) / (2.0 * speed)), "asymmetry": float(np.max(opposite) / (2.0 * speed)),
+            "profile": [float(np.mean(row) / (2.0 * speed)) for row in axial], "closes": bool(ledger_closes(result).passed),
+            "steps": steps, "extension": extension}
+
+
+def limits_reading(d: YDraw, *, pulse: float | None = None) -> dict[str, float]:
+    """#246's stated limits on the drawn tree (estimates): the solid's share of the root's net flux (its faces at least
+    the band's half width into the solid, ``OpenFlowNode.opening_solid_fluxes``), steady or, with ``pulse``, in pulsed
+    flow at ``omega (delta_in h)^2 / nu = pulse`` (IMEX Euler, Stokes, 40 steps a period, the second period's extremes);
+    and with a closed ``Valve`` at ``end_1`` (a Windkessel at ``end_0``, steady Stokes), the largest flux through one of
+    that patch's faces and their gross flux, over the inflow, beside its net."""
+    from mime.interactions import Valve, Windkessel
+    from mime.units import Hz, m3_per_Pa, s
+
+    def run(exp: Experiment, steps: int, dt: float) -> tuple[Any, Any, list[np.ndarray]]:
+        built = exp.build()
+        node = built.graph.get_node("water.flow")
+        seen: list[np.ndarray] = []
+
+        def kept(chunk: Any) -> None:
+            held = chunk.state["water.flow"]
+            velocity = (np.asarray(held["velocity_x"]), np.asarray(held["velocity_y"]), np.asarray(held["velocity_z"]))
+            seen.append(np.asarray(node.opening_solid_fluxes(node.constants(), velocity)))
+
+        return built, built.run(s(steps * dt), hook=kept, chunk=s(dt)), seen
+
+    found: dict[str, float] = {}
+    exp = experiment(d, interior=0.1)
+    if pulse is None:
+        built, result, seen = run(exp, 1, 1e-3)
+        found["solid_share_steady"] = float(seen[-1][0] / -FLUX)
+        flux = np.asarray(result.final["water.flow"]["opening_flux"])
+        found["exchange_default"] = lumen_split(d, built, result) - float(flux[1] / -flux[0])
+    else:
+        h = 2.0 * min(d.radii) / d.cells_across
+        omega = pulse * (MU / RHO) / (0.1 * h) ** 2
+        period = 2.0 * math.pi / omega
+        exp = Experiment("limits_pulse", scene=Scene.new(up=Z, units="m"), dt=s(period / 40.0))
+        exp.add_structure(Structure("vessel", geometry=tree_of(d)))
+        exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
+            domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across, stokes=True,
+            scheme=Scheme.IMEXEuler())}))
+        exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
+        exp.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
+        exp.attach(Inflow(steady=m3_per_s(FLUX), amplitude=m3_per_s(0.5 * FLUX), frequency=Hz(1.0 / period)),
+                   medium="water", surface="vessel.root")
+        exp.attach(SharedDistal(first=Pa_s_per_m3(d.first), second=Pa_s_per_m3(d.second),
+                                distal=Pa_s_per_m3(d.distal)), medium="water", surface=("vessel.end_0", "vessel.end_1"))
+        _, result, seen = run(exp, 80, period / 40.0)
+        shares = [float(x[0] / -FLUX) for x in seen[40:]]
+        found.update({"pulse": pulse, "solid_share_least": min(shares), "solid_share_largest": max(shares)})
+        return found
+    valve = Experiment("limits_valve", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
+    valve.add_structure(Structure("vessel", geometry=tree_of(d)))
+    valve.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
+        domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across, stokes=True, scheme=Scheme.Steady())}))
+    valve.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
+    valve.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
+    valve.attach(Inflow(steady=m3_per_s(FLUX)), medium="water", surface="vessel.root")
+    valve.attach(Windkessel(proximal=Pa_s_per_m3(d.first), compliance=m3_per_Pa(1e-18), distal=Pa_s_per_m3(d.first)),
+                 medium="water", surface="vessel.end_0")
+    valve.attach(Valve(), medium="water", surface="vessel.end_1")
+    built = valve.build()
+    final = built.run(ms(2.0)).final["water.flow"]
+    node = built.graph.get_node("water.flow")
+    grid = node.open_grid(node.constants())
+    mask = grid.layout.masks(grid.cells)[2]
+    faces = np.asarray(final["velocity_z"])[..., -1] * float(node.constants()["spacing"]) ** 2
+    patch = faces[mask > 0]
+    found.update({"valve_net": float(np.asarray(final["opening_flux"])[2] / FLUX),
+                  "valve_face_largest": float(np.max(np.abs(patch)) / FLUX),
+                  "valve_gross": float(np.sum(np.abs(patch)) / FLUX)})
+    return found
+
+
 #: The gate's line on ``|split - network|``: a tenth of the larger branch's share of its outlet's resistance.
 LINE = 0.01
 
 
+#: The line on ``|lumen - split|``: the solid's bypass carried unequally by the two daughters (a few per cent of a
+#: share at D/h 6 to 8, where the wide box's solid carries about a tenth of the flux).
+LUMEN_LINE = 0.05
+
+
 def gate_fails(reading: dict[str, float | bool]) -> bool:
-    return abs(float(reading["error"])) > LINE or not bool(reading["closes"]) or bool(reading["backflow_flagged"])
+    return abs(float(reading["error"])) > LINE or abs(float(reading["lumen_error"])) > LUMEN_LINE or \
+        not bool(reading["closes"]) or bool(reading["backflow_flagged"])
 
 
 def main() -> int:
@@ -349,6 +553,11 @@ def estimate_y(seed: int = 0) -> Experiment:
     """The memory estimate's case of the two-outlet arms (``mem_estimate.py --case``): a draw at 8 cells across."""
     d = draw(seed)
     return experiment(YDraw(**{**d.__dict__, "cells_across": 8}))
+
+
+def estimate_bend(extension: float = 4.0) -> Experiment:
+    """The memory estimate's case of FB9's arms."""
+    return bend_experiment(float(extension))[0]
 
 
 def estimate_watch(arm: str = "far") -> Experiment:

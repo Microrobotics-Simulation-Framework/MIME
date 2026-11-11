@@ -238,12 +238,12 @@ class FVM(Dynamics):
              warns=True),
         Flag("reynolds_flagged", f"with the Stokes approximation (stokes=True), the lumen's Reynolds number by its "
                                  f"diameter and mean speed was above the declared {STOKES_REYNOLDS:g} (reynolds)"),
-        Flag("outlet_reversed_flagged", "an open vessel's opening took in, through the faces of its patch where the "
+        Flag("opening_reversed_flagged", "an open vessel's opening took in, through the faces of its patch where the "
                                         "flow enters, more of the net flux leaving through it than the outlet watch's "
                                         "line (opening_reversed; the validity line gives it): a plane in a "
                                         "recirculation, where the backflow term damps what the flow would do. Move the "
                                         "plane (VesselRegion(reach=...)) or lengthen the extension "
-                                        "(VesselRegion(extension=...)); no profile relaxes it",
+                                        "(VesselRegion(extension_diameters=...)); no profile relaxes it",
              written=("open",)),
         Flag("backflow_flagged", "the backflow term on an open vessel's outlets gave the flow energy over a step "
                                  "(backflow_work above zero beyond its rounding): an inward face turned outward within "
@@ -290,7 +290,7 @@ class FVM(Dynamics):
         f"refused past the memory a run can have (flow.memory): a GPU's limit, or on a CPU the smaller of the host's "
         f"available memory and the limit of the control group the process runs in, where one is set",
         f"geometry: {GEOMETRY}",
-        "the region (domain=VesselRegion(around=..., reach=..., extension=..., bend=...)): a vessel's region cut by "
+        "the region (domain=VesselRegion(around=..., reach=..., extension_diameters=..., bend_diameters=...)): a vessel's region cut by "
         "planes normal to its centreline (around a junction, within the reach along each branch; or the whole vessel "
         "at its own ends), each cut continued straight for its extension in diameters and turned by a bend onto the "
         "nearer z face of the box, every opening on one of the box's two z planes; each opening is named after the "
@@ -312,7 +312,7 @@ class FVM(Dynamics):
         "reversal at the outlet, unmeasured here; "
         f"the outlet watch (decision 13), an observer the step's flow never reads: each opening's inflow through its "
         f"patch's inward faces (fluid-weighted) over its net outward flux, read only while that is outward "
-        f"(opening_reversed), flagged above {REVERSAL_LINE:g} ({REVERSAL_MEASURED}; outlet_reversed_flagged); "
+        f"(opening_reversed), flagged above {REVERSAL_LINE:g} ({REVERSAL_MEASURED}; opening_reversed_flagged); "
         "openings (domain=VesselRegion()): a straight vessel along z taken whole with no extension is cut at the two "
         "ends its geometry kind declares (a Tube's start and end), its wall the exact cylinder's; each opening's law "
         "the step holds, coupled implicitly through the field's "
@@ -473,11 +473,11 @@ class FVM(Dynamics):
         cylinder's). Raises ``RegionRefused`` (or ``ValueError`` for a junction misnamed)."""
         domain = cast(VesselRegion, self.domain)
         if region.shape == "cylinder" and _unit(region.parameters["axis"]) == (0.0, 0.0, 1.0) and \
-                domain.around is None and domain.extension == 0.0:
+                domain.around is None and domain.extension_diameters == 0.0:
             return None
         reach = None if domain.reach is None else float(cast(float, domain.reach.value))
         return build_region(vessel_of(region), around=domain.junction_point(), reach=reach,
-                            extension=float(domain.extension), bend=float(domain.bend), axis=(0.0, 0.0, 1.0))
+                            extension=float(domain.extension_diameters), bend=float(domain.bend_diameters), axis=(0.0, 0.0, 1.0))
 
     def open_region_problems(self, region: Region | None) -> list[Problem]:
         """An open vessel's region: a straight tube's lumen or a tube tree's, its region built (cut, extended and bent
@@ -511,7 +511,7 @@ class FVM(Dynamics):
                         "flow.region-face", f"the openings {first.name} and {second.name} share a plane with "
                                             f"{room:.3g} cells between a lumen and the line midway between them, under "
                                             f"the band's reach of {DEFAULT_REACH:g}: the plane's split would cut a wall's "
-                                            f"band", "lengthen the extensions (VesselRegion(extension=...)) so the "
+                                            f"band", "lengthen the extensions (VesselRegion(extension_diameters=...)) so the "
                                                      "branches part further, or a finer spacing"))
         return found
 

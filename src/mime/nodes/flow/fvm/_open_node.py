@@ -19,7 +19,7 @@ N_BE - N_conv - N_Krylov - N_proj``: each opening's law's work ``-dt p q`` under
 ``q`` and its absolute pressure ``p``: the field's forces are the pressures relative to the reference, whose difference
 is the reference's pressure times the net flux, zero to rounding); the kinetic energy convection carries through the
 openings, ``W_KE = dt rho <C(u), u>``, the scheme's own convective power (B9, decision 14), as one line under
-``<node>.openings`` (its split by opening, exact to the field's divergence, is the ``port_kinetic_flux`` flag's); ``N_conv = -dt rho <C(u), u' - u>``, convection at mixed time levels; ``N_Krylov`` the solve's
+``<node>.openings`` (its split by opening, exact to the field's divergence, is the ``opening_kinetic_flux`` flag's); ``N_conv = -dt rho <C(u), u' - u>``, convection at mixed time levels; ``N_Krylov`` the solve's
 projected remainder against ``u'`` and ``N_proj = dt rho <G p', u'>`` its gradient part, ``p'`` the remainder's
 pressure: the half-weight faces keep the projector orthogonal, so ``N_proj`` is rounding (C13), booked apart so that its
 flag reads it. A law storing energy of its own (the Windkessel) keeps its own books beside the field's (its storage at
@@ -44,7 +44,8 @@ from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, 
 from mime.core import ledger as books
 from mime.core._node import rechecked
 from mime.core.ledger import TermOrder
-from mime.nodes.flow.fvm._band import PathSolid, TreeSolid, TubeSolid, WallFields, band_named, negative_resistivity
+from mime.nodes.flow.fvm._band import PathSolid, RegionSolid, TreeSolid, TubeSolid, WallFields, band_named, \
+    negative_resistivity
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, WALL_COUNTS, ImplicitFlowNode, StepParts, \
@@ -69,7 +70,7 @@ BACKFLOW = "backflow"
 #: The backflow term's coefficient (decision 12: beta 1, declared, not fitted).
 BACKFLOW_BETA = 1.0
 #: The outlet watch's line (decision 13): the share of an opening's net outward flux entering through its patch's
-#: inward faces above which the run is flagged (``outlet_reversed_flagged``). Placed by FB8's measurement.
+#: inward faces above which the run is flagged (``opening_reversed_flagged``). Placed by FB8's measurement.
 REVERSAL_LINE = 0.05
 #: Where the outlet watch's line comes from, said beside it.
 REVERSAL_MEASURED = "declared, pending FB8's measurement"
@@ -111,7 +112,7 @@ class OpenFlowFields(TypedDict):
     #: The outlet watch (decision 13; an observer, read by nothing in the step): each opening's inward flux over its
     #: net outward flux while that is outward (zero otherwise), and the flag above the line.
     opening_reversed: ReadOnly[Annotated[Float[Array, "openings"], Units("1")]]
-    outlet_reversed_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    opening_reversed_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     #: The backflow term's work over the step (J, ``dt rho <f, u'>``), and its sign check: one when it gave energy.
     backflow_work: ReadOnly[Annotated[Float[Array, ""], Units("J")]]  # noqa: F722 - a jaxtyping shape
     backflow_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
@@ -295,10 +296,11 @@ class OpenFlowNode(ImplicitFlowNode):
         return specs
 
     @override
-    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid | PathSolid]:
+    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid | RegionSolid]:
         if self.walled_by_tree:
-            paths = [PathSolid(as_run_array(p["opening_paths"]))] if "opening_paths" in self.constants() else []
-            return [*super().solids(p, grid), *paths]
+            if "opening_paths" in self.constants():
+                return [RegionSolid(self.tree_solid(p, grid), PathSolid(as_run_array(p["opening_paths"])))]
+            return super().solids(p, grid)
         return [TubeSolid(as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"]), as_run_array(p["tube_radius"]),
                           ((0.0, 0.0, 0.0),))]
 
@@ -397,7 +399,7 @@ class OpenFlowNode(ImplicitFlowNode):
                 "opening_pressure_relative": jnp.zeros(openings, dtype=dtype),
                 "opening_flux": jnp.zeros(openings, dtype=dtype),
                 "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype),
-                "opening_reversed": jnp.zeros(openings, dtype=dtype), "outlet_reversed_flagged": z,
+                "opening_reversed": jnp.zeros(openings, dtype=dtype), "opening_reversed_flagged": z,
                 "backflow_work": z, "backflow_flagged": z, **unit}
         if self.walled_by_tree:
             held.update(self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=dtype)))
@@ -513,7 +515,7 @@ class OpenFlowNode(ImplicitFlowNode):
             opening_pressure=ports.pressures.astype(dtype),
             opening_pressure_relative=ports.solution.relative.astype(dtype), opening_flux=flux.astype(dtype),
             opening_state=law_ended.astype(dtype), opening_reversed=reversed_share.astype(dtype),
-            outlet_reversed_flagged=watched.astype(dtype), backflow_work=backflow_work.astype(dtype),
+            opening_reversed_flagged=watched.astype(dtype), backflow_work=backflow_work.astype(dtype),
             backflow_flagged=gave.astype(dtype),
             **{f"unit_{x}": (jnp.stack([unit[k] for unit in ports.units]) if ports.units else
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})

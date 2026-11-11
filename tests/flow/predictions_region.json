@@ -4,21 +4,51 @@
  "labels": "predictions by the builder (Opus) from derivations and from the few local runs listed in seen_before (a prediction near one of them is a fit to it and says so)",
  "seen_before": [
   "a Y (parent 0.5 mm, daughters 0.4 and 0.35 mm at 25 and 20 degrees, extension 1 D, D/h 6 at the narrowest lumen, steady Stokes, outlets Windkessels of 2e9 and 6e9 Pa s/m^3 each side): built in 12 s, its first run (compile) 29 s, a steady step 0.25 s on the loaded laptop; the split 0.694 to end_0, the root's flux the inflow to 1e-15, wall_inexact 0, the backflow work -1.8e-20 J (the solid's faces' Darcy inflow at the outlets), the watch 0 on every opening",
-  "the same Y with each bend as a chain of 7.5-degree chords in the tree (before the swept paths): 16 segments, its first run not done in 10 minutes; with 15-degree chords 9 segments, 81 s to its first run; hence each opening's extension, bend and run as a swept path beside a tree of the vessel's own part"
+  "the same Y with each bend as a chain of 7.5-degree chords in the tree (before the swept paths): 16 segments, its first run not done in 10 minutes; with 15-degree chords 9 segments, 81 s to its first run; hence each opening's extension, bend and run as a swept path beside a tree of the vessel's own part",
+  "local sanity of the two-outlet oracle before the probe, seed 1 (float64): with the region's tree and its paths given to the wall as two solids, the solid carried 7 times the lumen's flux (each solid's resistivity filled the other's lumen) while the split still met the network to 8e-4 (the laws' resistances dominate it), and the name-patch swap moved it by 1e-3: the split alone cannot see either, so the gate gains the daughters' own lumen flux (lumen_split); with the two joined as one solid the lumen carries 92 % of the inflow on that draw (the wide box's solid the rest), the dropped plant moved the split by 0.186",
+  "the same draw (seed 1) with one joined solid at the default stiff interior 0.1h: the daughters' lumens carry 0.413 and 0.449 of the inflow while the openings report 0.255 and 0.745 (the laws' split, 0.257 by the network): the solid between the two ends' patches on their shared plane carries the difference (#246's limit (ii), here large: the laws' resistances are 20 to 50 times the branches', so the branches' pressure drops are small against what the solid needs to carry it). The gate's rig moves to the stiff interior 0.01h (the solid's conductance a hundredth), the default's exchange re-measured as #246's limit"
  ],
  "operating_point": {
-  "dtype": ["float64", "float32"],
+  "dtype": [
+   "float64",
+   "float32"
+  ],
   "platform": "CPU, GitHub Actions runner (4 vCPU), the probe workflow",
-  "sizes_and_parameters": "tests/flow/region_cases.py: a Y of parent radius 0.5 mm, daughters 0.7 to 0.9 and 0.6 to 0.85 of it at 20 to 40 degrees, 2 to 3 and 1.6 to 2.6 mm long, the whole turned 0 to 20 degrees from z about a drawn horizontal axis and moved by up to half a cell, D/h 6 or 8 at the narrowest lumen, extension 1 to 2 D, bend 2 D; water (mu 1e-3, rho 1e3); steady Stokes at the default tolerance; the shared distal law's resistances 20 to 50 times the larger branch's Poiseuille resistance, their ratio 2 to 4, the distal 1 to 3 times the first",
+  "sizes_and_parameters": "tests/flow/region_cases.py: a Y of parent radius 0.5 mm, daughters 0.7 to 0.9 and 0.6 to 0.85 of it at 20 to 40 degrees, 2 to 3 and 1.6 to 2.6 mm long, the whole turned 0 to 20 degrees from z about a drawn horizontal axis and moved by up to half a cell, D/h 6 or 8 at the narrowest lumen, extension 1 to 2 D, bend 2 D; water (mu 1e-3, rho 1e3); steady Stokes at the default tolerance; the shared distal law's resistances 20 to 50 times the larger branch's Poiseuille resistance, their ratio 2 to 4, the distal 1 to 3 times the first; the gate's wall at the stiff interior 0.01h (GATE_INTERIOR), #246's limits at the default 0.1h",
   "seeds_and_draws": "40 draws a dtype for the line (seeds 0 to 39); 40 planted and 40 clean runs a control (detection_rate.py, seeds 3000 to 3039)"
  },
  "gate_two_outlet_tree": {
-  "claim": "scope item 0: the shared distal law across a tube tree's two ends, on unequal branches and a vessel aligned with no grid axis, splits the inflow as the 0-D network of its branches (Poiseuille from the junction along each daughter, its extension, bend and run, in series with the law's own resistance), the distal resistance dropping out",
+  "claim": "scope item 0: the shared distal law across a tube tree's two ends, on unequal branches and a vessel aligned with no grid axis, splits the inflow as the 0-D network of its branches (Poiseuille from the junction along each daughter, its extension, bend and run, in series with the law's own resistance), the distal resistance dropping out; and the opening named end_0 carries the flow of the daughter that leads to end_0 (its lumen's flux read from the geometry, not from any opening)",
   "kind": "acceptance (the network's branch resistances are Poiseuille's, so the line bounds the wiring and the block's solve, not the band's offset)",
   "case": "region_cases.split_reading(draw(seed))",
-  "prediction": {"value": 0.002, "band": [0.0, 0.006], "unit": "|split - network|, a share of the inflow", "basis": "derived", "why": "the branches are 1/20 to 1/50 of their laws' resistances, so the band's offset (+10.8 % of a branch's flux at 8 cells across, more at 6) and the junction's loss move the split by at most about 0.1 x 1/20 of a branch's share"},
-  "metric": "|split - network|",
-  "control": {"plant": "dropped: the law's off-diagonals dropped, each R_d in its own row (the split moves toward a half by R_d's share: 0.05 to 0.2 on these draws); swapped: the two ends' patches exchanged after the build (a name-patch mix-up: the split moves to about its complement, 0.3 to 0.6 away)", "environment_variable": "REGION_PLANT=dropped | swapped", "expected_rate": "40/40 each, each dtype", "runs": 40, "clean_expected": "0/40"},
+  "prediction": {
+   "value": 0.002,
+   "band": [
+    0.0,
+    0.006
+   ],
+   "unit": "|split - network|, a share of the inflow",
+   "basis": "derived",
+   "why": "the branches are 1/20 to 1/50 of their laws' resistances, so the band's offset (+10.8 % of a branch's flux at 8 cells across, more at 6) and the junction's loss move the split by at most about 0.1 x 1/20 of a branch's share",
+   "lumen": {
+    "value": 0.01,
+    "band": [
+     0.0,
+     0.04
+    ],
+    "unit": "|lumen - split|",
+    "basis": "guess",
+    "why": "the solid's bypass in proportion to each daughter cancels in the share; what is left is its unequal part and the plane's sampling of an oblique section"
+   }
+  },
+  "metric": "|split - network| (line 0.01) and |lumen - split| (line 0.05), lumen the end_0 daughter's share of the two daughters' lumen flux through a z plane 0.6 of the way along each",
+  "control": {
+   "plant": "dropped: the law's off-diagonals dropped, each R_d in its own row (the split moves toward a half by R_d's share: 0.05 to 0.2 on these draws); swapped: the two ends' patches exchanged (OpeningLayout.masks' rows), a name-patch mix-up: the split barely moves (the laws dominate it) and the lumen share moves to about the split's complement, 0.3 to 0.6 away",
+   "environment_variable": "REGION_PLANT=dropped | swapped",
+   "expected_rate": "40/40 each, each dtype",
+   "runs": 40,
+   "clean_expected": "0/40"
+  },
   "discriminator": "the distal resistance times ten alone: the split moves by under 100 solve tolerances (it drops out exactly in the network and in the field: both outlets see one distal pressure)",
   "tilted": "every draw turns the tree from z (0 to 20 degrees) about a drawn axis, its offset part of a cell: the tilted vessel's gate ('F2's rows, 4', item 5); its own CI case a straight tube 23 degrees off z (test_fvm_region.py)",
   "cannot_discriminate_if": "the two laws' resistances equal (a split of a half is its own complement under the swap): the draws keep their ratio from 2 to 4"
@@ -27,29 +57,90 @@
   "claim": "R-15: the backflow term's booked work is never positive beyond its rounding on correct runs (backflow_flagged zero, the ledger's gift count for <node>.backflow zero), and a term of the wrong sign is flagged on every run",
   "kind": "acceptance",
   "case": "the outlet watch's runs below (convection on, a reversing outlet), and region_cases' draws (the solid's faces' Darcy inflow)",
-  "prediction": {"value": 0, "band": [0, 0], "unit": "flagged steps on correct runs", "basis": "derived", "why": "f . u' = min(w, 0) w w' / h <= 0 while w and w' share a sign; a face turning outward within a step is the term's known exception, which a correct steady or slowly varying run does not reach"},
-  "control": {"plant": "the term's sign flipped (it pushes the inflow in)", "environment_variable": "BACKFLOW_PLANT=flipped", "expected_rate": "every run with an inward face at an outlet", "runs": 20, "clean_expected": "0/20"}
+  "prediction": {
+   "value": 0,
+   "band": [
+    0,
+    0
+   ],
+   "unit": "flagged steps on correct runs",
+   "basis": "derived",
+   "why": "f . u' = min(w, 0) w w' / h <= 0 while w and w' share a sign; a face turning outward within a step is the term's known exception, which a correct steady or slowly varying run does not reach"
+  },
+  "control": {
+   "plant": "the term's sign flipped (it pushes the inflow in)",
+   "environment_variable": "BACKFLOW_PLANT=flipped",
+   "expected_rate": "every run with an inward face at an outlet",
+   "runs": 20,
+   "clean_expected": "0/20"
+  }
  },
  "gate_fb8_watch": {
   "claim": "FB8: the outlet watch fires with its plane 0.5 D after a stenosis's throat (in its recirculation), and stays silent with the plane moved on by an extension of 8 D; with a reversing inflow at low Womersley number it stays silent while the net flux through the outlet is outward and reads nothing while it is inward; it reports the backflow term's booked work beside the port's",
   "kind": "acceptance",
   "case": "region_cases.watch_reading(seed, arm): a straight vessel along z (D 1 mm) narrowing to 0.6 of its diameter over 0.5 D and widening back over 0.25 D, its end 0.5 D after the throat, the extension 0 (near) or 8 D (far); IMEX Euler, convection on, a steady inflow at Re 100 (near, far) or Q(t) = Q_m (1 + 1.5 sin wt) at Re 20 and alpha 0.5 (reversing), D/h 8",
-  "prediction": {"near": {"value": 0.2, "band": [0.05, 0.6], "unit": "the largest reversed share over the run's second half"}, "far": {"value": 0.0, "band": [0.0, 0.01]}, "reversing": {"value": 0.0, "band": [0.0, 0.02], "unit": "the largest reversed share while the net flux is outward"}, "basis": "guess (no recirculation behind this stenosis was measured before)", "why": "a jet at 2.8 times the mean speed leaves the throat into an expansion of 1.67 in diameter: at Re 100 its separated annulus reaches past 0.5 D; by 8.5 D the flow has reattached; at alpha 0.5 the profile reverses whole, so no face turns inward while the net flux is outward"},
+  "prediction": {
+   "near": {
+    "value": 0.2,
+    "band": [
+     0.05,
+     0.6
+    ],
+    "unit": "the largest reversed share over the run's second half"
+   },
+   "far": {
+    "value": 0.0,
+    "band": [
+     0.0,
+     0.01
+    ]
+   },
+   "reversing": {
+    "value": 0.0,
+    "band": [
+     0.0,
+     0.02
+    ],
+    "unit": "the largest reversed share while the net flux is outward"
+   },
+   "basis": "guess (no recirculation behind this stenosis was measured before)",
+   "why": "a jet at 2.8 times the mean speed leaves the throat into an expansion of 1.67 in diameter: at Re 100 its separated annulus reaches past 0.5 D; by 8.5 D the flow has reattached; at alpha 0.5 the profile reverses whole, so no face turns inward while the net flux is outward"
+  },
   "line": "placed between the far and reversing arms' largest and the near arm's least, at the geometric mean of the two, from these measurements; REVERSAL_LINE until then 0.05 (declared)",
-  "control": {"plant": "the plane moved to 0.5 D after the throat (the near arm)", "expected_rate": "every draw of the near arm fires (draws in Re 80 to 120, the throat 0.55 to 0.65 of D, sub-cell offsets)", "runs": 6, "clean_expected": "0 of 6 far draws fire"},
+  "control": {
+   "plant": "the plane moved to 0.5 D after the throat (the near arm)",
+   "expected_rate": "every draw of the near arm fires (draws in Re 80 to 120, the throat 0.55 to 0.65 of D, sub-cell offsets)",
+   "runs": 6,
+   "clean_expected": "0 of 6 far draws fire"
+  },
   "if_wrong": "a near arm that does not fire means no recirculation reaches the plane at this Re and throat (the backflow term damps what the plane sees): report its share and raise Re or narrow the throat, saying so"
  },
  "gate_fb16_bake": {
   "claim": "FB16: no silent bake with ports: two builds of the open tree differing in the viscosity, a Windkessel's proximal resistance, its compliance, its distal resistance and the inflow's amplitude by a relative 1e-6 are one program (the two-builds check, both forms, verdict quiet); a unit field made at build is caught",
   "kind": "equality",
   "case": "mime.testing.two_builds_of on tests/flow/test_fvm_region.py's tree with IMEX Euler and Windkessels at both ends",
-  "prediction": {"value": "quiet", "basis": "derived", "why": "the unit fields, q and the laws' rows are made in the step from the leaves (round 5, item 13)"},
-  "control": {"plant": "the node's first step's unit field made from the build's viscosity and closed over (a planted node)", "expected_rate": "bake on every run (structural)", "runs": 5, "clean_expected": "quiet"}
+  "prediction": {
+   "value": "quiet",
+   "basis": "derived",
+   "why": "the unit fields, q and the laws' rows are made in the step from the leaves (round 5, item 13)"
+  },
+  "control": {
+   "plant": "the node's first step's unit field made from the build's viscosity and closed over (a planted node)",
+   "expected_rate": "bake on every run (structural)",
+   "runs": 5,
+   "clean_expected": "quiet"
+  }
  },
  "limits_246": {
   "claim": "#246's stated limits re-measured on the region builder's first tree (estimates, not gates): the solid's flux at the root's Inflow in pulsed flow against omega (delta_in h)^2 / nu; the cross conductance between end_0 and end_1 through the solid on their shared plane; a closed Valve at end_1 holding its patch's net flux at zero, not each face's",
   "kind": "estimates",
-  "prediction": {"cross_conductance": "under the twin rig's 2.5 to 9 %: the tree's two ends lie further apart on their plane than the twin tubes did (5 to 9 radii against about 2.5)", "valve_faces": "the largest face flux at the closed patch about the solid's Darcy flow there, 1e-3 to 1e-2 of the inflow at 0.1h", "pulsed_solid": "as #246's open box at the same omega (delta_in h)^2 / nu", "basis": "derived from #246's measurements and the geometry"}
+  "prediction": {
+   "cross_conductance": "under the twin rig's 2.5 to 9 %: the tree's two ends lie further apart on their plane than the twin tubes did (5 to 9 radii against about 2.5)",
+   "valve_faces": "the largest face flux at the closed patch about the solid's Darcy flow there, 1e-3 to 1e-2 of the inflow at 0.1h",
+   "pulsed_solid": "as #246's open box at the same omega (delta_in h)^2 / nu",
+   "basis": "derived from #246's measurements and the geometry",
+   "exchange_default": "the lumen share minus the openings' split at the default interior: 0.1 to 0.3 on these draws (seen on one: 0.22), growing with the laws' resistance against the solid's conductance; at 0.01h a hundredth of it"
+  }
  },
  "outcomes": null
 }

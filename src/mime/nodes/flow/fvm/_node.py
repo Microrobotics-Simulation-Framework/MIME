@@ -62,7 +62,7 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_ar
     run_constants_given, run_dtype
 from mime.core import ledger as books
 from mime.core._node import STAGNATED, rechecked
-from mime.nodes.flow.fvm._band import PathSolid, TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
+from mime.nodes.flow.fvm._band import RegionSolid, TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
     negative_resistivity, plan_rung, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
@@ -491,7 +491,7 @@ class ImplicitFlowNode(MimeNode):
             return as_run_array((1.0, 1.0, 1.0))
         return p["tube_axis"]
 
-    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid | PathSolid]:
+    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid | RegionSolid]:
         if self.walled_by_tree:
             return [self.tree_solid(p, grid)]
         extents = [count * grid.spacing for count in grid.cells]

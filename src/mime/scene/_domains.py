@@ -12,7 +12,8 @@ root and branch ends), each opening taking the law attached to it (``mime.intera
 reads the kind's geometry, so a vessel of another kind needs no domain class of its own. F2b builds its first form,
 a straight vessel cut at its own two ends; PR 4 the region builder (``mime.scene._region``): ``around`` a junction of
 the vessel's centreline and ``reach`` the arc length to each branch's cut (neither: the whole vessel), each cut continued
-``extension`` diameters and turned by a bend of ``bend`` diameters' radius onto a face the field kind requires."""
+``extension_diameters`` diameters and turned by a bend of ``bend_diameters`` diameters' radius onto a face the field
+kind requires."""
 
 from __future__ import annotations
 
@@ -42,20 +43,21 @@ class VesselRegion(SettingGroup):
     """The region of the vessel the medium fills, its openings named after the vessel's ends its geometry kind declares
     (a straight tube's ``start`` and ``end``; a tree's ``root``, ``end_0``, ...), each an opening whose law is attached
     there. ``around`` names a junction of the vessel's centreline (``"j1"``) and ``reach`` the arc length from it to
-    each branch's cut plane (neither: the whole vessel, cut at its own ends); ``extension``, the diameters each cut is
-    continued straight; ``bend``, the radius in diameters of the bend that turns a cut onto a face the field kind
+    each branch's cut plane (neither: the whole vessel, cut at its own ends); ``extension_diameters``, the diameters each
+    cut is continued straight; ``bend_diameters``, the radius in diameters of the bend that turns a cut onto a face the
+    field kind
     opens; ``margin``, the cells of solid kept across the box between the vessel's band and its images."""
 
     group = "vessel_region"
     setting_roles = {"around": convention(PHYSICAL, "the whole vessel unless a junction and a reach are given"),
                      "reach": convention(PHYSICAL, "the whole vessel unless a junction and a reach are given"),
-                     "extension": convention(NUMERICAL, "no flow extension unless given"),
-                     "bend": convention(NUMERICAL, "a bend of two diameters' radius where a cut must turn to a face"),
+                     "extension_diameters": convention(NUMERICAL, "no flow extension unless given"),
+                     "bend_diameters": convention(NUMERICAL, "a bend of two diameters' radius where a cut must turn to a face"),
                      "margin": convention(NUMERICAL, "eight cells of solid across the box between the vessel's images")}
     around: str | None = None
     reach: Annotated[Quantity | None, Length] = None
-    extension: float = 0.0
-    bend: float = 2.0
+    extension_diameters: float = 0.0
+    bend_diameters: float = 2.0
     margin: int = 8
 
     def junction_point(self) -> int | None:

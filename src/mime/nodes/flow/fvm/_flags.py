@@ -19,7 +19,7 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 - ``leak`` (the wall's penalty loss in the solid's interior, beyond the band and its stiffening ramp, over the wall's
   whole loss): the drive reaching into a solid;
 - the open box's own (``OPEN_FLAGS``): ``open_face_projection`` (``N_proj`` over the step's scale: a projector that is
-  not orthogonal under the books' inner product, its port faces at the wrong weight); and ``port_kinetic_flux``, an
+  not orthogonal under the books' inner product, its port faces at the wrong weight); and ``opening_kinetic_flux``, an
   operator check of convection at the planes: the kinetic energy the books hold as crossing the openings (the one line
   ``<node>.openings``, the scheme's own convective power) against what crosses each opening, the convective power split
   by plane (``OpenMACGrid.opening_kinetic_fluxes``, exact to the field's divergence): a flux booked elsewhere, or
@@ -30,7 +30,7 @@ by ``mime.testing``'s ledger harness, never by the step: a run's program is the 
 
 **Not built** (no flag is declared for them, pending or otherwise): the periodic box's three on the open box and on
 RK3, whose lines were measured on the periodic box's IMEX Euler runs, until they are measured on those runs' own
-draws; and the record's rung-2 boundary flag, port work against the kinetic-energy flux, which ``port_kinetic_flux``
+draws; and the record's rung-2 boundary flag, port work against the kinetic-energy flux, which ``opening_kinetic_flux``
 is not."""
 
 from __future__ import annotations
@@ -263,7 +263,7 @@ OPEN_FLAGS: tuple[LedgerFlag, ...] = (
                {"float64": 2e-17, "float32": 1e-8},
                f"200 {_OPEN_CLEAN}: worst 2.4e-18 (float64) and 1.2e-9 (float32), every step judged",
                _evidence(_UNIFORM, {"float64": (40, 40, 0, 40), "float32": (40, 40, 0, 40)}, OPEN_MEASURED)),
-    LedgerFlag("port_kinetic_flux", "|the kinetic energy booked as crossing the openings + each opening's own, summed| "
+    LedgerFlag("opening_kinetic_flux", "|the kinetic energy booked as crossing the openings + each opening's own, summed| "
                                     "over each opening's in magnitude and the convective product's",
                kinetic_flux_reading, {"float64": 1e-14, "float32": 5e-6},
                f"200 {_OPEN_CLEAN.replace(OPEN_MEASURED, KINETIC_LINES_MEASURED)}: worst 3.4e-15 (float64) and 1.8e-6 "
