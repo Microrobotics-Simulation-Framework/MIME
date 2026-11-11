@@ -38,6 +38,7 @@ as it was, its Newton step solved with the singular Hessian from an unpolished r
 import functools
 import json
 import math
+from collections.abc import Collection
 from dataclasses import replace
 from pathlib import Path
 
@@ -196,13 +197,16 @@ DRAWS = (np.array([0.37, 0.61, 0.53]), np.array([0.62, 0.21, 0.18]))
 
 
 @functools.cache
-def examples(dtype: str) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
-    """A probe near each declared set of each shape, for each parameter the case moves and each capability, in
-    ``dtype``, ``EXAMPLE_OFFSET[dtype]`` of the size from the set on its positive side, along a direction off every
-    axis with the parameter moved at ``RATE``, of the sign along which the float64 difference finds the steeper
-    derivative (so that no parameter's part cancels the point's); with the parameter and its unplanted check."""
+def examples(dtype: str, shapes: Collection[str] | None = None) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
+    """A probe near each declared set of each shape (of ``shapes``, every shape by default), for each parameter the
+    case moves and each capability, in ``dtype``, ``EXAMPLE_OFFSET[dtype]`` of the size from the set on its positive
+    side, along a direction off every axis with the parameter moved at ``RATE``, of the sign along which the float64
+    difference finds the steeper derivative (so that no parameter's part cancels the point's); with the parameter and
+    its unplanted check."""
     found = []
     for shape, case in sorted(SHAPE_CASES.items()):
+        if shapes is not None and shape not in shapes:
+            continue
         own = TYPICAL[shape]
         size = case.size(own)
         rotation = suite._rotation(TURN)  # noqa: SLF001 - the suite's own rotation, as its probes turn
@@ -243,12 +247,28 @@ def test_autodiff_equals_the_difference_at_an_example_near_each_set_for_each_mov
 CONSTANT = {("slab", "normal", "half_thickness"), ("slab", "normal", "centre"), ("half_space", "normal", "offset")}
 
 
+#: The shapes whose examples have a control of their own: the tube tree's union compiles for each of its examples
+#: (about 90 s on a runner), which would take the other shapes' control past its ceiling.
+SEPARATE = ("tube_tree",)
+
+
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dtype):
     """Each example can discriminate (the planted tangent above the tolerance and the floor there, so a miss is a
-    failure and not a null result), and each fails planted, on every run (nothing is drawn)."""
+    failure and not a null result), and each fails planted, on every run (nothing is drawn); every shape but those
+    :data:`SEPARATE` holds."""
+    _planted_tangent_fails(dtype, [shape for shape in SHAPE_CASES if shape not in SEPARATE])
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_control_a_planted_wrong_tangent_fails_at_every_example_near_the_tube_trees_sets(dtype):
+    """The same control at the tube tree's examples (:data:`SEPARATE`)."""
+    _planted_tangent_fails(dtype, list(SEPARATE))
+
+
+def _planted_tangent_fails(dtype: str, shapes: Collection[str]) -> None:
     caught, missed, constant, margins = [], [], set(), []
-    for probe, capability, name, clean in examples(dtype):
+    for probe, capability, name, clean in examples(dtype, shapes):
         steep = float(np.max(np.abs(clean.autodiff))) / clean.scale
         if steep <= SHAPE_TOLERANCE[dtype]:  # zero, to rounding
             constant.add((probe.shape, capability, name))
@@ -267,8 +287,8 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
           f"{len(caught) + len(missed)} examples, at least {smallest[0]:.3g} times what the comparison resolves there "
           f"({smallest[1]}); {sorted(constant)} have no derivative to scale")
     assert missed == [], f"missed at {missed}"
-    assert constant == CONSTANT
-    sets = {(shape, s.owner, capability) for shape, case in SHAPE_CASES.items() for s in case.sets
+    assert constant == {held for held in CONSTANT if held[0] in shapes}
+    sets = {(shape, s.owner, capability) for shape, case in SHAPE_CASES.items() if shape in shapes for s in case.sets
             for capability in case.capabilities}
     assert {held[:3] for held in caught} == sets
 
