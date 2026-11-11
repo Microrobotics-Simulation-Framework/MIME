@@ -1,0 +1,61 @@
+{
+ "asset": "sphere_plane_resistance",
+ "sha256": "346bc025d0b56460a20ba98bdfc9023457cba32ca975d44e363585f80a904f5f",
+ "builder": "scripts/sphere_plane_table.py (MIME), its kernels pinned (OpenBLAS's SandyBridge, NumPy's and XLA's code no newer than AVX2, XLA on one thread), its parts built on GitHub's runners (probe run 42981934962: two full builds of 12 shares and the checks each, on six processor models, every part byte-identical between the two and the two merged files of one sha256) and merged by its merge command; each solve's residuals and time, the checks and the versions in the build's log",
+ "builder_version": "none: a script, named by its commit and its hash below",
+ "commit": "70904a6",
+ "sources": {
+  "scripts/sphere_plane_table.py": "edfd6b69e386b8a7de3ac1b2b45d4f8f37130e3a604f69dacd7dfbfd1ef4d32a"
+ },
+ "dirty": null,
+ "inputs": [],
+ "parameters": {
+  "range": [
+   0.001,
+   10.0
+  ],
+  "knots": 97,
+  "terms_per_alpha": 40.0,
+  "terms_margin": 24,
+  "collocation": "Gauss-Legendre nodes in mu, the series' length plus an eighth (at least 16), at phi 0.7",
+  "traction": "Gauss-Legendre, twice the collocation's nodes, four angles"
+ },
+ "checks": [
+  {
+   "name": "the solver's normal and spin against Brenner's and Jeffery's series at d 0.3, 0.03, 0.003",
+   "measured": 2.092104267603645e-12,
+   "tolerance": "at most 1e-10 relative",
+   "passed": true
+  },
+  {
+   "name": "the coupling's reciprocity (force per rotation against torque per translation) at every knot and midpoint",
+   "measured": 4.89267959480344e-10,
+   "tolerance": "at most 1e-9 relative",
+   "passed": true
+  },
+  {
+   "name": "the no-slip condition at nodes not collocated, every knot and midpoint",
+   "measured": 3.7538057832961556e-10,
+   "tolerance": "at most 1e-9 of the motion's speed",
+   "passed": true
+  },
+  {
+   "name": "each entry's change with the series' length and the nodes x1.25 and the traction's nodes x2, at d 1e-3 and 0.01",
+   "measured": 3.8063929785892014e-10,
+   "tolerance": "at most 1e-8 relative",
+   "passed": true
+  }
+ ],
+ "domain": {
+  "d": [
+   0.001,
+   10.0
+  ],
+  "unit": "the gap over the sphere's radius"
+ },
+ "notes": [
+  "the bispherical solutions: Brenner (1961) and Jeffery (1915) summed in closed form, Dean and O'Neill's (1963) and O'Neill's (1964) problems solved in their representation by collocation; scripts/sphere_plane_table.py's docstring holds the method",
+  "the predictions for these checks were committed before the build ran (tests/oracles/predictions_w2a_1b.json)",
+  "the fix round of W2a PR 1b-i rebuilt the table with its kernels pinned and its run's own numbers (times, residuals, checks, versions) moved to the build's log, so that a rebuild matches its sha256; its entries moved by at most 3.5e-11 relative from the first build's; the predictions for the rebuild were committed before it ran (tests/oracles/predictions_w2a_1b_fixround.json)"
+ ]
+}

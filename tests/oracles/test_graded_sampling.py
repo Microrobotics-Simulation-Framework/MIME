@@ -233,7 +233,7 @@ def test_the_contact_is_turned_into_a_turned_parts_frame_so_its_patch_faces_the_
     settings = {"radius": 0.5e-3, "height": 2e-3, "axis": (0.0, 1.0, 0.0)}
     hull = Hull("ball", "shell", kind, settings, (0.0, 0.0, 0.0), tuple(tuple(float(c) for c in row) for row in rotation),
                 {})
-    drag = Drag.MRS(lubrication=False, spacing=m(0.25e-3), blob=0.25, wall_kind="plane",
+    drag = Drag.MRS(near_contact=False, spacing=m(0.25e-3), blob=0.25, wall_kind="plane",
                     sampling=ForceSampling(contact=(0.0, 0.0, -1.0), contact_gap=m(0.1e-3)))
     density = drag._density({"sampling.contact_gap": 0.1e-3}, hull, 0.25e-3)  # noqa: SLF001 - the drag's own density
     assert density is not None
@@ -314,7 +314,7 @@ def held_off_the_tube(**sampling) -> Experiment:
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-6), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-13, 1e-13, 1e-13)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=mm(0.2), blob=0.25, wall_kind="tube", lubrication=False,
+    experiment.attach(Drag.MRS(spacing=mm(0.2), blob=0.25, wall_kind="tube", near_contact=False,
                                sampling=ForceSampling(contact=(0.0, 0.0, -1.0), **sampling)),
                       body="ball", medium="water")
     experiment.attach(Contact.Projection(margin=mm(0.1)), body="ball", surface="tube.inner_surface")

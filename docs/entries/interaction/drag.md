@@ -18,7 +18,7 @@ declares it provides: a rung that reads the medium's flow, its load on the body 
 
 The learned resistance of a de Jongh screw body in a straight tube: a Cholesky network trained on the MRS
 resistances of that family, read at the body's offset from the tube's axis, with the near-wall lubrication correction
-blended in when `lubrication` is written. It covers the bodies and tubes it was trained on and refuses others when the
+blended in when `lubrication` is written (0.4.0 and before: 0.5.0 retired the blend and refuses it written). It covers the bodies and tubes it was trained on and refuses others when the
 experiment is planned.
 
 **When not to use it.** For any body but a de Jongh screw, or a tube outside its training data; for a body far from
@@ -245,33 +245,52 @@ elsewhere. Refused: a kind without features asked for them (`drag.grading-featur
 a medium's joint near field (`drag.grading-near-field`: its cross-kernel is measured on uniform samplings only, and
 with a wall it raises no `off_patch`).
 
-**Lubrication's hand-over (0.5.0).** Near a wall that opens (a plane, a tube), the mrs rung's `lubrication` completes
+**Lubrication's hand-over (0.5.0).** Near a wall that opens (a plane, a tube), the mrs rung's `near_contact` completes
 the coarse MRS in the gap: the coarse MRS is evaluated once with the body's near contact opened to the hand-over gap,
-`HANDOVER_SPACINGS` of the force spacing, never closer, plus the thin film's increment between the contact's gap and
-the opened one (Reynolds' equation on the gap's second-order form). It is the MRS's own completion, a declared
-numerical choice whose validity line is the coarse MRS's near-wall error, not physics beyond Stokes flow; written
-False, the coarse MRS alone. Which regime carries a gap is the build's, never the writer's: the hand-over is taken
-only where the hand-over gap lies within `WINDOW` of the body's least radius of curvature, judged over the whole body
-whatever its pose. A body past it (a crest or an edge sharper than the spacing resolves, as the de Jongh screw at its
-family's spacing) is the coarse MRS's, its build report giving the gap against the radius, and `lubrication=True`
-written there is refused (`drag.lubrication-window`), naming the spacing that brings it in. Each surface's roughness
-is a declared length (`<body>.roughness`, `<structure>.roughness`, `DEFAULT_ROUGHNESS` where none is declared, never
-fitted); below the pair's composite roughness, `mime.interactions.roughness_cutoff` (the root of the sum of their
-squares, the reader a contact's traction law reads), the film's gap is floored, its resistance stops growing and a
-contact carries the gap. The near-wall resistance owns the hydrodynamic coupling of rotation and translation down to
-that cutoff; the node reports the film's own share (`film_coupling`) and increment (`film_increment`).
+`HANDOVER_SPACINGS` of the force spacing, never closer, plus the near-contact law's increment between the contact's gap
+and the opened one (`mime.nodes.hydro.near_contact`, the same law for every rung that hands a contact over). It is the
+MRS's own completion, a declared numerical choice whose validity line is the coarse MRS's near-wall error, not physics
+beyond Stokes flow; written False, the coarse MRS alone. The law's form is the body's kind's, named in the build report:
 
-What it is measured to do, against exact answers by `tests/oracles/test_lubrication.py` (a sphere above a plane, and
-in a tube): each entry on its own diagonal scale near the line the test holds, and the miss where it is missed; the
-coupling of rotation and translation judged against its own size is over-counted at every gap below the hand-over gap,
-the excess falling only as one over the logarithm of the gap (MIME-ANO-154 gives the numbers and the routes). Between
-two gaps below the hand-over gap the film's increment matches the asymptotes. In a tube the normal entry tends to the
-leading order for the contact's relative curvatures. Flags: `handover_window` (a contact past the window, which the
-build's rule keeps from happening and the flag guards), `film_annulus` (a ring contact the point form does not cover),
-`handover_far_side` (a tube opened by dilation about a body filling more than `FAR_SIDE_FILL` of its diameter, which
-opens the far side too) and `film_unsolved`. A step far from the wall costs the contact's search only; one within the
-lift's band adds two film solves. Not yet: several contacts of one body, a ring's film, bodies sharing a medium
-(refused, `drag.lubrication-near-field`) and a body between two walls.
+- **A sphere's** (`Sphere` declares it): its exact increment. Against a plane, the exact sphere-plane resistance from
+  MIME's table of the bispherical solutions (the packaged asset `sphere_plane_resistance`: Brenner's, Jeffery's, Dean
+  and O'Neill's, O'Neill's); in a tube, the hybrid of the plane's exact remainder and the elliptic contact's singular
+  terms with the body's own curvature (Cox's; Claeys and Brady's). A sphere takes it at any uniform spacing: its error
+  is the coarse MRS's own at the hand-over gap, measured above a plane at uniform force spacings of 0.15 to 0.6 radii
+  as the normal +2.1 to +3.6 %, every other entry within 1.8 % and the rolling rate within 1.4 %. In a tube it is
+  gated at sphere-to-tube ratios of 0.22 to 0.34 (`TESTED_TUBE_RATIO`), at gaps of 0.1 to 0.0075 radii: the rolling
+  along the axis misses by -3.6, -7.0 and -11.9 % of the plane's rate at the family's spacing and by -2.7, -5.2 and
+  -8.9 % at a spacing of 0.2 radii, a stated limit, which a finer spacing lowers. It is not gated above 0.34: a step
+  there raises `handover_tube_ratio`, the rolling along the axis measured -18 % at 0.40 and -25 % at 0.46
+  (MIME-ANO-154 open there). A sphere whose force
+  points are graded towards its contact is refused the form (`drag.near-contact-graded`): the hand-over gap then sits
+  at the finest graded spacing, where its normal read +9.5 % and +19.7 %.
+- **Every other kind's**: the thin film's (Reynolds' equation on the gap's second-order form), with MIME-ANO-154 open
+  for it. Which regime carries a gap is the build's, never the writer's: the film is taken only where the hand-over gap
+  lies within `WINDOW` of the body's least radius of curvature, judged over the whole body whatever its pose. A body
+  past it (a crest or an edge sharper than the spacing resolves, as the de Jongh screw at its family's spacing) is the
+  coarse MRS's, its build report giving the gap against the radius, and `near_contact=True` written there is refused
+  (`drag.lubrication-window`), naming the spacing that brings it in.
+
+Each surface's roughness is a declared length (`<body>.roughness`, `<structure>.roughness`, `DEFAULT_ROUGHNESS` where
+none is declared, never fitted); below the pair's composite roughness, `mime.interactions.roughness_cutoff` (the root of
+the sum of their squares, the reader a contact's traction law reads), the law's gap is floored, its resistance stops
+growing and a contact carries the gap. The near-wall resistance owns the hydrodynamic coupling of rotation and
+translation down to that cutoff; the node reports the law's own share (`contact_coupling`) and increment
+(`contact_increment`). An ambient flow the opened geometry reads would have its zero on the opened wall (the seam's
+`AMBIENT_ZERO`), though no drag rung reads one yet.
+
+What it is measured to do: the sphere's form against the graded method of fundamental solutions, Brenner's series and
+an independent tube MFS by `tests/oracles/test_near_contact.py`, at the family's spacing; the film's form on a sphere
+given it by `tests/oracles/test_lubrication.py` (each entry on its own diagonal scale near the line the test holds, the
+coupling over-counted below the hand-over gap, MIME-ANO-154). The validity lines give the numbers. Flags:
+`handover_window` (the film's: a contact past its window, which the build's rule keeps from happening and the flag
+guards), `film_annulus` (a ring contact the film's point form does not cover), `handover_far_side` (a tube opened by
+dilation about a body filling more than `FAR_SIDE_FILL` of its diameter, which opens the far side too),
+`handover_tube_ratio` (the sphere's form in a tube past the gated ratio) and `film_unsolved`. A step far from the wall costs the contact's search only; one within the opening's band adds the
+law's increment (a spline read for a sphere, two film solves for the film). Drag 0.5.0's surrogate takes no
+`lubrication=`: its blend is retired (`lubrication.retired`), and drag 0.4.0 keeps it. Not yet: several contacts of
+one body, a ring's form, bodies sharing a medium (refused, `drag.lubrication-near-field`) and a body between two walls.
 
 `wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
 no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.

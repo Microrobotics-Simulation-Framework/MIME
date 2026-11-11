@@ -52,7 +52,7 @@ def above_plane(kind: Any, centre: tuple[float, float, float], orientation: tupl
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=m(spacing), blob=blob, wall_kind="plane", **{"lubrication": False, **drag}),
+    experiment.attach(Drag.MRS(spacing=m(spacing), blob=blob, wall_kind="plane", **{"near_contact": False, **drag}),
                       body="ball", medium="water")
     return experiment
 

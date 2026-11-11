@@ -132,7 +132,7 @@ def sphere_in_a_tube(name: str, *, radius: float, spacing: Quantity, wall_kind: 
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=spacing, blob=blob, wall_kind=wall_kind, lubrication=False), body="ball",
+    experiment.attach(Drag.MRS(spacing=spacing, blob=blob, wall_kind=wall_kind, near_contact=False), body="ball",
                       medium="water")
     return experiment
 
