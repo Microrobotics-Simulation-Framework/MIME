@@ -1,0 +1,73 @@
+{
+  "written": "2026-11-12, committed before any gate of F3 PR 2 ran on its final form (the commit that adds this file is the timestamp): the one elimination over a flow's exchange partners, point bodies held one pass beside its openings, one pass the default wherever a body's step is linear",
+  "phase": "F3 PR 2: the one elimination over exchange partners (bodies and openings), the affine scheme for point bodies",
+  "labels": "made by the PR's builder (Opus) from the step's algebra and the node-level smoke runs listed under seen_before; every number marked guess is one",
+  "seen_before": [
+    "node-level smoke, periodic 12^3 box, one body, float64, against monolithic_step (the previous builder, scratch/smoke_periodic.py, laptop): field 5.7e-11, force 1.0e-11, twist 1.7e-13 relative",
+    "node-level smoke, open 8 x 8 x 24, inflow + Windkessel + one body, float64 (previous builder): field 6.7e-12, force 5.5e-12, twist 4.2e-12; pressures and fluxes equal",
+    "gate 1's draw at seed 0 (periodic 12^3, two bodies, random initial field), laptop, before the box was cut to 8^3: float64 field 3.3e-9, force 4.9e-12, twist 7.1e-12; float32 field 1.4e-5, force 6.0e-6, twist 3.2e-4",
+    "a one-pass metered run of point_experiment (radius 40 um, dt 0.2 ms, density ratio 2, float32, 4 ms), laptop: ledger_closes PASS, the drag's rows -2.09e-15 J (fluid) and +1.95e-15 J (body), no gift step",
+    "the same in the open vessel (2 ms, float32), laptop: ledger_closes PASS; the flow's solve_flagged raised at 10 of 10 steps (not yet explained)",
+    "an open draw (8 x 8 x 24, float32), laptop under load ~38: the step's solves converged, 92 iterations in all, residual 8.1e-6 against 1e-5"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-pr2-gates)",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 1: a periodic box 8^3 (h 10 um, water) with two bodies of radius 0.8 to 1.5 h, kernel 1 or 1.5 cells, density ratio 0.5 to 3, dt drawn so that r = nu dt/h^2 is 0.05 to 1, IMEX Euler under Stokes, a random initial field and drive; or an open vessel 8 x 8 x 16 (nondimensional), inflow + Windkessel, one body in the middle third, dt 0.005 to 0.05; CG tolerance 1e-12 (float64) and 1e-5 (float32). Gates 2 to 4: point_experiment, a 40 um sphere (30 to 50 um for gate 4) in the 1 mm periodic tube driven at 1 m/s^2, D/h 16, dt 0.2 ms, density ratio 2 (1.5 to 3 for gate 4), 4 ms",
+    "seeds_and_draws": "DETECTION_SEED 0 to 29 per control arm (gate 1: even seeds periodic, odd open); gate 4 draws its body from seed 4000 + DETECTION_SEED; physical scales throughout"
+  },
+  "gate_1_return_path": {
+    "claim": "the coupled step (the flow's one elimination over its openings and its point bodies) is the monolithic step (one dense LU of the whole step) within the field's solve's line, both dtypes",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_the_coupled_step_is_the_monolithic_step_within_the_solves_line, the node's own step",
+    "prediction": {"value": null, "band": [1e-12, 1e-8], "unit": "relative (field, force, twist, pressure, flux), float64; float32 [1e-7, 2e-3]", "basis": "measured-before (smoke) and derived: the CG's tolerance carried through a well-conditioned small system",
+                   "why": "every unknown is a linear function of the unit fields' solves, each stopped at the CG's tolerance; the elimination's LU adds rounding only"},
+    "metric": "the largest relative difference over the field and every partner's unknowns",
+    "control": {"plant": "drop: the last partner dropped from the elimination (its deliveries held at zero); cross: every partner's rows read only its own deliveries (the cross terms zeroed)", "environment_variable": "MIME_PLANT_ELIMINATION", "expected_rate": "30/30 each, both dtypes", "runs": 30, "clean_expected": "0/30",
+                "resolution": "a planted partner's force or a cross term is of the order of the body's drag, many orders above the line in both dtypes [derived]; not measured with discriminating_range.py, the plants being structural (on or off)"},
+    "if_wrong": "a miss on the clean arm is the elimination's (or the reference's) defect: compare the unit fields' readings with the reference's Jacobian columns",
+    "cannot_discriminate_if": "a draw whose partners do not interact (no cross term): every draw has two partners sharing one field"
+  },
+  "gate_2_ledger_one_pass": {
+    "claim": "metered, one pass: every receiver's books close at every step, the drag's two rows judged by its node (no gift), and their sum is minus the law's own dissipation: the exchange is workless, with no lagged residual",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_one_pass_the_books_close_with_the_drags_rows_summing_to_its_own_dissipation",
+    "prediction": {"value": null, "band": [0.0, 1e-9], "unit": "relative to the law's dissipation, float64; float32 [0, 1e-3]", "basis": "derived: the flow's row is dt <S_F f, u'> = dt f . G_F u' by the transpose pair, the body's -dt f . V' at the twist the row closed", "why": "the body's twist is the row's to its own 6 x 6 solve's rounding; the float32 band allows the handed load's cancellation (A0 - R_h V', the body near the fluid's speed)"},
+    "metric": "|paired work + the node's dissipation| / |dissipation|",
+    "control": {"plant": "handed: a hundredth of the handed load's size added to it", "environment_variable": "MIME_PLANT_ELIMINATION", "expected_rate": "10/10 per dtype", "runs": 10, "clean_expected": "0/10", "resolution": "derived: the plant's work against the body's motion is of the order of the drag's work, far above the line"},
+    "if_wrong": "a clean miss means the body did not step with the row the flow closed (gate 4) or the books read another force than the one solved",
+    "cannot_discriminate_if": "a body at rest with the fluid (no slip, no dissipation): the drawn body is twice as dense as the water and slips"
+  },
+  "gate_3_gradient_one_pass": {
+    "claim": "one pass, the body's axial position after 10 steps differentiated in the viscosity (forward) equals a central difference to 1e-5",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_a_derivative_through_the_one_elimination_matches_a_central_difference",
+    "operating_point": "float64 only",
+    "prediction": {"value": null, "band": [0.0, 1e-5], "unit": "relative", "basis": "measured-before: the lagged route's gate 9 passes at this operating point; the elimination is linear algebra JAX differentiates", "why": "custom_linear_solve and the dense LU have exact derivatives"},
+    "metric": "relative difference of the derivative from the central difference",
+    "control": {"plant": "held: the elimination's solution held out of the derivative (stop_gradient)", "environment_variable": "MIME_PLANT_ELIMINATION", "expected_rate": "10/10", "runs": 10, "clean_expected": "0/10", "resolution": "guess: the elimination carries the drag's dependence on the viscosity, a share of order one of the derivative"},
+    "if_wrong": "a clean miss: compare forward and reverse, then the unit fields' derivative alone",
+    "cannot_discriminate_if": "the drag's force independent of the viscosity at this point (it is not: R0 is 6 pi mu a)"
+  },
+  "gate_4_mirror": {
+    "claim": "one pass, the body steps with the row the flow closed: every other load and resistance delivered into it reaches the flow's row the same step, so row_mismatch_flagged is never raised over the run",
+    "kind": "acceptance",
+    "case": "tests/flow/test_one_elimination.py::test_the_body_steps_with_the_row_the_flow_closed_and_the_flag_sees_a_load_the_row_missed",
+    "prediction": {"value": null, "band": [0.0, 1e-12], "unit": "the worst relative mismatch in float64; float32 [0, 1e-4], under the flag's line 1e4 eps", "basis": "derived: the body's own solve with the handed response reproduces the row's twist to its rounding", "why": "the handed response and load are the elimination's own, and the mirror makes the row's loads the body's"},
+    "metric": "row_mismatch's worst over the run",
+    "control": {"plant": "mirror: the build's held rows dropped (the flow's row then lacks the rate terms' load and the added mass)", "environment_variable": "MIME_PLANT_ELIMINATION", "expected_rate": "20/20 per dtype", "runs": 20, "clean_expected": "0/20", "resolution": "derived: the added mass alone is half the displaced fluid's mass over dt in the row, a share of order 0.2 of the stepping mass at density ratio 2"},
+    "if_wrong": "a clean flag means a load reached the body that the flow's row did not hold: find its edge",
+    "cannot_discriminate_if": "a body with no other load: the Maxey-Riley part is always delivered on the stokes rung"
+  },
+  "bits": {
+    "cases": "the openings-only programs (open_tube_flow, open_tube_loop) and the lagged point body (point_body_flow, coupling='lagged' on the head, the default on the base), float32 and float64, base origin/release/v0.3.0 at d6220d2 against the head, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal (the openings alone go through exchange_system's single-partner branch, the operations port_system did; the lagged drag node's state and the flow's are the same arrays)",
+    "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "the open vessel with its inflow one ulp up: arrays differ"}
+  },
+  "costs": {
+    "prediction": "one pass with one body and two openings 1.3 to 2 times the lagged step's time (guess, the first step's estimate); with B bodies 1 + 6B projected solves a step against one, each warm-started: 2 bodies 2 to 3 times, 5 bodies 4 to 7 times, 10 bodies 6 to 12 times (guess); memory 6B unit fields a body held",
+    "measured_at": "node_measure.py on a GitHub runner, point_experiment with 1, 2, 5 and 10 bodies, one pass against coupling='lagged', float64, 20 steps"
+  },
+  "outcomes": null
+}

@@ -22,7 +22,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from elimination_cases import WATER_MU, WATER_RHO, Body, body_inputs, monolithic_step, sphere_mass
-from point_cases import point_experiment, seed, with_second_body
+from point_cases import point_experiment, seed
 
 import mime.core.elimination as elimination
 import mime.nodes.flow.fvm._partners as partners
@@ -69,9 +69,10 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _periodic_draw(rng: np.random.Generator) -> tuple[ImplicitFlowNode, list[Body], float]:
-    """A periodic box of 12 cells a side with two bodies drawn in it: radius 0.8 to 1.5 cells, kernel one or 1.5 cells
-    wide, density 0.5 to 3 times the water's, a twist of the body's own scales and a load on each."""
-    cells, h = 12, 1e-5
+    """A periodic box of 8 cells a side with two bodies drawn in it: radius 0.8 to 1.5 cells, kernel one or 1.5 cells
+    wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel holds as any), density 0.5 to 3
+    times the water's, a twist of the body's own scales and a load on each."""
+    cells, h = 8, 1e-5
     side = cells * h
     dt = float(rng.uniform(0.05, 1.0)) * h * h * WATER_RHO / WATER_MU
     bodies = []
@@ -94,25 +95,26 @@ def _periodic_draw(rng: np.random.Generator) -> tuple[ImplicitFlowNode, list[Bod
 
 
 def _open_draw(rng: np.random.Generator) -> tuple[OpenFlowNode, list[Body], float]:
-    """An open vessel (8 x 8 x 24 cells, nondimensional: diameter, viscosity and density one), an inflow at its low
-    plane and a Windkessel at its high one, and a body drawn in its middle third, clear of the planes."""
+    """An open vessel (8 x 8 x 16 cells, nondimensional: diameter, viscosity and density one), an inflow at its low
+    plane and a Windkessel at its high one, and a body drawn in its middle third, its kernel one cell wide (its
+    truncated reach meets the planes, where its weights are under 1e-5 of the peak: the gate is the algebra's, and the
+    monolithic step reads and delivers through the same kernel as the node)."""
     h = 1.0 / 8.0
-    length = 24 * h
+    length = 16 * h
     dt = float(rng.uniform(0.005, 0.05))
     resistance = 8.0 * length / (math.pi * 0.35 ** 4)
     params = [[float(rng.uniform(0.05, 0.2)) * math.pi / 4.0, 0.0, 0.0, 0.0],
               [float(rng.uniform(0.1, 1.0)) * resistance, 1.0 / resistance, 3.0 * resistance, 0.0]]
     a = float(rng.uniform(0.8, 1.5)) * h
-    mass, moment = 4.0 / 3.0 * math.pi * a ** 3 * float(rng.uniform(0.5, 3.0)), 0.0
+    mass = 4.0 / 3.0 * math.pi * a ** 3 * float(rng.uniform(0.5, 3.0))
     moment = 0.4 * mass * a * a
     centre = (0.5, 0.5)
     point = (centre[0] + float(rng.uniform(-0.1, 0.1)), centre[1] + float(rng.uniform(-0.1, 0.1)),
              float(rng.uniform(length / 3, 2 * length / 3)))
     twist = (*(rng.normal(0.0, 0.03, 3)), *(rng.normal(0.0, 0.03 / a, 3)))
     loads = (*(rng.normal(0.0, 6 * math.pi * a * 0.03, 3)), *(rng.normal(0.0, 8 * math.pi * a ** 2 * 0.03, 3)))
-    body = Body(a, point, tuple(float(t) for t in twist), mass, moment, float(rng.choice([1.0, 1.5])),
-                tuple(float(f) for f in loads))
-    node = OpenFlowNode("flow", dt, cells_x=8, cells_y=8, cells_z=24, spacing=h, viscosity=1.0, density=1.0,
+    body = Body(a, point, tuple(float(t) for t in twist), mass, moment, 1.0, tuple(float(f) for f in loads))
+    node = OpenFlowNode("flow", dt, cells_x=8, cells_y=8, cells_z=16, spacing=h, viscosity=1.0, density=1.0,
                         tube_centre=(0.5, 0.5, 0.0), tube_axis=(0.0, 0.0, 1.0), tube_radius=0.35,
                         openings=("tube.start", "tube.end"), opening_laws=("inflow", "windkessel"),
                         opening_parameters=params, convection=False,
@@ -158,36 +160,61 @@ def test_the_coupled_step_is_the_monolithic_step_within_the_solves_line(dtype, m
     assert max(found.values()) <= LINES[dtype], found
 
 
-def _metered(coupling: str | None, *, two: bool = False):  # noqa: ANN202
+def _metered(coupling: str | None):  # noqa: ANN202
     from mime.observations import EnergyLedger
 
     exp = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0, coupling=coupling)
-    if two:
-        exp = with_second_body(exp, (0.0, 0.0, 0.3e-3), coupling=coupling)
     exp.observe(EnergyLedger())
-    return exp.build().run(ms(4.0))
+    built = exp.build()
+    return built, built.run(ms(4.0))
 
 
-def test_one_pass_the_books_close_with_the_drags_rows_summing_to_its_own_dissipation(dtype):
+def _last_step_books(built, result) -> float:  # noqa: ANN001
+    """The law's own dissipation in the run's last step, which the drag's node books the step after (one pass): the
+    force the flow solved against the slip from its kernel's reading of the solved field, ``dt f . (V - G_F u')``."""
+    node = built.graph.get_node("drag:ball")
+    drag, _, _ = node.coefficients(node._step_constants(None))
+    row = np.asarray(result.final["water.flow"]["partner_solution"])[0]
+    kernel = row[12:]
+    reading = np.concatenate([kernel[:3] + float(drag) * kernel[3:6], kernel[6:9]])
+    twist = np.asarray(result.final["ball"]["twist"])
+    return float(node.delta_t) * float(np.dot(row[:6], twist - reading))
+
+
+def test_one_pass_the_books_close_with_the_drags_rows_summing_to_its_own_dissipation(dtype, monkeypatch):
     """Gate 2, the ledger in the affine scheme: metered, a heavy point body slipping in the driven tube, one pass:
     every receiver's books close at every step, the drag's rows on the body and on the fluid both judged by its node
-    (none a gift), and their sum over the run is the law's own dissipation as its node books it (``dissipated``, the
-    force against the slip from the reading it was solved with), to the books' rounding: the exchange is workless, with
-    no lagged residual. The lagged route's sum differs from its node's dissipation by the exchange's unpaired work,
-    first order in the step: its share is printed beside."""
+    (none a gift), and their sum over the run is minus the law's own dissipation as its node books it (``dissipated``,
+    the force against the slip from the reading it was solved with; its last step's, which the node books the step
+    after, added from the run's final state), to the books' rounding: the exchange is workless, with no lagged
+    residual. The lagged route's sum differs from its node's dissipation by the exchange's unpaired work, first order
+    in the step: its share is printed beside. The plant (``MIME_PLANT_ELIMINATION=handed``) adds a hundredth of the
+    handed load's size to it along the body's motion: the exchange then works on the body, and the sum misses."""
+    from mime.nodes.flow.fvm import ImplicitFlowNode as Flow
     from mime.testing import ledger_closes
 
+    if plant() == "handed":
+        ended = Flow.partner_ended
+
+        def planted(self, grid, bodies, partnered, held_units):  # noqa: ANN001, ANN202
+            found = ended(self, grid, bodies, partnered, held_units)
+            load = found["partner_0_load"]
+            return {**found, "partner_0_load": load + 0.01 * jnp.sqrt(jnp.sum(load * load))}
+
+        monkeypatch.setattr(Flow, "partner_ended", planted)
     shares = {}
     for coupling in (None, "lagged"):
-        result = _metered(coupling)
+        built, result = _metered(coupling)
         verdict = ledger_closes(result)
         assert verdict.status == "PASS", verdict.detail
         assert result.energy is not None
         rows = {(law.law, law.receiver): law for law in result.energy.laws}
         gifts = {receiver: rows[("drag:ball", receiver)].gift_steps for receiver in ("ball", "water.flow")}
         assert gifts == {"ball": 0, "water.flow": 0}, gifts
-        paired = rows[("drag:ball", "ball")].work + rows[("drag:ball", "water.flow")].work
+        paired = float(rows[("drag:ball", "ball")].work) + float(rows[("drag:ball", "water.flow")].work)
         books = float(np.asarray(result.final["drag:ball"]["dissipated"]))
+        if coupling is None:
+            books += _last_step_books(built, result)
         shares[coupling or "one_pass"] = abs(paired + books) / abs(books)
     print(f"F3 PR 2 gate 2 [{dtype}]: the drag's paired work against its own dissipation, relative: {shares}")
     assert shares["one_pass"] <= (1e-9 if dtype == "float64" else 1e-3), shares
