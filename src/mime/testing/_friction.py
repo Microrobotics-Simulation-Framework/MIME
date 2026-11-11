@@ -176,9 +176,11 @@ def _drawn(name: str, drawn: tuple[Any, ...], dtype: Any) -> tuple[Any, Any, Any
 SUITE_SWEEPS = 400
 #: Where a clean solve is left unconverged at the suite's count (its residual past ``CONVERGED``), the counts it is
 #: solved again at, in turn, and judged at the first it converges at, or the last: a box face down on the plane,
-#: rocking at 1 rad/s with mu 1, six of its eight points held in no unique share, read 0.12 at 400 sweeps, 0.013 at
-#: 1,600 and 3e-5 at 6,400 (float64; about one box draw in 1,200 of the suite's).
-SUITE_DEEPER = (1600, 6400, 25600)
+#: rocking with mu 1, five or six of its eight points held in no unique share, converges slowly and not monotonically
+#: (rocking at 1 rad/s: 0.12 at 400 sweeps, 0.013 at 1,600, 3e-5 at 6,400; at 0.086 rad/s: 0.016 at 400, 0.020 at
+#: 1,600, 0.017 at 6,400, 0.0057 at 25,600, 6.3e-4 at 102,400; float64, about one box draw in 1,000 of the suite's
+#: past 400 and one in 4,000 past 25,600).
+SUITE_DEEPER = (1600, 6400, 25600, 102400, 409600)
 
 
 def _converged(names: tuple[str, ...], sweeps: int) -> dict[str, int | None]:
