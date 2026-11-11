@@ -122,7 +122,8 @@ def test_holds_the_floor(n):
 '''
 
 CONFTEST = '''
-import importlib.util
+import importlib.util, sys
+sys.path.insert(0, {tests!r})
 spec = importlib.util.spec_from_file_location("mime_tests_conftest", {real!r})
 real = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(real)
@@ -135,7 +136,7 @@ def pytest_configure(config):
 def overlapping(tmp_path: Path, decorator: str) -> int:
     tmp_path.mkdir()
     """How many pairs of the six tests' intervals overlap, in a two-worker run of a suite whose tests carry ``decorator``."""
-    (tmp_path / "conftest.py").write_text(CONFTEST.format(real=str(TESTS / "conftest.py")), encoding="utf-8")
+    (tmp_path / "conftest.py").write_text(CONFTEST.format(real=str(TESTS / "conftest.py"), tests=str(TESTS)), encoding="utf-8")
     (tmp_path / "test_suite.py").write_text(SUITE.format(decorator=decorator), encoding="utf-8")
     intervals = tmp_path / "intervals.jsonl"
     environment = {"PATH": "", "MIME_INTERVALS": str(intervals), "HOME": str(tmp_path)}
@@ -153,3 +154,41 @@ def test_marked_tests_never_overlap_across_xdist_workers_and_unmarked_ones_do(tm
     does overlap, so that a run in which nothing overlaps anyway cannot pass this."""
     assert overlapping(tmp_path / "plain", "") > 0, "the control: unmarked tests did not overlap on two workers"
     assert overlapping(tmp_path / "marked", "@pytest.mark.memory_heavy") == 0
+
+
+GIVEN_BACK = '''
+import json, os
+import jax
+import pytest
+
+PROGRAM = jax.jit(lambda x: x + 1.0)
+
+def test_a_first_test_compiles_a_program():
+    PROGRAM(1.0)
+    assert PROGRAM._cache_size() == 1
+
+{decorator}
+def test_the_second_test_finds_the_programs_of_the_first():
+    with open(os.environ["MIME_PROGRAMS"], "w") as f:
+        f.write(json.dumps(PROGRAM._cache_size()))
+'''
+
+
+def programs_held_at_start(tmp_path: Path, decorator: str) -> int:
+    """How many compiled programs the earlier test's function still held when the second test began, in one process."""
+    tmp_path.mkdir()
+    (tmp_path / "conftest.py").write_text(CONFTEST.format(real=str(TESTS / "conftest.py"), tests=str(TESTS)), encoding="utf-8")
+    (tmp_path / "test_suite.py").write_text(GIVEN_BACK.format(decorator=decorator), encoding="utf-8")
+    held = tmp_path / "held.json"
+    environment = {"PATH": "", "MIME_PROGRAMS": str(held), "HOME": str(tmp_path), "JAX_PLATFORMS": "cpu"}
+    done = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(tmp_path / "test_suite.py")],
+                          cwd=tmp_path, capture_output=True, text=True, env=environment, timeout=300)
+    assert done.returncode == 0, done.stdout + done.stderr
+    return json.loads(held.read_text(encoding="utf-8"))
+
+
+def test_a_marked_test_starts_without_the_programs_earlier_tests_of_its_worker_compiled(tmp_path: Path):
+    """The control, the same second test unmarked, finds the first test's program still compiled, so that a run in
+    which nothing is ever kept cannot pass this."""
+    assert programs_held_at_start(tmp_path / "plain", "") == 1, "the control: the program was not kept"
+    assert programs_held_at_start(tmp_path / "marked", "@pytest.mark.memory_heavy") == 0

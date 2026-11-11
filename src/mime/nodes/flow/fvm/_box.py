@@ -17,12 +17,23 @@ discretisation: a relative step under the slack (5e-5, say) up from a round inpu
 the same box (:func:`same_discretisation`); elsewhere it takes the counts from a declared range (S-F0-2's). The box's other extents are not physical: they hold the
 lumen, its band and a margin of solid between the tube and its images, an odd count of cells across (so the axis sits
 at a cell's centre unless offset). A tilted tube's axis is a lattice direction ``(a, 0, b)`` of the box, so that the tube
-wraps once per box; the box then holds one image of it, its neighbours a box's period away across x and y."""
+wraps once per box; the box then holds one image of it, its neighbours a box's period away across x and y.
+
+**A tube tree** (``mime.scene.TubeTree``) periodic along z is held the same way (:func:`periodic_tree_layout`): its
+period along z is declared, the spacing the largest that fits a whole number of cells in it and no coarser than the
+narrowest lumen's diameter over the cells asked for across it, and across x and y the box holds the tree's extent (its
+balls' bounding box) with the same reach and margin. The tree reaches past the box's two ends along z, so each face
+reads the tree itself and no image; the build checks that the tree repeats over the period where the fields read it
+(:func:`period_mismatch`)."""
 
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
 
 from mime.scene._sampling import counted
 
@@ -104,5 +115,64 @@ def same_discretisation(a: TubeLayout, b: TubeLayout) -> bool:
     return a.cells == b.cells and a.spacing == b.spacing
 
 
-__all__ = ["DEFAULT_CELLS_ACROSS", "DEFAULT_MARGIN", "DEFAULT_REACH", "TubeLayout", "periodic_tube_layout",
-           "same_discretisation"]
+@dataclass(frozen=True)
+class TreeLayout:
+    """A periodic box holding a tube tree periodic along z: its cells, spacing (m), the box's corner in the tree's
+    frame (``origin``, m), and the tree's points in the box's frame (m)."""
+
+    cells: tuple[int, int, int]
+    spacing: float
+    origin: tuple[float, float, float]
+    points: tuple[tuple[float, float, float], ...]
+
+    @property
+    def extents(self) -> tuple[float, float, float]:
+        return (self.cells[0] * self.spacing, self.cells[1] * self.spacing, self.cells[2] * self.spacing)
+
+
+def periodic_tree_layout(points: Sequence[Sequence[float]], segments: Sequence[Sequence[int]],
+                         radii: Sequence[Sequence[float]], length: float, *, cells_across: int = DEFAULT_CELLS_ACROSS,
+                         spacing: float | None = None, reach_cells: float = DEFAULT_REACH,
+                         margin_cells: int = DEFAULT_MARGIN, offset_cells: Sequence[float] = (0.0, 0.0, 0.0)
+                         ) -> TreeLayout:
+    """The box for a tube tree (``points`` in m, ``segments`` and their ``radii`` at each end, m) periodic along z with
+    period ``length`` (m): ``spacing`` (m) the finest the box may take, by default the narrowest lumen's diameter over
+    ``cells_across``. The tree's balls' bounding box is centred across x and y, its middle along z at the period's
+    middle, each then moved by ``offset_cells`` (a sub-cell offset)."""
+    held = np.asarray(points, dtype=np.float64)
+    radius = np.asarray(radii, dtype=np.float64)
+    if length <= 0.0 or held.ndim != 2 or held.shape[1] != 3:
+        raise ValueError(f"a tree's period is positive and its points three numbers each, not {length} and "
+                         f"{held.shape}")
+    ends = np.concatenate([held[[a for a, _ in segments]] - radius[:, :1], held[[b for _, b in segments]] - radius[:, 1:]])
+    tops = np.concatenate([held[[a for a, _ in segments]] + radius[:, :1], held[[b for _, b in segments]] + radius[:, 1:]])
+    low, high = ends.min(axis=0), tops.max(axis=0)
+    target = spacing if spacing is not None else 2.0 * float(radius.min()) / cells_across
+    along = max(1, counted(length / target))
+    h = length / along
+    cells = tuple(_odd(counted(float(high[k] - low[k]) / h + reach_cells + margin_cells)) for k in range(2))
+    middle = 0.5 * (low + high)
+    origin = (float(middle[0] - (cells[0] / 2 + offset_cells[0]) * h),
+              float(middle[1] - (cells[1] / 2 + offset_cells[1]) * h),
+              float(middle[2] - (along / 2 + offset_cells[2]) * h))
+    moved = held - np.asarray(origin)
+    return TreeLayout((cells[0], cells[1], along), h, origin,
+                      tuple((float(p[0]), float(p[1]), float(p[2])) for p in moved))
+
+
+def period_mismatch(minimum: Any, layout: TreeLayout, reach: float) -> float:
+    """How far the tree fails to repeat over its period where the fields read it: the largest difference, over the
+    cell centres of the box's first layer along z within ``reach`` (m) of the wall, between the tree's distance there
+    (``minimum``, a function of points ``(N, 3)`` in the box's frame) and one period on (m)."""
+    h = layout.spacing
+    nx, ny, nz = layout.cells
+    x, y = np.meshgrid((np.arange(nx) + 0.5) * h, (np.arange(ny) + 0.5) * h, indexing="ij")
+    first = np.stack([x.ravel(), y.ravel(), np.full(x.size, 0.5 * h)], axis=-1)
+    again = first + np.asarray([0.0, 0.0, nz * h])
+    a, b = np.asarray(minimum(first), np.float64), np.asarray(minimum(again), np.float64)
+    near = (np.abs(a) <= reach) | (np.abs(b) <= reach)
+    return float(np.max(np.abs(a - b)[near])) if near.any() else 0.0
+
+
+__all__ = ["DEFAULT_CELLS_ACROSS", "DEFAULT_MARGIN", "DEFAULT_REACH", "TreeLayout", "TubeLayout", "period_mismatch",
+           "periodic_tree_layout", "periodic_tube_layout", "same_discretisation"]

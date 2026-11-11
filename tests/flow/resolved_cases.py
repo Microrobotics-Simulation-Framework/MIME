@@ -23,7 +23,7 @@ from mime.nodes.flow.fvm import band_named, periodic_tube_layout
 from mime.nodes.flow.fvm import _resolved
 from mime.nodes.flow.fvm._resolved import window_cells
 from mime.nodes.flow.fvm._resolved_node import ResolvedFlowNode, ResolvedSpec
-from mime.scene import PeriodicBox, Scene, Sphere, Tube, VesselRegion, Z
+from mime.scene import PeriodicBox, Scene, Sphere, Tube, TubeTree, VesselRegion, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Pa_s_per_m3, kg, kg_m2, kg_per_m3, m, m3_per_Pa, m_per_s, m_per_s2, mL_per_s, mPa_s, \
     rad_per_s, s
@@ -147,18 +147,24 @@ def deeper_band(scale: float) -> Callable[..., Any]:
 
 def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, hull: Any = None,
                   one_way: bool | None = None, spacing: Any = None, scheme: Any = None,
-                  length: Any = None, opened: bool = False) -> Experiment:
+                  length: Any = None, opened: bool = False, tree: bool = False) -> Experiment:
     """The coupling spike's R3 case at Re 76: a sphere of radius 0.1875 D (3 cells a radius at D/h 16) free on a
     periodic tube's axis (D = 1 mm, 4 D long) in water, the fluid driven by the uniform force that gives the empty
-    tube a mean speed of 76 nu / D; the body's density ``ratio`` times the fluid's; from rest."""
+    tube a mean speed of 76 nu / D; the body's density ``ratio`` times the fluid's; from rest. ``tree``: the same
+    straight lumen as a tube tree's (two segments reaching a diameter past each end of the period)."""
     diameter = 1e-3
     nu = WATER_MU / WATER_RHO
     mean = 76.0 * nu / diameter
     drive = 8.0 * nu * mean / (diameter / 2.0) ** 2
     radius = 0.1875 * diameter
     exp = Experiment("resolved_r3", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(dt))
-    exp.add_structure(Structure("tube", geometry=Tube(axis=Z, inner_radius=m(diameter / 2.0), wall=m(2e-4),
-                                                      length=m(0.1))))
+    if tree:
+        exp.add_structure(Structure("tube", geometry=TubeTree(
+            points=m((0.0, 0.0, -diameter, 0.0, 0.0, 2.0 * diameter, 0.0, 0.0, 5.0 * diameter)),
+            segments=((0, 1), (1, 2)), radii=m((diameter / 2.0,) * 4))))
+    else:
+        exp.add_structure(Structure("tube", geometry=Tube(axis=Z, inner_radius=m(diameter / 2.0), wall=m(2e-4),
+                                                          length=m(0.1))))
     domain = VesselRegion(margin=4) if opened else PeriodicBox(length=m(4.0 * diameter) if length is None else length)
     flow = FVM(domain=domain, cells_across=16,
                scheme=Scheme.IMEXEuler() if scheme is None else scheme,

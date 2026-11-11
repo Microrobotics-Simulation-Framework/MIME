@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   density ratio of 1.4 down to 0.3 at Re 76; a lighter body is refused, `drag.penalty-lagged`); the one-pass affine
   coupling is its next part. The FVM's spacing with no spacing written is the finer of the lumen's and N cells across
   the body's smallest feature's radius (`feature_cells`, 6 by default); a grid under the thinnest-feature line is
-  refused (`drag.penalty-thin`), as are RK3 (`drag.penalty-scheme`), an open vessel (`flow.open-resolved`) and an
+  refused (`drag.penalty-thin`), as are RK3 (`drag.penalty-scheme`), an open vessel (`flow.open-resolved`), a tube
+  tree's flow (`flow.tree-resolved`) and an
   added mass delivered to a resolved body (`drag.penalty-added-mass`). The body takes the displaced share of the
   medium's drive (the drive acts on the fluid alone) under its drag's part `<id>.displaced`. The flow node holds the
   penalty in its step under the drag's id and judges its sign at one velocity (`body_<i>_gift_steps`, read onto the
@@ -46,6 +47,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`<id>.maxey_riley`). Point bodies in one medium interact through its flow, lagged a step; the build reports it on
   each one's drag, with their nearest starting separation in radii and their volume fraction in the grid's box.
   Flags `below_floor`, `history_flagged`, `rate_feedback`, `near_wall`, `reynolds_flagged` (stokes).
+- **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
+  `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
+  patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the
+  solid's included, in the nearest opening's patch), and laws that bind one opening or several: a law over several
+  states a block over them (`PortLaw.openings`, its rows' `B`), which the port system solves whole each step. Through
+  the experiment a law's `surface=` names its openings as a tuple, `surface=(tree.end_0, tree.end_1)`, or as a region's
+  declared openings, `surface=tube.lumen`, and a law given another count than it binds is refused
+  (`binding.opening-count`); `FVM.openings_of` reads the geometry kind's declared openings, and the build lays each on
+  the plane its surface faces; a law refused at its openings' binding is refused alone (the flow no longer adds that
+  no law is attached at the openings it named), and the routes name every law an opening takes.
+  `exp.attach(Valve(), medium=blood, surface=...)`: a closed valve, a flux row of zero, workless. It holds its
+  opening's net flux at zero, not each face's: the lumen behind it carries out what the solid's faces on the opening
+  bring back in, the solid's Darcy flow, falling as the square of the stiff interior's depth (on two parallel tubes,
+  1.5 to 5.0 % of the inflow at the default stiff interior, 1.8e-4 to 7.0e-4 at `Band(delta_in=0.01)`).
+  It is gated at the default interior against the walled-off vessel (that outlet capped by solid, whose cap and the
+  solid around it leak as much), the inlet pressures within the two runs' solid flows carried through the open tube's
+  resistance, which sees a valve error from about 8 % of the inflow there (from 1e-3 in float64 and 2e-3 in
+  float32 at `Band(delta_in=0.01)`). The stiff resistance that would stand in for it differs
+  from it only by its leak, exactly one over its resistance: the port system's condition number with its rows scaled
+  is the valve's at every stiffness (the raw number mixes a flux row's units with a pressure row's).
+  `exp.attach(SharedDistal(first=..., second=..., distal=...), medium=blood, surface=(a, b))`: two openings each
+  through its own resistance into one shared distal resistance, its off-diagonals solved, its own books kept (a lagged
+  off-diagonal leaves a first-order residual in them). `port_kinetic_flux`, an active flag, an operator check of
+  convection at the planes: the kinetic energy the books hold as crossing the openings against each opening's own, the
+  scheme's convective power split by plane (exact to the field's divergence: the divergence form is conservative), the
+  planes' net judged on each opening's flux in magnitude, so its scale does not cancel; it sees no port work (the
+  record's port work against the kinetic-energy flux stays not built), and its lines are about three times the clean
+  worst, measured. `OpenFlowNode.opening_solid_fluxes`: each opening's flux through the solid, which for an `Inflow`
+  (it pins the opening's whole net flux, never the lumen's alone) runs either way: with the inflow in steady flow, and
+  in pulsed flow swinging with the drive, the lumen then carrying up to 1.32 times the inflow (the FVM's validity).
+  Only a Tube's two ends build through the experiment until the tube tree's wall is in the open box; two outlets are
+  gated at the node level on a rig of two parallel tubes, every run of it metered and its books judged (the ledger on
+  in every gate).
 - **The near-contact law, one seam for every rung, and a sphere's exact form (`mime.nodes.hydro.near_contact`).** A
   rung declares the gap it resolves down to and evaluates itself with the contact opened to it (`opening`); the law
   adds the increment to the true gap from the contact's geometry (`NearContact`: its point, frame, gap, and the gap's
@@ -108,6 +142,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convective half cells). Not built, and no flag declared for them: the port work against the kinetic-energy flux
   through the openings (it needs the convective power split by plane), and the periodic box's flags on the open box and
   on RK3 (RK3 declares none). Units `Pa`, `m3_per_s`, `mL_per_s`, `Pa_s_per_m3`, `m3_per_Pa`. No released program changes.
+
+- **The FVM on a tube tree's wall** (F2a's second part). A medium filling a `TubeTree`'s lumen
+  (`Medium(fills=vessel.lumen)`) takes the FVM on a periodic box: the tree periodic along z with the box's period and
+  reaching past its two ends (`flow.tree-period` refuses one that does not repeat where the band reads it), held in its
+  box with its spacing from the narrowest lumen, stepped by IMEX Euler or its steady limit (RK3 on a tree is refused,
+  `flow.tree-scheme`). The node takes the tree as its leaves (`tree_points`, `tree_radii`, `tree_fillet`, with
+  `tree_segments` its structure) and makes its wall from them in the program: the union's exact distance (`ExactUnion`)
+  wherever a field the step reads is not flat, its candidates run at the faces where its check fails within the band's
+  fluid half, chosen in the program at the run's values (`ExactUnion.evaluate_chosen`), only how many may run held at
+  build (a rung above the build's own count, as the cell counts are held), the plain minimum elsewhere; the wall is
+  constant over a run, so a chunk makes it once (the node's run-constants `tree_wall`, `tree_wall_counts`), and a
+  moved radius or period keeps one program. Its state reports where the distance is not exact (`wall_unrefined`,
+  `wall_unconverged`, `wall_unplanned`, and the warning flag `wall_inexact`), and its build reports the wall's
+  resolution entries below their lines (`wall_resolution`: the least radius of curvature, the narrowest lumen); a
+  straight tube's state and programs are unchanged. Gated through the node, steady
+  Stokes, every vessel turned about its period's axis at random and moved by a sub-cell offset: a helical tube's lumen
+  not displaced against Dean's first-order profile, an elliptic section's semi-axes, a taper against lubrication, a 75 %
+  stenosis and the split-and-merge loop's split at 30 degrees against Richardson references, the symmetric split a half,
+  and a daughter's flux's derivative in its radius against a central difference within one discretisation.
+- **`TubeTree` is the geometry kind `tube_tree`**: declared in quantities, `TubeTree(points=mm(...), segments=...,
+  radii=mm(...), fillet=0.1, ends=(...))`, three lengths a point and two radii a segment, flat (`TubeTree.si` takes them
+  in SI as nested tuples); its regions the `lumen` (the shape `tube_tree`) and the `wall`; its free ends named by
+  geometry, never by a law's role: `root` at the first segment's start, the others `end_0`, `end_1`, ... in the order of
+  their points or as `ends` names them (`TubeTree.end_names`), each a surface reached through the structure's handle
+  (`vessel.root`) and an opening of the lumen (`Geometry.opening_names`, per instance beside the class's `openings`).
+  A tree whose fillet would fuse tubes that share no point (solid between them thinner than its diameter) is refused
+  when planned (`setting.value`), naming a smaller fillet or a thicker wall. The round-trip case `tree_flow`.
 
 - **Composed walls in `mime.scene`: the seam-aware union, the fillet as its closing, the tube tree** (F2a's first
   part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
@@ -827,6 +888,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registration. The rigid body, the arm, the motor and the FVM (now `("fluid", "opening")`) declare theirs; a lab's
   dynamics writes `port_kinds = ("rigid_body",)` where it wrote `port = "rigid_body"`.
 
+- `TubeTree.features()` is `TubeTree.wall_features()`: `features` is every geometry kind's surface features, which a
+  sampling grades towards.
+
 - **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
   interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its
   rounding floor (a 75 % stenosis at 16 cells across, 1e-4 against 4.8e-6), flagged. Now, where the stop would find a
@@ -1120,6 +1184,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **A body force on the open vessel's fluid booked its work over the planes' half cells counted whole**: its pairing,
+  the fluid's momentum, now weighs each face as the open box's inner product does, so a driven open vessel's books close
+  (they failed at 5e12 of their floor; the open box was admitted with a body force and not gated with one).
+- **The union's derivative in reverse mode** (`ExactUnion`): on a batch of thousands of points it read 4 to 50 % off
+  forward mode and the central difference, where two tubes' distances tie exactly (a shared end ball): `jnp.min` and
+  `jnp.minimum` find the least's derivative by comparing it again with their operands, which XLA computed twice in
+  fusions that rounded them differently. The least is now selected by one comparison, its derivative the selected
+  operand's: a guard holds every exact tie's derivative to one operand's (the reduction put back reads their average,
+  caught on every run), and a gate holds reverse to forward mode on the node's wall (a reverse-only error its control).
+  And reverse mode made a NaN on a batch where a discarded seam's or corner's implicit step was singular: a discarded
+  lane now passes no derivative into it.
 
 - **The FVM's stall flag is set from clean runs, in the solve's tolerance, and stops firing on correct float32 runs.** The
   stall detector `|N_Krylov| / D_visc` (`stall_flagged`, with the energy ledger attached) was flagged above a fixed

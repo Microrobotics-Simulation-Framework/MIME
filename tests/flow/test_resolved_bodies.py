@@ -288,3 +288,9 @@ def test_an_open_vessel_takes_no_resolved_body_yet(float64):
     its flow refuses a resolved body, naming the periodic box."""
     found = _refusals(r3_experiment(1.0, opened=True))
     assert "flow.open-resolved" in found, found
+
+
+def test_a_tube_trees_flow_takes_no_resolved_body_yet(float64):
+    """A tube tree's node holds the tree's solid alone: a resolved body in its flow is refused, not dropped."""
+    found = _refusals(r3_experiment(1.0, tree=True))
+    assert "flow.tree-resolved" in found, found
