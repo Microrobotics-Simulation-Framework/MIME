@@ -47,7 +47,7 @@ FRICTION_REPEATS = 3
 TRUST_NEWTON = 12
 #: The rows a held point carries with the sliding pair: the normal and the pair. Row kinds after it (rolling
 #: resistance) add pairs of their own.
-NORMAL, SLIDING = 0, (1, 2)
+NORMAL, SLIDING, ROLLING = 0, (1, 2), (3, 4)
 
 
 class Traction(NamedTuple):
@@ -62,18 +62,23 @@ class Traction(NamedTuple):
         return 1 + 2 * len(self.pairs)
 
 
-def traction_rows(rows: Array, points: Array, centre: Array, along: Array) -> Array:
-    """Each held point's rows, ``K x 3 x 6``: its normal row (``rows``, the hold's ``[n; r x n]``) and the sliding pair
-    ``[t_i; r x t_i]``, ``t_1`` the direction ``along`` taken across the normal and ``t_2 = n x t_1``. ``along`` is
-    never along a normal at a valid state (a tube's axis, across every normal of its wall; a plane's frame fixed at
-    build), so the frame has no switch."""
+def traction_rows(rows: Array, points: Array, centre: Array, along: Array, *, rolling: bool = False) -> Array:
+    """Each held point's rows, ``K x R x 6``: its normal row (``rows``, the hold's ``[n; r x n]``), the sliding pair
+    ``[t_i; r x t_i]``, ``t_1`` the direction ``along`` taken across the normal and ``t_2 = n x t_1``, and with
+    ``rolling`` the rolling pair ``[0; t_i]`` (the body's rotation about the tangents). ``along`` is never along a normal
+    at a valid state (a tube's axis, across every normal of its wall; a plane's frame fixed at build), so the frame has
+    no switch."""
     normals = rows[:, :3]
     arms = points - centre
     across = along - jnp.sum(along * normals, axis=-1, keepdims=True) * normals
     first = across / switch.nonzero_norm(across, axis=-1)[:, None]
     second = jnp.cross(normals, first)
-    return jnp.stack([rows, jnp.concatenate([first, jnp.cross(arms, first)], axis=-1),
-                      jnp.concatenate([second, jnp.cross(arms, second)], axis=-1)], axis=1)
+    held = [rows, jnp.concatenate([first, jnp.cross(arms, first)], axis=-1),
+            jnp.concatenate([second, jnp.cross(arms, second)], axis=-1)]
+    if rolling:
+        none = jnp.zeros_like(first)
+        held += [jnp.concatenate([none, first], axis=-1), jnp.concatenate([none, second], axis=-1)]
+    return jnp.stack(held, axis=1)
 
 
 def _solved2(block: Array, vector: Array) -> Array:
@@ -251,6 +256,6 @@ def cone_residual(coupling: Array, start: Array, forces: Array, traction: Tracti
     return jnp.max(worst) / (jnp.max(linear + lever * angular) + jnp.finfo(moved.dtype).tiny)
 
 
-__all__ = ["FRICTION_REPEATS", "NORMAL", "POWER_LINE", "SLIDING", "TRUST_NEWTON", "Traction", "cone_residual",
+__all__ = ["FRICTION_REPEATS", "NORMAL", "POWER_LINE", "ROLLING", "SLIDING", "TRUST_NEWTON", "Traction", "cone_residual",
            "disk_update", "friction_power", "frictional_sweeps", "normal_work_free", "point_update", "power_floor",
            "slip", "traction_rows"]

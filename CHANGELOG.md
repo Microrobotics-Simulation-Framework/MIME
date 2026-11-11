@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Rolling resistance and identifying mu (W2b's second part).** `Coulomb(mu=..., rolling=...)`: the rolling row
+  kind, a pair `[0; t]` at each held point bounded by the length times the normal force, built only where written (`0`
+  included, so it is a study's axis). `mime.study.fit_friction`: `Study.fit` on a run's data with a gradient-free
+  golden-section search over [0.01, 1.2] on the same loss as its control, and the verdict `identified`, `bounded below
+  only` or `confounded`; `FrictionFit.record` ships the estimate as a named record pinned by its content's and its
+  data's hashes.
 - **Friction at the wall (`Contact(friction=Coulomb(mu=...))`, `mime.interactions.friction`).** Exact Coulomb in the
   contact's own sweeps: each held point carries a sliding pair `[t; r x t]` beside its normal row, which measures the
   slip of the body's own point, so a body rolls without slipping where its sliding rows stick; one coefficient, static

@@ -58,6 +58,7 @@ from mime.nodes.body._contact import (
 from mime.nodes.body._contact import sweeps as _sweeps
 from mime.nodes.body._friction import (
     NORMAL,
+    ROLLING,
     SLIDING,
     Traction,
     cone_residual,
@@ -237,8 +238,9 @@ SEARCH_HELD = ("made when the node is built, from the hull's shape as built: whe
 #: the lower index, as the sampling's choice of samples breaks them (``mime.scene``'s ``TIE``).
 GROUP_TIE = 1e-12
 #: The friction laws a hull contact's solve holds, by the name its constant ``friction`` takes, each with its row
-#: pairs beside the normal row (``_friction.Traction``): Coulomb's sliding pair, bounded by ``mu`` times the normal force.
-FRICTION_LAWS = {"coulomb": (SLIDING,)}
+#: pairs beside the normal row (``_friction.Traction``): Coulomb's sliding pair, bounded by ``mu`` times the normal force,
+#: and with rolling resistance its rolling pair, bounded by ``mu_r`` (a length) times it.
+FRICTION_LAWS = {"coulomb": (SLIDING,), "coulomb_rolling": (SLIDING, ROLLING)}
 #: The surfaces a frictional hold lays its frame out on (``friction_along``): a tube's axis lies across every normal of
 #: its wall, and a plane takes a direction across its normal fixed when the node is built.
 FRAMED = frozenset({"cylinder", "half_space"})
@@ -452,6 +454,7 @@ class RigidInertialNode(MimeNode):
                  hull_rotation: Sequence[float] = _IDENTITY, hull_groups: np.ndarray | None = None,
                  contact_loops: bool = False, publishes_mass_matrix: bool = False, ledger: Sequence[str] = (),
                  friction: str = "", friction_mu: float = 0.0, friction_law: str = "",
+                 friction_rolling: float | None = None,
                  **constants: object) -> None:
         surface = {key: value for key, value in constants.items() if key.startswith(SURFACE)}
         settings = {key.removeprefix(HULL): value for key, value in constants.items() if key.startswith(HULL)}
@@ -474,6 +477,11 @@ class RigidInertialNode(MimeNode):
                                  f"{velocity_rule!r}")
         elif surface:
             raise TypeError(f"surface parameters {sorted(surface)} with no surface_shape")
+        rolls = friction in FRICTION_LAWS and ROLLING in FRICTION_LAWS[friction]
+        if friction and (rolls != (friction_rolling is not None) or (rolls and not (
+                math.isfinite(cast(float, friction_rolling)) and cast(float, friction_rolling) >= 0.0))):
+            raise ValueError(f"friction {friction!r} takes rolling resistance (friction_rolling, a length from 0 on) "
+                             f"exactly where its law holds the rolling pair: {friction_rolling!r}")
         if friction and (friction not in FRICTION_LAWS or surface_shape not in FRAMED or not hull_kind
                          or not (math.isfinite(friction_mu) and friction_mu >= 0.0) or not friction_law):
             raise ValueError(f"friction {friction!r} is held at a hull's points against its surface: it takes a law of "
@@ -541,7 +549,9 @@ class RigidInertialNode(MimeNode):
                          **{f"{HULL}{name}": value for name, value in settings.items()},
                          **({"publishes_mass_matrix": True} if publishes_mass_matrix else {}),
                          **({"friction": friction, "friction_mu": float(friction_mu), "friction_law": friction_law}
-                            if friction else {}), ledger=ledger)
+                            if friction else {}),
+                         **({"friction_rolling": float(friction_rolling)} if friction_rolling is not None else {}),
+                         ledger=ledger)
         self._frame = _plane_frame(surface) if friction and surface_shape == "half_space" else None
 
     def _body_points(self, hull: Mapping[str, Any], settings: Mapping[str, object]) -> np.ndarray:
@@ -568,8 +578,11 @@ class RigidInertialNode(MimeNode):
         return bool(self.constants().get("friction"))
 
     def traction(self, p: Mapping[str, Any]) -> Traction:
-        """The frictional hold's row pairs and their coefficients (``friction_mu``, a leaf a study may move)."""
-        return Traction(FRICTION_LAWS[cast(str, self.constants()["friction"])], (p["friction_mu"],))
+        """The frictional hold's row pairs and their coefficients (``friction_mu``, and ``friction_rolling`` where it
+        holds rolling resistance: leaves a study may move)."""
+        pairs = FRICTION_LAWS[cast(str, self.constants()["friction"])]
+        coefficients = (p["friction_mu"], p["friction_rolling"]) if ROLLING in pairs else (p["friction_mu"],)
+        return Traction(pairs, coefficients)
 
     def friction_along(self, p: Mapping[str, Any], dtype: Any) -> Array:
         """The direction a frictional hold's frame is laid out from (``_friction.traction_rows``): a tube's axis, across
@@ -666,6 +679,9 @@ class RigidInertialNode(MimeNode):
         if self.holds_friction:
             held["friction_mu"] = ParamSpec(bounds=(0.0, None), units="1",
                                             description="the contact's friction coefficient, static and kinetic in one")
+            if "friction_rolling" in self.constants():
+                held["friction_rolling"] = ParamSpec(bounds=(0.0, None), units="m",
+                                                     description="the contact's rolling resistance, a length")
         if self.holds_hull:
             held["extent"] = ParamSpec(trainable=False, description="held by its hull's points, so the step reads no "
                                                                     "extent")
@@ -882,13 +898,14 @@ class RigidInertialNode(MimeNode):
         reach = found.gaps - band
         closing = switch.maximum(reach, 0.0, owner="contact.gap", indicator=reach,
                                  resolution=lambda: switch.rounding(jnp.abs(found.gaps) + p["margin"]))
-        rows = traction_rows(found.rows, found.points, pose[:3], self.friction_along(p, dtype))
+        traction = self.traction(p)
+        rows = traction_rows(found.rows, found.points, pose[:3], self.friction_along(p, dtype),
+                             rolling=ROLLING in traction.pairs)
         points, count = rows.shape[:2]
         flat = rows.reshape(points * count, 6)
         response = jnp.linalg.solve(system, flat.T)
         coupling = (flat @ response).reshape(points, count, points, count)
         start = (flat @ moved).reshape(points, count).at[:, NORMAL].add(closing / dt)
-        traction = self.traction(p)
         forces = normal_work_free(coupling, start, frictional_sweeps(coupling, start, traction, self.friction_sweeps,
                                                                      loops=self.loops))
         rates = slip(coupling, start, forces)
@@ -896,7 +913,8 @@ class RigidInertialNode(MimeNode):
         power = friction_power(coupling, start, forces, traction.pairs, rows, moved)
         left = jnp.maximum(cone_residual(coupling, start, forces, traction, found.rows, moved),
                            CONVERGED * power / power_floor(dtype))
-        along = jnp.einsum("kr,krj->kj", forces[:, pairs], rows[:, pairs, :3])
+        sliding_rows = np.asarray(SLIDING)
+        along = jnp.einsum("kr,krj->kj", forces[:, sliding_rows], rows[:, sliding_rows, :3])
         sliding = lax.stop_gradient(rates[:, np.asarray(SLIDING)])
         speed = jnp.where(lax.stop_gradient(forces[:, NORMAL]) > 0.0, jnp.sqrt(jnp.sum(sliding * sliding, axis=-1)),
                           0.0)

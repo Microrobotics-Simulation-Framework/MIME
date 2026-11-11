@@ -12,7 +12,8 @@ test_friction.py``, breakaway at ``tan(theta) = mu``).
 - :func:`normal_law_suite`: the normal force never below the law's least (``NormalLaw.least``), no point past the
   shrunk wall after the step beyond rounding, and the hold's complementarity met (its residual under ``CONVERGED``).
 - :func:`row_kind_suite`: a built row kind's rows measure what it declares (sliding: the slip of the body's own point,
-  ``t . (v + omega x r)``, on a frame across the normal); a reserved kind is refused by the contact with its reason.
+  ``t . (v + omega x r)``, on a frame across the normal; rolling: the rotation about the tangents, ``t . omega``); a
+  reserved kind is refused by the contact with its reason.
 
 Draws (a sphere of 1 mm and a cylinder 1 mm by 3 mm lying on the plane ``z >= 0``, 2000 kg/m^3, a step of 1 ms): a
 load of 0.3 to 3 weights at up to 1.4 rad from the normal in any azimuth, linear speeds along the plane of 1e-6 to 5e-2
@@ -360,13 +361,13 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
         from mime.interactions import Contact
         from mime.interactions.friction import Coulomb
 
-        law = type("Reserved", (Coulomb,), {"rows": (kind,)})(mu=0.3)
+        law = type("Reserved", (Coulomb,), {"rows": (kind,), "held_rows": lambda self: (kind,)})(mu=0.3)
         found = Contact.Projection(margin=1e-4, friction=law).setting_problems({"margin": 1e-4})
         if record.reason in found:
             return VerificationResult("row kind", "PASS", detail=f"{kind}: reserved, refused with its reason")
         return VerificationResult("row kind", "FAIL", detail=f"{kind}: reserved, and a law adding it is not refused "
                                                              f"with its reason: {found}")
-    if kind != "sliding":
+    if kind not in ("sliding", "rolling"):
         return VerificationResult("row kind", "FAIL", detail=f"{kind}: built, and the suite has no check of its rows")
     dtype = jnp.zeros(()).dtype
     eps = float(jnp.finfo(dtype).eps)
@@ -389,9 +390,18 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
         r = 1e-3 * np.asarray(arm, dtype=np.float64)
         rows = jnp.concatenate([jnp.asarray(n, dtype=dtype), jnp.asarray(np.cross(r, n), dtype=dtype)])[None]
         held = np.asarray(traction_rows(rows, jnp.asarray(r[None], dtype=dtype), jnp.zeros(3, dtype=dtype),
-                                        jnp.asarray(along, dtype=dtype)), dtype=np.float64)[0]
+                                        jnp.asarray(along, dtype=dtype), rolling=kind == "rolling"),
+                          dtype=np.float64)[0]
         v, w = 1e-2 * np.asarray(linear, dtype=np.float64), 10.0 * np.asarray(angular, dtype=np.float64)
         point = v + np.cross(w, r)
+        if kind == "rolling":
+            for sliding_row, rolling_row in zip(held[1:3], held[3:5], strict=True):
+                t = np.asarray(sliding_row[:3], dtype=np.float64)
+                measured = float(rolling_row @ np.concatenate([v, w]))
+                if float(np.max(np.abs(rolling_row[:3]))) != 0.0 or \
+                        abs(measured - float(t @ w)) > 64 * eps * float(np.linalg.norm(w)):
+                    failures.append(f"a rolling row {rolling_row} does not measure the rotation about {t}")
+            return
         for row in held[1:]:
             t = np.asarray(row[:3], dtype=np.float64)
             if abs(float(np.linalg.norm(t)) - 1.0) > 64 * eps or abs(float(np.dot(t, n))) > 64 * eps:
@@ -406,7 +416,8 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
     check()
     if failures:
         return VerificationResult("row kind", "FAIL", detail=f"{kind}: {len(failures)} failures; first: {failures[0]}")
-    return VerificationResult("row kind", "PASS", detail=f"{kind}: its rows measure the slip of the body's own point")
+    measured = "the slip of the body's own point" if kind == "sliding" else "the body's rotation about the tangents"
+    return VerificationResult("row kind", "PASS", detail=f"{kind}: its rows measure {measured}")
 
 
 __all__ = ["BODIES", "SUITE_SWEEPS", "friction_law_suite", "held_node", "normal_law_suite", "row_kind_suite"]
