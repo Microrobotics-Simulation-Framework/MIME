@@ -45,6 +45,17 @@
     "if_wrong": "the share's volume (the hull's, not the indicator's) or its point is wrong",
     "cannot_discriminate_if": "the drive is too small for the drift to clear the solve's tolerance"
   },
+  "gate_3b_closed_box_held": {
+    "written": "2026-11-11, an amendment committed before its test ran: gate 3's second control (a neutral sphere in a closed box at rest under a drive) was not built with the first; it is built now in the form below, the moving closed-box run replaced by the held body's steady load",
+    "claim": "a neutral sphere held at rest in the tube (6 cells a radius, a/R 0.375, the steady Stokes step) under a drive across the axis, which the wall stops: its field load (the push of the pressure the drive builds) and its displaced share cancel",
+    "kind": "estimates",
+    "case": "tests/flow/test_resolved_bodies.py, the held sphere's steady step with the drive along x",
+    "prediction": {"value": 0.02, "band": [0.0, 0.1], "unit": "1", "basis": "guess", "why": "the share takes the hull's exact volume and the field's push the lifted indicator's, a body a few hundredths of a cell smaller (gate 1's shift), plus the band's recirculation"},
+    "metric": "|load + share| along the drive over rho V f; the lateral components over the same",
+    "control": {"plant": "the share left out", "environment_variable": "MIME_PLANT_NO_SHARE", "expected_rate": "N/N", "runs": 5, "clean_expected": "0/N"},
+    "if_wrong": "the share and the field's push do not cancel: the drive's pressure is counted twice or not at all on a body in a closed vessel",
+    "cannot_discriminate_if": "the drive is along the axis (the periodic flow carries it and no pressure builds)"
+  },
   "gate_4_ledger": {
     "claim": "metered, every receiver's books close at every step; the drag's penalty is booked under its id on the fluid's and the body's rows, its share under its own part, and its sign judged at one velocity by its host, no gift step",
     "kind": "equality",
