@@ -50,7 +50,9 @@ SPHEROIDS_SHA256 = "062c4f33fe1540ba1c0b045eb6737c29105586de50c272e53ec94d250251
 SPHEROID_GAPS = (0.1, 0.075, 0.06, 0.04, 0.03, 0.02)
 TURNS = 3
 #: The measured worst misses gate 1 pins (rate; entry on its own scale), by tilt, and how far each may move.
-SPHEROID_PINNED: dict[float, tuple[float, float]] = {}
+#: Measured (W2a PR 1b-ii-a, laptop heavy slot, float64, 3 turns a tilt): lying, the rate 22.46 % (probe B's 22.5 %)
+#: and an entry 33.3 % (probe B's T_y 28.5 %); at 30 degrees 16.67 % (17.0 %) and 17.9 % (17.9 %).
+SPHEROID_PINNED: dict[float, tuple[float, float]] = {0.0: (0.2246, 0.3331), 30.0: (0.1667, 0.1793)}
 SPHEROID_PIN = 0.02
 #: The coupling entries judged on their own size: those over this share of their block's largest (probe B's rule).
 SIGNIFICANT = 0.05
