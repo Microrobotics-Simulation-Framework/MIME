@@ -151,8 +151,9 @@ class Inflow(_OpeningLaw):
     """A volume flux into the flow at an opening, ``steady + amplitude cos(2 pi frequency t + phase)``:
     ``exp.attach(Inflow(steady=mL_per_s(1.0)), medium=blood, surface=tube.start)``. The flow holds the opening's flux
     to it at each step's end (its pressure the unknown that pins it: decision 7's evolved face, a flux row): the whole
-    plane's flux, the wall's band included, so the lumen takes it less the band's Darcy share (about 0.1 to 1 %). A
-    source: the work it supplies, the pressure the flow returns times its flux, is booked under its name."""
+    plane's flux, the wall's band and solid included, so the lumen takes it less the solid's share (its size in the
+    FVM's validity: a few per cent at D/h 8 in steady flow). A source: the work it supplies, the pressure the flow
+    returns times its flux, is booked under its name."""
 
     name = "inflow"
     version = "0.1.0"

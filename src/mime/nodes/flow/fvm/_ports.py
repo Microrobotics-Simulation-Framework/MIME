@@ -335,8 +335,9 @@ def _reduced(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response:
         if coupled == [i]:  # a law at one opening: its row as b_i q_i alone
             coefficients, pushed = -b[i, i] * response[i], b[i, i] * base[i]
         else:
-            coefficients = -sum((b[i, j] * response[j] for j in coupled), start=jnp.zeros_like(response[i]))
-            pushed = sum((b[i, j] * base[j] for j in coupled), start=jnp.zeros((), dtype=dtype))
+            coefficients, pushed = jnp.zeros_like(response[i]), jnp.zeros((), dtype=dtype)
+            for j in coupled:
+                coefficients, pushed = coefficients - b[i, j] * response[j], pushed + b[i, j] * base[j]
         if i != reference:
             coefficients = coefficients.at[others.index(i)].add(1.0)
         return coefficients, a[i] + pushed - predicted[i]
