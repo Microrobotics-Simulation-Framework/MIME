@@ -246,11 +246,13 @@ def gcb(gap: float) -> dict[str, float]:
             "ryy": 8 * math.pi * ((2 / 5) * log + 0.3817), "zz": 6 * math.pi * brenner(gap)}
 
 
-#: The film's increment over the method of fundamental solutions', entry by entry, in the lift's band (a spacing of
-#: 0.2 radii, the lift at the hand-over gap 0.15 exactly): MIME-ANO-154's form (its patch at the hand-over gap), pinned;
-#: and the line between two deep gaps, where the patch's part cancels.
-INCREMENT_BAND = {0.075: {"xx": 0.685, "zz": 0.816, "ryry": 0.730, "x-ry": 1.829},
-                  0.06: {"xx": 0.706, "zz": 0.843, "ryry": 0.751, "x-ry": 1.765}}
+#: The elliptic form's increment over the method of fundamental solutions', entry by entry, in the lift's band (a
+#: spacing of 0.2 radii, the lift at the hand-over gap 0.15 exactly): MIME-ANO-154's form (its singular terms alone
+#: between the gap and the hand-over gap, which the regular terms' change there leaves out), pinned (measured, W2a PR
+#: 1b-ii-a; the film read 0.69 to 0.84 on the diagonal and 1.77 to 1.83 on the coupling); and the line between two deep
+#: gaps, where the form is the asymptotes' (measured within 8e-4).
+INCREMENT_BAND = {0.075: {"xx": 1.147, "zz": 0.982, "ryry": 1.431, "x-ry": 1.589},
+                  0.06: {"xx": 1.135, "zz": 0.984, "ryry": 1.393, "x-ry": 1.535}}
 INCREMENT_PIN = 0.01
 DEEP_PAIRS = ((0.001, 0.005), (0.002, 0.01))
 DEEP_LINE = 0.07

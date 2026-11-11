@@ -3801,7 +3801,11 @@ anomalies:
       semi-axis, against the film's 86 %, 10 %, 238 % and 4 %: it removes the film's failures on the roll about the
       long axis and is 1.4 to 1.7 times worse than the film on the tilted bodies; the torque about the wall's axis +12
       to +33 % where the film's was -6 to +7 %. Through the node at this PR's gates: GATE1_SPHEROID_TEXT. On a sphere
-      given it (as a kind with no closed form): GATE1_SPHERE_TEXT. In a tube a non-sphere's form is not measured against
+      given it (as a kind with no closed form), above a plane through the node against the MFS and Goldman, Cox and
+      Brenner's asymptotes (tests/oracles/test_lubrication.py): the rolling rate +22 % at worst at a force spacing of
+      0.2 radii (gaps 0.1 to 0.001 radii: +16 to +22 % in the band, +19, +15, +12 and +10 % at 0.01, 0.005, 0.002 and
+      0.001) and +16 % at 0.15 radii, against the film's +43 % and +33 %; every entry on its own diagonal scale within
+      5 % at 0.15 radii and within 7 % at 0.2 radii but the rotations about the wall's axes, +7.3 % at 0.06 radii. In a tube a non-sphere's form is not measured against
       an independent reference. A body touching its wall at several points sums one increment a contact, the wall
       opened once; two contacts across a lumen were measured against a finer MRS of the same family: GATE5_TEXT. A line
       contact (a cylinder's or a capsule's side) and a ring (a body nearly filling a lumen) have no form yet: a body that
