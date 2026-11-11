@@ -60,7 +60,7 @@ class Api:
             workflow = path.split("/actions/workflows/")[1].split("/")[0]
             run = self.runs.get(workflow)
             return {"workflow_runs": [run] if run and f"head_sha={run['head_sha']}" in path else []}
-        if path.endswith("/jobs?filter=latest&per_page=100"):
+        if "/jobs?filter=latest&per_page=50&page=1" in path:
             run = next(run for run in self.runs.values() if f"/runs/{run['id']}/jobs" in path)
             self.reads += 1
             mode = run["mode"]
@@ -177,3 +177,20 @@ def test_the_run_page_says_what_was_done(monkeypatch, tmp_path):
     monkeypatch.setattr(ci_ready, "gh", failing)
     assert ci_ready.main(["--repository", REPOSITORY, "--pull-request", "30", "--run", "ci.yml=shard count"]) == 1
     assert summary.read_text(encoding="utf-8").splitlines()[-1] == "- gh api --method GET x: HTTP 403"
+
+
+def test_a_run_of_more_than_one_page_of_jobs_is_read_whole_at_fifty_a_request():
+    """``jobs_of`` pages through ``scripts/run_jobs.py``: a run of 94 jobs (run 42921435109) is two requests of 50, and
+    the job that reads the labels, on the second page, is found."""
+    every = [{"name": f"job {number}", "status": "completed", "conclusion": "success"} for number in range(93)]
+    every.append(mode_job("shard count", "full"))
+    asked: list[str] = []
+
+    def api(path: str, method: str = "GET") -> Any:
+        asked.append(path)
+        page = int(path.rsplit("page=", 1)[1])
+        return {"total_count": 94, "jobs": every[(page - 1) * 50:page * 50]}
+
+    jobs = ci_ready.jobs_of(api, REPOSITORY, 7)
+    assert len(jobs) == 94 and ci_ready.mode_of(jobs, "shard count") == ci_ready.FULL
+    assert asked == [f"repos/{REPOSITORY}/actions/runs/7/jobs?filter=latest&per_page=50&page={page}" for page in (1, 2)]

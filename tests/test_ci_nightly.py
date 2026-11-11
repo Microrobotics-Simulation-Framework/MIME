@@ -152,7 +152,8 @@ class FakeGh:
             return json.dumps({"status": "completed" if done else "in_progress",
                                "conclusion": self.conclusion if done else None})
         if "/actions/runs/7/jobs" in url:
-            return "\n".join(json.dumps(job) for job in self.jobs)
+            page = int(url.rsplit("&page=", 1)[1])
+            return json.dumps({"total_count": len(self.jobs), "jobs": self.jobs[(page - 1) * 50:page * 50]})
         raise AssertionError(f"gh called with {arguments}")
 
 
