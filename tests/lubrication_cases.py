@@ -84,21 +84,21 @@ def _with_body(experiment: Experiment, spacing: float | None, blob: float | None
 
 
 #: The two-contact gate's body and tube (``tests/oracles/test_elliptic_gates.py``, gate 5): an ellipsoid lying across a
-#: straight tube of radius 1 mm, its long axis along x, the tube's along z, its two ends 0.08 mm from the wall in all.
-ACROSS_AXES, ACROSS_TUBE, ACROSS_BLOB = (0.96e-3, 0.65e-3, 0.65e-3), 1e-3, 0.05
+#: straight tube of radius 1 mm, its long axis along x, the tube's along z, its two ends 0.1 mm from the wall in all.
+ACROSS_AXES, ACROSS_TUBE, ACROSS_BLOB = (0.95e-3, 0.65e-3, 0.65e-3), 1e-3, 0.05
 
 
 def across(h1: float, h2: float) -> Any:
-    """The pose with the body's +x end ``h1`` and its -x end ``h2`` from the wall (m, summing to 0.08 mm): its centre on
+    """The pose with the body's +x end ``h1`` and its -x end ``h2`` from the wall (m, summing to 0.1 mm): its centre on
     x."""
     return jnp.asarray(((h2 - h1) / 2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
 
 
-def across_tube(spacing: float, near_contact: bool | None) -> Experiment:
-    """The two-contact case at a force ``spacing`` (m), the hand-over on, off or unwritten."""
+def across_tube(spacing: float, near_contact: bool | None, blob: float = ACROSS_BLOB) -> Experiment:
+    """The two-contact case at a force ``spacing`` (m) and ``blob``, the hand-over on, off or unwritten."""
     from mime.scene import Ellipsoid
 
-    return in_tube(spacing / RADIUS, blob=ACROSS_BLOB, lubrication=near_contact, tube=ACROSS_TUBE,
+    return in_tube(spacing / RADIUS, blob=blob, lubrication=near_contact, tube=ACROSS_TUBE,
                    kind=Ellipsoid(semi_axes=m(ACROSS_AXES)), name="ellipsoid_across")
 
 

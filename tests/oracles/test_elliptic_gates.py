@@ -198,9 +198,9 @@ def test_gate3_an_ellipsoids_normal_goes_as_one_over_the_gap_to_its_elliptic_lim
 # -- gate 5 ----------------------------------------------------------------------------------------------------------
 
 ACROSS = REFERENCES / "ellipsoid_across_tube_mrs.json"
-#: Gate 5's coarse force spacing (m): the hand-over gap 0.06 mm, so that both ends' gaps (summing to 0.08 mm) lie under
-#: it; the reference's spacing is half of it.
-COARSE = 0.08e-3
+#: Gate 5's coarse force spacing (m): the hand-over gap 0.066 mm, so that both ends' gaps (summing to 0.1 mm) lie under
+#: it; the reference's spacing 0.05 mm at blob 0.1 (resolving gaps from 0.0375 mm), within a runner's memory.
+COARSE = 0.088e-3
 #: Gate 5's line per entry against the finer MRS, and the line past which a control counts as failed.
 TWO_CONTACT_LINE = 0.10
 CONTROL_LINE = 0.20
@@ -316,7 +316,7 @@ def test_gate5_two_contacts_closed_the_lift_holds_and_each_control_fails():
 def test_gate8_two_contacts_forward_and_reverse_equal_the_difference():
     with planted():
         built = across_tube(COARSE, True).build()
-        found = compared(built, lambda g: across(g * RADIUS, 0.08e-3 - g * RADIUS), (0.05, 0.04, 0.025),
+        found = compared(built, lambda g: across(g * RADIUS, 0.1e-3 - g * RADIUS), (0.07, 0.06, 0.04),
                          ("wall_radius",))
     for gap, name, reverse, forward, difference, scale in found:
         print(f"\nh1/a {gap} {name}: reverse {reverse:.10g} forward {forward:.10g} difference {difference:.10g}")
