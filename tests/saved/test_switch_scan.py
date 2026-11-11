@@ -20,6 +20,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+import _fixture_first
 import jax
 import jax.numpy as jnp
 import pytest
@@ -65,10 +66,18 @@ def scan() -> SwitchScan:
     return tree_scan()
 
 
+def test_every_test_reading_the_scans_fixtures_is_marked_fixture_first(request):
+    """The fixtures cost minutes; the mark sends the tests that read them to one worker's head of the queue
+    (``tests/_fixture_first.py``), so that one worker pays and the others do not."""
+    unmarked = _fixture_first.unmarked_readers(request.session.items, "tests/saved/test_switch_scan.py", ("scan", "steps"))
+    assert unmarked == [], f"read the scan's fixtures without @pytest.mark.fixture_first: {unmarked}"
+
+
 def node_classes(records) -> set[type]:
     return {node for record in records for nodes in dict(record.cls.builds).values() for node in nodes}
 
 
+@pytest.mark.fixture_first
 def test_the_tree_passes_the_scan_with_its_list_and_its_owners(scan, records, steps):
     problems = scan_problems(scan, read_list(LIST, LISTS["raw_switches"]), declared_owners(records),
                              node_classes(records), ROOT / "tests")
@@ -100,6 +109,7 @@ CENSUS = {
 }
 
 
+@pytest.mark.fixture_first
 def test_the_traced_scope_holds_every_census_site_a_nodes_step_reaches(scan):
     reached = {(function.path, function.name) for function in scan.scope}
     missing = {sites: function for sites, function in CENSUS.items() if function not in reached}
@@ -115,6 +125,7 @@ def test_a_dotted_origin_naming_a_modules_object_has_no_aliases_and_a_module_has
     assert module_aliases("mime.scene._screw")["SCREW"] == "mime.core._shapes.SCREW"
 
 
+@pytest.mark.fixture_first
 def test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_steps(scan, steps):
     recorded: set[str] = set()
     for configuration, make in configurations().items():
@@ -372,6 +383,7 @@ def test_a_generator_expression_is_matched_and_scanned(tmp_path):
     assert (list(raw.hits), raw.unmatched) == (["planted_1.py step.<locals>.<genexpr> maximum 1"], [])
 
 
+@pytest.mark.fixture_first
 def test_an_owner_passed_by_position_to_a_helper_fails(tmp_path, scan, records):
     helper = "\n\ndef helper(v, owner):\n    return switch.maximum(v, 0.0, owner=owner, resolution=0.0, indicator=v)\n"
     positional = scanned(tmp_path, PRELUDE + helper + "\n\ndef step(x):\n    return helper(x, 'planted.m')\n")
@@ -383,6 +395,7 @@ def test_an_owner_passed_by_position_to_a_helper_fails(tmp_path, scan, records):
     assert "an owner passed by position to plant.planted_0.helper" in problem
 
 
+@pytest.mark.fixture_first
 def test_control_steps_whose_equations_carry_no_frame_say_so_first_and_nothing_else(steps, records, tmp_path,
                                                                                     monkeypatch):
     """With JAX's source information gone, the scan's scope is empty: every list line would read as stale and every
@@ -490,12 +503,14 @@ def real_list() -> str:
     return LIST.read_text(encoding="utf-8")
 
 
+@pytest.mark.fixture_first
 def test_control_a_converted_site_still_listed_fails(scan, records, tmp_path):
     stale = "nodes/hydro/_surrogate_drag.py SurrogateDragNode.end where 1  # planted: drag.end is converted\n"
     (problem,) = problems_with(scan, records, real_list() + stale, tmp_path)
     assert "is no longer a raw site a node's step runs; delete this line" in problem
 
 
+@pytest.mark.fixture_first
 def test_control_an_unlisted_raw_site_fails(scan, records, tmp_path):
     held = real_list().replace("nodes/actuation/_uniform_field.py _unit sqrt 1", "# ")
     (problem,) = problems_with(scan, records, held, tmp_path)
@@ -506,6 +521,7 @@ def test_control_an_unlisted_raw_site_fails(scan, records, tmp_path):
 CYLINDER_CLEARED = (" cleared_by tests/saved/test_shape_suite.py::test_the_cylinders_normal_within_its_axis_band_has_the_projection_across_the_axis_as_its_jacobian")
 
 
+@pytest.mark.fixture_first
 def test_control_a_listed_stop_gradient_naming_neither_a_status_nor_a_test_fails(scan, records, tmp_path):
     held = real_list().replace(CYLINDER_CLEARED, "")
     found = problems_with(scan, records, held, tmp_path)
@@ -516,6 +532,7 @@ def test_control_a_listed_stop_gradient_naming_neither_a_status_nor_a_test_fails
     assert problems_with(scan, records, capped, tmp_path) == []
 
 
+@pytest.mark.fixture_first
 def test_control_an_undeclared_owner_and_a_declared_owner_nothing_passes_each_fail(scan, records, tmp_path):
     owners = dict(declared_owners(records))
     owners.pop("drag.end")
@@ -526,6 +543,7 @@ def test_control_an_undeclared_owner_and_a_declared_owner_nothing_passes_each_fa
     assert len(found) == 2
 
 
+@pytest.mark.fixture_first
 def test_control_a_registered_node_class_no_configuration_traces_fails_naming_it(scan, records, tmp_path):
     class UntracedNode:
         pass
@@ -563,6 +581,7 @@ def test_a_labs_owner_carries_its_packages_name(records):
         in twice[1]
 
 
+@pytest.mark.fixture_first
 def test_the_labs_package_is_scanned_by_the_same_rule_over_its_own_functions_alone(steps, tmp_path):
     """The lab fixture's interaction writes a constant, so its step has no equation of its own, and its observation's
     step, a dot product and a sum, is the one function of the lab's in scope, with no switch in it; MIME's toys
