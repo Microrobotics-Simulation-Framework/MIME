@@ -106,6 +106,7 @@ def probe_problems(root: Path, scratch: Path) -> list[str]:
     if not 0 < probe.get("timeout-minutes", 0) <= 340:
         found.append("the probe job's timeout-minutes is not at most 340")
     run = step_named(probe, "Run probe/run.sh")
+    found += estimate_step_problems(probe, scratch / "estimate")
     limit = re.search(r"timeout\s+(?:--\S+\s+)*(\d+)\s+bash probe/run\.sh", str(run["run"]))
     if not limit or int(limit.group(1)) >= probe["timeout-minutes"] * 60:
         found.append("probe/run.sh does not run under a `timeout` shorter than the job's own")
@@ -127,6 +128,43 @@ def probe_problems(root: Path, scratch: Path) -> list[str]:
         if got != f"name={wanted}":
             found.append(f"the artifact of {branch!r} arm {arm!r} is named {got!r}, not name={wanted}")
     found += arm_problems(jobs.get("arms"), scratch / "arms")
+    return found
+
+
+def estimate_step_problems(probe: dict[str, object], scratch: Path) -> list[str]:
+    """The memory-estimate step: it precedes the script, runs the estimator on the probe's own lines for its arm and
+    requires the runner route, passes a probe that declares nothing with a warning, and fails (naming why) a probe whose
+    estimate is beyond a runner, killed or failed. Run in bash with a stand-in ``python`` that exits as told."""
+    names = [step.get("name") for step in probe["steps"]]  # type: ignore[index]
+    if "Memory estimate and route" not in names:
+        return ["the probe job has no step 'Memory estimate and route'"]
+    if names.index("Memory estimate and route") > names.index("Run probe/run.sh"):
+        return ["the memory estimate does not precede the probe's script"]
+    step, found = step_named(probe, "Memory estimate and route"), []
+    script = str(step["run"])
+    if "mem_estimate.py --from-file probe/estimate.txt" not in script or "--require actions" not in script \
+            or '--arm "$PROBE_ARM"' not in script:
+        found.append("the estimate step does not run mem_estimate.py on probe/estimate.txt for its arm, requiring actions")
+    for index, (declared, code, passes, says) in enumerate([(False, 0, True, "::warning::"), (True, 0, True, ""),
+                                                            (True, 1, False, "beyond a runner"), (True, 2, False, "estimate failed"),
+                                                            (True, 137, False, "killed")]):
+        where = scratch / str(index)
+        (where / "probe").mkdir(parents=True)
+        (where / "bin").mkdir()
+        if declared:
+            (where / "probe" / "estimate.txt").write_text("*: --case x:y\n", encoding="utf-8")
+        stand_in = where / "bin" / "python"
+        stand_in.write_text(f"#!/bin/sh\necho \"called: $@\"\nexit {code}\n", encoding="utf-8")
+        stand_in.chmod(0o755)
+        (where / "step.sh").write_text(script, encoding="utf-8")
+        done = subprocess.run([BASH, "-e", str(where / "step.sh")], cwd=where, text=True, capture_output=True, check=False,
+                              env={"PATH": f"{where / 'bin'}:/usr/bin:/bin", "PROBE_ARM": "a1"})
+        if (done.returncode == 0) != passes or says not in done.stdout + done.stderr:
+            found.append(f"estimate step (declared {declared}, estimator exit {code}): exit {done.returncode}, "
+                         f"output {(done.stdout + done.stderr)!r}; wanted {'a pass' if passes else 'a failure'} saying {says!r}")
+        if declared and "called: .github/probe/mem_estimate.py --from-file probe/estimate.txt --arm a1 --require actions" \
+                not in done.stdout:
+            found.append("the estimate step does not hand the estimator the probe's arm")
     return found
 
 
@@ -191,6 +229,9 @@ PROBE_PLANTS = {
                                           "under always()"),
     "a shorter retention": ("retention-days: 14", "retention-days: 90", "under always()"),
     "an arm name reaching the shell unchecked": ("[A-Za-z0-9._-]{1,40}", ".{1,40}", "probe/arms.txt"),
+    "the estimate step dropped": ("      - name: Memory estimate and route\n", "      - name: Something else\n", "Memory estimate and route"),
+    "the runner route no longer required": ("--arm \"$PROBE_ARM\" --require actions", "--arm \"$PROBE_ARM\"", "does not run mem_estimate.py"),
+    "a killed estimate passing": ('if [ "$rc" -ge 128 ]; then', 'if [ "$rc" -ge 1280 ]; then', "killed"),
     "a secret in the probe job": ("      PROBE_ARM: ${{ matrix.arm }}\n", "      PROBE_ARM: ${{ matrix.arm }}\n      K: ${{ secrets.X }}\n",
                                   "reads a secret"),
 }

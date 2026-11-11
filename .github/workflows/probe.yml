@@ -126,6 +126,26 @@ jobs:
         run: uv pip install --no-deps ./lab_fixture
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
+      # The probe's memory estimate, before it runs (the maintainer's route: up to 12 GiB here, 12 to 48 on the maintainer's
+      # machine, over that on Modal with his word). probe/estimate.txt holds one line per case, `<arm or *>: <arguments of
+      # .github/probe/mem_estimate.py>`; a probe over a runner stops here with its route instead of dying an hour in. The
+      # step needs the environment, so it follows the set-up and precedes the script, the first thing the probe itself does.
+      - name: Memory estimate and route
+        run: |
+          if [ ! -f probe/estimate.txt ]; then
+            echo "::warning::this probe declares no memory estimate (probe/estimate.txt): nothing checks it against the runner's 16 GB"
+            exit 0
+          fi
+          rc=0
+          python .github/probe/mem_estimate.py --from-file probe/estimate.txt --arm "$PROBE_ARM" --require actions || rc=$?
+          if [ "$rc" -ge 128 ]; then
+            echo "::error::the estimate itself was killed (signal $((rc - 128))): this probe needs more than a runner holds; run it on the maintainer's machine under the cap, or past 48 GiB on Modal with his word"
+            exit 1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::this probe is beyond a runner's memory, or its estimate failed (see above for the route): not run here"
+            exit 1
+          fi
       - name: Run probe/run.sh
         id: run
         run: |

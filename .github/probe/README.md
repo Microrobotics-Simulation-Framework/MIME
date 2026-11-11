@@ -89,6 +89,37 @@ of the time (`1 - (7/8)^N`). `every_run` is true when all planted runs were caug
 exits 1 otherwise. Where the plant needs several runners, put the sizes or values in `probe/arms.txt` and read `PROBE_ARM`
 in the script. `tests/test_probe_detection_rate.py` holds its controls.
 
+## How much memory a probe needs, and where it goes: `mem_estimate.py`
+
+A standard runner has 16 GB; 6 of 113 probe runs were killed by it. Before a probe runs, the estimate says which machine it
+belongs on, from the compiled program and not from a guess:
+
+| estimate (times the calibration factor) | route |
+|---|---|
+| up to 12 GiB | `actions`: a `probe/<name>` branch, this workflow |
+| 12 to 48 GiB | `local`: the maintainer's machine, one at a time, under a 48 GiB cap, for memory-bound correctness only, never a timing claim |
+| over 48 GiB | `modal`: only on the maintainer's word |
+
+```
+python .github/probe/mem_estimate.py --case module:function --path DIR --steps 10 --wrt node.leaf --output-json est.json
+```
+
+It builds the case, then asks XLA for the compiled memory analysis of a chunk of `--steps` steps of the graph and, with
+`--wrt`, of the reverse-mode derivative of that chunk (`jax.jit(f).lower(...).compile().memory_analysis()` on abstract
+shapes: nothing of the run is allocated), adds the host's resident set after the build, the nodes' own `memory_estimate()`
+where they have one, and the fixed part of a process (about 0.7 GiB), and multiplies the largest by the calibration factor
+of `mem_calibration.json` before reading the route. A probe declares its cases in `probe/estimate.txt`, one line each,
+`<arm or *>: <the arguments above>`; the workflow's step "Memory estimate and route" runs the lines of its arm before the
+script and stops the job with the route if a case is beyond a runner (a probe with no `probe/estimate.txt` runs, with a
+warning).
+
+**What the calibration is evidence of.** `mem_calibration.json` holds the cases the estimator was checked against, each with
+its estimate, the peak measured on that case and their ratio, and the factor (never under 1, at least the largest ratio of a
+case that was underestimated). It rests on a few cases of one family (the MRS drag and its near field, on a CPU) and says
+so in its `scope`; a case of another family is outside what the factor was measured on. A measured peak marked as a lower
+bound is a run that was killed: the estimator is not underestimating it so long as it reads at least that. An estimate that
+jumps unexpectedly is a reason to look for the probe's own bug before sending the probe to a bigger machine.
+
 ## What this does not tell
 
 A probe measures what its script measures on a shared runner: timings are noisy (other jobs share the host) and are not a
