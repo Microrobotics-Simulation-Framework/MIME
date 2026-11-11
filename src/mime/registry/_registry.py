@@ -291,10 +291,8 @@ def _group_default_problems(cls: type) -> list[str]:
         return []
     found: list[str] = []
     for setting in dataclasses.fields(cls):
-        group = _group_of(hints.get(setting.name))
-        if group is None:
-            continue
-        for name, held in sorted(declared_roles(group).items()):
+        for group, (name, held) in ((group, item) for group in _groups_of(hints.get(setting.name))
+                                    for item in sorted(declared_roles(group).items())):
             if held.by is None:
                 continue
             where = f"setting {setting.name}.{name}"

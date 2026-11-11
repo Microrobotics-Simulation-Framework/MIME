@@ -123,6 +123,14 @@
       ],
       "control": "the PR's estimate (a forward run's counts, no margin or headroom) admitted seven spheres in reverse mode, which then failed with run.out-of-memory on a 28.2 GiB buffer (the review's run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42919424390)"
     },
-    "bits": "released 0.3.0 and 0.4.0 programs and 0.5.0's but mrs_graded every array equal in both dtypes, base 5e3c636 against the fix round's head, one CPU: https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42925508565"
+    "bits": "released 0.3.0 and 0.4.0 programs and 0.5.0's but mrs_graded every array equal in both dtypes, base 5e3c636 against the fix round's head, one CPU: https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42925508565",
+      "gate_10_wall_budget_353": {
+        "result": "as predicted for the flag: no step short on the sphere (budget 160 of 301, 113 in the patch) and the cylinder (78 of 84, 76) in both dtypes, the budget before #353 (76 and 21) six of six; the largest resistance entry moved by 1.56e-4 (sphere) and 1.60e-3 (cylinder) of itself; a step's time 1.26 and 1.29 times on the sphere (float64, float32), 1.07 and 1.47 on the cylinder, the run's peak memory within its noise (node_measure, three steady runs each, one job)",
+        "links": [
+          "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42944303576"
+        ],
+        "control": "W, the budget cut planted through the source (the share of every cell): 5/5, clean 0/2 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42944303576, arm det)",
+        "bits": "against the release tip dface1d: every 0.5.0 and released program equal but mrs_graded, 7 of 19 arrays in each dtype (wall_cells_short no longer differs)"
+      }
   }
 }

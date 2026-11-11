@@ -915,7 +915,7 @@ class MRSDragNode(MimeNode):
     def wall_budget(self) -> int:
         """How many cells a step integrates the wall's image over at most, the nearest the wall: ``wall_cells`` where
         given, else :data:`WALL_CELL_SHARE` of the cells, rounded up; on a graded sampling the budget follows its
-        density (decision #353): every cell of the graded patch, finer than the force spacing and crowding the reach
+        density: every cell of the graded patch, finer than the force spacing and crowding the reach
         where it faces the wall, and the share of the rest (:attr:`graded_cells`)."""
         held = int(self.constants().get("wall_cells") or 0)
         graded = self.graded_cells
