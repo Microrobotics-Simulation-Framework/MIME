@@ -186,7 +186,8 @@ def test_a_law_over_two_openings_binds_both_and_its_shared_resistance_drops_out(
 
 
 def test_a_law_given_another_count_of_openings_is_refused(float64):
-    """A one-opening law given two surfaces, and the two-opening law given one, are each refused naming the count."""
+    """A one-opening law given two surfaces, and the two-opening law given one, are each refused naming the count; a
+    region with no declared openings given as a law's openings is refused."""
     one = vessel(laws=())
     one.attach(Windkessel(proximal=Pa_s_per_m3(RESISTANCE), compliance=m3_per_Pa(1e-13),
                           distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface=("tube.start", "tube.end"))
@@ -195,6 +196,10 @@ def test_a_law_given_another_count_of_openings_is_refused(float64):
     two.attach(SharedDistal(first=Pa_s_per_m3(RESISTANCE), second=Pa_s_per_m3(RESISTANCE),
                             distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface="tube.end")
     assert "binding.opening-count" in refused(two)
+    wall = vessel(laws=())
+    wall.attach(SharedDistal(first=Pa_s_per_m3(RESISTANCE), second=Pa_s_per_m3(RESISTANCE),
+                             distal=Pa_s_per_m3(RESISTANCE)), medium="water", surface="tube.wall")
+    assert "binding.no-openings" in refused(wall)
 
 
 def test_a_saved_law_over_two_openings_loads_and_runs_bit_for_bit(float64, tmp_path):

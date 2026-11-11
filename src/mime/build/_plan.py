@@ -2831,7 +2831,7 @@ class _Planner:
         if len(set(joined)) != len(joined):
             self.refuse("binding.opening-count", RefusalClass.USER,
                         f"{where}: {role}= names an opening twice: {', '.join(joined)}",
-                        f"name {count} different openings")
+                        f"name {count} different openings, {role}=(<structure>.<opening>, ...)")
             return None
         return SURFACES_JOINED.join(joined)
 

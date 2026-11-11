@@ -19,5 +19,7 @@ node SwimSpeedNode references  # a definition: a projection of the velocity on a
 node RampNode references  # a definition: a held, moved and held value, resting on no work (dev2, the drives); route: as ConstantNode's line
 node PhaseLagNode references  # a definition: an angle between projections and running means, resting on no work (dev2, the drives); route: as SwimSpeedNode's line
 interaction inflow 0.1.0 references  # a definition: a volume flux given at an opening, steady or harmonic, resting on no work; route: none to close unless the inflow takes a measured or modelled waveform
+interaction shared_distal 0.1.0 references  # a definition: two resistances into one shared distal resistance, a lumped circuit resting on no work; route: none to close unless the shared bed is fitted to a measured or modelled one
+interaction valve 0.1.0 references  # a definition: a closed opening, no flux, resting on no work; route: none to close
 interaction body_force 0.1.0 references  # a definition: a uniform force per unit mass on the fluid, steady or harmonic, resting on no work; route: none to close unless the drive takes a modelled waveform
 node BodyForceNode references  # a definition: a uniform force per unit mass, steady or harmonic, resting on no work; route: none to close unless the drive takes a modelled waveform

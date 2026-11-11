@@ -332,10 +332,13 @@ def _reduced(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response:
         if rows[i] is RowKind.FLUX:
             return response[i], a[i] - base[i]
         coupled = [j for j in range(count) if couples[i][j]]
-        coefficients = -sum((b[i, j] * response[j] for j in coupled), start=jnp.zeros_like(response[i]))
+        if coupled == [i]:  # a law at one opening: its row as b_i q_i alone
+            coefficients, pushed = -b[i, i] * response[i], b[i, i] * base[i]
+        else:
+            coefficients = -sum((b[i, j] * response[j] for j in coupled), start=jnp.zeros_like(response[i]))
+            pushed = sum((b[i, j] * base[j] for j in coupled), start=jnp.zeros((), dtype=dtype))
         if i != reference:
             coefficients = coefficients.at[others.index(i)].add(1.0)
-        pushed = sum((b[i, j] * base[j] for j in coupled), start=jnp.zeros((), dtype=dtype))
         return coefficients, a[i] + pushed - predicted[i]
 
     gauge = rows[reference] is RowKind.FLUX

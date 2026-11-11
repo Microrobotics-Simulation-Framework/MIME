@@ -318,7 +318,8 @@ PLANTS: dict[str, Callable[[Setter], None]] = {
 FB1_LINE = {"float64": 1e-9, "float32": 1e-4}
 
 __all__ = ["FB1_LINE", "GIFT", "GIFT_SHARE", "INFLOW_LAW", "INTERIOR_FROM", "METERED", "OPENINGS_LAW", "PLANTS", "STEPS",
-           "WINDKESSEL_LAW", "NarrowedOpenNode", "OperatorDraw", "Point", "bypass_arm", "bypass_reading",
+           "WINDKESSEL_LAW", "FA1_PER_DEPTH_SQUARED", "NarrowedOpenNode", "OperatorDraw", "Point", "bypass_arm",
+           "bypass_reading", "fa1_line",
            "darcy_permeability", "draw", "n_wk_sum", "open_node", "operator_draw", "operator_errors", "point_node",
            "scan", "tube_resistance"]
 
@@ -484,8 +485,21 @@ def bypass_reading(node: OpenFlowNode, final: Any, interior: float) -> dict[str,
     oracle = np.asarray([-faces[0], faces[1]], dtype=np.float64) * h * h * speed
     shares = np.asarray(node.opening_solid_fluxes(p, velocity), dtype=np.float64) / \
         np.asarray(final["opening_flux"], dtype=np.float64)
+    carried = float(np.max(np.abs(np.asarray(final["opening_flux"], dtype=np.float64)) / np.abs(oracle)))
     return {"error": float(np.max(np.abs(found - oracle) / np.abs(oracle))), "found": found, "oracle": oracle,
-            "solid_share": shares}
+            "solid_share": shares, "carried": carried}
+
+
+#: FA1 = FB14's line on the deep solid's flux against Darcy's, over Darcy's: a share of ``delta_in^2`` (the Brinkman
+#: screening length over the spacing, squared: how far the band's faster flow reaches into the stiff interior's first
+#: faces), and the solve's tolerance carried to so small a part of the field (its relative residual is the whole
+#: field's, so it reaches the deep solid's flux scaled by the opening's flux over the solid's).
+FA1_PER_DEPTH_SQUARED = 0.2
+
+
+def fa1_line(found: dict[str, Any], interior: float, tolerance: float) -> float:
+    """FA1's line for ``found`` (:func:`bypass_reading`) at the arm's ``interior`` (cells) and its solve's ``tolerance``."""
+    return FA1_PER_DEPTH_SQUARED * interior ** 2 + tolerance * found["carried"]
 
 
 def monolithic_distance(node: OpenFlowNode, before: Any, after: Any) -> float:

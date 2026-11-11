@@ -83,9 +83,10 @@ def test_the_shared_distal_laws_books_close_and_a_lagged_off_diagonal_does_not(d
 @pytest.mark.parametrize("plant", [None, "leaking", "opened"])
 def test_a_closed_valve_is_the_walled_off_vessel(dtype, monkeypatch, plant):
     """The closed valve on the rig's second outlet against the monolithic run with that tube capped by solid: the
-    inlet pressures differ by the open tube's resistance times the cap's own leak (measured in the reference), which
-    explains the difference to a tenth of it beyond the solves' own; the valve's flux zero to rounding. The controls: a
-    valve leaking 2 % of the inflow, and the valve's row a pressure row of zero (an outlet left open)."""
+    inlet pressures differ by no more than the two runs' own solid flows at the closed outlet carry through the open
+    tube's resistance (the cap's leak; the closed patch's exchange through the solid with its neighbour), each measured
+    in its run, beyond the solves' own; the valve's flux zero to rounding. The controls: a valve leaking 2 % of the
+    inflow, and the valve's row a pressure row of zero (an outlet left open)."""
     planted(monkeypatch, plant)
     found = valve_reading(draw(SEED), TOLERANCE[dtype])
     assert valve_passes(found, TOLERANCE[dtype], dtype) == (plant is None), found

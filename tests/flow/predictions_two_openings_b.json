@@ -1,0 +1,48 @@
+{
+ "written": "2026-11-11, committed before the second probe ran (the commit that adds this file is the timestamp): the gates the first probe (run 42958800740) showed stated wrongly, restated with their mechanisms, and the kinetic flag's rates at lines set from its clean draws; the first predictions stay in predictions_two_openings.json unchanged, their outcomes beside them",
+ "phase": "F2b PR 3, two openings: the second probe",
+ "labels": "predictions by the builder (Opus) after reading the first probe's lines: each restatement is a fit to that probe's mechanism and says so; the new runs are fresh seeds for the rates and the same seeds for the lines",
+ "seen_before": [
+  "run 42958800740: the valve against the walled-off vessel, float64, 40 draws: the reference's leak alone left 1.6 to 4.9 times the inlet pressures' difference unexplained (|moved| 5e-6 to 2.8e-4 of the inlet pressure; the leak 1.6e-4 to 6.4e-4 of the inflow), the valve's flux 1e-20 of the inflow: the clean arm flagged 40/40 in float64 (0/40 in float32, whose 100 tolerances, 1e-3, covered it); the plants caught 40/40",
+  "the same run: FA1 in float32 at 0.01h, the deep solid's flux 8e-5 (median) to 7.3e-4 of Darcy's off, against the line 2e-5 (0.2 delta_in^2): the clean arm flagged 17/40; float64 and 0.1h held (worst 0.28 and 0.32 of the line)",
+  "the same run: FB6's explicit arm, each Windkessel's whole backward Euler row lagged, diverged at every loop gain from 0.34: its loop gain is the row's whole block (R_p + R_d/2 at dt/(R_d C) = 1), not R_p q; the implicit coupling held at every gain (worst 0.83 of the inflow's mean)",
+  "the same run: the lagged shared distal law's worst residual 0.0236 at dt and 0.0239 at dt/2: its first step's, from a start whose last fluxes are zero, which does not fall with dt",
+  "the same run: port_kinetic_flux clean worst over 200 draws 3.4e-15 (float64) and 1.8e-6 (float32)",
+  "the same run: bits: every released program equal; #235's open tube flow (unreleased) one ulp apart in its opening pressures and its Windkessel's state, its velocities equal"
+ ],
+ "operating_point": "as predictions_two_openings.json; rates on fresh seeds 3000 to 3039, lines on seeds 0 to 39",
+ "gate_valve_restated": {
+  "claim": "a closed valve (a flux row q = 0) on an outlet is the walled-off vessel (its tube capped by solid from mid-length) to the two runs' own solid flows at the closed outlet, each measured in its run: the reference's leak through its capped half of the plane, and the valve patch's exchange (its lumen carrying out what its solid faces bring back from the neighbouring patch: the valve holds the patch's net flux at zero, not each face's); |moved| within 1.1 times those two flows carried through the open tube's resistance R_t, beyond 100 solve tolerances; the valve's flux zero to its summation floor",
+  "kind": "bounds",
+  "case": "twin_cases.valve_reading and valve_passes at 0.01h",
+  "prediction": {"value": 0.5, "band": [0.05, 1.0], "unit": "|moved| over the line", "basis": "fit to the first probe's mechanism", "why": "each run's solid flow at the closed outlet moves its open tube's flux by at most its size, and the inlet pressure by R_t times it; the two are of one size and opposite sign on most draws"},
+  "control": {"plant": "the valve leaking 2 % of the inflow; the valve's row a pressure row of zero", "expected_rate": "40/40 each, each dtype", "clean_expected": "0/40"},
+  "discriminating_range": "a valve error under about 1e-3 of the inflow (the solid flows' size at 0.01h, D/h 8 to 12) is below the gate"
+ },
+ "gate_fa1_restated": {
+  "claim": "FA1 = FB14 with the solve's tolerance carried: the deep solid's flux is Darcy's to 0.2 delta_in^2 plus the tolerance times the opening's flux over the solid's (the solve's relative residual is the whole field's)",
+  "kind": "equality",
+  "case": "open_cases.bypass_reading and fa1_line, D/h 8 to 16, both interiors",
+  "prediction": {"value": 0.03, "band": [0.0, 0.5], "unit": "of the line, float32", "basis": "derived, and the first probe's float32 errors under 7.3e-4 against a carried term of 1e-2 to 5e-2 at 0.01h", "why": "the carried term is the solve's floor on so small a flux"},
+  "control": {"plant": "the oracle at the other stiff interior", "expected_rate": "40/40 each dtype", "clean_expected": "0/40"}
+ },
+ "gate_fb6_restated": {
+  "claim": "FB6 with the spike's explicit arm (each Windkessel's pressure its capacitor's at the step's start plus R_p times the last step's flux, its capacitor stepped forward): the arm unstable at loop gains R_p q from 2.5 to 10, the implicit coupling within three times the inflow's mean at gains 0.3 to 10",
+  "kind": "acceptance",
+  "prediction": {"explicit": "diverged (over three times the mean) on 40/40 draws at gains 2.5 to 10; stable below about 1.9 on the lines' draws", "implicit": "worst 0.83 of the mean, as measured", "basis": "the spike's (unstable from 1.9 with two outlets)"},
+  "control": {"plant": "the explicit arm", "expected_rate": "40/40 each dtype", "clean_expected": "0/40"}
+ },
+ "lagged_order_restated": {
+  "claim": "the lagged off-diagonals' residual in the shared distal law's books is first order in dt, read at a fixed time (a quarter period, and its mean over the period's second half), not its worst step (the first, from a start at rest)",
+  "prediction": {"value": 2.0, "band": [1.6, 2.4], "unit": "the residual at dt over dt/2", "basis": "derived"}
+ },
+ "flag_port_kinetic_flux_rates": {
+  "claim": "port_kinetic_flux at lines of about three times its clean worst over 200 draws a dtype (1e-14 in float64, 5e-6 in float32): its plant caught every run",
+  "prediction": {"kinetic_in_n_conv": "40/40 each dtype, clean 0/40", "end_full_cell": "most runs, not every one (a developed outflow gives the half cell nothing to see)", "start_full_cell": "most runs, not every one", "basis": "derived: the plant's reading is the planes' net kinetic-energy flux over their gross, which the drawn swirl keeps above 1e-4 on each run's first steps"}
+ },
+ "bits_restated": {
+  "cases": "as before, with #235's open tube flow",
+  "prediction": "every array equal, the open tube flow's included: a one-opening law's row is formed as before (b_i q_i alone, no sum over its block)"
+ },
+ "outcomes": null
+}
