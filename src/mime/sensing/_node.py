@@ -68,7 +68,7 @@ FLAG_FIELDS = ("beyond_distortion", "saturated", "outside_parent", "small_silhou
                "ghosting", "thin_cap")
 
 EQUATIONS = (r"n_{f} = P \, \mathrm{floor}(n / P), \quad a = n - n_{f}, \quad "
-             r"I = \mathrm{render}\left(\mathbf{p}, \mathbf{c}, s, n_{f}\right)")
+             r"I = \mathrm{render}\left(\mathbf{c}, s, n_{f}\right)")
 
 _NODE = "mime.sensing._node.CameraNode"
 
@@ -151,7 +151,6 @@ class CameraNode(MountedNode):
         Symbol("n_{f}", SymbolKind.STATE, "frame_step", "1", f"{_NODE}.advance"),
         Symbol("a", SymbolKind.STATE, "age", "1", f"{_NODE}.advance"),
         Symbol("I", SymbolKind.STATE, "image", "1", f"{_NODE}.advance"),
-        Symbol(r"\mathbf{p}", SymbolKind.INPUT, "pose_{body}", POSE_UNITS, f"{_NODE}.advance"),
         Symbol(r"\mathbf{c}", SymbolKind.PARAMETER, "placement", POSE_UNITS, f"{_NODE}.camera_pose"),
     )
 
@@ -221,6 +220,9 @@ class CameraNode(MountedNode):
     def param_specs(self) -> dict[str, ParamSpec]:
         return {**super().param_specs(),
                 **self.intrinsic_specs(),
+                "period": ParamSpec(trainable=False, units="1", description="base steps between frames"),
+                "seed": ParamSpec(trainable=False, units="1", description="the noise stream's seed, folded with the "
+                                                                          "frame's step"),
                 "placement": ParamSpec(trainable=False, units=POSE_UNITS,
                                        description="the camera's pose in the world, or on its mount frame: held with "
                                                    "the static structure's cache, so a move needs a new build"),

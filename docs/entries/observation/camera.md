@@ -24,8 +24,9 @@ fixes it to a frame of an apparatus's chain. The structure's image is rendered o
 structure share the world's frame, and rendered again in every frame where the camera may move; no stale image is ever
 read, and the build report says which holds.
 
-**Recording and re-rendering.** In-loop frames are not recorded: `record=` of `image` or `expected`, and `history=True`,
-are refused (`camera.recorded-frames`). The poses are recorded, and a frame is reproduced by rendering them again with
+**Recording and re-rendering.** In-loop frames are not recorded: `record=` of `image` or `expected` is refused
+(`camera.recorded-frames`); `history=True` keeps every field of every node at every step, a camera's frames too, and is the
+verification and debugging path, not for a long run. The poses are recorded, and a frame is reproduced by rendering them again with
 `mime.sensing.render` and the frame's noise key, `mime.sensing.frame_key(seed, frame_step)`. The re-render is two compiled
 programs, not one, so it is not bit for bit: it is exact where it was measured exact (float64), and in float32 it agrees
 to within one count, the few pixels whose value before rounding lies within the last bits of a rounding boundary rounding

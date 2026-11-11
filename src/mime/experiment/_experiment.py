@@ -1215,7 +1215,7 @@ class BuiltExperiment:
             f"{path} is not recorded in the loop: a frame a step is an image of every pixel, and strided recording of "
             f"frames is a later piece",
             "record the poses (every body's pose is recorded) and the camera's frame_step, then render the frame again "
-            "with mime.sensing.render and the same key (mime.sensing.frame_key); leave history=False",
+            "with `mime.sensing.render` and the same key (`mime.sensing.frame_key`): `record=[\"camera:.frame_step\"]`",
             why="in-loop frames are not recorded; the poses are, and a re-render reproduces any frame exactly")])
 
     def _spacing(self, every: Quantity | None) -> int:
@@ -1309,10 +1309,6 @@ class BuiltExperiment:
              stop: StopRequest | None, point: Overridden | None = None) -> RunResult:
         steps = self.steps_in(duration)
         recorded = self._recording(record)
-        if history:
-            for held in self.layout.per_step():
-                if not held.recordable:
-                    raise self._unrecordable(held.path)
         if every is not None and not (recorded or history):
             raise ArgumentRefused([Refusal(
                 "run.every", RefusalClass.USER,

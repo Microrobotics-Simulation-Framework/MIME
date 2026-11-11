@@ -210,5 +210,4 @@ CameraNode s  # pinned at landing
 CameraNode n_{f}  # pinned at landing
 CameraNode a  # pinned at landing
 CameraNode I  # pinned at landing
-CameraNode \mathbf{p}  # pinned at landing
 CameraNode \mathbf{c}  # pinned at landing

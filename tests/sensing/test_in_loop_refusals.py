@@ -3,7 +3,7 @@ case is not refused for another reason).
 
 frame_period not a whole number of base steps (naming the nearest two), more sub-frames than the period, ``rate=``, a
 body or structure without a closed form (until the sampled route), a ``hide`` or an absorber that names nothing (in
-``test_in_loop_scene.py``), a mount naming no frame, recording frames (``record=`` and ``history=True``), reverse mode
+``test_in_loop_scene.py``), a mount naming no frame, recording frames (``record=``; ``history=True`` is the all-fields verification path and is not refused), reverse mode
 through the camera and a batched study.
 
 **The controls** plant the three refusals a user meets first: ``CAMERA_PLANT=frame-period`` rounds any period,
@@ -85,7 +85,6 @@ def test_frames_are_not_recorded_in_the_loop(dtype):
     built.run(ms(2), record=["camera:.frame_step"])
     assert "camera.recorded-frames" in refused(lambda: built.run(ms(2), record=["camera:.image"]))
     assert "camera.recorded-frames" in refused(lambda: built.run(ms(2), record=["camera:.expected"]))
-    assert "camera.recorded-frames" in refused(lambda: built.run(ms(2), history=True))
 
 
 def test_reverse_mode_through_the_camera_is_refused_naming_the_offline_renderer(dtype):
