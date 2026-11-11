@@ -452,17 +452,21 @@ class Experiment:
         return _handle_of(apparatus)
 
     @public
-    def attach(self, law: Interaction, /, **bindings: Handle | TypedPath | str) -> LawHandle:
+    def attach(self, law: Interaction, /,
+               **bindings: Handle | TypedPath | str | tuple[TypedPath | str, ...]) -> LawHandle:
         """Bind an interaction to things by its roles; returns its id (its registered name and the things bound to
         it), a ``str`` that also names its settings as typed paths (``drag.lubrication.epsilon``), as a study and an
-        override take them. Every role is bound explicitly: there is no default binding."""
+        override take them. Every role is bound explicitly: there is no default binding. A law over several of a
+        flow's openings binds them all, ``surface=(tree.end_0, tree.end_1)``."""
         if not isinstance(cast(object, law), Interaction):  # a script is not type-checked
             raise ArgumentTypeRefused([Refusal(
                 "call.wrong-type", RefusalClass.USER,
                 f"attach takes an Interaction, not {type(law).__name__}",
                 "pass an interaction and its bindings: exp.attach(Gravity(), body=ball, medium=water)")])
         for role, value in bindings.items():
-            if not isinstance(cast(object, value), (Handle, TypedPath, str)):
+            several = isinstance(value, tuple) and all(isinstance(v, (TypedPath, str))
+                                                       for v in cast(tuple[object, ...], value))
+            if not several and not isinstance(cast(object, value), (Handle, TypedPath, str)):
                 raise ArgumentTypeRefused([Refusal(
                     "call.wrong-type", RefusalClass.USER,
                     f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}",

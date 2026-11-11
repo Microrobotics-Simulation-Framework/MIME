@@ -1,17 +1,20 @@
 """The laws held at a flow's openings (port laws) and the step's port system (F0's B6/B7, decisions 7 to 9 and 11; the
 record's "F2's rows, 2", A2's hybrid rows).
 
-**A port law's row.** Each opening's law states one row over the stage, affine in the rest (A2): a **pressure row**,
-its pressure affine in its own outward flux, ``p = a + b q`` (a Windkessel, a given pressure), or a **flux row**, its
-flux given, ``q = a`` (an inflow; later a closed valve, ``q = 0``). The field calls :meth:`PortLaw.affine` for the
-stage, solves its openings' rows together with its own affine response, and calls :meth:`PortLaw.advanced` with the
-stage's solved flux and pressure; the law books its own terms (:meth:`PortLaw.books`). A hybrid form is guaranteed only
+**A port law's rows.** A law binds one opening or several (:attr:`PortLaw.openings`, the record's "F2's rows, 2", item
+1) and states a row for each over the stage, affine in the rest (A2): **pressure rows**, its openings' pressures affine
+in their outward fluxes, ``p = a + B q`` with ``B`` a block over its openings (a Windkessel's ``1 x 1``; a shared
+distal resistance's ``2 x 2``, whose off-diagonals couple its openings), or **flux rows**, its fluxes given, ``q = a``
+(an inflow; a closed valve, ``q = 0``). A one-opening law gives ``a`` and ``b`` as scalars, a law over several as a
+vector and a matrix. The field calls :meth:`PortLaw.affine` for the stage, solves its openings' rows together with its
+own affine response, and calls :meth:`PortLaw.advanced` with the stage's solved fluxes and pressures (scalars for one
+opening, vectors for several); the law books its own terms (:meth:`PortLaw.books`). A hybrid form is guaranteed only
 for standard (power-conserving) relations: the stated limit that stays.
 
 **The port system** (:func:`port_system`). The field sees each opening's pressure relative to one reference opening
 (the gauge, decision 9: an incompressible field's effort is defined up to a constant, the laws see absolute pressures);
 its fluxes are affine in those differences through its unit fields' response ``R``: ``q = q0 + R m``, ``m`` the
-differences' move from those the step was solved at. The rows are solved for the moves first, the reference's
+differences' move from those the step was solved at; the laws' blocks are placed in one block ``B`` over the openings. The rows are solved for the moves first, the reference's
 pressure (the level) eliminated by its own row, then for the level: so a move is formed from the rows' own terms and
 never as the difference of two absolute pressures (whose rounding, ``eps |level|``, would grow with a downstream
 resistance many times the vessel's), save where two pressure laws' own pressures differ. **Well-posed** where some row
@@ -19,7 +22,7 @@ is a pressure row; with none, the flux rows (which then cover every opening) sum
 gauge's reference row (the reference's pressure set to zero): what the build checks before it builds
 (:func:`well_posed`).
 
-**Passivity** (CI check (a)): the block ``b`` of the row the solver solves (:meth:`PortLaw.affine`'s) has a positive
+**Passivity** (CI check (a)): the block ``B`` of the rows the solver solves (:meth:`PortLaw.affine`'s) has a positive
 semidefinite symmetric part at every step a run can take, its limit ``dt -> 0`` included, which keeps the port system
 well posed and is invisible to the law's own identity (which books whatever the law does). A source (a given flux or
 pressure: it supplies work) is exempt (:attr:`PortLaw.source`)."""
@@ -69,15 +72,18 @@ def _waveform(parameters: Array, time: Any) -> Array:
 
 
 class PortLaw:
-    """A registered port law (the module's interface): its row kind, its parameters (SI, a row an opening), whether it
-    stores energy, whether it is a source (exempt from passivity), its class in the ledger, and its numerical terms'
-    orders (``mime.testing.term_orders``)."""
+    """A registered port law (the module's interface): how many openings it binds, its row kind, its parameters (SI, a
+    row a law), whether it stores energy, whether it keeps its own books in the ledger (a storing law does, and a law
+    over several openings, whose books see its off-diagonals), whether it is a source (exempt from passivity), its class
+    in the ledger, and its numerical terms' orders (``mime.testing.term_orders``)."""
 
     name: ClassVar[str]
     version: ClassVar[str]
     row: ClassVar[RowKind]
     parameters: ClassVar[tuple[str, ...]]
+    openings: ClassVar[int] = 1
     stores: ClassVar[bool] = False
+    own_books: ClassVar[bool] = False
     source: ClassVar[bool] = False
     energy_class: ClassVar[str] = books.UNMETERED
     #: The law's numerical term's expected order (``mime.core.ledger.TermOrder``), by its name.
@@ -91,8 +97,9 @@ class PortLaw:
         return tuple(values + [0.0] * (PARAMETERS - len(values)))
 
     def affine(self, parameters: Array, state: Array, time: Any, dt: Any) -> tuple[Array, Array]:
-        """The stage's row: ``(a, b)`` with ``p = a + b q`` for a pressure row, ``(q, 0)`` for a flux row (``q``
-        outward), at the stage's instant ``time``."""
+        """The stage's rows: ``(a, b)`` with ``p = a + b q`` for pressure rows, ``(q, 0)`` for flux rows (``q``
+        outward), at the stage's instant ``time``: scalars for a law at one opening, a vector and a matrix over its
+        openings for one over several."""
         raise NotImplementedError
 
     def advanced(self, parameters: Array, state: Array, flux: Array, pressure: Array, dt: Any) -> Array:
@@ -100,7 +107,7 @@ class PortLaw:
         return state
 
     def books(self, parameters: Array, state: Array, ended: Array, flux: Array, pressure: Array, dt: Any) -> LawBooks:
-        """The law's own books over the stage: ``dt p q`` it received equals its storage's change, its loss and its
+        """The law's own books over the stage: ``dt p . q`` it received equals its storage's change, its loss and its
         numerical term."""
         zero = jnp.zeros((), dtype=flux.dtype)
         return LawBooks(zero, zero, zero, zero)
@@ -162,6 +169,51 @@ class Inflow(PortLaw):
         return -_waveform(parameters, time), jnp.zeros((), dtype=parameters.dtype)
 
 
+class Valve(PortLaw):
+    """A closed valve at an opening: a flux row, ``q = 0`` (A2: what impedance rows alone cannot state). Workless: the
+    pressure the field returns does no work on a flux of zero; its row's block is zero, passive."""
+
+    name = "valve"
+    version = "0.1.0"
+    row = RowKind.FLUX
+    parameters = ()
+    energy_class = books.WORKLESS
+
+    @override
+    def affine(self, parameters: Array, state: Array, time: Any, dt: Any) -> tuple[Array, Array]:
+        zero = jnp.zeros((), dtype=parameters.dtype)
+        return zero, zero
+
+
+class SharedDistal(PortLaw):
+    """Two openings each through its own resistance into one shared distal resistance to a pressure of zero (the record's
+    amendment 5, R-4): ``p_k = R_k q_k + R_d (q_1 + q_2)``, pressure rows over both with the block ``[[R_1 + R_d, R_d],
+    [R_d, R_2 + R_d]]``, symmetric and positive definite for positive resistances. Its books: ``dt p . q = dt (R_1 q_1^2
+    + R_2 q_2^2 + R_d (q_1 + q_2)^2)``, all loss, exactly, so a lagged or dropped off-diagonal shows in them."""
+
+    name = "shared_distal"
+    version = "0.1.0"
+    row = RowKind.PRESSURE
+    parameters = ("first", "second", "distal")
+    openings = 2
+    own_books = True
+    energy_class = books.DISSIPATIVE
+
+    @override
+    def affine(self, parameters: Array, state: Array, time: Any, dt: Any) -> tuple[Array, Array]:
+        distal = parameters[2]
+        block = jnp.stack([jnp.stack([parameters[0] + distal, distal]), jnp.stack([distal, parameters[1] + distal])])
+        return jnp.zeros(2, dtype=parameters.dtype), block
+
+    @override
+    def books(self, parameters: Array, state: Array, ended: Array, flux: Array, pressure: Array, dt: Any) -> LawBooks:
+        zero = jnp.zeros((), dtype=flux.dtype)
+        total = flux[0] + flux[1]
+        loss = dt * (parameters[0] * flux[0] * flux[0] + parameters[1] * flux[1] * flux[1]
+                     + parameters[2] * total * total)
+        return LawBooks(zero, zero, loss, zero)
+
+
 class GivenPressure(PortLaw):
     """A pressure given at an opening, ``p(t) = steady + amplitude cos(2 pi frequency t + phase)`` (Pa): a pressure row
     with no block. A source. The node level's (the open tube's gates against the periodic tube); no experiment's law
@@ -179,7 +231,8 @@ class GivenPressure(PortLaw):
 
 
 PORT_LAWS: MappingProxyType[str, PortLaw] = MappingProxyType({
-    Windkessel.name: Windkessel(), Inflow.name: Inflow(), GivenPressure.name: GivenPressure()})
+    Windkessel.name: Windkessel(), Inflow.name: Inflow(), Valve.name: Valve(), SharedDistal.name: SharedDistal(),
+    GivenPressure.name: GivenPressure()})
 
 
 def port_law_named(name: str) -> PortLaw:
@@ -238,28 +291,57 @@ class PortSolution(NamedTuple):
 
 
 def port_system(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response: Array, predicted: Array,
-                reference: int) -> PortSolution:
+                reference: int, coupling: Sequence[Sequence[bool]] | None = None) -> PortSolution:
     """The openings' pressures and fluxes solving each opening's row with the field's affine response: the fluxes
     ``q = base + R m``, ``m`` the moves of the pressures relative to ``reference`` (``R`` a column for each opening but
-    the reference) from ``predicted``, those the step was solved at (relative, zero at the reference). Rows: a pressure
-    row ``p_i - b_i q_i = a_i`` with ``p_i = level + predicted_i + m_i``, a flux row ``q_i = a_i``; the reference's own
+    the reference) from ``predicted``, those the step was solved at (relative, zero at the reference); ``b`` the laws'
+    blocks placed in one over the openings. Rows: a pressure row ``p_i - (b q)_i = a_i`` with ``p_i = level +
+    predicted_i + m_i``, a flux row ``q_i = a_i``; the reference's own
     row is a pressure row where any is (``reference_of``) and gives the level once the moves are solved from the
     others' rows (each other pressure row less the reference's, so the level leaves them); with no pressure row the
-    gauge sets the level to zero and the reference's flux row, which the others' imply, is dropped."""
+    gauge sets the level to zero and the reference's flux row, which the others' imply, is dropped. ``coupling`` names
+    which entries of ``b`` a law places (structural: one law's openings with each other; the diagonal by default), so a
+    row sums only its own law's terms and a law at one opening forms its row as ``b_i q_i`` alone."""
     count = len(rows)
     others = [index for index in range(count) if index != reference]
     a, b, base, response, predicted = (jnp.asarray(x) for x in (a, b, base, response, predicted))
     dtype = base.dtype
+    reduced, right, held, gauge = _reduced(rows, a, b, base, response, predicted, reference, coupling)
+    moves = dense_solve(reduced, right) if others else jnp.zeros(0, dtype=dtype)
+    level = jnp.zeros((), dtype=dtype) if gauge else held[1] - jnp.dot(held[0], moves)
+    moved = jnp.stack([moves[others.index(j)] if j != reference else jnp.zeros((), dtype=dtype) for j in range(count)])
+    relative = jnp.stack([predicted[j] + moved[j] if j != reference else jnp.zeros((), dtype=dtype)
+                          for j in range(count)])
+    return PortSolution(level + relative, relative, moved, base + response @ moves)
+
+
+def _reduced(rows: Sequence[RowKind], a: Array, b: Array, base: Array, response: Array, predicted: Array,
+             reference: int, coupling: Sequence[Sequence[bool]] | None
+             ) -> tuple[Array, Array, tuple[Array, Array], bool]:
+    """The port system's rows over the moves (:func:`port_system`): the matrix and right-hand side of every opening's
+    row but the reference's, the reference's own row, and whether the gauge sets the level."""
+    count = len(rows)
+    others = [index for index in range(count) if index != reference]
+    dtype = base.dtype
+    if b.ndim == 1:  # one-opening laws only: their blocks on the diagonal
+        b = jnp.diag(b)
+    couples = coupling if coupling is not None else [[i == j for j in range(count)] for i in range(count)]
 
     def row_of(i: int) -> tuple[Array, Array]:
         """Opening ``i``'s row over the moves, its coefficients and right-hand side, the level's coefficient one for a
         pressure row and zero for a flux row."""
         if rows[i] is RowKind.FLUX:
             return response[i], a[i] - base[i]
-        coefficients = -b[i] * response[i]
+        coupled = [j for j in range(count) if couples[i][j]]
+        if coupled == [i]:  # a law at one opening: its row as b_i q_i alone
+            coefficients, pushed = -b[i, i] * response[i], b[i, i] * base[i]
+        else:
+            coefficients, pushed = jnp.zeros_like(response[i]), jnp.zeros((), dtype=dtype)
+            for j in coupled:
+                coefficients, pushed = coefficients - b[i, j] * response[j], pushed + b[i, j] * base[j]
         if i != reference:
             coefficients = coefficients.at[others.index(i)].add(1.0)
-        return coefficients, a[i] + b[i] * base[i] - predicted[i]
+        return coefficients, a[i] + pushed - predicted[i]
 
     gauge = rows[reference] is RowKind.FLUX
     held = row_of(reference)
@@ -271,19 +353,28 @@ def port_system(rows: Sequence[RowKind], a: Array, b: Array, base: Array, respon
             coefficients, value = coefficients - held[0], value - held[1]
         reduced.append(coefficients)
         right.append(value)
-    moves = dense_solve(jnp.stack(reduced), jnp.stack(right)) if others else jnp.zeros(0, dtype=dtype)
-    level = jnp.zeros((), dtype=dtype) if gauge else held[1] - jnp.dot(held[0], moves)
-    moved = jnp.stack([moves[others.index(j)] if j != reference else jnp.zeros((), dtype=dtype) for j in range(count)])
-    relative = jnp.stack([predicted[j] + moved[j] if j != reference else jnp.zeros((), dtype=dtype)
-                          for j in range(count)])
-    return PortSolution(level + relative, relative, moved, base + response @ moves)
+    if not others:
+        return jnp.zeros((0, 0), dtype=dtype), jnp.zeros(0, dtype=dtype), held, gauge
+    return jnp.stack(reduced), jnp.stack(right), held, gauge
+
+
+def port_matrix(rows: Sequence[RowKind], b: Array, response: Array, reference: int,
+                coupling: Sequence[Sequence[bool]] | None = None) -> Array:
+    """The matrix :func:`port_system` solves for the moves (its rows' coefficients, the reference's eliminated): what
+    its conditioning is read from (a stiff resistance standing in for a closed valve grows it with the resistance)."""
+    response = jnp.asarray(response)
+    count = len(rows)
+    zeros = jnp.zeros(count, dtype=response.dtype)
+    return _reduced(rows, zeros, jnp.asarray(b), zeros, response, zeros, reference, coupling)[0]
 
 
 def block(law: PortLaw, parameters: Array, dt: Any) -> Array:
-    """The block ``b`` of the row ``law`` gives the solver over a stage of ``dt`` (Pa s/m^3), a ``1 x 1`` matrix for a
-    one-opening law: :meth:`PortLaw.affine`'s own, at a state of zero (a law's block does not depend on its state)."""
+    """The block ``B`` of the rows ``law`` gives the solver over a stage of ``dt`` (Pa s/m^3), a square matrix over its
+    openings (``1 x 1`` for a one-opening law): :meth:`PortLaw.affine`'s own, at a state of zero (a law's block does not
+    depend on its state)."""
     state = jnp.zeros(STATES, dtype=parameters.dtype)
-    return jnp.reshape(law.affine(parameters, state, jnp.zeros((), dtype=parameters.dtype), dt)[1], (1, 1))
+    count = law.openings
+    return jnp.reshape(law.affine(parameters, state, jnp.zeros((), dtype=parameters.dtype), dt)[1], (count, count))
 
 
 def passive(law: PortLaw, parameters: Array, dt: Any) -> Array:
@@ -293,5 +384,5 @@ def passive(law: PortLaw, parameters: Array, dt: Any) -> Array:
 
 
 __all__ = ["PARAMETERS", "PORT_LAWS", "STATES", "SUM_ZERO", "GivenPressure", "Inflow", "LawBooks", "PortLaw", "PortSolution",
-           "RowKind", "Windkessel", "block", "passive", "port_law_named", "port_system", "reference_of", "waveforms_cancel",
-           "well_posed"]
+           "RowKind", "SharedDistal", "Valve", "Windkessel", "block", "passive", "port_law_named", "port_matrix", "port_system",
+           "reference_of", "waveforms_cancel", "well_posed"]
