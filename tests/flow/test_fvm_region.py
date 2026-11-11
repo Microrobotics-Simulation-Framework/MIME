@@ -138,33 +138,40 @@ def test_the_two_outlet_shared_distal_law_binds_each_end_by_name(float64):
     assert splits[0] > 0.5 > splits[1]
 
 
-def test_a_backflow_term_of_the_wrong_sign_is_flagged_and_its_gift_counted(float64, monkeypatch):
-    """R-15's sign check: an inflow reversing from its first step (Stokes, IMEX Euler) turns both outlets' flow
-    inward, where the term works against it (negative, booked under ``<node>.backflow``); the term pushing the inflow
-    in (beta -1) gives the flow energy: ``backflow_flagged`` and the ledger's gift count. The right sign raises
-    neither."""
+def test_the_backflow_term_never_gives_energy_through_reversals_and_a_wrong_sign_is_flagged(float64, monkeypatch):
+    """R-15's sign check on the term's lagged implicit form (the train sitting's item 1): an inflow reversing from its
+    first step, turning forward at 3.3 ms and back at 16.7 ms (Stokes, IMEX Euler, 50 Hz), takes both outlets' flow
+    inward and out again; where it is inward the term works against it (negative, booked under ``<node>.backflow``)
+    and at no step, the transitions included, does it give energy (the explicit form did there: R-15). The control,
+    the term pushing the inflow in (beta -1), gives the flow energy: ``backflow_flagged`` and the ledger's gift
+    count."""
     from mime.nodes.flow.fvm import _open_node
 
     def reversing() -> Experiment:
-        return _imex_tree(stokes=True, amplitude=2.0, phase=math.pi)
+        return _imex_tree(stokes=True, amplitude=2.0, phase=math.pi, frequency=50.0)
 
-    clean = reversing().build().run(ms(3.0))
+    clean = reversing().build().run(ms(20.0), history=True)
+    held = clean.history["water.flow"]
+    work = np.asarray(held["backflow_work"])
+    outward = np.asarray(held["opening_flux"])[:, 1:] > 0.0
+    assert np.any(np.all(outward, axis=1)) and np.any(np.all(~outward, axis=1))
+    assert np.all(work <= 0.0) and np.sum(work < 0.0) >= 5
+    assert not np.any(np.asarray(held["backflow_flagged"]))
     monkeypatch.setattr(_open_node, "BACKFLOW_BETA", -1.0)
-    flipped = reversing().build().run(ms(3.0))
-    assert float(clean.final["water.flow"]["backflow_work"]) < 0.0
-    assert float(clean.final["water.flow"]["backflow_flagged"]) == 0.0
-    assert float(flipped.final["water.flow"]["backflow_flagged"]) == 1.0
+    flipped = reversing().build().run(ms(20.0), history=True)
+    assert np.any(np.asarray(flipped.history["water.flow"]["backflow_flagged"]))
     assert ledger_closes(clean).passed and not ledger_closes(flipped).passed
 
 
-def _imex_tree(*, stokes: bool = False, amplitude: float = 0.3, phase: float = 0.0) -> Experiment:
+def _imex_tree(*, stokes: bool = False, amplitude: float = 0.3, phase: float = 0.0,
+               frequency: float = 5.0) -> Experiment:
     exp = Experiment("open_tree_imex", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
     exp.add_structure(Structure("vessel", geometry=TubeTree(**Y)))
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
         domain=VesselRegion(extension_diameters=1.0), cells_across=6, stokes=stokes, scheme=Scheme.IMEXEuler())}))
     exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
     exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
-    exp.attach(Inflow(steady=m3_per_s(FLUX), amplitude=m3_per_s(amplitude * FLUX), frequency=Hz(5.0), phase=phase),
+    exp.attach(Inflow(steady=m3_per_s(FLUX), amplitude=m3_per_s(amplitude * FLUX), frequency=Hz(frequency), phase=phase),
                medium="water", surface="vessel.root")
     exp.observe(EnergyLedger())
     for end, resistance in (("end_0", 2e9), ("end_1", 6e9)):

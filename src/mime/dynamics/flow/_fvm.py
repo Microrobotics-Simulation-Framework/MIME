@@ -270,8 +270,9 @@ class FVM(Dynamics):
                                          "putting them on separate planes",
              written=("open",)),
         Flag("backflow_flagged", "the backflow term on an open vessel's outlets gave the flow energy over a step "
-                                 "(backflow_work above zero beyond its rounding): an inward face turned outward within "
-                                 "the step, where the explicit term's sign does not hold; a smaller dt",
+                                 "(backflow_work above zero beyond its rounding): its lagged implicit form can only "
+                                 "remove energy, so a flag is a fault in the term (its sign or its coefficient), not "
+                                 "the flow's; report it",
              written=("open",)),
         Flag("bypass_flagged", f"the flux through the solid beyond the band's middle was more than {BYPASS_LINE:g} "
                                f"of the lumen's (bypass_ratio): a finer spacing lowers it, and the stiffer interior "
@@ -340,12 +341,13 @@ class FVM(Dynamics):
         "plane (a turn past 90 degrees would run back across the region), and one axis's two faces are all the "
         "Cartesian kind opens in dev2. The region builder's geometry is made at build from the vessel's values (its "
         "tree and its paths leaves of the step, a derivative not carried through the builder); "
-        "the backflow term (decision 12): on every opening but the upstream, f = min(w, 0) w / h along the outward "
-        "normal on the plane's half cell (beta 1, declared), from the step's start velocity, explicit, normal only, "
-        "first order in time in the term; its work dt <f, u'> booked under <node>.backflow, its sign held only while "
-        "an inward face stays inward over the step (backflow_flagged, and the ledger's gift count, where it gave "
-        "energy); FB7 (with RK3, a later PR) measures its threshold, its tangential share and how it damps a genuine "
-        "reversal at the outlet, unmeasured here; "
+        "the backflow term (decision 12, in its lagged implicit form): on every opening but the upstream, "
+        "f = -|min(w, 0)| w' / h along the outward normal on the plane's half cell (beta 1, declared), its "
+        "coefficient from the step's start velocity w and the step's end velocity w' implicit, a diagonal beside the "
+        "wall's penalty that can only remove energy, normal only, first order in time in the term; its work "
+        "dt <f, w'> booked under <node>.backflow, its sign checked every step (backflow_flagged, and the ledger's "
+        "gift count, which a correct run never raises); FB7 (with RK3, a later PR) measures its threshold, its "
+        "tangential share and how it damps a genuine reversal at the outlet, unmeasured here; "
         f"the outlet watch (decision 13), an observer the step's flow never reads: each opening's inflow through its "
         f"patch's inward faces (fluid-weighted) over its net outward flux, read only while that is outward "
         f"(opening_reversed), flagged above {REVERSAL_LINE:g} ({REVERSAL_MEASURED}; opening_reversed_flagged); "

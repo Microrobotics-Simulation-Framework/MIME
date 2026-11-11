@@ -381,23 +381,23 @@ class OpenMACGrid(MACGrid):
             planes.append(jnp.asarray(held, dtype=dtype))
         return planes[0], planes[1]
 
-    def backflow_force(self, velocity: Velocity, openings: Sequence[int], beta: Any = 1.0,
-                       fluid: Array | None = None) -> Velocity:
-        """The directional backflow term (F0's B6 and B7, decision 12) on ``openings``' patches: on each plane's half
-        cell ``f_n = beta min(w_n, 0) w_n / h`` along the outward normal, ``w_n`` the face's outward velocity in
-        ``velocity``, weighted by ``fluid`` (on ``w``'s faces) where given; zero wherever the flow leaves, and on every
-        other face."""
+    def backflow_coefficient(self, velocity: Velocity, openings: Sequence[int], beta: Any = 1.0,
+                             fluid: Array | None = None) -> Array:
+        """The directional backflow term's coefficient on ``w``'s faces (F0's B6 and B7, decision 12, in its lagged
+        implicit form): on ``openings``' patches' half cells ``beta |min(w_n, 0)| / h``, ``w_n`` the face's outward
+        velocity in ``velocity`` (the step's start), weighted by ``fluid`` (on ``w``'s faces) where given; zero
+        wherever the flow leaves, and on every other face. The term it makes with the step's end velocity,
+        ``f = -c w'``, is a diagonal beside the wall's penalty: its power ``-c w'^2`` is never positive."""
         w = velocity[2]
-        zero = self.zeros(w.dtype)
+        coefficient = jnp.zeros_like(w)
         if not openings:
-            return zero
+            return coefficient
         low, high = self._plane_masks(openings, w.dtype)
         if fluid is not None:
             low, high = low * fluid[..., 0], high * fluid[..., -1]
-        outward_low, outward_high = -w[..., 0], w[..., -1]
-        f_low = -beta * low * jnp.minimum(outward_low, 0.0) * outward_low / self.spacing
-        f_high = beta * high * jnp.minimum(outward_high, 0.0) * outward_high / self.spacing
-        return (zero[0], zero[1], zero[2].at[..., 0].set(f_low).at[..., -1].set(f_high))
+        inward_low, inward_high = jnp.maximum(w[..., 0], 0.0), jnp.maximum(-w[..., -1], 0.0)
+        return coefficient.at[..., 0].set(beta * low * inward_low / self.spacing) \
+            .at[..., -1].set(beta * high * inward_high / self.spacing)
 
     def opening_reversed_fluxes(self, velocity: Velocity, fluid: Array) -> Array:
         """The volume flux (m^3/s) entering through each opening's patch where its faces' flow is inward, each face

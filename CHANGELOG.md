@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the centreline (a tree with no root is refused, `flow.region-upstream`; `flow.region-cut`, `flow.region-face` the
   other refusals; `flow.open-axis` is gone: a tilted vessel is built). The build reports each opening's plane, its
   neighbours, its extension, bend and run and their series resistance, and the Reynolds number its extension develops.
-  The backflow term (`f = min(w, 0) w / h` on the fluid of each outlet's half cell, from the step's start, normal only)
-  is booked as `<node>.backflow`, its sign checked (`backflow_flagged`); the outlet watch, an observer, reads each
+  The backflow term (`f = -|min(w, 0)| w' / h` on the fluid of each outlet's half cell, its coefficient from the step's
+  start and `w'` the step's end velocity, a diagonal beside the wall's penalty that can only remove energy, normal
+  only) is booked as `<node>.backflow`, its sign checked (`backflow_flagged`); the outlet watch, an observer, reads each
   opening's reversed share while its net flux is outward (`opening_reversed`, `opening_reversed_flagged`). Two openings
   on one plane exchange flow through the solid between their patches: `opening_exchange` and
   `opening_exchange_flagged` watch it, and where a built region's plane holds two openings the stiff interior is 0.01h

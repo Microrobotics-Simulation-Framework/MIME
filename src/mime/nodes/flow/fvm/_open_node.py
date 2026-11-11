@@ -218,8 +218,8 @@ class OpenFlowNode(ImplicitFlowNode):
         limitations=(
             "Openings on the box's two z planes only: the region builder bends each cut onto one of them",
             "IMEX Euler or its steady limit: RK3 with openings is not built",
-            "The backflow term is explicit from the step's start, first order in the term, its sign held only while "
-            "an inward face stays inward over the step (backflow_flagged); it acts on the normal component only",
+            "The backflow term's coefficient is lagged from the step's start (first order in time in the term), the "
+            "step's end velocity implicit, so it never gives energy; it acts on the normal component only",
         ),
         references=(Reference("HarlowWelch1965"), Reference("Westerhof2009")),
     )
@@ -346,10 +346,14 @@ class OpenFlowNode(ImplicitFlowNode):
         radius = float(np.min(np.asarray(c["tree_radii"]))) if self.walled_by_tree else float(c["tube_radius"])
         return exchange_line(2.0 * radius / float(c["spacing"]), interior_depth(c["interior"]))
 
-    def backflow_force(self, grid: OpenMACGrid, fields: WallFields, velocity: Velocity) -> Velocity:
-        """The backflow term at ``velocity`` (decision 12) on the fluid of the outlets' half cells (``1 - chi``, as the
-        drive acts), zero where none is placed."""
-        return grid.backflow_force(velocity, self.backflow_openings(), BACKFLOW_BETA, 1.0 - fields.chi[2])
+    def backflow_coefficient(self, grid: OpenMACGrid, fields: WallFields, velocity: Velocity) -> Array | None:
+        """The backflow term's coefficient (decision 12, its lagged implicit form, the term ``-c w'``) from the step's
+        start ``velocity``, on the fluid of the outlets' half cells (``1 - chi``, as the drive acts); ``None`` where
+        none is placed."""
+        openings = self.backflow_openings()
+        if not openings:
+            return None
+        return grid.backflow_coefficient(velocity, openings, BACKFLOW_BETA, 1.0 - fields.chi[2])
 
     def laws(self) -> list[PortLaw]:
         return [port_law_named(law) for law in self.constants()["opening_laws"]]
@@ -454,7 +458,13 @@ class OpenFlowNode(ImplicitFlowNode):
         dtype = run_dtype()
         fields = self.fields(p, grid)
         sigma = self.resistivity(p, fields)
-        operator = self.operator_of(p, grid, sigma)
+        velocity = _velocity(state)
+        # The backflow term (decision 12, its lagged implicit form): its coefficient from the step's start, the step's
+        # end velocity implicit, a diagonal on the outlets' half cells beside the wall's penalty (zero where none is
+        # placed or no face is inward, the operator then the wall's alone).
+        lagged = self.backflow_coefficient(grid, fields, velocity)
+        stepped_sigma = sigma if lagged is None else (sigma[0], sigma[1], sigma[2] + lagged)
+        operator = self.operator_of(p, grid, stepped_sigma)
         stopping = Stopping(tolerance=as_run_array(p["tolerance"]), at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
                             check_every=int(c["check_every"]),
                             window=stagnation_window(grid.cells, int(c["check_every"])))
@@ -463,7 +473,7 @@ class OpenFlowNode(ImplicitFlowNode):
         preconditioner = preconditioner_named(c["preconditioner"])
         steps = jnp.asarray(state["steps"])
         tap = self.report_row(p, steps)
-        magnitude = self.magnitude_of(p, grid, sigma)
+        magnitude = self.magnitude_of(p, grid, stepped_sigma)
         rho = as_run_array(p["density"])
         laws, bound = self.laws(), self.law_openings()
         rows = self.rows()
@@ -479,7 +489,7 @@ class OpenFlowNode(ImplicitFlowNode):
 
         def solve(shift: Any, rhs: Velocity, guess: Velocity | None) -> tuple[Velocity, Array]:
             def one(b: Velocity, start: Velocity | None) -> tuple[Velocity, Array]:
-                return projected_solve(grid, operator(shift), self.diagonal_of(p, grid, sigma, shift), b,
+                return projected_solve(grid, operator(shift), self.diagonal_of(p, grid, stepped_sigma, shift), b,
                                        start if c["scaling_start"] else None, stopping, tap, preconditioner,
                                        magnitude(shift))
 
@@ -502,12 +512,8 @@ class OpenFlowNode(ImplicitFlowNode):
                                               grid.port_force(solution.relative, rho), blocks)
             return solved, combined(reports)
 
-        velocity = _velocity(state)
-        # The backflow term (decision 12), explicit from the step's start, on the outlets' half cells beside the drive.
-        backflow = self.backflow_force(grid, fields, velocity)
         drive = self.forcing(fields, boundary_inputs, scheme, dtype)
-        context = StepContext(grid, operator, lambda stage_index, at: _add(drive(stage_index, at), backflow),
-                              bool(c["convection"]), solve, self.kinematic(p), sigma)
+        context = StepContext(grid, operator, drive, bool(c["convection"]), solve, self.kinematic(p), sigma)
         speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in velocity]))
         cfl = speed * dt / grid.spacing
         checked = bool(c["convection"]) and scheme.cfl_line is not None
@@ -534,6 +540,9 @@ class OpenFlowNode(ImplicitFlowNode):
         outward = flux > 0.0
         reversed_share = jnp.where(outward, inward / jnp.where(outward, flux, 1.0), 0.0)
         watched = jnp.max(reversed_share) > float(c.get("reversal_line", REVERSAL_LINE))
+        zero_force = grid.zeros(dtype)
+        backflow: Velocity = zero_force if lagged is None else \
+            (zero_force[0], zero_force[1], -lagged * solved_velocity[2])
         backflow_work = dt * as_run_array(p["density"]) * grid.inner(backflow, solved_velocity)
         backflow_size = dt * as_run_array(p["density"]) * grid.inner_magnitude(backflow, solved_velocity)
         gave = backflow_work > books.IDENTITY_ULPS * jnp.finfo(dtype).eps * backflow_size
@@ -566,7 +575,7 @@ class OpenFlowNode(ImplicitFlowNode):
         energy: dict[str, Array] = {}
         if self.metered:
             energy = self.open_energy_terms(p, grid, velocity, stage, sigma, fields, dt, ports, flux, law_state,
-                                            law_ended, parameters, backflow)
+                                            law_ended, parameters, backflow, stepped_sigma)
             stall = self.stall_ratio(energy)
             line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
@@ -633,10 +642,12 @@ class OpenFlowNode(ImplicitFlowNode):
     # -- the step identity ------------------------------------------------------------------------------------------
     def open_energy_terms(self, p: Mapping[str, Any], grid: OpenMACGrid, before: Velocity, stage: StageParts,
                           sigma: Velocity, fields: WallFields, dt: float, ports: OpenPorts, flux: Array,
-                          law_state: Array, law_ended: Array, parameters: Array, backflow: Velocity | None = None
-                          ) -> dict[str, Array]:
+                          law_state: Array, law_ended: Array, parameters: Array, backflow: Velocity | None = None,
+                          stepped_sigma: Velocity | None = None) -> dict[str, Array]:
         """Each term of the step's identity (J), the openings' laws' work and own books, the fluid's momentum the
-        drive is paired with, and the magnitude of the arithmetic forming them (``scale``)."""
+        drive is paired with, and the magnitude of the arithmetic forming them (``scale``). ``stepped_sigma`` is the
+        diagonal the step solved with (the wall's ``sigma`` and the backflow term's coefficient), ``backflow`` that
+        term's force at the solution: the wall's work is booked from ``sigma`` alone, the term's apart."""
         fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2])
         rho, nu = as_run_array(p["density"]), self.kinematic(p)
         solved = stage.solved
@@ -645,7 +656,7 @@ class OpenFlowNode(ImplicitFlowNode):
         minus_laplacian = (-laplacian[0], -laplacian[1], -laplacian[2])
         penalised = (sigma[0] * solved[0], sigma[1] * solved[1], sigma[2] * solved[2])
         forced = _add(stage.rhs, ports.force)
-        applied = self.operator_of(p, grid, sigma)(stage.shift)(solved)
+        applied = self.operator_of(p, grid, sigma if stepped_sigma is None else stepped_sigma)(stage.shift)(solved)
         remainder = _add(forced, applied, -1.0)
         gradient = grid.gradient(grid.pressure_of(remainder))
         projected = _add(remainder, gradient, -1.0)
