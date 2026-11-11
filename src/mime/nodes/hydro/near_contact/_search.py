@@ -18,6 +18,7 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp, quaternion, shape_named
+from mime.core.solves import dense_solve
 from mime.nodes.body._contact import START_APART, Hull, Pair, Wall, pair_contacts, spacing_of, start_count
 from mime.nodes.hydro.near_contact._seam import (
     LIFT_WIDTH,
@@ -128,7 +129,7 @@ def near_contacts(search: Search, kind: Geometry, parameters: Mapping[str, Any],
         support = kind.support(parameters, turn.T @ -normal, local)
         radii = turn @ support.jacobian @ turn.T
         tangent = tangent_frame(normal)
-        body = jnp.linalg.inv(tangent @ radii @ tangent.T + floor * jnp.eye(2, dtype=dtype))
+        body = dense_solve(tangent @ radii @ tangent.T + floor * jnp.eye(2, dtype=dtype), jnp.eye(2, dtype=dtype))
         wall = tangent @ shape.curvature(region, point) @ tangent.T
         frame, k1, k2 = principal(relative_curvature(body, wall), tangent, normal)
         own = tangent.T @ body @ tangent

@@ -23,7 +23,7 @@ from hypothesis import strategies as st
 from mime.build import ArgumentRefused
 from mime.registry import Centreline, CentrelineFrame, CentrelineSegment, Junction, implements, registered
 from mime.registry import EntryKind
-from mime.scene import Capsule, Ellipsoid, Helix, Tube, polyline, straight
+from mime.scene import Capsule, Ellipsoid, Helix, Tube, TubeTree, polyline, straight
 from mime.scene._centreline import transported
 from mime.scene._helix import HELIX_CENTRELINE
 from mime.testing import centreline_problems
@@ -38,6 +38,10 @@ KINDS = {
     "tube": (Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(0.5), wall=mm(0.1), length=mm(20.0)),
              {"axis": (0.0, 0.0, 1.0), "inner_radius": 0.5e-3, "wall": 0.1e-3, "length": 20e-3,
               "centre": (0.0, 0.0, 0.0)}),
+    "tube_tree": (TubeTree(points=mm((0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 1.5, 0.0, 2.6, -1.5, 0.0, 2.6)),
+                           segments=((0, 1), (1, 2), (1, 3)), radii=mm((0.5, 0.5, 0.5, 0.4, 0.5, 0.3))),
+                  {"points": (0.0, 0.0, -3e-3, 0.0, 0.0, 0.0, 1.5e-3, 0.0, 2.6e-3, -1.5e-3, 0.0, 2.6e-3),
+                   "radii": (0.5e-3, 0.5e-3, 0.5e-3, 0.4e-3, 0.5e-3, 0.3e-3)}),
 }
 
 #: The property tests' settings: the profile's examples, no deadline (a draw compiles nothing new, but the first does).
@@ -110,7 +114,7 @@ def test_the_helix_centreline_derivatives_agree_with_central_differences():
 def test_a_polyline_meets_at_its_junctions_and_carries_its_frame():
     line = polyline([(0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (1e-3, 1e-3, 0.0), (2e-3, 1e-3, 1e-3)],
                     radii=[1e-5, 2e-5, 2e-5, 1e-5])
-    assert [junction.name for junction in line.junctions] == ["j1", "j2"]
+    assert [junction.name for junction in line.junctions] == ["junction_0", "junction_1"]
     assert centreline_problems(KINDS["helix"][0], {}, line) == []
     assert float(line.segments[0].filament_radius({})) == pytest.approx(2e-5)
 

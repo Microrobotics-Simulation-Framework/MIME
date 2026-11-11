@@ -1,0 +1,126 @@
+{
+  "written": "2026-11-11, committed before the fix round's probe ran (the commit that adds this file is the timestamp): the precision seam's small form after its refuting review (design row #357, PR 248): the walk over every registered node kind, the held inverse and the other dense solves through the dense helper, scopes judged innermost with size bounds, svd and tridiagonal solves, a whole-step float64 dtype walk",
+  "phase": "the precision seam, small form, fix round (row #357)",
+  "labels": "the fix round's predictions, from the code's structure and from the local runs listed under seen_before: a JAX name scope adds metadata to the operations traced inside it and changes no operation, and jnp.linalg.inv(a) is jnp.linalg.solve(a, eye) in JAX, so every bit comparison is predicted equal; each plant's catch follows from the primitives its program holds and the scope it sits in",
+  "seen_before": [
+    "tests/solve_sites (52 tests) and tests/saved/test_solve_walk.py (9 tests) each ran once on the laptop, float64 and float32 where they parametrise, after the code was written: all passed on that first run, each plant caught for the reason named for it in process, the clean walks quiet. No detection rate and no bit comparison had been read.",
+    "an inventory on the laptop (float64, 302 traced steps of the 43 node classes the switch scan's configurations build) before the routing and the scopes: the review's seven classes held solves outside every scope, and two more sites showed beside them, in MRSDragNode's lubricated configurations: the film's block-tridiagonal elimination (63 x 63 per grid line) and the hand-over's 2 x 2 inverse. After the routing and the scopes the same inventory listed no solve primitive outside a scope. The orders it read: 6 (the rigid bodies, the arm's Cholesky, the IK's), 63 (the film), 180 (the held inverse at the walk's two spheres), 282 (the RFT drag), 2646 (the MRS per-body solve, 3 x 882 samples)",
+    "the only equation in a float64 step holding a float32 value anywhere in the 302 steps was the arm-tracking controller's, which computes in single precision by design (its module says so): the whole-step float32 check runs on every other node kind and the controller is judged inside its scopes only"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU: a GitHub runner (4 vCPU; one CPU and one BLAS thread pinned for the bit comparison)",
+    "sizes_and_parameters": "the walk: every registered node class in the switch scan's configurations (302 steps, float64, with the plants on the six cases of tests/solve_sites in both dtypes); the bits: the near field at two and three spheres of 1 mm a gap of 0.3 mm apart at a force spacing of 0.6 mm on the dense route and on GMRES, the open box, the FVM's three schemes, script A and its body, the rigid body's kept form, the RFT drag in the tube, the dynamic arm with and without mass, the lubricated sphere and ellipsoid, the arm-tracking controller in the graph, each run 20 ms; and the gradient of the sum of the near field's final state in the water viscosity through 3 steps",
+    "seeds_and_draws": "no draws: a traced program is deterministic, so a control's rate across processes shows the harness (the process, its seed, its thread layout), not independent draws; 30 is one observation repeated, not 30 samples"
+  },
+  "gate_1_walk_reach": {
+    "claim": "every registered node class's step is traced by some switch configuration, and no step holds a solve primitive outside a registered scope, nested in a scope that does not own it, or over an exempt site's size bound; the registry and the walk agree both ways on which node class reaches which site",
+    "kind": "equality",
+    "case": "tests/saved/test_solve_walk.py over traced_steps()",
+    "prediction": {
+      "value": 0,
+      "unit": "problems found over 302 steps of 43 node classes",
+      "basis": "derived",
+      "why": "after the routing every solve of the inventory sits in a scope, and the sites' kinds own the primitives the inventory found in them (the dense scope holds lu, triangular_solve and custom_linear_solve; the Cholesky site cholesky and triangular_solve; the CG custom_linear_solve; the GMRES custom_linear_solve and triangular_solve; the transform fft)"
+    },
+    "metric": "the findings of solve_problems over every step, per node class",
+    "control": {
+      "plant": "nested_in_cg (a raw 8 x 8 solve in the CG's operator) and inside_exempt (a raw 30 x 30 solve inside the six-unknown blocks' scope), tests/solve_sites/solve_walk.py",
+      "environment_variable": "MIME_PLANT_SOLVE",
+      "expected_rate": "30/30 each, in float64 and in float32 on the first case",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "one solve primitive anywhere in a step, however nested"
+    },
+    "if_wrong": "a solve the inventory missed: register it or route it, and report which",
+    "cannot_discriminate_if": "a node class none of the configurations builds: the test fails for such a class by name, so it cannot pass silently; a solve in a branch none of the configurations takes is outside the walk, and the rule says so"
+  },
+  "gate_2_forms": {
+    "claim": "a least squares, a pseudo-inverse and a tridiagonal solve added to a node's step are found, as a raw solve is",
+    "kind": "equality",
+    "case": "the same direct-solve plant with the form changed, on the FVM tube's steady step and the near field's dense step",
+    "prediction": {
+      "value": "30/30 each",
+      "unit": "caught of 30 runs",
+      "basis": "derived",
+      "why": "lstsq and pinv trace svd and tridiagonal_solve traces its own primitive, all now in SOLVE_PRIMITIVES; the review measured 0/10 before"
+    },
+    "metric": "the findings text names the primitive outside every scope",
+    "control": {
+      "plant": "direct_lstsq_in_step, direct_pinv_in_step, direct_tridiagonal_in_step",
+      "environment_variable": "MIME_PLANT_SOLVE",
+      "expected_rate": "30/30 each, float64 and float32",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "one such solve of any order"
+    },
+    "if_wrong": "a form whose primitive is not in the set: add it",
+    "cannot_discriminate_if": "a bare loop of matrix products (a Jacobi fori_loop) or an eigh: neither has a solve primitive, and the rule says so rather than claiming them"
+  },
+  "gate_3_dtype": {
+    "claim": "in a float64 run no equation of a node's step holds a narrower float, so a float32 round trip completed in the caller before dense_solve and an answer rounded through float32 after it are both found, as a downcast inside a scope is; the Poisson transform's scope is held to the same",
+    "kind": "equality",
+    "case": "the dense plants on the near field's dense step and the open box, and a downcast inside the Poisson transform on the three FVM steps, float64",
+    "prediction": {
+      "value": "30/30 each",
+      "unit": "caught of 30 runs",
+      "basis": "derived",
+      "why": "the walk reads every equation of the step, not only those inside a scope; the review measured zero narrower floats in all six float64 cases, so the clean arm is quiet"
+    },
+    "metric": "an equation of the step holding float32",
+    "control": {
+      "plant": "rounded_before_dense, rounded_after_dense, downcast_poisson",
+      "environment_variable": "MIME_PLANT_SOLVE",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "one float32 round trip of one value"
+    },
+    "if_wrong": "a node kind that legitimately holds float32 outside its solve: declare it narrower with its reason, as the arm-tracking controller is",
+    "cannot_discriminate_if": "a float32 run (x64 off): the dtype walk is float64 only; the scope and ownership checks are run in float32 as well"
+  },
+  "gate_4_bounds": {
+    "claim": "an exempt site's size bound is checked on the operands the walk traces: the bound set one below the largest system the walk traces in the site is found, for each of the four exempt sites",
+    "kind": "equality",
+    "case": "the switch configurations that trace each site (mrs_point_forces for the per-body solve, dynamic_rpm for the arm's Cholesky, the in-graph tracked controller for the IK's, mrs_near_field for the own blocks)",
+    "prediction": {
+      "value": "30/30 each",
+      "unit": "caught of 30 runs",
+      "basis": "derived",
+      "why": "the largest order is read off the same trace and the bound is planted one below it, so the walk must find the equation that has that order"
+    },
+    "metric": "the finding names the exempt site and its bound",
+    "control": {
+      "plant": "bound:<site> in probe/walk_once.py (a declaration planted: the registry with one site's bound one below the largest order traced in it)",
+      "environment_variable": "MIME_PLANT_SOLVE",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "one order"
+    },
+    "if_wrong": "an order read from the wrong operand: matrix primitives carry their order in the first operand's last dimension",
+    "cannot_discriminate_if": "a site whose steps trace no matrix primitive: the test requires the premise (a matrix inside the site)"
+  },
+  "bits": {
+    "cases": "script_a, script_a_metered, script_a_body, hull_contact, rigid_explicit, rft_tube, mrs_point_forces, mrs_free_space, the lubricated sphere and ellipsoid, dynamic_rpm, massive_rpm, the in-graph tracked controller, nf_dense_2, nf_dense_3, nf_gmres_2, mrs_near_field, mrs_near_field_gmres, open_tube_flow, periodic, steady and rk3 tube flow, and the gradient programs grad_nf_dense_2 and grad_nf_gmres_2, in both dtypes, base (the release tip 1a81914) against head, one job, one CPU, one BLAS thread (.github/probe/bit_compare.py)",
+    "prediction": "every array np.array_equal in both dtypes, the gradient programs included",
+    "basis": "derived: a name scope changes operation metadata, not operations; dense_solve is jnp.linalg.solve in a scope; jnp.linalg.inv(a) is solve(a, broadcast eye) in JAX, so the held inverse through dense_solve(a, eye) is the same program",
+    "controls": {
+      "repeat": "the head against itself on nf_dense_2, nf_gmres_2 and the gradient: every array identical",
+      "one_ulp": "the near field's start velocity one ulp up in the head's run only, on nf_dense_2, nf_gmres_2 and the gradient, both dtypes: arrays differ in every program"
+    },
+    "if_wrong": "a moved bit under a scope or under the inverse's move: report the arrays and revert that site to its bare call"
+  },
+  "outcomes": {
+    "note": "written after the probe ran; the predictions above are unchanged. Every arm's outputs are complete; seven arms (bits_a, repeat, ulp, direct_solve_in_step, direct_lstsq_in_step, direct_pinv_in_step, direct_tridiagonal_in_step) were flagged UNDERESTIMATE by the memory route (peaks 0.75 to 1.55 GiB against bounds of 0.70 to 0.89 GiB: the estimate lines named one case per arm, and the bit arms also run a base tree's interpreter beside the head's); their calibration rows are in each arm's mem_check.json.",
+    "probe_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43009936481 (probe branch deleted after)",
+    "gate_1_walk_reach": "0 problems in all 302 steps of the 43 node classes (laptop, tests/saved/test_solve_walk.py: 9 passed); the registry and the walk agree both ways; nested_in_cg 30/30 float64 on the implicit and the open steps and 30/30 float32 on the implicit step, inside_exempt 30/30 float64 and float32; clean arm 0/30 flagged each",
+    "gate_2_forms": "direct_lstsq_in_step, direct_pinv_in_step, direct_tridiagonal_in_step 30/30 on the FVM steady step and the near field's dense step in float64 and 30/30 on the FVM step in float32, clean 0/30 each; direct_solve_in_step 30/30 likewise; bypass_dense 30/30 on the joint (float64, float32) and the open step; raw_poisson 30/30 implicit and explicit (float64), implicit (float32)",
+    "gate_3_dtype": "rounded_before_dense 30/30 and rounded_after_dense 30/30 on the joint and the open step; downcast_poisson 30/30 on the implicit, explicit and open steps; downcast_dense 30/30 (joint, open), downcast_cg 30/30 (implicit, open), downcast_gmres 30/30; clean 0/30 each",
+    "gate_4_bounds": "bound:mrs_per_body (largest order 237 on the traced configuration), bound:articulated_cholesky, bound:controller_ik, bound:near_field_own_blocks 30/30 each, clean 0/30",
+    "bits": "all_equal true on 48 programs (24 programs in both dtypes), base the release tip 1a81914 against head, one job, one CPU, one BLAS thread: bits_a 30 programs (nf_dense_2, nf_dense_3, nf_gmres_2, mrs_near_field, mrs_near_field_gmres, open_tube_flow, periodic/steady/rk3_tube_flow, script_a, script_a_metered, hull_contact, mrs_point_forces, mrs_free_space, dynamic_rpm, each float64 and float32), bits_b 18 (script_a_body, rigid_explicit, rft_tube, massive_rpm, the lubricated sphere and ellipsoid, the in-graph tracked controller, and the gradient programs grad_nf_dense_2 and grad_nf_gmres_2); controls: repeat (head against itself, 6 programs) all_equal true; one ulp up in the head only: all_equal false with arrays differing in every program (ulp_nf_dense_2 21 of 41 arrays, ulp_nf_gmres_2 24 of 43, ulp_grad_nf_dense_2 1 of 2, both dtypes)"
+  }
+}

@@ -56,6 +56,7 @@ from mime.build._watch import WATCHED_FAMILY, ContainmentPlan, UnwatchedContainm
 from mime.core import VELOCITY_RULES, jnp, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
+from mime.fields._solved import ExchangeFrame
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
 from mime.core.multibody._tree import as_vector3, rotation_matrix
 from mime.core.multibody._urdf import ISSUES
@@ -377,6 +378,15 @@ class ResolvedRegistration:
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     #: Where the subject is a surface (a flow's opening): its shape's parameters, as its geometry gives them.
     subject_parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    #: Where the subject is several surfaces (a law over several openings, ``subject`` their names joined by ``+``):
+    #: each, and each one's parameters, in the order written; a single surface's alone otherwise.
+    subjects: tuple[str, ...] = ()
+    subjects_parameters: tuple[Mapping[str, Magnitude], ...] = ()
+
+    @property
+    def surfaces(self) -> tuple[str, ...]:
+        """The surfaces the registration binds, in the order written (one where its subject is one)."""
+        return self.subjects or (self.subject,)
 
 
 def _plain_settings(entry: Entry, si_settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
@@ -420,6 +430,10 @@ class EntryPlan:
     command: ResolvedCommand | None = None
     regions: dict[str, Region] = field(default_factory=dict[str, Region])
     hulls: dict[str, Hull] = field(default_factory=dict[str, Hull])
+    #: By each medium role an interaction is bound to, the exchange frame of the field it carries (SF-4).
+    exchanges: dict[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
+    #: A reader's plan context, kept for its checks once its values are resolved (``Interaction.value_problems``).
+    context: PlanContext | None = None
     position: int = 0
     segment: Segment | None = None
     mount: ResolvedMount | None = None
@@ -593,8 +607,15 @@ def _sanitize(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
 
 
+#: How the names of several surfaces a role binds are joined in a binding's name (a law over several openings).
+SURFACES_JOINED = "+"
+
+
 def binding_name(value: Any) -> str:
-    """The name a binding refers to, as written: a handle's name, a typed path's dotted string, or the string."""
+    """The name a binding refers to, as written: a handle's name, a typed path's dotted string, or the string; several
+    (a law's openings, ``surface=(a, b)``) joined by :data:`SURFACES_JOINED`."""
+    if isinstance(value, (tuple, list)):
+        return SURFACES_JOINED.join(binding_name(v) for v in cast(Sequence[Any], value))
     if isinstance(value, Handle):
         return value.name
     if isinstance(value, TypedPath):
@@ -618,6 +639,9 @@ class _Planner:
         self.settings = settings
         self.declarations = declarations
         self.refusals: list[Refusal] = []
+        #: Whether a law's openings were refused at their binding: it then registers with no flow, so a flow's own
+        #: judgement of its openings' laws would name the law the user did attach as missing.
+        self.openings_unbound = False
         self.things: dict[str, Thing] = {}
         self.dynamics: dict[str, EntryPlan] = {}
         self.providers: dict[str, EntryPlan] = {}
@@ -949,7 +973,9 @@ class _Planner:
             for plan in plans:
                 others = ", ".join(repr(name) for name in names if name != plan.bindings["body"]
                                    and not (plan.joined and name in joined))
-                if plan.joined:
+                if getattr(plan.entry, "rung", None) == "stokes":
+                    line = self.stokes_shared_line(plan, plans, medium)
+                elif plan.joined:
                     coupled = ", ".join(repr(name) for name in joined if name != plan.bindings["body"])
                     line = (f"{plan.bindings['body']!r}'s drag is solved jointly with {coupled}'s in the medium "
                             f"{medium!r}'s near field ({plan.joined}): each body's resistance takes the others into "
@@ -959,9 +985,52 @@ class _Planner:
                 else:
                     line = (f"the bodies {', '.join(repr(name) for name in names)} share the medium {medium!r}: "
                             f"{plan.bindings['body']!r}'s drag is computed alone, as if {others} were absent, and no "
-                            f"body outside a near field in it changes another's (bodies interact hydrodynamically "
-                            f"only through a medium's near field, drag 0.5.0's mrs rung)")
+                            f"body outside a near field or the solved flow in it changes another's (bodies interact "
+                            f"hydrodynamically only through a medium's near field, drag 0.5.0's mrs rung, or through "
+                            f"its solved flow, the stokes rung's)")
                 self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), line)
+
+    def stokes_shared_line(self, plan: EntryPlan, plans: Sequence[EntryPlan], medium: str) -> str:
+        """A stokes body's shared-medium line: its drag reads the medium's solved flow, into which every other two-way
+        stokes body scatters its reaction, so those bodies interact through the grid, a step apart; with the point
+        bodies' nearest starting separation over their radius and their volume fraction in the grid's box."""
+        body = plan.bindings["body"]
+        stokes = [other for other in plans if getattr(other.entry, "rung", None) == "stokes"]
+        scattering = sorted(other.bindings["body"] for other in stokes
+                            if other is not plan and not getattr(other.entry, "one_way", None))
+        alone = sorted(other.bindings["body"] for other in plans
+                       if other is not plan and other.bindings["body"] not in scattering)
+        named = ", ".join(repr(name) for name in scattering)
+        line = f"{body!r}'s drag reads the medium {medium!r}'s solved flow, " + (
+            f"into which {named} {'scatters its reaction' if len(scattering) == 1 else 'scatter their reactions'}: "
+            f"the bodies interact through the grid, resolved to the exchange kernel's width and read a step after "
+            f"they are scattered (lagged, no joint step)" if scattering
+            else "into which no other body in it scatters a reaction")
+        if alone:
+            line += f"; {', '.join(repr(name) for name in alone)} in the medium changes nothing of it"
+        starts = {other.bindings["body"]: self.start_of(other.bindings["body"]) for other in stokes}
+        hulls = {other.bindings["body"]: self.hull_of(other.bindings["body"]) for other in stokes}
+        placed = {name: (start, hull.kind.enclosing_radius(hull.settings)) for name, start in starts.items()
+                  for hull in (hulls[name],) if start is not None and hull is not None}
+        frame = self.exchange_frame_of(medium)
+        if len(placed) == len(stokes) >= 2 and frame is not None:
+            (own_start, own_radius) = placed[body]
+            nearest = min(math.dist(own_start, start) / max(own_radius, radius)
+                          for name, (start, radius) in placed.items() if name != body)
+            box = math.prod(frame.cells) * frame.spacing ** 3
+            fraction = sum(4.0 / 3.0 * math.pi * radius ** 3 for _, radius in placed.values()) / box
+            line += (f"; its nearest point body starts {nearest:.3g} radii from it, and the point bodies fill "
+                     f"{fraction:.3g} of the grid's box")
+        return line
+
+    def start_of(self, body: str) -> tuple[float, float, float] | None:
+        """``body``'s starting position (m), where its dynamics holds one of three numbers."""
+        dynamics = self.dynamics.get(body)
+        held: object = dynamics.initial.get("position") if dynamics is not None else None
+        if not isinstance(held, tuple) or len(cast(tuple[float, ...], held)) != 3:
+            return None
+        x, y, z = (float(c) for c in cast(tuple[float, ...], held))
+        return (x, y, z)
 
     def watch_plans(self) -> tuple[Watched, ...]:
         """The inputs of the post-run watch of every entry of the hydrodynamic family, from what the experiment
@@ -1823,13 +1892,23 @@ class _Planner:
                         "structure")
             return None
         held = cast(Any, type(geometry.geometry))
-        candidates: tuple[str, ...] = tuple(held.surfaces) if names == "surfaces" else tuple(getattr(held, names))
+        candidates: tuple[str, ...] = (tuple(geometry.geometry.surface_names()) if names == "surfaces"
+                                       else tuple(getattr(held, names)))
         if part not in candidates:
             self.refuse("binding.unknown", RefusalClass.USER,
                         f"{where}{path!r}: {geometry.registered.cls.label()} has no {noun} {part!r}",
                         f"name one of its {noun}s, `<structure>.<{noun}>`. {did_you_mean(part, candidates)}")
             return None
         return path
+
+    def exchange_frame_of(self, medium: str) -> ExchangeFrame | None:
+        """The exchange frame of the field medium ``medium`` carries, where its dynamics gives one (SF-4: what a field
+        that takes exchange deliveries tells its partners), from the dynamics' plan: its region and settings in SI."""
+        plan = self.dynamics.get(medium)
+        frame_of = getattr(plan.entry, "exchange_frame", None) if plan is not None else None
+        if plan is None or frame_of is None:
+            return None
+        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings))
 
     def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
         """The fields carried in the region medium ``medium`` fills, by their ids (``water.flow``): its own and those of
@@ -1862,7 +1941,7 @@ class _Planner:
             self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}", error)
             return None
         return Region(path, shape, parameters,
-                      tuple(f"{owner}.{surface}" for surface in type(plan.geometry).openings.get(part, ())))
+                      tuple(f"{owner}.{surface}" for surface in plan.geometry.opening_names().get(part, ())))
 
     def literal_direction(self, value: object, what: str) -> tuple[float, float, float] | None:
         try:
@@ -2745,6 +2824,9 @@ class _Planner:
 
     def resolve(self, where: str, role: str, kind: RoleKind, value: Any, reader: type[Entry]) -> str | None:
         if kind is RoleKind.SURFACE:
+            count: object = getattr(reader, "openings", None)
+            if isinstance(count, int):
+                return self.openings_bound(where, role, value, count, reader)
             return self.geometry_part(value, SurfacePath, "surfaces", f"{where}: {role}=", reader)
         if kind is RoleKind.FIELD:
             path = str(value) if isinstance(value, (FieldPath, str)) else None
@@ -2776,12 +2858,82 @@ class _Planner:
             return None
         return name
 
+    def openings_bound(self, where: str, role: str, value: Any, count: int, reader: type[Entry]) -> str | None:
+        """The openings a law at a flow's openings binds (``reader.openings`` of them, the record's "F2's rows, 2", item
+        1): one surface, several (a tuple, or their names joined by ``+``, as a saved file writes them), or a region's
+        declared openings (``surface=tube.lumen``); joined by :data:`SURFACES_JOINED`, or a refusal."""
+        found = self._openings_bound(where, role, value, count, reader)
+        self.openings_unbound = self.openings_unbound or found is None
+        return found
+
+    def _openings_bound(self, where: str, role: str, value: Any, count: int, reader: type[Entry]) -> str | None:
+        parts: list[Any]
+        if isinstance(value, (tuple, list)):
+            parts = list(cast(Sequence[Any], value))
+        elif isinstance(value, (str, TypedPath)) and SURFACES_JOINED in str(value):
+            parts = str(value).split(SURFACES_JOINED)
+        else:
+            parts = [value]
+            group = self.openings_group(value)
+            if group is not None:
+                if not group[1]:
+                    self.refuse("binding.no-openings", RefusalClass.USER,
+                                f"{where}: {role}={group[0]!r} is a region whose geometry kind declares no openings",
+                                f"bind {role}= the openings of a region that has them, or name its surfaces")
+                    return None
+                parts = list(group[1])
+        if len(parts) != count:
+            label = reader.label()
+            names = [binding_name(part) for part in parts]
+            if count == 1:
+                route = (f"{label} binds one opening: attach one at each, exp.attach(..., {role}={names[0]!r}), "
+                         f"or did you mean a law over several openings? {did_you_mean(reader.name, self.several())}")
+            else:
+                route = (f"name its {count} openings, {role}=(<structure>.<opening>, ...), or a region's openings, "
+                         f"{role}=<structure>.<region>")
+            self.refuse("binding.opening-count", RefusalClass.USER,
+                        f"{where}: {label} binds {count} opening(s), and {role}= names {len(parts)}: "
+                        f"{', '.join(names)}", route)
+            return None
+        resolved = [self.geometry_part(part, SurfacePath, "surfaces", f"{where}: {role}=", reader) for part in parts]
+        if any(name is None for name in resolved):
+            return None
+        joined = [cast(str, name) for name in resolved]
+        if len(set(joined)) != len(joined):
+            self.refuse("binding.opening-count", RefusalClass.USER,
+                        f"{where}: {role}= names an opening twice: {', '.join(joined)}",
+                        f"name {count} different openings, {role}=(<structure>.<opening>, ...)")
+            return None
+        return SURFACES_JOINED.join(joined)
+
+    def openings_group(self, value: Any) -> tuple[str, tuple[str, ...]] | None:
+        """``value``'s region and its declared openings where it names a region of a structure's geometry (a region's
+        openings group), else ``None``."""
+        if not isinstance(value, (str, TypedPath)) or (isinstance(value, TypedPath) and not isinstance(value, RegionPath)):
+            return None
+        path = str(value)
+        owner, _, part = path.partition(".")
+        plan = self.geometries.get(owner)
+        if plan is None or part not in type(plan.geometry).regions:
+            return None
+        return path, tuple(f"{owner}.{surface}" for surface in type(plan.geometry).openings.get(part, ()))
+
+    @staticmethod
+    def several() -> list[str]:
+        """The registered interactions that bind several openings."""
+        found: list[str] = []
+        for record in registered(EntryKind.INTERACTION):
+            count: object = getattr(record.cls, "openings", None)
+            if isinstance(count, int) and count > 1:
+                found.append(record.cls.name)
+        return sorted(set(found))
+
     def names_of(self, kind: RoleKind) -> list[str]:
         if kind is RoleKind.FIELD:
             return sorted(self.providers)
         if kind is RoleKind.SURFACE:
             return sorted(f"{owner}.{surface}" for owner, plan in self.geometries.items()
-                          for surface in type(plan.geometry).surfaces)
+                          for surface in plan.geometry.surface_names())
         return sorted(n for n, t in self.things.items() if t.kind is kind.thing_kind)
 
     def record_of(self, kind: RoleKind, name: str) -> CapabilityRecord | None:
@@ -2848,8 +3000,11 @@ class _Planner:
                      for mount in (self.source_mount(name),) if mount is not None}
         provided = {role: self.fields_in_region_of(name) for role, name in bindings.items()
                     if cls.roles[role] is RoleKind.MEDIUM}
+        exchanges = {role: frame for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
+                     for frame in (self.exchange_frame_of(name),) if frame is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
-                              hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided)
+                              hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided,
+                              exchanges=exchanges)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -2874,7 +3029,8 @@ class _Planner:
             self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}",
                         problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
-                               plan=plan, settings=settings, regions=regions, hulls=hulls)
+                               plan=plan, settings=settings, regions=regions, hulls=hulls, exchanges=exchanges,
+                               context=context)
         if section is Section.OBSERVATION:
             self.defer_rate(entry_plan, getattr(entry, "rate", None), where)
         if section is Section.OBSERVATION and (plan.delivers or plan.registrations or plan.groups):
@@ -3205,18 +3361,22 @@ class _Planner:
         if len(resolved_reads) != len(reads) or len(resolved_returns) != len(returns):
             return
         subject = plan.bindings[registration.subject]
-        parameters: dict[str, Magnitude] = {}
+        subjects: tuple[str, ...] = ()
+        each: list[dict[str, Magnitude]] = []
         if cls.roles.get(registration.subject) is RoleKind.SURFACE:
-            owner, _, part = subject.partition(".")
-            geometry = self.geometries[owner]
-            try:
-                parameters = dict(geometry.geometry.surface_parameters(part, geometry.settings))
-            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-                self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
-                return
+            subjects = tuple(subject.split(SURFACES_JOINED))
+            for surface in subjects:
+                owner, _, part = surface.partition(".")
+                geometry = self.geometries[owner]
+                try:
+                    each.append(dict(geometry.geometry.surface_parameters(part, geometry.settings)))
+                except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                    self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
+                    return
         dynamics.registrations.append(
             ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
-                                 _plain_settings(plan.entry, plan.settings), parameters))
+                                 _plain_settings(plan.entry, plan.settings), each[0] if each else {},
+                                 subjects if len(subjects) > 1 else (), tuple(each) if len(subjects) > 1 else ()))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()
@@ -3442,6 +3602,29 @@ class _Planner:
                 if read.wall:
                     thing = self.fills.get(thing, "").partition(".")[0]
                 self.value(plan, label, thing, read.name)
+            self.interaction_value_problems(plan)
+
+    def interaction_value_problems(self, plan: EntryPlan) -> None:
+        """What an interaction says is wrong with the values it reads, once all are resolved, at its plan's context."""
+        assert plan.plan is not None
+        entry = plan.entry
+        if plan.section is not Section.INTERACTION or not isinstance(entry, Interaction) or \
+                set(plan.values) != set(plan.plan.values) or plan.context is None:
+            return
+        try:
+            problems = entry.value_problems({label: value.value for label, value in plan.values.items()},
+                                            plan.context)
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(type(entry), f"value_problems() raised {error!r}", error)
+            return
+        where = f"{plan.owner} ({type(entry).label()})"
+        for problem in problems:
+            uncatalogued = catalogue_problem(problem.code, RefusalClass.USER)
+            if uncatalogued is not None:
+                self.defect(type(entry), f"its value problem ({problem.message}) has a code it cannot be refused "
+                                         f"with: {uncatalogued}")
+                continue
+            self.refuse(problem.code, RefusalClass.USER, f"{where}: {problem.message}", problem.action)
 
     def dynamics_value_problems(self, plan: EntryPlan) -> None:
         """What the dynamics says is wrong with the values it reads, once all are resolved: a value that was refused
@@ -3594,7 +3777,7 @@ class _Planner:
         if extent is None and not holds_hull:
             return  # refused as undeclared
         geometry = self.geometries[owner]
-        shape = type(geometry.geometry).surfaces[part]
+        shape = geometry.geometry.surface_names()[part]
         try:
             parameters = geometry.geometry.surface_parameters(part, geometry.settings)
         except Exception as error:  # noqa: BLE001
@@ -3801,8 +3984,8 @@ class _Planner:
         for dynamics in self.dynamics.values():
             dynamics.registrations.sort(key=lambda r: r.id)
             entry = dynamics.entry
-            if not isinstance(entry, Dynamics):
-                continue
+            if not isinstance(entry, Dynamics) or (self.openings_unbound and entry.registration_kinds):
+                continue  # a law refused at its openings' binding is missing from the registrations judged here
             try:
                 problems = entry.registration_problems(tuple(dynamics.registrations), dynamics.regions.get("medium"))
             except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it

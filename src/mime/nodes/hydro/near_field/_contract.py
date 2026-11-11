@@ -27,6 +27,7 @@ from typing import Any, Protocol
 from jax import Array
 
 from mime.core import jnp
+from mime.core.solves import SolveSite, dense_solve, register, solving
 from mime.nodes.hydro.mrs._solve import PRECISION, force_sums, rigid_motions
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection
 from mime.nodes.hydro.near_field._gmres import Operator, Stopping, reported_solve
@@ -185,9 +186,9 @@ def _wrenches(joint: Joint, tractions: Array) -> Array:
 def grand_resistance(joint: Joint) -> Array:
     """``R = W^T A^-1 M``, ``6K x 6K``: the force and torque on each body (about its centre) for each unit rigid motion
     of each body, the others held, by one dense LU of the joint matrix with every body's six motions as right-hand
-    sides (``jnp.linalg.solve``: its derivative reuses the factors). Not symmetrised: its asymmetry is the
-    discretisation's."""
-    return _wrenches(joint, jnp.linalg.solve(joint.matrix, joint_motions(joint)))
+    sides (:func:`~mime.core.solves.dense_solve`: ``jnp.linalg.solve``, whose derivative reuses the factors). Not
+    symmetrised: its asymmetry is the discretisation's."""
+    return _wrenches(joint, dense_solve(joint.matrix, joint_motions(joint)))
 
 
 def grand_resistance_by_gmres(joint: Joint, blocks: Sequence[Operator | None],
@@ -226,6 +227,16 @@ def cross_loads(off_diagonal: Array, twists: Array) -> Array:
     return -jnp.matmul(off_diagonal, twists.reshape(-1), precision=PRECISION).reshape(bodies, 6)
 
 
+#: The Cholesky factor and its inverse of each body's own ``M/dt + R_aa`` (``K`` blocks of ``6 x 6``), which the lagged
+#: scheme's two checks read a spectral radius from.
+OWN_BLOCKS = register(SolveSite(
+    "near_field_own_blocks", "dense", "mime.nodes.hydro.near_field._contract.lagged_gain",
+    nodes=("JointDragNode",),
+    exempt="six unknowns a body, factored on gradient-stopped values to read the lagged scheme's gain and amplification: "
+           "a judgement's input (the gain sets ``gain_stop``), not the resistance",
+    bound=6))
+
+
 def lagged_gain(own: Array, off_diagonal: Array, masses: Array, dt: float) -> Array:
     """The lagged scheme's gain, the spectral radius of ``(M/dt + R_d)^-1 R_off``: each body's step implicit in its own
     ``R_aa``, the cross load from the step before. ``M/dt + R_d`` is block-diagonal and symmetric positive definite
@@ -234,8 +245,9 @@ def lagged_gain(own: Array, off_diagonal: Array, masses: Array, dt: float) -> Ar
     matrices in the world ``(K, 6, 6)``; ``own`` and ``off_diagonal`` symmetric. Not a number where a body's ``M/dt +
     R_aa`` is not positive definite."""
     bodies = own.shape[0]
-    factors = jnp.linalg.cholesky(masses / dt + own)
-    inverse = jnp.linalg.inv(factors)
+    with solving(OWN_BLOCKS):
+        factors = jnp.linalg.cholesky(masses / dt + own)
+        inverse = jnp.linalg.inv(factors)
     spread = jnp.zeros_like(off_diagonal)
     for i in range(bodies):
         for j in range(bodies):
@@ -255,8 +267,9 @@ def lagged_amplification(own: Array, off_diagonal: Array, masses: Array, dt: flo
     small against ``R``) it is :func:`lagged_gain`; with inertia it is below it, and the gain's check is the sufficient
     one: a gain below one makes this below one where ``R`` is definite, not conversely."""
     bodies = own.shape[0]
-    factors = jnp.linalg.cholesky(masses / dt + own)
-    inverse = jnp.linalg.inv(factors)
+    with solving(OWN_BLOCKS):
+        factors = jnp.linalg.cholesky(masses / dt + own)
+        inverse = jnp.linalg.inv(factors)
     spread = jnp.zeros_like(off_diagonal)
     for i in range(bodies):
         for j in range(bodies):

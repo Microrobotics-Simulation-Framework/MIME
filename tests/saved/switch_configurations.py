@@ -8,7 +8,8 @@ reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's s
 apparatus with its masses mounted and that friction arm, each with the energy ledger, whose metered steps (the arm's
 and the motor's step identities, and the impulses split by the friction's share) no other configuration takes; a
 sphere above a plane within the elliptic form's window, whose drag takes the near-contact hand-over (``lubrication_cases``), which
-no round-trip case's body is fine enough for (where the package has the hand-over); and those steps traced and
+no round-trip case's body is fine enough for (where the package has the hand-over); the point body with its fitted
+self-history (``self_history="modes"``), which no round-trip case writes; and those steps traced and
 scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
 configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
@@ -54,6 +55,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found["ledger/friction_arm"] = partial(metered, partial(friction_arm, "friction_arm_metered"))
     from mime.interactions import Drag
 
+    if "self_history" in getattr(Drag, "__dataclass_fields__", {}):  # a merge base before the fitted route has none
+        from cases import point_body_flow
+
+        found["drag/point_body_modes"] = partial(point_body_flow, "modes")
     if hasattr(Drag, "handover_window"):  # a merge base before the near-contact hand-over builds no such drag
         from lubrication_cases import above_plane
 
@@ -62,7 +67,7 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
 
         # a coarse blob: the step's structure (its raw sites) is the same at any blob, and each worker that runs the
         # scan holds every configuration's traced step, the quadrature's arrays in it. The sphere takes the
-        # near-contact law's sphere form; a mild ellipsoid, within the elliptic form's window, the film's
+        # near-contact law's sphere form; a mild ellipsoid, within the elliptic form's window, the elliptic form
         found["drag/lubricated_sphere"] = partial(above_plane, 0.2, blob=0.25)
         if hasattr(Ellipsoid, "near_contact"):  # a merge base before the near-contact seam has no forms to tell apart
             found["drag/lubricated_ellipsoid"] = partial(above_plane, 0.16, blob=0.25, name="lubricated_ellipsoid",

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
         Slot,
     )
     from mime.core.multibody import DescriptionClassification, MultibodyTree, Payload
-    from mime.fields._solved import SolvedField
+    from mime.fields._solved import ExchangeFrame, SolvedField
 
 _EMPTY: Mapping[str, Any] = MappingProxyType({})
 
@@ -328,6 +328,8 @@ class PlanContext:
     approaches: Mapping[str, float] = field(default_factory=dict[str, float])
     provided: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
         default_factory=dict[str, Mapping[str, tuple[str, ...]]])
+    #: By each medium role, the exchange frame of the field its medium carries that takes exchange deliveries (SF-4).
+    exchanges: Mapping[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
@@ -437,6 +439,14 @@ class BuildContext:
     members: Mapping[str, BuildContext] = field(default_factory=dict[str, "BuildContext"])
     #: The entry the context is for: what a group's entry builds each member's part from.
     entry: Any = None
+    #: By each medium role, the exchange frame of the field its medium carries that takes exchange deliveries (SF-4).
+    exchanges: Mapping[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
+    #: By each body role, the bound body's initial state in SI (its position, orientation, velocities), where a law's
+    #: node must hold where the body starts before its first read (an exchange law's points).
+    starts: Mapping[str, Mapping[str, Magnitude]] = field(default_factory=dict[str, Mapping[str, Magnitude]])
+    #: By each medium role of a law exchanging with its field, the highest frequency (Hz) of the drives bound to that
+    #: medium, where one is pulsatile: a point body's Basset number is read from it.
+    frequencies: Mapping[str, float] = field(default_factory=dict[str, float])
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -1092,8 +1102,23 @@ class Interaction(Entry):
     def plan(self, ctx: PlanContext) -> Plan:
         return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values))
 
+    def value_problems(self, values: Mapping[str, Magnitude], ctx: PlanContext) -> list[Problem]:
+        """What is wrong with the values the law reads (``values``, by label, once every one is resolved, in SI) at
+        its plan's context, as refusals: a check that needs a value its plan could not see (a point body's coupled
+        resistance, from the fluid's viscosity). None by default."""
+        del values, ctx
+        return []
+
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         raise NotImplementedError
+
+    def judged_in_sum(self) -> str:
+        """How the law's dissipative sign is judged where it is not judged on each receiver's row, as the build report
+        states it (an empty string by default: on each row). An exchange between a body and a field, whose drag does
+        work on the body that the fluid's side pays for (a flow carrying a body along), is judged by its node instead,
+        which counts the steps that gave energy in its ``cluster_gift_steps``; the run's account reads them for each of
+        its rows."""
+        return ""
 
     def definiteness(self) -> Definiteness | None:
         """For a dissipative law delivering an operator, where it is shown positive semidefinite: by its construction
@@ -1370,6 +1395,16 @@ class Geometry(Entry):
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
+
+    def surface_names(self) -> Mapping[str, str]:
+        """Its surfaces by name, each mapped to the shape its free side is evaluated with: the class's ``surfaces``,
+        and for a kind whose settings name surfaces of their own (a tube tree's ends), those too."""
+        return self.surfaces
+
+    def opening_names(self) -> Mapping[str, tuple[str, ...]]:
+        """The surfaces each region may be opened at, among :meth:`surface_names`: the class's ``openings``, and for a
+        kind whose settings name its ends (a tube tree's), those."""
+        return self.openings
 
     def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         """The parameters of the shape ``region_shapes`` names for ``region``, in SI."""

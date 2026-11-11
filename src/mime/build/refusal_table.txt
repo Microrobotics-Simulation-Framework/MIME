@@ -31,6 +31,8 @@ binding.field-ambiguous       user
 binding.field-quantity        user
 binding.missing               user
 binding.moving-surface        user
+binding.no-openings           user
+binding.opening-count         user
 binding.unknown               user
 binding.unknown-role          user
 binding.wrong-kind            user
@@ -161,6 +163,10 @@ drag.patches                  user
 drag.rft-coefficients         user
 drag.rft-indefinite           user
 drag.rft-wall-range           user
+drag.stokes-floor             user
+drag.stokes-scheme            user
+drag.stokes-size              user
+drag.stokes-sphere            user
 drag.wall-kind                user
 drag.wall-range               user
 dynamics.wrong-thing          user
@@ -197,6 +203,7 @@ flow.interior                 user
 flow.memory                   user
 flow.no-openings              user
 flow.open-axis                user
+flow.open-exchange            user
 flow.open-scheme              user
 flow.opening-law              user
 flow.opening-unknown          user
@@ -208,6 +215,8 @@ flow.region                   user
 flow.resolution               user
 flow.solve-report-rows        user
 flow.steady-convection        user
+flow.tree-period              user
+flow.tree-scheme              user
 flow.viscous-limit            user
 frame.gravity-invalid         user
 frame.gravity-missing         user

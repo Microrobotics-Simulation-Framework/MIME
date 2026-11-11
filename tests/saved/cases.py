@@ -85,6 +85,59 @@ def periodic_tube_flow(steady: bool = False, rk3: bool = False) -> Experiment:
     return experiment
 
 
+def point_body_flow(self_history: str | None = None) -> Experiment:
+    """A point sphere coupled two-way to the FVM (drag 0.5.0's stokes rung) in the periodic tube's steady drive, off the
+    axis, slightly heavier than the water: IMEX Euler under Stokes, the exchange law's gathers and scatters on
+    MADDENING's geometry edges; its self-history the exact route, or ``self_history`` written."""
+    from mime.dynamics import FVM, RigidInertial, Scheme
+    from mime.interactions import BodyForce, Drag
+    from mime.scene import PeriodicBox, Scene, Sphere, Tube, Z
+    from mime.things import Body, Part, State
+    from mime.units import Pa_s, kg, kg_m2, kg_per_m3, m_per_s, m_per_s2, rad_per_s, um
+
+    experiment = Experiment("point_body_flow", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(10.0))))
+    flow = FVM(domain=PeriodicBox(length=mm(0.25), margin=4), cells_across=8, stokes=True, scheme=Scheme.IMEXEuler())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    radius = 50e-6
+    mass = 1.2 * 1000.0 * 4.0 / 3.0 * 3.141592653589793 * radius ** 3
+    experiment.add_body(Body("bead", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=um(50.0)))},
+                             initial=State(position=mm((0.15, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                           velocity=m_per_s((0.0, 0.0, 0.0)),
+                                           angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare("bead.mass", kg(mass), reason="a bead 1.2 times water's density")
+    experiment.declare("bead.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
+    experiment.attach(Drag.Stokes() if self_history is None else Drag.Stokes(self_history=self_history), body="bead",
+                      medium="water")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    return experiment
+
+
+def tree_flow() -> Experiment:
+    """The FVM on a tube tree's lumen in its periodic box (``TubeTree``, filleted): a vessel narrowing to 0.8 of its
+    radius over half its period and back, its parent reaching a radius past each end of the period, steady Stokes under
+    a body force on the fluid; the throat twelve cells across, so the wall is the union's exact distance at its
+    junctions."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import BodyForce
+    from mime.scene import PeriodicBox, Scene, TubeTree, Z
+    from mime.units import Pa_s, kg_per_m3, m_per_s2
+
+    experiment = Experiment("tree_flow", scene=Scene.new(up=Z, units="m"), dt=ms(5.0))
+    tree = TubeTree(points=mm((0.0, 0.0, -0.5, 0.0, 0.0, 0.25, 0.0, 0.0, 0.5, 0.0, 0.0, 0.75, 0.0, 0.0, 1.5)),
+                    segments=((0, 1), (1, 2), (2, 3), (3, 4)), radii=mm((0.5, 0.5, 0.5, 0.4, 0.4, 0.5, 0.5, 0.5)))
+    experiment.add_structure(Structure("vessel", geometry=tree))
+    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=12, stokes=True, scheme=Scheme.Steady())
+    experiment.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(0.01)), medium="water")
+    return experiment
+
+
 def prescribed_tube_flow() -> Experiment:
     """The prescribed flow (Womersley) in the same tube under the same drive: the cheap rung, no grid."""
     from mime.dynamics import Womersley
@@ -122,6 +175,49 @@ def open_tube_flow() -> Experiment:
                       surface="tube.start")
     experiment.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
                       medium="water", surface="tube.end")
+    return experiment
+
+
+def open_tube_loop() -> Experiment:
+    """The open vessel closed on itself: a shared distal resistance across its two ends (``surface=`` its lumen's
+    openings), a body force driving the loop; steady Stokes."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import BodyForce, SharedDistal
+    from mime.scene import Scene, Tube, VesselRegion, Z
+    from mime.units import Pa_s, Pa_s_per_m3, kg_per_m3, m_per_s2
+
+    experiment = Experiment("open_tube_loop", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(1.0))))
+    flow = FVM(domain=VesselRegion(margin=4), cells_across=8, stokes=True, scheme=Scheme.Steady())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    experiment.attach(SharedDistal(first=Pa_s_per_m3(4e7), second=Pa_s_per_m3(1.2e8), distal=Pa_s_per_m3(2e8)),
+                      medium="water", surface="tube.lumen")
+    return experiment
+
+
+def closed_tube() -> Experiment:
+    """The open vessel with a Windkessel at its start and a closed valve at its end, a body force pushing its fluid
+    against the valve; IMEX Euler, Stokes."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import BodyForce, Valve, Windkessel
+    from mime.scene import Scene, Tube, VesselRegion, Z
+    from mime.units import Pa_s, Pa_s_per_m3, kg_per_m3, m3_per_Pa, m_per_s2
+
+    experiment = Experiment("closed_tube", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(1.0))))
+    flow = FVM(domain=VesselRegion(margin=4), cells_across=8, stokes=True, scheme=Scheme.IMEXEuler())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    experiment.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
+                      medium="water", surface="tube.start")
+    experiment.attach(Valve(), medium="water", surface="tube.end")
     return experiment
 
 
@@ -370,7 +466,12 @@ CASES = (
     # The same tube stepped by RK3, and its prescribed flow: the second scheme and the second flow field kind.
     Case("rk3_tube_flow", lambda: periodic_tube_flow(rk3=True)),
     Case("prescribed_tube_flow", prescribed_tube_flow),
+    # The FVM on a tube tree's lumen, its wall the union's exact distance where the band reads it.
+    Case("tree_flow", tree_flow),
     Case("open_tube_flow", open_tube_flow),
+    # A law over the open vessel's two openings, and a closed valve at one (F2b's PR 3).
+    Case("open_tube_loop", open_tube_loop),
+    Case("closed_tube", closed_tube),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),
@@ -443,6 +544,9 @@ CASES = (
     Case("rft_kept", rft_kept),
     # A body in an electromagnet array's field, the calibrated multipole, placed, turned and with a background.
     Case("coil_array", coil_array),
+    # A point body coupled two-way to the tube's flow through the exchange law, drag 0.5.0's stokes rung: after the
+    # cases that use the sphere first, so that its golden output stays probed_shapes'.
+    Case("point_body_flow", point_body_flow),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),

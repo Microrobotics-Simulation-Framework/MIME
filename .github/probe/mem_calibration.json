@@ -1,10 +1,11 @@
 {
-  "scope": "TWO FAMILIES, EACH ON A HANDFUL OF CASES ON A CPU. The MRS drag with its near field: 12 forward cases (10 of them the near field's, measured when the node's own memory estimate was fitted to the same peaks, so they agree by construction in part) and reverse cases of one sphere near a plane (peaks measured on the plain chunk by a CI probe, on the checkpointed run locally), plus two reverse cases that were killed, which give lower bounds only. The FVM: periodic tubes at 32 to 192 cells across, steady and IMEX, float64 and float32, forward and reverse, all measured locally and all below 2.2 GiB: whether the ratio holds at 10 GiB is unknown (it fell with size over the sizes seen: the miss is mostly additive, compile and runtime memory the estimate does not see). No other family (a point body coupled to the FVM, the Stokeslet and lubrication nodes, the surrogates, a GPU) was measured: a graph with one takes the uncalibrated factor. A family's factor is the largest measured/estimated ratio among its completed cases of the mode, up to 0.05, never under 1.10 (`min_factor`); the estimate times it lies over the measured peak on these cases only, by construction. A peak marked as a lower bound belongs to a run that was killed: its ratio shows an underestimate only when over 1 and it does not enter a factor. The table grows from probe runs: a run whose peak exceeds its bound is flagged and its row is printed.",
+  "scope": "TWO FAMILIES OF NODES, EACH ON A HANDFUL OF CASES ON A CPU, AND THE RAW-PROGRAM ROUTE ON ONE. The raw_program family (the estimate of a jitted function that is not an experiment, from XLA's compiled memory analysis, mem_estimate.py --raw) rests on one case, a dense solve at one size on one runner: its factor is the rule applied to that one ratio (1.07, so the minimum 1.10), which says nothing about a program with a different mix of temporaries, a callback or a host-side table, and the next raw arm's peak is a row for this table. The two families of nodes:  The MRS drag with its near field: 12 forward cases (10 of them the near field's, measured when the node's own memory estimate was fitted to the same peaks, so they agree by construction in part) and reverse cases of one sphere near a plane (peaks measured on the plain chunk by a CI probe, on the checkpointed run locally), plus two reverse cases that were killed, which give lower bounds only. The FVM: periodic tubes at 32 to 192 cells across, steady and IMEX, float64 and float32, forward and reverse, all measured locally and all below 2.2 GiB: whether the ratio holds at 10 GiB is unknown (it fell with size over the sizes seen: the miss is mostly additive, compile and runtime memory the estimate does not see). No other family (a point body coupled to the FVM, the Stokeslet and lubrication nodes, the surrogates, a GPU) was measured: a graph with one takes the uncalibrated factor. A family's factor is the largest measured/estimated ratio among its completed cases of the mode, up to 0.05, never under 1.10 (`min_factor`); the estimate times it lies over the measured peak on these cases only, by construction. A peak marked as a lower bound belongs to a run that was killed: its ratio shows an underestimate only when over 1 and it does not enter a factor. The table grows from probe runs: a run whose peak exceeds its bound is flagged and its row is printed.",
   "estimate": "mem_estimate.py: the largest of the build's peak, the resident set after the build plus the compiled program's bytes (in reverse mode the larger of the checkpointed run and the plain chunk) and the nodes' own estimates",
   "min_factor": 1.1,
   "uncalibrated": {
     "forward": 2.5,
     "reverse": 2.5,
+    "program": 2.5,
     "basis": "stated, not fitted: above the largest ratio measured in any family (1.8) with the headroom a family nobody measured deserves"
   },
   "families": {
@@ -12,7 +13,7 @@
       "node_modules": [
         "mime.nodes.hydro.mrs",
         "mime.nodes.hydro.near_field",
-        "mime.nodes.hydro._film",
+        "mime.nodes.hydro.near_contact",
         "mime.nodes.hydro._near_singular"
       ],
       "forward": 1.1,
@@ -24,6 +25,10 @@
       ],
       "forward": 1.6,
       "reverse": 1.8
+    },
+    "raw_program": {
+      "node_modules": [],
+      "program": 1.1
     }
   },
   "light_modules": [
@@ -386,6 +391,19 @@
       "ratio": 1.76,
       "where": "a local run (CPU): process peak (VmHWM) of node_measure.py, compile included",
       "measured_mib": 871.5
+    },
+    {
+      "name": "raw_dense_solve_n8000",
+      "family": "raw_program",
+      "mode": "program",
+      "what": "a raw jitted program, a square product and a dense solve (float64, a 8000 x 8000 and an 8000 x 64 argument), the raw-program route's estimate",
+      "estimate_gib": 1.639,
+      "measured_gib": 1.758,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.072,
+      "where": "a CI runner probe (run 43042249664, 2026-11-11): the largest process's peak (ru_maxrss), compile included, predicted in [0.8, 1.4] before it ran",
+      "measured_mib": 1800.3
     }
   ]
 }

@@ -12,7 +12,9 @@ The flow is driven by laws bound to the medium (``BodyForce``) and by the laws a
 
 F1a builds the Cartesian MAC grid kind, IMEX Euler and its steady limit, Jacobi, the default smooth band, on one
 domain kind, the periodic box around a straight circular tube (aligned with z, or tilted in the x-z plane along a
-lattice direction of the box)."""
+lattice direction of the box). F2a adds a tube tree's lumen (``mime.scene.TubeTree``) in the periodic box, the tree
+periodic along z with the box's period and reaching past its two ends: its wall is the union's exact distance where
+the band reads it (``mime.nodes.flow.fvm.TreeSolid``), stepped by IMEX Euler or its steady limit."""
 
 from __future__ import annotations
 
@@ -20,17 +22,22 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING, Annotated, cast, override
+from typing import TYPE_CHECKING, Annotated, Any, cast, override
 
-from mime.core import jnp, run_dtype
+import numpy as np
+
+from mime.core import jnp, run_dtype, shape_named
 from mime.gradients import GradientStatus
 from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, STALL_PER_TOLERANCE, \
     ExplicitFlowNode, ImplicitFlowNode, OpenFlowNode, periodic_tube_layout
+from mime.nodes.flow.fvm._box import TreeLayout, TubeLayout, period_mismatch, periodic_tree_layout
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
+from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
+from mime.nodes.flow.fvm._ports import Valve as ValveLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
-from mime.nodes.flow.fvm._ports import port_law_named, well_posed
-from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, \
+from mime.nodes.flow.fvm._ports import RowKind, port_law_named, well_posed
+from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, EXCHANGE_FIELDS, GEOMETRY, \
     STOKES_REYNOLDS
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, \
@@ -40,12 +47,13 @@ from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Flag, Gra
     SettingGroup, StepQuery, StepRule, convention, register_dynamics, register_setting_group
 from mime.dynamics.flow._fields import fvm_field
 from mime.dynamics.flow._steps import WALL_REACH_CELLS, axial_drive, predicted_peak, report_lines, womersley_number
-from mime.fields._solved import SolvedField
+from mime.fields._solved import ExchangeFrame, SolvedField
 from mime.units import Magnitude
 from mime.scene import PeriodicBox, VesselRegion
 from mime.things import ThingKind
 from mime.units import Length, Quantity
-from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_WAVEFORM, FLUID, OPENING
+from mime.vocabulary import EXCHANGE_PARTNER, FLOW_BODY_FORCE, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
+    FLOW_FACES, FLOW_OPENING, FLOW_PARTNERS, FLOW_WAVEFORM, FLUID, OPENING
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -123,6 +131,22 @@ MARGIN_FLOOR = 3
 
 #: The stiff interior's depths in cells, by the node's name for each.
 _INTERIOR_NAMES = {depth: name for name, depth in INTERIORS.items()}
+#: How far a tube tree may fail to repeat over its period where the band reads it, as a share of the spacing: past it
+#: the tree is not periodic with the box (flow.tree-period).
+PERIOD_LINE = 1e-6
+#: The region shape a tube tree's lumen is.
+TREE = "tube_tree"
+
+
+def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
+    """A tube tree's lumen's parameters (``TubeTree.region_parameters``) as its points ``(k, 3)``, radii ``(n, 2)``
+    (m), segments and fillet share."""
+    parameters = region.parameters
+    points = np.asarray(parameters["points"], dtype=np.float64).reshape(-1, 3)
+    radii = np.asarray(parameters["radii"], dtype=np.float64).reshape(-1, 2)
+    flat = [int(round(float(i))) for i in cast(tuple[float, ...], parameters["segments"])]
+    segments = tuple((flat[k], flat[k + 1]) for k in range(0, len(flat), 2))
+    return points, radii, segments, float(cast(float, parameters["fillet"]))
 
 
 class Scheme:
@@ -195,10 +219,15 @@ class FVM(Dynamics):
     applies_to = frozenset({ThingKind.MEDIUM})
     port_kinds = (FLUID.name, OPENING.name)
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
-               FLOW_OPENING.name: Port("openings")}
-    #: The laws a user attaches at an opening, by their port laws' names (``mime.interactions.Inflow``,
-    #: ``Windkessel``).
-    registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name})
+               FLOW_OPENING.name: Port("openings"), FLOW_EXCHANGE_X.name: Port("exchange_x"),
+               FLOW_EXCHANGE_Y.name: Port("exchange_y"), FLOW_EXCHANGE_Z.name: Port("exchange_z"),
+               FLOW_PARTNERS.name: Port("partners")}
+    publishes = {FLOW_FACES.name: Port("velocity_x")}
+    #: The laws a user attaches at an opening or several, by their port laws' names (``mime.interactions.Inflow``,
+    #: ``Windkessel``, ``Valve``, ``SharedDistal``), and the exchange partners a point body's law registers
+    #: (``Drag.Stokes``).
+    registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name, ValveLaw.name, SharedDistalLaw.name,
+                                    EXCHANGE_PARTNER})
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
                               "true residual no longer falling), so the step's values hold only to the residual it "
@@ -253,14 +282,33 @@ class FVM(Dynamics):
         "openings (domain=VesselRegion()): a straight vessel along z cut at the two ends its geometry kind declares "
         "(a Tube's start and end), each an opening whose law the step holds, coupled implicitly through the field's "
         "affine response (one unit field a step for the opening that is not the gauge's reference, solved again from "
-        "the last), its rows a pressure (Windkessel) or a flux (Inflow); an Inflow pins the whole plane's flux, the "
-        "wall's band included (the band carries its Darcy share, about 0.1 to 1 % of it, so the lumen takes Q less "
-        "that share); the inflow's face flux held to it to its summation floor, (N + 2) eps of its superposition's "
+        "the last), its rows a pressure (Windkessel) or a flux (Inflow, Valve); an Inflow pins the opening's whole net "
+        "flux, the lumen's, the band's and the solid's faces on its plane together, never the lumen's alone, so the "
+        "lumen carries Q less what the solid carries, which runs either way (measured beyond the band's half width, "
+        "OpenFlowNode.opening_solid_fluxes): in steady flow 0.4 to 3.7 % of Q, with the inflow, at D/h 16 to 8 at the "
+        "default stiff interior 0.1h, 0.01 to 0.4 % at 0.01h; in pulsed flow it swings with the drive where the drive's "
+        "frequency nears the stiff interior's damping rate nu / (delta_in h)^2, the solid then no longer stiff against "
+        "it: on the open box's drawn runs (omega (delta_in h)^2 / nu 1.3e-3 to 0.95) from 32 % of Q against the "
+        "inflow to 19 % with it, the lumen then carrying up to 1.32 Q, the steady shares holding below "
+        "a ratio of about 4e-3; a heartbeat in a millimetre vessel sits at 7e-5 (blood, D/h 16) to 1e-3 (water, D/h 8); "
+        "the inflow's face flux held to it to its summation floor, (N + 2) eps of its superposition's "
         "scale over the plane's N faces, at any pressure level (a relative pressure's move is never formed from "
         "absolute pressures; gated to a downstream resistance of 1e4 times the vessel's); the Windkessel stepped by "
-        "backward Euler, its N_WK first order in dt; a flux row at an opening the flow leaves by (a closed valve, "
-        "an Inflow of no flux) is admitted and not gated yet (its gate, against the walled-off vessel, is F2b's third "
-        "PR's); IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
+        "backward Euler, its N_WK first order in dt; a Valve holds its opening's net flux at zero, not each face's: "
+        "the lumen behind it carries out what the solid's faces on the opening bring back in, the solid's Darcy flow, "
+        "falling as delta_in squared (on two parallel tubes, one outlet closed, D/h 8 to 12: 1.5 to 5.0 % of "
+        "the inflow at the default stiff interior 0.1h, 1.8e-4 to 7.0e-4 at 0.01h); gated against the walled-off "
+        "vessel (that outlet capped by solid, whose cap and the solid around it leak as much: 1.4 to 4.8 % at "
+        "0.1h), the inlet pressures within the two runs' solid flows carried through the open tube's resistance, so "
+        "the gate sees a valve error from about 8 % of the inflow at 0.1h and from 1e-3 (float64) and 2e-3 (float32) at "
+        "0.01h; "
+        "a law over several openings (SharedDistal) solved whole, its block's off-diagonals included; several openings "
+        "on one plane (a vessel with two outlets, gated at the node level until the tube tree's wall is in the open "
+        "box) split the plane between their centres, the solid's faces included, so the solid between their patches "
+        "carries Darcy flow from one to the other: on two parallel tubes at the default stiff interior the outlets' "
+        "cross conductance is 2.5 to 9 % of one's own (D/h 8 to 12), and a split differs from two independent "
+        "tubes' by up to 1.8 %; "
+        "IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
         "dt='auto' refused, the CFL checked each step; tilted open vessels not built; float32 behind its guards: "
         f"{FLOAT32_PORTS}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "
@@ -347,14 +395,57 @@ class FVM(Dynamics):
         """Whether the flow's domain is open at the vessel's ends (a ``VesselRegion``)."""
         return isinstance(self.domain, VesselRegion)
 
+    def tree_layout(self, region: Region, spacing: float | None = None) -> TreeLayout:
+        """The periodic box a tube tree's lumen is held in: its period the domain's length, its spacing ``spacing`` or
+        the narrowest lumen's diameter over ``cells_across`` (a tree on an open domain is refused when planned)."""
+        points, radii, segments, _ = tree_of(region)
+        box = cast(PeriodicBox, self.domain)
+        return periodic_tree_layout(points, segments, radii, float(cast(float, box.length.value)),
+                                    cells_across=self.cells_across, spacing=spacing, margin_cells=box.margin)
+
+    def tree_problems(self, region: Region) -> list[Problem]:
+        """A tube tree is stepped by IMEX Euler or its steady limit (RK3 on a tree is not built) and must repeat over
+        the box's period where the band reads it."""
+        if isinstance(self.scheme, RK3Scheme):
+            return [Problem("flow.tree-scheme", "RK3 on a tube tree's wall is not built: a tree's flow steps by IMEX "
+                                                "Euler or its steady limit",
+                            "write FVM(scheme=Scheme.IMEXEuler()), or FVM(stokes=True, scheme=Scheme.Steady())")]
+        from mime.scene import TubeTree
+
+        _, radii, segments, fillet = tree_of(region)
+        given = self.spacing.value if self.spacing is not None else None
+        layout = self.tree_layout(region, float(cast(float, given)) if given is not None else None)
+        tree = TubeTree.si(np.asarray(layout.points), segments, radii, fillet)
+        lumen, parameters = tree.lumen(), tree.parameters()
+        reach = (BANDS[DEFAULT_BAND].width / 2.0 + 3.0) * layout.spacing + tree.fillet_radius_value()
+        def minimum(at: Any) -> Any:
+            return lumen.minimum(parameters, at)
+
+        mismatch = period_mismatch(minimum, layout, reach)
+        if mismatch > PERIOD_LINE * layout.spacing:
+            return [Problem("flow.tree-period",
+                            f"the tube tree's lumen does not repeat over the periodic box's length "
+                            f"{layout.cells[2] * layout.spacing:.6g} m: its distance one period on differs by "
+                            f"{mismatch / layout.spacing:.3g} cells where the wall's band reads it",
+                            "make the tree periodic along z with the box's period, its two ends reaching past the "
+                            "period's (PeriodicBox(length=...) the tree's period)")]
+        return []
+
     @override
     def region_problems(self, region: Region | None) -> list[Problem]:
         """The region must be a straight circular tube's (a cylinder), its axis along z or along a lattice direction
-        ``(a, 0, b)`` of the periodic box."""
+        ``(a, 0, b)`` of the periodic box; or a tube tree's lumen, periodic along z with the box."""
+        if region is not None and region.shape == TREE:
+            if self.open:
+                return [Problem("flow.region", f"the flow's medium fills {region.path}, a tube tree's lumen; an open "
+                                               f"vessel is a straight vessel cut at its two ends (open trees come later)",
+                                "run the tree on a periodic box, FVM(domain=PeriodicBox(length=...))")]
+            return self.tree_problems(region)
         if region is None or region.shape != "cylinder":
             fills = f"fills {region.path}, a {region.shape} region" if region is not None else "fills no region"
             return [Problem("flow.region", f"the flow's medium {fills}; the FVM's periodic box holds a straight "
-                                           f"circular tube's lumen", "fill a Tube's lumen: Medium(fills=tube.lumen)")]
+                                           f"circular tube's lumen or a tube tree's",
+                            "fill a Tube's lumen, Medium(fills=tube.lumen), or a TubeTree's")]
         if lattice_of(_unit(region.parameters["axis"])) is None:
             return [Problem("flow.box-axis", f"the tube's axis {_unit(region.parameters['axis'])} is not along z or a "
                                              f"lattice direction (a, 0, b) of the periodic box",
@@ -383,7 +474,15 @@ class FVM(Dynamics):
     def registration_problems(self, registrations: Sequence[ResolvedRegistration],
                               region: Region | None) -> list[Problem]:
         """A periodic box takes no law at an opening; an open vessel takes one at each of its two ends and at nothing
-        else, and their rows are well posed (``mime.nodes.flow.fvm._ports.well_posed``)."""
+        else, and their rows are well posed (``mime.nodes.flow.fvm._ports.well_posed``). A point body's exchange
+        registration (``Drag.Stokes``) is no law at an opening, and an open vessel takes none yet."""
+        partners = [r for r in registrations if r.kind == EXCHANGE_PARTNER]
+        if self.open and partners:
+            return [Problem("flow.open-exchange", f"{', '.join(r.id for r in partners)} exchanges with the flow, and an "
+                                                  f"open vessel's flow takes no exchange partners yet (a point body's "
+                                                  f"exchange with its openings comes with the one elimination)",
+                            "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...))")]
+        registrations = [r for r in registrations if r.kind != EXCHANGE_PARTNER]
         if not self.open:
             return [Problem("flow.no-openings", f"{', '.join(r.id for r in registrations)} is attached at an opening "
                                                 f"and the flow's periodic box has none",
@@ -394,28 +493,34 @@ class FVM(Dynamics):
         openings = self.openings_of(region)
         found: list[Problem] = []
         for registration in registrations:
-            if registration.subject not in openings:
+            unknown = [surface for surface in registration.surfaces if surface not in openings]
+            if unknown:
                 found.append(Problem("flow.opening-unknown", f"{registration.id} is attached at "
-                                                             f"{registration.subject!r}, which is not an opening of "
-                                                             f"the flow's region (its openings: {', '.join(openings)})",
+                                                             f"{', '.join(repr(u) for u in unknown)}, which is not an "
+                                                             f"opening of the flow's region (its openings: "
+                                                             f"{', '.join(openings)})",
                                      f"attach it at one of them, exp.attach(..., medium=..., "
                                      f"surface={openings[0]!r}) or surface={openings[1]!r}"))
-        held = {o: [r for r in registrations if r.subject == o] for o in openings}
+        held = {o: [r for r in registrations if o in r.surfaces] for o in openings}
         for opening, laws in held.items():
             if len(laws) != 1:
                 attached = f"{', '.join(r.id for r in laws)} are attached" if laws else "no law is attached"
                 found.append(Problem("flow.opening-law", f"the flow's opening {opening!r} takes one law, and {attached}",
-                                     f"attach one law there, exp.attach(Windkessel(...) or Inflow(...), medium=..., "
-                                     f"surface={opening})"))
+                                     f"attach one law there, exp.attach(Inflow(...), Windkessel(...) or Valve(), "
+                                     f"medium=..., surface={opening}), or one over several openings, "
+                                     f"SharedDistal(...) with surface=(<opening>, <opening>)"))
         if found:
             return found
         laws = [held[o][0] for o in openings]
+        one = [port_law_named(r.kind).openings == 1 for r in laws]
         reason = well_posed([port_law_named(r.kind).row for r in laws],
-                            [port_law_named(r.kind).row_of(r.settings) for r in laws])
+                            [port_law_named(r.kind).row_of(r.settings) if alone else (0.0,) * 4
+                             for r, alone in zip(laws, one, strict=True)])
+        given = ", ".join(r.id for r in laws if port_law_named(r.kind).row is RowKind.FLUX)
         return [Problem("flow.openings-ill-posed", reason,
-                        f"attach a pressure law at one of the openings, exp.attach(Windkessel(proximal=..., "
-                        f"compliance=..., distal=...), medium=..., surface={openings[1]!r}), whose pressure the "
-                        f"flow's rows solve for")] if reason else []
+                        f"give one of the openings a pressure law in place of its flux law ({given}): "
+                        f"exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=..., "
+                        f"surface=<that opening>), whose pressure the flow's rows solve for")] if reason else []
 
     def field_for(self, scheme: str) -> SolvedField:
         """The solved-field contract's declarations of this FVM stepped by ``scheme`` (its ledger route and its steady
@@ -438,18 +543,27 @@ class FVM(Dynamics):
         region = query.region
         if self.open:  # an open vessel's step rule (the CFL from the inflow's peak) comes with the region builder
             return StepRule(None, lambda step, every: [], lambda step, every: (), unbounded=OPEN_STEP)
-        if region is None or region.shape != "cylinder" or "viscosity" not in query.values \
-                or "density" not in query.values or lattice_of(_unit(region.parameters["axis"])) is None:
+        if region is None or "viscosity" not in query.values or "density" not in query.values:
             return None
-        axis = _unit(region.parameters["axis"])
-        radius = float(region.parameters["radius"])  # type: ignore[arg-type]
-        nu = query.values["viscosity"] / query.values["density"]
         given = query.settings.get("spacing")
-        layout = periodic_tube_layout(radius, float(query.settings["domain.length"]),  # type: ignore[arg-type]
-                                      cells_across=self.cells_across,
-                                      spacing=float(given) if isinstance(given, (int, float)) else None,
-                                      margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
-        h = layout.spacing
+        spacing = float(given) if isinstance(given, (int, float)) else None
+        if region.shape == TREE:
+            # A tree's flow along any direction: the line along the diagonal, its least (g(n) a third); its peak from
+            # its widest lumen; its cells the tree's box's.
+            tree = self.tree_layout(region, spacing)
+            axis = (1.0, 1.0, 1.0)
+            radius = float(np.max(tree_of(region)[1]))
+            h, cells = tree.spacing, tree.cells
+        elif region.shape == "cylinder" and lattice_of(_unit(region.parameters["axis"])) is not None:
+            axis = _unit(region.parameters["axis"])
+            radius = float(region.parameters["radius"])  # type: ignore[arg-type]
+            layout = periodic_tube_layout(radius, float(query.settings["domain.length"]),  # type: ignore[arg-type]
+                                          cells_across=self.cells_across, spacing=spacing,
+                                          margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
+            h, cells = layout.spacing, layout.cells
+        else:
+            return None
+        nu = query.values["viscosity"] / query.values["density"]
         drive = axial_drive(query.drives, axis)
         wide = radius + WALL_REACH_CELLS * h
         peak = predicted_peak(drive, wide, nu)
@@ -475,7 +589,8 @@ class FVM(Dynamics):
                 bounds.append(line * h / peak)
             return min(bounds) if bounds else None
 
-        candidates = [self.scheme.group] if self.scheme is not None else [RK3.name, IMEXEuler.name]
+        candidates = [self.scheme.group] if self.scheme is not None else \
+            [IMEXEuler.name] if region.shape == TREE else [RK3.name, IMEXEuler.name]
         steps = {name: safe(name) for name in candidates}
         bounded = {name: step for name, step in steps.items() if step is not None}
         if self.scheme is None and IMEXEuler.name in steps and steps[IMEXEuler.name] is None:
@@ -483,7 +598,7 @@ class FVM(Dynamics):
         else:
             largest = max(bounded.values()) if bounded else None
 
-        cells = layout.cells[0] * layout.cells[1] * layout.cells[2]
+        count = cells[0] * cells[1] * cells[2]
         where, available = device_memory()
         coarser = (f"a coarser spacing (FVM(spacing=...) over {h:.4g} m: doubling it divides the cells by about "
                    f"eight)" if given is not None else
@@ -491,13 +606,13 @@ class FVM(Dynamics):
                    f"about eight)")
 
         def problems(step: float, every: int) -> list[Problem]:
-            name = chosen_scheme(self.scheme, nu, h, step)
+            name = tree_scheme(self.scheme) if region.shape == TREE else chosen_scheme(self.scheme, nu, h, step)
             found: list[Problem] = []
-            needed = memory_estimate(name, cells)
+            needed = memory_estimate(name, count)
             if available is not None and needed > available:
                 found.append(Problem(
                     "flow.memory",
-                    f"the flow's box is {layout.cells[0]} x {layout.cells[1]} x {layout.cells[2]} = {cells} cells at "
+                    f"the flow's box is {cells[0]} x {cells[1]} x {cells[2]} = {count} cells at "
                     f"{2.0 * radius / h:.4g} cells across the lumen, whose {name} run needs about "
                     f"{needed / 2 ** 30:.3g} GiB (the cells times the bytes a cell a CPU run was measured to hold, "
                     f"as the validity line says), more than {where}, {available / 2 ** 30:.3g} GiB",
@@ -527,12 +642,12 @@ class FVM(Dynamics):
             return found
 
         def report(step: float, every: int) -> tuple[str, ...]:
-            name = chosen_scheme(self.scheme, nu, h, step)
+            name = tree_scheme(self.scheme) if region.shape == TREE else chosen_scheme(self.scheme, nu, h, step)
             line = line_of(name)
             room = f"{available / 2 ** 30:.3g} GiB" if available is not None else "which the system does not report"
-            box = (f"the box: {layout.cells[0]} x {layout.cells[1]} x {layout.cells[2]} = {cells} cells of "
-                   f"{h:.4g} m, {2.0 * radius / h:.4g} across the lumen; the {name} run's memory about "
-                   f"{memory_estimate(name, cells) / 2 ** 20:.4g} MiB (the cells times the bytes a cell a CPU run was "
+            box = (f"the box: {cells[0]} x {cells[1]} x {cells[2]} = {count} cells of "
+                   f"{h:.4g} m, {2.0 * radius / h:.4g} across the {'widest ' if region.shape == TREE else ''}lumen; "
+                   f"the {name} run's memory about {memory_estimate(name, count) / 2 ** 20:.4g} MiB (the cells times the bytes a cell a CPU run was "
                    f"measured to hold), against {where}, {room}")
             return (box, *report_lines(name, step, every, nu * step / h ** 2,
                                        RK3.viscous_number if name == RK3.name else None,
@@ -541,21 +656,50 @@ class FVM(Dynamics):
 
         return StepRule(largest, problems, report, period=drive.period)
 
+    def layout_of(self, region: Region, settings: Mapping[str, Magnitude]) -> TubeLayout:
+        """The periodic box this FVM lays out around the tube ``region`` from its settings in SI: what its node is
+        built on and what its exchange partners read their grid from (:meth:`exchange_frame`)."""
+        axis = _unit(region.parameters["axis"])
+        lattice = lattice_of(axis)
+        assert lattice is not None
+        given = settings.get("spacing") if self.spacing is not None else None
+        return periodic_tube_layout(float(region.parameters["radius"]),  # type: ignore[arg-type]
+                                    float(settings["domain.length"]),  # type: ignore[arg-type]
+                                    cells_across=self.cells_across,
+                                    spacing=float(given) if isinstance(given, (int, float)) else None,
+                                    margin_cells=self.domain.margin, lattice=lattice)
+
+    def exchange_frame(self, node: str, region: Region | None,
+                       settings: Mapping[str, Magnitude]) -> ExchangeFrame | None:
+        """What a partner exchanging with this field reads of it (SF-4): its grid, and the world point of the grid's
+        origin, the tube's axis point less where the layout puts the axis in the box. ``None`` where the region is no
+        straight tube the layout takes, or where the vessel is open (its node takes no exchange yet; the partner's plan
+        refuses it then)."""
+        if self.open or region is None or region.shape != "cylinder" or \
+                lattice_of(_unit(region.parameters["axis"])) is None:
+            return None
+        layout = self.layout_of(region, settings)
+        point = shape_named(region.shape).axis_point(region.parameters)
+        assert point is not None
+        origin = tuple(float(point[i]) - layout.centre[i] for i in range(3))
+        return ExchangeFrame(node, "cartesian_mac", layout.cells, layout.spacing,
+                             (origin[0], origin[1], origin[2]), ("velocity_x", "velocity_y", "velocity_z"),
+                             EXCHANGE_FIELDS, None if self.scheme is None else self.scheme.group)
+
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         region = ctx.region("medium")
         assert region is not None
         if self.open:
-            _open_build(self, ctx, b, registrations, region)
+            _open_build(self, ctx, b, [r for r in registrations if r.kind != EXCHANGE_PARTNER], region)
             return
-        axis = _unit(region.parameters["axis"])
-        lattice = lattice_of(axis)
-        assert lattice is not None
-        radius = float(region.parameters["radius"])  # type: ignore[arg-type]
-        spacing = ctx.scalar("spacing") if self.spacing is not None else None
-        layout = periodic_tube_layout(radius, ctx.scalar("domain.length"), cells_across=self.cells_across,
-                                      spacing=spacing, margin_cells=self.domain.margin, lattice=lattice)
+        if region.shape == TREE:
+            self.build_tree(ctx, b, region)
+            return
+        layout = self.layout_of(region, ctx.settings)
+        lattice = lattice_of(_unit(region.parameters["axis"]))
         viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
+        partners = any(registration.kind == EXCHANGE_PARTNER for registration in registrations)
         scheme = chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
         band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.delta_in]
         images = "own" if lattice == (0, 1) else "transverse"
@@ -575,17 +719,53 @@ class FVM(Dynamics):
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
             interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows,
-            wall_name=wall))
+            wall_name=wall, exchange=partners))
+
+    def build_tree(self, ctx: BuildContext, b: DynamicsBuilder, region: Region) -> None:
+        """A tube tree's flow: its box from the tree (:meth:`tree_layout`), the tree's points moved into it."""
+        _, radii, segments, fillet = tree_of(region)
+        layout = self.tree_layout(region, ctx.scalar("spacing") if self.spacing is not None else None)
+        b.add_node(ImplicitFlowNode(
+            ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
+            spacing=layout.spacing, viscosity=ctx.scalar_value("viscosity"), density=ctx.scalar_value("density"),
+            tree_points=np.asarray(layout.points), tree_radii=radii, tree_fillet=fillet, tree_segments=segments,
+            scheme=tree_scheme(self.scheme), convection=not self.stokes, tolerance=self.tolerance,
+            preconditioner=self.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[self.wall.delta_in],
+            solve_report_rows=self.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall"))
+
+
+def takes_exchange(frame: ExchangeFrame, viscosity: float, density: float, dt: float) -> bool:
+    """Whether the FVM a frame describes steps with a scheme whose node takes exchange deliveries at these values: the
+    monolithic projected CG's (IMEX Euler, its steady limit); RK3's explicit stages take none yet."""
+    scheme = frame.scheme if frame.scheme is not None else chosen_scheme(None, viscosity / density, frame.spacing, dt)
+    return scheme_named(scheme).stage_kind is StageKind.MONOLITHIC_PROJECTED_CG
+
+
+def tree_scheme(given: IMEXEulerScheme | SteadyScheme | RK3Scheme | None) -> str:
+    """The scheme a tube tree's flow steps with: the one named (never RK3: refused when planned), else IMEX Euler."""
+    return given.group if given is not None else IMEXEuler.name
 
 
 def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],
                 region: Region) -> None:
-    """The open vessel's node: the box along z from its start's plane to its end's, each opening's law from its
-    registration (its kind, its settings as a row of parameters, its id the ledger's name)."""
-    by_opening = {r.subject: r for r in registrations}
-    laws = [by_opening[opening] for opening in fvm.openings_of(region)]
-    start, end = (r.subject_parameters for r in laws)
-    length = -(float(cast(float, start["offset"])) + float(cast(float, end["offset"])))
+    """The open vessel's node: the box along z from its low plane to its high one, each opening on the plane its
+    surface faces (its normal into the vessel along the axis: the low plane; against it: the high one), each law from
+    its registration (its kind, its settings as a row of parameters, its id the ledger's name, the openings it binds
+    in the order written)."""
+    openings = fvm.openings_of(region)
+    at: dict[str, Mapping[str, Magnitude]] = {}
+    for registration in registrations:
+        given = registration.subjects_parameters or (registration.subject_parameters,)
+        at.update(zip(registration.surfaces, given, strict=True))
+    axis = _unit(region.parameters["axis"])
+    planes = tuple("low" if sum(float(n) * a for n, a in zip(cast(tuple[float, ...], at[o]["normal"]), axis,
+                                                             strict=True)) > 0.0 else "high" for o in openings)
+    low, high = (next(at[o] for o, plane in zip(openings, planes, strict=True) if plane == side)
+                 for side in ("low", "high"))
+    length = -(float(cast(float, low["offset"])) + float(cast(float, high["offset"])))
+    laws = sorted(registrations, key=lambda r: min(openings.index(s) for s in r.surfaces))
+    placed: dict[str, Any] = {} if planes == ("low", "high") and all(len(r.surfaces) == 1 for r in laws) else \
+        {"opening_planes": planes, "law_openings": tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws)}
     radius = float(region.parameters["radius"])  # type: ignore[arg-type]
     spacing = ctx.scalar("spacing") if fvm.spacing is not None else None
     layout = periodic_tube_layout(radius, length, cells_across=fvm.cells_across, spacing=spacing,
@@ -599,9 +779,10 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes,
         tolerance=fvm.tolerance, preconditioner=fvm.preconditioner, band=DEFAULT_BAND,
         interior=_INTERIOR_NAMES[fvm.wall.delta_in], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
-        openings=tuple(r.subject for r in laws), opening_laws=tuple(r.kind for r in laws),
+        openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
-        opening_law_ids=tuple(r.id for r in laws)))
+        opening_law_ids=tuple(r.id for r in laws),
+        **placed))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:
@@ -633,4 +814,4 @@ def _unit(vector: object) -> tuple[float, float, float]:
 
 
 __all__ = ["FVM", "Band", "IMEXEulerScheme", "RK3Scheme", "Scheme", "SteadyScheme", "chosen_scheme", "host_line",
-           "lattice_of"]
+           "lattice_of", "takes_exchange"]

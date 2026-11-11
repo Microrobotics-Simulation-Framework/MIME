@@ -14,6 +14,15 @@ description lists::
 - ``seed=N``: the first run's Hypothesis seed, a fresh random one if absent. Run *k* uses ``N + k - 1``.
 
 Anything it cannot use is refused by name, and so is an empty selection: a stress run that ran nothing is not a pass.
+
+**The split.** Every run of the selection (one Hypothesis seed) is split across parallel jobs, so that a large pull request's
+changed files fit a job's limit: the files are dealt longest first onto the lightest of *n* parts by their seconds in
+``tests/shard_weights.json`` (the table the default lane's shards are dealt by; a file it does not list takes
+``new_file_weight``, the 90th percentile of its file weights, as ``tests/_sharding.py`` assumes), *n* being the total over
+``PART_SECONDS``, rounded up, and at most the number of files and ``MAX_JOBS`` over the runs. Each part runs in its own job for
+every run, each run with its own seed, so every selected test runs as many times as it did unsplit. A file is not divided
+(a node id of a file weighs the file's seconds, an upper bound), so a file over ``PART_SECONDS`` is a part of its own, and a
+description that narrows the set with ``only`` and a few node ids is one part, as before.
 ``cache`` names the compilation caches of the default lane's shards that hold the selected files (the ones a base
 branch's push saved), at most ``CACHE_SLOTS`` of them, most files first.
 """
@@ -23,6 +32,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import math
 import os
 import re
 import secrets
@@ -36,6 +46,11 @@ DEFAULT_RUNS, MAX_RUNS = 20, 40
 SUPPORTED_PYTHONS = ("3.12", "3.13", "3.14")
 DEFAULT_PYTHON = SUPPORTED_PYTHONS[0]
 CACHE_SLOTS = 3
+#: The seconds of the shard table (summed test time, run on four workers) a job is given, and the most jobs one stress run may
+#: start: GitHub caps a matrix at 256 entries. On a runner the changed set of a large pull request took 0.4 to 0.6 wall
+#: seconds for a table second, so 1000 is 7 to 10 minutes, and a file over it is the one job that long, of the 20 minutes.
+PART_SECONDS, MAX_JOBS = 1000, 250
+WEIGHTS = Path(__file__).resolve().parents[1] / "tests" / "shard_weights.json"
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import compilation_cache_mode  # noqa: E402
@@ -58,9 +73,13 @@ class Request:
     runs: int
     python: str
     seed: int
+    #: ``parts[i]`` is the targets of part ``i + 1``, each in directory order; every part runs for every run.
+    parts: tuple[tuple[str, ...], ...] = ()
 
     def matrix(self) -> dict[str, list[dict[str, int]]]:
-        return {"include": [{"run": k, "seed": self.seed + k - 1} for k in range(1, self.runs + 1)]}
+        """One job per run and part: ``index`` is the part's place in the ``parts`` output, ``part`` its number."""
+        return {"include": [{"run": k, "seed": self.seed + k - 1, "part": i + 1, "index": i}
+                            for k in range(1, self.runs + 1) for i in range(len(self.parts))]}
 
 
 def _whole(name: str, value: str, low: int, high: int) -> int:
@@ -99,7 +118,32 @@ def in_directory_order(targets: list[str]) -> list[str]:
     return sorted(targets, key=lambda target: PurePosixPath(target.split("::", 1)[0]).parts[:-1])
 
 
-def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_seed: Callable[[], int]) -> Request:
+def table_seconds(path: Path = WEIGHTS) -> tuple[dict[str, int], int]:
+    """``({test file: seconds}, the seconds of a file the table does not list)`` from the shard table, read as
+    ``tests/_sharding.py`` reads it (its ``new_file_weight``: the 90th percentile, nearest rank, of the file weights)."""
+    seconds = json.loads(path.read_text(encoding="utf-8"))["seconds"]
+    ordered = sorted(seconds.values())
+    return seconds, ordered[math.ceil(0.9 * len(ordered)) - 1]
+
+
+def split(targets: list[str], seconds: dict[str, int], unlisted: int, runs: int) -> list[list[str]]:
+    """``targets`` (in directory order) dealt into parts by their files' seconds: longest file first onto the lightest part,
+    ties on the file's path and the lower part; the files are kept whole, and each part keeps ``targets``' order."""
+    weight: dict[str, int] = {}
+    for target in targets:
+        file = target.split("::", 1)[0]
+        weight[file] = seconds.get(file, unlisted)
+    count = max(1, min(len(weight), math.ceil(sum(weight.values()) / PART_SECONDS), MAX_JOBS // runs))
+    load, held = [0] * count, [set[str]() for _ in range(count)]
+    for file in sorted(weight, key=lambda f: (-weight[f], f)):
+        lightest = min(range(count), key=lambda k: (load[k], k))
+        held[lightest].add(file)
+        load[lightest] += weight[file]
+    return [[t for t in targets if t.split("::", 1)[0] in files] for files in held if files]
+
+
+def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_seed: Callable[[], int],
+           weights: tuple[dict[str, int], int] | None = None) -> Request:
     """The stress run a description and a diff ask for; ``exists`` says whether a listed file is in the checkout."""
     listed, options, only = parse_description(body)
     for token in listed:
@@ -118,7 +162,9 @@ def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_s
         raise Refused(f"python={python!r} is not one of the default lane's {', '.join(SUPPORTED_PYTHONS)}")
     runs = _whole("runs", options["runs"], 1, MAX_RUNS) if "runs" in options else DEFAULT_RUNS
     seed = _whole("seed", options["seed"], 0, 2**31 - 1) if "seed" in options else fresh_seed()
-    return Request(tuple(targets), runs, python, seed)
+    seconds, unlisted = weights if weights is not None else table_seconds()
+    parts = tuple(tuple(part) for part in split(targets, seconds, unlisted, runs))
+    return Request(tuple(targets), runs, python, seed, parts)
 
 
 def cache_shards(targets: list[str], count: int) -> list[str]:
@@ -165,11 +211,14 @@ def main(argv: list[str] | None = None) -> int:
             request = select(os.environ.get("PR_BODY", ""), _changed_files(),
                              lambda path: (ROOT / path).is_file(), lambda: secrets.randbelow(2**31))
             _output({"targets": json.dumps(request.targets), "runs": str(request.runs), "python": request.python,
-                     "seed": str(request.seed), "matrix": json.dumps(request.matrix())})
-            print(f"stress: {len(request.targets)} targets, {request.runs} runs, Python {request.python}, "
-                  f"first seed {request.seed}")
-            for target in request.targets:
-                print(f"  {target}")
+                     "seed": str(request.seed), "parts": json.dumps(request.parts), "part_count": str(len(request.parts)),
+                     "matrix": json.dumps(request.matrix())})
+            print(f"stress: {len(request.targets)} targets, {request.runs} runs of {len(request.parts)} parts, "
+                  f"Python {request.python}, first seed {request.seed}")
+            for number, part in enumerate(request.parts, 1):
+                print(f" part {number}:")
+                for target in part:
+                    print(f"  {target}")
             return 0
         count = shard_matrix.resolve(args.variable, "")[0]
         cpuinfo = Path("/proc/cpuinfo").read_text(encoding="utf-8")

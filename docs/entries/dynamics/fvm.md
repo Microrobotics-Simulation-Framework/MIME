@@ -70,8 +70,9 @@ pressure drop a period of the vessel would carry. The fluid's viscosity and dens
 material record or `exp.declare`, never settings of the field.
 
 Open at the vessel's ends, `FVM(domain=VesselRegion())` on a straight tube along z, each end is an opening that takes
-one law: an `Inflow` (a flux given) or a `Windkessel` (a pressure affine in its flux over the step), attached with
-`medium=` and `surface=tube.start` or `surface=tube.end`. The openings are the ones the vessel's geometry kind declares
+one law: an `Inflow` (a flux given), a `Windkessel` (a pressure affine in its flux over the step) or a `Valve` (no flux),
+attached with `medium=` and `surface=tube.start` or `surface=tube.end`; or a law over several openings, `SharedDistal`,
+attached with `surface=(tube.start, tube.end)` or the lumen's openings, `surface=tube.lumen`. The openings are the ones the vessel's geometry kind declares
 for the region the medium fills, named by geometry (a straight tube's `start` and `end` along its axis), never by the
 role a law gives them. The box is open along its axis, the faces on its two planes
 evolved half cells, so its projector stays exact; the step holds the openings' laws and couples them implicitly
@@ -119,8 +120,9 @@ and ±10 % at 32 (measured on a static tube). They stay trainable. The entry dec
 
 **When not to use it.**
 - Anywhere but a periodic box around a straight circular tube (aligned with z or tilted in the x-z plane along a lattice
-  direction of the box) or that tube along z open at its ends: a region cut from a vessel by planes, several openings,
-  valves and other vessels arrive with later versions.
+  direction of the box) or that tube along z open at its ends: a region cut from a vessel by planes and other vessels
+  arrive with later versions, and several openings on one plane (built in the node, gated on two parallel tubes) reach
+  the experiment with the tube tree.
 - Near a wall at a resolution the band does not resolve: the wall's shift is calibrated on straight tubes at the default
   resolution and finer, and about five cells across a lumen is the band's floor.
 - With bodies in the flow: neither a point body's exchange nor a resolved body is coupled yet.
