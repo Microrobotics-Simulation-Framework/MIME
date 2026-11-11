@@ -42,7 +42,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple, cast
 
 import jax
-import numpy as np
 from jax import Array
 
 from mime.core import jnp
@@ -203,7 +202,10 @@ def _capable(kind: Geometry, settings: Mapping[str, Any], spacing: float, patche
                                        @ jnp.swapaxes(across, -1, -2))
         # the flatter direction: the larger radius's, in the kind's frame
         flatter = jnp.einsum("ni,nij->nj", turns[:, :, 1], across)
-        reach = jax.vmap(lambda d: kind.reach(parameters, d))
+        def reach_along(direction: Array) -> Array:
+            return kind.reach(parameters, direction)
+
+        reach = cast(Any, jax).vmap(reach_along)
         extent = 0.5 * (reach(flatter) + reach(-flatter))
         curvature = 1.0 / (jnp.maximum(radii[:, 1], 0.0) + RADIUS_FLOOR * size)
         line = float(jnp.min(curvature * extent ** 2))

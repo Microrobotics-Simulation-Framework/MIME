@@ -224,11 +224,16 @@ def summed(form: str, found: NearContacts, share: Array, delta: Array, cutoff: A
            centre: Array, reach: Array) -> Increment:
     """The increments of a body's contacts with one opposing surface opened by ``delta``, each by its ``share``,
     summed about ``centre``: a single slot's increment itself, bit for bit where its share is one."""
+    def of(contact: NearContact) -> Increment:
+        return increment(form, contact, delta, cutoff, viscosity, centre, reach)
+
+    def first(value: Array) -> Array:
+        return value[0]
+
     if share.shape[0] == 1:
-        one = increment(form, cast(NearContact, _tree_util.tree_map(lambda v: v[0], found.contacts)), delta, cutoff,
-                        viscosity, centre, reach)
+        one = of(cast(NearContact, _tree_util.tree_map(first, found.contacts)))
         return Increment(share[0] * one.resistance, one.residual)
-    each = _vmap(lambda contact: increment(form, contact, delta, cutoff, viscosity, centre, reach))(found.contacts)
+    each = cast(Increment, _vmap(of)(found.contacts))
     return Increment(jnp.einsum("k,kij->ij", share, each.resistance), jnp.max(each.residual))
 
 

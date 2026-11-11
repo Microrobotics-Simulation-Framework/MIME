@@ -1,6 +1,9 @@
-"""Lubrication's hand-over on the MRS rung (drag 0.5.0's ``lubrication``), body to wall, against exact answers and its
-controls: W2a's gates 1-4 and 7-14, predictions committed first (``tests/oracles/predictions_w2a.json``, and for the
-fix round's gates ``predictions_w2a_fix.json``).
+"""Lubrication's hand-over on the MRS rung (drag 0.5.0's ``near_contact``) in its general point form, the elliptic
+contact's (every kind but the sphere takes it), body to wall, against exact answers and its controls: W2a's gates 1-4
+and 7-14, predictions committed first (``tests/oracles/predictions_w2a.json``, the fix round's
+``predictions_w2a_fix.json``; since the film was retired as a per-step increment, ``predictions_w2a_1b2.json``). The
+gates' body is a sphere given the elliptic form (its exact answers are known); the thin film itself is kept as the
+elliptic form's cross-check (gate 3's line contact, the film alone).
 
 - **Gate 1, a sphere above a plane, every gap, drawn orientations:** the lifted resistance's normal entry against
   Brenner's series at every gap (0.002 to 0.3 radii), and every entry against the method of fundamental solutions
@@ -29,7 +32,9 @@ fix round's gates ``predictions_w2a_fix.json``).
   hard max (its derivative jumps at the hand-over gap).
 - **Gate 9:** the two-builds check is quiet in each surface's roughness and the sphere's radius.
 - **Gate 10 (dtypes):** float32 within 1e-3 of float64 on the diagonal scale.
-- **Gate 11, never silent:** a wrong film solve is flagged (``film_unsolved``) at every step; a clean run never.
+- **Gate 11, never silent:** a body that can touch along a line or round a lumen is refused the hand-over written on
+  (``drag.near-contact-line``, ``drag.near-contact-ring``) and left out unwritten, saying why; a step that meets one
+  raises ``near_contact_line`` or ``near_contact_ring``, a point contact neither.
 - **Gate 12, the cutoff:** the public reader (``roughness_cutoff``, standing for W2b's traction law) gives the cutoff
   the film uses; the film's normal force below the cutoff follows its floored gap; value and slope continuous through
   the cutoff. Control: a film whose cutoff is not the reader's.
@@ -89,10 +94,11 @@ LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last
 
 
 @pytest.fixture(autouse=True)
-def the_film_on_the_sphere(monkeypatch):
-    """Every gate here is the thin film's form (``mime.nodes.hydro.near_contact``'s ``"film"``), which every kind but
-    the sphere takes: the sphere is its gates' body (its exact answers are known), so it is given the film's form here,
-    as a kind that declares no closed form has (the sphere's own form is gated in ``test_near_contact.py``)."""
+def the_elliptic_form_on_the_sphere(monkeypatch):
+    """Every gate here is the elliptic point contact's form (``mime.nodes.hydro.near_contact``'s ``"elliptic"``), which
+    every kind but the sphere takes: the sphere is its gates' body (its exact answers are known), so it is given the
+    elliptic form here, as a kind that declares no closed form has (the sphere's own form is gated in
+    ``test_near_contact.py``); its search then takes the general form's eight groups, which find its one contact."""
     monkeypatch.setattr(Sphere, "near_contact", "")
 
 
@@ -193,7 +199,7 @@ def test_gate1_every_entry_within_its_line_of_the_exact_answer_at_every_gap_and_
             miss.pop("diag2", None)
         assert max(abs(v) for v in miss.values()) <= line, (gap, q, miss)
         assert float(out["handover_window"]) == 0.0 and float(out["handover_far_side"]) == 0.0, gap
-        assert float(out["least_eigenvalue"]) > 0.0 and float(out["film_unsolved"]) == 0.0, gap
+        assert float(out["least_eigenvalue"]) > 0.0, gap
 
 
 def test_gate1_control_the_lift_left_out_misses_at_every_gap_below_the_handover():
@@ -527,17 +533,54 @@ def test_gate10_float32_lies_within_its_line_of_float64():
         scale = np.sqrt(np.abs(np.outer(np.diag(a), np.diag(a))))
         found = float(np.max(np.abs(b - a) / scale))
         print(f"\nh/a {gap}: float32 against float64 {found:.3g} of the diagonal scale")
-        assert found <= 1e-3 and float(narrow[gap]["film_unsolved"]) == 0.0, (gap, found)
+        assert found <= 1e-3, (gap, found)
 
 
 # -- gate 11 ---------------------------------------------------------------------------------------------------------
 
-def test_gate11_a_wrong_film_solve_is_flagged_at_every_step_and_a_clean_one_never():
-    gaps = (0.1, 0.05, 0.01, 0.002)
-    for plant, expected in ((None, 0.0), ("wrong_solve", 1.0)):
-        for gap, out in at_gaps(0.2, gaps, plant=plant).items():
-            print(f"\n{plant} h/a {gap}: residual {float(out['film_residual']):.2g}, flag {float(out['film_unsolved'])}")
-            assert float(out["film_unsolved"]) == expected, (plant, gap)
+def test_gate11_a_body_that_can_touch_along_a_line_or_round_a_lumen_is_refused_or_left_out_with_its_reason():
+    """A capsule (its side a line) and a sphere filling 0.9 of a lumen (its contact a ring): written on, each refused by
+    its code with the route; unwritten, each left out and the build report saying why. The law has no form for either
+    yet."""
+    from mime.build import BuildRefused
+    from mime.scene import Capsule
+
+    capsule = Capsule(radius=m(RADIUS), height=m(4.0 * RADIUS))
+    cases = {"drag.near-contact-line": lambda written: above_plane(0.2, kind=capsule, lubrication=written),
+             "drag.near-contact-ring": lambda written: in_tube(0.2, lubrication=written, tube=RADIUS / 0.9)}
+    for code, case in cases.items():
+        with pytest.raises(BuildRefused) as refused:
+            case(True).plan()
+        assert code in refused.value.codes(), refused.value.codes()
+        assert "1b-ii-b" in str(refused.value), code
+        assert taken_default(case(None), "near_contact") is False, code
+        node = stepper(case(None).build())[0]
+        lines = [line for line in node.built_lines(None, None) if "hand-over is not taken" in line]
+        print("\n" + "\n".join(lines))
+        assert len(lines) == 1 and ("along a line" if code.endswith("line") else "ring contact") in lines[0], lines
+
+
+def test_gate11_a_step_that_meets_a_line_or_a_ring_raises_its_flag_and_a_point_never(monkeypatch):
+    """The plan's rule set aside (``capable`` reporting nothing), so that the node is built: a capsule lying on the plane
+    raises near_contact_line at every step within the band, a sphere filling 0.9 of a lumen near_contact_ring, and the
+    gates' sphere neither."""
+    import mime.interactions.hydrodynamic as hydrodynamic
+    from mime.nodes.hydro.mrs._handover import Capable
+    from mime.scene import Capsule
+
+    monkeypatch.setattr(hydrodynamic, "capable", lambda *arguments: Capable(None, None))
+    lying = (math.cos(math.pi / 4), 0.0, math.sin(math.pi / 4), 0.0)
+    cases = (("near_contact_line", above_plane(0.2, kind=Capsule(radius=m(RADIUS), height=m(4.0 * RADIUS))),
+              lambda g: plane_pose(g * RADIUS, lying)),
+             ("near_contact_ring", in_tube(0.2, tube=RADIUS / 0.9), lambda g: tube_pose(g * RADIUS, tube=RADIUS / 0.9)),
+             (None, above_plane(0.2), lambda g: plane_pose(g * RADIUS)))
+    for flag, experiment, pose in cases:
+        node, state, leaves, step = stepper(experiment.build())
+        for gap in (0.1, 0.03, 0.005):
+            out = step(pose(gap), leaves)
+            raised = {name: float(out[name]) for name in ("near_contact_line", "near_contact_ring")}
+            print(f"\n{flag} h/a {gap}: {raised}")
+            assert all(value == (1.0 if name == flag else 0.0) for name, value in raised.items()), (flag, gap, raised)
 
 
 # -- gate 12 ---------------------------------------------------------------------------------------------------------
@@ -600,7 +643,7 @@ def test_the_tube_is_opened_by_dilation_and_its_contact_found_off_the_axis():
     assert node.lubricated
     out = step(tube_pose(0.01 * RADIUS), leaves)
     assert float(out["contact_gap"]) == pytest.approx(0.01 * RADIUS, rel=1e-6)
-    assert float(out["least_eigenvalue"]) > 0.0 and float(out["film_annulus"]) == 0.0
+    assert float(out["least_eigenvalue"]) > 0.0 and float(out["near_contact_ring"]) == 0.0
     assert TUBE > RADIUS
 
 
@@ -648,8 +691,8 @@ def film_at(case, radius: float, gap: float):
 
 
 @pytest.mark.memory_heavy
-def test_gate13_the_films_increment_in_the_spheres_radius_through_the_node_equals_two_builds_difference():
-    """d(film increment)/d(shape_radius) by reverse mode through the node's own step, the body held a gap of 0.01 radii
+def test_gate13_the_increment_in_the_spheres_radius_through_the_node_equals_two_builds_difference():
+    """d(the law's increment)/d(shape_radius) by reverse mode through the node's own step, the body held a gap of 0.01 radii
     off the plane as its radius moves, against the central difference of two builds at a (1 +- SHAPE_STEP)."""
     gap = 0.01 * RADIUS
     with planted():
@@ -726,7 +769,7 @@ def test_a_body_past_the_films_window_is_the_coarse_mrss_by_the_builds_rule_and_
     assert not node.lubricated
     lines = [line for line in node.built_lines(None, None) if "hand-over is not taken" in line]
     print("\n" + "\n".join(lines))
-    assert len(lines) == 1 and "past the film's window" in lines[0]
+    assert len(lines) == 1 and "past the elliptic form's window" in lines[0]
     assert taken_default(above_plane(0.3, lubrication=None), "near_contact") is False
     assert taken_default(above_plane(0.2, lubrication=None), "near_contact") is True
 
@@ -741,10 +784,12 @@ def test_lubrication_written_on_past_the_window_is_refused_naming_the_spacing_th
         assert "spacing=mm(" in refused.value.refusals[0].action
 
 
-def test_control_the_rule_removed_gives_fl9s_default_to_the_film(monkeypatch):
+def test_control_the_rules_removed_give_fl9s_default_to_the_elliptic_form(monkeypatch):
     import mime.interactions.hydrodynamic as hydrodynamic
+    from mime.nodes.hydro.mrs._handover import Capable
 
     monkeypatch.setattr(hydrodynamic, "WINDOW", math.inf)
+    monkeypatch.setattr(hydrodynamic, "capable", lambda *arguments: Capable(None, None))
     assert taken_default(screw_in_tube(), "near_contact") is True
 
 

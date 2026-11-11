@@ -83,6 +83,25 @@ def _with_body(experiment: Experiment, spacing: float | None, blob: float | None
     return experiment
 
 
+#: The two-contact gate's body and tube (``tests/oracles/test_elliptic_gates.py``, gate 5): an ellipsoid lying across a
+#: straight tube of radius 1 mm, its long axis along x, the tube's along z, its two ends 0.08 mm from the wall in all.
+ACROSS_AXES, ACROSS_TUBE, ACROSS_BLOB = (0.96e-3, 0.65e-3, 0.65e-3), 1e-3, 0.05
+
+
+def across(h1: float, h2: float) -> Any:
+    """The pose with the body's +x end ``h1`` and its -x end ``h2`` from the wall (m, summing to 0.08 mm): its centre on
+    x."""
+    return jnp.asarray(((h2 - h1) / 2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
+
+
+def across_tube(spacing: float, near_contact: bool | None) -> Experiment:
+    """The two-contact case at a force ``spacing`` (m), the hand-over on, off or unwritten."""
+    from mime.scene import Ellipsoid
+
+    return in_tube(spacing / RADIUS, blob=ACROSS_BLOB, lubrication=near_contact, tube=ACROSS_TUBE,
+                   kind=Ellipsoid(semi_axes=m(ACROSS_AXES)), name="ellipsoid_across")
+
+
 def drag_node(built: BuiltExperiment) -> MRSDragNode:
     node = built.graph.get_node("drag:ball")
     assert isinstance(node, MRSDragNode), type(node)
@@ -134,8 +153,8 @@ def translation_per_rotation(resistance: np.ndarray, radius: float = RADIUS) -> 
 #: by S4's subtraction or by moving the body).
 PLANTS = ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite", "lift_stopped", "hard_max",
           "cutoff_body_only", "curvature_stopped", "wall_sign", "baked_size", "plane_in_tube", "relative_coefficients",
-          "edge_kink", "rot_swap", "radius_stopped", "chi_sign", "plane_ambient", "class_point", "one_at_a_time",
-          "subtraction", "per_body_lift")
+          "edge_kink", "rot_swap", "radius_stopped", "chi_sign", "plane_ambient", "class_point", "sphere_law",
+          "one_at_a_time", "subtraction", "per_body_lift")
 
 
 @contextmanager

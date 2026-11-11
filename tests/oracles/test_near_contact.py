@@ -263,8 +263,8 @@ def test_on_a_plane_the_sphere_form_is_the_tables_increment_to_rounding():
     for gap, delta, angle in ((1e-5, 3e-4, 0.4), (4e-4, 1e-4, 2.0), (2.5e-6, 6e-4, -1.1)):
         offset = np.array([1e-4, -3e-4, 2e-4])
         contact, centre = plane_contact(gap, radius, angle, offset)
-        found = np.asarray(increment("sphere", contact, jnp.asarray(delta), jnp.asarray(1e-12), jnp.asarray(0.0),
-                                     jnp.asarray(viscosity), jnp.asarray(centre), jnp.asarray(radius)).resistance)
+        found = np.asarray(increment("sphere", contact, jnp.asarray(delta), jnp.asarray(1e-12), jnp.asarray(viscosity),
+                                     jnp.asarray(centre), jnp.asarray(radius)).resistance)
         unit = _sphere.entries_at(gap / radius) - _sphere.entries_at((gap + delta) / radius)
         arms = np.array([1.0, 1.0, 1.0, radius, radius, radius])
         local = np.asarray(_sphere.plane_matrix(jnp.asarray(unit))) * viscosity * radius * np.outer(arms, arms)
@@ -406,7 +406,7 @@ def test_gate1_every_entry_within_its_line_at_every_gap_and_drawn_orientation():
         for name, value in errors.items():
             worst[name] = max(worst.get(name, 0.0), abs(value))
         assert max(abs(v) for v in errors.values()) <= ENTRY_LINE, (q, gap, errors)
-        assert float(out["handover_window"]) == 0.0 and float(out["film_unsolved"]) == 0.0
+        assert float(out["handover_window"]) == 0.0 and float(out["near_contact_line"]) == 0.0
     print("worst over the gaps and draws: " + " ".join(f"{k} {v:.4f}" for k, v in worst.items()))
 
 

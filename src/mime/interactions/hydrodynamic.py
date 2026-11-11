@@ -1800,7 +1800,8 @@ class Drag(UncoupledDrag):
     @override
     def includes_lubrication(self) -> bool:
         """The mrs rung with its hand-over includes the near-wall lubrication (the near-contact law's increment); the
-        surrogate's blend is retired here, so it includes none."""
+        surrogate's blend is retired here, so it includes none. The plan asks this of the entry after its defaults, so
+        a hand-over on by default counts as one written on (``lubrication.twice`` sees it)."""
         return self.rung == "mrs" and self.near_contact is True
 
     @override

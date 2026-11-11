@@ -132,7 +132,10 @@ def near_contacts(search: Search, kind: Geometry, parameters: Mapping[str, Any],
     rows = (found.points, found.rows[:, :3], found.gaps, found.local)
     if search.slots == 1:
         contact, wall_along, width, extent = one(*(row[0] for row in rows))
-        stacked = cast(NearContact, _tree_util.tree_map(lambda v: jnp.asarray(v)[None], contact))
+        def lead(value: Any) -> Array:
+            return jnp.asarray(value)[None]
+
+        stacked = cast(NearContact, _tree_util.tree_map(lead, contact))
         wall_along, width, extent = wall_along[None], width[None], extent[None]
     else:
         stacked, wall_along, width, extent = _vmap(one)(*rows)
