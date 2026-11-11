@@ -258,8 +258,11 @@ beyond Stokes flow; written False, the coarse MRS alone. The law's form is the b
   terms with the body's own curvature (Cox's; Claeys and Brady's). A sphere takes it at any uniform spacing: its error
   is the coarse MRS's own at the hand-over gap, measured above a plane at uniform force spacings of 0.15 to 0.6 radii
   as the normal +2.1 to +3.6 %, every other entry within 1.8 % and the rolling rate within 1.4 %. In a tube it is
-  gated at sphere-to-tube ratios of 0.22 to 0.34 (`TESTED_TUBE_RATIO`); past 0.34 a step raises `handover_tube_ratio`,
-  the rolling along the axis measured -18 % at 0.40 and -25 % at 0.46 (MIME-ANO-154 open there). A sphere whose force
+  gated at sphere-to-tube ratios of 0.22 to 0.34 (`TESTED_TUBE_RATIO`), at gaps of 0.1 to 0.0075 radii: the rolling
+  along the axis misses by -3.6, -7.0 and -11.9 % of the plane's rate at the family's spacing and by -2.7, -5.2 and
+  -8.9 % at a spacing of 0.2 radii, a stated limit, which a finer spacing lowers. It is not gated above 0.34: a step
+  there raises `handover_tube_ratio`, the rolling along the axis measured -18 % at 0.40 and -25 % at 0.46
+  (MIME-ANO-154 open there). A sphere whose force
   points are graded towards its contact is refused the form (`drag.near-contact-graded`): the hand-over gap then sits
   at the finest graded spacing, where its normal read +9.5 % and +19.7 %.
 - **Every other kind's**: the thin film's (Reynolds' equation on the gap's second-order form), with MIME-ANO-154 open

@@ -43,6 +43,7 @@ from mime.nodes.hydro.mrs._handover import (
     DEFAULT_ROUGHNESS,
     HANDOVER_SPACINGS,
     LIFT_WIDTH,
+    RATIO_ROUNDING,
     ROUGHNESS_WIDTH,
     TESTED_TUBE_RATIO,
     TUBE_RATIOS_TEXT,
@@ -1313,7 +1314,8 @@ class MRSDragNode(MimeNode):
             if lumen is not None:
                 ratio = sphere / float(lumen)
                 reach += (f"; in this tube the sphere's radius is {ratio:.3g} of the tube's, " + (
-                    f"within the ratios the form was gated at, {TUBE_RATIOS_TEXT}" if ratio <= TESTED_TUBE_RATIO else
+                    f"within the ratios the form was gated at, {TUBE_RATIOS_TEXT}"
+                    if ratio <= TESTED_TUBE_RATIO * (1.0 + RATIO_ROUNDING) else
                     f"past the largest ratio the form was gated at ({TESTED_TUBE_RATIO:g}; {TUBE_RATIOS_TEXT}): a "
                     f"step within the opening's band raises handover_tube_ratio, MIME-ANO-154 open there"))
         else:

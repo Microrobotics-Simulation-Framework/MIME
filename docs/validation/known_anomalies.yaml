@@ -3780,8 +3780,11 @@ anomalies:
       against the graded MFS, every entry within 2.8 % (the normal, the coarse MRS's own at the hand-over gap); in a
       straight tube at sphere-to-tube ratios 0.22, 0.28 and 0.34, the rolling round the circumference within 3.3 % of
       the plane's rate and along the axis -3.6, -7.0 and -12 % against an independent tube MFS (the plane's form there,
-      44 to 57 % round the circumference), every diagonal entry within 7 % of the MFS where it resolves the entry. The
-      tube is closed only within 0.22 to 0.34. Above 0.34 it is open: the rolling along the axis misses the tube MFS by
+      44 to 57 % round the circumference), every diagonal entry within 4.7 % of the MFS where it resolves the entry. The
+      rolling along the axis there, -3.6, -7.0 and -11.9 % of the plane's rate at the family's spacing (-2.7, -5.2 and
+      -8.9 % at a spacing of 0.2 radii; gaps of 0.1 to 0.0075 radii; a finer spacing lowers it), is a stated limit, the
+      maintainer's decision (design row #360), stated in the validity line and the build report. The tube is closed only
+      within 0.22 to 0.34. Above 0.34 it is open: the rolling along the axis misses the tube MFS by
       -18 % of the plane's rate at a ratio of 0.40 and -25 % at 0.46 (the PR's review's tube MFS rows, resolved: levels
       B against C within 0.65 % on that scale; pinned by tests/oracles/test_near_contact.py), round the circumference
       and the normal within 4 % and 6 %; a step there within the opening's band raises handover_tube_ratio, and the
@@ -3846,23 +3849,28 @@ anomalies:
     planned_resolution: "Open, MADDENING Ask 51: its scan's run-constant seam extended to a held value that depends on a traced leaf, so that a node's held matrix is made once a run through run_scan as it is through MIME's chunked run. This entry changes no code."
 
   - anomaly_id: MIME-ANO-156
-    title: "The MRS rung's resistance differentiated in a sphere's radius misses two builds' difference near a wall, by up to a quarter, with or without the hand-over"
+    title: "The MRS rung's resistance differentiated in a sphere's radius near a wall misses two builds' difference, by a few per cent at half a radius and by a quarter or more nearer, with or without the hand-over"
     description: >
       Drag 0.5.0's mrs rung on a 1 mm sphere at a written force spacing of 0.251 mm (blob 0.05, float64, the node's own
       step): the derivative of the node's resistance in the sphere's radius leaf (shape_radius), by reverse mode, equals
-      the central difference of the same build with the leaf moved by a relative 1e-3 to about 1e-6, and misses the
-      central difference of two builds at a radius 1e-3 larger and smaller. With the hand-over off (near_contact=False),
-      above a plane at gaps of 0.5 to 0.15 radii the normal by 0.7 to 3.3 % and the couplings of a translation along the
-      wall and a rotation by 4.1 to 5.2 %; in a straight tube at a sphere-to-tube ratio of 0.28, the normal by 3 to 7 %.
-      With the hand-over on (its default near a wall that opens), in that tube at 0.15 radii the normal by +24.5 % and at
-      0.05 by +8.1 %, above the plane by -4.2 % (the normal) and -5.4 % (the coupling) at 0.15 [measured: the review of
-      W2a PR 1b-i, probe runs 42968413012 and 42972714723]. The near-contact law's own increment matches two builds to
-      1e-6 (tests/oracles/test_near_contact.py's gate 13), so the miss is the MRS rung's.
+      the central difference of the same build with the leaf moved by a relative 1e-3 to the difference's own
+      truncation, and misses the central difference of two builds at a radius 1e-3 larger and smaller. With the
+      hand-over off (near_contact=False), above a plane: the normal +0.7, +1.7 and +3.3 % at gaps of 0.5, 0.3 and 0.15
+      radii, the couplings of a translation along the wall and a rotation +4.1 to +5.2 % (y's -2.0 % at 0.15), and at
+      0.05 radii, a fifth of the spacing, the normal -60 % and a coupling -164 %; in a straight tube at a sphere-to-tube
+      ratio of 0.28, the normal -3.0 to -7.2 %, round the circumference's translation -1 to -12 % and its coupling -0.8
+      to -33 %, along the axis's coupling +4.2 to +62 % at 0.5 to 0.15 radii. With the hand-over on (its default near a
+      wall that opens): above the plane the normal and the coupling within -4.2 and -5.4 %; in the tube the normal +1.8,
+      +7.7, +24.5 and +8.1 % at 0.5, 0.3, 0.15 and 0.05 radii, the coupling along the axis -29 % at 0.05 [measured: W2a
+      PR 1b-i's fix round, probe run 42980019668, arm radius-off, reproducing its review's runs 42968413012 and
+      42972714723]. The near-contact law's own increment matches two builds to 2.3e-6 (tests/oracles/test_near_contact.py's
+      gate 13), so the miss is the MRS rung's.
 
-      Not established: what the build holds that depends on the radius and that the leaf does not move. A value the build
-      fixes from the radius (the force points' count or their layout at the written spacing, the quadrature's, a table
-      read at a fixed point) would give this; mime.testing.two_builds_of with run=False compares the two builds'
-      programs, not a value they hold, so it cannot see one.
+      Not established: what the build holds that depends on the radius and that the leaf does not move. Not the count of
+      force points: the three builds hold 338 each [measured, the same arm]. A value the build fixes from the radius
+      otherwise (the quadrature's counts, the wall's image cells chosen at the build, a table read at a fixed point) would
+      give this [inference]; mime.testing.two_builds_of with run=False compares the two builds' programs, not a value they
+      hold, so it cannot see one.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >

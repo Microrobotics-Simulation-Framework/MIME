@@ -45,7 +45,7 @@ PACKAGED: Mapping[str, PackagedAsset] = MappingProxyType({
         "the Cholesky MLP drag surrogate's weights and normalisation for de Jongh screw bodies in a tube, version 2 "
         "(trained in the 0.2 line on regularised-Stokeslet BEM resistances with a cylinder-wall table)"),
     "sphere_plane_resistance": PackagedAsset(
-        "sphere_plane_resistance.json", "5c6ed8ff9fd2f8e7e2b15027d1c8f742a650906702b73d87adb0d1f7aba7e0e1",
+        "sphere_plane_resistance.json", "346bc025d0b56460a20ba98bdfc9023457cba32ca975d44e363585f80a904f5f",
         "the exact resistance of a sphere near a plane wall at gaps of 1e-3 to 10 radii, five entries at 97 knots and "
         "their midpoints, from the bispherical solutions (Brenner 1961, Jeffery 1915, Dean and O'Neill 1963, O'Neill "
         "1964), computed by MIME (scripts/sphere_plane_table.py): the near-contact law's sphere form reads it"),

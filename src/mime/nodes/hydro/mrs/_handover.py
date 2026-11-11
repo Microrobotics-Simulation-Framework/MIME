@@ -90,15 +90,22 @@ FAR_SIDE_FILL = 0.5
 #: tube MFS): above it a step within the opening's band raises ``handover_tube_ratio``. Along the axis the rolling
 #: misses by -12 % at 0.34 and was measured -18 % at 0.40 and -25 % at 0.46 (the PR's review, its tube MFS resolved).
 TESTED_TUBE_RATIO = 0.34
+#: The share past TESTED_TUBE_RATIO a ratio may read and still be the gated one: the sphere's radius is read from its
+#: curvature at the contact, regularised by RADIUS_FLOOR of its size, so a sphere at exactly 0.34 reads 1e-6 more.
+RATIO_ROUNDING = 1e-4
 #: What the sphere's form is measured to do, by where it runs (a 1 mm sphere, blob 0.05, float64, through the node;
 #: tests/oracles/test_near_contact.py and the fix round's probes): at a uniform force spacing above a plane, in a tube
 #: by the sphere-to-tube ratio, and on a sampling graded towards the contact (refused, drag.near-contact-graded).
 UNIFORM_SPHERE_TEXT = ("on a sphere above a plane at uniform force spacings of 0.15 to 0.6 radii, the normal +2.1 to "
                        "+3.6 % off Brenner's series at and below the hand-over gap, every other entry within 1.8 % and "
                        "the rolling rate within 1.4 % of exact")
-TUBE_RATIOS_TEXT = ("against an independent tube MFS at sphere-to-tube ratios of 0.22, 0.28 and 0.34, the rolling round "
-                    "the circumference within 3.3 % of the plane's rate and along the axis -3.6, -7.0 and -12 %, the "
-                    "rotations within 5 %; above them, along the axis -18 % at 0.40 and -25 % at 0.46")
+TUBE_RATIOS_TEXT = ("against an independent tube MFS at sphere-to-tube ratios of 0.22, 0.28 and 0.34, at gaps of 0.1 to "
+                    "0.0075 radii: the rolling round the circumference within 3.3 % of the plane's rate, every diagonal "
+                    "entry within 4.7 % and the couplings within 10 % of the plane's coupling (along the axis +16.5 % "
+                    "at 0.34); the rolling along the axis misses by -3.6, -7.0 and -11.9 % of the plane's rate at the "
+                    "family's spacing and by -2.7, -5.2 and -8.9 % at a spacing of 0.2 radii, a stated limit, which a "
+                    "finer spacing lowers; not gated above 0.34, where the same method read -18 % at 0.40 and -25 % at "
+                    "0.46")
 GRADED_SPHERE_TEXT = ("graded towards its contact at a force spacing of 0.2 radii, a sphere's normal read +9.5 % and "
                       "+19.7 % off Brenner's series at hand-over gaps of 0.075 and 0.0375 radii, against +2.1 to +3.6 % "
                       "at uniform spacings of 0.15 to 0.6 radii")
@@ -295,7 +302,7 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
     far_side = jnp.asarray(False) if lumen is None else found_contact.width > FAR_SIDE_FILL * 2.0 * lumen
     # the sphere's radius is its own curvature at the contact, as its form reads it
     tube_ratio = jnp.asarray(False) if lumen is None or form != "sphere" else \
-        2.0 / (contact.b1 + contact.b2) > TESTED_TUBE_RATIO * lumen
+        2.0 / (contact.b1 + contact.b2) > TESTED_TUBE_RATIO * (1.0 + RATIO_ROUNDING) * lumen
     if form == "film":
         finite = jnp.all(jnp.isfinite(found.resistance))
         unsolved = jnp.logical_not(finite) | (found.residual > FILM_RESIDUAL_ULPS * jnp.finfo(dtype).eps)
@@ -313,7 +320,7 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
 
 
 __all__ = ["ANNULUS_SHARE", "CURVATURE_FLOOR", "FAR_SIDE_FILL", "DEFAULT_ROUGHNESS", "FILM_RESIDUAL_ULPS", "HANDOVER_SPACINGS",
-           "GRADED_SPHERE_TEXT", "LIFT_WIDTH", "RADIUS_FLOOR", "ROUGHNESS_WIDTH", "TESTED_TUBE_RATIO", "TUBE_RATIOS_TEXT",
-           "UNIFORM_SPHERE_TEXT", "WINDOW", "Contacted", "Handover", "Increment", "NearContact",
+           "GRADED_SPHERE_TEXT", "LIFT_WIDTH", "RADIUS_FLOOR", "RATIO_ROUNDING", "ROUGHNESS_WIDTH", "TESTED_TUBE_RATIO",
+           "TUBE_RATIOS_TEXT", "UNIFORM_SPHERE_TEXT", "WINDOW", "Contacted", "Handover", "Increment", "NearContact",
            "Search", "handed_over", "handover_gap", "increment", "least_radius", "near_contact", "opening",
            "relative_curvature", "roughness_cutoff", "search_for", "window_text"]

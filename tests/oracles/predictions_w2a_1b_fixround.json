@@ -26,7 +26,10 @@
   "case": "tests/oracles/test_near_contact.py::test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates",
   "prediction": {
    "value": "rotations ryry, rzrz within +5 / -4 %; the normal +3 to +4 %; yy, zz within 3 %; rxrx (the spin about the normal, no singular term) within 2 %; the round coupling y_rz within 7 %; the along coupling z_ry within 7 % at 0.22 (guess +6 %), past it at 0.28 (+12.6 %, measured-before) and 0.34 (guess +20 %)",
-   "band": [null, null],
+   "band": [
+    null,
+    null
+   ],
    "unit": "relative, each entry on its own size",
    "basis": "measured-before (the rotations, the normal, z_ry at 0.28); guess (the rest)",
    "why": "the hybrid's singular terms carry the body's curvature; the coarse MRS's own error at h_m is a few per cent on every entry; the along coupling is the rate's miss along the axis (-7 % of the plane's rate at 0.28) on a smaller scale"
@@ -49,7 +52,10 @@
   "case": "tests/oracles/test_near_contact.py::test_above_the_gated_ratio_the_step_is_flagged_and_the_along_axis_miss_is_the_measured_one",
   "prediction": {
    "value": "the flag 1 at all ten gaps at 0.40 and 0.46, 0 at all thirty at 0.22 to 0.34; along -18.2 % (0.40) and -25.2 % (0.46), measured-before; across within 4 %, normal within 6 % (guess from the review's +4.5 / +5.7 % normal at 0.40 / 0.46 and across +1.3 / +2.3 %)",
-   "band": [-0.27, -0.16],
+   "band": [
+    -0.27,
+    -0.16
+   ],
    "unit": "the along-axis miss over the plane's rate",
    "basis": "measured-before (the misses); derived (the flag, a comparison of the sphere's radius with the lumen's)",
    "why": "the miss grows with h_m against the lumen's radius (the review's inference, not measured here)"
@@ -70,8 +76,11 @@
   "kind": "equality to the difference's truncation (about 1e-6)",
   "case": "tests/oracles/test_near_contact.py::test_gate13_the_spheres_increment_in_its_radius_through_the_node_equals_two_builds_difference",
   "prediction": {
-   "value": 1e-6,
-   "band": [0.0, 1e-5],
+   "value": 1e-06,
+   "band": [
+    0.0,
+    1e-05
+   ],
    "unit": "|ratio - 1|",
    "basis": "measured-before (the review's 1e-6 on the increment, plane and tube)",
    "why": "the form reads its radius from the body's curvature, traced; the increment holds no build-time value of the radius"
@@ -94,7 +103,10 @@
   "case": "the probe's plane-* and graded-* arms (the review's scripts, through the node); tests/oracles/test_near_contact.py's refusal tests",
   "prediction": {
    "value": "uniform 0.15 / 0.2 / 0.4 / 0.6 a: normal +3.6 / +3.2 / +2.7 / +2.1 %, others within 1.8 %, rate within 1.4 %; graded at h_m 0.075 / 0.0375 a: normal +9.5 / +19.7 %",
-   "band": [-0.005, 0.005],
+   "band": [
+    -0.005,
+    0.005
+   ],
    "unit": "the reproduction's difference from the review's numbers",
    "basis": "measured-before (every number: this is a reproduction)",
    "why": "the same node and gaps at the same commit's compiled code"
@@ -114,9 +126,24 @@
   "claim": "lubrication= on drag 0.5.0 is refused lubrication.retired, its action by the rung: on the mrs rung near_contact at the value written (never 'leave lubrication out'), on the surrogate drag 0.4.0",
   "kind": "acceptance",
   "case": "tests/oracles/test_near_contact.py::test_the_retired_blend_on_the_mrs_rung_names_the_hand_overs_own_switch_at_the_value_written, ::test_the_retired_blend_on_the_surrogate_names_drag_0_4_0_which_keeps_it",
-  "prediction": {"value": "each test reaches the refusal and its action", "band": [null, null], "unit": "", "basis": "derived", "why": "the action is chosen by the rung and the value written"},
+  "prediction": {
+   "value": "each test reaches the refusal and its action",
+   "band": [
+    null,
+    null
+   ],
+   "unit": "",
+   "basis": "derived",
+   "why": "the action is chosen by the rung and the value written"
+  },
   "metric": "the refusal's code and action text",
-  "control": {"plant": "the old action ('or leave lubrication out' for every rung): the mrs arm's assertion fails on it", "expected_rate": "deterministic", "runs": 1, "clean_expected": "n/a", "resolution": "n/a"},
+  "control": {
+   "plant": "the old action ('or leave lubrication out' for every rung): the mrs arm's assertion fails on it",
+   "expected_rate": "deterministic",
+   "runs": 1,
+   "clean_expected": "n/a",
+   "resolution": "n/a"
+  },
   "if_wrong": "n/a",
   "cannot_discriminate_if": "n/a"
  },
@@ -126,7 +153,10 @@
   "case": "the probe's two full builds (shares A and B, 12 each, and the checks), merged by the script; tests/oracles/test_near_contact.py::test_the_script_rebuilds_the_files_knots_byte_for_byte",
   "prediction": {
    "value": "the two merged files' sha256 equal; every part byte-identical between A and B, over at least two processor models",
-   "band": [null, null],
+   "band": [
+    null,
+    null
+   ],
    "unit": "",
    "basis": "guess: the unpinned runs differed by processor (seen before); the pins remove the processor-dependent kernels I know of (OpenBLAS's per-core kernels, NumPy's AVX-512 dispatch, XLA's AVX-512 code and its thread-split sums)",
    "why": "IEEE arithmetic is the same on AMD and Intel for the same instructions in the same order"
@@ -146,5 +176,15 @@
   "prediction": "gate 13's two walls about 60 s together on a runner (six builds), the tube gate about 15 s more for its entries (none: the same steps), the above-ratio test about 50 s (two ratios), the table's knots about 30 s; peaks under 2 GiB but gate 8 (2.5 to 3 GiB, the builder's unmeasured mark)",
   "measured_at": "the PR's runs: the tube gate 12.6 to 22.2 s a ratio, gate 8 28 to 37 s"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-11, after the gates ran (the predictions above unchanged)",
+  "gate_tube_entries": "diagonals held, every one within 4.7 % where the MFS resolves it (normal +3.5, yy +4.6, zz +1.6, rxrx -3.1, ryry +4.7, rzrz +1.8 % worst over 0.22 to 0.34): the rotations as predicted (measured-before), yy and rxrx past their guesses (3 %, 2 %) but within the line. The couplings on their own size MISSED and cannot discriminate: both pass through zero among the judged gaps (y_rz +23.8 % at 0.22, z_ry -469 % of its own size at 0.34; probe run 42980019668, arm gates-tube), so the gate judges them on the plane's coupling at the same gap, the scale the rates are judged on, a choice made after seeing these numbers: y_rz +6.3 / +8.0 / +9.8 %, z_ry +5.0 / +9.2 / +16.5 % at 0.22 / 0.28 / 0.34 (line 10 %, z_ry at 0.34 pinned [0.14, 0.18]), measured on the laptop and in CI's runs of the test. Control rot_swap: the rotations' worst +36 / +51 / +70 % (caught by the rotation entries); its detection rate on the final gate is the final probe's (PR body).",
+  "gate_above_ratio": "held: the flag 1 at all ten gaps at 0.40 and 0.46 and 0 at the thirty at 0.22 to 0.34, once its line took the radius's regularisation (the first version raised it at 0.34, the sphere's radius read from its curvature 1e-6 long; RATIO_ROUNDING 1e-4); along -18.18 % (0.40) and -25.23 % (0.46), across +1.3 / +2.3 %, normal +4.5 / +5.7 %, as predicted",
+  "gate13_sphere": "held: the worst |ratio - 1| 4.1e-7 above the plane and 2.3e-6 in the tube (y_rz), against the line 1e-4; control radius_stopped 10/10 above the plane and 10/10 in the tube, clean 0/10 each (probe run 42980019668, arms rate-radius-*)",
+  "graded_and_uniform": "reproduced (probe run 42980019668, arms plane-* and graded-*): uniform s/a 0.15 / 0.2 / 0.251 / 0.4 / 0.6, the normal +3.58 / +3.21 / +2.84 / +2.65 / +2.05 %, the others within 0.93 / 0.99 / 1.12 / 1.58 / 1.80 %, the rate within 1.33 / 1.16 / 1.13 / 1.11 / 1.10 %; graded, the normal +9.49 % (h_m 0.075 a) and +19.71 % (0.0375 a)",
+  "retired_action": "held: each test reaches lubrication.retired with the action predicted",
+  "table_bytes": "the prediction MISSED as written and held after two changes: (1) OpenBLAS's Haswell pin segfaulted on AMD EPYC 9V45 and 9V74 (AVX-512), 12 of the first rebuild's 26 jobs (probe run 42979404409), while the jobs that ran gave byte-identical parts across AMD EPYC 7763 and Intel Xeon 8370C and 8573C; two pins probes (runs 42980734397 and 42981191796, one pin changed a job) found the OpenBLAS pin the cause (Haswell's and Zen's kernels crash there, SandyBridge's run), XLA's ISA pin needed (8573C's entries moved 4.6e-11 without it), NumPy's and the threads' pins not moving these knots; (2) each solve's residuals moved in their last bits between AMD and Intel even pinned (the entries did not), so they went to the build's log with the checks. Then two full builds (probe run 42981934962) on six processor models (AMD EPYC 7763, 9V45, 9V74; Intel Xeon 8370C, 8573C, 6973P-C): all 193 parts byte-identical between them, every part built on a different processor in the two, both merged files sha256 346bc025...; the laptop's rebuild of three knots equal too",
+  "costs": "alone on a runner (probe run 42980019668): gate 13 48 s (plane) and 62 s (tube), its control 48 s, the test above the gated ratio 38 s each, the tube controls 58 to 59 s, the rotations' control 59 s; peaks gate 13's tube 2.4 GiB, the tube controls 2.1 GiB, gate 8 1.6 GiB (its marks, set unmeasured, taken off)",
+  "stated_limit": "the along-axis miss in the tube, -3.6 / -7.0 / -11.9 % at 0.22 / 0.28 / 0.34 at the family's spacing (-2.7 / -5.2 / -8.9 % at 0.2 radii, the follow-up probe), gaps 0.1 to 0.0075 a, accepted by the maintainer as a stated limit (design row #360): stated in the validity line, the build report, drag.md and MIME-ANO-154; the gate's pin at 0.34 ([-13, -11] %) unchanged"
+ }
 }
