@@ -88,6 +88,34 @@
     "if_wrong": "a reading moved past 1e-9 means the contract does not hold where that gate reads",
     "cannot_discriminate_if": "as each gate's"
   },
+  "gate_fa4_resolved": {
+    "claim": "where the section is resolved (its least radius of curvature at or above the band's curvature line, 5.3 cells), each semi-axis of an elliptic section (0.5 and 0.3 D) shifts within 0.1 cells (the line declared before FA4 first ran) of a round tube's by the same estimator: at 44 cells a diameter (the major vertex 7.9 cells), at drawn turns and offsets and at the sweep's worst there; below the line the resolution report flags the section",
+    "kind": "bounds",
+    "case": "tests/flow/test_fvm_curved_wall.py::test_fa4_the_elliptic_sections_semi_axes_shift_as_a_round_tubes and ::test_fa4_at_the_worst_turn_and_offset_measured",
+    "operating_point": "D/h 44, the box 55 x 55 x 4 cells, float64, steady Stokes at tolerance 1e-10",
+    "prediction": {
+      "value": 0.03,
+      "band": [
+        0.0,
+        0.07
+      ],
+      "unit": "cells, each semi-axis's shift less the round tube's",
+      "basis": "measured-before",
+      "why": "the sweep at 44 read at most 0.053 over 172 turns and offsets (the oracle's helper exact on its axis); the fixed worst draw reads that 0.053"
+    },
+    "metric": "each semi-axis's shift less the round tube's, the interior quadratic's zero level",
+    "control": {
+      "plant": "MIME_PLANT_WALL=wall: the solver's major semi-axis a quarter cell longer",
+      "environment_variable": "MIME_PLANT_WALL",
+      "expected_rate": "40/40",
+      "runs": 40,
+      "clean_expected": "0/40",
+      "resolution": "discriminating_range.py on the major semi-axis: predicted about 0.05 to 0.1 cells (the line less the clean reading)"
+    },
+    "the_line": "CURVATURE_LINE 5.3 cells, derived from the sweep's rows (tests/scene/curvature_sweep_rows.json, runs 42954695558 and 42956624059): the least swept radius above the last with a row past 0.1 (5.04 cells read 0.117; 5.22 the next, 0.076), rounded up to a tenth; the reading is not monotone in the radius, so it is the sweep's line at the resolutions swept",
+    "if_wrong": "a clean draw past 0.1 at 44 means the sweep's grid missed the worst position there: the draw is added to the sweep and the line or the gate's resolution moves, said so",
+    "cannot_discriminate_if": "the round tube's estimator drifts as the ellipse's (the plant is on one axis, so its rate shows it does not)"
+  },
   "bits": {
     "cases": "released programs in both dtypes, the release tip against the head in one job on one CPU (bit_compare.py): the FVM's tube programs among them, whose node now declares a run-constant it makes for a tree only",
     "prediction": "every array np.array_equal",
