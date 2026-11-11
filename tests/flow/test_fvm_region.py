@@ -79,10 +79,10 @@ def test_a_tree_with_no_root_is_refused_naming_its_upstream():
 
 
 def test_a_cut_around_the_junction_is_named_after_the_end_beyond_it(float64):
-    built = tree_vessel(region=VesselRegion(around="j1", reach=mm(1.0), extension_diameters=1.0)).build()
+    built = tree_vessel(region=VesselRegion(around="junction_0", reach=mm(1.0), extension_diameters=1.0)).build()
     c = built.graph.get_node("water.flow").constants()
     assert c["openings"] == ("vessel.root", "vessel.end_0", "vessel.end_1")
-    assert _refused(tree_vessel(region=VesselRegion(around="j7", reach=mm(1.0)))) == ["flow.region-cut"]
+    assert _refused(tree_vessel(region=VesselRegion(around="junction_7", reach=mm(1.0)))) == ["flow.region-cut"]
 
 
 def test_the_outlet_watch_acts_on_nothing(float64, monkeypatch):

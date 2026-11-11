@@ -47,7 +47,7 @@ and the junctions' ends meeting.
 
 For a body that comes from an STL or CAD mesh, extract its centreline (a skeleton, for instance with VMTK's centreline
 tools) as points along it, with the local radius at each, and declare them through
-`mime.scene.polyline`: straight segments joined at junctions, the frame carried round each corner, exact in arc
+`mime.scene.polyline`: straight segments joined at junctions (`junction_0`, `junction_1`, ... along the line), the frame carried round each corner, exact in arc
 length. A lab's kind that holds the mesh returns it:
 
 <!-- mime-fragment: a method of a lab's kind holding a mesh; tests/scene/test_centreline.py builds a polyline and holds it to the contract -->

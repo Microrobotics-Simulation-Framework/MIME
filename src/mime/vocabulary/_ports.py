@@ -27,6 +27,9 @@ from mime.vocabulary._mime import (
     BACKGROUND_LOAD,
     CONFINEMENT,
     FLOW_BODY_FORCE,
+    FLOW_EXCHANGE_X,
+    FLOW_EXCHANGE_Y,
+    FLOW_EXCHANGE_Z,
     FLOW_MOMENTUM,
     FLOW_OPENING_FLUX,
     FLOW_OPENING_IMPEDANCE,
@@ -228,11 +231,14 @@ FLOW_IN = register_port_kind(PortKind(
     "it returns"))
 FLUID = register_port_kind(PortKind(
     "fluid", FLOW_MOMENTUM.name, MappingProxyType({
-        FLOW_BODY_FORCE.name: DeliveryKind.LOAD, FLOW_WAVEFORM.name: DeliveryKind.LOAD}),
+        FLOW_BODY_FORCE.name: DeliveryKind.LOAD, FLOW_WAVEFORM.name: DeliveryKind.LOAD,
+        **{exchange.name: DeliveryKind.LOAD for exchange in (FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z)}}),
     "a medium's fluid's momentum against the uniform body force per unit mass the laws driving it deliver, each "
     "law's paired by the flow's step with its fluid's momentum at the instants it applies it; a drive's waveform "
-    "reaches the momentum through the flow's own evaluation of it at its stage instants",
-    mapped=frozenset({FLOW_WAVEFORM.name})))
+    "reaches the momentum through the flow's own evaluation of it at its stage instants; an exchange law's force "
+    "density on each face set reaches it through the flow's own pairing of it with the velocity there at the step's "
+    "solution",
+    mapped=frozenset({FLOW_WAVEFORM.name, FLOW_EXCHANGE_X.name, FLOW_EXCHANGE_Y.name, FLOW_EXCHANGE_Z.name})))
 OPENING = register_port_kind(PortKind(
     "opening", FLOW_OPENING_FLUX.name, MappingProxyType({
         FLOW_OPENING_PRESSURE.name: DeliveryKind.LOAD, FLOW_OPENING_IMPEDANCE.name: DeliveryKind.SOLVED}),

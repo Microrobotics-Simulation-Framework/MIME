@@ -114,7 +114,7 @@ def test_the_helix_centreline_derivatives_agree_with_central_differences():
 def test_a_polyline_meets_at_its_junctions_and_carries_its_frame():
     line = polyline([(0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (1e-3, 1e-3, 0.0), (2e-3, 1e-3, 1e-3)],
                     radii=[1e-5, 2e-5, 2e-5, 1e-5])
-    assert [junction.name for junction in line.junctions] == ["j1", "j2"]
+    assert [junction.name for junction in line.junctions] == ["junction_0", "junction_1"]
     assert centreline_problems(KINDS["helix"][0], {}, line) == []
     assert float(line.segments[0].filament_radius({})) == pytest.approx(2e-5)
 

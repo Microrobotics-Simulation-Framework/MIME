@@ -612,7 +612,7 @@ def cost_tree(interior: float = 0.1, seed: int = 1) -> Experiment:
     from mime.units import Hz
 
     d = draw(int(seed))
-    exp = Experiment("region_cost", scene=Scene.new(up=Z, units="m"), dt=ms(0.5))
+    exp = Experiment("region_cost", scene=Scene.new(up=Z, units="m"), dt=ms(0.2))
     exp.add_structure(Structure("vessel", geometry=tree_of(d)))
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
         domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across,

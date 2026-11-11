@@ -126,6 +126,9 @@ HOSTED_FIELDS = ("viscous", "penalty")
 #: The inputs a law driving the fluid delivers into: its body force, read where the scheme reads its drive at the
 #: step's end, and its waveform, read where the scheme evaluates its drive at its own stage instants.
 DRIVE_FIELDS = ("body_force", "waveform")
+#: The inputs an exchange partner's law delivers its scattered force into, a force density (N/m^3) on each face set
+#: (``mime.nodes.flow.fvm._exchange``): a node built with ``exchange=True`` takes them.
+EXCHANGE_FIELDS = ("exchange_x", "exchange_y", "exchange_z")
 
 
 class FlowFields(TypedDict):
@@ -275,7 +278,7 @@ class ImplicitFlowNode(MimeNode):
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
                  solve_report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
-                 ledger: Sequence[str] = (), **extra: Any) -> None:
+                 exchange: bool = False, ledger: Sequence[str] = (), **extra: Any) -> None:
         chosen = scheme_named(scheme)
         if chosen.stage_kind is not StageKind.MONOLITHIC_PROJECTED_CG or chosen.state_fields != ("velocity",) or \
                 chosen.ledger_terms + self.GRID_TERMS != self.LEDGER_TERMS:
@@ -328,7 +331,8 @@ class ImplicitFlowNode(MimeNode):
                          preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
                          periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
                          solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
-                         **({"wall_name": str(wall_name)} if wall_name else {}), **extra,
+                         **({"wall_name": str(wall_name)} if wall_name else {}),
+                         **({"exchange": True} if exchange else {}), **extra,
                          **({"ledger": tuple(ledger)} if ledger else {}))
 
     @override
@@ -376,12 +380,37 @@ class ImplicitFlowNode(MimeNode):
         """The body force per unit mass the laws bound to the medium drive its fluid with (summed), delivered once a step
         at its end; and the drive's waveform, which a scheme whose stages read their drive at other instants evaluates
         at each (``StepContext.force``). The monolithic schemes registered read at the step's end, so they take the
-        delivered value."""
-        return {"body_force": node_input("m/s^2", (3,), additive=True,
-                                         description="a uniform body force per unit mass on the fluid"),
-                "waveform": node_input("1", (WAVEFORM_SIZE,),
-                                       description="the drive's waveform, read at a stage's instant where it is not "
-                                                   "the step's end")}
+        delivered value. Built with ``exchange=True``, the force density its exchange partners scatter onto each face
+        set (:data:`EXCHANGE_FIELDS`), held over the step."""
+        own = {"body_force": node_input("m/s^2", (3,), additive=True,
+                                        description="a uniform body force per unit mass on the fluid"),
+               "waveform": node_input("1", (WAVEFORM_SIZE,),
+                                      description="the drive's waveform, read at a stage's instant where it is not the "
+                                                  "step's end")}
+        if self.exchanges:
+            c = self.constants()
+            shape = (int(c["cells_x"]), int(c["cells_y"]), int(c["cells_z"]))
+            for field in EXCHANGE_FIELDS:
+                own[field] = node_input("N/m^3", shape, additive=True,
+                                        description="the force density the exchange partners' laws scatter onto the "
+                                                    "faces of one set, on the fluid and the solid alike")
+        return own
+
+    @property
+    def exchanges(self) -> bool:
+        """Whether the node takes its exchange partners' scattered force (built with ``exchange=True``)."""
+        return bool(self.constants().get("exchange", False))
+
+    def exchanged(self, boundary_inputs: Mapping[str, Array], dtype: Any) -> Velocity | None:
+        """The exchange partners' force density on each face set (N/m^3), as the step reads it (every law's own input
+        summed into it where the ledger is attached); zero where nothing feeds it; ``None`` for a node with none."""
+        if not self.exchanges:
+            return None
+        c = self.constants()
+        zero = jnp.zeros((int(c["cells_x"]), int(c["cells_y"]), int(c["cells_z"])), dtype=dtype)
+        held = [jnp.asarray(boundary_inputs[field], dtype=dtype) if field in boundary_inputs else zero
+                for field in EXCHANGE_FIELDS]
+        return (held[0], held[1], held[2])
 
     # -- the pieces of a step ------------------------------------------------------------------------------------
     @property
@@ -531,6 +560,22 @@ class ImplicitFlowNode(MimeNode):
         coefficients = jnp.asarray(boundary_inputs.get("waveform", jnp.zeros(WAVEFORM_SIZE, dtype=dtype)), dtype=dtype)
         return lambda stage, time: self.drive(fields, waveform_at(coefficients, time).astype(dtype))
 
+    def with_exchange(self, p: Mapping[str, Any], force: Callable[[int, Any], Velocity],
+                      boundary_inputs: Mapping[str, Array], dtype: Any) -> Callable[[int, Any], Velocity]:
+        """``force`` with the exchange partners' force density over the fluid's density added at every stage (held
+        over the step: what a lagged partner delivered for it); ``force`` itself for a node with no partners."""
+        density = self.exchanged(boundary_inputs, dtype)
+        if density is None:
+            return force
+        rho = as_run_array(p["density"])
+        per_mass = (density[0] / rho, density[1] / rho, density[2] / rho)
+
+        def forced(stage: int, time: Any) -> Velocity:
+            base = force(stage, time)
+            return (base[0] + per_mass[0], base[1] + per_mass[1], base[2] + per_mass[2])
+
+        return forced
+
     def drive(self, fields: WallFields, delivered: Array) -> Velocity:
         """The body force per unit mass (m/s^2) on each face set, on the fluid only (``1 - chi``): what the laws bound
         to the medium deliver. The waveform is the drive's, never the field's."""
@@ -667,7 +712,8 @@ class ImplicitFlowNode(MimeNode):
                                    guess if c["scaling_start"] else None, stopping, tap, preconditioner,
                                    magnitude(shift))
 
-        context = StepContext(grid, operator, self.forcing(fields, boundary_inputs, scheme, dtype),
+        context = StepContext(grid, operator, self.with_exchange(p, self.forcing(fields, boundary_inputs, scheme, dtype),
+                                                                 boundary_inputs, dtype),
                               bool(c["convection"]), solve, self.kinematic(p), sigma)
         velocity = _velocity(state)
         time = steps.astype(dtype) * dt
@@ -796,6 +842,30 @@ class ImplicitFlowNode(MimeNode):
         unattributed = dt * jnp.dot(plain, momentum) if read == "body_force" else jnp.zeros((), dtype=dtype)
         return work, unattributed, scale + dt * jnp.dot(jnp.abs(plain), size)
 
+    def exchange_work(self, held: Sequence[books.LedgerDelivery], boundary_inputs: Mapping[str, Array],
+                      rows: Sequence[str], dt: float, grid: MACGrid, solved: Velocity) -> tuple[Array, Array, Array]:
+        """Each exchange partner's law's scattered force paired with the step's solution, ``dt <S f, u'>`` (the force
+        density on each face set against the velocity there, by the grid's inner product), a row per law; the plain
+        inputs' likewise; and the magnitude of the products. The force is held over the step, so the solution is the
+        velocity it was applied at."""
+        dtype = solved[0].dtype
+        work = jnp.zeros(len(rows), dtype=dtype)
+        scale = jnp.zeros((), dtype=dtype)
+        plain = jnp.zeros((), dtype=dtype)
+        component = {field: index for index, field in enumerate(EXCHANGE_FIELDS)}
+        for index, delivery in enumerate(held):
+            if delivery.kind == books.LOAD and delivery.field in component:
+                density = jnp.asarray(boundary_inputs[books.law_input(delivery.field, index)], dtype=dtype)
+                velocity = solved[component[delivery.field]]
+                work = work.at[rows.index(delivery.law)].add(dt * grid.cell_volume * jnp.sum(density * velocity))
+                scale = scale + dt * grid.cell_volume * jnp.sum(jnp.abs(density * velocity))
+        for field, index in component.items():
+            if field in boundary_inputs:
+                density = jnp.asarray(boundary_inputs[field], dtype=dtype)
+                plain = plain + dt * grid.cell_volume * jnp.sum(density * solved[index])
+                scale = scale + dt * grid.cell_volume * jnp.sum(jnp.abs(density * solved[index]))
+        return work, plain, scale
+
     @staticmethod
     def ratio(numerator: Array, denominator: Array, scale: Array) -> Array:
         """A report's ratio ``a / b``, read as zero where ``b`` holds fewer than half the dtype's digits of ``scale``
@@ -828,6 +898,10 @@ class ImplicitFlowNode(MimeNode):
         check_deliveries(held)
         work, unattributed, drive_scale = self.drive_work(held, boundary_inputs, rows, dt, energy["momentum"],
                                                           energy["momentum_size"])
+        if self.exchanges:
+            exchanged, plain, exchange_scale = self.exchange_work(held, boundary_inputs, rows, dt, self.grid(p),
+                                                                  parts.stage.solved)
+            work, unattributed, drive_scale = work + exchanged, unattributed + plain, drive_scale + exchange_scale
         hosted_work = {"viscous": -energy["viscous"], "penalty": -energy["penalty"]}
         named: set[str] = set()
         for delivery in held:
@@ -928,12 +1002,12 @@ def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
     delivered one into anything but its drive's inputs (``fluid``'s loads)."""
     for delivery in held:
         hosted = delivery.kind == books.HOSTED and delivery.field in HOSTED_FIELDS
-        driven = delivery.kind == books.LOAD and delivery.field in DRIVE_FIELDS
+        driven = delivery.kind == books.LOAD and delivery.field in (*DRIVE_FIELDS, *EXCHANGE_FIELDS)
         if not (hosted or driven):
             raise ValueError(f"the flow node hosts {list(HOSTED_FIELDS)} and is driven through {list(DRIVE_FIELDS)}: "
                              f"it takes no delivery {delivery}")
 
 
-__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
+__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
            "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
            "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries"]

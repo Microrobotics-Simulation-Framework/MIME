@@ -20,6 +20,7 @@ from mime.things import did_you_mean
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 from mime.build._report import graph_config
 from mime.core import ledger
+from mime.core.solves import sites_of
 from mime.registry import Problem
 
 
@@ -103,6 +104,14 @@ def node_lines(graph: GraphManager, plans: PlanSet) -> dict[str, tuple[str, ...]
         if held:
             found[owner] = (*found.get(owner, ()), *held)
     return found
+
+
+def solving_lines(graph: GraphManager) -> tuple[str, ...]:
+    """The build report's line for each node that solves a linear system (a registered solve site names its kind): the
+    arithmetic it solves in. Every solve runs in the run's dtype today, so the line is the same for all of them; it is
+    the place a declared precision will report."""
+    return tuple(f"solve arithmetic of {name}: as today" for name in graph.node_names
+                 if sites_of(type(graph.get_node(name))))
 
 
 def stopped_refusals(graph: GraphManager, final: Mapping[str, Mapping[str, Any]]) -> list[Refusal]:

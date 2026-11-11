@@ -4,7 +4,7 @@ field-agnostic geometry (``mime.scene``): the vessel's own part between its cuts
 bend and run a ball swept along a tangent-continuous path (:func:`path_distance`), whose distance is exact.
 
 **The cut.** A vessel (a straight tube, or a tube tree) is held as points joined by straight segments, a radius at each
-segment's ends. ``around`` names a junction of its centreline (``j<point>``, ``TubeTree.junctions``) and ``reach`` the arc
+segment's ends. ``around`` names a junction of its centreline (``junction_0``, ..., ``TubeTree.junction_names``) and ``reach`` the arc
 length from it along every branch to the branch's cut, the plane normal to the branch there; with neither, the region
 is the whole vessel, cut at its own free ends. A branch whose end lies within reach is cut at its end. **Each cut is
 named after the one free end of the vessel beyond it** (``root``, ``end_0``, ...; a tube's ``start`` and ``end``), so a
@@ -235,7 +235,7 @@ def build_region(vessel: Vessel, *, around: int | None, reach: float | None, ext
     if (around is None) != (reach is None):
         raise RegionRefused("cut", "a region is cut around a junction within a reach of it, both given, "
                                                "or is the whole vessel, neither given",
-                            "write VesselRegion(around='j1', reach=mm(3)), or VesselRegion() for the whole vessel")
+                            "write VesselRegion(around='junction_0', reach=mm(3)), or VesselRegion() for the whole vessel")
     if around is not None and len(at.get(around, [])) < 2:
         junctions = ", ".join(f"j{p}" for p, held in sorted(at.items()) if len(held) >= 2) or "none"
         raise RegionRefused("cut", f"the vessel has no junction at point {around} (its junctions: "

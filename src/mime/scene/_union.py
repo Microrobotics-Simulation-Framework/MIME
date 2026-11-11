@@ -76,6 +76,7 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
+from mime.core.solves import SolveSite, register, solving
 
 type Parameters = Mapping[str, Any]
 #: A value read from the parameters: a JAX function of them, so that a derivative in them flows.
@@ -388,7 +389,7 @@ class ExactUnion:
         def projected(_: int, q: Array) -> Array:
             values, gradients = walls(q)
             gram = gradients @ jnp.swapaxes(gradients, -1, -2) + _ridge(dtype, 2)
-            return q - (jnp.swapaxes(gradients, -1, -2) @ jnp.linalg.solve(gram, values[..., None]))[..., 0]
+            return q - (jnp.swapaxes(gradients, -1, -2) @ _small_solve(gram, values[..., None]))[..., 0]
 
         def on(q: Array) -> Array:
             return jnp.max(jnp.abs(walls(q)[0]), axis=-1) <= step_length
@@ -407,7 +408,7 @@ class ExactUnion:
 
         def stepped(_: int, z: Array) -> Array:
             residual, jacobian = kkt(z)
-            return z - jnp.linalg.solve(jacobian + _ridge(dtype, 5), residual[..., None])[..., 0]
+            return z - _small_solve(jacobian + _ridge(dtype, 5), residual[..., None])[..., 0]
 
         held_points = _stop(points)
         slack = self._allowance(parameters, held_points, KEPT_ULPS)
@@ -445,7 +446,7 @@ class ExactUnion:
         on_seam = _stop(jnp.where((behind < ahead)[..., None], backward, forward))
         _, gradients = walls(on_seam)
         gram = gradients @ jnp.swapaxes(gradients, -1, -2) + _ridge(dtype, 2)
-        multipliers = jnp.linalg.solve(gram, (gradients @ (held_points - on_seam)[..., None]))[..., 0]
+        multipliers = _small_solve(gram, (gradients @ (held_points - on_seam)[..., None]))[..., 0]
         reached = _stop(_lax.fori_loop(0, NEWTON_STEPS, stepped, jnp.concatenate([on_seam, multipliers], -1)))
         reached = _finite_or(reached, jnp.concatenate([held_points, jnp.zeros((*points.shape[:-1], 2), dtype)], -1))
         residual, jacobian = kkt(reached)
@@ -488,7 +489,7 @@ class ExactUnion:
         def projected(_: int, c: Array) -> Array:
             values, gradients = walls(c)
             gram = gradients @ jnp.swapaxes(gradients, -1, -2) + _ridge(dtype, 3)
-            return c - (jnp.swapaxes(gradients, -1, -2) @ jnp.linalg.solve(gram, values[..., None]))[..., 0]
+            return c - (jnp.swapaxes(gradients, -1, -2) @ _small_solve(gram, values[..., None]))[..., 0]
 
         held_points = _stop(points)
         reached = _finite_or(_stop(_lax.fori_loop(0, PROJECTIONS + NEWTON_STEPS, projected,
@@ -652,11 +653,26 @@ def _checked(union: ExactUnion) -> Callable[[Parameters, Array], tuple[Array, Ar
     return cast(Any, jax).jit(union.check)
 
 
+#: The exact union's solves: the seam projection's gram system (``2 x 2`` for a pair of walls, ``3 x 3`` for three) and the
+#: implicit-function Newton step's KKT system (``5 x 5``), for every point the wall's distance is evaluated at (every cell of
+#: the band, batched), on values held out of every derivative but the last step's.
+UNION_SITE = register(SolveSite(
+    "scene_union_newton", "dense", "mime.scene._union._small_solve", nodes=("ImplicitFlowNode",),
+    exempt="a few unknowns a point (the walls meeting at a seam, two or three, and their multipliers; five at most), a Newton step of the "
+           "wall's geometry and not a field solve: the arithmetic of the distance, not of the flow",
+    bound=5))
+
+
+def _small_solve(matrix: Array, rhs: Array) -> Array:
+    with solving(UNION_SITE):
+        return jnp.linalg.solve(matrix, rhs)
+
+
 def _implicit(reached: Array, jacobian: Array, residual: Array) -> Array:
     """One Newton step from ``reached``, a root to rounding held out of every derivative, with ``jacobian`` held: its
     value is the root's, and its tangent is the implicit function theorem's, ``-J^-1 dF``, through the residual's
     dependence on the point and the parameters."""
-    return reached - jnp.linalg.solve(jacobian, residual[..., None])[..., 0]
+    return reached - _small_solve(jacobian, residual[..., None])[..., 0]
 
 
 def _kept_only(kept: Array, residual: Array) -> Array:
