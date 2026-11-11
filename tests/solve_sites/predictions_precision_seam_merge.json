@@ -1,0 +1,32 @@
+{
+  "written": "2026-11-11, committed before the merge addendum's probe ran: after the fix round's probe, the release tip took the FVM on a tube tree's wall (the union's exact distance, whose seam projection and Newton step solve 2 x 2 to 5 x 5 systems inside the flow node's step), which the new walk found unscoped; the solves are scoped as the exempt site scene_union_newton",
+  "phase": "the precision seam, small form, merge addendum (row #357)",
+  "labels": "the builder's prediction, from the code's structure: a name scope adds metadata and changes no operation",
+  "seen_before": [
+    "the walk's test run on the merged tree on the laptop failed on ImplicitFlowNode (custom_linear_solve outside every scope) and, after the scope, an inventory of the tree-flow configuration (float64) listed the solves in the new site at orders 2, 3 and 5 and nothing outside a scope; no bit comparison had been read"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: a GitHub runner (one CPU and one BLAS thread pinned for the bit comparison)",
+    "sizes_and_parameters": "the saved case tree_flow (a tube tree's lumen in a periodic box, the FVM steady Stokes, twelve cells across the throat), run 20 ms",
+    "seeds_and_draws": "no draws"
+  },
+  "gate_1_union_bits": {
+    "claim": "the union's solves inside a name scope move no bit of the tree flow",
+    "kind": "equality",
+    "case": "tree_flow, float64 and float32, base the release tip 3dc33d46 against head, one job (.github/probe/bit_compare.py), with nf_dense_2 as a second program and a one-ulp control on the near field",
+    "prediction": {"value": "every array np.array_equal", "unit": "arrays", "basis": "derived", "why": "a name scope changes metadata, not operations"},
+    "metric": "numpy.array_equal per array",
+    "control": {
+      "plant": "the near field's start velocity one ulp up in the head's run only (ulp_nf_dense_2)",
+      "environment_variable": "none: the dump script reads the tree it runs in",
+      "expected_rate": "arrays differ",
+      "runs": 1,
+      "clean_expected": "equal",
+      "resolution": "one ulp"
+    },
+    "if_wrong": "revert the scope at the five sites and report the arrays",
+    "cannot_discriminate_if": "both sides NaN: bit_compare reports equal_nan beside equal, and the arrays are read for finiteness"
+  },
+  "outcomes": null
+}
