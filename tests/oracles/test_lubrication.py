@@ -82,7 +82,7 @@ from plane_oracles import brenner
 from mime.nodes.hydro._film import film
 from mime.interactions import roughness_cutoff
 from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS, LIFT_WIDTH, ROUGHNESS_WIDTH
-from mime.scene import Ellipsoid, Sphere
+from mime.scene import Z, Ellipsoid, Sphere
 from mime.units import m
 
 #: How far above where a worker stands after giving its compiled programs back this file's tests let its resident memory
@@ -545,7 +545,7 @@ def test_gate11_a_body_that_can_touch_along_a_line_or_round_a_lumen_is_refused_o
     from mime.build import BuildRefused
     from mime.scene import Capsule
 
-    capsule = Capsule(radius=m(RADIUS), height=m(4.0 * RADIUS))
+    capsule = Capsule(radius=m(RADIUS), height=m(4.0 * RADIUS), axis=Z)
     cases = {"drag.near-contact-line": lambda written: above_plane(0.2, kind=capsule, lubrication=written),
              "drag.near-contact-ring": lambda written: in_tube(0.2, lubrication=written, tube=RADIUS / 0.9)}
     for code, case in cases.items():
@@ -570,7 +570,7 @@ def test_gate11_a_step_that_meets_a_line_or_a_ring_raises_its_flag_and_a_point_n
 
     monkeypatch.setattr(hydrodynamic, "capable", lambda *arguments: Capable(None, None))
     lying = (math.cos(math.pi / 4), 0.0, math.sin(math.pi / 4), 0.0)
-    cases = (("near_contact_line", above_plane(0.2, kind=Capsule(radius=m(RADIUS), height=m(4.0 * RADIUS))),
+    cases = (("near_contact_line", above_plane(0.2, kind=Capsule(radius=m(RADIUS), height=m(4.0 * RADIUS), axis=Z)),
               lambda g: plane_pose(g * RADIUS, lying)),
              ("near_contact_ring", in_tube(0.2, tube=RADIUS / 0.9), lambda g: tube_pose(g * RADIUS, tube=RADIUS / 0.9)),
              (None, above_plane(0.2), lambda g: plane_pose(g * RADIUS)))

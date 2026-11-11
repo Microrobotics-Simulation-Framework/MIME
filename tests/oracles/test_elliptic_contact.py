@@ -12,6 +12,7 @@ committed first, ``tests/oracles/predictions_w2a_1b2.json``):
   a contact's share is one in the band and none past twice it.
 - **The ambient's zero on a dilated lumen:** the dilated wall, the far side included, reads the true wall. Control: the
   plane's translation in a lumen leaves the far side twice the opening off.
+- **m8:** ``lubrication.twice`` sees a hand-over on by default (the entry after its defaults); written off, it plans.
 - **The classes:** a sphere's contact on a plane is a point; a cylinder's side a line; a sphere nearly filling a lumen a
   ring; the gated sphere-to-tube ratios points. Control: a classifier that calls every contact a point.
 
@@ -155,13 +156,37 @@ def test_a_dilated_lumens_wall_reads_the_true_walls_zero_all_round():
     ("sphere on a plane", "point"), ("cylinder's side on a plane", "line"),
     ("sphere filling 0.9 of a lumen", "ring"), ("sphere at 0.34 of a lumen", "point")])
 def test_each_contact_is_classed_by_its_curvatures_and_extent(case, expected):
-    radius, resolved = 1e-3, jnp.asarray(0.188e-3)
+    radius, resolved, spacing = 1e-3, 0.188e-3, 0.251e-3
+    band = (1.0 + LIFT_WIDTH) * resolved
     lumen = {"sphere filling 0.9 of a lumen": radius / 0.9, "sphere at 0.34 of a lumen": radius / 0.34}.get(case)
-    body = 0.0 if case.startswith("cylinder") else 1.0 / radius
+    # a cylinder's side as a support shows it: curved round its axis alone, its measured footprint its length
+    body = 1.0 / radius
     k2 = body - (1.0 / lumen if lumen else 0.0)
-    extent = 3e-3 if case.startswith("cylinder") else radius
+    footprint = 3e-3 if case.startswith("cylinder") else math.sqrt(2.0 * band * radius) + spacing
     wall = 1.0 / lumen if lumen else 0.0
     with planted() as plant:
         found = (lambda *a: jnp.asarray(0)) if plant == "class_point" else classified
-        index = int(found(jnp.asarray(k2), jnp.asarray(body), jnp.asarray(extent), jnp.asarray(wall), resolved))
+        index = int(found(*(jnp.asarray(v) for v in (k2, body, footprint, wall, resolved, spacing))))
     assert _seam.CLASSES[index] == expected
+
+
+@pytest.mark.parametrize("written, refused", [(None, True), (True, True), (False, False)])
+def test_lubrication_twice_sees_the_hand_over_on_by_default(monkeypatch, written, refused):
+    """#245's review's m8: the plan asks ``includes_lubrication`` of the entry after its defaults, so a hand-over on by
+    default counts as one written on; a contact patched to add lubrication beside it is refused ``lubrication.twice``.
+    Control: ``near_contact=False`` written plans."""
+    from lubrication_cases import in_tube
+
+    from mime.build import BuildRefused
+    from mime.interactions import Contact
+    from mime.units import mm
+
+    monkeypatch.setattr(Contact, "includes_lubrication", lambda self: True)
+    experiment = in_tube(0.2, blob=0.25, lubrication=written)
+    experiment.attach(Contact.Projection(margin=mm(0.01)), body="ball", surface="tube.inner_surface")
+    if refused:
+        with pytest.raises(BuildRefused) as found:
+            experiment.plan()
+        assert "lubrication.twice" in found.value.codes()
+    else:
+        assert experiment.plan() is not None

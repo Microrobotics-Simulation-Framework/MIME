@@ -26,11 +26,11 @@ MIME-ANO-154 probe's arm 5): the force-free speed +7.8 % and spin +3.1 % at a re
 wall's convention: -9.3 % and -0.5 %), both shrinking as the resolved gap does. No rung reads an ambient flow yet:
 every drag rung assumes its medium at rest (``drag.medium-flows``).
 
-**The class of a contact** (:func:`classified`, :data:`CLASSES`), from its curvatures and its extent within the band:
-a point contact, which the law's forms serve; a line contact, the body's own surface flat within the band along the
-gap's slower direction over its whole extent there (a cylinder's or a capsule's side); a ring, the footprint reaching round a lumen (a
-body nearly filling it). The law has no form for a line or a ring yet (W2a's next pull request): a rung that meets one
-says so.
+**The class of a contact** (:func:`classified`, :data:`CLASSES`), from its curvatures and its footprint within the
+band: a point contact, which the law's forms serve; a line contact, the body's points within the band of its tangent
+plane reaching far past where its curvature says they would (a cylinder's or a capsule's side, a flat face); a ring, the
+gap's footprint reaching round a lumen (a body nearly filling it). The law has no form for a line or a ring yet (W2a's
+next pull request): a rung that meets one says so.
 
 **The forms** (:data:`FORMS`), the plan's choice by the body's kind (``Geometry.near_contact``), named in the build
 report: ``"sphere"``, a sphere's exact increment (``mime.nodes.hydro.near_contact._sphere``); ``"elliptic"``, the
@@ -79,6 +79,9 @@ SOFT_SHARE = 0.1
 MERGE_SHARE = 0.05
 #: The share of a quarter turn of the lumen a contact's footprint round it may reach before it is a ring.
 RING_SHARE = 1.0
+#: How many times the footprint its curvature gives a body's measured footprint may reach before the contact is a
+#: line (a flat stretch the curvature does not show), its sampling's two spacings added.
+LINE_SHARE = 2.0
 
 
 class NearContact(NamedTuple):
@@ -102,15 +105,15 @@ class NearContact(NamedTuple):
 class NearContacts(NamedTuple):
     """A body's near contacts with one opposing surface: each field of ``contacts`` with a leading axis of one slot a
     contact; each slot's ``merged`` share (one, or less where other slots found the same point: :func:`merged`); its
-    ``kind`` (:data:`CLASSES`' index); and the opposing surface's curvature along each contact's slower direction (1/m,
-    positive where it curves towards the body, as a lumen does) and the body's half ``extent`` along it (m), which the
+    ``kind`` (:data:`CLASSES`' index); the opposing surface's curvature along each contact's slower direction (1/m,
+    positive where it curves towards the body, as a lumen does) and the body's measured ``footprint`` (m), which the
     class reads."""
 
     contacts: NearContact
     merged: Array
     kind: Array
     wall_along: Array
-    extent: Array
+    footprint: Array
 
 
 class Increment(NamedTuple):
@@ -171,17 +174,19 @@ def shares(found: NearContacts, resolved: Array) -> Array:
     return found.merged * in_band(found.contacts.gap, resolved)
 
 
-def classified(k2: Array, b2: Array, extent: Array, wall_along: Array, resolved: Array) -> Array:
+def classified(k2: Array, b2: Array, footprint: Array, wall_along: Array, resolved: Array, spacing: Array) -> Array:
     """A contact's class (:data:`CLASSES`' index) at the band's edge ``H = resolved (1 + LIFT_WIDTH)``, from the gap's
-    slower curvature ``k2``, the body's own curvature ``b2`` and half ``extent`` along that direction (m) and the opposing
-    surface's curvature along it (``wall_along``, 1/m): the gap's footprint, ``sqrt(2 H / k2)``, reaching round a quarter
-    turn of a lumen (:data:`RING_SHARE`) is a ring; the body's own surface within ``H`` of its tangent over its whole
-    extent along the direction (``b2 extent^2 < 2 H``: a cylinder's or a capsule's side) is a line; else a point. A
-    report: no value the law gives reads it."""
-    footprint_squared = 2.0 * (1.0 + LIFT_WIDTH) * resolved
-    ring = (wall_along > 0.0) & (footprint_squared * wall_along ** 2 > jnp.maximum(k2, 0.0)
-                                 * (RING_SHARE * 0.5 * math.pi) ** 2)
-    line = footprint_squared > jnp.maximum(b2, 0.0) * extent ** 2
+    slower curvature ``k2``, the body's own curvature ``b2`` along that direction, the body's measured ``footprint`` (m:
+    how far its points within ``H`` of its tangent plane at the contact reach from the contact, which a support's
+    curvature cannot show where the surface is flat along a direction) at its sampling's ``spacing`` (m), and the
+    opposing surface's curvature along the slower direction (``wall_along``, 1/m): the gap's footprint, ``sqrt(2 H /
+    k2)``, reaching round a quarter turn of a lumen (:data:`RING_SHARE`) is a ring; the body's measured footprint
+    reaching past :data:`LINE_SHARE` times the one its curvature gives, ``sqrt(2 H / b2)``, and two spacings more (a
+    cylinder's or a capsule's side, a flat face) is a line; else a point. A report: no value the law gives reads it."""
+    band = (1.0 + LIFT_WIDTH) * resolved
+    ring = (wall_along > 0.0) & (2.0 * band * wall_along ** 2 > jnp.maximum(k2, 0.0) * (RING_SHARE * 0.5 * math.pi) ** 2)
+    curved = jnp.sqrt(2.0 * band / jnp.maximum(b2, 1e-300))
+    line = footprint > LINE_SHARE * curved + 2.0 * spacing
     return jnp.where(ring, 2, jnp.where(line, 1, 0))
 
 
@@ -237,7 +242,7 @@ def summed(form: str, found: NearContacts, share: Array, delta: Array, cutoff: A
     return Increment(jnp.einsum("k,kij->ij", share, each.resistance), jnp.max(each.residual))
 
 
-__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "FORMS", "LIFT_WIDTH", "MERGE_SHARE", "RING_SHARE",
-           "ROUGHNESS_WIDTH", "SOFT_SHARE", "Increment", "NearContact", "NearContacts", "ambient_point", "classified",
-           "floored", "in_band", "increment", "merged", "opening", "roughness_cutoff", "shares", "summed",
-           "surface_opening"]
+__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "FORMS", "LIFT_WIDTH", "LINE_SHARE", "MERGE_SHARE",
+           "RING_SHARE", "ROUGHNESS_WIDTH", "SOFT_SHARE", "Increment", "NearContact", "NearContacts",
+           "ambient_point", "classified", "floored", "in_band", "increment", "merged", "opening", "roughness_cutoff",
+           "shares", "summed", "surface_opening"]

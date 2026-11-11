@@ -49,6 +49,7 @@ from mime.nodes.hydro._film import tangent_frame
 from mime.nodes.hydro.near_contact import (
     CURVATURE_FLOOR,
     LIFT_WIDTH,
+    LINE_SHARE,
     RING_SHARE,
     ROUGHNESS_WIDTH,
     Increment,
@@ -158,9 +159,7 @@ def _least_radius(kind: Geometry, settings: Mapping[str, Any], spacing: float, p
 
 class Capable(NamedTuple):
     """What a body can make against a wall at a hand-over gap, judged at the build over its samples, whatever its pose:
-    a line contact (``line``: the least, over its samples, of its smaller curvature times its half extent squared along
-    that direction, m, against twice the band's edge) and a ring in a lumen (``ring``: its least half-width across any
-    direction, m, against the lumen's radius), each with the text the build reports, or ``None``."""
+    a line contact (``line``) or a ring in a lumen (``ring``), each with the text the build reports, or ``None``."""
 
     line: str | None
     ring: str | None
@@ -170,9 +169,10 @@ def capable(kind: Geometry, settings: Mapping[str, Any], spacing: float, patches
             lumen: float | None) -> Capable:
     """Whether the body can make a line contact against any wall, or a ring in a lumen of radius ``lumen`` (m), at the
     hand-over gap ``handover`` (m), by the seam's classes (``classified``) at the band's edge ``H``: a line where some
-    sample's surface stays within ``H`` of its tangent over the body's whole extent along its flatter direction (a
-    cylinder's or a capsule's side); a ring where a sphere of the body's least half-width would class as one in the
-    lumen, so that every pose of the body does. At the build, in float64."""
+    sample's tangent plane holds samples within ``H`` of it farther off than ``LINE_SHARE`` times the reach its
+    curvature gives and two spacings more (a cylinder's or a capsule's side, a flat face: a support's curvature does not
+    show a flat direction); a ring where a sphere of the body's least half-width would class as one in the lumen, so
+    that every pose of the body does. At the build, in float64."""
     key = (kind.name, kind.version, repr(sorted(settings.items())), float(spacing), tuple(patches), float(handover),
            lumen)
     found = _capabilities.get(key)
@@ -187,33 +187,40 @@ _capabilities: dict[tuple[Any, ...], Capable] = {}
 
 def _capable(kind: Geometry, settings: Mapping[str, Any], spacing: float, patches: Sequence[str], handover: float,
              lumen: float | None) -> Capable:
+    import numpy as np
+
     band = (1.0 + LIFT_WIDTH) * handover
     with cast(Any, jax).enable_x64(True):
         sampling = kind.sampling(settings, spacing, tuple(patches))
         parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
                       for name, value in settings.items()}
         samples = sampling.samples(kind, parameters)
-        points = jnp.asarray(samples.points, dtype=jnp.float64)
-        normals = jnp.asarray(samples.normals, dtype=jnp.float64)
-        size = float(jnp.max(jnp.sqrt(jnp.sum(points * points, axis=-1))))
-        jacobian = jnp.asarray(kind.support(parameters, normals, points).jacobian, dtype=jnp.float64)
-        across = jax.vmap(tangent_frame)(normals)
-        radii, turns = jnp.linalg.eigh(across @ (0.5 * (jacobian + jnp.swapaxes(jacobian, -1, -2)))
-                                       @ jnp.swapaxes(across, -1, -2))
-        # the flatter direction: the larger radius's, in the kind's frame
-        flatter = jnp.einsum("ni,nij->nj", turns[:, :, 1], across)
+        points = np.asarray(samples.points, dtype=np.float64)
+        normals = np.asarray(samples.normals, dtype=np.float64)
+        jacobian = jnp.asarray(kind.support(parameters, jnp.asarray(normals), jnp.asarray(points)).jacobian,
+                               dtype=jnp.float64)
+        across = cast(Any, jax).vmap(tangent_frame)(jnp.asarray(normals))
+        radii = np.asarray(jnp.linalg.eigvalsh(across @ (0.5 * (jacobian + jnp.swapaxes(jacobian, -1, -2)))
+                                               @ jnp.swapaxes(across, -1, -2)))
+
         def reach_along(direction: Array) -> Array:
             return kind.reach(parameters, direction)
 
         reach = cast(Any, jax).vmap(reach_along)
-        extent = 0.5 * (reach(flatter) + reach(-flatter))
-        curvature = 1.0 / (jnp.maximum(radii[:, 1], 0.0) + RADIUS_FLOOR * size)
-        line = float(jnp.min(curvature * extent ** 2))
-        half = float(jnp.min(0.5 * (reach(normals) + reach(-normals))))
-    line_text = (f"its surface lies within the hand-over's band ({band * 1e3:.4g} mm) of its tangent over its whole "
-                 f"extent along a flatter direction (the least curvature times half-extent squared, {line * 1e3:.4g} "
-                 f"mm, below twice the band): it can touch a wall along a line, which the near-contact law has no form "
-                 f"for yet") if 2.0 * band > line else None
+        half = float(jnp.min(0.5 * (reach(jnp.asarray(normals)) + reach(-jnp.asarray(normals)))))
+    size = float(np.max(np.linalg.norm(points, axis=-1)))
+    curved = np.sqrt(2.0 * band * (np.maximum(radii[:, 1], 0.0) + RADIUS_FLOOR * size))
+    far = 0.0
+    for start in range(0, len(points), 512):  # each sample's footprint: its samples within the band of its tangent
+        rows = slice(start, start + 512)
+        offset = points[None, :, :] - points[rows, None, :]
+        depth = -np.einsum("ijk,ik->ij", offset, normals[rows])
+        within = depth <= band
+        footprint = np.max(np.where(within, np.linalg.norm(offset, axis=-1), 0.0), axis=-1)
+        far = max(far, float(np.max(footprint - LINE_SHARE * curved[rows] - 2.0 * spacing)))
+    line_text = (f"its samples within the hand-over's band ({band * 1e3:.4g} mm) of a tangent plane reach "
+                 f"{far * 1e3:.4g} mm past where its curvature puts them (a flat stretch: a side or a face), so it can "
+                 f"touch a wall along a line, which the near-contact law has no form for yet") if far > 0.0 else None
     ring_text = None
     if lumen is not None and half < lumen and 2.0 * band / lumen ** 2 > \
             (1.0 / half - 1.0 / lumen) * (RING_SHARE * 0.5 * math.pi) ** 2:
@@ -268,7 +275,8 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
     region = wall.region(constants)[1]
     reach = jnp.max(jnp.sqrt(jnp.sum(points * points, axis=-1)))
     handover = HANDOVER_SPACINGS * jnp.asarray(leaves["handover_spacing"], dtype=dtype)
-    found = near_contacts(search, kind, parameters, points, pose, region, leaves, reach, handover)
+    found = near_contacts(search, kind, parameters, points, pose, region, leaves, reach, handover,
+                          handover / HANDOVER_SPACINGS)
     contacts = found.contacts
     gaps = contacts.contacts.gap
     delta = surface_opening(gaps, contacts.merged, handover)

@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Several near contacts per body, the elliptic point form, and each contact classed (`mime.nodes.hydro.near_contact`,
+  W2a's PR 1b-ii-a).** The seam's search (moved out of the MRS, `near_contact._search`) finds each of a body's near
+  contacts with its wall by groups of its points (`GROUPS`, eight; a sphere's one), as `NearContacts`; the wall is
+  opened once by the opening of their soft least gap (`surface_opening`; a single contact's opening is its own, bit for
+  bit), each contact's increment spans its own gap to its opened gap, and the increments are summed about the body's
+  centre (`summed`), two searches reaching one point counting it once (`merged`) and a contact's share falling smoothly
+  to none past twice the opening's band (`in_band`). `NearContact` gains `b12`, the body's cross curvature in the
+  contact's frame. **The elliptic form** (`FORMS`' `"elliptic"`) replaces the thin film as every non-sphere kind's
+  per-step increment: the elliptic contact's singular terms from its curvatures alone (Cox 1974; Claeys and Brady 1989;
+  compiled by Janoschek, Harting and Toschi 2013, Appendix A), the body's principal directions turned from the gap's
+  included, the terms that need the surfaces' cubic shape left out; written covariantly, it equals the compilation's
+  equations as printed to rounding and is the sphere's singular terms with the frames aligned. MIME-ANO-154 stays open
+  for non-spheres with its stated numbers. **Each contact is classed** (`classified`, `CLASSES`: point, line, ring):
+  the law has no form for a line or a ring yet, so a body that can make one is left out unwritten (the build saying
+  why) and refused written on (`drag.near-contact-line`, `drag.near-contact-ring`), and a step that meets one raises the
+  new flag `near_contact_line` or `near_contact_ring`. `ambient_point` puts the ambient's zero on a dilated lumen's
+  whole wall. The film's step fields `film_residual`, `film_unsolved` and `film_annulus` are retired with it (the ring
+  flag in the last's place).
+
 - **The near-contact law, one seam for every rung, and a sphere's exact form (`mime.nodes.hydro.near_contact`).** A
   rung declares the gap it resolves down to and evaluates itself with the contact opened to it (`opening`); the law
   adds the increment to the true gap from the contact's geometry (`NearContact`: its point, frame, gap, and the gap's

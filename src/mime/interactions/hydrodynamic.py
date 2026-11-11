@@ -1656,7 +1656,10 @@ class Drag(UncoupledDrag):
         "contact's increment taken over its own span, summed; two searches reaching one point count it once. A line or "
         "a ring contact has no form yet: a body that can make one is refused the hand-over (drag.near-contact-line, "
         "drag.near-contact-ring; unwritten, it is left out and the build says why), and a step that meets one raises "
-        "near_contact_line or near_contact_ring. A body between two walls (no two-wall kind) is a later item",
+        "near_contact_line or near_contact_ring. A body between two walls (no two-wall kind) is a later item. No derivative in "
+        "a body's size near a wall is claimed: the rung's resistance differentiated in a sphere's radius misses two "
+        "builds' difference by a few per cent at half a radius and by up to 24.5 % with the hand-over on (62 % on a "
+        "coupling in a tube with it off; MIME-ANO-156), so take such a derivative from two builds",
     )
 
     near_contact: bool | None = None
@@ -1739,8 +1742,8 @@ class Drag(UncoupledDrag):
 
     def declined(self, ctx: PlanContext) -> list[tuple[str, str]] | None:
         """Why the build's rule leaves the hand-over out for the body at the force spacing it would take (the written
-        one or the family's): each reason's refusal code (raised where ``near_contact=True`` is written) and text; empty
-        where none does, ``None`` where the hull gives no sampling."""
+        one or the family's): each reason's kind (``"window"``, ``"line"``, ``"ring"``, each refused by its own code where
+        ``near_contact=True`` is written) and text; empty where none does, ``None`` where the hull gives no sampling."""
         hull = ctx.geometry(of="body")
         if hull is None or not implements(hull.kind, "sampling") or not implements(hull.kind, "support"):
             return None
@@ -1755,16 +1758,16 @@ class Drag(UncoupledDrag):
         form = near_contact_form(hull)
         found: list[tuple[str, str]] = []
         if form != "sphere" and handover > WINDOW * radius:
-            found.append(("drag.lubrication-window", f"{window_text(handover, radius)}, past the elliptic form's window "
-                                                     f"({WINDOW:g} of it)"))
+            found.append(("window", f"{window_text(handover, radius)}, past the elliptic form's window ({WINDOW:g} of "
+                                    f"it)"))
         patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
         lumen = region.parameters.get("radius") if region is not None else None
         held = capable(hull.kind, hull.settings, spacing, patches, handover,
                        float(cast(float, lumen)) if isinstance(lumen, (int, float)) else None)
         if held.line is not None:
-            found.append(("drag.near-contact-line", held.line))
+            found.append(("line", held.line))
         if held.ring is not None:
-            found.append(("drag.near-contact-ring", held.ring))
+            found.append(("ring", held.ring))
         return found
 
     def handover_window(self, ctx: PlanContext) -> tuple[float, float] | None:
@@ -1938,17 +1941,19 @@ class Drag(UncoupledDrag):
                     f"write a force spacing at most {WINDOW / HANDOVER_SPACINGS:.3g} of that radius, "
                     f"Drag.MRS(spacing=mm({window[1] * WINDOW / HANDOVER_SPACINGS * 1e3:.3g}))"))
             reasons = self.declined(ctx) if cast(object, self.near_contact) is True else None
-            for code, text in reasons or ():
-                if code == "drag.lubrication-window":
-                    continue
-                body = ctx.bindings["body"]
-                found.append(Problem(
-                    code, f"near_contact=True asks the near-contact law to carry {body}'s gaps below the hand-over gap, "
-                          f"and {text}: the law's forms are a point contact's, and a "
-                          f"{'line' if code == 'drag.near-contact-line' else 'ring'} contact's own form is W2a's next "
-                          f"pull request (1b-ii-b)",
-                    f"leave near_contact unwritten, which gives {body}'s gaps to the coarse MRS and reports why, or write "
-                    f"near_contact=False"))
+            body = ctx.bindings.get("body", "the body")
+            action = (f"leave near_contact unwritten, which gives {body}'s gaps to the coarse MRS and reports why, or "
+                      f"write near_contact=False")
+            for reason, text in reasons or ():
+                asked = f"near_contact=True asks the near-contact law to carry {body}'s gaps below the hand-over gap, and"
+                if reason == "line":
+                    found.append(Problem("drag.near-contact-line", f"{asked} {text}: the law's forms are a point "
+                                         f"contact's, and a line contact's own form is W2a's next pull request (1b-ii-b)",
+                                         action))
+                elif reason == "ring":
+                    found.append(Problem("drag.near-contact-ring", f"{asked} {text}: the law's forms are a point "
+                                         f"contact's, and a ring contact's own form is W2a's next pull request (1b-ii-b)",
+                                         action))
         if not self.graded():
             return found
         body = ctx.bindings["body"]

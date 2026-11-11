@@ -246,9 +246,13 @@ a medium's joint near field (`drag.grading-near-field`: its cross-kernel is meas
 with a wall it raises no `off_patch`).
 
 **Lubrication's hand-over (0.5.0).** Near a wall that opens (a plane, a tube), the mrs rung's `near_contact` completes
-the coarse MRS in the gap: the coarse MRS is evaluated once with the body's near contact opened to the hand-over gap,
-`HANDOVER_SPACINGS` of the force spacing, never closer, plus the near-contact law's increment between the contact's gap
-and the opened one (`mime.nodes.hydro.near_contact`, the same law for every rung that hands a contact over). It is the
+the coarse MRS in the gap: the coarse MRS is evaluated once with the wall opened so that each of the body's near
+contacts stands at or above the hand-over gap, `HANDOVER_SPACINGS` of the force spacing, never closer, plus the
+near-contact law's increments, each between its contact's gap and the opened one, summed (`mime.nodes.hydro.near_contact`,
+the same law for every rung that hands a contact over). A body touching its wall at several points (a body across a
+lumen; a screw's crests) has each found by its own group of the body's points (`GROUPS`, eight; a sphere's one); the wall
+is opened once for all of them, two searches reaching one point count it once, and each contact's share falls smoothly
+to none past twice the opening's band. It is the
 MRS's own completion, a declared numerical choice whose validity line is the coarse MRS's near-wall error, not physics
 beyond Stokes flow; written False, the coarse MRS alone. The law's form is the body's kind's, named in the build report:
 
@@ -265,12 +269,22 @@ beyond Stokes flow; written False, the coarse MRS alone. The law's form is the b
   (MIME-ANO-154 open there). A sphere whose force
   points are graded towards its contact is refused the form (`drag.near-contact-graded`): the hand-over gap then sits
   at the finest graded spacing, where its normal read +9.5 % and +19.7 %.
-- **Every other kind's**: the thin film's (Reynolds' equation on the gap's second-order form), with MIME-ANO-154 open
-  for it. Which regime carries a gap is the build's, never the writer's: the film is taken only where the hand-over gap
-  lies within `WINDOW` of the body's least radius of curvature, judged over the whole body whatever its pose. A body
+- **Every other kind's**: the elliptic point contact's, its singular terms from the contact's curvatures alone (Cox's;
+  Claeys and Brady's; as Janoschek, Harting and Toschi compile them, for a body whose own principal directions are turned
+  from the gap's as well; the terms that need the surfaces' cubic shape left out), with MIME-ANO-154 open for it: on
+  prolate spheroids above a plane the rolling rate misses by 7 to 22 % at a hand-over gap of 0.15 of the minor
+  semi-axis. Which regime carries a gap is the build's, never the writer's: the form is taken only where the hand-over
+  gap lies within `WINDOW` of the body's least radius of curvature, judged over the whole body whatever its pose. A body
   past it (a crest or an edge sharper than the spacing resolves, as the de Jongh screw at its family's spacing) is the
   coarse MRS's, its build report giving the gap against the radius, and `near_contact=True` written there is refused
-  (`drag.lubrication-window`), naming the spacing that brings it in.
+  (`drag.lubrication-window`), naming the spacing that brings it in. The thin film is retired as a per-step increment.
+
+Each contact is classed: a point, which the forms serve; a line (the body's surface flat within the band along a
+direction over its whole extent, a cylinder's or a capsule's side); a ring (the gap's footprint reaching round a quarter
+turn of a lumen the body nearly fills). The law has no form for a line or a ring yet: a body that can make one (a
+capsule; a body whose least half-width nearly fills the lumen) is left out unwritten, the build saying why, and refused
+written on (`drag.near-contact-line`, `drag.near-contact-ring`); a step that meets one raises `near_contact_line` or
+`near_contact_ring`.
 
 Each surface's roughness is a declared length (`<body>.roughness`, `<structure>.roughness`, `DEFAULT_ROUGHNESS` where
 none is declared, never fitted); below the pair's composite roughness, `mime.interactions.roughness_cutoff` (the root of
@@ -281,16 +295,18 @@ translation down to that cutoff; the node reports the law's own share (`contact_
 `AMBIENT_ZERO`), though no drag rung reads one yet.
 
 What it is measured to do: the sphere's form against the graded method of fundamental solutions, Brenner's series and
-an independent tube MFS by `tests/oracles/test_near_contact.py`, at the family's spacing; the film's form on a sphere
-given it by `tests/oracles/test_lubrication.py` (each entry on its own diagonal scale near the line the test holds, the
-coupling over-counted below the hand-over gap, MIME-ANO-154). The validity lines give the numbers. Flags:
-`handover_window` (the film's: a contact past its window, which the build's rule keeps from happening and the flag
-guards), `film_annulus` (a ring contact the film's point form does not cover), `handover_far_side` (a tube opened by
-dilation about a body filling more than `FAR_SIDE_FILL` of its diameter, which opens the far side too),
-`handover_tube_ratio` (the sphere's form in a tube past the gated ratio) and `film_unsolved`. A step far from the wall costs the contact's search only; one within the opening's band adds the
-law's increment (a spline read for a sphere, two film solves for the film). Drag 0.5.0's surrogate takes no
-`lubrication=`: its blend is retired (`lubrication.retired`), and drag 0.4.0 keeps it. Not yet: several contacts of
-one body, a ring's form, bodies sharing a medium (refused, `drag.lubrication-near-field`) and a body between two walls.
+an independent tube MFS by `tests/oracles/test_near_contact.py`, at the family's spacing; the elliptic form on a sphere
+given it by `tests/oracles/test_lubrication.py`, on spheroids against the graded method of fundamental solutions and on
+two contacts across a tube against a finer MRS of the same family by `tests/oracles/test_elliptic_gates.py`
+(MIME-ANO-154). The validity lines give the numbers. Flags: `handover_window` (the elliptic form's: a contact past its
+window, which the build's rule keeps from happening and the flag guards), `near_contact_line` and `near_contact_ring`
+(a contact the law has no form for), `handover_far_side` (a tube opened by dilation about a body filling more than
+`FAR_SIDE_FILL` of its diameter, which opens the far side too) and `handover_tube_ratio` (the sphere's form in a tube
+past the gated ratio). A step far from the wall costs the contact search only; one within the opening's band adds the
+law's increments (a spline read for a sphere, a closed form for the elliptic contact). Drag 0.5.0's surrogate takes no
+`lubrication=`: its blend is retired (`lubrication.retired`), and drag 0.4.0 keeps it. Not yet: the line's and the
+ring's forms, bodies sharing a medium (refused, `drag.lubrication-near-field`) and a body between two walls. No
+derivative in a body's size near a wall is claimed (MIME-ANO-156): take one from two builds.
 
 `wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
 no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.

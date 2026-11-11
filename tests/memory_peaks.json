@@ -24,7 +24,7 @@
     "tests/oracles/test_lubrication.py::test_gate4_the_lift_form_is_definite_at_drawn_poses": 2662,
     "tests/oracles/test_lubrication.py::test_gate8_forward_and_reverse_equal_the_difference_across_the_handover_and_the_cutoff": 4506,
     "tests/oracles/test_lubrication.py::test_gate8_controls_a_stopped_lift_and_a_hard_max": 2867,
-    "tests/oracles/test_lubrication.py::test_gate13_the_films_increment_in_the_spheres_radius_through_the_node_equals_two_builds_difference": 2867,
+    "tests/oracles/test_lubrication.py::test_gate13_the_increment_in_the_spheres_radius_through_the_node_equals_two_builds_difference": 2867,
     "tests/oracles/test_near_contact.py::test_gate2_in_a_tube_controls_the_planes_form_and_the_gaps_curvature_alone": 2149,
     "tests/oracles/test_near_contact.py::test_gate2_in_a_tube_control_the_rotations_swapped_is_caught_on_the_rotation_entries": 2160,
     "tests/oracles/test_near_contact.py::test_gate13_the_spheres_increment_in_its_radius_through_the_node_equals_two_builds_difference": 2483,

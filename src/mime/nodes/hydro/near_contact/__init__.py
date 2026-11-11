@@ -17,6 +17,7 @@ from mime.nodes.hydro.near_contact._seam import (
     CURVATURE_FLOOR,
     FORMS,
     LIFT_WIDTH,
+    LINE_SHARE,
     MERGE_SHARE,
     RING_SHARE,
     ROUGHNESS_WIDTH,
@@ -37,7 +38,7 @@ from mime.nodes.hydro.near_contact._seam import (
     surface_opening,
 )
 
-__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "FORMS", "LIFT_WIDTH", "MERGE_SHARE", "RING_SHARE",
-           "ROUGHNESS_WIDTH", "SOFT_SHARE", "Increment", "NearContact", "NearContacts", "ambient_point", "classified",
-           "floored", "in_band", "increment", "merged", "opening", "roughness_cutoff", "shares", "summed",
-           "surface_opening"]
+__all__ = ["AMBIENT_ZERO", "CLASSES", "CURVATURE_FLOOR", "FORMS", "LIFT_WIDTH", "LINE_SHARE", "MERGE_SHARE",
+           "RING_SHARE", "ROUGHNESS_WIDTH", "SOFT_SHARE", "Increment", "NearContact", "NearContacts",
+           "ambient_point", "classified", "floored", "in_band", "increment", "merged", "opening", "roughness_cutoff",
+           "shares", "summed", "surface_opening"]

@@ -20,7 +20,7 @@ from jax import Array
 from mime.core import jnp, quaternion, shape_named
 from mime.nodes.body._contact import START_APART, Hull, Pair, Wall, pair_contacts, spacing_of, start_count
 from mime.nodes.hydro._film import principal, tangent_frame
-from mime.nodes.hydro.near_contact._seam import NearContact, NearContacts, classified, merged
+from mime.nodes.hydro.near_contact._seam import LIFT_WIDTH, NearContact, NearContacts, classified, merged
 from mime.registry import Geometry
 
 _lax: Any = cast(Any, jax).lax
@@ -92,12 +92,13 @@ class Found(NamedTuple):
 
 
 def near_contacts(search: Search, kind: Geometry, parameters: Mapping[str, Any], points: Array, pose: Array,
-                  region: Mapping[str, Any], leaves: Mapping[str, Any], reach: Array, resolved: Array) -> Found:
+                  region: Mapping[str, Any], leaves: Mapping[str, Any], reach: Array, resolved: Array,
+                  spacing: Array) -> Found:
     """The body's deepest point against the region's wall in each of the search's groups: ``points`` the kind's force
     points in its own frame (traced, so that they move with its settings), ``parameters`` the kind's settings, ``pose``
     the body's, ``region`` the shape's parameters; ``leaves`` the search's held numbers (``film_search_*``); ``reach``
-    the body's size (traced); ``resolved`` the rung's resolved gap, at which each contact is classed. The slots found at
-    one point share it (``merged``)."""
+    the body's size (traced); ``resolved`` the rung's resolved gap and ``spacing`` the points' spacing, at which each
+    contact is classed. The slots found at one point share it (``merged``)."""
     dtype = pose.dtype
     shape = cast(Any, shape_named(search.shape))  # a shape that gives its curvature (Shape.curvature)
     rotation = quaternion.rotation_matrix(pose[3:])
@@ -113,6 +114,8 @@ def near_contacts(search: Search, kind: Geometry, parameters: Mapping[str, Any],
     found = pair_contacts(Pair(hull, Wall(shape, region, zero), False), zero)
     turn = quaternion.rotation_matrix(kind_pose[3:])
     floor = RADIUS_FLOOR * reach
+    band = (1.0 + LIFT_WIDTH) * resolved
+    world = _lax.stop_gradient(kind_pose[:3] + points @ turn.T)
 
     def one(point: Array, normal: Array, gap: Array, local: Array) -> tuple[NearContact, Array, Array, Array]:
         support = kind.support(parameters, turn.T @ -normal, local)
@@ -122,25 +125,28 @@ def near_contacts(search: Search, kind: Geometry, parameters: Mapping[str, Any],
         wall = tangent @ shape.curvature(region, point) @ tangent.T
         frame, k1, k2 = principal(relative_curvature(body, wall), tangent, normal)
         own = tangent.T @ body @ tangent
-        across, slower = turn.T @ normal, turn.T @ frame[1]
+        across = turn.T @ normal
         width = kind.reach(parameters, across) + kind.reach(parameters, -across)
-        extent = 0.5 * (kind.reach(parameters, slower) + kind.reach(parameters, -slower))
+        # how far the body's points within the band of its tangent plane at the contact reach from it: a report
+        held = _lax.stop_gradient(point)
+        within = (world - held) @ _lax.stop_gradient(normal) <= band
+        footprint = jnp.max(jnp.where(within, jnp.sqrt(jnp.sum((world - held) ** 2, axis=-1)), 0.0))
         contact = NearContact(point, frame, gap, k1, k2, frame[0] @ own @ frame[0], frame[1] @ own @ frame[1],
                               frame[0] @ own @ frame[1])
-        return contact, frame[1] @ shape.curvature(region, point) @ frame[1], width, extent
+        return contact, frame[1] @ shape.curvature(region, point) @ frame[1], width, footprint
 
     rows = (found.points, found.rows[:, :3], found.gaps, found.local)
     if search.slots == 1:
-        contact, wall_along, width, extent = one(*(row[0] for row in rows))
+        contact, wall_along, width, footprint = one(*(row[0] for row in rows))
         def lead(value: Any) -> Array:
             return jnp.asarray(value)[None]
 
         stacked = cast(NearContact, _tree_util.tree_map(lead, contact))
-        wall_along, width, extent = wall_along[None], width[None], extent[None]
+        wall_along, width, footprint = wall_along[None], width[None], footprint[None]
     else:
-        stacked, wall_along, width, extent = _vmap(one)(*rows)
-    kind_of = _lax.stop_gradient(classified(stacked.k2, stacked.b2, extent, wall_along, resolved))
-    return Found(NearContacts(stacked, merged(stacked.point, reach), kind_of, wall_along, extent), width)
+        stacked, wall_along, width, footprint = _vmap(one)(*rows)
+    kind_of = _lax.stop_gradient(classified(stacked.k2, stacked.b2, footprint, wall_along, resolved, spacing))
+    return Found(NearContacts(stacked, merged(stacked.point, reach), kind_of, wall_along, footprint), width)
 
 
 def relative_curvature(body: Array, wall: Array) -> Array:
