@@ -1888,12 +1888,12 @@ class Drag(UncoupledDrag):
                     problems=tuple(problems))
 
     def coupling_of(self, ctx: PlanContext) -> tuple[str, str]:
-        """The stokes rung's exchange scheme, ``one_pass`` or ``lagged``, and why (the maintainer's rule, #350's
-        principle, exact by default): one pass wherever the body's own step is linear in its twist, so that the flow's
+        """The stokes rung's exchange scheme, ``one_pass`` or ``lagged``, and why (exact by default, the cheaper
+        approximation declared): one pass wherever the body's own step is linear in its twist, so that the flow's
         one elimination can hold its row; lagged where the law is one-way (nothing to hold), where ``coupling='lagged'``
         is written (the declared cheaper route), where a law attached confines the body (a contact projects its step),
-        or where its dynamics publishes no step row (``body.step_row``). What the experiment observes never chooses it
-        (#360)."""
+        or where its dynamics publishes no step row (``body.step_row``). What the experiment observes never chooses it:
+        an observation reads the scene, it never changes the physics."""
         body = ctx.bindings["body"]
         if self.one_way:
             return "lagged", "one-way: nothing is delivered to the flow, so its step holds nothing of the body's"
