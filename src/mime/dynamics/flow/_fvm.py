@@ -370,10 +370,11 @@ class FVM(Dynamics):
 
     def tree_layout(self, region: Region, spacing: float | None = None) -> TreeLayout:
         """The periodic box a tube tree's lumen is held in: its period the domain's length, its spacing ``spacing`` or
-        the narrowest lumen's diameter over ``cells_across``."""
+        the narrowest lumen's diameter over ``cells_across`` (a tree on an open domain is refused when planned)."""
         points, radii, segments, _ = tree_of(region)
-        return periodic_tree_layout(points, segments, radii, float(cast(float, self.domain.length.value)),
-                                    cells_across=self.cells_across, spacing=spacing, margin_cells=self.domain.margin)
+        box = cast(PeriodicBox, self.domain)
+        return periodic_tree_layout(points, segments, radii, float(cast(float, box.length.value)),
+                                    cells_across=self.cells_across, spacing=spacing, margin_cells=box.margin)
 
     def tree_problems(self, region: Region) -> list[Problem]:
         """A tube tree is stepped by IMEX Euler or its steady limit (RK3 on a tree is not built) and must repeat over

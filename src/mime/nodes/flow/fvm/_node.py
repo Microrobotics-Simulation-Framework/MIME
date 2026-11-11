@@ -4,9 +4,10 @@ its step identity.
 
 **What a step computes, all in the program from the step's parameters** (no value derived from a parameter is made at
 build: round 3, item 2): the wall's signed distance, a straight tube's from its centre, axis and radius (data, item 3),
-or a tube tree's from its points, radii and fillet (``mime.nodes.flow.fvm.TreeSolid``: the union's exact distance on
-the faces near the wall, which the build holds with the plan of where its candidates run, as it holds the cell
-counts), the band's indicator and the regions' inverse permeability on each face set; the resistivity ``nu x sum(1/K)`` and Jacobi's
+or a tube tree's from its points, radii and fillet (``mime.nodes.flow.fvm.TreeSolid``: the union's exact distance where
+a field is not flat, its candidates run where its check fails, chosen in the program; only how many may run is held at
+build, a rung, as the cell counts are held; constant over a run, so a chunk makes it once, the node's run-constant),
+the band's indicator and the regions' inverse permeability on each face set; the resistivity ``nu x sum(1/K)`` and Jacobi's
 diagonal from the viscosity; the body force on the fluid, ``g (1 - chi)``, ``g`` what the laws bound to the medium
 deliver for the step (the waveform is theirs); then the scheme's step.
 
@@ -21,8 +22,10 @@ of a run that is returned crosses the hold. ``stokes=True`` runs are exempt (the
 (``solve_flagged``); with ``stokes=True``, the lumen's Reynolds number past the declared Stokes line
 (``reynolds_flagged``, :data:`STOKES_REYNOLDS`); the solid's bypass flux past its declared line (``bypass_flagged``,
 :data:`BYPASS_LINE`); with a tube tree's wall, its distance not exact somewhere (``wall_inexact``: the union's counts,
-``wall_unrefined``, ``wall_unconverged`` and ``wall_unplanned``, are each step's fields). The resolution in cells and float32's rounding floor are fixed when the node is built, so the
-build reports them (:meth:`built_lines`).
+``wall_unrefined``, ``wall_unconverged`` and ``wall_unplanned``, are each step's fields). The resolution in cells and
+float32's rounding floor are fixed when the node is built, so the build reports them (:meth:`built_lines`), with a tube
+tree's wall's resolution (``mime.scene.wall_resolution``: its least radius of curvature and its narrowest lumen in
+cells against their lines).
 
 **The report.** Each step's primal solve report (``mime.nodes.flow.fvm._solve``'s block) is a state field, with its
 running sum; the derivative solves' reports come out through the ``solve_report`` parameter's gradient (summed over
@@ -55,11 +58,12 @@ from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, run_dtype
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
+    run_constants_given, run_dtype
 from mime.core import ledger as books
 from mime.core._node import rechecked
-from mime.nodes.flow.fvm._band import TreeSolid, TubeSolid, WallFields, band_named, held_faces, interior_depth, \
-    negative_resistivity, wall_fields
+from mime.nodes.flow.fvm._band import TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
+    negative_resistivity, plan_rung, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
@@ -109,8 +113,12 @@ GEOMETRY = ("its derivative is unverified: the tube's radius, centre and axis ar
             "32 (measured on a static tube)")
 #: The leaves a tube tree's wall is made from in the step, by the names its lumen reads them under.
 TREE_LEAVES = {"tree_points": "points", "tree_radii": "radii", "tree_fillet": "fillet"}
-#: A tube tree's report fields: the union's counts summed over the face sets (``mime.nodes.flow.fvm.TreeSolid``).
+#: A tube tree's report fields: the union's counts over the faces (``mime.nodes.flow.fvm.TreeSolid``).
 WALL_COUNTS = ("wall_unrefined", "wall_unconverged", "wall_unplanned")
+#: A tube tree's run-constants (``MimeNode.run_constants``): its wall's distance on the three face sets' faces in order,
+#: and its counts, made from its leaves once a chunk.
+TREE_WALL = "tree_wall"
+TREE_WALL_COUNTS = "tree_wall_counts"
 #: The fields a held state still writes: the stop's own record.
 _STOP_RECORD = frozenset({STOP_FIELD, "stopped_cfl"})
 #: The hosted laws a metered node books, by the field their delivery names: the fluid's viscosity and the wall's band.
@@ -146,9 +154,9 @@ class FlowState(FlowFields, closed=True):
 
 
 class _WallCounts(TypedDict):
-    """A tube tree's wall's report: where its distance was not exact, counted over the face sets (faces whose candidates
-    were not planned, and those a moved wall brought into the band outside the held faces; planned faces whose
-    candidates did not stand; pairs of tubes within reach the union does not hold as meeting), and its flag."""
+    """A tube tree's wall's report: where its distance was not exact, counted over the faces (failing faces in the band's
+    reach past the plan's size; chosen faces whose candidates did not stand; pairs of tubes within reach the union does
+    not hold as meeting), and its flag."""
 
     wall_unrefined: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     wall_unconverged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
@@ -326,8 +334,10 @@ class ImplicitFlowNode(MimeNode):
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
         fixed = "a structural setting: the box's cells were chosen with it"
-        held = ("its faces near the wall and the union's plan were held at the values built (a wall moved past them "
-                "is counted, wall_unrefined); its derivative is FA8's to judge")
+        held = ("the wall is made from it in the program, once a chunk; only how many faces its candidates may run at "
+                "was held at build (a wall needing more is counted, wall_unrefined); its derivative is FA8's to judge")
+        made = ("made from the tree's leaves once a chunk (a run-constant) and read only as the chunk made it; its value "
+                "as given is never read")
         wall = {"tube_centre": ParamSpec(units="m", description=f"the tube's axis passes through it; {GEOMETRY}"),
                 "tube_axis": ParamSpec(units="1", description=f"the tube's direction, the lattice direction the box "
                                                               f"was built for; {GEOMETRY}"),
@@ -338,8 +348,14 @@ class ImplicitFlowNode(MimeNode):
                                         description=f"each segment's radius at its start and its end; {held}"),
                 "tree_fillet": ParamSpec(units="1", bounds=(0.0, None),
                                          description=f"the fillet's radius as a share of the smallest radius at a "
-                                                     f"junction; {held}")}
-        return {**super().param_specs(), **{key: spec for key, spec in wall.items() if key in self.constants()},
+                                                     f"junction; {held}"),
+                TREE_WALL: ParamSpec(trainable=False, units="m",
+                                     description=f"the tube tree's wall's signed distance on every face; {made}"),
+                TREE_WALL_COUNTS: ParamSpec(trainable=False, units="1",
+                                            description=f"the tube tree's wall's counts (wall_unrefined, "
+                                                        f"wall_unconverged, wall_unplanned); {made}")}
+        held_keys = {*self.constants(), *((TREE_WALL, TREE_WALL_COUNTS) if self.walled_by_tree else ())}
+        return {**super().param_specs(), **{key: spec for key, spec in wall.items() if key in held_keys},
                 "spacing": ParamSpec(trainable=False, units="m", description=fixed),
                 "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None),
                                        description="the fluid's dynamic viscosity, mu; the step uses mu / rho"),
@@ -391,22 +407,60 @@ class ImplicitFlowNode(MimeNode):
                            np.asarray(c["tree_radii"], dtype=np.float64), float(c["tree_fillet"]))
 
     @cached_property
-    def _held_faces(self) -> dict[str, tuple[Any, Any, tuple[float, float]]]:
+    def _plan_sizes(self) -> dict[str, int]:
         return {}
 
-    def held_faces(self, grid: MACGrid) -> tuple[Any, Any, tuple[float, float]]:
-        """A tube tree's faces held near the wall, the union's plan on them and the reach outside them a face is
-        counted within (``mime.nodes.flow.fvm.held_faces``), made once per dtype from the values built."""
+    def plan_size(self) -> int:
+        """How many faces a tube tree's wall may run the union's candidates at (``mime.nodes.flow.fvm.plan_rung``): the
+        rung above the count the tree's values as built choose, made once per dtype."""
         dtype = str(jnp.dtype(run_dtype()))
-        cache = self._held_faces
+        cache = self._plan_sizes
         if dtype not in cache:
             tree = self.tree()
             c = self.constants()
-            # Made from the values built, outside whatever traces the step that first asks for them.
+            grid = MACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), float(c["spacing"]))
+            # Made from the values built, outside whatever traces the step that first asks for it.
             with cast(Any, jax).ensure_compile_time_eval():
-                cache[dtype] = held_faces(tree.lumen(), tree.parameters(), MACGrid(grid.cells, float(c["spacing"])),
-                                          band_named(c["band"]), tree.fillet_radius_value(), run_dtype())
+                points = jnp.concatenate([grid.face_points(k, run_dtype()).reshape(-1, 3) for k in range(3)])
+                chosen = tree.lumen().chosen(tree.parameters(), points, self.wall_floor(grid.spacing))
+                cache[dtype] = plan_rung(int(np.sum(np.asarray(chosen))))
         return cache[dtype]
+
+    def wall_floor(self, spacing: Any) -> Any:
+        """The depth in the fluid below which every field the step reads of the wall is flat: the band's fluid half."""
+        return -0.5 * band_named(self.constants()["band"]).width * spacing
+
+    def tree_solid(self, p: Mapping[str, Any], grid: MACGrid) -> TreeSolid:
+        """The tube tree's solid at the step's leaves: its wall as the chunk made it (the run-constants), where it did;
+        else made in the step."""
+        given = (p[TREE_WALL], p[TREE_WALL_COUNTS]) if run_constants_given(p) and TREE_WALL in p else None
+        return TreeSolid(self.tree().lumen(), self.tree_leaves(p), self.wall_floor(grid.spacing), self.plan_size(),
+                         given)
+
+    @override
+    def params_pytree(self) -> dict[str, Any]:
+        """The leaves; a tube tree's with its run-constants' (:data:`TREE_WALL`, :data:`TREE_WALL_COUNTS`): zeros,
+        which a chunk makes from the tree's leaves before its steps read them."""
+        inherited: Any = super()
+        leaves = cast(dict[str, Any], inherited.params_pytree())
+        if not self.walled_by_tree:
+            return leaves
+        c = self.constants()
+        faces = 3 * int(c["cells_x"]) * int(c["cells_y"]) * int(c["cells_z"])
+        return {**leaves, TREE_WALL: jnp.zeros(faces, dtype=run_dtype()),
+                TREE_WALL_COUNTS: jnp.zeros(len(WALL_COUNTS), dtype=run_dtype())}
+
+    @override
+    def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
+        """A tube tree's wall, made once a chunk from its leaves (:class:`TreeSolid`): its distance on every face and
+        its counts. None for a straight tube's, whose wall the step makes (a few operations a face)."""
+        if not self.walled_by_tree or TREE_WALL not in params:
+            return {}
+        grid = self.grid(params)
+        points = (grid.face_points(0, run_dtype()), grid.face_points(1, run_dtype()), grid.face_points(2, run_dtype()))
+        distance, counts = self.tree_solid(params, grid).made(points)
+        return {TREE_WALL: distance.astype(jnp.asarray(params[TREE_WALL]).dtype),
+                TREE_WALL_COUNTS: counts.astype(jnp.asarray(params[TREE_WALL_COUNTS]).dtype)}
 
     def tree_leaves(self, p: Mapping[str, Any]) -> dict[str, Array]:
         """The tree's leaves as its lumen reads them, from the step's parameters."""
@@ -432,10 +486,9 @@ class ImplicitFlowNode(MimeNode):
             return as_run_array((1.0, 1.0, 1.0))
         return p["tube_axis"]
 
-    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid | TreeSolid]:
+    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid]:
         if self.walled_by_tree:
-            near, plans, reach = self.held_faces(grid)
-            return [TreeSolid(self.tree().lumen(), self.tree_leaves(p), near, plans, reach)]
+            return [self.tree_solid(p, grid)]
         extents = [count * grid.spacing for count in grid.cells]
         if self.constants()["periodic_images"] == "own":
             shifts: tuple[tuple[Any, Any, Any], ...] = ((0.0, 0.0, 0.0),)
@@ -782,14 +835,21 @@ class ImplicitFlowNode(MimeNode):
 
     # -- at the build and after the run ---------------------------------------------------------------------------
     def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
-        """The validity lines fixed when the node is built, each reported where it is crossed (never a refusal): the
-        lumen's resolution in cells under the band's calibration, and float32's rounding floor near a steady state
-        above the monolithic solve's tolerance (a node with no such solve has no such line)."""
+        """The validity lines fixed when the node is built, each reported where it is crossed (never a refusal): a tube
+        tree's wall's resolution entries below their lines (``mime.scene.wall_resolution``: its least radius of
+        curvature, its narrowest lumen), the lumen's resolution in cells under the band's calibration, and float32's
+        rounding floor near a steady state above the monolithic solve's tolerance (a node with no such solve has no
+        such line)."""
         del start, closest_approach
         c = self.constants()
         radius = float(np.min(c["tree_radii"])) if self.walled_by_tree else float(c["tube_radius"])
         cells = 2.0 * radius / float(c["spacing"])
         lines: list[str] = []
+        if self.walled_by_tree:
+            from mime.scene import wall_resolution
+
+            report = wall_resolution(self.tree().wall_features(), float(c["spacing"]))
+            lines += [f"the tube tree's wall's {entry.text()}" for entry in report.entries if entry.below]
         if cells < CALIBRATED_CELLS:
             lines.append(f"the lumen is {cells:.3g} cells across, under the {CALIBRATED_CELLS:g} at and above which "
                          f"the band's wall shift is calibrated on straight tubes (0.3 to 0.4 % of the flux at 32); "
@@ -855,5 +915,5 @@ def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
 
 
 __all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
-           "STOP_FIELD", "TREE_LEAVES", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
+           "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
            "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries"]

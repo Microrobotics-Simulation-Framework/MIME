@@ -1860,7 +1860,7 @@ class _Planner:
             self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}", error)
             return None
         return Region(path, shape, parameters,
-                      tuple(f"{owner}.{surface}" for surface in type(plan.geometry).openings.get(part, ())))
+                      tuple(f"{owner}.{surface}" for surface in plan.geometry.opening_names().get(part, ())))
 
     def literal_direction(self, value: object, what: str) -> tuple[float, float, float] | None:
         try:

@@ -1372,6 +1372,11 @@ class Geometry(Entry):
         and for a kind whose settings name surfaces of their own (a tube tree's ends), those too."""
         return self.surfaces
 
+    def opening_names(self) -> Mapping[str, tuple[str, ...]]:
+        """The surfaces each region may be opened at, among :meth:`surface_names`: the class's ``openings``, and for a
+        kind whose settings name its ends (a tube tree's), those."""
+        return self.openings
+
     def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         """The parameters of the shape ``region_shapes`` names for ``region``, in SI."""
         raise NotImplementedError

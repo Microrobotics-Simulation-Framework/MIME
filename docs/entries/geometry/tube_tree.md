@@ -22,7 +22,9 @@ What a consumer reads of it, by what it is for:
   wall's band reads it; the tree is periodic along z with the box's period and reaches past its two ends.
 - **Its ends** are named by geometry, never by the role a law gives them: the first segment's start is `root` where
   no other segment meets it, and every other free end takes the name `ends` gives it, in the order of its points,
-  `end_0`, `end_1`, ... by default.
+  `end_0`, `end_1`, ... by default. Each is a surface of the structure (`vessel.root`) and an opening of its lumen.
+- **Its fillet** is refused where its closing would fuse two tubes that share no point (the solid between them thinner
+  than its diameter): the refusal names a smaller fillet or a thicker wall.
 - **Its centreline** is a segment a tube and a junction where two ends or more meet.
 
 **When not to use it.**

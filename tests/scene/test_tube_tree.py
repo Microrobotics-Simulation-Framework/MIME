@@ -15,6 +15,7 @@ from union_oracles import D, hairpin_tree, lattice, loop_tree, rotation, seed_li
 from mime.build import ArgumentRefused
 from mime.core import jnp
 from mime.scene import (
+    CURVATURE_LINE,
     FILLET_SHARE,
     LAYER_LINES,
     Helix,
@@ -230,7 +231,8 @@ def test_the_walls_resolution_report():
     h = D / 16.0
     report = wall_resolution(features, h, layer=stokes_layer(0.5 * D, 3.0))
     assert report.entry("smallest wall radius").cells == pytest.approx(0.48)
-    assert report.entry("smallest wall radius").below is None
+    assert report.entry("smallest wall radius").line == CURVATURE_LINE
+    assert report.entry("smallest wall radius").below is True
     lumen = report.entry("narrowest lumen")
     assert lumen.cells == pytest.approx(9.6) and lumen.below is False
     wedge = next(e for e in report.entries if e.name.startswith("sharpest wedge"))

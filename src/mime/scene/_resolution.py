@@ -6,7 +6,10 @@ line is reported as unmeasured. The bodies' half comes with the phase that resol
 Entries, each in cells of the spacing:
 
 - **the smallest wall radius**: the tightest curvature of the wall in the band, a sharp seam's zero (a fillet's radius
-  where the wall is filleted);
+  where the wall is filleted), against :data:`CURVATURE_LINE`, from an elliptic section's sweep (FA4's: its major
+  vertex's shift against a round tube's, over turns and sub-cell offsets at resolutions putting the vertex at 3.6 to
+  8.6 cells; the rows are kept with the test that holds the line to them). It is measured on a wall curved about the
+  lumen; a fillet's, curved the other way, is read against the same line, unmeasured;
 - **the narrowest lumen**: the smallest diameter, against the band's thin-feature estimate (a band two cells wide on
   each side over-conducts a gap narrower than about five cells);
 - **the narrowest solid**: the least solid between two tubes that share no point, and the sharpest wedge of solid
@@ -30,6 +33,10 @@ from mime.scene._tube_tree import WallFeatures
 #: The wall layer's lines, in cells of layer: the wall shear within 5 % and within 2 % (interpolated on a sweep's worst
 #: arm, as the docstring says).
 LAYER_LINES = {"wall shear within 5 %": 2.7, "wall shear within 2 %": 4.5}
+#: The smallest wall radius's line, in cells of radius of curvature: at and above it an elliptic section's major
+#: vertex read within 0.1 cells of a round tube's shift over every turn and sub-cell offset the sweep drew (the
+#: docstring).
+CURVATURE_LINE = 6.0
 #: The narrowest lumen's line, in cells: the band's thin-feature estimate.
 LUMEN_LINE = 5.0
 #: The registered band's width in cells (the default band, two cells), which the wedge's entry is read against.
@@ -95,7 +102,8 @@ def wall_resolution(features: WallFeatures, spacing: float, *, layer: float | No
     half_angle = math.radians(features.sharpest_wedge) / 2.0
     wedge_cells = band_width / (2.0 * math.tan(half_angle)) if half_angle < math.pi / 2.0 else 0.0
     entries = [
-        ResolutionEntry("smallest wall radius", features.smallest_radius / spacing, None, ""),
+        ResolutionEntry("smallest wall radius", features.smallest_radius / spacing, CURVATURE_LINE,
+                        "an elliptic section's sweep: from it, the wall's shift within 0.1 cells of a round tube's"),
         ResolutionEntry("narrowest lumen", features.narrowest_lumen / spacing, LUMEN_LINE,
                         "an estimate: a band of two cells each side over-conducts a gap narrower than about five"),
         ResolutionEntry("narrowest solid between tubes that share no point", features.narrowest_solid / spacing, None,
@@ -117,5 +125,5 @@ def wall_resolution(features: WallFeatures, spacing: float, *, layer: float | No
     return ResolutionReport(spacing, tuple(entries))
 
 
-__all__ = ["BAND_WIDTH", "LAYER_LINES", "LUMEN_LINE", "ResolutionEntry", "ResolutionReport", "steady_layer",
+__all__ = ["BAND_WIDTH", "CURVATURE_LINE", "LAYER_LINES", "LUMEN_LINE", "ResolutionEntry", "ResolutionReport", "steady_layer",
            "stokes_layer", "wall_resolution"]

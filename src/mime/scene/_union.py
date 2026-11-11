@@ -48,10 +48,12 @@ in every parameter, and the distance's derivative and its normal's are exact off
 switches. The selections are plain JAX: no node's step runs this yet. The first step that does (the FVM's wall) writes
 them through ``mime.core.switch``, its owners declared on the shape it registers.
 
-**Where the Newton runs.** The check runs at every point. The candidates run only at a held set of points, the plan
-(:meth:`ExactUnion.plan`), chosen from the points the check fails at and a margin when the caller builds, so the
-program's shapes stay fixed. A point outside the plan that fails the check is counted (``unrefined``), so walls moved
-further than the plan's margin are seen. Which regions meet (``meets``) is fixed when the union is made; the union's
+**Where the Newton runs.** The check runs at every point. The candidates run only at a set of points of fixed size,
+so the program's shapes stay fixed: a held set, the plan (:meth:`ExactUnion.plan`), chosen from the points the check
+fails at and a margin when the caller builds; or the points the check fails at, chosen in the program at the run's
+values up to a size held at build (:meth:`ExactUnion.evaluate_chosen`, the FVM's wall). A failing point the candidates
+do not reach is counted (``unrefined``), so walls moved further than a plan's margin, or more failing points than the
+size, are seen. Which regions meet (``meets``) is fixed when the union is made; the union's
 ``unplanned`` reads, at the run's values, how many pairs that do not meet by it now come within reach of each other
 (a tube tree's radii scaled by a study, say), where the check is blind. The counts travel with every value the union
 returns (:class:`UnionDistance`, :class:`UnionNormal`); they say where it is not exact, and none of them is a proof
@@ -555,6 +557,50 @@ class ExactUnion:
         unrefined = jnp.sum(failing & ~jnp.asarray(planned))
         unplanned = jnp.asarray(self.unplanned(parameters))
         return UnionDistance(widened + radius, failing, unrefined, unconverged, unplanned)
+
+    def chosen(self, parameters: Parameters, points: Any, floor: Any) -> Array:
+        """At ``points`` ``(N, 3)`` (the world's): whether each fails the check and lies shallower than ``floor`` (a
+        signed distance, negative in the fluid), where :meth:`evaluate_chosen` runs the candidates. Compiled once for
+        each union."""
+        return self._chosen_compiled(parameters, jnp.asarray(points), floor)
+
+    @functools.cached_property
+    def _chosen_compiled(self) -> Callable[[Parameters, Array, Any], Array]:
+        return cast(Any, jax).jit(self._chosen_at)
+
+    def _chosen_at(self, parameters: Parameters, points: Array, floor: Any) -> Array:
+        held = self._local(parameters, points)
+        least, clearance, _, _ = self._check(parameters, held)
+        return self._chosen(parameters, held, least, clearance, floor)
+
+    def _chosen(self, parameters: Parameters, held: Array, least: Array, clearance: Array, floor: Any) -> Array:
+        radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
+        failing = (least < 0.0) & (clearance < -self._allowance(parameters, held, KEPT_ULPS))
+        return failing & (least + radius > floor)
+
+    def evaluate_chosen(self, parameters: Parameters, points: Array, size: int, floor: Any) -> UnionDistance:
+        """:meth:`evaluate` with its plan chosen in the program at the run's values (:meth:`chosen`): the candidates
+        run at the first ``size`` points, in their order, that fail the check and lie shallower than ``floor``. A
+        failing point deeper keeps the minimum, uncounted (a reader's fields are flat there); one past the first
+        ``size`` keeps it and is counted (``unrefined``). Only ``size`` is fixed with the program; ``failing`` holds the
+        chosen points."""
+        held = self._local(parameters, points)
+        least, clearance, deepest, inside = self._check(parameters, held)
+        radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
+        chosen = self._chosen(parameters, held, least, clearance, floor)
+        count = jnp.sum(chosen)
+        depth = -least
+        unconverged = jnp.asarray(0)
+        if size:
+            index = jnp.nonzero(chosen, size=size, fill_value=jnp.argmax(chosen))[0]
+            valid = jnp.arange(size) < count
+            refined, stands = self._refined_depth(parameters, held[index], deepest[index], inside[index])
+            # A lane past the chosen points repeats the first of them and writes nothing: no derivative passes it.
+            depth = depth.at[jnp.where(valid & stands, index, held.shape[0])].set(refined, mode="drop")
+            unconverged = jnp.sum(valid & ~stands)
+        widened = jnp.where(least >= 0.0, least, -depth)
+        unrefined = count - jnp.sum(jnp.arange(size) < count)
+        return UnionDistance(widened + radius, chosen, unrefined, unconverged, jnp.asarray(self.unplanned(parameters)))
 
     def outward_normal(self, parameters: Parameters, points: Any, plan: np.ndarray | None = None
                        ) -> UnionNormal:

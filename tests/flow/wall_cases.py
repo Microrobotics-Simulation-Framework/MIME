@@ -302,26 +302,36 @@ class EllipticTube:
 
     def signed_distance(self, points: Any) -> Any:
         """The exact distance to the ellipse (Eberly's: the root ``t`` of ``(a u/(t + a^2))^2 + (b v/(t + b^2))^2 = 1``
-        above ``-min(a^2, b^2)``, ``u, v`` the point's in the first quadrant, by 100 bisections), its sign the inside
-        test's."""
-        u, v = self.own(points)
+        above ``-min(a^2, b^2)``, ``u, v`` the point's in the first quadrant, by 100 bisections of ``t + min(a^2, b^2)``,
+        so a point near the major axis keeps its root's digits; exactly on the major axis inside, where the root is the
+        bracket's end, its closed form), its sign the inside test's."""
+        u, given = self.own(points)
         tiny = jnp.finfo(u.dtype).tiny
-        u, v = jnp.abs(u), jnp.maximum(jnp.abs(v), tiny)
+        u, v = jnp.abs(u), jnp.maximum(jnp.abs(given), tiny)
         a2, b2 = self.a ** 2, self.b ** 2
-        lower = jnp.full_like(u, -min(a2, b2))
+        least = min(a2, b2)
+        lower = jnp.zeros_like(u)
         upper = jnp.sqrt(a2 * u * u + b2 * v * v) + max(a2, b2)
 
-        def f(t: Any) -> Any:
-            return (self.a * u / (t + a2)) ** 2 + (self.b * v / (t + b2)) ** 2 - 1.0
+        def f(s: Any) -> Any:
+            return (self.a * u / (s + (a2 - least))) ** 2 + (self.b * v / (s + (b2 - least))) ** 2 - 1.0
 
         for _ in range(100):
             middle = 0.5 * (lower + upper)
             positive = f(middle) > 0.0
             lower, upper = jnp.where(positive, middle, lower), jnp.where(positive, upper, middle)
-        t = 0.5 * (lower + upper)
-        qu, qv = a2 * u / jnp.maximum(t + a2, tiny), b2 * v / jnp.maximum(t + b2, tiny)
+        root = 0.5 * (lower + upper)
+        qu, qv = a2 * u / jnp.maximum(root + (a2 - least), tiny), b2 * v / jnp.maximum(root + (b2 - least), tiny)
         distance = jnp.sqrt((u - qu) ** 2 + (v - qv) ** 2)
         inside = (u / self.a) ** 2 + (v / self.b) ** 2 < 1.0
+        # On the major axis inside: the nearest point off the axis within the evolute's cusp (|u| < (a^2 - b^2) / a),
+        # the vertex beyond (and a circle's nearest point along the radius).
+        axis = inside & (jnp.abs(given) < tiny)
+        if self.a > self.b:
+            off = self.b * jnp.sqrt(jnp.maximum(1.0 - u * u / (a2 - b2), 0.0))
+            distance = jnp.where(axis, jnp.where(u < (a2 - b2) / self.a, off, self.a - u), distance)
+        else:
+            distance = jnp.where(axis, self.a - u, distance)
         return jnp.where(inside, -distance, distance)
 
 

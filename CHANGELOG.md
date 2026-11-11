@@ -44,10 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reaching past its two ends (`flow.tree-period` refuses one that does not repeat where the band reads it), held in its
   box with its spacing from the narrowest lumen, stepped by IMEX Euler or its steady limit (RK3 on a tree is refused,
   `flow.tree-scheme`). The node takes the tree as its leaves (`tree_points`, `tree_radii`, `tree_fillet`, with
-  `tree_segments` its structure) and makes its wall in the step: the union's exact distance (`ExactUnion`) on the faces
-  where the band reads it, which the build holds with the union's plan, and the plain minimum where every field is flat.
-  Its state reports where the distance is not exact (`wall_unrefined`, `wall_unconverged`, `wall_unplanned`, and the
-  warning flag `wall_inexact`); a straight tube's state and programs are unchanged. Gated through the node, steady
+  `tree_segments` its structure) and makes its wall from them in the program: the union's exact distance (`ExactUnion`)
+  wherever a field the step reads is not flat, its candidates run at the faces where its check fails within the band's
+  fluid half, chosen in the program at the run's values (`ExactUnion.evaluate_chosen`), only how many may run held at
+  build (a rung above the build's own count, as the cell counts are held), the plain minimum elsewhere; the wall is
+  constant over a run, so a chunk makes it once (the node's run-constants `tree_wall`, `tree_wall_counts`), and a
+  moved radius or period keeps one program. Its state reports where the distance is not exact (`wall_unrefined`,
+  `wall_unconverged`, `wall_unplanned`, and the warning flag `wall_inexact`), and its build reports the wall's
+  resolution entries below their lines (`wall_resolution`: the least radius of curvature, the narrowest lumen); a
+  straight tube's state and programs are unchanged. Gated through the node, steady
   Stokes, every vessel turned about its period's axis at random and moved by a sub-cell offset: a helical tube's lumen
   not displaced against Dean's first-order profile, an elliptic section's semi-axes, a taper against lubrication, a 75 %
   stenosis and the split-and-merge loop's split at 30 degrees against Richardson references, the symmetric split a half,
@@ -56,7 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   radii=mm(...), fillet=0.1, ends=(...))`, three lengths a point and two radii a segment, flat (`TubeTree.si` takes them
   in SI as nested tuples); its regions the `lumen` (the shape `tube_tree`) and the `wall`; its free ends named by
   geometry, never by a law's role: `root` at the first segment's start, the others `end_0`, `end_1`, ... in the order of
-  their points or as `ends` names them (`TubeTree.end_names`). The round-trip case `tree_flow`.
+  their points or as `ends` names them (`TubeTree.end_names`), each a surface reached through the structure's handle
+  (`vessel.root`) and an opening of the lumen (`Geometry.opening_names`, per instance beside the class's `openings`).
+  A tree whose fillet would fuse tubes that share no point (solid between them thinner than its diameter) is refused
+  when planned (`setting.value`), naming a smaller fillet or a thicker wall. The round-trip case `tree_flow`.
 
 - **Composed walls in `mime.scene`: the seam-aware union, the fillet as its closing, the tube tree** (F2a's first
   part). `ExactUnion` is the exact signed distance of a union of regions that each have one (`RoundCone`, `Ball`,
@@ -1036,8 +1044,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The union's derivative in reverse mode** (`ExactUnion`): on a batch of thousands of points it read 4 to 50 % off
   forward mode and the central difference, where two tubes' distances tie exactly (a shared end ball): `jnp.min` and
   `jnp.minimum` find the least's derivative by comparing it again with their operands, which XLA computed twice in
-  fusions that rounded them differently. The least is now selected by one comparison; a gate holds reverse to forward
-  mode on the node's held faces, with both the reduction and a reverse-only error planted as controls.
+  fusions that rounded them differently. The least is now selected by one comparison, its derivative the selected
+  operand's: a guard holds every exact tie's derivative to one operand's (the reduction put back reads their average,
+  caught on every run), and a gate holds reverse to forward mode on the node's wall (a reverse-only error its control).
+  And reverse mode made a NaN on a batch where a discarded seam's or corner's implicit step was singular: a discarded
+  lane now passes no derivative into it.
 
 - **The FVM's stall flag is set from clean runs, in the solve's tolerance, and stops firing on correct float32 runs.** The
   stall detector `|N_Krylov| / D_visc` (`stall_flagged`, with the energy ledger attached) was flagged above a fixed

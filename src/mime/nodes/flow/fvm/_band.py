@@ -18,17 +18,19 @@ the step reads ``nu x sum(1/K)``: the viscosity multiplies in the step and is ne
 The geometry enters as data (the tube's centre, axis and radius are the step's parameters; a tube tree's points,
 radii and fillet), so the fields are made in the program from them.
 
-**A tube tree's wall** (:class:`TreeSolid`) reads the exact distance of its lumen's union (``mime.scene.ExactUnion``) on
-the faces near the wall, the faces it was made for when the node was built (a set held with the plan of where the
-candidates run): the band's contract, exact to the 0.05-cell line or counted. The faces beyond, deep in the fluid or the
-solid, read the plain minimum, exact in the solid and, in the fluid, where every field the step reads is flat. The
-union's counts (``UnionDistance``: failing points outside the plan, planned points whose candidates did not stand, pairs
-of tubes the run's values bring within reach that the union does not hold as meeting) and the faces a moved wall has
-brought into the band outside the held set travel beside the fields, for the step's report: the band reads only the
-distance."""
+**A tube tree's wall** (:class:`TreeSolid`) is its lumen's union's exact distance (``mime.scene.ExactUnion``) wherever
+a field the step reads is not flat, made in the program from the tree's leaves: the plain minimum on every face, exact
+in the solid and never deeper than the union in the fluid, and the union's candidates where its check fails within the
+band's fluid half (deeper, every field is flat). Where they run is chosen in the program at the run's values; only how
+many may run is held at build (:func:`plan_rung`, a rung above the count the build's values need, as the cell counts
+are held). The union's counts (``UnionDistance``: failing faces past that size, chosen faces whose candidates did not
+stand, pairs of tubes the run's values bring within reach that the union does not hold as meeting) travel beside the
+fields, for the step's report: the band reads only the distance. The wall is constant over a run, so a chunk makes it
+once (the node's run-constant)."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -122,78 +124,54 @@ class TubeSolid:
         return nearest
 
 
-#: The faces a tube tree's exact distance is held on, beyond the band's fluid half and the fillet's radius, in cells:
-#: the room a wall has to move (a study, a central difference) before a face it brings into the band lies outside the
-#: held set and is counted. A declaration, not a fit.
-NEAR_MARGIN_CELLS = 0.5
-#: The margin, in cells, of the union's plan (``ExactUnion.plan``) on the held faces: a face whose deepest lumen's
-#: nearest wall point lies inside another lumen or within this of one runs the candidates. A declaration, not a fit: it
-#: covers a central difference's step and a small study's move; a wall moved further is counted (``unrefined``).
-PLAN_MARGIN_CELLS = 0.25
+#: The least of the plan's sizes (:func:`plan_rung`), in faces.
+PLAN_QUANTUM = 256
+
+
+def plan_rung(count: int) -> int:
+    """How many faces a tube tree's node may run the union's candidates at, held at build for ``count`` (the faces the
+    build's values choose): the least rung ``PLAN_QUANTUM x ceil(2^(k/2))`` at or above it, so between ``count`` and
+    about 1.41 times it, and a move of the walls that changes ``count`` by a few faces keeps one program; zero for
+    none. A declaration, not a fit."""
+    if count <= 0:
+        return 0
+    k = 0
+    while PLAN_QUANTUM * math.ceil(2.0 ** (k / 2.0)) < count:
+        k += 1
+    return PLAN_QUANTUM * math.ceil(2.0 ** (k / 2.0))
 
 
 @dataclass(frozen=True)
 class TreeSolid:
     """The solid around a tube tree's lumen (``mime.scene.TubeTree``), its signed distance the union's (positive in
-    the solid), from ``parameters`` (the tree's leaves, traced): exact on the faces ``near`` holds for each face set (a
-    flat index into its points), its candidates run at ``plans`` (indices into those faces), and the plain minimum
-    elsewhere: in the solid beyond the fillet's radius it is exact, and in the fluid it is never deeper than the
-    union's depth, so a face it puts deeper than the band's fluid half is at least as deep, where every field the step
-    reads is flat (the band's ramp meets its flat with zero slope there). ``reach`` is that interval, ``(below,
-    above)`` (m) about the wall, for the count of faces a moved wall brings into it outside the held set."""
+    the solid) from ``parameters`` (the tree's leaves, traced): the union's candidates run at up to ``planned`` faces
+    where its check fails shallower than ``floor`` (``-W h / 2``, the band's fluid half; deeper every field the step
+    reads is flat), the plain minimum elsewhere (``ExactUnion.evaluate_chosen``). ``given`` is the wall a chunk made
+    once (the node's run-constant: the distance on the three face sets' faces in order, and the counts), read in place
+    of making it."""
 
     union: ExactUnion
     parameters: Mapping[str, Any]
-    near: tuple[np.ndarray, np.ndarray, np.ndarray]
-    plans: tuple[np.ndarray, np.ndarray, np.ndarray]
-    reach: tuple[float, float]
+    floor: Any
+    planned: int
+    given: tuple[Array, Array] | None = None
     region: str = "wall"
 
+    def made(self, points: tuple[Array, Array, Array]) -> tuple[Array, Array]:
+        """The distance on the three face sets' ``points``, flat in their order, and ``(unrefined, unconverged,
+        unplanned)``."""
+        flat = jnp.concatenate([held.reshape(-1, 3) for held in points])
+        found = self.union.evaluate_chosen(self.parameters, flat, self.planned, self.floor)
+        counts = jnp.stack([jnp.asarray(n).astype(flat.dtype)
+                            for n in (found.unrefined, found.unconverged, found.unplanned)])
+        return found.distance, counts
+
     def face_distances(self, points: tuple[Array, Array, Array]) -> tuple[tuple[Array, Array, Array], Array]:
-        """The distance on each face set's ``points``, the three sets' held faces evaluated together (one union, one
-        program), and ``(unrefined, unconverged, unplanned)``: the union's counts, with the faces within ``reach`` of
-        the wall outside the held set added to the first."""
-        flats = [held.reshape(-1, 3) for held in points]
-        sizes = np.cumsum([0] + [len(n) for n in self.near])
-        plan = np.concatenate([self.plans[k] + sizes[k] for k in range(3)])
-        found = self.union.evaluate(self.parameters, jnp.concatenate([flats[k][self.near[k]] for k in range(3)]),
-                                    plan)
-        missed = jnp.zeros((), dtype=jnp.int32)
-        phis: list[Array] = []
-        for k in range(3):
-            minimum = self.union.minimum(self.parameters, flats[k])
-            phi = minimum.at[self.near[k]].set(found.distance[sizes[k]:sizes[k + 1]])
-            outside = np.ones(flats[k].shape[0], dtype=bool)
-            outside[self.near[k]] = False
-            within = (minimum > -self.reach[0]) & (minimum <= self.reach[1])
-            missed = missed + jnp.sum(jnp.asarray(outside) & within)
-            phis.append(phi.reshape(points[k].shape[:-1]))
-        dtype = points[0].dtype
-        counts = jnp.stack([(found.unrefined + missed).astype(dtype), jnp.asarray(found.unconverged).astype(dtype),
-                            jnp.asarray(found.unplanned).astype(dtype)])
+        """The distance on each face set's ``points`` (as given, or made: :meth:`made`), and the counts."""
+        distance, counts = self.given if self.given is not None else self.made(points)
+        ends = np.cumsum([0] + [int(np.prod(held.shape[:-1])) for held in points])
+        phis = [distance[ends[k]:ends[k + 1]].reshape(points[k].shape[:-1]) for k in range(3)]
         return (phis[0], phis[1], phis[2]), counts
-
-
-def held_faces(union: ExactUnion, parameters: Mapping[str, Any], grid: MACGrid, band: Band, fillet: float,
-               dtype: Any) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray, np.ndarray],
-                                    tuple[float, float]]:
-    """What a :class:`TreeSolid` holds for ``grid``, made from the tree's values as built: on each face set, the faces
-    whose plain minimum lies within the band's fluid half (``W/2``) on the fluid side and within the fillet's radius
-    ``fillet`` (m) on the solid side, each widened by :data:`NEAR_MARGIN_CELLS`, and the union's plan on them
-    (:data:`PLAN_MARGIN_CELLS`); and that interval unwidened, which a face outside them is counted within. NumPy, fixed
-    for the program."""
-    h = float(grid.spacing)
-    reach = (0.5 * band.width * h, fillet)
-    margin = NEAR_MARGIN_CELLS * h
-    near: list[np.ndarray] = []
-    plans: list[np.ndarray] = []
-    for component in range(3):
-        flat = np.asarray(grid.face_points(component, dtype)).reshape(-1, 3)
-        minimum = np.asarray(union.minimum(parameters, jnp.asarray(flat)))
-        index = np.nonzero((minimum > -(reach[0] + margin)) & (minimum <= reach[1] + margin))[0]
-        near.append(index)
-        plans.append(union.plan(parameters, flat[index], PLAN_MARGIN_CELLS * h))
-    return (near[0], near[1], near[2]), (plans[0], plans[1], plans[2]), reach
 
 
 @dataclass(frozen=True)
@@ -212,8 +190,8 @@ class WallFields:
 
 @runtime_checkable
 class FacedSolid(Protocol):
-    """A solid whose distance is held per face set (a tube tree's: its held faces and plan are each set's): its signed
-    distance on the three face sets' points, together, and the counts of where it is not exact (:class:`TreeSolid`)."""
+    """A solid whose distance is made on the three face sets' points together (a tube tree's, one union over them all),
+    with the counts of where it is not exact (:class:`TreeSolid`)."""
 
     @property
     def region(self) -> str: ...
@@ -256,7 +234,7 @@ def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: B
                 for index, solid in enumerate(solids)]
         phi = phis[0]
         for other in phis[1:]:
-            phi = jnp.minimum(phi, other)
+            phi = jnp.where(other < phi, other, phi)  # the nearer solid, by one comparison (its derivative the chosen's)
         chi = ramp(phi, width)
         resistivity = jnp.zeros_like(phi)
         for p in phis:
@@ -276,6 +254,6 @@ def negative_resistivity(fields: WallFields) -> Array:
     return jnp.any(jnp.stack([jnp.any(k < 0.0) for k in fields.inverse_permeability]))
 
 
-__all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_INTERIOR", "INTERIORS", "INTERIOR_RAMP_END", "NEAR_MARGIN_CELLS",
-           "PLAN_MARGIN_CELLS", "Band", "FacedSolid", "TreeSolid", "TubeSolid", "WallFields", "band_named",
-           "held_faces", "interior_depth", "interior_ramp", "negative_resistivity", "ramp", "wall_fields"]
+__all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_INTERIOR", "INTERIORS", "INTERIOR_RAMP_END", "PLAN_QUANTUM", "Band",
+           "FacedSolid", "TreeSolid", "TubeSolid", "WallFields", "band_named", "interior_depth", "interior_ramp",
+           "negative_resistivity", "plan_rung", "ramp", "wall_fields"]

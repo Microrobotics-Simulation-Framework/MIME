@@ -2,8 +2,10 @@
 the node's own step on a vessel periodic along z, turned about z at random (the loop's daughters then off every grid
 plane) and moved by a sub-cell offset (``wall_cases``):
 
-- **the contract**: the node's wall reads the union's exact distance on the faces it holds and the plain minimum only
-  where every field is flat, its counts zero; control, the plain minimum everywhere (``MIME_PLANT_WALL=minimum``);
+- **the contract**, judged without the node's own selection: on every face where a field is not flat, the node's
+  fields are those of the union's exact distance (all its candidates at every face), its counts zero, the wall its
+  chunk makes once the step's own; controls, the plain minimum everywhere (``MIME_PLANT_WALL=minimum``) and the
+  union's candidates chosen only above half the band's fluid half (``MIME_PLANT_WALL=floor``);
 - **FA3**, a biconical taper: the wall's shift inferred from the flux against lubrication's, ``ln(Q / Q_lub) /
   (h d ln Q / d delta)``, within ``SHIFT_LINE`` of the planar calibration; control, every radius a quarter cell out
   (``MIME_PLANT_WALL=wall``);
@@ -12,8 +14,10 @@ plane) and moved by a sub-cell offset (``wall_cases``):
 - **FA6**, the split-and-merge loop's split at 30 degrees (daughters 0.4 and 0.3 D, filleted): within ``SPLIT_LINE``
   of the Richardson reference; control, the first daughter a quarter cell out (``MIME_PLANT_WALL=daughter``);
 - **FA7**, the symmetric loop (both 0.4 D): its split within ``SYMMETRY_LINE`` of a half, the same control;
+- **float32**: the loop's split at 8 cells a diameter in float32 within ``FLOAT32_LINE`` of float64's, no flag; the same
+  control in the float32 run alone;
 - **FA8**, the derivative of the first daughter's flux in its radius: reverse mode through the steady step against a
-  central difference in one discretisation (the same cells, faces held and plan), within ``DERIVATIVE_LINE``; control,
+  central difference in one discretisation (the same cells and plan size), within ``DERIVATIVE_LINE``; control,
   the radii held out of the derivative (``MIME_PLANT_WALL=stopped``).
 
 The predictions are ``predictions_general_wall.json``'s, committed before these ran."""
@@ -44,7 +48,9 @@ from wall_cases import (
     tree_node,
 )
 
+from mime.core._node import RUN_CONSTANTS_GIVEN
 from mime.nodes.flow.fvm import MACGrid
+from mime.nodes.flow.fvm._band import INTERIOR_RAMP_END, band_named, interior_depth, interior_ramp, ramp
 
 #: The wall's shift against the planar calibration, in cells (S1's line, as the tube's).
 SHIFT_LINE = 0.15
@@ -52,10 +58,17 @@ SHIFT_LINE = 0.15
 SPLIT_LINE = 0.01
 #: FA7's line on the symmetric split's distance from a half.
 SYMMETRY_LINE = 0.005
+#: The float32 arm's line on the loop's split against float64's: float32's eps (1.2e-7) times a solve's growth of about a
+#: hundred (the review measured 3.9e-7).
+FLOAT32_LINE = 1e-5
 #: FA8's line, the reverse derivative against the central difference, relative.
 DERIVATIVE_LINE = 1e-4
-#: The contract's line, the node's distance against the union's on the held faces, in cells.
+#: The contract's lines: the node's distance against the exact union's where a field is not flat, in cells; its
+#: indicator and resistivity against those of the exact distance, each in its own scale (the indicator's one, the
+#: resistivity's peak). Both far above the rounding of one distance read two ways (1e-15 measured) and far below a
+#: wall's shift a flow could see.
 CONTRACT_LINE = 1e-9
+FIELD_LINE = 1e-6
 #: The first daughter's segments in ``wall_cases.loop``.
 FIRST_DAUGHTER = (2, 3, 4)
 QUARTER = 0.25
@@ -66,48 +79,95 @@ def _planted(tree: Tree, dh: int, segments: tuple[int, ...], name: str) -> Tree 
 
 
 # -- the contract -------------------------------------------------------------------------------------------------
-def measure_contract(seed: int) -> dict[str, float]:
-    """The contract's reading at a draw: the node's largest difference from the union on its held faces (cells), its
-    counts, and the faces it does not hold where a field is not flat."""
+#: Where the contract judges the node's fields against the exact union's, in cells of the plain minimum: a superset of
+#: every face where a field is not flat by either reading (in the fluid the minimum is never deeper than the union, and
+#: every field is flat from the band's fluid half, a cell, down; in the solid the minimum is the union's from the
+#: fillet's radius on, and the interior's ramp ends three cells in).
+JUDGED = (-1.5, 3.5)
+#: The faces the exact union is evaluated at together (every candidate at each), the last chunk padded.
+CHUNK = 4096
+
+
+def _exact(union, parameters, points: np.ndarray, judged: np.ndarray) -> np.ndarray:
+    """The union's exact distance (its candidates at every point) at ``points[judged]``, in chunks of one shape."""
+    found = np.empty(len(judged))
+    for start in range(0, len(judged), CHUNK):
+        index = judged[start:start + CHUNK]
+        padded = np.concatenate([index, np.full(CHUNK - len(index), index[0])])
+        found[start:start + len(index)] = np.asarray(
+            union.signed_distance(parameters, jnp.asarray(points[padded])).distance)[:len(index)]
+    return found
+
+
+def measure_contract(seed: int, dh: int = 8) -> dict[str, float]:
+    """The contract's reading at a draw, judged without the node's own selection: on every face :data:`JUDGED` holds,
+    the node's fields (its indicator and resistivity, and its distance where either reading's fields are not flat)
+    against the fields made from the union's exact distance; the node's counts; and the run-constant's wall against the
+    step's own (the chunk's made once, read as given). The node is read as built, or planted: the plain minimum
+    everywhere (``MIME_PLANT_WALL=minimum``), or the union's candidates chosen only above half the band's fluid half
+    (``MIME_PLANT_WALL=floor``, the cost lever a smaller plan would pull)."""
     angle, offset = draw(seed)
     with in_dtype("float64"):
-        placed = tree_node(loop(), 8, angle=angle, offset=offset)
+        placed = tree_node(loop(), dh, angle=angle, offset=offset)
         node = placed.node
+        if plant("floor"):
+            node.wall_floor = lambda spacing: 0.5 * type(node).wall_floor(node, spacing)
         grid = MACGrid(placed.layout.cells, placed.layout.spacing)
-        held = node._step_constants(None)  # noqa: SLF001 - the step's own constants
-        if plant("minimum"):
-            solid = node.solids(held, grid)[0]
-            phis = tuple(solid.union.minimum(solid.parameters, grid.face_points(k, "float64").reshape(-1, 3))
-                         .reshape(grid.cells) for k in range(3))
-            counts = jnp.zeros(3)
-        else:
-            fields = node.fields(held, grid)
-            phis, counts = fields.signed_distance, fields.counts
+        held = dict(node._step_constants(None))  # noqa: SLF001 - the step's own constants
+        fields = node.fields(held, grid)
+        given = {**held, **node.params_pytree(), RUN_CONSTANTS_GIVEN: ()}
+        given.update(node.run_constants(given))
+        constant = max(float(jnp.max(jnp.abs(a - b))) for a, b in
+                       zip(fields.signed_distance, node.fields(given, grid).signed_distance, strict=True))
         tree = node.tree()
-        near, _, reach = node.held_faces(grid)
+        union, parameters = tree.lumen(), tree.parameters()
+        c = node.constants()
+        band, interior = band_named(c["band"]), interior_depth(c["interior"])
         h = placed.layout.spacing
-        worst, unheld = 0.0, 0
+        peak = (1.0 + (band.depth / interior) ** 2) / (band.depth * h) ** 2
+        read = {"phi": 0.0, "chi": 0.0, "resistivity": 0.0, "faces": 0.0, "constant": constant / h,
+                "counts": float(np.sum(np.asarray(fields.counts)))}
         for k in range(3):
             points = np.asarray(grid.face_points(k, "float64")).reshape(-1, 3)
-            exact = np.asarray(tree.lumen().signed_distance(tree.parameters(), points[near[k]]).distance)
-            phi = np.asarray(phis[k]).reshape(-1)
-            worst = max(worst, float(np.max(np.abs(phi[near[k]] - exact))) / h)
-            outside = np.ones(len(phi), dtype=bool)
-            outside[near[k]] = False
-            unheld += int(np.sum(outside & (phi > -reach[0]) & (phi <= reach[1])))
-    return {"worst": worst, "counts": float(np.sum(np.asarray(counts))), "unheld": float(unheld)}
+            minimum = np.asarray(union.minimum(parameters, jnp.asarray(points)))
+            judged = np.nonzero((minimum > JUDGED[0] * h) & (minimum < JUDGED[1] * h))[0]
+            exact = _exact(union, parameters, points, judged)
+            phi = np.asarray(fields.signed_distance[k]).reshape(-1)[judged]
+            if plant("minimum"):
+                phi = minimum[judged]
+            chi = np.asarray(ramp(jnp.asarray(phi), band.width * h))
+            resistivity = np.asarray(ramp(jnp.asarray(phi), band.width * h)
+                                     + interior_ramp(jnp.asarray(phi), band, h, INTERIOR_RAMP_END)
+                                     * (band.depth / interior) ** 2) / (band.depth * h) ** 2
+            if not plant("minimum"):
+                chi = np.asarray(fields.chi[k]).reshape(-1)[judged]
+                resistivity = np.asarray(fields.inverse_permeability[k]).reshape(-1)[judged]
+            chi_exact = np.asarray(ramp(jnp.asarray(exact), band.width * h))
+            resistivity_exact = np.asarray(ramp(jnp.asarray(exact), band.width * h)
+                                           + interior_ramp(jnp.asarray(exact), band, h, INTERIOR_RAMP_END)
+                                           * (band.depth / interior) ** 2) / (band.depth * h) ** 2
+            non_flat = (np.minimum(phi, exact) < INTERIOR_RAMP_END * h) & \
+                (np.maximum(phi, exact) > -0.5 * band.width * h)
+            read["faces"] += len(judged)
+            read["phi"] = max(read["phi"], float(np.max(np.abs(phi - exact)[non_flat], initial=0.0)) / h)
+            read["chi"] = max(read["chi"], float(np.max(np.abs(chi - chi_exact), initial=0.0)))
+            read["resistivity"] = max(read["resistivity"],
+                                      float(np.max(np.abs(resistivity - resistivity_exact), initial=0.0)) / peak)
+    return read
 
 
 @pytest.mark.parametrize("seed", seeds(601))
-def test_the_nodes_wall_is_the_unions_distance_where_the_fields_read_it(seed):
-    """The filleted loop at 8 cells a diameter: on each face set, the node's distance equals the union's (all its
-    candidates at every held face) to rounding, its counts are zero, and every face it does not hold lies where the
-    fields are flat (deeper than the band's fluid half, or past the fillet's radius in the solid)."""
+def test_the_nodes_fields_are_the_exact_unions_wherever_a_field_is_not_flat(seed):
+    """The filleted loop at 8 cells a diameter, float64: on every face where a field is not flat by either reading,
+    the node's indicator and resistivity are those of the union's exact distance (all its candidates at every face)
+    within ``FIELD_LINE`` of their own scale, and its distance within ``CONTRACT_LINE``; its counts are zero; and the
+    wall a chunk makes once (its run-constant) is the step's own, bit for bit."""
     read = measure_contract(seed)
-    print(f"\nseed {seed}: the node against the union {read['worst']:.2e} cells, counts {read['counts']:.0f}, "
-          f"faces not held where a field is not flat {read['unheld']:.0f}")
-    assert read["counts"] == 0.0 and read["unheld"] == 0.0
-    assert read["worst"] <= CONTRACT_LINE
+    print(f"\nseed {seed}: on {read['faces']:.0f} faces, the node against the exact union: distance "
+          f"{read['phi']:.2e} cells, indicator {read['chi']:.2e}, resistivity {read['resistivity']:.2e} of its peak; "
+          f"counts {read['counts']:.0f}; the run-constant against the step's own {read['constant']:.1e} cells")
+    assert read["counts"] == 0.0 and read["constant"] == 0.0
+    assert read["phi"] <= CONTRACT_LINE and read["chi"] <= FIELD_LINE and read["resistivity"] <= FIELD_LINE
 
 
 # -- FA3 and FA5 ----------------------------------------------------------------------------------------------------
@@ -148,13 +208,15 @@ def test_fa5_the_stenosis_holds_the_planar_calibration_against_its_reference(see
 
 
 # -- FA6 and FA7 ----------------------------------------------------------------------------------------------------
-def _split(tree: Tree, dh: int, seed: int) -> tuple[float, dict]:
+def _split(tree: Tree, dh: int, seed: int, dtype: str = "float64", plantable: bool = True) -> tuple[float, dict]:
+    """The first daughter's share of the mid-plane's flux at a draw, in ``dtype`` (float32 at its stop's default, at
+    the floor its rounding reaches); planted where ``plantable`` and a plant is set."""
     angle, offset = draw(seed)
-    with in_dtype("float64"):
-        placed = tree_node(tree, dh, angle=angle, offset=offset, tolerance=1e-10,
-                           solver=_planted(tree, dh, FIRST_DAUGHTER, "daughter"))
+    with in_dtype(dtype):
+        placed = tree_node(tree, dh, angle=angle, offset=offset, tolerance=1e-10 if dtype == "float64" else None,
+                           solver=_planted(tree, dh, FIRST_DAUGHTER, "daughter") if plantable else None)
         state = run(placed.node, 1)
-    first, second = mid_plane_split(placed, state)
+        first, second = mid_plane_split(placed, state)
     return first / (first + second), state
 
 
@@ -174,6 +236,20 @@ def test_fa7_the_symmetric_split_is_a_half(seed):
     print(f"\nseed {seed}: symmetric split {split:.5f}")
     assert float(state["wall_inexact"]) == 0.0
     assert abs(split - 0.5) <= SYMMETRY_LINE
+
+
+@pytest.mark.parametrize("seed", seeds(1401))
+def test_the_loops_split_in_float32_is_float64s(seed):
+    """The filleted loop at 8 cells a diameter in float32 (the stop at its dtype's default) against float64: the split
+    within ``FLOAT32_LINE``, no flag in either, the wall's counts zero. The plant (the first daughter a quarter cell out)
+    is the float32 run's alone."""
+    split64, state64 = _split(loop(), 8, seed, plantable=False)
+    split32, state32 = _split(loop(), 8, seed, "float32")
+    print(f"\nseed {seed}: split {split32:.7f} in float32 against {split64:.7f} in float64 "
+          f"({abs(split32 - split64):.1e})")
+    for state in (state64, state32):
+        assert float(state["wall_inexact"]) == 0.0 and float(state["solve_flagged"]) == 0.0
+    assert abs(split32 - split64) <= FLOAT32_LINE
 
 
 # -- FA8 ------------------------------------------------------------------------------------------------------------
@@ -214,7 +290,7 @@ def measure_derivative(seed: int) -> dict[str, float]:
 def test_fa8_the_first_daughters_flux_in_its_radius_is_the_central_difference(seed):
     """At 8 cells a diameter, float64: ``d Q_1 / d R_1`` along the first daughter's radii (both ends of its three
     segments), reverse mode through one steady step against ``(Q(R + e) - Q(R - e)) / 2e`` at ``e`` 5e-5 of the radius,
-    both sides on the node as built (its cells, held faces and plan), their counts zero."""
+    both sides on the node as built (its cells and its plan's size), their counts zero."""
     read = measure_derivative(seed)
     print(f"\nseed {seed}: dQ1/dR1 reverse {read['reverse']:.8e}, central {read['central']:.8e}, relative "
           f"{read['relative']:.2e}; flux {read['flux']:.6e}")

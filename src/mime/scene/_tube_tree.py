@@ -30,8 +30,9 @@ the segments join, so which tubes meet) is fixed. Tubes that do not share a poin
 (their walls within two fillet radii and a margin: a tight bend's non-neighbours, a loop closing on itself, a hairpin's
 legs) meet as well, found at the values it is made with; at a run's values the lumen counts the pairs that come within
 reach without meeting (``UnionDistance.unplanned``: a study that moves the radii or the points far enough), where its
-distance is not exact. Tubes that share no point and come within ``2 r`` across solid are joined by the fillet (its
-closing fills the wall): the report names them (:meth:`TubeTree.wall_features`).
+distance is not exact. Tubes that share no point and come within ``2 r`` across solid would be joined by the fillet
+(its closing fills the wall): a tree that does so is refused when planned (row #353), naming a smaller fillet or a
+thicker wall (:meth:`TubeTree.setting_problems`, from :meth:`TubeTree.wall_features`).
 
 **Tilted vessels** are its points turned (:meth:`TubeTree.turned`): nothing in it is aligned with an axis."""
 
@@ -232,18 +233,36 @@ class TubeTree(Geometry):
             raise _refused(f"a tube tree's fillet share is {self.fillet!r}, not a number from zero on")
         free = len(self._free_ends()) - (1 if self._rooted() else 0)
         if self.ends and (len(self.ends) != free or len(set(self.ends)) != len(self.ends) or ROOT in self.ends
+                          or any(e in self.regions for e in self.ends)
                           or not all(isinstance(e, str) and _END_NAME.fullmatch(e) for e in self._end_settings())):
             raise _refused(f"a tube tree with {free} free ends besides its root names them all or none, each in "
-                           f"lower-case words and none of them {ROOT!r} or repeated; it was given {self.ends!r}")
+                           f"lower-case words and none of them {ROOT!r}, a region's name ({', '.join(self.regions)}) "
+                           f"or repeated; it was given {self.ends!r}")
 
     # -- as a kind --------------------------------------------------------------------------------------------------
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        """Its rows, and the fillet's fusion refused (row #353): tubes that share no point with solid between them
+        thinner than the fillet's diameter, which its closing would fill, joining them."""
         found: list[str] = []
         for name, width in (("points", 3), ("radii", 2)):
             value = settings[name]
             if not (isinstance(value, tuple) and len(value) % width == 0 and all(math.isfinite(v) for v in value)):
                 found.append(f"{name} is {value!r} m, not {width} finite lengths a row")
+        if found:
+            return found
+        tree = TubeTree.si(np.asarray(settings["points"], dtype=np.float64).reshape(-1, 3), self.segments,
+                           np.asarray(settings["radii"], dtype=np.float64).reshape(-1, 2), self.fillet, self.ends)
+        features = tree.wall_features()
+        if features.fused:
+            radius = tree.fillet_radius_value()
+            pairs = ", ".join(f"segments {i} and {j}" for i, j in features.fused)
+            found.append(f"the fillet fuses tubes that share no point ({pairs}): the solid between them is "
+                         f"{features.narrowest_solid * 1e3:.4g} mm thick at its thinnest, under the fillet's diameter "
+                         f"{2.0 * radius * 1e3:.4g} mm, and the fillet's closing would fill it, joining their lumens, so "
+                         f"write a smaller fillet (TubeTree(fillet=...) under "
+                         f"{self.fillet * features.narrowest_solid / (2.0 * radius):.3g}) or a thicker wall between "
+                         f"those tubes (their points further apart, or their radii smaller)")
         return found
 
     @override
@@ -260,6 +279,12 @@ class TubeTree(Geometry):
         """Its free ends (:meth:`end_names`), each the plane normal to its segment at its end, evaluated as the
         half-space the lumen lies in."""
         return {**self.surfaces, **{name: "half_space" for name, _ in self.end_names()}}
+
+    @override
+    def opening_names(self) -> Mapping[str, tuple[str, ...]]:
+        """The lumen opens at its free ends (:meth:`end_names`), the root first: each an opening a flow's law may be
+        attached at (row #336)."""
+        return {"lumen": tuple(name for name, _ in self.end_names())}
 
     @override
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
