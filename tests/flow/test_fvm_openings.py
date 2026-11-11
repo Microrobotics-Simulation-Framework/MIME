@@ -117,8 +117,10 @@ def test_an_open_vessel_steps_by_imex_euler_or_its_steady_limit(float64):
     assert "flow.open-scheme" in refused(vessel(scheme=Scheme.RK3()))
 
 
-def test_a_tilted_open_vessel_is_refused(float64):
-    assert "flow.open-axis" in refused(vessel(axis=(1.0, 0.0, 1.0)))
+def test_an_open_vessel_square_to_the_box_axis_is_refused(float64):
+    """A tilted vessel is built through the region builder (``test_fvm_region.py``); one square to z cannot be turned
+    onto either face by one bend."""
+    assert "flow.region-face" in refused(vessel(axis=(1.0, 0.0, 0.0)))
 
 
 def test_dt_auto_on_an_open_vessel_is_refused_naming_its_missing_step_rule(float64):

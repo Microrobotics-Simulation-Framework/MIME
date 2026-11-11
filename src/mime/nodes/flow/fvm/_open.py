@@ -35,7 +35,7 @@ after the projector."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, override
 
@@ -366,6 +366,47 @@ class OpenMACGrid(MACGrid):
         flux = signs * area * self._patch_sums(density)
         size = area * self._patch_sums(lambda k: jnp.abs(density(k)))
         return flux, size
+
+    def _plane_masks(self, openings: Sequence[int], dtype: Any) -> tuple[Array, Array]:
+        """The low and the high plane's faces that belong to one of ``openings``' patches (ones there), ``nx x ny``."""
+        masks = self.layout.masks(self.cells)
+        planes: list[Array] = []
+        for plane in (LOW, HIGH):
+            held = np.zeros(self.cells[:2])
+            for k in openings:
+                if self.layout.planes[k] == plane:
+                    held = held + masks[k]
+            planes.append(jnp.asarray(held, dtype=dtype))
+        return planes[0], planes[1]
+
+    def backflow_force(self, velocity: Velocity, openings: Sequence[int], beta: Any = 1.0,
+                       fluid: Array | None = None) -> Velocity:
+        """The directional backflow term (F0's B6 and B7, decision 12) on ``openings``' patches: on each plane's half
+        cell ``f_n = beta min(w_n, 0) w_n / h`` along the outward normal, ``w_n`` the face's outward velocity in
+        ``velocity``, weighted by ``fluid`` (on ``w``'s faces) where given; zero wherever the flow leaves, and on every
+        other face."""
+        w = velocity[2]
+        zero = self.zeros(w.dtype)
+        if not openings:
+            return zero
+        low, high = self._plane_masks(openings, w.dtype)
+        if fluid is not None:
+            low, high = low * fluid[..., 0], high * fluid[..., -1]
+        outward_low, outward_high = -w[..., 0], w[..., -1]
+        f_low = -beta * low * jnp.minimum(outward_low, 0.0) * outward_low / self.spacing
+        f_high = beta * high * jnp.minimum(outward_high, 0.0) * outward_high / self.spacing
+        return (zero[0], zero[1], zero[2].at[..., 0].set(f_low).at[..., -1].set(f_high))
+
+    def opening_reversed_fluxes(self, velocity: Velocity, fluid: Array) -> Array:
+        """The volume flux (m^3/s) entering through each opening's patch where its faces' flow is inward, each face
+        weighted by ``fluid`` (the faces' ``1 - chi``, on ``w``'s faces): ``h^2 sum_patch (1 - chi) max(-w_n, 0)``."""
+        w = velocity[2]
+
+        def inward(k: int) -> Array:
+            outward = self._outward(k) * self._plane(w, k)
+            return self._plane(fluid, k) * jnp.maximum(-outward, 0.0)
+
+        return self.spacing ** 2 * self._patch_sums(inward)
 
     def port_force(self, pressures: Any, density: Any) -> Velocity:
         """The force per unit mass of the openings' pressures (Pa, the layout's order) on the planes' half cells, each

@@ -196,7 +196,6 @@ flow.cfl-predicted            user
 flow.interior                 user
 flow.memory                   user
 flow.no-openings              user
-flow.open-axis                user
 flow.open-scheme              user
 flow.opening-law              user
 flow.opening-unknown          user
@@ -205,6 +204,9 @@ flow.preconditioner           user
 flow.prescribed-alpha         user
 flow.prescribed-region        user
 flow.region                   user
+flow.region-cut               user
+flow.region-face              user
+flow.region-upstream          user
 flow.resolution               user
 flow.solve-report-rows        user
 flow.steady-convection        user

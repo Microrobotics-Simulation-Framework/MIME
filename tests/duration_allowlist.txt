@@ -1263,3 +1263,17 @@ tests/oracles/test_near_contact.py::test_above_the_gated_ratio_the_step_is_flagg
 tests/oracles/test_near_contact.py::test_gate13_the_spheres_increment_in_its_radius_through_the_node_equals_two_builds_difference[plane] # kept: the sphere form's derivative in the radius against two builds, three builds above a plane and a reverse derivative at two gaps (48.1 s alone on a runner, probe run 42980019668)
 tests/oracles/test_near_contact.py::test_gate13_the_spheres_increment_in_its_radius_through_the_node_equals_two_builds_difference[tube] # kept: as above in a tube at a ratio of 0.28 (61.6 s alone on a runner, probe run 42980019668)
 tests/oracles/test_near_contact.py::test_gate13_control_the_radius_without_its_derivative_is_caught # kept: gate 13's control (the radius without its derivative), three builds and a reverse derivative; a control that fails every run, on every push (48.4 s alone on a runner, probe run 42980019668)
+tests/flow/test_fvm_region.py::test_an_open_tree_is_built_with_its_ends_as_openings_and_its_books_close # kept: the open tube tree built by the region builder, run and metered through the experiment
+tests/flow/test_fvm_region.py::test_a_tree_with_no_root_is_refused_naming_its_upstream # kept: a tree with no upstream end planned and refused (flow.region-upstream)
+tests/flow/test_fvm_region.py::test_a_cut_around_the_junction_is_named_after_the_end_beyond_it # kept: a region cut around a junction built and its openings' names read; a misnamed junction refused
+tests/flow/test_fvm_region.py::test_the_outlet_watch_acts_on_nothing # kept: the outlet watch's line moved, two open trees run, the flow bit for bit (row #360's observer)
+tests/flow/test_fvm_region.py::test_a_tilted_tube_is_built_with_bends_and_runs # kept: the tilted vessel ('F2's rows, 4', item 5) built, run and metered
+tests/flow/test_fvm_region.py::test_the_two_outlet_shared_distal_law_binds_each_end_by_name # kept: scope item 0's wiring on the tree's unequal branches, two runs
+tests/flow/test_fvm_region.py::test_a_backflow_term_of_the_wrong_sign_is_flagged_and_its_gift_counted # kept: R-15's sign check and its control, two open trees run and metered
+tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[water.viscosity] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
+tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[windkessel:vessel.end_0.proximal] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
+tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[windkessel:vessel.end_0.compliance] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
+tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[windkessel:vessel.end_1.distal] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
+tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[inflow:vessel.root.amplitude] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
+tests/flow/test_fvm_region.py::test_fb16_control_a_unit_field_made_at_build_is_caught # kept: FB16's control, a planted bake caught (two builds)
+tests/scene/test_region_builder.py::test_a_tilted_tube_at_any_rotation_reaches_both_faces_along_its_own_section # kept: the region builder over drawn tilts, azimuths and offsets (60 examples, never shrunk)

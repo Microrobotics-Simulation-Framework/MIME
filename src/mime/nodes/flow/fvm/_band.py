@@ -124,6 +124,22 @@ class TubeSolid:
         return nearest
 
 
+@dataclass(frozen=True)
+class PathSolid:
+    """The solid around the lumens a region builder lays from each cut to its face (``mime.scene._region``): a ball of
+    the cut's radius swept along a straight extension, a circular bend and a straight run
+    (``mime.scene._region.path_distance``), positive in the solid; ``paths`` (``(openings, PATH_ROW)``, m) a leaf of
+    the step."""
+
+    paths: Any
+    region: str = "wall"
+
+    def signed_distance(self, points: Array) -> Array:
+        from mime.scene._region import path_distance
+
+        return path_distance(jnp.asarray(self.paths, dtype=points.dtype), points)
+
+
 #: The least of the plan's sizes (:func:`plan_rung`), in faces.
 PLAN_QUANTUM = 256
 
@@ -206,7 +222,7 @@ def interior_ramp(phi: Array, band: Band, h: Any, end: float) -> Array:
     return ramp(phi - 0.5 * (start + end) * h, (end - start) * h)
 
 
-def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: Band, interior: float, dtype: Any,
+def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | PathSolid | FacedSolid], band: Band, interior: float, dtype: Any,
                 offset: Callable[[Array], Array] | None = None) -> WallFields:
     """Each solid's fields on ``grid``'s faces, the regions' resistivities added. The band's width and depth scale
     with the spacing; the interior adds ``(delta / delta_in)^2`` over a second ramp beyond the band, ending
@@ -230,7 +246,7 @@ def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid | FacedSolid], band: B
     inverse: list[Array] = []
     distances: list[Array] = []
     for component in range(3):
-        phis = [faced[index][component] if index in faced else cast(TubeSolid, solid).signed_distance(faces[component])
+        phis = [faced[index][component] if index in faced else cast(TubeSolid | PathSolid, solid).signed_distance(faces[component])
                 for index, solid in enumerate(solids)]
         phi = phis[0]
         for other in phis[1:]:

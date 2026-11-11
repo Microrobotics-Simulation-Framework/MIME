@@ -37,17 +37,18 @@ import numpy as np
 from jax import Array
 from jaxtyping import Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
+from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, ReadOnly, TypedDict
 
 from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, run_dtype
 from mime.core import ledger as books
 from mime.core._node import rechecked
 from mime.core.ledger import TermOrder
-from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negative_resistivity
+from mime.nodes.flow.fvm._band import PathSolid, TreeSolid, TubeSolid, WallFields, band_named, negative_resistivity
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
-    FlowFields, FlowRecords, check_deliveries
+from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, WALL_COUNTS, ImplicitFlowNode, StepParts, \
+    FlowFields, FlowRecords, WallCounts, check_deliveries
 from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, port_law_named, \
     port_system, reference_of, well_posed
@@ -55,6 +56,7 @@ from mime.nodes.flow.fvm._schemes import StageParts, StepContext
 from mime.nodes.flow.fvm._solve import Stopping, preconditioner_named, projected_solve, recheck_stopping, \
     stagnation_window
 from mime.registry import Problem
+from mime.scene._region import PATH_ROW
 
 #: The roles the open node's hosted rows take beside its viscosity's and wall's: each opening's law, by its index,
 #: and the kinetic energy convection carries through the openings.
@@ -62,6 +64,15 @@ KINETIC_FLUX = "kinetic_flux"
 #: The open node's numerical terms: the scheme's, and the projection's own at the open faces.
 OPEN_TERMS = ("backward_euler", "convection", "krylov", "projection")
 OPENING = "opening_"
+#: The hosted row of the backflow term's work on the outlets (decision 12): one line under ``<node>.backflow``.
+BACKFLOW = "backflow"
+#: The backflow term's coefficient (decision 12: beta 1, declared, not fitted).
+BACKFLOW_BETA = 1.0
+#: The outlet watch's line (decision 13): the share of an opening's net outward flux entering through its patch's
+#: inward faces above which the run is flagged (``outlet_reversed_flagged``). Placed by FB8's measurement.
+REVERSAL_LINE = 0.05
+#: Where the outlet watch's line comes from, said beside it.
+REVERSAL_MEASURED = "declared, pending FB8's measurement"
 #: The float32 flow's distance from float64's with ports, over the largest speed, measured on the built node over the
 #: open rig's draws (``tests/flow/open_cases.py``; the probe of the review's fix round): the envelope, not one point.
 FLOAT32_PORTS = ("the flow within 7.2e-4 of float64's over the largest speed on 190 drawn open runs inside the CFL line "
@@ -97,6 +108,13 @@ class OpenFlowFields(TypedDict):
     opening_pressure_relative: ReadOnly[Annotated[Float[Array, "openings"], Units("Pa")]]
     opening_flux: ReadOnly[Annotated[Float[Array, "openings"], Units("m^3/s")]]
     opening_state: ReadOnly[Annotated[Float[Array, "laws 1"], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: The outlet watch (decision 13; an observer, read by nothing in the step): each opening's inward flux over its
+    #: net outward flux while that is outward (zero otherwise), and the flag above the line.
+    opening_reversed: ReadOnly[Annotated[Float[Array, "openings"], Units("1")]]
+    outlet_reversed_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: The backflow term's work over the step (J, ``dt rho <f, u'>``), and its sign check: one when it gave energy.
+    backflow_work: ReadOnly[Annotated[Float[Array, ""], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    backflow_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     #: The unit fields, one a non-reference opening: the velocity a unit pressure there drives over a step (m/s/Pa).
     unit_x: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
     unit_y: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
@@ -110,6 +128,15 @@ class OpenFlowState(FlowFields, OpenFlowFields, closed=True):
 class MeteredOpenFlowState(FlowFields, OpenFlowFields, FlowRecords, books.LawRecords, closed=True):
     """A metered open flow's state: the open flow's fields, the stall detector, the ledger's records and, where a law it
     holds stores energy, that law's own."""
+
+
+class OpenTreeFlowState(FlowFields, OpenFlowFields, WallCounts, closed=True):
+    """An open flow walled by a tube tree (a built region), without the energy ledger: the open flow's fields and the
+    wall's report."""
+
+
+class MeteredOpenTreeFlowState(FlowFields, OpenFlowFields, WallCounts, FlowRecords, books.LawRecords, closed=True):
+    """A metered open flow walled by a tube tree."""
 
 
 class OpenPorts(NamedTuple):
@@ -169,10 +196,10 @@ class OpenFlowNode(ImplicitFlowNode):
             "included, belongs to the nearest opening's patch",
             "The unit fields are solved in the program each step from the last, while the operator is fixed"),
         limitations=(
-            "Openings on the box's two z planes only; the experiment builds a straight vessel along z cut at its "
-            "two ends (a vessel's region with more openings comes with the tube tree's wall in the open box)",
+            "Openings on the box's two z planes only: the region builder bends each cut onto one of them",
             "IMEX Euler or its steady limit: RK3 with openings is not built",
-            "No backflow stabilisation at an outlet yet: a reversing outlet at high Reynolds number is unguarded",
+            "The backflow term is explicit from the step's start, first order in the term, its sign held only while "
+            "an inward face stays inward over the step (backflow_flagged); it acts on the normal component only",
         ),
         references=(Reference("HarlowWelch1965"), Reference("Westerhof2009")),
     )
@@ -193,7 +220,8 @@ class OpenFlowNode(ImplicitFlowNode):
     def __init__(self, name: str, timestep: float, *, openings: Sequence[str], opening_laws: Sequence[str],
                  opening_parameters: Any, opening_law_ids: Sequence[str] = (), initial_opening_state: Any = None,
                  opening_planes: Sequence[str] | None = None, opening_centres: Sequence[Sequence[float]] = (),
-                 law_openings: Sequence[Sequence[int]] | None = None, **settings: Any) -> None:
+                 law_openings: Sequence[Sequence[int]] | None = None, backflow_openings: Sequence[int] | None = None,
+                 reversal_line: float | None = None, opening_paths: Any = None, **settings: Any) -> None:
         names = tuple(str(o) for o in openings)
         laws = [port_law_named(str(law)) for law in opening_laws]
         planes = tuple(str(plane) for plane in opening_planes) if opening_planes is not None else \
@@ -223,12 +251,23 @@ class OpenFlowNode(ImplicitFlowNode):
             raise ValueError("an open box's vessel lies along its z axis (tilted open vessels are not built yet)")
         ids = tuple(str(i) for i in opening_law_ids) or tuple(f"{name}.{'+'.join(names[i] for i in held)}"
                                                              for held in bound)
+        backflow = () if backflow_openings is None else tuple(sorted({int(k) for k in backflow_openings}))
+        if any(not 0 <= k < len(names) for k in backflow):
+            raise ValueError(f"the backflow term's openings are indices of {names}, not {backflow}")
+        placed: dict[str, Any] = {"backflow_openings": backflow} if backflow else {}
+        if reversal_line is not None:
+            placed["reversal_line"] = float(reversal_line)
+        if opening_paths is not None:
+            paths = np.asarray(opening_paths, dtype=np.float64)
+            if paths.ndim != 2 or paths.shape[1] != PATH_ROW:
+                raise ValueError(f"the openings' paths are rows of {PATH_ROW} numbers, not {paths.shape}")
+            placed["opening_paths"] = paths
         state = np.zeros((len(laws), STATES)) if initial_opening_state is None else np.asarray(initial_opening_state)
         layout = {} if planes == PLANES and not centres and law_openings is None else \
             {"opening_planes": planes, "opening_centres": centres, "law_openings": bound}
         super().__init__(name, timestep, openings=names, opening_laws=tuple(law.name for law in laws),
                          opening_law_ids=ids, opening_parameters=parameters, initial_opening_state=state, **layout,
-                         **settings)
+                         **placed, **settings)
 
     # -- the pieces of a step ------------------------------------------------------------------------------------
     @override
@@ -246,9 +285,32 @@ class OpenFlowNode(ImplicitFlowNode):
         return OpenMACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), p["spacing"], self.layout())
 
     @override
-    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid]:
+    def param_specs(self) -> dict[str, ParamSpec]:
+        specs = super().param_specs()
+        if "opening_paths" in self.constants():
+            specs["opening_paths"] = ParamSpec(
+                trainable=False, units="1", description="each opening's path from its cut to past its face in the box's "
+                                                        "frame, the region builder's (lengths in m, directions unit, the "
+                                                        "bend's angle in rad): made at build from the vessel's geometry")
+        return specs
+
+    @override
+    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid | PathSolid]:
+        if self.walled_by_tree:
+            paths = [PathSolid(as_run_array(p["opening_paths"]))] if "opening_paths" in self.constants() else []
+            return [*super().solids(p, grid), *paths]
         return [TubeSolid(as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"]), as_run_array(p["tube_radius"]),
                           ((0.0, 0.0, 0.0),))]
+
+    def backflow_openings(self) -> tuple[int, ...]:
+        """The openings the backflow term acts on, as the build places it: every one but the upstream, the role the
+        region's centreline gives them (round 5, item 14); none for a node made without them."""
+        return tuple(self.constants().get("backflow_openings", ()))
+
+    def backflow_force(self, grid: OpenMACGrid, fields: WallFields, velocity: Velocity) -> Velocity:
+        """The backflow term at ``velocity`` (decision 12) on the fluid of the outlets' half cells (``1 - chi``, as the
+        drive acts), zero where none is placed."""
+        return grid.backflow_force(velocity, self.backflow_openings(), BACKFLOW_BETA, 1.0 - fields.chi[2])
 
     def laws(self) -> list[PortLaw]:
         return [port_law_named(law) for law in self.constants()["opening_laws"]]
@@ -330,13 +392,17 @@ class OpenFlowNode(ImplicitFlowNode):
         count = len(self.others())
         openings = self.opening_count()
         unit = {f"unit_{x}": jnp.zeros((count, *grid.shape(k)), dtype=dtype) for k, x in enumerate("xyz")}
+        z = as_run_array(0.0)
         held = {**self.initial_fields(), "opening_pressure": jnp.zeros(openings, dtype=dtype),
                 "opening_pressure_relative": jnp.zeros(openings, dtype=dtype),
                 "opening_flux": jnp.zeros(openings, dtype=dtype),
-                "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype), **unit}
+                "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype),
+                "opening_reversed": jnp.zeros(openings, dtype=dtype), "outlet_reversed_flagged": z,
+                "backflow_work": z, "backflow_flagged": z, **unit}
+        if self.walled_by_tree:
+            held.update(self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=dtype)))
         if not self.metered:
             return node_fields(held)
-        z = as_run_array(0.0)
         return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z})
 
     @override
@@ -396,14 +462,17 @@ class OpenFlowNode(ImplicitFlowNode):
                                               grid.port_force(solution.relative, rho), blocks)
             return solved, combined(reports)
 
-        context = StepContext(grid, operator, self.forcing(fields, boundary_inputs, scheme, dtype),
-                              bool(c["convection"]), solve, self.kinematic(p), sigma)
         velocity = _velocity(state)
+        # The backflow term (decision 12), explicit from the step's start, on the outlets' half cells beside the drive.
+        backflow = self.backflow_force(grid, fields, velocity)
+        drive = self.forcing(fields, boundary_inputs, scheme, dtype)
+        context = StepContext(grid, operator, lambda stage_index, at: _add(drive(stage_index, at), backflow),
+                              bool(c["convection"]), solve, self.kinematic(p), sigma)
         speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in velocity]))
         cfl = speed * dt / grid.spacing
         checked = bool(c["convection"]) and scheme.cfl_line is not None
         stopped_before = jnp.asarray(state["stopped_at"]) >= 0
-        past = ~(cfl <= scheme.cfl_limit(p["tube_axis"])) if checked else jnp.asarray(False)
+        past = ~(cfl <= scheme.cfl_limit(self.cfl_axis(p))) if checked else jnp.asarray(False)
         ended_state, stage = scheme.step(context, {"velocity": _velocity(state)}, time, dt)
         ports = solved_ports["ports"]
         ended_velocity: Velocity = ended_state["velocity"]
@@ -413,13 +482,21 @@ class OpenFlowNode(ImplicitFlowNode):
                                for i, (law, held) in enumerate(zip(laws, bound, strict=True))])
         report = stage.report
         flagged = (report[2] + report[3] + report[4] > 0).astype(dtype)
-        axis = as_run_array(p["tube_axis"])
+        axis = self.vessel_axis(p)
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
         lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, ended_velocity)
         ratio = self.ratio(solid, lumen, lumen_scale)
-        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
+        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * self.vessel_radius(p) * self.kinematic(p))
         stokes = not bool(c["convection"])
         solved_velocity: Velocity = ended_state["velocity"]
+        # The outlet watch (decision 13): an observer, read by nothing above.
+        inward = grid.opening_reversed_fluxes(solved_velocity, 1.0 - fields.chi[2])
+        outward = flux > 0.0
+        reversed_share = jnp.where(outward, inward / jnp.where(outward, flux, 1.0), 0.0)
+        watched = jnp.max(reversed_share) > float(c.get("reversal_line", REVERSAL_LINE))
+        backflow_work = dt * as_run_array(p["density"]) * grid.inner(backflow, solved_velocity)
+        backflow_size = dt * as_run_array(p["density"]) * grid.inner_magnitude(backflow, solved_velocity)
+        gave = backflow_work > books.IDENTITY_ULPS * jnp.finfo(dtype).eps * backflow_size
         ended: dict[str, Array] = dict(
             velocity_x=solved_velocity[0], velocity_y=solved_velocity[1], velocity_z=solved_velocity[2],
             steps=steps + 1, solve_report=report,
@@ -435,14 +512,18 @@ class OpenFlowNode(ImplicitFlowNode):
             negative_resistivity=negative_resistivity(fields).astype(dtype),
             opening_pressure=ports.pressures.astype(dtype),
             opening_pressure_relative=ports.solution.relative.astype(dtype), opening_flux=flux.astype(dtype),
-            opening_state=law_ended.astype(dtype),
+            opening_state=law_ended.astype(dtype), opening_reversed=reversed_share.astype(dtype),
+            outlet_reversed_flagged=watched.astype(dtype), backflow_work=backflow_work.astype(dtype),
+            backflow_flagged=gave.astype(dtype),
             **{f"unit_{x}": (jnp.stack([unit[k] for unit in ports.units]) if ports.units else
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})
+        if fields.counts is not None:
+            ended.update(self.wall_report(fields.counts))
         held = node_fields(ended)
         energy: dict[str, Array] = {}
         if self.metered:
             energy = self.open_energy_terms(p, grid, velocity, stage, sigma, fields, dt, ports, flux, law_state,
-                                            law_ended, parameters)
+                                            law_ended, parameters, backflow)
             stall = self.stall_ratio(energy)
             line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
@@ -481,7 +562,7 @@ class OpenFlowNode(ImplicitFlowNode):
         if problem is None:
             return None
         cfl = float(np.asarray(state["stopped_cfl"]))
-        line = float(self.scheme.cfl_limit(self.constants()["tube_axis"]))
+        line = float(self.scheme.cfl_limit(self.constants().get("tube_axis", (1.0, 1.0, 1.0))))
         safe = f"dt <= {self.delta_t * line / cfl:.4g} s, " if math.isfinite(cfl) and cfl > 0.0 else "a smaller dt, "
         return dataclasses.replace(problem, action=(
             f"use a timestep under {safe}the line at the speed the flow had reached by then: a flow still speeding up "
@@ -509,7 +590,8 @@ class OpenFlowNode(ImplicitFlowNode):
     # -- the step identity ------------------------------------------------------------------------------------------
     def open_energy_terms(self, p: Mapping[str, Any], grid: OpenMACGrid, before: Velocity, stage: StageParts,
                           sigma: Velocity, fields: WallFields, dt: float, ports: OpenPorts, flux: Array,
-                          law_state: Array, law_ended: Array, parameters: Array) -> dict[str, Array]:
+                          law_state: Array, law_ended: Array, parameters: Array, backflow: Velocity | None = None
+                          ) -> dict[str, Array]:
         """Each term of the step's identity (J), the openings' laws' work and own books, the fluid's momentum the
         drive is paired with, and the magnitude of the arithmetic forming them (``scale``)."""
         fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2])
@@ -559,6 +641,7 @@ class OpenFlowNode(ImplicitFlowNode):
             "krylov": dt * rho * inner(projected, solved),
             "projection": dt * rho * inner(gradient, solved),
             KINETIC_FLUX: dt * rho * inner(stage.convection, before),
+            BACKFLOW: dt * rho * inner(backflow, solved) if backflow is not None else zero,
             "ports": jnp.stack([sum((-dt * ports.pressures[k] * flux[k] for k in held[1:]),
                                     start=-dt * ports.pressures[held[0]] * flux[held[0]]) for held in bound]),
             "law_books": jnp.stack(law_rows),
@@ -569,7 +652,8 @@ class OpenFlowNode(ImplicitFlowNode):
                          for b in own), start=zero)
         scale = rho * (dt * (size(forced, solved) + size(applied, solved) + size(stage.convection, solved)
                              + size(stage.convection, before) + nu * size(minus_laplacian, solved)
-                             + size(penalised, solved) + size(gradient, solved))
+                             + size(penalised, solved) + size(gradient, solved)
+                             + (size(backflow, solved) if backflow is not None else 0.0))
                        + (size(before, before) + size(solved, solved) + size(before, solved) if stores else 0.0))
         return {**terms, "scale": scale + port_scale + law_scale}
 
@@ -581,7 +665,9 @@ class OpenFlowNode(ImplicitFlowNode):
         c = self.constants()
         openings = tuple((opening_role(i), str(law_id), port_law_named(law).energy_class)
                          for i, (law_id, law) in enumerate(zip(c["opening_law_ids"], c["opening_laws"], strict=True)))
-        return (*super().hosted_laws(), *openings, (KINETIC_FLUX, f"{self.name}.openings", books.UNMETERED))
+        backflow = ((BACKFLOW, f"{self.name}.backflow", books.DISSIPATIVE),) if self.backflow_openings() else ()
+        return (*super().hosted_laws(), *openings, (KINETIC_FLUX, f"{self.name}.openings", books.UNMETERED),
+                *backflow)
 
     @override
     def storing_laws(self) -> tuple[str, ...]:
@@ -626,7 +712,7 @@ class OpenFlowNode(ImplicitFlowNode):
         work, unattributed, drive_scale = self.drive_work(held, boundary_inputs, rows, dt, energy["momentum"],
                                                           energy["momentum_size"])
         hosted_work: dict[str, Array] = {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
-                                         KINETIC_FLUX: energy[KINETIC_FLUX],
+                                         KINETIC_FLUX: energy[KINETIC_FLUX], BACKFLOW: energy[BACKFLOW],
                                          **{opening_role(i): energy["ports"][i] for i in range(len(self.laws()))}}
         stored = jnp.zeros((len(rows), len(books.LAW_BOOKS)), dtype=dtype)
         named: set[str] = set()
@@ -670,9 +756,12 @@ def combined(reports: Sequence[Array]) -> Array:
 
 def check_open_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
     """:func:`check_deliveries` with the open node's own hosted rows: each opening's law and the kinetic flux's line."""
-    plain = [d for d in held if not (d.kind == books.HOSTED and (d.field == KINETIC_FLUX or d.field.startswith(OPENING)))]
+    plain = [d for d in held if not (d.kind == books.HOSTED and (d.field in (KINETIC_FLUX, BACKFLOW)
+                                                                  or d.field.startswith(OPENING)))]
     check_deliveries(plain)
 
 
-__all__ = ["FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "MeteredOpenFlowState", "OpenFlowState", "OpenFlowFields", "OpenFlowNode", "OpenPorts", "check_open_deliveries",
+__all__ = ["BACKFLOW", "BACKFLOW_BETA", "FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "REVERSAL_LINE",
+           "REVERSAL_MEASURED", "MeteredOpenFlowState", "MeteredOpenTreeFlowState", "OpenFlowState", "OpenFlowFields",
+           "OpenFlowNode", "OpenPorts", "OpenTreeFlowState", "check_open_deliveries",
            "combined", "opening_role"]

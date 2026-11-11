@@ -238,6 +238,9 @@ class Region:
     #: paths in order along its declared axis (a straight tube's lumen: ``tube.start``, ``tube.end``); empty for a
     #: region its kind declares no openings for.
     openings: tuple[str, ...] = ()
+    #: Each opening's surface parameters in SI, by its path (a straight tube's end: the plane's ``normal`` into the
+    #: lumen and its ``offset``): where a region builder finds the vessel's own ends.
+    opening_planes: Mapping[str, Mapping[str, Magnitude]] = field(default_factory=dict[str, Mapping[str, Magnitude]])
 
 
 @dataclass(frozen=True)

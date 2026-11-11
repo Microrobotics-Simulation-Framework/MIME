@@ -30,8 +30,9 @@ from mime.core import jnp, run_dtype
 from mime.gradients import GradientStatus
 from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, STALL_PER_TOLERANCE, \
     ExplicitFlowNode, ImplicitFlowNode, OpenFlowNode, periodic_tube_layout
-from mime.nodes.flow.fvm._box import TreeLayout, period_mismatch, periodic_tree_layout
-from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
+from mime.nodes.flow.fvm._box import DEFAULT_REACH, TreeLayout, open_region_layout, period_mismatch, \
+    periodic_tree_layout
+from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP, REVERSAL_LINE, REVERSAL_MEASURED
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
 from mime.nodes.flow.fvm._ports import Valve as ValveLaw
@@ -50,6 +51,7 @@ from mime.dynamics.flow._steps import WALL_REACH_CELLS, axial_drive, predicted_p
 from mime.fields._solved import SolvedField
 from mime.units import Magnitude
 from mime.scene import PeriodicBox, VesselRegion
+from mime.scene._region import BuiltRegion, RegionRefused, Vessel, build_region, moved_paths, tube_vessel
 from mime.things import ThingKind
 from mime.units import Length, Quantity
 from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_WAVEFORM, FLUID, OPENING
@@ -135,6 +137,10 @@ _INTERIOR_NAMES = {depth: name for name, depth in INTERIORS.items()}
 PERIOD_LINE = 1e-6
 #: The region shape a tube tree's lumen is.
 TREE = "tube_tree"
+
+
+#: The codes a region the region builder cannot make is refused under, by its kind (``mime.scene._region``).
+REGION_CODES = {"cut": "flow.region-cut", "face": "flow.region-face", "upstream": "flow.region-upstream"}
 
 
 def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
@@ -232,6 +238,17 @@ class FVM(Dynamics):
              warns=True),
         Flag("reynolds_flagged", f"with the Stokes approximation (stokes=True), the lumen's Reynolds number by its "
                                  f"diameter and mean speed was above the declared {STOKES_REYNOLDS:g} (reynolds)"),
+        Flag("outlet_reversed_flagged", "an open vessel's opening took in, through the faces of its patch where the "
+                                        "flow enters, more of the net flux leaving through it than the outlet watch's "
+                                        "line (opening_reversed; the validity line gives it): a plane in a "
+                                        "recirculation, where the backflow term damps what the flow would do. Move the "
+                                        "plane (VesselRegion(reach=...)) or lengthen the extension "
+                                        "(VesselRegion(extension=...)); no profile relaxes it",
+             written=("open",)),
+        Flag("backflow_flagged", "the backflow term on an open vessel's outlets gave the flow energy over a step "
+                                 "(backflow_work above zero beyond its rounding): an inward face turned outward within "
+                                 "the step, where the explicit term's sign does not hold; a smaller dt",
+             written=("open",)),
         Flag("bypass_flagged", f"the flux through the solid beyond the band's middle was more than {BYPASS_LINE:g} "
                                f"of the lumen's (bypass_ratio): a finer spacing lowers it, and the stiffer interior "
                                f"wall=Band(delta_in=0.01) about halves it (the validity line's measurements)"),
@@ -273,8 +290,32 @@ class FVM(Dynamics):
         f"refused past the memory a run can have (flow.memory): a GPU's limit, or on a CPU the smaller of the host's "
         f"available memory and the limit of the control group the process runs in, where one is set",
         f"geometry: {GEOMETRY}",
-        "openings (domain=VesselRegion()): a straight vessel along z cut at the two ends its geometry kind declares "
-        "(a Tube's start and end), each an opening whose law the step holds, coupled implicitly through the field's "
+        "the region (domain=VesselRegion(around=..., reach=..., extension=..., bend=...)): a vessel's region cut by "
+        "planes normal to its centreline (around a junction, within the reach along each branch; or the whole vessel "
+        "at its own ends), each cut continued straight for its extension in diameters and turned by a bend onto the "
+        "nearer z face of the box, every opening on one of the box's two z planes; each opening is named after the "
+        "one vessel end beyond its cut (a cut with several beyond is refused, flow.region-cut), so a law attached at "
+        "the vessel's end binds the cut; the upstream opening is the cut leading to the vessel's root (a tree's root, "
+        "a tube's start), by the centreline and never by the law attached there, and a tree with no root is refused "
+        "(flow.region-upstream); a cut square to the box's axis, openings all on one face, and two openings on one "
+        "plane closer than the band's reach to the line midway between them are refused (flow.region-face). A law "
+        "at an opening acts at the box's face: the extension's, bend's and run's Poiseuille resistance at the cut's "
+        "radius is in series with it, reported per opening in the build report, as is the Reynolds number to which "
+        "its extension is a laminar entrance length (0.06 Re diameters [recalled]); the bend's own loss beyond "
+        "Poiseuille's is not reported. The region builder's geometry is made at build from the vessel's values (its "
+        "tree and its paths leaves of the step, a derivative not carried through the builder); "
+        "the backflow term (decision 12): on every opening but the upstream, f = min(w, 0) w / h along the outward "
+        "normal on the plane's half cell (beta 1, declared), from the step's start velocity, explicit, normal only, "
+        "first order in time in the term; its work dt <f, u'> booked under <node>.backflow, its sign held only while "
+        "an inward face stays inward over the step (backflow_flagged, and the ledger's gift count, where it gave "
+        "energy); FB7 (with RK3, a later PR) measures its threshold, its tangential share and how it damps a genuine "
+        "reversal at the outlet, unmeasured here; "
+        f"the outlet watch (decision 13), an observer the step's flow never reads: each opening's inflow through its "
+        f"patch's inward faces (fluid-weighted) over its net outward flux, read only while that is outward "
+        f"(opening_reversed), flagged above {REVERSAL_LINE:g} ({REVERSAL_MEASURED}; outlet_reversed_flagged); "
+        "openings (domain=VesselRegion()): a straight vessel along z taken whole with no extension is cut at the two "
+        "ends its geometry kind declares (a Tube's start and end), its wall the exact cylinder's; each opening's law "
+        "the step holds, coupled implicitly through the field's "
         "affine response (one unit field a step for the opening that is not the gauge's reference, solved again from "
         "the last), its rows a pressure (Windkessel) or a flux (Inflow, Valve); an Inflow pins the opening's whole net "
         "flux, the lumen's, the band's and the solid's faces on its plane together, never the lumen's alone, so the "
@@ -303,7 +344,8 @@ class FVM(Dynamics):
         "cross conductance is 2.5 to 9 % of one's own (D/h 8 to 12), and a split differs from two independent "
         "tubes' by up to 1.8 %; "
         "IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
-        "dt='auto' refused, the CFL checked each step; tilted open vessels not built; float32 behind its guards: "
+        "dt='auto' refused, the CFL checked each step (a built region's along the diagonal, the least line); float32 "
+        "behind its guards: "
         f"{FLOAT32_PORTS}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "
         f"float64 and {STALL_PER_TOLERANCE['float32']:g} in float32 (stall_flagged), is written with the energy ledger "
@@ -425,15 +467,71 @@ class FVM(Dynamics):
                             "period's (PeriodicBox(length=...) the tree's period)")]
         return []
 
+    def region_built(self, region: Region) -> BuiltRegion | None:
+        """The open vessel's region as the region builder cuts it (``mime.scene._region``), its faces along z; ``None``
+        for a straight tube along +z taken whole with no extension, whose box is the tube's own (its wall the exact
+        cylinder's). Raises ``RegionRefused`` (or ``ValueError`` for a junction misnamed)."""
+        domain = cast(VesselRegion, self.domain)
+        if region.shape == "cylinder" and _unit(region.parameters["axis"]) == (0.0, 0.0, 1.0) and \
+                domain.around is None and domain.extension == 0.0:
+            return None
+        reach = None if domain.reach is None else float(cast(float, domain.reach.value))
+        return build_region(vessel_of(region), around=domain.junction_point(), reach=reach,
+                            extension=float(domain.extension), bend=float(domain.bend), axis=(0.0, 0.0, 1.0))
+
+    def open_region_problems(self, region: Region | None) -> list[Problem]:
+        """An open vessel's region: a straight tube's lumen or a tube tree's, its region built (cut, extended and bent
+        onto the box's two z faces), two openings sharing a plane apart by the band's reach in cells."""
+        if region is None or region.shape not in ("cylinder", TREE):
+            fills = f"fills {region.path}, a {region.shape} region" if region is not None else "fills no region"
+            return [Problem("flow.region", f"the flow's medium {fills}; an open vessel is a straight tube's lumen or a "
+                                           f"tube tree's", "fill a Tube's lumen, Medium(fills=tube.lumen), or a "
+                                                           "TubeTree's")]
+        if len(region.openings) < 2:
+            return [Problem("flow.region", f"the flow's medium fills {region.path}, whose geometry kind declares "
+                                           f"{len(region.openings)} openings there; an open vessel has two or more",
+                            "fill a Tube's lumen or a TubeTree's, or run the flow on a periodic box, "
+                            "FVM(domain=PeriodicBox(length=...))")]
+        try:
+            built = self.region_built(region)
+        except RegionRefused as refused:
+            return [Problem(REGION_CODES[refused.kind], refused.message, refused.action)]
+        except ValueError as error:
+            return [Problem("flow.region-cut", str(error), "write VesselRegion(around='j<point>', reach=...)")]
+        if built is None:
+            return []
+        layout = self.open_layout(built)
+        found: list[Problem] = []
+        for i, first in enumerate(built.openings):
+            for second in built.openings[i + 1:]:
+                apart = float(np.linalg.norm(np.subtract(first.centre, second.centre)))
+                room = (apart / 2.0 - max(first.radius, second.radius)) / layout.spacing
+                if first.face == second.face and room < DEFAULT_REACH:
+                    found.append(Problem(
+                        "flow.region-face", f"the openings {first.name} and {second.name} share a plane with "
+                                            f"{room:.3g} cells between a lumen and the line midway between them, under "
+                                            f"the band's reach of {DEFAULT_REACH:g}: the plane's split would cut a wall's "
+                                            f"band", "lengthen the extensions (VesselRegion(extension=...)) so the "
+                                                     "branches part further, or a finer spacing"))
+        return found
+
+    def open_layout(self, built: BuiltRegion) -> TreeLayout:
+        """The open box holding ``built`` with its paths (``mime.nodes.flow.fvm._box.open_region_layout``): its points
+        the tree's first, then the paths' (``BuiltRegion.extent_tree``)."""
+        given = self.spacing.value if self.spacing is not None else None
+        return open_region_layout(*built.extent_tree(), *built.faces,
+                                  cells_across=self.cells_across,
+                                  spacing=float(cast(float, given)) if given is not None else None,
+                                  margin_cells=self.domain.margin)
+
     @override
     def region_problems(self, region: Region | None) -> list[Problem]:
         """The region must be a straight circular tube's (a cylinder), its axis along z or along a lattice direction
-        ``(a, 0, b)`` of the periodic box; or a tube tree's lumen, periodic along z with the box."""
+        ``(a, 0, b)`` of the periodic box; or a tube tree's lumen, periodic along z with the box. An open vessel's:
+        :meth:`open_region_problems`."""
+        if self.open:
+            return self.open_region_problems(region)
         if region is not None and region.shape == TREE:
-            if self.open:
-                return [Problem("flow.region", f"the flow's medium fills {region.path}, a tube tree's lumen; an open "
-                                               f"vessel is a straight vessel cut at its two ends (open trees come later)",
-                                "run the tree on a periodic box, FVM(domain=PeriodicBox(length=...))")]
             return self.tree_problems(region)
         if region is None or region.shape != "cylinder":
             fills = f"fills {region.path}, a {region.shape} region" if region is not None else "fills no region"
@@ -445,17 +543,6 @@ class FVM(Dynamics):
                                              f"lattice direction (a, 0, b) of the periodic box",
                             "align the tube with z, Tube(axis=+Z, ...), or tilt it in the x-z plane at a slope a/b of "
                             "small integers, Tube(axis=(a, 0, b), ...)")]
-        if self.open and len(region.openings) != 2:
-            return [Problem("flow.region", f"the flow's medium fills {region.path}, whose geometry kind declares "
-                                           f"{len(region.openings)} openings there; an open vessel is a straight "
-                                           f"vessel cut at the two ends its kind declares (a Tube's start and end)",
-                            "fill a Tube's lumen, Medium(fills=tube.lumen), or run the flow on a periodic box, "
-                            "FVM(domain=PeriodicBox(length=...))")]
-        if self.open and lattice_of(_unit(region.parameters["axis"])) != (0, 1):
-            return [Problem("flow.open-axis", f"the tube's axis {_unit(region.parameters['axis'])} is tilted, and an "
-                                              f"open vessel's box is built along z only (tilted open vessels come "
-                                              f"later)", "align the tube with z, Tube(axis=+Z, ...), or run it on a "
-                                                         "periodic box, FVM(domain=PeriodicBox(length=...))")]
         return []
 
     @staticmethod
@@ -474,7 +561,7 @@ class FVM(Dynamics):
                                                 f"and the flow's periodic box has none",
                             "open the vessel's ends, FVM(domain=VesselRegion()), or drive the periodic box with "
                             "BodyForce")] if registrations else []
-        if region is None or len(region.openings) != 2:
+        if region is None or len(region.openings) < 2:
             return []  # the region's own refusal names it
         openings = self.openings_of(region)
         found: list[Problem] = []
@@ -527,8 +614,16 @@ class FVM(Dynamics):
         from the drive's peak in the empty tube, the refusal past the line, and ``dt="auto"``'s largest stable step,
         each judged at the step the flow's node takes (its ``rate=`` included)."""
         region = query.region
-        if self.open:  # an open vessel's step rule (the CFL from the inflow's peak) comes with the region builder
-            return StepRule(None, lambda step, every: [], lambda step, every: (), unbounded=OPEN_STEP)
+        if self.open:  # an open vessel's step rule (the CFL from the inflow's peak) is not built; its region reported
+            lines: tuple[str, ...] = ()
+            if region is not None:
+                try:
+                    built = self.region_built(region)
+                except (RegionRefused, ValueError):
+                    built = None
+                if built is not None:
+                    lines = built.lines(query.values.get("viscosity"))
+            return StepRule(None, lambda step, every: [], lambda step, every: lines, unbounded=OPEN_STEP)
         if region is None or "viscosity" not in query.values or "density" not in query.values:
             return None
         given = query.settings.get("spacing")
@@ -706,6 +801,10 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
     its registration (its kind, its settings as a row of parameters, its id the ledger's name, the openings it binds
     in the order written)."""
     openings = fvm.openings_of(region)
+    built = fvm.region_built(region)
+    if built is not None:
+        _open_region_build(fvm, ctx, b, registrations, region, built)
+        return
     at: dict[str, Mapping[str, Magnitude]] = {}
     for registration in registrations:
         given = registration.subjects_parameters or (registration.subject_parameters,)
@@ -732,10 +831,71 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes,
         tolerance=fvm.tolerance, preconditioner=fvm.preconditioner, band=DEFAULT_BAND,
         interior=_INTERIOR_NAMES[fvm.wall.delta_in], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
-        openings=openings, opening_laws=tuple(r.kind for r in laws),
+        backflow_openings=tuple(range(1, len(openings))), openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
         **placed))
+
+
+def _open_region_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration],
+                       region: Region, built: BuiltRegion) -> None:
+    """The open node of a built region: its wall the region's tube tree in the box's frame, each opening on the plane
+    the builder turned it to, centred where its run crosses it, the backflow term on every opening but the upstream."""
+    openings = fvm.openings_of(region)
+    names = [path.rpartition(".")[2] for path in openings]
+    by_name = {opening.name: opening for opening in built.openings}
+    layout = fvm.open_layout(built)
+    h = layout.spacing
+    laws = sorted(registrations, key=lambda r: min(openings.index(s) for s in r.surfaces))
+    scheme = fvm.scheme.group if fvm.scheme is not None else IMEXEuler.name
+    b.add_node(OpenFlowNode(
+        ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
+        spacing=h, viscosity=ctx.scalar_value("viscosity"), density=ctx.scalar_value("density"),
+        tree_points=np.asarray(layout.points[:len(built.points)]), tree_radii=built.radii, tree_fillet=built.fillet,
+        tree_segments=built.segments, opening_paths=moved_paths(built.paths, [-c for c in layout.origin]),
+        scheme=scheme, convection=not fvm.stokes, tolerance=fvm.tolerance,
+        preconditioner=fvm.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[fvm.wall.delta_in],
+        solve_report_rows=fvm.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall",
+        openings=openings, opening_laws=tuple(r.kind for r in laws),
+        opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
+        opening_law_ids=tuple(r.id for r in laws),
+        opening_planes=tuple("low" if by_name[n].face < 0 else "high" for n in names),
+        opening_centres=tuple(((by_name[n].centre[0] - layout.origin[0]) / h, (by_name[n].centre[1] - layout.origin[1]) / h)
+                              for n in names),
+        law_openings=tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws),
+        backflow_openings=tuple(k for k, n in enumerate(names) if not by_name[n].upstream)))
+
+
+def vessel_of(region: Region) -> Vessel:
+    """The vessel the region builder cuts (``mime.scene._region.Vessel``): a tube tree's lumen, its ends named as the
+    region's openings are, the root first (a tree with no root has no upstream end: refused); or a straight tube's,
+    from the planes of its two ends, ``start`` upstream."""
+    from mime.scene import TubeTree
+    from mime.scene._tube_tree import FILLET_SHARE, ROOT
+
+    names = tuple(path.rpartition(".")[2] for path in region.openings)
+    if region.shape == TREE:
+        points, radii, segments, fillet = tree_of(region)
+        ends = TubeTree.si(points, segments, radii, fillet).end_names()
+        if not ends or ends[0][0] != ROOT or len(ends) != len(names):
+            raise RegionRefused("upstream", f"the tube tree {region.path} has no root (its first "
+                                                        f"segment's start meets another segment), so no end of it is "
+                                                        f"upstream by its centreline, where the backflow term is not "
+                                                        f"placed", "write the tree with its first segment starting at "
+                                                                   "a free end, its root (TubeTree(segments=((0, 1), "
+                                                                   "...)) with point 0 on no other segment)")
+        return Vessel(points, segments, radii, fillet,
+                      tuple((name, point) for name, (_, point) in zip(names, ends, strict=True)))
+    centre = np.asarray(cast(tuple[float, ...], region.parameters["centre"]), dtype=np.float64)
+    axis = np.asarray(_unit(region.parameters["axis"]))
+    ends_at: list[np.ndarray] = []
+    for path in region.openings:
+        plane = region.opening_planes[path]
+        normal = np.asarray(cast(tuple[float, ...], plane["normal"]), dtype=np.float64)
+        along = (float(cast(float, plane["offset"])) - float(np.dot(normal, centre))) / float(np.dot(normal, axis))
+        ends_at.append(centre + along * axis)
+    radius = float(cast(float, region.parameters["radius"]))
+    return tube_vessel(ends_at[0], ends_at[1], radius, FILLET_SHARE, (names[0], names[1]))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:
