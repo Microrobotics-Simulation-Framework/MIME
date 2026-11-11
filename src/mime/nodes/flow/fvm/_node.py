@@ -235,23 +235,12 @@ def _held_of(scheme_state: SchemeState) -> dict[str, Array]:
     return {"velocity_x": velocity[0], "velocity_y": velocity[1], "velocity_z": velocity[2], **held}
 
 
-def porous_leaves(porous: Sequence[Mapping[str, Any]], laws: Sequence[str], given: Mapping[str, Any]) -> dict[str, Any]:
-    """Each porous region's leaves (:data:`POROUS_LEAVES`), flat, from ``porous`` (a mapping a region, by leaf), its
-    centre and axis as three floats and the rest as floats; none where the node is made again from its own arguments,
-    which carry them flat (``given``). Refuses a count of regions other than of ``laws``, the names their drags are
-    booked under."""
-    held: dict[str, Any] = {}
-    for index, region in enumerate(porous):
-        for name in POROUS_LEAVES:
-            value = region[name]
-            held[porous_leaf(index, name)] = (tuple(float(c) for c in value) if name in ("centre", "axis")
-                                              else float(value))
-    flat = {**given, **held}
-    count = sum(1 for index in range(len(laws)) if porous_leaf(index, "permeability") in flat)
-    if count != len(laws) or porous_leaf(len(laws), "permeability") in flat:
-        raise ValueError(f"a flow's porous regions are named by their laws, one a region: {len(laws)} laws "
-                         f"({list(laws)}) for the regions given")
-    return held
+def porous_leaves(porous: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Each porous region's leaves (:data:`POROUS_LEAVES`), flat, as the node takes them (``porous_0_centre=...``),
+    from ``porous``, a mapping a region by leaf: its centre and axis as three floats, the rest as floats."""
+    return {porous_leaf(index, name): (tuple(float(c) for c in region[name]) if name in ("centre", "axis")
+                                       else float(region[name]))
+            for index, region in enumerate(porous) for name in POROUS_LEAVES}
 
 
 class ImplicitFlowNode(MimeNode):
@@ -313,8 +302,8 @@ class ImplicitFlowNode(MimeNode):
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
                  solve_report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
-                 exchange: bool = False, porous: Sequence[Mapping[str, Any]] = (), porous_laws: Sequence[str] = (),
-                 ledger: Sequence[str] = (), **extra: Any) -> None:
+                 exchange: bool = False, porous_laws: Sequence[str] = (), ledger: Sequence[str] = (),
+                 **extra: Any) -> None:
         chosen = scheme_named(scheme)
         if chosen.stage_kind is not StageKind.MONOLITHIC_PROJECTED_CG or chosen.state_fields != ("velocity",) or \
                 chosen.ledger_terms + self.GRID_TERMS != self.LEDGER_TERMS:
@@ -354,7 +343,11 @@ class ImplicitFlowNode(MimeNode):
             at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
         if tolerance is None:
             tolerance = default_tolerance(run_dtype())
-        regions = porous_leaves(porous, porous_laws, extra)
+        count = len(porous_laws)
+        if any(porous_leaf(index, name) not in extra for index in range(count) for name in POROUS_LEAVES) or \
+                porous_leaf(count, "permeability") in extra:
+            raise ValueError(f"a flow's porous regions are named by their laws, one a region, each with its leaves "
+                             f"{list(POROUS_LEAVES)} (porous_leaves): {count} laws ({list(porous_laws)})")
         initial: dict[str, Any] = {}
         for key, value in (("initial_velocity_x", initial_velocity_x), ("initial_velocity_y", initial_velocity_y),
                            ("initial_velocity_z", initial_velocity_z)):
@@ -369,7 +362,7 @@ class ImplicitFlowNode(MimeNode):
                          periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
                          solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
                          **({"wall_name": str(wall_name)} if wall_name else {}),
-                         **({"exchange": True} if exchange else {}), **extra, **regions,
+                         **({"exchange": True} if exchange else {}), **extra,
                          **({"porous_laws": tuple(str(law) for law in porous_laws)} if porous_laws else {}),
                          **({"ledger": tuple(ledger)} if ledger else {}))
 

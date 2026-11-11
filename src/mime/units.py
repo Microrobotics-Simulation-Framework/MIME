@@ -145,6 +145,8 @@ FORCE = MASS * ACCELERATION
 MAGNETIC_FLUX_DENSITY = MASS / (CURRENT * TIME**2)
 #: A magnetic field's gradient, ``dB_i/dx_j``, in T/m.
 FIELD_GRADIENT = MAGNETIC_FLUX_DENSITY / LENGTH
+#: An area, and a porous material's Darcy permeability (m^2).
+AREA = LENGTH**2
 VOLUME = LENGTH**3
 DENSITY = MASS / VOLUME
 MOMENT_OF_INERTIA = MASS * LENGTH**2
@@ -170,6 +172,7 @@ _NAMED = {
     FORCE: "force (N)",
     MAGNETIC_FLUX_DENSITY: "magnetic flux density (T)",
     FIELD_GRADIENT: "magnetic field gradient (T/m)",
+    AREA: "area (m^2)",
     VOLUME: "volume (m^3)",
     DENSITY: "density (kg/m^3)",
     MOMENT_OF_INERTIA: "moment of inertia (kg m^2)",
@@ -195,6 +198,7 @@ Acceleration = ACCELERATION
 Force = FORCE
 MagneticFluxDensity = MAGNETIC_FLUX_DENSITY
 FieldGradient = FIELD_GRADIENT
+Area = AREA
 Volume = VOLUME
 Density = DENSITY
 MomentOfInertia = MOMENT_OF_INERTIA
@@ -494,7 +498,7 @@ def _times_two_pi(scale: float) -> int:
 
 _SYMBOLS = {
     DIMENSIONLESS: "", LENGTH: "m", MASS: "kg", TIME: "s", CURRENT: "A", TEMPERATURE: "K", FREQUENCY: "Hz",
-    VELOCITY: "m/s", ACCELERATION: "m/s^2", FORCE: "N", MAGNETIC_FLUX_DENSITY: "T", VOLUME: "m^3",
+    VELOCITY: "m/s", ACCELERATION: "m/s^2", FORCE: "N", MAGNETIC_FLUX_DENSITY: "T", AREA: "m^2", VOLUME: "m^3",
     DENSITY: "kg/m^3", MOMENT_OF_INERTIA: "kg m^2", MAGNETIC_MOMENT: "A m^2", DYNAMIC_VISCOSITY: "Pa s",
     TORQUE: "N m", ROTATIONAL_DAMPING: "N m s", PRESSURE: "Pa", VOLUME_FLUX: "m^3/s",
     HYDRAULIC_RESISTANCE: "Pa s/m^3", COMPLIANCE: "m^3/Pa",
@@ -691,6 +695,8 @@ rad_per_s = Unit(
     "Radians per second: an angular velocity. Its dimension is a frequency's, and they differ by 2 pi: a quantity made "
     "from it is refused where a frequency goes (a field's turning frequency) and by ``.to(Hz)``, and one made from Hz "
     "where an angular velocity goes (a body's initial spin) and by ``.to(rad_per_s)``.", "radian")
+m2 = Unit("m^2", 1.0, AREA, "Square metres: an area, or a porous material's Darcy permeability.")
+um2 = Unit("um^2", 1e-12, AREA, "Square micrometres: a fibrin clot's Darcy permeability is about 1e-3 to 1.")
 m3 = Unit("m^3", 1.0, VOLUME, "Cubic metres.")
 mm3 = Unit("mm^3", 1e-9, VOLUME, "Cubic millimetres.")
 kg_per_m3 = Unit("kg/m^3", 1.0, DENSITY, "Kilograms per cubic metre.")
@@ -754,7 +760,7 @@ def standard_gravity(*, reason: Basis | None = None) -> Quantity:
 
 
 __all__ = [
-    "ACCELERATION", "ANGULAR_VELOCITY", "AngularVelocity", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
+    "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
     "HydraulicResistance", "PRESSURE", "Pressure", "VOLUME_FLUX", "VolumeFlux", "Pa", "Pa_s_per_m3", "m3_per_Pa",
     "m3_per_s", "mL_per_s", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle", "CURRENT",
     "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FIELD_GRADIENT", "FORCE", "FREQUENCY", "LENGTH",
@@ -764,6 +770,6 @@ __all__ = [
     "RotationalDamping", "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity",
     "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A",
     "A_m2", "Hz", "K", "N", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "cm", "deg", "degC", "dimensionless", "g", "kHz",
-    "kg", "kg_m2", "kg_per_m3", "m", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
-    "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um_per_s", "us",
+    "kg", "kg_m2", "kg_per_m3", "m", "m2", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
+    "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um2", "um_per_s", "us",
 ]

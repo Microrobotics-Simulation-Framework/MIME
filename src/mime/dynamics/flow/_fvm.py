@@ -38,7 +38,7 @@ from mime.nodes.flow.fvm._ports import Valve as ValveLaw
 from mime.nodes.flow.fvm._ports import Windkessel as WindkesselLaw
 from mime.nodes.flow.fvm._ports import RowKind, port_law_named, well_posed
 from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, EXCHANGE_FIELDS, GEOMETRY, \
-    STOKES_REYNOLDS
+    STOKES_REYNOLDS, porous_leaves
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, \
     FLOOR_STOP_MEASURED, FLOOR_STOP_TOLERANCES, PRECONDITIONERS, STAGNATION_FACTOR, STAGNATION_LEAST_WINDOW, \
@@ -53,10 +53,11 @@ from mime.scene import PeriodicBox, VesselRegion
 from mime.things import ThingKind
 from mime.units import Length, Quantity
 from mime.vocabulary import EXCHANGE_PARTNER, FLOW_BODY_FORCE, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
-    FLOW_FACES, FLOW_OPENING, FLOW_PARTNERS, FLOW_WAVEFORM, FLUID, OPENING
+    FLOW_FACES, FLOW_OPENING, FLOW_PARTNERS, FLOW_POROUS, FLOW_WAVEFORM, FLUID, OPENING
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
+    from mime.build._plan import GeometryPlan
 
 
 @register_setting_group
@@ -136,6 +137,51 @@ _INTERIOR_NAMES = {depth: name for name, depth in INTERIORS.items()}
 PERIOD_LINE = 1e-6
 #: The region shape a tube tree's lumen is.
 TREE = "tube_tree"
+#: The registration a porous structure's law makes with the flow (``mime.interactions.Darcy``), held in its step.
+POROUS_LAW = "darcy"
+
+
+def porous_held(registrations: Sequence[ResolvedRegistration]) -> list[ResolvedRegistration]:
+    """The porous regions' registrations among a flow's, in their ids' order."""
+    return sorted((r for r in registrations if r.kind == POROUS_LAW), key=lambda r: r.id)
+
+
+#: The geometry kinds whose structure a flow holds as a porous region, each a solid circular cylinder its settings
+#: give (``centre``, ``axis``, ``radius``, ``length``): the one place the flow names a kind (``porous_cylinder``).
+POROUS_KINDS = ("plug",)
+
+
+def porous_cylinder(geometry: GeometryPlan | None) -> dict[str, Any] | None:
+    """A structure's porous region as the node takes it, a solid circular cylinder (its centre, axis, radius and length
+    in SI, the world's frame), from its geometry kind's settings; ``None`` for a kind the flow does not hold."""
+    if geometry is None or geometry.geometry.name not in POROUS_KINDS:
+        return None
+    settings = geometry.settings
+    return dict(centre=tuple(float(c) for c in cast(tuple[float, ...], settings["centre"])),
+                axis=tuple(float(c) for c in cast(tuple[float, ...], settings["axis"])),
+                radius=float(cast(float, settings["radius"])), length=float(cast(float, settings["length"])))
+
+
+def porous_arguments(registrations: Sequence[ResolvedRegistration], origin: Sequence[float]) -> dict[str, Any]:
+    """The node's porous regions (``ImplicitFlowNode(porous=..., porous_laws=...)``) from their laws' registrations:
+    each structure's ``Plug`` settings in SI, its centre moved into the box's frame (``origin``, the world point at
+    the box's corner), and its permeability as phase 1 resolved it; none where no law registers one."""
+    held = porous_held(registrations)
+    regions: list[dict[str, Any]] = []
+    for registration in held:
+        cylinder = porous_cylinder(registration.geometry)
+        assert cylinder is not None
+        centre = tuple(float(c) - float(o) for c, o in zip(cylinder["centre"], origin, strict=True))
+        regions.append({**cylinder, "centre": centre,
+                        "permeability": float(cast(float, registration.values["permeability"].value))})
+    return {**porous_leaves(regions), "porous_laws": [r.id for r in held]} if held else {}
+
+
+def porous_scheme(given: IMEXEulerScheme | SteadyScheme | RK3Scheme | None) -> str:
+    """The scheme a flow holding a porous region steps with: the one named (never RK3: refused when planned), else
+    IMEX Euler, whose one solve holds the region's resistivity and the divergence together (RK3's stages split them,
+    which leaves a Darcy flux to the splitting)."""
+    return given.group if given is not None else IMEXEuler.name
 
 
 def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
@@ -219,7 +265,8 @@ class FVM(Dynamics):
     applies_to = frozenset({ThingKind.MEDIUM})
     port_kinds = (FLUID.name, OPENING.name)
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
-               FLOW_OPENING.name: Port("openings"), FLOW_EXCHANGE_X.name: Port("exchange_x"),
+               FLOW_OPENING.name: Port("openings"), FLOW_POROUS.name: Port("porous"),
+               FLOW_EXCHANGE_X.name: Port("exchange_x"),
                FLOW_EXCHANGE_Y.name: Port("exchange_y"), FLOW_EXCHANGE_Z.name: Port("exchange_z"),
                FLOW_PARTNERS.name: Port("partners")}
     publishes = {FLOW_FACES.name: Port("velocity_x")}
@@ -227,7 +274,7 @@ class FVM(Dynamics):
     #: ``Windkessel``, ``Valve``, ``SharedDistal``), and the exchange partners a point body's law registers
     #: (``Drag.Stokes``).
     registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name, ValveLaw.name, SharedDistalLaw.name,
-                                    EXCHANGE_PARTNER})
+                                    EXCHANGE_PARTNER, POROUS_LAW})
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
                               "true residual no longer falling), so the step's values hold only to the residual it "
@@ -476,6 +523,10 @@ class FVM(Dynamics):
         """A periodic box takes no law at an opening; an open vessel takes one at each of its two ends and at nothing
         else, and their rows are well posed (``mime.nodes.flow.fvm._ports.well_posed``). A point body's exchange
         registration (``Drag.Stokes``) is no law at an opening, and an open vessel takes none yet."""
+        found_porous = self.porous_problems(porous_held(registrations), region)
+        if found_porous:
+            return found_porous
+        registrations = [r for r in registrations if r.kind != POROUS_LAW]
         partners = [r for r in registrations if r.kind == EXCHANGE_PARTNER]
         if self.open and partners:
             return [Problem("flow.open-exchange", f"{', '.join(r.id for r in partners)} exchanges with the flow, and an "
@@ -521,6 +572,36 @@ class FVM(Dynamics):
                         f"give one of the openings a pressure law in place of its flux law ({given}): "
                         f"exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=..., "
                         f"surface=<that opening>), whose pressure the flow's rows solve for")] if reason else []
+
+    def porous_problems(self, held: Sequence[ResolvedRegistration], region: Region | None) -> list[Problem]:
+        """A porous region is a ``Plug``'s volume, held by IMEX Euler or its steady limit, in a box whose axis is z
+        (a straight tube along z, a tube tree, an open vessel along +z)."""
+        if not held:
+            return []
+        found: list[Problem] = []
+        for registration in held:
+            kind = registration.geometry.geometry if registration.geometry is not None else None
+            if porous_cylinder(registration.geometry) is None:
+                named = f"a {type(kind).name} geometry" if kind is not None else "no geometry"
+                found.append(Problem("flow.porous-kind", f"{registration.id} binds {registration.subject!r}, which has "
+                                                         f"{named}: the flow holds a porous region of a Plug's volume",
+                                     f"give {registration.subject!r} a Plug geometry, Structure("
+                                     f"{registration.subject!r}, geometry=Plug(axis=..., radius=..., length=..., "
+                                     f"centre=...))"))
+        if isinstance(self.scheme, RK3Scheme):
+            found.append(Problem("flow.porous-scheme", "RK3's stages split the penalty from the projection, which for a "
+                                                       "porous region's resistivity leaves its Darcy flux to the "
+                                                       "splitting: a flow holding one steps by IMEX Euler or its "
+                                                       "steady limit",
+                                 "write FVM(scheme=Scheme.IMEXEuler()), or FVM(stokes=True, scheme=Scheme.Steady()), "
+                                 "or name no scheme"))
+        axis = _unit(region.parameters["axis"]) if region is not None and region.shape == "cylinder" else None
+        if axis is not None and (lattice_of(axis) != (0, 1) or (self.open and axis[2] < 0.0)):
+            found.append(Problem("flow.porous-axis", f"the tube's axis {axis} is not along "
+                                                     f"{'+z' if self.open else 'z'}: a porous region is held in a box "
+                                                     f"whose axis is z (tilted boxes come later)",
+                                 "align the tube with +z, Tube(axis=+Z, ...)"))
+        return found
 
     def field_for(self, scheme: str) -> SolvedField:
         """The solved-field contract's declarations of this FVM stepped by ``scheme`` (its ledger route and its steady
@@ -589,8 +670,10 @@ class FVM(Dynamics):
                 bounds.append(line * h / peak)
             return min(bounds) if bounds else None
 
+        porous = any(drive.law == POROUS_LAW for drive in query.drives)
+        held = region.shape == TREE or porous
         candidates = [self.scheme.group] if self.scheme is not None else \
-            [IMEXEuler.name] if region.shape == TREE else [RK3.name, IMEXEuler.name]
+            [IMEXEuler.name] if held else [RK3.name, IMEXEuler.name]
         steps = {name: safe(name) for name in candidates}
         bounded = {name: step for name, step in steps.items() if step is not None}
         if self.scheme is None and IMEXEuler.name in steps and steps[IMEXEuler.name] is None:
@@ -606,7 +689,7 @@ class FVM(Dynamics):
                    f"about eight)")
 
         def problems(step: float, every: int) -> list[Problem]:
-            name = tree_scheme(self.scheme) if region.shape == TREE else chosen_scheme(self.scheme, nu, h, step)
+            name = tree_scheme(self.scheme) if held else chosen_scheme(self.scheme, nu, h, step)
             found: list[Problem] = []
             needed = memory_estimate(name, count)
             if available is not None and needed > available:
@@ -642,7 +725,7 @@ class FVM(Dynamics):
             return found
 
         def report(step: float, every: int) -> tuple[str, ...]:
-            name = tree_scheme(self.scheme) if region.shape == TREE else chosen_scheme(self.scheme, nu, h, step)
+            name = tree_scheme(self.scheme) if held else chosen_scheme(self.scheme, nu, h, step)
             line = line_of(name)
             room = f"{available / 2 ** 30:.3g} GiB" if available is not None else "which the system does not report"
             box = (f"the box: {cells[0]} x {cells[1]} x {cells[2]} = {count} cells of "
@@ -694,13 +777,17 @@ class FVM(Dynamics):
             _open_build(self, ctx, b, [r for r in registrations if r.kind != EXCHANGE_PARTNER], region)
             return
         if region.shape == TREE:
-            self.build_tree(ctx, b, region)
+            self.build_tree(ctx, b, region, registrations)
             return
         layout = self.layout_of(region, ctx.settings)
         lattice = lattice_of(_unit(region.parameters["axis"]))
         viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
         partners = any(registration.kind == EXCHANGE_PARTNER for registration in registrations)
-        scheme = chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
+        point = shape_named(region.shape).axis_point(region.parameters)
+        assert point is not None
+        porous = porous_arguments(registrations, [float(point[i]) - layout.centre[i] for i in range(3)])
+        scheme = porous_scheme(self.scheme) if porous else \
+            chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
         band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.delta_in]
         images = "own" if lattice == (0, 1) else "transverse"
         # The wall's band is booked under the wall's own region: the medium fills a tube's lumen, its solid that tube's
@@ -719,10 +806,12 @@ class FVM(Dynamics):
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
             interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows,
-            wall_name=wall, exchange=partners))
+            wall_name=wall, exchange=partners, **porous))
 
-    def build_tree(self, ctx: BuildContext, b: DynamicsBuilder, region: Region) -> None:
-        """A tube tree's flow: its box from the tree (:meth:`tree_layout`), the tree's points moved into it."""
+    def build_tree(self, ctx: BuildContext, b: DynamicsBuilder, region: Region,
+                   registrations: Sequence[ResolvedRegistration] = ()) -> None:
+        """A tube tree's flow: its box from the tree (:meth:`tree_layout`), the tree's points moved into it, and a
+        porous region's with them."""
         _, radii, segments, fillet = tree_of(region)
         layout = self.tree_layout(region, ctx.scalar("spacing") if self.spacing is not None else None)
         b.add_node(ImplicitFlowNode(
@@ -731,7 +820,8 @@ class FVM(Dynamics):
             tree_points=np.asarray(layout.points), tree_radii=radii, tree_fillet=fillet, tree_segments=segments,
             scheme=tree_scheme(self.scheme), convection=not self.stokes, tolerance=self.tolerance,
             preconditioner=self.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[self.wall.delta_in],
-            solve_report_rows=self.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall"))
+            solve_report_rows=self.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall",
+            **porous_arguments(registrations, layout.origin)))
 
 
 def takes_exchange(frame: ExchangeFrame, viscosity: float, density: float, dt: float) -> bool:
@@ -751,7 +841,9 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
     """The open vessel's node: the box along z from its low plane to its high one, each opening on the plane its
     surface faces (its normal into the vessel along the axis: the low plane; against it: the high one), each law from
     its registration (its kind, its settings as a row of parameters, its id the ledger's name, the openings it binds
-    in the order written)."""
+    in the order written), and each porous region from its law's."""
+    porous = porous_held(registrations)
+    registrations = [r for r in registrations if r.kind != POROUS_LAW]
     openings = fvm.openings_of(region)
     at: dict[str, Mapping[str, Magnitude]] = {}
     for registration in registrations:
@@ -773,6 +865,11 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
     viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
     scheme = fvm.scheme.group if fvm.scheme is not None else IMEXEuler.name
     wall = f"{region.path.rpartition('.')[0]}.wall"
+    point = shape_named(region.shape).axis_point(region.parameters)
+    assert point is not None
+    # The box runs along +z from the low opening's plane (its offset along its normal, +z), the tube's axis at the
+    # layout's centre across it.
+    origin = (float(point[0]) - layout.centre[0], float(point[1]) - layout.centre[1], float(cast(float, low["offset"])))
     b.add_node(OpenFlowNode(
         ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
         spacing=layout.spacing, viscosity=viscosity, density=density, tube_centre=layout.centre,
@@ -782,7 +879,7 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
-        **placed))
+        **placed, **porous_arguments(porous, origin)))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:
