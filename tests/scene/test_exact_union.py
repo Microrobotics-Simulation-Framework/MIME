@@ -96,7 +96,8 @@ def drawn(kind: str, seed: int, cells: int, far: bool = False
         reach = REACH * D
     else:
         tree = (loop_tree() if kind == "loop" else y_tree(kind)).turned(rotation(seed), rng.uniform(0.0, h, 3))
-        junctions = [tree.parameters()["points"][int(j.name[1:])] for j in tree.junctions if len(j.ends) >= 3]
+        junctions = [tree.parameters()["points"][tree.segments[j.ends[0][0]][j.ends[0][1]]]
+                     for j in tree.junction_names() if len(j.ends) >= 3]
         middle = np.mean(junctions, axis=0)
         reach = REACH * D + max(float(np.linalg.norm(j - middle)) for j in junctions)
     if far:
