@@ -47,5 +47,21 @@
       "why": "the annulus's conductance goes as its gap cubed"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43121427627",
+    "head": "9905698 (the porous plug's branch at adaf87f with the probe's files)",
+    "gate_1_range": {
+      "resolution": "0.0219 (refined; caught from 0.0224 on the grid, missed at 0.0134), no false alarm at zero",
+      "verdict": "held (predicted about 0.02, band 0.01 to 0.04); the rates' plant (K read 10 % high) is 4.6 times it"
+    },
+    "gate_2_range": {
+      "resolution": "0.0258 (refined; caught from 0.0377 on the grid, missed at 0.0224), no false alarm at zero",
+      "verdict": "held in the band (predicted about 0.017, band 0.01 to 0.03): the profile moves a little less than one for one with K; the rates' plant (10 %) is 3.9 times it"
+    },
+    "gate_3_range": {
+      "resolution": "0.091 cells (refined; caught from 0.123 on the grid, missed at 0.081), no false alarm at zero",
+      "verdict": "held (predicted about 0.09 cells, band 0.05 to 0.15); the rates' plant (a quarter cell) is 2.7 times it"
+    },
+    "note": "deterministic cases, one draw each: a resolution here is the case's own, not a rate over draws"
+  }
 }
