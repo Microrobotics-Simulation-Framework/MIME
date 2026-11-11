@@ -320,11 +320,18 @@ class Contact(Interaction):
         "friction= is written, and then Coulomb's with one coefficient, static and kinetic alike (a static coefficient "
         "above the kinetic, or one that varies with the slip speed, is a FrictionLaw of its own); no adhesion (its seam "
         "is Hold(adhesion=...), reserved)",
-        "projection: with friction, the sweeps' count is declared per hull kind (FRICTION_SWEEPS) and a multi-point hold "
-        "may leave the cone's residual above CONVERGED, raising unconverged, as may the friction power guard on an "
-        "unconverged solve; each held point is a point contact, so a line contact's friction moment about its normal is "
-        "under-resolved (its seam: POINT_SETS['line']), and spin friction and rolling resistance are not held (spin "
-        "declared for soft contact; rolling resistance comes as a row kind of its own)",
+        "projection: with friction, the sweeps' count is declared per hull kind (FRICTION_SWEEPS, from the measured "
+        "count each kind's solve converges in; a kind held by its samples, the box, and the screw take the bound, "
+        "FRICTION_SWEEPS_DEFAULT) and a multi-point hold may leave the cone's residual above CONVERGED, raising "
+        "unconverged, as may the friction power guard on an unconverged solve: a share of the box's and the screw's "
+        "steps stay unconverged at the bound and are flagged, never silent; each held point is a point contact, so a "
+        "line contact's friction moment about its normal is under-resolved (its seam: POINT_SETS['line']), and spin "
+        "friction and rolling resistance are not held (spin declared for soft contact; rolling resistance comes as a "
+        "row kind of its own)",
+        "projection: with friction, the power guard sees a friction law push only where friction carries more than the "
+        "guard's line of the load (POWER_LINE in float64, the square root of float32's resolution): a load within "
+        "rounding of the normal on a body at rest leaves the solve's friction at its own rounding, where a law pushing "
+        "is seen by no check (the friction law suite counts those draws apart from those it judges)",
         "projection: with friction, float32 resolves a body's motion only where a step moves its position by more than "
         "its coordinates' rounding (dt |v| above about ulp(|x|)); the contact's allowance takes the gap less its "
         "rounding band, so a point frozen a part of an ulp above the wall is held, not left an approach speed the "
