@@ -88,6 +88,11 @@ def _solved2(block: Array, vector: Array) -> Array:
     return jnp.stack([d * vector[0] - b * vector[1], a * vector[1] - c * vector[0]]) / (a * d - b * c)
 
 
+#: The block a pair's update is fed where its own is not used (a point with no normal row; a boundary not taken):
+#: definite, its entries all nonzero, so that no fallback scaling (``switch.replacing_fallbacks``) makes it singular.
+_DEFINITE = np.asarray([[2.0, 1.0], [1.0, 2.0]])
+
+
 def disk_update(block: Array, load: Array, bound: Array) -> Array:
     """A friction pair's exact force with the others held: the ``x`` that leaves the pair's slip ``u = load + block x``
     zero within the disk ``|x| <= bound``, or on its boundary with ``u`` anti-parallel to ``x`` (``(block + nu I) x =
@@ -97,7 +102,8 @@ def disk_update(block: Array, load: Array, bound: Array) -> Array:
     scaled load is bounded by the block's condition and ``R = bound/|x_free|`` lies below one), ``R`` taken above
     ``eps^2`` so that a bound at rounding is read as a bound and no step leaves the dtype's range; the force then
     ``bound`` along ``y``, on the boundary to rounding. Where the boundary is not taken its inputs are fed the unit
-    load and a radius of a half (domain guards), on which no step overflows, so no ``0 x inf`` reaches reverse mode.
+    load, a radius of a half and a definite block (domain guards), on which no step overflows, so no ``0 x inf``
+    reaches reverse mode.
     The pair sticks only strictly inside its disk: at a bound of zero (a point its normal row leaves free) with no
     load, the boundary is taken, ``0`` times a direction from those same inputs, so the force and its derivative are
     zero (the free minimiser's derivative there would read friction at a point with no normal force)."""
@@ -107,7 +113,7 @@ def disk_update(block: Array, load: Array, bound: Array) -> Array:
     reached = outside & (size > 0)
     length = jnp.sqrt(switch.domain_guard(reached, size, 1.0))
     scale = 0.5 * (block[0, 0] + block[1, 1])
-    scaled = block / scale
+    scaled = switch.domain_guard(reached, block / scale, _DEFINITE.astype(load.dtype))
     target = switch.domain_guard(reached, load / (scale * length), jnp.asarray([1.0, 0.0], dtype=load.dtype))
     radius = switch.domain_guard(reached, bound / length, 0.5) + jnp.finfo(load.dtype).eps ** 2
     eye = jnp.eye(2, dtype=load.dtype)
@@ -124,11 +130,6 @@ def disk_update(block: Array, load: Array, bound: Array) -> Array:
     boundary = bound * y / switch.nonzero_norm(y)
     return switch.where(outside, boundary, free, owner="contact.friction", indicator=size - bound * bound,
                         resolution=lambda: switch.rounding(size + bound * bound))
-
-
-#: The block a pair is fed at a point with no normal row: definite, its entries all nonzero, so that no fallback
-#: scaling (``switch.replacing_fallbacks``) makes it singular.
-_DEFINITE = np.asarray([[2.0, 1.0], [1.0, 2.0]])
 
 
 def point_update(own: Array, velocity: Array, held: Array, traction: Traction) -> tuple[Array, Array]:
