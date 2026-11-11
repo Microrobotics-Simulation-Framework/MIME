@@ -129,7 +129,11 @@ def judged(found: np.ndarray, reference: np.ndarray) -> tuple[float, float]:
 
 
 def spheroid_misses(tilt: float, plant: str | None = None) -> dict[tuple[float, float], tuple[float, float]]:
-    """Gate 1's misses at each gap and drawn turn about the normal: the spheroid's node at s 0.2 b, its pose turned."""
+    """Gate 1's misses at each gap and drawn turn about the normal: the spheroid's node at s 0.2 b, its pose turned and
+    its resistance turned back into the reference's frame before it is judged. Judged in the world's frame, a coupling
+    after a turn is a difference of the body's two (``cos t sin t (c1 - c2)``), its own scale a cancellation, so its miss
+    moved with the drawn turn (the worst entry 0.29 to 0.40 over five seeds, the rate the same to 2e-5); in the
+    reference's frame each entry is the body's own, and the turns test that the node's resistance turns with the body."""
     rows = spheroid_rows()
     axes = np.array([2.0, 1.0, 1.0]) * RADIUS
     rng = np.random.default_rng(int(os.environ.get("DETECTION_SEED", "1")))
@@ -147,11 +151,10 @@ def spheroid_misses(tilt: float, plant: str | None = None) -> dict[tuple[float, 
             both = np.block([[spin, np.zeros((3, 3))], [np.zeros((3, 3)), spin]])
             for gap in SPHEROID_GAPS:
                 pose = jnp.asarray((0.0, 0.0, lowest_of(axes, rotation) + gap * RADIUS, *q))
-                found = np.asarray(step(pose, leaves)["resistance"]) / VISCOSITY
+                found = both.T @ (np.asarray(step(pose, leaves)["resistance"]) / VISCOSITY) @ both
                 reference = np.asarray(rows[f"2 {tilt:g} L3 {gap:g}"]["resistance"])
                 scale = np.array([1.0, 1.0, 1.0, RADIUS, RADIUS, RADIUS])
-                reference = both @ reference @ both.T * RADIUS * np.outer(scale, scale)
-                out[(float(angle), gap)] = judged(found, reference)
+                out[(float(angle), gap)] = judged(found, reference * RADIUS * np.outer(scale, scale))
     return out
 
 

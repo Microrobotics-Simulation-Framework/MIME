@@ -1,0 +1,48 @@
+{
+  "written": "2026-11-12, committed before round 3 ran (the commit that adds this file is the timestamp): gate 1 on spheroids judged again in the reference's frame, the bits against the release tip, the marked tests' memory",
+  "phase": "W2a PR 1b-ii-a, round 3",
+  "labels": "the builder's (a fresh agent resuming the piece), from round 2's records (Actions run 43072704579) and the arithmetic of a turn about the normal",
+  "seen_before": [
+    "round 2, rates-gate1 (Actions, float64): gate 1's lying spheroid with nothing planted, judged in the world's frame, five seeds of three turns each: the worst rate 0.22461 to 0.22462 at every seed, the worst entry 0.2870 (seed 2), 0.4027 (seed 3), 0.2861 (seed 4), 0.3331 at seed 1 (the pinned 0.3331 +- 0.02 failed at seeds 2, 3 and 4); seeds 0 and 1 passed",
+    "round 2's bits arms did not run: the base was given as a short hash, which a shallow fetch cannot resolve",
+    "round 2's memory arm ran its ids in one worker: the peaks include what the worker held before each (gate 8 on two contacts 14.1 GB from 5.2 GB, gate 1's spheroids 2.9 and 3.2 GB)",
+    "MIME-ANO-154's second probe (prolate spheroids, the curvature-only form against the graded MFS): T_y +28.5 % lying, +17.9 % at 30 degrees, in the body's own frame"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 (bits only)"],
+    "platform": "GitHub runner, 4 vCPU, 16 GB (the probe workflow); the bits base and head in one job, one thread",
+    "sizes_and_parameters": "gate 1: an aspect-2 prolate spheroid (2, 1, 1) mm above a plane, drag 0.5.0's mrs rung at a force spacing of 0.2 of its minor semi-axis (h_m 0.15 b), blob 0.05, lying and tilted 30 degrees, gaps 0.1 to 0.02 b, three turns about the normal a seed, seeds 1 to 5, against the graded MFS rows (L3); the bits: the round-2 program list (drag 0.3.0/0.4.0 near a plane and in a tube, the sphere's hand-over at 0.5.0 on a plane, in a tube and off its contact, the ellipsoid's at 0.5.0, script A, A0) against d6220d2f (the release tip this branch merged)",
+    "seeds_and_draws": "gate 1's turns drawn uniform on [0, 2 pi) by DETECTION_SEED; nothing else drawn"
+  },
+  "gate_1_spheroids_in_the_references_frame": {
+    "claim": "judged in the reference's frame (the node's resistance turned back by the drawn turn), gate 1's worst rate and worst entry on its own scale are the same at every seed: the node's resistance turns with the body, and the pin measures the elliptic form, not the turn",
+    "kind": "estimates (MIME-ANO-154's known limitation, pinned), not an accuracy bound",
+    "case": "tests/oracles/test_elliptic_gates.py::spheroid_misses at seeds 1 to 5, each tilt (probe/spheroid.py)",
+    "prediction": {
+      "value": null,
+      "band": [0.26, 0.31],
+      "unit": "lying: the worst entry on its own scale (the rate's band [0.2236, 0.2256], round 2's 0.2246 unchanged since it was turn-invariant)",
+      "basis": "measured-before",
+      "why": "a world-frame coupling after a turn t is cos t sin t (c1 - c2) plus the body's own on cos^2 and sin^2: its own size is a cancellation, so its relative miss rose to 0.40 at some turns; in the body's frame the entries are the body's, whose worst probe B read as T_y +28.5 %, and round 2's two seeds whose turns kept the cancellation small read 0.286 and 0.287"
+    },
+    "prediction_tilted": {"band": [0.15, 0.21], "unit": "at 30 degrees: the worst entry (the rate's band [0.1647, 0.1687])", "basis": "measured-before", "why": "probe B's +17.9 %; round 2's world-frame pin 0.1793 at seed 1"},
+    "prediction_spread": {"band": [0.0, 0.005], "unit": "the largest difference between two seeds' worst entry (and worst rate), each tilt", "basis": "derived", "why": "the plane, the near-contact form and the force points turn with the body; what is left is the hand-over's opened wall and the quadrature's rounding"},
+    "metric": "the worst entry in the reference's frame, which a turn about the normal cannot move, so a spread over seeds is the node's own failure to turn with the body",
+    "control": {"plant": "increment_x2 (the near-contact increment doubled), its rate measured in the round after the pin, over the same five seeds", "environment_variable": "W2A_PLANT", "expected_rate": "5/5", "clean_expected": "0/5"},
+    "if_wrong": "a spread over 0.005 in the reference's frame: the node's resistance does not turn with the body (the opened wall, the search's groups): the pin cannot hold and the turns are the finding",
+    "cannot_discriminate_if": "every seed draws turns near zero or a quarter (each seed draws three uniform turns, so five seeds hold fifteen)"
+  },
+  "gate_10_bits": {
+    "claim": "released programs bit for bit against the release tip, both dtypes; the ellipsoid's 0.5.0 program moves (film to elliptic); the sphere's hand-over unchanged",
+    "kind": "equality",
+    "case": "probe/dump.py through .github/probe/bit_compare.py, base d6220d2f69385fd73acffab962562daa300221cc",
+    "prediction": "every released program (0.3.0, 0.4.0, script A, A0) and the sphere's 0.5.0 programs np.array_equal in float64 and float32; ellipsoid_050 differs"
+  },
+  "memory": {
+    "claim": "each memory_heavy test this PR adds, alone in a fresh process, peaks under the runner's 16 GB, its peak entered in tests/memory_peaks.json",
+    "kind": "acceptance",
+    "case": "scripts/measure_test_memory.py, one process per id",
+    "prediction": {"band": [2.0, 9.0], "unit": "GiB, each id", "basis": "measured-before", "why": "round 2's in-worker increments: gate 1's spheroids about 2.5 and 1.3, gate 5's first case 4.7, gate 8 on two contacts 8.9 (its reverse derivative through two contacts)"}
+  },
+  "outcomes": null
+}
