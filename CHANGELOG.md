@@ -35,10 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   protocol with a default and a conformance suite in `mime.testing` (`friction_law_suite`, `normal_law_suite`,
   `row_kind_suite`): `FrictionLaw` (default `Coulomb`), `NormalLaw` (default `Hold()`, its `adhesion` reserved),
   `ROW_KINDS` (sliding built; rolling resistance next; spin declared), `POINT_SETS` (point contacts; line and patch
-  reserved). The state of a frictional body adds `contact_traction`, `contact_slip` and `contact_friction_power`. A
-  contact without friction compiles the program it always did; the contact 0.4.0 and 0.1.0, kept, are frictionless and
-  keep their margin required. Refused: `friction.no-hull` (a body held as a sphere of its extent has no point for
-  friction to act at). Registered: MIME-ANO-157, the frictionless hold's float32 allowance at sub-microsecond steps.
+  reserved). The state of a frictional body adds `contact_friction_forces`, `contact_slip_speed` and
+  `contact_friction_power_ratio`. A contact without friction compiles the program it always did; the contact 0.4.0 and
+  0.1.0, kept, are frictionless and keep their margin required. Refused under `confinement.no-hull`, now one code for
+  every setting read at a hull's points (`spacing=`, `friction=`) on a body held as a sphere of its extent, its message
+  naming both routes (give the body a hull, or remove the setting). Registered: MIME-ANO-157, the frictionless hold's float32 allowance at sub-microsecond steps.
 
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a

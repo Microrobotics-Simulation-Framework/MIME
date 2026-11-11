@@ -413,16 +413,15 @@ class Contact(Interaction):
     @override
     def plan(self, ctx: PlanContext) -> Plan:
         if ctx.geometry(of="body") is None:
-            unread = () if self.spacing is None else (Problem(
-                "confinement.no-hull", f"spacing= is the spacing of a hull's points, and {ctx.bindings['body']} has no "
-                                       f"hull: it is held as a sphere of its extent", "remove spacing=, or give the "
-                                       "body a part outside every other: parts={\"shell\": Part(Sphere(...))}"),)
-            if self.friction is not None:
-                unread = (*unread, Problem(
-                    "friction.no-hull", f"friction= is held at a hull's points, and {ctx.bindings['body']} has no hull: "
-                                        f"it is held as a sphere of its extent about its centre, with no point on its "
-                                        f"surface for friction to act at", "give the body a part outside every other: "
-                                        "parts={\"shell\": Part(Sphere(...))}, or remove friction="))
+            # one code for every setting read at a hull's points: the spacing of its points, the friction acting at them
+            written = [f"{name}=" for name, value in (("spacing", self.spacing), ("friction", self.friction))
+                       if value is not None]
+            unread = () if not written else (Problem(
+                "confinement.no-hull", f"{' and '.join(written)} {'are' if len(written) > 1 else 'is'} read at a "
+                                       f"hull's points, and {ctx.bindings['body']} has no hull: it is held as a sphere "
+                                       f"of its extent about its centre, with no point on its surface",
+                f"give the body a part outside every other: parts={{\"shell\": Part(Sphere(...))}}, or remove "
+                f"{' and '.join(written)}"),)
             return Plan(nodes=(), values={"extent": Value("body", "extent")}, problems=unread,
                         confines=(Confinement("body", CONFINEMENT.name, "surface", ctx.scalar("margin"), self.rule),))
         friction = None if self.friction is None else Friction(self.friction.solve_name(),

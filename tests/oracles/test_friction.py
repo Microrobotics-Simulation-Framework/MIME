@@ -140,7 +140,9 @@ def test_through_the_build_the_sphere_on_a_tilted_tubes_floor_rolls_or_slips_as_
 
 
 def test_friction_is_refused_on_a_body_with_no_hull():
-    """``friction.no-hull``: a body held as a sphere of its extent about its centre has no point on its surface."""
+    """``confinement.no-hull``, one code for every setting read at a hull's points: a body held as a sphere of its
+    extent about its centre has no point on its surface for friction to act at; the message names friction= and both
+    routes."""
     from mime import Body, Experiment, Medium, State, Structure
     from mime.dynamics import RigidInertial
     from mime.interactions import Gravity
@@ -163,7 +165,9 @@ def test_friction_is_refused_on_a_body_with_no_hull():
                       surface=tube.inner_surface)
     with pytest.raises(BuildRefused) as refused:
         experiment.plan()
-    assert "friction.no-hull" in refused.value.codes()
+    assert refused.value.codes() == ["confinement.no-hull"]
+    message = str(refused.value)
+    assert "friction=" in message and "parts=" in message and "remove friction=" in message
 
 
 def test_the_margin_defaults_to_the_roughness_cutoff_and_reads_the_declared_roughness():

@@ -97,15 +97,19 @@ def disk_update(block: Array, load: Array, bound: Array) -> Array:
     scaled load is bounded by the block's condition and ``R = bound/|x_free|`` lies below one), ``R`` taken above
     ``eps^2`` so that a bound at rounding is read as a bound and no step leaves the dtype's range; the force then
     ``bound`` along ``y``, on the boundary to rounding. Where the boundary is not taken its inputs are fed the unit
-    load and a radius of a half (domain guards), on which no step overflows, so no ``0 x inf`` reaches reverse mode."""
+    load and a radius of a half (domain guards), on which no step overflows, so no ``0 x inf`` reaches reverse mode.
+    The pair sticks only strictly inside its disk: at a bound of zero (a point its normal row leaves free) with no
+    load, the boundary is taken, ``0`` times a direction from those same inputs, so the force and its derivative are
+    zero (the free minimiser's derivative there would read friction at a point with no normal force)."""
     free = -_solved2(block, load)
     size = jnp.sum(free * free)
-    outside = size > bound * bound
-    length = jnp.sqrt(switch.domain_guard(outside, size, 1.0))
+    outside = size >= bound * bound
+    reached = outside & (size > 0)
+    length = jnp.sqrt(switch.domain_guard(reached, size, 1.0))
     scale = 0.5 * (block[0, 0] + block[1, 1])
     scaled = block / scale
-    target = switch.domain_guard(outside, load / (scale * length), jnp.asarray([1.0, 0.0], dtype=load.dtype))
-    radius = switch.domain_guard(outside, bound / length, 0.5) + jnp.finfo(load.dtype).eps ** 2
+    target = switch.domain_guard(reached, load / (scale * length), jnp.asarray([1.0, 0.0], dtype=load.dtype))
+    radius = switch.domain_guard(reached, bound / length, 0.5) + jnp.finfo(load.dtype).eps ** 2
     eye = jnp.eye(2, dtype=load.dtype)
 
     def newton(_: Any, nu: Array) -> Array:
@@ -122,13 +126,22 @@ def disk_update(block: Array, load: Array, bound: Array) -> Array:
                         resolution=lambda: switch.rounding(size + bound * bound))
 
 
+#: The block a pair is fed at a point with no normal row: definite, its entries all nonzero, so that no fallback
+#: scaling (``switch.replacing_fallbacks``) makes it singular.
+_DEFINITE = np.asarray([[2.0, 1.0], [1.0, 2.0]])
+
+
 def point_update(own: Array, velocity: Array, held: Array, traction: Traction) -> tuple[Array, Array]:
     """One held point's own updates with every other point's forces held: its normal row's exact update (kept at
     zero or above: ``contact.impulse``), then each friction pair's (:func:`disk_update`) within its disk at the normal
     force just found. ``own`` is the point's ``R x R`` block of the coupling, ``velocity`` its rows' velocities at the
-    current forces, ``held`` its forces; both returned moved."""
+    current forces, ``held`` its forces; both returned moved. A point whose normal row has no length (on the surface's
+    axis, where it has no normal) is never moved: its normal force stays zero, and its pairs, whose second tangent has
+    no length there either, are fed a definite block (domain guards), so they take no force and no 0/0 reaches the
+    solve."""
     old = held[NORMAL]
-    diagonal = switch.domain_guard(own[NORMAL, NORMAL] > 0, own[NORMAL, NORMAL], 1.0)
+    normal_row = own[NORMAL, NORMAL] > 0
+    diagonal = switch.domain_guard(normal_row, own[NORMAL, NORMAL], 1.0)
     moved = old - velocity[NORMAL] / diagonal
     normal = switch.maximum(moved, 0.0, owner="contact.impulse", indicator=moved,
                             resolution=lambda: switch.rounding(jnp.abs(old) + jnp.abs(velocity[NORMAL] / diagonal)))
@@ -137,7 +150,7 @@ def point_update(own: Array, velocity: Array, held: Array, traction: Traction) -
     for pair, coefficient in zip(traction.pairs, traction.coefficients, strict=True):
         index = np.asarray(pair)
         before = held[index]
-        block = own[index[:, None], index[None, :]]
+        block = switch.domain_guard(normal_row, own[index[:, None], index[None, :]], _DEFINITE.astype(own.dtype))
         force = disk_update(block, velocity[index] - block @ before, coefficient * normal)
         velocity = velocity + own[:, index] @ (force - before)
         held = held.at[index].set(force)

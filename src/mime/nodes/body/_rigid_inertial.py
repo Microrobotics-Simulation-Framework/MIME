@@ -160,10 +160,10 @@ class MeteredRigidContactState(_BodyRecords, closed=True):
 
 class RigidFrictionState(TypedDict, closed=True):
     """A body held by its hull with friction at its points: :class:`RigidContactState`'s fields, and each group's
-    friction at its point (``contact_traction``, the force along the surface in the world, N, zero where the point was
-    free), the slip of the body's point there at the solved twist (``contact_slip``, m/s, zero where it was free) and
-    the friction power guard's reading (``contact_friction_power``: the largest point's friction power at the solved
-    twist over its scale, never above ``_friction.power_floor`` at a converged solve)."""
+    friction at its point (``contact_friction_forces``, the force along the surface in the world, N, zero where the
+    point was free), the slip speed of the body's point there at the solved twist (``contact_slip_speed``, m/s, zero
+    where it was free) and the friction power guard's reading (``contact_friction_power_ratio``: the largest point's
+    friction power at the solved twist over its scale, never above ``_friction.power_floor`` at a converged solve)."""
 
     pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
     twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
@@ -171,9 +171,9 @@ class RigidFrictionState(TypedDict, closed=True):
     contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
     contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
     contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
-    contact_traction: ReadOnly[Annotated[Float[Array, "groups 3"], Units("N")]]  # noqa: F722 - a jaxtyping shape
-    contact_slip: ReadOnly[Annotated[Float[Array, "groups"], Units("m/s")]]
-    contact_friction_power: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    contact_friction_forces: ReadOnly[Annotated[Float[Array, "groups 3"], Units("N")]]  # noqa: F722 - a jaxtyping shape
+    contact_slip_speed: ReadOnly[Annotated[Float[Array, "groups"], Units("m/s")]]
+    contact_friction_power_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
 
 
 class MeteredRigidFrictionState(_BodyRecords, closed=True):
@@ -185,9 +185,9 @@ class MeteredRigidFrictionState(_BodyRecords, closed=True):
     contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
     contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
     contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
-    contact_traction: ReadOnly[Annotated[Float[Array, "groups 3"], Units("N")]]  # noqa: F722 - a jaxtyping shape
-    contact_slip: ReadOnly[Annotated[Float[Array, "groups"], Units("m/s")]]
-    contact_friction_power: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    contact_friction_forces: ReadOnly[Annotated[Float[Array, "groups 3"], Units("N")]]  # noqa: F722 - a jaxtyping shape
+    contact_slip_speed: ReadOnly[Annotated[Float[Array, "groups"], Units("m/s")]]
+    contact_friction_power_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
 
 
 class RigidInertialInputs(TypedDict, closed=True):
@@ -726,8 +726,10 @@ class RigidInertialNode(MimeNode):
             return self._published(constants, books.with_records(self, node_fields(RigidFrictionState(
                 pose=pose, twist=twist, contact_points=as_run_array(np.zeros((groups, 3))),
                 contact_forces=as_run_array(np.zeros(groups)), contact_short=as_run_array(np.zeros(groups)),
-                contact_residual=as_run_array(np.zeros(())), contact_traction=as_run_array(np.zeros((groups, 3))),
-                contact_slip=as_run_array(np.zeros(groups)), contact_friction_power=as_run_array(np.zeros(()))))))
+                contact_residual=as_run_array(np.zeros(())),
+                contact_friction_forces=as_run_array(np.zeros((groups, 3))),
+                contact_slip_speed=as_run_array(np.zeros(groups)),
+                contact_friction_power_ratio=as_run_array(np.zeros(()))))))
         if self.holds_hull:
             groups = len(self.groups)
             return self._published(constants, books.with_records(self, node_fields(RigidContactState(
@@ -997,8 +999,8 @@ class RigidInertialNode(MimeNode):
                                                                            orientation]), hold.solved, mass_matrix)
             return (node_fields(RigidFrictionState(
                 pose=ended, twist=carried, contact_points=hold.points, contact_forces=hold.forces,
-                contact_short=hold.short, contact_residual=hold.residual, contact_traction=hold.traction,
-                contact_slip=hold.slip, contact_friction_power=hold.power)),
+                contact_short=hold.short, contact_residual=hold.residual, contact_friction_forces=hold.traction,
+                contact_slip_speed=hold.slip, contact_friction_power_ratio=hold.power)),
                 StepParts(mass_matrix, system, free, hold.solved, orientation, hold.impulses, hold.rates))
         if self.holds_hull:
             body = self.hull_points(p, twist.dtype)
