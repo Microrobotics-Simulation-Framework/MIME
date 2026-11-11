@@ -1,0 +1,32 @@
+{
+  "written": "2026-11-11, committed before the openings addendum's probe ran: the release tip took several openings at one plane (#246), whose port system now solves a reduced system built by _reduced; the seam moved that solve to dense_solve in the merge, by hand",
+  "phase": "the precision seam, small form, openings addendum (row #357)",
+  "labels": "the builder's prediction, from the code's structure: dense_solve is jnp.linalg.solve in a name scope, and the solve's operands are the same arrays the tip's solve takes",
+  "seen_before": [
+    "tests/saved/test_solve_walk.py passed on the tree merged with #246 (the previous head, c5e9948) on the laptop: every step of every registered node class, the open flow node's among them, held its solves in a registered scope. No bit comparison of #246's cases had been read."
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: a GitHub runner, one CPU and one BLAS thread pinned for the bit comparison",
+    "sizes_and_parameters": "the saved cases open_tube_flow (an Inflow and a Windkessel), open_tube_loop and closed_tube (#246's several openings at one plane), each run 20 ms",
+    "seeds_and_draws": "no draws"
+  },
+  "gate_1_openings_bits": {
+    "claim": "the port system's elimination through dense_solve moves no bit of the open flow node's programs",
+    "kind": "equality",
+    "case": "open_tube_flow, open_tube_loop, closed_tube, float64 and float32, base the release tip a7df7647 against head, one job (.github/probe/bit_compare.py), with a one-ulp control on the near field",
+    "prediction": {"value": "every array np.array_equal", "unit": "arrays", "basis": "derived", "why": "a name scope changes metadata, not operations"},
+    "metric": "numpy.array_equal per array",
+    "control": {
+      "plant": "the near field's start velocity one ulp up in the head's run only (ulp_nf_dense_2)",
+      "environment_variable": "none: the dump script reads the tree it runs in",
+      "expected_rate": "arrays differ",
+      "runs": 1,
+      "clean_expected": "equal",
+      "resolution": "one ulp"
+    },
+    "if_wrong": "revert the port system's solve to its bare call and report the arrays",
+    "cannot_discriminate_if": "both sides NaN: bit_compare reports equal_nan beside equal, and the arrays are read for finiteness; a case whose arrays include no solved quantity"
+  },
+  "outcomes": null
+}
