@@ -173,13 +173,14 @@ def _capsule_interval(p: Mapping[str, Any], o: Vec, d: Vec) -> Interval:
         outs.append(centre + _root(h2))
         met.append(q_ball < radius * radius)
     # The capsule is convex, so its interval is the union of its pieces': the least entry and the last exit of the
-    # pieces the ray meets (a piece it misses, whose clamped chord is a halo about its nearest point, moved away).
+    # pieces the ray meets (a piece it misses, whose clamped chord is a halo about its nearest point, moved away); a ray
+    # that meets none keeps the side's halo, as the cylinder's does.
     enter = jnp.minimum(jnp.minimum(jnp.where(met[0], ins[0], FAR), jnp.where(met[1], ins[1], FAR)),
                         jnp.where(met[2], ins[2], FAR))
     leave = jnp.maximum(jnp.maximum(jnp.where(met[0], outs[0], -FAR), jnp.where(met[1], outs[1], -FAR)),
                         jnp.where(met[2], outs[2], -FAR))
     hit = met[0] | met[1] | met[2]
-    return jnp.where(hit, enter, ins[1]), jnp.where(hit, leave, outs[1])
+    return jnp.where(hit, enter, side_in), jnp.where(hit, leave, side_out)
 
 
 def _capsule_edge(p: Mapping[str, Any], o: Vec, d: Vec) -> Any:

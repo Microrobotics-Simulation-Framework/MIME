@@ -9,7 +9,9 @@ and a point's rounding moves its inverse further. A pixel the ray table flags be
 may be one the oracle reaches only where the inverse is ill-conditioned (its condition above ``FLAG_CONDITION``: the
 tangential terms move the fold off the radial map's, within a few hundredths of the radius); every pixel the oracle
 cannot reach is flagged. **The control** (``CAMERA_PLANT=undistort-truncated``) stops the
-radial solve after one step; drawn lenses then miss by up to the square of their distortion."""
+solve after one radial step and no tangential one; drawn lenses then miss by up to the square of their distortion. (As
+first written it truncated the radial solve alone, which the tangential steps then finished: caught 4 of 30, the four
+the clean arm also failed.)"""
 
 from __future__ import annotations
 
@@ -96,13 +98,13 @@ def rays_against_oracle(lens: tuple[float, ...], focal: float) -> tuple[float, f
     camera = Pinhole(WIDTH, HEIGHT, focal, focal * 1.01, (WIDTH - 1) / 2 + 1.5, (HEIGHT - 1) / 2 - 0.5,
                      BrownConrady(*lens))
     pose = CameraPose(jnp.zeros(3), jnp.asarray((1.0, 0.0, 0.0, 0.0)))
-    held = detector.UNDISTORT_STEPS
+    held = detector.UNDISTORT_STEPS, detector.TANGENTIAL_STEPS
     if planted("undistort-truncated"):
-        detector.UNDISTORT_STEPS = 1
+        detector.UNDISTORT_STEPS, detector.TANGENTIAL_STEPS = 1, 0
     try:
         rays = ray_table(camera, pose)
     finally:
-        detector.UNDISTORT_STEPS = held
+        detector.UNDISTORT_STEPS, detector.TANGENTIAL_STEPS = held
     v, u = np.meshgrid(np.arange(HEIGHT, dtype=np.float64), np.arange(WIDTH, dtype=np.float64), indexing="ij")
     x, y, valid, condition = oracle(lens, (u - camera.cx) / camera.fx, (v - camera.cy) / camera.fy)
     norm = np.sqrt(x * x + y * y + 1)

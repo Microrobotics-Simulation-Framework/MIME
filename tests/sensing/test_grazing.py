@@ -2,9 +2,11 @@
 and rays just past them, every chord, edge value and coverage, and their derivatives in the body's position and radius,
 are finite, in both dtypes.
 
-**The control** (``CAMERA_PLANT=hard-clamp``) takes the grazing square root of ``max(h2, 0)`` in place of the declared
-softplus: its derivative at the tangent ray is infinite, and the gate fails every run (the tangent ray is built
-exactly)."""
+Beyond finiteness, the chord's derivative in the radius is bounded at the tangent ray (by the softplus's width) and
+not zero just beyond it. **The control** (``CAMERA_PLANT=hard-clamp``) takes the grazing square root of ``max(h2, 0)``
+in place of the declared softplus: its derivative is unbounded at the tangent ray and zero beyond it, and the gate fails
+every run (the tangent ray is built exactly). As first written the gate checked finiteness alone, which the root's floor
+(``_root``) keeps under the hard clamp too: its control was caught 0 of 30 times, so these two checks were added."""
 
 from __future__ import annotations
 
@@ -45,3 +47,8 @@ def test_tangent_and_missing_rays_are_finite(dtype, form, monkeypatch):
     gradient = jax.jacfwd(values, argnums=(0, 1))(jnp.asarray(RADIUS), jnp.asarray(0.0))
     assert abs(float(value[1, 0])) <= 4 * float(jnp.finfo(value.dtype).eps) * RADIUS
     assert bool(jnp.all(jnp.isfinite(value))) and all(bool(jnp.all(jnp.isfinite(g))) for g in gradient)
+    # The chord's derivative in the radius: bounded at the tangent ray (the softplus's 1 / (GRAZING sqrt(ln 2)), under
+    # ten over GRAZING), and not zero just beyond it, where a hard clamp's is exactly zero.
+    chord_in_radius = gradient[0][0]
+    assert float(jnp.max(jnp.abs(chord_in_radius))) <= 10.0 / forms.GRAZING
+    assert float(chord_in_radius[1]) > 0.0

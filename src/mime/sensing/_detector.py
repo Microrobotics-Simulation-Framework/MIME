@@ -27,8 +27,9 @@ from mime.scene import CameraPrim
 #: Bracketed Newton steps of the undistortion's radial solve, their derivative held (a step leaving the bracket bisects
 #: it, so a hard lens converges at worst as bisection); the distortion's inverse gate measures what they reach.
 UNDISTORT_STEPS = 16
-#: Newton steps of the whole map after the radial solve, for the tangential terms (|p| about 1e-3: quadratic from there).
-TANGENTIAL_STEPS = 4
+#: Newton steps of the whole map after the radial solve, for the tangential terms (|p| about 1e-3): eight, since four
+#: left a pixel near the validity radius unconverged on about one drawn lens in eight (the gate's clean arm, 4 of 30).
+TANGENTIAL_STEPS = 8
 
 lax: Any = jax.lax
 #: JAX's transforms, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
