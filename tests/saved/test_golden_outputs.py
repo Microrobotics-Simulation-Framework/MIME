@@ -51,14 +51,22 @@ RTOL = 1e-10
 #: reaches some 1e-2 over its first steps): the components across a tube driven along it are the solve's rounding,
 #: some 1e-19, which moves by its own size across machines, and a velocity moved by a ten-billionth of the flow's
 #: speed is not rounding.
+#: The flow's bypass ratio, the solid's share of the lumen's flux, on the scale of a share (one): a tube tree's solid
+#: carries some 5e-4 of the flux, and that small flux moves with the solves' path (XLA's threads on a runner, the
+#: tree's wall's rounding) by 1e-9 of itself between runs of one program on one CPU model (runs 42968465331 and
+#: 42968836338), some 4e-13, while a share moved by a ten-billionth is not rounding.
 FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_short": 1e-4,
           "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0,
-          "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2}
+          "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2, "bypass_ratio": 1.0}
 LEDGER_FLOOR = 1e-9
 #: A field judged on another field's scale, by name: an open flow's unit fields' components across a tube along z are
 #: the solve's rounding, which moves by its own size across machines (flake cause 2), so each is judged on the unit
-#: field's own scale, its axial component's largest magnitude.
-SCALED_BY = {"unit_x": "unit_z", "unit_y": "unit_z"}
+#: field's own scale, its axial component's largest magnitude. An opening's flux is a sum over its patch's faces, its
+#: rounding some eps of the flux through them, so it is judged on the flow's flux, its lumen's: a closed vessel's
+#: (``closed_tube``: a Windkessel and a closed valve) are rounding, 1e-28 to 2e-25 m^3/s beside a lumen's 4e-10 that its
+#: solid carries back. A law's own state is judged on the openings' pressures: a Windkessel's capacitor is a pressure,
+#: stepped by the flux it takes, so on a closed vessel it is that flux's rounding (1e-17 Pa beside 0.66 Pa).
+SCALED_BY = {"unit_x": "unit_z", "unit_y": "unit_z", "opening_flux": "lumen_flux", "opening_state": "opening_pressure"}
 #: The rft rung's least eigenvalue is of a matrix scaled to a unit diagonal, so its scale is one; for a straight body
 #: (the rod, the seed) it is the spin's rounding, of either sign, a few units in the last place, and is judged against
 #: that scale, never its own. The coil's, 0.79, is a real number and is held to 1e-10 of it.
@@ -225,6 +233,23 @@ def test_a_moved_output_is_caught_and_a_rounding_residue_is_not():
         scale = max(abs(v) for row in rows for v in row)
         rows[-1][3] += shift * scale
         assert bool(differences(moved, golden)) is caught
+
+
+def test_a_closed_vessels_rounding_is_judged_on_its_flow_and_its_pressures():
+    """The control of the open flow's scales: on the closed vessel's golden output (the valve's), an opening's flux and
+    the Windkessel's state moved by ten times their own largest magnitude (rounding, 1e-24 m^3/s and 1e-15 Pa) are not
+    caught; moved by 1e-8 of the lumen's flux and of the openings' pressures, they are."""
+    golden = json.loads(path_of(("interaction", "valve", "0.1.0")).read_text())
+    fields = golden["outputs"]["water.flow"]
+    for field, scale in (("opening_flux", "lumen_flux"), ("opening_state", "opening_pressure")):
+        rounding = float(np.max(np.abs(np.asarray(fields[field]))))
+        assert rounding < 1e-12 * float(np.max(np.abs(np.asarray(fields[scale])))), (field, rounding)
+        for shift, caught in ((10.0 * rounding, False), (1e-8 * float(np.max(np.abs(np.asarray(fields[scale])))), True)):
+            moved = json.loads(json.dumps(golden))
+            values = np.asarray(moved["outputs"]["water.flow"][field], dtype=np.float64)
+            values.flat[-1] += shift
+            moved["outputs"]["water.flow"][field] = values.tolist()
+            assert bool(differences(moved, golden)) is caught, (field, shift)
 
 
 def test_a_rate_moved_beyond_a_positions_last_bits_over_the_step_is_caught():

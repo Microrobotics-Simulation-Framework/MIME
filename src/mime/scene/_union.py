@@ -48,10 +48,12 @@ in every parameter, and the distance's derivative and its normal's are exact off
 switches. The selections are plain JAX: no node's step runs this yet. The first step that does (the FVM's wall) writes
 them through ``mime.core.switch``, its owners declared on the shape it registers.
 
-**Where the Newton runs.** The check runs at every point. The candidates run only at a held set of points, the plan
-(:meth:`ExactUnion.plan`), chosen from the points the check fails at and a margin when the caller builds, so the
-program's shapes stay fixed. A point outside the plan that fails the check is counted (``unrefined``), so walls moved
-further than the plan's margin are seen. Which regions meet (``meets``) is fixed when the union is made; the union's
+**Where the Newton runs.** The check runs at every point. The candidates run only at a set of points of fixed size,
+so the program's shapes stay fixed: a held set, the plan (:meth:`ExactUnion.plan`), chosen from the points the check
+fails at and a margin when the caller builds; or the points the check fails at, chosen in the program at the run's
+values up to a size held at build (:meth:`ExactUnion.evaluate_chosen`, the FVM's wall). A failing point the candidates
+do not reach is counted (``unrefined``), so walls moved further than a plan's margin, or more failing points than the
+size, are seen. Which regions meet (``meets``) is fixed when the union is made; the union's
 ``unplanned`` reads, at the run's values, how many pairs that do not meet by it now come within reach of each other
 (a tube tree's radii scaled by a study, say), where the check is blind. The counts travel with every value the union
 returns (:class:`UnionDistance`, :class:`UnionNormal`); they say where it is not exact, and none of them is a proof
@@ -315,8 +317,7 @@ class ExactUnion:
         """:meth:`check` at local points, with the deepest region and the meeting region its nearest wall point lies
         deepest in (each ``(N,)``)."""
         distances, normals, radius = self._widened(parameters, points)
-        least = jnp.min(distances, axis=0)
-        deepest = jnp.argmin(distances, axis=0)
+        least, deepest = _least(distances)
         normal = jnp.take_along_axis(normals, deepest[None, :, None], axis=0)[0]
         foot = points - least[:, None] * normal
         at_foot = jnp.stack([region.signed_distance(parameters, foot) for region in self.regions]) - radius
@@ -350,7 +351,7 @@ class ExactUnion:
             kept = jnp.ones(points.shape[:-1], dtype=bool)
             for j in np.nonzero(table[i])[0]:
                 kept = kept & (self.regions[j].signed_distance(parameters, foot) - radius >= -slack)
-            best = jnp.minimum(best, jnp.where(kept, jnp.abs(distances[i]), jnp.inf))
+            best = _lesser(best, jnp.where(kept, jnp.abs(distances[i]), jnp.inf))
         return best
 
     def _kept(self, parameters: Parameters, point: Array, own: Sequence[int], radius: Any, slack: Array) -> Array:
@@ -448,10 +449,10 @@ class ExactUnion:
         reached = _stop(_lax.fori_loop(0, NEWTON_STEPS, stepped, jnp.concatenate([on_seam, multipliers], -1)))
         reached = _finite_or(reached, jnp.concatenate([held_points, jnp.zeros((*points.shape[:-1], 2), dtype)], -1))
         residual, jacobian = kkt(reached)
-        z = _implicit(reached, _stop(jacobian) + _ridge(dtype, 5), residual)
         converged = (_stop(jnp.max(jnp.abs(residual), axis=-1))
                      <= self._allowance(parameters, held_points, CONVERGED_ULPS))
         kept = converged & self._kept(parameters, reached[..., :3], (i, j), radius, slack)
+        z = _implicit(reached, _stop(jacobian) + _ridge(dtype, 5), _kept_only(kept, residual))
         seam = jnp.where(kept[..., None], z[..., :3], held_points)
         return Seam(jnp.where(kept, _length(points - seam), jnp.inf), converged, reached_seam)
 
@@ -495,12 +496,12 @@ class ExactUnion:
         values, gradients = walls(reached)
         held_gradients = _stop(gradients)
         gram = held_gradients @ jnp.swapaxes(held_gradients, -1, -2) + _ridge(dtype, 3)
-        step = _implicit(jnp.zeros_like(values), gram, values)
-        c = reached + (jnp.swapaxes(held_gradients, -1, -2) @ step[..., None])[..., 0]
         converged = (_stop(jnp.max(jnp.abs(values), axis=-1))
                      <= self._allowance(parameters, held_points, CONVERGED_ULPS))
         kept = converged & self._kept(parameters, reached, corner, radius,
                                       self._allowance(parameters, held_points, KEPT_ULPS))
+        step = _implicit(jnp.zeros_like(values), gram, _kept_only(kept, values))
+        c = reached + (jnp.swapaxes(held_gradients, -1, -2) @ step[..., None])[..., 0]
         c = jnp.where(kept[..., None], c, held_points)
         return jnp.where(kept, _length(points - c), jnp.inf)
 
@@ -517,14 +518,14 @@ class ExactUnion:
         stalled = jnp.zeros(points.shape[:-1], dtype=bool)
         for i, j in self.meets:
             seam = self._seam(parameters, points, i, j, radius)
-            best = jnp.minimum(best, seam.distance)
+            best = _lesser(best, seam.distance)
             own = ((deepest == i) & (inside == j)) | ((deepest == j) & (inside == i))
             stalled = stalled | (own & ~seam.reached_seam)
         for corner in self.corners:
             starts = self._corner_starts(parameters, points, corner, feet, size)
             found = self._corner(parameters, jnp.concatenate([points] * len(starts)), corner, radius,
                                  jnp.concatenate(starts))
-            best = jnp.minimum(best, jnp.min(found.reshape(len(starts), -1), axis=0))
+            best = _lesser(best, _least(found.reshape(len(starts), -1))[0])
         return best, jnp.isfinite(best) & ~stalled
 
     # -- the distance ------------------------------------------------------------------------------------------------
@@ -557,6 +558,50 @@ class ExactUnion:
         unplanned = jnp.asarray(self.unplanned(parameters))
         return UnionDistance(widened + radius, failing, unrefined, unconverged, unplanned)
 
+    def chosen(self, parameters: Parameters, points: Any, floor: Any) -> Array:
+        """At ``points`` ``(N, 3)`` (the world's): whether each fails the check and lies shallower than ``floor`` (a
+        signed distance, negative in the fluid), where :meth:`evaluate_chosen` runs the candidates. Compiled once for
+        each union."""
+        return self._chosen_compiled(parameters, jnp.asarray(points), floor)
+
+    @functools.cached_property
+    def _chosen_compiled(self) -> Callable[[Parameters, Array, Any], Array]:
+        return cast(Any, jax).jit(self._chosen_at)
+
+    def _chosen_at(self, parameters: Parameters, points: Array, floor: Any) -> Array:
+        held = self._local(parameters, points)
+        least, clearance, _, _ = self._check(parameters, held)
+        return self._chosen(parameters, held, least, clearance, floor)
+
+    def _chosen(self, parameters: Parameters, held: Array, least: Array, clearance: Array, floor: Any) -> Array:
+        radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
+        failing = (least < 0.0) & (clearance < -self._allowance(parameters, held, KEPT_ULPS))
+        return failing & (least + radius > floor)
+
+    def evaluate_chosen(self, parameters: Parameters, points: Array, size: int, floor: Any) -> UnionDistance:
+        """:meth:`evaluate` with its plan chosen in the program at the run's values (:meth:`chosen`): the candidates
+        run at the first ``size`` points, in their order, that fail the check and lie shallower than ``floor``. A
+        failing point deeper keeps the minimum, uncounted (a reader's fields are flat there); one past the first
+        ``size`` keeps it and is counted (``unrefined``). Only ``size`` is fixed with the program; ``failing`` holds the
+        chosen points."""
+        held = self._local(parameters, points)
+        least, clearance, deepest, inside = self._check(parameters, held)
+        radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
+        chosen = self._chosen(parameters, held, least, clearance, floor)
+        count = jnp.sum(chosen)
+        depth = -least
+        unconverged = jnp.asarray(0)
+        if size:
+            index = jnp.nonzero(chosen, size=size, fill_value=jnp.argmax(chosen))[0]
+            valid = jnp.arange(size) < count
+            refined, stands = self._refined_depth(parameters, held[index], deepest[index], inside[index])
+            # A lane past the chosen points repeats the first of them and writes nothing: no derivative passes it.
+            depth = depth.at[jnp.where(valid & stands, index, held.shape[0])].set(refined, mode="drop")
+            unconverged = jnp.sum(valid & ~stands)
+        widened = jnp.where(least >= 0.0, least, -depth)
+        unrefined = count - jnp.sum(jnp.arange(size) < count)
+        return UnionDistance(widened + radius, chosen, unrefined, unconverged, jnp.asarray(self.unplanned(parameters)))
+
     def outward_normal(self, parameters: Parameters, points: Any, plan: np.ndarray | None = None
                        ) -> UnionNormal:
         """The union's outward unit normal at ``points`` (the distance's gradient in each point), with the distance
@@ -570,10 +615,15 @@ class ExactUnion:
 
     def minimum(self, parameters: Parameters, points: Any) -> Array:
         """The plain minimum of the regions' distances, filleted the same way: exact outside the union, too shallow
-        inside it near every seam. The control the rule is measured against, kept for the tests; not a distance to
-        use."""
-        distances, _, radius = self._widened(parameters, self._local(parameters, points))
-        return jnp.min(distances, axis=0) + radius
+        inside it near every seam. The control the rule is measured against; and the distance away from the wall,
+        where a reader's fields are flat (the FVM's faces beyond its band), the regions' distances alone, one at a
+        time, so its memory is the points'."""
+        held = self._local(parameters, points)
+        radius = jnp.asarray(self.fillet(parameters), dtype=held.dtype)
+        least = self.regions[0].signed_distance(parameters, held) - radius
+        for region in self.regions[1:]:
+            least = _lesser(least, region.signed_distance(parameters, held) - radius)
+        return least + radius
 
 
 class Seam(NamedTuple):
@@ -609,10 +659,34 @@ def _implicit(reached: Array, jacobian: Array, residual: Array) -> Array:
     return reached - jnp.linalg.solve(jacobian, residual[..., None])[..., 0]
 
 
+def _kept_only(kept: Array, residual: Array) -> Array:
+    """``residual`` where its lane is ``kept``, held out of every derivative elsewhere: a lane whose point is discarded
+    passes no derivative back into its implicit step, whose matrix may be singular there (a search that reached no
+    proper point), so reverse mode's solve against it, at a zero cotangent, makes no NaN that the parameters would
+    gather."""
+    return jnp.where(kept[..., None], residual, _stop(residual))
+
+
 def _finite_or(value: Array, fallback: Array) -> Array:
     """``value`` where every component of a point's row is finite, ``fallback`` elsewhere: a step that did not reach a
     seam keeps its discarded lane finite, so no NaN reaches a derivative through it."""
     return jnp.where(jnp.all(jnp.isfinite(value), axis=-1, keepdims=True), value, fallback)
+
+
+def _lesser(a: Array, b: Array) -> Array:
+    """The lesser of ``a`` and ``b``, each element: a selection by one comparison, its derivative the selected one's.
+    Not ``jnp.minimum`` or ``jnp.min``, whose derivatives find the least by comparing it again with its operands: XLA
+    may compute an operand twice, fused into two programs whose arithmetic rounds differently (a multiply and an add
+    contracted into one in one of them), and the comparison then finds no operand equal to the least, or another one,
+    and reverse mode reads a derivative forward mode does not."""
+    return jnp.where(b < a, b, a)
+
+
+def _least(stacked: Array) -> tuple[Array, Array]:
+    """The least of ``stacked`` along its first axis, by the index of the least (its derivative the selected entry's,
+    as :func:`_lesser`'s), and that index."""
+    index = jnp.argmin(stacked, axis=0)
+    return jnp.take_along_axis(stacked, index[None], axis=0)[0], index
 
 
 def _ridge(dtype: Any, size: int) -> Array:

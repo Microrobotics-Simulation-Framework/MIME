@@ -219,6 +219,13 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("interaction", "windkessel", "0.1.0"): NodeCase(
         no_node="held in its flow's step: the open flow's node, fvm's, takes it at construction from its registration, "
                 "its books verified by tests/flow/test_fvm_open.py (FB3) and its passivity by the port-law suite"),
+    ("interaction", "valve", "0.1.0"): NodeCase(
+        no_node="held in its flow's step: the open flow's node, fvm's, takes it at construction from its registration, "
+                "its gate against the walled-off vessel in tests/flow/test_fvm_two_openings.py"),
+    ("interaction", "shared_distal", "0.1.0"): NodeCase(
+        no_node="held in its flow's step over two openings: the open flow's node, fvm's, takes it at construction from "
+                "its registration, its block verified by tests/flow/test_fvm_two_openings.py and "
+                "tests/flow/test_port_laws.py"),
     ("dynamics", "womersley", "0.1.0"): PRESCRIBED,
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.3.0"): RIGID_BODY,
@@ -269,6 +276,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "MRS node's, a read of the corrected table)"),
     ("geometry", "plane", "0.1.0"): NodeCase(
         no_node="a geometry kind: the nodes that read its region and direction hold their parameters"),
+    ("geometry", "tube_tree", "0.1.0"): NodeCase(
+        no_node="a geometry kind: the flow's node that reads its lumen holds the tree's points, radii and fillet"),
     ("wall kind", "plane", "0.1.0"): NodeCase(
         no_node="a wall kind: a solver's node evaluates the correction the solver registers for it (the "
                 "MRS node's, the regularised image in closed form)"),

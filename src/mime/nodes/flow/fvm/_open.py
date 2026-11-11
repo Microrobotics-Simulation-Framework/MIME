@@ -18,10 +18,24 @@ edges), so the kinetic energy convection carries through the openings is the sch
 
 **The fast solve.** ``D G`` with homogeneous Dirichlet planes along z and periodic across: a real FFT across x and y
 and, along z, the cell-centred Dirichlet Laplacian's own orthonormal sine basis (``sin(pi (m + 1) (j + 1/2) / nz)``),
-applied as a dense ``nz x nz`` product at the highest matmul precision. Its symbol has no zero, so no mean is fixed."""
+applied as a dense ``nz x nz`` product at the highest matmul precision. Its symbol has no zero, so no mean is fixed.
+
+**The openings** (:class:`OpeningLayout`): each opening is a patch of one plane, the low or the high; where a plane holds
+one opening it is the whole plane, and where it holds several each of the plane's cells belongs to the opening whose
+centre is nearest (in cells; the lower index on a tie), so the solid's faces on a plane belong to its openings too and
+their Darcy flux is in their fluxes. Its sums (the fluxes, the openings' forces, the kinetic energy carried through each)
+are over its patch.
+
+**The kinetic energy convection carries through each opening** (:meth:`OpenMACGrid.opening_kinetic_fluxes`): on a
+discretely divergence-free field the scheme's convective power telescopes to its planes, ``<C(u), u> = -sum_k K_k``,
+``K_k = h^2 sum_patch (1/2)(avg_x u^2 + avg_y v^2 + w_b^2) w_b n_k`` (the tangential velocity's square from the end
+cell averaged onto the cell's centre, ``w_b`` the plane's face, ``n_k`` the outward sign): the divergence form is
+conservative given the discrete continuity (Morinishi et al. 1998), so the remainder is the field's divergence, rounding
+after the projector."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, override
 
@@ -74,18 +88,61 @@ def _z_difference_to_centre(w: Array, h: Any) -> Array:
     return (w[..., 1:] - w[..., :-1]) / h
 
 
+#: The planes an opening lies on, by index: the low plane (``z = 0``) and the high one.
+LOW, HIGH = 0, 1
+
+
+@dataclass(frozen=True)
+class OpeningLayout:
+    """Each opening's plane (:data:`LOW` or :data:`HIGH`) and centre on it (in cells along x and y from the box's
+    corner; read only where its plane holds another opening): the module's patches."""
+
+    planes: tuple[int, ...] = (LOW, HIGH)
+    centres: tuple[tuple[float, float], ...] = ()
+
+    def __post_init__(self) -> None:
+        if any(plane not in (LOW, HIGH) for plane in self.planes) or len(set(self.planes)) != 2:
+            raise ValueError(f"each opening lies on the low plane (0) or the high one (1), each plane holding one at "
+                             f"least: not {self.planes}")
+        shared = len(self.planes) > 2
+        if shared and len(self.centres) != len(self.planes):
+            raise ValueError(f"a plane holding several openings splits between their centres: give one an opening, "
+                             f"not {len(self.centres)} for {len(self.planes)}")
+
+    def masks(self, cells: tuple[int, int, int]) -> np.ndarray:
+        """Each opening's patch, ``(openings, nx, ny)``, ones on its cells: the whole plane where it is alone there,
+        else the plane's cells nearest its centre."""
+        nx, ny = cells[0], cells[1]
+        x, y = np.meshgrid(np.arange(nx) + 0.5, np.arange(ny) + 0.5, indexing="ij")
+        masks = np.zeros((len(self.planes), nx, ny))
+        for plane in (LOW, HIGH):
+            members = [k for k, held in enumerate(self.planes) if held == plane]
+            if len(members) == 1:
+                masks[members[0]] = 1.0
+                continue
+            distance = np.stack([np.hypot(x - self.centres[k][0], y - self.centres[k][1]) for k in members])
+            nearest = np.argmin(distance, axis=0)
+            for position, k in enumerate(members):
+                masks[k] = (nearest == position).astype(np.float64)
+        return masks
+
+    def alone(self, opening: int) -> bool:
+        return self.planes.count(self.planes[opening]) == 1
+
+
 @dataclass(frozen=True)
 class OpenMACGrid(MACGrid):
     """The Cartesian MAC grid kind on a box of ``cells`` cubic cells of side ``spacing`` (m), periodic across x and y and
-    open at its two z planes (the module states the faces' weights and conditions)."""
+    open at its two z planes, its openings laid on them by ``layout`` (the module states the faces' weights and
+    conditions, and the openings' patches)."""
+
+    layout: OpeningLayout = OpeningLayout()
 
     kind: ClassVar[str] = "cartesian_mac_open_z"
     version: ClassVar[str] = "0.1.0"
     #: Exact under the half-weight inner product: the ledger's projection term is rounding.
     projector_exact: ClassVar[bool] = True
     periodic: ClassVar[tuple[bool, bool, bool]] = (True, True, False)
-    #: The openings, by the z plane each lies on: the low plane (``z = 0``) and the high one.
-    faces: ClassVar[tuple[str, str]] = ("low", "high")
 
     def shape(self, component: int) -> tuple[int, int, int]:
         nx, ny, nz = self.cells
@@ -257,27 +314,78 @@ class OpenMACGrid(MACGrid):
         return self.poisson(self.divergence(remainder))
 
     # -- the openings ---------------------------------------------------------------------------------------------
+    @property
+    def opening_count(self) -> int:
+        return len(self.layout.planes)
+
+    def _plane(self, a: Array, opening: int) -> Array:
+        return a[..., 0] if self.layout.planes[opening] == LOW else a[..., -1]
+
+    def _outward(self, opening: int) -> float:
+        return -1.0 if self.layout.planes[opening] == LOW else 1.0
+
+    def _patch_sums(self, at_plane: Callable[[int], Array]) -> Array:
+        """Each opening's sum of ``at_plane(opening)`` (an ``nx x ny`` array on its plane) over its patch."""
+        masks = self.layout.masks(self.cells)
+        return jnp.stack([jnp.sum(at_plane(k)) if self.layout.alone(k) else
+                          jnp.sum(jnp.asarray(masks[k], dtype=at_plane(k).dtype) * at_plane(k))
+                          for k in range(self.opening_count)])
+
     def opening_fluxes(self, velocity: Velocity) -> Array:
-        """The volume flux (m^3/s) out through each opening (``faces``' order), outward positive."""
+        """The volume flux (m^3/s) out through each opening (the layout's order), outward positive."""
         w = velocity[2]
         area = self.spacing ** 2
-        return jnp.stack([-area * jnp.sum(w[..., 0]), area * jnp.sum(w[..., -1])])
+        signs = jnp.asarray([self._outward(k) for k in range(self.opening_count)], dtype=w.dtype)
+        return signs * area * self._patch_sums(lambda k: self._plane(w, k))
 
     def opening_fluxes_magnitude(self, velocity: Velocity) -> Array:
         """:meth:`opening_fluxes` with every face's value in magnitude: the scale their rounding is judged on."""
         w = jnp.abs(velocity[2])
+        return self.spacing ** 2 * self._patch_sums(lambda k: self._plane(w, k))
+
+    def opening_faces(self) -> tuple[int, ...]:
+        """How many faces each opening's patch holds."""
+        masks = self.layout.masks(self.cells)
+        return tuple(int(np.count_nonzero(masks[k])) for k in range(masks.shape[0]))
+
+    def opening_kinetic_fluxes(self, velocity: Velocity) -> tuple[Array, Array]:
+        """The kinetic energy (per unit density, m^5/s^3) convection carries out through each opening, the scheme's
+        own (the module: ``<C(u), u> = -sum_k K_k`` on a discretely divergence-free field), and each in magnitude
+        (its terms' absolute values summed: its rounding's scale)."""
+        u, v, w = velocity
+
+        def density(k: int) -> Array:
+            at = 0 if self.layout.planes[k] == LOW else -1
+            su = 0.5 * (u[..., at] ** 2 + jnp.roll(u[..., at] ** 2, -1, 0))
+            sv = 0.5 * (v[..., at] ** 2 + jnp.roll(v[..., at] ** 2, -1, 1))
+            wb = w[..., at]
+            return 0.5 * (su + sv + wb * wb) * wb
+
         area = self.spacing ** 2
-        return jnp.stack([area * jnp.sum(w[..., 0]), area * jnp.sum(w[..., -1])])
+        signs = jnp.asarray([self._outward(k) for k in range(self.opening_count)], dtype=w.dtype)
+        flux = signs * area * self._patch_sums(density)
+        size = area * self._patch_sums(lambda k: jnp.abs(density(k)))
+        return flux, size
 
     def port_force(self, pressures: Any, density: Any) -> Velocity:
-        """The force per unit mass of the openings' pressures (Pa, ``faces``' order) on the planes' half cells:
-        ``+2 p / (rho h)`` on the low plane, ``-2 p / (rho h)`` on the high one (each pushing into the box)."""
+        """The force per unit mass of the openings' pressures (Pa, the layout's order) on the planes' half cells, each
+        on its patch: ``+2 p / (rho h)`` on the low plane, ``-2 p / (rho h)`` on the high one (each pushing into the
+        box)."""
         p = jnp.asarray(pressures)
         dtype = p.dtype
         zero = self.zeros(dtype)
         scale = 2.0 / (density * self.spacing)
-        w = zero[2].at[..., 0].set(scale * p[0]).at[..., -1].set(-scale * p[1])
+        masks = self.layout.masks(self.cells)
+        planes: list[Any] = []
+        for plane, sign in ((LOW, 1.0), (HIGH, -1.0)):
+            members = [k for k, held in enumerate(self.layout.planes) if held == plane]
+            if len(members) == 1:
+                planes.append(sign * scale * p[members[0]])
+            else:
+                planes.append(sign * scale * sum((p[k] * jnp.asarray(masks[k], dtype=dtype) for k in members),
+                                                 start=jnp.zeros(self.cells[:2], dtype=dtype)))
+        w = zero[2].at[..., 0].set(planes[0]).at[..., -1].set(planes[1])
         return (zero[0], zero[1], w)
 
 
-__all__ = ["HALF", "OpenMACGrid"]
+__all__ = ["HALF", "HIGH", "LOW", "OpenMACGrid", "OpeningLayout"]

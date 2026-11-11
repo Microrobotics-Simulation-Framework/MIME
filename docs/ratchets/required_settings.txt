@@ -60,6 +60,9 @@ geometry screw 0.3.0 starts                              # physical: a fact abou
 geometry sphere 0.1.0 radius                             # physical: a fact about the setup, which MIME does not assume
 geometry sphere 0.2.0 radius                             # physical: a fact about the setup, which MIME does not assume
 geometry plane 0.1.0 normal                              # physical: a fact about the setup, which MIME does not assume
+geometry tube_tree 0.1.0 points                             # physical: a fact about the setup, which MIME does not assume
+geometry tube_tree 0.1.0 segments                           # physical: a fact about the setup, which MIME does not assume
+geometry tube_tree 0.1.0 radii                              # physical: a fact about the setup, which MIME does not assume
 geometry tube 0.1.0 axis                                 # physical: a fact about the setup, which MIME does not assume
 geometry tube 0.1.0 inner_radius                         # physical: a fact about the setup, which MIME does not assume
 geometry tube 0.1.0 wall                                 # physical: a fact about the setup, which MIME does not assume
@@ -84,3 +87,6 @@ interaction inflow 0.1.0 steady                           # physical: the flux t
 interaction windkessel 0.1.0 proximal                     # physical: the downstream bed's proximal resistance, nothing assumes one
 interaction windkessel 0.1.0 compliance                   # physical: the downstream bed's compliance, nothing assumes one
 interaction windkessel 0.1.0 distal                       # physical: the downstream bed's distal resistance, nothing assumes one
+interaction shared_distal 0.1.0 first                    # physical: the first opening's own resistance, nothing assumes one
+interaction shared_distal 0.1.0 second                   # physical: the second opening's own resistance, nothing assumes one
+interaction shared_distal 0.1.0 distal                   # physical: the shared downstream resistance, nothing assumes one

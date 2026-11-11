@@ -3,14 +3,15 @@
 ``Coulomb``, the ``FrictionLaw`` and ``NormalLaw`` seams, ``Hold``) and ``Drag`` (its surrogate rung, with
 ``Lubrication``, and its MRS rung, with ``ForceSampling`` and ``NearField``, its settings' groups, and
 ``roughness_cutoff``, where its lubrication hands a gap to contact), the flow's ``BodyForce`` and the laws at its
-openings, ``Inflow`` and ``Windkessel``; and ``KEPT``, the earlier versions kept registered."""
+openings, ``Inflow``, ``Windkessel``, ``Valve`` and ``SharedDistal``; and ``KEPT``, the earlier versions kept
+registered."""
 
 from collections.abc import Mapping
 from types import MappingProxyType
 
 from mime.interactions._previous import CentreContact, CentreMagneticForce, CentreMagneticTorque, UnrolledContact
 from mime.interactions.contact import Contact
-from mime.interactions.flow import BodyForce, Inflow, Windkessel
+from mime.interactions.flow import BodyForce, Inflow, SharedDistal, Valve, Windkessel
 from mime.interactions.friction import Coulomb, FrictionLaw, Hold, NormalLaw
 from mime.interactions.gravity import Gravity
 from mime.interactions.hydrodynamic import Drag, ForceSampling, Lubrication, NearField, PointForceDrag, UncoupledDrag
@@ -32,5 +33,5 @@ KEPT: Mapping[tuple[str, str], tuple[type[Interaction], str]] = MappingProxyType
 })
 
 __all__ = ["KEPT", "BodyForce", "Contact", "Coulomb", "Drag", "ForceSampling", "FrictionLaw", "Gravity", "Hold",
-           "Inflow", "Lubrication", "Magnetic", "MagneticForce", "MagneticTorque", "NearField", "NormalLaw", "Windkessel",
-           "roughness_cutoff"]
+           "Inflow", "Lubrication", "Magnetic", "MagneticForce", "MagneticTorque", "NearField", "NormalLaw",
+           "SharedDistal", "Valve", "Windkessel", "roughness_cutoff"]

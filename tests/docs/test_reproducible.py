@@ -70,6 +70,7 @@ def test_w8_the_planted_set_order_makes_the_builds_differ_naming_the_page_once()
     assert "sort it" in problem
 
 
+@pytest.mark.memory_heavy
 def test_w8_the_real_generator_passes_the_same_comparison():
     """The passing arm, which must pass on every run: the real command under the same seeds. It skips the evidence (a
     build collects the tests it cites, which eight builds at once need not each do); ``mime docs check`` builds the
@@ -80,6 +81,7 @@ def test_w8_the_real_generator_passes_the_same_comparison():
     assert reproducibility_problems(ROOT, quick) == []
 
 
+@pytest.mark.memory_heavy
 def test_w8_mime_docs_check_fails_on_a_planted_hash_order_dependence_and_passes_without_it():
     """Through the real command: a prelude replaces the command the check builds with, in the fresh process that runs
     it, and the check fails, naming the page; the same command without the plant passes."""

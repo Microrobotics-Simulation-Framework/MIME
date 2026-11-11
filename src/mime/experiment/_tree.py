@@ -79,11 +79,12 @@ def _parts(parts: Mapping[str, Part], magnets: Mapping[str, Any]) -> list[dict[s
 
 
 def _structure(thing: Structure) -> dict[str, Any]:
-    geometry = type(thing.geometry) if thing.geometry is not None else None
+    geometry = thing.geometry
+    named = getattr(geometry, "surface_names", None)
     return {"name": thing.name, "entry": _optional(thing.geometry),
             "dynamics": _optional(thing.dynamics),
             "regions": _names(getattr(geometry, "regions", ())),
-            "surfaces": _names(getattr(geometry, "surfaces", ())),
+            "surfaces": _names(named() if callable(named) else getattr(geometry, "surfaces", ())),
             "directions": _names(getattr(geometry, "directions", ()))}
 
 
