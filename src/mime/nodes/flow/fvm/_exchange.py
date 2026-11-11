@@ -262,7 +262,19 @@ def aggregated(spectrum: KernelSpectrum) -> KernelSpectrum:
     keys, inverse = np.unique(np.round(eigenvalue.astype(np.float64), 10), return_inverse=True)
     summed = np.bincount(inverse.ravel(), weights=weight.astype(np.float64), minlength=keys.shape[0])
     dtype = weight.dtype
-    return KernelSpectrum(np.asarray(summed, dtype=dtype), np.asarray(keys, dtype=dtype), spectrum.side)
+    return KernelSpectrum(jnp.asarray(summed, dtype=dtype), jnp.asarray(keys, dtype=dtype), spectrum.side)
+
+
+@functools.lru_cache(maxsize=64)
+def held_spectrum(kind: str, width_cells: float, side: int, dtype: str, component: int = 2,
+                  offset: tuple[float, float, float] = (0.37, 0.21, 0.11)) -> KernelSpectrum:
+    """A kernel's free-box spectrum aggregated by eigenvalue (:func:`aggregated`), ``kind`` ``"force"``
+    (:func:`kernel_spectrum`) or ``"couple"`` (:func:`couple_spectrum`), made once a process for each width, box,
+    dtype and place: a structural quantity the build's width ladder, its refusals' searches and every node read."""
+    if np.dtype(dtype) != np.dtype(jnp.zeros(()).dtype):
+        raise ValueError(f"a spectrum is made in the run's dtype, {jnp.zeros(()).dtype}, not {dtype}")
+    made = kernel_spectrum if kind == "force" else couple_spectrum
+    return aggregated(made(float(width_cells), side, component, offset))
 
 
 def paired(spectrum: KernelSpectrum, reading: Any, delivery: Any) -> Array:
@@ -440,6 +452,6 @@ def own_advance(box: OwnBox, field: Array, kernels: Sequence[Array], force: Arra
 
 __all__ = ["FREE_BOX_WIDTHS", "HASIMOTO", "HISTORY_LAMBDAS", "HISTORY_MODES", "HISTORY_RCOND", "HISTORY_SAMPLES",
            "JUDGED_PLACES", "MODES", "SIDE_WIDTHS", "SPECTRUM_SIDE", "VECTOR_MODES", "KernelSpectrum", "OwnBox", "SelfHistory",
-           "aggregated", "box_side", "couple_spectrum", "faxen", "gather", "image_mode", "image_term", "kernel_spectrum",
+           "aggregated", "box_side", "couple_spectrum", "held_spectrum", "faxen", "gather", "image_mode", "image_term", "kernel_spectrum",
            "levi_civita", "own_advance", "own_box", "own_kernels", "own_read", "paired", "scatter", "self_history",
            "self_mobility", "steady_free", "step_response", "steady_response"]

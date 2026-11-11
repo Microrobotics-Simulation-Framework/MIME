@@ -61,12 +61,12 @@ def test_the_fitted_self_history_matches_the_exact_one_within_its_residual(dtype
     the own field route 2 removes (the body's free-box flow advanced exactly) against the one route 1's fitted modes give
     on the same forces, the body's point held: within the fit's stated residual of the one-step response (its places in
     the cell and face sets included), times the summed force. The plant makes route 1's modes at a step 10 % longer than
-    the run's (SWAP_STEP). A moving body's difference, route 1 reading its own field where it was made, is printed
-    beside it (the review's draws: 1.4 and 4.9 times the bound at a residual of 1e-8)."""
+    the run's (SWAP_STEP). A moving body's difference, route 1 reading its own field where it was made, is that
+    approximation's (``swap_worst(..., pinned=False)``: 1.4 and 4.9 times the bound at two draws of a residual of
+    1e-8)."""
     worst, drawn = swap_worst(seed(), 1.1 if plant("SWAP_STEP") else 1.0)
-    moving, _ = swap_worst(seed(), pinned=False)
     print(f"F3 gate 12 [{dtype}]: {drawn}: the routes apart by {worst:.3g} of the fit's residual times the one-step "
-          f"response and the summed force ({moving:.3g} with the body moving)")
+          f"response and the summed force")
     assert worst <= 1.0, worst
 
 

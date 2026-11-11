@@ -84,7 +84,14 @@ def test_the_couples_margin_is_the_flow_nodes_own(dtype, monkeypatch):
     rotational analogue, measured). The plant drops the projector's cross terms from the couple's spectrum
     (SPECTRUM)."""
     if plant("SPECTRUM"):
-        monkeypatch.setattr(_point_drag, "couple_spectrum", _diagonal_spectrum)
+        held = _point_drag.held_spectrum
+
+        def planted(kind, width_cells, side, dtype, *rest):  # noqa: ANN001, ANN202
+            if kind != "couple":
+                return held(kind, width_cells, side, dtype, *rest)
+            return _exchange.aggregated(_diagonal_spectrum(float(width_cells), side))
+
+        monkeypatch.setattr(_point_drag, "held_spectrum", planted)
     rng = np.random.default_rng(10000 + seed())
     width, ratio = float(rng.choice([1.0, 1.5])), float(rng.uniform(1.0, 1.7))
     r = float(10.0 ** rng.uniform(math.log10(0.03), math.log10(30.0)))

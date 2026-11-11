@@ -59,9 +59,8 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
     run_constants_given
 from mime.core.ledger import IDENTITY_ULPS
-from mime.nodes.flow.fvm._exchange import HISTORY_MODES, JUDGED_PLACES, KernelSpectrum, aggregated, box_side, \
-    couple_spectrum, faxen, image_mode, kernel_spectrum, own_advance, own_box, own_kernels, own_read, self_history, \
-    steady_response, step_response
+from mime.nodes.flow.fvm._exchange import HISTORY_MODES, JUDGED_PLACES, KernelSpectrum, box_side, faxen, \
+    held_spectrum, image_mode, own_advance, own_box, own_kernels, own_read, self_history, steady_response, step_response
 
 #: The coupled one-step margin a definite point body is held above, the force's and the couple's alike (the floor
 #: sweep's knee: the one-step resistance within -0.42..+0.61 of the exact sphere's above it, growing as 1/margin below;
@@ -244,9 +243,11 @@ class PointDragNode(MimeNode):
         node is built: the force's, the couple's and, on route 1, the places in the cell its fit is judged at. Functions
         of the kernel's width and the box alone, structural; every leaf the responses read stays traced."""
         width, side = float(self.constants()["width_cells"]), self.side
-        held = {"force": aggregated(kernel_spectrum(width, side)), "couple": aggregated(couple_spectrum(width, side))}
+        dtype = str(jnp.zeros(()).dtype)
+        held = {"force": held_spectrum("force", width, side, dtype),
+                "couple": held_spectrum("couple", width, side, dtype)}
         if self.route == "modes":
-            held.update({f"place_{face}_{i}": aggregated(kernel_spectrum(width, side, face, place))
+            held.update({f"place_{face}_{i}": held_spectrum("force", width, side, dtype, face, place)
                          for face in range(3) for i, place in enumerate(JUDGED_PLACES)})
         return held
 
@@ -594,8 +595,9 @@ def free_space_margins(radius: float, viscosity: float, density: float, spacing:
     width = width_cells * spacing
     drag = (radius ** 2 / 6.0 - 0.5 * width ** 2) / spacing ** 2 if faxen_on else 0.0
     side = box_side(width_cells)
-    spectrum = kernel_spectrum(as_run_array(width_cells), side)
-    dipole = couple_spectrum(as_run_array(width_cells), side)
+    dtype = str(jnp.zeros(()).dtype)
+    spectrum = held_spectrum("force", width_cells, side, dtype)
+    dipole = held_spectrum("couple", width_cells, side, dtype)
     r = viscosity / density * dt / spacing ** 2
     zero = as_run_array(jnp.zeros(1))
     steady = float(steady_response(spectrum, drag, drag)) / (viscosity * spacing)
