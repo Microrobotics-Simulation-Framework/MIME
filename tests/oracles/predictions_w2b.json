@@ -1,0 +1,98 @@
+{
+  "written": "2026-11-11, committed before any gate of W2b's PR 1 ran (the commit that adds this file is the timestamp): friction at the wall, the sliding pair in the contact's sweeps, its ledger and its seams",
+  "phase": "W2b PR 1: Contact(friction=Coulomb(mu=...)), exact Coulomb in the hold's sweeps, the power guard, friction's own ledger row, the roughness cutoff as the contact's margin",
+  "labels": "the W2b builder (Opus), from the friction spike's measurements (its report, round 3), closed forms derived here, and the scratch checks listed in seen_before; 'guess' where neither applies",
+  "seen_before": [
+    "the first step's probe (run 43000792276, the spike's prototype and the released body node): float32 at dt/tau 0.001 in glycerol 3.49e-3 / 1.51e-2 of a omega0 without the gap's band and 1.56e-5 / 2.96e-5 with it (float64 1.60e-5 / 2.98e-5); the contact carried 0.29 of the load without the band, 1.0002 with it",
+    "a scratch check of this branch's node (laptop, sphere 1 mm, 2000 kg/m^3, mu 0.2, half-space, 100 steps of 1 ms): rolling at tan(theta) = 0.7 mu: acceleration relative error 1.6e-15 (float64), -8.3e-7 (float32); slipping at tan(theta) = 2.8 mu: 1.8e-15 (float64), -1.2e-7 (float32); omega a / v 1.000000 rolling, 0.416667 slipping",
+    "a scratch check through built.run on the tilted tube's floor (float64, the same sphere and mu): rolling -2.2e-16, slipping -1.1e-16 relative, omega a / v 1.0 and 0.4167",
+    "a scratch gradient check (50 steps of 1 ms, the node on the half-space): sliding dv/dmu AD -0.285097334 = CD = closed form -g cos(theta) T (float64); float32 AD -0.2850973606 against the closed form -0.285097334; rolling AD = CD = 0"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (laptop for touched files; CI runners for the suite; GitHub runners, 4 vCPU, for probes)",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "a 1 mm sphere of 2000 kg/m^3 (m 8.38e-6 kg); a cylinder 0.5 mm by 3 mm lying along the fall line (the block); mu 0.2 (sphere) and 0.3 (block); dt 1 ms, 100 steps; the node on a half-space z >= 0 (an exact plane), and through the build on a tube of 3.175 mm radius tilted theta about -y; the contact's margin its default (the roughness cutoff, sqrt(2) um) through the build, zero on the node; the frictional sweeps' declared count (FRICTION_SWEEPS_DEFAULT 20 until the sweep-count probe declares per kind)",
+    "seeds_and_draws": "the oracles are fixed cases; the suites (test_friction_suites.py) draw at physical scales in the node's dtype (Hypothesis, never shrunk or filtered)"
+  },
+  "gate_1_block": {
+    "claim": "a block on an incline sticks for tan(theta) <= mu and slides at g (sin(theta) - mu cos(theta)) past it, at 0.5, 0.9995, 1.0005 and 2 of breakaway, both dtypes",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction.py::test_a_block_on_an_incline_sticks_below_tan_theta_mu_and_slides_past_it",
+    "prediction": {"value": null, "band": [0.0, 1e-12], "unit": "|a - a_oracle| / g, float64 (float32: 2e-5)", "basis": "derived", "why": "two rims held on a flat, each a single-point problem solved exactly in one sweep; the spike's four-corner box needed 200 sweeps near breakaway, two rims along the slope couple less [inference]"},
+    "control": {"plant": "mu doubled: a slope of tan(theta) = 1.5 mu slides at mu and sticks at 2 mu", "expected_rate": "1/1 per dtype (a fixed case)"},
+    "if_wrong": "if the block creeps near breakaway, the two rims' coupling needs more sweeps: the residual and the sweep count say how many",
+    "cannot_discriminate_if": "the threshold's two sides are both on one branch"
+  },
+  "gate_2_sphere_node": {
+    "claim": "a solid sphere on the node's plane rolls without slipping at (5/7) g sin(theta) for tan(theta) <= (7/2) mu, and slips past it with its spin at (5/2) mu g cos(theta) / a, either side of the threshold",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction.py::test_a_sphere_on_an_incline_rolls_without_slip_below_its_threshold_and_slips_past_it",
+    "prediction": {"value": null, "band": [0.0, 1e-12], "unit": "|a - a_oracle| / g, float64 (float32: 2e-5)", "basis": "measured-before", "why": "a sphere's sliding pair and its normal row decouple (the code read's -0.845 is rolling resistance's, not built here)"},
+    "control": {"plant": "frictionless: the sphere slides at g sin(theta) and never turns", "expected_rate": "1/1 per dtype"}
+  },
+  "gate_3_sphere_build": {
+    "claim": "the same through built.run on a tilted tube's floor (the contact's default margin, the roughness cutoff)",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction.py::test_through_the_build_the_sphere_on_a_tilted_tubes_floor_rolls_or_slips_as_its_closed_form",
+    "prediction": {"value": null, "band": [0.0, 1e-11], "unit": "|a - a_oracle| / g, float64 (float32: 2e-4)", "basis": "measured-before"}
+  },
+  "gate_4_ledger": {
+    "claim": "friction's loss under its own name is mu N times the slip distance while it slides and zero while it rolls; no gift step; the books close",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction.py::test_the_ledger_books_friction_as_mu_n_times_the_slip_distance_and_rolling_as_zero",
+    "prediction": {"value": null, "band": [0.0, 1e-9], "unit": "|loss - mu N sum(dt |slip|)| / max(expected, m g 1 mm)", "basis": "derived", "why": "friction is booked -dt |l| |u| at the solved slip; sliding |l| = mu N"},
+    "control": {"plant": "friction's sign flipped (disk_update returns -x): the power guard trips and the numerical column carries -2 dt |l||u|", "expected_rate": "every draw (the suites' control)"}
+  },
+  "gate_5_gradients": {
+    "claim": "reverse mode in mu through the run equals the closed form sliding (-g cos(theta) T) and central differences (float64); zero rolling (cannot discriminate there: the trajectory does not depend on mu above its threshold)",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction.py::test_the_derivative_in_mu_is_the_closed_forms",
+    "prediction": {"value": null, "band": [0.0, 1e-10], "unit": "|AD - closed| / |closed|, float64 (float32: 1e-5)", "basis": "measured-before"},
+    "control": {"plant": "mu's derivative stopped (lax.stop_gradient on the coefficient)", "expected_rate": "1/1: AD 0 against the closed form -0.285"}
+  },
+  "gate_6_off_the_wall": {
+    "claim": "a body a micrometre above the shrunk wall, its point never held, steps as the frictionless hold does, bit for bit: no friction acts without the contact's own normal force",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction.py::test_a_body_off_the_wall_feels_no_friction",
+    "prediction": {"value": 0.0, "unit": "largest difference of pose and twist after 20 steps", "basis": "derived: no force is taken, so the held twist is the free one plus zero"},
+    "control": {"plant": "the same body on the wall, sliding: the frictional and frictionless steps differ", "expected_rate": "1/1"}
+  },
+  "gate_7_float32_subus": {
+    "claim": "through the node, a sphere spun on the plane under a glycerol-like resistance at the contact (the spike's R at d_c 0.002: R_xx 5.65e-3, R_x,ry -5.32e-7, R_ry,ry 2.48e-9, R_zz 0.663), at dt/tau 0.001 (0.36 us), mu 0.5: float32's worst |v - v_ref| / (a omega0) is float64's within a factor two, the contact carrying the load",
+    "kind": "estimates",
+    "case": "tests/oracles/test_friction.py::test_float32_at_sub_microsecond_steps_matches_float64",
+    "prediction": {"value": null, "band": [1e-5, 1e-4], "unit": "worst |v - v_ref| / (a omega0), each dtype (float64 3.0e-5 measured on the prototype)", "basis": "measured-before"},
+    "prediction_ratio": {"band": [0.5, 2.0], "unit": "float32's error over float64's"},
+    "prediction_load": {"band": [0.999, 1.001], "unit": "mean contact force over the load, float32, after first contact"},
+    "control": {"plant": "the gap's rounding band removed (CONTACT_ULPS 0 in the frictional allowance)", "expected_rate": "1/1: float32's error above 1e-3 (the prototype: 1.5e-2) and the contact under 0.5 of the load"}
+  },
+  "gate_8_multi_point": {
+    "claim": "FL-9 on the tube's floor, driven about its axis, held at two or three points with friction: the residual after the declared sweeps reported each step, and unconverged raised where it passes CONVERGED",
+    "kind": "estimates",
+    "case": "the sweep-count probe's screw arm, and tests/oracles/test_friction_multipoint.py",
+    "prediction": {"value": null, "band": [0.0, 1.0], "unit": "share of steps flagged unconverged at the declared count", "basis": "guess", "why": "the spike's helix left 837 of 1000 steps above 1e-3 of the contact's change at 20 sweeps, a different measure from the cone residual over the free speed; the share depends on the count the probe declares"},
+    "if_wrong": "n/a: an estimate reported, the flag's correctness judged by its residual (above CONVERGED iff flagged)"
+  },
+  "gate_9_sweep_counts": {
+    "claim": "the sweeps to 1e-3 of the contact's change at the 99th percentile per hull kind, through the node's hold",
+    "kind": "estimates",
+    "case": "probe/w2b-sweeps (arms per kind and dtype)",
+    "prediction": {"value": null, "band": [1, 5], "unit": "sweeps to 1e-3 at p99, sphere", "basis": "measured-before (the spike: 1 / 1 / 1 sliding only)"},
+    "prediction_screw": {"band": [20, 400], "unit": "sweeps to 1e-3 at p99, FL-9 (the spike's helix: 120)", "basis": "measured-before"}
+  },
+  "gate_10_power_guard": {
+    "claim": "a planted sign flip of friction is caught by the power guard in every draw of every body (sphere, rod, screw), both dtypes; clean draws never trip it at a converged solve",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction_suites.py (detection_rate.py on a probe, 200 runs)",
+    "prediction": {"value": null, "band": [1.0, 1.0], "unit": "caught/N", "basis": "measured-before (the spike: 890/890, 988/988, 831/831, 999/999)"},
+    "control": {"plant": "W2B_PLANT=flip: disk_update's force negated", "expected_rate": "N/N", "clean_expected": "0/N"}
+  },
+  "bits": {
+    "cases": "script A, A0, the hull contact (FL-9, contact 0.5.0 and 0.4.0), the rod, a centre-held body, sphere_settling, W2a's plane and tube near-contact programs; float64 and float32; base 1a81914 and head in one job (bit_compare.py)",
+    "prediction": "every array np.array_equal",
+    "controls": {"repeat": "the head twice: identical", "one_ulp": "a parameter one ulp up: differs"}
+  },
+  "costs": {"prediction": "a frictional sphere's hold about 3 to 4 times the frictionless one's (the spike: 3.5x with the exact 2x2); no cost claim in the PR beyond what node_measure.py measures", "measured_at": "n/a"},
+  "outcomes": null
+}
