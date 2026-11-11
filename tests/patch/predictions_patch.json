@@ -1,0 +1,151 @@
+{
+  "written": "2026-11-12, committed before any gate of the patch phase ran (the commit that adds this file is the timestamp): the moving refinement patch's kind (NestedMACGrid, RefinementPatch), its two transfers and its reflection with its transpose, quasi-steady",
+  "phase": "the patch phase (lane F, stage 1): a moving refinement patch near the wall",
+  "labels": "the builder (Opus) from the patch spike's and the window spike's measurements (their READMEs), the record's decisions, and the arithmetic in the work folder's FIRST_STEP.md; 'measured-before' cites the spike; a guess says so",
+  "seen_before": [
+    "the patch spike (plans' f0_s23_patch, float64, its own code): the patch alone with exact plane values within 1 % from about 3 fine cells (trilinear), -11.2/-2.9/-0.30 % for a point force at 2/4/8 cells; the tube tables at ratios 4 and 8; snap 1e-4 of K; adjoint 1.3e-14 unplanted, 20/20 planted; cold CG 125 to 155 iterations at 48^3, 207 at 80^3",
+    "the window spike (float64, its own code): the patch's share -4.2 to -5.9 % at 2 fine cells, -1.2 to -1.8 % at 3, -0.3 to -0.6 % at 4 (radius 6.7 to 40 cells); the MRS point read +76 % (0.1 a) and +8.5 % (0.15 a) at spacing 0.25 a, +4.4 % and +2.3 % at 0.1 a; the wobble metric 1e-3 on the lattice, 0.48 continuous; stop_gradient on the offset 13/13; one uniform offset 6.4 % worst at 0.1 R, 19/28 beyond 7 % at 0.15 R",
+    "this phase's smoke runs before this file (the laptop, float64, small sizes, exploration only, not gates): a point force 2/4/8 fine cells above a plane read -10.6/-2.3/-0.09 % against Blake on a 24^3 patch; the reflection's adjoint 2.6e-10 and 4.2e-13 relative at a CG tolerance of 1e-12 on a 16^3 patch; MIME's 338-point sphere at 8 fine cells across the radius, gap 0.3 a (2.4 cells): the patch's share -2.7 %, its image arm +2.8 % over Brenner, CG 67 to 69 iterations a product at 24^3, 19 GMRES products"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 (gate 12 and the dtype arms of gates 2 and 9)"],
+    "platform": "GitHub runner, 4 vCPU, CPU; probes on probe/* branches; no Modal",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "MIME's MRS sphere of radius a = 1 mm (tests/lubrication_cases.py's), viscosity 1 mPa s, spacings 0.25 a (338 force points, MIME's default) and 0.1 a; the fine cell a/20 (rule 2: 20 fine cells across the radius) unless stated; the patch the sphere plus 8 fine cells a side (56^3); the plane z = 0 on the fine lattice's faces, the sphere's centre (0.37, 0.21) fine cells off the lattice laterally; the patch CG at 1e-8 (float64) and 1e-5 at its floor (float32); GMRES to 1e-9 right-preconditioned by the free part's LU; the shell 4 fine cells into the solid",
+    "seeds_and_draws": "gate 4: 200 draws of coarse fields, given values, origins up to 3 coarse cells off, at unit scale; gate 11: positions between snaps at sub-cell steps of 1/8"
+  },
+  "gate_1_plane_oracle": {
+    "claim": "the patch alone with the plane's exact boundary values reproduces the window spike's patch share: the normal entry's share by the gap in fine cells at 20 cells across the radius",
+    "kind": "estimates (the patch's own band against the same MRS with the exact image read at the force points)",
+    "case": "tests/patch/patch_cases.py: Case(spacing 0.25 and 0.1, cells 20, gap 0.1/0.15/0.2/0.3 a), resistance() with patch_reader against image_reader('point'), Brenner",
+    "prediction": {"value": null, "band": [-6.5, -4.0], "unit": "% of the exact normal entry at 2 fine cells (0.1 a); [-2.0, -1.2] at 3 (0.15 a); [-0.8, -0.3] at 4 (0.2 a); along the wall and the rotation within 0.4 % of their own scale", "basis": "measured-before", "why": "the band in fine cells (window q3), set by the gap in cells and growing slowly with the radius in cells"},
+    "metric": "(K_patch - K_image) / K_exact on the normal column",
+    "control": {"plant": "PATCH_PLANT=no_source: the forces' own Stokeslets left out of the patch (its near-wall reflection only what its faces carry)", "environment_variable": "PATCH_PLANT", "expected_rate": "N/N at every gap of 4 fine cells or less", "runs": 10, "clean_expected": "0/N", "resolution": "the share's line at each gap is 2 points beyond the prediction's band; the plant reads beyond -20 % [guess]"},
+    "if_wrong": "a share beyond the band at 20 cells means the kind differs from the spike's patch (read, band resampling, lift); compared arm by arm with the 8-cell smoke and the spike's q3",
+    "cannot_discriminate_if": "the gap is beyond about 6 fine cells (the share is under the oracle's 0.1 % then)"
+  },
+  "gate_2_tube_tables": {
+    "claim": "in the straight periodic tube at D/h 16 the patch (F2, trilinear) reproduces the patch spike's tables at ratios 4 (12- and 20-cell patches) and 8 (16-cell patch) within their spread",
+    "kind": "estimates against dev1's tube table through MIME at the true positions (the table's own 0.6 to 1 % on the axis)",
+    "case": "the steady loop's test harness (tests/patch/): the coarse flux-free tube, the cluster's own free box removed, the patch, GMRES",
+    "prediction": {"value": null, "band": [-1.0, 1.0], "unit": "points from the spike's entry at each position (ratio 4 trilinear npc 12: -1.9 at 4.8 fine cells a/R 0.1, -4.3 at 2.56; ratio 8 trilinear npc 16: -1.3 to -1.9 at 5.1 to 9.6, -3.3 and -6.7 at 5.1), both dtypes (float32 within 0.1 point of float64)", "basis": "measured-before", "why": "the same discrete problem as the spike's patch (F2, the trilinear read, the lift, the band resampled); the coarse solve is MIME's own"},
+    "metric": "the normal and axial K over the free MRS sphere's, against the table at the same position",
+    "control": {"plant": "the body placed 0.37 coarse cells nearer the wall than its table reference (R2's error)", "environment_variable": "PATCH_PLANT=r2_offset", "expected_rate": "N/N at the positions within 2.4 coarse cells of the wall", "runs": 10, "clean_expected": "0/N", "resolution": "the offset moved the spike's entries by 7 to 19 points"},
+    "if_wrong": "a miss larger than the spread: the coarse floor or the free box's removal differs from the spike's; read on the axis first",
+    "cannot_discriminate_if": "the position is on the axis (the wall outside the patch: the patch only passes the coarse error through)"
+  },
+  "gate_3_no_recompile": {
+    "claim": "50 steps with the patch's origin snapping trace the patch's functions once",
+    "kind": "equality",
+    "case": "a jitted scan of 50 placements and reflections with the origin moving 18 times, node_measure.py's trace counter",
+    "prediction": {"value": 1, "band": [1, 1], "unit": "traces of the step", "basis": "measured-before", "why": "the shape is the kind's; the origin, the dilation and the walls are values"},
+    "metric": "the trace count",
+    "control": {"plant": "a patch two cells larger fed to the same program", "environment_variable": "PATCH_PLANT=larger", "expected_rate": "N/N (deterministic)", "runs": 3, "clean_expected": "0/N", "resolution": "one retrace"},
+    "if_wrong": "a value in a shape or a Python branch on a traced value",
+    "cannot_discriminate_if": "the origin never moves in the run"
+  },
+  "gate_4_transfers_transpose": {
+    "claim": "the two transfers (coarse field to the patch's given values; the patch's field to the read points, point and cell) are an exact transpose pair",
+    "kind": "equality to rounding",
+    "case": "drawn coarse fields on a periodic MAC grid and an open one, given values, origins, points; <B x, y> against <x, B^T y>",
+    "prediction": {"value": null, "band": [1e-17, 1e-14], "unit": "relative, worst over 200 draws, float64", "basis": "measured-before", "why": "one stencil gives both; the sums differ only in their order"},
+    "metric": "|<B x, y> - <x, B^T y>| / (|B x| |y|)",
+    "control": {"plant": "the transpose times (1 + 1e-6 cos k)", "environment_variable": "PATCH_PLANT=nontranspose", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "1e-12 line; the plant reads about 1e-7 [guess]"},
+    "if_wrong": "an index or weight differs between the read and its spread",
+    "cannot_discriminate_if": "a drawn field is constant (both sides then agree for any wrong weights summing to one)"
+  },
+  "gate_5_snapped_motion": {
+    "claim": "a snap moves the coupled resistance by about 1e-4 of itself, and between snaps the derivative is smooth: the wobble metric at or below 1e-3 with whole-cell openings",
+    "kind": "estimates",
+    "case": "the plane oracle at 20 fine cells, the sphere moved in 1/8-cell steps over two cells along and toward the wall",
+    "prediction": {"value": null, "band": [3e-5, 5e-4], "unit": "the snap's jump over K; the wobble metric (period-one amplitude of dB/dl over its mean) 1e-4 to 1e-3", "basis": "measured-before", "why": "the wall stays on the lattice between snaps; the read's kinks average over hundreds of force points"},
+    "metric": "the jump at a snap over K; the period-one amplitude of the derivative",
+    "control": {"plant": "a continuous wall offset (the patch's lattice moving through the wall's band)", "environment_variable": "PATCH_PLANT=continuous", "expected_rate": "N/N", "runs": 3, "clean_expected": "0/N", "resolution": "the window spike measured 0.48 continuous, 1e-3 on the lattice"},
+    "if_wrong": "the wall resampling moves with the body between snaps",
+    "cannot_discriminate_if": "the sweep spans less than one fine cell"
+  },
+  "gate_6_dilation_blend": {
+    "claim": "the reflection blended between the two whole-cell dilations is continuous across whole cells and its derivative in the dilation is carried",
+    "kind": "equality (continuity) and estimates (the derivative)",
+    "case": "blended_reflection across whole cells of the dilation; the derivative against central differences",
+    "prediction": {"value": null, "band": [0.0, 1e-8], "unit": "relative jump of the blended value across a whole cell", "basis": "derived", "why": "at a whole cell the weight is zero or one and both sides evaluate the same placement"},
+    "metric": "the jump; the derivative's agreement with central differences",
+    "control": {"plant": "stop_gradient on the dilation", "environment_variable": "PATCH_PLANT=dilation_stopped", "expected_rate": "N/N at every gap", "runs": 13, "clean_expected": "0/N", "resolution": "1e-3 (the window spike)"},
+    "if_wrong": "the weight or the floor taken from a held value",
+    "cannot_discriminate_if": "the two placements' reflections are equal (no wall in the patch)"
+  },
+  "gate_7_one_uniform_offset": {
+    "claim": "one uniform dilation per patch holds two-wall pairs at h_m <= 0.1 R within the measured 6.4 %",
+    "kind": "estimates",
+    "case": "the patch between two planes, one uniform dilation, against the per-contact form at the same pairs",
+    "prediction": {"value": null, "band": [0.0, 6.4], "unit": "% worst entry at h_m 0.1 R; at 0.15 R beyond 7 % at most pairs", "basis": "measured-before", "why": "the window spike's q6; the patch does not change which contact is opened"},
+    "metric": "the worst entry's error on its own scale",
+    "control": {"plant": "h_m = 0.15 R", "environment_variable": "PATCH_PLANT=wide_handover", "expected_rate": "fails at most pairs (19/28 measured)", "runs": 1, "clean_expected": "passes", "resolution": "the 7 % class"},
+    "if_wrong": "the dilation is not uniform over the patch's walls",
+    "cannot_discriminate_if": "only one contact is within the dilation's reach (uniform and per-contact are then the same)"
+  },
+  "gate_8_read_near_contact": {
+    "claim": "the chosen read's normal overshoot at 0.1 to 0.15 a sits under the first step's line (5 %)",
+    "kind": "estimates (the image arm: the MRS with the exact image read by each form, against Brenner)",
+    "case": "tests/patch/patch_cases.py image_reader('point' | 'cell' | 'source') and the patch arm with each read, spacings 0.25 a and 0.1 a, gaps 0.1/0.15/0.2/0.3 a",
+    "prediction": {"value": null, "band": [3.0, 15.0], "unit": "% normal overshoot of the cell read at 0.1 a, spacing 0.25 a; [1, 5] at 0.15 a; the cell and source reads within 1 point of each other; at 0.1 a spacing the cell read [0.5, 3] at 0.1 a", "basis": "guess (C3's 0.5 s line came from S4's integrated image; 0.1 a is 0.4 s)", "why": "integrating over the cell removes the point read's near-wall singular sampling"},
+    "metric": "(K_image_read - K_exact) / K_exact on the normal",
+    "control": {"plant": "the point read at the default spacing", "environment_variable": "PATCH_PLANT=point_read", "expected_rate": "reads beyond +50 % at 0.1 a, every run", "runs": 3, "clean_expected": "under the line", "resolution": "+76 % measured"},
+    "if_wrong": "the cell read does not reach 5 % at 0.25 a: the fallback, a finer spacing near contact, is measured at 0.1 a",
+    "cannot_discriminate_if": "the gap is 0.3 a or more (every read within a few per cent there)"
+  },
+  "gate_9_warm_start": {
+    "claim": "the warm-started patch solve gives the cold answer to the solve's tolerance on every step, and takes fewer iterations",
+    "kind": "equality to tolerance; estimates (iterations)",
+    "case": "the plane oracle's GMRES products cold and warm (from the last product; from the last step's field shifted by a snap)",
+    "prediction": {"value": null, "band": [0.05, 0.3], "unit": "warm iterations over cold for a step's first product warm from the last step; [0.5, 1.0] for a later product warm from the last product", "basis": "guess", "why": "the start is the Galerkin multiple of the last field: a Krylov direction is nearly orthogonal to it"},
+    "metric": "the true residual of each warm solve; iterations",
+    "control": {"plant": "least_iterations 0 (a warm start within the tolerance accepted with no iteration)", "environment_variable": "PATCH_PLANT=accept_start", "expected_rate": "N/N by the true residual on a start that is not the answer", "runs": 10, "clean_expected": "0/N", "resolution": "the true residual against the tolerance"},
+    "if_wrong": "the warm start is worse than cold: the shift at a snap is wrong",
+    "cannot_discriminate_if": "the start is already the answer (then accepting it is right)"
+  },
+  "gate_10_in_time": {
+    "claim": "the quasi-steady patch's force history against a fine monolithic backward-Euler reference on a sphere given a step change of force near a plane",
+    "kind": "estimates",
+    "case": "the steady loop's harness stepped in time: (i) the coarse grid at the fine cell, (ii) coarse plus the quasi-steady patch",
+    "prediction": {"value": null, "band": [0.0, 0.05], "unit": "relative force error after 3 to 5 relaxation times; 0.1 to 0.4 of the wall's share in the first 2 to 5 ms", "basis": "guess", "why": "the near field is steady Stokes; the patch's history matters only in transients on the reflection's diffusion time"},
+    "metric": "the force's relative error over time",
+    "control": {"plant": "none for the quasi-steady form (it carries no field); the slab left unfilled only if a backward-Euler patch is chosen", "environment_variable": "", "expected_rate": "", "runs": 0, "clean_expected": "", "resolution": ""},
+    "if_wrong": "beyond the band after 5 relaxation times: the backward-Euler patch, re-sized",
+    "cannot_discriminate_if": "the step change is slower than the diffusion time over the box (both forms then agree by construction)"
+  },
+  "gate_11_gradients": {
+    "claim": "the reflection's derivative in the body's position between snaps agrees with central differences in float64; the snap's jump declared",
+    "kind": "equality to the differences' truncation",
+    "case": "jax.jvp of the coupled normal force (or the first reflection) in the body's position at sub-cell positions, against central differences at 1e-6 cells",
+    "prediction": {"value": null, "band": [1e-9, 1e-5], "unit": "relative", "basis": "derived", "why": "linear solves under custom_linear_solve; the read and the Stokeslets are smooth in the points between lattice planes"},
+    "metric": "relative difference",
+    "control": {"plant": "stop_gradient on the read's points", "environment_variable": "PATCH_PLANT=read_stopped", "expected_rate": "N/N", "runs": 10, "clean_expected": "0/N", "resolution": "the read's share of the derivative, above 1e-3 of it [guess]"},
+    "if_wrong": "a points' dependence held as a constant (the snapped origin's is, by design)",
+    "cannot_discriminate_if": "a difference step crosses a lattice plane of a force point's read (a kink)"
+  },
+  "gate_12_float32": {
+    "claim": "the patch's CG floor in float32 stated; its stops flagged, never silent; float32's reflection within a stated line of float64's",
+    "kind": "estimates",
+    "case": "the plane oracle and the patch solve in float32 at 56^3",
+    "prediction": {"value": null, "band": [1e-5, 3e-4], "unit": "the float32 true residual reached (its floor); the reflection within 1e-4 relative of float64's (band 1e-6 to 1e-4)", "basis": "measured-before (the FVM's FLOOR_MEASURED at D/h 16 to 64)", "why": "the solve's rounding floor eps |A||x| at about n = 56"},
+    "metric": "the report's residual; the relative difference",
+    "control": {"plant": "a tolerance below the floor without at_floor", "environment_variable": "PATCH_PLANT=below_floor", "expected_rate": "flagged (stagnated) N/N", "runs": 3, "clean_expected": "0/N", "resolution": "the report's counts"},
+    "if_wrong": "a stop not reported",
+    "cannot_discriminate_if": "float64 run under the float32 label"
+  },
+  "bits": {
+    "cases": "every released program and every merged program with no patch (the switch scan's configurations and the saved goldens): base release/v0.3.0 against head, one job, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal: the phase adds modules and changes no existing operator",
+    "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "one parameter one ulp up: arrays differ"}
+  },
+  "item_2_read_arms": {
+    "claim": "the MRS's read near contact, measured: point, cell (target) and source reads of the exact image, and the patch arm with point and cell reads, at spacings 0.25 a and 0.1 a, gaps 0.1/0.15/0.2/0.3 a, 20 fine cells across the radius",
+    "prediction": "point at 0.25 a reproduces +76 % (0.1 a) and +8.5 % (0.15 a) within 2 points (the window spike's image arm; the 1 mm sphere's blob is MIME's own: a reproduction, not a prediction); cell and source as gate 8; the patch arm equals the image arm plus gate 1's share within 1 point"
+  },
+  "costs": {
+    "prediction": "cold patch CG 2.4 to 3.0 n iterations at 1e-8 (n = 56: 135 to 170); time a cold solve at 56^3 on a 4-vCPU runner 2 to 8 s [guess]; the Stokeslets' shell a few hundred ms at 338 points",
+    "measured_at": "the smoke at 24^3 (67 to 69 iterations); the spike at 48^3 and 80^3"
+  },
+  "outcomes": null
+}
