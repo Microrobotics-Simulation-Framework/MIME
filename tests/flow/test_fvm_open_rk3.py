@@ -6,7 +6,9 @@ step) and route 1's check that every step dissipated, the laws' storage counted 
 stepped once a step (a first-order exchange residual) and a gift on one step (counted on that step). The inflow's face
 flux is its waveform at the step's end; R-8: the Windkessel's ``N_WK`` under RK3 is first order (``term_orders``); the
 open tube's RK3 fixed point is the steady open solve's (the stage's port forces at the pressure's weight; its control,
-the drive's weight); the start consistent with the openings against the zero start."""
+the drive's weight); the start consistent with the openings against the zero start; the backflow term in its lagged
+implicit form (R-15), pointwise in each stage, on draws whose whole flow reverses: it acts and never gives energy (its
+control, the coefficient negated, flagged)."""
 
 from __future__ import annotations
 
@@ -15,8 +17,8 @@ import dataclasses
 import numpy as np
 import pytest
 from open_cases import draw
-from rk3_open_cases import PLANTS, STEPS, books_of, drawn, fixed_point_distance, fixed_point_pair, inflow_reading, \
-    point_node, restart_distance, scan, start_node, transverse_kick
+from rk3_open_cases import PLANTS, STEPS, backflow_books, backflow_fails, books_of, drawn, fixed_point_distance, \
+    fixed_point_pair, inflow_reading, point_node, restart_distance, reversing, scan, start_node, transverse_kick
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import Windkessel
@@ -135,3 +137,19 @@ def test_a_state_given_from_outside_restarts_from_its_consistent_pressure(float6
     node = drawn(seed, ledger=False)
     assert restart_distance(node, "consistent") <= RESTART_LINE
     assert restart_distance(node, "mismatched") > RESTART_LINE
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.parametrize("plant", [None, "backflow_negated"])
+def test_the_backflow_term_damps_the_reversed_outlet_in_every_stage(dtype, monkeypatch, seed, plant):
+    """R-15's form under RK3: on a draw whose whole flow reverses (the inflow's pulsatile part 1.5 of its mean), the
+    backflow term's coefficient lagged at each stage's start and the term implicit in the stage's pointwise solve acts
+    on the reversed outlet (its booked work below zero on some steps) and never gives energy (never flagged, no work
+    above zero), the books holding; its coefficient negated, an anti-damping, it gives energy and is flagged."""
+    if plant:
+        PLANTS[plant](monkeypatch.setattr)
+    reading = backflow_books(reversing(seed))
+    assert reading["outlet_least"] < 0.0, reading
+    assert backflow_fails(reading) == (plant is not None), reading
+    if plant:
+        assert reading["flagged"] > 0.0, reading

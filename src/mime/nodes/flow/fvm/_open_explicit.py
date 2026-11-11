@@ -30,9 +30,11 @@ those openings' forces is the step's (two fast solves and one port system, in th
 opening's pressure relative to the gauge's reference, so a pressure level many times the vessel's own drop (a
 downstream resistance many times the vessel's) never reaches the field's start.
 
-**The backflow term** (decision 12) is explicit from each stage's start velocity, beside the drive, and booked by RK3's
-quadrature at the stages' starts, where each of its products is at most zero: its sign check (``backflow_flagged``)
-cannot fire under RK3, and route 1's check judges the step.
+**The backflow term** (decision 12, in R-15's lagged implicit form) is pointwise in each stage: its coefficient ``c_k =
+|min(w_k, 0)| / h`` read from the stage's start velocity on the outlets' half cells, the term ``-c_k u*`` taken in the
+stage's pointwise solve beside the penalty, ``u* = r / (1 + alpha_k dt (Sigma + c_k))`` (no solve of its own), and
+booked as the penalty is, ``-sum_k alpha_k dt <c_k u*, u*>`` at each stage's implicit solution: never positive by
+construction, its sign check (``backflow_flagged``) kept, and route 1's check judges the step.
 
 **The ledger: route 1** (B9, D3). The step books each law's work under its id, the kinetic energy convection carries
 through the openings, ``sum_k b_k dt rho <C(u_k), u_k>`` (on the open box the convective power is all of it, so the
@@ -119,9 +121,9 @@ def _no_monolithic_solve(shift: Any, rhs: Velocity, guess: Velocity | None) -> t
 
 
 class OpeningStages:
-    """The openings of one RK3 step on the open box (the module states them): its start, the backflow term, the
-    openings' forces at the prediction and each stage's projection with their rows solved, each law advanced at its
-    stage (:meth:`advance_laws`), the stages' records kept for the step's books (:attr:`records`)."""
+    """The openings of one RK3 step on the open box (the module states them): its start, the backflow term's
+    coefficient, the openings' forces at the prediction and each stage's projection with their rows solved, each law
+    advanced at its stage (:meth:`advance_laws`), the stages' records kept for the step's books (:attr:`records`)."""
 
     def __init__(self, node: OpenExplicitFlowNode, p: Mapping[str, Any], grid: OpenMACGrid, fields: WallFields,
                  sigma: Velocity, law_state: Array, predicted: Array, time: Any, dt: Any, convection: bool) -> None:
@@ -139,12 +141,17 @@ class OpeningStages:
         self.records: list[StageRecord] = []
 
     def ports(self) -> _rk3.StagePorts:
-        return _rk3.StagePorts(self.ready, self.explicit, self.held_force, self.project)
+        return _rk3.StagePorts(self.ready, self.damping, self.held_force, self.project)
 
-    def explicit(self, k: int, velocity: Velocity) -> Velocity:
-        """The backflow term at the stage's start velocity (decision 12), zero where none is placed."""
+    def damping(self, k: int, velocity: Velocity) -> Velocity:
+        """The backflow term's coefficient lagged at the stage's start velocity (the module), zero where none is
+        placed."""
         del k
-        return self.node.backflow_force(self.grid, self.fields, velocity)
+        return self.node.backflow_damping(self.grid, self.fields, velocity)
+
+    def stiffened(self, velocity: Velocity) -> Velocity:
+        """The penalty's resistivity with the backflow term's coefficient lagged at ``velocity`` (the start's)."""
+        return _add(self.sigma, self.damping(0, velocity))
 
     def held_force(self, k: int) -> Velocity:
         """The openings' forces at the prediction, the relative pressures the last stage solved."""
@@ -212,23 +219,23 @@ class OpeningStages:
         made, else consistent with the velocity and the openings, the prediction made with it."""
 
         def made() -> tuple[Array, Array]:
-            driven = _add(force, self.explicit(0, velocity))
-            alone = _rk3.consistent_pressure(self.grid, velocity, self.nu, self.sigma, driven, self.convection)
-            relative = self.start_pressures(velocity, alone, driven)
-            opened = _add(driven, self.grid.port_force(relative, self.rho))
-            return _rk3.consistent_pressure(self.grid, velocity, self.nu, self.sigma, opened, self.convection), relative
+            stiff = self.stiffened(velocity)
+            alone = _rk3.consistent_pressure(self.grid, velocity, self.nu, stiff, force, self.convection)
+            relative = self.start_pressures(velocity, alone, force, stiff)
+            opened = _add(force, self.grid.port_force(relative, self.rho))
+            return _rk3.consistent_pressure(self.grid, velocity, self.nu, stiff, opened, self.convection), relative
 
         held, predicted = _LAX.cond(jnp.asarray(ready) > 0.5, lambda: (pressure, self.predicted), made)
         self.predicted = predicted
         return cast(Array, held)
 
-    def start_pressures(self, velocity: Velocity, pressure: Array, driven: Velocity) -> Array:
+    def start_pressures(self, velocity: Velocity, pressure: Array, driven: Velocity, stiff: Velocity) -> Array:
         """The openings' relative pressures at the start: the first stage's port system on ``pressure`` (the one
-        consistent with the velocity alone), from no prediction."""
+        consistent with the velocity alone), from no prediction, the stage's pointwise solve at ``stiff``."""
         grid, stage_dt = self.grid, _rk3.ALPHA[0] * self.dt
         rhs = _rk3.explicit_rhs(grid, velocity, self.nu, driven, self.convection)
         r = _add(_add(velocity, rhs, _rk3.GAMMA[0] * self.dt), grid.gradient(pressure), -stage_dt)
-        held = cast(Velocity, tuple(r[c] / (1.0 + stage_dt * self.sigma[c]) for c in range(3)))
+        held = cast(Velocity, tuple(r[c] / (1.0 + stage_dt * stiff[c]) for c in range(3)))
         base, _ = projection(grid, held, stage_dt)
         solution, _ = self.solve(0, base, self.units(stage_dt), jnp.zeros_like(self.predicted), stage_dt)
         return solution.relative
@@ -279,8 +286,8 @@ class OpenExplicitFlowNode(OpenFlowNode):
             "order in time and the pressure first order (the split penalty)",
             "Stable only within its CFL line and its viscous number; the node checks the CFL number each step",
             "No step identity is claimed: each step is judged to have dissipated (the ledger's first route)",
-            "The backflow term is explicit from each stage's start, normal only; its booked work cannot be positive, "
-            "so its sign check never fires under RK3",
+            "The backflow term's coefficient is lagged a stage (read from each stage's start velocity), the term "
+            "implicit in the stage beside the penalty and normal only; its booked work is never positive",
         ),
         references=(Reference("HarlowWelch1965"), Reference("SpalartMoserRogers1991"), Reference("Westerhof2009")),
     )
@@ -377,7 +384,7 @@ class OpenExplicitFlowNode(OpenFlowNode):
         outward = flux > 0.0
         reversed_share = jnp.where(outward, inward / jnp.where(outward, flux, 1.0), 0.0)
         watched = jnp.max(reversed_share) > float(c.get("reversal_line", REVERSAL_LINE))
-        backflow_work = as_run_array(p["density"]) * (stage.explicit if stage.explicit is not None else 0.0)
+        backflow_work = -as_run_array(p["density"]) * (stage.damped if stage.damped is not None else 0.0)
         exchange = self.opening_exchange(p, grid, fields, solved, flux)
         exchanged = jnp.max(jnp.abs(exchange)) > self.exchange_line(p, grid)
         ended: dict[str, Array] = dict(
@@ -391,7 +398,7 @@ class OpenExplicitFlowNode(OpenFlowNode):
             opening_pressure_relative=last.solution.relative.astype(dtype), opening_flux=flux.astype(dtype),
             opening_state=stages.law_state.astype(dtype), opening_reversed=reversed_share.astype(dtype),
             opening_reversed_flagged=watched.astype(dtype), backflow_work=backflow_work.astype(dtype),
-            # Each product of RK3's quadrature of the term is at most zero (the module): the sign check reads it.
+            # The term's work is never positive by construction (the module): the sign check stays, unconditional.
             backflow_flagged=(backflow_work > 0.0).astype(dtype), opening_exchange=exchange.astype(dtype),
             opening_exchange_flagged=exchanged.astype(dtype))
         if fields.counts is not None:
@@ -470,7 +477,7 @@ class OpenExplicitFlowNode(OpenFlowNode):
         zero = jnp.zeros((), dtype=dtype)
         hosted_work: dict[str, Array] = {
             "viscous": -rho * stage.viscous, "penalty": -rho * stage.penalty, KINETIC_FLUX: rho * stage.convection,
-            BACKFLOW: rho * stage.explicit if stage.explicit is not None else zero,
+            BACKFLOW: -rho * stage.damped if stage.damped is not None else zero,
             **{opening_role(i): energy["ports"][i] for i in range(len(self.laws()))}}
         stored = jnp.zeros((len(rows), len(books.LAW_BOOKS)), dtype=dtype)
         named: set[str] = set()

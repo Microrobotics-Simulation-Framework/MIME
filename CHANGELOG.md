@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unit fields the stage's fast solves); each law is held at each stage, backward Euler over the stage at its end, so the
   laws are first order in time under RK3 and the exchange is workless by construction (the law's books against the
   flow's, every step); a step whose pressure is unmade starts from the pressure consistent with the velocity and the
-  openings; RK3's explicit viscosity is refused past its viscous number (`flow.viscous-limit`). The ledger's route 1
+  openings; the backflow term takes its lagged implicit form pointwise in each stage (its coefficient read from the
+  stage's start velocity, the term taken beside the penalty, never giving energy); RK3's explicit viscosity is refused
+  past its viscous number (`flow.viscous-limit`). The ledger's route 1
   counts a storing law's storage change with its receiver's, so a Windkessel giving back what it stored is not read as
   a gift. `flow.open-scheme` is gone.
 - **The region builder: a vessel's region cut by planes, its cuts extended and bent onto the box's faces; the open tube

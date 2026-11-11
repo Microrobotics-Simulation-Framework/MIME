@@ -113,9 +113,11 @@ def _rk3_line() -> float:
     return line
 
 
-def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, **settings: Any) -> OpenExplicitFlowNode:
-    """The drawn point's open RK3 node (``open_cases.point_node``'s start, laws and narrowing), its step a fraction 0.1
-    to 0.9 of RK3's bound (the drawn fraction times 0.9), times ``dt_scale`` (an order check's refinement)."""
+def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, pulse: float = 0.3,
+               **settings: Any) -> OpenExplicitFlowNode:
+    """The drawn point's open RK3 node (``open_cases.point_node``'s start, laws and narrowing), its inflow's pulsatile
+    part ``pulse`` of its mean, its step a fraction 0.1 to 0.9 of RK3's bound at the peak flux (the drawn fraction times
+    0.9), times ``dt_scale`` (an order check's refinement)."""
     speed = point.reynolds
     flux = speed * math.pi / 4.0
     probe = rk3_node(point.cells, narrowing=point.narrowing)
@@ -130,11 +132,12 @@ def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, **se
         parts.append(swirl + (2.0 * speed * np.clip(1.0 - across, 0.0, None) if k == 2 else 0.0))
     projected = grid.project(tuple(jnp.asarray(x) for x in parts))
     start = {f"initial_velocity_{x}": np.asarray(projected[k]) for k, x in enumerate("xyz")}
-    peak = max(max(float(np.max(np.abs(v))) for v in start.values()), 2.6 * speed / (1.0 - point.narrowing) ** 2)
+    peak = max(max(float(np.max(np.abs(v))) for v in start.values()),
+               2.0 * (1.0 + pulse) * speed / (1.0 - point.narrowing) ** 2)
     dt = rk3_step(point.cells, peak, 0.9 * point.fraction)
     resistance = tube_resistance(2.0)
     distal = point.distal * resistance
-    parameters = [[flux, 0.3 * flux, 1.0 / (40.0 * dt), 0.0],
+    parameters = [[flux, pulse * flux, 1.0 / (40.0 * dt), 0.0],
                   [point.proximal * resistance, dt / (point.capacitor * distal), distal, 0.0]]
     return rk3_node(point.cells, narrowing=point.narrowing, dt=dt * dt_scale, parameters=parameters,
                     **{"convection": True, **settings}, **({"ledger": METERED_RK3} if ledger else {}), **start)
@@ -143,6 +146,40 @@ def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, **se
 def drawn(seed: int, **settings: Any) -> OpenExplicitFlowNode:
     return point_node(draw(seed), **settings)
 
+
+def reversing(seed: int, **settings: Any) -> OpenExplicitFlowNode:
+    """``drawn(seed)`` with its inflow's pulsatile part 1.5 times its mean: the whole flow reverses from about step 15
+    to step 25 of its 40-step period, the outlet's faces inward, where the backflow term acts."""
+    return point_node(draw(seed), pulse=1.5, **settings)
+
+
+def backflow_reading(p: Any, before: Any, after: Any) -> Any:
+    """Each step's backflow term: its booked work (J), its sign check, and the outlet's net flux (m^3/s, outward)."""
+    del p, before
+    return jnp.stack([jnp.asarray(after["backflow_work"]), jnp.asarray(after["backflow_flagged"]),
+                      jnp.asarray(after["opening_flux"])[1]])
+
+
+def backflow_books(node: OpenExplicitFlowNode) -> dict[str, float]:
+    """The backflow term over :data:`STEPS` steps of a reversing draw: its least and largest booked work over the
+    run's largest magnitude of it, the steps it flagged, the steps it acted on (work below zero), the outlet's least
+    net flux over its largest magnitude (below zero: the whole flow reversed), and route 1's and the law identity's
+    books."""
+    final, rows = scan(node, STEPS, backflow_reading)
+    rows = np.asarray(rows)
+    work = rows[:, 0]
+    size = float(np.max(np.abs(work)))
+    return {**books_of(final), "work_least": float(np.min(work)) / max(size, 1e-300),
+            "work_largest": float(np.max(work)) / max(size, 1e-300), "flagged": float(np.sum(rows[:, 1])),
+            "acted": float(np.sum(work < 0.0)),
+            "outlet_least": float(np.min(rows[:, 2])) / max(float(np.max(np.abs(rows[:, 2]))), 1e-300)}
+
+
+def backflow_fails(reading: dict[str, float]) -> bool:
+    """The backflow gate under RK3 fails: the term gave energy on a step (flagged, or a positive booked work), never
+    acted though the outlet reversed, or the books did not hold."""
+    return reading["flagged"] != 0.0 or reading["work_largest"] > 0.0 or reading["acted"] == 0.0 or \
+        reading["negative_steps"] != 0.0 or reading["law_identity"] > 1.0 or reading["unattributed"] != 0.0
 
 def scan(node: OpenExplicitFlowNode, steps: int, reading: Callable[[Any, Any, Any], Any] | None = None,
          state: Any = None) -> tuple[dict[str, Any], Any]:
@@ -217,7 +254,7 @@ def stage_reference_distance(node: OpenExplicitFlowNode, before: Any) -> tuple[f
     def stepped(state: Any) -> Any:
         stages = node.stages(p, grid, fields, sigma, state, time, dt)
         _rk3.step(grid, velocity, jnp.asarray(state["pressure"]), node.kinematic(p), sigma, drive, convection, time, dt,
-                  explicit=stages.explicit, held_force=stages.held_force, project=stages.project)
+                  damping=stages.damping, held_force=stages.held_force, project=stages.project)
         return [r.solution.moved for r in stages.records]
 
     moves = jax.jit(stepped)(dict(before))
@@ -233,7 +270,7 @@ def stage_reference_distance(node: OpenExplicitFlowNode, before: Any) -> tuple[f
             return projected, phi, held
 
         ended, _, _ = _rk3.step(grid, velocity, jnp.asarray(state["pressure"]), node.kinematic(p), sigma, drive,
-                                convection, time, dt, explicit=stages.explicit, held_force=stages.held_force,
+                                convection, time, dt, damping=stages.damping, held_force=stages.held_force,
                                 project=project)
         return ended
 
@@ -391,7 +428,7 @@ def _gift_once(setter: Setter) -> None:
         ended, parts = real(self, p, state, boundary_inputs, dt)
         stage, energy = parts.stage, parts.energy
         rho = jnp.asarray(p["density"])
-        lost = rho * (stage.viscous + stage.penalty - (stage.explicit if stage.explicit is not None else 0.0)) + \
+        lost = rho * (stage.viscous + stage.penalty + (stage.damped if stage.damped is not None else 0.0)) + \
             jnp.sum(energy["law_books"][:, 2] + energy["law_books"][:, 3])
         kinetic = self.storage(p, ended)
         factor = jnp.sqrt(1.0 + 2.0 * lost / kinetic)
@@ -431,6 +468,16 @@ def _inflow_scaled(setter: Setter) -> None:
         1.001 * x for x in real(self, parameters, state, time, dt)))
 
 
+def _backflow_negated(setter: Setter) -> None:
+    """The backflow term's coefficient negated: an anti-damping on the reversed outlet faces, giving the flow energy."""
+    real = OpenExplicitFlowNode.backflow_damping
+
+    def backflow_damping(self: Any, grid: Any, fields: Any, velocity: Any) -> Any:
+        return tuple(-c for c in real(self, grid, fields, velocity))
+
+    setter(OpenExplicitFlowNode, "backflow_damping", backflow_damping)
+
+
 def _forces_at_gamma(setter: Setter) -> None:
     """The openings' forces taken with the drive's weight ``gamma_k dt`` in place of the pressure's ``alpha_k dt``."""
     real = _open_explicit.OpeningStages.held_force
@@ -443,11 +490,12 @@ def _forces_at_gamma(setter: Setter) -> None:
 
 PLANTS: dict[str, Callable[[Setter], None]] = {
     "law_once": _law_once, "gift_once": _gift_once, "unit_scaled": _unit_scaled, "unit_penalised": _unit_penalised,
-    "inflow_scaled": _inflow_scaled,
+    "inflow_scaled": _inflow_scaled, "backflow_negated": _backflow_negated,
     "forces_at_gamma": _forces_at_gamma,
 }
 
-__all__ = ["AFFINE_LINE", "GIFT_STEP", "fixed_point_distance", "fixed_point_pair", "LocalStenosis", "METERED_RK3", "PLANTS", "STEPS", "ShapedOpenExplicitNode",
+__all__ = ["AFFINE_LINE", "GIFT_STEP", "backflow_books", "backflow_fails", "backflow_reading", "reversing",
+           "fixed_point_distance", "fixed_point_pair", "LocalStenosis", "METERED_RK3", "PLANTS", "STEPS", "ShapedOpenExplicitNode",
            "books_of", "drawn", "inflow_reading", "open_tube", "restart_distance", "start_node", "transverse_kick", "point_node", "rk3_node", "rk3_step", "scan",
            "stage_reference_distance"]
 
@@ -504,7 +552,8 @@ def gate_fails(reading: dict[str, float], dtype: str) -> bool:
 
 def main() -> int:
     """The probe's oracle (``detection_rate.py --script``): one draw at ``DETECTION_SEED``, its plant from
-    ``RK3_PLANT`` (:data:`PLANTS`); exits 1 when the gate fails."""
+    ``RK3_PLANT`` (:data:`PLANTS`); ``RK3_GATE=backflow`` the reversing draw's backflow gate, else FB11's and route 1's;
+    exits 1 when the gate fails."""
     import json
     import os
 
@@ -513,9 +562,10 @@ def main() -> int:
     if plant:
         PLANTS[plant](setattr)
     dtype = "float64" if jax.config.read("jax_enable_x64") else "float32"
-    reading = gate_reading(seed)
+    backflow = os.environ.get("RK3_GATE") == "backflow"
+    reading = backflow_books(reversing(seed)) if backflow else gate_reading(seed)
     print(json.dumps({"seed": seed, "plant": plant, "dtype": dtype, **reading}))
-    return 1 if gate_fails(reading, dtype) else 0
+    return 1 if (backflow_fails(reading) if backflow else gate_fails(reading, dtype)) else 0
 
 
 if __name__ == "__main__":

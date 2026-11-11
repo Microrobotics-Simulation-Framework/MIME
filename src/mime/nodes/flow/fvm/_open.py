@@ -397,6 +397,24 @@ class OpenMACGrid(MACGrid):
         f_high = beta * high * jnp.minimum(outward_high, 0.0) * outward_high / self.spacing
         return (zero[0], zero[1], zero[2].at[..., 0].set(f_low).at[..., -1].set(f_high))
 
+    def backflow_damping(self, velocity: Velocity, openings: Sequence[int], beta: Any = 1.0,
+                         fluid: Array | None = None) -> Velocity:
+        """The backflow term's coefficient (1/s) in its lagged implicit form (decision 12 as R-15 took it): on each
+        plane's half cell of ``openings``' patches ``c = beta |min(w_n, 0)| / h``, ``w_n`` the face's outward velocity
+        in ``velocity`` (the lagged one), weighted by ``fluid`` (on ``w``'s faces) where given; the term on the new
+        velocity is ``f = -c w'``, a diagonal beside the penalty's whose power ``-c w'^2`` is never positive. Zero
+        wherever the lagged flow leaves, and on every other face."""
+        w = velocity[2]
+        zero = self.zeros(w.dtype)
+        if not openings:
+            return zero
+        low, high = self._plane_masks(openings, w.dtype)
+        if fluid is not None:
+            low, high = low * fluid[..., 0], high * fluid[..., -1]
+        c_low = -beta * low * jnp.minimum(-w[..., 0], 0.0) / self.spacing
+        c_high = -beta * high * jnp.minimum(w[..., -1], 0.0) / self.spacing
+        return (zero[0], zero[1], zero[2].at[..., 0].set(c_low).at[..., -1].set(c_high))
+
     def opening_reversed_fluxes(self, velocity: Velocity, fluid: Array) -> Array:
         """The volume flux (m^3/s) entering through each opening's patch where its faces' flow is inward, each face
         weighted by ``fluid`` (the faces' ``1 - chi``, on ``w``'s faces): ``h^2 sum_patch (1 - chi) max(-w_n, 0)``."""

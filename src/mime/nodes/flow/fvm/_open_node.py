@@ -356,6 +356,11 @@ class OpenFlowNode(ImplicitFlowNode):
         drive acts), zero where none is placed."""
         return grid.backflow_force(velocity, self.backflow_openings(), BACKFLOW_BETA, 1.0 - fields.chi[2])
 
+    def backflow_damping(self, grid: OpenMACGrid, fields: WallFields, velocity: Velocity) -> Velocity:
+        """The backflow term's coefficient lagged at ``velocity`` (``OpenMACGrid.backflow_damping``) on the fluid of
+        the outlets' half cells, zero where none is placed."""
+        return grid.backflow_damping(velocity, self.backflow_openings(), BACKFLOW_BETA, 1.0 - fields.chi[2])
+
     def laws(self) -> list[PortLaw]:
         return [port_law_named(law) for law in self.constants()["opening_laws"]]
 

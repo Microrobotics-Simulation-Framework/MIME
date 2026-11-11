@@ -5,7 +5,8 @@
   "seen_before": [
     "a smoke run while writing (one rig, not a draw: D/h 8, 2 D long, nu 1, dt 0.1 h^2, an Inflow of mean speed 1 with 0.3 pulsatile over 40 steps a period, a Windkessel R_p 0.3, C dt / (1.5 R_tube), R_d 3 R_tube, the backflow term on the outlet, metered, 40 steps, float64): the inflow's face flux its waveform to the digits printed, the law identity's worst 0.036 of its floor, route 1's worst step +0.079 of its scale, nothing unattributed",
     "the same experiment through the build (test_fvm_openings' vessel, Scheme.RK3(), 20 ms, float64): the face fluxes [-Q, Q] to 1e-12, the books closed (ledger_closes), the viscous limit refused at dt 5 ms",
-    "the open-ports spike's question 7 (S1's solver, not this node): the zero start diverged within 5 steps at R_p 100 R_tube, the consistent start smooth at every R_p; question 5: at mean Re 300 on the radius with a 50 % stenosis 0.9 D before the outlet S1's RK3 diverged within 0.26 of a period without the term, held 2.25 periods with it; at Re 100 stable both ways"
+    "the open-ports spike's question 7 (S1's solver, not this node): the zero start diverged within 5 steps at R_p 100 R_tube, the consistent start smooth at every R_p; question 5: at mean Re 300 on the radius with a 50 % stenosis 0.9 D before the outlet S1's RK3 diverged within 0.26 of a period without the term, held 2.25 periods with it; at Re 100 stable both ways",
+    "R-15, decided 2026-11-11 (night) before any FB7 arm ran: the backflow term's explicit form replaced by the lagged implicit form, f = -|min(w^n, 0)| w'/h, pointwise in RK3's stages (its coefficient read from each stage's start velocity, the term taken in the stage's pointwise solve beside the penalty, booked as the penalty is); the FB7 rows are for that form, with the explicit form (this node at f62f33b) run beside it as the comparison his condition asks for. While writing: the RK3 tests' draws (no reversal) pass unchanged under the new form"
   ],
   "operating_point": {
     "dtype": ["float64", "float32"],
@@ -73,7 +74,7 @@
     "prediction": {"value": 2.0, "band": [1.6, 2.4], "unit": "ratio of the sums at dt and dt/2", "basis": "derived", "why": "backward Euler per stage over alpha_k dt: N_WK = (C/2)(dPc)^2 with dPc of order alpha_k dt"}
   },
   "gate_fb7_backflow": {
-    "claim": "FB7: at S1's point (mean Re 300 on the radius, alpha 5.5, a 50 % cosine stenosis of the radius 1 D long centred 0.9 D before the outlet, D/h 16, 4 D long, interior 0.01h, the reversing inflow Q_m (1 + 1.5 sin wt), an RCR outlet R_p 0.5, C 0.4, R_d 5 in S1's units, dt 0.8 h over 60 times the mean speed), RK3 with ports diverges without the backflow term and holds with it",
+    "claim": "FB7: at S1's point (mean Re 300 on the radius, alpha 5.5, a 50 % cosine stenosis of the radius 1 D long centred 0.9 D before the outlet, D/h 16, 4 D long, interior 0.01h, the reversing inflow Q_m (1 + 1.5 sin wt), an RCR outlet R_p 0.5, C 0.4, R_d 5 in S1's units, dt 0.8 h over 60 times the mean speed), RK3 with ports diverges without the backflow term and holds with it in R-15's lagged implicit form, pointwise in the stages",
     "kind": "acceptance (a stability check at one point; the threshold and the tangential share are estimates)",
     "case": "probe arms fb7_* (probe/fb7.py): 5 draws, the stenosis's centre 0.7 to 1.1 D before the outlet and the inflow's phase drawn; each arm with and without the term, 0.6 of a period (about 7,500 steps) or until it diverges",
     "prediction": {"value": "without: 5/5 diverge within 0.5 of a period; with: 5/5 finite and bounded (largest speed under 20 times the mean) over 0.6 of a period", "basis": "measured-before (the spike, 1 of 1) and guess (the draws)", "why": "the stenotic jet's recirculation reaches the outlet near the forward peak and the reversed inflow's kinetic energy feeds the instability; the term removes it on the normal component"},
@@ -83,6 +84,28 @@
     "control": {"plant": "the term removed (backflow_openings=())", "expected_rate": "5/5 diverge (the control is the gate's other arm)", "runs": 5},
     "if_wrong": "no divergence without the term: the point is not past the instability on this node (the evolved flux inlet, the fluid-weighted term) and FB7 cannot discriminate; say so and move the point (Re up, the stenosis nearer), never read it as 'not needed'",
     "cannot_discriminate_if": "both arms finite (no instability reached) or both diverge (the term does not hold here)"
+  },
+  "gate_fb7_spike_case": {
+    "claim": "his condition on R-15 (a), its RK3 part: at the open-ports spike's case (FB7's point with the stenosis 0.9 D before the outlet, phase 0, mean Re 300 on the radius), RK3 with ports and the backflow term in its lagged implicit form holds at least as long as the explicit form's 2.25 periods (28,035 steps of 12,463 a period); the explicit form (this node at f62f33b) run the same 2.25 periods beside it, and the term removed",
+    "kind": "acceptance (a stability check at one point, against the explicit form's on the same node); reported, never absorbed: a shorter hold goes back to him",
+    "case": "probe arms fb7_spike_implicit and fb7_spike_explicit (probe/fb7.py --periods 2.25, chunks of 500 steps, stopped at the first non-finite chunk or a CFL stop); the term removed in arm fb7_ab's first draw",
+    "prediction": {"value": "implicit: finite and bounded over 2.25 periods (largest speed under 20 times the mean speed); explicit on this node: the same; their largest speeds within 20 % of each other; without the term: diverged within 0.5 of a period", "basis": "measured-before (the spike's explicit form on S1's solver, 1 of 1: 2.25 periods, largest speed 7.45 times the mean) and derived (the two forms are the same force at the lagged velocity, differing by the stage's change in w, second order in the outlet face's local CFL number)"},
+    "if_wrong": "the implicit form diverges where the explicit holds: a coefficient a stage old meets a reversal growing within the stage; reported with the period it reached, before #258 merges. The explicit form diverging on this node too: this node's point differs from the spike's (the evolved flux inlet, the fluid-weighted term), said so",
+    "cannot_discriminate_if": "the run without the term holds too (the point not past the instability on this node): then the hold says nothing about the term"
+  },
+  "gate_fb7_damping_forms": {
+    "claim": "his condition on R-15 (a): a genuine outlet reversal's damping by the implicit form against the explicit form's, under RK3, at a point stable without the term (mean Re 100, the stenosis 1.4 D before the outlet, the whole flow reversing)",
+    "kind": "estimates (the term's effect on a genuine reversal, both forms)",
+    "case": "probe arm fb7_damping: probe/fb7.py --reynolds 100 --before 1.4, one period each: the implicit form, the explicit form (f62f33b), the term removed; the reversed inflow through the outlet's most, and the outlet face velocity's least",
+    "prediction": {"value": "damping = 1 - (the reversed outlet inflow's most with the term) / (without): 0.05 to 0.5 for each form (the spike's explicit 0.15 on w's least); the implicit form's within 10 % of the explicit's", "basis": "guess (the size) and derived (the forms differ at second order in the face's local CFL number)"},
+    "cannot_discriminate_if": "no outlet face reverses without the term (the damping is then zero by construction)"
+  },
+  "gate_backflow_rk3_form": {
+    "claim": "R-15's form under RK3 in CI: on drawn open tubes whose whole flow reverses (the inflow's pulsatile part 1.5 of its mean, 30 steps, D/h 8 to 16, both dtypes) the term acts (its booked work below zero on some step) and never gives energy (backflow_flagged never, no booked work above zero), route 1 and the law identity holding",
+    "kind": "acceptance (the sign by construction, checked; the term's presence)",
+    "case": "test_fvm_open_rk3.test_the_backflow_term_damps_the_reversed_outlet_in_every_stage, seeds 0 to 2 a dtype; rate: detection_rate.py with RK3_GATE=backflow",
+    "prediction": {"value": 0, "band": [0, 0], "unit": "flagged steps on clean draws", "basis": "derived", "why": "the coefficient is never negative and the booked work is -alpha_k dt <c u*, u*>, a sum of non-positive products"},
+    "control": {"plant": "backflow_negated: the coefficient negated (an anti-damping on the reversed outlet faces)", "environment_variable": "RK3_PLANT=backflow_negated, RK3_GATE=backflow", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40", "resolution": "the plant's work is the term's own with its sign turned: flagged on any step the outlet reverses, which every draw's reversal (the flux at -0.5 of its mean at mid-period) gives"}
   },
   "gate_fb10_entrance": {
     "claim": "FB10: the entrance length at the higher-Re arm (RK3 with ports): a steady inflow into a long open tube develops to Poiseuille within the correlations' spread (Durst et al. 2005's L_99/D = [0.619^1.6 + (0.0567 Re)^1.6]^(1/1.6) [recalled], 5.7 D at Re 100 and 17.0 D at 300), a gross check",
@@ -125,8 +148,8 @@
     "prediction": {"value": "the same shares as IMEX Euler's at the same drive within a factor of 2 (the limit is the solid's Darcy response, not the scheme's)", "basis": "inference"}
   },
   "bits": {
-    "cases": "the released programs (tests/saved/cases.py: script_a, script_a_metered, hull_contact, coupled_toy, dynamic_rpm, kinematic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow, prescribed_tube_flow, nudged_toy, open_tube_flow), float64 and float32, base #258's head against this head, one job, one CPU, one thread (bit_compare.py)",
-    "prediction": "every array np.array_equal (RK3's periodic step keeps its operations: its hooks are None there; the implicit node's constructor keeps its arguments' order)",
+    "cases": "the released programs (tests/saved/cases.py: script_a, script_a_metered, hull_contact, coupled_toy, dynamic_rpm, kinematic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow, prescribed_tube_flow, nudged_toy, open_tube_flow), float64 and float32, base #258's head against this head, one job, one CPU, one thread (bit_compare.py); and the open RK3 program (open_rk3_tube_flow, no face reversing) against this node at f62f33b (the explicit form), both dtypes: non-reversing programs bit for bit across R-15's change",
+    "prediction": "every array np.array_equal (RK3's periodic step keeps its operations: its hooks are None there; the implicit node's constructor keeps its arguments' order); open_rk3_tube_flow equal to f62f33b's (where no face reverses the implicit form's coefficient is zero and the explicit force was zero)",
     "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "bit_compare's own"}
   },
   "outcomes": null

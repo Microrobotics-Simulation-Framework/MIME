@@ -267,7 +267,7 @@ class RK3(TimeScheme[_rk3.ExplicitStage]):
                                    context.force(0, time + self.drive_instants[0] * dt))
             ended, ended_pressure, stage = _rk3.step(grid, velocity, pressure, viscosity, resistivity, context.force,
                                                      context.convection, time, dt, fluid=context.fluid,
-                                                     explicit=ports.explicit, held_force=ports.held_force,
+                                                     damping=ports.damping, held_force=ports.held_force,
                                                      project=ports.project)
         return ({"velocity": ended, "pressure": ended_pressure,
                  "pressure_ready": jnp.ones((), dtype=velocity[0].dtype)}, stage)
