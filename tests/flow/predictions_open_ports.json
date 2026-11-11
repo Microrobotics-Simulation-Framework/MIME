@@ -1,0 +1,102 @@
+{
+ "written": "2026-11-10, committed before any gate of F2b's PR 2 ran (the commit that adds this file is the timestamp): the open axis (half-weight port faces), the opening port kind, the hybrid rows, Inflow, the backward-Euler Windkessel and N_WK, the unit fields in the program, the gauge, W_ports and the kinetic-energy flux, N_proj at open faces, check (a)",
+ "phase": "F2b PR 2: the open axis and one opening of each kind (FB1 to FB4, FB13; the open flags; N_WK's order; check (a))",
+ "labels": "predictions by the builder (Opus) from the open-ports spike's numbers (the F0 open-ports spike, float64, CPU) and two smoke runs of the built node (below); rates are predicted for seeds no smoke run used",
+ "seen_before": [
+  "the open-ports spike: open tube = periodic tube to 9.3e-14 (D/h 16) and 4.2e-14 (32) at CG 1e-11; the flux-pinned face's flux to 3.9e-15 to 4.3e-15 of Q_m; Q x (1 + 1e-3) caught 4/4; the BE Windkessel's exchange 1e-16 to 1e-17 of the port energy, N_WK halving with dt (1.83e-3, 9.5e-4, 4.8e-4, 2.4e-4 of the port energy at 25 to 200 steps a period); the superposed field's true residual 3.4e-10 unplanted, a unit field x1.1 or x-1 caught 8/8 each; IMEX Euler's identity with open faces to 1.3e-17 of the step's scale with the kinetic-energy flux booked as dt <C(u), u>, the face formula missing 0.74 % on an open stenosis; uniform port-face weights an untested control [inference]",
+  "this build's smoke (a smoke run of the node, D/h 8, two diameters long, Re 0.1, Inflow + RCR, 30 IMEX Euler steps, convection on): the inlet's flux against Q(t) within 1.8e-15 of Q (float64) and 3.0e-6 (float32); the step identity's worst 0.031 (float64) and 0.106 (float32) of its floor; the Windkessel's own identity 0.065 and 0.076 of the floor; the experiment-built run's books close (a smoke run through the experiment)"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "GitHub runner 4 vCPU (probe arms); CI's default lane for the tests",
+  "sizes_and_parameters": "a straight tube of D = 1 along z, two to four diameters long, D/h 8 to 16, S7's box (D/h + 3 + 8 cells across), nu = rho = 1 unless stated; IMEX Euler (FB2, FB3, FB13, the flags, N_WK) or its steady limit (FB1); the Windkessel at R_p 0.1 to 3 R_tube, R_d 1 to 10 R_tube, dt/(R_d C) 0.1 to 3; Re by the inflow's mean speed 0.1 to 100, CFL under 0.4",
+  "seeds_and_draws": "seeds 0 to 199 for lines, from 1000 for rates; draws at physical scales in these units (CLAUDE.md, Property tests)"
+ },
+ "gate_1_open_axis": {
+  "claim": "FB1: the open tube with its ends at given pressures dP apart equals the periodic tube driven by the body force dP / (rho L), to the solve's tolerance (steady Stokes)",
+  "kind": "equality",
+  "case": "tests/flow/test_fvm_open.py::test_the_open_tube_is_the_periodic_tube; probe arm fb1",
+  "prediction": {"value": "max |u_open - u_periodic| / max|u| at most 1e-9 at CG tolerance 1e-11 (float64)", "band": [0, 1e-9], "basis": "measured-before (the spike's 9.3e-14)"},
+  "control": {"plant": "the port faces at full weight (V = 1) in the inner product: the projector no longer orthogonal", "expected_rate": "every run, both the gate's difference and the open_face_projection flag [inference: unmeasured in the spike]", "runs": 40, "clean_expected": "0/40"},
+  "cannot_discriminate_if": "both arms solve the same periodic problem (the open arm's ends not open): checked by the open node's z faces holding nz + 1 values"
+ },
+ "gate_2_flux_pinned_inlet": {
+  "claim": "FB2: the flux-pinned inlet's face flux equals the inflow's Q(t) at every step to rounding",
+  "kind": "equality",
+  "case": "tests/flow/test_fvm_open.py::test_the_inflows_face_flux_is_its_waveform; probe arm fb2",
+  "prediction": {"value": "|q + Q(t)| at most 64 eps of the face's magnitude h^2 sum|w| at every step, both dtypes", "basis": "measured-before (smoke: 1.8e-15 and 3.0e-6 of Q)"},
+  "control": {"plant": "the law delivers Q x (1 + 1e-3); the oracle reads the nominal Q", "expected_rate": "every run, both dtypes", "runs": 40, "clean_expected": "0/40", "resolution": "the smallest relative flux error caught on every draw: about 1e-12 (float64) and 1e-5 (float32) [guess from 64 eps]"}
+ },
+ "gate_3_windkessel": {
+  "claim": "FB3: the backward-Euler Windkessel's own books close at every step (the work the fluid did on it = its storage's change + its resistances' loss + N_WK) to 16 eps of the step's scale, with N_WK booked and positive",
+  "kind": "equality",
+  "case": "tests/flow/test_fvm_open.py::test_the_windkessels_books_close; probe arm fb3",
+  "prediction": {"value": "law_identity_worst at most 0.5 of its floor in both dtypes; N_WK > 0 on every run with a moving capacitor", "basis": "measured-before (smoke: 0.065 and 0.076)"},
+  "control": {"plant": "a port gift: the law's affine relation uses R_p - g (g = 0.05 R_p) while its books use R_p", "expected_rate": "every run in float64; in float32 every run where the gift's size dt g q^2 is above the floor (the spike's float32 arm drew 1 of 8 above it), so the plant is sized above it", "runs": 40, "clean_expected": "0/40"},
+  "cannot_discriminate_if": "the exchange alone were judged: here the fluid's port work and the law's received work use the same solved flux, so their sum is zero by construction (not evidence); the law's own identity is the gate"
+ },
+ "gate_4_affine_response": {
+  "claim": "FB4: the step's solution (the solve's plus each unit field times its pressure's correction) is the monolithic solution at the solved pressures: its projected true residual at the solve's tolerance; SF-12's affine case built on it",
+  "kind": "bounds",
+  "case": "tests/flow/test_fvm_open.py::test_the_superposed_field_is_the_monolithic_solve; tests/flow/test_field_suite.py's affine case; probe arm fb4",
+  "prediction": {"value": "the superposed field's projected true residual at most 10 times the tolerance (float64 1e-8; float32 its floor)", "basis": "measured-before (the spike's 3.4e-10 at 1e-10)"},
+  "control": {"plant": "the stored unit field x1.1, and x-1", "expected_rate": "every run each, both dtypes", "runs": 40, "clean_expected": "0/40"}
+ },
+ "gate_5_identity_open_faces": {
+  "claim": "FB13: IMEX Euler's step identity closes with open faces to 16 eps of the step's scale at every step, the kinetic-energy flux booked as dt rho <C(u), u> under the openings' line, N_proj booked (rounding), in flow where that flux is not zero (a swirl through the ends, a stenosis)",
+  "kind": "equality",
+  "case": "tests/flow/test_fvm_open_ledger.py::test_the_books_close_with_open_faces (ledger_closes); probe arm fb13",
+  "prediction": {"value": "identity_worst at most 0.5 of its floor on every draw, both dtypes", "basis": "measured-before (smoke 0.031, 0.106; the spike 1.3e-17 of the scale)"},
+  "control": {"plant": "an interior gift: a body force on the fluid the books do not see, sized at 4 floors of the step's scale", "expected_rate": "every run, both dtypes; no false alarm in 200 clean draws a dtype", "runs": 200, "clean_expected": "0/200"},
+  "cannot_discriminate_if": "the kinetic-energy flux is zero (a straight tube's Poiseuille flow): the draws carry a swirl and a narrowing so it is not"
+ },
+ "gate_6_open_flags": {
+  "claim": "the open box's two flags: open_face_projection (N_proj over the step's scale) and port_kinetic_flux (the booked kinetic-energy flux against the face formula's, over their size), each with its line from clean drawn runs and its plant caught on every run",
+  "case": "tests/flow/open_cases.py's draws, 60 steps each; probe arms flags_lines, flags_rates",
+  "prediction": {"open_face_projection": "clean at most 1e-14 (float64) and 1e-6 (float32) of the scale; the V = 1 plant above every line", "port_kinetic_flux": "clean at most about 2e-2 (the face formula's own error, the spike's 0.74 % on a stenosis); the outlet half cell's convective flux taken at full weight (its factor 2 dropped) above it on every run", "basis": "guess from the spike; lines are measured, never set from these"},
+  "if_wrong": "a plant missed on some run is reported with its rate and the flag stays pending, not counted"
+ },
+ "gate_7_nwk_order": {
+  "claim": "N_WK, summed over a fixed time, falls as dt halves at order 2 (term_orders, summed over three drawn cases a ensemble); a physical loss written into its formula fails every ensemble",
+  "case": "tests/flow/test_fvm_open_ledger.py::test_n_wk_has_its_order; probe arm nwk_order (ensembles from seed 1000)",
+  "prediction": {"value": "ratio 1.8 to 2.2 on every clean ensemble (band 1.41 to 2.83)", "basis": "derived: N_WK = (C/2)(Pc' - Pc)^2 is dt^2 a step; measured-before (the spike's 1.83e-3, 9.5e-4, 4.8e-4, 2.4e-4)"},
+  "control": {"plant": "the distal resistance's loss written into N_WK (and taken from the loss, so the law's identity still closes)", "expected_rate": "every ensemble, both dtypes (its sum flat in dt: ratio near 1)", "runs": 50}
+ },
+ "gate_8_passivity": {
+  "claim": "check (a): every port law's per-stage block has a positive semidefinite symmetric part over draws at physical scales (definite_at_floor); sources exempt",
+  "case": "tests/flow/test_port_laws.py (Hypothesis, the port-law suite mime.testing.port_law_suite)",
+  "prediction": {"value": "the Windkessel passes every draw", "basis": "derived: R_p + dt / (C + dt / R_d) > 0"},
+  "control": {"plant": "the Windkessel with its block's sign flipped", "expected_rate": "every draw"}
+ },
+ "gate_9_n_proj": {
+  "claim": "N_proj at the open faces is rounding: the half-weight faces keep the projector orthogonal (C13); booked, its order not testable (it does not fall with the tolerance), stated as such",
+  "prediction": {"value": "|N_proj| at most the open_face_projection line at two tolerances (1e-8, 1e-6)", "basis": "derived"}
+ },
+ "bits": {
+  "cases": "the released programs (script A, script A metered, the hull contact, the coupled toy, the RPM arms, the four periodic flows, the nudged toy) in both dtypes, base 6a57334 against the head, one job, one core type (bit_compare.py on a probe)",
+  "prediction": "every array np.array_equal: the periodic node's arithmetic is unchanged (its initial state made by the grid's zeros, its NaN select per component, its ledger untouched)"
+ },
+ "outcomes": {
+  "written": "2026-11-10, after the gates ran; the predictions above are as committed in 9a220f3",
+  "runs": {
+   "lines_rates_ranges_bits": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42844502732",
+   "fb2_at_its_moved_line": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42848862406",
+   "first_probe_superseded": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42837032938"
+  },
+  "first_probe": "superseded: its draws took the step from the start's peak, and 82 of 200 ran past the CFL line through the narrowing's throat, where the node holds the state, so FB4 read held states (clean flagged 10/40); the draws now take the step from the throat's peak at the inflow's peak, a run past the line is judged by no gate (10 of 200 a dtype still pass it, refused by the node)",
+  "gate_1_open_axis": "held: worst 1.2e-12 (float64) and 2.6e-6 (float32) of the peak over 200 draws, lines 1e-9 and 1e-4; the control is the planes' faces' gradient at a full cell, caught 40/40 each dtype (clean 0/40), range 1.4e-9 and 1e-3 of the end gradient removed. The predicted control (uniform inner-product weights) cannot move FB1: the solve's answer does not depend on the inner product, so it is the projection flag's plant instead",
+  "gate_2_flux_pinned_inlet": "missed in float32: worst 22 eps (float64) and 85 eps (float32, 2 of 190 draws over the predicted 64) of the face's magnitude; the line moved to 256 eps (three times float32's worst), at which Q x 1.001 is caught 40/40 each dtype, clean 0/40, range 3.7e-13 and 1.9e-4 of Q; a further miss, reported by the review: the rate run's clean float32 arm (seeds from 1000) flagged seed 1036 at 1.02 of the 64-eps line. The 256-eps line was fitted (three times float32's worst), and the review found the error growing with the face count and the pressure level: the fix round replaces it with a derived floor (predictions_open_ports_fix.json)",
+  "gate_3_windkessel": "held: the Windkessel's own identity at most 0.065 (float64) and 0.109 (float32) of its floor, N_WK > 0 on 200/200; the port gift (0.05 R_p) caught 40/40 each dtype, clean 0/40; range 5.2e-10 R_p (float64), between 0.01 and 0.1 R_p (float32: 11 of 12 at 0.01)",
+  "gate_4_affine_response": "held: the superposed residual at most 0.13 (float64) and 0.125 (float32) of its line; against a cold monolithic solve 1.6e-8 and 1.6e-5 of the peak (SF-12's case's lines 1e-6 and 3e-5); the unit field x1.1 and x-1 caught 40/40 each, clean 0/40; range 7.2e-7 and 2.7e-3 of the unit field's scale",
+  "gate_5_identity_open_faces": "held: ledger_closes on 200/200 a dtype, identity at most 0.068 and 0.21 of its floor, the kinetic-energy flux not zero on every draw; the interior gift caught 40/40 each dtype, clean 0/40; range 2.7e-11 (float64) and 0.027 (float32) of the Poiseuille gradient",
+  "gate_6_open_flags": "open_face_projection held and is active: worst 3.1e-18 and 2.4e-9 of the step's scale, lines 2e-17 and 1e-8, the planes at full weight caught 40/40 each dtype, range under 1e-14 and 1e-6 of the planes' weight. port_kinetic_flux did not hold: on the draws the planes' net kinetic-energy flux is a median 0.035 of their gross (in and out nearly cancel), so a reading of the net against the face formula's can judge 23 of 190 runs; it is declared pending with that reason (judged clean worst 0.013)",
+  "gate_7_nwk_order": {
+   "clean": "held: 40 of 40 fresh three-case ensembles a dtype (seeds from 1000, D/h 8) within the order-2 band (fall 1.41 to 2.83 as dt halves)",
+   "plant": "caught on 40 of 40 ensembles a dtype (the distal loss written into N_WK: its sum flat in dt)",
+   "range": "0.016 of the distal loss, both dtypes"
+  },
+  "gate_8_passivity": "held: the Windkessel passes 200 of 200 draws, its block flipped fails 200 of 200",
+  "gate_9_n_proj": "held: N_proj at most 3.1e-18 (float64) and 2.4e-9 (float32) of the step's scale",
+  "bits": "held: 22 programs, 420 arrays, all np.array_equal, base c816e40 against 9c5a4c0, one CPU (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/42844502732)"
+ }
+}

@@ -345,12 +345,13 @@ def metered_twin(node: SimulationNode, dynamics: Dynamics
     held = cast(Any, node)
     if getattr(type(node), "LEDGER_TERMS", None) is None:
         return f"{type(node).__name__} writes no step identity (MimeNode.LEDGER_TERMS)"
-    kind = port_kind(dynamics.port)
-    if kind is None:
-        return f"{type(dynamics).label()} names the port kind {dynamics.port!r}, which is not registered"
+    kinds = [port_kind(name) for name in dynamics.port_kinds]
+    if not kinds or any(kind is None for kind in kinds):
+        return f"{type(dynamics).label()} names the port kinds {dynamics.port_kinds!r}, not each registered"
     deliveries: list[ledger.LedgerDelivery] = []
     for interface, port in sorted(dynamics.accepts.items(), key=lambda item: item[1].field):
-        paired = kind.deliveries.get(interface)
+        paired = next((kind.deliveries[interface] for kind in kinds if kind is not None and interface in kind.deliveries),
+                      None)
         if paired is None or paired.value not in (ledger.LOAD, ledger.SOLVED) or port.field == "confinement":
             continue
         energy_class = ledger.UNMETERED if paired.value == ledger.LOAD else ledger.DISSIPATIVE
@@ -363,23 +364,24 @@ def metered_twin(node: SimulationNode, dynamics: Dynamics
 def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
                   max_examples: int = 200) -> VerificationResult:
     """``dynamics``' step identity on drawn states (the module's docstring), on ``node`` (its node as a build makes
-    it; by default as :func:`dynamics_rig` builds it): one step of its metered twin from each draw of its port kind's
-    states, the identity within its floor and work fed into its unattributed input booked as unattributed. A dynamics
+    it; by default as :func:`dynamics_rig` builds it): one step of its metered twin from each draw of its first port
+    kind's states (a flow's ``fluid``; its openings' are the open box's gates'), the identity within its floor and work fed into its unattributed input booked as unattributed. A dynamics
     that names no port kind passes with its reason for being unmetered, and fails with none. A failing draw is
     reported as drawn."""
     from hypothesis import HealthCheck, Phase, given, settings
 
-    if not dynamics.port:
+    if not dynamics.port_kinds:
         if dynamics.unmetered:
             return VerificationResult("step identity", "PASS", detail=f"unmetered: {dynamics.unmetered} (a pass by that "
                                                                      f"declaration alone: nothing was checked)")
-        return _failed(f"{type(dynamics).label()} names no port kind (Dynamics.port) and states no reason for "
+        return _failed(f"{type(dynamics).label()} names no port kind (Dynamics.port_kinds) and states no reason for "
                        f"being unmetered (Dynamics.unmetered)")
-    draws = PORT_DRAWS.get(dynamics.port)
+    primary = dynamics.port_kinds[0]
+    draws = PORT_DRAWS.get(primary)
     if draws is None:
-        return _failed(f"no draws for the port kind {dynamics.port!r} yet")
-    if dynamics.port in PORT_CASES:
-        return _port_case_identity(PORT_CASES[dynamics.port], node, max_examples)
+        return _failed(f"no draws for the port kind {primary!r} yet")
+    if primary in PORT_CASES:
+        return _port_case_identity(PORT_CASES[primary], node, max_examples)
     built = dynamics_rig(dynamics) if node is None else node
     if isinstance(built, str):
         return _failed(built)

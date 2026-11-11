@@ -9,7 +9,8 @@ units (against an oracle in SI); **outside** (a kind that declares it takes no d
 are its drives' ports); its **ledger** (its records of its declared route, and its books closing at every step,
 ``ledger_closes``: route 2's step identity to the ledger's floor, route 1's every step dissipated); **steady** (a
 declared steady solve is the time-stepped fixed point: a step from it moves it by no more than the solve's
-tolerance); the **affine** response (none is built before F2b). A kind that declares a capability
+tolerance); the **affine** response (a step's solution superposed from its unit fields is the monolithic solve at the
+openings' solved pressures, F2b's FB4). A kind that declares a capability
 whose case its rig does not give fails, as a planted absent case must. **The standing check as a test**: nothing here
 reads a solver, a projector or a fluid's operator; a non-fluid kind passes it with its own rig."""
 
@@ -44,7 +45,9 @@ class FieldRig:
     quantity it provides, by interface name; ``points`` (m) and ``expected`` (the reading there from an independent
     oracle, SI) within ``tolerance`` of the oracle's scale; ``metered()``, a run's final state with the ledger attached
     (for a kind with a ledger route); ``steady()``, the declared steady solve's move under one time step from it over
-    its scale, with its line (for a kind declaring one)."""
+    its scale, with its line (for a kind declaring one); ``affine()``, a step's solution at its openings, superposed
+    from its unit fields, against a monolithic solve at the openings' solved pressures, over its scale, with its line
+    (for a kind declaring an affine response)."""
 
     node: Any
     params: Mapping[str, Any]
@@ -55,6 +58,7 @@ class FieldRig:
     tolerance: float
     metered: Callable[[], Mapping[str, Any]] | None = None
     steady: Callable[[], tuple[float, float]] | None = None
+    affine: Callable[[], tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -153,6 +157,14 @@ def _steady(rig: FieldRig) -> CaseResult:
                       f"a step from its steady solution moves it by {moved:.3g} of its scale, over {line:g}")
 
 
+def _affine(rig: FieldRig) -> CaseResult:
+    if rig.affine is None:
+        return CaseResult(FieldCase.AFFINE, False, "it declares an affine response and its rig gives no affine case")
+    moved, line = rig.affine()
+    return CaseResult(FieldCase.AFFINE, moved <= line, "" if moved <= line else
+                      f"its superposed solution is {moved:.3g} of its scale from the monolithic solve, over {line:g}")
+
+
 def field_conformance(kind: Any, declared: SolvedField, rig: FieldRig, *, dtype: str = "float64",
                       cases: Sequence[FieldCase] | None = None) -> FieldConformance:
     """SF-12 on ``kind`` (an instance of a field kind's entry), its ``declared`` contract and its ``rig``: each case
@@ -183,10 +195,9 @@ def field_conformance(kind: Any, declared: SolvedField, rig: FieldRig, *, dtype:
                 skipped[case] = "it declares no steady solve"
         elif case is FieldCase.AFFINE:
             if declared.affine_response:
-                results.append(CaseResult(case, False, "it declares an affine response, and no affine case is built "
-                                                       "before F2b"))
+                results.append(_affine(rig))
             else:
-                skipped[case] = "it declares no affine response (none is built before F2b)"
+                skipped[case] = "it declares no affine response"
     return FieldConformance(type(kind).__name__, tuple(results), skipped)
 
 
