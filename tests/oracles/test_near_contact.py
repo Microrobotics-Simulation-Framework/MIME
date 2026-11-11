@@ -270,8 +270,9 @@ def test_the_plan_picks_the_form_by_the_bodys_kind_and_the_report_names_it():
     from mime.scene import Ellipsoid
     from mime.units import m
 
-    sphere = stepper(above_plane(None).build())[0]
-    ellipsoid = stepper(above_plane(0.15, kind=Ellipsoid(semi_axes=m((1.1 * RADIUS, RADIUS, 0.95 * RADIUS))))
+    # a coarse blob: the form the plan picks and the report's line do not depend on it
+    sphere = stepper(above_plane(None, blob=0.25).build())[0]
+    ellipsoid = stepper(above_plane(0.15, blob=0.25, kind=Ellipsoid(semi_axes=m((1.1 * RADIUS, RADIUS, 0.95 * RADIUS))))
                         .build())[0]
     assert sphere.near_contact_form == "sphere" and ellipsoid.near_contact_form == "film"
     lines = sphere.built_lines({"pose": plane_pose(0.01 * RADIUS)}, None)

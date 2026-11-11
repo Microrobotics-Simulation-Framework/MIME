@@ -1,5 +1,5 @@
 {
- "source": "CI run 42841389484 (a push at c816e40, every shard cold), the median over its five lanes; shards 6 and 9 were cancelled at 30 minutes in some lanes, so the lanes that did not finish them take the other lanes' reports of those shards (3.13's); tests/oracles/test_lubrication.py added by hand as PR 234 did, split by test: each test's median over the 20 stress runs of PR 234 at 12d42ce (run 42851252893), the file the sum",
+ "source": "CI run 42841389484 (a push at c816e40, every shard cold), the median over its five lanes; shards 6 and 9 were cancelled at 30 minutes in some lanes, so the lanes that did not finish them take the other lanes' reports of those shards (3.13's); tests/oracles/test_lubrication.py added by hand as PR 234 did, split by test: each test's median over the 20 stress runs of PR 234 at 12d42ce (run 42851252893), the file the sum; tests/oracles/test_near_contact.py added by hand as PR 234 did its file, split by test: each test's time alone on a runner (probe run 42959192033), the file the sum",
  "over": 1.0,
  "seconds": {
   "tests/assets/test_adapters.py": 3,
@@ -225,6 +225,7 @@
   "tests/oracles/test_mrs_near_wall.py": 408,
   "tests/oracles/test_mrs_separated.py": 176,
   "tests/oracles/test_multibody.py": 190,
+  "tests/oracles/test_near_contact.py": 443,
   "tests/oracles/test_phase_lag.py": 17,
   "tests/oracles/test_phase_lag_shared_read.py": 33,
   "tests/oracles/test_plane_gradient.py": 24,
@@ -491,6 +492,27 @@
    "test_the_increment_judged_on_its_own_scale_in_the_band_and_between_deep_gaps": 38,
    "test_the_report_says_where_the_roughness_floor_reaches_the_lifts_band": 67,
    "test_the_tube_is_opened_by_dilation_and_its_contact_found_off_the_axis": 64
+  },
+  "tests/oracles/test_near_contact.py": {
+   "test_float32_lies_within_its_line_of_float64": 22,
+   "test_gate1_control_the_increment_x11_is_caught_at_every_gap_below_the_band": 8,
+   "test_gate1_every_entry_within_its_line_at_every_gap_and_drawn_orientation": 17,
+   "test_gate1_the_increment_through_the_node_is_the_planes_exact_increment": 9,
+   "test_gate2_a_sphere_spun_on_the_plane_translates_at_the_exact_rate_at_every_gap": 8,
+   "test_gate2_control_the_coupling_counted_twice_is_caught_below_the_handover": 15,
+   "test_gate2_in_a_tube_controls_the_planes_form_and_the_gaps_curvature_alone[plane_in_tube]": 42,
+   "test_gate2_in_a_tube_controls_the_planes_form_and_the_gaps_curvature_alone[relative_coefficients]": 43,
+   "test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates[0.22]": 21,
+   "test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates[0.28]": 13,
+   "test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates[0.34]": 22,
+   "test_gate8_controls[edge_kink]": 19,
+   "test_gate8_controls[hard_max]": 19,
+   "test_gate8_controls[lift_stopped]": 29,
+   "test_gate8_forward_and_reverse_equal_the_difference[cutoff]": 29,
+   "test_gate8_forward_and_reverse_equal_the_difference[edge]": 28,
+   "test_gate8_forward_and_reverse_equal_the_difference[handover]": 37,
+   "test_the_plan_picks_the_form_by_the_bodys_kind_and_the_report_names_it": 40,
+   "test_the_two_builds_check_is_quiet_in_the_spheres_radius": 16
   }
  }
 }

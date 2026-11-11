@@ -231,7 +231,7 @@ def refusal(experiment: Experiment, code: str) -> str:
 def test_a_wavenumber_inside_the_training_data_plans_and_one_outside_it_is_refused():
     script_a(nu=dimensionless(2.33)).plan()
     text = refusal(script_a(nu=dimensionless(3.6)), "drag.outside-training")
-    assert "interaction drag:umr (drag 0.5.0)" in text
+    assert "interaction drag:umr (drag 0.4.0)" in text  # script A keeps drag 0.4.0 (0.5.0 retired its blend)
     assert "helix_wavenumber nu from 0.25 to 3.5" in text
     assert "umr's hull, part 'shell' (screw 0.3.0): its wavenumber is 3.6" in text
     assert "the 0.2 line declared 2.33 to 3.7" in text
@@ -242,7 +242,9 @@ def test_with_the_02_lines_declared_range_the_same_wavenumber_would_plan(monkeyp
     old = replace(DEJONGH_MLP_V2, shape=(DeclaredRange("helix_wavenumber", "nu", 2.33, 3.7, "the 0.2 line's"),
                                          DEJONGH_MLP_V2.shape_range("confinement"),
                                          DEJONGH_MLP_V2.shape_range("aspect")))
-    monkeypatch.setattr(Drag, "surrogates", {old.asset: old})
+    from mime.interactions import KEPT
+
+    monkeypatch.setattr(KEPT["drag", "0.4.0"][0], "surrogates", {old.asset: old})  # script A's drag, 0.4.0
     script_a(nu=dimensionless(3.6)).plan()
 
 

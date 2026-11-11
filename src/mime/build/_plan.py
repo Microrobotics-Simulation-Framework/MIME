@@ -3528,7 +3528,8 @@ class _Planner:
                 self.refuse("lubrication.twice", RefusalClass.USER,
                             f"body {body!r} is bound to {', '.join(owners)}, each of which includes near-wall "
                             f"lubrication: the film between the body and the wall would be counted twice",
-                            f"keep the lubrication in one of them: the drag's (lubrication=Lubrication(...)), and a "
+                            f"keep the lubrication in one of them: the drag's (Drag.MRS(near_contact=True), or drag "
+                            f"0.4.0's surrogate blend, lubrication=Lubrication(...)), and a "
                             f"contact that handles admissibility alone, such as exp.attach(Contact.Projection(...), "
                             f"...)")
 
