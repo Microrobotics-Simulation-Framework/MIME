@@ -83,4 +83,26 @@ class SolvedField:
         return found
 
 
-__all__ = ["HOSTINGS", "NOT_DECLARED", "OPEN_ROWS", "PORTS", "SolvedField"]
+@dataclass(frozen=True)
+class ExchangeFrame:
+    """What a field that takes exchange deliveries tells its partners (SF-4, its exchange interface): the node that
+    holds it, the grid kind and its cells and spacing (m), and where the grid's origin sits in the world (m), so that a
+    partner's points are carried into the grid's coordinates by a translation; the state fields holding each face set
+    and the inputs taking each face set's force density. The kernel's weights are the grid kind's own."""
+
+    node: str
+    kind: str
+    cells: tuple[int, int, int]
+    spacing: float
+    origin: tuple[float, float, float]
+    faces: tuple[str, str, str]
+    exchanges: tuple[str, str, str]
+    #: The time scheme the field declares (its kind's name), or ``None`` where it chooses one from the run's values.
+    scheme: str | None = None
+
+    def grid_point(self, world: tuple[float, ...]) -> tuple[float, float, float]:
+        """A world point in the grid's coordinates."""
+        return (world[0] - self.origin[0], world[1] - self.origin[1], world[2] - self.origin[2])
+
+
+__all__ = ["HOSTINGS", "NOT_DECLARED", "OPEN_ROWS", "PORTS", "ExchangeFrame", "SolvedField"]

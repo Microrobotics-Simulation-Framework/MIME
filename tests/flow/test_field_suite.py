@@ -102,11 +102,9 @@ def fvm_rig(scheme: str, dtype: str, opened: bool = False) -> tuple[object, Fiel
 
     rig = FieldRig(node, p, state, {V: reading}, points, {V: exact}, 0.05, metered=metered,
                    steady=steady if scheme == "steady" else None, affine=affine if opened else None)
-    from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_WAVEFORM
-    from mime.registry import Port
+    from mime.dynamics import FVM
 
-    return _kind({FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
-                  FLOW_OPENING.name: Port("openings")}), rig
+    return _kind(dict(FVM.accepts)), rig
 
 
 #: The affine case's line: the step's superposed solution against the monolithic solve, over the largest speed (the
