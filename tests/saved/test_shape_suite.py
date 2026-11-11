@@ -229,6 +229,11 @@ def _examples_of(dtype: str, shape: str) -> tuple[tuple[ShapeProbe, str, str, Sh
     return tuple(found)
 
 
+#: The shapes whose examples have tests of their own: the tube tree's union compiles for each of its examples (about
+#: 60 s a dtype on a runner), which would take the other shapes' tests past their ceilings.
+SEPARATE = ("tube_tree",)
+
+
 def _steepness(check: ShapeCheck) -> float:
     return float(np.max(np.abs(check.difference))) / check.scale if check.difference is not None else 0.0
 
@@ -236,9 +241,20 @@ def _steepness(check: ShapeCheck) -> float:
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_autodiff_equals_the_difference_at_an_example_near_each_set_for_each_moved_parameter(dtype):
     """The property at fixed points, so that each parameter's derivative is compared on every run: a derivative lost
-    in a centre, an axis, an orientation or any scalar (a ``stop_gradient`` on it) fails here."""
+    in a centre, an axis, an orientation or any scalar (a ``stop_gradient`` on it) fails here; every shape but those
+    :data:`SEPARATE`."""
+    _examples_pass(dtype, tuple(shape for shape in sorted(SHAPE_CASES) if shape not in SEPARATE))
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_autodiff_equals_the_difference_at_an_example_near_each_of_the_tube_trees_sets(dtype):
+    """The same at the tube tree's examples (:data:`SEPARATE`)."""
+    _examples_pass(dtype, SEPARATE)
+
+
+def _examples_pass(dtype: str, shapes: tuple[str, ...]) -> None:
     failed = [f"{check.line()} (moving {name}): " + "; ".join(check.problems)
-              for _, _, name, check in examples(dtype) if not check.passed]
+              for _, _, name, check in examples(dtype, shapes) if not check.passed]
     assert failed == [], "\n".join(failed)
 
 
@@ -247,11 +263,6 @@ def test_autodiff_equals_the_difference_at_an_example_near_each_set_for_each_mov
 #: moves with neither the point, the half-thickness nor the centre (only the axis turns it); the half-space's normal is
 #: its own everywhere, so it moves with neither the point nor the offset (only the normal turns it).
 CONSTANT = {("slab", "normal", "half_thickness"), ("slab", "normal", "centre"), ("half_space", "normal", "offset")}
-
-
-#: The shapes whose examples have a control of their own: the tube tree's union compiles for each of its examples
-#: (about 90 s on a runner), which would take the other shapes' control past its ceiling.
-SEPARATE = ("tube_tree",)
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
