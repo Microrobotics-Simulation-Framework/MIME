@@ -671,6 +671,7 @@ class _Planner:
         self.controller: EntryPlan | None = None
         self.mode: Mode | None = None
         self.latency = 0
+        self.controller_leaves: tuple[str, ...] = ()
         #: The commands the controller writes, by apparatus and command, each to its write label and path as written.
         self.written: dict[str, dict[str, tuple[str, str]]] = {}
         self.writes: dict[str, ResolvedWrite] = {}
@@ -2576,6 +2577,7 @@ class _Planner:
                         "call exp.set_controller(...) once: one controller reads and writes as many labels as it needs")
             return
         index, held = declared[0]
+        self.controller_leaves = tuple(held.leaves)
         record = self.registered_as(cast(Entry, held.controller), EntryKind.CONTROLLER, "the controller")
         if record is None:
             return
@@ -2717,7 +2719,7 @@ class _Planner:
         if self.mode is None or len(writes) != len(cls.writes) or len(reads) != len(cls.reads):
             return None
         return ControllerPlan(plan.owner, cast(Controller, plan.entry), plan.registered, dict(plan.settings), self.mode,
-                              plan.divider, self.latency, tuple(reads), tuple(writes))
+                              plan.divider, self.latency, tuple(reads), tuple(writes), self.controller_leaves)
 
     def controller_read(self, label: str, units: str, shape: tuple[int, ...], path: str,
                         where: str) -> ClassedRead | None:

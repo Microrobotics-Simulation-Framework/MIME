@@ -20,6 +20,9 @@ from mime.units import Hz, kg, kg_m2, kg_per_m3, m_per_s2, mm, mPa_s, ms
 SPACING = mm(0.6)
 #: The range rigs' pull with its force 1e4 times smaller: (N, N m).
 GENTLE = (2e-10, -1e-10, 3e-10, 4e-14, 2e-14, -3e-14)
+#: The gentle pull with a torque about z that puts the rung's declared turning Reynolds number (0.1) inside the range,
+#: near 1.05 mm (0.0913 at 1.15 mm, 0.105 at 1.0 mm: the number goes as the inverse of the radius under a fixed torque).
+TURNED = (2e-10, -1e-10, 3e-10, 0.0, 0.0, 1.533e-12)
 RADIUS = "ball.parts.shell.radius"
 LOW, HIGH = 1.0, 1.15
 STEPS = 5
@@ -27,11 +30,15 @@ WEIGHTS = (0.3, -0.5, 0.7), (0.2, 0.9, -0.4)
 
 
 def gentle(radius: float = 1.05, *, ranged: tuple[float, float] | None = (LOW, HIGH), pull=GENTLE,
-           name: str = "gentle", **settings: object) -> Experiment:
-    """The sphere at ``radius`` mm pulled by ``pull``, its radius's range ``ranged`` (mm) declared."""
+           name: str = "gentle", density: bool = True, **settings: object) -> Experiment:
+    """The sphere at ``radius`` mm pulled by ``pull``, its radius's range ``ranged`` (mm) declared, and water's density
+    declared unless ``density`` is off (the post-run Reynolds watch cannot then be judged)."""
     experiment = free_space(name, {"ball": Sphere(radius=mm(radius))}, mrs(SPACING, **settings), mass=kg(2e-8),
                             inertia=kg_m2((2e-17, 2e-17, 2e-17)))
     experiment.attach(ConstantWrench(value=pull), body="ball")
+    # Water's density, which the drag does not read, so that the post-run Reynolds watch reads the body's number.
+    if density:
+        experiment.declare("water.density", kg_per_m3(998.0), reason="water near 20 C")
     if ranged is not None:
         experiment.declare_range(RADIUS, mm(ranged[0]), mm(ranged[1]), reason="the design range of the ball's radius")
     return experiment
@@ -72,5 +79,25 @@ def flux(final) -> jnp.ndarray:
     return final["water.flow"]["lumen_flux"]
 
 
-__all__ = ["GENTLE", "HIGH", "LOW", "RADIUS", "SPACING", "STEPS", "TUBE_STEPS", "WEIGHTS", "flux", "gentle",
-           "pose_loss", "tube"]
+def pose_target(radius: float, pull=GENTLE, *, ranged: tuple[float, float] | None = (LOW, HIGH), density: bool = True):
+    """The sphere's pose after its run at ``radius`` mm, as :func:`pose_residual` reads it: the position (um) and the
+    quaternion's vector part times 1e4. Made over the range, as the fit's iterates are (a radius outside it needs
+    ``ranged=None``, and its force points are then its own)."""
+    import numpy as np
+
+    pose = np.asarray(gentle(radius, pull=pull, name="target", ranged=ranged,
+                             density=density).build().run(ms(STEPS)).final["ball"]["pose"])
+    return jnp.asarray(np.concatenate([pose[:3] * 1e6, pose[4:] * 1e4]))
+
+
+def pose_residual(target):
+    """The sphere's pose against ``target`` (:func:`pose_target`)."""
+    def residual(final):
+        pose = final["ball"]["pose"]
+        return jnp.concatenate([pose[:3] * 1e6, pose[4:] * 1e4]) - target
+
+    return residual
+
+
+__all__ = ["GENTLE", "HIGH", "LOW", "RADIUS", "SPACING", "STEPS", "TUBE_STEPS", "TURNED", "WEIGHTS", "flux", "gentle",
+           "pose_loss", "pose_residual", "pose_target", "tube"]

@@ -115,16 +115,19 @@ shard count, so changing the count starts that count's caches cold.
 runner noise measured on the ten-shard run, which predicts the 20.9 minutes that run's lanes took at the median): ten 20.6
 minutes, twelve 17.3, fourteen 15.8, sixteen 14.1, eighteen 13.1, twenty 11.9, twenty-four 10.2; the first step of two shards
 takes off 3.3 minutes and each one after it 1.0 to 1.7, while the jobs a pull request holds rise by four each. Beyond about eighteen a single test (`tests/oracles/test_closed_loop.py`, about 470 s) is the floor.
+The table was rebuilt again on 2026-11-10, when the suite weighed 49586 s a lane against 28876 s the day before (the 16 shards of the
+first table had run 10 to 25 minutes, two of them cancelled at their 30-minute limit): at sixteen the slowest shard of a lane is predicted
+at 16.0 minutes on the median lane's seconds and 19.2 on the slowest lane's, from the five lanes' own seconds under the new deal.
 
 The split works for any count: `tests/shard_weights.json` lists the files with their seconds, dealt longest first, and a
 file stays whole on one shard, so its tests share the programs it compiles. A file heavier than a shard's mean would be
 the floor of the slowest shard however many shards there are, so such a file is dealt **by test** instead (the table's
 `split`, written by `scripts/shard_weights.py --split FILE`): its tests spread over the shards, and each shard that gets
 some of them compiles the programs they share once more. **At sixteen no file is that heavy** (the heaviest,
-`tests/saved/test_registry_walk.py`, weighs 1525 s against a mean of 1876), so the table splits none, and splitting
+`tests/saved/test_registry_walk.py`, weighs 2745 s against a mean of 3244), so the table splits none, and splitting
 `test_registry_walk.py` at sixteen would cost more than it saves; `tests/test_sharding.py` fails when a file passes the
 mean at the default count, and `scripts/shard_weights.py` prints the files that pass it at the count it is given (from
-twenty shards, `test_registry_walk.py` does). Rebuild the table from a push run's reports when the suite has changed
+nineteen shards, `test_registry_walk.py` does). Rebuild the table from a push run's reports when the suite has changed
 much (`gh run download <run> --pattern 'durations-*'`, then `scripts/shard_weights.py`, its docstring has the command).
 
 ## The development branch's name

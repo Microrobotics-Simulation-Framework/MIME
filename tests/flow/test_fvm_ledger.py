@@ -12,7 +12,7 @@ import pytest
 from fvm_cases import METERED, eps, in_dtype, run, tube_node
 
 from mime.core import ledger as books
-from mime.nodes.flow.fvm import IMEXEuler, ImplicitFlowNode
+from mime.nodes.flow.fvm import DEFAULT_TOLERANCE, STALL_PER_TOLERANCE, IMEXEuler, ImplicitFlowNode
 from mime.testing import ledger_closes
 
 
@@ -67,11 +67,11 @@ def test_an_unnamed_hosted_law_is_unattributed(dtype):
     assert judged.failed and "unattributed" in judged.detail
 
 
-def test_the_stall_detector_reads_a_transient_far_under_its_line(dtype):
+def test_the_stall_detector_reads_a_transient_under_its_line(dtype):
     with in_dtype(dtype):
         node = tube_node(16, dt=0.002, convection=False, ledger=METERED)
         state = run(node, 20)
-    assert 0.0 <= float(state["stall_ratio"]) < 1e-3
+    assert 0.0 <= float(state["stall_ratio"]) < STALL_PER_TOLERANCE[dtype] * DEFAULT_TOLERANCE[dtype]
     assert float(state["stall_flagged"]) == 0.0
     judged = ledger_closes(state)
     assert judged.passed, judged.detail

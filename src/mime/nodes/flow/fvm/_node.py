@@ -34,7 +34,8 @@ held in the step (:meth:`hosted_laws`), each booked under its own name; the sche
 u|^2 dV``, ``N_conv = -dt rho <C(u), u'>`` (convection at mixed time levels) and ``N_Krylov = dt rho <rhs - A u', u'>``
 (the solve's true residual against the solution: the remainder unprojected, so it holds the projection's own term,
 ``dt rho <p', D u'>``, which the exact projector leaves at rounding). With the ledger attached the node also reports
-``|N_Krylov| / D_visc`` per step (the stall detector, flagged above :data:`STALL_LINE`)."""
+``|N_Krylov| / D_visc`` per step (the stall detector, flagged above :data:`STALL_PER_TOLERANCE` times the solve's
+tolerance)."""
 
 from __future__ import annotations
 
@@ -54,7 +55,7 @@ from mime.core import ledger as books
 from mime.core._node import rechecked
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, interior_depth, negative_resistivity, \
     wall_fields
-from mime.nodes.flow.fvm._flags import FLAGS
+from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
@@ -92,9 +93,6 @@ CALIBRATED_CELLS = 32.0
 #: The slowest decay of a section's viscous mode, ``tau = R_max^2 / (STALL_SECTION nu)``: pi^2/4, conservative for
 #: every convex section (round 4, item 3; round 5, item 10).
 STALL_SECTION = math.pi ** 2 / 4.0
-#: The stall detector's line: ``|N_Krylov| / D_visc`` above it is a stall (the stall spike's transient values sat about
-#: three orders below a stall's reading) [inference from the measured separation].
-STALL_LINE = 1e-3
 #: Half of each dtype's digits, sqrt(eps): the share of its scale a report's denominator must exceed (:meth:`ratio`).
 HALF_DIGITS = {np.dtype(np.float32): math.sqrt(float(np.finfo(np.float32).eps)),
                np.dtype(np.float64): math.sqrt(float(np.finfo(np.float64).eps))}
@@ -564,7 +562,8 @@ class ImplicitFlowNode(MimeNode):
         held = node_fields(FlowState(**ended))
         if self.metered:
             stall = self.stall_ratio(energy)
-            held = {**held, "stall_ratio": stall, "stall_flagged": (stall > STALL_LINE).astype(dtype)}
+            line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
+            held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
         return held, StepParts(stage, fields, energy)
 
     # -- the step identity ------------------------------------------------------------------------------------------
@@ -793,6 +792,6 @@ def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
                              f"it takes no delivery {delivery}")
 
 
-__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_LINE", "STALL_SECTION", "STOKES_REYNOLDS",
+__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
            "STOP_FIELD", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "StepParts",
            "check_deliveries"]

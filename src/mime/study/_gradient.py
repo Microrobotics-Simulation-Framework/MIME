@@ -36,7 +36,7 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._checks import stopped_refusals
 from mime.build._control import Mode
 from mime.build._maddening import META, FlagTest, differentiated_run, full_state, graph_edges, parameter_specs, \
-    initial_fields, state_put_back, unreadable_leaves
+    initial_fields, live_inputs, state_put_back, unreadable_leaves
 from mime.build._refusals import ArgumentRefused
 from mime.control._run import ChunkedRun
 from mime.gradients import ACKNOWLEDGED_ONLY, GradientStatus, composed, unacknowledged
@@ -337,10 +337,8 @@ def objective_nodes(of: Callable[[Any], Any], final: Mapping[str, Mapping[str, A
     def given(*leaves: Any) -> Any:
         return of(_jax.tree_util.tree_unflatten(tree, list(leaves)))
 
-    closed = _jax.make_jaxpr(given)(*[leaf for _, leaf in flat])
-    jaxpr = closed.jaxpr
-    used = {id(var) for eqn in jaxpr.eqns for var in eqn.invars} | {id(var) for var in jaxpr.outvars}
-    return tuple(sorted({paths[i] for i, var in enumerate(jaxpr.invars) if id(var) in used}))
+    live = live_inputs(_jax.make_jaxpr(given)(*[leaf for _, leaf in flat]).jaxpr)
+    return tuple(sorted({paths[i] for i, read in enumerate(live) if read}))
 
 
 def path_nodes(graph: Any, sources: Sequence[str], targets: Sequence[str],
@@ -397,9 +395,12 @@ class _Prepared:
     solving: tuple[str, ...]
     tests: tuple[FlagTest, ...]
     meanings: tuple[tuple[str, str], ...]
+    #: The member's objective, ``(theta, theta0, factors, tree, state, taps) -> (value, aux)``, undifferentiated: what
+    #: a fit's Fisher information is taken of.
+    objective: Callable[..., Any]
 
 
-def _final(state: Mapping[str, Any]) -> dict[str, Any]:
+def final_state(state: Mapping[str, Any]) -> dict[str, Any]:
     return {node: fields for node, fields in state.items() if node != META}
 
 
@@ -428,7 +429,7 @@ def _replaced(tree: Mapping[str, Any], state: Mapping[str, Any], theta: Mapping[
     return {**tree, "nodes": nodes}, start
 
 
-def _prepare(built: BuiltExperiment, writes: Sequence[Written], of: Callable[[Any], Any], mode: str, params: Any,
+def prepare(built: BuiltExperiment, writes: Sequence[Written], of: Callable[[Any], Any], mode: str, params: Any,
              axes: tuple[tuple[str, str, int | None], ...], batched: bool,
              fed: Sequence[tuple[int, Any]] | None, steps: int) -> _Prepared:
     graph = built.graph
@@ -441,7 +442,7 @@ def _prepare(built: BuiltExperiment, writes: Sequence[Written], of: Callable[[An
     def objective(theta: Any, theta0: Any, factors: Any, tree: Any, state: Any, taps: Any) -> tuple[Any, Any]:
         params, start = _replaced(tree, state, theta, theta0, factors, writes, taps)
         final, tally, out = run(start, params)
-        value = of(_final(final))
+        value = of(final_state(final))
         return _jnp.asarray(value), (tally, final, out)
 
     if mode == "reverse":
@@ -466,18 +467,18 @@ def _prepare(built: BuiltExperiment, writes: Sequence[Written], of: Callable[[An
             values, tangents, tangent_sums, aux = _jax.vmap(along)(basis)
             first = _jax.tree_util.tree_map(_first, aux)
             backward = {node: _jnp.sum(tangent_sums[node], axis=0) for node in solving}
-            return values[0], unravel(tangents), backward, first
+            return values[0], columns(theta, tangents), backward, first
 
     if not batched:
-        return _Prepared(_jax.jit(member), False, solving, tests, meanings)
+        return _Prepared(_jax.jit(member), False, solving, tests, meanings, objective)
     marked = {(node, leaf): axis for node, leaf, axis in axes}
     tree_axes = {"nodes": {node: {leaf: marked.get((node, leaf)) for leaf in leaves}
                            for node, leaves in params["nodes"].items()}, "mappings": {}}
     vmapped = _jax.vmap(member, in_axes=(0, 0, 0, tree_axes, 0, None))
-    return _Prepared(_jax.jit(vmapped), True, solving, tests, meanings)
+    return _Prepared(_jax.jit(vmapped), True, solving, tests, meanings, objective)
 
 
-def _stacked(points: Sequence[Point], members: Sequence[int], writes: Sequence[Written], settings: Any,
+def stacked_members(points: Sequence[Point], members: Sequence[int], writes: Sequence[Written], settings: Any,
              declarations: Sequence[Any], dtype: Any) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
     """The members' own values of each axis (``theta0``, by path, stacked) and each factor of what it writes (by
     :func:`key`, stacked), each member's checked against the probes' (:func:`member_factor`)."""
@@ -540,6 +541,20 @@ class _Member:
     final: dict[str, dict[str, np.ndarray]]
     out: dict[str, dict[str, np.ndarray]]
     backward: dict[str, np.ndarray]
+
+
+def columns(theta: Mapping[str, Any], tangents: Any) -> dict[str, Any]:
+    """The tangents of forward mode's basis directions (one row a number of ``theta``, in ``ravel_pytree``'s order:
+    the paths sorted) as each axis's derivative, of the axis's shape followed by the objective's."""
+    found: dict[str, Any] = {}
+    offset = 0
+    for path in sorted(theta):
+        shape = tuple(_jnp.shape(theta[path]))
+        size = int(np.prod(shape, dtype=np.int64))
+        block = tangents[offset:offset + size]
+        found[path] = _jnp.reshape(block, (*shape, *_jnp.shape(block)[1:]))
+        offset += size
+    return found
 
 
 def _numpy(tree: Any) -> Any:
@@ -669,8 +684,16 @@ def _group(plan: StudyPlan, group: Group, indices: Sequence[int], built: BuiltEx
     with state_put_back(graph):
         graph.reset_state()
         meta = dict(full_state(graph).get(META) or {})
-    template = {node: dict(fields) for node, fields in _final(stacked_state(points, indices[:1], meta)).items()}
+    template = {node: dict(fields) for node, fields in final_state(stacked_state(points, indices[:1], meta)).items()}
     template = {node: {name: value[0] for name, value in fields.items()} for node, fields in template.items()}
+    shape = tuple(_jax.eval_shape(of, template).shape)
+    if shape != ():
+        raise BuildRefused([Refusal(
+            "gradient.objective", RefusalClass.USER,
+            f"the objective gives an array of shape {shape}, and a study's derivative is of one number",
+            "return one number from the objective, `of=lambda final: jnp.sum(...)`; a fit takes a vector of "
+            "residuals, `Study(exp).fit(residual, ...)`",
+            why="the derivative of a scalar in each axis is what the gradient path computes")])
     sources = sorted({node for write in writes for node, _ in (*write.leaves, *write.states)})
     controller = built.plans.controller
     through = [(read.node, write.node) for read in controller.reads for write in controller.writes] \
@@ -700,9 +723,9 @@ def _group(plan: StudyPlan, group: Group, indices: Sequence[int], built: BuiltEx
             runs.append(([index], _stretches(built, points[index], group.steps) if callback else None))
     for chunk, fed in runs:
         params, axes = stacked_tree(points, chunk, group.varying)
-        again = functools.partial(_prepare, built, writes, of, mode, params, axes, batched, fed, group.steps)
+        again = functools.partial(prepare, built, writes, of, mode, params, axes, batched, fed, group.steps)
         prepared = again()
-        theta0, factors = _stacked(points, chunk, writes, settings, declarations, real)
+        theta0, factors = stacked_members(points, chunk, writes, settings, declarations, real)
         state = stacked_state(points, chunk, meta)
         if not batched:
             theta0 = {path: held[0] for path, held in theta0.items()}
@@ -807,4 +830,4 @@ def _recheck(graph: Any, again: Callable[[], _Prepared], reports: Sequence[tuple
 
 
 __all__ = ["FORWARD_UP_TO", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient", "key",
-           "magnitude", "member_factor", "objective_nodes", "path_nodes", "path_statuses", "solving_nodes", "written"]
+           "final_state", "magnitude", "member_factor", "prepare", "stacked_members", "objective_nodes", "path_nodes", "path_statuses", "solving_nodes", "written"]
