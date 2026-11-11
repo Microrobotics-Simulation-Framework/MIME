@@ -52,9 +52,9 @@ def _node(scheme: str):
 
 
 def _loss(node, p):
-    state = dict(node.initial_state())
-    for _ in range(STEPS):
-        state = node.advance(p, state, {}, node.delta_t)
+    # The steps under one scan, so each program compiles the step once rather than six times.
+    state, _ = jax.lax.scan(lambda s, _: (node.advance(p, s, {}, node.delta_t), None), dict(node.initial_state()),
+                            None, length=STEPS)
     # The inlet's pressure carries the vessel's resistance (the viscosity) and the laws'; the outlet's flux, pinned by
     # the inflow, carries neither (a loss of it alone is invariant in the viscosity: measured while writing).
     return (state["opening_pressure"][0] + state["opening_pressure"][1]) / tube_resistance(2.0) + state["opening_flux"][1]
@@ -97,11 +97,12 @@ def central(scheme: str, step: float = 1e-4) -> np.ndarray:
                        for name, value in zip(NAMES, values, strict=True)])
 
 
-def reverse(scheme: str, scale: float) -> np.ndarray:
+def reverse(scheme: str, scales: list[float]) -> list[np.ndarray]:
+    """The reverse-mode derivative at each loss scale, per unit of the leaf: one program, the scale its argument."""
     node = _node(scheme)
     p = node._step_constants(None)  # noqa: SLF001
-    gradient = jax.jit(jax.grad(lambda v, s: s * _loss(node, _with(p, v))))(_values(p), jnp.asarray(scale))
-    return np.asarray(gradient) / scale
+    gradient = jax.jit(jax.grad(lambda v, s: s * _loss(node, _with(p, v))))
+    return [np.asarray(gradient(_values(p), jnp.asarray(scale))) / scale for scale in scales]
 
 
 def forward(scheme: str) -> np.ndarray:
@@ -120,8 +121,8 @@ def _off(found: np.ndarray, expected: np.ndarray) -> dict[str, tuple[float, floa
 def test_the_gradient_with_ports_is_the_rebuilt_central_difference(float64, scheme):
     """Each leaf's derivative, reverse at both loss scales and forward, within the line of the rebuilt difference."""
     expected = central(scheme)
-    for scale in SCALES:
-        assert not _off(reverse(scheme, scale), expected), scale
+    for scale, found in zip(SCALES, reverse(scheme, SCALES), strict=True):
+        assert not _off(found, expected), scale
     assert not _off(forward(scheme), expected)
 
 
@@ -136,4 +137,4 @@ def test_control_stop_gradient_on_the_unit_fields_fails_the_viscosity_from_a_col
         return tuple(jax.lax.stop_gradient(c) for c in unit), report
 
     monkeypatch.setattr(OpenFlowNode, "unit_field", unit_field)
-    assert "viscosity" in _off(reverse("imex_euler", 1.0), expected)
+    assert "viscosity" in _off(reverse("imex_euler", [1.0])[0], expected)
