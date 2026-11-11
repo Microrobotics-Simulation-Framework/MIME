@@ -40,7 +40,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.units import DIMENSIONLESS, Quantity, parse_unit, si, unit_symbol
+from mime.units import Quantity, parse_unit, si, unit_symbol
 
 STUDY_FORMAT = "mime-study-outputs"
 STUDY_VERSION = 1
@@ -89,12 +89,13 @@ def refused(code: str, category: RefusalClass, message: str, action: str) -> Arg
 
 
 def encode_value(value: object, path: str) -> dict[str, Any]:
-    """An axis value as study.json holds it: a quantity as its SI magnitude and its unit's symbol, a vector of bare
-    numbers (a kind's direction) as a dimensionless quantity, a number, a boolean or a string as it is. Refused
-    (``study.unsavable-value``) for anything else, naming the axis."""
+    """An axis value as study.json holds it: a quantity as its SI magnitude and its unit's symbol; a number, a boolean
+    or a string as it is; a tuple of bare numbers (a direction, a quaternion) as the list of its numbers, with no unit,
+    which :func:`decode_value` reads back as the tuple. Refused (``study.unsavable-value``) for anything else, naming the
+    axis."""
     numbers = bare_vector(value)
     if numbers is not None:
-        return {"value": list(numbers), "unit": unit_symbol(DIMENSIONLESS)}
+        return {"value": list(numbers), "unit": None}
     if isinstance(value, Quantity):
         magnitude = value.value
         held: object = np.asarray(magnitude, dtype=np.float64).tolist() if isinstance(magnitude, np.ndarray) else \
@@ -105,17 +106,18 @@ def encode_value(value: object, path: str) -> dict[str, Any]:
         return {"value": value, "unit": None}
     raise refused("study.unsavable-value", RefusalClass.USER,
                   f"the value of the axis {path} is a {type(value).__name__}, which a study folder cannot hold: it holds "
-                  f"quantities, numbers, booleans and strings",
-                  "sweep quantities (`Hz(10.0)`), numbers or names; a value that is code belongs in an experiment of its "
-                  "own, `Experiment.based_on(...)`")
+                  f"quantities, numbers, tuples of numbers, booleans and strings",
+                  "sweep quantities (`Hz(10.0)`), numbers, tuples of numbers (`(0.0, 0.0, 1.0)`) or names; a value that is "
+                  "code belongs in an experiment of its own, `Experiment.based_on(...)`")
 
 
-def bare_vector(value: object) -> tuple[float, ...] | None:
-    """A tuple of bare numbers (a kind's direction) as floats, or ``None`` for anything else."""
+def bare_vector(value: object) -> tuple[int | float, ...] | None:
+    """A tuple of bare numbers (a direction, a quaternion), each a Python ``int`` or ``float`` as it is written, or
+    ``None`` for anything else."""
     held: tuple[object, ...] = cast(tuple[object, ...], value) if isinstance(value, tuple) else ()
     if not held or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in held):
         return None
-    return tuple(float(cast(float, v)) for v in held)
+    return tuple(int(v) if isinstance(v, int) else float(cast(float, v)) for v in held)
 
 
 def decode_value(record: Mapping[str, Any]) -> object:
@@ -123,7 +125,7 @@ def decode_value(record: Mapping[str, Any]) -> object:
     unit = record["unit"]
     held = record["value"]
     if unit is None:
-        return held
+        return tuple(cast(list[int | float], held)) if isinstance(held, list) else held
     magnitude = tuple(float(v) for v in cast(Sequence[float], held)) if isinstance(held, list) else float(held)
     return Quantity(magnitude, parse_unit(str(unit)))
 

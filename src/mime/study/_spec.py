@@ -33,7 +33,7 @@ import yaml
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.results._study_folder import bare_vector, encode_value
 from mime.study._override import parse_value
-from mime.units import DIMENSIONLESS, Quantity
+from mime.units import Quantity
 
 if TYPE_CHECKING:
     from mime.study._study import Points, Study
@@ -66,11 +66,11 @@ class _Loader(yaml.SafeLoader):
 
 
 def value_text(value: object, path: str) -> object:
-    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>``, a vector of bare numbers (a kind's
-    direction) as its numbers, a name as it is, a number or boolean as it is."""
+    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>``, a tuple of bare numbers (a direction, a
+    quaternion) as a list of its numbers, a name as it is, a number or boolean as it is."""
     numbers = bare_vector(value)
     if numbers is not None:
-        value = Quantity(numbers, DIMENSIONLESS)
+        return list(numbers)
     if isinstance(value, Quantity):
         held = encode_value(value, path)
         magnitude = held["value"]
@@ -90,14 +90,18 @@ def value_text(value: object, path: str) -> object:
 
 
 def value_of(item: object, path: str) -> object:
-    """An axis value read from a spec: text that is a quantity is one, other text a name, other scalars as they are."""
+    """An axis value read from a spec: text that is a quantity is one, other text a name, a list of numbers the tuple
+    of them, other scalars as they are."""
     if isinstance(item, str):
         held = parse_value(item)
         return item if held is None else held
     if isinstance(item, (bool, int, float)):
         return item
-    raise _refuse("study.spec", RefusalClass.USER, f"a value of the axis {path} is {item!r}, which is none of a quantity ('20 Hz'), a name, a number "
-                        f"or a boolean", "write each value as `10 Hz`, a number or a name")
+    numbers = bare_vector(tuple(cast(list[object], item))) if isinstance(item, list) else None
+    if numbers is not None:
+        return numbers
+    raise _refuse("study.spec", RefusalClass.USER, f"a value of the axis {path} is {item!r}, which is none of a quantity ('20 Hz'), a name, a number, "
+                        f"a list of numbers or a boolean", "write each value as `10 Hz`, a number, a list of numbers (`[0.0, 0.0, 1.0]`) or a name")
 
 
 def spec_text(points: Points, *, duration: Quantity, record: Sequence[str], every: Quantity | None, batch: int | None,

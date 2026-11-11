@@ -20,6 +20,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from numbers import Integral
 from typing import Any, cast
 
 import numpy as np
@@ -181,8 +182,11 @@ def length(value: object) -> int | None:
     return None
 
 
-#: A component path's index after the setting it names: ``vessel.radii[3]``.
-_COMPONENT = re.compile(r"(?P<whole>.+)\[(?P<index>[0-9]+)\]")
+#: A component path: the setting it names, then what the last brackets hold (``vessel.radii[3]``), judged by
+#: :func:`_component`.
+_COMPONENT = re.compile(r"(?P<whole>.+)\[(?P<index>[^\[\]]*)\]")
+#: A component's index as a path writes it: one spelling of a whole number, without a sign, spaces or a leading zero.
+_INDEX = re.compile(r"0|[1-9][0-9]*")
 
 
 def _unknown(path: str, declarations: Sequence[Declaration], why: str) -> ArgumentRefused:
@@ -198,7 +202,7 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
     nothing they declare, with the paths they offer."""
     component = _COMPONENT.fullmatch(str(path)) if isinstance(path, (str, TypedPath)) else None
     if component is not None:
-        return _component(str(path), component["whole"], int(component["index"]), declarations)
+        return _component(str(path), component["whole"], component["index"], declarations)
     if isinstance(path, RunPath):
         return Axis(str(path), AxisKind.DT if path == DT else AxisKind.PRECISION)
     if isinstance(path, CommandPath):
@@ -280,11 +284,30 @@ _WHOLE = {AxisKind.COMMAND: "an apparatus's command", AxisKind.VALUE: "a thing's
           AxisKind.GEOMETRY: "a kind's setting"}
 
 
-def _component(path: str, whole: str, index: int, declarations: Sequence[Declaration]) -> Axis:
-    """One component of a kind's vector setting (``vessel.radii[3]``): built per value, as the whole setting is;
-    refused where the setting is not a vector of numbers (``study.component-path``) and where the index lies past its
-    end (``study.component-index``)."""
+def _component(path: str, whole: str, written: str, declarations: Sequence[Declaration]) -> Axis:
+    """One component of a kind's vector setting (``vessel.radii[3]``): built per value, as the whole setting is, its
+    path written in one spelling. Refused where the index is written otherwise (``study.component-spelling``), where
+    what it indexes is not a kind's vector setting, a component among them (``study.component-path``), and where the
+    index lies past the setting's end (``study.component-index``)."""
+    if _INDEX.fullmatch(written) is None:
+        digits = re.fullmatch(r"[0-9]+", written) is not None
+        raise ArgumentRefused([Refusal(
+            "study.component-spelling", RefusalClass.USER,
+            f"{path} writes its index as {written!r}: a component's index is a whole number from 0, written without a "
+            f"sign, spaces or a leading zero",
+            f"write {whole}[{int(written)}]" if digits else f"index {whole} by a whole number from 0: `{whole}[0]`",
+            why="the path is how a study names, compares and saves an axis, so one component has one spelling: two "
+                "would be two axes writing one number, the later write silently kept")])
+    index = int(written)
     axis = resolve(whole, declarations)
+    if axis.component is not None:
+        setting = axis.path.rpartition("[")[0]
+        raise ArgumentRefused([Refusal(
+            "study.component-path", RefusalClass.USER,
+            f"{path} indexes {whole}, which is one number (component {axis.component} of {setting}): a component path "
+            f"names one number of a kind's vector setting by one index into the numbers it holds",
+            f"name the number by its one index into {setting}'s numbers, `{setting}[i]`",
+            why="a second index would read into the setting again, so it would silently name another of its numbers")])
     held = geometry_value(axis, declarations) if axis.kind is AxisKind.GEOMETRY else None
     count = length(held)
     if count is None:
@@ -302,7 +325,7 @@ def _component(path: str, whole: str, index: int, declarations: Sequence[Declara
             "study.component-index", RefusalClass.USER,
             f"{path} names component {index} of {whole}, which holds {count} numbers (components 0 to {count - 1})",
             f"name a component from {whole}[0] to {whole}[{count - 1}]")])
-    return dataclasses.replace(axis, path=path, component=index, built=True)
+    return dataclasses.replace(axis, path=f"{axis.path}[{index}]", component=index, built=True)
 
 
 def _controller_setting(path: str, setting: str, declarations: Sequence[Declaration]) -> Axis:
@@ -478,8 +501,8 @@ def _with_geometry(thing: Any, axis: Axis, value: object) -> Any:
 
 
 def _numbers_of(value: object) -> tuple[object, ...] | None:
-    """A point's value as a vector of bare numbers (a tuple or list, or a dimensionless quantity of several, as a spec
-    file reads one), or ``None``."""
+    """A point's value as a vector of bare numbers (a tuple or list, or a dimensionless quantity of several, as text
+    such as ``"0, 0, 1"`` reads), or ``None``."""
     held = value.value if isinstance(value, Quantity) and value.dimension == DIMENSIONLESS else value
     return tuple(cast(Sequence[object], held)) if isinstance(held, (tuple, list)) else None
 
@@ -521,9 +544,9 @@ def written_value(axis: Axis, current: object, value: object) -> object:
             raise wrong(f"{count} numbers")
         return tuple(float(cast(float, c)) for c in numbers)
     if isinstance(current, int):
-        if not (isinstance(value, int) and not isinstance(value, bool)):
+        if not (isinstance(value, Integral) and not isinstance(value, (bool, np.bool_))):
             raise wrong("a whole number")
-        return value
+        return int(value)
     number = value.value if isinstance(value, Quantity) and value.dimension == DIMENSIONLESS else value
     if not _bare(number):
         raise wrong("a number")

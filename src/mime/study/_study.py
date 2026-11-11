@@ -583,11 +583,13 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     settings, declarations, saved = experiment.declared_as()
     axes = tuple(resolve(path, declarations) for path in given.axes)
     seen = [axis.path for axis in axes]
-    if len(set(seen)) != len(seen):
+    # An axis is what it writes (its kind, owner, name and component), whatever spelling named it.
+    if len({(axis.kind, axis.owner, axis.name, axis.component) for axis in axes}) != len(axes):
         raise ArgumentRefused([Refusal("study.axis-twice", RefusalClass.USER, f"an axis is named twice: {seen}",
                                        "name each axis once in `grid({...})`")])
-    wholes = {axis.path.rpartition("[")[0] for axis in axes if axis.component is not None}
-    if overlap := [path for path in seen if path in wholes]:
+    wholes = {(axis.owner, axis.name) for axis in axes if axis.component is not None}
+    if overlap := [axis.path for axis in axes if axis.built and axis.component is None
+                   and (axis.owner, axis.name) in wholes]:
         raise ArgumentRefused([Refusal(
             "study.axis-twice", RefusalClass.USER,
             f"a setting is named whole and by a component: {', '.join(overlap)} and its components among {seen}",

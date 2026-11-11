@@ -539,6 +539,7 @@ study.batch                   user
 study.bridge-precision        user
 study.component-index         user
 study.component-path          user
+study.component-spelling      user
 study.folder-not-empty        user
 study.format                  user
 study.group-file              user

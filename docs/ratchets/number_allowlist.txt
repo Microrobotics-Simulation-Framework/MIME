@@ -236,4 +236,8 @@ docs/assets/sphere_plane_resistance.md  1  #1  # the normal's leading singular t
 docs/assets/sphere_plane_resistance.md  2.7e-7 1e-3  #1  # the spline's measured error at the midpoints within a radius (tests/oracles/test_near_contact.py), and the table's edge
 docs/assets/sphere_plane_resistance.md  10  #1  # the table's upper edge, a fact of the file
 src/mime/study/README.md  3  #1  # the index in a component path's example (vessel.radii[3]), a path's syntax, not a measurement
-docs/guide/studies.md  3  #1  # the index in a component path's example (vessel.radii[3]), a path's syntax, not a measurement
+docs/guide/studies.md  3 4 1  #1  # a component path's examples (vessel.radii[3]; vessel.points[4], point 1's y, a tree's points three a point), a path's syntax, not a measurement
+docs/guide/studies.md  0 03 3 0  #1  # an index's one spelling (a whole number from 0) and two spellings refused ([03], [3][0]), a path's syntax, not a measurement
+src/mime/study/README.md  4 1  #1  # the flat index's example (vessel.points[4], point 1's y), a path's syntax, not a measurement
+src/mime/study/README.md  3 1  #1  # the flat index's example (vessel.radii[3], segment 1's end, a tree's radii two a segment), a path's syntax, not a measurement
+src/mime/study/README.md  0  #1  # an index's one spelling, a whole number from 0, a path's syntax, not a measurement
