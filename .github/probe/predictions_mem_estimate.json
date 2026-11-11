@@ -1,0 +1,112 @@
+{
+  "written": "2026-11-11, committed before the calibration outputs for the reverse-mode cases, the other near-field cases and the seven-sphere case were read (the commit that adds this file is the timestamp)",
+  "phase": "the probe memory route: mem_estimate.py, its calibration, the trace counter, the push watch and the launcher",
+  "labels": "the builder's predictions; the estimator's figures come from mem_estimate.py, the measured peaks from the probes and runs named in mem_calibration.json",
+  "seen_before": [
+    "four estimator outputs were read before this file was written: the forward step of the 685-point sphere case (estimate 1.99 GiB against 1.94 measured), the same case in reverse (3.16 against 4.1 measured), the forward step of the 2357-point case (6.37 against 6.1) and the two-sphere dense near-field case (1.75 against 1.73; its largest part is the near-field node's own estimate, which was fitted to that same table, so that case is a fit and not an independent check)",
+    "the trace counter's jit plant was caught 20 of 20 runs with 0 of 20 false alarms before this file was written",
+    "ci_wait.sh's push mode exited 1 on run 42882557188 and 0 on run 42902413729, and probe_launch.sh refused four malformed set-ups, before this file was written"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU; JAX 0.12; the estimator runs under a systemd memory cap on a shared 64 GB laptop",
+    "sizes_and_parameters": "the calibration cases of mem_calibration.json",
+    "seeds_and_draws": "none: the estimate is a compile, deterministic"
+  },
+  "gate_1_calibration": {
+    "claim": "the estimator multiplied by the table's factor does not underestimate the measured peak of any calibration case",
+    "kind": "bounds",
+    "case": "each case of mem_calibration.json, estimated by mem_estimate.py and compared with the peak measured on it before",
+    "prediction": {
+      "band": [
+        0.9,
+        1.15
+      ],
+      "unit": "measured / estimated, forward cases",
+      "basis": "measured-before (the four seen figures) and guess",
+      "why": "a forward step's peak is the resident set after the build plus the compiled program, which the estimate is built from"
+    },
+    "prediction_reverse": {
+      "band": [
+        1.1,
+        1.8
+      ],
+      "unit": "measured / estimated, reverse cases",
+      "basis": "measured-before (one case, 1.30) and guess",
+      "why": "the peak of a reverse run also holds the compile's transient and the derivative's buffers beyond the program's analysed bytes"
+    },
+    "prediction_killed_cases": {
+      "value": "the estimate reads at least the lower bound: 14.8 GiB for the fine hand-over in reverse, 28.25 GiB for the seven-sphere case",
+      "basis": "guess for the first (its reverse program is much larger than the forward 1.64 GiB), derived for the second (XLA's temporary buffer of the failed program is the allocation that failed)",
+      "why": "the estimate reads the same program that ran out of memory"
+    },
+    "metric": "measured peak over estimate, per case, with the factor the largest over 1",
+    "control": {
+      "plant": "tests/test_probe_mem_estimate.py plants a lowered factor and a hidden underestimate in the table",
+      "expected_rate": "N/N: deterministic",
+      "clean_expected": "0/N"
+    },
+    "if_wrong": "a case read under its measured peak by more than the factor is reported with its figure and the factor raised, or the estimator is not the metric that predicts the peak",
+    "cannot_discriminate_if": "the node's own estimate dominates a case that it was fitted to (the near-field table), which then agrees by construction"
+  },
+  "gate_2_trace_counter": {
+    "claim": "node_measure.py fails a run whose steady phase traces or compiles anything, on every run, and is quiet when nothing is planted",
+    "kind": "equality",
+    "case": "a small settling case through a runner that plants a fresh jitted helper (jit) or recompiles the graph (compile) in every steady run, 20 runs each, and the same with nothing planted",
+    "prediction": {
+      "value": "20/20 caught for each plant, 0/20 false alarms",
+      "basis": "derived",
+      "why": "a steady run of a compiled scan traces nothing; either plant adds a trace and a compile to it"
+    },
+    "control": {
+      "plant": "RETRACE_PLANT=jit and RETRACE_PLANT=compile",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "a plant that is missed is a re-trace the counter cannot see; report the plant and its rate",
+    "cannot_discriminate_if": "the clean run itself traces in its steady phase (then both arms flag)"
+  },
+  "gate_3_push_watch": {
+    "claim": "ci_wait.sh --branch release/v0.3.0 --event push exits 1 on the red release run and 0 on the green one",
+    "kind": "equality",
+    "case": "runs 42882557188 (red: failed shards, the run itself marked cancelled) and 42902413729 (green)",
+    "prediction": {
+      "value": "exit 1 and exit 0",
+      "basis": "derived",
+      "why": "the verdict reads the jobs of the run, not only its conclusion"
+    },
+    "control": {
+      "plant": "the red run's conclusion alone is 'cancelled', which a verdict on the conclusion would pass as superseded",
+      "expected_rate": "1/1",
+      "clean_expected": "0/1"
+    },
+    "if_wrong": "a red read as green is the failure that matters"
+  },
+  "gate_4_launcher": {
+    "claim": "probe_launch.sh refuses a probe without committed predictions",
+    "kind": "equality",
+    "case": "untracked, malformed, modified-after-commit and missing-estimate set-ups",
+    "prediction": {
+      "value": "exit 2 in each",
+      "basis": "derived",
+      "why": "each check is a refusal before any push or run"
+    },
+    "control": {
+      "plant": "the four set-ups themselves",
+      "expected_rate": "4/4",
+      "clean_expected": "a valid set-up proceeds to its route"
+    }
+  },
+  "outcomes": {
+    "gate_1_calibration": "forward cases (11, estimate against peak measured on them before): measured/estimated 0.96 to 1.01, inside the predicted 0.9 to 1.15; the one reverse case measured to completion: 1.30 (band 1.1 to 1.8, held); the two killed cases: estimates 17.43 GiB (lower bound 14.8) and 29.47 GiB (lower bound 28.25), both above their bounds as predicted. The factor is 1.30, resting on the single completed reverse case; the near-field forward cases agree in part by construction (the node's own estimate was fitted to them).",
+    "gate_2_trace_counter": "jit plant 20/20 caught, compile plant 20/20 caught, clean arm 0/20 flagged in each (95% lower bound 0.861)",
+    "gate_3_push_watch": "exit 1 on run 42882557188 (RED, naming the failing shards), exit 0 on run 42902413729",
+    "gate_4_launcher": "exit 2 in all four malformed set-ups; a valid one went on to its route",
+    "pilots": "Actions: the launcher pushed, the workflow's estimate step passed (estimate 0.59 GiB, route actions) and the probe ran (trace_check passed); the control with an estimate beyond a runner failed at the estimate step; local: route local, run under a scope whose memory.max read 4294967296, COMMIT/ROUTE/NO_TIMING_CLAIMS written; a 6 GiB plant under that 4 GiB cap was killed by systemd (journal: oom-kill of the scope), reported as killed at the cap",
+    "not_shown": "the estimator was not checked on any case outside the MRS drag family, nor on a GPU; the pilots ran with the provisional table (factor 1.0), which moves none of their routes"
+  }
+}

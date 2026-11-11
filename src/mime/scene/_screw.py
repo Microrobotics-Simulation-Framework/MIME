@@ -13,7 +13,7 @@ import jax
 
 from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
-from mime.registry import PHYSICAL, WHY_REQUIRED, Feature
+from mime.registry import PHYSICAL, WHY_REQUIRED, SurfaceFeature
 from mime.registry import (
     Density,
     Drawing,
@@ -306,7 +306,7 @@ class Screw(Solid):
         return quasi_uniform(self, settings, spacing, patches, density)
 
     @override
-    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[Feature, ...]:
+    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[SurfaceFeature, ...]:
         """Its two rims, edges where the thread meets a flat cap, each the end's section turned by the screw; and its
         ``starts`` crests, smooth ridges along the thread at ``R (1 + modulation)``, each of the least radius across
         it the thread's height and turn give: the section's height ``R modulation sin(starts theta)`` curves at
@@ -321,16 +321,16 @@ class Screw(Solid):
         around = max(4 * starts + 1, math.ceil(2.0 * math.pi * crest * (1.0 + epsilon * starts) / resolution))
         angle = 2.0 * math.pi * np.arange(around) / around
         rho = radius * (1.0 + epsilon * np.sin(starts * angle))
-        found: list[Feature] = []
+        found: list[SurfaceFeature] = []
         for end in (-1.0, 1.0):
             turned = angle + k * (end * length / 2.0 + length / 2.0)
-            found.append(Feature("rim", "edge", 0.0, np.stack(
+            found.append(SurfaceFeature("rim", "edge", 0.0, np.stack(
                 [np.full(around, end * length / 2.0), rho * np.cos(turned), rho * np.sin(turned)], axis=-1)))
         along = np.linspace(-length / 2.0, length / 2.0,
                             max(2, math.ceil(length * math.sqrt(1.0 + (crest * k) ** 2) / resolution) + 1))
         for j in range(starts):
             turned = (math.pi / 2.0 + 2.0 * math.pi * j) / starts + k * (along + length / 2.0)
-            found.append(Feature("crest", "crest", 1.0 / bending, np.stack(
+            found.append(SurfaceFeature("crest", "crest", 1.0 / bending, np.stack(
                 [along, crest * np.cos(turned), crest * np.sin(turned)], axis=-1)))
         return tuple(found)
 
