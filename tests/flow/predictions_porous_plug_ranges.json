@@ -1,0 +1,51 @@
+{
+  "written": "2026-11-12, committed before the ranges probe ran (the commit that adds this file is the timestamp): the porous plug's sized plants' discriminating ranges, the smallest plant each gate catches, measured by discriminating_range.py through the gate's own case",
+  "phase": "Lane F, dev2: the static porous plug (its gates' discriminating ranges, beside predictions_porous_plug.json)",
+  "labels": "predictions by the builder (Opus) from each gate's clean error (measured on the laptop, float64, before this file) and its line; derived",
+  "seen_before": [
+    "the laptop, float64, head 99153fd: gate 1 at sqrt(K)/h 0.3 the flux +0.49 % and the face drop -2.0 % against their closed forms; gate 2 at sqrt(K)/h 2 the profile within 0.38 %; gate 3 at sqrt(K)/h 1 the flux +0.12 %, and with the radius a quarter cell larger -8.5 %"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "CPU, GitHub runners (4 vCPU)",
+    "sizes_and_parameters": "each gate's own case in tests/flow/test_porous_plug.py at D/h 16: gate 1 sqrt(K)/h 0.3, a plug half a diameter long in a period of two, the 0.01h interior; gate 2 sqrt(K)/h 2, a plug filling the period; gate 3 sqrt(K)/h 1, a coaxial plug of half the lumen's radius, the 0.01h interior",
+    "seeds_and_draws": "deterministic cases, one draw each (the seed unused); 12 sizes log-spaced and 6 bisection steps"
+  },
+  "gate_1_range": {
+    "claim": "the smallest permeability error gate 1 catches",
+    "kind": "estimates",
+    "case": "probe/oracles.py g1_permeability: the plug's permeability read (1 + size) times its own",
+    "prediction": {
+      "value": "about 0.02: the face drop's -2.0 % meets the 4 % line when the plant lowers it by another 2 %",
+      "band": [0.01, 0.04],
+      "unit": "relative permeability error",
+      "basis": "derived from seen_before",
+      "why": "the flux rises with K and the face drop at the measured flux falls with it, each about one for one"
+    }
+  },
+  "gate_2_range": {
+    "claim": "the smallest permeability error gate 2 catches",
+    "kind": "estimates",
+    "case": "probe/oracles.py g2_permeability",
+    "prediction": {
+      "value": "about 0.017: the profile's 0.38 % meets the 2 % line",
+      "band": [0.01, 0.03],
+      "unit": "relative permeability error",
+      "basis": "derived from seen_before",
+      "why": "the profile's centreline scales with K at sqrt(K)/h 2, about one for one"
+    }
+  },
+  "gate_3_range": {
+    "claim": "the smallest radius error gate 3 catches",
+    "kind": "estimates",
+    "case": "probe/oracles.py g3_radius: the plug's radius read size cells larger",
+    "prediction": {
+      "value": "about 0.09 cells: the flux falls about 34 % a cell (a quarter cell gave -8.5 %), meeting the 3 % line from +0.12 %",
+      "band": [0.05, 0.15],
+      "unit": "cells",
+      "basis": "derived from seen_before",
+      "why": "the annulus's conductance goes as its gap cubed"
+    }
+  },
+  "outcomes": null
+}
