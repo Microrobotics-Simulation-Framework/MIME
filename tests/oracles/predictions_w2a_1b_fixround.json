@@ -1,0 +1,150 @@
+{
+ "written": "2026-11-11, committed before any gate of W2a PR 1b-i's fix round ran and before the table's rebuild ran on Actions (the commit that adds this file is the timestamp): the review's majors (the tube's rotation entries gated, a flag above the gated ratio, a graded sphere refused the form, the retired blend's action, the form's derivative in the radius gated) and the table's bytes reproducible",
+ "phase": "W2a PR 1b-i, fix round (its review's B1, M1 to M5, m2, m3, m6, m9; the coarse MRS's radius derivative registered as an anomaly)",
+ "labels": "predictions by the fix round's builder from the review's measurements (the review's probe runs 42968413012, 42968809300, 42969184609 and 42972714723, each named below where a number comes from it) and from the PR's own gates; where a prediction repeats a number the review measured, it says so (measured-before): those are reproductions, not predictions",
+ "seen_before": [
+  "the review, run A (42968413012), arms tube-0.22 to tube-0.46 and the committed tube MFS: the hybrid's rotation diagonals within +4.7 % and -3.1 % of the tube MFS up to a/R 0.34; the rolling along the axis's coupling +12.6 % of its own size at a/R 0.28",
+  "the review, runs B (42968809300) and A: the mutant rot_swap (the two rotations' denominators swapped) moves the rotation resistances +36 % and -32 % at a/R 0.22 and +70 % and -67 % at 0.34 (gap 0.0075 a), and is caught 0/5 by the tube gate and 0/2 by the file",
+  "the review, run C (42972714723): its tube MFS at a/R 0.40 and 0.46 (levels B and C), and the hybrid's rolling along the axis there -18.2 % and -25.2 % of the plane's rate (worst over 0.1 to 0.0075 a); its levels B against C within 0.65 % on that scale",
+  "the review, run B2 (42969184609): a sphere graded towards its contact at s 0.2 a (contact_gap 0.15 and 0.075 a, h_m 0.075 and 0.0375 a), its normal +9.5 % and +19.7 % off Brenner's series",
+  "the review, run A, arms plane-0.15, plane-0.4, plane-0.6, plane-fam: at uniform spacings the normal +3.6, +2.7, +2.1, +2.84 %, every other entry within 0.93, 1.6, 1.8 %, the rate within 1.33, 1.1, 1.1, 1.13 %",
+  "the review, runs A and C: the sphere form's increment in the radius by reverse mode through the node equals two builds' central difference to 1e-6 (plane at 0.15, 0.05, 0.01, 0.002 a; tube a/R 0.28); the mutant radius_stopped is caught 0/2 by the file; the coarse MRS's resistance in the radius misses two builds by up to 24.5 % (tube, hand-over on, 0.15 a; also off: plane up to 5.2 %, tube -7 %)",
+  "the builder's and the review's table parts (runs 42949957251 and 42968413012): 129 of the 193 rows byte-identical between the two runs, 64 different by up to 2.1e-10 relative (64 = the rows of the shares that landed on another processor, an inference from the share pattern, not measured)",
+  "the fix round's builder, laptop (no AVX-512), the pinned script: knots 96 and 72 rebuilt in 14 s, within 2.4e-11 relative of the shipped file (unpinned, built on runners)"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64 (every gate)"
+  ],
+  "platform": "CI's default lane and GitHub runners (4 vCPU, 16 GB) for the probes, the table's rebuild and the controls' rates",
+  "sizes_and_parameters": "a sphere of radius a = 1 mm in water (1 mPa s), drag 0.5.0's mrs rung at its family spacing (0.251 a, h_m 0.188 a) and lubricated blob (0.05), roughness 1 nm, as the PR's gates; in a tube along z at a/R 0.22, 0.28, 0.34 (gated) and 0.40, 0.46 (above); gate 13 at a written spacing of 0.251 a",
+  "seeds_and_draws": "every gate here is deterministic (no draws); controls' rates with .github/probe/detection_rate.py on Actions, 10 planted and 10 clean runs each"
+ },
+ "gate_tube_entries": {
+  "claim": "in a tube, every diagonal entry of the hybrid's 6 x 6 within 7 % of the tube MFS (gate 1's line) and each coupling within 7 % of its own size, wherever the MFS resolves the entry (its levels B against C within 1 %), at a/R 0.22, 0.28, 0.34 and gaps 0.1 to 0.0075 a; the rolling rates and the normal as before",
+  "kind": "estimates (the MFS is a reference, resolved to 1 % on the judged entries)",
+  "case": "tests/oracles/test_near_contact.py::test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates",
+  "prediction": {
+   "value": "rotations ryry, rzrz within +5 / -4 %; the normal +3 to +4 %; yy, zz within 3 %; rxrx (the spin about the normal, no singular term) within 2 %; the round coupling y_rz within 7 %; the along coupling z_ry within 7 % at 0.22 (guess +6 %), past it at 0.28 (+12.6 %, measured-before) and 0.34 (guess +20 %)",
+   "band": [null, null],
+   "unit": "relative, each entry on its own size",
+   "basis": "measured-before (the rotations, the normal, z_ry at 0.28); guess (the rest)",
+   "why": "the hybrid's singular terms carry the body's curvature; the coarse MRS's own error at h_m is a few per cent on every entry; the along coupling is the rate's miss along the axis (-7 % of the plane's rate at 0.28) on a smaller scale"
+  },
+  "metric": "each entry's relative error against the MFS's level C, judged only where its level B is within 1 % of C",
+  "control": {
+   "plant": "rot_swap: the rotations' denominators swapped (+36 / -32 % at 0.22, +70 / -67 % at 0.34, measured-before)",
+   "environment_variable": "W2A_PLANT=rot_swap",
+   "expected_rate": "10/10 (deterministic, 5 times the line or more)",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "the line, 7 %, above the MFS's 1 % on the judged entries"
+  },
+  "if_wrong": "an entry past 7 % that is not z_ry: pinned with its measured range, stated in the validity text, the prediction recorded as missed; z_ry past it at 0.28 and 0.34 as predicted: pinned there",
+  "cannot_discriminate_if": "the MFS resolves an entry at fewer than three gaps (the test refuses that)"
+ },
+ "gate_above_ratio": {
+  "claim": "past a/R 0.34 every step within the opening's band raises handover_tube_ratio and the build report says so; at 0.22 to 0.34 no step raises it; the rolling along the axis at 0.40 and 0.46 misses the tube MFS by the measured amount, round the circumference and the normal within their lines",
+  "kind": "acceptance (the flag) and estimates (the misses)",
+  "case": "tests/oracles/test_near_contact.py::test_above_the_gated_ratio_the_step_is_flagged_and_the_along_axis_miss_is_the_measured_one",
+  "prediction": {
+   "value": "the flag 1 at all ten gaps at 0.40 and 0.46, 0 at all thirty at 0.22 to 0.34; along -18.2 % (0.40) and -25.2 % (0.46), measured-before; across within 4 %, normal within 6 % (guess from the review's +4.5 / +5.7 % normal at 0.40 / 0.46 and across +1.3 / +2.3 %)",
+   "band": [-0.27, -0.16],
+   "unit": "the along-axis miss over the plane's rate",
+   "basis": "measured-before (the misses); derived (the flag, a comparison of the sphere's radius with the lumen's)",
+   "why": "the miss grows with h_m against the lumen's radius (the review's inference, not measured here)"
+  },
+  "metric": "the flag's value at each step; the along-axis rate's miss on the plane rate's scale",
+  "control": {
+   "plant": "none: the flag's pair is its own control (raised above 0.34 at every step, raised at none of 0.22 to 0.34, in the same file)",
+   "expected_rate": "deterministic",
+   "runs": 1,
+   "clean_expected": "n/a",
+   "resolution": "the flag is a comparison: it cannot fail to fire above 0.34 while its threshold is 0.34"
+  },
+  "if_wrong": "a normal past 6 % at 0.46 (the review read +5.7 %): its measured value pinned beside the along miss, stated in the flag's text",
+  "cannot_discriminate_if": "the flag were raised at every ratio (the gated ratios' assertion that it is not rules that out)"
+ },
+ "gate13_sphere": {
+  "claim": "the sphere form's increment's derivative in the sphere's radius, by reverse mode through the node, equals the central difference of two builds at a (1 +- 1e-3) within 1e-4 (the film's gate 13's line), above a plane and in a tube at a/R 0.28, at 0.05 and 0.005 a, on every entry the increment holds",
+  "kind": "equality to the difference's truncation (about 1e-6)",
+  "case": "tests/oracles/test_near_contact.py::test_gate13_the_spheres_increment_in_its_radius_through_the_node_equals_two_builds_difference",
+  "prediction": {
+   "value": 1e-6,
+   "band": [0.0, 1e-5],
+   "unit": "|ratio - 1|",
+   "basis": "measured-before (the review's 1e-6 on the increment, plane and tube)",
+   "why": "the form reads its radius from the body's curvature, traced; the increment holds no build-time value of the radius"
+  },
+  "metric": "AD over two builds' central difference, per entry",
+  "control": {
+   "plant": "radius_stopped: stop_gradient on the form's radius (the review's mutant)",
+   "environment_variable": "W2A_PLANT=radius_stopped",
+   "expected_rate": "10/10 (the plane remainder's scaling by the radius is most of the derivative: |ratio - 1| of order one, guess)",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "the line 1e-4 against the difference's truncation of about 1e-6"
+  },
+  "if_wrong": "a ratio past 1e-4 on the clean arm: a held radius in the increment (as the coarse MRS's, the anomaly), named and fixed or registered",
+  "cannot_discriminate_if": "an entry is zero by symmetry (its ratio is rounding's): only the entries the increment holds are judged"
+ },
+ "graded_and_uniform": {
+  "claim": "the build line states the sphere form's measured error at uniform spacings (not a fixed +3.2 %), and a sphere graded towards its contact is refused the form (drag.near-contact-graded) with its measured error and two routes",
+  "kind": "acceptance; the numbers in the text are estimates reproduced on a probe",
+  "case": "the probe's plane-* and graded-* arms (the review's scripts, through the node); tests/oracles/test_near_contact.py's refusal tests",
+  "prediction": {
+   "value": "uniform 0.15 / 0.2 / 0.4 / 0.6 a: normal +3.6 / +3.2 / +2.7 / +2.1 %, others within 1.8 %, rate within 1.4 %; graded at h_m 0.075 / 0.0375 a: normal +9.5 / +19.7 %",
+   "band": [-0.005, 0.005],
+   "unit": "the reproduction's difference from the review's numbers",
+   "basis": "measured-before (every number: this is a reproduction)",
+   "why": "the same node and gaps at the same commit's compiled code"
+  },
+  "metric": "the normal against Brenner's series; the others against the graded MFS's level C",
+  "control": {
+   "plant": "none: the refusal's test has the graded MRS alone (near_contact=False) as its passing arm",
+   "expected_rate": "deterministic",
+   "runs": 1,
+   "clean_expected": "n/a",
+   "resolution": "n/a"
+  },
+  "if_wrong": "a reproduction off by more than half a per cent: the texts take the reproduction's numbers and the difference is reported",
+  "cannot_discriminate_if": "n/a"
+ },
+ "retired_action": {
+  "claim": "lubrication= on drag 0.5.0 is refused lubrication.retired, its action by the rung: on the mrs rung near_contact at the value written (never 'leave lubrication out'), on the surrogate drag 0.4.0",
+  "kind": "acceptance",
+  "case": "tests/oracles/test_near_contact.py::test_the_retired_blend_on_the_mrs_rung_names_the_hand_overs_own_switch_at_the_value_written, ::test_the_retired_blend_on_the_surrogate_names_drag_0_4_0_which_keeps_it",
+  "prediction": {"value": "each test reaches the refusal and its action", "band": [null, null], "unit": "", "basis": "derived", "why": "the action is chosen by the rung and the value written"},
+  "metric": "the refusal's code and action text",
+  "control": {"plant": "the old action ('or leave lubrication out' for every rung): the mrs arm's assertion fails on it", "expected_rate": "deterministic", "runs": 1, "clean_expected": "n/a", "resolution": "n/a"},
+  "if_wrong": "n/a",
+  "cannot_discriminate_if": "n/a"
+ },
+ "table_bytes": {
+  "claim": "the table file holds no time and no versions (they go to the build's log), and with the kernels pinned (OpenBLAS Haswell, NumPy and XLA no newer than AVX2, XLA on one thread) two full rebuilds on GitHub's runners give the same sha256, whatever processor each share lands on; the CI test rebuilds three knots and finds them equal to the file float for float",
+  "kind": "equality (bytes)",
+  "case": "the probe's two full builds (shares A and B, 12 each, and the checks), merged by the script; tests/oracles/test_near_contact.py::test_the_script_rebuilds_the_files_knots_byte_for_byte",
+  "prediction": {
+   "value": "the two merged files' sha256 equal; every part byte-identical between A and B, over at least two processor models",
+   "band": [null, null],
+   "unit": "",
+   "basis": "guess: the unpinned runs differed by processor (seen before); the pins remove the processor-dependent kernels I know of (OpenBLAS's per-core kernels, NumPy's AVX-512 dispatch, XLA's AVX-512 code and its thread-split sums)",
+   "why": "IEEE arithmetic is the same on AMD and Intel for the same instructions in the same order"
+  },
+  "metric": "sha256 of the merged files; per part, byte equality; the processors from the build's log",
+  "control": {
+   "plant": "none planted: the unpinned runs (the builder's against the review's) are the control, 64 of 193 rows different",
+   "expected_rate": "n/a",
+   "runs": 2,
+   "clean_expected": "n/a",
+   "resolution": "one bit of one number"
+  },
+  "if_wrong": "parts that differ between processors with the pins: the kernel that differs is looked for (one pin at a time on a probe); failing that, the claim is scoped to the processor model and the CI test compares to the spread measured (stated), never byte for byte",
+  "cannot_discriminate_if": "every share of both builds lands on one processor model (then the claim is per model, and says so)"
+ },
+ "costs": {
+  "prediction": "gate 13's two walls about 60 s together on a runner (six builds), the tube gate about 15 s more for its entries (none: the same steps), the above-ratio test about 50 s (two ratios), the table's knots about 30 s; peaks under 2 GiB but gate 8 (2.5 to 3 GiB, the builder's unmeasured mark)",
+  "measured_at": "the PR's runs: the tube gate 12.6 to 22.2 s a ratio, gate 8 28 to 37 s"
+ },
+ "outcomes": null
+}
