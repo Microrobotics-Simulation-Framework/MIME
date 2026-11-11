@@ -40,7 +40,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.units import Quantity, parse_unit, si, unit_symbol
+from mime.units import DIMENSIONLESS, Quantity, parse_unit, si, unit_symbol
 
 STUDY_FORMAT = "mime-study-outputs"
 STUDY_VERSION = 1
@@ -89,8 +89,12 @@ def refused(code: str, category: RefusalClass, message: str, action: str) -> Arg
 
 
 def encode_value(value: object, path: str) -> dict[str, Any]:
-    """An axis value as study.json holds it: a quantity as its SI magnitude and its unit's symbol, a number, a boolean
-    or a string as it is. Refused (``study.unsavable-value``) for anything else, naming the axis."""
+    """An axis value as study.json holds it: a quantity as its SI magnitude and its unit's symbol, a vector of bare
+    numbers (a kind's direction) as a dimensionless quantity, a number, a boolean or a string as it is. Refused
+    (``study.unsavable-value``) for anything else, naming the axis."""
+    numbers = bare_vector(value)
+    if numbers is not None:
+        return {"value": list(numbers), "unit": unit_symbol(DIMENSIONLESS)}
     if isinstance(value, Quantity):
         magnitude = value.value
         held: object = np.asarray(magnitude, dtype=np.float64).tolist() if isinstance(magnitude, np.ndarray) else \
@@ -104,6 +108,14 @@ def encode_value(value: object, path: str) -> dict[str, Any]:
                   f"quantities, numbers, booleans and strings",
                   "sweep quantities (`Hz(10.0)`), numbers or names; a value that is code belongs in an experiment of its "
                   "own, `Experiment.based_on(...)`")
+
+
+def bare_vector(value: object) -> tuple[float, ...] | None:
+    """A tuple of bare numbers (a kind's direction) as floats, or ``None`` for anything else."""
+    held: tuple[object, ...] = cast(tuple[object, ...], value) if isinstance(value, tuple) else ()
+    if not held or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in held):
+        return None
+    return tuple(float(cast(float, v)) for v in held)
 
 
 def decode_value(record: Mapping[str, Any]) -> object:

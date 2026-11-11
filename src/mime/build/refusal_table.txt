@@ -227,6 +227,7 @@ geometry.native               user
 geometry.schema-incomplete    user
 geometry.schema-not-applied   user
 geometry.unknown-kind         user
+gradient.built-value          user
 gradient.derived-leaf         user
 gradient.held-leaf            user
 gradient.leaf-unread          user
@@ -531,6 +532,8 @@ study.axis-twice              user
 study.axis-values             user
 study.batch                   user
 study.bridge-precision        user
+study.component-index         user
+study.component-path          user
 study.folder-not-empty        user
 study.format                  user
 study.group-file              user
@@ -564,6 +567,7 @@ study.stray-file              user
 study.unknown-path            user
 study.unsavable-value         user
 study.unset-group             user
+study.vector-value            user
 support.unsupported           user
 target.chain-link             user
 target.exclusive              user

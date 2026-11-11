@@ -48,16 +48,23 @@ def test_a_geometry_axis_names_a_kinds_number_and_a_parts_value_stays_a_value():
     assert not any(isinstance(d, RangeDeclaration) for d in outside.declarations), "built for its own value"
 
 
-def test_a_vector_setting_of_a_kind_is_no_axis():
+def test_a_vector_setting_of_a_kind_is_an_axis_built_per_value_and_has_no_range():
     from mrs_cases import free_space
 
     from mime.interactions import Drag
 
     experiment = free_space("egg", {"egg": Ellipsoid(semi_axes=mm((0.5, 0.7, 1.1)))},
                             Drag.MRS(spacing=mm(1.0), wall_kind="free_space"))
-    with pytest.raises(ArgumentRefused) as refused:
-        resolve("egg.parts.shell.semi_axes", experiment.declared_as()[1])
-    assert codes(refused.value) == ["study.held-geometry"]
+    axis = resolve("egg.parts.shell.semi_axes", experiment.declared_as()[1])
+    assert axis.kind is AxisKind.GEOMETRY and axis.built and axis.component is None
+    for path, low, high in (("egg.parts.shell.semi_axes", mm((0.5, 0.7, 1.0)), mm((0.5, 0.7, 1.2))),
+                            ("egg.parts.shell.semi_axes[2]", mm(1.0), mm(1.2))):
+        ranged = free_space("egg", {"egg": Ellipsoid(semi_axes=mm((0.5, 0.7, 1.1)))},
+                            Drag.MRS(spacing=mm(1.0), wall_kind="free_space"))
+        ranged.declare_range(path, low, high, reason=REASON)
+        with pytest.raises(BuildRefused) as refused:
+            ranged.build()
+        assert codes(refused.value) == ["range.units"] and "built" in refused.value.refusals[0].message
 
 
 @pytest.mark.parametrize(("path", "low", "high", "code"), [

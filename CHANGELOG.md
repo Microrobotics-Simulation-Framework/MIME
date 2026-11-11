@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
+  ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
+  (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector
+  (`"egg.parts.shell.semi_axes"`), or one component by its index (`"vessel.radii[3]"`, `Axis.component`). Each point
+  rebuilds the kind with the value written, and each value is a group of its own, split by it (the point's key is its
+  structure key with the setting's value), the split reason naming the axis; its inertness is judged on the points'
+  traced steps as well. No derivative is taken along one, a declared cut stated in the plan and refused where a study
+  or a fit asks for one (`gradient.built-value`); an override of one is refused (`override.structural`), and so is a
+  range (`range.units`). New refusals: `study.component-path`, `study.component-index`, `study.vector-value`;
+  `study.held-geometry` now refuses only a kind's structure, names or reference (a tree's segments). The study folder
+  and the spec file hold a direction's numbers as a dimensionless quantity. Gated: a study over the MRS egg's
+  semi-axes (whole, and one component by the water's viscosity) and the FVM tree's fourth radius equals the same
+  points written by hand, bit for bit per point (`tests/study/test_vector_axes.py`).
+
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
   patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the

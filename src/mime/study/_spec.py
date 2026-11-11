@@ -31,9 +31,9 @@ from typing import TYPE_CHECKING, Any, cast, override
 import yaml
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.results._study_folder import encode_value
+from mime.results._study_folder import bare_vector, encode_value
 from mime.study._override import parse_value
-from mime.units import Quantity
+from mime.units import DIMENSIONLESS, Quantity
 
 if TYPE_CHECKING:
     from mime.study._study import Points, Study
@@ -66,8 +66,11 @@ class _Loader(yaml.SafeLoader):
 
 
 def value_text(value: object, path: str) -> object:
-    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>``, a name as it is, a number or boolean as
-    it is."""
+    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>``, a vector of bare numbers (a kind's
+    direction) as its numbers, a name as it is, a number or boolean as it is."""
+    numbers = bare_vector(value)
+    if numbers is not None:
+        value = Quantity(numbers, DIMENSIONLESS)
     if isinstance(value, Quantity):
         held = encode_value(value, path)
         magnitude = held["value"]

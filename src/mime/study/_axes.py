@@ -3,7 +3,9 @@
 An axis is named by a typed path from a handle (``field.commands.frequency``, ``umr.initial.position``,
 ``drag.lubrication.epsilon``), by :data:`DT` or :data:`PRECISION`, or by the path's dotted string, which is also how it
 saves; a geometry's number is named as ``exp.source`` names it (``"ball.parts.shell.radius"``, ``"tube.inner_radius"``).
-A point is, by definition, the base experiment with the point's values declared in it: a command's drive set to the
+A kind's setting that is not one number (a vector of numbers, a count, a direction) is an axis too, whole or one
+component by its index (``"vessel.radii[3]"``, ``"egg.parts.shell.semi_axes[0]"``): the nodes built from the kind hold
+it as built, so each of its values is a build of its own (:attr:`Axis.built`). A point is, by definition, the base experiment with the point's values declared in it: a command's drive set to the
 value, a thing's value declared, a law's setting written, a body's initial state set, a kind's setting written, the
 run's step changed. Its plan judges every build-time check of that experiment, as it would judge the experiment
 written so. The experiment's declared ranges are part of it (``exp.declare_range``), so a point inside a range is built
@@ -13,6 +15,8 @@ value."""
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -45,7 +49,7 @@ from mime.things import (
     did_you_mean,
 )
 from mime.drives import Constant
-from mime.units import Quantity
+from mime.units import DIMENSIONLESS, Quantity, unit_symbol
 
 
 class RunPath(TypedPath):
@@ -76,12 +80,17 @@ class AxisKind(Enum):
 class Axis:
     """One thing a study varies: its path as it saves (``field.commands.frequency``), its kind, what it belongs to (an
     apparatus, a thing, a law's id) and its name there (a command, a value, a setting, an initial value, a kind's
-    setting: ``parts.shell.radius`` on a body, ``inner_radius`` on a structure)."""
+    setting: ``parts.shell.radius`` on a body, ``inner_radius`` on a structure). A kind's setting that is not one number
+    is ``built``: the nodes built from the kind hold it as built, so each of its values is a build of its own and no
+    derivative is taken along it; ``component`` is the index a path names of one (``radii[3]``), ``None`` for the
+    whole setting."""
 
     path: str
     kind: AxisKind
     owner: str = ""
     name: str = ""
+    component: int | None = None
+    built: bool = False
 
     def text(self) -> str:
         return self.path
@@ -129,9 +138,9 @@ def candidates(declarations: Sequence[Declaration]) -> list[str]:
             found += [f"{name}.initial.{key}" for key in getattr(type(thing.dynamics), "initial_state", {})]
         if isinstance(thing, Body):
             found += [f"{name}.parts.{part}.{setting}" for part, held in thing.parts.items()
-                      for setting in _numbers(held.geometry)]
+                      for setting in _open(held.geometry)]
         if isinstance(thing, Structure) and thing.geometry is not None:
-            found += [f"{name}.{setting}" for setting in _numbers(thing.geometry)]
+            found += [f"{name}.{setting}" for setting in _open(thing.geometry)]
     for law_id, attachment in _laws(declarations).items():
         found += [f"{law_id}.{field.name}" for field in dataclasses.fields(attachment.law)]
     held = _controller(declarations)
@@ -147,13 +156,33 @@ def _settings(kind: object) -> tuple[str, ...]:
     return tuple(field.name for field in dataclasses.fields(kind))
 
 
-def _numbers(kind: object) -> tuple[str, ...]:
-    """A geometry kind's settings that are one number each (a sphere's radius): the geometry an axis can name."""
-    return tuple(name for name in _settings(kind) if _number(getattr(kind, name)))
+def _open(kind: object) -> tuple[str, ...]:
+    """A geometry kind's settings an axis can name: each one number (a sphere's radius), a vector of numbers (an
+    ellipsoid's semi-axes, a direction) or a bare number (a count, a share)."""
+    return tuple(name for name in _settings(kind) if _number(getattr(kind, name)) or _bare(getattr(kind, name))
+                 or length(getattr(kind, name)) is not None)
 
 
 def _number(value: object) -> bool:
     return isinstance(value, Quantity) and isinstance(value.value, (int, float)) and not isinstance(value.value, bool)
+
+
+def _bare(value: object) -> bool:
+    """A bare number: a kind's count (a screw's starts) or share (a tree's fillet), or a direction's component."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def length(value: object) -> int | None:
+    """How many numbers a vector setting holds (a quantity of several, or a tuple of bare numbers: a direction);
+    ``None`` for anything else."""
+    held = value.value if isinstance(value, Quantity) else value
+    if isinstance(held, tuple) and held and all(_bare(c) for c in cast(tuple[object, ...], held)):
+        return len(cast(tuple[object, ...], held))
+    return None
+
+
+#: A component path's index after the setting it names: ``vessel.radii[3]``.
+_COMPONENT = re.compile(r"(?P<whole>.+)\[(?P<index>[0-9]+)\]")
 
 
 def _unknown(path: str, declarations: Sequence[Declaration], why: str) -> ArgumentRefused:
@@ -167,6 +196,9 @@ def _unknown(path: str, declarations: Sequence[Declaration], why: str) -> Argume
 def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
     """The axis ``path`` names, in this experiment's declarations; refused (``study.unknown-path``) where it names
     nothing they declare, with the paths they offer."""
+    component = _COMPONENT.fullmatch(str(path)) if isinstance(path, (str, TypedPath)) else None
+    if component is not None:
+        return _component(str(path), component["whole"], int(component["index"]), declarations)
     if isinstance(path, RunPath):
         return Axis(str(path), AxisKind.DT if path == DT else AxisKind.PRECISION)
     if isinstance(path, CommandPath):
@@ -211,8 +243,9 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
 def _geometry(path: str, declarations: Sequence[Declaration]) -> Axis | None:
     """The geometry axis ``path`` names: a setting of a body's part's kind (``ball.parts.shell.radius``) or of a
     structure's (``tube.inner_radius``); ``None`` where it names none (a part's density is a value). A setting that is
-    not one number (an ellipsoid's semi-axes, a direction, a count) is refused: the nodes built from it hold it as
-    built, so a new value of it is a new experiment."""
+    not one number but a vector of numbers (an ellipsoid's semi-axes, a direction) or a bare number (a count) is
+    ``built``: the nodes built from it hold it as built, so each value is a build of its own. Any other setting (a
+    tree's segments, a name, a reference) is refused: no build of the experiment can take a change of it alone."""
     head, _, rest = path.partition(".")
     thing = _things(declarations).get(head)
     kind: object = None
@@ -226,15 +259,50 @@ def _geometry(path: str, declarations: Sequence[Declaration]) -> Axis | None:
         kind, setting = thing.geometry, rest
     if kind is None or setting not in _settings(kind):
         return None
-    if not _number(getattr(kind, setting)):
+    held = getattr(kind, setting)
+    if _number(held):
+        return Axis(path, AxisKind.GEOMETRY, head, rest)
+    if length(held) is not None or _bare(held):
+        return Axis(path, AxisKind.GEOMETRY, head, rest, built=True)
+    raise ArgumentRefused([Refusal(
+        "study.held-geometry", RefusalClass.USER,
+        f"{path} is {value_text(held)}, a setting of {type(kind).__name__} that is no number and no vector of numbers "
+        f"(a structure, a name or a reference): no build of this experiment can take a change of it alone, so no "
+        f"study, override or range varies it",
+        f"make each value an experiment of its own, `Experiment.based_on(...)` with the kind written again; a kind's "
+        f"number, vector of numbers or count can be varied: {did_you_mean(path, candidates(declarations))}")])
+
+
+#: What a path that is no kind's setting names, as a component path's refusal says it.
+_WHOLE = {AxisKind.COMMAND: "an apparatus's command", AxisKind.VALUE: "a thing's declared value",
+          AxisKind.SETTING: "a law's setting", AxisKind.INITIAL: "a body's initial value",
+          AxisKind.CONTROLLER: "a controller's setting", AxisKind.DT: "the run's step", AxisKind.PRECISION: "the precision",
+          AxisKind.GEOMETRY: "a kind's setting"}
+
+
+def _component(path: str, whole: str, index: int, declarations: Sequence[Declaration]) -> Axis:
+    """One component of a kind's vector setting (``vessel.radii[3]``): built per value, as the whole setting is;
+    refused where the setting is not a vector of numbers (``study.component-path``) and where the index lies past its
+    end (``study.component-index``)."""
+    axis = resolve(whole, declarations)
+    held = geometry_value(axis, declarations) if axis.kind is AxisKind.GEOMETRY else None
+    count = length(held)
+    if count is None:
+        what = (f"{value_text(held)}, which is not a vector of numbers" if axis.kind is AxisKind.GEOMETRY else
+                f"{_WHOLE[axis.kind]}, which a study varies whole")
         raise ArgumentRefused([Refusal(
-            "study.held-geometry", RefusalClass.USER,
-            f"{path} is {value_text(getattr(kind, setting))}, a setting of {type(kind).__name__} that is not one number: "
-            f"the nodes built from the kind hold it as built (a vector of sizes, a direction or a count), so no study, "
-            f"override or range can vary it in one program",
-            f"make each value an experiment of its own, `Experiment.based_on(...)` with the kind written again; a "
-            f"kind's number can be varied: {did_you_mean(path, candidates(declarations))}")])
-    return Axis(path, AxisKind.GEOMETRY, head, rest)
+            "study.component-path", RefusalClass.USER,
+            f"{path} names a component of {whole}, and {whole} is {what}: a component path names one number of a "
+            f"kind's vector setting (`vessel.radii[3]`, `egg.parts.shell.semi_axes[0]`)",
+            f"vary {whole} itself, each point its whole value: `along({{{whole!r}: [...]}})`",
+            why="a component's index reads into a vector of numbers, and only a kind's vector setting is written by "
+                "its components")])
+    if index >= count:
+        raise ArgumentRefused([Refusal(
+            "study.component-index", RefusalClass.USER,
+            f"{path} names component {index} of {whole}, which holds {count} numbers (components 0 to {count - 1})",
+            f"name a component from {whole}[0] to {whole}[{count - 1}]")])
+    return dataclasses.replace(axis, path=path, component=index, built=True)
 
 
 def _controller_setting(path: str, setting: str, declarations: Sequence[Declaration]) -> Axis:
@@ -291,6 +359,9 @@ def _setting(path: str, owner: str, setting: str, declarations: Sequence[Declara
     return Axis(path, AxisKind.SETTING, owner, setting)
 
 
+#: What a study says of an axis built per value, in its plan and where a derivative along one is refused.
+BUILT_CUT = ("no derivative is taken along it, a declared cut: the value is built, not a leaf, so each of its values "
+             "is another program")
 #: The reason a point's declared value carries: a study chose it. A value that brings its own reason keeps it.
 STUDY_REASON = "a study's point: the value the study declares at this point (mime.study)"
 OVERRIDE_REASON = "a run's override: the value one run declares for itself (run(override=...))"
@@ -373,7 +444,7 @@ def outside_range(axis: Axis, value: object, declarations: Sequence[Declaration]
 def _replaced(declaration: Declaration, axis: Axis, value: object) -> Declaration:
     if axis.kind is AxisKind.GEOMETRY and isinstance(declaration, ThingDeclaration) and \
             declaration.thing.name == axis.owner:
-        return ThingDeclaration(_with_geometry(declaration.thing, axis.name, value))
+        return ThingDeclaration(_with_geometry(declaration.thing, axis, value))
     if axis.kind is AxisKind.CONTROLLER and isinstance(declaration, ControllerDeclaration):
         return dataclasses.replace(declaration, controller=dataclasses.replace(declaration.controller,
                                                                                **{axis.name: value}),
@@ -391,17 +462,89 @@ def _replaced(declaration: Declaration, axis: Axis, value: object) -> Declaratio
     return declaration
 
 
-def _with_geometry(thing: Any, name: str, value: object) -> Any:
-    """``thing`` with its kind's setting ``name`` (``parts.shell.radius`` on a body, ``inner_radius`` on a structure)
-    written ``value``."""
+def _with_geometry(thing: Any, axis: Axis, value: object) -> Any:
+    """``thing`` with the kind's setting ``axis`` names (``parts.shell.radius`` on a body, ``inner_radius`` on a
+    structure) written ``value``, or, for a component, the setting as ``thing`` holds it with that component written."""
     if isinstance(thing, Body):
-        _, _, tail = name.partition(".")
+        _, _, tail = axis.name.partition(".")
         part_name, _, setting = tail.partition(".")
         part = thing.parts[part_name]
+        held = written_value(axis, getattr(part.geometry, setting), value) if axis.built else value
         parts = {**thing.parts, part_name: dataclasses.replace(part, geometry=dataclasses.replace(part.geometry,
-                                                                                                  **{setting: value}))}
+                                                                                                  **{setting: held}))}
         return dataclasses.replace(thing, parts=parts)
-    return dataclasses.replace(thing, geometry=dataclasses.replace(thing.geometry, **{name: value}))
+    held = written_value(axis, getattr(thing.geometry, axis.name), value) if axis.built else value
+    return dataclasses.replace(thing, geometry=dataclasses.replace(thing.geometry, **{axis.name: held}))
+
+
+def _numbers_of(value: object) -> tuple[object, ...] | None:
+    """A point's value as a vector of bare numbers (a tuple or list, or a dimensionless quantity of several, as a spec
+    file reads one), or ``None``."""
+    held = value.value if isinstance(value, Quantity) and value.dimension == DIMENSIONLESS else value
+    return tuple(cast(Sequence[object], held)) if isinstance(held, (tuple, list)) else None
+
+
+def written_value(axis: Axis, current: object, value: object) -> object:
+    """The whole setting a point of the built ``axis`` writes over ``current``, the setting as the experiment holds it:
+    ``value`` itself, or for a component ``current`` with that component ``value``. Refused (``study.vector-value``)
+    where ``value`` is not of the setting's form: a vector of another length or dimension, a component that is not one
+    number of the setting's dimension, a count that is not a whole number."""
+    def wrong(form: str) -> ArgumentRefused:
+        return ArgumentRefused([Refusal(
+            "study.vector-value", RefusalClass.USER,
+            f"{axis.path} takes {form}, and a point gives it {value_text(value)}",
+            f"write each value of {axis.path} as {form}: `along({{{axis.path!r}: [...]}})`",
+            why="a point writes the kind's setting whole, so a value of another form would build another kind")])
+
+    unit = unit_symbol(current.dimension) if isinstance(current, Quantity) else ""
+    if axis.component is not None:
+        if isinstance(current, Quantity):
+            if not (isinstance(value, Quantity) and value.dimension == current.dimension and _bare(value.value)):
+                raise wrong(f"one number in {unit}, its component {axis.component}")
+            parts = list(cast(tuple[float, ...], current.value))
+            parts[axis.component] = float(cast(float, value.value))
+            return dataclasses.replace(current, value=tuple(parts))
+        number = value.value if isinstance(value, Quantity) and value.dimension == DIMENSIONLESS else value
+        if not _bare(number):
+            raise wrong(f"one number, its component {axis.component}")
+        components = [float(cast(float, c)) for c in cast(tuple[object, ...], current)]
+        components[axis.component] = float(cast(float, number))
+        return tuple(components)
+    count = length(current)
+    if isinstance(current, Quantity):
+        if not (isinstance(value, Quantity) and value.dimension == current.dimension and length(value) == count):
+            raise wrong(f"{count} numbers in {unit}")
+        return value
+    if count is not None:
+        numbers = _numbers_of(value)
+        if numbers is None or len(numbers) != count or not all(_bare(c) for c in numbers):
+            raise wrong(f"{count} numbers")
+        return tuple(float(cast(float, c)) for c in numbers)
+    if isinstance(current, int):
+        if not (isinstance(value, int) and not isinstance(value, bool)):
+            raise wrong("a whole number")
+        return value
+    number = value.value if isinstance(value, Quantity) and value.dimension == DIMENSIONLESS else value
+    if not _bare(number):
+        raise wrong("a number")
+    return float(cast(float, number))
+
+
+def _canonical(value: object) -> object:
+    if isinstance(value, Quantity):
+        return tuple(float(c) for c in np.asarray(value.value, dtype=np.float64).reshape(-1)), str(value.dimension)
+    if isinstance(value, tuple):
+        return tuple(float(cast(float, c)) for c in cast(tuple[object, ...], value))
+    return value
+
+
+def built_values(axes: Sequence[Axis], declarations: Sequence[Declaration]) -> str:
+    """A digest of the kinds' settings the built ``axes`` write, as ``declarations`` hold them (each setting once,
+    whole, whichever of its components the axes name; empty where none is built): what splits a study's points into
+    one build a value."""
+    held = sorted({f"{axis.owner}.{axis.name}": repr(_canonical(geometry_value(axis, declarations)))
+                   for axis in axes if axis.built}.items())
+    return hashlib.sha256(repr(held).encode()).hexdigest()[:16] if held else ""
 
 
 def geometry_value(axis: Axis, declarations: Sequence[Declaration]) -> object | None:
@@ -439,7 +582,12 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
     if axis.kind is AxisKind.VALUE:
         return next((d.value for d in declarations if isinstance(d, ValueDeclaration) and str(d.path) == axis.path), None)
     if axis.kind is AxisKind.GEOMETRY:
-        return geometry_value(axis, declarations)
+        held = geometry_value(axis, declarations)
+        if axis.component is None or held is None:
+            return held
+        if isinstance(held, Quantity):
+            return dataclasses.replace(held, value=cast(tuple[float, ...], held.value)[axis.component])
+        return cast(tuple[object, ...], held)[axis.component]
     if axis.kind is AxisKind.CONTROLLER:
         declaration = _controller(declarations)
         return getattr(declaration.controller, axis.name, None) if declaration is not None else None
@@ -457,6 +605,6 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
     return None
 
 
-__all__ = ["CONTROLLER", "DT", "OVERRIDE_REASON", "PRECISION", "PRECISIONS", "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath",
-           "base_value", "candidates", "declared", "differ", "geometry_value", "outside_range", "range_of", "resolve",
-           "value_text"]
+__all__ = ["BUILT_CUT", "CONTROLLER", "DT", "OVERRIDE_REASON", "PRECISION", "PRECISIONS", "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath",
+           "base_value", "built_values", "candidates", "declared", "differ", "geometry_value", "length", "outside_range",
+           "range_of", "resolve", "value_text", "written_value"]
