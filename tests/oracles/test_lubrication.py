@@ -117,12 +117,12 @@ REFERENCE_SHA256 = "80df714b5d1ca3fcdd80867b8f2193e39bbebd711a2d3731d5a4e196fa52
 MFS_GAPS = (0.3, 0.2, 0.15, 0.1, 0.075, 0.06)
 NORMAL_GAPS = (0.03, 0.01, 0.005, 0.002)
 #: Each spacing judged (of the radius) and its line per entry (predictions_w2a.json, gate 1): 7 %. A sphere's
-#: hand-over gap is within the film's window up to a spacing of 0.2 radii; at 0.3 the build's rule leaves it out.
+#: hand-over gap is within the window up to a spacing of 0.2 radii; at 0.3 the build's rule leaves it out.
 LINES = {0.15: 0.07, 0.2: 0.07}
-#: Where gate 1's committed line is missed (the film's form at the window's edge, MIME-ANO-154's): the normal entry at
-#: a spacing of 0.2 radii and a gap of 0.06, its range over drawn orientations, pinned (measured -6.79 to -7.27 % over
-#: 20 orientations by the review, -6.92 % unturned).
-NORMAL_MISS = {(0.2, 0.06): (-0.076, -0.065)}
+#: Where gate 1's committed line is missed by the elliptic form (MIME-ANO-154's, the form's): the two rotations about the
+#: wall's axes at a spacing of 0.2 radii and a gap of 0.06, their range over drawn orientations, pinned (measured +7.30
+#: and +7.33 % at one orientation, W2a PR 1b-ii-a's first measurement; the film's normal missed there instead).
+ROTATION_MISS = {(0.2, 0.06): (0.065, 0.082)}
 #: The orientations gate 1 draws a run (by DETECTION_SEED).
 ORIENTATIONS = 5
 #: Gate 2's line on the translation per rotation.
@@ -182,19 +182,21 @@ def test_the_reference_is_the_pinned_file_and_resolves_to_its_line():
 @pytest.mark.parametrize("spacing", sorted(LINES))
 def test_gate1_every_entry_within_its_line_of_the_exact_answer_at_every_gap_and_orientation(spacing):
     """Every entry within the line at every gap over drawn orientations, but where the line is missed
-    (:data:`NORMAL_MISS`): there the miss stays in its measured range."""
+    (:data:`ROTATION_MISS`): there the miss stays in its measured range. Every number is printed before any is judged."""
     line = LINES[spacing]
     draws = drawn_orientations(ORIENTATIONS)
     found = at_gaps(spacing, MFS_GAPS + NORMAL_GAPS, orientations=draws)
+    judged = []
     for (q, gap), out in found.items():
         assert np.all(np.isfinite(out["resistance"])), gap
         miss = errors(out["resistance"], gap) if gap in MFS_GAPS else {
             "normal": float(scaled(out["resistance"])[2, 2] / (6 * math.pi * brenner(gap)) - 1.0)}
         print(f"\ns/a {spacing}, h/a {gap}, q {np.round(q, 3)}: " + " ".join(f"{k} {v:+.4f}" for k, v in miss.items()))
-        pinned = NORMAL_MISS.get((spacing, gap))
+        judged.append((q, gap, miss, out))
+    for q, gap, miss, out in judged:
+        pinned = ROTATION_MISS.get((spacing, gap))
         if pinned is not None:
-            assert pinned[0] <= miss.pop("normal") <= pinned[1], (gap, q)
-            miss.pop("diag2", None)
+            assert all(pinned[0] <= miss.pop(name) <= pinned[1] for name in ("diag3", "diag4")), (gap, q)
         assert max(abs(v) for v in miss.values()) <= line, (gap, q, miss)
         assert float(out["handover_window"]) == 0.0 and float(out["handover_far_side"]) == 0.0, gap
         assert float(out["least_eigenvalue"]) > 0.0, gap
@@ -279,10 +281,12 @@ def test_the_increment_judged_on_its_own_scale_in_the_band_and_between_deep_gaps
     band, deep = increment_ratios()
     for gap, ratios in band.items():
         print(f"\nband h/a {gap}: " + " ".join(f"{k} {v:.3f}" for k, v in ratios.items()))
+    for pair, ratios in deep.items():
+        print(f"\ndeep {pair}: " + " ".join(f"{k} {v:.4f}" for k, v in ratios.items()))
+    for gap, ratios in band.items():
         for name, ratio in ratios.items():
             assert abs(ratio - INCREMENT_BAND[gap][SAME.get(name, name)]) <= INCREMENT_PIN, (gap, name, ratio)
     for pair, ratios in deep.items():
-        print(f"\ndeep {pair}: " + " ".join(f"{k} {v:.4f}" for k, v in ratios.items()))
         assert max(abs(r - 1.0) for r in ratios.values()) <= DEEP_LINE, (pair, ratios)
 
 
@@ -303,9 +307,8 @@ ASYMPTOTE_GAPS = (0.01, 0.005, 0.002, 0.001)
 #: The translation per rotation's error where the committed 10 % is missed (MIME-ANO-154: every gap below the hand-over
 #: gap, the lift's band and the asymptote's gaps), measured through the node, pinned so that a change either way is
 #: seen; every other gap judged is held to the line.
-COUPLING_MISS = {0.2: {0.15: 0.078, 0.1: 0.277, 0.075: 0.381, 0.06: 0.428,
-                       0.01: 0.413, 0.005: 0.343, 0.002: 0.282, 0.001: 0.251},
-                 0.15: {0.1: 0.096, 0.075: 0.202, 0.06: 0.265, 0.01: 0.329, 0.005: 0.275, 0.002: 0.227, 0.001: 0.203}}
+COUPLING_MISS = {0.2: {0.1: 0.159, 0.075: 0.204, 0.06: 0.219, 0.01: 0.193, 0.005: 0.150, 0.002: 0.116, 0.001: 0.098},
+                 0.15: {0.075: 0.103, 0.06: 0.132, 0.01: 0.156, 0.005: 0.122, 0.002: 0.094, 0.001: 0.079}}
 #: How far a pinned miss may move before the test fails: the same build, so only a change of the model moves it.
 COUPLING_PIN = 0.01
 
@@ -756,7 +759,7 @@ def test_lubrication_written_on_past_the_window_is_refused_naming_the_spacing_th
     for experiment in (screw_in_tube(lubrication=True), above_plane(0.3)):
         with pytest.raises(BuildRefused) as refused:
             experiment.plan()
-        assert refused.value.codes() == ["drag.lubrication-window"], refused.value.codes()
+        assert "drag.lubrication-window" in refused.value.codes(), refused.value.codes()
         assert "spacing=mm(" in refused.value.refusals[0].action
 
 

@@ -1343,7 +1343,7 @@ class MRSDragNode(MimeNode):
                   f"force spacing, keeps them apart)"] if floored > lifted else [])
         return [f"the near-contact hand-over: the wall is opened so that each of the body's near contacts stands at or "
                 f"above {handover * 1e3:.4g} mm ({HANDOVER_SPACINGS:g} of the force spacing, {spacing * 1e3:.4g} mm) "
-                f"before the coarse MRS is evaluated, plus the near-contact law's increments, by its form {form!r}: "
+                f"before the coarse MRS is evaluated, plus the near-contact law's increment, by its form {form!r}, each contact's summed: "
                 f"{law}; {counted}; {reach}",
                 f"the near-contact roughness cutoff: {cutoff * 1e6:.4g} um, the root of the sum of the squares of the "
                 f"body's {float(leaves['roughness_body']) * 1e6:.4g} um and the wall's "
