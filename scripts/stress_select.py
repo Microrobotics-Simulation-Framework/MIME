@@ -123,11 +123,14 @@ def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_s
 
 def cache_shards(targets: list[str], count: int) -> list[str]:
     """``["i/N", ...]`` for the shards holding the targets' files, the shards with most files first, at most
-    ``CACHE_SLOTS``; the split is the one CI runs (``tests/_sharding.py``)."""
+    ``CACHE_SLOTS``; the split is the one CI runs (``tests/_sharding.py``), with the files the table does not list read from
+    the checkout's ``test_*.py`` files, as CI reads them from its collection."""
     sys.path.insert(0, str(ROOT / "tests"))
     _sharding = importlib.import_module("_sharding")
 
-    dealt = _sharding.deal(_sharding.load_weights(), count)
+    weights, split = _sharding.load_weights(), set(_sharding.load_split())
+    on_disk = {path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").rglob("test_*.py")}
+    dealt = _sharding.deal(weights, count, on_disk - weights.keys() - split, _sharding.new_file_weight())
     held: dict[int, set[str]] = {}
     for target in targets:
         held.setdefault(_sharding.shard_of(target, count, dealt), set()).add(target.split("::", 1)[0])
