@@ -15,11 +15,12 @@ from mime.scene import Scene, Sphere, Z
 from mime.things import Part
 from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s
 
-WIDTH, HEIGHT = 64, 48
+WIDTH, HEIGHT = 48, 36
+GRID = 2
 #: The truth the fit is to recover: focal length, principal point and radial distortion (pixels, pixels, 1, 1).
-TRUTH = {"fx": 62.0, "fy": 61.0, "cx": 32.4, "cy": 23.1, "k1": -0.12, "k2": 0.03}
+TRUTH = {"fx": 46.5, "fy": 45.75, "cx": 24.3, "cy": 17.3, "k1": -0.12, "k2": 0.03}
 RADIUS, SPACING, DISTANCE, TILT = 7e-3, 20e-3, 70e-3, math.radians(25.0)
-PATHS = {name: f"camera:.detector.{name}" for name in ("fx", "fy", "cx", "cy")}
+PATHS = {name: f"camera:.detector.{name}" for name in ("fx", "fy", "cx", "cy", "k1", "k2")}
 
 
 def quaternion_of(rotation: np.ndarray) -> tuple[float, float, float, float]:
@@ -43,11 +44,11 @@ def pose() -> tuple[tuple[float, float, float], tuple[float, float, float, float
 
 def grid(detector: Detector) -> Experiment:
     exp = Experiment("sphere_grid", scene=Scene.new(up=Z, units="m"), dt=ms(1))
-    for i in range(3):
-        for j in range(3):
+    for i in range(GRID):
+        for j in range(GRID):
             name = f"s{i}{j}"
             exp.add_body(Body(name, dynamics=RigidInertial(), initial=State(
-                position=m((SPACING * (i - 1), SPACING * (j - 1), 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                position=m((SPACING * (i - (GRID - 1) / 2), SPACING * (j - (GRID - 1) / 2), 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
                 velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0))),
                 parts={"steel": Part(Sphere(radius=m(RADIUS)))}))
             exp.declare(f"{name}.parts.steel.density", kg_per_m3(7850.0), reason="steel")

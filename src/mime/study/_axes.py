@@ -22,6 +22,7 @@ import numpy as np
 
 from mime.build import (
     Attachment,
+    ObservationDeclaration,
     ControllerDeclaration,
     Declaration,
     RangeDeclaration,
@@ -113,8 +114,20 @@ def leaf_settings(declaration: ControllerDeclaration) -> tuple[str, ...]:
                  if field.name in numeric_settings(entry) or isinstance(getattr(entry, field.name), Quantity))
 
 
-def _laws(declarations: Sequence[Declaration]) -> dict[str, Attachment]:
-    return {entry_id(type(d.law), d.bindings): d for d in declarations if isinstance(d, Attachment)}
+def _laws(declarations: Sequence[Declaration]) -> dict[str, Attachment | ObservationDeclaration]:
+    """The entries whose settings an axis names, by their ids: each attached law and each observation."""
+    found: dict[str, Attachment | ObservationDeclaration] = {
+        entry_id(type(d.law), d.bindings): d for d in declarations if isinstance(d, Attachment)}
+    found.update({entry_id(type(d.observation), d.observation.bindings()): d for d in declarations
+                  if isinstance(d, ObservationDeclaration)})
+    return found
+
+
+def _entry(declaration: Attachment | ObservationDeclaration | None) -> object:
+    """The law or the observation a declaration holds."""
+    if declaration is None:
+        return None
+    return declaration.law if isinstance(declaration, Attachment) else declaration.observation
 
 
 def candidates(declarations: Sequence[Declaration]) -> list[str]:
@@ -133,7 +146,7 @@ def candidates(declarations: Sequence[Declaration]) -> list[str]:
         if isinstance(thing, Structure) and thing.geometry is not None:
             found += [f"{name}.{setting}" for setting in _numbers(thing.geometry)]
     for law_id, attachment in _laws(declarations).items():
-        found += [f"{law_id}.{field.name}" for field in dataclasses.fields(attachment.law)]
+        found += [f"{law_id}.{field.name}" for field in dataclasses.fields(cast(Any, _entry(attachment)))]
     held = _controller(declarations)
     if held is not None and CONTROLLER not in _things(declarations):
         found += [f"{CONTROLLER}.{name}" for name in leaf_settings(held)]
@@ -275,7 +288,7 @@ def _initial(path: str, owner: str, name: str, declarations: Sequence[Declaratio
 
 def _setting(path: str, owner: str, setting: str, declarations: Sequence[Declaration]) -> Axis:
     attachment = _laws(declarations).get(owner)
-    held: object = attachment.law if attachment is not None else None
+    held: object = _entry(attachment)
     parts = setting.split(".")
     for at, part in enumerate(parts):
         if at and held is None:
@@ -381,6 +394,9 @@ def _replaced(declaration: Declaration, axis: Axis, value: object) -> Declaratio
     if axis.kind is AxisKind.SETTING and isinstance(declaration, Attachment) and \
             entry_id(type(declaration.law), declaration.bindings) == axis.owner:
         return Attachment(_with_setting(declaration.law, axis.name.split("."), value), declaration.bindings)
+    if axis.kind is AxisKind.SETTING and isinstance(declaration, ObservationDeclaration) and \
+            entry_id(type(declaration.observation), declaration.observation.bindings()) == axis.owner:
+        return ObservationDeclaration(_with_setting(declaration.observation, axis.name.split("."), value))
     if not isinstance(declaration, ThingDeclaration) or declaration.thing.name != axis.owner:
         return declaration
     thing = declaration.thing
@@ -444,7 +460,7 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
         declaration = _controller(declarations)
         return getattr(declaration.controller, axis.name, None) if declaration is not None else None
     if axis.kind is AxisKind.SETTING:
-        held: object = getattr(_laws(declarations).get(axis.owner), "law", None)
+        held: object = _entry(_laws(declarations).get(axis.owner))
         for part in axis.name.split("."):
             held = getattr(held, part, None)
         return held
