@@ -17,9 +17,8 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.dynamics import RigidInertial
 from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
-from mime.nodes.hydro import _film
 from mime.nodes.hydro.mrs import MRSDragNode, _handover
-from mime.nodes.hydro.near_contact import _sphere
+from mime.nodes.hydro.near_contact import _elliptic, _search, _seam, _sphere
 from mime.scene import Plane, Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
@@ -122,35 +121,38 @@ def translation_per_rotation(resistance: np.ndarray, radius: float = RADIUS) -> 
     return float(-np.linalg.solve(held[:3, :3], held[:3, 4])[0])
 
 
-#: The plants a gate's control switches on by ``W2A_PLANT``: the increment scaled, its coupling counted twice, its
-#: normal negated, the opening without its derivative or a hard max, the film's elimination 1 % off, the cutoff from
-#: the body's roughness alone, the film's curvature floored at one over a held size (the floor the first build had),
-#: the wall's curvature added to the body's rather than taken from it, the body's size read from the search's
-#: build-time number (a constant of the program); and for the sphere's form: the plane's singular terms kept in a tube
-#: (the elliptic contact's curvatures all the body's own), the contact's coefficients from the gap's curvature alone
-#: (the body's taken as the gap's), the table's continuation below its edge matched in value only (a kink in its
-#: slope there), the two rotations' denominators swapped (``k1 (3 k1 + 2 k2)`` for ``k2 (2 k1 + 3 k2)``: equal on a
-#: plane, so only a tube sees it; the PR's review's mutant) and the sphere's radius without its derivative.
-PLANTS = ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite", "lift_stopped", "hard_max", "wrong_solve",
-          "cutoff_body_only", "held_floor", "wall_sign", "baked_size", "plane_in_tube", "relative_coefficients",
-          "edge_kink", "rot_swap", "radius_stopped")
+#: The plants a gate's control switches on by ``W2A_PLANT``: the summed increment scaled, its coupling counted twice,
+#: its normal negated, the opening without its derivative or a hard max, the cutoff from the body's roughness alone,
+#: the elliptic form's curvatures without their derivative, the wall's curvature added to the body's rather than taken
+#: from it, the body's size read from the search's build-time number (a constant of the program); for the sphere's
+#: form: the plane's singular terms kept in a tube (the elliptic contact's curvatures all the body's own), the
+#: contact's coefficients from the gap's curvature alone (the body's taken as the gap's), the table's continuation below
+#: its edge matched in value only (a kink in its slope there), the two rotations' denominators swapped (``k1 (3 k1 + 2
+#: k2)`` for ``k2 (2 k1 + 3 k2)``: equal on a plane, so only a tube sees it; the PR's review's mutant) and the sphere's
+#: radius without its derivative; and those a test applies itself (the elliptic form's cross term with its sign
+#: flipped, the plane's ambient rule in a lumen, every contact classed a point, several contacts composed one at a time,
+#: by S4's subtraction or by moving the body).
+PLANTS = ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite", "lift_stopped", "hard_max",
+          "cutoff_body_only", "curvature_stopped", "wall_sign", "baked_size", "plane_in_tube", "relative_coefficients",
+          "edge_kink", "rot_swap", "radius_stopped", "chi_sign", "plane_ambient", "class_point", "one_at_a_time",
+          "subtraction", "per_body_lift")
 
 
 @contextmanager
 def planted(plant: str | None = None) -> Iterator[str | None]:
     """The plant named (or ``W2A_PLANT``'s) applied to the hand-over's functions while a case is built and first
-    stepped (its step is traced then); nothing where none is named."""
+    stepped (its step is traced then); nothing where none is named, or where the test applies it itself."""
     name = plant if plant is not None else os.environ.get("W2A_PLANT") or None
     if name is not None and name not in PLANTS:
         raise ValueError(f"no plant {name!r}; the plants are {PLANTS}")
-    held = {"increment": _handover.increment, "opening": _handover.opening,
-            "roughness_cutoff": _handover.roughness_cutoff, "solve_film": _film.solve_film,
-            "relative_curvature": _handover.relative_curvature, "near_contact": _handover.near_contact,
-            "singular": _sphere.singular, "table": _sphere.table, "sphere_radius": _sphere.sphere_radius}
+    held = {"summed": _handover.summed, "opening": _seam.opening, "roughness_cutoff": _handover.roughness_cutoff,
+            "relative_curvature": _search.relative_curvature, "near_contacts": _handover.near_contacts,
+            "singular": _sphere.singular, "elliptic": _elliptic.singular, "table": _sphere.table,
+            "sphere_radius": _sphere.sphere_radius}
     try:
         if name in ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite"):
-            def increment(*arguments: Any, **settings: Any) -> Any:
-                found = held["increment"](*arguments, **settings)
+            def summed(*arguments: Any, **settings: Any) -> Any:
+                found = held["summed"](*arguments, **settings)
                 value = found.resistance
                 if name == "increment_x1.1":
                     value = 1.1 * value
@@ -161,28 +163,23 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
                 else:
                     value = value.at[2, 2].set(-value[2, 2] - 10.0 * jnp.abs(value[2, 2]))
                 return found._replace(resistance=value)
-            _handover.increment = increment
+            _handover.summed = summed
         elif name == "lift_stopped":
-            _handover.opening = lambda gap, resolved: jax.lax.stop_gradient(held["opening"](gap, resolved))
+            _seam.opening = lambda gap, resolved: jax.lax.stop_gradient(held["opening"](gap, resolved))
         elif name == "hard_max":
-            _handover.opening = lambda gap, resolved: jnp.maximum(gap, resolved) - gap
-        elif name == "wrong_solve":
-            _film.solve_film = lambda *arguments: 1.01 * held["solve_film"](*arguments)
+            _seam.opening = lambda gap, resolved: jnp.maximum(gap, resolved) - gap
         elif name == "cutoff_body_only":
             _handover.roughness_cutoff = lambda body, wall: 2.0 * body
-        elif name == "held_floor":
-            def floored(form: str, contact: Any, delta: Any, cutoff: Any, resolved: Any, viscosity: Any, centre: Any,
-                        reach: Any, *rest: Any) -> Any:
-                size = jax.lax.stop_gradient(reach)
-                return held["increment"](form, contact._replace(k1=jnp.maximum(contact.k1, 1.0 / size)), delta,
-                                         cutoff, resolved, viscosity, centre, size, *rest)
-            _handover.increment = floored
+        elif name == "curvature_stopped":
+            def stopped(k1: Any, k2: Any, b1: Any, b2: Any, b12: Any, *rest: Any) -> Any:
+                return held["elliptic"](*jax.lax.stop_gradient((k1, k2, b1, b2, b12)), *rest)
+            _elliptic.singular = stopped
         elif name == "wall_sign":
-            _handover.relative_curvature = lambda body, wall: body + wall
+            _search.relative_curvature = lambda body, wall: body + wall
         elif name == "baked_size":
             def baked(search: Any, *arguments: Any) -> Any:
-                return held["near_contact"](search, *arguments[:-1], jnp.asarray(search.size))
-            _handover.near_contact = baked
+                return held["near_contacts"](search, *arguments[:-2], jnp.asarray(search.size), arguments[-1])
+            _handover.near_contacts = baked
         elif name == "plane_in_tube":
             def plane(k1: Any, k2: Any, b1: Any, b2: Any, *rest: Any) -> Any:
                 own = 0.5 * (b1 + b2)
@@ -206,13 +203,13 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
             _sphere.table = kinked
         yield name
     finally:
-        _handover.increment = held["increment"]
-        _handover.opening = held["opening"]
+        _handover.summed = held["summed"]
+        _seam.opening = held["opening"]
         _handover.roughness_cutoff = held["roughness_cutoff"]
-        _film.solve_film = held["solve_film"]
-        _handover.relative_curvature = held["relative_curvature"]
-        _handover.near_contact = held["near_contact"]
+        _search.relative_curvature = held["relative_curvature"]
+        _handover.near_contacts = held["near_contacts"]
         _sphere.singular = held["singular"]
+        _elliptic.singular = held["elliptic"]
         _sphere.table = held["table"]
         _sphere.sphere_radius = held["sphere_radius"]
 
