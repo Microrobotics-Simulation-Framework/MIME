@@ -269,6 +269,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "MRS node's, a read of the corrected table)"),
     ("geometry", "plane", "0.1.0"): NodeCase(
         no_node="a geometry kind: the nodes that read its region and direction hold their parameters"),
+    ("geometry", "tube_tree", "0.1.0"): NodeCase(
+        no_node="a geometry kind: the flow's node that reads its lumen holds the tree's points, radii and fillet"),
     ("wall kind", "plane", "0.1.0"): NodeCase(
         no_node="a wall kind: a solver's node evaluates the correction the solver registers for it (the "
                 "MRS node's, the regularised image in closed form)"),

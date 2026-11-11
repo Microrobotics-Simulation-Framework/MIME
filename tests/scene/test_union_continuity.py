@@ -22,12 +22,12 @@ UNION_PLANT = os.environ.get("MIME_PLANT_UNION")
 def carina(tree: TubeTree, at: int, first: int, second: int) -> np.ndarray:
     """The point of the solid's edge between two tubes leaving the junction at point ``at``: on their bisector, as far
     from the junction as their walls meet."""
-    points = np.asarray(tree.points)
+    points = tree.parameters()["points"]
     start = points[at]
     u, v = (points[sum(tree.segments[k]) - at] - start for k in (first, second))
     u, v = u / np.linalg.norm(u), v / np.linalg.norm(v)
     half = math.acos(float(np.clip(u @ v, -1.0, 1.0))) / 2.0
-    radius = max(tree.radii[first][0], tree.radii[second][0])
+    radius = max(tree.parameters()["radii"][first][0], tree.parameters()["radii"][second][0])
     return start + (u + v) / np.linalg.norm(u + v) * radius / math.sin(half)
 
 

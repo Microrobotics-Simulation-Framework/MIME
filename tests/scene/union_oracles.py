@@ -58,7 +58,7 @@ def y_tree(kind: str, fillet: float = 0.0) -> TubeTree:
     ``asymmetric`` (radii 0.5, 0.4 and 0.3 D, segments 2 D, the first step's loop's daughters)."""
     radii, length = {"spike": ((0.5, 0.5, 0.5), 3.0), "asymmetric": ((0.5, 0.4, 0.3), 2.0)}[kind]
     s, c = math.sin(ANGLE) * length * D, math.cos(ANGLE) * length * D
-    return TubeTree(points=((0.0, 0.0, -length * D), (0.0, 0.0, 0.0), (s, 0.0, c), (-s, 0.0, c)),
+    return TubeTree.si(points=((0.0, 0.0, -length * D), (0.0, 0.0, 0.0), (s, 0.0, c), (-s, 0.0, c)),
                     segments=((0, 1), (1, 2), (1, 3)),
                     radii=tuple((r * D, r * D) for r in radii), fillet=fillet)
 
@@ -72,14 +72,14 @@ def loop_tree(fillet: float = 0.0) -> TubeTree:
               (-s, 0.0, c + middle), (0.0, 0.0, top), (0.0, 0.0, top + 2.0 * D))
     segments = ((0, 1), (1, 2), (1, 3), (2, 4), (3, 5), (4, 6), (5, 6), (6, 7))
     radii = (0.5, 0.4, 0.3, 0.4, 0.3, 0.4, 0.3, 0.5)
-    return TubeTree(points, segments, tuple((r * D, r * D) for r in radii), fillet)
+    return TubeTree.si(points, segments, tuple((r * D, r * D) for r in radii), fillet)
 
 
 def hairpin_tree(wall: float, fillet: float = 0.0, length: float = 3.0) -> TubeTree:
     """Two parallel legs of radius D/2 and ``length`` D along z, their walls ``wall`` apart (below zero: overlapping),
     joined at the top by a third tube: a hairpin in the xz-plane, its legs sharing no point."""
     s = D + wall
-    return TubeTree(((0.0, 0.0, 0.0), (0.0, 0.0, length * D), (s, 0.0, length * D), (s, 0.0, 0.0)),
+    return TubeTree.si(((0.0, 0.0, 0.0), (0.0, 0.0, length * D), (s, 0.0, length * D), (s, 0.0, 0.0)),
                     ((0, 1), (1, 2), (2, 3)), ((0.5 * D, 0.5 * D),) * 3, fillet)
 
 
@@ -135,8 +135,8 @@ def capsule_samples(a: np.ndarray, b: np.ndarray, radius: float, spacing: float)
 
 
 def capsules(tree: TubeTree) -> list[tuple[np.ndarray, np.ndarray, float]]:
-    points = np.asarray(tree.points)
-    radii = np.asarray(tree.radii)
+    points = tree.parameters()["points"]
+    radii = tree.parameters()["radii"]
     assert np.all(radii[:, 0] == radii[:, 1]), "the brute force samples capsules: one radius a segment"
     return [(points[a], points[b], float(radii[i, 0])) for i, (a, b) in enumerate(tree.segments)]
 
@@ -169,7 +169,7 @@ def filleted_distance(tree: TubeTree, points: np.ndarray, spacing: float, near: 
     brute force; outside the widened union the union's own distance (the plain minimum, exact there); the solid within
     ``r`` of the widened union has no oracle here."""
     r = tree.fillet_radius_value()
-    widened = TubeTree(tree.points, tree.segments, tuple((a + r, b + r) for a, b in tree.radii), 0.0)
+    widened = TubeTree.si(tree.parameters()["points"], tree.segments, tree.parameters()["radii"] + r, 0.0)
     depth = brute_distance(widened, points, spacing, near, reach)
     return np.where(depth <= -r, depth + r, np.where(depth >= 0.0, plain_minimum(tree, points), np.nan))
 

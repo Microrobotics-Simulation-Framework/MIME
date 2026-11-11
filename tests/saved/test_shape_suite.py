@@ -178,6 +178,7 @@ TYPICAL = {
     "half_space": {"normal": (1.0, 0.0, 0.0), "offset": 1e-3},
     "screw": {"centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
                       "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2},
+    "tube_tree": suite._tube_tree(5e-4, 0.1),  # noqa: SLF001 - the case's own Y
 }
 TURN = np.array([0.9, 0.3, -0.2, 0.25]) / np.linalg.norm([0.9, 0.3, -0.2, 0.25])
 DIRECTION = np.array([0.48, -0.6, 0.64])
@@ -194,32 +195,43 @@ RATE, TURNING = 1.0, np.array([0.31, 0.77])
 DRAWS = (np.array([0.37, 0.61, 0.53]), np.array([0.62, 0.21, 0.18]))
 
 
+def examples(dtype: str, shapes: tuple[str, ...] | None = None) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
+    """A probe near each declared set of each shape (of ``shapes``, every shape by default), for each parameter the
+    case moves and each capability, in ``dtype``, ``EXAMPLE_OFFSET[dtype]`` of the size from the set on its positive
+    side, along a direction off every axis with the parameter moved at ``RATE``, of the sign along which the float64
+    difference finds the steeper derivative (so that no parameter's part cancels the point's); with the parameter and
+    its unplanted check. Made once per shape and dtype, whichever test asks first."""
+    return tuple(held for shape in sorted(SHAPE_CASES) if shapes is None or shape in shapes
+                 for held in _examples_of(dtype, shape))
+
+
 @functools.cache
-def examples(dtype: str) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
-    """A probe near each declared set of each shape, for each parameter the case moves and each capability, in
-    ``dtype``, ``EXAMPLE_OFFSET[dtype]`` of the size from the set on its positive side, along a direction off every
-    axis with the parameter moved at ``RATE``, of the sign along which the float64 difference finds the steeper
-    derivative (so that no parameter's part cancels the point's); with the parameter and its unplanted check."""
+def _examples_of(dtype: str, shape: str) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
+    case = SHAPE_CASES[shape]
     found = []
-    for shape, case in sorted(SHAPE_CASES.items()):
-        own = TYPICAL[shape]
-        size = case.size(own)
-        rotation = suite._rotation(TURN)  # noqa: SLF001 - the suite's own rotation, as its probes turn
-        shift = size * np.array([0.7, -1.3, 2.1])
-        world = case.turned(own, TURN, shift)
-        offset = EXAMPLE_OFFSET[dtype] * size
-        for chosen in case.sets:
-            for draw in DRAWS[:2 if chosen.owner == "screw.focus" else 1]:
-                point = rotation @ chosen.place(own, offset, draw) + shift
-                for name in case.moved:
-                    curves = [ShapeProbe(shape, world, point, DIRECTION / np.linalg.norm(DIRECTION),
-                                         {name: suite.moved_rate(case, world, name, sign * RATE, TURNING, size)},
-                                         chosen.owner, "near", offset, dtype, size) for sign in (1.0, -1.0)]
-                    for capability in case.capabilities:
-                        checks = [(probe, check_shape(probe, capability)) for probe in curves]
-                        probe, check = max(checks, key=lambda held: _steepness(held[1]))
-                        found.append((probe, capability, name, check))
+    own = TYPICAL[shape]
+    size = case.size(own)
+    rotation = suite._rotation(TURN)  # noqa: SLF001 - the suite's own rotation, as its probes turn
+    shift = size * np.array([0.7, -1.3, 2.1])
+    world = case.turned(own, TURN, shift)
+    offset = EXAMPLE_OFFSET[dtype] * size
+    for chosen in case.sets:
+        for draw in DRAWS[:2 if chosen.owner == "screw.focus" else 1]:
+            point = rotation @ chosen.place(own, offset, draw) + shift
+            for name in case.moved:
+                curves = [ShapeProbe(shape, world, point, DIRECTION / np.linalg.norm(DIRECTION),
+                                     {name: suite.moved_rate(case, world, name, sign * RATE, TURNING, size)},
+                                     chosen.owner, "near", offset, dtype, size) for sign in (1.0, -1.0)]
+                for capability in case.capabilities:
+                    checks = [(probe, check_shape(probe, capability)) for probe in curves]
+                    probe, check = max(checks, key=lambda held: _steepness(held[1]))
+                    found.append((probe, capability, name, check))
     return tuple(found)
+
+
+#: The shapes whose examples have tests of their own: the tube tree's union compiles for each of its examples (about
+#: 60 s a dtype on a runner), which would take the other shapes' tests past their ceilings.
+SEPARATE = ("tube_tree",)
 
 
 def _steepness(check: ShapeCheck) -> float:
@@ -229,9 +241,21 @@ def _steepness(check: ShapeCheck) -> float:
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_autodiff_equals_the_difference_at_an_example_near_each_set_for_each_moved_parameter(dtype):
     """The property at fixed points, so that each parameter's derivative is compared on every run: a derivative lost
-    in a centre, an axis, an orientation or any scalar (a ``stop_gradient`` on it) fails here."""
+    in a centre, an axis, an orientation or any scalar (a ``stop_gradient`` on it) fails here; every shape but those
+    :data:`SEPARATE`."""
+    _examples_pass(dtype, tuple(shape for shape in sorted(SHAPE_CASES) if shape not in SEPARATE))
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.memory_heavy
+def test_autodiff_equals_the_difference_at_an_example_near_each_of_the_tube_trees_sets(dtype):
+    """The same at the tube tree's examples (:data:`SEPARATE`)."""
+    _examples_pass(dtype, SEPARATE)
+
+
+def _examples_pass(dtype: str, shapes: tuple[str, ...]) -> None:
     failed = [f"{check.line()} (moving {name}): " + "; ".join(check.problems)
-              for _, _, name, check in examples(dtype) if not check.passed]
+              for _, _, name, check in examples(dtype, shapes) if not check.passed]
     assert failed == [], "\n".join(failed)
 
 
@@ -245,9 +269,21 @@ CONSTANT = {("slab", "normal", "half_thickness"), ("slab", "normal", "centre"), 
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dtype):
     """Each example can discriminate (the planted tangent above the tolerance and the floor there, so a miss is a
-    failure and not a null result), and each fails planted, on every run (nothing is drawn)."""
+    failure and not a null result), and each fails planted, on every run (nothing is drawn); every shape but those
+    :data:`SEPARATE` holds."""
+    _planted_tangent_fails(dtype, tuple(shape for shape in sorted(SHAPE_CASES) if shape not in SEPARATE))
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.memory_heavy
+def test_control_a_planted_wrong_tangent_fails_at_every_example_near_the_tube_trees_sets(dtype):
+    """The same control at the tube tree's examples (:data:`SEPARATE`)."""
+    _planted_tangent_fails(dtype, SEPARATE)
+
+
+def _planted_tangent_fails(dtype: str, shapes: tuple[str, ...]) -> None:
     caught, missed, constant, margins = [], [], set(), []
-    for probe, capability, name, clean in examples(dtype):
+    for probe, capability, name, clean in examples(dtype, shapes):
         steep = float(np.max(np.abs(clean.autodiff))) / clean.scale
         if steep <= SHAPE_TOLERANCE[dtype]:  # zero, to rounding
             constant.add((probe.shape, capability, name))
@@ -266,8 +302,8 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
           f"{len(caught) + len(missed)} examples, at least {smallest[0]:.3g} times what the comparison resolves there "
           f"({smallest[1]}); {sorted(constant)} have no derivative to scale")
     assert missed == [], f"missed at {missed}"
-    assert constant == CONSTANT
-    sets = {(shape, s.owner, capability) for shape, case in SHAPE_CASES.items() for s in case.sets
+    assert constant == {held for held in CONSTANT if held[0] in shapes}
+    sets = {(shape, s.owner, capability) for shape, case in SHAPE_CASES.items() if shape in shapes for s in case.sets
             for capability in case.capabilities}
     assert {held[:3] for held in caught} == sets
 
