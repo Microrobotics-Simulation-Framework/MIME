@@ -112,8 +112,8 @@ def opening_role(index: int) -> str:
     return f"{OPENING}{index}"
 
 
-class OpenFlowFields(TypedDict):
-    """The open node's own fields beside the periodic node's (``FlowState``'s), with their units."""
+class OpeningFields(TypedDict):
+    """An open node's openings' fields beside its flow's, with their units (both stage kinds')."""
 
     #: (``w``'s faces include the two planes: ``velocity_z`` is ``nx ny nz+1``.) The openings' pressures (absolute)
     #: and outward fluxes the last step solved for, and each law's own state (a row a law).
@@ -135,6 +135,11 @@ class OpenFlowFields(TypedDict):
     #: the flag above :func:`exchange_line`.
     opening_exchange: ReadOnly[Annotated[Float[Array, "openings"], Units("1")]]
     opening_exchange_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+
+
+class OpenFlowFields(OpeningFields):
+    """The open node's own fields beside the periodic node's (``FlowState``'s): its openings' and its unit fields."""
+
     #: The unit fields, one a non-reference opening: the velocity a unit pressure there drives over a step (m/s/Pa).
     unit_x: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
     unit_y: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s Pa)")]]  # noqa: F722 - a jaxtyping shape
@@ -805,6 +810,6 @@ def check_open_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
 
 
 __all__ = ["BACKFLOW", "BACKFLOW_BETA", "EXCHANGE_FACTOR", "FLOAT32_PORTS", "LONE_SOLID_SHARE", "exchange_line", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "REVERSAL_LINE",
-           "REVERSAL_MEASURED", "MeteredOpenFlowState", "MeteredOpenTreeFlowState", "OpenFlowState", "OpenFlowFields",
+           "REVERSAL_MEASURED", "MeteredOpenFlowState", "MeteredOpenTreeFlowState", "OpenFlowState", "OpenFlowFields", "OpeningFields",
            "OpenFlowNode", "OpenPorts", "OpenTreeFlowState", "check_open_deliveries",
            "combined", "opening_role"]

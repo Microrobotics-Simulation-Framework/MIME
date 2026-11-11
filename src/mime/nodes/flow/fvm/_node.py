@@ -225,6 +225,11 @@ class ImplicitFlowNode(MimeNode):
     LEDGER_TERMS = ("backward_euler", "convection", "krylov")
     #: The grid kind's own terms its identity books after the scheme's (none on a periodic box).
     GRID_TERMS: ClassVar[tuple[str, ...]] = ()
+    #: The stage kind of the schemes the node steps, and the fields their state carries: the monolithic projected CG's
+    #: (the velocity), whose solve's settings (its tolerance, stop, preconditioner and report) the node takes; a node
+    #: of the explicit stage kind (an open box's RK3) takes none of them.
+    STAGE_KIND: ClassVar[StageKind] = StageKind.MONOLITHIC_PROJECTED_CG
+    SCHEME_FIELDS: ClassVar[tuple[str, ...]] = ("velocity",)
     #: The stall, a convective term not formed from its velocity, the drive in a solid; and the openings' two, pending
     #: (``mime.nodes.flow.fvm._flags``).
     LEDGER_FLAGS = FLAGS
@@ -277,17 +282,19 @@ class ImplicitFlowNode(MimeNode):
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
                  ledger: Sequence[str] = (), **extra: Any) -> None:
         chosen = scheme_named(scheme)
-        if chosen.stage_kind is not StageKind.MONOLITHIC_PROJECTED_CG or chosen.state_fields != ("velocity",) or \
+        if chosen.stage_kind is not self.STAGE_KIND or chosen.state_fields != self.SCHEME_FIELDS or \
                 chosen.ledger_terms + self.GRID_TERMS != self.LEDGER_TERMS:
             raise ValueError(f"the {scheme} scheme is of the {chosen.stage_kind} stage kind, carries "
-                             f"{chosen.state_fields} and books {chosen.ledger_terms}: this node steps the monolithic "
-                             f"projected CG's schemes, whose state is the velocity and whose terms are "
-                             f"{self.LEDGER_TERMS}")
+                             f"{chosen.state_fields} and books {chosen.ledger_terms}: this node steps the "
+                             f"{self.STAGE_KIND} stage kind's schemes, whose state is {self.SCHEME_FIELDS} and whose "
+                             f"terms are {self.LEDGER_TERMS}")
         if convection and not chosen.takes_convection:
             raise ValueError(f"the {scheme} scheme needs the Stokes approximation (convection off)")
+        solved = self.STAGE_KIND is StageKind.MONOLITHIC_PROJECTED_CG
         band_named(band)
         interior_depth(interior)
-        preconditioner_named(preconditioner)
+        if solved:
+            preconditioner_named(preconditioner)
         if periodic_images not in ("own", "transverse"):
             raise ValueError(f"periodic_images is 'own' (an aligned tube) or 'transverse', not {periodic_images!r}")
         tube = [value is not None for value in (tube_centre, tube_axis, tube_radius)]
@@ -320,14 +327,15 @@ class ImplicitFlowNode(MimeNode):
                            ("initial_velocity_z", initial_velocity_z)):
             if value is not None:
                 initial[key] = np.asarray(value)
+        stop = dict(tolerance=float(tolerance), at_floor=bool(at_floor), cap=int(cap), check_every=int(check_every))
+        start = dict(preconditioner=str(preconditioner), scaling_start=bool(scaling_start))
+        report = dict(solve_report_rows=int(solve_report_rows),
+                      solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)))
         super().__init__(name, timestep, cells_x=int(cells_x), cells_y=int(cells_y), cells_z=int(cells_z),
                          spacing=float(spacing), viscosity=float(viscosity), density=float(density), **walled,
-                         scheme=str(scheme), convection=bool(convection), tolerance=float(tolerance),
-                         at_floor=bool(at_floor), cap=int(cap),
-                         check_every=int(check_every), band=str(band), interior=str(interior),
-                         preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
-                         periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
-                         solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
+                         scheme=str(scheme), convection=bool(convection), **(stop if solved else {}),
+                         band=str(band), interior=str(interior), **(start if solved else {}),
+                         periodic_images=str(periodic_images), **(report if solved else {}), **initial,
                          **({"wall_name": str(wall_name)} if wall_name else {}), **extra,
                          **({"ledger": tuple(ledger)} if ledger else {}))
 

@@ -59,7 +59,9 @@ _STEP = "mime.nodes.flow.fvm._explicit.ExplicitFlowNode.explicit_stepped"
 _START = "mime.nodes.flow.fvm._rk3.consistent_pressure"
 
 
-class _ExplicitFields(TypedDict):
+class ExplicitFields(TypedDict):
+    """The explicit flow's own fields, with their units."""
+
     velocity_x: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     velocity_y: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     velocity_z: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
@@ -80,7 +82,7 @@ class _ExplicitFields(TypedDict):
     negative_resistivity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
-class ExplicitFlowState(_ExplicitFields, closed=True):
+class ExplicitFlowState(ExplicitFields, closed=True):
     """The explicit flow's state without the energy ledger."""
 
 
@@ -112,6 +114,24 @@ def cfl_check(velocity: Velocity, dt: Any, spacing: Any, line: Any, checked: boo
     at = jnp.where(before, stopped_at, jnp.where(past, steps + 1, -1)).astype(jnp.int32)
     held = jnp.where(before, stopped_cfl, jnp.where(past, cfl, 0.0)).astype(velocity[0].dtype)
     return cfl.astype(velocity[0].dtype), at, held
+
+
+def delivered_work(scheme: TimeScheme[Any], coefficients: Array, stage: _rk3.ExplicitStage, state: Mapping[str, Array],
+                   dt: float) -> tuple[Array, Array]:
+    """:meth:`ExplicitFlowNode.delivered_work` of a step of ``scheme``: the law's drive at the scheme's stage instants,
+    paired by its quadrature with the fluid's momentum at each stage's start, and the magnitude of its products."""
+    assert stage.momentum is not None and stage.momentum_size is not None, "a metered step records the momenta"
+    dtype = stage.drive.dtype
+    time = jnp.asarray(state["steps"]).astype(dtype) * dt
+    given = jnp.asarray(coefficients, dtype=dtype)
+    work = size = jnp.zeros((), dtype=dtype)
+    for k, (weight, instant) in enumerate(zip(_rk3.QUADRATURE, scheme.drive_instants, strict=True)):
+        if weight == 0.0:
+            continue
+        g = waveform_at(given, time + instant * dt).astype(dtype)
+        work = work + dt * weight * jnp.dot(g, stage.momentum[k])
+        size = size + dt * weight * jnp.dot(jnp.abs(g), stage.momentum_size[k])
+    return work, size
 
 
 class ExplicitFlowNode(ImplicitFlowNode):
@@ -324,18 +344,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
         quadrature with the fluid's momentum at each stage's start, ``sum_k b_k dt g(t_k) . <1 - chi, u_k>``; and the
         magnitude of its products, ``sum_k b_k dt |g(t_k)| . <1 - chi, |u_k|>``, which the work the stages applied has
         too. Formed apart from the force the stages applied (``forcing``), from the law's own input."""
-        assert stage.momentum is not None and stage.momentum_size is not None, "a metered step records the momenta"
-        dtype = stage.drive.dtype
-        time = jnp.asarray(state["steps"]).astype(dtype) * dt
-        given = jnp.asarray(coefficients, dtype=dtype)
-        work = size = jnp.zeros((), dtype=dtype)
-        for k, (weight, instant) in enumerate(zip(_rk3.QUADRATURE, self.scheme.drive_instants, strict=True)):
-            if weight == 0.0:
-                continue
-            g = waveform_at(given, time + instant * dt).astype(dtype)
-            work = work + dt * weight * jnp.dot(g, stage.momentum[k])
-            size = size + dt * weight * jnp.dot(jnp.abs(g), stage.momentum_size[k])
-        return work, size
+        return delivered_work(self.scheme, coefficients, stage, state, dt)
 
     @override
     def run_problem(self, end: int) -> Problem | None:
@@ -344,4 +353,4 @@ class ExplicitFlowNode(ImplicitFlowNode):
         return None
 
 
-__all__ = ["ExplicitFlowNode", "ExplicitFlowState", "ExplicitParts", "cfl_check"]
+__all__ = ["ExplicitFields", "ExplicitFlowNode", "ExplicitFlowState", "ExplicitParts", "cfl_check", "delivered_work"]

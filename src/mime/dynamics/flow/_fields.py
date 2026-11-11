@@ -5,17 +5,17 @@ its entry."""
 from __future__ import annotations
 
 from mime.fields._solved import NOT_DECLARED, SolvedField
-from mime.nodes.flow.fvm import StageKind, scheme_named
+from mime.nodes.flow.fvm import scheme_named
 from mime.scene import PeriodicBox, VesselRegion
 from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_VELOCITY, FLOW_WAVEFORM
 
 
 def fvm_field(scheme: str, opened: bool = False) -> SolvedField:
     """The FVM's declarations with the scheme ``scheme`` on its domain: a periodic box has no ports and no affine
-    response; an open vessel (``opened``, IMEX Euler or its steady limit) couples its openings implicitly through its
-    affine response."""
+    response; an open vessel (``opened``) couples its openings implicitly through its affine response, at IMEX Euler's
+    one stage or at each of RK3's."""
     chosen = scheme_named(scheme)
-    coupled = opened and chosen.stage_kind is StageKind.MONOLITHIC_PROJECTED_CG
+    coupled = opened
     return SolvedField(
         hosting="solved", role="flow", provides=(FLOW_VELOCITY.name,), time_level=NOT_DECLARED,
         own_contribution="none", accepts=(FLOW_BODY_FORCE.name, FLOW_WAVEFORM.name, FLOW_OPENING.name),

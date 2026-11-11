@@ -113,8 +113,23 @@ def test_a_periodic_box_takes_no_law_at_an_opening(float64):
     assert "flow.no-openings" in refused(exp)
 
 
-def test_an_open_vessel_steps_by_imex_euler_or_its_steady_limit(float64):
-    assert "flow.open-scheme" in refused(vessel(scheme=Scheme.RK3()))
+def test_an_open_vessel_stepped_by_rk3_runs_and_each_step_dissipates(float64):
+    """``Scheme.RK3()`` on an open vessel builds the open node of the explicit stage kind: the inflow's face flux is its
+    waveform, route 1 judges every step to have dissipated, the Windkessel's own books are workless against the flow's
+    to rounding; past RK3's viscous number the step is refused."""
+    exp = vessel(scheme=Scheme.RK3())
+    exp.observe(EnergyLedger())
+    built = exp.build()
+    result = built.run(ms(20.0))
+    final = result.final["water.flow"]
+    np.testing.assert_allclose(np.asarray(final["opening_flux"]), [-FLUX, FLUX], rtol=1e-12)
+    judged = ledger_closes(result)
+    assert judged.passed, judged.detail
+    assert float(final["ledger_route_one_negative_steps"]) == 0.0
+    account = result.energy
+    assert account is not None and set(account.supplied) == {"inflow:tube.start"}
+    assert account.lost["windkessel:tube.end"] > 0.0
+    assert "flow.viscous-limit" in refused(vessel(scheme=Scheme.RK3(), dt=ms(5.0)))
 
 
 def test_an_open_vessel_square_to_the_box_axis_is_refused(float64):

@@ -196,7 +196,6 @@ flow.cfl-predicted            user
 flow.interior                 user
 flow.memory                   user
 flow.no-openings              user
-flow.open-scheme              user
 flow.opening-law              user
 flow.opening-unknown          user
 flow.openings-ill-posed       user
