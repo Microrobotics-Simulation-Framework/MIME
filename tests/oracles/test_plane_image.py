@@ -12,7 +12,7 @@ draw:
 - **no divergence:** the total's divergence for each of the three unit forces at a fluid point, against its gradient's
   largest entry (a divergence is linear in the force, so one force could miss what another shows). Each term is
   divergence-free on its own, so a sign flip cannot fail it; the plant is a term that is not, the Stokeslet's ``R
-  R^T`` part alone, at a millionth of the image.
+  R^T`` part alone, at a thousandth of the image.
 - **reciprocity:** ``G(x, y) = G(y, x)^T`` for two points in the medium with the same blob. Plant: a term that is not
   reciprocal even with the target the source, a millionth of the image.
 - **Blake's limit:** with no blob the image is Blake's singular image (``plane_oracles.blake``, written out again from
@@ -26,7 +26,10 @@ Blake's image as the oracle writes it is held by the identity it serves: with th
 wall. The measurement when the wall kind was built (1,000 draws each, the residual in units of the inputs' rounding): no slip at most 4.4,
 the divergence 3.3, the reciprocity 92, Blake's image with no blob 1.1, the turned frame 2.5, the rate 99.97 to
 100.00; each line holds a factor of ten or more over the largest. The plants' least, in the same units: the flipped
-terms 2.1e10 (the rotlet) and above, the blob dropped 2.6e9, the divergence 1.5e6, the reciprocity 3.5e8, the
+terms 2.1e10 (the rotlet) and above, the blob dropped 2.6e9, the divergence 8.8e3 (a thousandth of the image: 1.0e5 over
+200,000 draws, 8.8e3 at the strategy's corner of the least blob, the points within a blob of each other and the farthest
+mirror; the millionth it was first planted at was 101 over 50,000 draws, 9 at that corner, and 60.7 on one draw in CI),
+the reciprocity 3.5e8, the
 doublet against Blake's 1.2e11; the planted rate at most 10.1."""
 
 import math
@@ -34,7 +37,7 @@ import math
 import jax
 import jax.numpy as jnp
 import numpy as np
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from plane_oracles import blake, frame, free_stokeslet
 
@@ -45,6 +48,8 @@ EPS = float(np.finfo(np.float64).eps)
 NO_SLIP = 64.0
 DIVERGENCE = 64.0
 RECIPROCITY = 1024.0
+#: The divergence plant's size, in units of the image's own (see the control that plants it).
+PLANTED_DIVERGENCE = 1e-3
 LIMIT = 32.0
 TERMS = ("stokeslet", "doublet", "dipole", "rotlet")
 CANONICAL = {"normal": (0.0, 0.0, 1.0), "offset": 0.0}
@@ -199,19 +204,36 @@ def test_the_free_stokeslet_and_its_image_have_no_divergence(drawn):
     assert found <= DIVERGENCE, found
 
 
-@settings(deadline=None)
-@given(fluid_pairs())
-def test_control_a_term_with_a_divergence_a_millionth_of_the_image_fails_on_every_draw(drawn):
-    """The image's Stokeslet's ``R R^T`` part alone, whose divergence is ``R / |R|^3``, never zero (the mirror lies at
-    least twice the source's height away), at a millionth of its size."""
-    plane, source, target, eps_squared = drawn
+def divergence_plant(plane, source, size=PLANTED_DIVERGENCE):
+    """The image's Stokeslet ``R R^T`` part alone, ``size`` times its own size: ``planted`` for ``divergence``. Its
+    divergence ``R / |R|^3`` is never zero (the mirror lies at least twice the source's height away)."""
     mirror = jnp.asarray(mirror_of(plane, source))
 
     def planted(x):
         r = x - mirror
-        return 1e-6 * r[:, None] * r[None, :] / (8 * math.pi * jnp.sum(r * r) ** 1.5)
+        return size * r[:, None] * r[None, :] / (8 * math.pi * jnp.sum(r * r) ** 1.5)
 
-    found = divergence(plane, source, target, eps_squared, planted)
+    return planted
+
+
+@settings(deadline=None)
+@given(fluid_pairs())
+@example(  # the draw a millionth missed in CI (60.7 of 64): the least blob, the points within a blob of each other
+    (
+        {"normal": (0.0, 0.0, 1.0), "offset": 0.0234375},
+        np.array([[0.0, 0.0, 0.03955078125]]),
+        np.array([[0.0, 0.0, 0.03948974609375]]),
+        6.103515625e-09,
+    )
+)
+def test_control_a_term_with_a_divergence_a_thousandth_of_the_image_fails_on_every_draw(drawn):
+    """The plant is a thousandth, not a millionth: the divergence is judged against the gradient's largest entry, which
+    a blob's core sets (``~ 1 / eps^2``) when the two points lie within a blob of each other, while the plant's
+    divergence falls as ``1 / |R|^2``, so its share in units of the rounding is least (about ``9`` per millionth,
+    measured) for the smallest blob, the farthest mirror and the largest coordinates. A millionth missed the line of 64
+    on one draw in CI (60.7); a thousandth is 140 times over it at that corner."""
+    plane, source, target, eps_squared = drawn
+    found = divergence(plane, source, target, eps_squared, divergence_plant(plane, source))
     assert found > DIVERGENCE, found
 
 
