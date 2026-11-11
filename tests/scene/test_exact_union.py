@@ -24,6 +24,7 @@ Each control's rate is measured over 200 draws on Actions (``.github/probe/detec
 ``test_union_continuity.py``'s, which import their draws and plants from here: CI deals an unlisted file to a shard by
 its path, and the four gates in one file were over a shard's half hour."""
 
+import dataclasses
 import math
 import os
 from dataclasses import dataclass
@@ -90,12 +91,12 @@ def drawn(kind: str, seed: int, cells: int, far: bool = False
     if kind == "hairpin":
         turn = aligned_rotation(seed)
         tree = hairpin_tree(-rng.uniform(0.05, 0.15) * D).turned(turn, turn @ (rng.uniform(0.0, h, 3) * (1, 0, 1)))
-        points = np.asarray(tree.points)
+        points = tree.parameters()["points"]
         middle = 0.25 * np.sum(points, axis=0)
         reach = REACH * D
     else:
         tree = (loop_tree() if kind == "loop" else y_tree(kind)).turned(rotation(seed), rng.uniform(0.0, h, 3))
-        junctions = [np.asarray(tree.points[int(j.name[1:])]) for j in tree.junctions if len(j.ends) >= 3]
+        junctions = [tree.parameters()["points"][int(j.name[1:])] for j in tree.junctions if len(j.ends) >= 3]
         middle = np.mean(junctions, axis=0)
         reach = REACH * D + max(float(np.linalg.norm(j - middle)) for j in junctions)
     if far:
@@ -241,7 +242,7 @@ def test_the_fillet_is_the_closing_in_closed_form(shape, seed, dtype):
 @pytest.mark.parametrize("seed", seed_list((24,)))
 def test_the_fillet_shares_derivative_is_its_difference(seed):
     tree, points, h = drawn_y("asymmetric", seed, 8)
-    tree = TubeTree(tree.points, tree.segments, tree.radii, fillet=0.1)
+    tree = dataclasses.replace(tree, fillet=0.1)
     points = points[np.abs(plain_minimum(tree, points)) < 2.0 * h]
     lumen = tree.lumen()
     held = parameters_of(tree, "float64")
@@ -266,7 +267,7 @@ def test_the_seams_derivatives_are_the_implicit_ones(seed, monkeypatch):
     if IMPLICIT_PLANT == "held":
         monkeypatch.setattr(union_module, "_implicit", lambda reached, jacobian, residual: reached)
     tree, points, h = drawn_y("asymmetric", seed, 8)
-    tree = TubeTree(tree.points, tree.segments, tree.radii, fillet=0.1)
+    tree = dataclasses.replace(tree, fillet=0.1)
     points = points[np.abs(plain_minimum(tree, points)) < 2.0 * h]
     lumen = tree.lumen()
     held = parameters_of(tree, "float64")
