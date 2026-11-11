@@ -27,7 +27,15 @@ from mime.nodes.hydro._rft_drag import (
     default_coefficients,
 )
 from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
-from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS, WINDOW, least_radius, window_text
+from mime.nodes.hydro.mrs._handover import (
+    GRADED_SPHERE_TEXT,
+    HANDOVER_SPACINGS,
+    TUBE_RATIOS_TEXT,
+    UNIFORM_SPHERE_TEXT,
+    WINDOW,
+    least_radius,
+    window_text,
+)
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
 from mime.nodes.hydro.near_contact import FORMS as NEAR_CONTACT_FORMS
@@ -1546,6 +1554,12 @@ class Drag(UncoupledDrag):
                                   "MRS's axial entry past 7 % (measured on a sphere at the deepest opening the window "
                                   "allows: -6.3 % at a/R 0.5, -8.9 % at 0.55, -18 % at 0.67, -37 % at 0.8)",
              rung="mrs", group=False, written=("near_contact",)),
+        Flag("handover_tube_ratio", "with lubrication's hand-over in the sphere's form in a tube and the contact "
+                                    "opened, the sphere's radius over the tube's lay past TESTED_TUBE_RATIO (0.34), the "
+                                    "largest ratio the form was gated at: the rolling along the axis misses by -12 % "
+                                    "of the plane's rate at 0.34 and was measured -18 % at 0.40 and -25 % at 0.46 "
+                                    "(the sphere's form in a tube is tested from 0.22 to 0.34, MIME-ANO-154 open above "
+                                    "it)", rung="mrs", group=False, written=("near_contact",)),
         Flag("film_unsolved", "with lubrication's hand-over in the film's form, the film's solve was not finite or its "
                               "residual lay past "
                               "FILM_RESIDUAL_ULPS of the dtype's resolution (1e4 units in the last place: 2.2e-12 "
@@ -1610,10 +1624,11 @@ class Drag(UncoupledDrag):
         "plane's exact remainder and the elliptic contact's singular terms with the body's own curvature (Cox's; Claeys "
         "and Brady's). Its error is the coarse MRS's own at the hand-over gap, which the opening leaves: a sphere above "
         "a plane at the family's spacing (tests/oracles/test_near_contact.py), the normal entry up to +2.8 % at and "
-        "below the hand-over gap, every other entry and the rolling rate within 1.2 %; in a tube against an independent "
-        "tube MFS at sphere-to-tube radius ratios of 0.22, 0.28 and 0.34, the rolling round the circumference within "
-        "3.3 % and the normal within 3.6 %, the rolling along the axis -3.6, -7.0 and -12 % of the plane's rate (worst "
-        "near that rate's zero crossing), not measured above 0.34. Every other kind takes the thin film's form "
+        "below the hand-over gap, every other entry and the rolling rate within 1.2 %; " f"{UNIFORM_SPHERE_TEXT}; in a "
+        f"tube, {TUBE_RATIOS_TEXT} (the rolling along the axis worst near that rate's zero crossing): the form is "
+        "gated from 0.22 to TESTED_TUBE_RATIO (0.34), and past it a step within the opening's band raises "
+        "handover_tube_ratio (MIME-ANO-154 open there). A sphere's sampling graded towards its contact is refused the "
+        f"form (drag.near-contact-graded): {GRADED_SPHERE_TEXT}. Every other kind takes the thin film's form "
         "(Reynolds' equation on the gap's second-order form), only where the hand-over gap lies within WINDOW of the "
         "body's least radius of curvature (the build's rule: a body past it, a crest or an edge sharper than the "
         "spacing resolves, is the coarse MRS's, the build reporting the gap against the radius, and near_contact=True "
@@ -1863,6 +1878,16 @@ class Drag(UncoupledDrag):
             found = [problem for problem in found if problem.code != "drag.mrs-on-wall"]
             hull = ctx.geometry(of="body")
             film = hull is not None and near_contact_form(hull) == "film"
+            if hull is not None and near_contact_form(hull) == "sphere" and self.graded():
+                body = ctx.bindings["body"]
+                found.append(Problem(
+                    "drag.near-contact-graded",
+                    f"{body} takes the sphere's exact near-contact form, and its force points are graded "
+                    f"(sampling=ForceSampling(...)): the hand-over gap then sits at the finest graded spacing, where "
+                    f"the graded MRS's own error, which the opening leaves, is the form's error: {GRADED_SPHERE_TEXT} "
+                    f"(design #341: a sphere takes the form at a uniform spacing, no grading)",
+                    "leave the sampling out, Drag.MRS(spacing=...), for the sphere's form at a uniform spacing, or "
+                    "write near_contact=False for the graded MRS alone near the wall"))
             window = self.handover_window(ctx) if cast(object, self.near_contact) is True and film else None
             if window is not None and window[0] > WINDOW * window[1]:
                 body = ctx.bindings["body"]
@@ -1998,14 +2023,7 @@ class Drag(UncoupledDrag):
         experiment declares it (``<body>.roughness``, ``<structure>.roughness``; ``DEFAULT_ROUGHNESS`` otherwise)."""
         found = super().plan(ctx)
         if self.lubrication is not None:
-            found = dataclasses.replace(found, problems=(*found.problems, Problem(
-                "lubrication.retired",
-                f"lubrication= is the surrogate's blend of the sphere-wall asymptotes, which drag {self.version} "
-                f"retired: the mrs rung's hand-over (near_contact) is the near-wall lubrication now, and the "
-                f"surrogate's is retrained far field only, not yet",
-                "keep the blend on drag 0.4.0, kept registered: KeptDrag, _ = KEPT['drag', '0.4.0'] (KEPT from "
-                "mime.interactions), then KeptDrag.Surrogate(weights=asset('dejongh_mlp_v2'), "
-                "lubrication=Lubrication(epsilon=mm(0.15))); or leave lubrication out")))
+            found = dataclasses.replace(found, problems=(*found.problems, self._retired()))
         if not self.lubricated(ctx):
             return found
         values = dict(found.values)
@@ -2014,6 +2032,29 @@ class Drag(UncoupledDrag):
         if ctx.value("medium", "wall.roughness") is not None:
             values["roughness_wall"] = Value("medium", "roughness", wall=True)
         return dataclasses.replace(found, values=values)
+
+    def _retired(self) -> Problem:
+        """``lubrication=`` written on drag 0.5.0 (``lubrication.retired``), its way out by the rung it was written on:
+        on the mrs rung the hand-over's own switch, ``near_contact``, at the value written (so ``lubrication=False``
+        keeps the hand-over off), and on the surrogate the blend on drag 0.4.0."""
+        written = cast(object, self.lubrication)
+        if self.rung == "mrs":
+            action = (f"write near_contact={written!r}, the mrs rung's hand-over by its name since drag 0.5.0's "
+                      f"near-contact law (near_contact=False leaves it off, the coarse MRS alone; unwritten, it is on "
+                      f"near a wall that opens)" if isinstance(written, bool) else
+                      "leave lubrication out: the mrs rung's near-wall lubrication is its hand-over, near_contact (on by "
+                      "default near a wall that opens; near_contact=False leaves it off)")
+        elif self.rung == "surrogate":
+            action = ("keep the blend on drag 0.4.0, kept registered: KeptDrag, _ = KEPT['drag', '0.4.0'] (KEPT from "
+                      "mime.interactions), then KeptDrag.Surrogate(weights=asset('dejongh_mlp_v2'), "
+                      "lubrication=Lubrication(epsilon=mm(0.15))); or leave lubrication out, the surrogate without the "
+                      "blend")
+        else:
+            action = f"leave lubrication out: the {self.rung} rung reads none"
+        return Problem("lubrication.retired",
+                       f"lubrication= is the surrogate's blend of the sphere-wall asymptotes, which drag {self.version} "
+                       f"retired: the mrs rung's hand-over (near_contact) is the near-wall lubrication now, and the "
+                       f"surrogate's is retrained far field only, not yet", action)
 
     def _build_near_field(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the

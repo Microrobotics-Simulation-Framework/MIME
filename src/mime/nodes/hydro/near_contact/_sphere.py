@@ -121,7 +121,10 @@ def singular(k1: Array, k2: Array, b1: Array, b2: Array, inverse: Array, log: Ar
     translation along a direction ``pi / s (2 + 6 (2 b_t - k_t)^2 / (k_t (3 k_t + 2 k_o))) ln(1/h)``; the force along it
     per rotation about ``n x t``, ``12 pi (2 b_t - k_t) / (k_t (3 k_t + 2 k_o) s) ln(1/h)``; the rotation about ``n x
     t``, ``24 pi / (k_t (3 k_t + 2 k_o) s) ln(1/h)``; ``s = sqrt(k1 k2)``, ``k`` the gap's curvatures, ``b`` the body's
-    along the same directions. A module attribute so that a control can plant other coefficients."""
+    along the same directions. Written for the body's principal directions along the gap's (Janoschek et al.'s chi =
+    0), which is exact for a sphere, whose curvature is the same in every direction; a body whose own principal
+    directions are turned from the gap's has the further terms the compilation gives for chi other than zero (its K12,
+    K14, K25 and K45), which these leave out. A module attribute so that a control can plant other coefficients."""
     s = jnp.sqrt(k1 * k2)
     first, second = k1 * (3.0 * k1 + 2.0 * k2), k2 * (2.0 * k1 + 3.0 * k2)
     o = jnp.zeros_like(k1)
@@ -137,13 +140,19 @@ def singular(k1: Array, k2: Array, b1: Array, b2: Array, inverse: Array, log: Ar
                       jnp.stack([x_ry, o, o, o, ryry, o]), jnp.stack([o, o, o, o, o, o])])
 
 
+def sphere_radius(b1: Array, b2: Array) -> Array:
+    """The sphere's radius as its form reads it: the inverse of the body's mean curvature at the contact. A module
+    attribute so that a control can stop its derivative."""
+    return 2.0 / (b1 + b2)
+
+
 def increment(contact: NearContact, delta: Array, cutoff: Array, viscosity: Array, centre: Array) -> Increment:
     """The sphere's increment ``A(h) - A(h + delta)``, each gap floored at the roughness ``cutoff``, about ``centre`` in
     the world frame: the plane's exact remainder about the sphere's centre plus the contact's singular terms about its
     point (the module's docstring). The sphere's radius is the body's own curvature at the contact."""
     dtype = contact.gap.dtype
     near, far = floored(contact.gap, cutoff), floored(contact.gap + delta, cutoff)
-    radius = 2.0 / (contact.b1 + contact.b2)
+    radius = sphere_radius(contact.b1, contact.b2)
     one = jnp.ones_like(radius)
     arms = jnp.stack([one, one, one, radius, radius, radius])
     plane = plane_matrix(plane_remainder(near / radius) - plane_remainder(far / radius))
@@ -162,4 +171,4 @@ def entries_at(d: Any) -> np.ndarray:
 
 
 __all__ = ["ENTRIES", "TABLE", "Table", "entries_at", "increment", "interpolated_singular", "plane_matrix",
-           "plane_remainder", "remainder", "singular", "table"]
+           "plane_remainder", "remainder", "singular", "sphere_radius", "table"]

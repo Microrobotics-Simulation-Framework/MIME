@@ -32,16 +32,16 @@ FINE = 1e-9
 
 def above_plane(spacing: float | None, *, blob: float | None = None, lubrication: bool | None = True,
                 roughness: float = FINE, kind: Any = None, name: str = "lubricated_sphere",
-                wall_roughness: float | None = None) -> Experiment:
+                wall_roughness: float | None = None, drag: Any = None) -> Experiment:
     """``kind`` (a sphere of ``RADIUS`` by default) a radius above the plane z = 0, the medium filling the half-space,
     with ``Drag.MRS`` at ``spacing`` (of the radius; the family's where ``None``) and the hand-over ``near_contact``
     as ``lubrication`` (unwritten where ``None``: the build's rule), both surfaces' roughness declared (the wall's
-    ``wall_roughness`` where given)."""
+    ``wall_roughness`` where given); ``drag``, where given, the law attached in its place."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=m(0.0))))
     experiment.add_medium(Medium("water", fills=floor.half_space))
     return _with_body(experiment, spacing, blob, lubrication, roughness, kind, (0.0, 0.0, 3.0 * RADIUS), "floor",
-                      "plane", wall_roughness)
+                      "plane", wall_roughness, drag)
 
 
 def in_tube(spacing: float | None, *, blob: float | None = None, lubrication: bool | None = True,
@@ -61,7 +61,7 @@ def in_tube(spacing: float | None, *, blob: float | None = None, lubrication: bo
 
 def _with_body(experiment: Experiment, spacing: float | None, blob: float | None, lubrication: bool | None,
                roughness: float, kind: Any, at: tuple[float, float, float], wall: str, wall_kind: str,
-               wall_roughness: float | None = None) -> Experiment:
+               wall_roughness: float | None = None, drag: Any = None) -> Experiment:
     experiment.declare("water.viscosity", mPa_s(VISCOSITY * 1e3), reason="water")
     experiment.add_body(Body("ball", dynamics=RigidInertial(),
                              parts={"shell": Part(kind if kind is not None else Sphere(radius=m(RADIUS)))},
@@ -80,7 +80,7 @@ def _with_body(experiment: Experiment, spacing: float | None, blob: float | None
         settings["near_contact"] = lubrication
     if blob is not None:
         settings["blob"] = blob
-    experiment.attach(Drag.MRS(**settings), body="ball", medium="water")
+    experiment.attach(Drag.MRS(**settings) if drag is None else drag, body="ball", medium="water")
     return experiment
 
 
@@ -128,11 +128,12 @@ def translation_per_rotation(resistance: np.ndarray, radius: float = RADIUS) -> 
 #: the wall's curvature added to the body's rather than taken from it, the body's size read from the search's
 #: build-time number (a constant of the program); and for the sphere's form: the plane's singular terms kept in a tube
 #: (the elliptic contact's curvatures all the body's own), the contact's coefficients from the gap's curvature alone
-#: (the body's taken as the gap's), and the table's continuation below its edge matched in value only (a kink in its
-#: slope there).
+#: (the body's taken as the gap's), the table's continuation below its edge matched in value only (a kink in its
+#: slope there), the two rotations' denominators swapped (``k1 (3 k1 + 2 k2)`` for ``k2 (2 k1 + 3 k2)``: equal on a
+#: plane, so only a tube sees it; the PR's review's mutant) and the sphere's radius without its derivative.
 PLANTS = ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite", "lift_stopped", "hard_max", "wrong_solve",
           "cutoff_body_only", "held_floor", "wall_sign", "baked_size", "plane_in_tube", "relative_coefficients",
-          "edge_kink")
+          "edge_kink", "rot_swap", "radius_stopped")
 
 
 @contextmanager
@@ -145,7 +146,7 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
     held = {"increment": _handover.increment, "opening": _handover.opening,
             "roughness_cutoff": _handover.roughness_cutoff, "solve_film": _film.solve_film,
             "relative_curvature": _handover.relative_curvature, "near_contact": _handover.near_contact,
-            "singular": _sphere.singular, "table": _sphere.table}
+            "singular": _sphere.singular, "table": _sphere.table, "sphere_radius": _sphere.sphere_radius}
     try:
         if name in ("increment_x1.1", "increment_x2", "coupling_twice", "indefinite"):
             def increment(*arguments: Any, **settings: Any) -> Any:
@@ -189,6 +190,13 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
             _sphere.singular = plane
         elif name == "relative_coefficients":
             _sphere.singular = lambda k1, k2, b1, b2, *rest: held["singular"](k1, k2, k1, k2, *rest)
+        elif name == "rot_swap":
+            def swapped(*arguments: Any) -> Any:
+                found = held["singular"](*arguments)
+                return found.at[3, 3].set(found[4, 4]).at[4, 4].set(found[3, 3])
+            _sphere.singular = swapped
+        elif name == "radius_stopped":
+            _sphere.sphere_radius = lambda b1, b2: jax.lax.stop_gradient(held["sphere_radius"](b1, b2))
         elif name == "edge_kink":
             def kinked() -> Any:
                 table = held["table"]()
@@ -206,6 +214,7 @@ def planted(plant: str | None = None) -> Iterator[str | None]:
         _handover.near_contact = held["near_contact"]
         _sphere.singular = held["singular"]
         _sphere.table = held["table"]
+        _sphere.sphere_radius = held["sphere_radius"]
 
 
 def compared(built, pose_of, gaps, leaf_names, step=1e-6, forward_too=True):

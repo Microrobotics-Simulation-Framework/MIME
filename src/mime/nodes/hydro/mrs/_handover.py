@@ -86,6 +86,22 @@ ANNULUS_SHARE = 1.0
 #: near contact opened with the far side kept, read -6.3 % at a/R 0.5 and -8.9 % at 0.55 for a sphere at the deepest
 #: opening the window allows (s/a 0.2, h_m 0.15 a), -18 % at 0.67 and -37 % at 0.8 [measured: W2a's fix round].
 FAR_SIDE_FILL = 0.5
+#: The largest sphere-to-tube radius ratio the sphere's form in a tube was gated at (0.22 to 0.34, against an independent
+#: tube MFS): above it a step within the opening's band raises ``handover_tube_ratio``. Along the axis the rolling
+#: misses by -12 % at 0.34 and was measured -18 % at 0.40 and -25 % at 0.46 (the PR's review, its tube MFS resolved).
+TESTED_TUBE_RATIO = 0.34
+#: What the sphere's form is measured to do, by where it runs (a 1 mm sphere, blob 0.05, float64, through the node;
+#: tests/oracles/test_near_contact.py and the fix round's probes): at a uniform force spacing above a plane, in a tube
+#: by the sphere-to-tube ratio, and on a sampling graded towards the contact (refused, drag.near-contact-graded).
+UNIFORM_SPHERE_TEXT = ("on a sphere above a plane at uniform force spacings of 0.15 to 0.6 radii, the normal +2.1 to "
+                       "+3.6 % off Brenner's series at and below the hand-over gap, every other entry within 1.8 % and "
+                       "the rolling rate within 1.4 % of exact")
+TUBE_RATIOS_TEXT = ("against an independent tube MFS at sphere-to-tube ratios of 0.22, 0.28 and 0.34, the rolling round "
+                    "the circumference within 3.3 % of the plane's rate and along the axis -3.6, -7.0 and -12 %, the "
+                    "rotations within 5 %; above them, along the axis -18 % at 0.40 and -25 % at 0.46")
+GRADED_SPHERE_TEXT = ("graded towards its contact at a force spacing of 0.2 radii, a sphere's normal read +9.5 % and "
+                      "+19.7 % off Brenner's series at hand-over gaps of 0.075 and 0.0375 radii, against +2.1 to +3.6 % "
+                      "at uniform spacings of 0.15 to 0.6 radii")
 
 
 def handover_gap(spacing: float) -> float:
@@ -232,8 +248,9 @@ class Handover(NamedTuple):
     lift), the contact, the hand-over gap, the opening and the cutoff, the law's residual (the film's; zero for a
     closed form), and the step's flags as 0 or 1: ``window`` (the film's hand-over gap past :data:`WINDOW` of the
     contact's smaller radius), ``annulus`` (the film's patch reaching round the lumen), ``unsolved`` (the film not
-    finite, or its residual past :data:`FILM_RESIDUAL_ULPS`) and ``far_side`` (a lumen opened by dilation about a body
-    filling more than :data:`FAR_SIDE_FILL` of its diameter)."""
+    finite, or its residual past :data:`FILM_RESIDUAL_ULPS`), ``far_side`` (a lumen opened by dilation about a body
+    filling more than :data:`FAR_SIDE_FILL` of its diameter) and ``tube_ratio`` (the sphere's form in a tube past
+    :data:`TESTED_TUBE_RATIO`)."""
 
     opened: dict[str, Any]
     increment: Array
@@ -246,6 +263,7 @@ class Handover(NamedTuple):
     annulus: Array
     unsolved: Array
     far_side: Array
+    tube_ratio: Array
 
 
 def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], points: Array, pose: Array,
@@ -275,6 +293,9 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
     found = _lax.cond(delta > 0.0, opened, none)
     lumen = region.get("radius")
     far_side = jnp.asarray(False) if lumen is None else found_contact.width > FAR_SIDE_FILL * 2.0 * lumen
+    # the sphere's radius is its own curvature at the contact, as its form reads it
+    tube_ratio = jnp.asarray(False) if lumen is None or form != "sphere" else \
+        2.0 / (contact.b1 + contact.b2) > TESTED_TUBE_RATIO * lumen
     if form == "film":
         finite = jnp.all(jnp.isfinite(found.resistance))
         unsolved = jnp.logical_not(finite) | (found.residual > FILM_RESIDUAL_ULPS * jnp.finfo(dtype).eps)
@@ -286,12 +307,13 @@ def handed_over(search: Search, kind: Geometry, parameters: Mapping[str, Any], p
     else:
         unsolved = window = annulus = jnp.asarray(False)
     flags = _lax.stop_gradient(jnp.stack([window & (delta > 0.0), annulus & (delta > 0.0), unsolved,
-                                          far_side & (delta > 0.0)]).astype(dtype))
+                                          far_side & (delta > 0.0), tube_ratio & (delta > 0.0)]).astype(dtype))
     return Handover(wall.opened(constants, delta), found.resistance, contact, handover, delta, cutoff,
-                    _lax.stop_gradient(found.residual), flags[0], flags[1], flags[2], flags[3])
+                    _lax.stop_gradient(found.residual), flags[0], flags[1], flags[2], flags[3], flags[4])
 
 
 __all__ = ["ANNULUS_SHARE", "CURVATURE_FLOOR", "FAR_SIDE_FILL", "DEFAULT_ROUGHNESS", "FILM_RESIDUAL_ULPS", "HANDOVER_SPACINGS",
-           "LIFT_WIDTH", "RADIUS_FLOOR", "ROUGHNESS_WIDTH", "WINDOW", "Contacted", "Handover", "Increment", "NearContact",
+           "GRADED_SPHERE_TEXT", "LIFT_WIDTH", "RADIUS_FLOOR", "ROUGHNESS_WIDTH", "TESTED_TUBE_RATIO", "TUBE_RATIOS_TEXT",
+           "UNIFORM_SPHERE_TEXT", "WINDOW", "Contacted", "Handover", "Increment", "NearContact",
            "Search", "handed_over", "handover_gap", "increment", "least_radius", "near_contact", "opening",
            "relative_curvature", "roughness_cutoff", "search_for", "window_text"]

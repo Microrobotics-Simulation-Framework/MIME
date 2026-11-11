@@ -23,7 +23,16 @@ torque it exerts on the fluid per unit motion about its centre (MIME's resistanc
 ``zz`` (normal translation), ``xx`` (translation along the wall), ``ryry`` (rotation about an axis along it), ``x_ry``
 (the force along x per rotation about y, which is the torque about y per translation along x) and ``rzrz`` (spin
 about the normal). The knots are uniform in ``ln d`` from ``D_LOW`` to ``D_HIGH``; the midpoints between them are
-computed too, for the test that holds the interpolation to them (``tests/oracles/test_sphere_plane_table.py``).
+computed too, for the test that holds the interpolation to them (``tests/oracles/test_near_contact.py``).
+
+**Reproducible bytes.** The file holds the numbers and nothing of the run that made them: each solve's time and the
+environment's versions go to the build's log beside the parts (``sphere_plane_parts/log.json``), so that a rebuild can
+match the shipped file's sha256. Its numbers are made in the processor's own kernels (LAPACK's, XLA's, NumPy's), which
+differ between processors in their last bits: measured, two builds on GitHub's runners of different processors
+differed in 64 of the 193 rows, by up to 2e-10 relative. The script pins them before it imports NumPy or JAX
+(:data:`PINNED`: OpenBLAS's Haswell kernels, XLA's and NumPy's code no newer than AVX2), so that a rebuild on any
+x86-64 processor with AVX2 makes the same bytes; ``tests/oracles/test_near_contact.py`` rebuilds a few knots and
+compares them with the shipped file's.
 
 Not collected; run once, in float64 (the smallest gaps take a few minutes each and about 4 GB):
 
@@ -32,21 +41,33 @@ Not collected; run once, in float64 (the smallest gaps take a few minutes each a
     python scripts/sphere_plane_table.py merge
 
 ``part i n`` builds every n-th of the knots and midpoints from the i-th into ``sphere_plane_parts/`` (one job's share
-of n, the costly small gaps spread over the jobs); ``checks`` the checks; ``merge`` writes the table from the parts."""
+of n, the costly small gaps spread over the jobs); ``checks`` the checks; ``merge`` writes the table from the parts.
+``knots i j ...`` prints the knots named, as the file holds them, for the test that compares a rebuild with it."""
 
 from __future__ import annotations
 
-import json
-import math
-import platform
-import sys
-import time
-from pathlib import Path
+import os
 
-import jax
-import jax.numpy as jnp
-import numpy as np
-import scipy.linalg
+#: The kernels the numbers are made in, pinned before NumPy and JAX are imported (the module's docstring): OpenBLAS's
+#: Haswell kernels, NumPy's dispatch no newer than AVX2, and XLA's code no newer than AVX2 on one thread (so that its
+#: sums do not follow the processor's count of cores); XLA's flags are added to any the environment sets.
+PINNED = {"OPENBLAS_CORETYPE": "Haswell", "NPY_DISABLE_CPU_FEATURES": "X86_V4 AVX512_ICL AVX512_SPR"}
+XLA_PINNED = ("--xla_cpu_max_isa=AVX2", "--xla_cpu_multi_thread_eigen=false")
+os.environ.update(PINNED)
+os.environ["XLA_FLAGS"] = " ".join([os.environ.get("XLA_FLAGS", ""),
+                                    *(f for f in XLA_PINNED if f not in os.environ.get("XLA_FLAGS", ""))]).strip()
+
+import json  # noqa: E402 - after the kernels are pinned
+import math  # noqa: E402
+import platform  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import jax  # noqa: E402
+import jax.numpy as jnp  # noqa: E402
+import numpy as np  # noqa: E402
+import scipy.linalg  # noqa: E402
 
 jax.config.update("jax_enable_x64", True)
 
@@ -199,6 +220,11 @@ def solve(d: float, problem: str, terms: int | None = None, nodes: int | None = 
             "seconds": round(time.time() - started, 1)}
 
 
+def held(solved: dict) -> dict:
+    """What the file keeps of a solve: its numbers, not its time (which goes to the log)."""
+    return {k: v for k, v in solved.items() if k not in ("loads", "seconds")}
+
+
 def traction_load(series: Bispherical, problem: str, coefficients: np.ndarray, nodes: int) -> tuple[list, list]:
     """The force and torque the sphere exerts on the fluid (minus the traction's integral over it), about its
     centre."""
@@ -261,8 +287,8 @@ def entry(d: float, **settings: int) -> dict:
     along = solve(d, "along", **settings)
     (force_u, torque_u), (force_w, torque_w) = along["loads"]
     return {"d": d, "zz": 6.0 * math.pi * brenner(d), "xx": force_u[0], "ryry": torque_w[1], "x_ry": force_w[0],
-            "ry_x": torque_u[1], "rzrz": 8.0 * math.pi * jeffery(d),
-            "solve": {k: v for k, v in along.items() if k != "loads"}}
+            "ry_x": torque_u[1], "rzrz": 8.0 * math.pi * jeffery(d), "solve": held(along),
+            "seconds": along["seconds"]}
 
 
 def knots() -> np.ndarray:
@@ -297,15 +323,29 @@ def checks() -> dict:
     return found
 
 
+def environment() -> dict:
+    """The run's environment, for the build's log (never the file): the versions, the processor and the kernels
+    pinned."""
+    model = next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines()
+                  if line.startswith("model name")), platform.processor()) if Path("/proc/cpuinfo").exists() else \
+        platform.processor()
+    return {"python": platform.python_version(), "numpy": np.__version__, "jax": jax.__version__,
+            "scipy": scipy.__version__, "processor": model,
+            "pinned": {name: os.environ.get(name) for name in (*PINNED, "XLA_FLAGS")}}
+
+
 def build_part(share: int, shares: int) -> None:
     points = [("knot", i, float(d)) for i, d in enumerate(knots())] + \
         [("midpoint", i, float(d)) for i, d in enumerate(midpoints())]
     points.sort(key=lambda point: point[2])
     PARTS.mkdir(exist_ok=True)
+    log = {"environment": environment(), "seconds": {}}
     for kind, i, d in points[share::shares]:
         found = entry(d)
+        log["seconds"][f"{kind}_{i:03d}"] = found.pop("seconds")
         (PARTS / f"{kind}_{i:03d}.json").write_text(json.dumps(found))
         print(kind, i, d, {k: found[k] for k in ("xx", "x_ry", "ry_x", "ryry")}, found["solve"], flush=True)
+    (PARTS / f"log_{share:02d}_of_{shares:02d}.json").write_text(json.dumps(log, indent=1))
 
 
 def merge() -> None:
@@ -332,9 +372,10 @@ def merge() -> None:
         "checks": {**json.loads((PARTS / "checks.json").read_text()), "reciprocity_worst": worst,
                    "unmet_elsewhere_worst": max(row["solve"]["unmet_elsewhere"] for row in held + middle)},
         "solves": [row["solve"] for row in held + middle],
-        "python": platform.python_version(), "numpy": np.__version__, "jax": jax.__version__,
     }
     OUT.write_text(json.dumps(record, indent=1) + "\n")
+    logs = {path.name: json.loads(path.read_text()) for path in sorted(PARTS.glob("log_*.json"))}
+    (PARTS / "log.json").write_text(json.dumps({"merged_by": environment(), "parts": logs}, indent=1) + "\n")
 
 
 if __name__ == "__main__":
@@ -343,7 +384,16 @@ if __name__ == "__main__":
     elif sys.argv[1:] == ["checks"]:
         PARTS.mkdir(exist_ok=True)
         (PARTS / "checks.json").write_text(json.dumps(checks(), indent=1))
+        (PARTS / "log_checks.json").write_text(json.dumps({"environment": environment()}, indent=1))
     elif sys.argv[1:2] == ["part"]:
         build_part(int(sys.argv[2]), int(sys.argv[3]))
+    elif sys.argv[1:2] == ["knots"]:
+        at = knots()
+        rebuilt = {}
+        for i in map(int, sys.argv[2:]):
+            found = entry(float(at[i]))
+            rebuilt[str(i)] = {"d": found["d"], **{name: found[name] for name in ("zz", "xx", "ryry", "x_ry", "rzrz")},
+                               "solve": found["solve"]}
+        print(json.dumps(rebuilt))
     else:
         raise SystemExit(__doc__)

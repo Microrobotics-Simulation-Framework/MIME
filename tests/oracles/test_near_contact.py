@@ -27,7 +27,10 @@ Float64 (``tests/oracles/conftest.py``) but the float32 gate. The controls honou
 import hashlib
 import json
 import math
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any
 
 import _cache_ceiling
 import jax
@@ -54,6 +57,8 @@ from mime.nodes.hydro._film import smooth_floor
 from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS
 from mime.nodes.hydro.near_contact import AMBIENT_ZERO, LIFT_WIDTH, NearContact, ambient_point, increment, opening
 from mime.nodes.hydro.near_contact import _sphere
+from mime.scene import Sphere
+from mime.units import m
 
 HEADROOM_MIB = 1024
 LIMIT_MIB: list[float] = []
@@ -76,6 +81,7 @@ REFERENCES = Path(__file__).parents[1] / "differential" / "references"
 TABLE_SHA256 = "5c6ed8ff9fd2f8e7e2b15027d1c8f742a650906702b73d87adb0d1f7aba7e0e1"
 PLANE_MFS_SHA256 = "36487b7add26702abe832ccc882e568a70c07d9299af989efb622bbe950ae426"
 TUBE_MFS_SHA256 = "aa1ead278b453d082d144dc8658461d9fb503b3b6ee14b1347a4034872920bc5"
+TUBE_MFS_ABOVE_SHA256 = "c0bea240dd5b3f2b47171c15cc460c8e4f44a1bd1edde2669455067360ffa7e9"
 #: The gaps (radii) the gates judge above a plane: every gap of the graded MFS.
 GAPS = (0.3, 0.2, 0.15, 0.1, 0.075, 0.06, 0.05, 0.04, 0.03, 0.02, 0.015, 0.01, 0.0075, 0.005, 0.002, 0.001)
 #: Gate 1's and gate 2's committed lines (predictions_w2a_1b.json).
@@ -210,6 +216,29 @@ def test_the_continuation_below_the_tables_range_is_c1_at_its_edge():
     assert kinked.max() > 0.1
 
 
+#: The knots a rebuild compares with the file, its widest gaps (the cheapest solves: 37 to 41 terms) and one at a
+#: radius (55): each built in a fresh process, as the script builds the file, its kernels pinned (``PINNED``).
+REBUILT_KNOTS = (96, 95, 72)
+
+
+def test_the_script_rebuilds_the_files_knots_byte_for_byte():
+    """The file holds the numbers and nothing of the run that made them (no time, no versions), and its numbers are
+    made in pinned kernels, so a rebuild matches it: each knot's five entries, its gap and its solve's record equal
+    the shipped file's, float for float."""
+    held = table_file()
+    assert "python" not in held and all("seconds" not in solve for solve in held["solves"])
+    done = subprocess.run([sys.executable, str(Path(__file__).parents[2] / "scripts" / "sphere_plane_table.py"),
+                           "knots", *map(str, REBUILT_KNOTS)], capture_output=True, text=True, check=False, timeout=600)
+    assert done.returncode == 0, done.stderr[-2000:]
+    rebuilt = json.loads(done.stdout.strip().splitlines()[-1])
+    for i in REBUILT_KNOTS:
+        row = rebuilt[str(i)]
+        shipped = {"d": held["d"][i], **{name: held[name][i] for name in _sphere.ENTRIES}, "solve": held["solves"][i]}
+        moved = {k: (row[k], shipped[k]) for k in shipped if row[k] != shipped[k]}
+        print(f"\nknot {i} (d {row['d']:.6g}): " + ("equal" if not moved else f"moved {moved}"))
+        assert not moved, (i, moved)
+
+
 # -- the seam ---------------------------------------------------------------------------------------------------------
 
 def turned_frame(angle: float) -> np.ndarray:
@@ -267,8 +296,8 @@ def test_the_ambient_is_read_with_its_zero_on_the_opened_wall():
 
 
 def test_the_plan_picks_the_form_by_the_bodys_kind_and_the_report_names_it():
+    from mime.nodes.hydro.mrs._handover import UNIFORM_SPHERE_TEXT
     from mime.scene import Ellipsoid
-    from mime.units import m
 
     # a coarse blob: the form the plan picks and the report's line do not depend on it
     sphere = stepper(above_plane(None, blob=0.25).build())[0]
@@ -279,6 +308,63 @@ def test_the_plan_picks_the_form_by_the_bodys_kind_and_the_report_names_it():
     named = [line for line in lines if "near-contact law's increment, by its form 'sphere'" in line]
     print("\n" + "\n".join(named))
     assert len(named) == 1 and "sphere_plane_resistance" in named[0]
+    # the error it reports is the measured one at the spacing it runs at, not a number from another spacing
+    assert f"a uniform force spacing of 0.251 radii: {UNIFORM_SPHERE_TEXT}" in named[0], named[0]
+
+
+def graded_sphere(near_contact: bool | None) -> Any:
+    """The sphere above the plane at a force spacing of 0.2 radii, its force points graded towards the contact for a
+    gap of 0.075 radii (``ForceSampling(contact=...)``), the hand-over as ``near_contact`` (unwritten where ``None``)."""
+    from mime.interactions import Drag, ForceSampling
+
+    return above_plane(None, name="graded_sphere", drag=Drag.MRS(
+        spacing=m(0.2 * RADIUS), wall_kind="plane", **({} if near_contact is None else {"near_contact": near_contact}),
+        sampling=ForceSampling(contact=(0.0, 0.0, -1.0), contact_gap=m(0.075 * RADIUS))))
+
+
+def test_a_graded_sphere_is_refused_the_spheres_form_with_its_measured_error_and_its_routes():
+    from mime.build import BuildRefused
+
+    for near_contact in (None, True):
+        with pytest.raises(BuildRefused) as refused:
+            graded_sphere(near_contact).plan()
+        found = [r for r in refused.value.refusals if r.code == "drag.near-contact-graded"]
+        assert len(found) == 1, refused.value.codes()
+        print(f"\n{found[0].message}\n{found[0].action}")
+        assert "+9.5 %" in found[0].message and "near_contact=False" in found[0].action
+    graded_sphere(False).plan()  # the graded MRS alone near the wall: not this refusal's
+
+
+def retired(rung: str, written: object) -> Any:
+    """The refusal ``lubrication=written`` meets on drag 0.5.0's ``rung`` (a sphere above the plane)."""
+    from mime.build import BuildRefused
+    from mime.data import asset
+    from mime.interactions import Drag
+
+    drag = Drag.MRS(spacing=m(0.2 * RADIUS), wall_kind="plane", lubrication=written) if rung == "mrs" else \
+        Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=written)
+    with pytest.raises(BuildRefused) as refused:
+        above_plane(None, name="retired", drag=drag).plan()
+    found = [r for r in refused.value.refusals if r.code == "lubrication.retired"]
+    assert len(found) == 1, refused.value.codes()
+    print(f"\n{rung}, lubrication={written!r}: {found[0].action}")
+    return found[0]
+
+
+@pytest.mark.parametrize("written", [False, True])
+def test_the_retired_blend_on_the_mrs_rung_names_the_hand_overs_own_switch_at_the_value_written(written):
+    """``Drag.MRS(lubrication=False)``, the hand-over's name before the near-contact law: its way out keeps the user's
+    intent, ``near_contact=False`` (never "leave lubrication out", which turns the hand-over on)."""
+    action = retired("mrs", written).action
+    assert f"near_contact={written!r}" in action and "leave lubrication out" not in action, action
+
+
+def test_the_retired_blend_on_the_surrogate_names_drag_0_4_0_which_keeps_it():
+    from mime.interactions import Lubrication
+    from mime.units import mm
+
+    action = retired("surrogate", Lubrication(epsilon=mm(0.15))).action
+    assert "KEPT['drag', '0.4.0']" in action and "near_contact" not in action, action
 
 
 # -- gates 1 and 2 above a plane, at the family's spacing ------------------------------------------------------------
@@ -397,29 +483,59 @@ TUBE_GAPS = (0.1, 0.075, 0.06, 0.05, 0.04, 0.03, 0.02, 0.015, 0.01, 0.0075)
 #: the axis at 0.34 the prediction (10 %) was missed at the family's spacing, its measured range pinned.
 ACROSS_LINE, ALONG_LINE, NORMAL_LINE = 0.04, 0.10, 0.06
 ALONG_MISS = {0.34: (-0.13, -0.11)}
+#: Every entry of the 6 x 6 in the tube's frame (the contact along -x, the axis z), judged against the tube MFS where
+#: the MFS resolves it (its level B against C within RESOLVED of the entry): each diagonal on its own size within
+#: ENTRY_LINE (gate 1's), and each coupling on its own size within it, the rolling along the axis's coupling but where
+#: its measured miss is pinned (``COUPLING_MISS``; the fix round's predictions).
+TUBE_DIAGONAL = {"normal": (0, 0), "yy": (1, 1), "zz": (2, 2), "rxrx": (3, 3), "ryry": (4, 4), "rzrz": (5, 5)}
+TUBE_COUPLINGS = {"y_rz": (1, 5), "z_ry": (2, 4)}
+RESOLVED = 0.01
+COUPLING_MISS: dict[tuple[str, float], tuple[float, float]] = {}
+#: The ratios above the gated range the PR's review measured the rolling along the axis at (the tube MFS rows of
+#: ``references/sphere_tube_mfs_above.json``), and the misses there, pinned: the flag ``handover_tube_ratio`` says so.
+ABOVE = (0.40, 0.46)
+ABOVE_MISS = {0.40: (-0.20, -0.16), 0.46: (-0.27, -0.23)}
 
 
-def tube_errors(ratio: float, plant: str | None = None) -> dict[float, dict[str, float]]:
-    """At each gap, the rates' errors over the plane rate at that gap, and the normal's own."""
-    rows = tube_mfs()
+def tube_mfs_above() -> dict:
+    return pinned(REFERENCES / "sphere_tube_mfs_above.json", TUBE_MFS_ABOVE_SHA256)["rows"]
+
+
+def rolls(r: np.ndarray) -> tuple[float, float]:
+    """A unit sphere spun about y and about z, force-free: its speed along the axis and round the circumference."""
+    v = -np.linalg.solve(r[:3, :3], r[:3, 3:])
+    return float(v[2, 1]), float(v[1, 2])
+
+
+def tube_errors(ratio: float, plant: str | None = None, rows: dict | None = None) -> dict[float, dict[str, float]]:
+    """At each gap, the rates' errors over the plane rate at that gap, the normal's own, each entry's against the tube
+    MFS on its own size (``None`` where the MFS does not resolve it), and the node's flags."""
+    rows = tube_mfs() if rows is None else rows
     tube = RADIUS / ratio
     with planted(plant):
         node, state, leaves, step = stepper(in_tube(None, tube=tube).build())
         assert node.near_contact_form == "sphere"
         out = {}
         for gap in TUBE_GAPS:
-            got = scaled(np.asarray(step(tube_pose(gap * RADIUS, tube=tube), leaves)["resistance"]))
+            found = step(tube_pose(gap * RADIUS, tube=tube), leaves)
+            got = scaled(np.asarray(found["resistance"]))
             want = np.asarray(rows[f"{ratio!r} C {gap!r}"]["resistance"])
+            coarse = np.asarray(rows[f"{ratio!r} B {gap!r}"]["resistance"])
             plane_rate = -float(_sphere.entries_at(gap)[3] / _sphere.entries_at(gap)[1])
-
-            def rolls(r: np.ndarray) -> tuple[float, float]:
-                v = -np.linalg.solve(r[:3, :3], r[:3, 3:])
-                return float(v[2, 1]), float(v[1, 2])
-
             (along, across), (along_want, across_want) = rolls(got), rolls(want)
             out[gap] = {"along": (along - along_want) / plane_rate, "across": (across - across_want) / plane_rate,
-                        "normal": float(got[0, 0] / want[0, 0] - 1.0)}
+                        "normal": float(got[0, 0] / want[0, 0] - 1.0),
+                        "tube_ratio": float(found["handover_tube_ratio"])}
+            for name, (i, j) in (TUBE_DIAGONAL | TUBE_COUPLINGS).items():
+                resolved = abs(coarse[i, j] / want[i, j] - 1.0) <= RESOLVED
+                out[gap][f"entry {name}"] = float(got[i, j] / want[i, j] - 1.0) if resolved else None
     return out
+
+
+def entry_worst(found: dict[float, dict[str, float]], name: str) -> tuple[float, int]:
+    """An entry's worst error over the gaps the MFS resolves it at, and how many those are."""
+    held = [found[g][f"entry {name}"] for g in TUBE_GAPS if found[g][f"entry {name}"] is not None]
+    return (max(held, key=abs) if held else 0.0), len(held)
 
 
 @pytest.mark.parametrize("ratio", RATIOS)
@@ -433,6 +549,17 @@ def test_gate2_in_a_tube_the_hybrid_rolls_at_the_tube_mfss_rates(ratio):
         assert abs(worst["along"]) <= ALONG_LINE, worst
     else:
         assert pinned_range[0] <= worst["along"] <= pinned_range[1], worst
+    # every entry where the MFS resolves it: the rotations the rates do not read among them
+    for name in (*TUBE_DIAGONAL, *TUBE_COUPLINGS):
+        error, judged = entry_worst(found, name)
+        print(f"  {name}: worst {error:+.4f} over the {judged} gaps the MFS resolves it at")
+        assert judged >= 3, (name, judged)  # never a gate that judged nothing
+        miss = COUPLING_MISS.get((name, ratio))
+        if miss is None:
+            assert abs(error) <= ENTRY_LINE, (name, error)
+        else:
+            assert miss[0] <= error <= miss[1], (name, error)
+    assert all(found[g]["tube_ratio"] == 0.0 for g in TUBE_GAPS)  # within the gated range: never flagged
 
 
 @pytest.mark.parametrize("plant", ["plane_in_tube", "relative_coefficients"])
@@ -442,6 +569,37 @@ def test_gate2_in_a_tube_controls_the_planes_form_and_the_gaps_curvature_alone(p
         across = max((found[g]["across"] for g in TUBE_GAPS), key=abs)
         print(f"\n{plant}, a/R {ratio}: across {across:+.4f}")
         assert abs(across) > ACROSS_LINE, (plant, ratio, across)
+
+
+def test_gate2_in_a_tube_control_the_rotations_swapped_is_caught_on_the_rotation_entries():
+    """The two rotations' denominators swapped (equal on a plane, so only a tube sees it): the rates and the normal do
+    not read the rotation entries, which the gate's entries do."""
+    for ratio in RATIOS:
+        found = tube_errors(ratio, "rot_swap")
+        worst = max((abs(entry_worst(found, name)[0]) for name in ("ryry", "rzrz")))
+        print(f"\nrot_swap, a/R {ratio}: the rotations' worst {worst:+.4f}")
+        assert worst > 3 * ENTRY_LINE, (ratio, worst)
+
+
+@pytest.mark.parametrize("ratio", ABOVE)
+def test_above_the_gated_ratio_the_step_is_flagged_and_the_along_axis_miss_is_the_measured_one(ratio):
+    """Past TESTED_TUBE_RATIO every step within the opening's band raises handover_tube_ratio, and the build report says
+    so; the rolling along the axis there misses the tube MFS by the measured amount (the flag's text), round the
+    circumference and the normal holding their lines."""
+    from mime.nodes.hydro.mrs._handover import TESTED_TUBE_RATIO
+
+    assert ratio > TESTED_TUBE_RATIO
+    found = tube_errors(ratio, rows=tube_mfs_above())
+    worst = {k: max((found[g][k] for g in TUBE_GAPS), key=abs) for k in ("along", "across", "normal")}
+    print(f"\na/R {ratio}: worst " + " ".join(f"{k} {v:+.4f}" for k, v in worst.items()))
+    assert all(found[g]["tube_ratio"] == 1.0 for g in TUBE_GAPS)
+    low, high = ABOVE_MISS[ratio]
+    assert low <= worst["along"] <= high, worst
+    assert abs(worst["across"]) <= ACROSS_LINE and abs(worst["normal"]) <= NORMAL_LINE, worst
+    tube = RADIUS / ratio
+    node = stepper(in_tube(None, tube=tube).build())[0]
+    lines = node.built_lines({"pose": tube_pose(0.01 * RADIUS, tube=tube)}, None)
+    assert any("raises handover_tube_ratio" in line for line in lines), lines
 
 
 # -- gate 8 -----------------------------------------------------------------------------------------------------------
@@ -480,6 +638,75 @@ def test_gate8_controls(plant):
     worst = max(abs(reverse - difference) / scale for _, _, reverse, _, difference, scale in found)
     print(f"\n{plant}: the worst |AD - FD| / scale {worst:.3g}")
     assert worst > 10 * GRADIENT_LINE, plant
+
+
+# -- gate 13: the form's derivative in the sphere's radius -----------------------------------------------------------
+
+#: The relative step of the sphere's radius across the two builds, and the line of the derivative against their
+#: difference (whose truncation is about the step squared): the film's gate 13's.
+SHAPE_STEP, SHAPE_LINE = 1e-3, 1e-4
+#: A force spacing written, so that the hand-over gap holds as the radius moves (the family's follows the radius).
+SHAPE_SPACING = 0.251
+#: The entries the increment holds, by the wall (the others are zero by symmetry, their ratio rounding's): above the
+#: plane (normal z) the normal, along the wall, its rotation, their coupling and the spin; in the tube (the contact along
+#: -x, the axis z) the normal, round the circumference and along the axis, the rotations about them and their couplings.
+SHAPE_ENTRIES = {"plane": ((2, 2), (0, 0), (4, 4), (0, 4), (5, 5)),
+                 "tube": ((0, 0), (1, 1), (2, 2), (4, 4), (5, 5), (1, 5), (2, 4))}
+SHAPE_GAPS = (0.05, 0.005)
+SHAPE_TUBE_RATIO = 0.28
+
+
+def shape_cases(wall: str) -> dict[float, tuple]:
+    """The sphere at a (1 + factor), the wall at its place, the force spacing written: three builds."""
+    tube = RADIUS / SHAPE_TUBE_RATIO
+    return {factor: stepper((above_plane(SHAPE_SPACING, kind=Sphere(radius=m(factor * RADIUS))) if wall == "plane" else
+                             in_tube(SHAPE_SPACING, kind=Sphere(radius=m(factor * RADIUS)), tube=tube)).build())
+            for factor in (1.0, 1.0 + SHAPE_STEP, 1.0 - SHAPE_STEP)}
+
+
+def increment_at(case, wall: str, radius, gap: float):
+    """The node's increment with the sphere's radius leaf at ``radius``, its surface ``gap`` (radii) off the wall."""
+    node, state, leaves, _ = case
+    held = {**leaves, "shape_radius": radius}
+    pose = plane_pose(gap * RADIUS, lowest=radius) if wall == "plane" else \
+        tube_pose(gap * RADIUS, reach=radius, tube=RADIUS / SHAPE_TUBE_RATIO)
+    return node.update(state, {"pose": pose}, 1e-3, params=held)["contact_increment"]
+
+
+def radius_ratios(wall: str, plant: str | None = None) -> dict[tuple[float, tuple[int, int]], float]:
+    """d(contact increment)/d(shape_radius) by reverse mode through the node's own step, over the two builds' central
+    difference, at each gap and entry."""
+    with planted(plant):
+        cases = shape_cases(wall)
+        rows, columns = (jnp.asarray(index) for index in zip(*SHAPE_ENTRIES[wall], strict=True))
+        found = {}
+        for gap in SHAPE_GAPS:
+            derivatives = np.asarray(jax.jacrev(lambda r: increment_at(cases[1.0], wall, r, gap)[rows, columns])(
+                jnp.asarray(RADIUS)))
+            up = np.asarray(increment_at(cases[1.0 + SHAPE_STEP], wall, (1.0 + SHAPE_STEP) * RADIUS, gap))
+            down = np.asarray(increment_at(cases[1.0 - SHAPE_STEP], wall, (1.0 - SHAPE_STEP) * RADIUS, gap))
+            for k, (i, j) in enumerate(SHAPE_ENTRIES[wall]):
+                rebuilt = (float(up[i, j]) - float(down[i, j])) / (2.0 * SHAPE_STEP * RADIUS)
+                found[gap, (i, j)] = float(derivatives[k]) / rebuilt
+    return found
+
+
+@pytest.mark.parametrize("wall", ["plane", "tube"])
+def test_gate13_the_spheres_increment_in_its_radius_through_the_node_equals_two_builds_difference(wall):
+    """As the film's gate 13 (``test_lubrication.py``): the sphere's form reads its radius from the body's curvature at
+    the contact, so its derivative in the radius goes through the plane remainder's scaling and the singular terms'
+    curvatures, which a single build cannot check against another."""
+    found = radius_ratios(wall)
+    for (gap, entry), ratio in found.items():
+        print(f"\n{wall} h/a {gap} entry {entry}: through the node over two builds {ratio:.8f}")
+    assert all(abs(ratio - 1.0) <= SHAPE_LINE for ratio in found.values()), found
+
+
+def test_gate13_control_the_radius_without_its_derivative_is_caught():
+    found = radius_ratios("plane", "radius_stopped")
+    worst = max(abs(ratio - 1.0) for ratio in found.values())
+    print(f"\nthe radius stopped: the worst |ratio - 1| {worst:.3g}")
+    assert worst > 100 * SHAPE_LINE, found
 
 
 # -- dtypes and two builds -------------------------------------------------------------------------------------------

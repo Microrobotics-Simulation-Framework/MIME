@@ -44,6 +44,9 @@ from mime.nodes.hydro.mrs._handover import (
     HANDOVER_SPACINGS,
     LIFT_WIDTH,
     ROUGHNESS_WIDTH,
+    TESTED_TUBE_RATIO,
+    TUBE_RATIOS_TEXT,
+    UNIFORM_SPHERE_TEXT,
     WINDOW,
     Search,
     handed_over,
@@ -295,6 +298,7 @@ class SeparatedDragState(TypedDict, closed=True):
     film_annulus: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
     film_unsolved: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
     handover_far_side: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    handover_tube_ratio: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
     contact_cutoff: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
 
 
@@ -307,7 +311,7 @@ FILM_LEAVES = {"film_search_apart_squared": "m^2", "film_search_tolerance": "m"}
 #: The state fields a node with the hand-over adds (zero where the near-contact law is not evaluated; the film's own,
 #: ``film_*``, zero where its form is not the film's).
 HANDOVER_FIELDS = ("contact_increment", "contact_coupling", "contact_gap", "film_residual", "handover_window",
-                   "film_annulus", "film_unsolved", "contact_cutoff", "handover_far_side")
+                   "film_annulus", "film_unsolved", "contact_cutoff", "handover_far_side", "handover_tube_ratio")
 
 
 def handover_state(zero: Array) -> dict[str, Array]:
@@ -1290,20 +1294,28 @@ class MRSDragNode(MimeNode):
         with cast(Any, jax).ensure_compile_time_eval():
             wall = self._wall()
             points = self._sampling.samples(self._kind, self._kind_parameters(leaves)).points
+            constants = {name: leaves.get(f"{WALL}{name}", self.constants()[f"{WALL}{name}"])
+                         for name in wall.parameters}
             found = handed_over(cast(Search, self._search), self._kind, self._kind_parameters(leaves), points,
-                                as_run_array(start["pose"]), wall,
-                                {name: leaves.get(f"{WALL}{name}", self.constants()[f"{WALL}{name}"])
-                                 for name in wall.parameters}, leaves, leaves["viscosity"], form)
+                                as_run_array(start["pose"]), wall, constants, leaves, leaves["viscosity"], form)
             size = float(np.max(np.linalg.norm(np.asarray(points, dtype=np.float64), axis=-1)))
             radius = 1.0 / max(float(found.contact.k1), CURVATURE_FLOOR / size)
             cutoff, gap = float(found.cutoff), float(found.contact.gap)
+            sphere = 2.0 / float(found.contact.b1 + found.contact.b2)
+            lumen = None if wall.region is None else wall.region(constants)[1].get("radius")
         if form == "sphere":
             law = ("the sphere's exact increment (the plane's exact remainder from MIME's table of the bispherical "
                    "solutions, sphere_plane_resistance, with the contact's own singular terms: exact against a plane, "
                    "the hybrid in a tube)")
             reach = (f"the sphere's form has no window (it is exact at every gap); the coarse MRS's own error at the "
-                     f"hand-over gap is the near-wall resistance's (the normal +3.2 % at {HANDOVER_SPACINGS:g} of a "
-                     f"force spacing of 0.2 radii, blob 0.05)")
+                     f"hand-over gap is the near-wall resistance's, here at a uniform force spacing of "
+                     f"{spacing / sphere:.3g} radii: {UNIFORM_SPHERE_TEXT}")
+            if lumen is not None:
+                ratio = sphere / float(lumen)
+                reach += (f"; in this tube the sphere's radius is {ratio:.3g} of the tube's, " + (
+                    f"within the ratios the form was gated at, {TUBE_RATIOS_TEXT}" if ratio <= TESTED_TUBE_RATIO else
+                    f"past the largest ratio the form was gated at ({TESTED_TUBE_RATIO:g}; {TUBE_RATIOS_TEXT}): a "
+                    f"step within the opening's band raises handover_tube_ratio, MIME-ANO-154 open there"))
         else:
             law = "the thin film's increment (MIME-ANO-154 open for it)"
             reach = ("within the film's measured window (about 7 %)" if handover <= WINDOW * radius else
@@ -1538,7 +1550,7 @@ class MRSDragNode(MimeNode):
                     "contact_gap": _lax.stop_gradient(handover.contact.gap), "film_residual": handover.residual,
                     "handover_window": handover.window, "film_annulus": handover.annulus,
                     "film_unsolved": handover.unsolved, "contact_cutoff": _lax.stop_gradient(handover.cutoff),
-                    "handover_far_side": handover.far_side}
+                    "handover_far_side": handover.far_side, "handover_tube_ratio": handover.tube_ratio}
         else:
             found, accepted, gap, short, *outside = checkpoint(solved)(held, theta, viscosity, pose, parameters)
         fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
