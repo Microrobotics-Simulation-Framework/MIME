@@ -54,10 +54,10 @@ def transpose_capped(monkeypatch) -> None:
         planted.planted = True
         return solve(matrix, b, tap, precondition, planted, stopping)
 
-    def gmres(operator, b, precondition, stopping):
+    def gmres(operator, b, precondition, stopping, magnitude=None):
         if getattr(precondition, "planted", False):
             stopping = Stopping(stopping.tolerance, restart=stopping.restart, cap=1)
-        return real(operator, b, precondition, stopping)
+        return real(operator, b, precondition, stopping, magnitude)
 
     monkeypatch.setattr(_contract, "reported_solve", marked)
     monkeypatch.setattr(_gmres, "gmres", gmres)
