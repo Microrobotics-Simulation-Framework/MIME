@@ -1,0 +1,67 @@
+{
+  "written": "2026-11-10, committed before any gate of F3's PR 1 ran (the commit that adds this file is the timestamp): Drag.Stokes, a point sphere coupled two-way to the FVM through the exchange law, lagged",
+  "phase": "F3, PR 1: the exchange law, the point body (Drag.Stokes), its Maxey-Riley terms, the one-step margin's floor",
+  "labels": "the F3 builder's (Opus), from its derivations and the floor sweep (probe run 42871839742, its predictions committed with it); a smoke run of the built experiment (neutral sphere, 40 um, D/h 16, IMEX Euler, Stokes) was seen before this file and is listed",
+  "seen_before": [
+    "the floor sweep: free box margins (0.4291 at a = sigma = h, r = 0.03; 0.0295 at a = 1.7 sigma), the one-step error table, the NaN of the rate terms on the constant reading (probe run 42871839742)",
+    "the spectral sums equal the FFT solves to rounding at a 64 box (0.030718787695363604 both); the self-history fit's residual 1.05e-5 (float64) and 3.84e-4 (float32) at 16 modes over widths 1 and 1.5 and r 0.01 to 30 (this laptop)",
+    "the smoke run: a neutral 40 um sphere on a driven tube's axis followed the fluid, the body's speed against the drag reading's within 3e-6 of it after 40 steps, margin 0.451, the fluid's force 2e-13 N"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (GitHub runner for rates; this laptop for the gates' single runs)",
+    "sizes_and_parameters": "water (mu 1e-3, rho 1e3); tube radius 0.5 mm, D/h 16 unless stated; sphere radius 40 um to 2h; IMEX Euler or its steady limit, Stokes; dt 0.1 to 0.5 ms (r = nu dt/h^2 0.03 to 0.15 at D/h 16)",
+    "seeds_and_draws": "the adjoint oracle over 60 seeded draws (box 12 to 23 cells, h in {1, 0.25, 1/32}, 1 to 5 points, widths 1 to 2 cells)"
+  },
+  "gate_1_adjoint": {
+    "claim": "the exchange law's gather and scatter are a transpose pair in the grid's inner product, <S f, u> = f . G u, for the kernel's average and its Laplacian, through the registered mapping kind",
+    "kind": "equality",
+    "prediction": {"value": 1e-15, "band": [0.0, 1e-14], "unit": "relative to the products' magnitudes, float64 (float32: 1e-6)", "basis": "derived: one set of weights both ways", "why": "the same stencil, the same products, summed in a different order"},
+    "control": {"plant": "the gather's width 1e-9 wider; half a cell off; the Laplacian on one side only", "environment_variable": "MIME_PLANT_EXCHANGE", "expected_rate": "60/60 each", "clean_expected": "0/60"}
+  },
+  "gate_2_still_fluid": {
+    "claim": "one point body in a free box (no wall), coupled two-way, moves at its uncoupled Stokes speed M0 F less Hasimoto's image term, at steady state",
+    "kind": "estimates",
+    "prediction": {"value": 1e-3, "band": [0.0, 2e-3], "unit": "|V - (M0 F - 2.837 F/(6 pi mu L))| / (M0 F)", "basis": "derived plus measured-before (the box's images beyond Hasimoto's about 6e-4 at 32 cells)"},
+    "control": {"plant": "the constant correction omitted", "expected_rate": "every run, error above 0.4 (M_inf/M0)"}
+  },
+  "gate_3_uniform_drive": {
+    "claim": "a neutrally buoyant point body on a driven tube's axis, two-way, accelerates with the fluid it reads (before the wall's viscous front reaches the axis)",
+    "kind": "acceptance",
+    "prediction": {"value": 1e-5, "band": [0.0, 1e-4], "unit": "|V - u_d| / |V| at the run's end", "basis": "measured-before (the smoke run, 3e-6)"},
+    "control": {"plant": "the Maxey-Riley terms off", "expected_rate": "every run, slip (2/9) a^2 g/nu over V: 4 % at the smoke run's point"}
+  },
+  "gate_4_faxen": {
+    "claim": "a force-free point body in steady Poiseuille flow moves at u(b) + (a^2/6) lap u, Faxén's closed form, on the grid's own profile",
+    "kind": "estimates",
+    "prediction": {"value": 1e-3, "band": [0.0, 3e-3], "unit": "|V - V_Faxen| / U at a = sigma = h, D/h 16", "basis": "guess", "why": "the profile's fit residual away from the band; the Faxén term itself 1.0 % of U and the bare kernel's 3.1 %"},
+    "control": {"plant": "the Faxén pair off (the bare kernel's sigma^2/2)", "expected_rate": "every run (2.1 % of U)"}
+  },
+  "gate_5_added_mass": {
+    "claim": "one-way, a body twice the fluid's density in a uniformly accelerating fluid slips with the backward-Euler closed form of (m + m_f/2) dw/dt = (m_f - m) g - R0 w",
+    "kind": "estimates",
+    "prediction": {"value": 1e-6, "band": [0.0, 1e-4], "unit": "|w - w_closed| / |w_inf| over the run", "basis": "derived: the node's step is that recurrence when the fluid's acceleration is uniform"},
+    "control": {"plant": "the added mass off", "expected_rate": "every run (tau 2 m_f/R0 against 2.5 m_f/R0)"}
+  },
+  "gate_6_rate_terms_stable": {
+    "claim": "the rate terms read on the flow without the body stay finite at the floor sweep's NaN arm (lagged, a = 1.33 sigma, r = 0.03, a near-massless body), and read on the constant correction they diverge",
+    "kind": "acceptance",
+    "prediction": {"value": "finite, within 1 of the terminal speed", "basis": "the floor sweep"},
+    "control": {"plant": "the rate terms on the constant correction's reading", "expected_rate": "every run: NaN or over 1e3 times the terminal speed within 200 steps"}
+  },
+  "gate_7_floor": {
+    "claim": "the build refuses a point body whose margin no width on the ladder lifts above 0.2 (drag.stokes-floor), and plans one whose does",
+    "kind": "acceptance",
+    "prediction": {"value": "refused at a = 8h (widest 4 cells: a/sigma 2), planned at a = h"}
+  },
+  "gate_8_ledger": {
+    "claim": "the flow's step identity with the exchange closes to its rounding floor (IDENTITY_ULPS) at every step, the exchange's work booked under the drag; the lagged scheme's unpaired share is first order in dt",
+    "kind": "equality",
+    "prediction": {"value": "closes; unpaired share halves with dt (order 1.0 +- 0.3)", "basis": "derived"}
+  },
+  "gate_9_gradient": {
+    "claim": "a derivative through the exchange law (the body's displacement in the fluid's viscosity, float64) matches a central difference, and a stop_gradient on the exchange makes it fail",
+    "kind": "estimates",
+    "prediction": {"value": 1e-6, "band": [0.0, 1e-5], "unit": "relative", "basis": "R4 (2.7e-9 at an FVM's size), guessed looser for the fitted modes"}
+  }
+}
