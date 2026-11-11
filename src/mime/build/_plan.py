@@ -100,6 +100,9 @@ from mime.registry import (
     implements,
     registered,
     registration_of,
+    SettingGroup,
+    declared_roles,
+    setting_names,
     setting_value,
 )
 from mime.scene import (
@@ -2957,7 +2960,8 @@ class _Planner:
                                                    bindings: Mapping[str, str], settings: dict[str, Magnitude]) -> E:
         """``entry`` with each setting it does not give, whose default its rule computes (a determined or numerical
         default, ``by``), set to that default, which is recorded; ``settings`` gains each one's SI value. A rule that
-        does not apply (another rung) gives none."""
+        does not apply (another rung) gives none. A group the entry is given (``SettingGroup``) has its own settings'
+        computed defaults taken alike, each by the entry's method its role names, recorded as ``<setting>.<field>``."""
         given = {role: name for role, name in bindings.items()}
         roles = cast(type[Interaction] | type[Observation], record.cls).roles
         context = PlanContext(self.dt, self.frame.up if self.frame else (0.0, 0.0, 0.0),
@@ -2968,8 +2972,14 @@ class _Planner:
                                for hull in (self.hull_of(name),) if hull is not None},
                               approaches=self.approaches(roles, given))
         taken: dict[str, object] = {}
-        for name, declared in sorted(record.roles.items()):
-            if declared.by is None or getattr(entry, name, None) is not None:
+        computed = [(name, None, declared) for name, declared in sorted(record.roles.items())]
+        computed += [(name, inner, declared) for name in setting_names(record.cls)
+                     for group in (getattr(entry, name, None),) if isinstance(group, SettingGroup)
+                     for inner, declared in sorted(declared_roles(type(group)).items())]
+        grouped: dict[str, dict[str, object]] = {}
+        for name, inner, declared in computed:
+            held = getattr(entry, name, None)
+            if declared.by is None or (held if inner is None else getattr(held, inner, None)) is not None:
                 continue
             try:
                 value = cast(object, getattr(entry, declared.by)(context))
@@ -2981,16 +2991,22 @@ class _Planner:
                 continue
             if value is None:
                 continue
-            taken[name] = value
-            self.work.take_default(DefaultTaken(f"{owner}.{name}", declared.default, value, declared.rule,
+            path = name if inner is None else f"{name}.{inner}"
+            if inner is None:
+                taken[name] = value
+            else:
+                grouped.setdefault(name, {})[inner] = value
+            self.work.take_default(DefaultTaken(f"{owner}.{path}", declared.default, value, declared.rule,
                                                 declared.basis, f"{record.name} {record.version}",
                                                 declared.measured))
-            dimensioned = record.settings.get(name)
+            dimensioned = record.settings.get(path)
             if dimensioned is not None and dimensioned.dimension is not None:
                 try:
-                    settings[name] = si(value, dimensioned.dimension, what=f"{where}'s default {name}")
+                    settings[path] = si(value, dimensioned.dimension, what=f"{where}'s default {path}")
                 except (UnitError, TypeError) as error:
                     self.defect(record.cls, f"{declared.by}() gave {value!r}: {error}")
+        taken.update({name: dataclasses.replace(getattr(entry, name), **values)
+                      for name, values in grouped.items()})
         return dataclasses.replace(entry, **taken) if taken else entry
 
     def finish_profile(self) -> None:

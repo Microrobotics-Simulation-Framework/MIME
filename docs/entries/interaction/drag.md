@@ -111,8 +111,8 @@ equivalent radius (its surface's area over four pi, rooted) raises `near_contact
 lubrication's territory. An overlap shallower than a quarter of a cell reads as contact.
 
 **The cross-kernel's budget.** Within the reach every cell of the source is integrated by default
-(`near_field_share`, the share of the source's quadrature points the kernel may integrate, defaults to all of them).
-A lower share, such as a quarter, `Drag.MRS(near_field_share=...)`, is a cost setting: the cells nearest the other body are
+(`NearField`'s `share`, the share of the source's quadrature points the kernel may integrate, defaults to all of them).
+A lower share, such as a quarter, `Drag.MRS(near_field=NearField(share=...))`, is a cost setting: the cells nearest the other body are
 integrated while their points fit, and a cell within the reach that does not fit keeps the point kernel there and
 raises `cross_cells_short`. A quarter held the two-sphere and gain gates at MIME's sphere at its default count, and
 left five hull kinds of six past their conformance case's line near contact at that case's coarser spacings, the box
@@ -127,13 +127,12 @@ measured on (MIME's sphere at its default count, free space, twelve cores, share
 The step compiles in about as long as one step takes, and holds under two hundred MiB of temporaries for the triangle and
 about a GiB for the cube in float64 (half that in float32): a thousand steps of the cube take about eleven hours.
 
-**The solve.** Up to the takeover line, `DENSE_UNKNOWNS` joint unknowns (three a force point over the cluster), the node
-solves the joint system by one dense LU, whose factors serve every body's six rigid motions at once. Past it the node
-solves it by GMRES on those right-hand sides together, each body's own free part's inverse (made once per build in its
-frame, as the free part is, and turned to its pose) its preconditioner. The line is a numerical setting,
-`Drag.MRS(near_field_dense_unknowns=...)` (zero for GMRES at every size), declared rather than fitted, its default
-pending the maintainer's re-decision: neither memory nor time places it as measured so far. Through the node GMRES holds
-more memory than the dense LU, not less (a tenth to a third more at every size measured, either dtype, a radius and a
+**The solve.** The node solves the joint system by one dense LU at every size, whose factors serve every body's six
+rigid motions at once: there is no size line, and the memory refusal below is the only bound. GMRES is a
+declared route, `Drag.MRS(near_field=NearField(solve="gmres"))`, taken where every body's drag in the medium declares it:
+it solves those right-hand sides together, each body's own free part's inverse (made once per build in its frame, as the
+free part is, and turned to its pose) its preconditioner. Neither memory nor time places a line between the two as
+measured: through the node GMRES holds more memory than the dense LU, not less (a tenth to a third more at every size measured, either dtype, a radius and a
 twentieth of one apart): both routes' peaks grow as about two joint matrices, and GMRES holds each body's inverse
 besides, so the bare solve's halving (the two methods timed on a matrix handed to them) does not carry to the node. In
 time, the bare solve on a quiet CPU in float64 had the dense LU faster or tied at three of its five sizes up to about
@@ -143,12 +142,16 @@ contact the dense route's mostly was. The build report says which route a cluste
 
 **Memory.** On either route the build estimates the run's peak memory past the process's fixed part, as so many of its
 joint matrices and of its members' held blocks, the counts measured through the node on a CPU (the drag's validity line
-says how), reports it, and refuses a cluster whose run would not fit in the memory a run can have
-(`drag.near-field-memory`): a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the
-control group the process runs in. The estimate is measured, not a bound, and a GPU's is not measured.
+says how), and a gradient study's derivative's in forward and in reverse mode (`DERIVATIVE_COUNTS`: reverse mode holds
+about eleven joint matrices, forward mode about four along one axis and more for each further axis, a batch of the
+study's points as many times as it has points), and reports them. It refuses a cluster whose run would not fit, at
+build, and a derivative that would not, before the study compiles it (`drag.near-field-memory`, the mode named): the
+estimate times `MEMORY_MARGIN`, the measurements' largest miss, against the memory a run can have less `MEMORY_HEADROOM`
+of it (a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the control group the
+process runs in). The estimate is measured, not a bound, and a GPU's is not measured.
 
 **GMRES's stop.** Each GMRES solve stops on its true residual, recomputed from its answer at every restart, relative to
-its own right-hand side, at `near_field_tolerance` (`DEFAULT_TOLERANCE` by the run's dtype); the solves of a derivative
+its own right-hand side, at `NearField`'s `tolerance` (`DEFAULT_TOLERANCE` by the run's dtype); the solves of a derivative
 stop relative to their own right-hand sides too, from a cold start, so a gradient does not depend on the loss's scale.
 Float32's tolerance sits above the floor float32's own arithmetic leaves a pair's residual at, down to the near-contact
 line, by a small margin there, so a denser cluster near contact may stop short (eight spheres in a line a twentieth of a
@@ -158,9 +161,19 @@ stagnated past the floor, or at a residual that is not a number) is never silent
 step, and the run warns with its count; each step's report, the FVM's (`solve_report`: iterations, the true relative
 residual, how it stopped), is a state field with its running sum, and the build report gives the starting step's. The
 reports of a derivative's solves come out as the derivative of the node's `solve_report` parameter, zeros a step reads,
-summed over the run (a row a step only on a node built by hand with `solve_report_rows=`): until a reader of them lands,
-a derivative solve that stops short shows only there, and nothing warns of it. The dense route raises no such flag: an
-LU stops at no tolerance.
+summed over the run (a row a step only on a node built by hand with `solve_report_rows=`). A gradient study reads both:
+it warns of a solve that stopped short, forward or in the derivative, and rechecks the member, re-solving
+it with GMRES's cap lifted (to the larger of ten times itself and the FVM's `DEFAULT_CAP`) and its stall restarts raised, as the
+FVM's conjugate gradient is, each a stagnation that begins the solve's window again; past them a recheck's GMRES stops a
+stagnation only at its rounding floor (its least true residual within `FLOOR_MARGIN` of `eps || |A| |x| + |b| ||`, set
+between where solves at their floor and planted stalls were measured to stop, `FLOOR_MEASURED`), and above the floor
+runs on to the lifted cap. The recheck names each node's cause
+from its own solves and the member's: `floor-limited` where its solves stopped stagnated, at their floor, which no cap
+lifts (the route out, by the run's dtype: float64 in float32, a tolerance at or above the floor in float64, or the dense
+route); `stagnated` where the member's stopped at a stall above the floor, which the recheck ran past (converged, the
+change in the objective and the derivative is what the stall cost) or not (at the lifted cap), the route the dense one;
+`cap-limited` where a cap alone stopped them (it converged, or stopped at the lifted cap again); and `not-finite`. The
+dense route raises no such flag: an LU stops at no tolerance.
 
 A body alone in its medium keeps its own node, step for step. A medium where two bodies or more join a near field beside
 a body on the kept 0.4.0 mrs rung is refused (`drag.near-field-mixed`: the one would see the others and not be seen);
@@ -181,10 +194,10 @@ resistance, the dense assembly the node is held to, and the two-sphere series an
 judged by no step after it. A body on the surrogate rung in the same medium is computed alone, and the build report
 says so.
 
-**Graded sampling** (0.5.0, opt-in). `Drag.MRS(grading="features")` grades the force points towards the
+**Graded sampling** (0.5.0, opt-in). `Drag.MRS(sampling=ForceSampling(grading="features"))` grades the force points towards the
 hull kind's declared features: a cylinder's rims, a box's edges, a screw's rims and crests (`Geometry.features`; a
 sphere, a capsule, an ellipsoid and a helix declare none, and are refused, `drag.grading-features`).
-`Drag.MRS(contact=..., contact_gap=...)` grades the side of the body held facing the wall, `contact` a direction in
+`ForceSampling(contact=..., contact_gap=...)` grades the side of the body held facing the wall, `contact` a direction in
 the body's frame, for a gap to the wall: the experiment's closest approach where a contact law declares
 one, else `contact_gap`, which is then required (`drag.grading-approach`). One policy turns them into a local spacing,
 finest at the feature or the contact and growing by the distance from it, never finer than a quarter of the force
@@ -204,19 +217,27 @@ within one force spacing of the wall with any point within `OFF_PATCH_BAND` forc
 outside the patch raises `off_patch`, so that a face turned towards the wall is judged by all of it, a tie included,
 and there the resistance's error near the wall is not the graded one's. Resampling to follow the pose is not done (it
 would break the held matrix and the derivatives). In a graded run the wall's self-image measures each cell's distance
-in the cell's own size (`GRADED_WALL_MEASURE`, one switch in the node, its other value the force spacing), and a
-written `wall_refinement` counts from the finest spacing: the graded cells near the wall then lie farther from it in
-their own size, so fewer are integrated, and a graded contact half a force spacing from a plane measured less accurate
-with the image integrated than the uniform sampling at a blob of a tenth, the compact default, and more accurate at a
-fortieth (the wall's cell budget was not the cause: lifted to every cell, nothing moved). The build report states what
+in the force spacing, as a uniform run's (`GRADED_WALL_MEASURE`, one switch in the node; its other value, the
+cell's own size, was the first build's), and a written `wall_refinement` counts from the finest spacing: a graded contact half
+a force spacing from a plane, the image integrated, measured farther from Brenner's series than the uniform sampling at
+a blob of a tenth, the compact default, and nearer at a fortieth, and nearer at both than with the cells measured in
+their own size (the switch's comment gives the numbers). A graded body's wall budget follows its density: every
+cell of its graded patch, finer than the force spacing and crowding the image's reach where it faces the
+wall, and `WALL_CELL_SHARE` of the rest, so the gates' graded sphere and the graded round-trip cylinder raise
+`wall_cells_short` on no step; the flag is kept for a real shortfall. The build report gives the budget, and
+`WALL_BUDGET_MEASURED` the change's cost. The build report states what
 was graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the
 force points' mean spacing.
 
-What grading buys is measured, not bounded. Against exact answers by `tests/oracles/test_graded_sampling.py`: a
-sphere's contact at a plane against Brenner's series, with its wrong-way and leaves-the-patch controls; there the
-contact grading helps beyond its count (a uniform sampling of as many force points stays near the uniform one's error).
+What grading buys is measured, not bounded. The standard control for a sampling claim is a uniform sampling of the
+graded count as well as the uniform one (the count-matched uniform arm), since a graded sampling holds more force
+points; a figure measured without it says so. Against exact answers by `tests/oracles/test_graded_sampling.py`:
+a sphere's contact at a plane against Brenner's series, with its wrong-way, leaves-the-patch and count-matched controls;
+there the contact grading helps beyond its count (a uniform sampling of as many force points stays near the uniform
+one's error).
 Against finer references, in the build's gates and not in CI: a cylinder's rim at a plane, where the rims' grading
-helps, and a screw's crest at a plane (the de Jongh screw's), where the gain was the point count: a uniform sampling of the graded count did as
+came nearer the reference than the uniform sampling, with no count-matched arm measured, so whether the gain is the
+grading's or the count's is not known; and a screw's crest at a plane (the de Jongh screw's), where the gain was the point count: a uniform sampling of the graded count did as
 well, so crest grading there is a way to place the points, not a gain over spending them uniformly. Not bounded
 elsewhere. Refused: a kind without features asked for them (`drag.grading-features`), a kept version
 (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`), with no gap to grade for

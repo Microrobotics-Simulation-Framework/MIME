@@ -18,6 +18,21 @@ which no restart lowers) or a convergence stall of the restarted method: both st
 (iterations); these two return the iterate of the least true residual checked. A residual that is not finite returns
 **NaN**. A zero right-hand side is accepted at once, its answer zero (no iteration needed: the start is cold).
 
+**Stall restarts** (``stall_restarts``, 0 by default, as the FVM's CG's ``Stopping.stall_restarts``): up to that many
+times a stagnation begins the column's window again, from the best true residual so far, before one stops it. A run's
+GMRES takes none, and with none the solve is traced as it was without them.
+
+**A stop at the floor only** (``floor_stop``, off by default): past its stall restarts, a stagnation stops a column only
+where its least true residual is at its **rounding floor**, within :data:`FLOOR_MARGIN` of ``eps || |A| |x| + |b| ||``
+at the iterate of that residual (the FVM's ``rounding_floor``: the residual of an ``x`` that solves the system with each
+coefficient and datum moved by one rounding unit, Oettli and Prager's componentwise backward error at ``eps``;
+:data:`FLOOR_MEASURED`). Above it the stagnation is a stall of
+the restarted method, not a floor, and the window begins again, the column running on to its cap. A gradient study's
+recheck of a member whose solve stopped short sets it, with the cap lifted and the stall restarts raised
+(:func:`recheck_stopping`), so that a recheck's solve that stops stagnated is at its floor, and one that stalls above
+it converges or reaches the lifted cap: the recheck names the cause from that (``mime.study``). It needs the operator in
+magnitude (``magnitude``: ``|A|`` applied to a block of columns); off, nothing of it is traced.
+
 **Starts are cold** (the stall decision's item 4): every solve, primal and derivative alike, starts from zero, so a
 tangent or transpose solve never starts at the primal's warm start, whose error would be set by the primal's scale.
 
@@ -28,6 +43,7 @@ finite, or were accepted at a zero right-hand side. Counts add where reports are
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
@@ -36,7 +52,7 @@ import jax
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE
+from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, REPORT_FIELDS, REPORT_SIZE, STALL_RESTARTS
 from mime.nodes.hydro.mrs._solve import PRECISION
 
 _lax: Any = cast(Any, jax).lax
@@ -56,38 +72,65 @@ RESTART = 30
 STAGNATION_WINDOW = 3
 STAGNATION_FACTOR = 0.5
 CAP = 600
+#: How far above ``eps || |A| |x| + |b| ||`` a stagnated column's least true residual may lie and still be at its floor
+#: (``floor_stop``), and what set it.
+FLOOR_MARGIN = 4.0
+FLOOR_MEASURED = (
+    "measured through the node's own step on a GitHub runner (probe run 42925275946), at a tolerance under every floor "
+    "(1e-9 in float32, 1e-15 in float64), MIME's sphere coarse (0.4 mm spacing: pairs 1 to 0.03 mm apart, a triangle, "
+    "four in a line 0.05 mm apart) and at 882 force points (pairs 1 and 0.05 mm apart, three in a line, to 7,938 "
+    "unknowns): each column stopped at its floor lay at 0.33 to 2.72 times eps || |A| |x| + |b| || in either dtype. "
+    "Stalls planted with a Krylov length of 1, explored on the node's joint matrix of three coarse spheres, stopped 6.7 "
+    "to 6.6e5 times above it in float32 and 2e8 to 3.6e14 in float64; through Study.gradient's recheck (run "
+    "42925968039) each such stall ran on past the floor test, never named floor-limited")
 
 
 @dataclass(frozen=True)
 class Stopping:
     """When GMRES stops: the relative tolerance on each column's true residual (a ``params`` leaf: the
-    accuracy-bearing setting), the basis's length before a restart, the cap in iterations, and the stagnation's window
-    (restarts) and factor."""
+    accuracy-bearing setting), the basis's length before a restart, the cap in iterations, the stagnation's window
+    (restarts) and factor, how many times a stagnation begins the window again before one stops it, and whether past
+    those a stagnation stops a column only at its rounding floor (``floor_stop``, the module's)."""
 
     tolerance: Any
     restart: int = RESTART
     cap: int = CAP
     window: int = STAGNATION_WINDOW
     stagnation: float = STAGNATION_FACTOR
+    stall_restarts: int = 0
+    floor_stop: bool = False
+
+
+def recheck_stopping(stopping: Stopping) -> Stopping:
+    """``stopping`` with the cause of a stop short removed, as a recheck re-solves a member: by the FVM's CG's rule
+    (``mime.nodes.flow.fvm._solve.recheck_stopping``) the cap lifted to the larger of :data:`RECHECK_CAP_FACTOR` times
+    itself and :data:`DEFAULT_CAP` and the stall restarts raised by :data:`STALL_RESTARTS`, at the same tolerance; and
+    a stagnation past them stopping a column only at its rounding floor (``floor_stop``)."""
+    return dataclasses.replace(stopping, cap=max(stopping.cap * RECHECK_CAP_FACTOR, DEFAULT_CAP),
+                               stall_restarts=stopping.stall_restarts + STALL_RESTARTS, floor_stop=True)
 
 
 def _norms(x: Array) -> Array:
     return jnp.sqrt(jnp.sum(x * x, axis=0))
 
 
-def gmres(operator: Operator, b: Array, precondition: Operator, stopping: Stopping) -> tuple[Array, Array]:
+def gmres(operator: Operator, b: Array, precondition: Operator, stopping: Stopping,
+          magnitude: Operator | None = None) -> tuple[Array, Array]:
     """``A x = b`` for each column of ``b`` (``(n, c)``) by restarted GMRES right-preconditioned by ``precondition``
     (``M``, near ``A^-1``), from a cold start, stopping as the module states; the answers ``(n, c)`` and the report
-    (:data:`REPORT_FIELDS`). ``operator`` and ``precondition`` act on ``(n, c)`` arrays column by column. Each column is
-    solved scaled by its largest magnitude, which changes no iterate's direction and keeps every inner product clear of
-    float32's underflow."""
+    (:data:`REPORT_FIELDS`). ``operator``, ``precondition`` and ``magnitude`` (``|A|``, for a stop at the floor) act on
+    ``(n, c)`` arrays column by column. Each column is solved scaled by its largest magnitude, which changes no
+    iterate's direction and keeps every inner product clear of float32's underflow."""
+    if stopping.floor_stop and magnitude is None:
+        raise ValueError("a stop at the rounding floor needs the operator's magnitude")
     size = jnp.max(jnp.abs(b), axis=0)
     scale = jnp.where(size > 0.0, size, 1.0)
-    x, report = _scaled_gmres(operator, b / scale, precondition, stopping)
+    x, report = _scaled_gmres(operator, b / scale, precondition, stopping, magnitude)
     return x * scale, report
 
 
-def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping: Stopping) -> tuple[Array, Array]:
+def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping: Stopping,
+                  magnitude: Operator | None) -> tuple[Array, Array]:
     dtype = b.dtype
     n, columns = b.shape
     m = stopping.restart
@@ -170,10 +213,18 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
         return jnp.where(length[None, :] > 0, correction, 0.0), length
 
     def going(carry: tuple[Any, ...]) -> Array:
-        return jnp.any(carry[-1] == _RUNNING)
+        return jnp.any(carry[9] == _RUNNING)
+
+    allowed = int(stopping.stall_restarts)
+    eps = jnp.finfo(dtype).eps
+
+    def begun_again(again: Array, held: Array, earlier: Array, counted: Array) -> tuple[Array, Array, Array]:
+        """The window begun again, from the best so far, in the columns ``again``."""
+        return (jnp.where(again[None, :], jnp.inf, held),
+                jnp.where(again, jnp.minimum(earlier, jnp.min(held, axis=0)), earlier), jnp.where(again, 0, counted))
 
     def restart(carry: tuple[Any, ...]) -> tuple[Any, ...]:
-        x, r, beta, count, recent, before, checks, kept, lowest, ended = carry
+        x, r, beta, count, recent, before, checks, kept, lowest, ended, *stalls = carry
         running = ended == _RUNNING
         correction, length = cycle(x, r, beta, running, count)
         x = jnp.where(running[None, :], x + correction, x)
@@ -185,20 +236,33 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
         earlier = jnp.minimum(before, recent[0])
         full = checks + 1 >= stopping.window
         stagnated = ~converged & full & (jnp.min(held, axis=0) > stopping.stagnation * earlier)
+        counted = checks + 1
+        if allowed:  # a stall restart begins the window again from the best so far; none traces no such step
+            again = stagnated & (stalls[0] < allowed)
+            stagnated = stagnated & ~again
+            held, earlier, counted = begun_again(again, held, earlier, counted)
+            stalls = [stalls[0] + again.astype(jnp.int32)]
         lower = running & (true_norm < lowest)
+        kept = jnp.where(lower[None, :], x, kept)
+        lowest = jnp.where(lower, true_norm, lowest)
+        if magnitude is not None and stopping.floor_stop:  # past them, a stagnation above the floor is a stall
+            floor = eps * _norms(magnitude(jnp.abs(kept)) + jnp.abs(b))
+            stalled = stagnated & ~(lowest <= FLOOR_MARGIN * floor)
+            stagnated = stagnated & ~stalled
+            held, earlier, counted = begun_again(stalled, held, earlier, counted)
         status = jnp.where(~jnp.isfinite(true_norm), _NOT_FINITE, jnp.where(
             converged, _CONVERGED, jnp.where(stagnated, _STAGNATED, jnp.where(count >= stopping.cap, _AT_CAP,
                                                                               _RUNNING))))
         return (x, jnp.where(running[None, :], r, carry[1]), jnp.where(running, true_norm, beta), count,
                 jnp.where(running[None, :], held, recent), jnp.where(running, earlier, before),
-                jnp.where(running, checks + 1, checks), jnp.where(lower[None, :], x, kept),
-                jnp.where(lower, true_norm, lowest), jnp.where(running, status, ended).astype(jnp.int32))
+                jnp.where(running, counted, checks), kept, lowest,
+                jnp.where(running, status, ended).astype(jnp.int32), *stalls)
 
     zeros = jnp.zeros_like(b)
     initial = (zeros, b, norm_b, jnp.zeros(columns, dtype=jnp.int32),
                jnp.full((stopping.window, columns), jnp.inf, dtype=dtype), norm_b, jnp.zeros(columns, dtype=jnp.int32),
-               zeros, norm_b, ended0.astype(jnp.int32))
-    x, _, last, count, _, _, _, kept, lowest, ended = _lax.while_loop(going, restart, initial)
+               zeros, norm_b, ended0.astype(jnp.int32), *([jnp.zeros(columns, dtype=jnp.int32)] if allowed else []))
+    x, _, last, count, _, _, _, kept, lowest, ended, *_ = _lax.while_loop(going, restart, initial)
     # A column that converged (or was accepted) returns its last iterate; one stopped short, the iterate of its least
     # true residual checked (past a floor the iterate wanders); one whose residual went non-finite, NaN.
     short = (ended == _STAGNATED) | (ended == _AT_CAP)
@@ -218,16 +282,21 @@ def reported_solve(matrix: Array, b: Array, tap: Array, precondition: Operator, 
     """``matrix^-1 b`` for each column of ``b`` by :func:`gmres` through ``custom_linear_solve``, with the report block
     on its right-hand side (``tap``, :data:`REPORT_SIZE` zeros, the block's input, whose cotangent is the transpose
     solve's report): the primal, the tangent and the transpose solve each take their tolerance from their own
-    right-hand side, and the transpose solve the transposed preconditioner, ``transposed``. Returns the answers and
-    the primal solve's report. The blocks are coupled to the field by exact zeros, so that each has a defined tangent
-    whenever anything in the solve is differentiated."""
+    right-hand side, and the transpose solve the transposed preconditioner, ``transposed``, and for a stop at the floor
+    (``floor_stop``) the matrix in magnitude, transposed with it. Returns the answers and the primal solve's report. The
+    blocks are coupled to the field by exact zeros, so that each has a defined tangent whenever anything in the solve
+    is differentiated."""
 
     def matvec(pair: tuple[Array, Array]) -> tuple[Array, Array]:
         x, block = pair
         y = jnp.matmul(matrix, x, precision=PRECISION)
         return y, block + 0.0 * y[0, 0]
 
-    def solving(preconditioner: Operator) -> Callable[..., tuple[Array, Array]]:
+    def solving(preconditioner: Operator, transpose: bool) -> Callable[..., tuple[Array, Array]]:
+        def magnitude(x: Array) -> Array:
+            held = jnp.abs(matrix)
+            return jnp.matmul(held.T if transpose else held, x, precision=PRECISION)
+
         def solve(operator: Callable[[tuple[Array, Array]], tuple[Array, Array]],
                   pair: tuple[Array, Array]) -> tuple[Array, Array]:
             rhs, block = pair
@@ -235,16 +304,16 @@ def reported_solve(matrix: Array, b: Array, tap: Array, precondition: Operator, 
             def field(x: Array) -> Array:
                 return operator((x, block))[0]
 
-            return gmres(field, rhs, preconditioner, stopping)
+            return gmres(field, rhs, preconditioner, stopping, magnitude if stopping.floor_stop else None)
 
         return solve
 
     coupled_rhs = b + 0.0 * tap[0]
     coupled_tap = tap + 0.0 * b[0, 0]
-    solved, report = _lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solving(precondition),
-                                              transpose_solve=solving(transposed))
+    solved, report = _lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solving(precondition, False),
+                                              transpose_solve=solving(transposed, True))
     return solved, report
 
 
-__all__ = ["CAP", "REPORT_FIELDS", "REPORT_SIZE", "RESTART", "STAGNATION_FACTOR", "STAGNATION_WINDOW", "Stopping",
-           "gmres", "reported_solve"]
+__all__ = ["CAP", "FLOOR_MARGIN", "FLOOR_MEASURED", "REPORT_FIELDS", "REPORT_SIZE", "RESTART", "STAGNATION_FACTOR", "STAGNATION_WINDOW", "Stopping",
+           "gmres", "recheck_stopping", "reported_solve"]

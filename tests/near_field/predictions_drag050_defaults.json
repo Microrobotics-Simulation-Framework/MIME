@@ -1,0 +1,73 @@
+{
+  "written": "2026-11-10, committed before any gate of the drag 0.5.0 defaults PR ran (the commit that adds this file is the timestamp): the graded wall measure in the force spacing (#329), the near field dense by default at every size with GMRES a declared route (#330), the settings grouped (#326 as #336 decided them), and the near field's GMRES rechecked (#337)",
+  "phase": "drag 0.5.0's defaults and settings groups (rows #329, #330, #326/#336, #337)",
+  "labels": "the builder's predictions, from the design rows' measurements and the code's structure; no gate below was run before this file",
+  "seen_before": [
+    "#308's measurement, through the node (tests/oracles/test_graded_sampling.py's MEASURED_308, float64): the gate's graded sphere with its image integrated (wall_refinement 2), half a force spacing from a plane, blob 0.1, against Brenner: +3.3329 % in the force spacing, +5.2435 % in the cell's own size",
+    "W3b's measurements (DENSE_UNKNOWNS's comment): through the node GMRES converges a radius apart in 7 to 20 iterations; float32 eight spheres in a line at 0.05 a stagnated in 8 of 48 columns",
+    "a build of the round-trip cases mrs_graded, mrs_near_field and mrs_near_field_gmres on the head (the smoke run while writing the groups): they build; no number of theirs read"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: the laptop for the touched tests, a GitHub runner (4 vCPU, one CPU pinned for bits) for the probes",
+    "sizes_and_parameters": "the recheck's case: two of MIME's spheres of 1 mm a radius apart at a force spacing of 0.4 mm on NearField(solve='gmres'), one pulled by 2e-7 N, three steps of 1 ms, the derivative of the separation in the water's viscosity, reverse mode; the graded sphere: radius 1 mm, spacing 0.3 mm, blob 0.1, contact graded for half a spacing, wall_refinement 2",
+    "seeds_and_draws": "no draws: every gate is deterministic"
+  },
+  "gate_1_measure": {
+    "claim": "a graded run's integrated wall image measures a cell's distance in the force spacing (#329)",
+    "kind": "equality",
+    "case": "tests/oracles/test_graded_sampling.py: the shipped constant, and each switch value's measured error through the node",
+    "prediction": {"value": 0.033329, "band": [0.03328, 0.03338], "unit": "relative error of the normal entry against Brenner", "basis": "measured-before", "why": "the switch's other value, measured in #308; the code that reads it is unchanged"},
+    "control": {"plant": "the switch's other value ('cell'), which the parametrised test builds afresh: 0.052435", "expected_rate": "1/1, deterministic"},
+    "cannot_discriminate_if": "the graded run takes no integrated image (wall_refinement unwritten): the measure is then read nowhere"
+  },
+  "gate_2_route": {
+    "claim": "the near field is solved by the dense LU at every size, by GMRES only where every member's drag declares it (#330); the memory refusal the only bound",
+    "kind": "equality",
+    "case": "tests/near_field/test_build.py: a node of eight 882-point spheres (21,168 unknowns) assembled, nothing made; two coarse spheres with and without NearField(solve='gmres'); members that differ",
+    "prediction": {"value": "dense at 21,168 unknowns; gmres only where declared by every member; the memory refusal on either route as before", "basis": "derived", "why": "the route is the declaration; nothing reads the size"}
+  },
+  "gate_3_recheck_cap": {
+    "claim": "a member whose near-field GMRES stopped at its cap is rechecked with the cap lifted, converges, reaches the clean run's answer and is reported cap-limited with the change",
+    "kind": "equality",
+    "case": "tests/near_field/test_recheck.py, the one-iteration cap",
+    "prediction": {"value": "recheck converged; its value and derivative within 1e-6 of the clean run's; the capped member's more than 1e-4 off", "basis": "derived", "why": "the lifted cap (5000) is far past the 7 to 20 iterations a clean solve takes a radius apart in float64"},
+    "control": {"plant": "mutant R1, the recheck's stopping returned unchanged", "expected_rate": "1/1, deterministic: the recheck stays at the cap, not converged"}
+  },
+  "gate_4_recheck_floor": {
+    "claim": "a member whose solve sits at float32's floor (a tolerance of 1e-9) is reported floor-limited with its route out (float64, the dense route), never converged; the recheck's GMRES is given the run's stopping with the cap lifted and the stall restarts raised",
+    "kind": "equality",
+    "case": "tests/near_field/test_recheck.py, float32 at 1e-9",
+    "prediction": {"value": "every step's primal solve stagnated; the recheck stagnated again; causes floor-limited; stoppings {(600, 0), (6000, 3)}", "basis": "derived", "why": "float32's floor for a pair a radius apart is about 8e-7 (DEFAULT_TOLERANCE's measurement), far above 1e-9, and neither a cap nor a restart lowers a floor"},
+    "control": {"plant": "mutant R2, the cap lifted but not the stall restarts", "expected_rate": "1/1, deterministic: the recheck's stopping is (6000, 0)"}
+  },
+  "gate_5_recheck_transpose": {
+    "claim": "a recheck whose transpose solves still stop short does not report itself converged",
+    "kind": "equality",
+    "case": "tests/near_field/test_recheck.py, the transpose solves capped at one through the recheck",
+    "prediction": {"value": "primal converged, transpose short in the run and in the recheck; recheck not converged, cause cap-limited", "basis": "derived", "why": "the plant caps the transpose solves whatever stopping they get"},
+    "control": {"plant": "mutant R4, converged judged on the primal solves alone", "expected_rate": "1/1, deterministic"}
+  },
+  "gate_6_stall_restarts": {
+    "claim": "each GMRES stall restart begins the window again, at least a window of restarts more each, never reaching a tolerance under the floor",
+    "kind": "equality",
+    "case": "tests/near_field/test_gmres.py, three coarse spheres, tolerance 1e-30, stall restarts 0, 1, 3, both dtypes",
+    "prediction": {"value": "every column stagnated in each; iterations rising by at least 90 a stall restart (three restarts of 30)", "basis": "derived", "why": "at a floor each cycle runs its whole basis"}
+  },
+  "bits": {
+    "cases": "base 8df010c against the head, one job, one CPU, one BLAS thread, both dtypes, 20 ms each (bit_compare.py): released programs (drag 0.3.0 and 0.4.0's mrs cases mrs_free_space, mrs_point_forces, mrs_kept, mrs_solids; script A's kept and uncoupled arms; hull_contact, kinematic_rpm, dynamic_rpm, coupled_toy, rft_kept) and 0.5.0's mrs_near_field, mrs_near_field_gmres, mrs_tube, mrs_plane, script_a, rft_free_space",
+    "prediction": "every array np.array_equal in all of those; 0.5.0's mrs_graded (graded, wall_refinement 2) differs, the measure's change",
+    "controls": {"one_program_moved": "mrs_graded, which this change moves: the comparison can fail"}
+  },
+  "outcomes": {
+    "written": "2026-11-10, after the gates ran; the predictions above are unchanged",
+    "gate_1_measure": "held: the shipped value is force_spacing and the parametrised test holds each value at its pin (local, float64)",
+    "gate_2_route": "held: an eight-sphere node of 21,168 unknowns is dense; mixed members dense; both declaring gmres, gmres with the smaller tolerance (local)",
+    "gate_3_recheck_cap": "held, after the objective was changed from the bodies' separation (3 mm, whose solve error sat in its last figures: the capped member 6e-7 off, under CHANGED) to their relative velocity; the probe's clean arm passed (run 42891010179); R1 failed 3 tests",
+    "gate_4_recheck_floor": "held: floor-limited with float64 and the dense route named, not converged; stoppings {(600, 0), (6000, 3)}; R2 failed 2 tests, R7 1",
+    "gate_5_recheck_transpose": "held: recheck not converged, cap-limited at its cap again; R4 failed 1 test",
+    "gate_6_stall_restarts": "held in both dtypes; R8 failed 2 tests",
+    "bits": "held (run 42891002225): every released program and 0.5.0's mrs_near_field, mrs_near_field_gmres, mrs_tube, mrs_plane, script_a and rft_free_space bit for bit in both dtypes; mrs_graded moved 8 of 19 arrays in each dtype",
+    "not_predicted": "mrs_graded's step raises wall_cells_short on every step in the force spacing (none in the cell measure): more fine cells lie within the reach than WALL_CELL_SHARE budgets for; measured locally through the node, every cell integrated moved the gate sphere's normal entry from +3.33287 % to +3.33277 % and mrs_graded's resistance by 1.6e-3 of its largest entry"
+  }
+}

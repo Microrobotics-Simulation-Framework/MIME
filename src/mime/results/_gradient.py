@@ -60,6 +60,11 @@ class SolveReport:
         """The solves, primal and derivative, whose residual was not finite: no cap or restart removes that."""
         return _count(self.forward, ("not_finite",)) + _count(self.backward, ("not_finite",))
 
+    @property
+    def stagnated(self) -> int:
+        """The solves, primal and derivative, that stopped stagnated."""
+        return _count(self.forward, ("stagnated",)) + _count(self.backward, ("stagnated",))
+
     def flagged_steps(self) -> tuple[int, ...]:
         """The steps (from 1) whose primal solve stopped short, where the run kept each step's report."""
         if self.steps is None:
@@ -87,8 +92,12 @@ class Recheck:
     did not reach its cap or stall is unchanged, so only the solves that stopped short move); ``not_rechecked``, each
     node flagged that was not re-solved, with the reason (a non-finite residual, which neither removes; a node whose
     solve has no recheck); the objective and the derivative the recheck gave, their changes from the member's own
-    (relative to the member's), and its own solves' reports, which say whether it converged. A recheck of no node
-    (``made`` false) gives the member's own values and NaN changes."""
+    (relative to the member's), and its own solves' reports, which say whether it converged; ``causes``, each
+    rechecked node's stop named from its recheck's solves and the member's (``mime.core``'s names: ``floor-limited``,
+    stagnated again at the solve's rounding floor, which no cap lifts; ``stagnated``, a stall above the floor, or a
+    stagnation whose floor the solve does not test; ``cap-limited``, a cap alone; ``not-finite``), and ``routes``, the
+    route out its node names for each, by the run's dtype. A recheck of no node (``made`` false) gives the member's own
+    values and NaN changes."""
 
     how: str
     lifted: tuple[str, ...]
@@ -98,6 +107,8 @@ class Recheck:
     value_change: float
     gradient_change: Mapping[str, float]
     solves: tuple[SolveReport, ...]
+    causes: Mapping[str, str] = field(default_factory=dict[str, str])
+    routes: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
     def made(self) -> bool:
@@ -108,6 +119,32 @@ class Recheck:
     def converged(self) -> bool:
         """Whether a recheck was made and none of its own solves stopped short."""
         return self.made and all(report.forward_short == 0 and report.backward_short == 0 for report in self.solves)
+
+
+def _cause_text(report: SolveReport, recheck: Recheck) -> str:
+    """A rechecked node's cause, as the member's text says it."""
+    cause = recheck.causes[report.node]
+    route = recheck.routes.get(report.node, "")
+    tail = f"; {route}" if route else ""
+    if cause == "floor-limited":
+        return (f"floor-limited: its recheck's solves stopped stagnated at their rounding floor (the least true residual "
+                f"within eps || |A| |x| + |b| ||), above the tolerance, which no cap lifts{tail}")
+    if cause == "not-finite":
+        return "not-finite: a solve of its recheck had a residual that was not finite, which no cap or restart removes"
+    if cause == "stagnated":
+        if report.stagnated:
+            what = ("it stagnated again with its cap lifted and its stall restarts raised; its solve does not test its "
+                    "rounding floor, so a floor and a stall are not told apart")
+        elif report.forward_short or report.backward_short:
+            what = "a stall, and its recheck, run past it, stopped at the lifted cap"
+        else:
+            what = ("a stall above its rounding floor, which its recheck ran past and converged, the changes above its "
+                    "stop's cost")
+        return f"stagnated: {what}{tail}"
+    if report.forward_short or report.backward_short:
+        return "cap-limited: it stopped at its cap again once the cap was lifted"
+    return ("cap-limited: it converged with its cap lifted and its stall restarts raised, the changes above its stop's "
+            "cost")
 
 
 @dataclass(frozen=True)
@@ -169,6 +206,8 @@ class MemberGradient:
                 lines.append(f"  recheck ({recheck.how}): objective changed {recheck.value_change:.3g}, the "
                              f"derivative {changes} (relative); its own solves "
                              f"{'converged' if recheck.converged else 'stopped short as well'}")
+                lines += [f"  recheck of {report.node}: {_cause_text(report, recheck)}" for report in recheck.solves
+                          if report.node in recheck.causes]
             lines += [f"  recheck not made for {node}: {reason}" for node, reason in recheck.not_rechecked.items()]
         return "\n".join(lines)
 

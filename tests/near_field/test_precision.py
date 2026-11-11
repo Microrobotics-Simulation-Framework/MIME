@@ -10,6 +10,7 @@ import pytest
 from near_field_cases import NODE, bodies, joint_node, mrs, precision, spheres, start_inputs
 
 from mime.build._maddening import parameter_leaves
+from mime.interactions import NearField
 from mime.nodes.hydro.near_field import _mrs
 
 
@@ -37,7 +38,7 @@ def step_products(**settings) -> list:
 
 @pytest.mark.parametrize("route", ["dense", "iterative"])
 def test_every_matrix_product_of_the_joint_nodes_step_is_taken_at_the_highest_precision(route):
-    found = step_products(**({"near_field_dense_unknowns": 0} if route == "iterative" else {}))
+    found = step_products(**({"near_field": NearField(solve="gmres")} if route == "iterative" else {}))
     assert len(found) >= 8 and all(held == (jax.lax.Precision.HIGHEST,) * 2 for held in found), found
 
 
@@ -50,4 +51,4 @@ def test_control_gmres_taking_its_products_at_the_default_precision_is_caught(mo
     from mime.nodes.hydro.near_field import _gmres
 
     monkeypatch.setattr(_gmres, "PRECISION", None)
-    assert None in step_products(near_field_dense_unknowns=0)
+    assert None in step_products(near_field=NearField(solve="gmres"))
