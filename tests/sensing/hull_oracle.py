@@ -68,10 +68,28 @@ def shares(outline: list[np.ndarray], focal: float, distance: float, width: int,
     out = full.astype(np.float64)
     low, high = np.floor(polygon.min(axis=0)).astype(int) - 1, np.ceil(polygon.max(axis=0)).astype(int) + 1
     for j in range(max(0, low[1]), min(height, high[1] + 1)):
+        # The row's strip first (the hull's few vertices in it), then each pixel of the row from the strip.
+        strip = _clip(_clip(polygon, 1, j + 0.5, True), 1, j - 0.5, False)
+        if len(strip) < 3:
+            continue
         for i in range(max(0, low[0]), min(width, high[0] + 1)):
             if not full[j, i]:
-                out[j, i] = clipped_area(polygon, i - 0.5, i + 0.5, j - 0.5, j + 0.5)
+                out[j, i] = clipped_area(strip, i - 0.5, i + 0.5, j - 0.5, j + 0.5)
     return out
+
+
+def _clip(polygon: np.ndarray, axis: int, bound: float, keep_below: bool) -> np.ndarray:
+    """A convex polygon clipped to one side of ``x[axis] = bound`` (Sutherland-Hodgman's one step)."""
+    out = []
+    for a, b in zip(polygon, np.roll(polygon, -1, axis=0), strict=True):
+        a_in = a[axis] <= bound if keep_below else a[axis] >= bound
+        b_in = b[axis] <= bound if keep_below else b[axis] >= bound
+        if a_in:
+            out.append(a)
+        if a_in != b_in:
+            t = (bound - a[axis]) / (b[axis] - a[axis])
+            out.append(a + t * (b - a))
+    return np.asarray(out)
 
 
 def clipped_area(polygon: np.ndarray, u0: float, u1: float, v0: float, v1: float) -> float:
@@ -80,16 +98,7 @@ def clipped_area(polygon: np.ndarray, u0: float, u1: float, v0: float, v1: float
     for axis, bound, keep_below in ((0, u1, True), (0, u0, False), (1, v1, True), (1, v0, False)):
         if len(held) == 0:
             return 0.0
-        out = []
-        for a, b in zip(held, np.roll(held, -1, axis=0), strict=True):
-            a_in = a[axis] <= bound if keep_below else a[axis] >= bound
-            b_in = b[axis] <= bound if keep_below else b[axis] >= bound
-            if a_in:
-                out.append(a)
-            if a_in != b_in:
-                t = (bound - a[axis]) / (b[axis] - a[axis])
-                out.append(a + t * (b - a))
-        held = np.asarray(out)
+        held = _clip(held, axis, bound, keep_below)
     if len(held) < 3:
         return 0.0
     x, y = held[:, 0], held[:, 1]
