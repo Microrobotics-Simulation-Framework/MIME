@@ -36,8 +36,10 @@ from mime.interactions import BodyForce
 from mime.results import StudyResult
 from mime.scene import Ellipsoid, PeriodicBox, Scene, Sphere, TubeTree, Z
 from mime.study import along, grid
-from mime.study._axes import Axis, resolve
-from mime.study._point import Point
+from mime.saved._pins import keeping_pins
+from mime.study._axes import STUDY_REASON, Axis, resolve
+from mime.study._point import Point, build_point
+from mime.study._ranges import assembled_program, programs_differ
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Pa_s, kg, kg_m2, kg_per_m3, m_per_s, m_per_s2, mPa_s, mm, ms, rad_per_s
 
@@ -80,7 +82,7 @@ def _with(values: Sequence[float], index: int, value: float) -> tuple[float, ...
 def _cases() -> dict[str, Any]:
     """Gate 1's cases: the base, the study's points, the duration, and for each group the hand-written experiment and
     the water's viscosity at each of its members (the hand-written study's points, in the order the group holds
-    them). One tree case: a tree's build and compile is the costliest here."""
+    them). The tree's case is held at its points (below): a tree's build and compile is the costliest here."""
     return {
         "egg-whole": (egg, along({SEMI_AXES: [mm(EGG), mm((0.55, 0.65, 1.2))]}), ms(2.0),
                       [(lambda: egg(EGG), [mPa_s(1.0)]), (lambda: egg((0.55, 0.65, 1.2)), [mPa_s(1.0)])]),
@@ -88,8 +90,6 @@ def _cases() -> dict[str, Any]:
                                                                                                     mPa_s(1.2)]}),
                           ms(2.0), [(lambda: egg(EGG), [mPa_s(1.0), mPa_s(1.2)]),
                                     (lambda: egg(_with(EGG, 2, 1.25)), [mPa_s(1.0), mPa_s(1.2)])]),
-        "tree-component": (tree, along({"vessel.radii[3]": [mm(0.4), mm(0.42)]}), ms(5.0),
-                           [(lambda: tree(RADII), [Pa_s(1e-3)]), (lambda: tree(_with(RADII, 3, 0.42)), [Pa_s(1e-3)])]),
     }
 
 
@@ -159,7 +159,7 @@ def gate_one(name: str) -> dict[str, Any]:
     return {"plan": plan, "found": found, "members": members, "hand": hand_points}
 
 
-GATE_CASES = ["egg-whole", "egg-component", "tree-component"]
+GATE_CASES = ["egg-whole", "egg-component"]
 
 
 @pytest.mark.parametrize("name", GATE_CASES)
@@ -179,6 +179,39 @@ def float64_gate():
     jax.config.update("jax_enable_x64", True)
     yield
     jax.config.update("jax_enable_x64", held)
+
+
+def test_the_trees_points_over_one_radius_are_the_points_written_by_hand(plant, float64_gate):
+    """Gate 1 on the tube tree, at its points: each point of a study over ``vessel.radii[3]`` (built as the study builds
+    it, ``mime.study._point.build_point``) has the hand-written tree's structure key, leaves, initial state and traced
+    step, its text and its constants: the same program on the same inputs, which a run computes bit for bit. Held here
+    and not through a run: the study and its hand-written studies took 5.6 min on a runner (tracing and lowering 74 %),
+    where the egg's cases above take the study's whole path."""
+    base = tree()
+    settings, declarations, saved = base.declared_as()
+    axis = resolve("vessel.radii[3]", declarations)
+    found: list[str] = []
+    hand: list[Point] = []
+    for value, radii in ((0.4, RADII), (0.42, _with(RADII, 3, 0.42))):
+        with keeping_pins(saved):
+            mine = build_point(0, settings, declarations, {axis: mm(value)}, STUDY_REASON)
+        written = tree(radii)
+        held_settings, held_declarations, held_saved = written.declared_as()
+        with keeping_pins(held_saved):
+            theirs = build_point(0, held_settings, held_declarations, {}, STUDY_REASON)
+        assert not mine.refused and not theirs.refused, (mine.refusals, theirs.refusals)
+        hand.append(theirs)
+        if mine.structure != theirs.key:
+            found.append(f"radius {value}: the structure key")
+        found += [f"radius {value}: leaf {each}" for each in _arrays_differ(mine.tree, theirs.tree)]
+        found += [f"radius {value}: initial {each}" for each in _arrays_differ(mine.state, theirs.state)]
+        with keeping_pins(saved):
+            program = assembled_program(mine.declared.settings, mine.declared.declarations)
+        with keeping_pins(held_saved):
+            if programs_differ(program, assembled_program(held_settings, held_declarations)):
+                found.append(f"radius {value}: the traced step")
+    assert hand[0].key != hand[1].key or _arrays_differ(hand[0].tree, hand[1].tree), "the two values build the same"
+    assert found == [], found
 
 
 def test_the_egg_component_in_float32_equals_the_points_written_by_hand(plant):
