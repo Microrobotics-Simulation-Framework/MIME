@@ -161,6 +161,8 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
                   "input, gated with the field (tests/flow/test_fvm_experiment.py)"),
     ("interaction", "inflow", "0.1.0"): FamilyCase(no_family=PORT_LAW),
     ("interaction", "windkessel", "0.1.0"): FamilyCase(no_family=PORT_LAW),
+    ("interaction", "valve", "0.1.0"): FamilyCase(no_family=PORT_LAW),
+    ("interaction", "shared_distal", "0.1.0"): FamilyCase(no_family=PORT_LAW),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.lift", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.hold", "0.1.0"): FamilyCase(no_family=TOY),

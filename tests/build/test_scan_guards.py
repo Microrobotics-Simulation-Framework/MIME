@@ -23,6 +23,7 @@ refusal), and a call missing from, added to or moved in the source comparison is
 be refusals or differences at all by the plain scan, so an arm where both ran proves nothing about a guard."""
 
 import ast
+import gc
 import inspect
 import textwrap
 import warnings
@@ -159,9 +160,12 @@ ANSWERED_BY = {
 
 def outcome(scan: Scan, situation: Situation) -> tuple[str, Any]:
     """What a scan does in a situation: refused (the error's type and message), or the state it ended in, with the
-    categories of the warnings it gave."""
+    categories of the warnings it gave. A ``ResourceWarning`` is left out: it is the garbage collector's report of a
+    resource some other code left unclosed, given wherever a collection happens to run, not the scan's (it reached one of
+    the two scans of a graph that runs on Python 3.14, run 43001634514: CLAUDE.md's fifth flake cause, the test's premise)."""
     held = graph(situation.node, situation.compiled)
     fed = situation.fed
+    gc.collect()  # what earlier tests left unreachable is finalised here, not inside the scan
     with warnings.catch_warnings(record=True) as given:
         warnings.simplefilter("always")
         try:
@@ -172,7 +176,8 @@ def outcome(scan: Scan, situation: Situation) -> tuple[str, Any]:
         except Exception as error:  # noqa: BLE001 - what the two scans raise is what is compared
             return "refused", (type(error).__name__, str(error))
     return "ran", ({node: {name: np.asarray(value).tolist() for name, value in fields.items()}
-                    for node, fields in final.items()}, sorted({each.category.__name__ for each in given}))
+                    for node, fields in final.items()}, sorted({each.category.__name__ for each in given
+                                                   if not issubclass(each.category, ResourceWarning)}))
 
 
 def disagreements(tallied_scan: Scan = tallied) -> dict[str, tuple[Any, Any]]:
@@ -299,3 +304,14 @@ def test_the_control_a_guard_call_missing_added_or_moved_is_caught_in_the_compar
         "        self._recover_from_escaped_tracers()\n", "        self._recover_from_escaped_tracers()\n        self._a_guard_added_later()\n", 1)
     assert guard_calls(added, "self") != mime_guards() and "_a_guard_added_later()" in guard_calls(added, "self")
     assert mime_guards(source) == wanted, "the control's own reading of the unchanged source agrees"
+
+
+@pytest.mark.parametrize("category, seen", [(UserWarning, True), (RuntimeWarning, True), (ResourceWarning, False)])
+def test_the_control_a_warning_one_scan_alone_gives_is_a_disagreement_unless_the_collectors(category: type[Warning],
+                                                                                           seen: bool):
+    def warning_scan(*args: Any, **kwargs: Any) -> Any:
+        warnings.warn("given by one scan alone", category, stacklevel=1)
+        return tallied(*args, **kwargs)
+
+    found = disagreements(warning_scan)
+    assert ("a graph that runs" in found) is seen, sorted(found)
