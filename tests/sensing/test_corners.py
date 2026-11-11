@@ -18,7 +18,9 @@ cap fails.
 The review found the cylinder's composed edge taking the wrong piece (a least of raw values whose gradients differ
 thirteenfold at a cap seen near edge-on): 13.8 to 29 % at turns of 0 to 10 degrees, unflagged at 6 and 10. **The
 control** (``CAMERA_PLANT=raw-composition``) renders with that code (the review's pieces, the least of raw values,
-sub-samples only where two pieces cross a pixel): the review's turns fail every run."""
+sub-samples only where two pieces cross a pixel): the review's turns of 0 to 10 degrees fail every run, in both dtypes.
+At 20 degrees the review's code was already within the line (2.7 %), so that view cannot discriminate the plant: it
+is a case of the gate, not of its control."""
 
 from __future__ import annotations
 
