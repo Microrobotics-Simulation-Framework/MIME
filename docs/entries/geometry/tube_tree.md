@@ -6,7 +6,7 @@ describes: "0.1.0"
 A vessel as a tree of straight tubes: its `points` (three lengths each), the `segments` joining two of them by index,
 each segment's `radii` at its start and its end (two lengths each, the radius linear between them: the tube is the
 hull of its two end balls), a `fillet` on every edge the solid has between two walls (its radius a share of the
-smallest radius at a junction), and the names of its free `ends`. It names two regions, the `lumen` and the `wall`;
+smallest radius at a junction), and the names of its free `ends` and its first `junctions`. It names two regions, the `lumen` and the `wall`;
 the `lumen`'s shape is the tree's union of tubes, its signed distance exact at every junction (the seam-aware rule of
 `mime.scene.ExactUnion`), not the minimum of the tubes' distances, which reads a false wall at each seam. A medium
 fills it: `Medium("water", fills=vessel.lumen)`.
@@ -25,7 +25,9 @@ What a consumer reads of it, by what it is for:
   `end_0`, `end_1`, ... by default. Each is a surface of the structure (`vessel.root`) and an opening of its lumen.
 - **Its fillet** is refused where its closing would fuse two tubes that share no point (the solid between them thinner
   than its diameter): the refusal names a smaller fillet or a thicker wall.
-- **Its centreline** is a segment a tube and a junction where two ends or more meet.
+- **Its centreline** is a segment a tube and a junction where two ends or more meet. Junctions are named by order,
+  `junction_0`, `junction_1`, ... in the order they are found walking outward from the first segment's start, unless
+  `junctions` names the first of them; a name given twice, or an end's, surface's or region's name, is refused.
 
 **When not to use it.**
 - For a curved vessel drawn with many short segments: its distance evaluates every tube at every point, so its cost

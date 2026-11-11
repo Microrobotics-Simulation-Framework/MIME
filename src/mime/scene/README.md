@@ -257,7 +257,14 @@ sphere about its centroid that holds it (`enclosing_radius`).
   `TubeTree.si` takes them in SI as nested tuples), its regions the `lumen` (the shape `tube_tree`) and the `wall`, its
   free ends named by geometry (`end_names()`: `root` at the first segment's start, the others `end_0`, `end_1`, ... in
   the order of their points, or as `ends` names them), each a surface reached through the structure's handle
-  (`vessel.root`) and an opening of the lumen (`opening_names()`). The FVM reads its lumen on a periodic box.
+  (`vessel.root`) and an opening of the lumen (`opening_names()`). Its junctions are `junction_names()`: `junction_0`,
+  `junction_1`, ... **by order**, the order they are found walking outward from the first segment's start (breadth
+  first, a point's neighbours in the order of the segments that reach them; a part that walk does not reach starts at
+  the first of its points in segment order), so it follows the vessel from its root and does not depend on how the
+  points are numbered; `junctions=("carina",)` names the first ones (a prefix of that order) and the rest keep
+  `junction_<n>`. A name given twice, one another junction keeps by default, one that is a region's, a surface's or an
+  end's name, and more names than junctions are refused. `mime.scene.polyline` names its junctions the same way, in
+  order along the line (`junction_0` at its second point). The FVM reads its lumen on a periodic box.
 - **The walls' resolution report** (`wall_resolution(features, spacing, layer=...)`): the smallest wall radius (a sharp
   seam's zero), the narrowest lumen against the band's thin-feature estimate (five cells), the narrowest solid between
   tubes that share no point, the solid the fillet fills between them where it does, the sharpest wedge, and the wall

@@ -188,6 +188,12 @@ class BuildReport:
     #: With the energy ledger attached: each node that receives deliveries and is not metered, with its reason, which
     #: the run's account names as left out of it (``RunResult.energy``).
     unmetered: Mapping[str, str] = field(default_factory=dict[str, str])
+    #: Each node that solves a linear system (``mime.core.solves``): the solve arithmetic it runs, which is, in every
+    #: node today, the run's dtype throughout. Static: no traced array holds it.
+    solving: tuple[str, ...] = ()
+
+    def solving_lines(self) -> list[str]:
+        return list(self.solving)
 
     def energy_lines(self) -> list[str]:
         if not self.energy:
@@ -280,6 +286,7 @@ class BuildReport:
             lines += [f"limits of {owner} (stated by its record): {line}" for line in limits]
         lines += self.watch_lines()
         lines += self.energy_lines()
+        lines += self.solving_lines()
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")
         lines += [f"  [{w.source}] {w.message}" for w in self.warnings]
         lines.append(f"refusals: {len(self.refusals) or 'none'}")
@@ -359,6 +366,7 @@ class BuildReport:
                 lines.append(f"limits of {owner} (stated by its record): {line}")
         lines += self.watch_lines()
         lines += self.energy_lines()
+        lines += self.solving_lines()
         lines.append("vocabulary: " + ", ".join(f"{k} {v}" for k, v in self.vocabulary.items()))
         lines.append(f"run: {self.run.text()}")
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")

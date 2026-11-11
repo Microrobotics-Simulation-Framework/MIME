@@ -151,6 +151,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   geometry, never by a law's role: `root` at the first segment's start, the others `end_0`, `end_1`, ... in the order of
   their points or as `ends` names them (`TubeTree.end_names`), each a surface reached through the structure's handle
   (`vessel.root`) and an opening of the lumen (`Geometry.opening_names`, per instance beside the class's `openings`).
+  Its junctions are named by order, `junction_0`, `junction_1`, ... in the order they are found walking outward from the
+  first segment's start (`TubeTree.junction_names`), or as `junctions=(...)` names the first of them; `mime.scene.polyline`
+  names its junctions `junction_0`, ... along the line.
   A tree whose fillet would fuse tubes that share no point (solid between them thinner than its diameter) is refused
   when planned (`setting.value`), naming a smaller fillet or a thicker wall. The round-trip case `tree_flow`.
 

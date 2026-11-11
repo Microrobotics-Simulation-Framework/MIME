@@ -46,6 +46,7 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
     quaternion, typed_view
+from mime.core.solves import dense_solve
 from mime.nodes.hydro.mrs._node import SHAPE, WALL, array_tree, floating_leaves, path_name
 from mime.nodes.hydro.mrs._quadrature import floored_least_eigenvalue, scaled_least_eigenvalue, semidefinite_floor
 from mime.nodes.hydro.mrs._solve import PRECISION, force_sums, rigid_motions
@@ -384,7 +385,7 @@ class RFTDragNode(MimeNode):
             image = wall.correction(world, parameters, p["viscosity"], jnp.zeros((), dtype=world.dtype))
             fed_back = jnp.einsum("nab,nbk->nak", local, image.matrix.reshape(count, 3, 3 * count),
                                   precision=PRECISION).reshape(3 * count, 3 * count)
-            forces = jnp.linalg.solve(jnp.eye(3 * count, dtype=world.dtype) + fed_back, pushed)
+            forces = dense_solve(jnp.eye(3 * count, dtype=world.dtype) + fed_back, pushed)
             found, accepted = force_sums(motions, forces), image.accepted
         return (found + found.T) / 2.0, accepted
 

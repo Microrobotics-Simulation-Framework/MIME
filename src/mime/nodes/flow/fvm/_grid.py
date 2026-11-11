@@ -27,6 +27,7 @@ from jax import Array
 from jax import lax as _lax
 
 from mime.core import jnp
+from mime.core.solves import SolveSite, register, solving
 
 #: The velocity: its components on the faces normal to x, y and z.
 type Velocity = tuple[Array, Array, Array]
@@ -52,6 +53,12 @@ def _average_to_centre(a: Array, axis: int) -> Array:
 
 def _difference_to_centre(a: Array, axis: int, h: Any) -> Array:
     return (_roll(a, -1, axis) - a) / h
+
+
+#: The solve site of the grids' Poisson solves, by a fast transform (``poisson`` of this grid kind and of the open one).
+POISSON_SITE = register(SolveSite(
+    "fvm_poisson", "transform", "mime.nodes.flow.fvm._grid.MACGrid.poisson, _open.OpenMACGrid.poisson",
+    nodes=("ImplicitFlowNode", "ExplicitFlowNode", "OpenFlowNode")))
 
 
 @dataclass(frozen=True)
@@ -166,11 +173,12 @@ class MACGrid:
 
     def poisson(self, source: Array) -> Array:
         """The mean-free ``phi`` with ``D G phi = source - mean(source)``, by the fast transform."""
-        symbol = self._poisson_symbol(source.dtype)
-        transformed = jnp.fft.rfftn(source)
-        solved = -transformed / symbol
-        solved = solved.at[0, 0, 0].set(0.0)
-        return jnp.fft.irfftn(solved, s=source.shape).astype(source.dtype)
+        with solving(POISSON_SITE):
+            symbol = self._poisson_symbol(source.dtype)
+            transformed = jnp.fft.rfftn(source)
+            solved = -transformed / symbol
+            solved = solved.at[0, 0, 0].set(0.0)
+            return jnp.fft.irfftn(solved, s=source.shape).astype(source.dtype)
 
     def project(self, velocity: Velocity) -> Velocity:
         """``P u = u - G (D G)^-1 D u``: the orthogonal projection onto discretely divergence-free fields."""
