@@ -239,7 +239,7 @@ def composed_controls(pair: str, lifted, coarse) -> dict[str, np.ndarray | None]
     # the contacts and their own openings, as the node finds them
     wall = node._wall()
     held = node.params_pytree()
-    constants = {name: held[f"wall_{name}"] for name in wall.parameters}
+    constants = {name: held.get(f"wall_{name}", node.constants()[f"wall_{name}"]) for name in wall.parameters}
     points = node._sampling.samples(node._kind, node._kind_parameters(held)).points
     found = handed_over(node._search, node._kind, node._kind_parameters(held), points, as_run_array(pose), wall,
                         constants, held, held["viscosity"], node.near_contact_form)
