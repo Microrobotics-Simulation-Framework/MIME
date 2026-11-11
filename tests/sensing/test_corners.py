@@ -9,15 +9,16 @@ pixels; a sub-pixel's line is exact where the outline is straight across it and 
 otherwise (``0.118 h^2 / rho`` for a sub-pixel of side ``h``, small here), and where the outline turns within a
 sub-pixel (a cap's ellipse's end, where a side meets it, its radius ``b^2 / a`` a fraction of a sub-pixel) the turn
 lies in at most two of a pixel's sub-pixels along the outline, each missing at most half of itself: ``h^2`` in all.
-**Thin caps:** a cap whose ellipse is narrower than two sub-pixels is not resolved (its first-order line is a sub-pixel
-off inside it and past its ends); the view raises ``thin_cap``, and the pixels about that cap are judged by the flag,
-not the line. The flag must be raised exactly where a cap is that thin (its width computed here from the rim's
-geometry), so a miss above the line near an unflagged cap fails.
+**Thin caps:** a cap whose ellipse is narrower than two sub-pixels is not resolved (a sub-pixel holds both of its sides,
+and the cap's first-order line inside it is inflated, its edge function changing fastest across the ellipse); the view
+raises ``thin_cap``, and the pixels about that cap are judged by the flag, not the line. The flag must be raised exactly
+where a cap is that thin (its width computed here from the rim's geometry), so a miss above the line near an unflagged
+cap fails.
 
 The review found the cylinder's composed edge taking the wrong piece (a least of raw values whose gradients differ
 thirteenfold at a cap seen near edge-on): 13.8 to 29 % at turns of 0 to 10 degrees, unflagged at 6 and 10. **The
-control** (``CAMERA_PLANT=raw-composition``) renders with that code (the least of raw values, sub-samples only where two
-pieces cross a pixel): the review's turns fail every run."""
+control** (``CAMERA_PLANT=raw-composition``) renders with that code (the review's pieces, the least of raw values,
+sub-samples only where two pieces cross a pixel): the review's turns fail every run."""
 
 from __future__ import annotations
 

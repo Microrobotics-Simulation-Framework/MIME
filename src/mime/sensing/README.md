@@ -18,10 +18,10 @@ stages:
   (`beyond_distortion`). `project` is OpenCV's `projectPoints` on the same model.
 - **The closed-form route** (`_forms.py`), on the sphere, the capsule, the capped cylinder and the straight tube's
   wall and lumen: each gives its chord along a ray (the grazing square root through a declared softplus, `GRAZING`, so
-  values and derivatives stay finite at a tangent ray) and its **pieces**, edge functions with a distance, negative
-  where the ray meets the piece and vanishing linearly on its outline, composed by the form's own rule (a capped
-  cylinder is the convex hull of its cap discs: the least of its caps and of its side within its span), whose zero set
-  is the outline exactly. Everything is taken on the ray, never its whole line: a body behind the camera covers
+  values and derivatives stay finite at a tangent ray) and its **pieces**, edge functions negative where the ray meets
+  the piece and vanishing linearly on its outline, with no pole in the image, composed by the form's own rule (a
+  capped cylinder is the convex hull of its cap discs: the least of its caps and of its side within its span; each cap
+  by its cone from the pinhole, bounded by its ball), whose zero set is the outline exactly. Everything is taken on the ray, never its whole line: a body behind the camera covers
   nothing, and one straddling the camera's plane only what its part in front shows.
 - **The route is chosen by capability**: a kind with a closed form registered (`register_closed_form`) takes the closed-form route;
   any other is refused with its reason (`camera.no-closed-form`: the ellipsoid and the box have no run-time shape yet;

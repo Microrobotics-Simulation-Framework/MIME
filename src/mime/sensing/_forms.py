@@ -194,7 +194,7 @@ def _cylinder_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
     ahead = mid >= 0.0
     side = _safe_sqrt(_on_ray(ahead, q, o[0] * o[0] + o[1] * o[1]), (GRAZING * radius) ** 2) - radius
     span = jnp.abs(_on_ray(ahead, axial, o[2])) - half_length
-    balls = []
+    balls: list[Any] = []
     for z in (-half_length, half_length):
         centre, q_ball, _ = _ball(z, radius, o, d)
         start = (o[0], o[1], o[2] - z)

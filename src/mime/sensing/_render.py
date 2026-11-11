@@ -395,10 +395,11 @@ def _overflows(camera: Pinhole, pose: CameraPose, origin: Any, radius: float, st
 
 #: A cap whose ellipse is narrower than this many sub-pixels across (seen near edge-on) and in view raises
 #: ``thin_cap``. The sub-samples' straight lines resolve a cap's outline where its ellipse spans two sub-pixels or more;
-#: in a narrower one the cap's first-order line is a sub-pixel off (inside the ellipse its distance is inflated, the
-#: edge function's gradient running across the ellipse; past its ends deflated), and a pixel there misses by up to
-#: about one sub-pixel's area: measured, with 4 x 4 sub-samples, up to 8 % at ellipses 0.08 to 0.4 px across, within 2.6 %
-#: at 0.57 px and over (``tests/sensing/test_corners.py``).
+#: in a narrower one a sub-pixel holds both of its sides and the cap's first-order line there is inflated (its edge
+#: function changes fastest across the ellipse), and a pixel misses by up to about one sub-pixel's area. Measured
+#: against the exact hull (``tests/sensing/test_corners.py``): with 4 x 4 sub-samples up to 7.7 % at ellipses 0.16 to
+#: 0.25 px across, within 3.9 % at every view measured with no cap narrower than half a pixel; at the worst thin view 2.7 % with
+#: 8 x 8 and 0.7 % with 16 x 16 (resolution). The threshold is declared and measured at the default sub-samples only.
 THIN_CAP_SUBPIXELS = 2.0
 
 
