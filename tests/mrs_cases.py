@@ -161,7 +161,9 @@ def mrs_tube() -> Experiment:
                                            angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
     experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
+    # the coarse MRS's round trip: the near-contact law's hand-over (a sphere's form, on by default) written off
+    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube", near_contact=False), body="ball",
+                      medium="water")
     return experiment
 
 
@@ -180,7 +182,9 @@ def mrs_plane() -> Experiment:
                                            angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
     experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
-    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="plane"), body="ball", medium="water")
+    # the coarse MRS's round trip: the near-contact law's hand-over (a sphere's form, on by default) written off
+    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="plane", near_contact=False), body="ball",
+                      medium="water")
     return experiment
 
 

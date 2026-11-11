@@ -20,7 +20,7 @@ from mime.data import asset
 from mime.drives import Constant
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import PointDipole
-from mime.interactions import Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Cylinder, Scene, Tube, X, Z
 from mime.scene import asset as description
@@ -42,6 +42,10 @@ from mime.units import (
     rad_per_s,
     s,
 )
+
+#: The drag 0.4.0, kept registered: its surrogate rung keeps the near-wall lubrication blend this experiment ran with,
+#: which drag 0.5.0 retired (lubrication.retired) until the surrogate is retrained far field only.
+KeptDrag, _ = KEPT["drag", "0.4.0"]
 
 AR4 = Path(__file__).resolve().parent / "descriptions" / "ar4" / "ar4.urdf"
 #: Where the arm's base stands, and the joint positions that put its flange about 15 cm above the world's origin.
@@ -86,7 +90,7 @@ def a0() -> Experiment:
                         ("umr.centre_of_buoyancy", m((0.0, 0.0, 0.0))), ("umr.magnet_centre", m((0.0, 0.0, 0.0))),
                         ("water.density", kg_per_m3(1000.0)), ("water.viscosity", mPa_s(1.0))):
         experiment.declare(path, value, reason=REFERENCE)
-    experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
+    experiment.attach(KeptDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field="rpm.magnetic")
     experiment.attach(Magnetic.Force(), body=umr, field="rpm.magnetic")

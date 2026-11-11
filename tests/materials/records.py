@@ -14,7 +14,7 @@ from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.data import asset, asset_bytes
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
-from mime.interactions import Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
 from mime.materials import Record
 from mime.scene import Scene, Tube, X, Z
 from mime.things import Part
@@ -80,6 +80,7 @@ def water_experiment(material: Record | None, conditions=None, *, viscosity: boo
     experiment.attach(Gravity(), body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     if viscosity:
-        experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
+        kept, _ = KEPT["drag", "0.4.0"]  # script A's drag: the surrogate's blend, which drag 0.5.0 retired
+        experiment.attach(kept.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                           body=umr, medium=water)
     return experiment

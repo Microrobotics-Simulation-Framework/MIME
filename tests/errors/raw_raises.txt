@@ -86,7 +86,7 @@ nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constr
 nodes/hydro/_rft_drag.py::RFTDragNode.__init__ ValueError 5  # construction: the node's constructor given a coefficient set, a stop form, shape and wall constants or counts it cannot take, which only the rung's build gives and its plan has checked; reached, it is error.uncoded
 nodes/hydro/_rft_drag.py::drag_coefficients ValueError 1  # invariant: a coefficient set the setting's own check (drag.rft-coefficients) has already refused; reached, it is error.uncoded, keeping its class
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 11  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 12  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode._check_owners ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode.chunks ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 nodes/_kinds.py::registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -94,6 +94,7 @@ nodes/hydro/mrs/_tube.py::table_provenance ValueError 1  # a node's constructor,
 nodes/hydro/mrs/_tube.py::unit_tube_table ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_walls.py::cell_image ValueError 1  # invariant: MIME's own check, which no supported script reaches (a node integrates the image only of a wall correction that gives one); reached, it is error.uncoded, keeping its class
 nodes/hydro/mrs/_walls.py::register_wall_correction ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/near_contact/_seam.py::increment ValueError 1  # invariant: a form the node's constructor has already checked against FORMS; reached, it is error.uncoded, keeping its class
 nodes/hydro/mrs/_walls.py::wall_correction_named KeyError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/near_field/_contract.py::cross_image ValueError 1  # invariant: every registered wall kind gives its image between point sets (free space, the tube, the plane); a lab's wall kind without one is refused here, where the build first couples two bodies by it; reached, it is error.uncoded, keeping its class
 nodes/hydro/near_field/_gmres.py::gmres ValueError 1  # internal: a stop at the rounding floor given no operator magnitude, which the near field's reported solve always passes with it (a recheck's floor stop), so a script reaches this only by calling the solve itself

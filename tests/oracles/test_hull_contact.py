@@ -916,10 +916,11 @@ def screw_in_the_tube(lubricated: bool):
     from hull_cases import hull_contact
 
     from mime.data import asset
-    from mime.interactions import Drag, Lubrication
+    from mime.interactions import KEPT, Lubrication
 
+    kept, _ = KEPT["drag", "0.4.0"]  # the surrogate's blend, which drag 0.5.0 retired, kept on 0.4.0
     experiment = hull_contact()
-    experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"),
+    experiment.attach(kept.Surrogate(weights=asset("dejongh_mlp_v2"),
                                      lubrication=Lubrication(epsilon=mm(0.15)) if lubricated else None),
                       body="umr", medium="water")
     experiment.declare("water.viscosity", __import__("mime.units", fromlist=["mPa_s"]).mPa_s(1.0), reason="water")

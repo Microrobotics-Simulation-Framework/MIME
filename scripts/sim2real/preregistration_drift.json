@@ -51,12 +51,13 @@
   },
   "tests/script_a.py": {
    "preregistered_sha256": "e5cc18014ecbb22cbc4da9f359d9bceb02c6b9832752dda671df1ab6ae577580",
-   "current_sha256": "2bb04d9e5d3f42e90c5ee2aceb9ef69cce22754a472f5f92abd29f05bae8e1cb",
+   "current_sha256": "a8f01359861ab0741b626a38f0ee875c06e6f126f1507e1483fd665d918a57e6",
    "changed_by": [
     "dac5aaf (2026-10-31, phase 7l-a, #71)",
-    "phase 7o (2026-11-01, the containment contact)"
+    "phase 7o (2026-11-01, the containment contact)",
+    "7524334 (2026-11-11, W2a PR 1b-i, #245, design #331)"
    ],
-   "reason": "the screw's `starts` became required: script A says `starts=2`, as it always built; then its contact named at 0.1.0, the version every comparison of script A was declared against, kept registered after 0.2.0 held the hull's points: the graph it builds is unchanged"
+   "reason": "the screw's `starts` became required: script A says `starts=2`, as it always built; then its contact named at 0.1.0, the version every comparison of script A was declared against, kept registered after 0.2.0 held the hull's points: the graph it builds is unchanged; then its drag pinned to drag 0.4.0, kept registered (KEPT['drag', '0.4.0']), by the maintainer's decision #331: drag 0.5.0 retired the surrogate's blend of the sphere-wall asymptotes (lubrication.retired), and script A, A0 and the families keep the blend on 0.4.0 until W5 moves them once; 0.4.0's surrogate rung is 0.5.0's, so script A's programs are bit for bit in both dtypes (PR #245's bits arm)"
   }
  }
 }

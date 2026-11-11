@@ -185,9 +185,10 @@ def test_what_plays_the_tube_wall_role_now_is_the_shipped_table():
 
 def test_the_shipped_records_are_the_tables_and_the_surrogates_and_name_their_assets_hashes():
     shipped = assets.shipped_derivations()
-    assert set(shipped) == {UNIT_TUBE, "dejongh_mlp_v2"}
+    assert set(shipped) == {UNIT_TUBE, "dejongh_mlp_v2", "sphere_plane_resistance"}
     assert shipped[UNIT_TUBE].sha256 == TABLE.sha256
     assert shipped["dejongh_mlp_v2"].sha256 == asset("dejongh_mlp_v2").sha256
+    assert shipped["sphere_plane_resistance"].sha256 == asset("sphere_plane_resistance").sha256
     for record in shipped.values():
         assert record.failed() == (), f"{record.asset} ships with a failed check"
         assert DerivationRecord.from_json(json.loads(record.text())) == record

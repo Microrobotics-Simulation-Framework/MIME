@@ -30,7 +30,7 @@ from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, St
 from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
-from mime.interactions import Drag, Lubrication, Magnetic
+from mime.interactions import KEPT, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
 from mime.scene import Box, Scene, Screw, Tube, X, Z
@@ -50,6 +50,10 @@ from mime.units import (
     rad_per_s,
     s,
 )
+
+#: The drag 0.4.0, kept registered: its surrogate rung keeps the near-wall lubrication blend this experiment ran with,
+#: which drag 0.5.0 retired (lubrication.retired) until the surrogate is retrained far field only.
+KeptDrag, _ = KEPT["drag", "0.4.0"]
 
 #: The diagonal of the parts' tensor, as the refusal prints it; the principal moments; script A's isotropic number; and
 #: the walker's solid cylinder of FL-9's radius and length (m R^2 / 2 about the axis, m (3 R^2 + L^2) / 12 across it).
@@ -95,7 +99,7 @@ def experiment(inertia: tuple[float, float, float], *, offset_mm: float = 0.0, d
     exp.declare("umr.inertia", kg_m2(inertia), reason="the arm")
     field = exp.add_apparatus(Apparatus("field", fields={"magnetic": UniformRotating(
         rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))}, commands={"frequency": Hz(5.0), "amplitude": mT(1.2)}))
-    exp.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
+    exp.attach(KeptDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                body=umr, medium=water)
     exp.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     exp.observe(SwimSpeed(umr, along=tube.axis, after=s(2.0)))
