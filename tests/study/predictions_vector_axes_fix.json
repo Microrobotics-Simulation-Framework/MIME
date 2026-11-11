@@ -78,5 +78,35 @@
     "prediction": "each new or changed test of test_vector_axes.py under 30 s on a runner but possibly the round trip of two components (23.6 s on a runner before; 32.4 s on the loaded laptop) and the whole semi-axes' (28.1 s on the laptop); a test over 30 s on the gates arm's JUnit goes on the duration allowlist with its runner time",
     "basis": "measured-before (the laptop's times above, loaded), a guess for the runner"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the probe ran; the predictions above are unchanged",
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43083797926",
+    "gate_1_shared_structure": {
+      "measured": "as predicted: 0 arrays differ on plane-whole and plane-component (float64) and plane-whole (float32); the premise held (one structure key, two groups, the hand-written finals differ); 106 tests passed in arm gates",
+      "controls": {
+        "struct-cache, plane-whole": "10/10 caught, clean 0/3 (lower bound 0.74)",
+        "struct-cache, plane-component": "10/10 caught, clean 0/3",
+        "struct-cache, plane-whole float32": "10/10 caught, clean 0/3",
+        "keep-base, plane-whole": "10/10 caught, clean 0/3",
+        "keep-base, plane-component": "10/10 caught, clean 0/3",
+        "next-index, plane-component": "10/10 caught, clean 0/3",
+        "how caught (one local run of each, 2026-11-12, the probe keeps no output for a caught run)": "struct-cache on plane-whole by point 1's final state alone (its leaves as planned are equal: the run path fed it point 0's); next-index on plane-component by the leaf drag:ball.wall_normal and the final state; keep-base on plane-component by the plan's study.axis-inert (both values build the base), not by the comparison"
+      }
+    },
+    "gate_2_digest_alone": {
+      "measured": "const-digest 5/5 caught, clean 0/1, by the plane cases (float64 both, float32 plane-whole), G4 planted trace and the two-builds rebuild test mrs_solids/brick"
+    },
+    "gate_3_one_spelling": {
+      "measured": "every code as predicted; nested 5/5 caught (a-components-component, a-semi-axis-component, a-segments-start), zero-led 5/5 caught (a-leading-zero, zero-twice, a-leading-zero-then-an-index), clean 0/1 each"
+    },
+    "gate_4_direction_component": {
+      "measured": "dir-next 5/5 caught, clean 0/1, by test_a_directions_component_writes_that_component_alone[0, 1, 2] and gate 1 plane-component (the review: 0/3)"
+    },
+    "gate_5_round_trip": {
+      "measured": "as predicted: every value form and the five studies; dimless-save 5/5 caught, clean 0/1, by the direction and orientation round trips and the value forms a-direction, a-direction-of-whole-numbers and a-quaternion"
+    },
+    "bits": "as predicted: 20 programs, 602 arrays np.array_equal, base the release tip as the runner fetched it (1557db7, #248) against the probe head a9cc173 in one job, one CPU, one thread (arm bits); repeat equal, script A one ulp up differs",
+    "durations": "arm gates, three workers on a 4 vCPU runner: over 30 s the round trips direction 45.0 s, direction-component 39.1, components 38.6, egg-component gate 1 35.9 and its float32 33.5 (19.8 and 16.9 s in a CI shard before, run 43039777747: the arm is contended); listed in the duration allowlist as predicted. The plane cases 24.1 to 29.3 s",
+    "memory": "every arm failed Memory against the estimate: the one-program estimate (0.57 GiB for the plane, 1.00 for the tree flow) does not cover a test run that builds several programs, as the builder and the review found; the rates are unaffected; said here, not a calibration row (a test run is not the estimated case)"
+  }
 }
