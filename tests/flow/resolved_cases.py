@@ -167,7 +167,7 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
                   stokes: bool = False, unnamed: bool = False, at: Any = None,
                   start: tuple[float, float, float] = (0.0, 0.0, 0.0),
                   velocity: tuple[float, float, float] = (0.0, 0.0, 0.0),
-                  spin: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Experiment:
+                  spin: tuple[float, float, float] = (0.0, 0.0, 0.0), tolerance: float | None = None) -> Experiment:
     """The coupling spike's R3 case at Re 76: a sphere of radius 0.1875 D (3 cells a radius at D/h 16) free on a
     periodic tube's axis (D = 1 mm, 4 D long) in water, the fluid driven by the uniform force that gives the empty
     tube a mean speed of 76 nu / D; the body's density ``ratio`` times the fluid's; from rest. ``tree``: the same
@@ -190,7 +190,8 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
     domain = VesselRegion(margin=4) if opened else PeriodicBox(length=m(4.0 * diameter) if length is None else length)
     flow = FVM(domain=domain, cells_across=16,
                **({} if unnamed else {"scheme": Scheme.IMEXEuler() if scheme is None else scheme}),
-               **({"stokes": True} if stokes else {}), **({"spacing": spacing} if spacing is not None else {}))
+               **({"stokes": True} if stokes else {}), **({"spacing": spacing} if spacing is not None else {}),
+               **({"tolerance": tolerance} if tolerance is not None else {}))
     exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     exp.declare("water.viscosity", mPa_s(WATER_MU * 1e3), reason="water")
     exp.declare("water.density", kg_per_m3(WATER_RHO), reason="water")

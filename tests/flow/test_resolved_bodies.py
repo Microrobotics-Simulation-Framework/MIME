@@ -345,6 +345,36 @@ def test_a_density_ratio_outside_the_measured_range_is_flagged_each_step(float64
     assert ("water.flow.body_0_ratio_unmeasured" in raised) is (ratio > 20.0), raised
 
 
+def test_a_resolved_bodys_solve_that_stops_short_is_flagged_and_warned_of(dtype):
+    """The fix round's gate S (the near-wall spike's question, never silent): a resolved body's flow whose solve stops
+    above its tolerance (planted below either dtype's rounding, 1e-30, the steady scheme) raises solve_flagged at every
+    step, the run warns of it with its count, and the step's report says how the solve stopped; at the default
+    tolerance the same run raises neither. The resolved node takes its parent's step and report."""
+    import warnings
+
+    from mime.dynamics import Scheme
+    from mime.units import s as seconds
+
+    for tolerance, flagged in ((1e-30, True), (None, False)):
+        built = r3_experiment(1.0, dt=1.5e-4, reynolds=0.1, stokes=True, scheme=Scheme.Steady(),
+                              tolerance=tolerance).build()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = built.run(seconds(3 * 1.5e-4))
+        raised = {read.path: read for read in result.flags}
+        said = [str(warning.message) for warning in caught if "solve_flagged" in str(warning.message)]
+        report = np.asarray(result.final["water.flow"]["solve_report"])
+        print(f"F4 fix S [{dtype}] tolerance {tolerance}: flags {sorted(p for p, r in raised.items() if r.was_raised)}, "
+              f"warnings {len(said)}, report {report.tolist()}")
+        if flagged:
+            read = raised["water.flow.solve_flagged"]
+            assert read.was_raised and read.raised == read.steps == 3, read
+            assert len(said) == 1 and "raised at 3 of 3 steps" in said[0], said
+            assert report[2] + report[3] + report[4] > 0.0, report
+        else:
+            assert "water.flow.solve_flagged" not in raised and not said and report[2:5].sum() == 0.0, report
+
+
 # -- gate 4: the books ----------------------------------------------------------------------------------------------
 def _gift(original):  # noqa: ANN001, ANN202 - the plant: the body's penalty load taken at half the twist solved at
     def body_books(self, p, fields, velocity, index):  # noqa: ANN001, ANN202
