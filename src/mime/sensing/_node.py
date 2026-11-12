@@ -348,7 +348,9 @@ class CameraNode(MountedNode):
                     numbers)
 
         stale = (count == 0) | jnp.any(held[4] != numbers)
-        carried = lax.cond(stale, made, lambda: held)
+        # Spike R1: the cache's remake under jax.checkpoint (reverse mode keeps its inputs at every step, not its residuals).
+        remake = _jax.checkpoint(made) if os.environ.get("MIME_SPIKE_CACHE_CHECKPOINT") == "1" else made
+        carried = lax.cond(stale, remake, lambda: held)
         origin, packed, static, flag_values, _ = carried
         rays = Rays(origin=(origin[0], origin[1], origin[2]), direction=(packed[0], packed[1], packed[2]),
                     along_u=(packed[3], packed[4], packed[5]), along_v=(packed[6], packed[7], packed[8]),

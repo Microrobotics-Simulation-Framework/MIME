@@ -25,6 +25,7 @@ import dataclasses
 import hashlib
 import json
 import math
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -170,7 +171,9 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
 
     def sub_sampled() -> Any:
         offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
-        total, _ = lax.scan(one, jnp.zeros_like(single), offsets)
+        # Spike R1: each sub-sample under jax.checkpoint (reverse mode keeps its inputs, not its 16 frames' residuals).
+        body = _jax.checkpoint(one) if os.environ.get("MIME_SPIKE_SUBSAMPLE_CHECKPOINT") == "1" else one
+        total, _ = lax.scan(body, jnp.zeros_like(single), offsets)
         return total / corner_samples ** 2
 
     # Sub-sampled where some pixel holds a corner (two pieces cross it) or a piece whose own outline turns within a

@@ -90,15 +90,20 @@ def case(width: int = 160, period_steps: int = 3, x0_um: float = -30.0, z0_um: f
     return exp
 
 
-def cost_case(width: int = 320, period_steps: int = 1, steps: int = 100, render_checkpoint: int = 0) -> Any:
+def cost_case(width: int = 320, period_steps: int = 1, steps: int = 100, render_checkpoint: int = 0,
+              subsample_checkpoint: int = 0, cache_checkpoint: int = 0) -> Any:
     """The cost arms' scene: the ball starts 40 um left of the axis's foot and crosses about 60 um over the run (it stays
     in view at every run length), a frame every ``period_steps`` base steps; with ``render_checkpoint`` the render inside
     the frame's cond under ``jax.checkpoint`` (set here, before anything is traced, so that the memory estimate and the
-    measurement both see it)."""
-    if render_checkpoint:
-        os.environ["MIME_SPIKE_RENDER_CHECKPOINT"] = "1"
-    else:
-        os.environ.pop("MIME_SPIKE_RENDER_CHECKPOINT", None)
+    measurement both see it); ``subsample_checkpoint`` and ``cache_checkpoint`` the spike's other placements: each corner
+    sub-sample of the box edge, and the static cache's remake, under ``jax.checkpoint``."""
+    for name, on in (("MIME_SPIKE_RENDER_CHECKPOINT", render_checkpoint), ("MIME_SPIKE_SUBSAMPLE_CHECKPOINT",
+                                                                            subsample_checkpoint),
+                     ("MIME_SPIKE_CACHE_CHECKPOINT", cache_checkpoint)):
+        if on:
+            os.environ[name] = "1"
+        else:
+            os.environ.pop(name, None)
     return case(width=width, period_steps=period_steps, x0_um=-40.0, z0_um=15.0, speed=min(2e-3, 60e-6 / (steps * 1e-3)))
 
 
