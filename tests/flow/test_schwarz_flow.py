@@ -29,7 +29,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from schwarz_cases import decayed, draw, monolithic_step, pieces, plant, schwarz_flow, sphere_member
+from schwarz_cases import decayed, draw, drawn_sphere, monolithic_step, pieces, plant, schwarz_flow, sphere_member
 from schwarz_experiments import schwarz_sphere as experiment
 
 from mime.build import BuildRefused
@@ -257,7 +257,7 @@ WORKLESS = {"float64": 1e-9, "float32": 1e-3}
 
 
 def _metered_books(gift: float = 0.0) -> dict[str, Any]:
-    """The metered sphere, driven, three steps: the ledger's verdict, the drag's two rows and gift counts, and the
+    """The metered sphere, drawn (``schwarz_cases.drawn_sphere``) and driven, three steps: the case, the ledger's verdict, the drag's two rows and gift counts, and the
     flow's books of the law summed. ``gift`` plants a hand-over gift: the load handed to the body scaled by
     ``1 + gift`` (``MIME_PLANT_SCHWARZ=gift``)."""
     import mime.nodes.flow.fvm._node as flow_node
@@ -266,6 +266,7 @@ def _metered_books(gift: float = 0.0) -> dict[str, Any]:
     from mime.units import ms
 
     gift = gift or (0.5 if plant() == "gift" else 0.0)
+    case = drawn_sphere()
     original = flow_node.prepared
 
     def given(*args: Any, **kwargs: Any) -> Any:
@@ -274,7 +275,7 @@ def _metered_books(gift: float = 0.0) -> dict[str, Any]:
 
     flow_node.prepared = given if gift else original
     try:
-        exp = experiment()
+        exp = experiment(**case)
         exp.observe(EnergyLedger())
         result = exp.build().run(ms(3.0))
     finally:
@@ -282,13 +283,14 @@ def _metered_books(gift: float = 0.0) -> dict[str, Any]:
     assert result.energy is not None
     rows = {(law.law, law.receiver): law for law in result.energy.laws}
     flow = result.final["water.flow"]
-    return dict(verdict=ledger_closes(result), body=rows[("drag:ball", "ball")],
+    return dict(case=case, verdict=ledger_closes(result), body=rows[("drag:ball", "ball")],
                 fluid=rows[("drag:ball", "water.flow")], books=np.asarray(flow["schwarz_0_books_sum"]),
                 gifts=float(flow["schwarz_0_gift_steps"]))
 
 
 def test_the_books_close_with_the_drag_held_in_the_flows_step_and_the_exchange_workless(dtype):
-    """Gate 5 (the ledger): metered, the driven sphere, every receiver's books close at every step (``ledger_closes``);
+    """Gate 5 (the ledger): metered, the driven sphere at a drawn offset and viscosity (both dtypes over drawn cases:
+    the inner solves in the run's dtype), every receiver's books close at every step (``ledger_closes``);
     the drag's row on the body is the flow's exchange with its sign turned (the hand-over workless), its row on the
     flow the composed field's work at the force points (the scatter and gather a transpose pair), and their sum the
     near field's own dissipation less the free box's, the quadrature and the composed residual's beside it, which the
@@ -298,7 +300,7 @@ def test_the_books_close_with_the_drag_held_in_the_flows_step_and_the_exchange_w
     exchange, near, boxed, quadrature, residual = books["books"]
     body, fluid = books["body"].work, books["fluid"].work
     grid_read = exchange - near + boxed - quadrature - residual
-    print(f"F5 gate 5 [{dtype}]: body {body:.6g}, exchange {exchange:.6g}, fluid {fluid:.6g}, grid read {grid_read:.6g}, "
+    print(f"F5 gate 5 [{dtype}]: {books['case']}, body {body:.6g}, exchange {exchange:.6g}, fluid {fluid:.6g}, grid read {grid_read:.6g}, "
           f"near {near:.6g}, box {boxed:.6g}, quadrature {quadrature:.3g}, residual {residual:.3g}")
     line = WORKLESS[dtype]
     assert abs(body + exchange) <= line * max(abs(body), abs(exchange)), (body, exchange)

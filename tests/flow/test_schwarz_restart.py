@@ -27,11 +27,22 @@ PREPARED = ("schwarz_base_x", "schwarz_base_y", "schwarz_base_z", "schwarz_0_col
 
 
 #: A continued run against the uninterrupted one, each floating field on its own scale: the two compile other scan
-#: programs (chunks of ``k`` and ``4 - k`` steps against one of 4), whose last bits may differ (bit for bit holds per
-#: compiled program; measured in float64 at most 1.4e-16 of a field's scale at a split of 3), so the line is the
-#: field's rounding in float64; in float32 a solve may stop an iteration apart, so its line is the solves' tolerance's
-#: order (the columns' 1e-4).
+#: programs (a chunk of one step is another program than one of several; chunks of 2 and 2 are the run of 4 bit for
+#: bit), whose last bits differ (bit for bit holds per compiled program). Established in float64 on one thread: the
+#: same continued program from the same saved state is equal twice, the preparation the continued run starts from is
+#: the stored one bit for bit, and a restart in a fresh build from the saved state is the continued run bit for bit
+#: (the gates probe's restart cause arm; a multi-threaded run is never judged bit for bit). The programs' last bits, carried through the step's solves, moved a field by at most 5.4e-14 of
+#: its scale (the twist, a split of 1) with no solve's iteration count moved; the line, 1e-12, sits between that and
+#: the solves' tolerance (1e-8), where a state not carried would show. In float32 a solve may stop an iteration apart
+#: on the last bits, so its line is the solves' tolerance's order (the columns' 1e-4).
 RESTART_LINE = {"float64": 1e-12, "float32": 1e-3}
+
+
+def _relative(field: str) -> bool:
+    """A field that is itself relative (a solve's residual over its right-hand side, a report's counts and residuals):
+    judged on its own inputs' scale, one, never on its value, a cancellation's remainder (the composed residual at a
+    split of 1 moves 3.9e-8 of its value of 3.3e-9, 1.3e-16 on its scale)."""
+    return field.endswith("residual") or "report" in field
 
 
 def _differing(first: dict[str, dict[str, Any]], second: dict[str, dict[str, Any]], line: float) -> list[str]:
@@ -44,7 +55,7 @@ def _differing(first: dict[str, dict[str, Any]], second: dict[str, dict[str, Any
                 if not np.array_equal(a, b):
                     found.append(f"{node}.{field}")
                 continue
-            scale = float(np.max(np.abs(a))) if a.size else 0.0
+            scale = 1.0 if _relative(field) else float(np.max(np.abs(a))) if a.size else 0.0
             miss = float(np.max(np.abs(a - b))) if a.size else 0.0
             if miss > line * scale:
                 found.append(f"{node}.{field} {miss / scale if scale else miss:.3g}")

@@ -49,6 +49,14 @@ def draw() -> np.random.Generator:
     return np.random.default_rng(int(os.environ.get("DETECTION_SEED", "0")))
 
 
+def drawn_sphere() -> dict[str, float]:
+    """``tests/schwarz_experiments.py``'s sphere drawn for the books' gates (the run's draws): its distance from the
+    axis, 0 to 0.15 mm (its gap to the wall 1.6 to 2.8 of the grid's cells), and the water's viscosity, log-uniform
+    from 0.5 to 4 mPa s."""
+    rng = draw()
+    return dict(offset=float(rng.uniform(0.0, 0.15)), viscosity=float(np.exp(rng.uniform(np.log(5e-4), np.log(4e-3)))))
+
+
 def sphere_member(radius: float, spacing: float) -> Any:
     """An MRS sphere's per-body node (``MRSDragNode``) as the mrs rung builds it in free space at ``spacing``."""
     from near_field_cases import bodies  # noqa: PLC0415
@@ -214,6 +222,94 @@ def monolithic_step(at: Pieces, box: Any, held: Stencils, body: SchwarzBody, rhs
     return Monolithic((u[0], u[1], u[2]), solution[faces:faces + 3 * count], solution[faces + 3 * count:])
 
 
+def open_monolithic_step(node: Any, p: Mapping[str, Any], state: Mapping[str, Any], body: SchwarzBody,
+                         mass: np.ndarray, right: np.ndarray, dt: float) -> tuple[Monolithic, np.ndarray]:
+    """One step of an open vessel's flow with its Schwarz body as one dense system in float64, from ``state`` (the
+    body's carried box field and image history zero, its first step): the field's every face, each opening's pressure
+    relative to the reference with the level (F3's ``elimination_cases.monolithic_step``'s rows), the body's tractions
+    and its twist (:func:`monolithic_step`'s rows), solved by one LU; with the openings' pressures."""
+    from mime.nodes.flow.fvm._exchange import gather, scatter  # noqa: PLC0415
+    from mime.nodes.flow.fvm._grid import MACGrid  # noqa: PLC0415
+    from mime.nodes.flow.fvm._ports import RowKind  # noqa: PLC0415
+    from mime.nodes.flow.fvm._schwarz_host import WIDTH  # noqa: PLC0415
+
+    grid = node.grid(p)
+    fields = node.fields(p, grid)
+    sigma = node.resistivity(p, fields)
+    shift = 1.0 / dt if node.scheme.stores_inertia else 0.0
+    rho, mu = float(p["density"]), float(p["viscosity"])
+    operator = node.operator_of(p, grid, sigma)(shift)
+    before = (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+    drive = node.forcing(fields, {}, node.scheme, jnp.float64)(0, 0.0)
+    rhs = tuple(shift * before[k] + drive[k] for k in range(3))
+    box = node.schwarz_box()
+    boxed = MACGrid((box.side,) * 3, box.spacing)
+    held = stencils(grid, box, body.placed.force - jnp.asarray(p["schwarz_origin"]), WIDTH)
+    now, _ = image_terms(box.side, box.spacing, shift, mu / rho, mu)
+    placed: Placed = body.placed
+    count = placed.count
+    rows, others, coupling = node.rows(), node.others(), node.coupling()
+    openings = node.opening_count()
+    a, blocks = node.law_rows(jnp.asarray(p["opening_parameters"]), jnp.asarray(state["opening_state"]),
+                              (jnp.asarray(state["steps"]) + 1) * dt, dt)
+    shapes = [grid.shape(k) for k in range(3)]
+    faces = sum(int(np.prod(s)) for s in shapes)
+    motions, wrench = placed.motions(), placed.wrench()
+    n = faces + openings + 3 * count + 6
+
+    def residual(z: Any) -> Any:
+        u = _unflat(z[:faces], shapes)
+        relative = jnp.zeros(openings, dtype=jnp.float64)
+        for k, j in enumerate(others):
+            relative = relative.at[j].set(z[faces + k])
+        level = z[faces + openings - 1]
+        t = z[faces + openings:faces + openings + 3 * count]
+        v = z[faces + openings + 3 * count:]
+        port = grid.port_force(relative, rho)
+        forces = placed.area[:, None] * t.reshape(count, 3)
+        density = tuple(scatter(grid, k, forces[:, k], held.grid[k]) for k in range(3))
+        forcing = tuple(rhs[k] + port[k] + density[k] / rho for k in range(3))
+        applied = operator(u)
+        projected = grid.project(tuple(applied[k] - forcing[k] for k in range(3)))
+        complement = tuple(u[k] - grid.project(u)[k] for k in range(3))
+        out = [_flat(tuple(projected[k] + complement[k] for k in range(3)))]
+        q = grid.opening_fluxes(u)
+        for i in range(openings):
+            if rows[i] is RowKind.FLUX:
+                out.append(jnp.reshape(q[i] - a[i], (1,)))
+            else:
+                pushed = sum((blocks[i, j] * q[j] for j in range(openings) if coupling[i][j]),
+                             start=jnp.zeros((), dtype=jnp.float64))
+                out.append(jnp.reshape(level + relative[i] - pushed - a[i], (1,)))
+        own = own_response(box, tuple(scatter(boxed, k, forces[:, k], held.box[k]) for k in range(3)), shift,
+                           mu / rho, rho)
+        read_grid = jnp.stack([gather(grid, k, u[k], held.grid[k]) for k in range(3)], axis=1)
+        read_own = jnp.stack([gather(boxed, k, own[k], held.box[k]) for k in range(3)], axis=1)
+        images = now * jnp.sum(forces, axis=0)
+        out.append(body.matrix @ t + (read_grid - read_own - images[None, :]).reshape(-1) - motions @ v)
+        out.append(jnp.asarray(mass) @ v + wrench.T @ t - jnp.asarray(right))
+        return jnp.concatenate(out)
+
+    zero = jnp.zeros(n, dtype=jnp.float64)
+    offset, linear = jax.linearize(residual, zero)
+    columns = jax.jit(jax.vmap(linear))
+    chunk = min(n, COLUMNS)
+    transposed = []
+    for start in range(0, n, chunk):
+        basis = jnp.zeros((chunk, n), dtype=jnp.float64).at[jnp.arange(chunk), jnp.minimum(
+            start + jnp.arange(chunk), n - 1)].set(1.0)
+        transposed.append(np.asarray(columns(basis))[:min(chunk, n - start)])
+    matrix = np.concatenate(transposed, axis=0).T
+    solution = np.linalg.solve(matrix, -np.asarray(offset))
+    u = tuple(np.asarray(c) for c in _unflat(jnp.asarray(solution[:faces]), shapes))
+    relative = np.zeros(openings)
+    for k, j in enumerate(others):
+        relative[j] = solution[faces + k]
+    pressures = relative + solution[faces + openings - 1]
+    tail = faces + openings
+    return Monolithic((u[0], u[1], u[2]), solution[tail:tail + 3 * count], solution[tail + 3 * count:]), pressures
+
+
 def carried_field(box: Any, seed: int, scale: float) -> Velocity:
     """A divergence-free field on the box (a history the box carries), drawn and projected by the box's own response."""
     rng = np.random.default_rng(seed)
@@ -226,9 +322,9 @@ def decayed(box: Any, field: Velocity, at: Pieces) -> Velocity:
     return own_decayed(box, field, at.shift, at.nu)
 
 
-__all__ = ["COLUMNS", "TIGHT", "draw", "plant", "WATER_MU", "WATER_RHO", "Monolithic", "Pieces", "box_for", "carried_field",
-           "decayed", "monolithic_step", "pieces", "reach_cells", "schwarz_body", "sphere_member", "stencils",
-           "tube_flow"]
+__all__ = ["COLUMNS", "TIGHT", "draw", "plant", "WATER_MU", "WATER_RHO", "Monolithic", "Pieces", "box_for",
+           "carried_field", "decayed", "drawn_sphere", "monolithic_step", "open_monolithic_step", "pieces",
+           "reach_cells", "schwarz_body", "sphere_member", "stencils", "tube_flow"]
 
 
 def schwarz_flow(member: Any, pose: Sequence[float], cells: int, length_cells: int, spacing: float, tube: float,

@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from schwarz_cases import plant
+from schwarz_cases import drawn_sphere, plant
 from schwarz_experiments import schwarz_sphere as experiment
 
 from mime.units import ms
@@ -33,10 +33,11 @@ ONE_WAY_LINE = 1e-8
 
 
 def _metered(settings: dict[str, Any] | None, *, hide: bool = False, deliver: bool = False,
-             drag: bool = True) -> dict[str, Any]:
+             drag: bool = True, case: dict[str, float] | None = None) -> dict[str, Any]:
     """The metered sphere with the drag's ``settings``, three steps: the ledger's verdict, the drag's rows, the flow's
     books of the law summed and its final state, the body's final pose. ``hide`` zeroes the law's residual book,
-    ``deliver`` keeps a one-way body's composition; ``drag=False`` the body with no drag (the flow alone)."""
+    ``deliver`` keeps a one-way body's composition; ``drag=False`` the body with no drag (the flow alone); ``case`` the
+    sphere's offset and the water's viscosity (``schwarz_cases.drawn_sphere``), the experiment's own if none."""
     import mime.nodes.flow.fvm._node as flow_node
     from mime.observations import EnergyLedger
     from mime.testing import ledger_closes
@@ -53,7 +54,7 @@ def _metered(settings: dict[str, Any] | None, *, hide: bool = False, deliver: bo
     flow_node.law_books = hidden if hide else books
     flow_node.composed = delivered if deliver else compose
     try:
-        exp = experiment(settings=settings)
+        exp = experiment(settings=settings, **(case or {}))
         if not drag:
             exp.remove("drag:ball", kind="law")
         exp.observe(EnergyLedger())
@@ -78,15 +79,16 @@ def _identity_miss(run: dict[str, Any]) -> tuple[float, float]:
 
 
 def test_a_lagged_run_books_its_residual_and_its_books_close(dtype):
-    """Lagged: every receiver's books close, the hand-over is workless, the law's identity holds with the residual
+    """Lagged, the sphere at a drawn offset and viscosity: every receiver's books close, the hand-over is workless, the law's identity holds with the residual
     booked (which is not zero: the pass's own error), and nothing is a gift. ``MIME_PLANT_SCHWARZ=hidden`` zeroes the
     residual book (the detection-rate probe's plant)."""
-    run = _metered({"coupling": "lagged"}, hide=plant() == "hidden")
+    case = drawn_sphere()
+    run = _metered({"coupling": "lagged"}, hide=plant() == "hidden", case=case)
     assert run["verdict"].status == "PASS", run["verdict"].detail
     miss, scale = _identity_miss(run)
     residual = float(run["books"][4])
     body, exchange = run["body"].work, float(run["books"][0])
-    print(f"F5 lagged [{dtype}]: identity miss {miss / scale:.3g}, residual's work {residual:.3g} J of the near "
+    print(f"F5 lagged [{dtype}]: {case}, identity miss {miss / scale:.3g}, residual's work {residual:.3g} J of the near "
           f"field's {float(run['books'][1]):.3g} J, residual {float(run['flow']['schwarz_residual']):.3g}")
     assert miss <= WORKLESS[dtype] * scale, (miss, scale)
     assert abs(body + exchange) <= WORKLESS[dtype] * max(abs(body), abs(exchange)), (body, exchange)
