@@ -1,0 +1,56 @@
+{
+  "written": "2026-11-12, committed before any arm of the inlet-candidates probe ran (the commit that adds this file is the timestamp): two test-only candidates for the open grid's inflow faces (the coordinator's (a) and (b), and the inlet-only form of (a) beside them), measured so that he chooses on data; no product code changes",
+  "phase": "F2b PR 4b: the inflow-face instability found by FB7's first probe (run 43124710151), for his decision (FOR_HIM_2026-11-12, 1b)",
+  "labels": "the builder's; derived from the mechanism stated below, measured-before where a number below was seen while writing (said so), guesses say so",
+  "seen_before": [
+    "probe run 43124710151 (a005bcb + probe 76b1c9c), FB7's arms: every arm (term off, implicit, explicit) stopped at its CFL check by 0.105 of a period at the spike's point; the 5 draws at 0.02 to 0.16; Re_R 150 to 250 stopped; the Re_R 100 damping point (stenosis 1.4 D) stopped at 0.44 of a period in all three arms. Local diagnostics (scratch, float64): the largest speed on the INLET plane (z = 0, fluid faces), 1 U to 44 U, the pinned flux exact; draw 3000 (D/h 8, Re_D 89): the same at step 14; convection off: no growth; dt/4: the same growth at the same physical time; IMEX Euler's open node on draw 3000: the same (inlet 10 U, CFL stop at step 56)",
+    "the inlet-only patch (a0 below, all low-plane faces, not direction-aware) while writing, float64, local: draw 3000 held 60 steps (inlet at most 2.1 U against 13 U at step 14 unpatched); FB7's point (Re_R 300, 0.9 D, phase 0) term off: the OUTLET diverged (w -70.9 U at z = 64) at 0.21 to 0.24 of a period; term on (implicit): held to 0.24 of a period at the time of writing (the run continuing)",
+    "open_rk3_tube_flow: no outlet face reverses (outlet w at least 7e-6 m/s, backflow_work 0 at every step), and still not bit for bit against f62f33b (float64 velocity 3e-18 on 2.5e-3 m/s)",
+    "SEEN AFTER the predictions below were written and before this file's commit (they stay as written): the a0 runs at FB7's point finished locally (float64, 1 period): term off, the outlet diverged at 0.24 of a period; implicit, held to 0.68 of a period and then the INLET plane diverged (43 U at z = 0) at 0.72, in the whole flow's reversal, when the low plane's faces are outflow faces taking the end cell's value under a0. And the refute mode's smoke (none only, float64, local): reversed, no low-plane growth in 60 steps on seeds 3000, 3017, 3025 (at most 2.5 U), the high plane at 5.0, 2.3 and 4.4 U after 60 steps and no CFL stop; forward, the low plane 13, 7.4 and 15 U and stopped at steps 15, 13 and 11"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "the probe workflow's GitHub runner (4 vCPU); no Modal",
+    "sizes_and_parameters": "FB7's point: probe/fb7.py's node_for (S1's units: R 0.5, nu 0.005, alpha 5.5, D/h 16, 27 x 27 x 64, 4 D long, interior 0.01h, a 50 % cosine stenosis 1 D long centred 0.9 D before the outlet, Inflow Q_m (1 + 1.5 sin wt), RCR 0.5 / 0.4 / 5, dt 0.8 h over 60 U, 12,463 steps a period), Re_R 300, phase 0, 2.25 periods (28,035 steps); the damping point the same at Re_R 100 with the stenosis 1.4 D before, 1 period (4,155 steps). The explicit form is this node at f62f33b (a worktree on the runner), the implicit this branch's head.",
+    "candidates": "a: on every plane, an inflow face's momentum flux at the plane taken as its end cell's, (w_c)^2 in place of w_b^2 (zero gradient), direction-aware (the low plane's faces with w > 0, the high plane's with w < 0); a0: the same on the low plane (the upstream opening) only, every face; b: the backflow term on every opening, the upstream's too (backflow_openings all). Each a test-only monkeypatch of OpenMACGrid.convection (a, a0) or a node setting (b), in both forms' code",
+    "seeds_and_draws": "the ledger arm: rk3_open_cases' draws, seeds 3000 to 3039 (detection_rate.py's), 30 steps each, metered"
+  },
+  "gate_inlet_holds": {
+    "claim": "each candidate keeps the inflow plane bounded at FB7's point and at the damping point, both dtypes, every backflow form",
+    "kind": "acceptance (a stability check at two points)",
+    "case": "probe arms cand_<a|a0|b>_<64|32> (probe/inlet.py): per arm, both points and every form (a, a0: off, explicit, implicit; b: explicit, implicit)",
+    "prediction": {"value": "a and a0: the inlet plane's largest |w| under 5 U over every run; b: the same, the inlet profile flattened (the term damping all of the inlet's inflow faces)", "basis": "measured-before (a0, one point to 0.24 of a period) and derived (a: the same flux on the inlet's faces, which are all inflow); b a guess", "why": "the mechanism: an inflow face whose plane flux is its own value draws more momentum the faster it is (-2 (w_c^2 - w_b^2) / h grows with w_b); the end cell's value removes the feedback (a, a0), a damping |w| / h on inflow faces bounds it (b)"},
+    "metric": "the inlet plane's largest |w| over U through each run, and where the largest speed sits at a stop",
+    "if_wrong": "an inlet growing under a or a0: the mechanism is not the plane's own-value flux (refuted); report where it grows",
+    "cannot_discriminate_if": "a run that stops elsewhere first (the outlet) before the inlet's growth time (about 0.1 of a period at FB7's point): stated with where it stopped"
+  },
+  "gate_r15_readings_per_candidate": {
+    "claim": "his R-15 condition read under each candidate: the spike's case held at least 2.25 periods by the implicit form, the explicit form's hold beside it, and the term removed; at the damping point the implicit form's damping of the genuine reversal against the explicit's",
+    "kind": "acceptance (held periods) and estimates (damping)",
+    "case": "the same arms",
+    "prediction": {"value": "a0: off diverges at the outlet within 0.5 of a period; explicit and implicit hold 2.25 periods. a: off holds 2.25 periods (the reversed outlet faces' own-value feedback removed too), explicit and implicit hold. b: explicit and implicit hold. Damping (1 - the reversed outlet inflow's most with the term / without) 0.05 to 0.5, the implicit within 10 % of the explicit, under a and a0", "basis": "measured-before (a0 off: 0.24 of a period, float64, while writing) and guess (the rest)"},
+    "if_wrong": "the implicit form holding less than the explicit under a candidate: reported to him before #258 merges, with the period reached",
+    "cannot_discriminate_if": "under a, off holding as well: the term is then not needed at this point, and the hold says nothing about the form beyond its own run (stated)"
+  },
+  "gate_inlet_ledger": {
+    "claim": "the ledger with each candidate on 40 metered draws: route 1 counts no step negative, the law identity under its floor, the 3 draws that crossed the CFL line (3000, 3017, 3025) no longer cross it; the convective power booked under <node>.openings (the scheme's own <C(u), u>) reported against the face formula's kinetic-energy flux (a diagnostic)",
+    "kind": "acceptance (route 1, the law identity) and estimates (the booked convective power's change)",
+    "case": "probe arms ledger_64 and ledger_32 (probe/inlet.py --ledger), each candidate and none",
+    "prediction": {"value": "0 negative steps for every candidate; CFL stops: none 3/40, a 0, a0 0, b 0; the booked power's change against none a fraction of the inlet's kinetic-energy flux, under 10 % of the openings' term on most draws", "basis": "derived (the booked power is the scheme's own term whatever its form: route 1 and the identity hold by construction) and guess (the sizes)"},
+    "cannot_discriminate_if": "draws whose inlet stays developed (no growth to remove): most of the 40; the 3 stopping draws are the discriminating ones"
+  },
+  "gate_inlet_refute": {
+    "claim": "a control that can refute the mechanism: the flow reversed on the same draws (the Inflow law's flux negative, so the flow enters through the Windkessel's opening on the high plane and leaves through the Inflow's on the low plane), no backflow term, unpatched: the mechanism (an inflow face's own-value plane flux) puts the growth on the HIGH plane; a growth on the low plane (the Inflow law's pinned face, now outflow) refutes it",
+    "kind": "refutation control",
+    "case": "probe arm refute (probe/inlet.py --refute): seeds 3000, 3017, 3025 at their own points, reversed, 60 steps, float64; and the same with candidate a",
+    "prediction": {"value": "reversed, unpatched: growth on the high plane (the largest speed there, crossing the CFL line); reversed with a: bounded", "basis": "derived from the mechanism"},
+    "if_wrong": "growth on the low plane: the instability belongs to the Inflow law's pinned face, not to inflow faces; the candidates then treat a symptom",
+    "cannot_discriminate_if": "no growth on either plane reversed (the Windkessel's face is not pinned, which may change the mode): stated, not a confirmation"
+  },
+  "bits_inference": {
+    "cases": "open_rk3_tube_flow, float64 and float32, one CPU, one thread, in one job: this head as built (the term's coefficient computed, exactly zero on every face because no face reverses) against this head with no backflow opening (the term's code absent), and the head against itself (repeat)",
+    "prediction": "repeat: equal; with and without the term's code: arrays differ at rounding (the compiled program changed, not the arithmetic: the inference the coordinator asked shown or refuted). Equal would refute it: then the difference against f62f33b has another cause, to find",
+    "controls": {"repeat": "the head twice: identical"}
+  },
+  "outcomes": null
+}
