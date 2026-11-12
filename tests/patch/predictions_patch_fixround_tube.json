@@ -21,5 +21,8 @@
     "if_wrong": "the depth itself is wrong in the tube (the deep solid's pressure reaches the fluid): then the default goes back to the whole solid with the planned capacity, which is exact",
     "cannot_discriminate_if": "the box holds no solid deeper than 8 cells"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after run 43244908567",
+    "gate_tube_depth": "held: with the own response's closed form as given values the depth 8 moves the metric -0.0059 % (steady, 107^3), -0.0145 % (lambda 0.79, 107^3), -0.018 % (0.79, 120^3), -0.16 % (4.97, 107^3), the values at most 1.75e-3 of their largest; the steady Stokeslets' negative under a shift (the control) -10.47 %, reproducing the cost probe's; the depth takes 17 to 28 % more CG iterations (126 to 149, 283 to 360, 292 to 358, 312 to 382), so the whole solid stays the default and the depth is an opt-in"
+  }
 }
