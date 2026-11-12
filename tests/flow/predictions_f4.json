@@ -1,0 +1,122 @@
+{
+  "written": "2026-11-11, committed before any of F4 PR 1's gates ran (the commit that adds this file is the timestamp): the resolved body on the FVM's grid (Drag.Penalty), lagged",
+  "phase": "F4, PR 1: Drag.Penalty, the resolved body, its lagged coupling declared",
+  "labels": "the F4 builder's predictions, from the coupling spike's R3 (its own solver), the first step's smoke runs on the laptop (named below), and arithmetic; guesses say so",
+  "seen_before": [
+    "R3 (the coupling spike, its own solver, float64): K 6.9 % under Haberman and Sayre at 3 cells a radius and 1.0 % at 6 (a/R 0.375); lagged stable at density ratios 0.3 to 1.4 at Re 76 with the field formulation; the rigid-interior shortcut undefined at 1.0, diverging at 1.2 (amplification about -1.6 a step), ringing at 1.4",
+    "the builder's smoke through ResolvedFlowNode (laptop, float64, a/R 0.375, 2 cells a radius): K 13.4 % under Haberman and Sayre with the share, equal to the probe's held-body node to 1e-10",
+    "the builder's smoke, a neutral sphere of 3 cells a radius in a free 24^3 box driven by a uniform g (laptop, float64): its acceleration over steps 200 to 400 within 0.06 % of g with the share, about 16 % under without it; its velocity a constant 1.9e-5 m/s ahead of g t (a start transient)",
+    "the builder's smoke, a metered resolved sphere (ratio 1.2) in a driven tube: ledger_closes PASS"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (CI's default lane; the laptop for the local runs)",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "the default band (2h, 0.3h), interior 0.1h; the FVM's default tolerance per dtype; Stokes gates steady and flux-free; the Re 76 gate R3's case (a sphere of radius 0.1875 D on a periodic tube's axis, D/h 16, 3 cells a radius, 4 D long, G = 8 nu U/R^2, IMEX Euler at CFL 0.4, 200 steps); water-like mu 1e-3, rho 1000",
+    "seeds_and_draws": "the ripple's sub-cell offsets and the derivative's positions drawn by DETECTION_SEED where a control rate is measured; otherwise fixed"
+  },
+  "gate_1_re0_ladder": {
+    "claim": "the penalty sphere's Stokes drag approaches Haberman and Sayre and Drag.MRS's as N grows, its effective radius smaller by a shift in cells that falls with N (the shape-and-position form)",
+    "kind": "estimates",
+    "case": "tests/flow/test_resolved_bodies.py, the steady node, a/R 0.375 at 3 and 6 cells a radius",
+    "prediction": {"value": {"3": -0.069, "6": -0.010}, "band": {"3": [-0.085, -0.055], "6": [-0.020, -0.003]}, "unit": "1", "basis": "measured-before (R3)", "why": "the band shrinks the body by a constant in cells plus a curvature share falling with N"},
+    "metric": "K = R_zz / (6 pi mu a) with the share, against Haberman and Sayre",
+    "control": {"plant": "the band's depth doubled in the body's lift only (a shift the gate must see)", "environment_variable": "MIME_PLANT_BODY_BAND", "expected_rate": "N/N", "runs": 10, "clean_expected": "0/N", "resolution": "to be measured"},
+    "if_wrong": "the share or the flux-free superposition is wrong (the first step's probe arm sphere0375 is the cross-check)",
+    "cannot_discriminate_if": "the planted shift is under the ladder's spread"
+  },
+  "gate_2_density_ratios_lagged": {
+    "claim": "lagged, with the load the penalty's plus the interior's momentum change, a sphere at Re 76 is stable and smooth at density ratios 0.3 and 1.4 (the measured range's edges); the rigid-interior shortcut diverges at 1.2",
+    "kind": "acceptance",
+    "case": "R3's case through the experiment (built.run, 200 steps)",
+    "prediction": {"value": {"sign_changes_of_the_acceleration_0.3": 0, "sign_changes_1.4": 0, "rigid_1.2_growth": 1.6}, "band": {"sign_changes": [0, 2], "rigid_growth": [1.2, 3.0]}, "unit": "1", "basis": "measured-before (R3, its own solver)", "why": "the field formulation's interior momentum carries the displaced fluid's inertia, so the lagged loop's gain stays under one"},
+    "metric": "the body's axial velocity history: finite, under twice the flow's largest speed, and the step-to-step change of its acceleration changing sign at most twice after the first 10 steps",
+    "control": {"plant": "the rigid-interior shortcut: the interior's momentum change taken as m_f (V^n - V^n-1)/dt (the interior moving with the body)", "environment_variable": "MIME_PLANT_RIGID_INTERIOR", "expected_rate": "N/N at ratio 1.2", "runs": 10, "clean_expected": "0/N"},
+    "if_wrong": "the lagged range is narrower through MIME's node than R3's: the refusal's line moves to what is measured",
+    "cannot_discriminate_if": "the run is too short for a growth of 1.6 a step to show (200 steps is ample)"
+  },
+  "gate_3_displaced_share": {
+    "claim": "the displaced share's two controls: a neutral sphere in a free box driven by a uniform force accelerates with the fluid; in a closed box with the fluid's weight as a drive and Gravity attached, a neutral sphere stays at rest",
+    "kind": "equality",
+    "case": "the node in a free 24^3 box stepped with a rigid body by hand; the experiment in a tube with its drive across the axis",
+    "prediction": {"value": {"acceleration_error": 0.001, "rest_speed_over_drift": 0.01}, "band": {"acceleration_error": [0.0, 0.005], "rest_speed_over_drift": [0.0, 0.05]}, "unit": "1", "basis": "measured-before (the free box, the builder's smoke) and derived (the closed box: the share cancels the field's buoyancy-like push exactly at steady state)", "why": "the drive acts on the fluid alone, so the share restores what the body displaces"},
+    "metric": "the body's acceleration over the run's second half against g; the closed box's body speed against the speed it reaches with the share off",
+    "control": {"plant": "the share left out", "environment_variable": "MIME_PLANT_NO_SHARE", "expected_rate": "N/N", "runs": 10, "clean_expected": "0/N"},
+    "if_wrong": "the share's volume (the hull's, not the indicator's) or its point is wrong",
+    "cannot_discriminate_if": "the drive is too small for the drift to clear the solve's tolerance"
+  },
+  "gate_3b_closed_box_held": {
+    "written": "2026-11-11, an amendment committed before its test ran: gate 3's second control (a neutral sphere in a closed box at rest under a drive) was not built with the first; it is built now in the form below, the moving closed-box run replaced by the held body's steady load",
+    "claim": "a neutral sphere held at rest in the tube (6 cells a radius, a/R 0.375, the steady Stokes step) under a drive across the axis, which the wall stops: its field load (the push of the pressure the drive builds) and its displaced share cancel",
+    "kind": "estimates",
+    "case": "tests/flow/test_resolved_bodies.py, the held sphere's steady step with the drive along x",
+    "prediction": {"value": 0.02, "band": [0.0, 0.1], "unit": "1", "basis": "guess", "why": "the share takes the hull's exact volume and the field's push the lifted indicator's, a body a few hundredths of a cell smaller (gate 1's shift), plus the band's recirculation"},
+    "metric": "|load + share| along the drive over rho V f; the lateral components over the same",
+    "control": {"plant": "the share left out", "environment_variable": "MIME_PLANT_NO_SHARE", "expected_rate": "N/N", "runs": 5, "clean_expected": "0/N"},
+    "if_wrong": "the share and the field's push do not cancel: the drive's pressure is counted twice or not at all on a body in a closed vessel",
+    "cannot_discriminate_if": "the drive is along the axis (the periodic flow carries it and no pressure builds)"
+  },
+  "gate_4_ledger": {
+    "claim": "metered, every receiver's books close at every step; the drag's penalty is booked under its id on the fluid's and the body's rows, its share under its own part, and its sign judged at one velocity by its host, no gift step",
+    "kind": "equality",
+    "case": "a sphere carried in a driven tube, metered (ledger_closes)",
+    "prediction": {"value": {"gift_steps": 0}, "band": {"gift_steps": [0, 0]}, "unit": "steps", "basis": "derived: the law's power at one velocity is minus its relative dissipation, a sum of squares", "why": "the penalty load and its work on the fluid are paired at the twist the field was solved at"},
+    "metric": "ledger_closes; the drag's gift steps on both rows",
+    "control": {"plant": "an energy gift, +0.5 times the penalty's load along the twist added to the delivered load", "environment_variable": "MIME_PLANT_GIFT", "expected_rate": "N/N", "runs": 10, "clean_expected": "0/N"},
+    "if_wrong": "the hosted law's split or its judgement is wrong",
+    "cannot_discriminate_if": "the body is at rest (no power to judge)"
+  },
+  "gate_5_ripple": {
+    "claim": "the force of a sphere moved through a cell at the default N varies within a stated line (the moving-body ripple, a quality line the derivatives in position carry)",
+    "kind": "estimates",
+    "case": "the steady node, a sphere of 6 cells a radius at 8 sub-cell offsets along the axis and across it",
+    "prediction": {"value": {"drag_ripple": 0.002, "derivative_ripple": 0.1}, "band": {"drag_ripple": [0.0, 0.01], "derivative_ripple": [0.0, 0.3]}, "unit": "1", "basis": "guess: the static wall's geometry-derivative ripple is +-20 % within a cell at D/h 8 to 16 and +-10 % at 32 (a derivative); the force itself much smaller", "why": "the smooth band makes the force smooth in the sub-cell position, its derivative less so"},
+    "metric": "(max - min)/mean of the drag over the offsets; the lateral force's derivative in the lateral position over its mean slope",
+    "control": {"plant": "a stiff band (the depth a tenth) in the body's lift", "environment_variable": "MIME_PLANT_STIFF_BAND", "expected_rate": "N/N", "runs": 5, "clean_expected": "0/N"},
+    "if_wrong": "the line is set where it is measured",
+    "cannot_discriminate_if": "the offsets sample one point of the cell"
+  },
+  "gate_6_position_derivative": {
+    "claim": "a derivative in the body's position through the step equals a central difference within the ripple's line",
+    "kind": "estimates",
+    "case": "jax.grad of the steady lateral force in the lateral offset of a sphere off the axis, against a central difference",
+    "prediction": {"value": 0.01, "band": [0.0, 0.05], "unit": "1", "basis": "guess", "why": "the window's corner is held out of the derivative and the band is smooth"},
+    "metric": "relative difference",
+    "control": {"plant": "stop_gradient on the body's position in the lift", "environment_variable": "MIME_PLANT_STOP_POSITION", "expected_rate": "N/N", "runs": 5, "clean_expected": "0/N"},
+    "if_wrong": "the window's corner leaks a jump into the derivative",
+    "cannot_discriminate_if": "the step is past the ripple's cell"
+  },
+  "gate_7_float32": {
+    "claim": "the steady penalty drag in float32 is within 1e-3 of float64's (B10's line)",
+    "kind": "bounds",
+    "case": "the steady node at 6 cells a radius",
+    "prediction": {"value": 0.0003, "band": [0.0, 0.001], "unit": "1", "basis": "measured-before (the coupling spike: the penalty's drag 4e-4 to 9e-4 in float32)", "why": "the solve's float32 tolerance 1e-5 and the stiff interior's contrast"},
+    "metric": "relative difference of K",
+    "control": {"plant": "none (a bound on rounding)", "expected_rate": "n/a"},
+    "if_wrong": "float32's line in the validity text moves to what is measured",
+    "cannot_discriminate_if": "both dtypes stop at the same stall"
+  },
+  "bits": {
+    "cases": "every released and saved program: the resolved node is a subclass and the flow node's change a hook that returns its own fields, so no program without a resolved body moves",
+    "prediction": "every array np.array_equal"
+  },
+  "outcomes": {
+    "written": "2026-11-11, after the gates and the probes ran; the predictions above are as committed in 37a4932, the closed-box amendment as committed in 0da15ec before its test ran",
+    "runs": {
+      "controls_ranges_cost_bits": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076141802 (probe/f4-pr1 at 7580c05)",
+      "gate_4_amended_control": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084278045 (probe/f4-pr1 at 657115d; its predictions committed first in 97d029a there)",
+      "gates_by_hand": "the gates' printed values from a laptop run of tests/flow/test_resolved_bodies.py at this head's code, both dtypes"
+    },
+    "memory_route": "every arm whose workflow failed failed at the memory-against-estimate step only (UNDERESTIMATE: one case named per estimate line); outputs complete",
+    "gate_1_re0_ladder": "held: K -6.0 % at 3 cells a radius, -0.83 % at 6 (both in their bands; predicted -6.9 %, -1.0 %); the radius 0.071 and 0.019 cells smaller. Control 5/5, clean 0/5; the oracle catches the depth from x1.10 (x1.05 refined), the plant x2 about ten times that",
+    "gate_2_density_ratios_lagged": "held: stable and smooth at 0.3 and 1.4 in both dtypes (longest alternating runs 2 and 0 steps, in [0, 2]); the shortcut at 1.2 non-finite (its growth not read: the run goes NaN). Control: the shortcut planted at the range's edges caught 5/5 at 0.3 in each dtype, clean 0/5; 0/5 at 1.4, where the shortcut is stable, so the 1.4 arm cannot discriminate it (the expected rate was stated at 1.2, which its own test holds). Superseded in PR 259's fix round (tests/flow/predictions_f4_fix.json, gate_2_at_n6 and gate_2b_lagged_edge_at_rest): the refuting review found the lagged loop's edge is in dt over the body's relaxation times, not in the density ratio alone (it diverged inside 0.3 to 1.4 at larger steps, and at the default N = 6 this metric read a decaying start-up ring at ratio 0.3 as unstable); the edge is measured at rest by energy, the gate re-measured at N = 6 as an acceptance, and the refusal judges dt/tau at the run's N and ratio",
+    "gate_3_displaced_share": "held: the free box's acceleration within 4.1e-4 (float64) and 3.1e-4 (float32) of the drive's (predicted 1e-3). Control 10/10 in each dtype, clean 0/10; the oracle resolves 0.18 to 0.21 of the share, the plant (the whole share) about five times that. The closed box (rest_speed_over_drift) was not built with the gate: see gate_3b",
+    "gate_3b_closed_box_held": "held: the net load 0.037 of rho V g along the drive (predicted 0.02, band [0, 0.1]), 1e-7 across; the field's push -0.963, the share 1.000, both dtypes. Control (the share left out) 0.963 against the line 0.1 in both dtypes: a deterministic case, by hand",
+    "gate_4_ledger": "held clean: every receiver's books close, 0 gift steps on both rows, both dtypes. The control as committed MISSED: a gift added to the delivered load and mirrored into the booked penalty was caught 0/5 in each dtype and at no size up to 0.5 (run 43076141802), because the host judges the law at one velocity from the field, which that plant left alone, and the lagged exchange's unpaired work is the drag rows' by design. Amended before it ran: the body's penalty load at half the twist the field was solved at, caught 5/5 in each dtype, clean 0/5; the oracle resolves a load at 1 - 0.0014 to 1 - 0.003 of the twist (predicted 0.01, band [1e-4, 0.2]). The gate reads the gift count before the stop a gift causes (27 gift steps before a CFL stop at step 29, by hand)",
+    "gate_5_ripple": "held: the drag's spread through a cell 0.17 % (predicted 0.2 %), its largest change a cell 0.54 % (predicted 10 %: far under the guess). Control 3/3, clean 0/3",
+    "gate_6_position_derivative": "held: autodiff -0.0053167 against a central difference of a hundredth of a cell -0.0053149, 3.4e-4 apart (predicted 1e-2). Control 3/3, clean 0/3",
+    "gate_7_float32": "held: 1.35e-4 (predicted 3e-4, line 1e-3)",
+    "bits": "held: the 49 saved programs without a resolved body (the merged tree_flow, closed_tube and open_tube_loop among them), 8 steps, every array equal to the release branch's (f3b46b5) in float64 and float32, single-threaded XLA",
+    "cost": "R3's grid (D/h 16 over 4 D, IMEX Euler) on a runner: 22.7 ms a step with the body, 18.9 ms without (x1.20; the body-free arm on a loaded runner, so the ratio may be larger); peak 790 against 726 MiB, the whole process"
+  }
+}
