@@ -239,7 +239,9 @@ def monolithic_step(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping
 #:   rounding componentwise on the stage's own terms in magnitude (``|x0|``, ``|X| |V|``, not ``|x|``: a cancellation
 #:   between them is the stage's, Oettli and Prager's scale), the readings of the unit fields a sum over the kernel's
 #:   faces (``log2`` of their count) on the unit fields in magnitude, and ``ROW_ROUNDING`` more;
-#: - the field's sum of its base and each unit field times its delivery, one rounding a term, componentwise.
+#: - the field's sum of its base and each unit field times its delivery, one rounding a term, componentwise;
+#: - an opening's flux, a sum over its plane's faces (one rounding a term), and its pressure, the relative one plus the
+#:   level, each on its terms in magnitude, in the run's dtype and the reference's.
 FIELD_ROUNDING = 13
 ROW_ROUNDING = 2
 
@@ -360,7 +362,6 @@ def float_lines(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping[str
                                    for i in range(0, rows.shape[0], COLUMNS)]) if rows.shape[0] else np.zeros(0)
 
         dual = dual_norms(inverse[:, :faces])
-        flux_dual = dual_norms(system.fluxes @ inverse[:, :faces])
     rest = np.arange(faces, n)
     count = len(reference.pressures)
     twists = np.concatenate([faces + count + 12 * b + 6 + np.arange(6) for b in range(len(bodies))]).astype(int) \
@@ -392,9 +393,15 @@ def float_lines(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping[str
     lines = dual * residual + np.abs(inverse[:, faces:]) @ rows_bound + \
         np.abs(inverse) @ ((n + 1) * u64 * reference_terms)
     lines[:faces] += assembly
-    pressure_lines = np.abs(system.pressures) @ lines if count else np.zeros(0)
-    flux_lines = (flux_dual * residual + np.abs(system.fluxes @ inverse[:, faces:]) @ rows_bound +
-                  np.abs(system.fluxes[:, :faces]) @ assembly) if count else np.zeros(0)
+    # An opening's pressure is its relative pressure plus the level, and its flux a sum over its plane's faces, each
+    # rounded in the run's dtype and in the reference's on its terms in magnitude (a drawn field's faces cancel there).
+    summed = (np.count_nonzero(system.fluxes, axis=1) + 1) * (u + u64) if count else np.zeros(0)
+    pressure_lines = np.abs(system.pressures) @ lines + 2 * (u + u64) * (np.abs(system.pressures) @ np.abs(z)) \
+        if count else np.zeros(0)
+    # An opening's flux is formed from its plane's faces: their lines through its weights (the field's own error, its
+    # rounding off the divergence-free fields included), and its sum's rounding.
+    flux_lines = np.abs(system.fluxes[:, :faces]) @ lines[:faces] + summed * (np.abs(system.fluxes) @ np.abs(z)) \
+        if count else np.zeros(0)
     start = faces + count
     rows = np.reshape(lines[start:], (len(bodies), 2, DELIVERIES))
     return Lines(lines[:faces], rows[:, 0], rows[:, 1], pressure_lines, flux_lines,
