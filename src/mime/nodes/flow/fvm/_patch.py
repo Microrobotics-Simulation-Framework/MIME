@@ -278,14 +278,13 @@ def brinkman_difference(big_r: Array) -> tuple[Array, Array]:
     r^3]``, at ``R = alpha r``: the series below :data:`SERIES_EDGE`, the closed form above (where it does not cancel).
     Both are regular at ``R = 0`` (``-4/3`` and ``0``)."""
     a_terms, b_terms = _series_coefficients()
-    dtype = big_r.dtype
     small = jnp.minimum(big_r, SERIES_EDGE)
     # Horner's rule: a power's derivative at R = 0 (0 times 0^-1) would be NaN where the series is taken.
     series_a = jnp.zeros_like(small)
     series_b = jnp.zeros_like(small)
     for coefficient_a, coefficient_b in zip(a_terms[::-1], b_terms[::-1], strict=True):
-        series_a = series_a * small + coefficient_a
-        series_b = series_b * small + coefficient_b
+        series_a = series_a * small + float(coefficient_a)
+        series_b = series_b * small + float(coefficient_b)
     big = jnp.maximum(big_r, SERIES_EDGE)
     decay = jnp.exp(-big)
     closed_a = (2.0 * decay * (1.0 + 1.0 / big + 1.0 / big ** 2) - 2.0 / big ** 2 - 1.0) / big
