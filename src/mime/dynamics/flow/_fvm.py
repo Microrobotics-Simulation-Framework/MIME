@@ -291,7 +291,7 @@ class FVM(Dynamics):
                                f"of the lumen's (bypass_ratio): a finer spacing lowers it, and the stiffer interior "
                                f"wall=Band(delta_in=0.01) about halves it (the validity line's measurements). Past a "
                                f"porous region closing the tube of a box driven by a body force it is a loop, not a "
-                               f"leak (bypass_ratio about -1): the solid carries the open part's flux back, lumen_flux "
+                               f"leak (bypass_ratio near minus one): the solid carries the open part's flux back, lumen_flux "
                                f"is the box's whole flux, which the loop does not cross, and the velocity next to the "
                                f"region carries it (the porous validity line gives its size)"),
     )

@@ -31,10 +31,10 @@ These hold for the flux the run reports, `lumen_flux`, which with a porous regio
 flux through every section, the plug's throughflow. In a periodic box driven by a body force the velocity next to a
 closing plug is not its throughflow's: the pressure that holds the drive back pushes the wall's porous solid (which the
 drive does not reach) backward along the open part, and the plug closes the solid in its own span, so the open part
-carries a loop through the wall's band, a few thousandths of the open tube's flux at 16 cells across with the default
-interior, a tenth of that with the stiffer one, whatever `K` (`bypass_ratio` near -1 shows it). A plug that leaves a gap
-to the wall (a channel past it) is measured within 2 % where `sqrt(K)` is at least a cell and reads 12 to 16 % low at a
-tenth to a hundredth of one. The flow's entry gives the measured figures; the build report states the run's own: its
+carries a loop through the wall's band, a few thousandths of the open tube's flux with the default interior and a
+tenth of that with the stiffer one, whatever `K` (`bypass_ratio` near minus one shows it). A plug that leaves a gap to
+the wall (a channel past it) holds where `sqrt(K)` is at least a cell and reads well low below that. The flow's entry
+gives the measured figures; the build report states the run's own: its
 `sqrt(K)` in cells where the layer is under a cell, and where it lies outside what was measured; and the run raises
 `porous_flagged`, with a warning, at each step a region lies outside (under the range measured, or a gap under a
 cell). A periodic box reads a plug anywhere along the tube at its image in the period. The flow's other "Darcy flow",
@@ -50,8 +50,8 @@ the wall's stiff interior's bypass, is the wall's numerical porosity, not the cl
   vessel's span between its openings (`flow.porous-outside`).
 - For the velocity field next to a closing plug in a box driven by a body force (the loop above); its throughflow and
   pressure drop hold.
-- In a tube tree, or tilted against the tube, its flux is unmeasured (a plug tilted 10 degrees is bounded only near
-  2e-7 of the open flux).
+- In a tube tree, or tilted against the tube, its flux is unmeasured (a tilted plug's floor is bounded only far above
+  an aligned one's: the flow's entry).
 
 **Where its values come from.** The structure's `permeability` (in square metres, above zero), declared in the experiment with its
 reason: no OpenMaterica record holds a permeability yet. A value of zero or below is refused where it is declared

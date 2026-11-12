@@ -33,9 +33,12 @@ POROUS_FLAG_MEANING = (
     f"left a gap to the wall (it does not close the lumen, or the vessel is a tube tree, where none was measured) with "
     f"sqrt(K)/h under {GAP_MEASURED_DOWN_TO:g}, where a coaxial core's gap flux read 12 to 16 % low at sqrt(K)/h 0.1 to "
     f"0.01: the run's flux and pressure drop there are unmeasured. A finer spacing raises sqrt(K)/h")
-#: The loop past a closing plug in a box driven by a body force (the loop probe, run LOOP_RUN): (lumen - box) over the
-#: open tube's flux, the same at every K.
-LOOP_MEASURED = "LOOP_MEASURED"
+#: The loop past a closing plug in a box driven by a body force (the fix round's loop and lumen probes): the lumen's own
+#: mean less the box's flux, over the open tube's flux, the same at every K.
+LOOP_MEASURED = ("the lumen's own mean flux exceeds lumen_flux by 2.51e-3 / 3.70e-4 of the open tube's flux at D/h 16 / "
+                 "32 with the 0.1h interior and 2.80e-4 / 6.2e-5 with 0.01h, the same to 0.1 % at sqrt(K)/h 0.03 to "
+                 "0.003: some 6 / 3 times a plug's throughflow at sqrt(K)/h 0.03 with 0.1h, about half of it with 0.01h, "
+                 "and more at a smaller K")
 #: What was measured of a porous region (the porous plug's gates and probes, GitHub runners, float64), as the flow's
 #: validity line states it.
 POROUS_MEASURED = (
@@ -54,7 +57,7 @@ POROUS_MEASURED = (
     "field in the open part past a closing plug carries a loop the region does not cross, the lumen forward and the "
     "wall's band and solid back (the pressure that holds the drive back pushes the wall's porous solid, which the drive "
     f"does not reach, and the region closes the solid in its own span): {LOOP_MEASURED}; lumen_flux does not carry it, a "
-    "reading of the velocity next to the plug does, and bypass_ratio (about -1) shows it. Brinkman's profile in a plug "
+    "reading of the velocity next to the plug does, and bypass_ratio near minus one shows it. Brinkman's profile in a plug "
     "filling the tube within 1.3 % of its centreline at sqrt(K)/h 1 and 3 (D/h 16 to 64); a coaxial plug of half the "
     "lumen's radius the Brinkman core in a Stokes annulus within 2.1 % at sqrt(K)/h 1 and 3, and 12 to 16 % low at 0.1 "
     "to 0.01 (D/h 16 and 32), flagged (porous_flagged); a plug driven by a body force alone, no pressure drop across "
