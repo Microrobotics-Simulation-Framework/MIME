@@ -133,6 +133,9 @@ def limits_oracle(size: float, seed: int) -> bool:
 def main() -> int:
     worst, finite, summary, rows = check(SEED, DRAWS, 0.01 if PLANT == "limits" else 0.0)
     print(json.dumps(summary))
+    if not finite or worst > 1.0:
+        for row in sorted(rows, key=lambda r: -max(r["ratio"], r["residual_excess_ratio"]))[:3]:
+            print(json.dumps(row))
     out = os.environ.get("SWAP_OUT")
     if out:
         with open(out, "w") as handle:

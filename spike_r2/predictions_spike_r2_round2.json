@@ -1,0 +1,36 @@
+{
+  "written": "2026-11-12, committed before round 2's probe ran (the commit that adds this file is the timestamp): camera spike R2's controls and clean arms again, after round 1's two test-premise fixes",
+  "phase": "camera spike R2, round 2: the controls on draws that hold a coil at its limit, the central-difference line from the measured order",
+  "labels": "the spike's agent, after round 1 (run 43302252305); every prediction here is made after seeing round 1 and is a fit to it where marked",
+  "seen_before": [
+    "round 1, all of it (spike_r2/predictions_spike_r2.json outcomes)",
+    "local laptop, round 2's gradcheck.py: camera float64 seed 1 (round 1's draw, --no-reject, --ladder): pass, orders 0.55, 0.64, 0.56, 2.0, ratios 0.16, 0.002, 0.18, 0.33; camera float64 seed 2 (redrawn: 11 ticks at a limit): pass; camera float32 seed 1: pass, kp and ki not discriminating; STATE float64 seed 13 (redrawn: 4 ticks): pass"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "GitHub runner, 4 vCPU, CPU",
+    "sizes_and_parameters": "as round 1 (spike_r2/predictions_spike_r2.json), 200 steps; changed: (1) draws are redrawn from their seed's stream until the first tick's unconstrained currents exceed 1.25 times the limit; (2) the central-difference check uses h, h/2, h/4, the order measured from them and clamped to [1/2, 2], compared at h/4",
+    "seeds_and_draws": "detection_rate.py runs 0..19 on each arm"
+  },
+  "gate_4r_clean_arms": {
+    "claim": "with the measured order, the clean runs pass in both dtypes and arms",
+    "kind": "equality",
+    "case": "the clean arms of stopb64, stopb32, state64, state32, freet64, edge64, edge32",
+    "prediction": {"value": "every clean arm 0/20 flagged, 0/20 inconclusive; max ratio to the line under 0.6", "band": [0, 1], "unit": "flagged/20", "basis": "fit to seen (round 1 and the ladder)", "why": "round 1's three clean failures were the p = 2 premise, which the measured order removes; the line widens about 7x where p is 1/2"},
+    "metric": "detection_rate.py clean.flagged, clean.inconclusive",
+    "control": {"plant": "the planted arms below", "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT", "expected_rate": "below", "runs": 20, "clean_expected": "0/20", "resolution": "per draw, the line over |dJ/dlimit| (round 1: float64 median 2.7e-8 camera, 7.9e-10 STATE; float32 median 1.7e-2 camera, 3.1e-3 STATE)"},
+    "if_wrong": "a clean failure with a monotone ladder means the order is below 1/2 there: read its ladder",
+    "cannot_discriminate_if": "every parameter's line above a tenth of its derivative"
+  },
+  "gate_5r_controls": {
+    "claim": "on draws that hold a coil at its limit, each allocation-derivative plant and the edge plant are caught on every run in float64, and in float32 where the limit's check discriminates",
+    "kind": "acceptance",
+    "case": "detection_rate.py over gradcheck.py, 20 runs each arm",
+    "prediction": {"value": {"stopb64": "20/20", "state64": "20/20", "freet64": "20/20", "edge64": "20/20", "edge32": "20/20", "stopb32": "16 to 20 of 20 (not every run: float32's 1 % step holds a kink on some draws, the limit's check then not discriminating, and the gains' checks catch it only when the free coils' error reaches them)", "state32": "18 to 20 of 20", "swap32_clean": "0 or 1 of 20 flagged (round 1: seed 15 flagged on the runner, not on the laptop)"}, "band": [null, null], "unit": "caught/20", "basis": "fit to seen", "why": "the plants change dJ/dlimit by O(1) of itself on every saturated draw (round 1: ratios 1e5-1e9 in float64, 1e1-1e3 in float32)"},
+    "metric": "planted.caught_of_runs, lower_bound_95",
+    "control": {"plant": "SPIKE_VARIANT=stop_branch, free_tangent; SPIKE_PLANT=edge, limits", "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT", "expected_rate": "as above", "runs": 20, "clean_expected": "0/20", "resolution": "as gate 4r"},
+    "if_wrong": "a miss in float64 on a saturated draw would be the check, not the plant: read the row",
+    "cannot_discriminate_if": "a redrawn draw with no tick at a limit after all (the first tick's host prediction ignores the camera's estimate at the first tick)"
+  },
+  "outcomes": null
+}

@@ -12,7 +12,10 @@
     "mem_estimate.py, local: camera arm, 400 steps, reverse: 0.82 GiB before the factor, 2.05 GiB with the uncalibrated 2.5"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "GitHub runner, 4 vCPU, CPU; JAX_PLATFORMS=cpu",
     "matmul_precision": "not applicable (CPU)",
     "sizes_and_parameters": "case: tests/oracles/test_calibrated_multipole.py sphere_in_the_array('navion_2', 52, torque=False): a 1 mm sphere, 4e-6 kg, moment 2.8e-4 A m^2 fixed (no torque), Navion_2 (3 coils, CalibratedMultipole), no gravity, no medium, dt 1 ms; its constant drive removed (the controller writes the currents). Added: Camera 96 x 72, fx = fy = 400 px, 0.1 m above the start looking down (0.25 mm a pixel; the sphere 8 px across), frame_period 5 ms, sub_frames 1, sensor defaults (full scale 1000), the tracker reads `expected`. Controller GRAPH, rate 5 ms, latency 1 ms; PID kp 2500 s^-2, ki 3000 s^-3, kd 80 s^-1 (each drawn within 20 %), limit 25 A (the declared Navion_2 limit) a leaf; reference: a step of 4.5-6 mm in a drawn direction at t = 0, then a 1.5 mm circle at 2 Hz in the plane z = z0. Objective J = mean over steps of |p - r|^2 / mm^2 (3-D, true position). Gate horizon 200 steps; item 6 to 3200. The force rows' condition after column scaling about 4 (measured at 5 points, 3.6-4.2). CoilArray.Circuit does not exist at 2cdc6ced: the currents reach delivered_currents directly.",
@@ -22,9 +25,25 @@
     "claim": "the JAX bounded allocation law gives allocate()'s currents (SciPy BVLS, float64) across Navion_2's operating range, limits inactive and active, field / gradient / both, and SciPy's BVLS on the loop's force rows (scaled to order one), to the perturbation bound of least squares times 16",
     "kind": "equality",
     "case": "spike_r2/swap.py, 3000 draws (12 000 problems) per dtype, arm swap64 / swap32",
-    "prediction": {"value": "float64 worst ratio <= 0.5, largest miss <= 1e-14 of the limit; float32 worst ratio <= 0.2, largest miss <= 2e-6 of the limit; about 60 % of problems with a coil at its limit", "band": [0, 1], "unit": "ratio to the derived line", "basis": "derived, fit to seen (40 draws)", "why": "both are the exact least squares of one active set's free columns; columns scaled to unit length and QR keep float32's error at kappa eps with kappa about 4"},
+    "prediction": {
+      "value": "float64 worst ratio <= 0.5, largest miss <= 1e-14 of the limit; float32 worst ratio <= 0.2, largest miss <= 2e-6 of the limit; about 60 % of problems with a coil at its limit",
+      "band": [
+        0,
+        1
+      ],
+      "unit": "ratio to the derived line",
+      "basis": "derived, fit to seen (40 draws)",
+      "why": "both are the exact least squares of one active set's free columns; columns scaled to unit length and QR keep float32's error at kappa eps with kappa about 4"
+    },
     "metric": "max over problems of |i_jax - i_ref|_inf / L over the derived bound; the residual's excess over SciPy's",
-    "control": {"plant": "the law handed limits 1 % looser (SPIKE_PLANT=limits)", "environment_variable": "SPIKE_PLANT=limits", "expected_rate": "20/20 in each dtype", "runs": 20, "clean_expected": "0/20", "resolution": "discriminating_range.py on swap.limits_oracle (30 draws a run): predicted 1e-13 in float64, 1e-5 in float32 (the line in units of the limit)"},
+    "control": {
+      "plant": "the law handed limits 1 % looser (SPIKE_PLANT=limits)",
+      "environment_variable": "SPIKE_PLANT=limits",
+      "expected_rate": "20/20 in each dtype",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "discriminating_range.py on swap.limits_oracle (30 draws a run): predicted 1e-13 in float64, 1e-5 in float32 (the line in units of the limit)"
+    },
     "if_wrong": "a miss above the line with a residual below SciPy's is SciPy's (as the unscaled force rows were); one above with a residual above SciPy's is the law's: find the draw and its active set",
     "cannot_discriminate_if": "no draw held a coil at its limit (then only the unconstrained solve is tested): counted in with_a_coil_at_limit"
   },
@@ -32,9 +51,25 @@
     "claim": "a soft centroid of `expected`, back-projected onto the declared plane, in the controller's traced step, tracks the sphere and passes a derivative",
     "kind": "estimates",
     "case": "the camera arm's runs; the STATE arm beside it",
-    "prediction": {"value": "builds and runs as GRAPH; the camera arm's J within 0 to 40 % above the STATE arm's at the same draw (200 steps); the measured point's lateral error under 0.1 mm while |z - z0| < 0.5 mm", "band": [0, 0.4], "unit": "relative excess of J", "basis": "derived; seed 0 at 100 steps seen (+15 %)", "why": "the silhouette's perspective bias is about x (r/d)^2 < 1 um; the share is depth: the camera arm cannot observe z, which the saturated ticks push (the STATE arm controls it), and a z error scales the back-projection by dz/d"},
+    "prediction": {
+      "value": "builds and runs as GRAPH; the camera arm's J within 0 to 40 % above the STATE arm's at the same draw (200 steps); the measured point's lateral error under 0.1 mm while |z - z0| < 0.5 mm",
+      "band": [
+        0,
+        0.4
+      ],
+      "unit": "relative excess of J",
+      "basis": "derived; seed 0 at 100 steps seen (+15 %)",
+      "why": "the silhouette's perspective bias is about x (r/d)^2 < 1 um; the share is depth: the camera arm cannot observe z, which the saturated ticks push (the STATE arm controls it), and a z error scales the back-projection by dz/d"
+    },
     "metric": "J_camera / J_state - 1 per draw (detection-rate clean runs, seeds 0-19)",
-    "control": {"plant": "a stop_gradient on the disc coverage's edge pixels (SPIKE_PLANT=edge): gate 5c", "environment_variable": "SPIKE_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "the gradient check's line, read per draw from the clean runs"},
+    "control": {
+      "plant": "a stop_gradient on the disc coverage's edge pixels (SPIKE_PLANT=edge): gate 5c",
+      "environment_variable": "SPIKE_PLANT",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "the gradient check's line, read per draw from the clean runs"
+    },
     "if_wrong": "a camera J far above the STATE arm's means the tracker or the unobserved depth costs more than derived: read the z excursion",
     "cannot_discriminate_if": "both arms saturate the same way and z never moves"
   },
@@ -42,9 +77,25 @@
     "claim": "the PID with the tracker and the JAX allocation runs inside the compiled step (GRAPH, rate 5 ms, latency 1 ms), no external input, and the derivative passes through its leaves (kp, ki, kd, limit)",
     "kind": "acceptance",
     "case": "every gradcheck.py run (built through Experiment.build, mode='graph', the leaves set as a study's axes set them)",
-    "prediction": {"value": "builds with no refusal; external_inputs empty; the controller's node computed every base step (MADDENING's multi-rate where), its writes held between ticks", "band": [null, null], "unit": "", "basis": "measured-before (it built)", "why": "the step is pure jax.numpy; the camera's output is reached by the writes (currents -> coils -> force -> sphere -> camera)"},
+    "prediction": {
+      "value": "builds with no refusal; external_inputs empty; the controller's node computed every base step (MADDENING's multi-rate where), its writes held between ticks",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "measured-before (it built)",
+      "why": "the step is pure jax.numpy; the camera's output is reached by the writes (currents -> coils -> force -> sphere -> camera)"
+    },
     "metric": "build success; graph.external_inputs == []",
-    "control": {"plant": "none of its own (a refusal would show); the gradient controls below exercise its leaves", "environment_variable": "", "expected_rate": "n/a", "runs": 0, "clean_expected": "n/a", "resolution": "n/a"},
+    "control": {
+      "plant": "none of its own (a refusal would show); the gradient controls below exercise its leaves",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
     "if_wrong": "a refusal names the cause",
     "cannot_discriminate_if": "n/a"
   },
@@ -52,9 +103,25 @@
     "claim": "the reverse-mode derivative of the closed-loop tracking objective in kp, ki, kd and limit equals forward mode and central differences, in float64 and float32, camera and STATE arms",
     "kind": "equality",
     "case": "spike_r2/gradcheck.py --steps 200, the clean runs of the detection-rate arms (camera: stopb64, stopb32, edge64, edge32, freet64; STATE: state64, state32), seeds 0-19",
-    "prediction": {"value": "every clean run exits 0 (no failure, at least one parameter discriminating) in both dtypes and arms: 20/20 each. reverse vs jvp: ratio to 16 eps N S at most 0.05 (float64) and 0.05 (float32). reverse vs central differences: ratio at most 1 on every discriminating parameter; at most 2 of 20 draws per arm have a kinked row (a limit or set change within h), passing by the kink line; in float32 ki fails to discriminate on most camera draws. float32 vs float64 derivative: relative difference under 1e-4 on dJ/dkp, dJ/dkd, dJ/dlimit", "band": [0, 1], "unit": "ratio to the derived line", "basis": "derived; fit to seen (seeds 0-1, 100 steps)", "why": "the loop is a piecewise-smooth program; reverse and forward take the same piece; central differences see it within h unless a kink lies within h"},
+    "prediction": {
+      "value": "every clean run exits 0 (no failure, at least one parameter discriminating) in both dtypes and arms: 20/20 each. reverse vs jvp: ratio to 16 eps N S at most 0.05 (float64) and 0.05 (float32). reverse vs central differences: ratio at most 1 on every discriminating parameter; at most 2 of 20 draws per arm have a kinked row (a limit or set change within h), passing by the kink line; in float32 ki fails to discriminate on most camera draws. float32 vs float64 derivative: relative difference under 1e-4 on dJ/dkp, dJ/dkd, dJ/dlimit",
+      "band": [
+        0,
+        1
+      ],
+      "unit": "ratio to the derived line",
+      "basis": "derived; fit to seen (seeds 0-1, 100 steps)",
+      "why": "the loop is a piecewise-smooth program; reverse and forward take the same piece; central differences see it within h unless a kink lies within h"
+    },
     "metric": "|g_rev - g_jvp| / (16 eps N S); |g_rev - CD(h/2)| / (3 tau + 3 rho) or the kink line",
-    "control": {"plant": "gates 5a, 5b, 5c", "environment_variable": "SPIKE_VARIANT, SPIKE_PLANT", "expected_rate": "see gate 5", "runs": 20, "clean_expected": "0/20 flagged, 0/20 inconclusive", "resolution": "per draw, the line over |dJ/dlimit|: predicted under 1e-6 relative (float64) and 1e-2 (float32)"},
+    "control": {
+      "plant": "gates 5a, 5b, 5c",
+      "environment_variable": "SPIKE_VARIANT, SPIKE_PLANT",
+      "expected_rate": "see gate 5",
+      "runs": 20,
+      "clean_expected": "0/20 flagged, 0/20 inconclusive",
+      "resolution": "per draw, the line over |dJ/dlimit|: predicted under 1e-6 relative (float64) and 1e-2 (float32)"
+    },
     "if_wrong": "a clean failure: read the row; a kink missed by the second-difference test (a kink within h/2 of the point) shows as rev vs CD near half the jump",
     "cannot_discriminate_if": "every parameter's line above a tenth of its derivative (exit 3, counted inconclusive)"
   },
@@ -75,11 +142,23 @@
         "5c_edge_stop_gradient_camera_f64": "20/20 caught, clean 0/20",
         "5c_edge_stop_gradient_camera_f32": "20/20 caught, clean 0/20"
       },
-      "band": [null, null], "unit": "caught/N", "basis": "derived; 5b fit to seen",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "caught/N",
+      "basis": "derived; 5b fit to seen",
       "why": "5a: dJ/dlimit comes only from the saturated ticks and the free coils' share of it is O(1); free_tangent makes it zero. 5b: the NaN needs a pivot of exactly zero. 5c: the centroid's derivative in the pose comes only from the edge pixels"
     },
     "metric": "detection_rate.py's caught/N and lower_bound_95; the clean arm's flagged and inconclusive",
-    "control": {"plant": "as listed", "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT", "expected_rate": "as listed", "runs": 20, "clean_expected": "0/N", "resolution": "gate 4's per-draw line"},
+    "control": {
+      "plant": "as listed",
+      "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT",
+      "expected_rate": "as listed",
+      "runs": 20,
+      "clean_expected": "0/N",
+      "resolution": "gate 4's per-draw line"
+    },
     "if_wrong": "a miss of 5a or 5c: the draw's saturated ticks or the derivative too small against the line; read the missed seed's rows",
     "cannot_discriminate_if": "a draw with no tick at a limit (5a cannot fire): the draws hold a coil at its limit by construction (seen: 8 of 8 directions)"
   },
@@ -97,11 +176,23 @@
         "explosion": "kd x 0.3: the loop lightly damped; |grad J| grows at least 10x from 400 to 3200 steps; float32 CD loses discrimination first",
         "float32_long": "float32 rev vs jvp ratio grows about linearly in N, under 1 at 3200"
       },
-      "band": [null, null], "unit": "", "basis": "derived; limit_switching fit to seen (STATE, 100 steps)",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "derived; limit_switching fit to seen (STATE, 100 steps)",
       "why": "the allocation is a piecewise-smooth map of the demand, applied at discrete ticks: each tick's active set is a region in parameter space, and J is smooth inside the intersection of all ticks' regions"
     },
     "metric": "per-sweep: J, dJ, the saturation pattern by tick, neighbour differences; per horizon: |grad J|, ratios",
-    "control": {"plant": "none (a measurement); its derivatives are checked by gate 4's check at each horizon", "environment_variable": "", "expected_rate": "n/a", "runs": 0, "clean_expected": "n/a", "resolution": "n/a"},
+    "control": {
+      "plant": "none (a measurement); its derivatives are checked by gate 4's check at each horizon",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
     "if_wrong": "an exponential growth at the default gains would mean the adjoint of the delay/saturation loop is unstable where the forward loop is not",
     "cannot_discriminate_if": "a sweep with no change of saturation pattern"
   },
@@ -114,5 +205,53 @@
     "prediction": "the camera arm's gradcheck at 200 steps under 3 min on a runner (build, compile of reverse, jvp and forward, 4 x 11 forward runs); the 3200-step camera gradcheck under 20 min; the reverse program checkpointed under 0.5 GiB at 3200 steps; R1 owns memory scaling",
     "measured_at": "100 steps locally (38 s camera, 18 s STATE): not the gate size"
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43302252305",
+    "commit": "52310ee8",
+    "recorded": "2026-11-12, after the run, by the spike's agent; predictions above unchanged",
+    "gate_1_swap_test": {
+      "result": "pass in both dtypes: 12 000 problems each, 7498 with a coil at its limit; float64 worst ratio 0.505, largest miss 1.1e-14 of the limit; float32 worst ratio 0.081, largest miss 1.1e-5 of the limit (force rows; field and gradient 1.5e-6)",
+      "scored": "float64 hit (<= 0.5 predicted, 0.505: at the edge, scored hit within the band [0,1] but the value prediction missed by 1 %); float32 miss on the miss size (2e-6 predicted, 1.1e-5 on force rows), hit on the ratio",
+      "control": "limits plant 20/20 both dtypes; clean float64 0/20, float32 1/20 flagged (seed 15; not reproduced on the laptop: worst 0.068 there) -> not every run clean in float32",
+      "resolution": "discriminating_range.py: float64 1.3e-14 (refined), float32 6.8e-6 (refined) of the limit, no false alarms in 20 draws; predicted 1e-13 / 1e-5: hit",
+      "also": "SciPy's BVLS on unscaled force rows stopped short on 34.8 % of draws"
+    },
+    "gate_2_tracker": {
+      "result": "builds and runs as GRAPH; camera J over STATE J at the same draw: median +26 %, range -15 % to +1040 % (20 draws); the excess is depth: the camera arm cannot observe z, saturated ticks give the sphere a z velocity nothing removes (seed 0: z -4.6 mm at 0.2 s, -73 mm at 3.2 s, the STATE arm within 0.06 mm), and the back-projection on z0 then mis-scales x, y",
+      "scored": "missed: predicted 0 to +40 %; the median is inside, the spread is not (7 of 20 draws above +40 %)"
+    },
+    "gate_3_graph_controller": {
+      "result": "every run built as GRAPH with no external input",
+      "scored": "hit"
+    },
+    "gate_4_closed_loop_gradient": {
+      "result": "reverse vs jvp: max ratio 0.073 (camera float32), 0.067 (camera float64), 0.0015 (STATE float32), 0.0011 (STATE float64): hit except the 0.05 predicted for float32 camera (0.073). reverse vs central differences: STATE 20/20 pass in both dtypes; camera float32 20/20 pass; camera float64 17/20 pass, 3 clean draws (seeds 1, 5, 15) failed at ratios 1.39-2.13 with no kink detected",
+      "scored": "missed for the camera in float64 (predicted 20/20)",
+      "cause_found_after": "the test's premise, not the law: the exact disc coverage makes J only C^(1,1/2) in a parameter (a disc's segment past a pixel side grows as depth^(3/2)), so central differences converge at order about 0.5-0.9, not 2, and the Richardson line (p = 2) was 7 times too tight; on seed 1 the ladder h .. h/16 converges monotonically to the reverse value (kp: errors 2.8e-9, 1.7e-9, 8.9e-10, 3.1e-10, 1.3e-12). Round 2 measures the order",
+      "float32_vs_float64": "J relative difference median 1.7e-5 (camera), 5.9e-7 (STATE); dJ/dkp median 3.4e-5, max 1.2e-3 (camera); STATE max 1.7e-5: predicted under 1e-4: hit for STATE and medians, missed for the camera's max"
+    },
+    "gate_5_controls": {
+      "5a_stop_branch_camera_f64": "18/20 (missed seeds 2, 13: no tick at a limit, the plant inert), clean 3/20 flagged (gate 4's false alarms)",
+      "5a_stop_branch_camera_f32": "14/20 (2, 13 no tick at a limit; 3, 16, 18, 19 the limit check not discriminating in float32: kinks within the 1 % step), clean 0/20",
+      "5a_stop_branch_state_f64": "17/20 (2, 13, 19 no tick at a limit), clean 0/20",
+      "5a_stop_branch_state_f32": "17/20 (same seeds), clean 0/20",
+      "5a2_free_tangent_camera_f64": "18/20 (2, 13), clean 3/20",
+      "5b_single_where_closed_loop_f64": "0/5 planted beyond the clean arm's own false alarm (seed 1 flagged in both arms): dormant, hit",
+      "5b_single_where_rank_deficient_f64": "0/40: missed (predicted >= 38/40; the laptop gave 4/4): on the runner's CPU the QR of an exactly dependent pair never left an exactly zero pivot",
+      "5b_single_where_rank_deficient_f32": "19/40: hit (predicted 10-30)",
+      "5c_edge_stop_gradient_camera_f64": "20/20, clean 3/20 (gate 4's)",
+      "5c_edge_stop_gradient_camera_f32": "20/20, clean 0/20: hit",
+      "scored": "missed: the draws' claim 'every draw holds a coil at its limit' was wrong (3 of 20 held none); the planted runs that saturated were caught at ratios 1e2 (float32) to 1e9 (float64)"
+    },
+    "gate_6_where_it_breaks": {
+      "limit_switching": "STATE float64: 16 kinks over 10-40 A, jumps up to 53 %, between kinks reverse = neighbour differences to 5e-7 (median 8e-11); camera float64: 24 kinks, jumps up to 590 % (sign changes), median agreement 7e-6: hit for STATE, the camera's ruggedness not predicted",
+      "active_set_change": "kp 1500-3500: STATE 4 kinks, jumps <= 4.4 %; camera 8 kinks, the largest a sign change of dJ/dkp (9e-4 against a typical 3e-3): STATE hit, camera missed (<50 % predicted)",
+      "long_runs_state": "J and its derivative fall with N (J a mean over a settled loop): 400->3200 steps kd -0.0139 -> 0.0070; every check passes in both dtypes: hit",
+      "long_runs_camera": "J grows as N^2 on saturating draws (seed 0: 30, 116, 466, 1846 at 400-3200 steps), its derivative alike (kd 0.11 -> 8.6): the linear z drift; every check still passes in both dtypes: hit (polynomial, not exponential)",
+      "explosion": "kd x 0.3: the STATE arm passes at every N (no growth: J 2.77 -> 0.38); the camera arm's run is NaN from step 51: the overshoot takes the sphere out of the 18 mm-high frame and the soft centroid of an empty frame is 0/0: missed (predicted gradient growth; the forward loop broke instead)",
+      "float32_long": "float32 rev vs jvp ratio at most 0.021 at 800 steps, 0.013 at 3200 (camera): no growth with N: missed (predicted linear growth)"
+    },
+    "float32_allocation": "swap: float32 within 1.1e-5 of the limit (force rows) of the float64 currents, 1.5e-6 for field and gradient rows; no float64 guard needed at kappa about 4; predicted 2e-6: missed by 5x on force rows",
+    "costs": "runner wall per arm: camera gradcheck at 200 steps median 59 s (float64), 52 s (float32), STATE 34 s; at 3200 steps 93 s (camera float64); detection arms (40 runs) 25-56 min; predicted under 3 / 20 min: hit"
+  }
 }
