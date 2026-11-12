@@ -1,0 +1,78 @@
+{
+  "written": "2026-11-12, committed before the floor's intercept probe ran (the commit that adds this file is the timestamp): the porous plug's leak floor re-measured as the intercept of its flux against its permeability, after the forms probe's floor arms (an impermeable plug at sqrt(K)/h 1e-3, the parallel form) stopped stagnated and so measured nothing",
+  "phase": "Lane F, dev2: the static porous plug (its floor, amending predictions_porous_plug.json and predictions_porous_plug_forms.json)",
+  "labels": "predictions by the builder (Opus) from the parallel form's algebra and the forms probe's finite arms; the control is the share form (the plug's depth not carried into the wall's solid), whose floor converged in the first measurements",
+  "seen_before": [
+    "the forms probe (GitHub runners, float64, head 05af2ae), a plug one diameter long filling the tube in a period of four, the parallel form, its flux against the series closed form at sqrt(K)/h 0.01 / 0.03: D/h 16 -1.38 / -0.99 % (0.01h), -1.67 / -1.21 % (0.1h); D/h 32 -0.26 / -0.08 % (0.01h), -0.31 / -0.08 % (0.1h); D/h 64 +0.04 / +0.13 % (0.01h); the CG converged (residual under 1e-8) at 2986 / 6763 / 14036 iterations at sqrt(K)/h 0.01 (D/h 16 / 32 / 64, 0.01h)",
+    "the forms probe's floor arms, the parallel form at sqrt(K)/h 1e-3: every one stopped stagnated (true residual 0.49 to 1.0, flagged) at 3120 / 6160 / 12340 iterations: no measurement",
+    "the first measurements (head cee7bd2), the share form without the reach, at sqrt(K)/h 1e-3, converged but at D/h 64 with 0.01h: the flux over the open tube's 7.4e-3 / 1.21e-3 / 1.73e-4 (0.1h) and 8.5e-4 / 2.0e-4 (0.01h) at D/h 16 / 32 / 64, the plug's own Darcy share 4.9e-7 / 1.2e-7 / 3.1e-8 under it"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "CPU, GitHub runners (4 vCPU)",
+    "sizes_and_parameters": "as predictions_porous_plug.json's: D = 1, nu = rho = 1, g = 8, steady Stokes, the default band; a plug one diameter long closing the lumen in a period of four; D/h 16, 32, 64; the 0.1h and 0.01h interiors; sqrt(K)/h 0.03, 0.01, 0.003, 0.001; the CG's tolerance 1e-8 (the default) and 1e-10, its cap 250000",
+    "seeds_and_draws": "none drawn: each row one deterministic case"
+  },
+  "gate_1_floor_intercept": {
+    "claim": "the floor, the flux a closing plug lets past it whatever its permeability, is the intercept of Q / Q_open against K over the converged rows (Q = leak + C K)",
+    "kind": "bounds",
+    "case": "probe/measure.py parallel arms, through the FVM node's own steady step",
+    "prediction": {
+      "value": "the intercept within its resolution of zero at every D/h and both interiors, so stated as a bound: |leak| / Q_open under about 1e-3 of the smallest converged row's flux, about 4e-9 / 1e-9 / 3e-10 at D/h 16 / 32 / 64 with sqrt(K)/h 0.003 converged; the two interiors the same within it",
+      "band": [null, 1e-8],
+      "unit": "|intercept| / Q_open",
+      "basis": "derived: the parallel form gives every face in the plug's span, the wall's solid too, at least 1/K (100/K where the face holds no fluid), so no path around the plug escapes its resistance; the resolution from the drift of the series' error with sqrt(K)/h (about 0.1 % a factor of three, seen_before)",
+      "why": "a constant leak needs a path that does not carry the plug's resistivity; the parallel form's reach leaves none"
+    },
+    "metric": "the intercept over Q_open, and its resolution: the spread of the pairwise intercepts of the converged rows, and the change of each row's Q between the tolerances 1e-8 and 1e-10",
+    "control": {
+      "plant": "the share form (the plug's depth not carried into the wall's solid), whose floor is a real constant leak through the wall's stiff interior around the plug",
+      "expected_rate": "1/1 per arm (deterministic): the intercept from its converged rows equals its sqrt(K)/h 1e-3 row within 3 %, and is many times the parallel form's bound",
+      "resolution": "the parallel form's bound: a leak above it is seen"
+    },
+    "if_wrong": "a non-zero intercept above the resolution is a path around the plug; the build report then states the measured floor and the validity line its ratio, as the brief asks",
+    "cannot_discriminate_if": "fewer than two rows converge at a D/h and interior, or the pairwise intercepts disagree by more than they differ from zero"
+  },
+  "gate_2_floor_convergence": {
+    "claim": "which small permeabilities the CG reaches",
+    "kind": "estimates",
+    "prediction": {
+      "value": "sqrt(K)/h 0.003 converges at every D/h, about three times the iterations at 0.01 (about 9000 / 20000 / 45000 at D/h 16 / 32 / 64); 0.001 stops stagnated, flagged, as the floor arms did; 1e-10 converges at 0.03 and 0.01, about 25 % more iterations than 1e-8",
+      "band": [null, null],
+      "unit": "iterations; flagged",
+      "basis": "measured-before (seen_before: the iterations rose about 2.8 times from 0.03 to 0.01; the floor arms at 1e-3 stagnated); a guess for 1e-10",
+      "why": "the penalty's contrast with the fluid's operator, h^2 / K, grows tenfold a factor of three in sqrt(K)/h, and Jacobi does not remove its coupling through the projection"
+    }
+  },
+  "gate_3_floor_tolerance": {
+    "claim": "the rows' fluxes are converged well below the intercept's resolution",
+    "kind": "estimates",
+    "prediction": {
+      "value": "each row's Q at 1e-10 within 1e-4 of its value at 1e-8 (relative), wherever both converge",
+      "band": [-1e-4, 1e-4],
+      "unit": "relative change of Q",
+      "basis": "guess",
+      "why": "the CG's true residual at 1e-8 relative to the drive; the plug's flux is small but the penalty carries the drive, so the residual measures the Darcy balance itself"
+    }
+  },
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123280055",
+    "head": "b6af81a (the porous plug's branch at 5972c8d with the probe's files; eight arms grouped by interior)",
+    "gate_1_floor_intercept": {
+      "parallel_0.1h": "the converged rows sqrt(K)/h 0.03, 0.01, 0.003; the pairwise intercepts fall about a hundredfold for each smaller pair (D/h 16: 3.5e-8 from 0.01 and 0.03, 3.5e-10 from 0.003 and 0.01; D/h 32: 3.8e-9, 3.8e-11; D/h 64: 4.1e-10, 4e-12 from 0.003 and 0.01, the two rows from two arms of one program), a curvature in K, not a leak: the floor is under 3.5e-10 / 3.8e-11 / 4e-12 of the open flux at D/h 16 / 32 / 64, under 1e-4 of the plug's own flux at 0.003 (4.3e-6 / 1.1e-6 / 2.8e-7)",
+      "parallel_0.01h": "only sqrt(K)/h 0.03 and 0.01 converged: the one pair's intercept 7.3e-8 / 9.9e-9 / 1.4e-9 at D/h 16 / 32 / 64, the size of the 0.1h interior's pair at the same roots (3.5e-8 / 3.8e-9 / 4.1e-10): a bound only, the curvature's",
+      "control_share": "the share form's intercept from all four rows 7.406e-3 (D/h 16, 0.1h), 8.537e-4 (16, 0.01h), 1.207e-3 (32, 0.1h), its pairwise intercepts equal to 0.3 % and its sqrt(K)/h 0.001 row 7.402e-3 / 8.537e-4 / 1.207e-3 (the first measurements' 7.4e-3 / 8.5e-4 / 1.21e-3): recovered on 3 of 3 arms, twenty million times the parallel form's bound at D/h 16",
+      "verdict": "held: within its resolution of zero at every D/h, stated as a bound (0.1h under the predicted 4e-9 / 1e-9 / 3e-10; 0.01h only to 7.3e-8 at D/h 16, over the band's 1e-8, because its 0.003 rows did not converge); the interiors not compared within the 0.1h bound for that reason"
+    },
+    "gate_2_floor_convergence": {
+      "value": "0.1h: sqrt(K)/h 0.003 converged at 7129 / 16736 / 35934 iterations (1e-8; 8381 / 19449 / 41996 at 1e-10), D/h 16 / 32 / 64; 0.01h: 0.003 stopped stagnated at every D/h (true residual 0.34 / 0.21 / 0.13, flagged, at 3180 / 6340 / 12460 iterations); 0.001 stopped stagnated at every D/h and both interiors (0.5 to 1.0), as the forms probe's floor arms did",
+      "verdict": "held at 0.1h (about 2.3 times the 0.01 row's iterations, under the predicted three); missed at 0.01h, where 0.003 stagnates; 0.001 held (stagnated)"
+    },
+    "gate_3_floor_tolerance": {
+      "value": "each converged row's Q at 1e-10 within 1e-10 of its value at 1e-8 (relative; the largest change 9.6e-11)",
+      "verdict": "held, a million times inside the predicted 1e-4"
+    },
+    "resolution": "at the 0.1h interior (the default) a plug closing the tube at sqrt(K)/h 0.003 reads the series closed form within -1.83 / -0.39 / -0.005 % at D/h 16 / 32 / 64 (0.01: -1.67 / -0.31 / +0.04 %): resolved down to 0.003 there, a K of about 1e-14 m^2 in a 1 mm vessel at D/h 32; with the 0.01h interior down to 0.01; unmeasured below (the solve stagnates)",
+    "memory": "the arm parallel-64-0.1h-b peaked at 2.01 GiB over its 1.96 GiB bound (the plug-free 64 box's estimate, 1.12 GiB, times 1.75): its row is in .github/probe/mem_calibration.json, the FVM's forward factor 1.8"
+  }
+}

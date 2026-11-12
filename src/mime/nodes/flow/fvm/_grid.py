@@ -56,11 +56,13 @@ def _difference_to_centre(a: Array, axis: int, h: Any) -> Array:
 
 
 #: The solve site of the grids' Poisson solves, by a fast transform (``poisson`` of this grid kind, of the open one and
-#: of the nested one, the refinement patch's: its node kinds are its hosts', which name this site already).
+#: of the nested one, the refinement patch's). The nodes named reach the first two; no node's traced step reaches the
+#: nested grid's yet (the Schwarz coupling that hosts the patch wires it, with a switch configuration tracing it), so
+#: the solve walk's agreement check does not see that path until then.
 POISSON_SITE = register(SolveSite(
     "fvm_poisson", "transform",
     "mime.nodes.flow.fvm._grid.MACGrid.poisson, _open.OpenMACGrid.poisson, _nested.NestedMACGrid.poisson",
-    nodes=("ImplicitFlowNode", "ExplicitFlowNode", "OpenFlowNode")))
+    nodes=("ImplicitFlowNode", "ExplicitFlowNode", "OpenFlowNode", "ResolvedFlowNode")))
 
 
 @dataclass(frozen=True)

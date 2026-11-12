@@ -329,6 +329,12 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
     field_laws: set[str] = set()
     verdicts = group_verdicts(graph)
     grouped = {member for members in verdicts for member in members.split("+")}
+    # The laws a receiver holds in its step and judges in their sum (a resolved body's drag): where each is judged,
+    # the host's ``<role>_gift_steps``.
+    judges = {d.law: (name, f"{d.field}_gift_steps") for name in cast(list[str], graph.node_names)
+              for d in ledger.deliveries(dict(getattr(graph.get_node(name), "params", {}) or {}))
+              if d.kind == ledger.HOSTED and d.check == ledger.CHECK_CLUSTER
+              and f"{d.field}_gift_steps" in final.get(name, {})}
     for name in cast(list[str], graph.node_names):
         receiver = graph.get_node(name)
         held = ledger.deliveries(dict(getattr(receiver, "params", {}) or {}))
@@ -370,6 +376,9 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
             gifts = records[f"{ledger.RECORDS}gift_steps"][row]
             if first.check == ledger.CHECK_CLUSTER and "cluster_gift_steps" in final.get(law, {}):
                 gifts = final[law]["cluster_gift_steps"]  # judged in the cluster's sum, by the node named for it
+            elif first.check == ledger.CHECK_CLUSTER and law in judges:
+                # a law held in a receiver's step and judged in its sum is judged by its host, on each of its rows
+                gifts = final[judges[law][0]][judges[law][1]]
             line = LawEnergy(law, name, first.energy_class, work, _scalar(taken[row]),
                              tuple(first.supplied_by.split(",")) if first.supplied_by else (),
                              gift_steps=_count(gifts),

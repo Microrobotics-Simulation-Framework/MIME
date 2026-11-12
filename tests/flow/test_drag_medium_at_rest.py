@@ -1,4 +1,4 @@
-"""Every drag rung but the one that reads a provided flow (drag 0.5.0's stokes rung) assumes its medium at rest (it
+"""Every drag rung but those that read a provided flow (drag 0.5.0's stokes and penalty rungs) assumes its medium at rest (it
 delivers no load from a flow), so each is refused, coded ``drag.medium-flows`` and naming the field, wherever the region its medium fills carries a
 field: every rung of every drag version the registry holds, under the prescribed flow (Womersley), and the mrs rung
 under the FVM too. The refusal fails closed: it holds for a flow kind that declares it provides a quantity other than
@@ -77,9 +77,10 @@ CASES: dict[str, Callable[[Any], Experiment]] = {
     "rft": lambda cls: helix_body("rft_tube", SMALL_HELIX, SMALL_SETTINGS, cls.RFT(wall_kind="tube"), tube=R6_TUBE,
                                   velocity=m_per_s((1e-3, 0.0, 0.0)), spin=rad_per_s((3.0, -1.0, 2.0))),
 }
-#: The rungs that read the flow a medium carries (drag 0.5.0's stokes rung, a point body exchanging with the FVM): the
-#: refusal is every other rung's (``tests/flow/test_point_bodies.py`` builds the stokes rung in a flowing medium).
-READS_FLOW = ("stokes",)
+#: The rungs that read the flow a medium carries (drag 0.5.0's stokes rung, a point body exchanging with the FVM, and
+#: its penalty rung, a body resolved on the FVM's grid): the refusal is every other rung's
+#: (``tests/flow/test_point_bodies.py`` and ``tests/flow/test_resolved_bodies.py`` build them in a flowing medium).
+READS_FLOW = ("stokes", "penalty")
 DRAGS = [pytest.param(record.cls, rung, id=f"{rung}-{record.version}")
          for record in registered(EntryKind.INTERACTION) if record.name == "drag"
          for rung in record.cls.rungs if rung not in READS_FLOW]  # type: ignore[attr-defined]

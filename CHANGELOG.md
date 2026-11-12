@@ -21,6 +21,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`patch_reflection`, `patch_reflection_transpose`); the backward-Euler form carries the last step's field as state.
   Its two transfers are registered mapping kinds, `mime.patch_boundary` and `mime.patch_read`, with MADDENING 0.4's
   workarounds in `mime.mappings`.
+
+- **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
+  structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
+  `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
+  `um2` and the dimension `AREA`; no OpenMaterica record holds one yet), and `exp.attach(Darcy(), medium=...,
+  structure=...)`: the medium's flow holds it in its step as a resistivity `mu / K` added to the wall's (B5's seam,
+  `wall_fields`), on IMEX Euler or its steady limit, on a periodic box (a straight tube along z or a tube tree) or an
+  open vessel. Its resistivity in the wall's band is its share of the fluid over the face's fluid fraction
+  (`FLUID_FLOOR`, 0.01, at least), carried into the wall's solid behind it, so a pressure-driven Darcy flux is carried by
+  the band's fluid and the band's solid does not leak round a plug that closes the vessel (the plug's forms measured
+  against each other: the PR's table). Its loss is booked under its id; its sampled permeability not a finite number
+  above zero is flagged at sampling and refuses the run after it (`flow.permeability-not-positive`); each step reports
+  its mean pressure on the planes a band's half width outside its two ends (`porous_face_pressure`). The build reports
+  its `sqrt(K)` in cells where its Brinkman layer is under one, and that its flux is unmeasured where `sqrt(K)/h` is
+  under the range measured: a plug closing a straight tube is resolved down to `sqrt(K)/h` 0.003 with the default 0.1h
+  interior (within 0.4 % at D/h 32, a `K` of about 1e-14 m^2 in a 1 mm vessel) and 0.01 with 0.01h, unmeasured below
+  (the first step's cold solve stops there, flagged); the floor, the wall's leak past a plug closing the tube (the
+  intercept of its flux against `K`), is under 4e-11 of the open tube's flux at D/h 32. These are on `lumen_flux`, which
+  with a porous region reports the box's whole axial flux, the plug's throughflow: past a closing plug in a box driven
+  by a body force the open part carries a loop through the wall's band (2.5e-3 of the open flux at D/h 16 with 0.1h,
+  K-independent), which the lumen's own mean would carry. A region outside what was measured (under that range, or
+  leaving a gap to the wall under `sqrt(K)/h` 1, where a coaxial core's gap flux read 12 to 16 % low) raises
+  `porous_flagged` with a warning. A periodic box reads a plug anywhere along the tube at its image in the period.
+  Refused: a structure of another kind (`flow.porous-kind`), RK3 (`flow.porous-scheme`), a tilted box
+  (`flow.porous-axis`), a plug longer than a periodic box's period (`flow.porous-period`) or outside an open vessel's
+  span (`flow.porous-outside`). A tube tree holding a plug runs but is unmeasured. The stall detector's denominator
+  takes the porous losses beside the viscous one.
+
+- **A body resolved on the FVM's grid: `Drag.Penalty()`** (drag 0.5.0's penalty rung, F4, its first part). The body's
+  solid is lifted onto the grid's faces by the wall's own band from its solid region's exact signed distance (a
+  sphere's, a capsule's; another kind is refused, `drag.penalty-kind`) at its pose each step, on a window of faces
+  about it, the solid the union of the wall's and the bodies'; its penalty drives its interior to its rigid twist in
+  the field's own solve, and its load is the penalty's force and torque plus the interior fluid's momentum change
+  taken from the field (the field formulation, B8 point 5). The coupling is lagged, a declared form: its loop is stable
+  up to an edge in the step against the body's relaxation times (dt/tau_t and dt/tau_r), measured at rest against N,
+  the scheme and the density ratio; the build refuses a step past it (`drag.penalty-lagged`, naming the largest step
+  admitted) and a body lighter than the least ratio measured, and a run past it is stopped by its body's motion, more
+  than a cell a step (`drag.penalty-motion`); the one-pass affine coupling is its next part. A body within three cells
+  of the wall, and one whose density ratio lies outside the measured range, are flagged each step
+  (`body_<i>_near_wall`, `body_<i>_ratio_unmeasured`), and the rung declares a Reynolds line for the post-run watch
+  (150 at the default N, falling as N squared below it). The FVM's spacing with no spacing written is the finer of
+  the lumen's and N cells across the body's smallest feature's radius (`feature_cells`, 6 by default); a grid under the
+  thinnest-feature line is
+  refused (`drag.penalty-thin`), as are a `feature_cells` a written spacing does not give (`drag.penalty-spacing`), RK3
+  (`drag.penalty-scheme`), an open vessel (`flow.open-resolved`), a tube tree's flow (`flow.tree-resolved`) and an
+  added mass delivered to a resolved body (`drag.penalty-added-mass`). The body takes the displaced share of the
+  medium's drive (the drive acts on the fluid alone) under its drag's part `<id>.displaced`. The flow node holds the
+  penalty in its step under the drag's id and judges its sign at one velocity (`body_<i>_gift_steps`, read onto the
+  drag's rows); a law held in its receiver's step and judged in its sum is judged by its host. `ResolvedFlowNode`
+  (MIME-NODE-131); the registration `flow.resolved` (kind `flow.resolved_partner`).
 - **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
   ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
   (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector
@@ -888,6 +938,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **A study's reverse-mode derivative in float32 through a body resolved on the FVM's grid (`Drag.Penalty`) is
+  refused outside the envelope where it was measured right** (`drag.penalty-float32-reverse`, before the derivative
+  compiles), routed to float64 or to forward mode. The envelope, allowed: a sphere in the default 0.1h interior at up
+  to 6 cells a radius, where float32 read within 3.6e-4 of float64 (solved to 1e-12) through the steady step in the
+  body's position, the viscosity and the drive, and within 2.1e-3 on the study's own path (R3's sphere free at Re 76,
+  IMEX Euler, 40 steps), as the rung's validity line now states. Refused: the 0.01h interior (measured 3.2 % off in
+  position at 6 cells a radius, 0.16 % in the viscosity and the drive, every transpose solve reporting convergence),
+  more than 6 cells a radius and a capsule (unmeasured; the gap grew 4.5 times from 3 cells to 6). The cause is
+  float32's stop on the transpose's right-hand side, not a derivative defect: float64 at float32's 1e-5 reproduces each
+  gap, the solves run in float64 inside the float32 program close it (a guard not built), and float64 at 1e-12 holds
+  reverse against forward mode to 1e-11. Forward mode, whose tangent solve was flagged wherever its derivative was off
+  by more than 0.1 %, and float64 are not refused. Predictions and outcomes: `tests/flow/predictions_f4_float32.json`.
 
 - **`Drag.MRS`'s 0.5.0 settings grouped by concern** (design #326 as the names sitting, #336, decided it, the names approved by the maintainer, #353; drag 0.5.0 is
   unreleased, so no saved-form step). The core stays flat (`spacing`, `blob`, `patches`, `wall_kind`, and 0.4.0's
