@@ -132,6 +132,10 @@ the estimate" compares it with the bound the route was read from, writes `probe/
 peak is over the bound**, naming it an underestimate. The check file holds a row ready for `mem_calibration.json`: the
 calibration grows from real runs (add the row with its own name and `where`, and the family's factor follows the rule, which
 `tests/test_probe_mem_estimate.py` checks against the table).
+**A row is evidence for the estimator only when the arm's script runs the declared case and nothing else** (one `node_measure.py` run of the
+case the estimate line names, with its arguments): the check compares the largest process of the whole script, so an arm that also runs pytest
+gates, detection-rate or bit-compare processes, or a sweep larger than the declared chunk, reads red without the estimator being low for the case.
+Declare the arm's largest program in its estimate line, or give the heavy work an arm of its own, before adding its row.
 
 **What the calibration is evidence of.** `mem_calibration.json` holds the cases the estimator was checked against, each with
 its family, mode, estimate, the peak measured on that case (with `measured_mib` where the source reported MiB) and their ratio,
