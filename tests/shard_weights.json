@@ -575,7 +575,8 @@
   "tests/viz/test_visuals.py": 3
  },
  "alone": {
-  "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one"
+  "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one",
+  "tests/saved/test_shape_suite_tube_tree_examples.py": "four tests of 76 to 146 s each (a lane's median 520 s), all marked memory_heavy (2.5 to 3.2 GB), so the run's lock makes them take turns: beside other files they start last and run one at a time while the shard's other workers idle, as in the first split's run 43184773791, where it shared shard 15 with test_switch_harness and 3.12's was cancelled at 30 minutes with its last tests still queued on the lock; measured on that run"
  },
  "split": {
   "tests/oracles/test_lubrication.py": {
