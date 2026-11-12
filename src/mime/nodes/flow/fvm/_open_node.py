@@ -251,6 +251,11 @@ class OpenFlowNode(ImplicitFlowNode):
         return ((0.0, 0.0, 0.0),)
 
     @override
+    def porous_centre(self, centre: Array, grid: MACGrid) -> Array:
+        """The centre as given: the open box does not repeat (a region outside its span is refused when planned)."""
+        return centre
+
+    @override
     def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid]:
         return [TubeSolid(as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"]), as_run_array(p["tube_radius"]),
                           ((0.0, 0.0, 0.0),))]
@@ -422,7 +427,8 @@ class OpenFlowNode(ImplicitFlowNode):
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
         lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, ended_velocity)
         ratio = self.ratio(solid, lumen, lumen_scale)
-        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
+        reported = self.reported_flux(lumen, solid)
+        reynolds = 2.0 * jnp.abs(reported) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
         stokes = not bool(c["convection"])
         solved_velocity: Velocity = ended_state["velocity"]
         ended: dict[str, Array] = dict(
@@ -434,7 +440,7 @@ class OpenFlowNode(ImplicitFlowNode):
                                  jnp.where(past, steps + 1, -1)).astype(jnp.int32),
             stopped_cfl=jnp.where(stopped_before, jnp.asarray(state["stopped_cfl"]),
                                   jnp.where(past, cfl, 0.0)).astype(dtype),
-            lumen_flux=lumen, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
+            lumen_flux=reported, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
             reynolds=reynolds.astype(dtype),
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
             negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype),
@@ -444,9 +450,8 @@ class OpenFlowNode(ImplicitFlowNode):
             **{f"unit_{x}": (jnp.stack([unit[k] for unit in ports.units]) if ports.units else
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})
         if self.porous_laws:
-            applied = operator(stage.shift)(stage.solved)
-            ended["porous_face_pressure"] = self.porous_face_pressures(p, grid, applied, _add(stage.rhs, ports.force)
-                                                                       ).astype(dtype)
+            ended.update(self.porous_report(p, grid, operator(stage.shift)(stage.solved), _add(stage.rhs, ports.force),
+                                            dtype))
         held = node_fields(ended)
         energy: dict[str, Array] = {}
         if self.metered:

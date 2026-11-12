@@ -696,7 +696,7 @@ rad_per_s = Unit(
     "from it is refused where a frequency goes (a field's turning frequency) and by ``.to(Hz)``, and one made from Hz "
     "where an angular velocity goes (a body's initial spin) and by ``.to(rad_per_s)``.", "radian")
 m2 = Unit("m^2", 1.0, AREA, "Square metres: an area, or a porous material's Darcy permeability.")
-um2 = Unit("um^2", 1e-12, AREA, "Square micrometres: a fibrin clot's Darcy permeability is about 1e-3 to 1.")
+um2 = Unit("um^2", 1e-12, AREA, "Square micrometres: an area, or a porous material's Darcy permeability.")
 m3 = Unit("m^3", 1.0, VOLUME, "Cubic metres.")
 mm3 = Unit("mm^3", 1e-9, VOLUME, "Cubic millimetres.")
 kg_per_m3 = Unit("kg/m^3", 1.0, DENSITY, "Kilograms per cubic metre.")

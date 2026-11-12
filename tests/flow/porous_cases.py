@@ -141,3 +141,27 @@ def experiment(*, permeability: float = 1e-10, radius: float = 0.5, length: floa
         exp.declare("clot.permeability", m2(permeability), reason="a gate's value")
         exp.attach(Darcy(), medium="water", structure="clot")
     return exp
+
+
+def open_experiment(permeability: float, *, centre: tuple = (0, 0, 0)) -> Experiment:
+    """The open vessel holding a plug (lengths in mm): a tube two millimetres long, an inflow of 1e-3 mL/s at its
+    start and a Windkessel at its end, no body force, 16 cells across; a plug half a millimetre long filling it at
+    ``centre``."""
+    from mime.interactions import Inflow, Windkessel
+    from mime.scene import VesselRegion
+    from mime.units import Pa_s, Pa_s_per_m3, m3_per_Pa, mL_per_s
+
+    exp = Experiment("open_plug", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    exp.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2), length=mm(2.0))))
+    exp.add_structure(Structure("clot", geometry=Plug(axis=+Z, radius=mm(0.5), length=mm(0.5), centre=mm(centre))))
+    exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": FVM(domain=VesselRegion(margin=4),
+                                                                           cells_across=16, stokes=True,
+                                                                           scheme=Scheme.Steady())}))
+    exp.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    exp.declare("clot.permeability", m2(permeability), reason="a gate's value")
+    exp.attach(Inflow(steady=mL_per_s(1e-3)), medium="water", surface="tube.start")
+    exp.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
+               medium="water", surface="tube.end")
+    exp.attach(Darcy(), medium="water", structure="clot")
+    return exp

@@ -149,6 +149,8 @@ class FlowFields(TypedDict):
     cfl: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_at: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_cfl: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: The lumen's axial flux (the lumen and the band's inner half); with porous regions the box's whole axial flux,
+    #: a region's throughflow (:meth:`ImplicitFlowNode.reported_flux`).
     lumen_flux: ReadOnly[Annotated[Float[Array, ""], Units("m^3/s")]]  # noqa: F722 - a jaxtyping shape
     bypass_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     bypass_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
@@ -159,6 +161,9 @@ class FlowFields(TypedDict):
     #: With porous regions, each region's mean pressure on its two end faces (Pa), upstream along its axis first
     #: (``ImplicitFlowNode.porous_face_pressures``): the drop a Darcy reading takes; absent where there are none.
     porous_face_pressure: NotRequired[ReadOnly[Annotated[Float[Array, "n 2"], Units("Pa")]]]  # noqa: F722
+    #: With porous regions, whether one lay outside what was measured (``_porous.porous_flagged``); absent where there
+    #: are none.
+    porous_flagged: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class FlowState(FlowFields, closed=True):
@@ -587,11 +592,22 @@ class ImplicitFlowNode(MimeNode):
         period = grid.cells[2] * grid.spacing
         return ((0.0, 0.0, 0.0), (0.0, 0.0, period), (0.0, 0.0, -period))
 
+    def porous_centre(self, centre: Array, grid: MACGrid) -> Array:
+        """A porous region's centre as the box places it: along z, the axis the box repeats along, its image in the
+        box's first period (a periodic box sees a position only modulo its period, so a region anywhere along the tube
+        is read where its images reach the box's faces)."""
+        return centre.at[2].set(jnp.mod(centre[2], grid.cells[2] * grid.spacing))
+
     def porous_regions(self, p: Mapping[str, Any], grid: MACGrid) -> list[PorousRegion]:
-        """The porous regions at the step's leaves (:class:`PorousRegion`)."""
+        """The porous regions at the step's leaves (:class:`PorousRegion`), each centre placed in the box
+        (:meth:`porous_centre`)."""
         images = self.porous_images(grid)
-        return [PorousRegion(*(as_run_array(p[porous_leaf(index, name)]) for name in POROUS_LEAVES), images=images)
-                for index in range(len(self.porous_laws))]
+        regions: list[PorousRegion] = []
+        for index in range(len(self.porous_laws)):
+            leaves = {name: as_run_array(p[porous_leaf(index, name)]) for name in POROUS_LEAVES}
+            regions.append(PorousRegion(**{**leaves, "centre": self.porous_centre(leaves["centre"], grid)},
+                                        images=images))
+        return regions
 
     def porous_face_pressures(self, p: Mapping[str, Any], grid: MACGrid, applied: Velocity,
                               rhs: Velocity) -> Array:
@@ -629,6 +645,33 @@ class ImplicitFlowNode(MimeNode):
                                        0.0))
             rows.append(jnp.stack(faces))
         return jnp.stack(rows)
+
+    def porous_gaps(self, p: Mapping[str, Any], grid: MACGrid) -> list[Array]:
+        """Whether each porous region leaves a gap to the wall (``_porous.leaves_a_gap``) against the straight tube's
+        lumen; in a tube tree every region does (none was measured there)."""
+        from mime.nodes.flow.fvm._porous import leaves_a_gap
+
+        regions = self.porous_regions(p, grid)
+        if self.walled_by_tree:
+            return [jnp.asarray(True) for _ in regions]
+        centre, axis = as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"])
+        gaps: list[Array] = []
+        for region in regions:
+            across = jnp.asarray(region.centre, dtype=centre.dtype) - centre
+            along = jnp.sum(across * axis)
+            offset_squared = jnp.sum(across * across) - along * along / jnp.sum(axis * axis)
+            gaps.append(leaves_a_gap(region.radius, offset_squared, as_run_array(p["tube_radius"])))
+        return gaps
+
+    def porous_report(self, p: Mapping[str, Any], grid: MACGrid, applied: Velocity, rhs: Velocity,
+                      dtype: Any) -> dict[str, Array]:
+        """The state fields a flow holding porous regions adds: their face pressures and its flag."""
+        from mime.nodes.flow.fvm._porous import POROUS_FLAG, porous_flagged
+
+        flagged = porous_flagged(self.permeabilities(p), self.porous_gaps(p, grid), grid.spacing,
+                                 str(self.constants()["interior"]))
+        return {"porous_face_pressure": self.porous_face_pressures(p, grid, applied, rhs).astype(dtype),
+                POROUS_FLAG: flagged.astype(dtype)}
 
     def permeabilities(self, p: Mapping[str, Any]) -> list[Array]:
         """Each porous region's permeability as the step reads it (m^2)."""
@@ -744,6 +787,15 @@ class ImplicitFlowNode(MimeNode):
         weight = grid.cell_volume / length
         return lumen * weight, solid * weight, scale * weight
 
+    def reported_flux(self, lumen: Array, solid: Array) -> Array:
+        """The flux ``lumen_flux`` reports: the lumen's (:meth:`fluxes`) where the flow holds no porous region; with
+        one, the box's whole axial flux, the lumen's and the solid's, which is the flux through every cross-section
+        and so a region's throughflow. Past a region closing the tube the pressure that holds the body force back
+        pushes the wall's porous solid backward along the open part, which the drive does not reach, while the region's
+        reach closes the solid in its own span: a loop through the open lumen that crosses no region, carried by the
+        lumen's own mean and not by the whole (the porous validity line gives its measured size)."""
+        return lumen + solid if self.porous_laws else lumen
+
     # -- the node's interface -------------------------------------------------------------------------------------
     @override
     def initial_state(self) -> NodeFields:
@@ -772,6 +824,7 @@ class ImplicitFlowNode(MimeNode):
             bypass_ratio=z, bypass_flagged=z, reynolds=z, reynolds_flagged=z, negative_resistivity=z)
         if self.porous_laws:
             common["porous_face_pressure"] = jnp.zeros((len(self.porous_laws), 2), dtype=dtype)
+            common["porous_flagged"] = z
         return common
 
     @override
@@ -835,7 +888,8 @@ class ImplicitFlowNode(MimeNode):
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
         lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, ended_velocity)
         ratio = self.ratio(solid, lumen, lumen_scale)
-        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * self.vessel_radius(p) * self.kinematic(p))
+        reported = self.reported_flux(lumen, solid)
+        reynolds = 2.0 * jnp.abs(reported) / (jnp.pi * self.vessel_radius(p) * self.kinematic(p))
         stokes = not bool(c["convection"])
         energy = self.energy_terms(p, grid, velocity, stage, sigma, fields, dt) if self.metered else {}
         ended: dict[str, Array] = dict(
@@ -846,13 +900,12 @@ class ImplicitFlowNode(MimeNode):
                                  jnp.where(past, steps + 1, -1)).astype(jnp.int32),
             stopped_cfl=jnp.where(stopped_before, jnp.asarray(state["stopped_cfl"]),
                                   jnp.where(past, cfl, 0.0)).astype(dtype),
-            lumen_flux=lumen, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
+            lumen_flux=reported, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
             reynolds=reynolds.astype(dtype),
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
             negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype))
         if self.porous_laws:
-            pressure = self.porous_face_pressures(p, grid, operator(stage.shift)(stage.solved), stage.rhs)
-            ended["porous_face_pressure"] = pressure.astype(dtype)
+            ended.update(self.porous_report(p, grid, operator(stage.shift)(stage.solved), stage.rhs, dtype))
         held = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
             TreeFlowState(**ended, **self.wall_report(fields.counts)))
         if self.metered:
@@ -1086,7 +1139,9 @@ class ImplicitFlowNode(MimeNode):
 
             regions = [{name: c[porous_leaf(index, name)] for name in POROUS_LEAVES}
                        for index in range(len(self.porous_laws))]
-            lines += porous_lines(self.porous_laws, regions, float(c["spacing"]), str(c["interior"]))
+            p = self._step_constants(None)
+            gaps = [bool(gap) for gap in self.porous_gaps(p, self.grid(p))]
+            lines += porous_lines(self.porous_laws, regions, gaps, float(c["spacing"]), str(c["interior"]))
         return lines
 
     @override

@@ -22,6 +22,7 @@ Each plant is switched by ``MIME_PLANT_<NAME>``; each drawn case by ``DETECTION_
 from __future__ import annotations
 
 import math
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -30,8 +31,8 @@ import pytest
 from fvm_cases import METERED, Waveform, in_dtype, run, step_of
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from porous_cases import G, LAW, R, box_flux, brinkman_profile, composite, experiment, plant, plug_node, \
-    plug_resistance, series_flux, steady
+from porous_cases import G, LAW, R, box_flux, brinkman_profile, composite, experiment, open_experiment, plant, \
+    plug_node, plug_resistance, series_flux, steady
 
 import mime.nodes.flow.fvm._band as band
 import mime.nodes.flow.fvm._node as node_module
@@ -59,18 +60,28 @@ def _scaled(K: float) -> float:
     return K * (1.0 + float(plant("PLUG_K") or 0.0))
 
 
-@pytest.mark.parametrize("root", [0.3, 1.0])
-def test_a_plug_filling_the_tube_gives_darcys_pressure_drop(float64, root):
-    """A plug half a diameter long in a period of two (the probe's arms take one in four, to D/h 64)."""
+@pytest.mark.parametrize(("root", "interior"), [(0.3, "0.01h"), (1.0, "0.01h"), (0.3, "0.1h"), (0.03, "0.1h")])
+def test_a_plug_filling_the_tube_gives_darcys_pressure_drop(float64, root, interior):
+    """A plug half a diameter long in a period of two (the probe's arms take one in four, to D/h 64). The flux the run
+    reports, ``lumen_flux``, is read, and it is the box's whole flux: past a closing plug the lumen's own mean carries
+    the loop through the wall's solid (review B2). Two more plants: the plug's depth not carried into the wall's solid
+    (``NO_REACH``, a leak around it through the default interior's solid) and the lumen's own mean reported
+    (``LUMEN_LOOP``)."""
     dh, length, period = 16, 0.5, 2.0
     h = 1.0 / dh
     K = (root * h) ** 2
-    node = plug_node(dh, [dict(radius=R, length=length, permeability=_scaled(K))], length_cells=int(period * dh),
-                     interior="0.01h")
-    state = steady(node)
+    with pytest.MonkeyPatch.context() as patched:
+        if plant("NO_REACH"):
+            patched.setattr(band, "wall_reach", lambda phi: jnp.zeros_like(phi))
+        if plant("LUMEN_LOOP"):
+            patched.setattr(node_module.ImplicitFlowNode, "reported_flux", lambda self, lumen, solid: lumen)
+        node = plug_node(dh, [dict(radius=R, length=length, permeability=_scaled(K))], length_cells=int(period * dh),
+                         interior=interior)
+        state = steady(node)
     q = box_flux(node, state)
     assert float(state["solve_flagged"]) == 0.0
     assert abs(q / series_flux(K, length, period) - 1.0) < DARCY_LINE
+    assert abs(float(state["lumen_flux"]) / series_flux(K, length, period) - 1.0) < DARCY_LINE
     # The plug's pressure drop as its face pressures read it, with the drive over its length and its band's two half
     # widths, is Darcy's at the measured flux.
     faces = np.asarray(state["porous_face_pressure"], np.float64)[0]
@@ -269,7 +280,7 @@ def test_the_build_report_says_where_the_plugs_layer_is_under_a_cell_and_where_i
                          interior=interior)
         said[root, interior] = [line for line in node.built_lines(None, None) if LAW in line]
     assert said[2.0, "0.1h"] == []
-    resolved = "are resolved (measured down to sqrt(K)/h"
+    resolved = "are resolved, measured down to sqrt(K)/h"
     assert len(said[0.1, "0.1h"]) == 1 and resolved in said[0.1, "0.1h"][0]
     assert len(said[0.005, "0.1h"]) == 1 and resolved in said[0.005, "0.1h"][0]
     assert all(len(said[key]) == 1 and "unmeasured here" in said[key][0] for key in ((0.005, "0.01h"), (0.002, "0.1h")))
@@ -312,29 +323,58 @@ def test_a_plug_in_an_open_vessel_reads_darcys_drop_on_its_faces(float64):
     """The open vessel (an inflow at its start, a Windkessel at its end, no body force), two millimetres long, a plug
     half a millimetre long filling it at 16 cells across: its face pressures' drop is Darcy's at the inflow (measured
     -3.9 % on a vessel twice as long, its own drop between its openings -4.0 % of the series at this resolution)."""
-    from mime.dynamics import FVM, Scheme
-    from mime.experiment import Experiment
-    from mime.interactions import Inflow, Windkessel
-    from mime.scene import Scene, Tube, VesselRegion
-    from mime.things import Medium
-    from mime.units import Pa_s, Pa_s_per_m3, kg_per_m3, m3_per_Pa, mL_per_s
-
     radius, h = 0.5e-3, 1e-3 / 16
     K = h ** 2
-    exp = Experiment("open_plug", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
-    exp.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2), length=mm(2.0))))
-    exp.add_structure(Structure("clot", geometry=Plug(axis=+Z, radius=mm(0.5), length=mm(0.5))))
-    exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": FVM(domain=VesselRegion(margin=4),
-                                                                           cells_across=16, stokes=True,
-                                                                           scheme=Scheme.Steady())}))
-    exp.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
-    exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
-    exp.declare("clot.permeability", m2(K), reason="a gate's value")
-    exp.attach(Inflow(steady=mL_per_s(1e-3)), medium="water", surface="tube.start")
-    exp.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
-               medium="water", surface="tube.end")
-    exp.attach(Darcy(), medium="water", structure="clot")
-    final = exp.build().run(ms(1.0)).final["water.flow"]
+    final = open_experiment(K).build().run(ms(1.0)).final["water.flow"]
     faces = np.asarray(final["porous_face_pressure"], np.float64)[0]
     darcy = 1e-9 * plug_resistance(K, 0.5e-3, radius, 1e-3)
     assert abs((faces[0] - faces[1]) / darcy - 1.0) < 0.06
+
+
+def test_a_plug_anywhere_along_a_periodic_tube_is_read_at_its_image_in_the_box(float64):
+    """A plug one millimetre long in a periodic box of two (D/h 8, K 1e-10): placed at z 0, 4 (its image straddling the
+    box's end), 5 and -3 mm, every run reads the same flux and face pressures (review B1: at 5 and -3 the clot was not
+    in the simulation, at 4 half of it); control, the centre not placed in the box (``NO_WRAP``)."""
+    read = {}
+    with pytest.MonkeyPatch.context() as patched:
+        if plant("NO_WRAP"):
+            patched.setattr(node_module.ImplicitFlowNode, "porous_centre", lambda self, centre, grid: centre)
+        for z in (0.0, 4.0, 5.0, -3.0):
+            exp = experiment(permeability=1e-10, length=1.0, period=2.0, cells_across=8, centre=(0.0, 0.0, z))
+            final = exp.build().run(ms(20.0)).final["water.flow"]
+            read[z] = (float(final["lumen_flux"]), np.asarray(final["porous_face_pressure"], np.float64)[0])
+    flux, faces = read[0.0]
+    for z, (moved, moved_faces) in read.items():
+        assert abs(moved / flux - 1.0) < 1e-9, z
+        assert np.allclose(moved_faces, faces, rtol=0.0, atol=1e-9 * float(np.max(np.abs(faces)))), z
+
+
+def test_a_plug_longer_than_a_periodic_boxs_period_is_refused():
+    assert "flow.porous-period" in _codes(experiment(length=2.0, period=2.0))
+
+
+def test_a_plug_outside_an_open_vessels_span_is_refused():
+    assert "flow.porous-outside" in _codes(open_experiment((1.0 / 16) ** 2 * 1e-6, centre=(0.0, 0.0, 5.0)))
+
+
+@pytest.mark.parametrize("radius", [0.25, 0.5])
+def test_a_region_leaving_a_gap_below_its_measured_line_is_flagged_at_run_time_with_a_warning(float64, radius):
+    """At sqrt(K)/h 0.1 (D/h 8) a coaxial core of half the lumen's radius leaves a gap whose flux read 12 to 16 % low
+    (review M2): ``porous_flagged`` is raised with a warning, and the build's line says so; a plug closing the lumen at
+    the same K is within its measured line and is not flagged. Control: no region read as leaving a gap
+    (``NO_GAP``)."""
+    import mime.nodes.flow.fvm._porous as porous
+
+    K = (0.1 * 1e-3 / 8) ** 2
+    with pytest.MonkeyPatch.context() as patched:
+        if plant("NO_GAP"):
+            patched.setattr(porous, "leaves_a_gap", lambda radius, offset_squared, lumen_radius: False)
+        built = experiment(permeability=K, radius=radius).build()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = built.run(ms(20.0))
+    gap = radius < 0.5
+    flagged = float(result.final["water.flow"]["porous_flagged"])
+    warned = any("porous_flagged" in str(w.message) for w in caught)
+    line = next(line for line in built.report.text().splitlines() if "the porous region" in line)
+    assert (flagged, warned, "leaves a gap" in line) == (float(gap), gap, gap)

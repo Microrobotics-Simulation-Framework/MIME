@@ -223,9 +223,10 @@ def closed_tube() -> Experiment:
 
 def porous_plug() -> Experiment:
     """A porous plug filling a periodic water-filled tube, a quarter of its period long, ``Darcy`` attached; steady
-    Stokes. Its permeability, 1e-8 m^2, puts its Brinkman layer at about a cell (sqrt(K)/h 0.8), so the solve converges
-    in tens of iterations and the golden output is the program's own: a clot's (some 1e-12, sqrt(K)/h 0.008 here)
-    takes the CG hundreds of iterations, whose path moves with a runner's rounding by more than the outputs' 1e-10."""
+    Stokes, at a clot's permeability, 1e-12 m^2 (sqrt(K)/h 0.008: its Brinkman layer under a cell), the CG some 700
+    iterations. Its golden output is made on CI's runners: the stop's path was bit-equal on 14 runners of three CPU
+    models, by default and on one thread (review of #264, item 3); a golden made off them differed by the iteration
+    count."""
     from mime.dynamics import FVM, Scheme
     from mime.interactions import BodyForce, Darcy
     from mime.scene import PeriodicBox, Plug, Scene, Tube, Z
@@ -239,7 +240,7 @@ def porous_plug() -> Experiment:
     experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
-    experiment.declare("clot.permeability", m2(1e-8), reason="a case's value, its layer about a cell")
+    experiment.declare("clot.permeability", m2(1e-12), reason="a clot's, within the measured range at this spacing")
     experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
     experiment.attach(Darcy(), medium="water", structure="clot")
     return experiment
