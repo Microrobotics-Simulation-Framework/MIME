@@ -166,6 +166,12 @@ class Composed(NamedTuple):
     report: Array
     residual: Array
     density: Velocity
+    #: At the force points (``3N``): the near field's velocity ``K t``, the composed field's ``G u``, the box's and its
+    #: images' ``G u_o + c`` and the body's motion ``M V'`` (the law's books, :func:`law_books`).
+    near: Array
+    walled: Array
+    boxed: Array
+    motion: Array
 
 
 def stencils(grid: MACGrid, box: OwnBox, points: Array, width: float) -> Stencils:
@@ -265,11 +271,36 @@ def composed(grid: MACGrid, box: OwnBox, held: Stencils, body: SchwarzBody, step
     after = image + image_now * total
     near = jnp.matmul(body.matrix, tractions, precision=PRECISION)
     motion = jnp.matmul(placed.motions(), twist, precision=PRECISION)
-    remainder = near + (_gathered(grid, held.grid, field) - _gathered(_box_grid(box), held.box, own)
-                        - after[None, :]).reshape(-1) - motion
+    walls = _gathered(grid, held.grid, field).reshape(-1)
+    boxed_read = (_gathered(_box_grid(box), held.box, own) + after[None, :]).reshape(-1)
+    remainder = near + walls - boxed_read - motion
     scale = jnp.maximum(jnp.linalg.norm(near), jnp.linalg.norm(motion))
     residual = jnp.where(scale > 0.0, jnp.linalg.norm(remainder) / jnp.where(scale > 0.0, scale, 1.0), 0.0)
-    return Composed(tractions, field, own, after, report, residual, density)
+    return Composed(tractions, field, own, after, report, residual, density, near, walls, boxed_read, motion)
+
+
+#: The Schwarz law's books over a step (:func:`law_books`), in this order.
+BOOKS = ("exchange", "near", "box", "quadrature", "residual")
+
+
+def law_books(placed: Placed, done: Composed, twist: Array, dt: Any) -> tuple[Array, Array]:
+    """The Schwarz law's books over a step (J, in :data:`BOOKS`' order), from its composition at the body's ``twist``:
+    the work the body's tractions do on the fluid as the body is handed it (``dt V' . W^T t'``, the body's row with its
+    sign turned); the near field's own dissipation in free space (``dt F' . K t'``); the free box's and its images'
+    (``dt F' . (G u_o' + c')``); the rung's quadrature, the wrench's cells' centroids against the motions' force points
+    (``dt (V' . W^T t' - F' . M V')``); and the composed residual's (``-dt F' . r``). By the near field's equations
+    ``exchange - near + box - quadrature - residual = dt F' . G u'``, the composed field's work at the force points:
+    the law's row on the flow. With the magnitude of the products forming them."""
+    forces = _forces(placed, done.tractions).reshape(-1)
+    wrench = jnp.matmul(placed.wrench().T, done.tractions, precision=PRECISION)
+    remainder = done.near + done.walled - done.boxed - done.motion
+    exchange = dt * jnp.dot(twist, wrench)
+    moved = dt * jnp.dot(forces, done.motion)
+    books = jnp.stack([exchange, dt * jnp.dot(forces, done.near), dt * jnp.dot(forces, done.boxed), exchange - moved,
+                       -dt * jnp.dot(forces, remainder)])
+    size = dt * (jnp.abs(twist) @ jnp.abs(wrench) + jnp.abs(forces) @ (jnp.abs(done.near) + jnp.abs(done.walled)
+                                                                    + jnp.abs(done.boxed) + jnp.abs(done.motion)))
+    return books, size
 
 
 def free_box(extent: float, spacing: float, reach_cells: int, dtype: Any) -> OwnBox:
@@ -278,7 +309,7 @@ def free_box(extent: float, spacing: float, reach_cells: int, dtype: Any) -> Own
     return own_box(box_side(extent, spacing, reach_cells), spacing, dtype)
 
 
-__all__ = ["COLUMNS", "FREE_BOX_SITE", "INNER_SHARE", "LEAST_SIDE", "REPORT_SIZE", "RESIDUAL_LINE", "SCHWARZ_TOLERANCE",
+__all__ = ["BOOKS", "COLUMNS", "FREE_BOX_SITE", "INNER_SHARE", "LEAST_SIDE", "REPORT_SIZE", "RESIDUAL_LINE", "SCHWARZ_TOLERANCE",
            "SIDE_EXTENTS",
            "Composed", "Prepared", "SchwarzBody", "Stencils", "background", "box_side", "composed", "free_box",
-           "image_terms", "own_decayed", "own_response", "prepared", "reflection", "stencils"]
+           "image_terms", "law_books", "own_decayed", "own_response", "prepared", "reflection", "stencils"]

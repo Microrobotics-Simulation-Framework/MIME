@@ -329,6 +329,14 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
     field_laws: set[str] = set()
     verdicts = group_verdicts(graph)
     grouped = {member for members in verdicts for member in members.split("+")}
+    # A law judged in its cluster's sum that has no node of its own is judged by the receiver holding it in its step,
+    # under the row's field (a Schwarz body's drag, held in its flow's: ``schwarz_<b>_gift_steps``).
+    hosts: dict[str, Any] = {}
+    for name in cast(list[str], graph.node_names):
+        for delivery in ledger.deliveries(dict(getattr(graph.get_node(name), "params", {}) or {})):
+            judged = f"{delivery.field}_gift_steps"
+            if delivery.kind == ledger.HOSTED and delivery.check == ledger.CHECK_CLUSTER and judged in final[name]:
+                hosts[delivery.law] = final[name][judged]
     for name in cast(list[str], graph.node_names):
         receiver = graph.get_node(name)
         held = ledger.deliveries(dict(getattr(receiver, "params", {}) or {}))
@@ -370,6 +378,8 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
             gifts = records[f"{ledger.RECORDS}gift_steps"][row]
             if first.check == ledger.CHECK_CLUSTER and "cluster_gift_steps" in final.get(law, {}):
                 gifts = final[law]["cluster_gift_steps"]  # judged in the cluster's sum, by the node named for it
+            elif first.check == ledger.CHECK_CLUSTER and law in hosts:
+                gifts = hosts[law]
             line = LawEnergy(law, name, first.energy_class, work, _scalar(taken[row]),
                              tuple(first.supplied_by.split(",")) if first.supplied_by else (),
                              gift_steps=_count(gifts),

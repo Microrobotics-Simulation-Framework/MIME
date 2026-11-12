@@ -69,8 +69,8 @@ from mime.nodes.flow.fvm._exchange import box_side, faxen, held_spectrum, steady
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._partners import DELIVERIES, SOLUTION_COLUMNS, BodyPartner, Partnered, combined, \
     partnered_step
-from mime.nodes.flow.fvm._schwarz import INNER_SHARE, RESIDUAL_LINE, SCHWARZ_TOLERANCE, Composed, Prepared, composed, \
-    image_terms, own_decayed, prepared, stencils
+from mime.nodes.flow.fvm._schwarz import BOOKS as SCHWARZ_BOOKS, INNER_SHARE, RESIDUAL_LINE, SCHWARZ_TOLERANCE, Composed, \
+    Prepared, composed, image_terms, law_books, own_decayed, prepared, stencils
 from mime.nodes.flow.fvm._schwarz_host import PREFIX as SCHWARZ, REPORT_BLOCKS, WIDTH as SCHWARZ_WIDTH, SchwarzHost, \
     inputs_of as schwarz_inputs, starts as schwarz_starts
 from mime.nodes.flow.fvm._exchange import OwnBox, own_box
@@ -254,6 +254,9 @@ class ImplicitFlowNode(MimeNode):
     LEDGER_TERMS = ("backward_euler", "convection", "krylov")
     #: The grid kind's own terms its identity books after the scheme's (none on a periodic box).
     GRID_TERMS: ClassVar[tuple[str, ...]] = ()
+    #: The Schwarz partner's host (``mime.nodes.flow.fvm._schwarz_host``), where the node holds one; none on a node of
+    #: a scheme that holds none (the explicit stage kind's node, which builds no host).
+    schwarz: SchwarzHost | None = None
     #: The stall, a convective term not formed from its velocity, the drive in a solid; and the openings' two, pending
     #: (``mime.nodes.flow.fvm._flags``).
     LEDGER_FLAGS = FLAGS
@@ -791,7 +794,7 @@ class ImplicitFlowNode(MimeNode):
         if not self.metered:
             return held
         z = as_run_array(0.0)
-        return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z})
+        return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z, **self.schwarz_book_fields()})
 
     def partner_fields(self) -> dict[str, Array]:
         """The held point bodies' fields at the run's start (none without them): each body's six unit fields a face
@@ -1029,8 +1032,8 @@ class ImplicitFlowNode(MimeNode):
         return base, stage, made, scaled_least_eigenvalue(made.resistance).astype(dtype)
 
     def schwarz_initial(self) -> dict[str, Array]:
-        """The Schwarz partner's fields at the run's start, its first step prepared at the body's starting pose from
-        the flow's initial field, the drive at the first step's end as the build gives it (none without a partner)."""
+        """The Schwarz partner's fields at the run's start, its first step prepared (:meth:`started`) from the build's
+        leaves (none without a partner)."""
         host = self.schwarz
         if host is None:
             return {}
@@ -1042,27 +1045,46 @@ class ImplicitFlowNode(MimeNode):
         assert host is not None
         c = self.constants()
         p = {**c, **self.params_pytree()}
-        grid = self.grid(c)
         dtype = run_dtype()
-        held = host.fields(host.count, host.near.member_nodes[0].sample_count, grid)
-        start = self.initial_fields()
-        velocity = (start["velocity_x"], start["velocity_y"], start["velocity_z"])
-        fields = self.fields(p, grid)
-        drive = jnp.asarray(c.get("schwarz_drive", (0.0, 0.0, 0.0)), dtype=dtype)
-        pose = schwarz_starts(c, host.count)[0]
-        def made_at_start() -> tuple[Velocity, StageParts, Prepared, Array]:
-            return self.schwarz_prepare(p, velocity, jnp.asarray(0, dtype=jnp.int32), self.delta_t,
-                                        self.schwarz_forcing(fields, {}, drive, dtype), pose,
-                                        grid_zero_box(self.schwarz_box()), jnp.zeros(3, dtype=dtype))
+        held = host.fields(host.count, host.near.member_nodes[0].sample_count, self.grid(c))
+        held[f"{SCHWARZ}0_at"] = schwarz_starts(c, host.count)[0]
+        start = {**self.initial_fields(), **held}
 
-        # Made once, from the node's constants, outside whatever traces the step that first asks for it.
+        # Made once, from the build's leaves, outside whatever traces the step that first asks for it.
         with cast(Any, jax).ensure_compile_time_eval():
-            base, _, made, margin = cast(Any, jax).jit(made_at_start)()
-        held.update({f"{SCHWARZ}base_{x}": base[k] for k, x in enumerate("xyz")})
-        held.update({f"{SCHWARZ}0_columns": made.columns, f"{SCHWARZ}0_at": pose,
-                     f"{SCHWARZ}0_resistance": made.resistance, f"{SCHWARZ}0_load": made.load,
-                     f"{SCHWARZ}0_margin": margin, f"{SCHWARZ}report": made.report})
-        return {key: jnp.asarray(value, dtype=dtype) for key, value in held.items()}
+            made = cast(Any, jax).jit(lambda: self.started(p, start))()
+        return {key: jnp.asarray(value, dtype=dtype) for key, value in {**held, **made}.items()}
+
+    @override
+    def started_fields(self) -> tuple[str, ...]:
+        """A Schwarz flow's first preparation (:meth:`started`); none without a partner."""
+        if self.schwarz is None:
+            return ()
+        return (*(f"{SCHWARZ}base_{x}" for x in "xyz"), f"{SCHWARZ}0_columns", f"{SCHWARZ}0_resistance",
+                f"{SCHWARZ}0_load", f"{SCHWARZ}0_margin", f"{SCHWARZ}report")
+
+    @override
+    def started(self, params: Mapping[str, Any], state: Mapping[str, Array]) -> dict[str, Array]:
+        """The Schwarz partner's first step prepared from ``params``: at the body's starting pose (``state``'s
+        ``schwarz_0_at``) from the flow's initial field, the drive at the first step's end as the build gives it. The
+        initial state holds it made from the build's leaves; a differentiated run makes it again in its program, so
+        that a derivative in the viscosity or the body's leaves passes through the run's first step."""
+        if self.schwarz is None:
+            return {}
+        dtype = run_dtype()
+        grid = self.grid(params)
+        velocity = (jnp.asarray(state["velocity_x"]), jnp.asarray(state["velocity_y"]), jnp.asarray(state["velocity_z"]))
+        drive = jnp.asarray(params.get("schwarz_drive", (0.0, 0.0, 0.0)), dtype=dtype)
+        base, _, made, margin = self.schwarz_prepare(
+            params, velocity, jnp.asarray(0, dtype=jnp.int32), self.delta_t,
+            self.schwarz_forcing(self.fields(params, grid), {}, drive, dtype),
+            jnp.asarray(state[f"{SCHWARZ}0_at"], dtype=dtype), grid_zero_box(self.schwarz_box()),
+            jnp.zeros(3, dtype=dtype))
+        made_fields = {f"{SCHWARZ}base_{x}": base[k] for k, x in enumerate("xyz")}
+        made_fields.update({f"{SCHWARZ}0_columns": made.columns, f"{SCHWARZ}0_resistance": made.resistance,
+                            f"{SCHWARZ}0_load": made.load, f"{SCHWARZ}0_margin": margin,
+                            f"{SCHWARZ}report": made.report})
+        return {key: jnp.asarray(value, dtype=dtype) for key, value in made_fields.items()}
 
     def schwarz_stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
                         dt: float) -> tuple[dict[str, Array], StepParts]:
@@ -1138,7 +1160,43 @@ class ImplicitFlowNode(MimeNode):
                      f"{SCHWARZ}residual": done.residual.astype(dtype), f"{SCHWARZ}flagged": flagged.astype(dtype),
                      f"{SCHWARZ}indefinite": jnp.where(stopped_before, jnp.asarray(state[f"{SCHWARZ}indefinite"]),
                                                        indefinite.astype(dtype))})
-        return {**held_fields, **mine}, StepParts(stage, fields, {})
+        if not self.metered:
+            return {**held_fields, **mine}, StepParts(stage, fields, {})
+        before = (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+        took = self.schwarz_stage(p, grid, sigma, before, base, steps, dt,
+                                  self.schwarz_forcing(fields, boundary_inputs, None, dtype))._replace(solved=velocity)
+        density = tuple(d / rho for d in done.density)
+        energy = self.energy_terms(p, grid, before, took, sigma, fields, dt, None, (density[0], density[1], density[2]))
+        account, size = law_books(body.placed, done, twist, dt)
+        # The law's two rows, the flow's and the body's (the exchange with its sign turned), judged in their sum.
+        floor = books.IDENTITY_ULPS * jnp.finfo(dtype).eps * (rho * dt * grid.inner_magnitude(density, velocity) + size)
+        gift = (energy["schwarz"] - account[0] > floor).astype(dtype)
+        stall = self.stall_ratio(energy)
+        line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
+        mine.update({"stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype),
+                     f"{SCHWARZ}0_books": account, f"{SCHWARZ}0_books_sum": state[f"{SCHWARZ}0_books_sum"] + account,
+                     f"{SCHWARZ}0_gift_steps": state[f"{SCHWARZ}0_gift_steps"] + gift})
+        return {**held_fields, **mine}, StepParts(took, fields, energy)
+
+    def schwarz_stage(self, p: Mapping[str, Any], grid: MACGrid, sigma: Velocity, velocity: Velocity, base: Velocity,
+                      steps: Array, dt: float, force: Callable[[int, Any], Velocity]) -> StageParts:
+        """The scheme's stage as the step before took it to prepare this step's base from ``velocity`` (the field at
+        this step's start): its parts formed again by the same arithmetic, its solve the held ``base``."""
+        dtype = run_dtype()
+        scheme: TimeScheme[StageParts] = self.scheme
+        context = StepContext(grid, self.operator_of(p, grid, sigma), force, bool(self.constants()["convection"]),
+                              lambda shift, rhs, guess: (base, jnp.zeros(REPORT_SIZE, dtype=dtype)),
+                              self.kinematic(p), sigma)
+        return scheme.step(context, {"velocity": velocity}, steps.astype(dtype) * dt, dt)[1]
+
+    def schwarz_book_fields(self) -> dict[str, Array]:
+        """A metered Schwarz flow's books of its law at the run's start, zeros: the step's (``schwarz_0_books``, in
+        ``mime.nodes.flow.fvm._schwarz.BOOKS``' order), their sums over the run, and the steps the law's two rows
+        summed above their rounding floor (``schwarz_0_gift_steps``: a dissipative law's gift). None without one."""
+        if self.schwarz is None:
+            return {}
+        zeros = jnp.zeros(len(SCHWARZ_BOOKS), dtype=run_dtype())
+        return {f"{SCHWARZ}0_books": zeros, f"{SCHWARZ}0_books_sum": zeros, f"{SCHWARZ}0_gift_steps": as_run_array(0.0)}
 
     @staticmethod
     def wall_report(counts: Array) -> dict[str, Array]:
@@ -1156,10 +1214,12 @@ class ImplicitFlowNode(MimeNode):
         return 0.5 * as_run_array(p["density"]) * self.grid(p).inner(velocity, velocity)
 
     def energy_terms(self, p: Mapping[str, Any], grid: MACGrid, before: Velocity, stage: StageParts, sigma: Velocity,
-                     fields: WallFields, dt: float, partnered: Partnered | None = None) -> dict[str, Array]:
+                     fields: WallFields, dt: float, partnered: Partnered | None = None,
+                     schwarz: Velocity | None = None) -> dict[str, Array]:
         """Each term of the step's identity (J), the fluid's momentum at the solution the drive is paired with
         (:meth:`fluid_momentum`), each held point body's force's work on the fluid at the solution (``partners``, under
-        its law: ``dt <S_F f, u'>``), and the magnitude of the arithmetic forming them (``scale``)."""
+        its law: ``dt <S_F f, u'>``), a Schwarz body's tractions' (``schwarz``: ``schwarz`` their force density over the
+        fluid's density, ``dt rho <schwarz, u'>``), and the magnitude of the arithmetic forming them (``scale``)."""
         fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2])
         rho, nu = as_run_array(p["density"]), self.kinematic(p)
         solved = stage.solved
@@ -1170,7 +1230,7 @@ class ImplicitFlowNode(MimeNode):
         applied = self.operator_of(p, grid, sigma)(stage.shift)(solved)
         forced = stage.rhs
         partner_forces = partnered.forces if partnered is not None else ()
-        for force in partner_forces:
+        for force in (*partner_forces, *((schwarz,) if schwarz is not None else ())):
             forced = (forced[0] + force[0], forced[1] + force[1], forced[2] + force[2])
         remainder = (forced[0] - applied[0], forced[1] - applied[1], forced[2] - applied[2])
         change = (solved[0] - before[0], solved[1] - before[1], solved[2] - before[2])
@@ -1192,6 +1252,9 @@ class ImplicitFlowNode(MimeNode):
         if partner_forces:
             terms["partners"] = jnp.stack([dt * rho * inner(force, solved) for force in partner_forces])
             scale = scale + rho * dt * sum((size(force, solved) for force in partner_forces), start=zero)
+        if schwarz is not None:
+            terms["schwarz"] = dt * rho * inner(schwarz, solved)
+            scale = scale + rho * dt * size(schwarz, solved)
         return {**terms, "scale": scale}
 
     @staticmethod
@@ -1216,13 +1279,19 @@ class ImplicitFlowNode(MimeNode):
         ``tube.wall``; the node's ``.wall`` otherwise), both dissipative. The drive is delivered, not held."""
         wall = str(self.constants().get("wall_name", "")) or f"{self.name}.wall"
         return (("viscous", f"{self.name}.viscosity", books.DISSIPATIVE), ("penalty", wall, books.DISSIPATIVE),
-                *self.partner_laws())
+                *self.partner_laws(), *self.schwarz_laws())
 
     def partner_laws(self) -> tuple[tuple[str, str, str], ...]:
         """Each held point body's drag law, held in the step under its own id (``partner_<b>``): dissipative, its
         sign judged in the sum of its two rows by the drag's own node (``cluster_gift_steps``)."""
         return tuple((f"partner_{b}", str(law), books.DISSIPATIVE)
                      for b, law in enumerate(self.constants().get("partner_ids", ())))
+
+    def schwarz_laws(self) -> tuple[tuple[str, str, str], ...]:
+        """The Schwarz body's drag law, held in the step under its own id (``schwarz_<b>``): dissipative, its sign judged
+        in the sum of its two rows by the flow itself (``schwarz_<b>_gift_steps``): the flow carries the body."""
+        return tuple((f"{SCHWARZ}{b}", str(law), books.DISSIPATIVE)
+                     for b, law in enumerate(self.constants().get("schwarz_ids", ())))
 
     def drive_work(self, held: Sequence[books.LedgerDelivery], boundary_inputs: Mapping[str, Array],
                    rows: Sequence[str], dt: float, momentum: Array, size: Array) -> tuple[Array, Array, Array]:
@@ -1304,7 +1373,8 @@ class ImplicitFlowNode(MimeNode):
                                                                   parts.stage.solved)
             work, unattributed, drive_scale = work + exchanged, unattributed + plain, drive_scale + exchange_scale
         hosted_work = {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
-                       **{f"partner_{b}": energy["partners"][b] for b in range(self.body_count)}}
+                       **{f"partner_{b}": energy["partners"][b] for b in range(self.body_count)},
+                       **({f"{SCHWARZ}0": energy["schwarz"]} if "schwarz" in energy else {})}
         named: set[str] = set()
         for delivery in held:
             if delivery.kind == books.HOSTED:
@@ -1470,7 +1540,7 @@ def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
     delivered one into anything but its drive's inputs (``fluid``'s loads)."""
     for delivery in held:
         hosted = delivery.kind == books.HOSTED and (delivery.field in HOSTED_FIELDS or
-                                                    delivery.field.startswith(PARTNER))
+                                                    delivery.field.startswith((PARTNER, SCHWARZ)))
         driven = delivery.kind == books.LOAD and delivery.field in (*DRIVE_FIELDS, *EXCHANGE_FIELDS)
         if not (hosted or driven):
             raise ValueError(f"the flow node hosts {list(HOSTED_FIELDS)} and is driven through {list(DRIVE_FIELDS)}: "

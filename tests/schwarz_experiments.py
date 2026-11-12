@@ -18,17 +18,17 @@ from mime.units import Pa_s, Pa_s_per_m3, kg, kg_m2, kg_per_m3, m3_per_Pa, m_per
 
 
 def schwarz_sphere(*, second: str = "", wall_kind: str | None = None, opened: bool = False,
-               settings: dict | None = None) -> Experiment:
+                   settings: dict | None = None, viscosity: float = 1e-3) -> Experiment:
     """A neutral MRS sphere, ``ball``, 0.05 mm off a 1 mm tube's axis in water the FVM solves (8 cells across);
     ``second`` another body (``pebble`` a point body, else an MRS one), ``wall_kind`` written on the drag, ``opened``
-    the vessel open at its ends, ``settings`` the drag's others."""
+    the vessel open at its ends, ``settings`` the drag's others, ``viscosity`` the water's (Pa s)."""
     exp = Experiment("schwarz_sphere", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(1e-3))
     exp.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(0.5), wall=mm(0.1),
                                                       length=mm(4.0))))
     domain = VesselRegion(margin=4) if opened else PeriodicBox(length=mm(1.0))
     exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": FVM(domain=domain, stokes=True, cells_across=8,
                                                                           scheme=Scheme.IMEXEuler())}))
-    exp.declare("water.viscosity", Pa_s(1e-3), reason="water")
+    exp.declare("water.viscosity", Pa_s(viscosity), reason="water")
     exp.declare("water.density", kg_per_m3(1e3), reason="water")
     radius = 150e-6
     mass = 1e3 * 4.0 / 3.0 * math.pi * radius ** 3

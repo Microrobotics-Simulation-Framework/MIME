@@ -14,8 +14,8 @@ every input of the preparation is known at the end of this one: exact, not lagge
 **What it holds as state**: the prepared base field, the seven columns, the pose they were made at, the response and
 load handed, the free box's field and image term after the step, the preparation's report blocks, the composed
 residual and its flag, and the handed response's definiteness margin. The run's first step reads a preparation made in
-the flow's initial state at the body's starting pose and the drive at the first step's end, as the build gives them.
-A restart from saved state carries the preparation; a parameter the preparation read, changed at a fork, makes it again.
+the flow's initial state at the body's starting pose and the drive at the first step's end, as the build gives them,
+from the build's leaves; a differentiated run makes it again from its own (``MimeNode.started``). A restart from saved state carries the preparation; a parameter the preparation read, changed at a fork, makes it again.
 
 **The near field** is the medium's joint near field (``mime.nodes.hydro.near_field.JointDragNode``, on its iterative
 route, which holds each member's free part and its inverse), hosted: its constants are the flow's under ``schwarz_``,

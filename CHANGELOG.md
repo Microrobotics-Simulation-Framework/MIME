@@ -22,11 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what is known at the step's end; the build plans the body's read of the prepared response as a delivery prepared the
   step before. Each step reports the near field's residual at the composed field over every force point
   (`schwarz_residual`, flagged above ten times the tolerance) and the handed response's definiteness margin (an
-  indefinite one stops the run, `flow.schwarz-indefinite`). Refused by name: a wall kind written on the near field
-  (`drag.schwarz-wall-kind`), a second body in the flow (`flow.schwarz-bodies`), an open vessel
-  (`flow.schwarz-open`), a drive that is not a declared schedule (`flow.schwarz-drive`), the energy ledger on such a
-  flow (`flow.schwarz-ledger`) and the one-way and lagged opt-ins on the mrs rung (`drag.schwarz-scheme`), each until
-  its part is built.
+  indefinite one stops the run, `flow.schwarz-indefinite`). With the energy ledger the drag is held in the flow's
+  step under its own id: its row on the flow is its tractions' work on the composed field, its row on the body the
+  handed response's, and their sum, judged by the flow each step (`schwarz_0_gift_steps`), is the near field's own
+  dissipation less the free box's, with the rung's quadrature and the composed residual's work booked beside it
+  (`schwarz_0_books`). The first step's preparation is made in the flow's initial state from the build's leaves, and
+  again from the run's in a derivative's program (`MimeNode.started`), so a derivative in the viscosity passes through
+  the first step. Refused by name: a wall kind written on the near field (`drag.schwarz-wall-kind`), a second body in
+  the flow (`flow.schwarz-bodies`), an open vessel (`flow.schwarz-open`), a drive that is not a declared schedule
+  (`flow.schwarz-drive`) and the one-way and lagged opt-ins on the mrs rung (`drag.schwarz-scheme`), each until its
+  part is built.
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
   scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's

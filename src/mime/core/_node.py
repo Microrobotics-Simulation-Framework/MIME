@@ -272,6 +272,20 @@ class MimeNode(SimulationNode):
         otherwise (MADDENING's own scan, ``graph.step``) makes them itself. None by default."""
         return {}
 
+    def started(self, params: Mapping[str, Any], state: Mapping[str, Array]) -> dict[str, Array]:
+        """The initial state's fields the node makes from its leaves, made again from ``params`` (its constants with
+        the run's leaves written over them, ``constants(leaves)``) and the rest of its initial ``state``, each by the
+        name in :meth:`started_fields`: what a differentiated run (``mime.build._maddening.differentiated_run``) makes
+        in its program at the run's start, so that a derivative in a leaf passes through them (a Schwarz flow's first
+        preparation). The initial state holds the same fields made from the build's leaves. None by default."""
+        del params, state
+        return {}
+
+    def started_fields(self) -> tuple[str, ...]:
+        """The names of the fields :meth:`started` makes: a study's derivative takes them as made in the program, not
+        as an initial state its axis moves (``mime.study._gradient.written``)."""
+        return ()
+
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
         """The parameters the node makes from its others and holds among them, made again from ``params`` (its leaves
         as the graph would hold them) where those are not the build's: what the save's resolution rerun gives the

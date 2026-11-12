@@ -331,8 +331,10 @@ through with its other loads (a contact and a friction among them); the flow the
 field, so the field it stores is the solved one. The near field's equations are checked at the composed field every
 step (`schwarz_residual`, flagged above ten times the solve's tolerance), and an indefinite response stops the run
 (`flow.schwarz-indefinite`). One body a flow, on a periodic box, for now: a second body (`flow.schwarz-bodies`), an
-open vessel (`flow.schwarz-open`), the energy ledger (`flow.schwarz-ledger`) and the declared one-way and lagged routes
-(`drag.schwarz-scheme`) are refused until they are built. The body's own unsteady terms (Basset's history, its added
+open vessel (`flow.schwarz-open`) and the declared one-way and lagged routes (`drag.schwarz-scheme`) are refused until
+they are built. With the energy ledger the drag is held in the flow's step: its row on the flow is its tractions' work
+on the composed field, its row on the body the handed response's, and their sum (the near field's own dissipation less
+the free box's) is judged by the flow each step. The body's own unsteady terms (Basset's history, its added
 mass) are not in the near field, which is Stokes: under the flow's inertial step the walls' share of the drag arrives
 through the flow's history.
 

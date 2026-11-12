@@ -1004,14 +1004,6 @@ class _Planner:
                              and any(target.node in nodes and target.interface in (vocabulary.FLOW_BODY_FORCE.name,
                                                                                    vocabulary.FLOW_WAVEFORM.name)
                                      for target in plan.delivers.values()))
-            metered = sorted(plan.owner for plan in self.readers if plan.section is Section.OBSERVATION
-                             and getattr(plan.entry, "name", None) == "energy_ledger")
-            if metered:
-                self.refuse("flow.schwarz-ledger", RefusalClass.USER,
-                            f"{dynamics.owner} holds a Schwarz partner and the experiment observes the energy ledger "
-                            f"({', '.join(metered)}): the Schwarz exchange's rows (the near field's own dissipation "
-                            f"and the free box's) are not booked yet",
-                            "run it without exp.observe(EnergyLedger()) for now")
             if driving:
                 self.refuse("flow.schwarz-drive", RefusalClass.USER,
                             f"{dynamics.owner} holds a Schwarz partner and is driven by {', '.join(driving)}: the "
