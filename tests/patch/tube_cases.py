@@ -34,6 +34,9 @@ from mime.nodes.flow.fvm._solve import Stopping, stagnation_window
 VISCOSITY = 1e-3
 #: The free box's side in coarse cells (R2's).
 FREE_BOX = 96
+#: The coarse box's cells across beyond the tube's diameter (R2's 27 at D/h 16): the solid between the tube and its
+#: periodic images thick enough for the stiff interior (3 cells across left the images' bands nearly touching).
+MARGIN_CELLS = 11
 
 
 @dataclass(frozen=True)
@@ -93,7 +96,8 @@ def coupled(case: TubeCase, form: str) -> dict[str, Any]:
     "patch"."""
     dtype = jnp.dtype(case.dtype)
     h = case.coarse
-    cells = (int(math.ceil(2 * case.tube / h)) + 3, int(math.ceil(2 * case.tube / h)) + 3, 2 * case.d_over_h)
+    cells = (int(math.ceil(2 * case.tube / h)) + MARGIN_CELLS, int(math.ceil(2 * case.tube / h)) + MARGIN_CELLS,
+             2 * case.d_over_h)
     grid = MACGrid(cells, h)
     centre_box = np.array([0.5 * cells[0] * h, 0.5 * cells[1] * h, 0.0])
     solid = TubeSolid(tuple(centre_box), (0.0, 0.0, 1.0), case.tube,
