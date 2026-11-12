@@ -34,6 +34,7 @@
     "kind": "estimates",
     "prediction": {"band": [0.0, 0.06], "unit": "|built error - per-body error| at (0.05, 0.05), worst entry", "basis": "guess", "why": "moving the body along one contact's normal opens the other by the normals' cosine of the move: nearer one, the per-body lift opens both nearly as the dilation does"}
   },
+  "amended_before_any_run": "2026-11-12: no case has run. The blob-0.25 reference's own estimate was killed at the light lane's 12 GiB cap for both bodies (the dense system of about 24 thousand unknowns at 0.06 mm sets the floor, whatever the blob), so no case fits Actions. The proposal is therefore the committed reference's settings (0.06 mm, blob 0.1: measured 26.2 GiB and 26.1 GiB on the laptop for the floor body), which needs no resolution check of its own (gate 5_case_0 drops), on the laptop's heavy slot under a 42 GiB cap: held for the maintainer's word. The other predictions stand as written for that reference.",
   "decides": "if the per-body lift is nearer the reference at every two-contact row past the reference's resolution: (b) per-body for two contacts is supported; if the built composition is nearer at some: neither holds everywhere and the miss is stated (a); the maintainer chooses",
   "outcomes": null
 }
