@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The porous plug's hand-over below the resolved line** (lane F, dev2; a follow-up to the plug). A plug whose
+  `sqrt(K)/h` lies under the line (0.003 with the default 0.1h interior, 0.01 with 0.01h: the least at which a plug
+  closing a tube was resolved, the wall's leak at most 1 % of its throughflow) is held by the solve at the line's
+  permeability, a wall for the outer flow to within the flux that held plug passes, and its throughflow is read one way
+  from its face pressures, Darcy's law in Brinkman's form with the body force on its own fluid: `porous_flux` (each
+  region's throughflow by its route: the solve's flux through its mid-section at or above the line, the reading below
+  it) and `porous_seepage` (over its section), differentiable in `K` and the solved pressures. Where a law fixes the flux
+  (an inflow, a closed valve) on every path from its opening to the others through a plug below the line that closes
+  the lumen, and its reading falls short of the solve's flux through it, the run raises `forced_flagged` with a
+  warning: the drop is then the held plug's, not the plug's. The test is the vessel's topology, since a held plug obeys
+  its own Darcy relation whatever drives it. `porous_flagged` keeps its gap rule and fires for a plug below the line
+  beside a resolved body; below the line a closing plug is the hand-over's, no longer flagged. The build report states
+  each plug's route and the line with its source. **Fixed:** a flow holding a porous plug and a resolved body
+  (`Drag.Penalty`) took each body's loss off the walls' penalty twice, so its books did not close.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,

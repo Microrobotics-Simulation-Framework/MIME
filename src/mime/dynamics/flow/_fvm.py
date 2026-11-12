@@ -628,7 +628,9 @@ class FVM(Dynamics):
             if cylinder is None:
                 named = f"a {type(kind).name} geometry" if kind is not None else "no geometry"
                 found.append(Problem("flow.porous-kind", f"{registration.id} binds {registration.subject!r}, which has "
-                                                         f"{named}: the flow holds a porous region of a Plug's solid",
+                                                         f"{named}: the flow holds a porous region of a Plug's solid "
+                                                         f"(a region of another shape below the hand-over's line needs "
+                                                         f"a small Darcy solve inside it, not built)",
                                      f"give {registration.subject!r} a Plug geometry, Structure("
                                      f"{registration.subject!r}, geometry=Plug(axis=..., radius=..., length=..., "
                                      f"centre=...))"))
