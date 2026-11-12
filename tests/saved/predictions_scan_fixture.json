@@ -1,0 +1,56 @@
+{
+  "written": "2026-11-12, committed before any Actions probe of this change ran: the switch scan's order dependence (trace_fresh) and the pinned scheduler for the tests that read its build",
+  "phase": "fix/scan-fixture-order: the scan's answer does not depend on what traced before it; the scan's build is paid once per job",
+  "labels": "predictions by the author from local single-process runs (below); the Actions arms are the measurement",
+  "seen_before": [
+    "local, one process each, Python 3.12, CPU, 12 GiB slot, same checkout: the switch scan after tests/scene/test_tube_tree.py has 726 raw sites against 724 on a fresh process, ExactUnion.evaluate and _compiled.<locals>.evaluated in scope, 164 equations of the arm's step carrying union frames (27 steps in all)",
+    "local: jax.clear_caches() before the scan removes it (724, equal scope); clearing the lru_cache on mime.scene._union._compiled does not (726)",
+    "local: clearing before each traced step gives 724 hits and 811 functions in scope in both orders, as a fresh process does; the scan took 292 to 296 s",
+    "local simulation of the scheduler (tests/test_fixture_first.py): xdist's stock work stealing scatters the marked tests over more than one worker in 210 of 300 shard shapes, the pinned one in 0 of 300; a real -n 4 run: stock 2 or 3 builds in 8 of 8 runs, pinned 1 in 8 of 8"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner, 4 vCPU, Python 3.12, CPU",
+    "sizes_and_parameters": "as CI runs a shard: pytest -m 'not slow' -n auto --dist worksteal --mime-shard i/30; base is origin/release/v0.3.0 at da8d1679, head is this branch",
+    "seeds_and_draws": "the pin test and the scheduler tests are deterministic; the detection rate is 20 runs"
+  },
+  "gate_1_order": {
+    "claim": "tests/scene/test_tube_tree.py, then the scan's control_an_unlisted_raw_site test and the harness's guard-coverage control, in one process: both fail at the base, both pass at the head",
+    "kind": "equality",
+    "case": "pytest tests/scene/test_tube_tree.py tests/saved/test_switch_scan.py::test_control_an_unlisted_raw_site_fails tests/saved/test_switch_harness.py::test_control_a_guard_no_point_reaches_false_or_a_nonzero_norm_at_zero_fails, in that order, -p no:randomly",
+    "prediction": {"value": "base 2 failed; head 0 failed", "basis": "measured-before", "why": "the mechanism was isolated locally (seen_before) and the same order failed on the release tip in an earlier probe"},
+    "control": {"plant": "the base arm is the control: the same order on the code before the fix", "expected_rate": "base fails", "clean_expected": "head passes"},
+    "if_wrong": "if the head fails, the cache that carries stale frames is not the only one, and the scan's controls are still order dependent",
+    "cannot_discriminate_if": "the base arm passes (the order did not reproduce on the runner): then the head arm says nothing"
+  },
+  "gate_2_pin_test": {
+    "claim": "the pinning test fails on the code before the fix on every run",
+    "kind": "equality",
+    "case": "tests/saved/test_switch_order.py::test_the_arms_step_has_no_union_frame_after_a_union_was_traced_in_the_process, detection_rate.py with MIME_PLANT_STALE_FRAMES (traces as make_jaxpr did before trace_fresh)",
+    "prediction": {"value": "20/20 caught, 0/20 flagged clean", "basis": "derived", "why": "the program is deterministic: 164 union-framed equations after the polluter, 0 without, in 3 of 3 local runs each"},
+    "control": {"plant": "MIME_PLANT_STALE_FRAMES=1", "environment_variable": "MIME_PLANT_STALE_FRAMES", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20"},
+    "if_wrong": "a miss means the pollution depends on something the probe does not fix (a thread, a hash seed)",
+    "cannot_discriminate_if": "every run is inconclusive (the probe script crashed)"
+  },
+  "gate_3_builds": {
+    "claim": "each of shards 16, 21 and 25 of 30 builds the scan's traced steps in at most one worker process at the head; the base's count is the control",
+    "kind": "equality",
+    "case": "-n auto --dist worksteal --mime-shard i/30, the number of workers whose traced_steps cache has a miss, logged per job",
+    "prediction": {"value": 1, "unit": "builds per job", "basis": "derived", "why": "the marked tests are dealt to one worker and never offered to a thief"},
+    "control": {"plant": "the base arm of the same shard", "expected_rate": "base builds 1 to 4 times; not every run races", "clean_expected": "head builds exactly once"},
+    "if_wrong": "a head count above 1 means a reader of the build is unmarked or the scheduler was not used (the job's log names the scheduler)",
+    "cannot_discriminate_if": "the base also builds once in the arm (the race did not fire): the head's 1 is then no evidence on the race"
+  },
+  "gate_4_control_time": {
+    "claim": "the harness's guard-coverage control, 176 s ceiling at the base, takes under 120 s at the head in shard 16",
+    "kind": "estimates",
+    "case": "its junit time in the shard-16 arm",
+    "prediction": {"band": [60, 120], "unit": "s", "basis": "measured-before", "why": "alone on a laptop it took 68.8 s cold, 31 s of it compiling; it no longer pays the scan's 150 to 340 s"},
+    "if_wrong": "over the band: the control pays something besides the build"
+  },
+  "bits": {
+    "_how": "no program changes: test infrastructure, and one function of src/mime/docs/_switches.py that traces for the scan only",
+    "prediction": "the node walk, the scan and every step trace are untouched outside the scan's own traces; a one-line check: git diff --stat shows no file under src/mime other than docs/_switches.py"
+  },
+  "outcomes": null
+}
