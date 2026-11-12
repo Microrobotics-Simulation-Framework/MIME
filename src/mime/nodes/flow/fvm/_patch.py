@@ -19,6 +19,13 @@ the steady limit's is the regularised Stokeslet alone). The history's: the free 
 which has no closed form; the flow's own box hands it as a lattice field, sampled at the shell's faces
 (:func:`shell_sample`).
 
+**In time: backward Euler with state** (the signed interface's default, measured). Under a time-stepped flow the patch
+takes the step's shift and carries its last reflection field. In F5's structure at stage 1's corners (``lambda = a /
+sqrt(nu dt)`` 0.79 to 4.97, 50 and 200 mPa s, 0.5 and 5 ms) it followed a fine monolithic backward-Euler reference
+within -1.9 to +3.2 % of the force after an impulsive start; a quasi-steady patch (zero shift, no history) inside the
+same steps read +3.7 to +7.8 % settled and up to +11 % at the first step, outside that at every corner, so it is not
+offered. The steady limit is the zero shift.
+
 **Columns and the base.** The patch's functions take one column of forces and are vmappable over a column axis (no
 branch on a value, no shape from data). A column takes no history: it is linear in its given values and its forces. The
 base column carries the history (:class:`PatchHistory`): the previous step's reflection field, moved with the patch and
