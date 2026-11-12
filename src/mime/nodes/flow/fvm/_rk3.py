@@ -41,6 +41,33 @@ STAGE_TIMES = (0.0, 8.0 / 15.0, 2.0 / 3.0)
 QUADRATURE = (0.25, 0.0, 0.75)
 
 Force = Callable[[int, Any], Velocity]
+#: A pointwise damping's coefficient (1/s) on ``w``'s faces read from the stage's start velocity, ``damping(k, u_k)``,
+#: taken implicitly in the stage beside the wall's penalty; ``None`` where there is none.
+StageDamping = Callable[[int, Velocity], Array | None]
+#: A force a stage takes with its pressure's weight ``alpha_k dt``, ``held_force(k)``.
+HeldForce = Callable[[int], Velocity]
+#: A stage's projection, ``project(k, held, alpha_k dt) -> (u_k+1, phi, held)``: the stage's solution, its pressure's
+#: increment and the field its penalty was solved at (an open box's, its openings' unit fields superposed).
+Project = Callable[[int, Velocity, Any], tuple[Velocity, Array, Velocity]]
+#: An open box's start, ``ready(u, p, ready, f_0) -> p``: the pressure a step starts from, made consistent with the
+#: velocity and the openings' pressures where ``ready`` marks it unmade.
+Ready = Callable[[Velocity, Array, Array, Velocity], Array]
+
+
+class StagePorts(NamedTuple):
+    """An open box's openings in an RK3 step (``mime.nodes.flow.fvm._open_explicit``): its start (:data:`Ready`), the
+    pointwise damping each stage takes with its penalty (:data:`StageDamping`), the openings' forces each stage takes
+    with its pressure's weight, and each stage's projection with the openings' rows solved."""
+
+    ready: Ready
+    damping: StageDamping
+    held_force: HeldForce
+    project: Project
+
+
+#: The instant each stage's solution is at, as a fraction of the step (its end ``c_k + alpha_k``): where a law held at
+#: an opening is evaluated, backward Euler over the stage.
+STAGE_ENDS = (8.0 / 15.0, 2.0 / 3.0, 1.0)
 #: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
 _LAX: Any = jax.lax
 
@@ -60,6 +87,10 @@ class ExplicitStage(NamedTuple):
     scale: Array
     momentum: Array | None = None
     momentum_size: Array | None = None
+    #: Where the step is given a pointwise damping of its own (``step``'s ``damping``: an open box's backflow term), what
+    #: it dissipated, ``sum_k alpha_k dt <c_k u*, u*>`` at each stage's implicit solution as the penalty's is (never
+    #: negative).
+    damped: Array | None = None
 
 
 def _add(a: Velocity, b: Velocity, s: Any = 1.0) -> Velocity:
@@ -74,6 +105,11 @@ def _explicit(grid: MACGrid, velocity: Velocity, viscosity: Any, force: Velocity
     lap = grid.laplacian(velocity)
     viscous = (viscosity * lap[0], viscosity * lap[1], viscosity * lap[2])
     return _add(_add(conv, viscous), force), conv, viscous
+
+
+def explicit_rhs(grid: MACGrid, velocity: Velocity, viscosity: Any, force: Velocity, convection: bool) -> Velocity:
+    """The explicit right-hand side ``h = C(u) + nu L u + f`` (a stage's)."""
+    return _explicit(grid, velocity, viscosity, force, convection)[0]
 
 
 def consistent_pressure(grid: MACGrid, velocity: Velocity, viscosity: Any, resistivity: Velocity, force: Velocity,
@@ -94,14 +130,20 @@ def ready_pressure(grid: MACGrid, velocity: Velocity, pressure: Array, ready: Ar
 
 
 def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, resistivity: Velocity, force: Force,
-         convection: bool, time: Any, dt: Any, *, fluid: Velocity | None = None) -> tuple[Velocity, Array, ExplicitStage]:
+         convection: bool, time: Any, dt: Any, *, fluid: Velocity | None = None, damping: StageDamping | None = None,
+         held_force: HeldForce | None = None, project: Project | None = None) -> tuple[Velocity, Array, ExplicitStage]:
     """One RK3 step: the new velocity and pressure, and what the ledger reads of the step. ``force(k, t)`` is the drive
-    at stage ``k``'s time ``t``; ``fluid``, the faces' ``1 - chi``, where the step records the fluid's momentum at its
-    stages."""
+    at stage ``k``'s time ``t``; ``fluid``, the faces' ``1 - chi`` (weighted as the grid's inner product weighs them),
+    where the step records the fluid's momentum at its stages. An open box's stages (``mime.nodes.flow.fvm.
+    _open_explicit``) give ``damping``, a coefficient on ``w``'s faces read from each stage's start velocity and taken
+    implicitly in the stage's pointwise solve beside the penalty, ``w* = r_w / (1 + alpha_k dt (Sigma_w + c_k))`` (the
+    backflow term, its coefficient lagged a stage), ``held_force``, a force each stage takes with its pressure's weight (the openings' at
+    their predicted pressures), and ``project``, the stage's projection with its openings' rows solved; none given, the
+    step is the periodic box's."""
     inner, size = grid.inner, grid.inner_magnitude
     dtype = velocity[0].dtype
     zero = jnp.zeros((), dtype=dtype)
-    drive = viscous_d = penalty_d = conv_p = scale = zero
+    drive = viscous_d = penalty_d = conv_p = scale = damped_d = zero
     momenta: list[Array] = []
     momentum_sizes: list[Array] = []
     previous: Velocity | None = None
@@ -114,8 +156,12 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
         r = _add(_add(velocity, h, dt * g), gp, -stage_dt)
         if previous is not None:
             r = _add(r, previous, dt * z)
-        held = (r[0] / (1.0 + stage_dt * resistivity[0]), r[1] / (1.0 + stage_dt * resistivity[1]),
-                r[2] / (1.0 + stage_dt * resistivity[2]))
+        if held_force is not None:
+            r = _add(r, held_force(k), stage_dt)
+        extra = damping(k, velocity) if damping is not None else None
+        stiff = resistivity if extra is None else (resistivity[0], resistivity[1], resistivity[2] + extra)
+        held = (r[0] / (1.0 + stage_dt * stiff[0]), r[1] / (1.0 + stage_dt * stiff[1]),
+                r[2] / (1.0 + stage_dt * stiff[2]))
         if fluid is not None:
             weighted = [fluid[c] * velocity[c] for c in range(3)] if QUADRATURE[k] != 0.0 else [zero, zero, zero]
             momenta.append(jnp.stack([grid.cell_volume * jnp.sum(x) for x in weighted]))
@@ -126,20 +172,32 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
             viscous_d = viscous_d - w * inner(visc, velocity)
             conv_p = conv_p + w * inner(conv, velocity)
             scale = scale + w * (size(f, velocity) + size(visc, velocity) + size(conv, velocity))
+        projected = project(k, held, stage_dt) if project is not None else None
+        if projected is not None:
+            held = projected[2]
         penalised = (resistivity[0] * held[0], resistivity[1] * held[1], resistivity[2] * held[2])
         penalty_d = penalty_d + stage_dt * inner(penalised, held)
         scale = scale + stage_dt * size(penalised, held)
-        phi = grid.poisson(grid.divergence(held) / stage_dt)
-        correction = grid.gradient(phi)
-        velocity = _add(held, correction, -stage_dt)
+        if extra is not None:
+            none = grid.zeros(dtype)
+            damped = (none[0], none[1], extra * held[2])
+            damped_d = damped_d + stage_dt * inner(damped, held)
+            scale = scale + stage_dt * size(damped, held)
+        if projected is None:
+            phi = grid.poisson(grid.divergence(held) / stage_dt)
+            correction = grid.gradient(phi)
+            velocity = _add(held, correction, -stage_dt)
+        else:
+            velocity, phi = projected[0], projected[1]
         pressure = pressure + phi
         previous = h
     scale = scale + size(velocity, velocity)
     if fluid is None:
-        return velocity, pressure, ExplicitStage(drive, viscous_d, penalty_d, conv_p, scale)
+        return velocity, pressure, ExplicitStage(drive, viscous_d, penalty_d, conv_p, scale,
+                                                 damped=None if damping is None else damped_d)
     return velocity, pressure, ExplicitStage(drive, viscous_d, penalty_d, conv_p, scale, jnp.stack(momenta),
-                                             jnp.stack(momentum_sizes))
+                                             jnp.stack(momentum_sizes), None if damping is None else damped_d)
 
 
-__all__ = ["ALPHA", "GAMMA", "QUADRATURE", "STAGE_TIMES", "ZETA", "ExplicitStage", "consistent_pressure",
-           "ready_pressure", "step"]
+__all__ = ["ALPHA", "GAMMA", "QUADRATURE", "STAGE_ENDS", "STAGE_TIMES", "ZETA", "ExplicitStage", "HeldForce", "Project",
+           "Ready", "StageDamping", "StagePorts", "consistent_pressure", "explicit_rhs", "ready_pressure", "step"]

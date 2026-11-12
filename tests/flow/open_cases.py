@@ -305,11 +305,60 @@ def _loss_in_n_wk(setter: Setter) -> None:
     setter(Windkessel, "books", planted)
 
 
+def _gauge_off(setter: Setter) -> None:
+    """FB12's control: the gauge off, each step's relative pressures formed as differences of the absolute ones (so the
+    field's unknowns and the moves carry the absolute pressures' rounding, ``eps |level|``), the moves and the rows'
+    fluxes from them."""
+    from mime.nodes.flow.fvm._ports import PortSolution
+
+    real = OpenFlowNode.solve_ports
+
+    def solve_ports(self: Any, rows: Any, a: Any, blocks: Any, base: Any, response: Any, predicted: Any,
+                    reference: int) -> Any:
+        solution = real(self, rows, a, blocks, base, response, predicted, reference)
+        relative = solution.pressures - solution.pressures[reference]
+        moved = relative - jnp.asarray(predicted)
+        others = [j for j in range(len(rows)) if j != reference]
+        fluxes = base + (response @ jnp.stack([moved[j] for j in others]) if others else 0.0)
+        return PortSolution(solution.pressures, relative, moved, fluxes)
+
+    setter(OpenFlowNode, "solve_ports", solve_ports)
+
+
+def _level_in_field(setter: Setter) -> None:
+    """FB12's control, the gauge off where its rounding acts (``_gauge_off`` cannot show it: its rounding never reaches
+    the field): every projected solve of the open node takes, beside its right-hand side, the force of a uniform
+    pressure at the level ``Q (R_p + R_d)`` on both planes, a gradient the projector removes in exact arithmetic, so only
+    its rounding, ``eps`` times the level's force, reaches the solve, as in the open-ports spike's runs without a gauge."""
+    from mime.nodes.flow.fvm import _open_node
+
+    real_solve, real_stepped = _open_node.projected_solve, OpenFlowNode.stepped
+    held: list[tuple[Any, Any]] = []
+
+    def stepped(self: Any, p: Any, state: Any, boundary_inputs: Any, dt: float) -> Any:
+        rows = jnp.asarray(p["opening_parameters"])
+        held.append((rows[0, 0] * (rows[1, 0] + rows[1, 2]), p["density"]))
+        try:
+            return real_stepped(self, p, state, boundary_inputs, dt)
+        finally:
+            held.pop()
+
+    def projected_solve(grid: Any, apply: Any, diagonal: Any, rhs: Any, *args: Any, **kwargs: Any) -> Any:
+        level, density = held[-1]
+        uniform = grid.port_force(jnp.full((grid.opening_count,), level, dtype=rhs[0].dtype), density)
+        return real_solve(grid, apply, diagonal, tuple(r + u for r, u in zip(rhs, uniform, strict=True)), *args,
+                          **kwargs)
+
+    setter(OpenFlowNode, "stepped", stepped)
+    setter(_open_node, "projected_solve", projected_solve)
+
+
 PLANTS: dict[str, Callable[[Setter], None]] = {
     "gradient_full_cell": _gradient_full_cell, "weights_uniform": _uniform_weights,
     "laplacian_full_cell": _laplacian_full_cell, "end_full_cell": _full_cell_end, "start_full_cell": _full_cell_start,
     "inflow_scaled": _inflow_scaled, "port_gift": _port_gift, "unit_scaled": _unit(1.1), "unit_negated": _unit(-1.0),
     "interior_gift": _interior_gift, "loss_in_n_wk": _loss_in_n_wk, "kinetic_in_n_conv": _kinetic_in_n_conv,
+    "gauge_off": _gauge_off, "level_in_field": _level_in_field,
 }
 
 

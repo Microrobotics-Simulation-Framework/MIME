@@ -58,7 +58,7 @@ def _difference_to_centre(a: Array, axis: int, h: Any) -> Array:
 #: The solve site of the grids' Poisson solves, by a fast transform (``poisson`` of this grid kind and of the open one).
 POISSON_SITE = register(SolveSite(
     "fvm_poisson", "transform", "mime.nodes.flow.fvm._grid.MACGrid.poisson, _open.OpenMACGrid.poisson",
-    nodes=("ImplicitFlowNode", "ExplicitFlowNode", "OpenFlowNode")))
+    nodes=("ImplicitFlowNode", "ExplicitFlowNode", "OpenExplicitFlowNode", "OpenFlowNode")))
 
 
 @dataclass(frozen=True)

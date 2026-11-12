@@ -1,0 +1,250 @@
+{
+  "written": "2026-11-11, committed before any gate of F2b PR 4b ran (the commit that adds this file is the timestamp): RK3 with ports (OpenExplicitFlowNode), FB7, FB10, FB11, FB12, FB15, R-8, R-21, FB19, #246's and #258's limits under RK3, bits",
+  "phase": "F2b PR 4b: RK3 with ports and the rest of the FB gates (stacked on #258, F2b PR 4a)",
+  "labels": "the builder's, from the record (decisions 8, 11, 12, 14; R5-C's FB rows; 'F2's rows, 4'), the open-ports spike (its questions 5 and 7) and derivations stated per gate; guesses say so",
+  "seen_before": [
+    "a smoke run while writing (one rig, not a draw: D/h 8, 2 D long, nu 1, dt 0.1 h^2, an Inflow of mean speed 1 with 0.3 pulsatile over 40 steps a period, a Windkessel R_p 0.3, C dt / (1.5 R_tube), R_d 3 R_tube, the backflow term on the outlet, metered, 40 steps, float64): the inflow's face flux its waveform to the digits printed, the law identity's worst 0.036 of its floor, route 1's worst step +0.079 of its scale, nothing unattributed",
+    "the same experiment through the build (test_fvm_openings' vessel, Scheme.RK3(), 20 ms, float64): the face fluxes [-Q, Q] to 1e-12, the books closed (ledger_closes), the viscous limit refused at dt 5 ms",
+    "the open-ports spike's question 7 (S1's solver, not this node): the zero start diverged within 5 steps at R_p 100 R_tube, the consistent start smooth at every R_p; question 5: at mean Re 300 on the radius with a 50 % stenosis 0.9 D before the outlet S1's RK3 diverged within 0.26 of a period without the term, held 2.25 periods with it; at Re 100 stable both ways",
+    "R-15, decided 2026-11-11 (night) before any FB7 arm ran: the backflow term's explicit form replaced by the lagged implicit form, f = -|min(w^n, 0)| w'/h, pointwise in RK3's stages (its coefficient read from each stage's start velocity, the term taken in the stage's pointwise solve beside the penalty, booked as the penalty is); the FB7 rows are for that form, with the explicit form (this node at f62f33b) run beside it as the comparison his condition asks for. While writing: the RK3 tests' draws (no reversal) pass unchanged under the new form"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU: CI's default lane for the tests; the probe workflow's GitHub runner (4 vCPU) for the long runs; no Modal",
+    "sizes_and_parameters": "tests/flow/rk3_open_cases.py: open_cases' draws (D/h 8, 12, 16, 2 D long, D = nu = rho = 1, an Inflow at Re 1 to 100 by the mean speed with a pulsatile part of 0.3 over 40 steps a period, a Windkessel R_p 0.1 to 3 R_tube, R_d 1 to 1e4 R_tube, dt/(R_d C) 0.1 to 3, a narrowing of 0 to 0.4 at mid-length, a swirl of 0.05 to 0.5 of the mean speed in the start), stepped by RK3 at 0.09 to 0.9 of the smaller of its CFL line (1.7, at the larger of the start's peak and the throat's) and its viscous number (0.15), the backflow term on the outlet, metered, 30 steps; the long runs per gate below",
+    "seeds_and_draws": "CI: seeds 0, 1, 2 a dtype; controls' rates: 40 planted and 40 clean runs (detection_rate.py, seeds 3000 to 3039) unless a gate says otherwise"
+  },
+  "gate_fb11_workless": {
+    "claim": "FB11: with each law held at RK3's stages (backward Euler over alpha_k dt at the stage's end), the exchange across an opening is workless to rounding: the law's own books over the stages against the flow's -sum_k alpha_k dt p_k q_k, every step, within 16 eps of the law's own scale",
+    "kind": "equality (both sides are the same products; the gate bounds their summation and the face flux's rounding, not the law's accuracy)",
+    "case": "rk3_open_cases.drawn(seed), 30 steps, books_of(final)['law_identity']",
+    "prediction": {"value": 0.05, "band": [0.0, 1.0], "unit": "the law identity's worst over its floor (16 eps of its scale)", "basis": "derived", "why": "the flow and the law book the same p_k and q_k; what differs is the rows' flux against the face flux (a summation floor carried through the block, in the scale) and the BE law's own algebra, a few eps"},
+    "metric": "ledger_law_identity_worst / (16 eps)",
+    "control": {"plant": "law_once: each law held over the whole step at its start (rows BE over dt at the step's end at every stage), advanced once with the last stage's flux and pressure; the flow still books its stages: the residual sum_k alpha_k dt (p_k q_k - p_3 q_3), first order in dt", "environment_variable": "RK3_PLANT=law_once", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40", "resolution": "pulsatile draws move p q by about 2 pi x 0.3 / 40 of itself a step: the residual is about 1e-2 of the law's scale, 1e12 floors in float64 and 1e4 in float32"},
+    "if_wrong": "a clean draw over its floor: the floor misses a rounding (look at the face flux against the rows' flux) or the per-stage books do not telescope; a missed control: the plant moves nothing the books read",
+    "cannot_discriminate_if": "steady flow (p q constant over the step: the control's residual vanishes); the draws are pulsatile"
+  },
+  "gate_route_one": {
+    "claim": "F1b's per-step route-1 check on the open RK3 node: no step gives energy (the laws' storage counted with the flow's: a discharging Windkessel is no gift), and a gift on one step is counted on that step",
+    "kind": "acceptance (route 1 judges the sign of each step's dissipation; it bounds nothing about its size)",
+    "case": "rk3_open_cases.drawn(seed), 30 steps, books_of(final)",
+    "prediction": {"value": 0, "band": [0, 0], "unit": "steps counted negative on clean draws", "basis": "derived", "why": "the step's true dissipation (viscous, penalty, the laws' losses and N_WK, the backflow term's) is positive and far above RK3's penalty-split residual (1e-6 of the port energy in the spike)"},
+    "metric": "ledger_route_one_negative_steps",
+    "control": {"plant": "gift_once: on step 10 alone the stepped velocity scaled so the kinetic energy rises by twice that step's dissipation by formula, the laws' losses and numerical terms included", "environment_variable": "RK3_PLANT=gift_once", "expected_rate": "40/40 each dtype, exactly one step counted", "runs": 40, "clean_expected": "0/40", "resolution": "a gift is counted where it exceeds the step's true dissipation (D - G < 0); one of twice the formula's dissipation is counted unless RK3's residual exceeds the formula's dissipation"},
+    "if_wrong": "a clean step counted: the storage or a law's books are read at the wrong instant (a jump between steps), or a Windkessel's release is read as a gift; a missed gift: the plant's dissipation is not the account's",
+    "cannot_discriminate_if": "a gift smaller than the step's dissipation (it is not a sign change); the plant is sized from the step's own terms"
+  },
+  "gate_inflow_rk3": {
+    "claim": "FB2 under RK3: the inflow's face flux at the step's end is its waveform there (the last stage's end) to its summation floor",
+    "kind": "equality",
+    "case": "rk3_open_cases.inflow_reading on drawn(seed), every step",
+    "prediction": {"value": 0.02, "band": [0.0, 1.0], "unit": "|q + Q(t)| over (N + 2) eps 4 h^2 sum|w| + the waveform's own", "basis": "derived", "why": "the flux row pins q at each stage's end; the last stage ends at the step's end"},
+    "control": {"plant": "inflow_scaled: the row's flux 1.001 times the waveform", "environment_variable": "RK3_PLANT=inflow_scaled", "expected_rate": "40/40 in float64; in float32 the floor is about (N + 2) 4 eps = 2e-4 at 400 faces, so a 1e-3 plant is about 5 floors: expected caught, rate measured", "runs": 40, "clean_expected": "0/40"},
+    "if_wrong": "the stage instant is not the stage's end (the last stage's flux off the step-end waveform by a stage's change)",
+    "cannot_discriminate_if": "a steady inflow (the instant does not matter): the draws are pulsatile"
+  },
+  "gate_affine_rk3": {
+    "claim": "SF-12's affine case under RK3: the step superposed from each stage's unit fields equals the same step taken with each stage's openings' forces at the relative pressures it solved and projected plainly",
+    "kind": "equality",
+    "case": "rk3_open_cases.stage_reference_distance(drawn(0, ledger=False), after 4 steps)",
+    "prediction": {"value": 1e-14, "band": [0.0, 1e-12], "unit": "largest difference over the largest speed, float64; float32 band [0, 3e-6]", "basis": "derived", "why": "both are the same stage arithmetic up to the superposition's rounding: fast solves, no tolerance"},
+    "control": {"plant": "unit_scaled: every unit field (its velocity, pressure increment and penalised field) times 1.1", "environment_variable": "RK3_PLANT=unit_scaled", "expected_rate": "every run in float64; float32 measured", "runs": 40, "clean_expected": "0/40", "resolution": "the moves are a stage's change of the relative pressures (the prediction is the last stage's), so the plant moves the field by 0.1 m U: guessed 1e-6 to 1e-3 of the largest speed"},
+    "if_wrong": "a clean draw above the band: the superposition and the stage's own projection differ in an operation (the penalty's division of the unit force, the pressure's increment)",
+    "cannot_discriminate_if": "moves of zero (a steady state with an exact prediction): the draw is pulsatile and 4 steps from a swirled start"
+  },
+  "gate_zero_start": {
+    "claim": "decision 14 under the gauge: RK3 with ports starts from a pressure consistent with its velocity and its openings (made in the program at a step whose pressure is unmade); what a zero start (field pressure and the openings' prediction zero) does is measured, not assumed",
+    "kind": "estimates (the start's transient); the spike's divergence is a measurement of another formulation",
+    "case": "the spike's question 7 on this node: a pressure inlet P0 (1 + 0.3 cos wt), an RCR outlet at R_p 0.5, 30, 100 R_tube, nu 0.005, R 0.5, alpha 6, D/h 16, 4 D long, interior 0.01h, 350 steps a period, half a period (probe arm zero_start)",
+    "prediction": {"value": null, "band": [null, null], "unit": "the largest transverse speed in the first 5 steps over the mean speed, and finiteness", "basis": "guess", "why": "[inference] the field sees each opening's pressure relative to the gauge's reference, so the level the spike's zero start had to absorb (which grew with R_p and drove its divergence) never reaches the field: the zero start here misses only the vessel's own drop. Predicted: the consistent start's transverse speed at rounding (under 1e-12 of the mean); the zero start finite at every R_p, its transverse kick 1e-3 to 0.3 of the mean speed, not growing with R_p. If it does diverge, the gauge does not shield the start and the control is the spike's"},
+    "control": "if the zero start does not diverge, the control of 'refused otherwise' is the kick: the zero start's transverse speed over the consistent start's, above 1e6 on every R_p; the record's divergence is then not reproduced here and that is stated (a test that cannot discriminate is not a null result)",
+    "if_wrong": "a consistent start with a kick: the start's port system or its pressure is not the stage's; a divergence of the zero start: the gauge does not keep the level out"
+  },
+  "gate_fixed_point": {
+    "claim": "the open tube's RK3 fixed point (Stokes, an open stenosis, pressures given at both ends) is the steady open solve's on the same grid (the open-ports spike: 1.3e-12): the openings' forces enter each stage at the pressure's weight",
+    "kind": "equality (to the CG's tolerance and RK3's convergence)",
+    "case": "test_fvm_open_rk3: D/h 8, 2 D long, a narrowing 0.4, convection off, GivenPressure at both ends, RK3 run to its fixed point against NarrowedOpenNode's steady solve at tolerance 1e-11",
+    "prediction": {"value": 1e-10, "band": [0.0, 1e-8], "unit": "largest difference over the largest speed", "basis": "derived", "why": "RK3's fixed point is the discrete Brinkman problem whatever dt (B2); the run's own convergence and the CG's tolerance bound the difference"},
+    "control": {"plant": "forces_at_gamma: the openings' forces taken at the drive's weight gamma_k dt (gamma_k / alpha_k = 1, 3.125, 2.25)", "expected_rate": "every run (the fixed point's port force is 2 to 3 times off: the flux moves by order one)", "runs": 3}
+  },
+  "gate_r8": {
+    "claim": "R-8: the Windkessel under RK3 is first order in time: its N_WK, a stage's capacitor change squared, summed over a fixed time falls as dt (Windkessel.orders, order 2 a step)",
+    "kind": "estimates (the law's order; the tolerance of any Windkessel gate under RK3 states first order)",
+    "case": "test_fvm_open_rk3.test_r8_the_windkessel_under_rk3_is_first_order: term_orders over three drawn cases at D/h 8",
+    "prediction": {"value": 2.0, "band": [1.6, 2.4], "unit": "ratio of the sums at dt and dt/2", "basis": "derived", "why": "backward Euler per stage over alpha_k dt: N_WK = (C/2)(dPc)^2 with dPc of order alpha_k dt"}
+  },
+  "gate_fb7_backflow": {
+    "claim": "FB7: at S1's point (mean Re 300 on the radius, alpha 5.5, a 50 % cosine stenosis of the radius 1 D long centred 0.9 D before the outlet, D/h 16, 4 D long, interior 0.01h, the reversing inflow Q_m (1 + 1.5 sin wt), an RCR outlet R_p 0.5, C 0.4, R_d 5 in S1's units, dt 0.8 h over 60 times the mean speed), RK3 with ports diverges without the backflow term and holds with it in R-15's lagged implicit form, pointwise in the stages",
+    "kind": "acceptance (a stability check at one point; the threshold and the tangential share are estimates)",
+    "case": "probe arms fb7_* (probe/fb7.py): 5 draws, the stenosis's centre 0.7 to 1.1 D before the outlet and the inflow's phase drawn; each arm with and without the term, 0.6 of a period (about 7,500 steps) or until it diverges",
+    "prediction": {"value": "without: 5/5 diverge within 0.5 of a period; with: 5/5 finite and bounded (largest speed under 20 times the mean) over 0.6 of a period", "basis": "measured-before (the spike, 1 of 1) and guess (the draws)", "why": "the stenotic jet's recirculation reaches the outlet near the forward peak and the reversed inflow's kinetic energy feeds the instability; the term removes it on the normal component"},
+    "threshold": {"value": "without the term: finite at Re_R 100 and 150, divergent at 300; onset between 150 and 300", "basis": "guess (the spike: stable at 100 with the stenosis 1.4 D before, divergent at 300 at 0.9 D)"},
+    "tangential_share": {"value": [0.05, 0.3], "unit": "the tangential components' share of the kinetic energy entering through reversed outlet faces, with the term, over the run's reversed steps (median)", "basis": "guess", "why": "the jet's recirculation swirls; the term acts on the normal component only (R-15: the normal-only affine form kept)"},
+    "damping": {"value": [0.05, 0.5], "unit": "1 - (the reversed outlet flux's largest magnitude with the term) / (without), at a stable reversing point (Re_R 100, the stenosis 1.4 D before)", "basis": "guess (the spike: outlet w min -0.84 without, -0.71 with: 0.15)"},
+    "control": {"plant": "the term removed (backflow_openings=())", "expected_rate": "5/5 diverge (the control is the gate's other arm)", "runs": 5},
+    "if_wrong": "no divergence without the term: the point is not past the instability on this node (the evolved flux inlet, the fluid-weighted term) and FB7 cannot discriminate; say so and move the point (Re up, the stenosis nearer), never read it as 'not needed'",
+    "cannot_discriminate_if": "both arms finite (no instability reached) or both diverge (the term does not hold here)"
+  },
+  "gate_fb7_spike_case": {
+    "claim": "his condition on R-15 (a), its RK3 part: at the open-ports spike's case (FB7's point with the stenosis 0.9 D before the outlet, phase 0, mean Re 300 on the radius), RK3 with ports and the backflow term in its lagged implicit form holds at least as long as the explicit form's 2.25 periods (28,035 steps of 12,463 a period); the explicit form (this node at f62f33b) run the same 2.25 periods beside it, and the term removed",
+    "kind": "acceptance (a stability check at one point, against the explicit form's on the same node); reported, never absorbed: a shorter hold goes back to him",
+    "case": "probe arms fb7_spike_implicit and fb7_spike_explicit (probe/fb7.py --periods 2.25, chunks of 500 steps, stopped at the first non-finite chunk or a CFL stop); the term removed in arm fb7_ab's first draw",
+    "prediction": {"value": "implicit: finite and bounded over 2.25 periods (largest speed under 20 times the mean speed); explicit on this node: the same; their largest speeds within 20 % of each other; without the term: diverged within 0.5 of a period", "basis": "measured-before (the spike's explicit form on S1's solver, 1 of 1: 2.25 periods, largest speed 7.45 times the mean) and derived (the two forms are the same force at the lagged velocity, differing by the stage's change in w, second order in the outlet face's local CFL number)"},
+    "if_wrong": "the implicit form diverges where the explicit holds: a coefficient a stage old meets a reversal growing within the stage; reported with the period it reached, before #258 merges. The explicit form diverging on this node too: this node's point differs from the spike's (the evolved flux inlet, the fluid-weighted term), said so",
+    "cannot_discriminate_if": "the run without the term holds too (the point not past the instability on this node): then the hold says nothing about the term"
+  },
+  "gate_fb7_damping_forms": {
+    "claim": "his condition on R-15 (a): a genuine outlet reversal's damping by the implicit form against the explicit form's, under RK3, at a point stable without the term (mean Re 100, the stenosis 1.4 D before the outlet, the whole flow reversing)",
+    "kind": "estimates (the term's effect on a genuine reversal, both forms)",
+    "case": "probe arm fb7_damping: probe/fb7.py --reynolds 100 --before 1.4, one period each: the implicit form, the explicit form (f62f33b), the term removed; the reversed inflow through the outlet's most, and the outlet face velocity's least",
+    "prediction": {"value": "damping = 1 - (the reversed outlet inflow's most with the term) / (without): 0.05 to 0.5 for each form (the spike's explicit 0.15 on w's least); the implicit form's within 10 % of the explicit's", "basis": "guess (the size) and derived (the forms differ at second order in the face's local CFL number)"},
+    "cannot_discriminate_if": "no outlet face reverses without the term (the damping is then zero by construction)"
+  },
+  "gate_backflow_rk3_form": {
+    "claim": "R-15's form under RK3 in CI: on drawn open tubes whose whole flow reverses (the inflow's pulsatile part 1.5 of its mean, 30 steps, D/h 8 to 16, both dtypes) the term acts (its booked work below zero on some step) and never gives energy (backflow_flagged never, no booked work above zero), route 1 and the law identity holding",
+    "kind": "acceptance (the sign by construction, checked; the term's presence)",
+    "case": "test_fvm_open_rk3.test_the_backflow_term_damps_the_reversed_outlet_in_every_stage, seeds 0 to 2 a dtype; rate: detection_rate.py with RK3_GATE=backflow",
+    "prediction": {"value": 0, "band": [0, 0], "unit": "flagged steps on clean draws", "basis": "derived", "why": "the coefficient is never negative and the booked work is -alpha_k dt <c u*, u*>, a sum of non-positive products"},
+    "control": {"plant": "backflow_negated: the coefficient negated (an anti-damping on the reversed outlet faces)", "environment_variable": "RK3_PLANT=backflow_negated, RK3_GATE=backflow", "expected_rate": "40/40 each dtype", "runs": 40, "clean_expected": "0/40", "resolution": "the plant's work is the term's own with its sign turned: flagged on any step the outlet reverses, which every draw's reversal (the flux at -0.5 of its mean at mid-period) gives"}
+  },
+  "gate_fb10_entrance": {
+    "claim": "FB10: the entrance length at the higher-Re arm (RK3 with ports): a steady inflow into a long open tube develops to Poiseuille within the correlations' spread (Durst et al. 2005's L_99/D = [0.619^1.6 + (0.0567 Re)^1.6]^(1/1.6) [recalled], 5.7 D at Re 100 and 17.0 D at 300), a gross check",
+    "kind": "acceptance (gross: the evolved inlet face is not a prescribed plug, so the length is the scheme's own)",
+    "case": "probe arms fb10_* (probe/fb10.py): Re 100 and 300 by the diameter, a 26 D tube at D/h 16, a plug start, steady Inflow, a pressure outlet, run to steady state (3 flow-through times); L_99 where the centreline speed first reaches 0.99 of its last tenth's",
+    "prediction": {"value": "L_99 / the correlation's in [0.3, 1.5] at both Re", "basis": "guess", "why": "the half cell's own convective flux keeps the inlet face near a plug at high Re; the Stokes control's development is a fraction of a diameter"},
+    "control": {"plant": "convection off (stokes=True) at the same flux: L_99 about 0.6 D, outside the band at both Re", "expected_rate": "2/2", "runs": 2},
+    "cannot_discriminate_if": "the inlet face already developed (L_99 under a diameter with convection on): then the gate shows the face is not a plug, stated"
+  },
+  "gate_fb12_float32": {
+    "claim": "FB12: float32 with ports and the gauge (IMEX Euler's open node): no solve or stall flag on correct runs at the default tolerance at D/h 16 and 32; the gauge off (the field's relative pressures formed from absolute ones) raises the inflow's face-flux floor",
+    "kind": "acceptance (flags) and equality (the face flux's floor)",
+    "case": "probe arm fb12 (probe/fb12.py): open_cases' draws at D/h 16 and 32 in float32, a downstream resistance up to 1e4 R_tube, 30 steps, metered; the flags summed; FB2's inflow reading",
+    "prediction": {"value": 0, "band": [0, 0], "unit": "flagged steps (solve_flagged, stall_flagged) on 20 draws a size", "basis": "measured-before (the stall line's envelope, 200 draws a dtype at D/h 8 to 16)", "why": "the default float32 stop takes the solve's own floor where its tolerance is out of reach; the stall line was measured on these draws"},
+    "control": {"plant": "gauge_off: each step's relative pressures formed as differences of the absolute ones (rounding eps |level|, the level up to 1e4 times the vessel's drop)", "environment_variable": "OPEN_PLANT=gauge_off", "expected_rate": "the inflow reading above one on draws whose level over the vessel's drop exceeds about 1e2; rate measured over 40", "runs": 40, "clean_expected": "0/40", "resolution": "the floor rises by eps x level / drop: the spike's 5e-5 to 9e-5 of the flux at its point"}
+  },
+  "gate_fb15_gradients": {
+    "claim": "FB15: gradients with ports in R_p, C, R_d, the inflow's amplitude and the viscosity, reverse and forward, against a central difference that rebuilds the node, float64, at loss scales 1e-12 and 1e6 (the scale test); on the open node of each stage kind",
+    "kind": "equality (to the difference's truncation and the CG's tolerance)",
+    "case": "tests/flow/test_fvm_open_gradient.py: D/h 8, 2 D long, an Inflow with a pulsatile part and a Windkessel, 6 steps from a cold prediction, the loss the outlet's flux plus its pressure scaled",
+    "prediction": {"value": 1e-8, "band": [0.0, 1e-6], "unit": "relative difference", "basis": "derived (the periodic gate's 1e-12 to 1e-9 at a relative step of 1e-5)"},
+    "control": {"plant": "stop_gradient on the unit fields and the response q (IMEX Euler) from a cold prediction (the first step's moves are the whole pressures)", "expected_rate": "every leaf of the laws fails the line", "runs": 1, "resolution": "from a warm prediction the cut is O(dt) a step: the gate runs cold"}
+  },
+  "gate_r21": {
+    "claim": "R-21, measured, not decided: the unit fields as forward-mode derivatives of the step's solve in the openings' pressures, against the solves the node makes (IMEX Euler: warm-started CG; RK3: fast solves)",
+    "kind": "estimates (cost and agreement)",
+    "case": "probe arm r21 (probe/r21.py), D/h 16, two openings, through the node's own step",
+    "prediction": {"value": "agreement to the CG's tolerance; forward mode costs a cold CG a unit field (40 to 157 iterations) against the warm start's few; under RK3 the same fast solve either way", "basis": "derived"}
+  },
+  "gate_fb19_budget": {
+    "claim": "FB19: the budget with ports: IMEX Euler's step with N openings costs one CG solve per non-reference opening for its unit fields beside the primal's; RK3's step N fast solves a stage",
+    "kind": "estimates (time per step on the runner, by node_measure.py)",
+    "case": "probe arm fb19 (node_measure.py through the built experiment), D/h 16, a straight open tube and a two-outlet tree, both schemes",
+    "prediction": {"value": "IMEX open over periodic 1.3 to 2.0 a step; RK3 open over periodic 1.8 to 3 a step with two openings", "basis": "measured-before (the spike: CG counts 1.3 to 1.5 the periodic box's) and derived (RK3: two fast solves a stage against one)"}
+  },
+  "limits_rk3": {
+    "claim": "#246's and #258's stated limits re-measured under RK3 at the gates' operating points: the solid's share of an Inflow's pinned flux in pulsed flow (omega (delta_in h)^2 / nu), and two ends on one plane exchanging flow through the solid",
+    "kind": "estimates",
+    "case": "probe arm limits (probe/limits.py)",
+    "prediction": {"value": "the same shares as IMEX Euler's at the same drive within a factor of 2 (the limit is the solid's Darcy response, not the scheme's)", "basis": "inference"}
+  },
+  "bits": {
+    "cases": "the released programs (tests/saved/cases.py: script_a, script_a_metered, hull_contact, coupled_toy, dynamic_rpm, kinematic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow, prescribed_tube_flow, nudged_toy, open_tube_flow), float64 and float32, base #258's head against this head, one job, one CPU, one thread (bit_compare.py); and the open RK3 program (open_rk3_tube_flow, no face reversing) against this node at f62f33b (the explicit form), both dtypes: non-reversing programs bit for bit across R-15's change",
+    "prediction": "every array np.array_equal (RK3's periodic step keeps its operations: its hooks are None there; the implicit node's constructor keeps its arguments' order); open_rk3_tube_flow equal to f62f33b's (where no face reverses the implicit form's coefficient is zero and the explicit force was zero)",
+    "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "bit_compare's own"}
+  },
+  "outcomes": {
+    "written": "2026-11-12, after probe runs 43124710151 (the gates), 43133109128 (the inflow candidates), 43137787804 (option (A)) and 43140787303 (the rerun); predictions unchanged above",
+    "runs": [
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804",
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+    ],
+    "gate_fb11_workless": {
+      "result": "HELD on 37 of 40 clean draws (the law identity under its floor, both dtypes); the other 3 (seeds 3000, 3017, 3025, Re_D 85 to 98 at D/h 8) crossed the CFL line by step 11 to 15, the inflow-face mode (the inflow plane's own-value convective flux grows at moderate Reynolds numbers (predictions_inlet_candidates.json; his choice between (A) and (B) parked)): unmeasurable there, not failed. Control law_once caught 40/40 in float64 and float32; discriminating range float64 3.7e-13, float32 1.9e-4 of the law's loss",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_route_one": {
+      "result": "HELD: 0 negative steps on 40 metered draws, both dtypes (run 43133109128's ledger arms, the node unpatched); control gift_once caught 40/40 both dtypes (its clean arm flagged the 3 CFL-stopped draws); the range a gift of 1.32 times the step's dissipation",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_inflow_rk3": {
+      "result": "HELD on 37 of 40 clean draws (the 3 CFL-stopped draws as above); control inflow_scaled caught 40/40 both dtypes; range float64 1.9e-12, float32 7.2e-4",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_affine_rk3": {
+      "result": "HELD on 37 of 40 clean draws (as above); control unit_scaled caught 40/40 both dtypes; range float64 3.7e-8, float32 5.2e-3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_zero_start": {
+      "result": "Measured, not assumed: the zero start neither diverged nor kicked here: the transverse speed in the first 5 steps at rounding (about 2e-15 of the mean) for the zero and the consistent start alike, R_p 0.5 to 100 R_tube, D/h 16. The record's divergence is NOT reproduced (the gauge keeps the level out of the field): the control as written (zero over consistent above 1e6) cannot discriminate, stated; the start's gate is the restart test (a state given from outside, CI)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fixed_point": {
+      "result": "A CI test (test_the_open_tubes_rk3_fixed_point_is_the_steady_open_solve, with forces_at_gamma as its control): passes locally; CI runs once the PR is retargeted"
+    },
+    "gate_r8": {
+      "result": "HELD locally (test_r8_the_windkessel_under_rk3_is_first_order, term_orders); CI on retarget"
+    },
+    "gate_fb7_backflow": {
+      "result": "CANNOT DISCRIMINATE on the node as built: every arm (term off, implicit, explicit) and every draw stopped at the INLET plane's CFL check by 0.02 to 0.16 of a period (the inflow plane's own-value convective flux grows at moderate Reynolds numbers (predictions_inlet_candidates.json; his choice between (A) and (B) parked)). Under option (A) (test-only, the upstream opening prescribed) the spike's point: off diverged at the outlet at 0.213 of a period, implicit and explicit held 2.29 periods, both dtypes",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fb7_spike_case": {
+      "result": "UNMEASURABLE on the node as built, not passed: the inlet stopped every arm at 0.105 of a period; the candidates a, a0, b held at most 1.27 periods. Under (A), test-only: implicit and explicit held 2.29 periods in both dtypes, largest speeds 8.6 and 7.9 U (float64; within 20 % of each other), off diverged at 0.213",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804"
+      ]
+    },
+    "gate_fb7_damping_forms": {
+      "result": "Unpatched: stopped at the inlet at 0.44 of a period (unmeasurable). Under a 0.077, a0 0.087, (A) 0.08676, the implicit form equal to the explicit to 4 to 5 digits under each: inside 0.05 to 0.5 and the 10 %",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804"
+      ]
+    },
+    "gate_backflow_rk3_form": {
+      "result": "HELD: 0 clean flags of 40 in float64 and float32; control backflow_negated caught 40/40 both dtypes; range: any sign flip (1e-12 of the term, the range's bottom)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fb10_entrance": {
+      "result": "CANNOT DISCRIMINATE: the evolved inlet face is Poiseuille's from z = 0 at Re_D 100 and 300 (centreline 1.9475 U at every station, convection on and off identical, L_99 0), so the entrance length is not formed; the control (convection off) gives the same and so cannot fail. Under a prescribed inlet the profile is given, so FB10 would need a plug inlet to mean anything",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fb12_float32": {
+      "result": "D/h 16: HELD, 0 flags on 20 draws (float32). D/h 32: MISSED, solve_flagged on 27 to 30 of 30 steps on 10 of 10 draws (stall 2 steps on one), distal 2.8 to 1,519 (not the level), the inflow reading still under 1 (at most 0.017), cause not found. The gauge's control: gauge_off 0/40 (cannot see the gauge); level_in_field (run 43140787303) planted 40/40 but its clean arm flagged 11/40: UNEVIDENCED",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+      ]
+    },
+    "gate_fb15_gradients": {
+      "result": "HELD locally after the fix it found: IMEX Euler's open node's reverse mode was off (the viscosity's derivative 3.13 against the difference's 5.98), the CG's transpose solve in the plain product; fixed (projected_solve's weighted transpose), split out as #269 against release/v0.3.0 (green). Both stage kinds within the line, reverse at both scales and forward; the control (stop_gradient on the unit fields) fails the viscosity"
+    },
+    "gate_r21": {
+      "result": "The first probe's difference of 0 was untraced; rerun traced (forward_traced 1 IMEX, 4 RK3): exactly 0 on both, iterations 163 both, the forward arm's time equal within 1 % (not the predicted cold-CG cost: the jvp's tangent solve takes the same warm start)",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+      ]
+    },
+    "gate_fb19_budget": {
+      "result": "IMEX open over periodic 1.64 (HELD); RK3 open over periodic 1.26 (MISSED LOW); the runner loaded, not a timing claim (predictions_rk3_ports_rerun.json)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+    },
+    "limits_rk3": {
+      "result": "PARTIAL, HELD where measured: the arm hit the runner's limit (run.sh's timeout, exit 124 at 320 minutes) after 14 of its 24 rows (seeds 0 and 1, seed 1's 0.1h interior at pulse 0.3 and seed 2 not run). On every measured pair RK3's shares are IMEX Euler's within a factor of 1.45 (most within 10 %): the solid's share of the root's net flux over the second period at most 0.13 to 0.37 (IMEX) against 0.14 to 0.37 (RK3) at omega (delta_in h)^2 / nu = 0.01, and 0.87 to 1.03 against 0.87 to 1.03 at 0.3; the shared plane's exchange at most 0.22 to 0.98 against 0.24 to 1.0, the largest ratio 1.45 (seed 1, 0.01, the default interior: 0.217 against 0.314). The limits stand under RK3 as under IMEX Euler: in pulsed flow at omega (delta_in h)^2 / nu of 0.3 the solid's faces carry about the whole net flux at times, and two ends on one plane exchange about as much", "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "bits": {
+      "result": "Released programs HELD: every array equal against f392fdd (run 43124710151) and against 91a1596 (run 43140787303), both dtypes. open_rk3_tube_flow against f62f33b MISSED: not bit for bit though no face reverses (float64 6.9e-15 on the openings' pressures, float32 5.7e-6); float64's shown to be the compiled program's change (the term's code present against absent, its coefficient zero, 5.6e-15; the repeat equal; run 43133109128), float32's left unexplained (present against absent equal)",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+      ]
+    }
+  }
+}

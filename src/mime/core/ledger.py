@@ -557,7 +557,9 @@ def route_one_recorded(state: Mapping[str, Array], step: StepAccount,
     is not judged, so its residual, the scheme's numerical dissipation that no formula books, is left in the balance
     (``dH - W + N`` summed, as for any receiver). **Route 1's check is that every step dissipated**: the work every law
     that is not dissipative supplied, the unattributed included, less the change in storage, ``D = W - dH``, is at
-    least ``-IDENTITY_ULPS`` units of eps on the step's scale. A step that gave energy (an energy gift larger than the
+    least ``-IDENTITY_ULPS`` units of eps on the step's scale, where a law the receiver holds stores energy of its own
+    (``StepAccount.stored``: an open flow's Windkessel) its storage's change counted with the receiver's, so that a
+    capacitor giving back what it stored is not read as a gift. A step that gave energy (an energy gift larger than the
     step's own dissipation, by the identity ``D = D_true - G``), or whose books went non-finite, is counted
     (``route_one_negative_steps``, a running sum kept as a pair as :data:`PAIRED`'s are, its ``_low`` beside it);
     ``route_one_step`` is the step's ``D`` over its scale, ``route_one_worst`` its smallest over the run. **A part of
@@ -573,6 +575,8 @@ def route_one_recorded(state: Mapping[str, Array], step: StepAccount,
                               dtype=bool)
     supplied = jnp.sum(jnp.where(dissipative, 0.0, step.work)) + step.unattributed
     dissipated = supplied - (step.storage_end - step.storage_start)
+    if step.stored is not None:  # a law storing energy of its own (a Windkessel) gives back what it stored: no gift
+        dissipated = dissipated - jnp.sum(step.stored[:, 1] - step.stored[:, 0])
     relative = dissipated / jnp.maximum(step.scale, jnp.finfo(dtype).tiny)
     floor = IDENTITY_ULPS * jnp.finfo(dtype).eps
     r = RECORDS

@@ -13,6 +13,7 @@ from mime.nodes.flow.fvm._open_node import MeteredOpenFlowState, MeteredOpenTree
     OpenTreeFlowState
 from mime.nodes.flow.fvm._ports import PORT_LAWS, GivenPressure, Inflow, PortLaw, RowKind, Windkessel, port_law_named
 from mime.nodes.flow.fvm._explicit import ExplicitFlowNode, ExplicitFlowState, cfl_check
+from mime.nodes.flow.fvm._open_explicit import OpenExplicitFlowNode, OpenExplicitFlowState, OpenExplicitTreeFlowState
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, TimeScheme, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE, PRECONDITIONERS, REPORT_FIELDS, REPORT_SIZE, Jacobi, \
     Preconditioner, Stopping, guarded_cg, projected_solve, scaling_start
@@ -20,7 +21,7 @@ from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE, PRECONDITIONERS, REPOR
 __all__ = ["BANDS", "Band", "DEFAULT_BAND", "DEFAULT_CELLS_ACROSS", "DEFAULT_INTERIOR", "DEFAULT_TOLERANCE",
            "ExplicitFlowNode", "ExplicitFlowState", "FlowInputs", "FlowState", "IMEXEuler", "INTERIORS",
            "ImplicitFlowNode", "Jacobi", "MACGrid", "MeteredFlowState", "MeteredOpenFlowState", "MeteredOpenTreeFlowState",
-           "OpenFlowNode", "OpenTreeFlowState",
+           "OpenExplicitFlowNode", "OpenExplicitFlowState", "OpenExplicitTreeFlowState", "OpenFlowNode", "OpenTreeFlowState",
            "OpenFlowState", "OpenMACGrid", "PORT_LAWS", "PRECONDITIONERS", "GivenPressure", "Inflow", "PortLaw",
            "Preconditioner", "RK3", "RowKind", "Windkessel", "port_law_named",
            "REPORT_FIELDS", "REPORT_SIZE", "SCHEMES", "STALL_LINES", "STALL_PER_TOLERANCE", "StageKind", "Steady",

@@ -13,11 +13,11 @@ from mime.vocabulary import FLOW_BODY_FORCE, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, F
 
 def fvm_field(scheme: str, opened: bool = False) -> SolvedField:
     """The FVM's declarations with the scheme ``scheme`` on its domain: a periodic box has no ports and no affine
-    response; an open vessel (``opened``, IMEX Euler or its steady limit) couples its openings implicitly through its
-    affine response. The monolithic schemes on a periodic box take exchange partners (SF-4); RK3's explicit stages and
-    the open vessel's node none yet."""
+    response; an open vessel (``opened``) couples its openings implicitly through its affine response, at IMEX Euler's
+    one stage or at each of RK3's. The monolithic schemes on a periodic box take exchange partners (SF-4); RK3's
+    explicit stages and the open vessel's node none yet."""
     chosen = scheme_named(scheme)
-    coupled = opened and chosen.stage_kind is StageKind.MONOLITHIC_PROJECTED_CG
+    coupled = opened
     exchanges = not opened and chosen.stage_kind is StageKind.MONOLITHIC_PROJECTED_CG
     return SolvedField(
         hosting="solved", role="flow", provides=(FLOW_VELOCITY.name,),

@@ -91,9 +91,17 @@ def fvm_rig(scheme: str, dtype: str, opened: bool = False) -> tuple[object, Fiel
         return moved / float(np.max(np.abs(np.asarray(state["velocity_z"])))), (1e-6 if dtype == "float64" else 1e-4)
 
     def affine():
-        """FB4's monolithic reference on the open box: a drawn pulsatile run's last step against one cold solve of it."""
+        """FB4's monolithic reference on the open box: a drawn pulsatile run's last step against one cold solve of it;
+        under RK3 against the step's stages taken with their openings' forces at the pressures they solved."""
         from open_cases import draw, monolithic_distance, point_node, scan
 
+        if scheme == "rk3":
+            import rk3_open_cases
+
+            with in_dtype(dtype):
+                open_node = rk3_open_cases.drawn(0, ledger=False)
+                before, _ = rk3_open_cases.scan(open_node, 4)
+                return rk3_open_cases.stage_reference_distance(open_node, before)[0], rk3_open_cases.AFFINE_LINE[dtype]
         with in_dtype(dtype):
             open_node = point_node(draw(0), ledger=False, scheme=scheme, convection=scheme != "steady")
             before, _ = scan(open_node, 4)
@@ -144,7 +152,8 @@ def womersley_rig(dtype: str) -> tuple[object, FieldRig]:
 KINDS = {"imex_euler": lambda d: fvm_rig("imex_euler", d), "steady": lambda d: fvm_rig("steady", d),
          "rk3": lambda d: fvm_rig("rk3", d), "womersley": womersley_rig,
          "imex_euler_open": lambda d: fvm_rig("imex_euler", d, opened=True),
-         "steady_open": lambda d: fvm_rig("steady", d, opened=True)}
+         "steady_open": lambda d: fvm_rig("steady", d, opened=True),
+         "rk3_open": lambda d: fvm_rig("rk3", d, opened=True)}
 
 
 def declared(name):
@@ -262,14 +271,17 @@ def test_a_prescribed_flow_in_a_medium_that_fills_no_tube_is_refused(float64):
     assert "flow.prescribed-region" in [r.code for r in raised.value.refusals]
 
 
-@pytest.mark.parametrize("plant", ["unit_scaled", "unit_negated"])
-def test_control_the_affine_case_fails_on_a_wrong_unit_field(dtype, monkeypatch, plant):
+@pytest.mark.parametrize(("scheme", "plant"), [("imex_euler", "unit_scaled"), ("imex_euler", "unit_negated"),
+                                               ("rk3", "unit_scaled")])
+def test_control_the_affine_case_fails_on_a_wrong_unit_field(dtype, monkeypatch, scheme, plant):
     """The affine case can fail: a unit field scaled by 1.1, or negated, moves the superposed solution from the
-    monolithic solve past its line (in pulsatile flow, where the step's pressures move)."""
+    monolithic solve (under RK3, the stages' own projections at the solved pressures) past its line (in pulsatile flow,
+    where the step's pressures move)."""
     from open_cases import PLANTS
+    from rk3_open_cases import PLANTS as RK3_PLANTS
 
-    PLANTS[plant](monkeypatch.setattr)
-    kind, rig = fvm_rig("imex_euler", dtype, opened=True)
+    (RK3_PLANTS if scheme == "rk3" else PLANTS)[plant](monkeypatch.setattr)
+    kind, rig = fvm_rig(scheme, dtype, opened=True)
     del kind
     assert rig.affine is not None
     moved, line = rig.affine()

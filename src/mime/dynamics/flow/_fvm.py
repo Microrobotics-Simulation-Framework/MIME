@@ -8,7 +8,7 @@ belongs to (B8.1): the grid kind's ``spacing`` (or ``cells_across``, the lumen's
 stiff interior ``delta_in`` the wall's), and the domain it lives on. ``stokes`` is physical: the Stokes approximation, convection off. The fluid's properties
 are never its settings: they come from the medium's material record or ``exp.declare`` (``viscosity``, ``density``).
 The flow is driven by laws bound to the medium (``BodyForce``) and by the laws at its openings, which its step holds
-(the open box: IMEX Euler or its steady limit; RK3 with openings is a later PR's).
+(the open box: IMEX Euler, its steady limit, or RK3 holding them at each of its stages).
 
 F1a builds the Cartesian MAC grid kind, IMEX Euler and its steady limit, Jacobi, the default smooth band, on one
 domain kind, the periodic box around a straight circular tube (aligned with z, or tilted in the x-z plane along a
@@ -19,7 +19,7 @@ the band reads it (``mime.nodes.flow.fvm.TreeSolid``), stepped by IMEX Euler or 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Annotated, Any, cast, override
@@ -29,7 +29,7 @@ import numpy as np
 from mime.core import jnp, run_dtype, shape_named
 from mime.gradients import GradientStatus
 from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, STALL_PER_TOLERANCE, \
-    ExplicitFlowNode, ImplicitFlowNode, OpenFlowNode, periodic_tube_layout
+    ExplicitFlowNode, ImplicitFlowNode, OpenExplicitFlowNode, OpenFlowNode, periodic_tube_layout
 from mime.nodes.flow.fvm._box import DEFAULT_REACH, TreeLayout, TubeLayout, open_region_layout, period_mismatch, \
     periodic_tree_layout
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP, REVERSAL_LINE, REVERSAL_MEASURED
@@ -226,12 +226,14 @@ class FVM(Dynamics):
     differentiability = GradientStatus.UNVERIFIED
     gradient = GradientRecord(
         where="in the tube's radius, centre and axis (the geometry leaves); in the viscosity, the density and the drive "
-              "the gradient gate checks it exact, reverse and forward, against a central difference that rebuilds",
+              "the gradient gate checks it exact, reverse and forward, against a central difference that rebuilds; on "
+              "an open vessel, in its laws' parameters, the inflow's amplitude and the viscosity, for both stage kinds "
+              "(FB15)",
         reason=f"{GEOMETRY}; one status is declared per entry, so the entry's is the geometry's",
         route="the dQ/dR gate: the radius in the gradient gate, its loss the box's whole axial flux, its central "
               "difference taken inside one discretisation (the layout's dead band; or from a declared range)")
     references = ("HarlowWelch1965", "Angot1999", "Womersley1955")
-    builds = {"": (ImplicitFlowNode, ExplicitFlowNode, OpenFlowNode)}
+    builds = {"": (ImplicitFlowNode, ExplicitFlowNode, OpenFlowNode, OpenExplicitFlowNode)}
     applies_to = frozenset({ThingKind.MEDIUM})
     port_kinds = (FLUID.name, OPENING.name)
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform"),
@@ -346,8 +348,10 @@ class FVM(Dynamics):
         "coefficient from the step's start velocity w and the step's end velocity w' implicit, a diagonal beside the "
         "wall's penalty that can only remove energy, normal only, first order in time in the term; its work "
         "dt <f, w'> booked under <node>.backflow, its sign checked every step (backflow_flagged, and the ledger's "
-        "gift count, which a correct run never raises); FB7 (with RK3, a later PR) measures its threshold, its "
-        "tangential share and how it damps a genuine reversal at the outlet, unmeasured here; "
+        "gift count, which a correct run never raises); under RK3 pointwise in each stage, its coefficient from the "
+        "stage's start velocity and the stage's solution implicit beside the penalty, booked as the penalty is; FB7 "
+        "measures its threshold, its tangential share and how it damps a genuine reversal at the outlet, unmeasured "
+        "here; "
         f"the outlet watch (decision 13), an observer the step's flow never reads: each opening's inflow through its "
         f"patch's inward faces (fluid-weighted) over its net outward flux, read only while that is outward "
         f"(opening_reversed), flagged above {REVERSAL_LINE:g} ({REVERSAL_MEASURED}; opening_reversed_flagged); "
@@ -381,7 +385,14 @@ class FVM(Dynamics):
         "carries Darcy flow from one to the other: on two parallel tubes at the default stiff interior the outlets' "
         "cross conductance is 2.5 to 9 % of one's own (D/h 8 to 12), and a split differs from two independent "
         "tubes' by up to 1.8 %; "
-        "IMEX Euler or its steady limit only (RK3 with openings is not built); no step rule yet: dt is given, "
+        "IMEX Euler, its steady limit, or RK3 (Scheme.RK3(): each law held at each of its three stages, its rows "
+        "backward Euler over the stage's alpha_k dt at the stage's end, advanced by the stage's solved flux and "
+        "pressure, so the laws are first order in time under RK3 (a Windkessel's N_WK first order in dt); the "
+        "exchange workless by construction, the law's books against the flow's to rounding every step; its unit "
+        "fields the stage's fast solves, its start a pressure consistent with the velocity and the openings, made "
+        "in the program; RK3's explicit viscosity refused past its viscous number, flow.viscous-limit; its ledger "
+        "route 1, each step judged to have dissipated, a Windkessel's storage counted with the flow's); no step "
+        "rule yet: dt is given, "
         "dt='auto' refused, the CFL checked each step (a built region's along the diagonal, the least line); float32 "
         "behind its guards: "
         f"{FLOAT32_PORTS}",
@@ -436,10 +447,6 @@ class FVM(Dynamics):
     def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:
         """What the settings rule out, refused when planned."""
         found: list[Problem] = []
-        if self.open and isinstance(self.scheme, RK3Scheme):
-            found.append(Problem("flow.open-scheme", "RK3 with openings is not built yet: the open vessel steps by "
-                                                     "IMEX Euler or its steady limit",
-                                 "write FVM(domain=VesselRegion(), scheme=Scheme.IMEXEuler())"))
         if isinstance(self.scheme, SteadyScheme) and not self.stokes:
             found.append(Problem("flow.steady-convection",
                                  "the steady solve rests on linearity, so it needs the Stokes approximation",
@@ -553,6 +560,51 @@ class FVM(Dynamics):
                                                      "branches part further, or a finer spacing"))
         return found
 
+    def open_problems(self, region: Region | None, values: Mapping[str, float]) -> Callable[[float, int], list[Problem]]:
+        """An open vessel's step's refusals: RK3's explicit viscosity past its viscous number at the step (the CFL
+        number is checked each step, its step rule not built)."""
+
+        def none(step: float, every: int) -> list[Problem]:
+            del step, every
+            return []
+
+        if not isinstance(self.scheme, RK3Scheme) or region is None or "viscosity" not in values or \
+                "density" not in values:
+            return none
+        try:
+            spacing = self.open_spacing(region)
+        except (RegionRefused, ValueError):
+            return none  # the region's own refusal names it
+        nu = values["viscosity"] / values["density"]
+        limit = RK3.viscous_number * spacing ** 2 / nu
+
+        def problems(step: float, every: int) -> list[Problem]:
+            if step <= limit * (1.0 + 1e-12):
+                return []
+            return [Problem(
+                "flow.viscous-limit",
+                f"the flow's step {step:.4g} s gives the {RK3.name} scheme's explicit viscosity nu dt / h^2 = "
+                f"{nu * step / spacing ** 2:.3g}, past its viscous number {RK3.viscous_number:g}: it would not be stable",
+                f"use dt <= {limit:.4g} s, or Scheme.IMEXEuler() (implicit viscosity)" if every == 1 else
+                f"use dt <= {limit / every:.4g} s (the flow steps every {every} base steps, its rate=, so a step of "
+                f"{limit:.4g} s), a shorter rate=, or Scheme.IMEXEuler() (implicit viscosity)")]
+
+        return problems
+
+    def open_spacing(self, region: Region) -> float:
+        """The open box's spacing (m), as its build lays it out: the built region's, or a straight tube's from its
+        length between its two ends."""
+        built = self.region_built(region)
+        if built is not None:
+            return self.open_layout(built).spacing
+        vessel = vessel_of(region)
+        start, end = (np.asarray(vessel.points[point], dtype=np.float64) for _, point in vessel.ends[:2])
+        given = self.spacing.value if self.spacing is not None else None
+        return periodic_tube_layout(float(cast(float, region.parameters["radius"])),
+                                    float(np.linalg.norm(end - start)), cells_across=self.cells_across,
+                                    spacing=float(cast(float, given)) if given is not None else None,
+                                    margin_cells=self.domain.margin).spacing
+
     def open_layout(self, built: BuiltRegion) -> TreeLayout:
         """The open box holding ``built`` with its paths (``mime.nodes.flow.fvm._box.open_region_layout``): its points
         the tree's first, then the paths' (``BuiltRegion.extent_tree``)."""
@@ -650,9 +702,7 @@ class FVM(Dynamics):
     @override
     def field_declarations(cls) -> tuple[SolvedField, ...]:
         """One declaration a scheme on a periodic box, and one a scheme that steps an open vessel (:meth:`field_for`)."""
-        return (*(fvm_field(name) for name in SCHEMES),
-                *(fvm_field(name, opened=True) for name in SCHEMES
-                  if scheme_named(name).stage_kind is StageKind.MONOLITHIC_PROJECTED_CG))
+        return (*(fvm_field(name) for name in SCHEMES), *(fvm_field(name, opened=True) for name in SCHEMES))
 
     @override
     def time_step(self, query: StepQuery) -> StepRule | None:
@@ -680,7 +730,8 @@ class FVM(Dynamics):
                                        "(opening_exchange_flagged); the ends further apart "
                                        "(VesselRegion(extension_diameters=..., bend_diameters=...)) or a geometry "
                                        "putting them on separate planes lowers the exchange at either"))
-            return StepRule(None, lambda step, every: [], lambda step, every: lines, unbounded=OPEN_STEP)
+            return StepRule(None, self.open_problems(region, query.values), lambda step, every: lines,
+                            unbounded=OPEN_STEP)
         if region is None or "viscosity" not in query.values or "density" not in query.values:
             return None
         given = query.settings.get("spacing")
@@ -913,14 +964,13 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
     layout = periodic_tube_layout(radius, length, cells_across=fvm.cells_across, spacing=spacing,
                                   margin_cells=fvm.domain.margin)
     viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
-    scheme = fvm.scheme.group if fvm.scheme is not None else IMEXEuler.name
+    node, scheme, solve = open_node_of(fvm)
     wall = f"{region.path.rpartition('.')[0]}.wall"
-    b.add_node(OpenFlowNode(
+    b.add_node(node(
         ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
         spacing=layout.spacing, viscosity=viscosity, density=density, tube_centre=layout.centre,
-        tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes,
-        tolerance=fvm.tolerance, preconditioner=fvm.preconditioner, band=DEFAULT_BAND,
-        interior=_INTERIOR_NAMES[fvm.wall.depth()], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
+        tube_axis=(0.0, 0.0, 1.0), tube_radius=layout.radius, scheme=scheme, convection=not fvm.stokes, **solve,
+        band=DEFAULT_BAND, interior=_INTERIOR_NAMES[fvm.wall.depth()], wall_name=wall,
         backflow_openings=tuple(range(1, len(openings))), openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
@@ -937,15 +987,15 @@ def _open_region_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registra
     layout = fvm.open_layout(built)
     h = layout.spacing
     laws = sorted(registrations, key=lambda r: min(openings.index(s) for s in r.surfaces))
-    scheme = fvm.scheme.group if fvm.scheme is not None else IMEXEuler.name
-    b.add_node(OpenFlowNode(
+    node, scheme, solve = open_node_of(fvm)
+    b.add_node(node(
         ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
         spacing=h, viscosity=ctx.scalar_value("viscosity"), density=ctx.scalar_value("density"),
         tree_points=np.asarray(layout.points[:len(built.points)]), tree_radii=built.radii, tree_fillet=built.fillet,
         tree_segments=built.segments, opening_paths=moved_paths(built.paths, [-c for c in layout.origin]),
-        scheme=scheme, convection=not fvm.stokes, tolerance=fvm.tolerance,
-        preconditioner=fvm.preconditioner, band=DEFAULT_BAND, interior=_INTERIOR_NAMES[fvm.wall.depth(shared_plane(built))],
-        solve_report_rows=fvm.solve_report_rows, wall_name=f"{region.path.rpartition('.')[0]}.wall",
+        scheme=scheme, convection=not fvm.stokes, **solve, band=DEFAULT_BAND,
+        interior=_INTERIOR_NAMES[fvm.wall.depth(shared_plane(built))],
+        wall_name=f"{region.path.rpartition('.')[0]}.wall",
         openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
@@ -954,6 +1004,16 @@ def _open_region_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registra
                               for n in names),
         law_openings=tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws),
         backflow_openings=tuple(k for k, n in enumerate(names) if not by_name[n].upstream)))
+
+
+def open_node_of(fvm: FVM) -> tuple[type[OpenFlowNode], str, dict[str, Any]]:
+    """The open vessel's node class, its scheme and its solve's settings: RK3 where it is named (the explicit stage
+    kind, no monolithic solve), else IMEX Euler or its steady limit on the projected CG."""
+    scheme = fvm.scheme.group if fvm.scheme is not None else IMEXEuler.name
+    if scheme_named(scheme).stage_kind is StageKind.EXPLICIT_PROJECTED:
+        return OpenExplicitFlowNode, scheme, {}
+    return OpenFlowNode, scheme, dict(tolerance=fvm.tolerance, preconditioner=fvm.preconditioner,
+                                      solve_report_rows=fvm.solve_report_rows)
 
 
 def junction_point(region: Region, around: str | None) -> int | None:

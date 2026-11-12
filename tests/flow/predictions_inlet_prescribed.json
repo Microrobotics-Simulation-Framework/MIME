@@ -1,0 +1,74 @@
+{
+  "written": "2026-11-12, committed before any arm of the prescribed-inlet probe ran (the commit that adds this file is the timestamp): option (A) for the open grid's inflow plane, a developed profile prescribed at the upstream opening and scaled to the Inflow law's flux at each RK3 stage's end, measured as a test-only patch so that he chooses between (A) and (B) on this node's numbers; no product code changes",
+  "phase": "F2b PR 4b: the inflow-plane instability (probe runs 43124710151 and 43133109128; the candidates a, a0 and b in predictions_inlet_candidates.json), his decision parked between (A) and (B)",
+  "labels": "the builder's (a fresh agent); derived from the open-ports spike's measured runs where said, measured-before where a number below was seen while writing (listed in seen_before), guesses say so",
+  "seen_before": [
+    "every number in predictions_inlet_candidates.json's outcomes as the coordinator's table states them: none 0.105 of a period at FB7's point (inlet); a float64 1.25 / 1.27 (implicit / explicit; the inlet's cells, z 1 to 5, inlet face up to 40 U), float32 0.34 / 0.33; a0 0.72 / 0.70 and 0.32 / 0.31; b 0.027; at the damping point a and a0 held one period in every form, damping 0.077 (a) and 0.087 (a0), implicit equal to explicit to 4 digits; the ledger's booked convective power against the face formula, median none 3.3 %, a and a0 38 %, b 1.8 %; CFL stops none 3/40, a, a0 and b 0/40",
+    "the open-ports spike (its README, question 5 and P2): with a prescribed Womersley velocity inlet (tangential zero at the inlet plane), D/h 16, dt 0.8 h / 60, mean Re 300 on the radius and the stenosis 0.9 D before the outlet, the explicit directional term (beta 1) held 2.25 periods (28,035 steps) through whole-flow reversal, outlet w down to -6.26 U, the largest speed 7.45 U; without it the run diverged at 0.26 of a period near the forward flow's peak (the outlet, 544 of 729 faces reversed). Its prescribed face left the convective pairing 7.5 to 9 % of the kinetic-energy flux off the face formula (IMEX Euler, a straight tube, Re 10)",
+    "this patch's smokes while writing (local, not timings): FB7's node at Re_R 300, implicit form, 500 steps (0.04 of a period), float64: the face against the profile 1.9e-16 of its largest, the face flux against the law's 7.5e-17 of its scale, the divergence 1.8e-16 (times h over the largest speed); the largest speed 3.9 U, CFL 0.16, no stop; the convective pairing at each step's start against the face formula over steps 250 to 500, median 4.9e-4 (the grid's weights) and 1.5e-3 (the prescribed face's weight zero). Float32, 250 steps, w alone prescribed: the checks 1.0e-7, 1.5e-9, 8.8e-8. The explicit form's commit (f62f33b) with the patch, 250 steps, float64: the checks as float64's above",
+    "the ledger mode's smoke on two draws (float64, tangential zero, 30 steps): seed 3000 (D/h 8, Re 89, Womersley alpha 13.4) and 3001 (D/h 12, Re 3.6, alpha 6.7): no stop; booked against the face formula 4.9 % and 15.5 %; the pairing at each step's start against the formula, median 5.9 % and 7.4 % (the grid's weights), 16.5 % and 20.2 % (the prescribed face's weight zero)"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "the probe workflow's GitHub runner (4 vCPU); no Modal",
+    "sizes_and_parameters": "FB7's point: probe/fb7.py's node_for (S1's units: R 0.5, nu 0.005, alpha 5.5, D/h 16, 27 x 27 x 64, 4 D long, interior 0.01h, a 50 % cosine stenosis 1 D long centred 0.9 D before the outlet, Inflow Q_m (1 + 1.5 sin wt), RCR 0.5 / 0.4 / 5, dt 0.8 h over 60 U, 12,463 steps a period), Re_R 300, phase 0, 2.25 periods (28,035 steps); the damping point the same at Re_R 100 with the stenosis 1.4 D before, 1 period (4,155 steps). The explicit form is this node at f62f33b (a worktree on the runner), the implicit this branch's head. Each run in chunks of 500 steps, stopped at the first chunk not finite or stopped by the CFL check",
+    "option": "(A), test-only (probe/inlet_a.py): the Inflow's plane (low) prescribed at each stage's end to Q_0 S_0 + Re(Q_1 e^{i w t} S_1), S_0 Poiseuille's shape and S_1 Womersley's (alpha from the law's frequency and the viscosity), each times the plane's 1 - chi and normalised by its own sum (the spike's make_inflow), so its flux is the law's; the projector Neumann at the low plane and Dirichlet at the high (a mixed transform along z); the start's pressure consistent with the face's rate. Tangential velocity at that plane: zero (the spike's; A) or the node's zero gradient (w alone prescribed; A_w). The Windkessel stepped by the stage's flux as before; the Inflow's pressure not modelled (route 1 not judged under the patch)",
+    "seeds_and_draws": "the ledger arms: rk3_open_cases' draws, seeds 3000 to 3039, 30 steps each, unmetered, both tangential forms"
+  },
+  "gate_prescribed_holds": {
+    "claim": "under (A) the spike's case holds his 2.25 periods at FB7's point with the backflow term in the implicit form and in the explicit form, and the term removed fails there (the point discriminates the term), in both dtypes",
+    "kind": "acceptance (a stability check) with its control (term off)",
+    "case": "probe arms A_64 and A_32 (probe/inlet_a.py --points --tangential zero): the forms off, implicit and explicit",
+    "prediction": {"value": "float64: implicit and explicit hold 2.25 periods (28,035 steps, no CFL stop, finite), the largest speed under 10 U, outlet w down to -3 to -8 U; off diverges at the OUTLET before 0.35 of a period. Float32: the same", "basis": "float64: the spike's measured run at this point (prescribed Womersley inlet, tangential zero, the explicit term holding 2.25 periods, off diverging at 0.26 at the outlet), this node's stage the spike's S1 port; float32: a guess (the candidates' float32 runs failed at the inlet face and its cells, which (A) fixes)", "why": "the instability's seat, the inflow face's own-value plane flux, is gone: the face is no longer an unknown"},
+    "metric": "periods held; where the largest speed sits at a stop; the inlet's near cells (w on faces z 1 to 4, u and v on cells z 0 to 3) largest over U",
+    "if_wrong": "(A) stopping before 2.25 periods in float64: report where (outlet, near-inlet cells, elsewhere) and when; then (A) is not the spike's measured form on this node, and the difference is what to find (the wall, the term's form, the stages)",
+    "cannot_discriminate_if": "off holding 2.25 periods as well: the point then does not need the term, and the implicit form's hold says nothing about it (stated)"
+  },
+  "gate_prescribed_damping": {
+    "claim": "at the damping point under (A), every form holds the period, and the implicit form's damping of the reversed outlet inflow against the explicit form's",
+    "kind": "acceptance (held) and estimate (damping)",
+    "case": "the same arms, the damping point",
+    "prediction": {"value": "every form holds 1 period, both dtypes; the damping (1 - the reversed outlet inflow's most with the term / without) 0.05 to 0.15, the implicit within 10 % of the explicit", "basis": "measured under a and a0 (0.077, 0.087, implicit equal to explicit to 4 digits): the outlet's reversal is the stenotic jet's, little moved by the inlet's form (derived)"},
+    "if_wrong": "the implicit form damping less than 0.9 of the explicit's: reported with the values"
+  },
+  "gate_prescribed_w_only": {
+    "claim": "w alone prescribed (A_w: the tangential velocity at the plane left at the node's zero gradient) at FB7's point and the damping point, the implicit form: whether the tangential condition is part of what (A) needs",
+    "kind": "estimate (a variant for his choice of the product's form)",
+    "case": "probe arms Aw_64 and Aw_32 (--tangential free, the implicit form)",
+    "prediction": {"value": "float64 holds 2.25 periods at FB7's point, the near-inlet tangential speed under 2 U; the damping point holds", "basis": "a guess: the identified mechanism is w's own-value flux at the face, which A_w removes as A does; (a)'s later stop at the inlet's cells (1.25 periods) is the one sign against it"},
+    "if_wrong": "A_w stopping near the inlet while A holds: the tangential condition is part of (A), stated for his choice"
+  },
+  "gate_prescribed_convective": {
+    "claim": "the ledger's convective power under (A) against the face formula's kinetic-energy flux, and the prescribed profile's own convective residual (the spike's r_conv, its 8 %)",
+    "kind": "estimates (diagnostics for his choice; route 1 is not judged under the patch: the Inflow's pressure is not modelled)",
+    "case": "(1) the ledger arms ledger_A_64 and ledger_A_32: 40 draws, booked (RK3's quadrature of <C(u_k), u_k>) against the face formula at each step's start times dt, the candidates' reading; the CFL stops. (2) every --points run: the pairing <C(u), u> at each step's start against the face formula (the low plane's tangential velocity zero under A), with the grid's weights and with the prescribed face's weight zero (the spike's V = 0, which a product form of (A) would book), the median of the steps' ratios and the run's integrated ratio",
+    "prediction": {"value": "(1) booked against the formula, median over the draws 3 to 20 % (none 3.3 %; two draws seen at 4.9 and 15.5 %); CFL stops 0/40, both dtypes. (2) the prescribed face's weight zero: median 2 to 20 % at FB7's point and the damping point (the spike's 7.5 to 9 %), the grid's weights below it", "basis": "measured-before (two draws) and the spike's (a straight tube at Re 10); a guess at Re_R 100 to 300 through a stenosis"},
+    "cannot_discriminate_if": "a run that stops early: its residual is over the steps it ran (stated with its count)"
+  },
+  "control_patch_in_force": {
+    "claim": "the patch acts in every run, in both forms' code: the face equal to the profile, the face flux equal to the law's, the field divergence-free",
+    "kind": "control (that the measured thing is (A))",
+    "case": "every --points chunk end and every ledger draw's end",
+    "prediction": "float64 every check under 1e-13; float32 under 1e-5",
+    "if_wrong": "a check above: that run did not measure (A), and is set aside with the reason"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43137787804 (predictions unchanged above)",
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804",
+    "gate_prescribed_holds": {
+      "result": "HELD. FB7's point under (A): implicit and explicit each held 2.29 periods (28,500 steps, finite, no CFL stop) in float64 and in float32; largest speed 8.6 and 7.9 U (float64; float32 8.0 and 8.8), outlet w down to -6.5 and -4.9 U (float32 -7.7 and -8.3), CFL at most 0.34; the near-inlet cells' w at most 4.2 U, their tangential speed at most 1.5 U. Off diverged at the OUTLET at 0.213 of a period in both dtypes (w -70 U): the point discriminates the term"
+    },
+    "gate_prescribed_damping": {
+      "result": "HELD: every form held the period in both dtypes; damping 0.08676 implicit and 0.08676 explicit in float64 (reversed outlet inflow's most 0.34890 with either form against 0.38205 off), float32 the same to 5 digits. At FB7's point off diverges before any reversal, so no damping ratio there"
+    },
+    "gate_prescribed_w_only": {
+      "result": "MISSED: w alone prescribed (A_w), the implicit form stopped at FB7's point at 0.43 of a period in float64 and 0.32 in float32, at the inlet's first cells (z 1; tangential speed 47 U); the damping point held. The tangential condition at the opening (u = v = 0) is part of (A)"
+    },
+    "gate_prescribed_convective": {
+      "result": "(1) ledger arms, 40 draws, both dtypes alike: CFL stops 0/40 under A and A_w (held); booked against the face formula, median 15.0 % under A (inside the predicted 3 to 20 %; max 3.3 times on one draw), 12.3 % under A_w; the pairing at each step's start against the formula, median 4.4 % (the grid's weights) and 13.6 % (the prescribed face's weight zero) under A, 0.0 % and 20.8 % under A_w. (2) the points' runs: the profile's own convective residual (the prescribed face's weight zero) median 0.11 % at FB7's point (integrated -0.07 %) and 0.32 % at the damping point (integrated -0.09 %); with the grid's weights 0.04 % and 0.09 %: MISSED LOW (predicted 2 to 20 %, the spike's 7.5 to 9 % on a straight tube at Re 10). The draws (Womersley alpha 6 to 13, 40 steps a period) sit at 13.6 %"
+    },
+    "control_patch_in_force": {
+      "result": "HELD: float64 the face against the profile at most 1.3e-15, the face flux against the law's 2.1e-16, the divergence 2.4e-16; float32 at most 7.2e-7, 5.4e-7 and 1.6e-7, in every chunk of every run and at every draw's end, both forms' code"
+    }
+  }
+}

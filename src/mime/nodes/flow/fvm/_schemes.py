@@ -87,6 +87,9 @@ class StepContext:
     viscosity: Any = None
     resistivity: Velocity | None = None
     fluid: Velocity | None = None
+    #: An open box's openings for a scheme of the explicit stage kind (``mime.nodes.flow.fvm._rk3.StagePorts``): its
+    #: start, the backflow term, the openings' forces and each stage's projection with their rows solved.
+    ports: _rk3.StagePorts | None = None
 
 
 class TimeScheme[Record]:
@@ -252,11 +255,20 @@ class RK3(TimeScheme[_rk3.ExplicitStage]):
         grid, viscosity, resistivity = context.grid, context.viscosity, context.resistivity
         assert viscosity is not None and resistivity is not None, "the explicit stage applies them itself"
         velocity: Velocity = state["velocity"]
-        pressure = _rk3.ready_pressure(grid, velocity, state["pressure"], state["pressure_ready"], viscosity,
-                                       resistivity, context.force(0, time + self.drive_instants[0] * dt),
-                                       context.convection)
-        ended, ended_pressure, stage = _rk3.step(grid, velocity, pressure, viscosity, resistivity, context.force,
-                                                 context.convection, time, dt, fluid=context.fluid)
+        ports = context.ports
+        if ports is None:
+            pressure = _rk3.ready_pressure(grid, velocity, state["pressure"], state["pressure_ready"], viscosity,
+                                           resistivity, context.force(0, time + self.drive_instants[0] * dt),
+                                           context.convection)
+            ended, ended_pressure, stage = _rk3.step(grid, velocity, pressure, viscosity, resistivity, context.force,
+                                                     context.convection, time, dt, fluid=context.fluid)
+        else:
+            pressure = ports.ready(velocity, state["pressure"], state["pressure_ready"],
+                                   context.force(0, time + self.drive_instants[0] * dt))
+            ended, ended_pressure, stage = _rk3.step(grid, velocity, pressure, viscosity, resistivity, context.force,
+                                                     context.convection, time, dt, fluid=context.fluid,
+                                                     damping=ports.damping, held_force=ports.held_force,
+                                                     project=ports.project)
         return ({"velocity": ended, "pressure": ended_pressure,
                  "pressure_ready": jnp.ones((), dtype=velocity[0].dtype)}, stage)
 

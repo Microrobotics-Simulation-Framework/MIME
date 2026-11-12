@@ -1,0 +1,58 @@
+{
+  "written": "2026-11-12, committed before any arm of the gates' rerun probe ran (the commit that adds this file is the timestamp): the gates the first probe (run 43124710151) could not read, rerun with their probe scripts fixed; the gates' own predictions stay in predictions_rk3_ports.json, unchanged",
+  "phase": "F2b PR 4b: the open gates after the first probe (R-21, FB19, FB12's control) and the bits on this head",
+  "labels": "the builder's (a fresh agent); measured-before where a number below was seen (listed in seen_before), derived or guesses where said",
+  "seen_before": [
+    "run 43124710151: R-21 read a difference of exactly 0 on both schemes (IMEX Euler iterations 163 both, RK3's fast solves) with no sign that the forward path was traced; FB19's IMEX open arm 0.043 s a step on the runner, the other three arms failed on the probe's field names (solve_report_sum absent on RK3, opening_flux absent on the periodic box); FB12's gauge_off control 0/40 on its inflow reading, and its float32-against-float64 oracle 1.27e-5 clean and 1.41e-5 planted on draw 3001 at distal 1e4 (local)",
+    "level_in_field's smoke while writing (local, one draw): draw 3001 at D/h 16, distal 1e4, float32 against float64 after 30 steps: clean 1.27e-5, planted 1.54e-4 of the largest speed (the line 3e-5); the planted run took several times the clean one's time on the loaded laptop",
+    "bits (run 43124710151): every released program equal against f392fdd in both dtypes; open_rk3_tube_flow against f62f33b not bit for bit (float64 velocity 3e-18, float32 2.8e-9) with no face reversing; run 43133109128's bits arm: float64 with the term's code present (its coefficient zero) against absent differs in 12 arrays up to 5.6e-15, the repeat equal; float32 equal"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "the probe workflow's GitHub runner (4 vCPU); no Modal",
+    "sizes_and_parameters": "R-21 and FB19: open_cases' draw 0 at D/h 16, 40 steps (r21.py), and node_measure.py's rk3_open_cases:open_tube (a straight tube 2 mm, D/h 16) through the built experiment, both schemes, open and periodic; FB12: open_cases' draws at D/h 16, the Windkessel's distal resistance 1e4 times the vessel's, 30 steps, unmetered, float32 against a float64 reference of the same draw in a fresh process",
+    "seeds_and_draws": "FB12's control: detection_rate.py seeds 3000 to 3039 (four arms of 10), each clean and planted"
+  },
+  "gate_r21_traced": {
+    "claim": "R-21's forward-mode unit fields read as agreement only where the forward path ran: its trace counted (forward_traced) beside the difference",
+    "kind": "a control on the measurement (that the arm measured what it names)",
+    "case": "probe arm r21_fb19 (probe/r21.py)",
+    "prediction": {"value": "forward_traced at least 1 on both schemes; the difference exactly 0 on both (the tangent solve is the primal's solve on the force with the same start, the same arithmetic: derived); IMEX iterations equal; the forward arm's time a step within 10 % of the node's", "basis": "derived, and measured-before for the difference (0, untraced)"},
+    "if_wrong": "forward_traced 0: the first probe's 0 measured nothing, and R-21 is unevidenced until it runs traced"
+  },
+  "gate_fb19_rerun": {
+    "claim": "FB19's four arms with their own fields, against predictions_rk3_ports.json's gate_fb19_budget (IMEX open over periodic 1.3 to 2.0 a step, RK3 open over periodic 1.8 to 3)",
+    "kind": "estimates (time a step on the runner by node_measure.py; not timing claims beyond the runner)",
+    "case": "probe arm r21_fb19",
+    "prediction": {"value": "as gate_fb19_budget (unchanged)", "basis": "as there"}
+  },
+  "gate_fb12_level_control": {
+    "claim": "FB12's gauge control on an oracle that can see it: the plant level_in_field (the openings' pressure level Q (R_p + R_d) as a uniform pressure's force on both planes in every projected solve, a gradient removed in exact arithmetic, its rounding left) moves the float32 run off the float64 reference past fb12.py's GAUGE_LINE (3e-5 of the largest speed, ten times the spike's float32 floor, declared before this run), and the clean float32 run stays under it, at distal 1e4",
+    "kind": "control (detection rate, clean and planted)",
+    "case": "probe arms fb12_level_a to fb12_level_d (detection_rate.py over probe/fb12.py --gauge --cells 16 --distal 1e4, OPEN_PLANT=level_in_field), 10 seeds each",
+    "prediction": {"value": "planted caught 40/40; clean flagged 0/40", "basis": "measured-before on one draw (the smoke above) and derived (the plant's rounding, eps times the level's force, grows with the level; the clean run carries none)"},
+    "if_wrong": "planted under 40/40: the oracle's resolution against the level's rounding is the limit, stated with the missed seeds' distances; clean flags: the line is under the clean float32 floor at distal 1e4, stated, and FB12's control stays unevidenced",
+    "cannot_discriminate_if": "every run inconclusive (a crash in the reference process)"
+  },
+  "bits_final": {
+    "cases": "this head against #258's head (91a1596) on every released program, both dtypes; the reversing draws (rk3_open_cases.reversing, seeds 0 to 2, 30 steps, the term acting) against a005bcb (this branch's helper before #258's merge brought 4a's); open_rk3_tube_flow against f62f33b (the explicit form). One job, one CPU, one thread (bit_compare.py)",
+    "prediction": "released programs: every array equal (this PR's product changes since 91a1596 touch the open RK3 node only, which no released program builds). Reversing draws against a005bcb: equal in float64 (measured-before locally, 186/186 arrays) and float32. open_rk3_tube_flow against f62f33b: as before, not bit for bit in float64 (the term's code present changes the compiled program) and in float32 (unexplained); stated as measured",
+    "controls": {"repeat": "bit_compare's own: the head recorded twice"}
+  },
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43140787303 (predictions unchanged above); every arm's data uploaded; the arms r21_fb19, bits and fb12_level_a to d each marked failed by the memory check alone (an UNDERESTIMATE: peaks 0.83 GiB, 1.47 GiB (bits: the released programs, larger than the estimate's case) and the FB12 arms', against bounds near 0.78 GiB), a calibration row each, not a result",
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303",
+    "gate_r21_traced": {
+      "result": "HELD: forward_traced 1 (IMEX Euler) and 4 (RK3); the difference exactly 0 on both, IMEX iterations 163 both; the forward arm's time a step 0.0508 s against 0.0503 (IMEX), 0.0108 against 0.0108 (RK3) on the runner. The first probe's 0 now reads as agreement: the tangent solve is the primal's solve on the force with the same start"
+    },
+    "gate_fb19_rerun": {
+      "result": "node_measure through the built experiment, 40 steps, D/h 16, the runner's AMD EPYC 9V74 at a load of about 0.45 a CPU (node_measure warned: not a timing claim): open RK3 0.0065 s a step, periodic RK3 0.0051, open IMEX 0.0384 (1,176 CG iterations over 40 steps), periodic IMEX 0.0234 (1,109). IMEX open over periodic 1.64: HELD (1.3 to 2.0). RK3 open over periodic 1.26: MISSED LOW (predicted 1.8 to 3: the openings' fast solves cost less than the stage's other work)"
+    },
+    "gate_fb12_level_control": {
+      "result": "MISSED on the clean arm: planted caught 40/40 (no inconclusive), but the clean float32 run was flagged on 11 of 40 draws (seeds 3000, 3008, 3011, 3016, 3017, 3022, 3024, 3025, 3030, 3033, 3035), its distance 3.8e-5 to 3.05e-4 of the largest speed against the line 3e-5; the planted distances are not recorded by detection_rate.py for caught runs, so whether any line separates the arms is not shown. The oracle cannot tell the gauge's presence from the clean float32 floor at distal 1e4 on those draws: FB12's gauge control stays UNEVIDENCED. Three of the flagged seeds (3000, 3017, 3025) are the draws whose inflow plane grows (the inflow-face mode, at D/h 8 in the first probe); that the mode amplifies float32's rounding on the others is an inference, not measured"
+    },
+    "bits_final": {
+      "result": "HELD for the released programs: every array equal against #258's head 91a1596, all 12 programs in both dtypes (24 runs). HELD for the reversing draws against a005bcb: every array equal in both dtypes (the term acting; #258's helper and this branch's earlier one give one program's numbers). open_rk3_tube_flow against f62f33b: not bit for bit, as before: 12 arrays differ, float64 at most 6.9e-15 (the openings' pressures; velocities at rounding), float32 at most 5.7e-6 (the openings' pressures). Float64's difference is the program's change (run 43133109128's control: the term's code present against absent, its coefficient zero, differs at 5.6e-15, the repeat equal); float32's is left unexplained (present against absent was equal there)"
+    }
+  }
+}
