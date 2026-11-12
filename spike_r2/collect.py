@@ -19,8 +19,9 @@ def load(path: str) -> Any:
 
 def arm_of(path: str) -> str:
     for part in Path(path).parts:
-        if part.startswith("probe-camera-r2-gates-"):
-            return part.removeprefix("probe-camera-r2-gates-")
+        for prefix in ("probe-camera-r2-gates-", "probe-camera-r2-round2-"):
+            if part.startswith(prefix):
+                return part.removeprefix(prefix)
     return "?"
 
 

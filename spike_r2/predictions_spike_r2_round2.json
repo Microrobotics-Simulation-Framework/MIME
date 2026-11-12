@@ -7,7 +7,10 @@
     "local laptop, round 2's gradcheck.py: camera float64 seed 1 (round 1's draw, --no-reject, --ladder): pass, orders 0.55, 0.64, 0.56, 2.0, ratios 0.16, 0.002, 0.18, 0.33; camera float64 seed 2 (redrawn: 11 ticks at a limit): pass; camera float32 seed 1: pass, kp and ki not discriminating; STATE float64 seed 13 (redrawn: 4 ticks): pass"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "GitHub runner, 4 vCPU, CPU",
     "sizes_and_parameters": "as round 1 (spike_r2/predictions_spike_r2.json), 200 steps; changed: (1) draws are redrawn from their seed's stream until the first tick's unconstrained currents exceed 1.25 times the limit; (2) the central-difference check uses h, h/2, h/4, the order measured from them and clamped to [1/2, 2], compared at h/4",
     "seeds_and_draws": "detection_rate.py runs 0..19 on each arm"
@@ -16,9 +19,25 @@
     "claim": "with the measured order, the clean runs pass in both dtypes and arms",
     "kind": "equality",
     "case": "the clean arms of stopb64, stopb32, state64, state32, freet64, edge64, edge32",
-    "prediction": {"value": "every clean arm 0/20 flagged, 0/20 inconclusive; max ratio to the line under 0.6", "band": [0, 1], "unit": "flagged/20", "basis": "fit to seen (round 1 and the ladder)", "why": "round 1's three clean failures were the p = 2 premise, which the measured order removes; the line widens about 7x where p is 1/2"},
+    "prediction": {
+      "value": "every clean arm 0/20 flagged, 0/20 inconclusive; max ratio to the line under 0.6",
+      "band": [
+        0,
+        1
+      ],
+      "unit": "flagged/20",
+      "basis": "fit to seen (round 1 and the ladder)",
+      "why": "round 1's three clean failures were the p = 2 premise, which the measured order removes; the line widens about 7x where p is 1/2"
+    },
     "metric": "detection_rate.py clean.flagged, clean.inconclusive",
-    "control": {"plant": "the planted arms below", "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT", "expected_rate": "below", "runs": 20, "clean_expected": "0/20", "resolution": "per draw, the line over |dJ/dlimit| (round 1: float64 median 2.7e-8 camera, 7.9e-10 STATE; float32 median 1.7e-2 camera, 3.1e-3 STATE)"},
+    "control": {
+      "plant": "the planted arms below",
+      "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT",
+      "expected_rate": "below",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "per draw, the line over |dJ/dlimit| (round 1: float64 median 2.7e-8 camera, 7.9e-10 STATE; float32 median 1.7e-2 camera, 3.1e-3 STATE)"
+    },
     "if_wrong": "a clean failure with a monotone ladder means the order is below 1/2 there: read its ladder",
     "cannot_discriminate_if": "every parameter's line above a tenth of its derivative"
   },
@@ -26,11 +45,61 @@
     "claim": "on draws that hold a coil at its limit, each allocation-derivative plant and the edge plant are caught on every run in float64, and in float32 where the limit's check discriminates",
     "kind": "acceptance",
     "case": "detection_rate.py over gradcheck.py, 20 runs each arm",
-    "prediction": {"value": {"stopb64": "20/20", "state64": "20/20", "freet64": "20/20", "edge64": "20/20", "edge32": "20/20", "stopb32": "16 to 20 of 20 (not every run: float32's 1 % step holds a kink on some draws, the limit's check then not discriminating, and the gains' checks catch it only when the free coils' error reaches them)", "state32": "18 to 20 of 20", "swap32_clean": "0 or 1 of 20 flagged (round 1: seed 15 flagged on the runner, not on the laptop)"}, "band": [null, null], "unit": "caught/20", "basis": "fit to seen", "why": "the plants change dJ/dlimit by O(1) of itself on every saturated draw (round 1: ratios 1e5-1e9 in float64, 1e1-1e3 in float32)"},
+    "prediction": {
+      "value": {
+        "stopb64": "20/20",
+        "state64": "20/20",
+        "freet64": "20/20",
+        "edge64": "20/20",
+        "edge32": "20/20",
+        "stopb32": "16 to 20 of 20 (not every run: float32's 1 % step holds a kink on some draws, the limit's check then not discriminating, and the gains' checks catch it only when the free coils' error reaches them)",
+        "state32": "18 to 20 of 20",
+        "swap32_clean": "0 or 1 of 20 flagged (round 1: seed 15 flagged on the runner, not on the laptop)"
+      },
+      "band": [
+        null,
+        null
+      ],
+      "unit": "caught/20",
+      "basis": "fit to seen",
+      "why": "the plants change dJ/dlimit by O(1) of itself on every saturated draw (round 1: ratios 1e5-1e9 in float64, 1e1-1e3 in float32)"
+    },
     "metric": "planted.caught_of_runs, lower_bound_95",
-    "control": {"plant": "SPIKE_VARIANT=stop_branch, free_tangent; SPIKE_PLANT=edge, limits", "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT", "expected_rate": "as above", "runs": 20, "clean_expected": "0/20", "resolution": "as gate 4r"},
+    "control": {
+      "plant": "SPIKE_VARIANT=stop_branch, free_tangent; SPIKE_PLANT=edge, limits",
+      "environment_variable": "SPIKE_VARIANT / SPIKE_PLANT",
+      "expected_rate": "as above",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "as gate 4r"
+    },
     "if_wrong": "a miss in float64 on a saturated draw would be the check, not the plant: read the row",
     "cannot_discriminate_if": "a redrawn draw with no tick at a limit after all (the first tick's host prediction ignores the camera's estimate at the first tick)"
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43313888566",
+    "commit": "9591de23",
+    "recorded": "2026-11-12, after the run; predictions above unchanged",
+    "gate_4r_clean_arms": {
+      "result": "clean flagged: camera float64 1/20 (seed 13, kp ratio 2.04; in stopb64, edge64 and freet64, one draw), STATE float32 2/20 (seeds 2 and 14, ki on a kinked row, ratios 1.07 and 1.02), every other clean arm 0/20; no inconclusive run",
+      "scored": "missed (predicted 0/20 everywhere)",
+      "cause": "camera float64 seed 13, reproduced on the laptop with --ladder: CD - reverse for kp is 3.4e-8, 1.6e-7, 1.2e-7, 2.0e-8, 4.8e-9 at h .. h/16: not monotone over h .. h/4 (a coverage event between them), then onto the reverse value; the three-level order estimate assumes monotone convergence. STATE float32: the kink line's own approximation at the 1 % step, marginal"
+    },
+    "gate_5r_controls": {
+      "stopb64": "20/20 (hit)",
+      "state64": "20/20 (hit)",
+      "freet64": "20/20 (hit)",
+      "edge64": "20/20 (hit)",
+      "edge32": "20/20 (hit)",
+      "state32": "20/20 (hit, 18-20 predicted)",
+      "stopb32": "18/20 (hit, 16-20 predicted): seeds 2 and 18 had the plant's dJ/dlimit off by its sign (ratios 3.2, 3.9) on a row whose line exceeded a tenth of the derivative, which the verdict rule does not count",
+      "swap32": "20/20, clean 0/20; seeds 15 and 16 clean at worst ratio 0.068 and 0.055 (round 1's flag of seed 15 not reproduced)"
+    },
+    "a_posteriori_not_predictions": {
+      "line_x10_float64": "every float64 arm 20/20 with clean 0/20",
+      "float32": "no line factor gives both (x1, any row: stopb32 20/20 clean 0/20, state32 20/20 clean 2/20; x10: state32 18/20, stopb32 14/20)",
+      "float32_against_float64": "the float32 reverse derivative against the float64 one at the same draw: clean max 1.2e-3 (camera), 2.9e-5 (STATE) relative over kd, kp, limit; planted min 0.156 (camera), 8.2e-3 (STATE): a 3e-3 line would separate every run of both"
+    },
+    "runner": "278 runner-minutes, 55.8 min wall, 10 jobs"
+  }
 }
