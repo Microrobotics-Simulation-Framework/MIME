@@ -1,0 +1,4 @@
+# the open boxes (the vessel at D/h 16 two diameters long, the twin rig at D/h 12 up to three, two of the one-tube box's
+# widths) bounded by a periodic tube box without a plug at D/h 20 and a period of two (probe/estimate_case.py), as the
+# rates probes were (their open arms within it)
+*: --case estimate_case:tube --path probe --arg cells_across=20 --arg length_cells=40 --steps 1
