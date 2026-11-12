@@ -14,6 +14,10 @@
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -28,6 +32,26 @@ from mime.nodes.flow.fvm._schwarz import RESIDUAL_LINE, stencils
 SPACING, CELLS, LENGTH, TUBE, RADIUS, DT = 1e-4, 10, 8, 4e-4, 1.5e-4, 1e-3
 BOX = 32
 LINE = 1e-7
+
+
+@contextlib.contextmanager
+def indefinite_planted(on: bool) -> Iterator[None]:
+    """Gate 9's plant: the response the flow prepares with its sign turned (``MIME_PLANT_SCHWARZ=indefinite``), which
+    the step's definiteness check stops the run at, its state then held."""
+    import mime.nodes.flow.fvm._node as flow_node
+
+    original = flow_node.prepared
+
+    def turned(*args: Any, **kwargs: Any) -> Any:
+        made = original(*args, **kwargs)
+        return made._replace(resistance=-made.resistance)
+
+    if on:
+        flow_node.prepared = turned
+    try:
+        yield
+    finally:
+        flow_node.prepared = original
 
 
 def node_step(drop_composition: bool = False, live_pose: bool = False) -> dict[str, float]:
@@ -53,8 +77,10 @@ def node_step(drop_composition: bool = False, live_pose: bool = False) -> dict[s
         given = dict(state)
         if live_pose:
             given["schwarz_0_at"] = jnp.asarray(moved)
-        ended = node.advance(p, given, {"schwarz_0_twist": jnp.asarray(twist), "schwarz_0_pose": jnp.asarray(moved),
-                                        "waveform": jnp.asarray([0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 0.0])}, DT)
+        with indefinite_planted(plant() == "indefinite"):
+            ended = node.advance(p, given, {"schwarz_0_twist": jnp.asarray(twist),
+                                            "schwarz_0_pose": jnp.asarray(moved),
+                                            "waveform": jnp.asarray([0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 0.0])}, DT)
         at = pieces(node, DT)
         box = node.schwarz_box()
         host = node.schwarz
