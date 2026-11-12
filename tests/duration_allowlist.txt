@@ -1301,7 +1301,7 @@ tests/flow/test_fvm_region.py::test_a_cut_around_the_junction_is_named_after_the
 tests/flow/test_fvm_region.py::test_the_outlet_watch_acts_on_nothing # kept: the outlet watch's line moved, two open trees run, the flow bit for bit (row #360's observer)
 tests/flow/test_fvm_region.py::test_a_tilted_tube_is_built_with_bends_and_runs # kept: the tilted vessel ('F2's rows, 4', item 5) built, run and metered
 tests/flow/test_fvm_region.py::test_the_two_outlet_shared_distal_law_binds_each_end_by_name # kept: scope item 0's wiring on the tree's unequal branches, two runs
-tests/flow/test_fvm_region.py::test_a_backflow_term_of_the_wrong_sign_is_flagged_and_its_gift_counted # kept: R-15's sign check and its control, two open trees run and metered
+tests/flow/test_fvm_region.py::test_the_backflow_term_never_gives_energy_through_reversals_and_a_wrong_sign_is_flagged # kept: R-15's sign check and its control, two open trees run and metered
 tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[water.viscosity] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
 tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[windkessel:vessel.end_0.proximal] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
 tests/flow/test_fvm_region.py::test_fb16_no_silent_bake_with_ports[windkessel:vessel.end_0.compliance] # kept: FB16, the two-builds check on the open tree (two builds and two runs)
