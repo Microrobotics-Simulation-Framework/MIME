@@ -1,0 +1,46 @@
+{
+  "written": "2026-11-12, committed before gate 1 ran with its twist judged on the scale it came from (the commit that adds this file is the timestamp): after the redrawn gate's float32 arm missed one draw of 30 on a body's spin",
+  "phase": "F3 PR 2: the one elimination over exchange partners; gate 1's twist judged on its inputs' scale",
+  "labels": "made by the PR's finishing builder (Opus) from the redrawn gate's probe (run 43140877536) and a laptop diagnosis of its miss, listed under seen_before",
+  "seen_before": [
+    "the redrawn gate 1 (bodies 1 to 2.5 cells apart), run 43140877536: float64 30/30, worst 3.8e-10 (field); float32 29/30, seed 18 failing at a twist difference of 4.0e-3 of the solved twist's largest magnitude; drop and cross caught 30/30 in both dtypes, clean 0/10",
+    "seed 18 diagnosed on the laptop (float32): body 0 (1.13 cells in radius, r = 0.43) spun at up to 96 rad/s at the step's start and 25 rad/s after it; its solved spin missed the reference's by 7.7e-2 rad/s, 3.0e-3 of the solved and 7.9e-4 of the starting twist; with the twist judged on the larger, the draw reads 7.9e-4 and passes"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-pr2-gates3)",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "as predictions_f3_pr2_redraw.json's gate 1 (two bodies 1 to 2.5 cells apart in the periodic box on even seeds, the open vessel on odd ones); a body's twist difference over the larger of its solved twist's and its starting twist's largest magnitude",
+    "seeds_and_draws": "DETECTION_SEED 0 to 29 per dtype for the gate, 0 to 29 planted and 0 to 9 clean per control"
+  },
+  "gate_1_return_path_twist_on_its_scale": {
+    "claim": "the coupled step is the monolithic step within the field's solve's line, both dtypes, each body's twist judged on the scale it came from",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_the_coupled_step_is_the_monolithic_step_within_the_solves_line[<dtype>]",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-12,
+        1e-8
+      ],
+      "unit": "relative (field, force, twist on its scale, pressure, flux), float64; float32 [1e-7, 2e-3]",
+      "basis": "measured-before (run 43140877536, rescaled for seed 18 on the laptop) and derived: the twist's difference is the solve's rounding times the scale of the terms that cancelled into it",
+      "why": "a small body's spin decays several times over in a step; its rounding is the starting twist's, not the remainder's [guess: float32's worst over 30 draws under 1.5e-3]"
+    },
+    "metric": "the largest relative difference over the field and every partner's unknowns, a twist over max(|V'|, |V|)",
+    "control": {
+      "plant": "drop: the last partner dropped from the elimination; cross: every partner's rows read only its own deliveries",
+      "environment_variable": "MIME_PLANT_ELIMINATION",
+      "expected_rate": "30/30 each, both dtypes",
+      "runs": 30,
+      "clean_expected": "0/10",
+      "resolution": "derived: the plants move a body's force by a share far above float32's line (2.5e-2 and 6.1e-2 at seeds 0 and 2, float32), and the force is judged on its own scale as before; structural, not measured with discriminating_range.py"
+    },
+    "if_wrong": "a clean miss on a twist judged on its starting scale: the elimination's float32 rounding is above the CG's line there; print the body's system's condition",
+    "cannot_discriminate_if": "a plant caught only through the twist, whose scale this widens: the force carries the plants (above)"
+  },
+  "outcomes": null
+}

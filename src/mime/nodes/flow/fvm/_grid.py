@@ -213,7 +213,7 @@ class MACGrid:
         indices: list[Array] = []
         weights: list[Array] = []
         slopes: list[Array] = []
-        for axis, count in enumerate(self.cells):
+        for axis in range(len(self.cells)):
             shift = 0.0 if axis == component else 0.5
             scaled = points[:, axis] / h - shift
             base = jnp.floor(_lax.stop_gradient(scaled)).astype(jnp.int32)

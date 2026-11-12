@@ -10,7 +10,10 @@ body. (The box's bodies were first drawn anywhere in it: at 4.8 and 6.2 cells ap
 force by 1.7e-3 and 1.9e-3, under float32's line, and the cross control missed 2 of 30 float32 draws.) Its controls
 (``MIME_PLANT_ELIMINATION``): ``drop``, the last partner dropped from the elimination (its deliveries held at zero);
 ``cross``, every partner's rows read only its own deliveries (the cross terms zeroed). The line is the field's solve's:
-the conjugate gradient stops at its tolerance on the field, which the elimination carries into every partner.
+the conjugate gradient stops at its tolerance on the field, which the elimination carries into every partner. A
+body's twist is judged on the scale it came from, the larger of its own and the twist it started the step with: a
+small body's spin decays several times over in one step, the remainder of a cancellation (a draw's float32 spin missed
+by 3e-3 of its solved value and 8e-4 of its starting one).
 
 **The ledger** (gate 2): a body coupled one pass, metered, closes its books at every step with the drag's two rows
 summing to the law's own dissipation, ``-dt f . (M0 - M_inf) f``, as the drag's node books it: no lagged residual."""
@@ -19,6 +22,7 @@ from __future__ import annotations
 
 import math
 import os
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -129,8 +133,10 @@ def _open_draw(rng: np.random.Generator) -> tuple[OpenFlowNode, list[Body], floa
     return node, [body], dt
 
 
-def _relative(found: np.ndarray, reference: np.ndarray) -> float:
-    scale = float(np.max(np.abs(reference)))
+def _relative(found: np.ndarray, reference: np.ndarray, came_from: Any = 0.0) -> float:
+    """The largest difference over the larger of the reference's largest magnitude and ``came_from``, the scale of the
+    terms the result came from where they cancel."""
+    scale = max(float(np.max(np.abs(reference))), float(np.max(np.abs(came_from))))
     return float(np.max(np.abs(np.asarray(found) - reference))) / scale if scale > 0.0 else 0.0
 
 
@@ -157,7 +163,8 @@ def test_the_coupled_step_is_the_monolithic_step_within_the_solves_line(dtype, m
     found = {"field": max(_relative(np.asarray(ended[f"velocity_{x}"]), reference.velocity[k])
                           for k, x in enumerate("xyz")),
              "force": max(_relative(solution[b, :6], reference.forces[b]) for b in range(len(bodies))),
-             "twist": max(_relative(solution[b, 6:12], reference.twists[b]) for b in range(len(bodies)))}
+             "twist": max(_relative(solution[b, 6:12], reference.twists[b], np.asarray(bodies[b].twist))
+                          for b in range(len(bodies)))}
     if isinstance(node, OpenFlowNode):
         found["pressure"] = _relative(np.asarray(ended["opening_pressure"]), reference.pressures)
         found["flux"] = _relative(np.asarray(ended["opening_flux"]), reference.fluxes)

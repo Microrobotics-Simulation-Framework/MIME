@@ -103,8 +103,9 @@ def blocks(units: str | None, shape: tuple[int, ...]) -> tuple[tuple[str, np.nda
     """A field's blocks for one step of ``shape``: each block's units, by which it is named, and its elements (a mask of
     ``shape``). Two parts, ``"a; b"``, split the last axis into its first three and the rest (a pose, a twist, a wrench,
     and each row of frame poses); three, ``"a; b; c"``, a square operator of six in blocks of three, ``[a b; b c]``
-    (a resistance). One part is one block; so is a field whose units are not declared, or whose composite units do not
-    fit its shape, named by what it declares."""
+    (a resistance); more, each part three of the last axis in turn, where it holds three a part (a flow's solution for a
+    held body: its force, couple, twist and readings). One part is one block; so is a field whose units are not
+    declared, or whose composite units do not fit its shape, named by what it declares."""
     whole = np.ones(shape, dtype=bool)
     parts = unit_parts(units)
     if len(parts) <= 1:
@@ -119,6 +120,9 @@ def blocks(units: str | None, shape: tuple[int, ...]) -> tuple[tuple[str, np.nda
         return _merged(((parts[0], np.broadcast_to(rows & columns, shape).copy()),
                         (parts[1], np.broadcast_to(rows != columns, shape).copy()),
                         (parts[2], np.broadcast_to(~rows & ~columns, shape).copy())))
+    if len(parts) > 2 and shape and shape[-1] == PART * len(parts):
+        column = np.arange(shape[-1]) // PART
+        return _merged(tuple((part, np.broadcast_to(column == k, shape).copy()) for k, part in enumerate(parts)))
     return ((str(units), whole),)
 
 
