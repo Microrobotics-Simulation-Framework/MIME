@@ -232,8 +232,9 @@ def _pairing(dynamics: Dynamics, interface: str) -> DeliveryKind | None:
 def _law_of(edge: EdgeDecl, laws: Mapping[str, EntryPlan], owners: Mapping[str, EntryPlan]) -> str:
     """The law a delivery edge into a receiver is booked under: the delivering interaction's id; for what a chain
     segment hands the segment it is mounted on, the output that carries it (``rpm.motor.reaction``); for a command,
-    its writer's id."""
-    if edge.by in laws or edge.carries == COMMAND:
+    its writer's id; for a part of a law delivered from the receiver's own field (a resolved body's displaced share),
+    the part's own name (``drag:ball.displaced``)."""
+    if edge.by in laws or edge.carries == COMMAND or edge.by.rpartition(".")[0] in laws:
         return edge.by
     plan = owners.get(edge.source[0])
     if plan is not None and plan.section is Section.DYNAMICS:
@@ -382,12 +383,13 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
     for role, law_id, energy_class in getattr(own, "hosted_laws", lambda: ())():
         exchanged = host if role in getattr(type(own), "EXCHANGED", ()) else None
         source = law_id if law_id in registered and energy_class == ledger.UNMETERED else None
-        # A registered law judged in the sum of its rows by its own node (a point body's drag held in a flow's step:
-        # the flow carries the body, so its fluid's row alone may be positive) is judged there, not on this row.
-        law = laws[law_id].entry if law_id in registered and law_id in laws else None
-        cluster = isinstance(law, Interaction) and bool(law.judged_in_sum())
-        held.append(ledger.LedgerDelivery(role, law_id, energy_class, ledger.HOSTED,
-                                          ledger.CHECK_CLUSTER if cluster else "", exchanged or source or ""))
+        # A law held here that is judged in its sum by its host (a resolved body's drag, its work split between the
+        # fluid and the body; a point body's drag held in a flow's step, where the flow carries the body, so its
+        # fluid's row alone may be positive) is judged there, at one velocity, not on this row.
+        hosted = laws[law_id].entry if law_id in laws else None
+        check = ledger.CHECK_CLUSTER if isinstance(hosted, Interaction) and hosted.judged_in_sum() else ""
+        held.append(ledger.LedgerDelivery(role, law_id, energy_class, ledger.HOSTED, check,
+                                          exchanged or source or ""))
     return tuple(held), problems
 
 

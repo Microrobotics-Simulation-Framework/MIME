@@ -101,7 +101,7 @@ def test_the_report_keeps_the_attached_rungs_validity_lines_and_the_control_keep
     def plan(rung: str) -> SimpleNamespace:
         return SimpleNamespace(registered=SimpleNamespace(cls=Drag), entry=SimpleNamespace(rung=rung))
 
-    rungs = ("surrogate", "mrs", "rft", "stokes")
+    rungs = ("surrogate", "mrs", "rft", "stokes", "penalty")
     held = {rung: attached_validity(plan(rung)) for rung in rungs}  # type: ignore[arg-type]
     for rung, lines in held.items():
         assert lines and all(not line.startswith(f"{other}: ") for line in lines for other in rungs if other != rung)

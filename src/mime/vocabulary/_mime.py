@@ -138,6 +138,13 @@ EXCHANGE_PARTNER = "flow.exchange_partner"
 #: The registration kind of an exchange partner the flow holds in its step (:data:`FLOW_PARTNERS`): a point body whose
 #: drag law the flow's one elimination solves with the field, its own step's row closing its twist (one pass).
 ONE_PASS_PARTNER = "flow.one_pass_partner"
+FLOW_RESOLVED = define(Interface(
+    "flow.resolved", TargetKind.REGISTRATION, "", None, (),
+    description="the bodies a medium's field resolves on its grid (a resolved body's drag): each registers with the "
+                "field, which lifts the body's solid onto its grid at the body's pose each step and returns the load the "
+                "solved field puts on it"))
+#: The registration kind of a body a field resolves on its grid (:data:`FLOW_RESOLVED`).
+RESOLVED_PARTNER = "flow.resolved_partner"
 FLOW_WAVEFORM = define(Interface(
     "flow.waveform", TargetKind.EQUALITY_CONSTRAINT, "1", "world", (7,),
     sign="on the fluid of a medium, per unit mass", magnitude=1.0,
@@ -163,3 +170,7 @@ FLOW_OPENING = define(Interface(
     "flow.opening", TargetKind.REGISTRATION, "", None, (),
     description="a law held at one of a medium's flow's openings, its pressure or its flux over each stage: the flow "
                 "includes it in its own step"))
+FLOW_POROUS = define(Interface(
+    "flow.porous", TargetKind.REGISTRATION, "", None, (),
+    description="a porous structure's drag on the fluid that permeates it (Darcy's law): the flow includes it in its "
+                "own step, its resistivity added to the wall's"))

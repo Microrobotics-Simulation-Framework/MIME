@@ -408,6 +408,63 @@ def float_lines(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping[str
                  {"achieved": achieved, "solved": solved_part, "rounding": rounding_part})
 
 
+def face_pressure_miss(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping[str, Any],
+                       inputs: Mapping[str, Any], dt: float, ended: Mapping[str, Any]) -> float:
+    """A porous region's face pressures as the step wrote them (``porous_face_pressure``) against the same reading
+    recomputed in float64 from the step's own answer: its field, an open vessel's relative pressures and each body's
+    delivered force and couple, all in what the reading takes (``ImplicitFlowNode.porous_face_pressures``: the pressure
+    recovered from the right-hand side less the operator applied to the field). The reading is linear in what the step
+    solved against, so a force it left out misses by that force's own pressure on the faces. The miss is over the
+    reading's own rounding at the run's dtype, first order and normwise (Cauchy and Schwarz on each face's row of the
+    reading's derivative, ``g``): ``gamma ||g|| ||t||``, ``t`` the terms in magnitude (the right-hand side's parts, the
+    operator applied to the field in magnitude), ``gamma`` the field's rows' count (:data:`FIELD_ROUNDING` and the fast
+    solve's ``2 log2(cells)``) and one rounding a delivered force. The largest ratio over the faces."""
+    dtype = np.dtype(str(ended["velocity_x"].dtype))
+    u = float(np.finfo(dtype).eps) / 2.0
+    with jax.enable_x64(True):
+        p = {k: (jnp.asarray(v, dtype=jnp.float64) if isinstance(v, (np.ndarray, jax.Array, float)) else v)
+             for k, v in p.items()}
+        before64 = {k: jnp.asarray(v, dtype=jnp.float64) for k, v in state.items()
+                    if jnp.issubdtype(jnp.asarray(v).dtype, jnp.floating)}
+        inputs = {k: jnp.asarray(v, dtype=jnp.float64) for k, v in inputs.items()}
+        grid = node.grid(p)
+        fields = node.fields(p, grid)
+        sigma = node.resistivity(p, fields)
+        scheme = node.scheme
+        shift = 1.0 / dt if scheme.stores_inertia else 0.0
+        rho = jnp.asarray(p["density"])
+        before = (before64["velocity_x"], before64["velocity_y"], before64["velocity_z"])
+        drive = node.forcing(fields, inputs, scheme, jnp.float64)(0, 0.0)
+        parts = [tuple(shift * before[k] for k in range(3)), drive]
+        if isinstance(node, OpenFlowNode):
+            relative = jnp.asarray(np.asarray(ended["opening_pressure_relative"], dtype=np.float64))
+            parts.append(grid.port_force(relative, rho))
+        bodies = node.body_partners(p, inputs, dt, jnp.float64) if node.body_count else []
+        solution = np.asarray(ended["partner_solution"], dtype=np.float64) if bodies else np.zeros((0, 6))
+        for b, body in enumerate(bodies):
+            force = delivered(grid, stencils(grid, body.point, body.width), jnp.asarray(solution[b, :DELIVERIES]),
+                              body.delivery)
+            parts.append(tuple(f / rho for f in force))
+        forcing = tuple(sum((part[k] for part in parts[1:]), start=parts[0][k]) for k in range(3))
+        field = tuple(jnp.asarray(np.asarray(ended[f"velocity_{x}"], dtype=np.float64)) for x in "xyz")
+        applied = node.operator_of(p, grid, sigma)(shift)(field)
+        shapes = [grid.shape(k) for k in range(3)]
+
+        def reading(b: Any) -> Any:
+            return jnp.reshape(node.porous_face_pressures(p, grid, applied, _unflat(b, shapes)), (-1,))
+
+        wanted = np.asarray(reading(_flat(forcing)))
+        rows = np.asarray(jax.jacrev(reading)(_flat(forcing)))
+        terms = sum((np.abs(np.asarray(_flat(part))) for part in parts), start=np.zeros(rows.shape[1]))
+        terms = terms + np.abs(np.asarray(_flat(node.magnitude_of(p, grid, sigma)(shift)(
+            tuple(jnp.abs(c) for c in field)))))
+    cells = int(np.prod(grid.cells))
+    gamma = (FIELD_ROUNDING + 2 * math.ceil(math.log2(cells)) + len(parts)) * u
+    line = gamma * np.linalg.norm(rows, axis=1) * np.linalg.norm(terms)
+    found = np.ravel(np.asarray(ended["porous_face_pressure"], dtype=np.float64))
+    return float(np.max(np.abs(found - wanted) / line))
+
+
 def sphere_mass(radius: float, ratio: float) -> tuple[float, float]:
     """A uniform sphere's mass and moment of inertia at ``ratio`` times water's density."""
     mass = ratio * WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
@@ -415,4 +472,4 @@ def sphere_mass(radius: float, ratio: float) -> tuple[float, float]:
 
 
 __all__ = ["FIELD_ROUNDING", "ROW_ROUNDING", "WATER_MU", "WATER_RHO", "Body", "Lines", "Monolithic", "System",
-           "body_inputs", "float_lines", "monolithic_step", "sphere_mass"]
+           "body_inputs", "face_pressure_miss", "float_lines", "monolithic_step", "sphere_mass"]

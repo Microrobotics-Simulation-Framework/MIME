@@ -20,6 +20,8 @@ from mime.core import run_dtype, shape_named, switch
 from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
+from mime.dynamics.flow._resolved import FEATURE_CELLS, LAGGED_MARGIN, lagged_text
+from mime.nodes.flow.fvm._resolved_node import LAGGED_RATIOS
 from mime.nodes.hydro._point_drag import AVERAGES, COUPLE, FAXEN_FORCES, FLOOR, FORCES, HISTORY_LINE, LAPLACIANS, \
     KERNEL_WIDTHS, RATE_SHARE, REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, ROW_ULPS, WALL_LINE, PointDragNode, \
     free_space_margins, kernel_width
@@ -102,7 +104,8 @@ from mime.registry import (
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
 from mime.vocabulary import BACKGROUND_LOAD, EXCHANGE_PARTNER, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
-    FLOW_FACES, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, ONE_PASS_PARTNER, POSE, RESISTANCE, STEP_ROW, TWIST, Capability, \
+    FLOW_FACES, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, FLOW_RESOLVED, MASS_MATRIX, ONE_PASS_PARTNER, POSE, RESISTANCE, \
+    RESOLVED_PARTNER, STEP_ROW, TWIST, Capability, \
     Definiteness, EnergyClass
 from mime.walls import RESERVED
 
@@ -1429,6 +1432,24 @@ class UncoupledDrag(PointForceDrag):
         return counts, quadrature_owners(hull.kind, hull.settings, sampling, counts)
 
 
+#: The penalty rung's Reynolds line at the default N (the body's Reynolds number by its hull's diameter and speed), and
+#: its basis: the post-run watch flags a run past it, the line at the run's N its square's share of the default's
+#: below it (``Drag.watched_upper``).
+PENALTY_REYNOLDS = 150.0
+PENALTY_REYNOLDS_BASIS = ("the highest particle Reynolds number the default N was measured at: a sphere held on a "
+                          "tube's axis (a/R 0.22) reads its drag 6.6 % higher at N = 6 than at 9 at Re 150 and 11 % at "
+                          "360 [measured through the node], neither N converged, so the line flags past 150, where its "
+                          "error is at least that; under it the error is unmeasured, between gate 1's 0.8 % in Stokes "
+                          "flow and 6.6 % at 150. At a coarser N the line falls as N squared (the boundary layer's "
+                          "cells held at Re 150's 1.0, an inference); at a finer N it stays at 150, unmeasured above")
+#: The thinnest-feature line, in cells across the radius of a resolved body's smallest feature, under which the build
+#: refuses (drag.penalty-thin), and its basis.
+PENALTY_THIN_LINE = 3.0
+PENALTY_THIN_BASIS = ("measured in Stokes flow through the node: a sphere at 3 cells a radius reads its drag 6.0 % under "
+                      "Haberman and Sayre at a/R 0.375 and 1.5 % at 0.222, at 2 a radius 13 %; a thin disc broadside "
+                      "4.1 % under the MRS at 3 cells across its thickness and 6.9 % at 2 (F4's first step's probe)")
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class Drag(UncoupledDrag):
@@ -1474,17 +1495,23 @@ class Drag(UncoupledDrag):
 
     version = "0.5.0"
     step_from_boundary = True
-    builds = {**UncoupledDrag.builds, "mrs": (MRSDragNode, JointDragNode), "stokes": (PointDragNode,)}
-    rungs = (*UncoupledDrag.rungs, "stokes")
-    rung_gradients = {**UncoupledDrag.rung_gradients, "stokes": RungGradient(differentiability=GradientStatus.EXACT)}
-    reynolds = (*UncoupledDrag.reynolds, ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="stokes"))
+    builds = {**UncoupledDrag.builds, "mrs": (MRSDragNode, JointDragNode), "stokes": (PointDragNode,), "penalty": ()}
+    rungs = (*UncoupledDrag.rungs, "stokes", "penalty")
+    rung_gradients = {**UncoupledDrag.rung_gradients, "stokes": RungGradient(differentiability=GradientStatus.EXACT),
+                      "penalty": RungGradient(differentiability=GradientStatus.EXACT)}
+    reynolds = (*UncoupledDrag.reynolds, ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="stokes"),
+                ReynoldsRange(PENALTY_REYNOLDS, PENALTY_REYNOLDS_BASIS, rung="penalty"))
     support = (*UncoupledDrag.support, SupportRow("stokes", {
         "body": requires(Capability.RIGID, accepts=[RESISTANCE.name, BACKGROUND_LOAD.name],
                          publishes=[POSE.name, TWIST.name]),
         "medium": requires(accepts=[FLOW_EXCHANGE_X.name, FLOW_EXCHANGE_Y.name, FLOW_EXCHANGE_Z.name,
                                     FLOW_PARTNERS.name], publishes=[FLOW_FACES.name]),
     }, note="a rigid sphere whose dynamics takes a resistance, in a medium whose flow is solved on a grid that takes "
-            "exchange deliveries (the FVM)"))
+            "exchange deliveries (the FVM)"), SupportRow("penalty", {
+        "body": requires(Capability.RIGID, accepts=[BACKGROUND_LOAD.name], publishes=[POSE.name, TWIST.name]),
+        "medium": requires(accepts=[FLOW_RESOLVED.name]),
+    }, note="a rigid body whose dynamics takes a background load, in a medium whose flow is solved on a grid that "
+            "resolves bodies on it (the FVM on a periodic box)"))
     #: The kernel widths, in cells, the stokes rung's build chooses among: the narrowest at or above max(1, a/(1.7 h))
     #: whose coupled one-step margin clears the floor at the run's values.
     WIDTHS: ClassVar[tuple[float, ...]] = KERNEL_WIDTHS
@@ -1501,6 +1528,10 @@ class Drag(UncoupledDrag):
                                           "build reporting which and why; coupling='lagged' the declared cheaper route "
                                           "(the fluid's step takes the force of the step before; exact by default, the "
                                           "cheaper approximation declared)"),
+        "feature_cells": convention(NUMERICAL, "on the penalty rung, FEATURE_CELLS: N, the cells across the radius of "
+                                               "the body's smallest feature, which the medium's grid takes where it is "
+                                               "finer than the lumen's own (B12; the rung's validity line gives the "
+                                               "drag's error it was measured at)"),
         "kernel_width": convention(NUMERICAL, "on the stokes rung, none: the exchange kernel's width the narrowest of "
                                               "the ladder (WIDTHS) at or above the rule's least width whose coupled "
                                               "one-step margins clear the floor at the run's values (the validity line "
@@ -1658,7 +1689,9 @@ class Drag(UncoupledDrag):
         f"not linear (a contact projects the body's step; a dynamics that publishes no step row), the build saying "
         f"why, and is "
         f"the declared cheaper route (coupling='lagged'); an open vessel's flow holds its bodies one pass only (a "
-        f"lagged body there is refused). The lagged scheme reads its own field a step late, so its first step resists "
+        f"lagged body there is refused), a flow holding a porous plug holds them as any (the plug's faces read their "
+        f"forces), and a flow resolving another body on its grid takes none yet (flow.resolved-exchange). The lagged "
+        f"scheme reads its own field a step late, so its first step resists "
         f"R0 (1 + lambda^2/9) against the exact R0 (1 + lambda + lambda^2/9), lambda = a/sqrt(nu dt): down to -0.60 at "
         f"lambda = 3 [derived]; from rest under a step force at bodies just above the floor its largest error was 0.06 "
         f"to 0.28 of the terminal speed, 0.01 to 0.02 at the end [measured by the rung's refuting review, a of h to 4h, "
@@ -1687,6 +1720,55 @@ class Drag(UncoupledDrag):
         f"radii apart, along and across their line of centres) was within 0.2 to 2.1 % of the cross term at 48 cells "
         f"and 0.2 to 1.2 % at 64 [measured by the rung's refuting review]; the exact two-sphere solution's nearer terms (about "
         f"15/(4 rho^4) along the line, 1.5 % of one body's speed at 4 radii) no point body carries",
+        f"penalty: a rigid body resolved on the medium's grid, its solid lifted by the wall's own band (2h, 0.3h) from "
+        f"its solid region's exact signed distance (a sphere's, a capsule's) at its pose each step, the grid's spacing "
+        f"the finer of the lumen's and N = {FEATURE_CELLS} cells (feature_cells) across the radius of its smallest "
+        f"feature; a first-order body: in Stokes flow a sphere at a/R 0.375 reads its drag 6.0 % under Haberman and "
+        f"Sayre at 3 cells a radius and 0.8 % at 6, as a radius 0.07 and 0.02 cells smaller [measured, the rung's gate "
+        f"1]; refused under {PENALTY_THIN_LINE:g} cells a radius ({PENALTY_THIN_BASIS})",
+        "penalty: past Stokes flow the default N is not converged: a sphere held on a tube's axis (a/R 0.22) at "
+        "particle Reynolds numbers of 150 and 360 reads its drag 6.6 % and 11 % lower at N = 9 than at N = 6 [measured "
+        "through the node], so a body at such a Reynolds number takes feature_cells=9 or finer; whether 9 is converged "
+        "is unmeasured; the post-run watch flags a run past the rung's Reynolds line (reynolds)",
+        f"penalty: its load the penalty's force and torque plus the interior fluid's momentum change taken from the "
+        f"field (the field formulation; the rigid-interior shortcut diverges at a density ratio of 1.2 where this "
+        f"holds), coupled lagged, a declared form: the field solved at the body's twist at the step's start, the body "
+        f"taking the solved field's load in the same step. Its loop is stable up to an edge in x = dt / tau, tau_t = "
+        f"m / (6 pi mu a K) for the translation (K Haberman and Sayre's axial factor at a/R) and tau_r = I / (8 pi mu "
+        f"a^3) for the rotation, measured at rest on a sphere at a/R 0.375 by energy (one mode perturbed in a quiescent "
+        f"fluid, where a body whose kinetic energy exceeds its start's had it made by the coupling) [measured through "
+        f"the node]: with the fluid's inertia stored (IMEX Euler, convection on or off alike) the translation's edge, "
+        f"x at each density ratio, {lagged_text('translation', True)}; the rotation's, at each inertia ratio "
+        f"(I / (0.4 rho V a^2)), {lagged_text('rotation', True)}; in its steady limit "
+        f"{lagged_text('translation', False)} and {lagged_text('rotation', False)}, whatever the ratio. The build "
+        f"refuses a step past {LAGGED_MARGIN:g} of the edge at the run's N and ratios (drag.penalty-lagged, naming the "
+        f"largest step admitted; N between the measured the lower edge, past the finest extrapolated as N^-p, p the "
+        f"fall measured and with the fluid's inertia at least 2; a ratio between the measured the lower neighbour's, "
+        f"past the last the last's; a "
+        f"capsule judged as its enclosing sphere, whose drag bounds its from above), a density ratio under "
+        f"{LAGGED_RATIOS[0]:g} refused and one over {LAGGED_RATIOS[1]:g} flagged each step "
+        f"(body_<i>_ratio_unmeasured) and judged at {LAGGED_RATIOS[1]:g}'s edge; a run past the edge anyway is stopped "
+        f"by its body's motion (drag.penalty-motion); its exchange is not paired at one twist, so its unpaired work is "
+        f"booked in the drag's rows: the one-pass affine coupling, which pairs it, is the route this rung comes with "
+        f"next",
+        "penalty: the displaced share of the medium's drive (the drive acts on the fluid alone) given to the body at its "
+        "hull's centroid, its volume the hull's, under the drag's part drag:<body>.displaced; a derivative in the "
+        "body's position carries the lift's ripple: a sphere held off a tube's axis (a/R 0.375, its centre 0.2 R "
+        "across), its drag differentiated in its lateral position, reads a derivative that moves within a cell from "
+        "0.30 to 1.68 times its cell-mean slope at 6 cells a radius and from -0.15 to 2.20 at 3 (the derivative of the "
+        "discrete drag, exact to its central difference; the static tube's ripple, for comparison, is +-20 % at D/h 8 "
+        "to 16) [measured through the node]: a gradient in position is a cell-mean's to that spread, and the drag "
+        "itself moves 0.17 % through a cell at 6 cells a radius (gate 5); the free body only: a sphere at 6 cells a "
+        "radius beside a tube's wall (a/R 0.222), spun force-free, translates within 4.2 % of the MRS's rate (its "
+        "near-contact law on) at a gap of 4 cells and 8.3 % at 3, 23 % at 2, its wall-normal resistance 3.7, 6.1 and "
+        "12 % under [measured through the node]: within 3 cells of the wall the body is the near-wall resolved-body "
+        "phase's, not this rung's, and a body there is flagged each step (body_<i>_near_wall, its part's enclosing "
+        "sphere's gap); a delivered added mass on it is refused (drag.penalty-added-mass), its grid carrying the "
+        "fluid's inertia",
+        "penalty: a body is held to move its solid at most a cell a step (its farthest point's speed at the step's "
+        "start times dt / h; declared): the window is placed afresh each step, but a solid jumping a cell between "
+        "solves is not resolved in time, and a lagged coupling past its stable step grows until it crosses the line; "
+        "the run stops at the first step past it (drag.penalty-motion, naming the body and its coupling)",
         "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
         "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
@@ -1776,6 +1858,24 @@ class Drag(UncoupledDrag):
     coupling: str | None = None
     kernel_width: float | None = None
     self_history: str | None = None
+    feature_cells: float | None = None
+
+    def watched_upper(self, upper: float, hull: Hull | None, frame: ExchangeFrame | None) -> float:
+        """The Reynolds line the post-run watch compares a run with: the penalty rung's at the run's N, the default N's
+        line times (N / FEATURE_CELLS)^2 where N is under it (``PENALTY_REYNOLDS_BASIS``); any other rung's as
+        declared."""
+        from mime.dynamics.flow._resolved import feature_radius
+
+        radius = feature_radius(hull) if self.rung == "penalty" and hull is not None else None
+        if radius is None or frame is None:
+            return upper
+        return upper * min(1.0, (radius / frame.spacing / FEATURE_CELLS) ** 2)
+
+    @classmethod
+    def Penalty(cls, **settings: Any) -> Self:  # noqa: N802 - a rung's alias reads as a class
+        """A body resolved on the grid of a medium's solved flow, its solid lifted by the wall's own band:
+        ``Drag(rung="penalty", ...)``."""
+        return cls(rung="penalty", **settings)
 
     #: The exchange's schemes on the stokes rung: one pass (the default where the body's step is linear) and lagged.
     COUPLINGS: ClassVar[tuple[str, ...]] = ("one_pass", "lagged")
@@ -1793,8 +1893,9 @@ class Drag(UncoupledDrag):
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
-        found = [] if self.rung == "stokes" else [problem for problem in super().setting_problems(settings)
-                                                  if not problem.startswith("lubrication")]  # the blend is retired here
+        found = [] if self.rung in ("stokes", "penalty") else [
+            problem for problem in super().setting_problems(settings)
+            if not problem.startswith("lubrication")]  # the blend is retired here
         near = cast(object, self.near_contact)
         if self.rung == "mrs" and near is not None and not isinstance(near, bool):
             found.append(f"near_contact={near!r} is not True or False: the mrs rung's hand-over to the near-contact "
@@ -1805,7 +1906,12 @@ class Drag(UncoupledDrag):
             found.append("near_field= is a setting of the mrs rung's near field, and the rft rung reads none")
         if self.rung != "mrs" and self.sampling is not None:
             found.append(f"sampling= is a setting of the mrs rung's force points, and the {self.rung} rung reads none")
-        if self.rung != "stokes":
+        if self.rung != "penalty" and self.feature_cells is not None:
+            found.append(f"feature_cells= is a setting of the penalty rung's resolution on a grid, and the {self.rung} "
+                         f"rung reads none")
+        if self.rung == "penalty":
+            found += self._penalty_setting_problems()
+        elif self.rung != "stokes":
             found += [f"{name}= is a setting of the stokes rung's exchange with a grid, and the {self.rung} rung "
                       f"reads none" for name in ("one_way", "coupling", "kernel_width", "self_history")
                       if getattr(self, name) is not None]
@@ -1939,6 +2045,160 @@ class Drag(UncoupledDrag):
                                  f"give {body} one Sphere part at its origin, or use Drag.MRS(...) for its shape"))
         return found
 
+    #: The settings of other rungs the penalty rung refuses written: the stokes rung's exchange (its coupling scheme
+    #: among them: a resolved body's coupling is lagged, declared) and every MRS and surrogate setting.
+    PENALTY_REFUSED: ClassVar[tuple[str, ...]] = (
+        "weights", "lubrication", "spacing", "blob", "patches", "wall_kind", "coefficients", "quadrature_refinement",
+        "wall_refinement", "near_field", "near_contact", "sampling", "kernel_width", "self_history", "coupling")
+
+    def _penalty_setting_problems(self) -> list[str]:
+        """The penalty rung's own settings: ``feature_cells`` a number of cells, ``one_way`` refused (a resolved body
+        is in the grid: there is no reaction to leave out), and no other rung's setting."""
+        found = [f"{name}= is a setting of another rung, and the penalty rung reads none"
+                 for name in self.PENALTY_REFUSED if getattr(self, name) is not None]
+        if self.one_way is not None:
+            found.append("one_way= leaves out a law's reaction on the medium, and a resolved body has none to leave "
+                         "out: the body is in the medium's grid, its solid lifted onto it, so the flow takes it as "
+                         "a wall; leave one_way out, or use Drag.Stokes(one_way=True) for a point body that does not "
+                         "disturb the flow")
+        cells = cast(object, self.feature_cells)
+        if cells is not None and (isinstance(cells, bool) or not isinstance(cells, int | float)
+                                  or not PENALTY_THIN_LINE <= float(cells) <= 64.0):
+            found.append(f"feature_cells={cells!r} is the cells across the radius of the body's smallest feature, a "
+                         f"number from {PENALTY_THIN_LINE:g} (the thinnest-feature line) to 64: write "
+                         f"feature_cells=8, or leave it out for {FEATURE_CELLS}")
+        return found
+
+    def _penalty_plan(self, ctx: PlanContext) -> Plan:
+        """The penalty rung's plan: the body registered with the medium's field as a resolved partner, which reads its
+        pose, twist and mass matrix (its density ratio flagged where unmeasured) and returns its load into the body's
+        background load; the body's mass and inertia and the
+        fluid's density and viscosity read for the lagged coupling's edge (and the scheme the FVM chooses where none is
+        written)."""
+        return Plan(nodes=(), values={"mass": Value("body", "mass"), "inertia": Value("body", "inertia"),
+                                      "density": Value("medium", "density"),
+                                      "viscosity": Value("medium", "viscosity")},
+                    registrations=(Registration("medium", FLOW_RESOLVED.name, RESOLVED_PARTNER, "body",
+                                                reads={"pose": POSE.name, "twist": TWIST.name,
+                                                       "mass": MASS_MATRIX.name},
+                                                returns={"load": BACKGROUND_LOAD.name,
+                                                         "displaced": BACKGROUND_LOAD.name}),),
+                    problems=tuple(self._penalty_problems(ctx)))
+
+    def _penalty_problems(self, ctx: PlanContext) -> list[Problem]:
+        """A body whose hull the grid cannot lift: one solid region with an exact signed distance (a sphere, a
+        capsule)."""
+        from mime.dynamics.flow._resolved import solid_region
+        from mime.nodes.flow.fvm._resolved import RESOLVED_SHAPES
+
+        body = ctx.bindings["body"]
+        hull = ctx.geometry(of="body")
+        if hull is not None and solid_region(hull) is not None:
+            return []
+        held = f"{body} has no hull" if hull is None else f"its hull is {hull.label()}"
+        return [Problem("drag.penalty-kind",
+                        f"the penalty rung lifts a body's solid onto the grid from one solid region's exact signed "
+                        f"distance (the shapes {', '.join(RESOLVED_SHAPES)}), and {held}",
+                        f"give {body} one Sphere(...) or Capsule(...) part, or use Drag.MRS(...) for its shape")]
+
+    def penalty_value_problems(self, values: Mapping[str, Magnitude], ctx: PlanContext) -> list[Problem]:
+        """The penalty rung at the run's values: a flow stepped by RK3 (``drag.penalty-scheme``); a body lighter than
+        the lagged coupling's measured range (``drag.penalty-lagged``); a body whose smallest feature holds fewer cells
+        than the thinnest-feature line (``drag.penalty-thin``)."""
+        from mime.dynamics.flow._resolved import body_reach, feature_radius
+
+        if "medium" not in ctx.exchanges or ctx.geometry(of="body") is None:
+            return []
+        frame = ctx.exchanges["medium"]
+        hull = ctx.geometry(of="body")
+        assert hull is not None
+        body = ctx.bindings["body"]
+        found: list[Problem] = []
+        if self.stokes_scheme(frame, values, ctx.dt) not in ("imex_euler", "steady"):
+            found.append(Problem("drag.penalty-scheme",
+                                 f"medium {ctx.bindings['medium']!r}'s flow steps with RK3 at this step, whose explicit "
+                                 f"stages take no resolved body yet",
+                                 "name the implicit scheme, FVM(scheme=Scheme.IMEXEuler()), or its steady limit with "
+                                 "stokes=True"))
+        found += self._lagged_problems(values, ctx)
+        from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND
+        from mime.nodes.flow.fvm._resolved import window_cells
+
+        window = window_cells(body_reach(hull), frame.spacing, BANDS[DEFAULT_BAND])
+        if window > min(frame.cells):
+            found.append(Problem("drag.penalty-box",
+                                 f"{body} with the band about it spans {window} cells, more than the medium's box holds "
+                                 f"across its least extent ({min(frame.cells)} cells): its solid would meet its own "
+                                 f"periodic image",
+                                 "a longer box, FVM(domain=PeriodicBox(length=...)), or a smaller body"))
+        radius = feature_radius(hull)
+        asked = cast(object, self.feature_cells)
+        if radius is not None and isinstance(asked, int | float) and not isinstance(asked, bool) and \
+                radius / frame.spacing < float(asked) * (1.0 - 1e-6) and radius / frame.spacing >= PENALTY_THIN_LINE:
+            found.append(Problem("drag.penalty-spacing",
+                                 f"feature_cells={asked!r} asks {asked:g} cells across {body}'s smallest feature's "
+                                 f"radius, and the medium's grid gives {radius / frame.spacing:.3g}: its written "
+                                 f"spacing wins, so feature_cells would be ignored",
+                                 "leave feature_cells out (the written spacing then sets the cells across the body), "
+                                 "or leave the FVM's spacing out, FVM(...) with no spacing= (its grid then takes "
+                                 "feature_cells)"))
+        if radius is not None and radius / frame.spacing < PENALTY_THIN_LINE - 1e-9:
+            found.append(Problem("drag.penalty-thin",
+                                 f"{body}'s smallest feature is {radius / frame.spacing:.3g} cells across its radius on "
+                                 f"the medium's grid, under the thinnest-feature line of {PENALTY_THIN_LINE:g} "
+                                 f"({PENALTY_THIN_BASIS})",
+                                 f"a finer grid, FVM(spacing=...) at most {radius / PENALTY_THIN_LINE:.3g} m (leave it "
+                                 f"out for the rung's own, {FEATURE_CELLS} cells a radius); or the MRS near field for "
+                                 f"a body this small against the grid, Drag.MRS(...), coupled to the grid by Schwarz"))
+        return found
+
+    def _lagged_problems(self, values: Mapping[str, Magnitude], ctx: PlanContext) -> list[Problem]:
+        """The lagged coupling at the run's step against its measured edge (``drag.penalty-lagged``): x = dt / tau of
+        the body's translation and of its rotation (``mime.dynamics.flow._resolved.relaxation``), each refused past
+        the margin's share of the edge measured at the run's N, density (or inertia) ratio and scheme (with the
+        fluid's inertia stored, IMEX Euler; or its steady limit), and a ratio under the least measured."""
+        from mime.dynamics.flow._resolved import LAGGED_MARGIN, feature_radius, lagged_edge, relaxation
+
+        frame, hull = ctx.exchanges["medium"], ctx.geometry(of="body")
+        assert hull is not None
+        body = ctx.bindings["body"]
+        region = ctx.region("medium")
+        lumen = region.parameters.get("radius") if region is not None else None
+        inertia = cast(tuple[float, ...], values["inertia"] if isinstance(values["inertia"], tuple)
+                       else (values["inertia"],) * 3)
+        held = relaxation(hull, float(cast(float, values["mass"])), inertia, float(cast(float, values["viscosity"])),
+                          float(cast(float, values["density"])), float(lumen) if isinstance(lumen, int | float) else None)
+        inertial = self.stokes_scheme(frame, values, ctx.dt) != "steady"
+        radius = feature_radius(hull)
+        cells = radius / frame.spacing if radius is not None else 0.0
+        scheme = "with the fluid's inertia stored (IMEX Euler)" if inertial else "in its steady limit"
+        where = f"at N = {cells:.3g} cells a radius, {scheme}"
+        found: list[str] = []
+        steps: list[float] = []
+        for mode, tau, ratio, kind in (("translation", held.tau_t, held.density_ratio, "density"),
+                                       ("rotation", held.tau_r, held.inertia_ratio, "inertia")):
+            edge = lagged_edge(mode, inertial, cells, ratio)
+            if edge is None:
+                found.append(f"its {kind} ratio, {ratio:.3g}, is under the least the {mode}'s edge was measured at "
+                             f"{where}")
+                continue
+            if ctx.dt / tau > LAGGED_MARGIN * edge:
+                found.append(f"its {mode}'s dt / tau = {ctx.dt / tau:.3g} is past {LAGGED_MARGIN:g} of the edge "
+                             f"{edge:.3g} measured {where} at a {kind} ratio of {ratio:.3g} (tau = {tau:.3g} s)")
+                steps.append(LAGGED_MARGIN * edge * tau)
+        if not found:
+            return []
+        step = f" at most {min(steps):.3g} s (the largest the measured edges admit at these values)" if steps else ""
+        return [Problem("drag.penalty-lagged",
+                        f"{body}'s lagged coupling (the field solved at its twist at the step's start, the body taking "
+                        f"the solved field's load in the same step) would grow at this step: {'; '.join(found)}; "
+                        f"tau_t = m / (6 pi mu a K) and tau_r = I / (8 pi mu a^3), a = {held.radius:.3g} m its part's "
+                        f"enclosing radius, K = {held.factor:.3g} Haberman and Sayre's axial factor at a over the "
+                        f"lumen's radius",
+                        f"a smaller timestep, dt=...{step}, or a denser body, exp.declare('{body}.mass', ...), where "
+                        f"its ratio is under the measured; or the one-pass affine coupling, which pairs the exchange at "
+                        f"one twist, the route this rung comes with next")]
+
     @staticmethod
     def stokes_scheme(frame: ExchangeFrame, values: Mapping[str, Magnitude], dt: float) -> str:
         """The scheme the medium's flow steps by at these values (its written one, else the FVM's choice)."""
@@ -1954,6 +2214,8 @@ class Drag(UncoupledDrag):
         """The stokes rung at the run's values: a flow stepped by RK3; a body the width rule puts past the widest kernel
         (``drag.stokes-size``); a body whose coupled one-step margins stay under the floor at every allowed width
         (``drag.stokes-floor``), with the remedies that raise them, measured at these values."""
+        if self.rung == "penalty":
+            return self.penalty_value_problems(values, ctx)
         if self.rung != "stokes" or "medium" not in ctx.exchanges or ctx.geometry(of="body") is None:
             return []
         frame = ctx.exchanges["medium"]
@@ -2034,10 +2296,20 @@ class Drag(UncoupledDrag):
         return None
 
     @override
+    def delivers_added_mass(self) -> bool:
+        """The stokes rung delivers the Maxey-Riley added mass on the body's acceleration relative to the fluid's."""
+        return self.rung == "stokes"
+
+    @override
     def judged_in_sum(self) -> str:
         """The stokes rung's drag: the flow carries the body (the drag's work on the body is positive there) and the
         fluid's side pays for it (two-way) or the field supplies it (one way), so no one receiver's row is judged a
         gift; its node judges the law's power at one velocity each step instead (``cluster_gift_steps``)."""
+        if self.rung == "penalty":
+            return ("its sign judged by the medium's field, which holds it, each step, not on these rows (the flow carries "
+                    "the body, and the fluid's row holds the exchange): the penalty's load on the body at the twist the "
+                    "field was solved at, with its work on the fluid, its relative dissipation, never above its "
+                    "rounding floor (body_<i>_gift_steps)")
         if self.rung != "stokes":
             return ""
         return ("its sign judged by its node each step, not on this row (the flow carries the body): the law's power "
@@ -2193,6 +2465,8 @@ class Drag(UncoupledDrag):
         if self.rung == "stokes":
             self._build_stokes(ctx, b)
             return
+        if self.rung == "penalty":
+            return  # the medium's field holds the body on its grid (its registration): nothing of the law's own
         super().build(ctx, b)
 
     def _build_stokes(self, ctx: BuildContext, b: InteractionBuilder) -> None:
@@ -2461,6 +2735,8 @@ class Drag(UncoupledDrag):
         stokes rung's its own (:meth:`_stokes_plan`)."""
         if self.rung == "stokes":
             return self._stokes_plan(ctx)
+        if self.rung == "penalty":
+            return self._penalty_plan(ctx)
         found = super().plan(ctx)
         if self.lubrication is not None:
             found = dataclasses.replace(found, problems=(*found.problems, self._retired()))

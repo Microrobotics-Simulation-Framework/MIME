@@ -261,6 +261,9 @@ class StepQuery:
     values: Mapping[str, float]
     settings: Mapping[str, Magnitude]
     drives: tuple[DriveQuery, ...] = ()
+    #: The registrations addressed to the dynamics (``mime.build.ResolvedRegistration``): a field resolving a body on its
+    #: grid takes the spacing the body asks.
+    registrations: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1138,6 +1141,12 @@ class Interaction(Entry):
         which counts the steps that gave energy in its ``cluster_gift_steps``; the run's account reads them for each of
         its rows."""
         return ""
+
+    def delivers_added_mass(self) -> bool:
+        """Whether the law delivers an added mass to its body (a point body's Maxey-Riley added mass, through its
+        resistance): refused on a body a medium's field resolves on its grid, whose inertia the grid already carries
+        (A6, item 9)."""
+        return False
 
     def definiteness(self) -> Definiteness | None:
         """For a dissipative law delivering an operator, where it is shown positive semidefinite: by its construction

@@ -18,7 +18,12 @@ flipped in the solution the flow writes (the refuting review's mutant, which one
 float32 at every periodic draw).
 
 **The ledger** (gate 2): a body coupled one pass, metered, closes its books at every step with the drag's two rows
-summing to the law's own dissipation, ``-dt f . (M0 - M_inf) f``, as the drag's node books it: no lagged residual."""
+summing to the law's own dissipation, ``-dt f . (M0 - M_inf) f``, as the drag's node books it: no lagged residual.
+
+**Where the flow's other features meet the bodies** (the merge with #259 and #264): a porous plug in gate 1's draws,
+its face pressures reading every held body's force (control ``porousrhs``); gate 2's body beside a plug, one pass and
+lagged, its books closing with each law on its own row; a plug giving the exchange frame its scheme whichever is
+attached first; and a point body in a flow that resolves another body, refused by name (``flow.resolved-exchange``)."""
 
 from __future__ import annotations
 
@@ -29,7 +34,8 @@ from typing import Any
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from elimination_cases import WATER_MU, WATER_RHO, Body, body_inputs, float_lines, monolithic_step, sphere_mass
+from elimination_cases import WATER_MU, WATER_RHO, Body, body_inputs, face_pressure_miss, float_lines, monolithic_step, \
+    sphere_mass
 from point_cases import fresh_seed, point_experiment, seed
 from point_cases import plant as plant_named
 
@@ -62,6 +68,17 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(flow_node, "partnered_step", flipped)
         monkeypatch.setattr(open_node, "partnered_step", flipped)
         return
+    if kind == "porousrhs":
+        import mime.nodes.flow.fvm._node as flow_node
+        import mime.nodes.flow.fvm._open_node as open_node
+
+        def unforced(rhs, partnered):  # noqa: ANN001, ANN202 - the plug's faces read without the bodies' forces
+            del partnered
+            return rhs
+
+        monkeypatch.setattr(flow_node, "with_partner_forces", unforced)
+        monkeypatch.setattr(open_node, "with_partner_forces", unforced)
+        return
     factor = float(kind[len("crossx"):]) if kind.startswith("crossx") else None
 
     def planted(rows):  # noqa: ANN001, ANN202
@@ -85,11 +102,25 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(partners, "exchange_system", planted)
 
 
-def _periodic_draw(rng: np.random.Generator) -> tuple[ImplicitFlowNode, list[Body], float]:
+def _plug(rng: np.random.Generator, centre: tuple[float, float], tube: float, span: tuple[float, float],
+          h: float) -> dict[str, Any]:
+    """A porous plug the draw adds to its flow (``porous=True``), after every other draw: a cylinder on the tube's axis,
+    its radius 0.3 to 1 of the tube's, 1 to 3 cells long, its centre anywhere along ``span``, its sqrt(K) 0.1 to 1 of a
+    cell (a Darcy region whose resistivity is of the field's own size against the viscous term)."""
+    from mime.nodes.flow.fvm._node import porous_leaves
+
+    region = dict(centre=(centre[0], centre[1], float(rng.uniform(*span))), axis=(0.0, 0.0, 1.0),
+                  radius=float(rng.uniform(0.3, 1.0)) * tube, length=float(rng.uniform(1.0, 3.0)) * h,
+                  permeability=(float(rng.uniform(0.1, 1.0)) * h) ** 2)
+    return {**porous_leaves([region]), "porous_laws": ["darcy:clot"]}
+
+
+def _periodic_draw(rng: np.random.Generator, porous: bool = False) -> tuple[ImplicitFlowNode, list[Body], float]:
     """A periodic box of 8 cells a side with two bodies drawn anywhere in it that two spheres can be (redrawn until
     their centres' least distance across the box's images is at least the sum of their radii): radius 0.8 to 1.5
     cells, kernel one or 1.5 cells wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel
-    holds as any), density 0.5 to 3 times the water's, a twist of the body's own scales and a load on each."""
+    holds as any), density 0.5 to 3 times the water's, a twist of the body's own scales and a load on each; with
+    ``porous``, a plug anywhere along the box (:func:`_plug`)."""
     cells, h = 8, 1e-5
     side = cells * h
     dt = float(rng.uniform(0.05, 1.0)) * h * h * WATER_RHO / WATER_MU
@@ -114,15 +145,17 @@ def _periodic_draw(rng: np.random.Generator) -> tuple[ImplicitFlowNode, list[Bod
                             tube_radius=0.35 * side, scheme="imex_euler", convection=False,
                             tolerance=1e-12 if run_dtype() == jnp.float64 else 1e-5,
                             partner_radius=[b.radius for b in bodies], partner_widths=[b.width for b in bodies],
-                            partner_ids=["drag:a", "drag:b"])
+                            partner_ids=["drag:a", "drag:b"],
+                            **(_plug(rng, (side / 2, side / 2), 0.35 * side, (0.0, side), h) if porous else {}))
     return node, bodies, dt
 
 
-def _open_draw(rng: np.random.Generator) -> tuple[OpenFlowNode, list[Body], float]:
+def _open_draw(rng: np.random.Generator, porous: bool = False) -> tuple[OpenFlowNode, list[Body], float]:
     """An open vessel (8 x 8 x 16 cells, nondimensional: diameter, viscosity and density one), an inflow at its low
     plane and a Windkessel at its high one, and a body drawn in its middle third, its kernel one cell wide (its
     truncated reach meets the planes, where its weights are under 1e-5 of the peak: the gate is the algebra's, and the
-    monolithic step reads and delivers through the same kernel as the node)."""
+    monolithic step reads and delivers through the same kernel as the node); with ``porous``, a plug within the middle
+    half of its span (:func:`_plug`)."""
     h = 1.0 / 8.0
     length = 16 * h
     dt = float(rng.uniform(0.005, 0.05))
@@ -143,17 +176,16 @@ def _open_draw(rng: np.random.Generator) -> tuple[OpenFlowNode, list[Body], floa
                         openings=("tube.start", "tube.end"), opening_laws=("inflow", "windkessel"),
                         opening_parameters=params, convection=False,
                         tolerance=1e-12 if run_dtype() == jnp.float64 else 1e-5,
-                        partner_radius=[a], partner_widths=[body.width], partner_ids=["drag:ball"])
+                        partner_radius=[a], partner_widths=[body.width], partner_ids=["drag:ball"],
+                        **(_plug(rng, centre, 0.35, (length / 4, 3 * length / 4), h) if porous else {}))
     return node, [body], dt
 
 
-def gate_one(drawn: int) -> dict[str, float]:
-    """Gate 1 at the draw of ``drawn``: each quantity's largest difference from the monolithic step over its derived
-    line (a ratio; the gate holds at most one), by block: the field, the bodies' force, couple, velocity and spin, and
-    an open vessel's pressures and fluxes. Even seeds draw a periodic box with two bodies, odd ones an open vessel with
-    a body beside its openings."""
+def _drawn_step(drawn: int, porous: bool = False) -> tuple[Any, Any, dict[str, Any], dict[str, Any], float, Any]:
+    """The flow node of the draw of ``drawn`` (:func:`gate_one`'s), its step's constants, the state and inputs drawn
+    for it, its step and the state the step ended in."""
     rng = np.random.default_rng(drawn)
-    node, bodies, dt = (_periodic_draw if drawn % 2 == 0 else _open_draw)(rng)
+    node, bodies, dt = (_periodic_draw if drawn % 2 == 0 else _open_draw)(rng, porous)
     state = dict(node.initial_state())
     scale = 1e-3 if isinstance(node, ImplicitFlowNode) and not isinstance(node, OpenFlowNode) else 0.03
     for x in "xyz":
@@ -164,7 +196,16 @@ def gate_one(drawn: int) -> dict[str, float]:
     if not isinstance(node, OpenFlowNode):
         inputs["body_force"] = jnp.asarray(rng.normal(0.0, 0.5, 3), dtype=run_dtype())
     ended = node.update(dict(state), inputs, dt)
-    p = node._step_constants(None)
+    return node, node._step_constants(None), state, inputs, dt, ended
+
+
+def gate_one(drawn: int, porous: bool = False) -> dict[str, float]:
+    """Gate 1 at the draw of ``drawn``: each quantity's largest difference from the monolithic step over its derived
+    line (a ratio; the gate holds at most one), by block: the field, the bodies' force, couple, velocity and spin, and
+    an open vessel's pressures and fluxes. Even seeds draw a periodic box with two bodies, odd ones an open vessel with
+    a body beside its openings. With ``porous``, a plug in the flow too, and its face pressures against the reading
+    recomputed from the step's own answer (``elimination_cases.face_pressure_miss``)."""
+    node, p, state, inputs, dt, ended = _drawn_step(drawn, porous)
     reference = monolithic_step(node, p, state, inputs, dt)
     lines = float_lines(node, p, state, inputs, dt, reference, ended)
     solution = np.asarray(ended["partner_solution"], dtype=np.float64)
@@ -188,6 +229,8 @@ def gate_one(drawn: int) -> dict[str, float]:
     if isinstance(node, OpenFlowNode):
         found["pressure"] = over(ended["opening_pressure"], reference.pressures, lines.pressures)
         found["flux"] = over(ended["opening_flux"], reference.fluxes, lines.fluxes)
+    if porous:
+        found["faces"] = face_pressure_miss(node, p, state, inputs, dt, ended)
     sharpest = {"force": float(np.max(lines.forces[:, :3]) / np.max(np.abs(reference.forces[:, :3]))),
                 "spin": float(np.max(lines.twists[:, 3:]) / np.max(np.abs(reference.twists[:, 3:])))}
     print(f"F3 PR 2 gate 1 [{jnp.dtype(run_dtype()).name}, seed {drawn}, "
@@ -205,6 +248,83 @@ def test_the_coupled_step_is_the_monolithic_step_within_its_derived_line(dtype, 
     drawn = fresh_seed()
     found = gate_one(drawn)
     assert max(found.values()) <= 1.0, (f"DETECTION_SEED={drawn}", found)
+
+
+def _porous_pair(drawn: int) -> list[dict[str, float]]:
+    """Gate 1 with a plug in the flow at a periodic draw and at an open one beside it (``gate_one(porous=True)``)."""
+    first = 2 * (drawn // 2)
+    return [gate_one(seeded, porous=True) for seeded in (first, first + 1)]
+
+
+def test_a_porous_plug_beside_held_bodies_steps_as_the_monolithic_step_and_its_faces_read_their_forces(
+        dtype, monkeypatch):
+    """Where point bodies held one pass meet a porous plug in one flow (#264's Darcy region): a freshly drawn step of
+    each kind of flow, a periodic box with two bodies and an open vessel with one, each with a plug (``_plug``),
+    against the monolithic step, whose operator holds the plug's resistivity as the node's does: gate 1's quantities
+    within their derived lines, and the plug's face pressures (``porous_face_pressure``, the drop a Darcy reading
+    takes) against the same reading recomputed from the step's answer with every body's force in it, within its
+    rounding (``elimination_cases.face_pressure_miss``). The control (``MIME_PLANT_ELIMINATION=porousrhs``): the
+    faces read without the bodies' forces, as the plug's own step read them before the bodies were held."""
+    _planted(monkeypatch)
+    drawn = fresh_seed()
+    for found in _porous_pair(drawn):
+        assert max(found.values()) <= 1.0, (f"DETECTION_SEED={drawn}", found)
+
+
+def test_control_a_plugs_faces_read_without_the_held_bodies_forces_miss_at_every_draw(dtype, monkeypatch):
+    """The control of the plug's faces beside held bodies (``porousrhs``), on a fresh draw of each kind of flow: the
+    faces miss their recomputed reading by more than its line, the bodies' forces' own pressure on them (the faces'
+    check alone: the plant is not on the step's solve)."""
+    monkeypatch.setenv("MIME_PLANT_ELIMINATION", "porousrhs")
+    _planted(monkeypatch)
+    drawn = fresh_seed()
+    first = 2 * (drawn // 2)
+    for seeded in (first, first + 1):
+        missed = face_pressure_miss(*_drawn_step(seeded, porous=True))
+        print(f"F3 PR 2 x plug control [{jnp.dtype(run_dtype()).name}, seed {seeded}]: the faces {missed:.3g} of "
+              f"their line")
+        assert missed > 1.0, (f"DETECTION_SEED={drawn}", seeded, missed)
+
+
+@pytest.mark.parametrize("coupling", [None, "lagged"])
+def test_a_point_body_beside_a_porous_plug_closes_the_books_each_law_on_its_own_row(dtype, coupling):
+    """Gate 2's body (heavy, slipping in the driven tube, metered) beside a plug filling the tube downstream of it, one
+    pass and lagged: every receiver's books close at every step (``ledger_closes``), the drag's rows on the body and the
+    fluid judged by its node (no gift), and the plug's Darcy loss booked under its own law, dissipative, beside the
+    wall's band; its face pressures read a drop along the drive."""
+    from mime.observations import EnergyLedger
+    from mime.testing import ledger_closes
+
+    exp = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0, coupling=coupling, plug="after")
+    exp.observe(EnergyLedger())
+    result = exp.build().run(ms(2.0))
+    verdict = ledger_closes(result)
+    assert verdict.status == "PASS", verdict.detail
+    assert result.energy is not None
+    rows = {(law.law, law.receiver): law for law in result.energy.laws}
+    gifts = {receiver: rows[("drag:ball", receiver)].gift_steps for receiver in ("ball", "water.flow")}
+    assert gifts == {"ball": 0, "water.flow": 0}, gifts
+    darcy = rows[("darcy:clot", "water.flow")]
+    assert float(darcy.work) < 0.0 and darcy.gift_steps == 0, darcy
+    assert ("tube.wall", "water.flow") in rows
+    faces = np.asarray(result.final["water.flow"]["porous_face_pressure"], dtype=np.float64)
+    print(f"F3 PR 2 x plug [{dtype}, {coupling or 'one_pass'}]: darcy work {float(darcy.work):.4g} J, faces {faces}")
+    assert faces.shape == (1, 2) and faces[0, 0] > faces[0, 1]
+
+
+def test_a_plug_gives_a_point_bodys_exchange_the_scheme_its_flow_steps_by_whichever_is_attached_first(float64):
+    """With no scheme written, the FVM steps by RK3 where its explicit viscosity holds (here: D/h 16, dt 0.2 ms) and a
+    flow holding a plug by IMEX Euler (``porous_scheme``): the exchange frame a point body's drag reads names the
+    plug's scheme, every registration made, so the body is held one pass and its drag's node steps by the flow's
+    scheme with the plug attached before or after the drag. The control: the same body with no plug is refused
+    under RK3 by name (drag.stokes-scheme)."""
+    assert "drag.stokes-scheme" in _refused(point_experiment(scheme="unnamed"))
+    for plug in ("before", "after"):
+        built = point_experiment(scheme="unnamed", plug=plug).build()
+        flow = built.graph.get_node("water.flow")
+        assert flow.constants()["scheme"] == "imex_euler" and isinstance(flow, ImplicitFlowNode) and flow.body_count == 1
+        assert built.graph.get_node("drag:ball").constants()["scheme"] == "imex_euler"
+        built.run(ms(0.4))
 
 
 def _metered(coupling: str | None):  # noqa: ANN202
@@ -330,6 +450,48 @@ def test_the_build_report_names_lagged_the_cheaper_route_from_the_measured_body_
     assert "coupling='lagged'" in line(HELD_SUGGESTS_LAGGED)
     fewer = line(HELD_SUGGESTS_LAGGED - 1)
     assert f"{6 * (HELD_SUGGESTS_LAGGED - 1)} unit fields" in fewer and "lagged" not in fewer, fewer
+
+
+def _resolved_bob(exp):  # noqa: ANN001, ANN202
+    """``exp`` with a second body, ``bob``, resolved on the flow's grid (#259's ``Drag.Penalty``), R3's sphere."""
+    from resolved_cases import R3_RADIUS
+
+    from mime.dynamics import RigidInertial
+    from mime.interactions import Drag
+    from mime.scene import Sphere
+    from mime.things import Body, Part, State
+    from mime.units import kg, kg_m2, m, m_per_s, rad_per_s
+
+    exp.add_body(Body("bob", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=m(R3_RADIUS)))},
+                      initial=State(position=m((0.0, 0.0, 0.5e-3)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                    velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    mass, moment = sphere_mass(R3_RADIUS, 2.0)
+    exp.declare("bob.mass", kg(mass), reason="twice the water's density")
+    exp.declare("bob.inertia", kg_m2((moment,) * 3), reason="a uniform sphere")
+    exp.attach(Drag.Penalty(feature_cells=3), body="bob", medium="water")
+    return exp
+
+
+@pytest.mark.parametrize("coupling", [None, "lagged", "one_way"])
+def test_a_flow_resolving_a_body_refuses_a_point_body_by_name_whichever_is_attached_first(float64, coupling):
+    """Where a point body (``Drag.Stokes``, one pass, lagged or one-way) meets a body resolved on the flow's grid
+    (#259's ``Drag.Penalty``) in one flow: refused by the flow's own registration check, ``flow.resolved-exchange``,
+    with its route (the same drag on every body), never built: the resolved body's grid is finer than the lumen's, and
+    a point body planned before it would read a coarser one, while their two couplings are not held in one step. The
+    point body is attached after the resolved one (R3's experiment with a second body) and before it (gate 2's with a
+    resolved one). The controls: each experiment without the other body plans with no such refusal."""
+    from point_cases import with_second_body
+    from resolved_cases import r3_experiment
+
+    written = {"one_way": True} if coupling == "one_way" else {"coupling": coupling}
+    after = _refused(with_second_body(r3_experiment(2.0), (0.0, 0.0, 1e-3), **written))
+    assert after == {"flow.resolved-exchange"}, after
+    before = _refused(_resolved_bob(point_experiment(dt=1.5e-4, one_way=coupling == "one_way",
+                                                     coupling=None if coupling == "one_way" else coupling)))
+    assert "flow.resolved-exchange" in before, before
+    r3_experiment(2.0).plan()
+    point_experiment(dt=1.5e-4, one_way=coupling == "one_way",
+                     coupling=None if coupling == "one_way" else coupling).plan()
 
 
 def test_an_open_vessels_flow_holds_a_body_one_pass_and_refuses_a_lagged_one_by_name(float64):

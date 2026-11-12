@@ -140,6 +140,37 @@ def point_body_open() -> Experiment:
     return experiment
 
 
+def resolved_body_flow() -> Experiment:
+    """A sphere resolved on the FVM's grid (drag 0.5.0's penalty rung) in the periodic tube's steady drive, off the
+    axis, slightly heavier than the water, at 3 cells a radius: IMEX Euler under Stokes, the body's solid lifted by the
+    wall's band at its pose each step, its load the penalty's plus its interior's momentum change, its displaced share
+    apart."""
+    from mime.dynamics import FVM, RigidInertial, Scheme
+    from mime.interactions import BodyForce, Drag
+    from mime.scene import PeriodicBox, Scene, Sphere, Tube, Z
+    from mime.things import Body, Part, State
+    from mime.units import Pa_s, kg, kg_m2, kg_per_m3, m_per_s, m_per_s2, rad_per_s, um
+
+    experiment = Experiment("resolved_body_flow", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(10.0))))
+    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=8, stokes=True, scheme=Scheme.IMEXEuler())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    radius = 150e-6
+    mass = 1.2 * 1000.0 * 4.0 / 3.0 * 3.141592653589793 * radius ** 3
+    experiment.add_body(Body("bead", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=um(150.0)))},
+                             initial=State(position=mm((0.05, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                           velocity=m_per_s((0.0, 0.0, 0.0)),
+                                           angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare("bead.mass", kg(mass), reason="a bead 1.2 times water's density")
+    experiment.declare("bead.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
+    experiment.attach(Drag.Penalty(feature_cells=3), body="bead", medium="water")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    return experiment
+
+
 def tree_flow() -> Experiment:
     """The FVM on a tube tree's lumen in its periodic box (``TubeTree``, filleted): a vessel narrowing to 0.8 of its
     radius over half its period and back, its parent reaching a radius past each end of the period, steady Stokes under
@@ -242,6 +273,31 @@ def closed_tube() -> Experiment:
     experiment.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
                       medium="water", surface="tube.start")
     experiment.attach(Valve(), medium="water", surface="tube.end")
+    return experiment
+
+
+def porous_plug() -> Experiment:
+    """A porous plug filling a periodic water-filled tube, a quarter of its period long, ``Darcy`` attached; steady
+    Stokes, at a clot's permeability, 1e-12 m^2 (sqrt(K)/h 0.008: its Brinkman layer under a cell), the CG 727
+    iterations on its first step. Its golden outputs (plug, darcy) are made on CI's runners and are byte-equal on three
+    (two CPU models; the stop's path was bit-equal on 14 more, by default and on one thread, in #264's review): off the
+    runners the path moves (a laptop takes 732 iterations), so these two goldens fail there and pass on CI."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import BodyForce, Darcy
+    from mime.scene import PeriodicBox, Plug, Scene, Tube, Z
+    from mime.units import Pa_s, kg_per_m3, m2, m_per_s2
+
+    experiment = Experiment("porous_plug", scene=Scene.new(up=Z, units="m"), dt=ms(20.0))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(10.0))))
+    experiment.add_structure(Structure("clot", geometry=Plug(axis=+Z, radius=mm(0.5), length=mm(0.25))))
+    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=8, stokes=True, scheme=Scheme.Steady())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.declare("clot.permeability", m2(1e-12), reason="a clot's, within the measured range at this spacing")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    experiment.attach(Darcy(), medium="water", structure="clot")
     return experiment
 
 
@@ -496,6 +552,7 @@ CASES = (
     # A law over the open vessel's two openings, and a closed valve at one (F2b's PR 3).
     Case("open_tube_loop", open_tube_loop),
     Case("closed_tube", closed_tube),
+    Case("porous_plug", porous_plug),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),
@@ -571,6 +628,8 @@ CASES = (
     # A point body coupled two-way to the tube's flow through the exchange law, drag 0.5.0's stokes rung: after the
     # cases that use the sphere first, so that its golden output stays probed_shapes'.
     Case("point_body_flow", point_body_flow),
+    # A body resolved on the tube's grid, drag 0.5.0's penalty rung: after the cases that use the sphere first.
+    Case("resolved_body_flow", resolved_body_flow),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),
