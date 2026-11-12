@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from jax import Array
@@ -181,12 +181,17 @@ def forced_through(through: Any, handed: Any, flux: Any, reading: Any, drop: Any
     return through & handed & resolved & short
 
 
+def _labelled(mask: np.ndarray) -> np.ndarray:
+    """``mask``'s connected parts, each its own label (zero outside), cells joined through their faces."""
+    from scipy import ndimage
+
+    return np.asarray(cast(Any, ndimage).label(mask)[0], dtype=np.int64)
+
+
 def branch_cut(lumen: np.ndarray, disc: np.ndarray, layer: int) -> np.ndarray:
     """The cells of the lumen's branch a region sits in, in the cell layer ``layer`` across the box's axis: the
     layer's connected parts of the lumen (``lumen``, cells, its faces' neighbours) that meet the region's ``disc``."""
-    from scipy import ndimage
-
-    labels, _ = ndimage.label(lumen[:, :, layer])
+    labels = _labelled(lumen[:, :, layer])
     met = np.unique(labels[disc & (labels > 0)])
     cut = np.zeros_like(lumen)
     cut[:, :, layer] = np.isin(labels, met) & (labels > 0)
@@ -197,12 +202,10 @@ def isolated(lumen: np.ndarray, touches: Sequence[np.ndarray], fixing: Sequence[
     """Whether every path through the lumen from some opening whose law fixes its flux (``fixing``, by index) to every
     other opening crosses ``cut``: the lumen's cells less the cut, joined through their faces, leave that opening's
     cells (``touches``, each opening's lumen cells on its patch) in no part with another's."""
-    from scipy import ndimage
-
-    labels, _ = ndimage.label(lumen & ~cut)
-    reached = [set(np.unique(labels[touch & (labels > 0)]).tolist()) for touch in touches]
+    labels = _labelled(lumen & ~cut)
+    reached = [{int(label) for label in np.unique(labels[touch & (labels > 0)])} for touch in touches]
     for k in fixing:
-        others = set().union(*(reached[j] for j in range(len(touches)) if j != k))
+        others: set[int] = set[int]().union(*(reached[j] for j in range(len(touches)) if j != k))
         if not reached[k] & others:
             return True
     return False
