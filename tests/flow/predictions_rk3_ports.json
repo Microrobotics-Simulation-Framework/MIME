@@ -152,5 +152,99 @@
     "prediction": "every array np.array_equal (RK3's periodic step keeps its operations: its hooks are None there; the implicit node's constructor keeps its arguments' order); open_rk3_tube_flow equal to f62f33b's (where no face reverses the implicit form's coefficient is zero and the explicit force was zero)",
     "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "bit_compare's own"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after probe runs 43124710151 (the gates), 43133109128 (the inflow candidates), 43137787804 (option (A)) and 43140787303 (the rerun); predictions unchanged above",
+    "runs": [
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804",
+      "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+    ],
+    "gate_fb11_workless": {
+      "result": "HELD on 37 of 40 clean draws (the law identity under its floor, both dtypes); the other 3 (seeds 3000, 3017, 3025, Re_D 85 to 98 at D/h 8) crossed the CFL line by step 11 to 15, the inflow-face mode (the inflow plane's own-value convective flux grows at moderate Reynolds numbers (predictions_inlet_candidates.json; his choice between (A) and (B) parked)): unmeasurable there, not failed. Control law_once caught 40/40 in float64 and float32; discriminating range float64 3.7e-13, float32 1.9e-4 of the law's loss",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_route_one": {
+      "result": "HELD: 0 negative steps on 40 metered draws, both dtypes (run 43133109128's ledger arms, the node unpatched); control gift_once caught 40/40 both dtypes (its clean arm flagged the 3 CFL-stopped draws); the range a gift of 1.32 times the step's dissipation",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_inflow_rk3": {
+      "result": "HELD on 37 of 40 clean draws (the 3 CFL-stopped draws as above); control inflow_scaled caught 40/40 both dtypes; range float64 1.9e-12, float32 7.2e-4",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_affine_rk3": {
+      "result": "HELD on 37 of 40 clean draws (as above); control unit_scaled caught 40/40 both dtypes; range float64 3.7e-8, float32 5.2e-3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_zero_start": {
+      "result": "Measured, not assumed: the zero start neither diverged nor kicked here: the transverse speed in the first 5 steps at rounding (about 2e-15 of the mean) for the zero and the consistent start alike, R_p 0.5 to 100 R_tube, D/h 16. The record's divergence is NOT reproduced (the gauge keeps the level out of the field): the control as written (zero over consistent above 1e6) cannot discriminate, stated; the start's gate is the restart test (a state given from outside, CI)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fixed_point": {
+      "result": "A CI test (test_the_open_tubes_rk3_fixed_point_is_the_steady_open_solve, with forces_at_gamma as its control): passes locally; CI runs once the PR is retargeted"
+    },
+    "gate_r8": {
+      "result": "HELD locally (test_r8_the_windkessel_under_rk3_is_first_order, term_orders); CI on retarget"
+    },
+    "gate_fb7_backflow": {
+      "result": "CANNOT DISCRIMINATE on the node as built: every arm (term off, implicit, explicit) and every draw stopped at the INLET plane's CFL check by 0.02 to 0.16 of a period (the inflow plane's own-value convective flux grows at moderate Reynolds numbers (predictions_inlet_candidates.json; his choice between (A) and (B) parked)). Under option (A) (test-only, the upstream opening prescribed) the spike's point: off diverged at the outlet at 0.213 of a period, implicit and explicit held 2.29 periods, both dtypes",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fb7_spike_case": {
+      "result": "UNMEASURABLE on the node as built, not passed: the inlet stopped every arm at 0.105 of a period; the candidates a, a0, b held at most 1.27 periods. Under (A), test-only: implicit and explicit held 2.29 periods in both dtypes, largest speeds 8.6 and 7.9 U (float64; within 20 % of each other), off diverged at 0.213",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804"
+      ]
+    },
+    "gate_fb7_damping_forms": {
+      "result": "Unpatched: stopped at the inlet at 0.44 of a period (unmeasurable). Under a 0.077, a0 0.087, (A) 0.08676, the implicit form equal to the explicit to 4 to 5 digits under each: inside 0.05 to 0.5 and the 10 %",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804"
+      ]
+    },
+    "gate_backflow_rk3_form": {
+      "result": "HELD: 0 clean flags of 40 in float64 and float32; control backflow_negated caught 40/40 both dtypes; range: any sign flip (1e-12 of the term, the range's bottom)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fb10_entrance": {
+      "result": "CANNOT DISCRIMINATE: the evolved inlet face is Poiseuille's from z = 0 at Re_D 100 and 300 (centreline 1.9475 U at every station, convection on and off identical, L_99 0), so the entrance length is not formed; the control (convection off) gives the same and so cannot fail. Under a prescribed inlet the profile is given, so FB10 would need a plug inlet to mean anything",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "gate_fb12_float32": {
+      "result": "D/h 16: HELD, 0 flags on 20 draws (float32). D/h 32: MISSED, solve_flagged on 27 to 30 of 30 steps on 10 of 10 draws (stall 2 steps on one), distal 2.8 to 1,519 (not the level), the inflow reading still under 1 (at most 0.017), cause not found. The gauge's control: gauge_off 0/40 (cannot see the gauge); level_in_field (run 43140787303) planted 40/40 but its clean arm flagged 11/40: UNEVIDENCED",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+      ]
+    },
+    "gate_fb15_gradients": {
+      "result": "HELD locally after the fix it found: IMEX Euler's open node's reverse mode was off (the viscosity's derivative 3.13 against the difference's 5.98), the CG's transpose solve in the plain product; fixed (projected_solve's weighted transpose), split out as #269 against release/v0.3.0 (green). Both stage kinds within the line, reverse at both scales and forward; the control (stop_gradient on the unit fields) fails the viscosity"
+    },
+    "gate_r21": {
+      "result": "The first probe's difference of 0 was untraced; rerun traced (forward_traced 1 IMEX, 4 RK3): exactly 0 on both, iterations 163 both, the forward arm's time equal within 1 % (not the predicted cold-CG cost: the jvp's tangent solve takes the same warm start)",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+      ]
+    },
+    "gate_fb19_budget": {
+      "result": "IMEX open over periodic 1.64 (HELD); RK3 open over periodic 1.26 (MISSED LOW); the runner loaded, not a timing claim (predictions_rk3_ports_rerun.json)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+    },
+    "limits_rk3": {
+      "result": "PARTIAL, HELD where measured: the arm hit the runner's limit (run.sh's timeout, exit 124 at 320 minutes) after 14 of its 24 rows (seeds 0 and 1, seed 1's 0.1h interior at pulse 0.3 and seed 2 not run). On every measured pair RK3's shares are IMEX Euler's within a factor of 1.45 (most within 10 %): the solid's share of the root's net flux over the second period at most 0.13 to 0.37 (IMEX) against 0.14 to 0.37 (RK3) at omega (delta_in h)^2 / nu = 0.01, and 0.87 to 1.03 against 0.87 to 1.03 at 0.3; the shared plane's exchange at most 0.22 to 0.98 against 0.24 to 1.0, the largest ratio 1.45 (seed 1, 0.01, the default interior: 0.217 against 0.314). The limits stand under RK3 as under IMEX Euler: in pulsed flow at omega (delta_in h)^2 / nu of 0.3 the solid's faces carry about the whole net flux at times, and two ends on one plane exchange about as much", "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151"
+    },
+    "bits": {
+      "result": "Released programs HELD: every array equal against f392fdd (run 43124710151) and against 91a1596 (run 43140787303), both dtypes. open_rk3_tube_flow against f62f33b MISSED: not bit for bit though no face reverses (float64 6.9e-15 on the openings' pressures, float32 5.7e-6); float64's shown to be the compiled program's change (the term's code present against absent, its coefficient zero, 5.6e-15; the repeat equal; run 43133109128), float32's left unexplained (present against absent equal)",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124710151",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140787303"
+      ]
+    }
+  }
 }
