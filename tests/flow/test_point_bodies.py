@@ -119,41 +119,47 @@ def _final(result, node: str, field: str) -> np.ndarray:  # noqa: ANN001
 REPLAY_LINE = {"float64": 1e-9, "float32": 1e-5}
 
 
-def _law_replayed(result, mass_ratio: float, radius: float, dt: float) -> tuple[np.ndarray, np.ndarray]:  # noqa: ANN001
+def _law_replayed(result, mass_ratio: float, radius: float, dt: float,  # noqa: ANN001
+                  one_pass: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """The body's axial velocity after each step, and the law's (Maxey and Riley's, as the node states it) from rest
     on the run's own readings: ``(m + m_a)(V' - V)/dt = R0 (u_d - V') + (m_f + m_a) (u_c - u_c,prev)/dt``, the rate
-    zero on the first step."""
+    zero on the first step. Lagged, ``u_d`` is the drag's reading at the step's start, recorded in that step; one pass,
+    the reading of the field the step solved, which the drag's node records the step after (so the last step has none
+    to replay)."""
     velocity = np.asarray(result.history["ball"]["twist"])[:, 2]
     drag = np.asarray(result.history["drag:ball"]["drag_reading"])[:, 2]
     clean = np.asarray(result.history["drag:ball"]["clean_reading"])[:, 2]
     m_f = WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
     m, m_a, r0 = mass_ratio * m_f, 0.5 * m_f, 6.0 * math.pi * WATER_MU * radius
+    shift = 1 if one_pass else 0
     law, v = [], 0.0
-    for n in range(len(velocity)):
+    for n in range(len(velocity) - shift):
         rate = (clean[n] - clean[n - 1]) / dt if n >= 1 else 0.0
-        v = ((m + m_a) / dt * v + r0 * drag[n] + (m_f + m_a) * rate) / ((m + m_a) / dt + r0)
+        v = ((m + m_a) / dt * v + r0 * drag[n + shift] + (m_f + m_a) * rate) / ((m + m_a) / dt + r0)
         law.append(v)
-    return velocity, np.asarray(law)
+    return velocity[:len(velocity) - shift], np.asarray(law)
 
 
-def test_a_neutral_body_in_a_uniformly_driven_flow_moves_with_the_fluid(dtype):
-    """Gate 3: a neutrally buoyant point body in the driven tube, two-way, offsets up to 0.2 mm (the original range),
-    moves with the fluid up to Maxey and Riley's own slip, judged against that slip: the law's recurrence on the run's
-    own readings (the drag's and the flow without the body's), which carries the Faxén slip (a^2/6 - a^2/10) lap u
-    that the wall's viscous front brings (the review's m1). The plant switches the Maxey-Riley terms off."""
+@pytest.mark.parametrize("coupling", [None, "lagged"])
+def test_a_neutral_body_in_a_uniformly_driven_flow_moves_with_the_fluid(dtype, coupling):
+    """Gate 3: a neutrally buoyant point body in the driven tube, two-way (one pass, and lagged where declared),
+    offsets up to 0.2 mm (the original range), moves with the fluid up to Maxey and Riley's own slip, judged against
+    that slip: the law's recurrence on the run's own readings (the drag's and the flow without the body's), which
+    carries the Faxén slip (a^2/6 - a^2/10) lap u that the wall's viscous front brings (the review's m1). The plant
+    switches the Maxey-Riley terms off."""
     rng = np.random.default_rng(3000 + seed())
     radius, dt = float(rng.uniform(30e-6, 50e-6)), 2e-4
-    exp = point_experiment(radius=radius, offset=float(rng.uniform(0.0, 0.2e-3)), dt=dt)
+    exp = point_experiment(radius=radius, offset=float(rng.uniform(0.0, 0.2e-3)), dt=dt, coupling=coupling)
     if plant("MAXEY_RILEY"):
         _patch_node(maxey_riley=False)
     try:
         result = exp.build().run(ms(8.0), history=True)
     finally:
         _patch_node()
-    velocity, law = _law_replayed(result, 1.0, radius, dt)
-    reading = np.asarray(result.history["drag:ball"]["drag_reading"])[:, 2]
+    velocity, law = _law_replayed(result, 1.0, radius, dt, one_pass=coupling is None)
+    reading = np.asarray(result.history["drag:ball"]["drag_reading"])[:, 2][-len(law):]
     missed = float(np.max(np.abs(velocity - law)) / np.max(np.abs(velocity)))
-    print(f"F3 gate 3 [{dtype}]: |V - V_law|/|V| = {missed:.3g}; the law's own slip at the end "
+    print(f"F3 gate 3 [{dtype}, {coupling or 'one pass'}]: |V - V_law|/|V| = {missed:.3g}; the law's own slip at the end "
           f"{abs(law[-1] - reading[-1]) / abs(velocity[-1]):.3g} of V")
     assert missed < REPLAY_LINE[dtype], missed
 
