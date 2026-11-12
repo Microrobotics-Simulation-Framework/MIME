@@ -73,8 +73,15 @@ spread wide enough to change the count is two). A geometry's number is an axis, 
 `exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`, a plane's `"floor.offset"`), of a study, an
 override and a range: a structure's number reaches the drag node's leaf as a build at that value does (the plane's
 `wall_offset`, the tube's `wall_radius`), and each point is judged by the build's own validity lines (a plane moved
-through the body is refused at that point); a kind's setting that is not one number (an ellipsoid's semi-axes) is
-refused as one. Without a declared range, a sweep of a radius splits where the MRS rung's force
+through the body is refused at that point). A kind's setting that is not one number (an ellipsoid's semi-axes, a
+box's size, a tube tree's radii, a direction, a count) is an axis too, built per value: whole, each point the whole
+vector (`"egg.parts.shell.semi_axes"`), or one component by its index into the flat numbers the kind holds
+(`"vessel.radii[3]"`; a tree's points are three a point, so `"vessel.points[4]"` is point 1's y), written once as a
+whole number from 0 (`[03]` and `[3][0]` are refused), each value a group of its own whose split reason names the axis,
+since the nodes built from the kind hold it as built. A direction's component writes that number into the direction
+as declared, and a kind that normalises its direction (a plane's normal) builds the normalised vector. No derivative is taken
+along one (a declared cut: the value is built, not a leaf), and an override or a range of one is refused. Without a
+declared range, a sweep of a radius splits where the MRS rung's force
 points change; with one, it does not (below). The two-builds check (`mime.testing.two_builds`) is how an entry shows that no value of it is held as a constant of the
 program. Such an entry is a defect to report; its values run as experiments of their own, `Experiment.based_on(...)`,
 each built. A point outside a validity limit is refused in every profile, and `study.run()` refuses
