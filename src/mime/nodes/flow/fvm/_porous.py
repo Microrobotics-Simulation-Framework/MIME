@@ -114,7 +114,10 @@ HANDOVER_MEASURED = (
     "is under the held region's acts as forced, which only the gap rule flags; the cold steady solve at the 0.1h line "
     "takes 7,129 / 16,736 iterations at D/h 16 / 32 (over the default cap of 5,000, flagged), and on a box two "
     "diameters long it stops stagnated at 1,600 (float64 residual 0.82, its reading within 1.7 %; float32 residual 1.0, "
-    "its reading 0.31 of the series), where IMEX Euler's warm start converges")
+    "its reading 0.31 of the series), where IMEX Euler's warm start converges; the line was measured on periodic tubes, "
+    "and in an open vessel between a given pressure and a resistance the solve at the 0.1h line stopped stagnated near "
+    "3e-5 on 49 of 50 draws, and in two parallel tubes from one inlet plane (a node's rig) went not finite on 32 of 50, "
+    "flagged, where the 0.01h interior's converged")
 
 
 def leaves_a_gap(radius: Any, offset_squared: Any, lumen_radius: Any) -> Any:
