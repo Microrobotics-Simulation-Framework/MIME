@@ -280,9 +280,12 @@ def brinkman_difference(big_r: Array) -> tuple[Array, Array]:
     a_terms, b_terms = _series_coefficients()
     dtype = big_r.dtype
     small = jnp.minimum(big_r, SERIES_EDGE)
-    powers = small[..., None] ** jnp.arange(SERIES_TERMS, dtype=dtype)
-    series_a = jnp.sum(jnp.asarray(a_terms, dtype=dtype) * powers, axis=-1)
-    series_b = jnp.sum(jnp.asarray(b_terms, dtype=dtype) * powers, axis=-1)
+    # Horner's rule: a power's derivative at R = 0 (0 times 0^-1) would be NaN where the series is taken.
+    series_a = jnp.zeros_like(small)
+    series_b = jnp.zeros_like(small)
+    for coefficient_a, coefficient_b in zip(a_terms[::-1], b_terms[::-1], strict=True):
+        series_a = series_a * small + coefficient_a
+        series_b = series_b * small + coefficient_b
     big = jnp.maximum(big_r, SERIES_EDGE)
     decay = jnp.exp(-big)
     closed_a = (2.0 * decay * (1.0 + 1.0 / big + 1.0 / big ** 2) - 2.0 / big ** 2 - 1.0) / big
