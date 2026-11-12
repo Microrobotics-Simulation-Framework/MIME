@@ -1,0 +1,25 @@
+{
+  "written": "2026-11-12, committed before the tube's solid-depth probe ran, after the fix round's cost probe (run 43239921793) read the depth 8 at -7.9 to -10.7 % of the metric against the whole solid in the tube at stage 1's box, where the plane oracle reads -0.05 % (the same run's trunc arm)",
+  "phase": "the patch phase's fix round: the solid depth in the tube at stage 1's box, with consistent given values",
+  "labels": "the fix round's builder (Opus), from a mechanism read off the cost probe's script, not yet checked: its given values were the steady regularised Stokeslets' negative while the own field under a shift is the Brinkman one",
+  "seen_before": [
+    "run 43239921793: cost107-l497 metric -10.5 %, values 21 %; cost107-l079 -7.9 %, 12 %; cost120-l079 -10.7 %, 14 % (given values: the steady Stokeslets' negative); the plane oracle (steady, consistent): -0.051 % normal at depth 8"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner, 4 vCPU, CPU",
+    "sizes_and_parameters": "the cost probe's: Landers' sphere (338 points, the cell read) 0.1 a from the 5 mm tube's wall, h = a / 20, the patch 107^3 and 120^3, lambda 4.97, 0.79 and the steady limit; the patch CG at 1e-8",
+    "seeds_and_draws": "none (deterministic)"
+  },
+  "gate_tube_depth": {
+    "claim": "with given values consistent in the solid (v = -u_own, the own response's closed form at the given faces), the depth 8 reads the whole solid's reflection in the tube at stage 1's box as it does on the plane",
+    "kind": "estimates (against the whole solid on every face)",
+    "case": "probe/tube_depth.py, arms tube107-l497-own, tube107-l079-own, tube120-l079-own, tube107-steady-own; control tube107-l497-stokes (the cost probe's inconsistent given values)",
+    "prediction": {"value": null, "band": [-0.005, 0.0], "unit": "the metric's relative change at depth 8 with consistent given values, every arm (the steady arm's given values are consistent either way); the stokes arm reproduces about -10 %", "basis": "guess", "why": "the depth leaves the deep solid to its given values; consistent ones make v = -u_own there as the penalty would"},
+    "metric": "m = sum F . v over the read points, and the values' largest departure over their largest",
+    "control": {"plant": "the steady Stokeslets' negative as given values under a shift (inconsistent in the solid)", "environment_variable": "", "expected_rate": "departs by about 10 % (deterministic, one run)", "runs": 1, "clean_expected": "", "resolution": ""},
+    "if_wrong": "the depth itself is wrong in the tube (the deep solid's pressure reaches the fluid): then the default goes back to the whole solid with the planned capacity, which is exact",
+    "cannot_discriminate_if": "the box holds no solid deeper than 8 cells"
+  },
+  "outcomes": null
+}
