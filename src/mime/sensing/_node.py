@@ -14,23 +14,29 @@ at the frame step. Before the run's first poses the ring holds the bodies' initi
 recorded poses again with that key reproduces the frame exactly.
 
 **The leaves.** The detector's nine numbers (``intrinsics``: ``fx, fy, cx, cy, k1, k2, p1, p2, k3``) are the node's leaves,
-so a study can fit them; the ray table and the structure's image follow them. The static cache (a camera fixed in the
-world) lives in the node's state, beside every number the static part reads (the nine leaves, the scene's numbers, the
-camera's pose): it is made at the first step and again at any step where one of them differs from the step's own (a run
-continued with another leaf, a state carried into a run with other numbers), and read from the state otherwise. Because it
-is made from the step's own numbers, a derivative in the leaves passes through it. ``expected`` (the counts before noise and quantisation) is the differentiable
-output; ``image`` is the quantised frame.
+so a study can fit them; the ray table and the structure's image follow them. **The static structure** (a camera fixed in
+the world: the ray table, the standing subjects' transmission and their flags, packed flat) is a leaf of its own,
+``static_structure``, beside the numbers it was made at, ``static_structure_from`` (the nine intrinsics, the scene's numbers
+as built, the camera's pose): both made once when the node's parameters are made, so a study's point and an override's tree
+hold the structure at their own leaves. A run makes it once, before its steps (``MimeNode.run_constants``, in every chunk a
+MIME run compiles): the held one where its numbers are the run's, made from the run's leaves where any differs; a run
+MADDENING's own scan steps (a recorded run, the save's reference steps) makes that choice at each frame step instead. Either
+way it is read, never carried: the state holds no cache, a held step costs what holding the image costs, and nothing of the
+structure is a constant of the program. Its derivative in the leaves is the make's, whichever is read
+(``held_or_made``'s rule), so a derivative taken from a continued state is right, not only one from the first step.
+``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
 **Forward mode only.** A derivative passes in forward mode (the ring's poses and the leaves); reverse mode and a batched
-study are refused by the study (``Observation.forward_only``), naming the offline renderer, because the cond is a
+study are refused by the study (``Observation.forward_only``), naming the offline renderer, because the frame's cond is a
 ``select`` under ``vmap`` and reverse mode would keep every frame step's render.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast, override
 
 import jax
@@ -42,23 +48,19 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
-    typed_view
+from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, node_input, \
+    run_constants_given, run_dtype, typed_view
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode
+from mime.nodes.hydro.mrs._quadrature import held_or_made
 from mime.sensing import _scene as scene
-from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays
 from mime.sensing._coverage import CORNER_SAMPLES
-from mime.sensing._render import (Exposure, Response, StaticCache, exposed, frame_key, prepared, projected_reach,
-                                  static_cache, static_part)
-from mime.sensing._detector import ray_table
+from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays, ray_table
+from mime.sensing._render import Exposure, Response, exposed, frame_key, prepared, projected_reach, static_part
 from mime.sensing._subjects import Subject
 
 lax: Any = jax.lax
-_jax: Any = cast(Any, jax)
 
-#: The flags a frame raises, each a state field of the node holding, on a frame step, the number of subjects (or pixels,
-#: or the share of saturated ones) it raised for in that frame, and zero at every other step.
 #: The detector's nine numbers, the node's leaves, in the order a Pinhole and OpenCV give them.
 INTRINSICS = ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3")
 #: How far a focal length may move from the build's, as a share: the box a fit stays in, and what the disc windows are
@@ -66,8 +68,19 @@ INTRINSICS = ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3")
 FOCAL_SHARE = 0.25
 #: How far a distortion coefficient may move from the build's: the radial ones by this, the tangential ones by a fifth.
 DISTORTION_BOX = 0.3
+#: The flags a frame raises, each a state field of the node holding, on a frame step, the number of subjects (or pixels,
+#: or the share of saturated ones) it raised for in that frame, and zero at every other step.
 FLAG_FIELDS = ("beyond_distortion", "saturated", "outside_parent", "small_silhouette", "window_overflow", "behind",
                "ghosting", "thin_cap")
+#: The static structure of a camera fixed in the world, a leaf (:meth:`CameraNode.run_constants`): the ray table's origin,
+#: its ten planes (the direction, its derivatives along u and v, whether a pixel lies beyond the distortion), the standing
+#: subjects' transmission and the static flags in their names' order, packed flat (:func:`packed`).
+STRUCTURE = "static_structure"
+#: The numbers :data:`STRUCTURE` was made at, a leaf beside it: the nine intrinsics, the scene's numbers as built and the
+#: camera's pose, the ones the step compares its own with.
+STRUCTURE_FROM = "static_structure_from"
+#: The image-sized planes of the packed structure: the ray table's ten and the transmission.
+PLANES = 11
 
 EQUATIONS = (r"n_{f} = P \, \mathrm{floor}(n / P), \quad a = n - n_{f}, \quad "
              r"I = \mathrm{render}\left(\mathbf{c}, s, n_{f}\right)")
@@ -83,11 +96,6 @@ class CameraState(TypedDict, closed=True):
     image: ReadOnly[Annotated[Float[Array, "rows columns"], Units("1")]]
     expected: ReadOnly[Annotated[Float[Array, "rows columns"], Units("1")]]
     ring: ReadOnly[Annotated[Float[Array, "sub_frames bodies 7"], Units(POSE_UNITS)]]
-    cache_origin: ReadOnly[Annotated[Float[Array, "3"], Units("m")]]
-    cache_rays: ReadOnly[Annotated[Float[Array, "10 rows columns"], Units("1")]]
-    cache_transmission: ReadOnly[Annotated[Float[Array, "rows columns"], Units("1")]]
-    cache_flags: ReadOnly[Annotated[Float[Array, "static_flags"], Units("1")]]
-    cache_from: ReadOnly[Annotated[Float[Array, "numbers"], Units("1")]]
     beyond_distortion: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     saturated: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     outside_parent: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
@@ -130,19 +138,71 @@ def _composed(outer: np.ndarray, inner: np.ndarray) -> np.ndarray:
     return np.concatenate([outer[:3] + turned @ inner[:3], product])
 
 
+def packed(rays: Rays, static: Any, flags: Mapping[str, Any], names: Sequence[str], dtype: Any) -> Array:
+    """The static structure as one flat array (:data:`STRUCTURE`): the origin, the :data:`PLANES` planes, the flags of
+    ``names`` in that order."""
+    origin = jnp.stack([jnp.asarray(c, dtype=dtype) for c in rays.origin])
+    planes = jnp.stack([jnp.asarray(c, dtype=dtype) for part in (rays.direction, rays.along_u, rays.along_v) for c in part]
+                       + [jnp.asarray(rays.beyond, dtype=dtype), jnp.asarray(static, dtype=dtype)])
+    values = jnp.stack([jnp.asarray(flags[name], dtype=dtype) for name in names]) if names \
+        else jnp.zeros((0,), dtype=dtype)
+    return jnp.concatenate([origin, jnp.reshape(planes, (-1,)), values])
+
+
+def unpacked(flat: Array, rows: int, columns: int, names: Sequence[str]) -> tuple[Rays, Array, dict[str, Array]]:
+    """The rays, the transmission and the flags :func:`packed` holds."""
+    size = PLANES * rows * columns
+    planes = jnp.reshape(flat[3:3 + size], (PLANES, rows, columns))
+    values = flat[3 + size:]
+    rays = Rays(origin=(flat[0], flat[1], flat[2]), direction=(planes[0], planes[1], planes[2]),
+                along_u=(planes[3], planes[4], planes[5]), along_v=(planes[6], planes[7], planes[8]),
+                beyond=planes[9] > 0.5)
+    return rays, planes[10], {name: values[i] for i, name in enumerate(names)}
+
+
+def static_subjects(spec: Mapping[str, Any]) -> tuple[Subject, ...]:
+    """The subjects of ``spec`` as the static part reads them: prepared (each tube's implicit lumen, the drawing order),
+    a moving disc's window left unsized, which the static part never reads (it images the standing subjects alone)."""
+    return tuple(prepared([scene.subject_of(each) for each in spec["subjects"]], None)[0])
+
+
+@functools.lru_cache(maxsize=16)
+def structure_maker(spec: str, placement: tuple[float, ...]) -> tuple[Callable[[Array], Array], list[str]]:
+    """The static structure of a camera fixed in the world at ``placement``, a function of its nine intrinsics compiled
+    once per scene and pose (a study's points, an override's build and the save's rerun share it), and the static flags'
+    names in their packed order, known once it has been traced."""
+    held = json.loads(spec)
+    subjects = static_subjects(held)
+    pose = CameraPose(np.asarray(placement[:3], dtype=np.float64), np.asarray(placement[3:], dtype=np.float64))
+    names: list[str] = []
+
+    def made(intrinsics: Array) -> Array:
+        dtype = intrinsics.dtype
+        moved = detector_of(held, intrinsics)
+        rays = ray_table(moved, pose)
+        flags: dict[str, Any] = {}
+        static = static_part(subjects, rays, moved, pose, dtype, CORNER_SAMPLES, flags)
+        names[:] = sorted(flags)
+        return packed(rays, static, flags, names, dtype)
+
+    return cast(Callable[[Array], Array], jit(made)), names
+
+
 SCENE_HELD = ("held as built: the scene's numbers (the subjects' settings and appearances, the response) are consumed when "
               "the node is built, into its subjects and the static structure's image, so that a new value takes a "
               "rebuild (a study refuses to vary it)")
+STRUCTURE_HELD = ("the static structure, made when the node's parameters are made, from the leaves beside it: no quantity "
+                  "of its own, made again once a run from the run's leaves where they differ (run_constants)")
 
 
 class CameraNode(MountedNode):
     """The camera's frame on the base step's clock: the whole scene (its ``spec``, a JSON string of the detector, the
     subjects, the response and the key's seed), rendered every ``period`` steps from the ring of the last ``sub_frames``
     poses of every body in ``bodies`` (the inputs ``pose_<body>``), seen from the camera's pose: its ``placement`` in the
-    world, or on the frame ``mount_index`` of the ``mount_poses`` it is mounted on. The static structure is rendered
-    once, at the first step, where the camera is fixed in the world, and held in the state with the numbers it was made
-    from (rendered again if they differ); where it is mounted on a frame that may move it is rendered in every frame, and
-    no cache is ever held (a stale one would be a wrong image)."""
+    world, or on the frame ``mount_index`` of the ``mount_poses`` it is mounted on. Where the camera is fixed in the world
+    the static structure is a leaf (:data:`STRUCTURE`), made with the node's parameters and once a run where the run's
+    leaves differ, and read; where it is mounted on a frame that may move it is rendered in every frame, and none is held
+    (a stale one would be a wrong image)."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-133",
@@ -178,12 +238,12 @@ class CameraNode(MountedNode):
                          mount_index=int(mount_index), mount_count=int(mount_count),
                          initial_mount_pose=tuple(float(c) for c in initial_mount_pose))
         self._held = self._made()
+        self._structure = self._built_structure() if self.holds_cache() else None
 
     # -- what the node holds, made once from its constants ----------------------------------------------------------
 
-    def _made(self) -> tuple[Pinhole, tuple[Subject, ...], StaticCache | None]:
-        """The detector, the subjects (each disc-covered body's window sized from its initial pose) and, for a camera
-        fixed in the world, the static structure's cache."""
+    def _made(self) -> tuple[Pinhole, tuple[Subject, ...]]:
+        """The detector and the subjects, each disc-covered body's window sized from its initial pose."""
         held = self.constants()
         spec = json.loads(cast(str, held["spec"]))
         intrinsics = self.build_intrinsics()
@@ -206,8 +266,23 @@ class CameraNode(MountedNode):
                 reach = float(np.asarray(projected_reach(reach_camera, pose0, origin, subject.enclosing())))
                 subject = scene.subject_of({**each, "window": scene.frame_window(reach, camera.width, camera.height)})
             made.append(subject)
-        cache = static_cache(made, camera, pose0) if self.holds_cache() else None
-        return camera, tuple(prepared(made, None)[0]), cache
+        return camera, tuple(prepared(made, None)[0])
+
+    def _fixed_pose(self) -> tuple[float, ...]:
+        """The camera's pose in the world as built: its placement, on its mount frame's initial pose where it has one."""
+        held = self.constants()
+        placement = np.asarray(held["placement"], dtype=np.float64)
+        if cast(int, held["mount_index"]) >= 0:
+            placement = _composed(np.asarray(held["initial_mount_pose"], dtype=np.float64), placement)
+        return tuple(float(c) for c in placement)
+
+    def _maker(self) -> tuple[Callable[[Array], Array], list[str]]:
+        return structure_maker(cast(str, self.constants()["spec"]), self._fixed_pose())
+
+    def _built_structure(self) -> tuple[Array, Array]:
+        """The static structure at the build's intrinsics in the run's dtype, and the numbers it was made at."""
+        intrinsics = as_run_array(np.asarray(self.build_intrinsics()))
+        return self._maker()[0](intrinsics), self._structure_numbers(intrinsics)
 
     def build_intrinsics(self) -> tuple[float, ...]:
         """The detector's nine numbers as the node was built with them."""
@@ -231,6 +306,8 @@ class CameraNode(MountedNode):
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
+        held = {key: ParamSpec(trainable=False, units="1", description=STRUCTURE_HELD)
+                for key in (STRUCTURE, STRUCTURE_FROM)} if self.holds_cache() else {}
         return {**super().param_specs(),
                 **self.intrinsic_specs(),
                 "scene_numbers": ParamSpec(trainable=False, units="1", description=SCENE_HELD),
@@ -239,9 +316,10 @@ class CameraNode(MountedNode):
                                                                           "frame's step"),
                 "placement": ParamSpec(trainable=False, units=POSE_UNITS,
                                        description="the camera's pose in the world, or on its mount frame: held with "
-                                                   "the static structure's cache, so a move needs a new build"),
+                                                   "the static structure, so a move needs a new build"),
                 "initial_poses": ParamSpec(trainable=False, units=POSE_UNITS,
-                                           description="the bodies' poses at the start, which fill the ring")}
+                                           description="the bodies' poses at the start, which fill the ring"),
+                **held}
 
     def intrinsic_specs(self) -> dict[str, ParamSpec]:
         """The detector's nine leaves, each bounded about its build value: a focal length by ``FOCAL_SHARE``, a centre by
@@ -259,6 +337,65 @@ class CameraNode(MountedNode):
                                 description=f"the detector's {name}: a leaf a calibration fits, within its box")
                 for name in INTRINSICS}
 
+    @override
+    def params_pytree(self) -> dict[str, Any]:
+        inherited: Any = super()
+        leaves = cast(dict[str, Any], inherited.params_pytree())
+        if self._structure is None:
+            return leaves
+        structure, numbers = self._structure
+        if structure.dtype != run_dtype():  # the run's precision set after the node was made
+            structure, numbers = self._built_structure()
+        return {**leaves, STRUCTURE: structure, STRUCTURE_FROM: numbers}
+
+    # -- the static structure: a leaf, made once a run ---------------------------------------------------------------
+
+    def _structure_numbers(self, intrinsics: Array) -> Array:
+        """Every number the static structure is made from, as the step has them: the nine ``intrinsics``, the scene's
+        numbers as built (constants of the program, so that a structure made by a build with other numbers differs) and
+        the camera's pose."""
+        dtype = intrinsics.dtype
+        placement = np.asarray(self._fixed_pose(), dtype=np.float64)
+        scene_numbers = np.asarray(self.constants()["scene_numbers"], dtype=np.float64)
+        return jnp.concatenate([intrinsics, jnp.asarray(scene_numbers, dtype=dtype).reshape(-1),
+                                jnp.stack([jnp.asarray(c, dtype=dtype) for c in placement])])
+
+    def _make(self, theta: Mapping[str, Array]) -> Array:
+        """The static structure made at ``theta``'s numbers (their first nine, the intrinsics)."""
+        return self._maker()[0](theta["numbers"][:len(INTRINSICS)])
+
+    def _structure_at(self, p: Mapping[str, Any], intrinsics: Array) -> Array:
+        """The static structure at ``intrinsics``: the one ``p`` holds where its numbers are ``intrinsics``' (with the
+        scene and the pose as built), made from them where any differs, and made where ``p`` holds none (a step called
+        with the node's constants alone); its derivative is the make's in either case (``held_or_made``)."""
+        theta = {"numbers": self._structure_numbers(intrinsics)}
+        if STRUCTURE not in p:
+            return self._make(theta)
+        return held_or_made(self._make, {"numbers": p[STRUCTURE_FROM]})(theta, p[STRUCTURE])
+
+    def _intrinsics(self, p: Mapping[str, Any], dtype: Any) -> Array:
+        return jnp.stack([jnp.asarray(p[name], dtype=dtype) for name in INTRINSICS])
+
+    @override
+    def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
+        """The static structure at the run's leaves (:meth:`_structure_at`'s choice), made once per chunk, outside its
+        steps: read by every frame step, carried by none."""
+        if STRUCTURE not in params:
+            return {}
+        dtype = jnp.asarray(params[STRUCTURE]).dtype
+        return {STRUCTURE: self._structure_at(params, self._intrinsics(params, dtype))}
+
+    @override
+    def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """The static structure made from ``params``' intrinsics, with the numbers it was made at: what the save's
+        resolution rerun gives the step (its nudged leaves), which then reads it rather than making it in every frame."""
+        if STRUCTURE not in params:
+            return {}
+        dtype = jnp.asarray(params[STRUCTURE]).dtype
+        intrinsics = self._intrinsics(params, dtype)
+        numbers = self._structure_numbers(intrinsics)
+        return {STRUCTURE: self._maker()[0](intrinsics), STRUCTURE_FROM: numbers}
+
     # -- the step ---------------------------------------------------------------------------------------------------
 
     @override
@@ -273,11 +410,7 @@ class CameraNode(MountedNode):
         return node_fields(CameraState(
             steps=zero_int, frame_step=jnp.asarray(-1, dtype=jnp.int32), age=zero_int, new_frame=zero_int,
             image=as_run_array(np.zeros((rows, columns))), expected=as_run_array(np.zeros((rows, columns))),
-            ring=jnp.broadcast_to(poses[None], (sub_frames, *poses.shape)),
-            cache_origin=as_run_array(np.zeros(3)), cache_rays=as_run_array(np.zeros((10, rows, columns))),
-            cache_transmission=as_run_array(np.zeros((rows, columns))),
-            cache_flags=as_run_array(np.zeros(len(self._static_flag_names()))),
-            cache_from=as_run_array(np.zeros(self._cache_numbers_length())), **cast(Any, flags)))
+            ring=jnp.broadcast_to(poses[None], (sub_frames, *poses.shape)), **cast(Any, flags)))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -295,68 +428,24 @@ class CameraNode(MountedNode):
         base = compose(jnp.asarray(given["mount_poses"][index], dtype=dtype), placement)
         return CameraPose(base[:3], base[3:])
 
-    def _static_flag_names(self) -> tuple[str, ...]:
-        """The flags the static structure raises, by name: those of the cache the build made (none for a camera that holds
-        none)."""
-        cache = self._held[2]
-        return tuple(sorted(cache.flags)) if cache is not None else ()
-
-    def _cache_numbers_length(self) -> int:
-        """How many numbers the static part reads: none where the camera holds no cache."""
-        return 0 if self._held[2] is None else len(INTRINSICS) + len(self.constants()["scene_numbers"]) + 7
-
-    def _cache_numbers(self, intrinsics: Array, scene_numbers: Any, pose: CameraPose, dtype: Any) -> Array:
-        """Every number the static part reads, as this step has them: the nine intrinsics, the scene's numbers (the build's:
-        a constant of the program, so that a state carried in from a build with other scene numbers differs) and the
-        camera's pose. The cache is kept only while these equal the ones it was made from."""
-        parts = [intrinsics, jnp.asarray(scene_numbers, dtype=dtype).reshape(-1),
-                 jnp.stack([jnp.asarray(c, dtype=dtype) for c in (*pose.position, *pose.orientation)])]
-        return jnp.concatenate(parts)
-
-    def _static_part(self, intrinsics: Array, numbers: Array, pose: CameraPose, dtype: Any, count: Array,
-                     held: tuple[Array, Array, Array, Array, Array]
-                     ) -> tuple[Rays, Array, dict[str, Any], tuple[Array, ...]]:
-        """The rays and the static structure's transmission at ``intrinsics``, and the cache fields to carry on. Where the
-        camera is fixed in the world the node holds them in its state, with the ``numbers`` they were made from (the
-        intrinsics, the scene's numbers, the camera's pose): made from the step's own numbers at the first step and at any
-        step whose numbers differ from the held ones, read from the state otherwise, so that no number made from a leaf is
-        a constant of the program, a leaf a study moved is the cache's too, and a state carried into a run with other
-        numbers is made again. A camera on a frame that may move has no cache: it renders them in every frame."""
-        _, subjects, cache = self._held
-        spec = self._spec()
-        moved = detector_of(spec, intrinsics)
-
-        def fresh() -> tuple[Rays, Array, dict[str, Any]]:
+    def _static_part(self, p: Mapping[str, Any], intrinsics: Array, pose: CameraPose,
+                     dtype: Any) -> tuple[Rays, Array, dict[str, Any]]:
+        """The rays and the static structure's transmission at ``intrinsics``, and its flags. Where the camera is fixed in
+        the world, the structure as the chunk made it (:meth:`run_constants`), or chosen here where no chunk did
+        (:meth:`_structure_at`); a camera on a frame that may move renders them in every frame."""
+        if self._structure is None:
+            _, subjects = self._held
+            moved = detector_of(self._spec(), intrinsics)
             rays = ray_table(moved, pose)
             flags: dict[str, Any] = {}
             return rays, static_part(subjects, rays, moved, pose, dtype, CORNER_SAMPLES, flags), flags
+        flat = p[STRUCTURE] if run_constants_given(p) else self._structure_at(p, intrinsics)
+        rows, columns = self.image_shape()
+        return unpacked(flat, rows, columns, self._maker()[1])
 
-        if cache is None:
-            rays, static, flags = fresh()
-            return rays, static, flags, held
-        names = self._static_flag_names()
-
-        def made() -> tuple[Array, ...]:
-            rays, static, flags = fresh()
-            return (jnp.stack([jnp.asarray(c, dtype=dtype) for c in rays.origin]),
-                    jnp.stack([jnp.asarray(c, dtype=dtype) for part in (rays.direction, rays.along_u, rays.along_v)
-                               for c in part] + [jnp.asarray(rays.beyond, dtype=dtype)]),
-                    jnp.asarray(static, dtype=dtype),
-                    jnp.stack([jnp.asarray(flags[name], dtype=dtype) for name in names]) if names
-                    else jnp.zeros((0,), dtype=dtype),
-                    numbers)
-
-        stale = (count == 0) | jnp.any(held[4] != numbers)
-        carried = lax.cond(stale, made, lambda: held)
-        origin, packed, static, flag_values, _ = carried
-        rays = Rays(origin=(origin[0], origin[1], origin[2]), direction=(packed[0], packed[1], packed[2]),
-                    along_u=(packed[3], packed[4], packed[5]), along_v=(packed[6], packed[7], packed[8]),
-                    beyond=packed[9] > 0.5)
-        return rays, static, {name: flag_values[i] for i, name in enumerate(names)}, carried
-
-    def _rendered(self, ring: Array, intrinsics: Array, numbers: Array, pose: CameraPose, key: Any, dtype: Any,
-                  count: Array, cached: tuple[Array, Array, Array, Array, Array]) -> tuple[Array, Array, dict[str, Array], tuple[Array, ...]]:
-        _, subjects, _ = self._held
+    def _rendered(self, p: Mapping[str, Any], ring: Array, intrinsics: Array, pose: CameraPose, key: Any,
+                  dtype: Any) -> tuple[Array, Array, dict[str, Array]]:
+        _, subjects = self._held
         held = self.constants()
         spec = self._spec()
         sub_frames = cast(int, held["sub_frames"])
@@ -365,7 +454,7 @@ class CameraNode(MountedNode):
             for name in spec["body_subjects"][body]:
                 moves[name] = (ring[:, index, :3], ring[:, index, 3:]) if sub_frames > 1 \
                     else (ring[0, index, :3], ring[0, index, 3:])
-        rays, static, flags, carried = self._static_part(intrinsics, numbers, pose, dtype, count, cached)
+        rays, static, flags = self._static_part(p, intrinsics, pose, dtype)
         camera = detector_of(spec, intrinsics)
         captured = exposed(subjects, camera, pose, rays, static, dict(flags), moves, Exposure(sub_frames),
                            response_of(spec), key)
@@ -374,7 +463,7 @@ class CameraNode(MountedNode):
             kind = flag.split(":")[0]
             if kind in totals:
                 totals[kind] = totals[kind] + jnp.asarray(value, dtype=dtype)
-        return captured.image.astype(dtype), captured.expected.astype(dtype), totals, carried
+        return captured.image.astype(dtype), captured.expected.astype(dtype), totals
 
     def frame_due(self, count: Array, period: int) -> Array:
         """Whether the step with count ``count`` is a frame step."""
@@ -406,28 +495,21 @@ class CameraNode(MountedNode):
         ring = self.pushed(held["ring"], poses)
         exposure = self.exposed(held["ring"], ring)
         pose = self.camera_pose(cast(Mapping[str, Array], given), dtype)
-        intrinsics = jnp.stack([jnp.asarray(p[name], dtype=dtype) for name in INTRINSICS])
-        numbers = self._cache_numbers(intrinsics, np.asarray(constants["scene_numbers"], dtype=np.float64), pose, dtype) if self.holds_cache() \
-            else jnp.zeros((0,), dtype=dtype)
+        intrinsics = self._intrinsics(p, dtype)
         key = self.key_of(seed, count)
 
-        cached = (held["cache_origin"], held["cache_rays"], held["cache_transmission"], held["cache_flags"],
-                  held["cache_from"])
+        def make() -> tuple[Array, Array, dict[str, Array]]:
+            return self._rendered(p, exposure, intrinsics, pose, key, dtype)
 
-        def make() -> tuple[Array, Array, dict[str, Array], tuple[Array, ...]]:
-            return self._rendered(exposure, intrinsics, numbers, pose, key, dtype, count, cached)
-
-        def keep() -> tuple[Array, Array, dict[str, Array], tuple[Array, ...]]:
-            return (held["image"], held["expected"], {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS},
-                    cached)
+        def keep() -> tuple[Array, Array, dict[str, Array]]:
+            return held["image"], held["expected"], {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS}
 
         frame = self.frame_due(count, period)
-        image, expected, flags, carried = lax.cond(frame, make, keep)
+        image, expected, flags = lax.cond(frame, make, keep)
         frame_step = jnp.where(frame, count, held["frame_step"])
         return node_fields(CameraState(
             steps=count + 1, frame_step=frame_step, age=count - frame_step, new_frame=frame.astype(jnp.int32),
-            image=image, expected=expected, ring=ring, cache_origin=carried[0], cache_rays=carried[1],
-            cache_transmission=carried[2], cache_flags=carried[3], cache_from=carried[4], **flags))
+            image=image, expected=expected, ring=ring, **flags))
 
 
 def period_steps(period: float, dt: float) -> int | None:

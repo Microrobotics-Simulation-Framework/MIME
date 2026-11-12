@@ -30,7 +30,18 @@ not isolated here (the pixel corner and the tangent are what the box edge has, n
 
 **The control** (``CAMERA_PLANT=edge-stopped``) puts ``stop_gradient`` on the edge measure (the line's box coverage and the
 disc's): the silhouette derivatives are then those of the absorption under the ball and the shift of the window, a small
-share of the edge's, and fail by orders of magnitude on every run; the interior case, which has no edge in it, is unchanged."""
+share of the edge's, and fail by orders of magnitude on every run; the interior case, which has no edge in it, is unchanged.
+
+**From a continued state** (camera spike R1's case: a steel ball from (-30, 0, 15) um at 2 mm/s along the tube, a frame
+every 3 base steps, the run continued after 6 steps and differentiated over 12 more through MIME's differentiated run, as
+a chunked or continued study would take it). The objective is the wall's rows 9 to 12 of the last frame (a held step's,
+frame 15's), which the ball never reaches, so its derivative in ``fy``, ``cy`` and ``k1`` is the static structure's alone:
+before the structure was a run-constant a continued state held it as a constant of the run and the derivative there was
+exactly zero in all three (measured on #266's merge, float64; R1 found the same with the ball). Each leaf is interior (the
+wall's edges stay outside the window over the step), so the tolerance is the interior one: ``C h^2`` with ``C`` read from
+float64 and times ten (measured relative errors, h in the leaf's unit: fy 2.5e-5, 1.0e-4, 4.0e-4 at h = 0.5, 1, 2; cy
+4.5e-5, 1.8e-4, 1.1e-3 at h = 0.05, 0.1, 0.25; k1 2.3e-5, 9.2e-5, 3.7e-4 at h = 0.05, 0.1, 0.2), plus the rounding of the
+objective's 640 pixels (``SPACING`` bounds their square root)."""
 
 from __future__ import annotations
 
@@ -41,10 +52,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from in_loop_cases import DETECTOR, LOOK_ACROSS, planted
+from in_loop_cases import DETECTOR, LOOK_ACROSS, RADIUS_UM, planted
 
 import mime.sensing._coverage as coverage
 from mime import Body, Experiment, Medium, State, Structure
+from mime.build._maddening import differentiated_run, full_state, graph_params
 from mime.dynamics import RigidInertial
 from mime.interactions import Gravity
 from mime.observations import Camera, World
@@ -134,3 +146,51 @@ def test_the_forward_derivative_of_expected_agrees_with_central_differences(dtyp
     tolerance = truncation + SPACING * float(np.spacing(np.asarray(size, dtype=dtype))) / (2 * h * abs(d))
     error = abs(d - central) / abs(d)
     assert abs(d) > 0.0 and error <= tolerance, (name, dtype, d, central, error, tolerance)
+
+
+#: The continued case's leaves: each one's step and its relative truncation coefficient (error / (h / unit)^2) measured in
+#: float64, times ten.
+CONTINUED = {"fy": (1.0, 1.0e-4 * 10), "cy": (0.1, 1.8e-2 * 10), "k1": (0.1, 9.2e-3 * 10)}
+CONTINUED_FROM, CONTINUED_STEPS = ms(6), 12
+
+
+def continued_scene() -> Experiment:
+    """Camera spike R1's case: a steel ball moving along the tube at 2 mm/s from 30 um upstream and 15 um up, seen across
+    the tube, a frame every 3 base steps."""
+    exp = Experiment("ballistic", scene=Scene.new(up=Z, units="m"), dt=ms(1))
+    exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=um(60), wall=um(10), length=um(480))))
+    exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
+        position=um((-30.0, 0.0, 15.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((2e-3, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(RADIUS_UM)))}))
+    exp.declare("ball.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    exp.observe(Camera(detector=DETECTOR, mount=World(position=m((0.0, -1e-3, 0.0)), orientation=LOOK_ACROSS),
+                       frame_period=ms(3), absorbers=(("tube", 3000.0),)))
+    return exp
+
+
+def test_the_forward_derivative_from_a_continued_state_agrees_with_central_differences(dtype):
+    built = continued_scene().build()
+    built.run(CONTINUED_FROM)
+    graph = built.graph
+    state, params = full_state(graph), graph_params(graph)
+    names = list(CONTINUED)
+    run = differentiated_run(graph, CONTINUED_STEPS, (), (), checkpoint=False)
+    theta = jnp.asarray([params["nodes"]["camera:"][name] for name in names], dtype=dtype)
+
+    def wall(at: Any) -> Any:
+        camera = {**params["nodes"]["camera:"], **{name: at[i].astype(dtype) for i, name in enumerate(names)}}
+        final, _, _ = run(state, {**params, "nodes": {**params["nodes"], "camera:": camera}})
+        return jnp.sum(final["camera:"]["expected"][WALL])
+
+    derivative = jax.jit(jax.jacfwd(wall))(theta)
+    value = jax.jit(wall)
+    for i, name in enumerate(names):
+        h, truncation = CONTINUED[name]
+        d = float(derivative[i])
+        assert abs(d) > 0.0, (name, dtype, "the static structure's derivative is missing")
+        up, down = float(value(theta.at[i].add(h))), float(value(theta.at[i].add(-h)))
+        central = (up - down) / (2 * h)
+        size = max(abs(up), abs(down))
+        tolerance = truncation * h ** 2 + SPACING * float(np.spacing(np.asarray(size, dtype=dtype))) / (2 * h * abs(d))
+        error = abs(d - central) / abs(d)
+        assert error <= tolerance, (name, dtype, d, central, error, tolerance)

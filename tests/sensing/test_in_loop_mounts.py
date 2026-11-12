@@ -69,7 +69,7 @@ def offline_expected(built, state, camera_pose: CameraPose) -> np.ndarray:
     """The counts before noise of the offline render of the scene with the camera at ``camera_pose``, its static structure
     cached at that pose (a cache made where the camera is now)."""
     node = built.graph.get_node("camera:")
-    camera, held, _ = node._held  # noqa: SLF001 - the detector and the subjects the build made
+    camera, held = node._held  # noqa: SLF001 - the detector and the subjects the build made
     ball = np.asarray(state["ball"]["pose"])
     rows = (ball[None, :3], ball[None, 3:])
     replay = render(list(held), camera, camera_pose, {"ball": rows}, exposure=Exposure(1), response=Response(),

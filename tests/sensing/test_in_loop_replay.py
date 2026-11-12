@@ -37,7 +37,7 @@ def test_a_frame_is_the_offline_render_of_its_recorded_poses(dtype):
     built = ballistic(ms(3), sub_frames=2).build()
     node = built.graph.get_node("camera:")
     assert isinstance(node, CameraNode)
-    camera, held, cache = node._held  # noqa: SLF001 - the detector and the window the build sized
+    camera, held = node._held  # noqa: SLF001 - the detector and the window the build sized
     window = next(s.window for s in held if s.name == "ball")
     seed = node.constants()["seed"]
     wall = Subject("tube", "tube", TUBE, "wall", Appearance.attenuating(3000.0))
