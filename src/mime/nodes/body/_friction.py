@@ -281,11 +281,9 @@ def _in_speeds(values: Array, traction: Traction, reach: Array | None) -> Array:
     """``values`` (``K x R``, each row's rate or residual) with each rolling pair's taken to m/s by the point's arm."""
     if reach is None:
         return values
-    for pair in traction.pairs:
-        if tuple(pair) == ROLLING:
-            index = np.asarray(pair)
-            values = values.at[:, index].multiply(reach[:, None])
-    return values
+    rolling = {row for pair in traction.pairs if tuple(pair) == ROLLING for row in pair}
+    ones = jnp.ones_like(reach)
+    return values * jnp.stack([reach if row in rolling else ones for row in range(values.shape[1])], axis=1)
 
 
 def cone_residual(coupling: Array, start: Array, forces: Array, traction: Traction,
@@ -319,7 +317,7 @@ def unconverged_share(coupling: Array, start: Array, forces: Array, traction: Tr
     point's speed, ``_contact.residual``'s scale), over the hold's change at the held points (the largest of ``C f``,
     each row's velocity change the forces make), past :data:`FRICTION_CONVERGED` where the held twist may stand more
     than :data:`FRICTION_LINE` of the hold's change from its solution. On stopped values."""
-    coupling, start, forces, rows, moved = lax.stop_gradient((coupling, start, forces, rows, moved))
+    coupling, start, forces, rows, moved, reach = lax.stop_gradient((coupling, start, forces, rows, moved, reach))
     worst = cone_residual(coupling, start, forces, traction, reach)
     linear = jnp.sqrt(jnp.sum(moved[:3] * moved[:3]))
     angular = jnp.sqrt(jnp.sum(moved[3:] * moved[3:]))
