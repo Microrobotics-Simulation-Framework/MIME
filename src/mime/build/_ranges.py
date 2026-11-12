@@ -98,6 +98,13 @@ def planned_ranges(settings: RunSettings, declarations: Sequence[Declaration]
             refuse("range.duplicate", f"the range of {axis.path} is declared twice",
                    "declare each range once: one exp.declare_range(...) for each path")
             continue
+        if axis.built:
+            refuse("range.units", f"{axis.path} is a kind's setting that is not one number (or a component of one), "
+                                  f"which the nodes built from the kind hold as built, so it has no range: each of its "
+                                  f"values is a build of its own",
+                   f"sweep it as a study's axis, each value its own build, Study(exp).sweep(grid({{{axis.path!r}: "
+                   f"[...]}}), duration=...); declare ranges of a kind's numbers")
+            continue
         rung = axis.kind is AxisKind.SETTING and axis.name.split(".")[-1] == "rung"
         if axis.kind in (AxisKind.DT, AxisKind.PRECISION) or rung:
             what = "the rung" if rung else "the run's step" if axis.kind is AxisKind.DT else "the precision"
