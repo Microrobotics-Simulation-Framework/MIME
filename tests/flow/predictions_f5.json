@@ -246,5 +246,32 @@
     },
     "if_wrong": "lagged off the exact run past 3e-2 would be a gain near one (the steady limit, or a body near the wall at a step that does not screen it), which the gain/(1-gain) line says diverges; a one-way flow off the bodiless one would be a force left in the grid",
     "cannot_discriminate_if": "the body does not move (no drive) or the lagged residual is zero (no change of tractions between steps)"
+  },
+  "gate_window_flag": {
+    "written": "2026-11-12, by F5's fourth builder, before any of these tests ran",
+    "claim": "near contact below the window's line (decided on the window spike: local radius at least about 20 cells of the resolving grid, the gap 2 to 3 of them and at most 0.1 of the local radius) raises schwarz_0_near_contact_window at the step, with the gap in cells reported, and the run goes on (flagged, never refused)",
+    "kind": "acceptance",
+    "case": "tests/flow/test_schwarz_window.py: 200 draws a run of the local radius (0.5 to 80 cells) and the gap (0.05 to 30 cells), log-uniform; and the driven sphere 0.2 mm off the axis (1.2 cells from the wall) against 0.05 mm (2.4 cells), one step each",
+    "prediction": {
+      "value": null,
+      "band": [
+        1.0,
+        1.0
+      ],
+      "unit": "share of draws below the line flagged (and 0 of those above); the near run's flag raised, the far run's not",
+      "basis": "derived: the flag is the line written as a function of the two numbers; without the patch the coarse grid's cells resolve the gap, and the sphere's enclosing radius is its local radius",
+      "why": "the check is the decided line itself; the run reads the gap from the body's pose each step"
+    },
+    "metric": "draws below the line flagged, draws above it not",
+    "control": {
+      "plant": "the check removed (no step flagged)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: window",
+      "expected_rate": "every run",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "about a fifth of the draws lie below the line in every run (the gap under 2 cells over its log range), each missed by the plant"
+    },
+    "if_wrong": "a draw misjudged would be the line's encoding (the comparison's strictness at 2 cells or at a tenth of the radius)",
+    "cannot_discriminate_if": "no draw lies below the line, which the test asserts against"
   }
 }
