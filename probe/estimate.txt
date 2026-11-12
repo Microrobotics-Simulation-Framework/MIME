@@ -1,0 +1,4 @@
+# the controls' boxes (the periodic tube at D/h 16 up to four diameters, the open vessel at D/h 16, the twin rig at
+# D/h 8 to 12, the experiment's vessel and the beside-a-body box at D/h 20), each in a pytest process per run, bounded
+# by a periodic tube box without a plug at D/h 40 and a period of two (probe/estimate_case.py), as rates4's were
+*: --case estimate_case:tube --path probe --arg cells_across=40 --arg length_cells=80 --steps 1
