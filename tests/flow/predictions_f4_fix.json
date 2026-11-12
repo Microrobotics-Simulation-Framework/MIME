@@ -1,0 +1,53 @@
+{
+  "written": "2026-11-12, committed before any gate of PR 259's fix round ran (the commit that adds this file is the timestamp): the fix round's gates for the penalty rung (Drag.Penalty): the part's place and the window (M1), the solid a cell off its pose (M3), the share's couple (M4), the FVM naming no scheme (M2); B1's refusal, the run-time guard, M5 and M6 are added as amendments before they run",
+  "phase": "F4 PR 1 fix round (PR 259)",
+  "labels": "the fix round's builder (Opus); from the refuting review's measurements, the code read, and one scratch measurement named under seen_before",
+  "seen_before": [
+    "scratch, this builder, float64, laptop: the lifted indicator's centroid about the solid's place in a free 32^3 box, a sphere of 3 cells a radius at three parts' places (centred, 2 radii along x, (0, 1.3, 0.7) radii) and three drawn poses each: clean at most 0.0030 cells; with the solid a cell off its pose on every axis, 0.997 to 1.002 cells",
+    "the refuting review: gate 3b's held sphere reads its net load 3.7 % of rho V g; FVM() with no scheme refused as entry.defect (KeyError 'viscosity')"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (CI runner, laptop for scratch)",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "F1: a free periodic box of 32^3 cells, h = 10 um, a sphere of 3 cells a radius; F2: gate 3b's held sphere (a/R 0.375, 6 cells a radius, the steady Stokes step) with its part a quarter radius along the axis; F3: R3's case (N = 3, dt 1.5e-4 s) with no scheme written",
+    "seeds_and_draws": "F1: one pose a run from DETECTION_SEED (a sub-cell position in [-1, 1] cells about the box's centre, a uniformly random turn); the others deterministic"
+  },
+  "gate_F1_part_place": {
+    "claim": "The lifted solid sits at the pose's position plus its turn of the part's place, on every face set, to 0.05 cells",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_lifted_solid_sits_at_its_parts_place_about_the_pose",
+    "operating_point": "both dtypes",
+    "prediction": {"value": null, "band": [0.0, 0.01], "unit": "cells, the largest centroid offset", "basis": "measured-before",
+                   "why": "a sphere's indicator is symmetric about its centre; the band's smooth ramp makes the discrete centroid's error a quadrature error, 0.003 cells measured in float64; float32's rounding adds about 1e-7 of the box's side"},
+    "metric": "the indicator's centroid off the expected place, read from the grid's fields (so a lift placed on the wrong faces shows)",
+    "control": {"plant": "the solid a cell off its pose on every axis (MIME_PLANT_POSE_CELL): about 1 cell, 20 times the line", "environment_variable": "MIME_PLANT_POSE_CELL", "expected_rate": "N/N", "runs": 20, "clean_expected": "0/N", "resolution": "the line, 0.05 cells: a shift of a twentieth of a cell"},
+    "if_wrong": "a centroid off by the part's offset is M1 (the shape's centre overwriting the part's); off on the offset arms only by a few cells, the window clipping the solid",
+    "cannot_discriminate_if": "the centroid were read from the window's offsets rather than the grid (self-consistent under the plant)"
+  },
+  "gate_F2_share_couple": {
+    "claim": "A neutral sphere held off its centre of mass in a closed tube under a drive across the axis takes no net couple: the field's push's couple and the share's, given at the hull's centroid, cancel",
+    "kind": "bounds",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_neutral_sphere_held_off_its_centre_of_mass_in_a_closed_tube_takes_no_net_couple",
+    "operating_point": "both dtypes; steady Stokes; lever a quarter radius",
+    "prediction": {"value": null, "band": [0.0, 0.06], "unit": "the net couple over lever x rho V g", "basis": "derived",
+                   "why": "the field's push acts on the hull, so its couple is the lever times the push, which gate 3b measured within 3.7 % of rho V g; the share's couple the lever times rho V g"},
+    "metric": "max |net couple| / (lever rho V g)",
+    "control": {"plant": "the share given at the centre of mass (MIME_PLANT_SHARE_AT_COM): the net couple the field's alone, about 1", "environment_variable": "MIME_PLANT_SHARE_AT_COM", "expected_rate": "N/N", "runs": 5, "clean_expected": "0/N", "resolution": "the line, 0.1 of the couple"},
+    "if_wrong": "a couple near 1 means the solid is not at the hull's place (M1) or the share is at the centre",
+    "cannot_discriminate_if": "the hull is centred (no lever): the review's oracle could not discriminate for that reason"
+  },
+  "gate_F3_no_scheme": {
+    "claim": "FVM() and FVM(stokes=True) naming no scheme are judged at the scheme the FVM chooses: at R3's step RK3, refused as drag.penalty-scheme, not entry.defect",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_an_fvm_naming_no_scheme_is_judged_at_the_scheme_it_chooses",
+    "operating_point": "float64",
+    "prediction": {"value": null, "band": [null, null], "unit": "refusal codes", "basis": "derived",
+                   "why": "nu dt/h^2 = 0.038 at R3's step, under RK3's 0.15, so chosen_scheme gives RK3"},
+    "metric": "the refusal codes",
+    "control": {"plant": "none: the review's run is the control (entry.defect before the fix)", "environment_variable": "", "expected_rate": "n/a", "runs": 0, "clean_expected": "n/a", "resolution": "n/a"},
+    "if_wrong": "entry.defect means a value the plan does not read is still read",
+    "cannot_discriminate_if": "n/a: a code equality"
+  },
+  "outcomes": null
+}
