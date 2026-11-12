@@ -42,7 +42,7 @@ class PeriodicBox(SettingGroup):
 class VesselRegion(SettingGroup):
     """The region of the vessel the medium fills, its openings named after the vessel's ends its geometry kind declares
     (a straight tube's ``start`` and ``end``; a tree's ``root``, ``end_0``, ...), each an opening whose law is attached
-    there. ``around`` names a junction of the vessel's centreline (``"j1"``) and ``reach`` the arc length from it to
+    there. ``around`` names a junction of the vessel's centreline (``"junction_0"``) and ``reach`` the arc length from it to
     each branch's cut plane (neither: the whole vessel, cut at its own ends); ``extension_diameters``, the diameters each
     cut is continued straight; ``bend_diameters``, the radius in diameters of the bend that turns a cut onto a face the
     field kind
@@ -60,13 +60,6 @@ class VesselRegion(SettingGroup):
     bend_diameters: float = 2.0
     margin: int = 8
 
-    def junction_point(self) -> int | None:
-        """The point index of the junction ``around`` names (``j<point>``), or ``None``."""
-        if self.around is None:
-            return None
-        if not (self.around.startswith("j") and self.around[1:].isdigit()):
-            raise ValueError(f"around names a junction of the vessel's centreline, 'j<point>', not {self.around!r}")
-        return int(self.around[1:])
 
 
 __all__ = ["PeriodicBox", "VesselRegion"]

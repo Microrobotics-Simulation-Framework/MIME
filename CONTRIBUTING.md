@@ -127,6 +127,22 @@ sixteen predicts 23.8 minutes for the slowest shard on the slowest lane's second
 19.6 (14.1). The minutes are the lane's test seconds in the shard times 0.284 (the median over the 146 shard jobs of those two
 runs that finished, shard 1 apart; 0.320 is their 90th percentile, and the highest 0.355).
 
+The table was rebuilt once more on 2026-11-11, from the push at d7c4106, after four more PRs had added test files and the
+pushes of that day cancelled a shard of `openmaterica-main` and `maddening-main` at 30 minutes. In that run the largest
+shard of each lane held 4858 s (`default` on 3.12), 4716 (3.13), 4405 (3.14), 4847 (`maddening-main`) and 4469
+(`openmaterica-main`) of test time; on the new table the same run's seconds put the largest at 4366, 3392, 3224, 4024 and
+4190, which at 0.284 minutes per second is 20.7 minutes at most. The cache-less lanes were not slow for want of a cache
+(a push starts every lane empty, `default` included): their test seconds and JAX compile seconds match `default`'s within
+8 %, and the push's job times vary with the runner's CPU (`default` on 3.12: 19.9 minutes on an EPYC 7763, 12.8 on a 9V45).
+Giving each worker's compiled programs back before a memory-heavy test (#250) added no compile time: the cache directory
+is set in every lane, so a program given back is read from it (compile seconds of the thirteen test files that use it,
+four lanes summed, 19.4k s before and 18.4k s after; cache-read seconds 976 and 977). The `openmaterica-main` and
+`maddening-main` shard jobs have 45 minutes, as their cold maximum is above 30 (comments in `ci.yml`).
+One shard of `maddening-main` still reached 45 minutes (run 43030205983, shard 10, at 83 %), and six reruns of it on probe runners
+finished in 12 to 20 minutes with at least 5.4 GB of memory free throughout: the job's own pytest took 163 s to start against
+27 to 41 s on the same shard in the other lanes, so its host was slow from the first second (inferred; the lanes' shard jobs now
+print the stolen CPU share). A re-run of that shard alone clears the lane.
+
 **A file the table does not list** (one added since the table was built) is placed after all the listed ones, in the order
 of its path, on the shard with the least time so far, at an assumed weight: the 90th percentile of the table's file weights
 (268 s on the table of this writing; `tests/_sharding.py`, `new_file_weight`), a guess for a heavy file rather than a
@@ -358,15 +374,25 @@ stress: tests/oracles/test_spinner.py tests/test_x.py::test_y[a] runs=30 python=
   shards have met flakes the others did not, so ask for it when that is the question);
 - `seed=N` is the first run's Hypothesis seed; absent, a random one. Run *k* uses `N + k - 1`.
 
+**A large set is split across parallel jobs.** Each run (one seed) is dealt over *n* jobs by the seconds of
+`tests/shard_weights.json`, the table the default lane's shards are dealt by: the files longest first onto the lightest job, *n*
+being the changed set's seconds over 1000, rounded up (never more than its files, nor than 250 jobs over the runs). Every job
+of a run uses that run's seed and every changed test runs in exactly one job of each run, so it runs as many times as
+`runs=` says; a file is never divided, so a file over the 1000 seconds is a job of its own. A small set is one job a run, as
+before, and a description that narrows the set (`only`) keeps working. A file the table lacks takes the weight the shard deal
+assumes for a new file.
+
 Editing the description does not start a run: remove the label and add it again. Anything the line cannot use, and a
 selection that is empty, fails the `stress selection` job by name; a stress run that ran nothing is not a pass.
 
 **Read it** on the run's page: the `stress summary` job lists, per test, how many of the runs it passed (tests that did
 not pass every run first), then for each failure the run, its Hypothesis seed, the falsifying example and the
 `@reproduce_failure` blob, and every run's seed. It fails if any run failed, or had no report, or passed no test. Each
-run is a job (`stress run k of n`) set up as the default lane is, with the compilation caches the last push to `release/v0.3.0`
-saved for the shards holding the selected files, restored and never saved (at most three shards' worth; the rest of the
-files compile cold, so a first run can be slower). Each run's JUnit report is a run artifact, `stress-run-<k>`.
+run is split into jobs (`stress run k of n, part p of m`), each set up as the default lane is, with the compilation caches the
+last push to `release/v0.3.0` saved for the shards holding its part's files, restored and never saved (at most three shards'
+worth; the rest of the files compile cold, so a first run can be slower). Each job's JUnit report is a run artifact,
+`stress-run-<k>-part-<p>`, and the summary judges every part of every run: a part with no report, or in which nothing passed,
+fails its run.
 
 **Repeat a failing seed locally** on the same Python, with the tests the summary names:
 

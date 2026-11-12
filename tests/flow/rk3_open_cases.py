@@ -470,12 +470,12 @@ def _inflow_scaled(setter: Setter) -> None:
 
 def _backflow_negated(setter: Setter) -> None:
     """The backflow term's coefficient negated: an anti-damping on the reversed outlet faces, giving the flow energy."""
-    real = OpenExplicitFlowNode.backflow_damping
+    real = OpenExplicitFlowNode.backflow_coefficient
 
-    def backflow_damping(self: Any, grid: Any, fields: Any, velocity: Any) -> Any:
-        return tuple(-c for c in real(self, grid, fields, velocity))
+    def backflow_coefficient(self: Any, grid: Any, fields: Any, velocity: Any) -> Any:
+        return -real(self, grid, fields, velocity)
 
-    setter(OpenExplicitFlowNode, "backflow_damping", backflow_damping)
+    setter(OpenExplicitFlowNode, "backflow_coefficient", backflow_coefficient)
 
 
 def _forces_at_gamma(setter: Setter) -> None:

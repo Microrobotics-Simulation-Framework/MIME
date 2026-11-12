@@ -249,8 +249,9 @@ def split_reading(d: YDraw, plant: str | None = None, *, distal_scale: float = 1
     split = float(flux[1] / -flux[0])
     network = network_split(d)
     lumen = lumen_split(d, built, result)
+    books = ledger_closes(result)
     return {"split": split, "network": network, "error": split - network, "lumen": lumen, "lumen_error": lumen - split,
-            "closes": bool(ledger_closes(result).passed),
+            "closes": bool(books.passed), "closes_detail": "" if books.passed else str(books.detail)[:600],
             "root": float(-flux[0] / FLUX),
             "backflow_flagged": float(np.asarray(result.final["water.flow"]["backflow_flagged"])) > 0.0}
 
@@ -364,31 +365,51 @@ def watch_reading(d: StenosisDraw, arm: str) -> dict[str, float | bool]:
             "steps": steps}
 
 
+def reversal_reading(d: StenosisDraw) -> dict[str, Any]:
+    """R-15 on a rig where the backflow term acts: FB8's reversing arm (the whole flow reversing through the far plane
+    and turning forward again, twice a period, for two periods), every step recorded: the steps whose booked backflow
+    work was positive past its rounding (``backflow_flagged``), the steps the term worked at all, and whether the books
+    closed."""
+    from mime.units import s
+
+    exp, steps, dt = watch_experiment(d, "reversing")
+    result = exp.build().run(s(steps * dt), history=True)
+    held = result.history["water.flow"]
+    work = np.asarray(held["backflow_work"])
+    return {"flagged_steps": int(np.sum(np.asarray(held["backflow_flagged"]) > 0.0)),
+            "worked_steps": int(np.sum(work < 0.0)), "closes": bool(ledger_closes(result).passed), "steps": steps}
+
+
 #: FB9's tube: tilted 30 degrees from z at an azimuth of 40 degrees (on no symmetry plane), 3 mm long, D 1 mm, Re 50
 #: (a laminar entrance length of about 3 D), its inflow entering through the run, the bend and the extension.
 BEND_TILT, BEND_AZIMUTH, BEND_REYNOLDS = 30.0, 40.0, 50.0
 
 
-def bend_experiment(extension: float, cells_across: int = 8) -> tuple[Experiment, int, float, np.ndarray]:
+def bend_experiment(extension: float, cells_across: int = 8, *, interior: float | None = None,
+                    tilt: float = BEND_TILT, steady: bool = False) -> tuple[Experiment, int, float, np.ndarray]:
     """FB9's experiment, its step count and step, and the tube's axis: IMEX Euler, convection on, a steady inflow at
-    the start, a Windkessel at the end, run for 1.2 times the region's length over the mean speed."""
+    the start, a Windkessel at the end, run for 1.2 times the region's length over the mean speed (``steady``: the
+    steady Stokes limit, two steps); the stiff interior the default unless ``interior`` (cells) is given, the tube
+    ``tilt`` degrees from z (0: along z, no bend)."""
     from mime.interactions import Windkessel
     from mime.scene import Tube
     from mime.units import m3_per_Pa, mm, s
 
-    theta, phi = math.radians(BEND_TILT), math.radians(BEND_AZIMUTH)
+    theta, phi = math.radians(tilt), math.radians(BEND_AZIMUTH)
     axis = np.asarray([math.sin(theta) * math.cos(phi), math.sin(theta) * math.sin(phi), math.cos(theta)])
     nu = 1e-6
     speed = BEND_REYNOLDS * nu / D
     h = D / cells_across
     length = (3.0 + 2.0 * (extension + 2.0 * math.radians(BEND_TILT) * 2.0 + 1.5)) * D
-    dt = 0.9 * (0.4 / 3.0) * h / (2.2 * speed)
-    steps = math.ceil(1.2 * length / speed / dt)
+    dt = 1e-3 if steady else 0.9 * (0.4 / 3.0) * h / (2.2 * speed)
+    steps = 2 if steady else math.ceil(1.2 * length / speed / dt)
     exp = Experiment("bend", scene=Scene.new(up=Z, units="m"), dt=s(dt))
     exp.add_structure(Structure("tube", geometry=Tube(axis=tuple(axis), inner_radius=mm(0.5), wall=mm(0.2),
                                                       length=mm(3.0), centre=mm((0.013, -0.021, 0.007)))))
+    wall = {} if interior is None else {"wall": Band(delta_in=interior)}
     exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": FVM(
-        domain=VesselRegion(extension_diameters=extension), cells_across=cells_across, scheme=Scheme.IMEXEuler())}))
+        domain=VesselRegion(extension_diameters=extension), cells_across=cells_across,
+        scheme=Scheme.Steady() if steady else Scheme.IMEXEuler(), stokes=steady, **wall)}))
     exp.declare("water.viscosity", Pa_s(nu * RHO), reason="water near 20 C")
     exp.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
     exp.attach(Inflow(steady=m3_per_s(speed * math.pi * (D / 2.0) ** 2)), medium="water", surface="tube.start")
@@ -412,13 +433,16 @@ def _interpolated(component: np.ndarray, offset: tuple[float, float, float], h: 
     return found
 
 
-def bend_reading(extension: float) -> dict[str, float | bool]:
+def bend_reading(extension: float, *, interior: float | None = None, tilt: float = BEND_TILT, steady: bool = False,
+                 cells_across: int = 8) -> dict[str, Any]:
     """FB9: the axial velocity across the start's cut (the extension's end, where the region of interest begins),
     sampled at 0, 0.2, 0.4 and 0.6 R on eight angles: its centreline over Poiseuille's (2 U), and its asymmetry, the
-    largest difference between opposite points over 2 U; whether the books closed."""
+    largest difference between opposite points over 2 U; whether the books closed; and where the inflow went: the
+    lumen's share of it (the node's ``lumen_flux`` over the inflow), the share the start's patch takes in through its
+    faces at least the band's half width into the solid (``opening_solid_fluxes``), and the bypass ratio."""
     from mime.units import s
 
-    exp, steps, dt, axis = bend_experiment(extension)
+    exp, steps, dt, axis = bend_experiment(extension, cells_across, interior=interior, tilt=tilt, steady=steady)
     exp.observe(EnergyLedger())
     built = exp.build()
     result = built.run(s(steps * dt))
@@ -439,9 +463,27 @@ def bend_reading(extension: float) -> dict[str, float | bool]:
     w = _interpolated(np.asarray(final["velocity_z"]), (0.5, 0.5, 0.0), h, points)
     axial = (u * axis[0] + v * axis[1] + w * axis[2]).reshape(len(radii), len(angles))
     opposite = np.abs(axial[:, :4] - axial[:, 4:])
+    from mime.nodes.flow.fvm._band import band_named
+
+    inflow = speed * math.pi * (D / 2.0) ** 2
+    velocity = (np.asarray(final["velocity_x"]), np.asarray(final["velocity_y"]), np.asarray(final["velocity_z"]))
+    solid = np.asarray(node.opening_solid_fluxes(c, velocity))
+    # Where the inflow goes, each share the axial flux over its region averaged over the box's planes (exact for a
+    # divergence-free field, the vessel monotone in z): inside the wall (phi < 0), the band's fluid half (0 <= phi <
+    # W/2), the solid beyond.
+    grid = node.open_grid(c)
+    phi = np.asarray(node.fields(c, grid).signed_distance[2])
+    weighted = np.asarray(grid.weights(velocity[2].dtype)[2]) * velocity[2] * grid.cell_volume / (grid.cells[2] * h)
+    half = 0.5 * band_named(c["band"]).width * h
+    shares = {name: float(np.sum(np.where(region, weighted, 0.0))) / inflow for name, region in
+              (("inside_share", phi < 0.0), ("band_share", (phi >= 0.0) & (phi < half)), ("solid_share", phi >= half))}
     return {"centreline": float(np.mean(axial[0]) / (2.0 * speed)), "asymmetry": float(np.max(opposite) / (2.0 * speed)),
             "profile": [float(np.mean(row) / (2.0 * speed)) for row in axial], "closes": bool(ledger_closes(result).passed),
-            "steps": steps, "extension": extension}
+            "steps": steps, "extension": extension, "interior": interior, "tilt": tilt, "steady": steady,
+            "cells_across": cells_across,
+            "lumen_share": float(np.asarray(final["lumen_flux"])) / inflow, **shares,
+            "solid_share_start": float(-solid[0]) / inflow, "bypass_ratio": float(np.asarray(final["bypass_ratio"])),
+            "box": [int(c["cells_x"]), int(c["cells_y"]), int(c["cells_z"])]}
 
 
 def limits_reading(d: YDraw, *, pulse: float | None = None) -> dict[str, float]:
@@ -568,6 +610,12 @@ def main() -> int:
         from mime.nodes.flow.fvm import _open_node
 
         _open_node.BACKFLOW_BETA = -1.0
+    if os.environ.get("BACKFLOW_RIG") == "reversing":
+        # R-15's control where the term acts (the two-outlet draws reverse no outlet face, so a flipped term there is
+        # silent): FB8's reversing draws; any step that gave energy, or books that do not close, fails.
+        found = reversal_reading(stenosis_draw(seed))
+        print(json.dumps({"seed": seed, **found}))
+        return 1 if found["flagged_steps"] > 0 or not found["closes"] else 0
     plant = os.environ.get("REGION_PLANT") or None
     reading = split_reading(draw(seed), plant)
     print(json.dumps({"seed": seed, "plant": plant, **reading}))
@@ -595,9 +643,9 @@ def estimate_y(seed: int = 0) -> Experiment:
     return experiment(YDraw(**{**d.__dict__, "cells_across": 8}))
 
 
-def estimate_bend(extension: float = 4.0) -> Experiment:
-    """The memory estimate's case of FB9's arms."""
-    return bend_experiment(float(extension))[0]
+def estimate_bend(extension: float = 4.0, cells_across: int = 8, steady: str = "") -> Experiment:
+    """The memory estimate's case of FB9's arms (``steady`` any non-empty text for the steady Stokes limit)."""
+    return bend_experiment(float(extension), int(cells_across), steady=bool(steady))[0]
 
 
 def estimate_watch(arm: str = "far") -> Experiment:
@@ -612,7 +660,7 @@ def cost_tree(interior: float = 0.1, seed: int = 1) -> Experiment:
     from mime.units import Hz
 
     d = draw(int(seed))
-    exp = Experiment("region_cost", scene=Scene.new(up=Z, units="m"), dt=ms(0.5))
+    exp = Experiment("region_cost", scene=Scene.new(up=Z, units="m"), dt=ms(0.2))
     exp.add_structure(Structure("vessel", geometry=tree_of(d)))
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
         domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across,

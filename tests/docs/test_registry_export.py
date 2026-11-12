@@ -35,7 +35,8 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
     assert drag["class_vars"]["builds"]["value"] == {
         "surrogate": ["mime.nodes.hydro._surrogate_drag.SurrogateDragNode"],
         "mrs": ["mime.nodes.hydro.mrs._node.MRSDragNode", "mime.nodes.hydro.near_field._node.JointDragNode"],
-        "rft": ["mime.nodes.hydro._rft_drag.RFTDragNode"]}
+        "rft": ["mime.nodes.hydro._rft_drag.RFTDragNode"],
+        "stokes": ["mime.nodes.hydro._point_drag.PointDragNode"]}
     assert drag["class_vars"]["family"]["value"] == "hydrodynamic"
     assert drag["class_vars"]["references"]["value"] == list(Drag.references)
     assert Drag.gradient is not None and drag["class_vars"]["gradient"]["value"]["route"] == Drag.gradient.route
@@ -47,7 +48,8 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
             "rung_gradients"} <= carried
     by_rung = drag["class_vars"]["rung_gradients"]["value"]
     assert {rung: held["differentiability"] for rung, held in by_rung.items()} == {"surrogate": "piecewise_jump",
-                                                                                   "mrs": "exact", "rft": "exact"}
+                                                                                   "mrs": "exact", "rft": "exact",
+                                                                                   "stokes": "exact"}
     assert [d["owner"] for d in by_rung["surrogate"]["gradient"]["switches"]] == [
         d.owner for d in Drag.rung_gradients["surrogate"].gradient.switches] and by_rung["mrs"]["gradient"] is None
     assert by_rung["rft"]["gradient"] is None

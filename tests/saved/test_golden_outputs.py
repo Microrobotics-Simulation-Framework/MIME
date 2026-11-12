@@ -14,7 +14,9 @@ of a radian, carried over the step, moves them by that. It is not the difference
 rad/s, which is 300 times finer. The goldens are a regression guard on the rates, not their oracle: that is
 ``tests/oracles/test_frame_rates.py``, every frame's rate against the difference of its poses with the base turned
 (the goldens hold A0's pose, so its kinematic rates are zero there, where nothing reads them none are published).
-To accept a reviewed change, run once with ``MIME_REGENERATE_GOLDEN=1``: the files are rewritten and the test fails.
+A field of more than ``DIGEST_SIZE`` numbers a step is written by its digest (each step's sum, sum of magnitudes and
+largest magnitude). To accept a reviewed change, run once with ``MIME_REGENERATE_GOLDEN=1``: the files are rewritten and
+the test fails.
 """
 
 import importlib.util
@@ -70,7 +72,12 @@ SCALED_BY = {"unit_x": "unit_z", "unit_y": "unit_z", "opening_flux": "lumen_flux
 #: The rft rung's least eigenvalue is of a matrix scaled to a unit diagonal, so its scale is one; for a straight body
 #: (the rod, the seed) it is the spin's rounding, of either sign, a few units in the last place, and is judged against
 #: that scale, never its own. The coil's, 0.79, is a real number and is held to 1e-10 of it.
-CASE_FLOORS = {("rft_free_space", "least_eigenvalue"): 1.0, ("rft_kept", "least_eigenvalue"): 1.0}
+#: The point body's drag, driven along its tube's axis, each component on the scale of its axial value (N): the
+#: case's drag some 1e-10, its Faxen force some 1e-18; the components across the axis are the flow's rounding, some
+#: 1e-22 and 1e-30, which moves by its own size across machines.
+CASE_FLOORS = {("rft_free_space", "least_eigenvalue"): 1.0, ("rft_kept", "least_eigenvalue"): 1.0,
+               **{("point_body_flow", f"force_{axis}"): 1e-10 for axis in "xyz"},
+               **{("point_body_flow", f"faxen_{axis}"): 1e-18 for axis in "xyz"}}
 
 
 def floor_of(field: str, case: str = "") -> float:
@@ -80,6 +87,24 @@ def floor_of(field: str, case: str = "") -> float:
 def path_of(key: tuple[str, str, str], rung: str = "") -> Path:
     kind, name, version = key
     return GOLDEN / kind.replace(" ", "_") / f"{name}@{version}{'.' + rung if rung else ''}.json"
+
+
+#: A field held by more numbers than this a step is written by its digest, each step's sum, sum of magnitudes and
+#: largest magnitude (``digest``): a point body's own free-box flow (route 2's transform, some 8e5 numbers a step) would
+#: write a file of megabytes, and its digest still moves with any change to what the node computes. The largest field
+#: written whole is a flow's, 2025 numbers a step.
+DIGEST_SIZE = 8192
+
+
+def digest(value: np.ndarray) -> np.ndarray:
+    """A large field's digest, ``(steps, 3)``: each step's sum, sum of magnitudes and largest magnitude."""
+    held = value.reshape(value.shape[0], -1)
+    return np.stack([held.sum(axis=1), np.abs(held).sum(axis=1), np.abs(held).max(axis=1)], axis=1)
+
+
+def recorded(value) -> np.ndarray:  # noqa: ANN001
+    held = np.asarray(value)
+    return digest(held) if held.ndim and held.size // max(held.shape[0], 1) > DIGEST_SIZE else held
 
 
 def first_case_using(key):
@@ -139,7 +164,7 @@ def output_of(key, case=None) -> dict:
         name for plan in built.plans.entries if plan.section is Section.DYNAMICS for name in plan.node_names()]
     history = first_steps(built, STEPS)
     return {"entry": " ".join(key), "case": case.name, "steps": STEPS,
-            "outputs": {node: {field: np.asarray(value).tolist() for field, value in sorted(history[node].items())}
+            "outputs": {node: {field: recorded(value).tolist() for field, value in sorted(history[node].items())}
                         for node in nodes}}
 
 

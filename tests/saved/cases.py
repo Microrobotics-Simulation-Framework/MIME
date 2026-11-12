@@ -85,6 +85,37 @@ def periodic_tube_flow(steady: bool = False, rk3: bool = False) -> Experiment:
     return experiment
 
 
+def point_body_flow(self_history: str | None = None) -> Experiment:
+    """A point sphere coupled two-way to the FVM (drag 0.5.0's stokes rung) in the periodic tube's steady drive, off the
+    axis, slightly heavier than the water: IMEX Euler under Stokes, the exchange law's gathers and scatters on
+    MADDENING's geometry edges; its self-history the exact route, or ``self_history`` written."""
+    from mime.dynamics import FVM, RigidInertial, Scheme
+    from mime.interactions import BodyForce, Drag
+    from mime.scene import PeriodicBox, Scene, Sphere, Tube, Z
+    from mime.things import Body, Part, State
+    from mime.units import Pa_s, kg, kg_m2, kg_per_m3, m_per_s, m_per_s2, rad_per_s, um
+
+    experiment = Experiment("point_body_flow", scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(10.0))))
+    flow = FVM(domain=PeriodicBox(length=mm(0.25), margin=4), cells_across=8, stokes=True, scheme=Scheme.IMEXEuler())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    radius = 50e-6
+    mass = 1.2 * 1000.0 * 4.0 / 3.0 * 3.141592653589793 * radius ** 3
+    experiment.add_body(Body("bead", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=um(50.0)))},
+                             initial=State(position=mm((0.15, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                           velocity=m_per_s((0.0, 0.0, 0.0)),
+                                           angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare("bead.mass", kg(mass), reason="a bead 1.2 times water's density")
+    experiment.declare("bead.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
+    experiment.attach(Drag.Stokes() if self_history is None else Drag.Stokes(self_history=self_history), body="bead",
+                      medium="water")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    return experiment
+
+
 def tree_flow() -> Experiment:
     """The FVM on a tube tree's lumen in its periodic box (``TubeTree``, filleted): a vessel narrowing to 0.8 of its
     radius over half its period and back, its parent reaching a radius past each end of the period, steady Stokes under
@@ -517,6 +548,9 @@ CASES = (
     Case("rft_kept", rft_kept),
     # A body in an electromagnet array's field, the calibrated multipole, placed, turned and with a background.
     Case("coil_array", coil_array),
+    # A point body coupled two-way to the tube's flow through the exchange law, drag 0.5.0's stokes rung: after the
+    # cases that use the sphere first, so that its golden output stays probed_shapes'.
+    Case("point_body_flow", point_body_flow),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),

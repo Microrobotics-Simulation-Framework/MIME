@@ -2,10 +2,12 @@
 """The result of a stress run (``.github/workflows/stress.yml``): per test, in how many of the runs it passed; for each
 failure the run, its Hypothesis seed and reproduction blob; the seeds. Standard library only.
 
-It reads ``<directory>/*/junit.xml``, one report per run's artifact (``stress-run-<k>``), and the run numbers
-1..``--runs``. A run is **failed** when its report is missing or unreadable, a test failed or errored in it, or no test
-passed in it (a selection that only skipped proves nothing). The summary goes to ``$GITHUB_STEP_SUMMARY`` (else stdout);
-the exit status is 1 if any run failed.
+It reads ``<directory>/*/junit.xml``, one report per job's artifact (``stress-run-<k>-part-<p>``: the run's seed, and the
+part of the changed set that job ran, ``stress_select.py`` splitting the set across jobs), and the run numbers 1..``--runs``
+and part numbers 1..``--parts``. A run is **failed** when any of its parts' reports is missing or unreadable, a test failed
+or errored in it, or no test passed in that part (a selection that only skipped proves nothing). A test belongs to one part,
+so the tests of a run are its parts' together. The summary goes to ``$GITHUB_STEP_SUMMARY`` (else stdout); the exit status is
+1 if any run failed.
 """
 
 from __future__ import annotations
@@ -74,20 +76,22 @@ def reproduction(text: str) -> str:
     return "\n".join(kept)
 
 
-def summarize(reports: dict[int, Report | None], seeds: dict[int, int]) -> tuple[str, bool]:
-    """``(markdown, ok)`` for the runs' reports (run -> report) and their seeds."""
+def summarize(reports: dict[int, dict[int, Report | None]], seeds: dict[int, int]) -> tuple[str, bool]:
+    """``(markdown, ok)`` for the runs' reports (run -> part -> report) and their seeds."""
     runs = len(reports)
     counts: dict[str, dict[str, int]] = defaultdict(lambda: {"passed": 0, "failed": 0, "skipped": 0})
     failures: dict[str, list[tuple[int, str]]] = defaultdict(list)
     bad_runs: dict[int, str] = {}
-    for run, report in sorted(reports.items()):
-        why = run_failed(report)
+    for run, parts in sorted(reports.items()):
+        whys = [(part, run_failed(report)) for part, report in sorted(parts.items())]
+        why = "; ".join((f"part {part} of {len(parts)}: " if len(parts) > 1 else "") + reason for part, reason in whys if reason)
         if why:
             bad_runs[run] = why
-        for test, outcome in (report.outcomes if report else {}).items():
-            counts[test][outcome] += 1
-            if outcome == "failed":
-                failures[test].append((run, reproduction(report.texts[test] if report else "")))
+        for part, report in sorted(parts.items()):
+            for test, outcome in (report.outcomes if report else {}).items():
+                counts[test][outcome] += 1
+                if outcome == "failed" and report:
+                    failures[test].append((run, reproduction(report.texts[test])))
     ok = not bad_runs
     seed_list = ", ".join(f"{run}: {seeds[run]}" for run in sorted(reports))
     out = [f"## Stress: {runs - len(bad_runs)} of {runs} runs passed" + ("" if ok else " (FAILED)"), ""]
@@ -115,11 +119,13 @@ def summarize(reports: dict[int, Report | None], seeds: dict[int, int]) -> tuple
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
-    parser.add_argument("directory", type=Path, help="holds one stress-run-<k>/junit.xml per run")
+    parser.add_argument("directory", type=Path, help="holds one stress-run-<k>-part-<p>/junit.xml per run and part")
     parser.add_argument("--runs", type=int, required=True)
+    parser.add_argument("--parts", type=int, default=1, help="the jobs each run is split across (default 1)")
     parser.add_argument("--seed", type=int, required=True, help="the first run's seed; run k used seed + k - 1")
     args = parser.parse_args(argv)
-    reports = {k: read_report(args.directory / f"stress-run-{k}" / "junit.xml") for k in range(1, args.runs + 1)}
+    reports = {k: {p: read_report(args.directory / f"stress-run-{k}-part-{p}" / "junit.xml") for p in range(1, args.parts + 1)}
+               for k in range(1, args.runs + 1)}
     text, ok = summarize(reports, {k: args.seed + k - 1 for k in reports})
     target = os.environ.get("GITHUB_STEP_SUMMARY")
     if target:

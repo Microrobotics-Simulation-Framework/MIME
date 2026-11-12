@@ -35,9 +35,14 @@ def _held(value: object) -> Any:
 
 
 def add_edge(graph: GraphManager, source: tuple[str, str], target: tuple[str, str], *, additive: bool,
-             units: str) -> None:
+             units: str, mapping: object | None = None, geometry: tuple[str, str] | None = None) -> None:
+    """An edge, plain or through a mapping that reads a moving geometry (``mime.mappings``' exchange edges)."""
+    if mapping is None:
+        _held(graph).add_edge(source[0], target[0], source[1], target[1], additive=additive, source_units=units,
+                              target_units=units)
+        return
     _held(graph).add_edge(source[0], target[0], source[1], target[1], additive=additive, source_units=units,
-                          target_units=units)
+                          target_units=units, mapping=mapping, geometry=geometry)
 
 
 def add_external_input(graph: GraphManager, node: str, field: str) -> None:
@@ -210,7 +215,11 @@ def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[s
                 why="a run-constant takes the place of a leaf the step reads, so that the compiled step is the same "
                     "program with or without it")])
         nodes[name] = {**own, **made}
-    return {**params, "nodes": nodes}
+    # A study's tree names the nodes' leaves alone; an exchange edge's mapping (``mime.mappings``) has an entry of its
+    # own in the graph's tree (empty: its kind holds no weights), which MADDENING's step reads whole.
+    mappings = {**cast(Mapping[str, Any], _held(graph).params.get("mappings", {})),
+                **cast(Mapping[str, Any], params.get("mappings", {}))}
+    return {**params, "nodes": nodes, "mappings": mappings}
 
 
 def chunk_function(graph: GraphManager, steps: int, fed: Fed | None = None) -> Callable[[Any, Any], Any]:

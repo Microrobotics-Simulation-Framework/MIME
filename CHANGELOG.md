@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counts a storing law's storage change with its receiver's, so a Windkessel giving back what it stored is not read as
   a gift. `flow.open-scheme` is gone.
 - **The region builder: a vessel's region cut by planes, its cuts extended and bent onto the box's faces; the open tube
-  tree; tilted open vessels; the backflow term; the outlet watch.** `FVM(domain=VesselRegion(around="j1", reach=mm(3),
+  tree; tilted open vessels; the backflow term; the outlet watch.** `FVM(domain=VesselRegion(around="junction_0", reach=mm(3),
   extension_diameters=4, bend_diameters=2))` cuts the vessel (a `Tube`, a `TubeTree`) by planes normal to its
   centreline at arc length `reach` from the junction `around` (neither: the whole vessel at its own ends), continues
   each cut straight for its extension, turns it by a circular bend onto the nearer z face of the box and runs it to
@@ -31,13 +31,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the centreline (a tree with no root is refused, `flow.region-upstream`; `flow.region-cut`, `flow.region-face` the
   other refusals; `flow.open-axis` is gone: a tilted vessel is built). The build reports each opening's plane, its
   neighbours, its extension, bend and run and their series resistance, and the Reynolds number its extension develops.
-  The backflow term (`f = min(w, 0) w / h` on the fluid of each outlet's half cell, from the step's start, normal only)
-  is booked as `<node>.backflow`, its sign checked (`backflow_flagged`); the outlet watch, an observer, reads each
+  The backflow term (`f = -|min(w, 0)| w' / h` on the fluid of each outlet's half cell, its coefficient from the step's
+  start and `w'` the step's end velocity, a diagonal beside the wall's penalty that can only remove energy, normal
+  only) is booked as `<node>.backflow`, its sign checked (`backflow_flagged`); the outlet watch, an observer, reads each
   opening's reversed share while its net flux is outward (`opening_reversed`, `opening_reversed_flagged`). Two openings
   on one plane exchange flow through the solid between their patches: `opening_exchange` and
   `opening_exchange_flagged` watch it, and where a built region's plane holds two openings the stiff interior is 0.01h
   unless `Band(delta_in=...)` is written (`Band.delta_in` now defaults to none: 0.1h elsewhere). Renamed
   (unreleased): `port_kinetic_flux` is `opening_kinetic_flux`.
+- **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
+  and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
+  scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's
+  average, its Laplacian and its antisymmetric dipole), Faxén's corrections paired so the exchange stays workless, the
+  kernel's own steady field removed from the drag's and the couple's readings, and Maxey and Riley's
+  fluid-acceleration force and added mass read on the flow without the body: by default the body's own free-box flow
+  advanced exactly by the grid's operator each step (`self_history="exact"`, with Hasimoto's image term), or fitted
+  decay modes (`self_history="modes"`, the declared opt-in for many bodies, its gate a swap test against the exact
+  route), and under the field's steady limit the steady response to last step's force. Lagged, two-way by default for
+  the force and the couple, `one_way=True` the declared approximation. The build widens the kernel (`kernel_width=`, on
+  a ladder at or above max(h, a/1.7)) until the coupled one-step margins of the force and the couple clear their floor,
+  and refuses a body too large for the widest kernel (`drag.stokes-size`) or under the floor at every allowed width
+  (`drag.stokes-floor`), each naming the coarser grid and the larger step that plan it; a sphere only
+  (`drag.stokes-sphere`), in a flow on a grid stepped by IMEX Euler or its steady limit (`drag.stokes-scheme`), on a
+  periodic box (an open vessel refuses its exchange partners, `flow.open-exchange`). The drag's sign is judged by its
+  node each step (the law's power at one velocity, `cluster_gift_steps`, read onto both of its ledger rows), and its
+  own dissipation booked net of the fluid's dissipation of the kernel's field, so the lagged exchange's unpaired work is
+  first order. The FVM takes exchange partners (`flow.exchange_x`..`_z`, `flow.partners`), publishes its face sets
+  (`flow.faces`) and books the exchange's work per law; the energy ledger books the Maxey-Riley part under its own row
+  (`<id>.maxey_riley`). Point bodies in one medium interact through its flow, lagged a step; the build reports it on
+  each one's drag, with their nearest starting separation in radii and their volume fraction in the grid's box.
+  Flags `below_floor`, `history_flagged`, `rate_feedback`, `near_wall`, `reynolds_flagged` (stokes).
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
   patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the
@@ -158,6 +181,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   geometry, never by a law's role: `root` at the first segment's start, the others `end_0`, `end_1`, ... in the order of
   their points or as `ends` names them (`TubeTree.end_names`), each a surface reached through the structure's handle
   (`vessel.root`) and an opening of the lumen (`Geometry.opening_names`, per instance beside the class's `openings`).
+  Its junctions are named by order, `junction_0`, `junction_1`, ... in the order they are found walking outward from the
+  first segment's start (`TubeTree.junction_names`), or as `junctions=(...)` names the first of them; `mime.scene.polyline`
+  names its junctions `junction_0`, ... along the line.
   A tree whose fillet would fuse tubes that share no point (solid between them thinner than its diameter) is refused
   when planned (`setting.value`), naming a smaller fillet or a thicker wall. The round-trip case `tree_flow`.
 

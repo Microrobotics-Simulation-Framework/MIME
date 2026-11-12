@@ -1,0 +1,217 @@
+{
+  "written": "2026-11-12, committed before any gate below ran on Actions (the commit that adds this file is the timestamp): the backflow term's lagged implicit form, f = -|min(w^n, 0)| w'/h, replacing the explicit beta min(w, 0) w / h on the open node's outlets (the maintainer's item 1, R-15, option (a)), with his three conditions as gates, never absorbed; and FB9 explained first (his item 24)",
+  "phase": "F2b PR 4a, the fix for item 1 (R-15) and FB9's explanation",
+  "labels": "predictions by the builder (Opus, a fresh agent) from derivations, from the open-ports spike's question 5 (its results as recorded in the spike's README, RK3) and from the first probe of this PR (run 43050574164, the explicit form at 4d99de3), each listed in seen_before; a prediction near one of those is a fit to it and says so",
+  "seen_before": [
+    "the open-ports spike, question 5 (S1's RK3, D/h 16, float64): at mean Re 300 on the radius with a 50 % cosine stenosis 1 D long centred 0.9 D before the outlet, the reversing flux inlet Q_m (1 + 1.5 sin wt) at alpha 5.5 and an implicit-midpoint RCR (0.5, 0.4, 5.0 in its kinematic units), dt 0.8 h / 60: without the term it diverged at 0.26 of a period (544 of 729 outlet faces reversed while the drive was forward); with the explicit term (beta 1) it held 2.25 periods, the run's length (28,035 steps), the outlet's w down to -6.26 of the mean speed, 729 of 729 faces reversed at once, the largest speed 7.45 of the mean (a measured CFL of 0.3); at mean Re 100 (the stenosis 1.4 D before the outlet) stable with and without the term",
+    "the first probe of this PR (run 43050574164, the explicit form): FB8's reversing arm (Stokes, alpha 0.5, D/h 8) read backflow_flagged and the ledger's gift on 6 of 6 draws, the term's work 4.3e-6 of the outlet law's (R-15's false alarm, at the reversal's transitions); FB9's centreline 0.700, 0.755, 0.748 and 0.771 of 2U at extensions 4, 2, 0.75 and 0.25 D, its asymmetry 0.062, 0.105, 0.260 and 0.262; at extension 4 D the profile 0.700, 0.669, 0.586, 0.450 of 2U at 0, 0.2, 0.4 and 0.6 R (a parabola of amplitude 0.70 vanishing at R to within 1 %); #246's limits on the Y: the root's solid share 15.6 % and 6.2 % of the inflow in steady flow at 0.1h (seeds 0 and 1)",
+    "the rerun (run 43083723690, the explicit form at f392fdd): FB8's near arm (the plane 0.5 D after a throat of 0.55 to 0.65 D at Re 80 to 120, D/h 8) read no reversed face on 6 of 6 draws (the watch 0, the term's work 0): FB8's control does not fire at that point",
+    "a two-outlet Y in steady Stokes (seen in this PR's first predictions file): the backflow work -1.8e-20 J, from the solid's faces' Darcy inflow at the outlets, so the Y's outlets hold a few inward faces with fluid on them",
+    "FB9 explored locally before this file, steady Stokes (scratch exploration on the laptop, float64, this PR's working copy with the implicit form, steady Stokes reverses no outlet face; exploring, not evidence): the tube of FB9 at D/h 8 read at the start's cut, the centreline over 2U, the lumen's share (phi < W/2) and the start's solid share: tilted 30 degrees, extension 0.25 D, 0.1h: 0.824, 0.907, 0.090; extension 4 D, 0.1h: 0.707, 0.780, 0.215; extension 0.25 D, 0.01h: 0.914, 0.997, 0.0024; along z, extension 0.25 D, 0.1h: 0.870, 0.961, 0.039; each profile a parabola vanishing at R (amplitude the centreline, to 1 %): so the centreline is the share inside R, about 0.08 below the lumen's share at every reading (the band's fluid half, phi in [0, W/2), carrying it: B5's half-cell wall ambiguity at 8 cells across), and the solid's share grows with the box (the extension widens it) and falls a hundredfold at 0.01h"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "CPU, GitHub Actions runner (4 vCPU), the probe workflow; the explicit form's arms on a probe branch at f392fdd (#258's pushed head, the explicit form), the implicit form's on the head carrying this file",
+    "sizes_and_parameters": "the spike's case in MIME (probe/backflow_case.py): D 1 mm, the tube 4 D along z, the stenosis as two cones (a linear taper over 0.5 D each side to a throat of half the radius: the spike's cosine as cones), water (nu 1e-6, rho 1e3), Inflow(steady=Q_m, amplitude=1.5 Q_m, phase=-pi/2), Windkessel(1e8 Pa s/m^3, 1e-11 m^3/Pa, 1e9 Pa s/m^3), VesselRegion(extension_diameters=0), cells_across 16, IMEX Euler at its own line: a region's flow reads IMEX Euler's CFL line along the diagonal (0.4 / 3), so dt = T / ceil(T / (0.9 (0.4/3) h / (1.25 s U_m))), s the spike's RK3 largest speed over the mean (7.45 at mean Re 300, 8.1 at 100): 38,686 steps a period at mean Re 300 (3.2 times the spike's 12,450), 14,021 at 100; a wall-time budget of 16,500 s a run (a runner's limit), its reach recorded; FB8's reversing rig and FB9's tube as in tests/flow/region_cases.py",
+    "seeds_and_draws": "the spike's case one run a form; the reversing rig seeds 0 to 5; the sign control 20 drawn reversing rigs (seeds 3000 to 3019); bits on named programs",
+    "amended_before_any_run": "2026-11-12: the first version of this file set the case at the spike's step, which IMEX Euler's line for a region's flow (0.4 / 3 along the diagonal) refuses (the CFL check stops the run); amended before any gate ran, no arm launched; and, again before any arm ran, the stenosis as two cones, since the estimate of the ten-segment tree on the cosine had not compiled in ten minutes and was killed at the 4 GiB cap"
+  },
+  "gate_spike_case_imex": {
+    "claim": "item 1's first condition, the part 4a can show (RK3's run of the case, 2.25 periods at the spike's step, is 4b's): the open-ports spike's case under IMEX Euler at its own CFL line holds with the lagged implicit term at least as far as with the explicit one, through the forward peak where the term-removed spike run diverged (0.26 of a period), and as far as a runner's budget reaches toward 2.25 periods",
+    "kind": "acceptance",
+    "case": "probe/backflow_case.py --reynolds 300 --periods 2.25 --form implicit | explicit | off (each to 2.25 periods or its wall-time budget)",
+    "prediction": {
+      "implicit": {
+        "value": 1.2,
+        "band": [
+          0.5,
+          2.25
+        ],
+        "unit": "periods reached, finite, no CFL stop, within the budget (a runner's speed, a guess of 0.2 to 0.3 s a step at 32 x 32 x 64 cells)",
+        "basis": "guess"
+      },
+      "explicit": {
+        "value": 1.2,
+        "band": [
+          0.5,
+          2.25
+        ],
+        "unit": "periods reached, as the implicit arm",
+        "basis": "guess"
+      },
+      "implicit_against_explicit": {
+        "value": "holds as far, or both cut by the budget within 10 % of each other's steps",
+        "basis": "derived: the implicit form's damping on an inward face is the explicit form's at the step's start velocity"
+      },
+      "off": {
+        "value": 0.3,
+        "band": [
+          0.1,
+          2.25
+        ],
+        "unit": "periods held before it diverges or the CFL line stops it",
+        "basis": "guess"
+      },
+      "why": "the term removes the kinetic energy entering through the outlet's inward faces, the mechanism that diverged without it (an inference from the term curing it in the spike); IMEX Euler's first-order damping and its 3.2 times smaller step may hold the off arm longer than RK3's 0.26 of a period"
+    },
+    "also_read": {
+      "watch": "the outlet watch's largest reversed share while the net flux is outward, every form: at least 0.05 (FB8's firing case: the spike saw 544 of 729 faces reversed while forward), basis guess",
+      "work": "the term's booked work over the run, implicit over explicit, in 0.5 to 2 (basis guess)"
+    },
+    "control": {
+      "plant": "the term removed (off)",
+      "expected_rate": "diverges or stops before 2.25 periods (one run)",
+      "clean_expected": "the implicit and explicit arms hold"
+    },
+    "if_wrong": "an implicit arm that diverges or stops by the CFL line before the explicit arm does goes back to the maintainer before #258 merges (his condition); a budget that cuts both short of 2.25 periods is stated as the reach, the rest left to 4b's RK3 run",
+    "cannot_discriminate_if": "the off arm also holds 2.25 periods under IMEX Euler: then this case shows no instability for either form to cure under IMEX, and says only that neither form broke it"
+  },
+  "gate_reversal_damping": {
+    "claim": "item 1's second condition: a genuine reversal at the outlet is damped by the lagged implicit term about as much as by the explicit one",
+    "kind": "estimates",
+    "case": "probe/backflow_case.py --reynolds 100 --periods 2 (the same tube, its step as above, 14,021 a period at mean Re 100: the whole flow reversing, the stenotic jet reaching the outlet) for the three forms; probe/reversal.py on FB8's reversing rig (Stokes, alpha 0.5) for the three forms",
+    "metric": "against the term removed, over the second period: the outlet's largest inward flux through its patch (fluid-weighted, h^2 sum max(-w_n, 0)), damping = 1 - (its largest with the term) / (its largest without); the outlet pressure's RMS difference from the term-removed run over its RMS; on the Stokes rig the term's work over the outlet law's",
+    "prediction": {
+      "re100_damping_implicit_over_explicit": {
+        "value": 1.0,
+        "band": [
+          0.8,
+          1.25
+        ],
+        "unit": "ratio of the two forms' damping"
+      },
+      "re100_damping": {
+        "value": 0.1,
+        "band": [
+          0.0,
+          0.5
+        ],
+        "unit": "damping of the largest inward flux, either form",
+        "basis": "guess"
+      },
+      "stokes_work_share": {
+        "value": 4.3e-06,
+        "band": [
+          2e-06,
+          9e-06
+        ],
+        "unit": "the term's work over the outlet law's, either form",
+        "basis": "measured-before (the explicit form, 4.3e-6): a fit"
+      },
+      "basis": "derived for the ratio: the two forms differ only in which velocity carries the second factor, w^n or w', O(dt) apart over a step except where a face changes sign within it",
+      "why": "on a face inward through the step both forms take energy at rate about |w|^3 / h; at a transition the explicit form may push the wrong way for one step, the implicit cannot"
+    },
+    "cannot_discriminate_if": "the term-removed arm diverges at Re 100: then there is no reference, and the two forms are compared with each other alone (the inward flux and the pressure, implicit over explicit)"
+  },
+  "gate_sign_rerun": {
+    "claim": "R-15 fixed: on FB8's reversing rig the lagged implicit term gives no energy at any step, the transitions included (the explicit form gave it on 6 of 6 draws), and the books close; a term of the wrong sign is still flagged on every draw",
+    "kind": "acceptance",
+    "case": "probe/reversal.py --seeds 0 6 --form implicit; the control by detection_rate.py --script tests/flow/region_cases.py with BACKFLOW_RIG=reversing, plant BACKFLOW_PLANT=flipped",
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "flagged steps on each of 6 draws; closes 6/6",
+      "basis": "derived: the term's power -c w'^2 with c >= 0"
+    },
+    "control": {
+      "plant": "beta -1 (the term pushing the inflow in)",
+      "environment_variable": "BACKFLOW_PLANT=flipped with BACKFLOW_RIG=reversing",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    }
+  },
+  "bits": {
+    "cases": "item 1's third condition, non-reversing programs bit for bit: probe/dump_region.py's programs y0 and y1 (the two-outlet gate's draws, steady Stokes), tree_imex (test_fvm_region's IMEX tree, a forward pulsatile inflow), bend (FB9 at extension 0.25 D, 200 steps), watch_far (FB8's far arm, 200 steps), in float64 and float32, base f392fdd (the explicit form) against the head, one job, one CPU (bit_compare.py); and the released programs (tests/saved/cases.py, 12 programs, both dtypes) against the release tip d6220d2",
+    "prediction": "every program whose outlets hold no inward face with fluid on it at any step (probe|inward_faces zero) has every array np.array_equal: tree_imex, bend and watch_far predicted so; y0 and y1 hold such faces (seen before: the backflow work -1.8e-20 J) and differ, by at most 1e-12 of each array's scale; the released programs every array equal, open_tube_flow only its new outputs",
+    "controls": {
+      "reversing": "tree_reversing (the IMEX tree reversing from its first step, Stokes): the two forms differ (the comparison can fail)"
+    }
+  },
+  "gate_fb9_explained": {
+    "claim": "FB9 explained: after a bend, the centreline's 0.70 to 0.77 of Poiseuille's at the start's cut is the share of the inflow carried inside the wall's radius, the rest carried by the solid's Darcy flow through the region's wide box (an Inflow pins the whole plane's flux, solid faces included: #246's first limit; the box, and so the share, grows with the extension) and by the band's fluid half beyond the radius (B5's wall ambiguity, about 8 % at 8 cells across); the bend's own development shows in the asymmetry and lowers the centreline only at the shortest extension; the two trends with the extension (developing, the box widening) roughly cancel, so the reading stayed flat",
+    "kind": "estimates",
+    "case": "probe/fb9.py: region_cases.bend_reading (IMEX Euler, Re 50, FB9's case) at extensions 0.25 and 2 D, the stiff interior 0.1h and 0.01h, tilted 30 degrees and along z; at 4 D, 0.1h, tilted; and the steady Stokes limit at extension 0.25 D, 0.01h, at D/h 8 and 16 (the band's share against the spacing)",
+    "metric": "the centreline over 2U against the share inside the wall's radius (inside_share: the axial flux over phi < 0, averaged over the box's planes): a developed parabola vanishing at R has centreline over 2U equal to it; inside, band and solid shares summing to one; the asymmetry the bend's",
+    "prediction": {
+      "centreline_minus_inside_share_developed": {
+        "value": 0.0,
+        "band": [
+          -0.03,
+          0.03
+        ],
+        "unit": "at extensions 2 and 4 D, and along z",
+        "basis": "derived (a developed parabola), the size from the steady exploration"
+      },
+      "centreline_minus_inside_share_short_bent": {
+        "value": -0.05,
+        "band": [
+          -0.1,
+          0.0
+        ],
+        "unit": "tilted, extension 0.25 D (the bend's skew at the cut: the asymmetry 0.26 seen before)",
+        "basis": "guess, from the IMEX 0.771 against the steady 0.824 at that point"
+      },
+      "band_share": {
+        "value": 0.08,
+        "band": [
+          0.05,
+          0.11
+        ],
+        "unit": "at D/h 8, every reading",
+        "basis": "measured-before (the steady exploration): a fit"
+      },
+      "band_share_dh16_over_dh8": {
+        "value": 0.5,
+        "band": [
+          0.35,
+          0.7
+        ],
+        "unit": "steady Stokes, 0.01h, extension 0.25 D",
+        "basis": "derived: a half-cell ambiguity over a radius of twice the cells"
+      },
+      "solid_share_stiff": {
+        "value": 0.003,
+        "band": [
+          0.0,
+          0.01
+        ],
+        "unit": "at 0.01h, every reading"
+      },
+      "solid_share_default_grows": {
+        "value": "0.09 at 0.25 D to 0.21 at 4 D, tilted, 0.1h",
+        "basis": "measured-before in steady Stokes: a fit; IMEX at Re 50 within 0.03 of it"
+      },
+      "stiff_centreline_rise": {
+        "value": 0.09,
+        "band": [
+          0.05,
+          0.15
+        ],
+        "unit": "centreline at 0.01h less at 0.1h, tilted, extension 0.25 D"
+      },
+      "asymmetry_ratio": {
+        "value": 1.0,
+        "band": [
+          0.7,
+          1.4
+        ],
+        "unit": "the asymmetry at 0.01h over 0.1h, same extension"
+      },
+      "why": "the inflow's flux is pinned over the whole plane; the lumen, the band's fluid half and the solid share it by their conductances (the solid's K A_box / L, falling as delta_in squared); the profile inside R is the developed parabola carrying the inside share"
+    },
+    "control": {
+      "plant": "the stiff interior moved from 0.1h to 0.01h (the solid's share removed)",
+      "expected_rate": "the centreline rises by the solid's share at each extension (one run each)",
+      "clean_expected": "at 0.1h the earlier IMEX readings reproduced within 0.02 (0.771 at 0.25 D, 0.755 at 2 D, 0.700 at 4 D)"
+    },
+    "if_wrong": "a centreline that does not follow the inside share at the developed extensions, or a band share that does not fall with the spacing, refutes the explanation: the review gets the refutation, not a new story",
+    "cannot_discriminate_if": "the solid's share reads near zero at 0.1h: then the interior's control moves nothing"
+  },
+  "outcomes": null
+}

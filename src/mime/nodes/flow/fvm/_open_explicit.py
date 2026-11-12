@@ -143,15 +143,16 @@ class OpeningStages:
     def ports(self) -> _rk3.StagePorts:
         return _rk3.StagePorts(self.ready, self.damping, self.held_force, self.project)
 
-    def damping(self, k: int, velocity: Velocity) -> Velocity:
-        """The backflow term's coefficient lagged at the stage's start velocity (the module), zero where none is
-        placed."""
+    def damping(self, k: int, velocity: Velocity) -> Array | None:
+        """The backflow term's coefficient on ``w``'s faces lagged at the stage's start velocity (the module, the open
+        node's ``backflow_coefficient``), ``None`` where none is placed."""
         del k
-        return self.node.backflow_damping(self.grid, self.fields, velocity)
+        return self.node.backflow_coefficient(self.grid, self.fields, velocity)
 
     def stiffened(self, velocity: Velocity) -> Velocity:
         """The penalty's resistivity with the backflow term's coefficient lagged at ``velocity`` (the start's)."""
-        return _add(self.sigma, self.damping(0, velocity))
+        lagged = self.damping(0, velocity)
+        return self.sigma if lagged is None else (self.sigma[0], self.sigma[1], self.sigma[2] + lagged)
 
     def held_force(self, k: int) -> Velocity:
         """The openings' forces at the prediction, the relative pressures the last stage solved."""

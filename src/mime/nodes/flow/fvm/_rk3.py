@@ -41,9 +41,9 @@ STAGE_TIMES = (0.0, 8.0 / 15.0, 2.0 / 3.0)
 QUADRATURE = (0.25, 0.0, 0.75)
 
 Force = Callable[[int, Any], Velocity]
-#: A pointwise damping's coefficient (1/s) read from the stage's start velocity, ``damping(k, u_k)``, taken implicitly in
-#: the stage beside the wall's penalty.
-StageDamping = Callable[[int, Velocity], Velocity]
+#: A pointwise damping's coefficient (1/s) on ``w``'s faces read from the stage's start velocity, ``damping(k, u_k)``,
+#: taken implicitly in the stage beside the wall's penalty; ``None`` where there is none.
+StageDamping = Callable[[int, Velocity], Array | None]
 #: A force a stage takes with its pressure's weight ``alpha_k dt``, ``held_force(k)``.
 HeldForce = Callable[[int], Velocity]
 #: A stage's projection, ``project(k, held, alpha_k dt) -> (u_k+1, phi, held)``: the stage's solution, its pressure's
@@ -135,9 +135,9 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
     """One RK3 step: the new velocity and pressure, and what the ledger reads of the step. ``force(k, t)`` is the drive
     at stage ``k``'s time ``t``; ``fluid``, the faces' ``1 - chi`` (weighted as the grid's inner product weighs them),
     where the step records the fluid's momentum at its stages. An open box's stages (``mime.nodes.flow.fvm.
-    _open_explicit``) give ``damping``, a coefficient read from each stage's start velocity and taken implicitly in the
-    stage's pointwise solve beside the penalty, ``u* = r / (1 + alpha_k dt (Sigma + c_k))`` (the backflow term, its
-    coefficient lagged a stage), ``held_force``, a force each stage takes with its pressure's weight (the openings' at
+    _open_explicit``) give ``damping``, a coefficient on ``w``'s faces read from each stage's start velocity and taken
+    implicitly in the stage's pointwise solve beside the penalty, ``w* = r_w / (1 + alpha_k dt (Sigma_w + c_k))`` (the
+    backflow term, its coefficient lagged a stage), ``held_force``, a force each stage takes with its pressure's weight (the openings' at
     their predicted pressures), and ``project``, the stage's projection with its openings' rows solved; none given, the
     step is the periodic box's."""
     inner, size = grid.inner, grid.inner_magnitude
@@ -159,7 +159,7 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
         if held_force is not None:
             r = _add(r, held_force(k), stage_dt)
         extra = damping(k, velocity) if damping is not None else None
-        stiff = resistivity if extra is None else _add(resistivity, extra)
+        stiff = resistivity if extra is None else (resistivity[0], resistivity[1], resistivity[2] + extra)
         held = (r[0] / (1.0 + stage_dt * stiff[0]), r[1] / (1.0 + stage_dt * stiff[1]),
                 r[2] / (1.0 + stage_dt * stiff[2]))
         if fluid is not None:
@@ -179,7 +179,8 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
         penalty_d = penalty_d + stage_dt * inner(penalised, held)
         scale = scale + stage_dt * size(penalised, held)
         if extra is not None:
-            damped = (extra[0] * held[0], extra[1] * held[1], extra[2] * held[2])
+            none = grid.zeros(dtype)
+            damped = (none[0], none[1], extra * held[2])
             damped_d = damped_d + stage_dt * inner(damped, held)
             scale = scale + stage_dt * size(damped, held)
         if projected is None:

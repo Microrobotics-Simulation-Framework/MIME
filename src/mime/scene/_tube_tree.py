@@ -10,7 +10,11 @@ start and its end), each a flat quantity; ``TubeTree.si(points, segments, radii,
 tuples. Its regions are the ``lumen`` (the shape ``tube_tree``, the union's distance) and the ``wall``; its **ends**
 are named by geometry, never by the role a law gives them (row #336): the first segment's start is ``root`` where no
 other segment meets it, and every other free end (a point one segment reaches) takes the name ``ends`` gives it, in the
-order of its points, ``end_0``, ``end_1``, ... by default (:meth:`TubeTree.end_names`).
+order of its points, ``end_0``, ``end_1``, ... by default (:meth:`TubeTree.end_names`). Its **junctions** are named by
+order, ``junction_0``, ``junction_1``, ... unless ``junctions`` names the first of them (:meth:`TubeTree.junction_names`);
+the order is the one the junctions are found in walking the points outward from the first segment's start (breadth first,
+a point's neighbours in the order of the segments that reach them; a part with no segment from there starts at its
+first segment's start), so it follows the segments from the root and does not depend on how the points are numbered.
 
 **The lumen.** Each segment is the union of the balls along it, its radius changing linearly from one end to the
 other: a round cone (a capsule where the radii agree), so a segment's radius is the inscribed ball's at each point of
@@ -160,8 +164,9 @@ class TubeTree(Geometry):
     """A vessel as straight tubes between ``points`` (three lengths each, in the world's frame, flat): ``segments``
     joins two of them by index (from its start to its end), ``radii`` gives its radius at its start and at its end
     (two lengths a segment, flat), ``fillet`` is the fillet's radius as a share of the smallest radius at a junction
-    (zero: sharp), and ``ends`` names its free ends but the root, in the order of their points. The module's docstring
-    says what it is."""
+    (zero: sharp), ``ends`` names its free ends but the root, in the order of their points, and ``junctions`` names its
+    first junctions, in the order :meth:`junction_names` gives (any left out are ``junction_<n>``). The module's
+    docstring says what it is."""
 
     name = "tube_tree"
     version = "0.1.0"
@@ -171,6 +176,8 @@ class TubeTree(Geometry):
                                        "at a junction (the smaller daughter's at a Y), not fitted to any measurement"),
         "ends": convention(PHYSICAL, "a tree's free ends but the root are end_0, end_1, ... in the order of their "
                                      "points unless named"),
+        "junctions": convention(PHYSICAL, "a tree's junctions are junction_0, junction_1, ... in the order they are "
+                                          "found from the root unless named"),
     }
     differentiability = GradientStatus.UNVERIFIED
     gradient = GradientRecord(
@@ -191,15 +198,16 @@ class TubeTree(Geometry):
     radii: Annotated[Quantity, Length]
     fillet: float = FILLET_SHARE
     ends: tuple[str, ...] = ()
+    junctions: tuple[str, ...] = ()
 
     @classmethod
     def si(cls, points: Any, segments: Sequence[Sequence[int]], radii: Any, fillet: float = FILLET_SHARE,
-           ends: Sequence[str] = ()) -> TubeTree:
+           ends: Sequence[str] = (), junctions: Sequence[str] = ()) -> TubeTree:
         """The tree from its points ``(k, 3)`` and radii ``(n, 2)`` in metres (nested sequences or arrays)."""
         flat_points = tuple(float(c) for c in np.asarray(points, dtype=np.float64).reshape(-1))
         flat_radii = tuple(float(c) for c in np.asarray(radii, dtype=np.float64).reshape(-1))
         return cls(points=m(flat_points), segments=tuple((int(a), int(b)) for a, b in segments),
-                   radii=m(flat_radii), fillet=float(fillet), ends=tuple(ends))
+                   radii=m(flat_radii), fillet=float(fillet), ends=tuple(ends), junctions=tuple(junctions))
 
     def _points(self) -> np.ndarray:
         return _si_lengths(self.points, "points", 3)
@@ -238,6 +246,7 @@ class TubeTree(Geometry):
             raise _refused(f"a tube tree with {free} free ends besides its root names them all or none, each in "
                            f"lower-case words and none of them {ROOT!r}, a region's name ({', '.join(self.regions)}) "
                            f"or repeated; it was given {self.ends!r}")
+        self._check_junction_names()
 
     # -- as a kind --------------------------------------------------------------------------------------------------
     @override
@@ -252,7 +261,8 @@ class TubeTree(Geometry):
         if found:
             return found
         tree = TubeTree.si(np.asarray(settings["points"], dtype=np.float64).reshape(-1, 3), self.segments,
-                           np.asarray(settings["radii"], dtype=np.float64).reshape(-1, 2), self.fillet, self.ends)
+                           np.asarray(settings["radii"], dtype=np.float64).reshape(-1, 2), self.fillet, self.ends,
+                           self.junctions)
         features = tree.wall_features()
         if features.fused:
             radius = tree.fillet_radius_value()
@@ -344,18 +354,58 @@ class TubeTree(Geometry):
         points = self._points()
         return np.asarray([float(_norm(points[end] - points[start])) for start, end in self.segments])
 
-    @property
-    def junctions(self) -> tuple[Junction, ...]:
-        """A junction at each point two segment ends or more meet at, named ``j<point>``, its ends in segment order."""
+    def _junction_points(self) -> list[int]:
+        """The points two segment ends or more meet at, in the order they are found walking outward from the first
+        segment's start: breadth first, a point's neighbours in segment order; a part the walk does not reach starts
+        at the first point (in segment order, start before end) it has not seen. Deterministic, and independent of
+        how the points are numbered."""
+        neighbours: dict[int, list[int]] = {}
+        for start, end in self.segments:
+            neighbours.setdefault(start, []).append(end)
+            neighbours.setdefault(end, []).append(start)
+        found: dict[int, None] = {}
+        for seed in neighbours:
+            queue = [seed] if seed not in found else []
+            found.update(dict.fromkeys(queue))
+            for point in queue:
+                new = [n for n in neighbours[point] if n not in found]
+                found.update(dict.fromkeys(new))
+                queue += new
+        return [point for point in found if len(neighbours[point]) >= 2]
+
+    def junction_names(self) -> tuple[Junction, ...]:
+        """A junction at each point two segment ends or more meet at, named by ``junctions`` for the first of them
+        and ``junction_<n>`` (``n`` its place in the order of :meth:`_junction_points`) for the rest, its ends in
+        segment order."""
         ends: dict[int, list[tuple[int, int]]] = {}
         for index, (start, end) in enumerate(self.segments):
             ends.setdefault(start, []).append((index, 0))
             ends.setdefault(end, []).append((index, 1))
-        return tuple(Junction(f"j{point}", tuple(held)) for point, held in sorted(ends.items()) if len(held) >= 2)
+        points = self._junction_points()
+        names = tuple(self.junctions) + tuple(f"junction_{n}" for n in range(len(self.junctions), len(points)))
+        return tuple(Junction(name, tuple(ends[point])) for name, point in zip(names, points, strict=False))
+
+    def _check_junction_names(self) -> None:
+        """Refuse ``junctions`` that name more than there are, a name that is not lower-case words, one given twice
+        (or one another junction keeps by default), and one that is a region's, a surface's or an end's name."""
+        count, given = len(self._junction_points()), self.junctions
+        held = cast(tuple[object, ...], given)
+        if len(given) > count:
+            raise _refused(f"a tube tree with {count} junctions was given {len(given)} names for them: {given!r}")
+        if not all(isinstance(j, str) and _END_NAME.fullmatch(j) for j in held):
+            raise _refused(f"a tube tree's junctions are named in lower-case words; it was given {given!r}")
+        names = tuple(given) + tuple(f"junction_{n}" for n in range(len(given), count))
+        taken = {*self.regions, *self.surface_names()}
+        repeated = sorted({j for j in names if names.count(j) > 1})
+        if repeated or any(j in taken for j in names):
+            raise _refused(f"a tube tree's junctions are named once each, and none of them a region's "
+                           f"({', '.join(self.regions)}), a surface's or an end's name ({', '.join(sorted(taken))}); "
+                           f"junctions left out are junction_<n> by order, and {repeated or sorted(set(names) & taken)} "
+                           f"{'repeats' if repeated else 'is taken'} in {names!r}")
 
     def _junction_ends(self) -> tuple[np.ndarray, np.ndarray]:
         """The (segment, end) pairs that lie at a junction, as two index arrays into the radii."""
-        held = [end for junction in self.junctions for end in junction.ends]
+        held = [end for junction in self.junction_names() for end in junction.ends]
         return np.asarray([s for s, _ in held], dtype=np.int64), np.asarray([e for _, e in held], dtype=np.int64)
 
     def meets(self) -> tuple[tuple[int, int], ...]:
@@ -445,7 +495,7 @@ class TubeTree(Geometry):
         for index in range(len(self.segments)):
             normals.setdefault(index, across(tangents[index]))
         return Centreline(tuple(_segment(index, pair, normals[index]) for index, pair in enumerate(self.segments)),
-                          self.junctions)
+                          self.junction_names())
 
     # -- placed ------------------------------------------------------------------------------------------------------
     def turned(self, rotation: Sequence[Sequence[float]] | np.ndarray, offset: Sequence[float] = (0.0, 0.0, 0.0)
@@ -454,13 +504,13 @@ class TubeTree(Geometry):
         ``offset`` (m): a tilted or displaced vessel."""
         turn = np.asarray(rotation, dtype=np.float64)
         moved = self._points() @ turn.T + np.asarray(offset, dtype=np.float64)
-        return TubeTree.si(moved, self.segments, self._radii(), self.fillet, self.ends)
+        return TubeTree.si(moved, self.segments, self._radii(), self.fillet, self.ends, self.junctions)
 
     # -- what the resolution report reads ------------------------------------------------------------------------------
     def wall_features(self) -> WallFeatures:
         """Its :class:`WallFeatures` at the values it is made with."""
         radii = self._radii()
-        junctions = self.junctions
+        junctions = self.junction_names()
         fillet = self.fillet_radius_value()
         smallest = float(radii.min())
         if junctions:
