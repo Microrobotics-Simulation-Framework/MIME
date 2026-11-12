@@ -67,6 +67,14 @@
     "case": "probe/lumen.py arm user: porous_cases.experiment",
     "prediction": {"value": "the converged steps within 2 % of the series (the review read +55,547 %)", "band": [-0.03, 0.03], "unit": "lumen_flux / series - 1", "basis": "derived", "why": "as above"}
   },
+  "gate_minor5_open_ledger": {
+    "added": "2026-11-12, in its own commit before the golden probe (which runs its rate) launched",
+    "claim": "the open vessel holding a plug closes its energy identity, the plug's loss booked under its law",
+    "kind": "equality",
+    "case": "test_a_plug_in_an_open_vessel_reads_darcys_drop_on_its_faces_and_its_books_close",
+    "prediction": {"value": "closes (the review's arm ledger: closes, the flipped sign fails at 2.4e13 of its floor)", "basis": "measured-before (the review's run 43154269639)", "why": "the plug's loss is the drive's work through it"},
+    "control": {"plant": "gate 6's: the plug's loss booked with its sign flipped", "environment_variable": "MIME_PLANT_POROUS_SIGN", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30"}
+  },
   "golden_on_runners": {
     "claim": "the saved case at the clot's K (1e-12) makes the same golden outputs (plug, darcy) on three runners",
     "case": "probe/golden: MIME_REGENERATE_GOLDEN=1 tests/saved/test_golden_outputs.py -k 'plug or darcy' on three arms",
