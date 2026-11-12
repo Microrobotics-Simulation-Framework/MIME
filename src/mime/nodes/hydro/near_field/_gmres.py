@@ -36,6 +36,11 @@ magnitude (``magnitude``: ``|A|`` applied to a block of columns); off, nothing o
 **Starts are cold** (the stall decision's item 4): every solve, primal and derivative alike, starts from zero, so a
 tangent or transpose solve never starts at the primal's warm start, whose error would be set by the primal's scale.
 
+**The operator form** (:func:`reported_operator_solve`): the same solve with the matrix given as its product, for an
+operator held as a function whose product runs solves of its own (F5's Schwarz product: a flow's walled solve and a free
+box); each product reports them, and the solve reduces those reports into a second block beside its own. A plain
+operator's solve is traced as it was without the option.
+
 **The report** is the FVM's (``mime.nodes.flow.fvm._solve``'s ``REPORT_FIELDS``: one report for every iterative
 solve in MIME), over the columns: the most iterations a column took (the operator's applications), the largest true
 relative residual (-1 where one is not finite), and how many columns stopped at the cap, stagnated, at a residual not
@@ -62,10 +67,12 @@ _vmap: Any = cast(Any, jax).vmap
 _solve_triangular: Any = cast(Any, jax).scipy.linalg.solve_triangular
 
 type Operator = Callable[[Array], Array]
+#: An operator whose product runs solves of its own and reports them: ``x -> (A x, report)``.
+type InnerOperator = Callable[[Array], tuple[Array, Array]]
 
 #: The solve site of :func:`reported_solve`: every GMRES solve of the near field runs inside it.
 GMRES_SITE = register(SolveSite("near_field_gmres", "gmres", "mime.nodes.hydro.near_field._gmres.reported_solve",
-                                nodes=("JointDragNode",)))
+                                nodes=("ImplicitFlowNode", "JointDragNode")))
 
 #: How a column ended, as the loop carries it.
 _RUNNING, _CONVERGED, _STAGNATED, _AT_CAP, _NOT_FINITE, _AT_ZERO = 0, 1, 2, 3, 4, 5
@@ -131,12 +138,33 @@ def gmres(operator: Operator, b: Array, precondition: Operator, stopping: Stoppi
         raise ValueError("a stop at the rounding floor needs the operator's magnitude")
     size = jnp.max(jnp.abs(b), axis=0)
     scale = jnp.where(size > 0.0, size, 1.0)
-    x, report = _scaled_gmres(operator, b / scale, precondition, stopping, magnitude)
+    x, report, _ = _scaled_gmres(operator, b / scale, precondition, stopping, magnitude, False)
     return x * scale, report
 
 
-def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping: Stopping,
-                  magnitude: Operator | None) -> tuple[Array, Array]:
+def gmres_reporting(operator: InnerOperator, b: Array, precondition: Operator, stopping: Stopping,
+                    magnitude: Operator | None = None) -> tuple[Array, Array, Array]:
+    """:func:`gmres` on an operator whose product solves inside it and reports those solves (``operator(x)`` returns
+    ``(A x, report)``, a :data:`REPORT_FIELDS` block over the product's columns): the answers, GMRES's report and the
+    products' reports reduced over every product the solve took (:func:`reduced`: the iterations and counts summed, the
+    residual the worst)."""
+    if stopping.floor_stop and magnitude is None:
+        raise ValueError("a stop at the rounding floor needs the operator's magnitude")
+    size = jnp.max(jnp.abs(b), axis=0)
+    scale = jnp.where(size > 0.0, size, 1.0)
+    x, report, inner = _scaled_gmres(operator, b / scale, precondition, stopping, magnitude, True)
+    assert inner is not None
+    return x * scale, report, inner
+
+
+def reduced(held: Array, report: Array) -> Array:
+    """Two solve reports as one (``mime.nodes.flow.fvm._partners.combined``'s rule): the iterations and counts summed,
+    the residual the worst."""
+    return (held + report).at[1].set(jnp.maximum(held[1], report[1]))
+
+
+def _scaled_gmres(operator: Any, b: Array, precondition: Operator, stopping: Stopping,
+                  magnitude: Operator | None, inner: bool) -> tuple[Array, Array, Array | None]:
     dtype = b.dtype
     n, columns = b.shape
     m = stopping.restart
@@ -146,7 +174,16 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
     ended0 = jnp.where(~jnp.isfinite(norm_b), _NOT_FINITE, jnp.where(norm_b == 0.0, _AT_ZERO, _RUNNING))
     eye = jnp.eye(m, dtype=dtype)
 
-    def cycle(x: Array, r: Array, beta: Array, running: Array, count: Array) -> tuple[Array, Array]:
+    def applied(x: Array, reports: list[Array]) -> tuple[Array, list[Array]]:
+        """``A x``; an operator that reports its own solves has its report reduced into ``reports`` (carried only
+        then, so that a plain operator's solve is traced as it was without it)."""
+        if not inner:
+            return operator(x), reports
+        y, report = operator(x)
+        return y, [reduced(reports[0], report.astype(dtype))]
+
+    def cycle(x: Array, r: Array, beta: Array, running: Array, count: Array,
+              reports: list[Array]) -> tuple[Array, Array, list[Array]]:
         """One cycle of at most ``m`` Arnoldi steps from the residual ``r`` (norm ``beta``) in each running column;
         the correction it gives each, and the steps each took."""
         safe = jnp.where(beta > 0.0, beta, 1.0)
@@ -162,8 +199,8 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
             return (j < m) & jnp.any(active)
 
         def step(carry: tuple[Any, ...]) -> tuple[Any, ...]:
-            j, basis, g, hessenberg, cosines, sines, active, length = carry
-            w = operator(precondition(basis[j]))
+            j, basis, g, hessenberg, cosines, sines, active, length, *reports = carry
+            w, reports = applied(precondition(basis[j]), reports)
             h = jnp.einsum("knc,nc->kc", basis, w, precision=PRECISION)
             w = w - jnp.einsum("knc,kc->nc", basis, h, precision=PRECISION)
             again = jnp.einsum("knc,nc->kc", basis, w, precision=PRECISION)
@@ -203,11 +240,11 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
             # or at the cap.
             done = (jnp.abs(estimate) <= threshold) | (below <= tiny) | ~jnp.isfinite(estimate) \
                 | (taken >= stopping.cap)
-            return j + 1, basis, g, hessenberg, cosines, sines, active & ~done, length
+            return j + 1, basis, g, hessenberg, cosines, sines, active & ~done, length, *reports
 
         start = (jnp.asarray(0, jnp.int32), basis, g, hessenberg, cosines, sines, active,
-                 jnp.zeros(columns, dtype=jnp.int32))
-        _, basis, g, hessenberg, _, _, _, length = _lax.while_loop(going, step, start)
+                 jnp.zeros(columns, dtype=jnp.int32), *reports)
+        _, basis, g, hessenberg, _, _, _, length, *reports = _lax.while_loop(going, step, start)
         inside = jnp.arange(m)[:, None] < length[None, :]
         square = (inside[:, None, :] & inside[None, :, :])
         upper = jnp.where(square, hessenberg, eye[:, :, None])
@@ -216,7 +253,7 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
 
         y = _vmap(back_substituted, in_axes=(2, 1), out_axes=1)(upper, jnp.where(inside, g[:m], 0.0))
         correction = precondition(jnp.einsum("knc,kc->nc", basis[:m], y, precision=PRECISION))
-        return jnp.where(length[None, :] > 0, correction, 0.0), length
+        return jnp.where(length[None, :] > 0, correction, 0.0), length, reports
 
     def going(carry: tuple[Any, ...]) -> Array:
         return jnp.any(carry[9] == _RUNNING)
@@ -230,12 +267,14 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
                 jnp.where(again, jnp.minimum(earlier, jnp.min(held, axis=0)), earlier), jnp.where(again, 0, counted))
 
     def restart(carry: tuple[Any, ...]) -> tuple[Any, ...]:
-        x, r, beta, count, recent, before, checks, kept, lowest, ended, *stalls = carry
+        x, r, beta, count, recent, before, checks, kept, lowest, ended, *rest = carry
+        stalls, reports = (rest[:1], rest[1:]) if allowed else ([], rest)
         running = ended == _RUNNING
-        correction, length = cycle(x, r, beta, running, count)
+        correction, length, reports = cycle(x, r, beta, running, count, reports)
         x = jnp.where(running[None, :], x + correction, x)
         count = count + length
-        r = b - operator(x)
+        product, reports = applied(x, reports)
+        r = b - product
         true_norm = _norms(r)
         converged = true_norm <= threshold
         held = jnp.concatenate([recent[1:], true_norm[None]])
@@ -262,13 +301,15 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
         return (x, jnp.where(running[None, :], r, carry[1]), jnp.where(running, true_norm, beta), count,
                 jnp.where(running[None, :], held, recent), jnp.where(running, earlier, before),
                 jnp.where(running, counted, checks), kept, lowest,
-                jnp.where(running, status, ended).astype(jnp.int32), *stalls)
+                jnp.where(running, status, ended).astype(jnp.int32), *stalls, *reports)
 
     zeros = jnp.zeros_like(b)
     initial = (zeros, b, norm_b, jnp.zeros(columns, dtype=jnp.int32),
                jnp.full((stopping.window, columns), jnp.inf, dtype=dtype), norm_b, jnp.zeros(columns, dtype=jnp.int32),
-               zeros, norm_b, ended0.astype(jnp.int32), *([jnp.zeros(columns, dtype=jnp.int32)] if allowed else []))
-    x, _, last, count, _, _, _, kept, lowest, ended, *_ = _lax.while_loop(going, restart, initial)
+               zeros, norm_b, ended0.astype(jnp.int32), *([jnp.zeros(columns, dtype=jnp.int32)] if allowed else []),
+               *([jnp.zeros(REPORT_SIZE, dtype=dtype)] if inner else []))
+    x, _, last, count, _, _, _, kept, lowest, ended, *rest = _lax.while_loop(going, restart, initial)
+    inner_report = rest[-1] if inner else None
     # A column that converged (or was accepted) returns its last iterate; one stopped short, the iterate of its least
     # true residual checked (past a floor the iterate wanders); one whose residual went non-finite, NaN.
     short = (ended == _STAGNATED) | (ended == _AT_CAP)
@@ -280,7 +321,7 @@ def _scaled_gmres(operator: Operator, b: Array, precondition: Operator, stopping
     report = jnp.stack([jnp.max(count).astype(dtype), jnp.where(finite, jnp.max(relative), -1.0).astype(dtype),
                         jnp.sum(ended == _AT_CAP).astype(dtype), jnp.sum(ended == _STAGNATED).astype(dtype),
                         jnp.sum(ended == _NOT_FINITE).astype(dtype), jnp.sum(ended == _AT_ZERO).astype(dtype)])
-    return x, report
+    return x, report, inner_report
 
 
 def reported_solve(matrix: Array, b: Array, tap: Array, precondition: Operator, transposed: Operator,
@@ -322,5 +363,52 @@ def reported_solve(matrix: Array, b: Array, tap: Array, precondition: Operator, 
         return solved, report
 
 
-__all__ = ["CAP", "FLOOR_MARGIN", "FLOOR_MEASURED", "REPORT_FIELDS", "REPORT_SIZE", "RESTART", "STAGNATION_FACTOR", "STAGNATION_WINDOW", "Stopping",
-           "gmres", "recheck_stopping", "reported_solve"]
+def reported_operator_solve(apply: InnerOperator, b: Array, tap: Array, precondition: Operator,
+                            transposed: Operator, stopping: Stopping, magnitude: Operator | None = None,
+                            transposed_magnitude: Operator | None = None) -> tuple[Array, Array]:
+    """:func:`reported_solve` with the matrix given as its product, ``apply(x) -> (A x, report)``: an operator held
+    as a function (a flow's walled solve and a free box inside it), its product's own solves reporting through its
+    second value (a :data:`REPORT_FIELDS` block over the product's columns). ``tap`` is the report block's input,
+    ``2 x`` :data:`REPORT_SIZE` zeros: GMRES's own report, then its products' solves' reports reduced over every product
+    (:func:`reduced`). Returns the answers and the two blocks, the primal solve's.
+
+    **Where the products' reports come from.** The primal and the tangent solves run :func:`gmres_reporting` on
+    ``apply`` itself, so each reports its products' solves (an inner stop short is then flagged on the step); the
+    transpose solve runs on the transposed product JAX makes of ``apply``'s linear part, whose inner solves report
+    through nothing here, and returns zeros in that block. ``apply``'s report is read only by the solves and never
+    differentiated, so it need not be linear in ``x``. ``magnitude`` (and ``transposed_magnitude`` for the transpose
+    solve) is ``|A|`` applied to a block, for a stop at the floor; without it ``floor_stop`` is refused."""
+
+    with solves.solving(GMRES_SITE):
+        def matvec(pair: tuple[Array, Array]) -> tuple[Array, Array]:
+            x, block = pair
+            y = apply(x)[0]
+            return y, block + 0.0 * y[0, 0]
+
+        def forward(operator: Callable[[tuple[Array, Array]], tuple[Array, Array]],
+                    pair: tuple[Array, Array]) -> tuple[Array, Array]:
+            del operator  # the product is ``apply``'s, which also reports its own solves
+            rhs, _ = pair
+            x, report, inner = gmres_reporting(apply, rhs, precondition, stopping, magnitude)
+            return x, jnp.concatenate([report, inner])
+
+        def backward(operator: Callable[[tuple[Array, Array]], tuple[Array, Array]],
+                     pair: tuple[Array, Array]) -> tuple[Array, Array]:
+            rhs, block = pair
+
+            def field(x: Array) -> Array:
+                return operator((x, block))[0]
+
+            x, report = gmres(field, rhs, transposed, stopping, transposed_magnitude)
+            return x, jnp.concatenate([report, jnp.zeros_like(report)])
+
+        coupled_rhs = b + 0.0 * tap[0]
+        coupled_tap = tap + 0.0 * b[0, 0]
+        solved, report = _lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), forward,
+                                                  transpose_solve=backward)
+        return solved, report
+
+
+__all__ = ["CAP", "FLOOR_MARGIN", "FLOOR_MEASURED", "REPORT_FIELDS", "REPORT_SIZE", "RESTART", "STAGNATION_FACTOR", "STAGNATION_WINDOW", "InnerOperator",
+           "Stopping", "gmres", "gmres_reporting", "recheck_stopping", "reduced", "reported_operator_solve",
+           "reported_solve"]
