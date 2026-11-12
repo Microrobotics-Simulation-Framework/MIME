@@ -52,5 +52,23 @@
     "prediction": "float64 every check under 1e-13; float32 under 1e-5",
     "if_wrong": "a check above: that run did not measure (A), and is set aside with the reason"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43137787804 (predictions unchanged above)",
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137787804",
+    "gate_prescribed_holds": {
+      "result": "HELD. FB7's point under (A): implicit and explicit each held 2.29 periods (28,500 steps, finite, no CFL stop) in float64 and in float32; largest speed 8.6 and 7.9 U (float64; float32 8.0 and 8.8), outlet w down to -6.5 and -4.9 U (float32 -7.7 and -8.3), CFL at most 0.34; the near-inlet cells' w at most 4.2 U, their tangential speed at most 1.5 U. Off diverged at the OUTLET at 0.213 of a period in both dtypes (w -70 U): the point discriminates the term"
+    },
+    "gate_prescribed_damping": {
+      "result": "HELD: every form held the period in both dtypes; damping 0.08676 implicit and 0.08676 explicit in float64 (reversed outlet inflow's most 0.34890 with either form against 0.38205 off), float32 the same to 5 digits. At FB7's point off diverges before any reversal, so no damping ratio there"
+    },
+    "gate_prescribed_w_only": {
+      "result": "MISSED: w alone prescribed (A_w), the implicit form stopped at FB7's point at 0.43 of a period in float64 and 0.32 in float32, at the inlet's first cells (z 1; tangential speed 47 U); the damping point held. The tangential condition at the opening (u = v = 0) is part of (A)"
+    },
+    "gate_prescribed_convective": {
+      "result": "(1) ledger arms, 40 draws, both dtypes alike: CFL stops 0/40 under A and A_w (held); booked against the face formula, median 15.0 % under A (inside the predicted 3 to 20 %; max 3.3 times on one draw), 12.3 % under A_w; the pairing at each step's start against the formula, median 4.4 % (the grid's weights) and 13.6 % (the prescribed face's weight zero) under A, 0.0 % and 20.8 % under A_w. (2) the points' runs: the profile's own convective residual (the prescribed face's weight zero) median 0.11 % at FB7's point (integrated -0.07 %) and 0.32 % at the damping point (integrated -0.09 %); with the grid's weights 0.04 % and 0.09 %: MISSED LOW (predicted 2 to 20 %, the spike's 7.5 to 9 % on a straight tube at Re 10). The draws (Womersley alpha 6 to 13, 40 steps a period) sit at 13.6 %"
+    },
+    "control_patch_in_force": {
+      "result": "HELD: float64 the face against the profile at most 1.3e-15, the face flux against the law's 2.1e-16, the divergence 2.4e-16; float32 at most 7.2e-7, 5.4e-7 and 1.6e-7, in every chunk of every run and at every draw's end, both forms' code"
+    }
+  }
 }

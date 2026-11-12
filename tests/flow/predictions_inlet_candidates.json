@@ -52,5 +52,23 @@
     "prediction": "repeat: equal; with and without the term's code: arrays differ at rounding (the compiled program changed, not the arithmetic: the inference the coordinator asked shown or refuted). Equal would refute it: then the difference against f62f33b has another cause, to find",
     "controls": {"repeat": "the head twice: identical"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43133109128 (predictions unchanged above)",
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133109128",
+    "gate_inlet_holds": {
+      "result": "MISSED: no candidate keeps the inflow plane bounded at FB7's point. a: the inlet face grew to 40 U and the inlet's cells (z 1 to 5) diverged at 1.25 (implicit) / 1.27 (explicit) periods in float64, 0.34 / 0.33 in float32; a0: 0.72 / 0.70 in float64 (the inlet in the whole flow's reversal), 0.32 / 0.31 in float32; b: 0.027 at the inlet plane (worse). At the damping point a and a0 held one period in every form; b diverged at the inlet at 0.21. The mechanism is not refuted (gate_inlet_refute), but removing the face's own-value flux does not remove every inlet mode: the free face and its cells' tangential velocity remain (see predictions_inlet_prescribed.json's A_w)"
+    },
+    "gate_r15_readings_per_candidate": {
+      "result": "MISSED: no candidate reaches 2.25 periods in any form. Implicit and explicit agree within 0.02 of a period under every candidate; off: a 0.28, a0 0.21 to 0.24 (the outlet). Damping at the damping point: a 0.077, a0 0.087, implicit equal to explicit to 4 digits (inside the predicted band and the 10 %)"
+    },
+    "gate_inlet_ledger": {
+      "result": "HELD for route 1 and the law identity: 0 negative steps and no law identity over its floor for none, a, a0 and b, 40 draws, both dtypes; CFL stops none 3/40, a, a0 and b 0/40 (held). The booked convective power against the face formula at each step's start times dt, median: none 3.3 %, a and a0 38 %, b 1.8 % (a and a0 MISSED the predicted under 10 %)"
+    },
+    "gate_inlet_refute": {
+      "result": "HELD (the mechanism not refuted): reversed, unpatched, the low plane stayed at most 2.2 to 2.5 U and the high plane (the new inflow) reached 5.0, 2.3 and 4.4 U in 60 steps on seeds 3000, 3017, 3025 (no CFL stop in 60 steps); forward the low plane reached 13, 7.4 and 15 U and stopped at steps 15, 13 and 11. With a, both directions bounded (at most 2.5 U)"
+    },
+    "bits_inference": {
+      "result": "HELD in float64: the term's code present (its coefficient zero on every face, backflow_work 0) against absent differs in 12 arrays, at most 5.6e-15 (the openings' pressures; velocities 3e-18), the repeat equal: the compiled program's change moves float64's last bits. Float32: present and absent EQUAL, the repeat equal, so float32's difference against f62f33b (2.8e-9) is NOT explained by it, and is left unexplained"
+    }
+  }
 }
