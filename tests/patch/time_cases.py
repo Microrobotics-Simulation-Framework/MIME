@@ -45,6 +45,10 @@ from mime.nodes.flow.fvm._solve import REPORT_SIZE, Jacobi, Stopping, projected_
 DENSITY = 1260.0
 CORNERS = {"m50-dt0.5": (0.05, 5e-4), "m50-dt5": (0.05, 5e-3), "m200-dt0.5": (0.2, 5e-4), "m200-dt5": (0.2, 5e-3)}
 FORMS = ("reference", "coarse", "be_patch", "quasi_steady")
+#: The walled step's CG tolerance and the near field's GMRES tolerance: the outer above the inner solves' (the patch's
+#: CG at 1e-8, the walled one here): a GMRES below them cannot converge and runs hundreds of products (the read probe).
+WALLED_TOLERANCE = 1e-8
+GMRES_TOLERANCE = 1e-7
 
 
 @dataclass(frozen=True)
@@ -175,7 +179,7 @@ class Box:
         s = [jnp.sin(jnp.pi * jnp.arange(n) / n) ** 2 for _ in range(3)]
         self.symbol = shift + viscosity * (4.0 / spacing ** 2) * (s[0][:, None, None] + s[1][None, :, None]
                                                                  + s[2][None, None, :])
-        self.stopping = Stopping(tolerance=1e-10, cap=20000, window=stagnation_window(self.grid.cells, 20))
+        self.stopping = Stopping(tolerance=WALLED_TOLERANCE, cap=20000, window=stagnation_window(self.grid.cells, 20))
 
     def scatter(self, forces: Any) -> Any:
         return _scatter(self.grid, tuple(self.stencils), forces)
@@ -300,7 +304,7 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
             return y + column(traction * area[:, None]).reshape(-1)
 
         y, info = spla.gmres(spla.LinearOperator((3 * n, 3 * n), matvec=operator, dtype=np.float64),
-                             target.reshape(-1), rtol=1e-9, restart=60, maxiter=6)
+                             target.reshape(-1), rtol=GMRES_TOLERANCE, restart=60, maxiter=6)
         residuals.append(float(np.linalg.norm(operator(y) - target.reshape(-1)) / np.linalg.norm(target)))
         count[0] -= 1
         forces = sla.lu_solve(factor, y).reshape(n, 3) * area[:, None]
