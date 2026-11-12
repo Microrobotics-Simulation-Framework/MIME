@@ -153,12 +153,14 @@ def point_update(own: Array, velocity: Array, held: Array, traction: Traction) -
     return velocity, held
 
 
-def frictional_sweeps(coupling: Array, start: Array, traction: Traction, count: int, *, loops: bool) -> Array:
+def frictional_sweeps(coupling: Array, start: Array, traction: Traction, count: int, *, loops: bool,
+                      initial: Array | None = None) -> Array:
     """The held points' forces (``K x R``: each point's normal force, then each friction pair's) after ``count``
-    projected Gauss-Seidel sweeps from zero over the points, each visit :data:`FRICTION_REPEATS` of the point's own
-    updates (:func:`point_update`). ``coupling`` is the Delassus matrix ``J A^-1 J^T`` laid out ``K x R x K x R`` and
-    ``start`` the rows' velocities at no force (``J V_free``, the normal rows' allowances added). XLA loops, as the
-    contact 0.5.0's sweeps, unrolled while a switch collector is open (``_contact.repeated``)."""
+    projected Gauss-Seidel sweeps over the points from ``initial`` (zero where none is given), each visit
+    :data:`FRICTION_REPEATS` of the point's own updates (:func:`point_update`). ``coupling`` is the Delassus matrix ``J
+    A^-1 J^T`` laid out ``K x R x K x R`` and ``start`` the rows' velocities at no force (``J V_free``, the normal rows'
+    allowances added). XLA loops, as the contact 0.5.0's sweeps, unrolled while a switch collector is open
+    (``_contact.repeated``)."""
     points = start.shape[0]
 
     def visit(k: Any, forces: Array) -> Array:
@@ -169,8 +171,8 @@ def frictional_sweeps(coupling: Array, start: Array, traction: Traction, count: 
 
         return forces.at[k].set(repeated(FRICTION_REPEATS, again, (velocity, forces[k]), loops=loops)[1])
 
-    return repeated(count, lambda _, forces: repeated(points, visit, forces, loops=loops), jnp.zeros_like(start),
-                    loops=loops)
+    return repeated(count, lambda _, forces: repeated(points, visit, forces, loops=loops),
+                    jnp.zeros_like(start) if initial is None else initial, loops=loops)
 
 
 def normal_work_free(coupling: Array, start: Array, forces: Array) -> Array:
