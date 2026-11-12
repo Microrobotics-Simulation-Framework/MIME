@@ -26,5 +26,10 @@
     "if_wrong": "the corrected additivity past 0.05: the law composes two contacts with an error of its own (the soft least gap, the shared opening, the coarse rung at two opened contacts at once), which this PR states as measured and pins, with MIME-ANO-154's two-contact sentence saying so",
     "cannot_discriminate_if": "E0 is small (under 0.05): then the committed metric's miss is not the baseline, and the composition's own error is the reading"
   },
-  "outcomes": null
+  "outcomes": {
+    "_note": "added after the diagnostic ran (the laptop's heavy slot, the probe launcher's local route, cap 42 GiB, probe/w2a-1b2-g5b at 72a5bf4, 2026-11-12; the reference row's peak 26.1 GiB against the bound 38.3; memory-bound correctness only); the predictions above are unchanged",
+    "gate_5_no_contact_error": "MISSED, and the hypothesis refuted: E0's worst entry 0.0003 on the two-contact reference's scale (band [0.15, 0.45]); the lift equals the coarse MRS alone at the apart pose (no increment), as built",
+    "gate_5_additivity_with_the_baseline": "MISSED: with E0 added back the additivity is 0.3121 at (0.05, 0.05) and 0.3310 at (0.05, 0.045), the committed measure's 0.3122 and 0.3311 to the fourth place (band [0, 0.05]). The reading is the composition's own error against the finer MRS: in R_yy, the squeeze both contacts share (-0.312 and -0.331), then the rotations' diagonals (-0.12 to -0.13, +0.11, -0.08 to -0.10), each one-contact error under 0.07 on the same scale. The per-body lift composes nearer additive (0.192 and 0.228, its R_yy -0.19 and -0.23) and nearer the reference (0.290 and 0.326 against the lift's 0.410 and 0.429); one at a time 0.707 at (0.05, 0.045) and NaN at (0.05, 0.05); the subtraction NaN at both. Against a finer model of the same family, whose own resolution at these gaps (0.75 to 0.83 of its spacing) is in the measurement: it bounds the coarse rung's composition against that model, never hardware",
+    "measure_check": "the measure's structure checked on a known answer independent of this run (tests/oracles/test_elliptic_gates.py::test_the_additivity_measure_on_an_exactly_additive_model): for an exactly additive model with a no-contact error B the committed measure reads B's worst entry and the measure with B added back reads zero to rounding; at this case B is 0.0003, so the two measures agree"
+  }
 }

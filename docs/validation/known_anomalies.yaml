@@ -3814,7 +3814,14 @@ anomalies:
       ellipsoid of 0.95 by 0.65 mm across a 1 mm tube, both ends below the hand-over gap) were measured against a finer
       MRS of the same family: the worst entry 13 and 16 % off, the committed 10 % missed, the elliptic form at its window's
       edge and the dilated lumen about a body filling 95 % of its diameter not separated; at those gaps (0.45 to 0.68 of
-      the coarse spacing) composing the contacts one at a time or by subtraction could not be told from it. A line
+      the coarse spacing) composing the contacts one at a time or by subtraction could not be told from it. In a case
+      that separates those causes (an ellipsoid of 1.3 by 0.5 by 1.6 mm lying across a 2 mm tube's floor, two contacts on
+      one side inside the form's window, the far side off, gaps 0.35 to 0.38 of the coarse spacing) the law's
+      composition of two contacts missed its committed additivity against a finer MRS of the same family: 31 and 33 % of
+      the two-contact scale in the squeeze both contacts share, each contact's own error under 7 % on that scale and the
+      error with no contact closed 0.03 %; there a per-body lift (the body moved off its nearer contact, each contact's
+      increment added back) read nearer the finer MRS (29 and 33 % against 41 and 43 %). Which composition holds is
+      open, to be measured on further cases. A line
       contact (a cylinder's or a capsule's side) and a ring (a body nearly filling a lumen) have no form yet: a body that
       can make one is refused the hand-over written on and left out unwritten.
     severity: major
@@ -3835,6 +3842,7 @@ anomalies:
       - "tests/oracles/test_near_contact.py::test_above_the_gated_ratio_the_step_is_flagged_and_the_along_axis_miss_is_the_measured_one"
       - "tests/oracles/test_elliptic_gates.py::test_gate1_a_spheroids_rolling_and_entries_against_the_mfs_at_every_gap_below_the_handover"
       - "tests/oracles/test_elliptic_gates.py::test_gate5_two_contacts_closed_the_lift_holds_and_each_control_fails"
+      - "tests/oracles/test_elliptic_gates.py::test_gate5_separating_the_laws_additivity_is_its_measured_miss_and_the_controls_are_stated"
       - "tests/oracles/test_elliptic_contact.py::test_the_elliptic_form_is_the_compilations_equations_term_for_term"
     residual_risk: >
       For every kind but the sphere: the elliptic form was measured on prolate spheroids above a plane (aspect 2 and 4,

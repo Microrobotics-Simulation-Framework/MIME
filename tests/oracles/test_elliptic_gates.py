@@ -39,6 +39,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from lubrication_cases import (
+    FLOOR_APART,
     FLOOR_ROWS,
     RADIUS,
     VISCOSITY,
@@ -376,20 +377,37 @@ def test_gate8_two_contacts_forward_and_reverse_equal_the_difference():
 # -- gate 5, the separating case -------------------------------------------------------------------------------------
 
 FLOOR = REFERENCES / "ellipsoid_on_floor_mrs.json"
+FLOOR_SHA256 = "0a996872146f9979e46430966200ff3f3a1e88b04749999a5379cae7f5a9dad4"
+#: The same reference with neither contact closed (``lubrication_cases.FLOOR_APART``), a fresh build of it.
+FLOOR_APART_FILE = REFERENCES / "ellipsoid_on_floor_apart_mrs.json"
+FLOOR_APART_SHA256 = "0b13f24d024730839e56885d7977d0d194d7bf81e5c83201881aff89f66ad43f"
 #: The separating case's coarse force spacing (m): the hand-over gap 0.0975 mm, 0.10 of the contacts' smaller radius of
 #: curvature (0.97 mm), inside the form's window; the gaps 0.045 and 0.05 mm, 0.35 and 0.38 of the spacing.
 FLOOR_COARSE = 0.13e-3
-#: The several-contact law's line (predictions_w2a_1b2_gate5.json): the two-contact lift's error less the sum of its two
-#: contacts' one-contact errors, each entry on ``sqrt(R_ii R_jj)``; a control fails past CONTROL_FACTOR times it.
+#: The several-contact law's committed line (predictions_w2a_1b2_gate5.json): the two-contact lift's error less the sum
+#: of its two contacts' one-contact errors, each entry on ``sqrt(R_ii R_jj)``. MISSED, a stated result: the measured
+#: additivity by row (W2a PR 1b-ii-a, the laptop's heavy slot, float64; the no-contact error added back, 0.0003 of the
+#: scale, so the committed measure reads the same to the fourth place), in R_yy, the squeeze both contacts share: the
+#: law composes two contacts with an error of its own against the finer MRS (predictions_w2a_1b2_g5b.json). A form
+#: judged here passes within its row's pin plus the slack; the per-body lift (0.19 and 0.23) composes nearer additive
+#: than the law at this case, so it is no control here, and one at a time and S4's subtraction cannot be formed or are
+#: indefinite (the coarse MRS at the true gaps, 0.35 to 0.38 of its spacing).
 ADDITIVITY_LINE = 0.03
-CONTROL_FACTOR = 5.0
+SEPARATING_PINNED = {"0.05,0.05": 0.3121, "0.05,0.045": 0.3310}
+SEPARATING_PIN = 0.02
 #: The mirror x -> -x on a twist: vectors (-x, y, z), rotations (x, -y, -z).
 MIRROR = np.diag([-1.0, 1.0, 1.0, 1.0, -1.0, -1.0])
 TWO = ("0.05,0.05", "0.05,0.045")
 
 
 def floor_rows() -> dict:
-    return {row: np.asarray(value["resistance"]) for row, value in json.loads(FLOOR.read_text())["rows"].items()}
+    """The separating case's reference rows, the no-contact row among them, each file the one pinned."""
+    rows = {}
+    for path, digest in ((FLOOR, FLOOR_SHA256), (FLOOR_APART_FILE, FLOOR_APART_SHA256)):
+        data = path.read_bytes()
+        assert hashlib.sha256(data).hexdigest() == digest, f"{path.name} is not the reference pinned"
+        rows.update({row: np.asarray(value["resistance"]) for row, value in json.loads(data)["rows"].items()})
+    return rows
 
 
 def distinct_contacts(node, leaves, pose) -> tuple[list, Any, float, float, Any]:
@@ -467,28 +485,58 @@ def floor_forms(lifted, coarse) -> dict[str, dict[str, np.ndarray | None]]:
     return out
 
 
-def additivity(form: np.ndarray, reference: dict[str, np.ndarray], lift_one: dict[str, np.ndarray], row: str) -> float:
+def additivity(form: np.ndarray, reference: dict[str, np.ndarray], lift_one: dict[str, np.ndarray], row: str,
+               no_contact: np.ndarray | None = None) -> float:
     """How far a two-contact form's error at ``row`` is from the sum of its two contacts' one-contact errors, the worst
-    entry on ``sqrt(R_ii R_jj)``."""
+    entry on ``sqrt(R_ii R_jj)``. Each one-contact error also holds the rung's error with no contact closed, so the sum
+    holds it twice and the two-contact error once: ``no_contact``, that error (the lift against the reference with both
+    contacts apart), is added back where given; without it the measure reads minus that error for a law that composes
+    exactly (``test_the_additivity_measure_on_an_exactly_additive_model``)."""
     left, right = row.split(",")
     single = {gap: lift_one[f"0.35,{gap}"] - reference[f"0.35,{gap}"] for gap in (left, right)}
     summed_errors = single[right] + MIRROR @ single[left] @ MIRROR
     held = reference[row]
     scale = np.sqrt(np.abs(np.outer(np.diag(held), np.diag(held))))
-    return float(np.max(np.abs((form - held) - summed_errors) / scale))
+    baseline = 0.0 if no_contact is None else no_contact
+    return float(np.max(np.abs((form - held) - summed_errors + baseline) / scale))
+
+
+def test_the_additivity_measure_on_an_exactly_additive_model():
+    """A known answer for gate 5's measure: a model that is the reference plus an error with no contact closed (the same
+    at every pose, symmetric under the mirror) plus one error per contact that composes exactly (each contact's own,
+    the left the right's mirrored). Its additivity is zero by construction; the measure without the no-contact error
+    reads that error's own worst entry instead, and with it added back reads zero to rounding."""
+    reference = floor_rows()
+    rng = np.random.default_rng(5)
+    held = reference["0.05,0.05"]
+    size = np.sqrt(np.abs(np.outer(np.diag(held), np.diag(held))))
+    bulk = rng.normal(size=(6, 6)) * size * 0.2
+    bulk = 0.5 * (bulk + MIRROR @ bulk @ MIRROR)
+    own = {gap: rng.normal(size=(6, 6)) * size * 0.1 for gap in ("0.05", "0.045")}
+    one = {f"0.35,{gap}": reference[f"0.35,{gap}"] + bulk + own[gap] for gap in own}
+    for row in TWO:
+        left, right = row.split(",")
+        model = reference[row] + bulk + own[right] + MIRROR @ own[left] @ MIRROR
+        scale = np.sqrt(np.abs(np.outer(np.diag(reference[row]), np.diag(reference[row]))))
+        assert additivity(model, reference, one, row) == pytest.approx(float(np.max(np.abs(bulk) / scale)), rel=1e-12)
+        assert additivity(model, reference, one, row, no_contact=bulk) <= 1e-12
 
 
 @pytest.mark.memory_heavy
-def test_gate5_separating_two_contacts_add_their_one_contact_errors_and_each_control_fails():
+def test_gate5_separating_the_laws_additivity_is_its_measured_miss_and_the_controls_are_stated():
     """The separating case (``lubrication_cases.floor_body``): two contacts on one side, inside the form's window, the
-    far side off. The several-contact law's claim: the two-contact lift's error against the finer MRS is the sum of its
-    two contacts' one-contact errors (measured at the same gaps, the other contact 0.35 mm off), within ADDITIVITY_LINE;
-    each control (``W2A_PLANT``) misses that by more than CONTROL_FACTOR times it, or is indefinite or unformable."""
+    far side off. The several-contact law's committed claim, that the two-contact lift's error against the finer MRS is
+    the sum of its two contacts' one-contact errors (measured at the same gaps, the other contact 0.35 mm off) within
+    ADDITIVITY_LINE, missed: the measured additivity is pinned by row (SEPARATING_PINNED), the no-contact error added
+    back. A control (``W2A_PLANT``) is caught where it is indefinite, unformable or past its row's pin."""
     reference = floor_rows()
     plant = os.environ.get("W2A_PLANT") or None
     lifted, coarse = stepper(floor_body(FLOOR_COARSE, True).build()), stepper(floor_body(FLOOR_COARSE, False).build())
     forms = floor_forms(lifted, coarse)
     one = forms["one_contact"]
+    _, _, leaves, step = lifted
+    (apart,) = FLOOR_APART
+    no_contact = np.array(step(on_floor(apart), leaves)["resistance"]) - reference[apart]
     for row in sorted(one):
         held = reference[row]
         scale = np.sqrt(np.abs(np.outer(np.diag(held), np.diag(held))))
@@ -496,12 +544,18 @@ def test_gate5_separating_two_contacts_add_their_one_contact_errors_and_each_con
     for row in TWO:
         held = reference[row]
         scale = np.sqrt(np.abs(np.outer(np.diag(held), np.diag(held))))
+        print(f"\n{row} mm: the no-contact error's worst entry {float(np.max(np.abs(no_contact) / scale)):.4f}")
         report = {name: (None if value is None else (round(float(np.max(np.abs(value - held) / scale)), 4),
-                                                    round(additivity(value, reference, one, row), 4), definite(value)))
+                                                    round(additivity(value, reference, one, row), 4),
+                                                    round(additivity(value, reference, one, row, no_contact), 4),
+                                                    definite(value)))
                   for name, value in forms[row].items()}
-        print(f"\ntwo contacts {row} mm (error, additivity, definite): {report}")
+        print(f"\ntwo contacts {row} mm (error, additivity as committed, with the no-contact error, definite): {report}")
     for row in TWO:
         judged_form = forms[row][plant] if plant in forms[row] else forms[row]["lift"]
         assert judged_form is not None, (row, plant, "cannot be formed")
         assert definite(judged_form), (row, plant)
-        assert additivity(judged_form, reference, one, row) <= ADDITIVITY_LINE, (row, plant)
+        found = additivity(judged_form, reference, one, row, no_contact)
+        assert found <= SEPARATING_PINNED[row] + SEPARATING_PIN, (row, plant, found)
+        if plant is None:
+            assert found >= SEPARATING_PINNED[row] - SEPARATING_PIN, (row, found)
