@@ -47,8 +47,10 @@ FRICTION_RANGE = (0.01, 1.2)
 #: within which the parabola's vertex is the least loss's to the loss's own third derivative).
 CONTROL_POINTS = (25, 13)
 #: How far the gradient path's estimate and the control's may differ, as a share of the control's, before the verdict
-#: is ``confounded``: the control's bracket at its end, with room.
-AGREEMENT = 1e-4
+#: is ``confounded``: the control's own resolution, the parabola's vertex in cells of about 7 % of the coefficient (on
+#: two of twenty sliding draws the control stood 6e-4 of it from an estimate equal to the truth to 1e-6, the fix round's
+#: probe), with room.
+AGREEMENT = 2e-3
 #: The verdict claims ``identified`` only where one standard error, read from the loss's curvature on each side of
 #: the estimate apart, is within this share of it: a verdict claims no more than its standard error supports (data that
 #: never slide leave the loss flat above the threshold, a standard error of about 1e11 from that side).
