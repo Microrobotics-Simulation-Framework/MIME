@@ -81,7 +81,7 @@ type Operator = Callable[[Velocity], Velocity]
 
 #: The solve site of :func:`projected_solve`: every solve of the FVM's guarded conjugate gradient runs inside it.
 CG_SITE = register(SolveSite("fvm_cg", "cg", "mime.nodes.flow.fvm._solve.projected_solve",
-                             nodes=("ImplicitFlowNode", "OpenFlowNode")))
+                             nodes=("ImplicitFlowNode", "OpenFlowNode", "ResolvedFlowNode")))
 
 
 #: The stagnation stop, set from measurement (``STAGNATION_MEASURED``): over a window of checks of the true residual,
@@ -452,8 +452,26 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
         coupled_tap = tap + 0.0 * rhs[0][0, 0, 0]
         other = transposed(stopping)
         same = other is stopping
+        weighted: Callable[[Any], Velocity] | None = getattr(grid, "weights", None)
+        if weighted is None:
+            solved, report = lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solver(stopping),
+                                                     transpose_solve=None if same else solver(other), symmetric=same)
+            return solved, report
+        # A grid whose inner product weighs its faces (``V``, the open box's half-weighted planes): ``P A P`` is
+        # self-adjoint under that product, so its plain transpose, which reverse mode solves, is ``V (P A P) V^-1``,
+        # and its solve ``V (P A P)^-1 V^-1``: the same solve, the cotangent taken to the primal's space and back.
+        weights = weighted(rhs[0].dtype)
+        transpose_inner = solver(other)
+
+        def transpose_solve(operator: Any, pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
+            del operator  # the transposed operator: its solve is the primal operator's, weighted
+            c, block = pair
+            x, transposed_report = transpose_inner(matvec, ((c[0] / weights[0], c[1] / weights[1],
+                                                             c[2] / weights[2]), block))
+            return (weights[0] * x[0], weights[1] * x[1], weights[2] * x[2]), transposed_report
+
         solved, report = lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solver(stopping),
-                                                 transpose_solve=None if same else solver(other), symmetric=same)
+                                                 transpose_solve=transpose_solve, symmetric=False)
         return solved, report
 
 

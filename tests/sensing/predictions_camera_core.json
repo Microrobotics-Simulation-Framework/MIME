@@ -1,0 +1,245 @@
+{
+  "written": "2026-11-11, committed before the camera core's gates G3, G5 to G7, G9 to G12, G15 and the cache, corner and appearance gates ran: the sensor core (mime.sensing), route 1 on spheres, capsules, cylinders and the straight tube",
+  "phase": "camera lane PR 1, the sensor core (mime.sensing), design rows #358 (1), #359, #360",
+  "labels": "the builder's predictions, from the design's measured numbers (spike 1's box edge on a 15 px sphere; the fourth review's straight-edge simulation by radius; spike 2's jvp edge) and derivations; guesses say so",
+  "seen_before": [
+    "G1 and G2 were run while the code was written, before this file: G1 passed in both dtypes at 64 ulps of the pixel's scale and its control (k1's sign) failed 28 of the 32 cases (the 4 others undistorted); G2's first draft failed on drawn strong barrels (Newton from the distorted point left the first monotone branch), which the bracketed radial solve replaced. Their numbers here are therefore not predictions.",
+    "spike 1 (sphere, 15 px radius, float64, 160x120): the box edge 3.6 to 6.2 % per pixel in its derivative against the exact boundary integral, 0.12 to 0.32 % in silhouette motion, 0.13 % in the image; the 1 px sigmoid 81 % per pixel",
+    "the design's fourth review (a straight-edge box filter against an exact circle): derivative error 2.6 % at 15 px, 5.5 % at 6, 8 % at 3, 11 % at 1.5; a 90-degree corner 24 % in coverage with one straight edge",
+    "spike 2 (the jvp edge, flat shading, float64): 1.3 % in the silhouette band, 2.8 to 3.9 % per pixel",
+    "the frame probe (Actions run 43007629485): every variant finite in both dtypes"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU (CI's lanes; the laptop for development runs only)",
+    "sizes_and_parameters": "160x120 detectors unless a gate says otherwise; pinhole without distortion where an exact conic is the oracle, Brown-Conrady (k1 -0.05, k2 0.01) elsewhere; a sphere off the optical axis at a projected radius of 15, 6 and 3 px; script A's tube (inner radius 3.175 mm, wall 1.6 mm) seen across from 100 mm",
+    "seeds_and_draws": "Hypothesis draws at physical scales (lens coefficients a calibration gives, poses within the field), never filtered; noise over 400 keys"
+  },
+  "gate_3_silhouettes": {
+    "claim": "a sphere's covered area and coverage centroid match its analytic conic's area and centroid; a move of a tenth of a pixel moves the coverage centroid by a tenth of a pixel",
+    "kind": "bounds",
+    "case": "tests/sensing/test_silhouettes.py: render of an opaque sphere, 15 px radius, no distortion",
+    "prediction": {"band": [0.0, 0.003], "unit": "relative area error; centroid within 0.01 px; the sub-pixel move within 2 % of 0.1 px", "basis": "measured-before (spike 1's 0.13 % image error)", "why": "the box edge is exact where the edge is straight across a pixel; the curvature's error integrates to second order"},
+    "metric": "area, centroid, centroid shift",
+    "control": {"plant": "the principal point moved half a pixel (CAMERA_PLANT=principal-half); a hard edge, coverage 1 where the centre's edge function is negative (CAMERA_PLANT=hard-edge)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N each", "runs": 30, "clean_expected": "0/N", "resolution": "the centroid oracle's: from discriminating_range.py on the principal point's shift"},
+    "if_wrong": "an area error above 0.3 % means the edge's distance or normal is wrong (the jvp line), not its curvature",
+    "cannot_discriminate_if": "the sphere is centred on a pixel's centre and moved along a row (a hard edge's area can then step by symmetry): the gate moves it off a pixel's centre"
+  },
+  "gate_15_box_edge": {
+    "claim": "the box edge's coverage and its derivative per pixel against the exact pixel areas and the exact boundary integral, by silhouette radius; exact disc coverage exact",
+    "kind": "bounds",
+    "case": "tests/sensing/test_box_edge.py: an opaque sphere off-axis at 15, 6 and 3 px radius, pinhole without distortion, derivatives in the centre's x, z, depth and the focal length",
+    "prediction": {
+      "box_derivative_per_pixel_rel_l2": {"15": [0.02, 0.08], "6": [0.04, 0.12], "3": [0.06, 0.2]},
+      "box_coverage_per_pixel_rel_l2": {"15": [0.0, 0.03], "6": [0.0, 0.06], "3": [0.0, 0.12]},
+      "box_motion_error": {"15": [0.0, 0.005], "6": [0.0, 0.015], "3": [0.0, 0.04]},
+      "disc_coverage_per_pixel_abs": [0.0, 1e-5],
+      "disc_derivative_per_pixel_rel_l2": [0.0, 0.005],
+      "unit": "relative L2 over the silhouette's band; motion: the derivative of the equivalent radius and the darkness centroid as one vector's relative error",
+      "basis": "measured-before (spike 1, the fourth review)",
+      "why": "the straight edge's error is the silhouette's curvature across a pixel, growing as the radius falls; the exact disc is exact up to the oracle's own quadrature"
+    },
+    "metric": "per-pixel relative L2 of the derivative image in the band; motion of the silhouette",
+    "control": {"plant": "the sigmoid at w = 1 px in place of the box edge (CAMERA_PLANT=sigmoid)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "the per-pixel line's: from discriminating_range.py on an error planted in the edge's distance"},
+    "if_wrong": "outside the bands: the jvp line's distance or normal is off; read which parameter",
+    "cannot_discriminate_if": "the oracle's own floor (quadrature, the boundary integral's sampling) reaches the line: stated beside each line"
+  },
+  "gate_5_noise": {
+    "claim": "the frame's counts over noise keys have the expected mean and the variance gain^2 (signal + read^2) + 1/12 (quantisation)",
+    "kind": "equality",
+    "case": "tests/sensing/test_noise.py: a uniform transmission through Response(full_scale, gain, offset, read_noise), 400 keys",
+    "prediction": {"band": [-4.0, 4.0], "unit": "standard errors of the mean and of the variance", "basis": "derived", "why": "Gaussian shot and read noise, quantisation's uniform rounding"},
+    "metric": "z-scores of the mean and the variance",
+    "control": {"plant": "the oracle's gain 10 % high (CAMERA_PLANT=gain)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "the variance test's: a gain error caught every draw from about 2 % (derived: 400 keys of 256 pixels)"},
+    "if_wrong": "the noise's variance or its seeding is wrong",
+    "cannot_discriminate_if": "the signal saturates (the gate's levels stay under full scale)"
+  },
+  "gate_6_grazing": {
+    "claim": "at a tangent ray and beyond it, every chord, coverage and their derivatives are finite",
+    "kind": "acceptance",
+    "case": "tests/sensing/test_grazing.py: rays built tangent to a sphere, a capsule and a cylinder, and just off them",
+    "prediction": {"value": "all finite", "basis": "derived", "why": "the grazing root takes a softplus; the edge's distance a floored root"},
+    "metric": "isfinite of values and gradients",
+    "control": {"plant": "the hard clamp sqrt(max(h2, 0)) in place of the softplus (CAMERA_PLANT=hard-clamp)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic: the tangent ray is built exactly"},
+    "if_wrong": "a NaN at grazing in a translucent body's image",
+    "cannot_discriminate_if": "the built ray is not exactly tangent in the run's dtype (the gate checks its own h2 is zero)"
+  },
+  "gate_7_media": {
+    "claim": "a translucent sphere in tinted water in a tinted tube wall transmits exp(-mu_w (L_o - L_l) - mu_f (L_l - L_s) - mu_s L_s) at interior pixels; an opaque body is coverage; a robot on the floor within its tolerance raises no flag, one through the wall does",
+    "kind": "equality",
+    "case": "tests/sensing/test_media.py",
+    "prediction": {"band": [0.0, 1e-10], "unit": "relative error of the transmission, float64 (float32: 2e-5)", "basis": "derived", "why": "the product form is the displaced-medium rule's exponent exactly while the child lies inside its parent"},
+    "metric": "relative error at pixels whose centres are 2 px or more inside every silhouette or outside it",
+    "control": {"plant": "multiplied transmittances, the child's own attenuation not less its parent's (CAMERA_PLANT=no-displacement); an opaque body as an infinite attenuation (CAMERA_PLANT=infinite)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N each", "runs": 30, "clean_expected": "0/N", "resolution": "the transmission line's: from discriminating_range.py on the water's attenuation"},
+    "if_wrong": "a medium is counted twice or not displaced",
+    "cannot_discriminate_if": "the sphere's and the water's attenuations are equal (no displacement shows): they differ by 10x"
+  },
+  "gate_9_gradients": {
+    "claim": "the darkness centroid's and the covered area's autodiff derivatives in the body's position and in the focal length, principal point and k1 agree with central differences of the same render",
+    "kind": "equality",
+    "case": "tests/sensing/test_gradients.py: the sphere in script A's tube, 160x120, Brown-Conrady on, both dtypes",
+    "prediction": {"band": [0.0, 1e-4], "unit": "relative error, float64 (float32: 3e-2)", "basis": "guess", "why": "the box edge is C1 in its distance, so aggregates are smooth; central differences at 1e-3 px of motion"},
+    "metric": "relative error of each aggregate's derivative",
+    "control": {"plant": "the ray table held (no derivative through the intrinsics: CAMERA_PLANT=held-rays)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic"},
+    "if_wrong": "a derivative path through the rays or the edge's line is cut",
+    "cannot_discriminate_if": "a parameter the image does not move (the gate's parameters each move the centroid by a pixel or more per unit step)"
+  },
+  "gate_10_conventions": {
+    "claim": "the camera prim holds the four conventions as hand numbers give them, and USD's own camera (GfCamera's frustum) projects a point where ours does",
+    "kind": "equality",
+    "case": "tests/scene/test_camera_prim.py",
+    "prediction": {"band": [0.0, 1e-6], "unit": "pixels (GfCamera against ours), relative 1e-6 (hand numbers, float32 attributes)", "basis": "derived", "why": "the conversions are exact arithmetic; USD stores apertures as float32"},
+    "metric": "differences",
+    "control": {"plant": "+y up taken as +y down (CAMERA_PLANT=y-up); apertures in scene units, not tenths (CAMERA_PLANT=units)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N each", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic"},
+    "if_wrong": "a convention is written wrong",
+    "cannot_discriminate_if": "a point on the optical axis (the gate projects points off it)"
+  },
+  "gate_11_refusals": {
+    "claim": "the ellipsoid, the box, the screw and the helix are refused for route 1 with their reasons; route='sampled' is refused; a stale and a traced cache are refused",
+    "kind": "acceptance",
+    "case": "tests/sensing/test_refusals.py",
+    "prediction": {"value": "each refused with its code", "basis": "derived"},
+    "metric": "the refusal's code",
+    "control": {"plant": "a closed form registered for the screw (CAMERA_PLANT=screw-form)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic"},
+    "if_wrong": "a kind without a closed form is imaged silently",
+    "cannot_discriminate_if": "n/a"
+  },
+  "gate_12_bits": {
+    "claim": "programs without a camera are unchanged",
+    "kind": "equality",
+    "cases": "script A's arm and the energy ledger's case, float64 and float32, base release/v0.3.0 against this head, one CPU, one BLAS thread (bit_compare.py on a probe)",
+    "prediction": "every array np.array_equal",
+    "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "one parameter one ulp up: differs"},
+    "basis": "derived: the PR adds a package and a scene module and changes no node, entry or program"
+  },
+  "gate_cache": {
+    "claim": "the static cache is refused when any number it was made from changes, and a cached frame equals the uncached one",
+    "kind": "equality",
+    "case": "tests/sensing/test_cache.py: Hypothesis draws of one number moved (camera, pose, a static subject's setting, appearance)",
+    "prediction": {"band": [0.0, 1e-12], "unit": "cached against uncached, float64 (float32 1e-6); every moved number refused", "basis": "derived"},
+    "metric": "refusal; difference",
+    "control": {"plant": "the key leaves out the principal point (CAMERA_PLANT=key-without-cx)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic per draw; the draws reach cx in every run"},
+    "if_wrong": "a stale structure image would be used silently",
+    "cannot_discriminate_if": "a draw that moves nothing (the strategy moves by at least a part in a thousand)"
+  },
+  "gate_corners": {
+    "claim": "a cylinder seen side-on: corner sub-samples bring its corner pixels' coverage within 3 % of the exact rectangle's",
+    "kind": "bounds",
+    "case": "tests/sensing/test_corners.py: a cylinder across the view, pinhole without distortion, its ends' corners off pixel centres",
+    "prediction": {"band": [0.0, 0.03], "unit": "absolute coverage error at corner pixels (with 4x4 sub-samples)", "basis": "derived: 24 % with one straight edge, sub-pixel corners a sixteenth of the area", "why": "a straight edge in each sub-pixel; only the corner's own sub-pixel is wrong"},
+    "metric": "largest absolute coverage error over the corner pixels",
+    "control": {"plant": "no sub-samples (CAMERA_PLANT=no-corners)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic"},
+    "if_wrong": "the corner test misses a corner pixel",
+    "cannot_discriminate_if": "a corner on a pixel's centre (the gate places them off)"
+  },
+  "gate_appearance": {
+    "claim": "a declared appearance wins over the stage's display primvars, which win over the default; the source is reported per subject and the defaulted ones named in the note; display primvars are read with inheritance",
+    "kind": "equality",
+    "case": "tests/sensing/test_appearance.py and tests/scene/test_camera_prim.py",
+    "prediction": {"value": "exact", "basis": "derived"},
+    "metric": "sources and transmission",
+    "control": {"plant": "the stage read before the declaration (CAMERA_PLANT=stage-first)", "environment_variable": "CAMERA_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "deterministic"},
+    "if_wrong": "an appearance from the wrong source",
+    "cannot_discriminate_if": "the declared and the stage's appearance are the same (the gate makes them differ)"
+  },
+  "outcomes": {
+    "written": "2026-11-11, after the gates ran (CI on #251 at 8400be3, the evidence probe at 3eaa84f, run 43033788290)",
+    "changes_after_seeing_data": [
+      "G2 (it ran before this file): the first draft's Newton from the distorted point left the first monotone branch on strong barrels; the bracketed radial solve replaced it; the oracle is restricted to the first branch, its tolerance scaled by the inverse's condition, and a flag where the oracle reaches the pixel only at a condition above 4 is allowed (FLAG_CONDITION).",
+      "G9 as committed (the whole frame's darkness, the translucent tube's silhouettes in it) failed in both dtypes (float64 2.7e-3 of the derivatives' size against 1e-4; float32 4.6 against 3e-2): central differences of the softplus-smoothed chord at a translucent silhouette need steps under GRAZING R. Re-scoped to the sphere's darkening and an opaque tube; on CI the opaque tube then failed on a centroid whose derivatives all vanish, judged against itself: judged on the aggregate's natural scale.",
+      "G15's disc float32 floor (64 ulps) missed: 6e-5 at 15 px, traced to the float32 rounding of the camera's rotation (the image moves about eps x f px); three reformulations of the disc's area left it unchanged to three digits; the floor is 8 eps f px. Float64 holds at the oracle's floor.",
+      "G7's float32 line (2e-5) missed on CI (3.9e-5): a chord's rounding times the attenuations; the line is 16 eps (sum of mu) x 0.1 m (4e-4 in float32).",
+      "The corner gate's 3 % missed: 13.8 % at the caps' outlines, which this view sees within a pixel of edge-on (their ellipses about half a pixel across); the line is 15 % there with the new thin_cap flag checked; the sides hold 3 %.",
+      "Row #361 (after this file): exact disc coverage a sphere's default, always windowed; G9 runs through it in a declared window.",
+      "Test files renamed (their basenames are other folders'): test_projection, test_gradients, test_refusals -> test_camera_*; oracles -> camera_oracles."
+    ],
+    "gates": {
+      "gate_3_silhouettes": {
+        "measured": "area, centroid and the 0.1 px move within their lines, both dtypes (CI on #251)",
+        "control": "principal-half 30/30 (clean 0/30), hard-edge 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_15_box_edge": {
+        "measured": {
+          "box_edge derivative per pixel": {
+            "15": 0.0143,
+            "6": 0.0277,
+            "3": 0.0646
+          },
+          "coverage per pixel": {
+            "15": 0.0048,
+            "6": 0.0115,
+            "3": 0.0279
+          },
+          "motion": {
+            "15": 0.0023,
+            "6": 0.0033,
+            "3": 0.0301
+          },
+          "disc derivative per pixel": 0.0001,
+          "disc coverage": "at the oracle's floor (4.6e-6 float64); float32 6e-5, the pose's rounding"
+        },
+        "control": "sigmoid 30/30 (0/30)",
+        "range": "the edge's distance moved 0.023 px caught every draw",
+        "verdict": "derivative better than predicted at 15 and 6 px (outside the bands' low ends), within at 3 px; coverage and motion within; disc's float32 floor missed and set on the pose's rounding"
+      },
+      "gate_5_noise": {
+        "measured": "within 4 standard errors, both dtypes",
+        "control": "gain 30/30 (0/30)",
+        "range": "a 1.5 % gain error caught every draw (predicted about 2 %)",
+        "verdict": "held"
+      },
+      "gate_6_grazing": {
+        "measured": "finite; bounded and nonzero after the fix",
+        "control": "first probe 0/30 (blind); after the fix 30/30 (clean 0/30), run 43042527357",
+        "verdict": "missed as committed (the control could not fail); fixed"
+      },
+      "gate_7_media": {
+        "measured": "float64 within 1e-10; float32 3.9e-5 on CI",
+        "control": "no-displacement 30/30 (0/30), infinite 30/30 (0/30)",
+        "range": "7.9e-10 relative in the water's attenuation",
+        "verdict": "float32 line missed and set on a chord's rounding x the attenuations"
+      },
+      "gate_9_gradients": {
+        "measured": "within both lines after the re-scope",
+        "control": "held-rays 20/20 (0/20)",
+        "verdict": "missed as committed; re-scoped (see changes)"
+      },
+      "gate_10_conventions": {
+        "measured": "hand numbers to 1e-6 (offsets 1e-5); GfCamera within 1e-3 px",
+        "control": "y-up 30/30 (0/30), units 30/30 (0/30)",
+        "range": "an aperture off by 1.0e-6 relative",
+        "verdict": "held"
+      },
+      "gate_11_refusals": {
+        "control": "screw-form 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_12_bits": {
+        "measured": "script_a float64, script_a float32, ledger float64: every array equal (base a7df764, head 3eaa84f)",
+        "verdict": "held; the harness's own controls not re-run"
+      },
+      "gate_cache": {
+        "control": "key-without-cx 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_corners": {
+        "measured": "sides within 3 %; caps' outlines 13.8 %",
+        "control": "no-corners 30/30 (0/30)",
+        "verdict": "missed (3 % predicted): a cap within a pixel of edge-on; thin_cap flag added, line 15 % there"
+      },
+      "gate_appearance": {
+        "control": "stage-first 30/30 (0/30)",
+        "verdict": "held"
+      },
+      "gate_2_undistortion_control": {
+        "control": "first probe 4/30 with its clean arm 4/30 (blind; a flake); after the fix: run 43042527357, arm detect-g2 (its rate in the pull request)",
+        "range": "a ray turned 1.4e-14 rad caught every draw"
+      },
+      "gate_1_projection_control": {
+        "control": "k1-sign 30/30 (0/30)",
+        "range": "a k1 error of 1e-12 (the lowest probed)"
+      }
+    }
+  }
+}

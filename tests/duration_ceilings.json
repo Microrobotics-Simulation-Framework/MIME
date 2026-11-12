@@ -1,7 +1,7 @@
 {
  "written_by": "scripts/duration_triage.py: do not edit by hand",
  "generated": "2026-11-09",
- "source": "35 push and manual runs of ci.yml on release/v0.3.0, runs 42157721518 to 42538025458, Python 3.12 and 3.14, cold only; the ceilings of three tests whose cost moved, refitted on 2026-11-10 by the same rule from the cold Python 3.12 and 3.14 reports of runs 42551949655 to 42841389484 (the 16-shard table: 40 reports of one test, 30 of each of the other two), scripts/duration_triage.py's own functions",
+ "source": "35 push and manual runs of ci.yml on release/v0.3.0, runs 42157721518 to 42538025458, Python 3.12 and 3.14, cold only; the ceilings of three tests whose cost moved, refitted on 2026-11-10 by the same rule from the cold Python 3.12 and 3.14 reports of runs 42551949655 to 42841389484 (the 16-shard table: 40 reports of one test, 30 of each of the other two), scripts/duration_triage.py's own functions; the ceiling of tests/saved/test_shape_suite.py's probes-share test refitted on 2026-11-12 by the same rule (scripts/duration_triage.py's own functions) from the cold Python 3.12 and 3.14 reports of the 16 push runs 42967420822 to 43164499364 (32 reports: median 8.8 s, 95th percentile 220 s, largest 226 s); the ceiling of tests/saved/test_shape_suite.py's probes-share test refitted again on 2026-11-12, now with the PR run 43184773791 of the split (a pull request run, cold, its 3.12 and 3.14 reports) added to the window, by the same rule (scripts/duration_triage.py's own functions) from the cold Python 3.12 and 3.14 reports of the 17 push runs 42967420822 to 43184773791 (34 reports: median 9.5 s, 95th percentile 321 s, largest 471 s)",
  "rule": "the larger of 3 times the test's median and 1.2 times its 95th percentile over the cold reports of the source, at least 60 s",
  "ceilings": {
   "tests/assets/test_asset_integrity.py::test_control_without_the_lock_the_same_processes_fail_or_download_twice": 60.0,
@@ -634,7 +634,7 @@
   "tests/saved/test_shape_suite.py::test_the_planted_tangent_fails_at_each_jittered_draw_and_the_clean_probe_passes[truncation-0.22]": 60.0,
   "tests/saved/test_shape_suite.py::test_the_planted_tangent_fails_at_each_jittered_draw_and_the_clean_probe_passes[truncation-0.75]": 60.0,
   "tests/saved/test_shape_suite.py::test_the_planted_tangent_fails_at_each_jittered_draw_and_the_clean_probe_passes[truncation-10.0]": 60.0,
-  "tests/saved/test_shape_suite.py::test_the_share_of_probes_whose_difference_cannot_discriminate_is_bounded_over_the_suites_draws": 104.0,
+  "tests/saved/test_shape_suite.py::test_the_share_of_probes_whose_difference_cannot_discriminate_is_bounded_over_the_suites_draws": 386.0,
   "tests/saved/test_switch_harness.py::test_control_a_guard_no_point_reaches_false_or_a_nonzero_norm_at_zero_fails": 176.0,
   "tests/saved/test_switch_harness.py::test_each_switch_measures_within_its_declared_order[screw.focus]": 60.0,
   "tests/saved/test_switch_harness.py::test_each_switch_measures_within_its_declared_order[screw.seam]": 90.0,
@@ -1329,7 +1329,7 @@
   "tests/saved/test_shape_suite.py::test_the_planted_tangent_fails_at_each_jittered_draw_and_the_clean_probe_passes[truncation-0.22]": 0.2,
   "tests/saved/test_shape_suite.py::test_the_planted_tangent_fails_at_each_jittered_draw_and_the_clean_probe_passes[truncation-0.75]": 2.6,
   "tests/saved/test_shape_suite.py::test_the_planted_tangent_fails_at_each_jittered_draw_and_the_clean_probe_passes[truncation-10.0]": 0.1,
-  "tests/saved/test_shape_suite.py::test_the_share_of_probes_whose_difference_cannot_discriminate_is_bounded_over_the_suites_draws": 7.9,
+  "tests/saved/test_shape_suite.py::test_the_share_of_probes_whose_difference_cannot_discriminate_is_bounded_over_the_suites_draws": 9.5,
   "tests/saved/test_switch_harness.py::test_control_a_guard_no_point_reaches_false_or_a_nonzero_norm_at_zero_fails": 7.3,
   "tests/saved/test_switch_harness.py::test_each_switch_measures_within_its_declared_order[screw.focus]": 11.0,
   "tests/saved/test_switch_harness.py::test_each_switch_measures_within_its_declared_order[screw.seam]": 29.9,

@@ -72,6 +72,8 @@ class FlagLayout:
     meaning: str
     name: str | None = None
     limits: tuple[float, ...] | None = None
+    #: Whether a run that raised it warns of it, as a ``Flag`` that warns (a flag laid out by the build, not declared).
+    warns: bool = False
 
     @property
     def path(self) -> str:

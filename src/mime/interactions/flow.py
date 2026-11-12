@@ -3,7 +3,7 @@
 openings (decisions 7 and 8; A2's hybrid rows): ``Inflow``, a flux given at an opening; ``Windkessel``, the RCR
 whose pressure is affine in the opening's flux over each stage; ``Valve``, a closed valve (no flux); and
 ``SharedDistal``, two openings draining through their own resistances into one shared distal resistance, a law over
-several openings (the record's "F2's rows, 2", item 1). A law at an opening binds the medium and the opening's surface
+several openings (the record's "F2's rows, 2", item 1); and ``Darcy``, a porous structure's drag on the fluid in it. A law at an opening binds the medium and the opening's surface
 (``exp.attach(Windkessel(...), medium=blood, surface=tube.end)``); a law over several binds them all, as a tuple or a
 region's openings (``surface=(tree.end_0, tree.end_1)``, ``surface=tube.lumen``), and a law given another count of
 openings than it binds is refused. Each builds no node: the flow holds it in its own step, through its
@@ -32,12 +32,13 @@ from mime.registry import (
     Registration,
     RoleKind,
     SupportRow,
+    Value,
     convention,
     register_interaction,
     requires,
 )
 from mime.units import Acceleration, Compliance, Frequency, HydraulicResistance, Quantity, VolumeFlux
-from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_WAVEFORM, Definiteness, EnergyClass
+from mime.vocabulary import FLOW_BODY_FORCE, FLOW_OPENING, FLOW_POROUS, FLOW_WAVEFORM, Definiteness, EnergyClass
 
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
@@ -281,3 +282,48 @@ class SharedDistal(_OpeningLaw):
 
 
 __all__ = ["BodyForce", "Inflow", "SharedDistal", "Valve", "Windkessel"]
+
+
+#: Where Darcy's law is not in a gradient gate in full: its geometry's derivative carries the band's ripple.
+_DARCY_GRADIENT = GradientRecord(
+    where="in the structure's geometry (its centre, axis, radius and length), through the flow's step that holds it",
+    reason="a geometry derivative through the band carries the band's ripple within a cell (the flow's own geometry "
+           "line), and the region's exact distance and its share of the fluid have kinks (its medial set, its axis, "
+           "where its band meets the wall's fluid); in the permeability the gate checks it exact",
+    route="the flow's geometry derivative through a traced spacing or an offset indicator (the wall's own route)")
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class Darcy(Interaction):
+    """The drag of a porous structure on the fluid that permeates it, Darcy's law in Brinkman's form, a resistivity
+    ``mu / K`` on the fluid inside the structure's region: ``exp.attach(Darcy(), medium=blood, structure=clot)``. The
+    structure's geometry kind gives the region (a ``Plug``), its ``permeability`` value the isotropic ``K`` (m^2),
+    declared with its reason (``exp.declare("clot.permeability", um2(0.01), reason=...)``: no OpenMaterica record
+    holds a permeability yet). It builds no node: the medium's flow holds it in its own step, its resistivity added to
+    the wall's, on its share of the fluid where it meets the wall's band; its loss is booked under its own id
+    (``darcy:clot``). Static: the region and its permeability are the run's, sampled each step from its leaves."""
+
+    name = "darcy"
+    version = "0.1.0"
+    differentiability = GradientStatus.UNVERIFIED
+    gradient = _DARCY_GRADIENT
+    references = ("Darcy1856", "Brinkman1947")
+    family = None
+    builds = {"": ()}
+    roles = {"medium": RoleKind.MEDIUM, "structure": RoleKind.STRUCTURE}
+    id_roles = ("structure",)
+    energy_class = EnergyClass.DISSIPATIVE
+    support = (SupportRow(None, {"medium": requires(accepts=[FLOW_POROUS.name])},
+                          note="a medium whose flow field holds a porous region in its step"),)
+    values = {"permeability": Value("structure", "permeability")}
+    setting_roles = {}
+
+    @override
+    def plan(self, ctx: PlanContext) -> Plan:
+        return Plan(nodes=(), values=dict(self.values),
+                    registrations=(Registration("medium", FLOW_POROUS.name, self.name, "structure"),))
+
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        return None

@@ -909,6 +909,8 @@ def run_layout(plans: PlanSet) -> Layout:
         if speed is not None:
             flags.append(speed)
         flags += contact_flags(plans, plan)
+        flags += porous_flags(plan)
+        flags += registration_flags(plans, plan)
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
@@ -944,6 +946,32 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
                       f"joint{unlimited}), which the dynamic chain does not apply: the run went where the real "
                       f"mechanism would not. A backstop read after the run, never a refusal; a build check names a "
                       f"spinner that would drive a joint there, and its fix", SPEED_LIMIT, limits)
+
+
+def porous_flags(plan: EntryPlan) -> list[FlagLayout]:
+    """The flag of a flow holding porous regions (a law registering one, ``mime.interactions.Darcy``), read from the
+    field its node holds for them, warned of after a run that raised it: a region outside what was measured. None for
+    a dynamics holding none."""
+    from mime.dynamics.flow._fvm import POROUS_LAW
+    from mime.nodes.flow.fvm._porous import POROUS_FLAG, POROUS_FLAG_MEANING
+
+    if not any(registration.kind == POROUS_LAW for registration in plan.registrations):
+        return []
+    return [FlagLayout(plan.owner, plan.registered.cls.label(), plan.node_name(""), POROUS_FLAG, POROUS_FLAG_MEANING,
+                       warns=True)]
+
+
+def registration_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
+    """The flags a dynamics' node raises for the partners registered with it (``registration_flags(registrations)``
+    where the dynamics has one: the FVM's for the bodies it resolves on its grid), each owned by the entry that
+    registered the partner and read from a field the node holds, so they add nothing to the graph."""
+    held = getattr(plan.entry, "registration_flags", None)
+    if plan.section is not Section.DYNAMICS or not callable(held):
+        return []
+    labels = {entry.owner: entry.registered.cls.label() for entry in plans.entries}
+    named = cast(Callable[[Sequence[object]], Sequence[tuple[str, str, str]]], held)(plan.registrations)
+    return [FlagLayout(owner, labels.get(owner, owner), plan.node_name(""), field, meaning)
+            for owner, field, meaning in named]
 
 
 #: The names of the flags a body held by its hull raises: where a point is held; where the solve's sweeps left more
@@ -1390,6 +1418,7 @@ class BuiltExperiment:
                  for flag in plan.registered.cls.raises
                  if flag.warns and not plan.joined
                  and flag.raised_by(getattr(plan.entry, "rung", None), bool(plan.members), plan.entry)}
+        warns |= {flag.path for flag in self.layout.flags if flag.warns}
         for read in result.flags:
             if read.path in warns and read.was_raised:
                 warn_at_script(f"{read.flag.owner} ({read.flag.entry}): {read.text(meaning=True)}", UserWarning)
