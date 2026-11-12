@@ -93,6 +93,8 @@ def pytest_configure(config: pytest.Config) -> None:
     config.pluginmanager.register(_child_cache, "mime-child-cache")
     config.pluginmanager.register(_collection_guard, "mime-collection-guard")
     config.pluginmanager.register(_fixture_first, "mime-fixture-first")
+    if config.pluginmanager.hasplugin("xdist"):
+        config.pluginmanager.register(_fixture_first.Scheduling(), "mime-fixture-first-scheduling")
 
 
 MEMORY_HEAVY = "memory_heavy"

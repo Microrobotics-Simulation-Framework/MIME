@@ -57,6 +57,7 @@ from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Any, cast
 
+import jax
 from jax.extend.core import Jaxpr, JaxprEqn
 from maddening.core.node import SimulationNode
 
@@ -237,10 +238,22 @@ def step_function(node: SimulationNode) -> Callable[..., object]:
     return cast(Callable[..., object], cast(Any, node).update)
 
 
+def trace_fresh(function: Callable[..., object], *arguments: object) -> Jaxpr:
+    """``function`` traced to a jaxpr with JAX's caches emptied first, so that each equation's frames are those of this trace.
+
+    JAX keeps small jaxprs it builds again and again (the combiner of a scatter, for one) in caches that outlive a trace,
+    and an equation of such a jaxpr carries the frames of the trace that first built it. A scan that read them would
+    take its scope from whichever code in the process traced first: ``tests/scene/test_tube_tree.py`` run before the
+    scan put ``ExactUnion.evaluate`` into the scope of 27 steps that never run it, and two raw sites with it. The caches
+    JAX drops here are the process's compiled programs too; the scan is run on a worker of its own, once."""
+    cast(Any, jax).clear_caches()
+    return make_jaxpr(function, *arguments)
+
+
 def traced_step(configuration: str, name: str, node: SimulationNode, state: object, given: object,
                 leaves: object) -> TracedStep:
     """One node's step traced with no switch context open, from the state, inputs and ``params`` leaves the graph
-    gives it."""
+    gives it, on fresh caches (:func:`trace_fresh`)."""
     step = step_function(node)
     dt = cast(float, cast(Any, node).delta_t)
 
@@ -251,8 +264,8 @@ def traced_step(configuration: str, name: str, node: SimulationNode, state: obje
         return step(state, given, dt)
 
     if "params" in inspect.signature(step).parameters:
-        return TracedStep(configuration, name, type(node), make_jaxpr(with_leaves, state, given, leaves))
-    return TracedStep(configuration, name, type(node), make_jaxpr(plain, state, given))
+        return TracedStep(configuration, name, type(node), trace_fresh(with_leaves, state, given, leaves))
+    return TracedStep(configuration, name, type(node), trace_fresh(plain, state, given))
 
 
 # -- the source ----------------------------------------------------------------------------------------------------
@@ -1007,4 +1020,4 @@ __all__ = ["CAPPING", "EXEMPT", "GUARDS", "ITEM", "MODULE_LEVEL", "RAW_OPERATION
            "Frame", "Function", "GuardSite", "ListedSite", "SwitchScan", "TracedStep", "caps", "declaration_problems",
            "declarations", "declared_owners", "equation_frames", "equations", "item_form", "listed_sites",
            "module_aliases", "scan_definition", "scan_module_statements", "scan_problems", "scan_switches",
-           "step_function", "traced_step", "tree_aliases"]
+           "step_function", "trace_fresh", "traced_step", "tree_aliases"]
