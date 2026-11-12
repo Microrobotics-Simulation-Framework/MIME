@@ -21,5 +21,9 @@
     "claim": "what each control does to the pinned test, one run each (deterministic: one run is every run); no control rate is claimed while the clean form misses its committed line",
     "prediction": "one_at_a_time and subtraction fail it (unformable or indefinite at (0.05, 0.05)); per_body_lift passes it (0.19 and 0.23 under the pins: no control at this case)"
   },
-  "outcomes": null
+  "outcomes": {
+    "_note": "added after round 5 ran (Actions run 43152554683, probe/w2a-1b2-r5 at 4a574b3); the predictions above are unchanged",
+    "gate_5_separating_as_pinned": "held: passed clean on a runner, the additivity 0.3121 and 0.3310 (the laptop's to the fourth place), the no-contact error 0.0003; its peak alone in a fresh process 5.38 GiB (5512 MiB; band [1, 8]); 388 s on the runner",
+    "gate_5_controls_as_pinned": "held: one_at_a_time and subtraction fail it (not definite at (0.05, 0.05)); per_body_lift passes it (0.192 and 0.228): no control at this case. One run each, deterministic; no rate claimed."
+  }
 }
