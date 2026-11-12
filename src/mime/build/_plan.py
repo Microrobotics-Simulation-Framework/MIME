@@ -1056,6 +1056,13 @@ class _Planner:
             density = self.resolver.known(f"{medium}.density") if self.resolver is not None else None
             viscosity = plan.values.get("viscosity")
             range_ = next((r for r in cls.reynolds if r.rung in (rung, None)), None)
+            upper = range_.upper if range_ is not None else None
+            # An entry whose line moves with what it resolves on a grid (Drag.Penalty's, with the cells across the
+            # body's radius) gives it at the run's values.
+            at_run = getattr(plan.entry, "watched_upper", None)
+            if upper is not None and callable(at_run):
+                frame = self.exchange_frame_of(medium)
+                upper = cast(Callable[[float, Hull | None, Any], float], at_run)(upper, hull, frame)
             missing = tuple(clause for clause, absent in (
                 (f"{body}'s hull gives a radial reach (its hull is not one part of a kind that does)", diameter is None),
                 (f"{medium}.density is declared or read: exp.declare('{medium}.density', ..., reason=...)",
@@ -1066,7 +1073,7 @@ class _Planner:
                 hull.kind.name if hull is not None else None, diameter,
                 float(density.value) if density is not None and isinstance(density.value, float) else None,
                 float(viscosity.value) if viscosity is not None and isinstance(viscosity.value, float) else None,
-                range_.upper if range_ is not None else None, range_.basis if range_ is not None else None, missing,
+                upper, range_.basis if range_ is not None else None, missing,
                 turning[0] if turning is not None else None, turning[1] if turning is not None else ""))
         return (*found, *self.containment_plans())
 

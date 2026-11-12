@@ -5,13 +5,19 @@ committed first (``tests/flow/predictions_f4.json``). The controls honour ``MIME
 - **The Re -> 0 ladder** (gate 1): the steady sphere's drag against Haberman and Sayre at 3 and 6 cells a radius, the
   radius the drag reads (smaller by a shift in cells, which falls with N: the shape-and-position form, never a bound on
   the nominal radius).
-- **The density ratios** (gate 2): lagged, R3's case at Re 76 is stable and smooth at the measured range's edges, 0.3
-  and 1.4; the rigid-interior shortcut, its control, diverges at 1.2.
+- **The lagged coupling** (gate 2, re-measured at the default N = 6 in PR 259's fix round): R3's case at Re 76 runs
+  unstopped and bounded at ratios 0.3 and 1.4; its stability is judged at rest (gate 2b): at the largest step the
+  refusal admits (its margin's share of the edge measured in dt/tau) the loop decays by energy; past the edge the
+  build refuses (drag.penalty-lagged) and a run that gets there is stopped by its body's motion (gate G). The
+  rigid-interior shortcut diverges at 1.2.
 - **The displaced share** (gate 3): a neutral sphere in a free box driven by a uniform force accelerates with the
   fluid (control: the share left out).
 - **The books** (gate 4): metered, every receiver's books close, the drag judged at one velocity by its host.
 - **The ripple and the position derivative** (gates 5 and 6), **float32** (gate 7), the spacing rule and the
-  refusals."""
+  refusals.
+- **The fix round's** (predictions in ``tests/flow/predictions_f4_fix.json``): the part's place and the window (F1),
+  the share's couple off the centre of mass (F2), FVM() naming no scheme (F3), the moving start (F4), the interior's
+  change telescoping (F5), the Reynolds watch (R), the near-wall (W) and density-ratio (D) flags."""
 
 from __future__ import annotations
 
@@ -23,9 +29,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from resolved_cases import (WATER_RHO, FreeBox, HeldSphere, a_cell_off, deeper_band, free_node, haberman_sayre,
-                            indicator_centroids, patched, plant, r3_experiment, r3_history, rigid_interior, seed,
-                            own_indicator, share_at_the_centre, shift_cells, stable, start_at_rest)
+from resolved_cases import (TAU_R, TAU_T, WATER_RHO, FreeBox, HeldSphere, a_cell_off, at_rest, deeper_band, free_node,
+                            haberman_sayre, indicator_centroids, load_reversed, own_indicator, patched, plant,
+                            r3_experiment, r3_history, rigid_interior, seed, share_at_the_centre, shift_cells, stable,
+                            start_at_rest)
 
 from dataclasses import dataclass
 
@@ -59,23 +66,66 @@ def test_the_sphere_reads_haberman_and_sayre_at_a_radius_smaller_by_a_shift_that
     assert 0.0 < shifts[6.0] < shifts[3.0], shifts
 
 
-# -- gate 2: the density ratios at Re 76, lagged -----------------------------------------------------------------------
+# -- gate 2: R3 at the default N, and the lagged edge at rest ----------------------------------------------------------
 @pytest.mark.parametrize("ratio", [0.3, 1.4])
-def test_the_lagged_coupling_is_stable_and_smooth_at_the_measured_ranges_edges(dtype, ratio):
-    """Gate 2: R3's case (a sphere of 3 cells a radius on a periodic tube's axis, Re 76's drive, from rest, 200 steps of
-    IMEX Euler), lagged, the load the penalty's plus the interior's momentum change: at density ratios 0.3 and 1.4, the
-    range down to which the rung admits the lagged coupling, the body's speed is finite, under twice the flow's largest
-    and its step-to-step change never alternates in sign over four steps in a row (a lagged loop ringing or
-    diverging; the moving body's ripple dips once a cell). The plant is the rigid-interior shortcut."""
-    if plant("RIGID_INTERIOR"):
-        with patched(ResolvedFlowNode, "stepped", rigid_interior(ratio, ResolvedFlowNode.stepped)):
-            velocities, top = r3_history(ratio)
+def test_r3_runs_unstopped_and_bounded_at_the_default_n(dtype, ratio):
+    """Gate 2, re-measured at the default N = 6: R3's case (a sphere of 6 cells a radius on a periodic tube's axis, Re
+    76's drive, from rest, IMEX Euler at dt 6e-5 s, inside the refusal's line at both ratios: dt/tau_t 0.082 at ratio
+    0.3, where the refusal admits 0.8 of the measured 0.119, and 0.018 at 1.4) runs its 200 steps
+    unstopped (no motion guard, no CFL stop), finite, the body's speed under twice the flow's largest. The gate's old
+    metric, four alternating changes in a row, read the start-up ring at ratio 0.3 as unstable though it decays (the
+    refuting review's run); and no growth of the body's velocity can be read in a run driven at Re 76 (the developing
+    flow and the cells the body crosses, near the Nyquist frequency, move it by themselves: measured, every velocity
+    metric tried flagged every arm, ratio 1.4 at N = 3 included), so the coupling's stability is judged at rest (gate
+    2b) and this gate holds the operating point. The plant reverses the body's load."""
+    if plant("LOAD_SIGN"):
+        with patched(ResolvedFlowNode, "stepped", load_reversed(ResolvedFlowNode.stepped)):
+            velocities, top = r3_history(ratio, dt=6e-5, cells=6)
     else:
-        velocities, top = r3_history(ratio)
-    held, longest = stable(velocities, top)
-    print(f"F4 gate 2 [{dtype}] ratio {ratio}: stable {held}, the longest run of alternating changes {longest}, V "
-          f"{velocities[-1]:.4g} m/s, the flow's largest {top:.4g} m/s")
-    assert held, (longest, velocities[-1], top)
+        velocities, top = r3_history(ratio, dt=6e-5, cells=6)
+    ran = bool(np.all(np.isfinite(velocities))) and math.isfinite(top)
+    largest = float(np.max(np.abs(velocities))) if ran else math.nan
+    print(f"F4 gate 2 [{dtype}] ratio {ratio} at N = 6: ran {ran}, the body's largest speed {largest:.4g} m/s, the "
+          f"flow's {top:.4g} m/s")
+    assert ran, (velocities[-1], top)
+    assert largest < 2.0 * top, (largest, top)
+
+
+def _admitted(ratio: float, cells: int) -> tuple[float, float]:
+    """The largest step the lagged refusal admits for R3's uniform sphere at ``ratio`` and N ``cells`` with the fluid's
+    inertia stored, and the measured edge's step past it by a quarter (dt = x tau, the binding mode's)."""
+    from mime.dynamics.flow._resolved import LAGGED_MARGIN, lagged_edge
+
+    steps = [edge * ratio * tau for mode, tau in (("translation", TAU_T), ("rotation", TAU_R))
+             for edge in (lagged_edge(mode, True, cells, ratio),) if edge is not None]
+    return LAGGED_MARGIN * min(steps), 1.25 * min(steps)
+
+
+def test_the_lagged_loop_at_rest_decays_at_the_largest_step_the_refusal_admits(dtype):
+    """Gate 2b (B1): the lagged loop's stability, judged where it can be (at rest, by energy: body and fluid only lose
+    it there, so a body whose kinetic energy exceeds its start's had it made by the coupling). R3's uniform sphere at
+    a density ratio of 0.3 (the least the rung admits) at the default N = 6, quiescent, every twist component
+    perturbed, at the largest step the refusal admits (drag.penalty-lagged: its margin's share of the edge measured
+    there): its energy over the last quarter is under its start's. The plant steps a quarter past the measured edge (the
+    refusal set aside): its energy grows past its start's, or the motion guard stops it."""
+    admitted, past = _admitted(0.3, 6)
+    if plant("PAST_EDGE"):
+        with _without_the_lagged_refusal():
+            energy, stop = at_rest(0.3, past, cells=6)
+    else:
+        energy, stop = at_rest(0.3, admitted, cells=6)
+    print(f"F4 gate 2b [{dtype}]: dt {admitted:.4g} s admitted ({past:.4g} past the edge): the energy over its "
+          f"start's {energy:.3g}, stop {stop}")
+    assert stop is None and energy < 1.0, (energy, stop)
+
+
+def test_a_step_past_the_lagged_edge_is_refused_naming_the_step_it_admits(float64):
+    """B1's refusal: R3's neutral sphere in Stokes flow at dt 7e-3 s (dt/tau_t 2.9, dt/tau_r 3.0, where the refuting
+    review's run went to 6e7 m/s) is refused at build (drag.penalty-lagged), naming the largest step the measured edges
+    admit and the affine coupling."""
+    found = _refusals(r3_experiment(1.0, dt=7e-3, reynolds=0.1, stokes=True))
+    assert "drag.penalty-lagged" in found and "dt=... at most " in found["drag.penalty-lagged"] and \
+        "affine" in found["drag.penalty-lagged"], found
 
 
 def test_the_rigid_interior_shortcut_diverges_where_the_field_formulation_holds(float64):
@@ -260,6 +310,41 @@ def test_a_body_nearer_the_wall_than_three_cells_is_flagged_each_step(float64, s
     assert ("water.flow.body_0_near_wall" in raised) is (start > 0.0), (gap, raised)
 
 
+@pytest.mark.parametrize("speed", [0.2, 0.0], ids=["past the line", "at rest"])
+def test_the_penalty_rungs_reynolds_watch_flags_a_body_past_its_line_at_the_runs_n(float64, speed):
+    """The fix round's gate R (M6): the penalty rung's Reynolds line, 150 at the default N (the highest particle
+    Reynolds number N = 6 was measured at, where its drag is 6.6 % off N = 9's), falls as N squared below it: at 3 cells
+    a radius 37.5. The post-run watch is computed (the rung reads the medium's viscosity) and is raised for a body at
+    0.2 m/s (Re about 70 by its diameter), not for one at rest."""
+    from mime.units import s as seconds
+
+    result = r3_experiment(1.0, dt=1.5e-4, reynolds=0.1, stokes=True, velocity=(0.0, 0.0, speed)).build().run(
+        seconds(2 * 1.5e-4))
+    (watch,) = [read for read in result.watches if read.entry.startswith("drag")]
+    print(f"F4 fix R: {watch.text()}")
+    assert watch.upper is not None and math.isclose(watch.upper, 150.0 * (3.0 / 6.0) ** 2), watch.upper
+    assert watch.status == ("above" if speed > 0.0 else "within"), watch.text()
+
+
+@pytest.mark.parametrize("ratio", [25.0, 1.0], ids=["past the measured", "inside"])
+def test_a_density_ratio_outside_the_measured_range_is_flagged_each_step(float64, ratio):
+    """The fix round's gate D (M6): the lagged coupling's edge moves with the body's density ratio and was measured over
+    a range of them (``LAGGED_RATIOS``); a body outside it (here 25 times the fluid's density) raises its drag's flag at
+    every step (its edge taken as the nearest measured ratio's), one inside raises none. The node reads the ratio from
+    the body's mass matrix."""
+    from mime.units import s as seconds
+
+    built = r3_experiment(ratio, dt=1.5e-5, reynolds=0.1, stokes=True).build()
+    declared = {flag.path: flag.owner for flag in built.layout.flags}
+    result = built.run(seconds(3 * 1.5e-5))
+    raised = {read.path for read in result.flags if read.was_raised}
+    read = float(np.asarray(result.final["water.flow"]["body_0_ratio"]))
+    print(f"F4 fix D: ratio {ratio}, read {read:.6g}, flags raised {sorted(raised)}")
+    assert math.isclose(read, ratio, rel_tol=1e-9), read
+    assert declared.get("water.flow.body_0_ratio_unmeasured") == "drag:ball", declared
+    assert ("water.flow.body_0_ratio_unmeasured" in raised) is (ratio > 20.0), raised
+
+
 # -- gate 4: the books ----------------------------------------------------------------------------------------------
 def _gift(original):  # noqa: ANN001, ANN202 - the plant: the body's penalty load taken at half the twist solved at
     def body_books(self, p, fields, velocity, index):  # noqa: ANN001, ANN202
@@ -411,6 +496,15 @@ def test_a_grid_coarser_than_the_thinnest_feature_line_is_refused(float64):
 
     found = _refusals(r3_experiment(1.0, spacing=m(1e-4)))
     assert "drag.penalty-thin" in found, found
+
+
+def test_feature_cells_written_beside_a_coarser_written_spacing_is_refused(float64):
+    """The review's m4: FVM(spacing=...) written wins over the drag's feature_cells, so a feature_cells the written
+    spacing does not give would be ignored in silence: refused, naming both routes."""
+    from mime.units import m
+
+    found = _refusals(r3_experiment(1.0, feature_cells=6, spacing=m(6.25e-5)))
+    assert "drag.penalty-spacing" in found and "drag.penalty-thin" not in found, found
 
 
 def test_rk3_is_refused_for_a_resolved_body(float64):

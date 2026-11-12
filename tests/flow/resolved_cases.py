@@ -90,17 +90,21 @@ class HeldSphere:
         h = self.layout.spacing
         return jnp.sum(state["velocity_z"]) * h ** 3 / (self.layout.cells[2] * h)
 
+    #: The twist the columns are solved at (m/s, rad/s): the steady step is linear in it, and a small one keeps the
+    #: held body's motion a step (its step being 1 s) under the node's guard of a cell.
+    UNIT = 1e-6
+
     def column(self, mode: int, centre: Any = None) -> Any:
         """The resistance's column for the unit rigid mode ``mode`` (0 to 5: translations, then rotations about the
-        centre), flux-free, the share included: ``-(load)``."""
+        centre), flux-free, the share included: ``-(load)``, solved at :attr:`UNIT` and scaled."""
         dtype = run_dtype()
-        twist = jnp.zeros(6, dtype=dtype).at[mode].set(1.0)
+        twist = jnp.zeros(6, dtype=dtype).at[mode].set(self.UNIT)
         moved = self.step(self.pose(centre), twist, jnp.asarray(0.0, dtype=dtype))
         driven = self.step(self.pose(centre), jnp.zeros(6, dtype=dtype), jnp.asarray(1.0, dtype=dtype))
         alpha = self.flux(moved) / self.flux(driven)
         load = moved["body_0_load"] - alpha * driven["body_0_load"]
         share = moved["body_0_share"] - alpha * driven["body_0_share"]
-        return -(load + share)
+        return -(load + share) / self.UNIT
 
     def at_rest(self, drive: Any) -> tuple[Any, Any]:
         """The held body's steady load and its displaced share at rest under the drive ``drive`` (m/s^2, a vector)."""
@@ -162,7 +166,8 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
                   length: Any = None, opened: bool = False, tree: bool = False, reynolds: float = 76.0,
                   stokes: bool = False, unnamed: bool = False, at: Any = None,
                   start: tuple[float, float, float] = (0.0, 0.0, 0.0),
-                  velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Experiment:
+                  velocity: tuple[float, float, float] = (0.0, 0.0, 0.0),
+                  spin: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Experiment:
     """The coupling spike's R3 case at Re 76: a sphere of radius 0.1875 D (3 cells a radius at D/h 16) free on a
     periodic tube's axis (D = 1 mm, 4 D long) in water, the fluid driven by the uniform force that gives the empty
     tube a mean speed of 76 nu / D; the body's density ``ratio`` times the fluid's; from rest. ``tree``: the same
@@ -194,7 +199,7 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
                       parts={"shell": Part(Sphere(radius=m(radius)) if hull is None else hull,
                                            **({"at": m(at)} if at is not None else {}))},
                       initial=State(position=m(start), orientation=(1.0, 0.0, 0.0, 0.0),
-                                    velocity=m_per_s(velocity), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+                                    velocity=m_per_s(velocity), angular_velocity=rad_per_s(spin))))
     exp.declare("ball.mass", kg(mass), reason="the density ratio the gate holds")
     exp.declare("ball.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
     if opened:
@@ -208,10 +213,10 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
     return exp
 
 
-def r3_history(ratio: float, steps: int = 200, dt: float = 1.5e-4) -> tuple[np.ndarray, float]:
-    """R3's case run ``steps`` steps: the body's axial velocity after each, and the flow's largest speed at the end;
-    a run that goes non-finite ends there (its velocities after it NaN)."""
-    built = r3_experiment(ratio, dt=dt).build()
+def r3_history(ratio: float, steps: int = 200, dt: float = 1.5e-4, cells: int = 3) -> tuple[np.ndarray, float]:
+    """R3's case run ``steps`` steps at ``cells`` a radius: the body's axial velocity after each, and the flow's largest
+    speed at the end; a run that is stopped or goes non-finite ends there (its velocities after it NaN)."""
+    built = r3_experiment(ratio, dt=dt, feature_cells=cells).build()
     held: list[float] = []
 
     def hook(chunk: Any) -> None:
@@ -225,6 +230,39 @@ def r3_history(ratio: float, steps: int = 200, dt: float = 1.5e-4) -> tuple[np.n
     velocities = np.full(steps, np.nan)
     velocities[:len(held)] = held
     return velocities, top
+
+
+#: R3's sphere: its radius (m), and its translation's and rotation's relaxation times at a density ratio of one (s):
+#: m / (6 pi mu a K), K Haberman and Sayre's at a/R 0.375 (3.21), and a uniform sphere's I / (8 pi mu a^3).
+R3_RADIUS = 0.1875e-3
+TAU_T = WATER_RHO * 4.0 / 3.0 * math.pi * R3_RADIUS ** 3 / (6.0 * math.pi * WATER_MU * R3_RADIUS * haberman_sayre(0.375))
+TAU_R = 0.4 * WATER_RHO * 4.0 / 3.0 * math.pi * R3_RADIUS ** 5 / (8.0 * math.pi * WATER_MU * R3_RADIUS ** 3)
+
+
+def at_rest(ratio: float, dt: float, cells: int = 6, steps: int = 160) -> tuple[float, str | None]:
+    """The lagged loop in a quiescent fluid: R3's sphere (a uniform one, its density ``ratio`` times the fluid's) on a
+    periodic tube's axis with no drive, every component of its twist perturbed (10 um/s, and that over the radius),
+    ``steps`` steps of ``dt`` at ``cells`` a radius. Its kinetic energy's largest over the last quarter over its start's
+    (in a quiescent viscous fluid body and fluid only lose energy, so above one the coupling made it), and the code of a
+    stop or refusal the run ended on (``None`` for a run that ran)."""
+    v0, w0 = 1e-5, 1e-5 / R3_RADIUS
+    mass = ratio * WATER_RHO * 4.0 / 3.0 * math.pi * R3_RADIUS ** 3
+    inertia = 0.4 * mass * R3_RADIUS ** 2
+    built = r3_experiment(ratio, dt=dt, feature_cells=cells, reynolds=0.0, velocity=(v0, v0, v0), spin=(w0, w0, w0)).build()
+    twists: list[np.ndarray] = []
+
+    def hook(chunk: Any) -> None:
+        twists.append(np.asarray(chunk.state["ball"]["twist"], dtype=np.float64).reshape(6))
+
+    try:
+        built.run(s(steps * dt), hook=hook, chunk=s(dt))
+    except Exception as error:  # noqa: BLE001 - a run that grew is stopped by the guard or the CFL: the gate reads it
+        codes = [str(getattr(r, "code", "")) for r in getattr(error, "refusals", [])]
+        return math.inf, ",".join(codes) or type(error).__name__
+    held = np.asarray(twists)
+    energy = 0.5 * mass * np.sum(held[:, :3] ** 2, axis=1) + 0.5 * inertia * np.sum(held[:, 3:] ** 2, axis=1)
+    start = 0.5 * mass * 3 * v0 ** 2 + 0.5 * inertia * 3 * w0 ** 2
+    return float(np.max(energy[3 * steps // 4:]) / start), None
 
 
 def stable(velocities: np.ndarray, top: float, run: int = 4) -> tuple[bool, int]:
@@ -270,6 +308,14 @@ def free_node(cells: int, radius_cells: float, at: tuple[float, float, float] = 
                             density=WATER_RHO, tube_centre=(side / 2, side / 2, 0.0), tube_axis=(0.0, 0.0, 1.0),
                             tube_radius=10.0 * side, scheme="imex_euler", convection=False,
                             bodies=[sphere_spec(radius_cells * h, h, at=at)], **settings)
+
+
+def load_reversed(original: Callable[..., Any]) -> Callable[..., Any]:
+    """The body's load delivered with its sign reversed (the plant): the drag pushes the body on, and it runs away."""
+    def stepped(self: Any, p: Any, state: Any, inputs: Any, dt: float) -> Any:
+        held, parts = original(self, p, state, inputs, dt)
+        return {**held, "body_0_load": -held["body_0_load"]}, parts
+    return stepped
 
 
 def own_indicator(original: Callable[..., Any]) -> Callable[..., Any]:
@@ -376,6 +422,7 @@ class FreeBox:
 
 
 __all__ = ["BAND", "WATER_MU", "WATER_RHO", "FreeBox", "HeldSphere", "a_cell_off", "deeper_band", "effective_ratio",
-           "free_node", "indicator_centroids", "own_indicator", "share_at_the_centre", "start_at_rest",
+           "free_node", "indicator_centroids", "own_indicator", "share_at_the_centre", "start_at_rest", "at_rest",
+           "R3_RADIUS", "TAU_R", "TAU_T", "load_reversed",
            "haberman_sayre", "patched", "plant", "r3_experiment", "r3_history", "rigid_interior", "seed",
            "shift_cells", "stable", "sphere_spec"]

@@ -164,6 +164,7 @@ drag.penalty-kind             user
 drag.penalty-lagged           user
 drag.penalty-motion           user
 drag.penalty-scheme           user
+drag.penalty-spacing          user
 drag.penalty-thin             user
 drag.rft-coefficients         user
 drag.rft-indefinite           user

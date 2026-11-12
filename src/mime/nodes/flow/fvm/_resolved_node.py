@@ -5,9 +5,10 @@ load delivered back to it.
 **The coupling is lagged, declared** (the coupling spike's R3): a step solves the field with each body's penalty driving
 its interior to the twist the body had at the step's start, and delivers the load the solved field puts on it, which the
 body takes as its background load in the same step (the flow is stepped before the bodies: media before bodies in the
-canonical order). R3 measured this stable from a density ratio of 1.4 down to 0.3 at Re 76 with the field formulation
-of the load. The one-pass affine response, which pairs the exchange at one twist and closes the energy exactly, is the
-next form (the one elimination of bodies and openings).
+canonical order). Its loop is stable up to an edge in the step against the body's relaxation times, measured at rest
+and refused past it at build (``drag.penalty-lagged``, the drag's validity line gives the edges); a run past it is
+stopped here (the guard below). The one-pass affine response, which pairs the exchange at one twist and closes the
+energy exactly, is the next form (the one elimination of bodies and openings).
 
 **A body's load** (B8, point 5): the penalty's force and torque at the solved field, ``rho h^3 sum nu/K (u' - u_b)``,
 plus the interior's momentum and angular momentum change, ``(Q' - Q)/dt``, ``Q' = rho h^3 sum chi u'`` on the step's
@@ -44,6 +45,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, override
 
+import jax
 import numpy as np
 from jax import Array
 from jaxtyping import Float
@@ -172,8 +174,9 @@ class ResolvedFlowNode(ImplicitFlowNode):
             "the load the solved field puts on it in the same step"),
         limitations=(
             "A periodic box only: no openings, the flow driven by a body force on the fluid",
-            "The lagged coupling was measured stable from a density ratio of 1.4 down to 0.3 at Re 76 (the coupling "
-            "spike's R3); its exchange is not paired at one twist, so its unpaired work is the coupling's own residual",
+            "The lagged coupling is stable up to an edge in dt over the body's relaxation times, measured at rest "
+            "against the density ratio and N (the build refuses a step past it); its exchange is not paired at one "
+            "twist, so its unpaired work is the coupling's own residual",
             "A body is resolved where its thinnest feature holds the cells the build's line asks; a body within three "
             "cells of the wall is flagged each step (the free body's measured edge: the near-wall resolved-body "
             "phase's), and bodies are kept apart by no law of this node (closer than two cells their bands overlap)",
@@ -329,20 +332,21 @@ class ResolvedFlowNode(ImplicitFlowNode):
                   index: int) -> tuple[Array, Array]:
         """Body ``index``'s motion in the step, in cells (its solid's farthest point's speed at the step's start times
         ``dt / h``), and its gap to the tube's wall, in cells (its part's enclosing sphere's, from the tube's own
-        axis)."""
-        h = as_run_array(p["spacing"])
+        axis). Held out of every derivative: a report and a flag's and a stop's condition, never an edge's value (and
+        its norms have no derivative at zero, where a body at rest starts)."""
+        (pose, twist, h, place, shape, axis, origin, centre, radius) = jax.lax.stop_gradient((
+            pose, twist, as_run_array(p["spacing"]), as_run_array(p[f"body_{index}_at"]), dict(body.parameters),
+            self.vessel_axis(p), as_run_array(p["origin"]), as_run_array(p["tube_centre"]),
+            as_run_array(p["tube_radius"])))
         position, turn = pose_turn(pose)
-        place = as_run_array(p[f"body_{index}_at"])
-        shape = body.parameters
         part = shape["radius"] + 0.5 * shape["height"] if "height" in shape else shape["radius"]
         part = part + jnp.sqrt(jnp.sum(jnp.asarray(shape["centre"]) ** 2))
         reach = jnp.sqrt(jnp.sum(place * place)) + part
         speed = jnp.sqrt(jnp.sum(twist[:3] ** 2)) + jnp.sqrt(jnp.sum(twist[3:] ** 2)) * reach
-        axis = self.vessel_axis(p)
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
-        offset = position + as_run_array(p["origin"]) + turn @ place - as_run_array(p["tube_centre"])
+        offset = position + origin + turn @ place - centre
         across = offset - jnp.dot(offset, axis) * axis
-        gap = (as_run_array(p["tube_radius"]) - jnp.sqrt(jnp.sum(across * across)) - part) / h
+        gap = (radius - jnp.sqrt(jnp.sum(across * across)) - part) / h
         return speed * dt / h, gap
 
     @staticmethod
@@ -416,7 +420,14 @@ class ResolvedFlowNode(ImplicitFlowNode):
                    if f"body_{index}_motion" in state]
         past = [(index, motion) for index, motion in motions if not motion <= MOTION_LINE]
         if step < 0 or not past:
-            return super().stop_problem(state)
+            held = super().stop_problem(state)
+            if held is None or not motions:
+                return held
+            c = self.constants()
+            moved = ", ".join(f"{c[f'body_{index}_name']}'s solid {motion:.3g} cells" for index, motion in motions)
+            return dataclasses.replace(held, message=f"{held.message}; at that step {moved} in the step (a lagged "
+                                                     f"coupling past its edge drives the flow past the line too: "
+                                                     f"the drag's validity line gives its edge)")
         index, motion = max(past, key=lambda held: held[1] if math.isfinite(held[1]) else math.inf)
         c = self.constants()
         name, law = c[f"body_{index}_name"], c[f"body_{index}_law"]
