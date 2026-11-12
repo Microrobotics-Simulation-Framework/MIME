@@ -1,0 +1,30 @@
+{
+  "written": "2026-11-12, committed after the separating gate 5 missed and before its diagnostic ran (the commit that adds this file is the timestamp): whether the miss is the metric's or the law's",
+  "phase": "W2a PR 1b-ii-a, gate 5's separating case, diagnostic",
+  "labels": "the builder's, from the separating run's numbers (predictions_w2a_1b2_gate5.json's outcomes) and the arithmetic of the metric; the sizes below are guesses where they say so",
+  "seen_before": [
+    "the separating case (laptop heavy slot, float64): the lift's worst entry against the finer MRS 0.410 and 0.429 with two contacts closed, 0.237 and 0.260 with one; the committed additivity 0.312 and 0.331; the per-body lift's 0.192 and 0.228",
+    "the first case (a body of 0.95 x 0.65 x 0.65 mm, coarse s 0.088 mm = 0.135 of its least semi-axis): two-contact errors 0.13 and 0.16",
+    "the separating case's coarse rung: s 0.13 mm = 0.26 of the body's least semi-axis (0.5 mm)"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "the laptop's heavy slot through the probe launcher's local route (the reference row), the coarse builds in the same run",
+    "sizes_and_parameters": "as predictions_w2a_1b2_gate5.json; one more pose, both contacts 0.35 mm off (the centre at (0, -0.937957) mm, beyond twice the opening's band, so no increment), its reference by the same generator at 0.06 mm and blob 0.1 (a fresh build of the same reference)",
+    "seeds_and_draws": "none"
+  },
+  "gate_5_no_contact_error": {
+    "claim": "the coarse rung's error with no contact closed (E0, the lift against the finer MRS at the apart pose) is large at this spacing, and is what the committed metric counted once too often",
+    "kind": "estimates",
+    "prediction": {"band": [0.15, 0.45], "unit": "E0's worst entry on sqrt(R_ii R_jj) of the two-contact reference, at the entries where the committed additivity is worst", "basis": "guess", "why": "one-contact errors of 0.24 to 0.26 at gaps where the elliptic form's own miss on spheroids is about 0.29 at worst on its own scale, and a coarse rung at 0.26 of the body's least semi-axis"}
+  },
+  "gate_5_additivity_with_the_baseline": {
+    "claim": "with the no-contact error added back, E2 - E1(-x) - E1(+x) + E0 (each entry on sqrt(R_ii R_jj) of the two-contact reference), the several-contact law adds no error of its own",
+    "kind": "bounds against a finer model of the same family (never hardware)",
+    "prediction": {"band": [0.0, 0.05], "unit": "worst entry, each two-contact row", "basis": "derived plus a guess", "why": "the spike's non-additivity 0.1 to 0.4 %, plus the no-contact error's change between the three heights of the body's centre (-1.34, -1.13, -0.94 mm, nearly evenly spaced, so a trend linear in the height cancels; its curvature unmeasured, guessed at a few per cent)"},
+    "control": {"plant": "the three controls of gate 5, their forms corrected the same way", "expected_rate": "each past 0.15 (five times the committed line), or indefinite, or unformable, deterministic (one run is every run)", "clean_expected": "the lift within the band"},
+    "if_wrong": "the corrected additivity past 0.05: the law composes two contacts with an error of its own (the soft least gap, the shared opening, the coarse rung at two opened contacts at once), which this PR states as measured and pins, with MIME-ANO-154's two-contact sentence saying so",
+    "cannot_discriminate_if": "E0 is small (under 0.05): then the committed metric's miss is not the baseline, and the composition's own error is the reading"
+  },
+  "outcomes": null
+}

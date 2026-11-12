@@ -110,11 +110,14 @@ def across_tube(spacing: float, near_contact: bool | None, blob: float = ACROSS_
 FLOOR_AXES = (1.3e-3, 0.5e-3, 1.6e-3)
 FLOOR_ROWS = {"0.05,0.05": (0.0, -1.341641e-3), "0.05,0.045": (4.246e-6, -1.344730e-3),
               "0.35,0.05": (0.227326e-3, -1.133789e-3), "0.35,0.045": (0.234479e-3, -1.133254e-3)}
+#: The separating case with neither contact closed, both 0.35 mm off: the coarse rung's error with no contact, which
+#: each one-contact row's error also holds.
+FLOOR_APART = {"0.35,0.35": (0.0, -0.937957e-3)}
 
 
 def on_floor(row: str) -> Any:
-    """The pose of gate 5's separating case at ``row`` (:data:`FLOOR_ROWS`)."""
-    x, y = FLOOR_ROWS[row]
+    """The pose of gate 5's separating case at ``row`` (:data:`FLOOR_ROWS` or :data:`FLOOR_APART`)."""
+    x, y = {**FLOOR_ROWS, **FLOOR_APART}[row]
     return jnp.asarray((x, y, 0.0, 1.0, 0.0, 0.0, 0.0))
 
 
