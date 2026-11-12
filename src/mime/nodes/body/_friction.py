@@ -251,12 +251,12 @@ def power_floor(dtype: Any) -> float:
 FRICTION_LINE = 1e-3
 #: The cone's residual (:func:`cone_residual`) over the hold's change at the held points past which a frictional step
 #: raises ``unconverged``: chosen so that every step past :data:`FRICTION_LINE` raises it. Measured through the node's
-#: own hold (W2b's fix round: each kind's draws on a tube's floor against 4,000 sweeps, 1,000 a seed): at seed 101,
-#: where it was chosen, the least residual of a step past the line was 6.1e-5 (FL-9) and 1.8e-4 (the box); at four
-#: further seeds, both dtypes, every step past the line raised it (FL-9 255 of 3,577 held draws, the box 66 of 3,659),
-#: none silent, the least such residual 3.5e-5. It also raises it on steps within the line: FL-9's flag rate is 9.8 %
-#: against a true 7.1 %, the box's 2.5 % against 1.8 %, a cylinder's 1.3 % against 0.2 %.
-FRICTION_CONVERGED = 1e-5
+#: own hold (W2b's fix round: each kind's draws on a tube's floor against 4,000 sweeps, 1,000 a seed, both dtypes):
+#: first at 1e-5, chosen at one seed (the least residual of a step past the line 6.1e-5, FL-9) and raised on every step
+#: past the line at four more at the declared counts, but at a quarter of the counts (the control) one ellipsoid draw
+#: 1.8e-3 of its change from the solution read 9.3e-6 (3.9e-6 in float32); so 2e-6, validated at five fresh seeds
+#: (ROUND5). It also rises on steps within the line (the shares are FRICTION_SWEEPS's).
+FRICTION_CONVERGED = 2e-6
 
 
 def cone_residual(coupling: Array, start: Array, forces: Array, traction: Traction) -> Array:
