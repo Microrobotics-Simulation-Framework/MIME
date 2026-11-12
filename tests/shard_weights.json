@@ -1,5 +1,5 @@
 {
- "source": "CI runs 43126570717 (469304c), 43130649375 (72e9dd8), 43164499364 (7c762f4) and 43172901124 (e107244), pushes with every shard cold, the median over their twenty lanes (a file a run did not yet have is judged over the runs that did, below); the 3.12 lane of e107244's shard 6, cancelled at 30 minutes, takes the 3.13 lane's report of that shard from the same run; the 19 files that a run did not yet have (the camera's sensing tests and four more) are the median over the lanes of the runs that had them, scripts/shard_weights.py's own functions, since a median over all twenty lanes would count the missing runs as 0 s; test_shape_suite.py split in two (2026-11-12): the tube tree file's row is the median over the lanes of the same four runs, taken from those runs' reports with its seven tests read as belonging to it; tests/flow/test_one_elimination.py (#270, in no measured run yet) at 1100, its tests' summed time on four workers in the merge's local run (a loaded laptop), so that a stress run gives it a part of its own",
+ "source": "CI runs 43126570717 (469304c), 43130649375 (72e9dd8), 43164499364 (7c762f4) and 43172901124 (e107244), pushes with every shard cold, the median over their twenty lanes (a file a run did not yet have is judged over the runs that did, below); the 3.12 lane of e107244's shard 6, cancelled at 30 minutes, takes the 3.13 lane's report of that shard from the same run; the 19 files that a run did not yet have (the camera's sensing tests and four more) are the median over the lanes of the runs that had them, scripts/shard_weights.py's own functions, since a median over all twenty lanes would count the missing runs as 0 s; test_shape_suite.py split in two (2026-11-12): the tube tree file's row is the median over the lanes of the same four runs, taken from those runs' reports with its seven tests read as belonging to it; tests/flow/test_one_elimination.py (#270, in no measured run yet) at 1100, its tests' summed time on four workers in the merge's local run (a loaded laptop), so that a stress run gives it a part of its own; tests/flow/test_point_history.py raised from 147 to 2000 for #270's fix round's gate 14 to 1500 steps (its rows' 5 to 12 min a run on a runner, one pass in each dtype, beside the lagged arms and the ringing tests), which no measured run holds yet: unweighed, its shard (run 43201488089's 17) and its stress part (run 43201488713's 4) ran past their jobs' limits",
  "over": 0.0,
  "tests_over": 1.0,
  "seconds": {
@@ -194,7 +194,7 @@
   "tests/flow/test_one_elimination.py": 1100,
   "tests/flow/test_point_bodies.py": 980,
   "tests/flow/test_point_couple.py": 136,
-  "tests/flow/test_point_history.py": 147,
+  "tests/flow/test_point_history.py": 2000,
   "tests/flow/test_port_laws.py": 19,
   "tests/flow/test_resolved_bodies.py": 1107,
   "tests/flow/test_womersley_flow.py": 15,
