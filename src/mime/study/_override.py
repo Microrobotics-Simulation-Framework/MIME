@@ -74,6 +74,15 @@ def _variants(built: BuiltExperiment, axes: Sequence[Axis]) -> list[Refusal]:
     return found
 
 
+def _built(axis: Axis) -> Refusal:
+    return Refusal(
+        "override.structural", RefusalClass.USER,
+        f"{axis.path} is a kind's setting that is not one number, which the nodes built from the kind hold as built: "
+        f"each of its values is a build of its own, which a run on the built step is not",
+        f"this needs a rebuild: a study, which builds each value, `Study(exp).sweep(grid({{{axis.path!r}: [...]}}), "
+        f"duration=...)`, or a new experiment with the kind written again, `Experiment.based_on(...)`")
+
+
 def _outside(axis: Axis, value: object, declarations: Sequence[Any]) -> Refusal:
     held = range_of(axis, declarations)
     assert held is not None
@@ -151,6 +160,7 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
     axes = {resolve(path, declarations): value for path, value in overrides.items()}
     controller = built.plans.controller
     refusals = _variants(built, list(axes))
+    refusals += [_built(axis) for axis in axes if axis.built]
     refusals += [_outside(axis, value, declarations) for axis, value in axes.items()
                  if outside_range(axis, value, declarations)]
     if controller is not None and controller.mode is Mode.CALLBACK:

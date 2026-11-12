@@ -1,30 +1,33 @@
 """Route 1, the closed form: each shape's chord along a ray and its edge function, in the shape's own frame, on
 per-ray arrays (a component each: no ``(N, 3)`` intermediates).
 
-A form gives, for rays ``o + t d`` (``|d| = 1``):
+A form gives, for rays ``o + t d`` (``|d| = 1``, ``t >= 0``: a ray starts at the pinhole, so nothing behind the camera is
+imaged):
 
-- ``interval``: where the ray is inside, ``(t_in, t_out)``, empty where ``t_out <= t_in``; its chord is the length
-  between them. The grazing square root is taken of a declared softplus (``GRAZING``), so the chord and its
-  derivatives stay finite at a tangent ray and beyond it.
-- ``edge``: an edge function ``g`` that is negative where the ray meets the body, zero on its silhouette and positive
-  beyond, vanishing there linearly. Only its zero set and its gradient matter: the pixel integration reads a straight
-  edge at ``g / |grad g|`` pixels with normal ``grad g / |grad g|``, the gradient by ``jvp`` along the ray table's
-  derivatives.
-- ``pieces``: the edge functions ``edge`` is composed of (a capped cylinder's two caps, its side and its span), so that
-  a pixel two of them cross is known to hold a corner.
+- ``interval``: where the ray's line is inside, ``(t_in, t_out)``, empty where ``t_out <= t_in``; its chord is the
+  length between them, taken on the ray (``ahead``). The grazing square root is taken of a declared softplus
+  (``GRAZING``), so the chord and its derivatives stay finite at a tangent ray and beyond it.
+- ``pieces``: edge functions ``g``, each negative where the ray meets its piece, zero on its outline and positive beyond,
+  vanishing there linearly, on the ray (not its whole line); and ``compose``, how the pieces make the body (a least for
+  a union, a greatest for an intersection). The pixel integration reads each piece's straight edge at ``g / |grad g|``
+  pixels with normal ``grad g / |grad g|``, the gradient by ``jvp`` along the ray table's derivatives, and composes those
+  distances, which share one scale (pixels); raw values do not (a cap seen nearly edge-on changes thirteen times faster
+  across the image than a side), so a least of raw values can take the wrong piece. ``edge`` is the composition of the raw
+  values: the same sign everywhere, so the same outline.
 
 The silhouettes: a ball's is its tangent cone, ``g`` the distance from the centre to the ray less the radius. A
-capsule's is the ray's distance from its segment less the radius (the distance from a line to a segment is the
-distance to the clamped foot of their common perpendicular, exactly, the squared distance being convex along the
-segment). A capped cylinder is the convex hull of its two cap discs, so its image is their images' hull: ``g`` is the
-least of each cap disc's (the in-plane distance from the cap's centre to where the ray crosses its plane, less the
-radius) and the side's (the distance between the ray and the axis less the radius, beyond the span where the common
-perpendicular's foot leaves it). Where that foot leaves the span inside the side's band, the ray crosses the cap disc
-there, so the least is negative: the composition's zero set is the hull's outline exactly."""
+capsule's is the ray's distance from its segment less the radius (the distance from a line to a segment is the distance
+to the clamped foot of their common perpendicular, exactly, the squared distance being convex along the segment; on the
+ray, where that foot is behind the pinhole, the pinhole's distance from the segment). A capped cylinder is the convex
+hull of its two cap discs, so its image is their images' hull: its pieces are each cap disc (by its cone from the
+pinhole, ``_cap``, bounded by the cap's ball), the side (the distance between the ray and the axis less the radius) and
+the span (the axial coordinate of their common perpendicular's foot beyond the half-length), composed as the least of
+the caps and of the greatest of the side and the span. Where that foot leaves the span inside the side's band, the ray
+crosses the cap disc there, so the least is negative: the composition's zero set is the hull's outline exactly."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,10 +40,12 @@ type Interval = tuple[Any, Any]
 lax: Any = jax.lax
 
 #: The grazing chord's smooth clamp: the half-chord's square ``h2`` (``R^2`` less the squared distance from the axis or
-#: centre) enters its square root as ``w softplus(h2 / w)``, ``w = (GRAZING R)^2``. Beyond the silhouette the chord falls
-#: to zero within a few ``GRAZING R``; at a tangent ray it is ``2 GRAZING R sqrt(ln 2)``, its derivative finite. A
-#: declared number, small against any pixel's footprint on a body: the chord's halo lies inside the edge pixels, which
-#: the coverage weighs.
+#: centre) enters its square root as ``w softplus(h2 / w)``, ``w = (GRAZING R)^2``. Near the tangent ``h2`` is about
+#: ``2 R`` times the ray's distance inside the silhouette, so the clamp's width in distance is ``GRAZING^2 R / 2``
+#: (5e-7 of the radius): beyond the silhouette the chord falls to zero within a few of those; at a tangent ray it is
+#: ``2 GRAZING R sqrt(ln 2)``, its derivative finite. A declared number, small against any pixel's footprint on a body:
+#: the chord's halo lies inside the edge pixels, which the coverage weighs. (In float32 that width is about eight units
+#: in the last place of ``h2`` at the tangent, so the smooth derivative there is barely above rounding.)
 GRAZING = 1e-3
 #: Directions closer than this to parallel (in the sine or cosine their test reads) are taken at this value: a ray
 #: along a cylinder's axis, or across its caps' planes, where a crossing goes to infinity. The value only keeps the
@@ -71,21 +76,48 @@ def _safe_sqrt(q: Any, floor: Any) -> Any:
     return jnp.sqrt(jnp.maximum(q, floor))
 
 
+def _on_ray(ahead: Any, on_line: Any, at_start: Any) -> Any:
+    """A piece's value on the ray: its value on the ray's line where the line's nearest point to the piece is ahead
+    of the pinhole, else its value at the pinhole."""
+    return jnp.where(ahead, on_line, at_start)
+
+
 def _guard(x: Any) -> Any:
     """``x`` kept away from zero by ``PARALLEL``, its sign kept (zero taken as positive)."""
     return jnp.where(x < 0, jnp.minimum(x, -PARALLEL), jnp.maximum(x, PARALLEL))
 
 
+type Compose = Callable[[Sequence[Any], Callable[[Any, Any], Any], Callable[[Any, Any], Any]], Any]
+
+
+def _single(pieces: Sequence[Any], lesser: Callable[[Any, Any], Any], greater: Callable[[Any, Any], Any]) -> Any:
+    return pieces[0]
+
+
 @dataclass(frozen=True)
 class Form:
-    """A closed form in its own frame: its ``interval``, ``edge`` and ``pieces`` on rays ``(o, d)``, and the radius of
-    the smallest ball about its frame's origin that holds it (``enclosing``), for a window's size."""
+    """A closed form in its own frame: its ``interval`` and ``pieces`` on rays ``(o, d)``, how the pieces compose
+    (``compose(pieces, lesser, greater)``, given the least and the greatest of two pieces, whatever a piece is: a raw
+    value or an edge's line), and the radius of the smallest ball about its frame's origin that holds it
+    (``enclosing``), for a window's size. ``corners``: whether two pieces meet at an angle in its outline; ``turning``:
+    the pieces whose own outline can turn within a pixel (a cap disc seen near edge-on, its ellipse's ends a fraction of
+    a pixel round), sub-sampled wherever they cross one; ``bounds``: pairs ``(i, j)``, piece ``i``'s region lying inside
+    piece ``j``'s (a cap inside its bounding ball), so that ``i``'s line is taken as the greater of the two: the same
+    outline, and ``j``'s distance where ``i``'s first-order one falls short (beyond a thin cap's ends, where a cap's
+    edge function changes fastest across its ellipse, not towards its end). Pieces named only as bounds are not
+    composed."""
 
     interval: Callable[[Mapping[str, Any], Vec, Vec], Interval]
-    edge: Callable[[Mapping[str, Any], Vec, Vec], Any]
     pieces: Callable[[Mapping[str, Any], Vec, Vec], tuple[Any, ...]]
     enclosing: Callable[[Mapping[str, float]], float]
+    compose: Compose = _single
     corners: bool = False
+    turning: tuple[int, ...] = ()
+    bounds: tuple[tuple[int, int], ...] = ()
+
+    def edge(self, p: Mapping[str, Any], o: Vec, d: Vec) -> Any:
+        """The composed edge function of raw values: its sign and its zero set are the body's."""
+        return self.compose(self.pieces(p, o, d), jnp.minimum, jnp.maximum)
 
 
 def _ball(centre_z: Any, radius: Any, o: Vec, d: Vec) -> tuple[Any, Any, Any]:
@@ -104,18 +136,21 @@ def _sphere_interval(p: Mapping[str, Any], o: Vec, d: Vec) -> Interval:
     return mid - half, mid + half
 
 
-def _sphere_edge(p: Mapping[str, Any], o: Vec, d: Vec) -> Any:
-    _, q, _ = _ball(0.0, p["radius"], o, d)
-    return _safe_sqrt(q, (GRAZING * p["radius"]) ** 2) - p["radius"]
+def _sphere_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+    """The distance from the centre to the ray less the radius: where the centre is behind the pinhole, the pinhole's
+    distance from it."""
+    mid, q, _ = _ball(0.0, p["radius"], o, d)
+    on_ray = _on_ray(mid >= 0.0, q, dot(o, o))
+    return (_safe_sqrt(on_ray, (GRAZING * p["radius"]) ** 2) - p["radius"],)
 
 
-SPHERE = Form(_sphere_interval, _sphere_edge, lambda p, o, d: (_sphere_edge(p, o, d),),
-              lambda s: float(s["radius"]))
+SPHERE = Form(_sphere_interval, _sphere_pieces, lambda s: float(s["radius"]))
 
 
 def _side(radius: Any, o: Vec, d: Vec) -> tuple[Any, Any, Any, Any]:
-    """The unbounded cylinder of ``radius`` about the z axis: the parameter of the ray's closest approach to the axis,
-    the squared distance there, the clamped half-chord in the parameter, and the axial coordinate of the approach."""
+    """The unbounded cylinder of ``radius`` about the z axis: the parameter of the ray's line's closest approach to the
+    axis, the squared distance there, the clamped half-chord in the parameter, and the axial coordinate of the
+    approach."""
     across = _guard(d[0] * d[0] + d[1] * d[1])
     mid = -(o[0] * d[0] + o[1] * d[1]) / across
     mx, my = o[0] + mid * d[0], o[1] + mid * d[1]
@@ -138,27 +173,42 @@ def _cylinder_interval(p: Mapping[str, Any], o: Vec, d: Vec) -> Interval:
 
 
 def _cap(z: Any, radius: Any, o: Vec, d: Vec) -> Any:
-    """The cap disc in the plane ``z``: the in-plane distance from its centre to where the ray crosses the plane, less
-    the radius."""
-    t = (z - o[2]) / _guard(d[2])
-    x, y = o[0] + t * d[0], o[1] + t * d[1]
-    return _safe_sqrt(x * x + y * y, (GRAZING * radius) ** 2) - radius
+    """The cap disc in the plane ``z``, by its cone from the pinhole: ``|V| - R d_z s``, ``V`` the in-plane offset from
+    the cap's centre of the ray's crossing times ``d_z`` and ``s`` the side of the plane the pinhole is on. Where the ray
+    crosses the plane ahead, it is ``|d_z|`` times the in-plane distance less the radius; where it crosses behind, it is
+    positive. Homogeneous in ``d``, it has no pole at the plane's vanishing line (where the crossing itself goes to
+    infinity, and the crossing's distance, read to first order, puts an outline at that line however far the cap is)."""
+    height = z - o[2]
+    vx, vy = height * d[0] + d[2] * o[0], height * d[1] + d[2] * o[1]
+    facing = jnp.where(height < 0.0, -d[2], d[2])
+    floor = (GRAZING * radius * d[2]) ** 2 + jnp.finfo(jnp.result_type(vx)).tiny
+    return _safe_sqrt(vx * vx + vy * vy, floor) - radius * facing
 
 
 def _cylinder_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+    """The caps, the side and the span, each on the ray: where the line's closest approach to the axis is behind the
+    pinhole, the side and the span are read at the pinhole. Then each cap's bounding ball (the ball of the cap's radius
+    about its centre, which holds the cap), the cap's bound."""
     radius, half_length = p["radius"], p["length"] / 2.0
-    _, q, _, axial = _side(radius, o, d)
-    side = _safe_sqrt(q, (GRAZING * radius) ** 2) - radius
-    return _cap(-half_length, radius, o, d), _cap(half_length, radius, o, d), side, jnp.abs(axial) - half_length
+    mid, q, _, axial = _side(radius, o, d)
+    ahead = mid >= 0.0
+    side = _safe_sqrt(_on_ray(ahead, q, o[0] * o[0] + o[1] * o[1]), (GRAZING * radius) ** 2) - radius
+    span = jnp.abs(_on_ray(ahead, axial, o[2])) - half_length
+    balls: list[Any] = []
+    for z in (-half_length, half_length):
+        centre, q_ball, _ = _ball(z, radius, o, d)
+        start = (o[0], o[1], o[2] - z)
+        balls.append(_safe_sqrt(_on_ray(centre >= 0.0, q_ball, dot(start, start)), (GRAZING * radius) ** 2) - radius)
+    return _cap(-half_length, radius, o, d), _cap(half_length, radius, o, d), side, span, balls[0], balls[1]
 
 
-def _cylinder_edge(p: Mapping[str, Any], o: Vec, d: Vec) -> Any:
-    low, high, side, span = _cylinder_pieces(p, o, d)
-    return jnp.minimum(jnp.minimum(low, high), jnp.maximum(side, span))
+def _hull_of_caps(pieces: Sequence[Any], lesser: Callable[[Any, Any], Any], greater: Callable[[Any, Any], Any]) -> Any:
+    return lesser(lesser(pieces[0], pieces[1]), greater(pieces[2], pieces[3]))
 
 
-CYLINDER = Form(_cylinder_interval, _cylinder_edge, _cylinder_pieces,
-                lambda s: float((s["radius"] ** 2 + (s["length"] / 2.0) ** 2) ** 0.5), corners=True)
+CYLINDER = Form(_cylinder_interval, _cylinder_pieces,
+                lambda s: float((s["radius"] ** 2 + (s["length"] / 2.0) ** 2) ** 0.5), _hull_of_caps, corners=True,
+                turning=(0, 1), bounds=((0, 4), (1, 5)))
 
 
 def _capsule_interval(p: Mapping[str, Any], o: Vec, d: Vec) -> Interval:
@@ -183,7 +233,11 @@ def _capsule_interval(p: Mapping[str, Any], o: Vec, d: Vec) -> Interval:
     return jnp.where(hit, enter, side_in), jnp.where(hit, leave, side_out)
 
 
-def _capsule_edge(p: Mapping[str, Any], o: Vec, d: Vec) -> Any:
+def _capsule_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+    """The ray's distance from the segment less the radius. The line's: the segment's point at the clamped foot of
+    their common perpendicular, and the line's nearest point to it. Where that point is behind the pinhole, the ray's
+    nearest point is the pinhole (the squared distance is convex over the ray and the segment, so with its least off
+    the ray it lies on the ray's start), and the segment's point the pinhole's clamped foot on it."""
     radius, half_height = p["radius"], p["height"] / 2.0
     b = d[2]
     e = dot(o, d)
@@ -192,11 +246,17 @@ def _capsule_edge(p: Mapping[str, Any], o: Vec, d: Vec) -> Any:
     v = (-o[0], -o[1], s - o[2])
     along = dot(v, d)
     px, py, pz = v[0] - along * d[0], v[1] - along * d[1], v[2] - along * d[2]
-    return _safe_sqrt(px * px + py * py + pz * pz, (GRAZING * radius) ** 2) - radius
+    start = o[2] - jnp.clip(o[2], -half_height, half_height)
+    on_ray = _on_ray(along >= 0.0, px * px + py * py + pz * pz, o[0] * o[0] + o[1] * o[1] + start * start)
+    return (_safe_sqrt(on_ray, (GRAZING * radius) ** 2) - radius,)
 
 
-CAPSULE = Form(_capsule_interval, _capsule_edge, lambda p, o, d: (_capsule_edge(p, o, d),),
-               lambda s: float(s["radius"] + s["height"] / 2.0))
+CAPSULE = Form(_capsule_interval, _capsule_pieces, lambda s: float(s["radius"] + s["height"] / 2.0))
+
+
+def ahead(interval: Interval) -> Interval:
+    """The part of a line's interval on the ray (``t >= 0``): a ray starts at the pinhole."""
+    return jnp.maximum(interval[0], 0.0), jnp.maximum(interval[1], 0.0)
 
 
 def chord(interval: Interval) -> Any:

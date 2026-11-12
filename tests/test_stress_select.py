@@ -6,6 +6,7 @@ import copy
 import importlib.util
 import itertools
 import json
+import math
 import re
 import sys
 from pathlib import Path, PurePosixPath
@@ -86,8 +87,7 @@ def test_a_repeated_option_with_the_same_value_is_not_a_conflict():
 
 def test_run_k_uses_the_seed_plus_k_minus_one_and_the_matrix_lists_every_run():
     matrix = ask("stress: tests/test_x.py runs=4 seed=100").matrix()
-    assert matrix == {"include": [{"run": 1, "seed": 100}, {"run": 2, "seed": 101}, {"run": 3, "seed": 102},
-                                  {"run": 4, "seed": 103}]}
+    assert matrix == {"include": [{"run": k, "seed": 99 + k, "part": 1, "index": 0} for k in range(1, 5)]}  # one part: one job a run
 
 
 def test_a_fresh_seed_differs_between_requests():
@@ -225,6 +225,12 @@ def stress_problems(workflow: dict, ci: dict) -> list[str]:
     if run["needs"] != "select" or run["strategy"]["matrix"] != "${{ fromJSON(needs.select.outputs.matrix) }}" \
             or run["strategy"]["fail-fast"] is not False:
         found.append("run: a matrix from the selection's output, every run completing (fail-fast false)")
+    for step in steps(run):
+        if "TARGETS" in step.get("env", {}) and "matrix.index" not in str(step["env"]["TARGETS"]):
+            found.append(f"run: step {step.get('name')!r} reads every target, not its part's (parts output at matrix.index)")
+    names = [str(step["with"].get("name", "")) for step in steps(run) if step.get("uses", "").startswith("actions/upload-artifact@")]
+    if not names or any("matrix.run" not in name or "matrix.part" not in name for name in names):
+        found.append("run: a report's artifact is named by its run and its part, or parts of one run overwrite each other")
     used = [step.get("uses", "") for step in steps(run)]
     if any(u.startswith("actions/cache/save") or u.startswith("actions/cache@") for u in used):
         found.append("run: the compilation cache is restored and never saved")
@@ -251,6 +257,8 @@ def stress_problems(workflow: dict, ci: dict) -> list[str]:
     last = str(steps(summary)[-1]["run"])
     if "scripts/stress_summary.py" not in last or "||" in last or "set +e" in last:
         found.append("summary: its last step runs stress_summary.py with its exit status intact")
+    if "--parts" not in last:
+        found.append("summary: it must be told the parts, or it judges only the first job of each run")
     for name, job in jobs.items():
         if "timeout-minutes" not in job:
             found.append(f"{name}: no timeout-minutes")
@@ -302,6 +310,14 @@ PLANTS = {
     "a-different-pin": (lambda w: w["jobs"]["run"]["steps"][0].update(uses="actions/checkout@deadbeef"),
                         "pinned differently"),
     "no-timeout": (lambda w: w["jobs"]["run"].pop("timeout-minutes"), "no timeout-minutes"),
+    "the-tests-step-runs-every-target": (lambda w: w["jobs"]["run"]["steps"][-2]["env"].update(
+        TARGETS="${{ needs.select.outputs.targets }}"), "reads every target"),
+    "the-cache-step-reads-every-target": (lambda w: w["jobs"]["run"]["steps"][6]["env"].update(
+        TARGETS="${{ needs.select.outputs.targets }}"), "reads every target"),
+    "parts-share-an-artifact-name": (lambda w: w["jobs"]["run"]["steps"][-1]["with"].update(name="stress-run-${{ matrix.run }}"),
+                                     "overwrite each other"),
+    "the-summary-ignores-the-parts": (lambda w: w["jobs"]["summary"]["steps"][-1].update(
+        run='python3 scripts/stress_summary.py "$RUNNER_TEMP/runs" --runs "$RUNS" --seed "$SEED"'), "told the parts"),
 }
 
 
@@ -315,3 +331,143 @@ def test_the_selection_and_the_matrix_survive_a_round_trip_through_the_outputs_t
     request = ask("stress: tests/test_x.py::test_y[a b]".replace(" ", "") + " runs=3 seed=5")
     assert json.loads(json.dumps(request.targets)) == list(request.targets)
     assert len(json.loads(json.dumps(request.matrix()))["include"]) == 3
+
+
+# The split across jobs ------------------------------------------------------------------------------------------------
+
+def coverage_problems(request: stress.Request) -> list[str]:
+    """What is wrong with the way a request splits its targets: a target in no part or in two, a part that is empty, a file
+    divided between parts, a matrix that is not every part for every run, or one over GitHub's 256 entries."""
+    found = []
+    held = [t for part in request.parts for t in part]
+    if sorted(held) != sorted(request.targets):
+        found.append("the parts do not hold the targets exactly once")
+    if any(not part for part in request.parts):
+        found.append("a part is empty")
+    owners: dict[str, set[int]] = {}
+    for number, part in enumerate(request.parts):
+        for target in part:
+            owners.setdefault(target.split("::", 1)[0], set()).add(number)
+    if any(len(parts) > 1 for parts in owners.values()):
+        found.append("a file is divided between parts")
+    jobs = {(entry["run"], entry["index"]) for entry in request.matrix()["include"]}
+    if len(request.matrix()["include"]) != request.runs * len(request.parts) or jobs != {
+            (k, i) for k in range(1, request.runs + 1) for i in range(len(request.parts))}:
+        found.append("the matrix is not every part for every run, once")
+    if len(request.matrix()["include"]) > 256:
+        found.append("the matrix is over GitHub's 256 entries")
+    return found
+
+
+#: Seconds in the shard table, for the files below; a heavy file, a few middling ones and a light one.
+SECONDS = {"tests/a/test_heavy.py": 1200, "tests/a/test_mid1.py": 600, "tests/b/test_mid2.py": 500, "tests/b/test_mid3.py": 450,
+           "tests/c/test_light.py": 5}
+UNLISTED = 70
+
+
+def split_ask(body: str, changed: list[str]) -> stress.Request:
+    files = set(SECONDS) | {"tests/c/test_new.py"}
+    return stress.select(body, changed, lambda path: path in files, lambda: 7, (SECONDS, UNLISTED))
+
+
+def test_a_selection_over_a_jobs_seconds_is_dealt_into_parts_by_the_shard_tables_seconds():
+    request = split_ask("", list(SECONDS))
+    assert coverage_problems(request) == []
+    assert len(request.parts) == 3  # 2755 seconds over 1000 a part, rounded up
+    loads = [sum(SECONDS[t] for t in part) for part in request.parts]
+    assert sorted(loads) == [605, 950, 1200]  # longest first onto the lightest: 1200 | 600 + 5 | 500 + 450
+    assert any(part == ("tests/a/test_heavy.py",) for part in request.parts)
+    assert len(request.matrix()["include"]) == 20 * 3
+
+
+def test_a_small_selection_is_one_part_as_before_and_a_listed_file_the_table_lacks_takes_the_assumed_weight():
+    assert len(split_ask("", ["tests/c/test_light.py", "tests/b/test_mid3.py"]).parts) == 1
+    several = split_ask("stress: tests/c/test_new.py", list(SECONDS))
+    assert coverage_problems(several) == []
+    assert sum(len(part) for part in several.parts) == 6
+    # the file the table lacks counts UNLISTED seconds: 2825 over 1000 is still three parts, 2755 + 70 -> 3
+    assert len(several.parts) == 3
+    only_new = split_ask("stress: only tests/c/test_new.py", [])
+    assert only_new.parts == (("tests/c/test_new.py",),)
+
+
+def test_node_ids_of_one_file_stay_in_one_part_and_weigh_the_file_once():
+    request = split_ask("stress: only tests/a/test_mid1.py::test_a[1] tests/a/test_mid1.py::test_b tests/b/test_mid2.py", [])
+    assert coverage_problems(request) == [] and len(request.parts) == 2  # 600 + 500 = 1100 seconds, over one part
+    together = [part for part in request.parts if any(t.startswith("tests/a/test_mid1.py") for t in part)]
+    assert len(together) == 1 and len(together[0]) == 2
+
+
+def test_a_part_keeps_each_directorys_files_together():
+    request = split_ask("", list(SECONDS))
+    for part in request.parts:
+        assert revisited(part) == []
+
+
+def test_the_parts_are_the_same_every_time_the_same_request_is_made():
+    assert split_ask("", list(SECONDS)).parts == split_ask("", list(reversed(SECONDS))).parts
+
+
+@given(st.dictionaries(st.from_regex(r"tests/[a-d]/test_[a-z]{1,6}\.py", fullmatch=True), st.integers(1, 5000), min_size=1,
+                       max_size=30), st.integers(1, 40))
+def test_whatever_the_seconds_every_file_lands_in_one_part_within_the_dealing_bound_and_the_matrix_fits(table, runs):
+    files = sorted(table)
+    request = stress.select(f"stress: runs={runs}", files, lambda path: path in table, lambda: 1, (table, 70))
+    assert coverage_problems(request) == []
+    count = len(request.parts)
+    assert count <= max(1, 250 // runs) and count <= len(files)
+    loads = [sum(table[t.split("::")[0]] for t in part) for part in request.parts]
+    total = sum(table.values())
+    # longest-first dealing onto the lightest part: no part exceeds the mean part by more than the heaviest file
+    assert max(loads) <= total / count + max(table.values())
+    assert count == max(1, min(len(files), -(-total // stress.PART_SECONDS), stress.MAX_JOBS // runs))
+
+
+def test_a_run_of_forty_is_split_into_no_more_parts_than_the_matrix_holds():
+    request = split_ask("stress: runs=40", list(SECONDS))
+    assert coverage_problems(request) == [] and len(request.matrix()["include"]) <= 256
+
+
+def test_control_a_split_that_drops_a_file_or_divides_one_or_double_counts_a_run_is_named_every_time():
+    """The invariant above must fail on each plant, or the property passes on a split that loses tests."""
+    request = split_ask("", list(SECONDS))
+    lost = stress.Request(request.targets, request.runs, request.python, request.seed, request.parts[:-1])
+    assert any("exactly once" in problem for problem in coverage_problems(lost))
+    twice = stress.Request(request.targets, request.runs, request.python, request.seed, (*request.parts, request.parts[0]))
+    assert any("exactly once" in problem for problem in coverage_problems(twice))
+    divided = stress.Request(request.targets, request.runs, request.python, request.seed,
+                             (("tests/a/test_heavy.py::test_x",), ("tests/a/test_heavy.py",), *request.parts[1:]))
+    assert any("divided" in problem for problem in coverage_problems(divided))
+    empty = stress.Request(request.targets, request.runs, request.python, request.seed, (*request.parts, ()))
+    assert any("empty" in problem for problem in coverage_problems(empty))
+
+    class Short(stress.Request):
+        def matrix(self):  # a matrix that runs the first part only: the plant
+            return {"include": [{"run": k, "seed": 0, "part": 1, "index": 0} for k in range(1, self.runs + 1)]}
+
+    short = Short(request.targets, request.runs, request.python, request.seed, request.parts)
+    assert any("every part for every run" in problem for problem in coverage_problems(short))
+
+
+def test_a_large_pull_requests_changed_set_is_dealt_by_the_real_table_so_that_no_part_but_a_lone_file_passes_the_budget():
+    """The tube tree PR's changed files (a measure of 4806 seconds on the table of the day, which ran 36 to 46 minutes in one
+    job) by the committed table: as many parts as its seconds need at the budget, whatever the table's rebuild makes them."""
+    changed = ["tests/docs/test_lists.py", "tests/docs/test_none_declared.py", "tests/flow/test_fvm_curved_wall.py",
+               "tests/flow/test_fvm_general_wall.py", "tests/flow/test_fvm_tree_declaration.py", "tests/saved/test_golden_outputs.py",
+               "tests/saved/test_shape_suite.py", "tests/scene/test_centreline.py", "tests/scene/test_exact_union.py",
+               "tests/scene/test_tube_tree.py", "tests/scene/test_union_brute_force.py", "tests/scene/test_union_continuity.py",
+               "tests/scene/test_union_reverse.py", "tests/scene/test_union_tie.py", "tests/two_builds/test_tree_walk.py"]
+    seconds, unlisted = stress.table_seconds()
+    request = stress.select("", changed, lambda path: True, lambda: 1)
+    assert coverage_problems(request) == []
+    assert len(request.parts) == math.ceil(sum(seconds[f] for f in changed) / stress.PART_SECONDS)
+    loads = [sum(seconds.get(t, unlisted) for t in part) for part in request.parts]
+    assert sum(loads) == sum(seconds[f] for f in changed)
+    assert max(loads) <= max(seconds[f] for f in changed) + 0.2 * stress.PART_SECONDS, loads
+
+
+def test_the_assumed_weight_of_an_unlisted_file_is_the_shard_deals():
+    import _sharding as sharding
+
+    assert stress.table_seconds()[1] == sharding.new_file_weight()
+    assert stress.table_seconds()[0] == sharding.load_seconds()

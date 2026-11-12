@@ -35,8 +35,8 @@ from mime.build._refusals import ArgumentRefused
 from mime.control._run import automatic_chunks
 from mime.errors import public
 from mime.registry import forward_only_of
-from mime.study._axes import STUDY_REASON, Axis, differ, resolve, value_text
-from mime.study._point import Point, build_point, precision, same_run
+from mime.study._axes import BUILT_CUT, STUDY_REASON, Axis, differ, resolve, value_text
+from mime.study._point import Point, build_point, precision, same_build, same_run
 from mime.study._protocol import FromRest, Protocol, protocol_of
 from mime.study._ranges import RangeCheck, range_check
 from mime.units import Quantity
@@ -279,6 +279,9 @@ class StudyPlan:
                  f" to run it (planning compiled {'each group' if len(self.groups) != 1 else 'the group'}'s build, "
                  f"and its batched step {planning} time{'s' if planning != 1 else ''} for the memory estimate); "
                  f"{f'{len(refused)} refused' if refused else 'nothing refused'}"]
+        built = [axis.path for axis in self.axes if axis.built]
+        if built:
+            lines.append(f"  built per value, each value a group of its own: {', '.join(built)}; {BUILT_CUT}")
         for number, group in enumerate(self.groups):
             how = (f"batched in {len(group.batches)} batch{'es' if len(group.batches) != 1 else ''} of "
                    f"{', '.join(map(str, sorted(set(group.batches), reverse=True)))}" if group.batched else
@@ -581,9 +584,17 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     settings, declarations, saved = experiment.declared_as()
     axes = tuple(resolve(path, declarations) for path in given.axes)
     seen = [axis.path for axis in axes]
-    if len(set(seen)) != len(seen):
+    # An axis is what it writes (its kind, owner, name and component), whatever spelling named it.
+    if len({(axis.kind, axis.owner, axis.name, axis.component) for axis in axes}) != len(axes):
         raise ArgumentRefused([Refusal("study.axis-twice", RefusalClass.USER, f"an axis is named twice: {seen}",
                                        "name each axis once in `grid({...})`")])
+    wholes = {(axis.owner, axis.name) for axis in axes if axis.component is not None}
+    if overlap := [axis.path for axis in axes if axis.built and axis.component is None
+                   and (axis.owner, axis.name) in wholes]:
+        raise ArgumentRefused([Refusal(
+            "study.axis-twice", RefusalClass.USER,
+            f"a setting is named whole and by a component: {', '.join(overlap)} and its components among {seen}",
+            f"name the setting whole, `grid({{{overlap[0]!r}: [...]}})`, or its components alone")])
     if refusals := _reason_refusals(settings, axes, reasons):
         raise BuildRefused(refusals)
     first: dict[str, Point] = {}
@@ -627,7 +638,10 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
                     continue
                 groups.append(Group(key, [p.index for p in candidates], built=built))
     for group in groups[1:]:
-        group.reasons = tuple(dict.fromkeys(split_reasons(records[groups[0].key], records[group.key])))
+        named = built_reasons(axes, points[groups[0].members[0]], points[group.members[0]])
+        structural = [] if named and records[groups[0].key] == records[group.key] else \
+            split_reasons(records[groups[0].key], records[group.key])
+        group.reasons = tuple(dict.fromkeys([*named, *structural]))
     ranged = {str(d.path) for d in declarations if isinstance(d, RangeDeclaration)}
     checked: RangeCheck | None = None
     if ranged:
@@ -650,6 +664,12 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     return StudyPlan(axes, tuple(points), tuple(groups), steps, drop, dict(reasons), duration,
                      tuple(str(getattr(each, "path", each)) for each in record), every, batch, settings.experiment,
                      settings.profile, settings.seed, protocol or FromRest(), stage_every, checked)
+
+
+def built_reasons(axes: Sequence[Axis], first: Point, other: Point) -> list[str]:
+    """The split reasons a group's built axes give against the first group's: each such axis whose value differs."""
+    return [f"its value of {axis.path}, a kind's setting the build holds as built (one build a value)"
+            for axis in axes if axis.built and differ(first.values[axis], other.values[axis])]
 
 
 #: What a split of a group inside a declared range is, by profile: reported (exploratory, research), refused (strict,
@@ -719,8 +739,11 @@ def inert_axes(axes: Sequence[Axis], points: Sequence[Point],
     that differ in its value alone run one computation (``same_run``: one structure key, equal leaves and initial
     states, a host controller's law from equal settings). The pairs are the points' own where the sweep holds the other
     axes fixed between them (a grid); otherwise one pair is made, the first point and the same point at another of the
-    axis's values (``probe``). An axis with one value, or whose pairs are refused, is not judged."""
+    axis's values (``probe``). An axis with one value, or whose pairs are refused, is not judged. An axis built per
+    value is judged on its pairs' traced steps as well (``same_build``): each value is built, so a value its nodes hold
+    as built changes the program alone."""
     found: list[Refusal] = []
+    programs: dict[int, Any] = {}
     held = [point for point in points if not point.refused and point.key is not None]
     for axis in axes:
         if len({value_text(point.values[axis]) for point in points}) < 2:
@@ -739,8 +762,18 @@ def inert_axes(axes: Sequence[Axis], points: Sequence[Point],
                 made = probe({**start.values, axis: moved})
                 if not made.refused and made.key is not None:
                     pairs = [(start, made)]
-        if pairs and all(same_run(a, b) for a, b in pairs):
+        if pairs and all(same_build(a, b, programs) if axis.built else same_run(a, b) for a, b in pairs):
             a, b = pairs[0]
+            if axis.built:
+                found.append(Refusal(
+                    "study.axis-inert", RefusalClass.USER,
+                    f"the axis {axis.path} changes nothing the study runs: its values ({value_text(a.values[axis])} "
+                    f"and {value_text(b.values[axis])}, and every other pair the sweep holds), each built, give one "
+                    f"structure, the same parameter leaves, the same initial state and the same traced step, so its "
+                    f"members would run one computation: the experiment does not use the value",
+                    f"sweep a setting a node of the experiment is built from, or leave {axis.path} out of the sweep, "
+                    f"`grid({{...}})` without it"))
+                continue
             found.append(Refusal(
                 "study.axis-inert", RefusalClass.USER,
                 f"the axis {axis.path} changes nothing the study runs: its values ({value_text(a.values[axis])} and "
@@ -918,7 +951,7 @@ def member_report(built: BuiltExperiment, point: Point) -> dict[str, Any]:
     group = built.report
     computed = point.computed if point.computed is not None else node_lines(built.graph, plans)
     report = report_of(plans, [line.node for line in group.nodes], (), group.external_inputs, group.warnings,
-                       point.physics_hash, group.lags, point.models, computed)
+                       point.physics_hash, group.lags, point.models, computed, solving=group.solving)
     return report_summary(report, run_layout(plans))
 
 

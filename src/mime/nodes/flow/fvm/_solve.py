@@ -63,6 +63,7 @@ import jax
 from jax import Array
 
 from mime.core import jnp
+from mime.core.solves import SolveSite, register, solving
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 
 lax: Any = jax.lax
@@ -77,6 +78,10 @@ REPORT_SIZE = len(REPORT_FIELDS)
 _RUNNING, _CONVERGED, _STAGNATED, _AT_CAP, _NOT_FINITE, _AT_ZERO = 0, 1, 2, 3, 4, 5
 
 type Operator = Callable[[Velocity], Velocity]
+
+#: The solve site of :func:`projected_solve`: every solve of the FVM's guarded conjugate gradient runs inside it.
+CG_SITE = register(SolveSite("fvm_cg", "cg", "mime.nodes.flow.fvm._solve.projected_solve",
+                             nodes=("ImplicitFlowNode", "OpenFlowNode")))
 
 
 #: The stagnation stop, set from measurement (``STAGNATION_MEASURED``): over a window of checks of the true residual,
@@ -413,42 +418,61 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
     side; ``tap`` is the block's input (zeros, :data:`REPORT_SIZE`), whose cotangent is the transpose solve's report.
     ``magnitude`` is ``apply`` with its coefficients in magnitude, for a stop at the rounding floor. Returns the
     divergence-free solution and the primal solve's report."""
-    project = grid.project
-    inner = grid.inner
-    precondition_raw = preconditioner.made(diagonal)
-    projected_guess = None if guess is None else project(guess)
+    with solving(CG_SITE):
+        project = grid.project
+        inner = grid.inner
+        precondition_raw = preconditioner.made(diagonal)
+        projected_guess = None if guess is None else project(guess)
 
-    def precondition(r: Velocity) -> Velocity:
-        return project(precondition_raw(project(r)))
+        def precondition(r: Velocity) -> Velocity:
+            return project(precondition_raw(project(r)))
 
-    def matvec(pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
-        x, block = pair
-        y = project(apply(project(x)))
-        return y, block + 0.0 * y[0][0, 0, 0]
+        def matvec(pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
+            x, block = pair
+            y = project(apply(project(x)))
+            return y, block + 0.0 * y[0][0, 0, 0]
 
-    def solver(stops: Stopping) -> Callable[[Callable[[tuple[Velocity, Array]], tuple[Velocity, Array]],
-                                             tuple[Velocity, Array]], tuple[Velocity, Array]]:
-        def solve(operator: Callable[[tuple[Velocity, Array]], tuple[Velocity, Array]],
-                  pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
-            b, block = pair
+        def solver(stops: Stopping) -> Callable[[Callable[[tuple[Velocity, Array]], tuple[Velocity, Array]],
+                                                 tuple[Velocity, Array]], tuple[Velocity, Array]]:
+            def solve(operator: Callable[[tuple[Velocity, Array]], tuple[Velocity, Array]],
+                      pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
+                b, block = pair
 
-            def field_operator(x: Velocity) -> Velocity:
-                return operator((x, block))[0]
+                def field_operator(x: Velocity) -> Velocity:
+                    return operator((x, block))[0]
 
-            b = project(b)
-            start = scaling_start(projected_guess, b, field_operator, inner)
-            x, report = guarded_cg(field_operator, b, precondition, start, stops, inner, magnitude)
-            return project(x), report
+                b = project(b)
+                start = scaling_start(projected_guess, b, field_operator, inner)
+                x, report = guarded_cg(field_operator, b, precondition, start, stops, inner, magnitude)
+                return project(x), report
 
-        return solve
+            return solve
 
-    coupled_rhs = _add(rhs, (tap[0], tap[0], tap[0]), 0.0)
-    coupled_tap = tap + 0.0 * rhs[0][0, 0, 0]
-    other = transposed(stopping)
-    same = other is stopping
-    solved, report = lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solver(stopping),
-                                             transpose_solve=None if same else solver(other), symmetric=same)
-    return solved, report
+        coupled_rhs = _add(rhs, (tap[0], tap[0], tap[0]), 0.0)
+        coupled_tap = tap + 0.0 * rhs[0][0, 0, 0]
+        other = transposed(stopping)
+        same = other is stopping
+        weighted: Callable[[Any], Velocity] | None = getattr(grid, "weights", None)
+        if weighted is None:
+            solved, report = lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solver(stopping),
+                                                     transpose_solve=None if same else solver(other), symmetric=same)
+            return solved, report
+        # A grid whose inner product weighs its faces (``V``, the open box's half-weighted planes): ``P A P`` is
+        # self-adjoint under that product, so its plain transpose, which reverse mode solves, is ``V (P A P) V^-1``,
+        # and its solve ``V (P A P)^-1 V^-1``: the same solve, the cotangent taken to the primal's space and back.
+        weights = weighted(rhs[0].dtype)
+        transpose_inner = solver(other)
+
+        def transpose_solve(operator: Any, pair: tuple[Velocity, Array]) -> tuple[Velocity, Array]:
+            del operator  # the transposed operator: its solve is the primal operator's, weighted
+            c, block = pair
+            x, transposed_report = transpose_inner(matvec, ((c[0] / weights[0], c[1] / weights[1],
+                                                             c[2] / weights[2]), block))
+            return (weights[0] * x[0], weights[1] * x[1], weights[2] * x[2]), transposed_report
+
+        solved, report = lax.custom_linear_solve(matvec, (coupled_rhs, coupled_tap), solver(stopping),
+                                                 transpose_solve=transpose_solve, symmetric=False)
+        return solved, report
 
 
 __all__ = ["AT_FLOOR_BY_DEFAULT", "DEFAULT_CAP", "DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "RECHECK_CAP_FACTOR", "FLOOR_MEASURED",

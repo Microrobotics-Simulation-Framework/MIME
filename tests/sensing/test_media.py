@@ -38,7 +38,9 @@ def oracle_rays(width: int) -> tuple[np.ndarray, np.ndarray, float]:
 
 
 def chord_cylinder(origin: np.ndarray, d: np.ndarray, radius: float) -> tuple[np.ndarray, np.ndarray]:
-    """The chord of the unbounded cylinder about the x axis, and the ray's distance from its axis less the radius."""
+    """The chord of the unbounded cylinder about the x axis, and the ray's distance from its axis less the radius, in
+    extended precision (``b^2 - a c`` cancels about a thousandfold here: in float64 its rounding would be the code's)."""
+    origin, d, radius = np.asarray(origin, np.longdouble), np.asarray(d, np.longdouble), np.longdouble(radius)
     a = d[..., 1] ** 2 + d[..., 2] ** 2
     b = origin[1] * d[..., 1] + origin[2] * d[..., 2]
     c = origin[1] ** 2 + origin[2] ** 2 - radius ** 2
@@ -48,6 +50,9 @@ def chord_cylinder(origin: np.ndarray, d: np.ndarray, radius: float) -> tuple[np
 
 
 def chord_sphere(origin: np.ndarray, d: np.ndarray, centre: np.ndarray, radius: float) -> tuple[np.ndarray, np.ndarray]:
+    """The ball's chord and the ray's distance from its centre less the radius, in extended precision."""
+    origin, d, centre, radius = (np.asarray(origin, np.longdouble), np.asarray(d, np.longdouble),
+                                 np.asarray(centre, np.longdouble), np.longdouble(radius))
     w = origin - centre
     b = d @ w
     closest = np.linalg.norm(w[None, None, :] - b[..., None] * d, axis=-1)
@@ -73,15 +78,27 @@ def test_the_displaced_medium_rule_is_the_closed_form(dtype, monkeypatch):
     outer, outer_edge = chord_cylinder(origin, d, TUBE["inner_radius"] + TUBE["wall"])
     lumen, lumen_edge = chord_cylinder(origin, d, TUBE["inner_radius"])
     ball, ball_edge = chord_sphere(origin, d, np.asarray(CENTRE), RADIUS)
-    expected = np.exp(-WALL * (outer - lumen) - WATER * (lumen - ball) - SPHERE * ball)
+    expected = np.exp(-WALL * (outer - lumen) - WATER * (lumen - ball) - SPHERE * ball).astype(np.float64)
     footprint = 0.1 / focal
     clear = np.minimum.reduce([np.abs(outer_edge), np.abs(lumen_edge), np.abs(ball_edge)]) > 2.0 * footprint
     assert clear.sum() > 0.8 * clear.size and (ball_edge < -2.0 * footprint).sum() > 100
-    # Judged on the scale it came from: a chord's rounding is a few units in the last place of the ray's parameter
-    # (the camera 0.1 m away), times each attenuation (float32: about 4e-4 of the transmission; float64 under 1e-12).
+    # Judged on the scale it came from. Each body multiplies the transmission by exp(-(mu - mu_parent) L) along its chord
+    # L; a chord's ends are the ray's parameter t (about 0.1 m) rounded, eps t between them, and its half-length is
+    # the root of R^2 less the squared distance of the ray's nearest point p from the axis or centre, p = o + t d
+    # rounded absolutely by eps t (o and t d are each about 0.1 m), which moves the chord by 2 (R / h) eps t, h the
+    # half-length. At pixels 2 px clear of every silhouette h is at least sqrt(R^2 - (R - c)^2), c two pixels'
+    # footprint: the line is eps t sum |mu - mu_parent| (1 + 2 R / h), plus the exponentials' and products' rounding
+    # (4 eps). (In float32 1.3e-4, measured 3.9e-5 on CI; in float64 2.6e-13, measured 1.2e-13. The oracle runs in
+    # extended precision: in float64 its own b^2 - a c cancels about a thousandfold, which read 6.1e-13.)
     eps = float(np.finfo(dtype).eps)
-    tolerance = max(1e-10 if dtype == "float64" else 2e-5, 16 * eps * (WALL + WATER + SPHERE) * 0.1)
-    assert float(np.max(np.abs(found[clear] / expected[clear] - 1.0))) <= tolerance
+    # The premise: the oracle's own rounding far under the run's (x86's 80-bit extended precision: eps 1.1e-19).
+    assert float(np.finfo(np.longdouble).eps) < 1e-3 * eps
+    clearance, far = 2.0 * footprint, 0.1 + TUBE["inner_radius"] + TUBE["wall"]
+    line = 4 * eps
+    for radius, contrast in ((TUBE["inner_radius"] + TUBE["wall"], WALL), (TUBE["inner_radius"], abs(WATER - WALL)),
+                             (RADIUS, abs(SPHERE - WATER))):
+        line += eps * far * contrast * (1 + 2 * radius / math.sqrt(radius ** 2 - (radius - clearance) ** 2))
+    assert float(np.max(np.abs(found[clear] / expected[clear] - 1.0))) <= line
 
 
 def test_an_opaque_body_is_coverage_and_finite_everywhere(dtype):

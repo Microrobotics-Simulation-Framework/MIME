@@ -267,15 +267,22 @@ def _from_stage(display: Display) -> Appearance | None:
 def resolve(subjects: Sequence[Subject], stage: Mapping[str, Display] | None = None) -> Resolved:
     """Each subject's appearance: its declared one, else the stage's display primvars for it (by subject name), else
     the default (opaque, mid-grey), with the source of each and the note naming those defaulted. Subjects named twice,
-    or with a parent no subject is, are refused."""
+    or with a parent no subject is, and a stage's display opacity outside 0 to 1, are refused."""
     names = [s.name for s in subjects]
     problems = [f"{name!r} names two subjects" for name in sorted({n for n in names if names.count(n) > 1})]
     problems += [f"{s.name!r}'s parent {s.parent!r} is no subject" for s in subjects
                  if s.parent is not None and s.parent not in names]
-    if problems:
-        raise ArgumentRefused([Refusal("camera.subject", RefusalClass.USER, problem,
-                                       "give each subject one name, and a parent among them: Subject(..., parent=name)")
-                                   for problem in problems])
+    refused = [Refusal("camera.subject", RefusalClass.USER, problem,
+                       "give each subject one name, and a parent among them: Subject(..., parent=name)")
+               for problem in problems]
+    refused += [Refusal("camera.subject", RefusalClass.USER,
+                        f"subject {name!r}: its display opacity on the stage is {held.opacity!r}, outside 0 to 1",
+                        "give the stage's display opacity from 0 to 1, or declare the subject's appearance: "
+                        "Subject(..., appearance=Appearance.opaque())")
+                for name, held in sorted((stage or {}).items())
+                if held.opacity is not None and not 0.0 <= float(held.opacity) <= 1.0]
+    if refused:
+        raise ArgumentRefused(refused)
     held: list[Subject] = []
     sources: dict[str, AppearanceSource] = {}
     defaulted: list[str] = []

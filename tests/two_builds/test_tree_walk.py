@@ -3,9 +3,9 @@ union's candidates chosen there, where its check fails), and only how many faces
 rung above the count the build's values choose (``mime.nodes.flow.fvm.plan_rung``), as the cell counts are held. The
 registry walk moves every float of ``tree_flow``'s document by a relative 1e-6 in turn, the radii and the period's
 length among them, and is quiet (``test_two_builds_walk.py``); there a move of 1e-6 changes no chosen face, so the walk
-alone does not show the rung at work. Here the radii are moved as the walk moves them (a study cannot: a vector of the
-kind, ``study.held-geometry``), by the least of :data:`MOVES` that changes the build's chosen count and keeps the
-box's cells: the two builds' programs are one.
+alone does not show the rung at work. Here the radii are moved as the walk moves them (a study over them builds each
+value, one group a value: a kind's vector setting is built per value, so it never shares one program), by the least of
+:data:`MOVES` that changes the build's chosen count and keeps the box's cells: the two builds' programs are one.
 
 **The control:** the plan's size made the build's own count (the rung the identity), the same pair's programs differ
 in a shape. So the quiet pair is the rung keeping one program, not a form that cannot see the plan. Float64 (the check

@@ -2,7 +2,7 @@
 sphere's centre and the focal length, against the exact oracle of ``sphere_oracle`` (each pixel's exact covered area,
 and the boundary integral of its derivative), at silhouette radii of 15, 6 and 3 px, through a pinhole without
 distortion, in both dtypes; and exact disc coverage against the same (to the oracle's quadrature, and in float32 to the
-rounding of the camera's pose: about eps x the focal length in pixels of the image's place).
+rounding of the camera's rotation and of the disc's own arithmetic: 2 eps f of coverage).
 
 The lines are the predictions' (``predictions_camera_core.json``, gate 15): per pixel the relative L2 over the
 silhouette's band, and the silhouette's motion (its equivalent radius and centroid as one vector). **The control**
@@ -57,7 +57,7 @@ def truth(radius_px: int) -> tuple[np.ndarray, np.ndarray]:
 def measured(radius_px: int, mode: str, monkeypatch: pytest.MonkeyPatch) -> tuple[float, float, float]:
     """The worst per-pixel derivative error, the per-pixel coverage error and the motion error over the parameters."""
     if planted("sigmoid"):
-        monkeypatch.setattr(coverage, "box", lambda g, gu, gv, size=1.0: coverage.sigmoid(g, gu, gv, 1.0 * size))
+        monkeypatch.setattr(coverage, "covered", lambda edge, size=1.0: coverage.sigmoid(edge, size))
     areas, derivatives = truth(radius_px)
     theta = jnp.asarray(theta_for(radius_px))
     # Exact disc coverage is always windowed: under a derivative its window is declared (the silhouette and its edge).
@@ -86,9 +86,13 @@ def test_the_box_edge_within_its_measured_lines(dtype, radius_px, monkeypatch):
 def test_exact_disc_coverage_is_exact(dtype, radius_px, monkeypatch):
     areas, _ = truth(radius_px)
     covered = np.asarray(image(jnp.asarray(theta_for(radius_px)), "disc"), dtype=np.float64)
-    # Exact up to the oracle's quadrature and the rounding of the camera's pose in the run's dtype: a turn of one unit in
-    # the last place moves the image by about eps x the focal length in pixels.
-    floor = DISC[0] + 8 * float(jnp.finfo(dtype).eps) * float(theta_for(radius_px)[3])
+    # Exact up to the oracle's quadrature and the run's rounding: the camera's rotation, made from its quaternion in the
+    # run's dtype, is off by a unit in the last place in an entry, which turns the line of sight by eps and moves the
+    # image eps f px, a pixel's coverage by that times its edge's chord (sqrt 2): 1.41 eps f; and the disc's own
+    # arithmetic, 0.3 eps f measured in float32 with exact inputs (an exact rotation, the pose's numbers representable,
+    # the oracle at the inputs as rounded) at 15, 6 and 3 px. The floor is their sum, 2 eps f. (The position's rounding,
+    # which the review named, moves it by under a tenth of that: 0.03 eps f with the camera's distance made exact.)
+    floor = DISC[0] + 2 * float(jnp.finfo(dtype).eps) * float(theta_for(radius_px)[3])
     assert float(np.max(np.abs(covered - areas))) <= floor
     pixel, _, motion = measured(radius_px, "disc", monkeypatch)
     assert pixel <= DISC[1] and motion <= DISC[1], (pixel, motion)
@@ -99,7 +103,7 @@ def test_the_silhouette_matches_its_conic(dtype, monkeypatch):
     of a tenth of a pixel across the view moves the coverage centroid by its tenth of a pixel. Controls: the principal
     point half a pixel off (``CAMERA_PLANT=principal-half``) and a hard edge (``CAMERA_PLANT=hard-edge``)."""
     if planted("hard-edge"):
-        monkeypatch.setattr(coverage, "box", lambda g, gu, gv, size=1.0: (g < 0).astype(g.dtype))
+        monkeypatch.setattr(coverage, "covered", lambda edge, size=1.0: (edge.distance < 0).astype(edge.distance.dtype))
     theta = theta_for(15)
     shift = 0.5 if planted("principal-half") else 0.0
     _, centre, area = sphere_oracle.ellipse(theta, RADIUS, DISTANCE, (WIDTH - 1) / 2 - shift, (HEIGHT - 1) / 2)

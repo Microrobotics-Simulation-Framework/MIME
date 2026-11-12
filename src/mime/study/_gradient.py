@@ -47,7 +47,7 @@ from mime.nodes.control import ControllerNode, DelayNode
 from mime.registry import Role, forward_only_of, placed_gradient, rung_gradient
 from mime.results._gradient import GradientResult, MemberGradient, RaisedFlag, Recheck, SolveReport
 from mime.saved._pins import keeping_pins
-from mime.study._axes import STUDY_REASON, Axis, AxisKind, base_value, outside_range, value_text
+from mime.study._axes import BUILT_CUT, STUDY_REASON, Axis, AxisKind, base_value, outside_range, value_text
 from mime.study._point import Point, build_point, precision
 from mime.study._study import stacked_state, stacked_tree
 from mime.units import Quantity, unit_symbol
@@ -635,6 +635,8 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
     if not axes:
         raise ArgumentRefused([Refusal("gradient.no-axis", RefusalClass.USER, "the derivative is taken in no axis",
                                        "name the axes: study.gradient(of, wrt=['umr.mass'])")])
+    if refused := built_refusals(axes):
+        raise BuildRefused(refused)
     acknowledged = dict(acknowledged or {})
     built0 = next(group.built for group in plan.groups if group.built is not None)
     variants = [(axis, what) for axis in axes if (what := _variant(axis, built0)) is not None]
@@ -690,6 +692,17 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
     return GradientResult(tuple(axis.path for axis in axes), chosen, composed(statuses.values()), statuses,
                           tuple(members), {owner: reason for owner, reason in acknowledged.items()
                                            if statuses.get(owner) in ACKNOWLEDGED_ONLY})
+
+
+def built_refusals(axes: Sequence[Axis]) -> list[Refusal]:
+    """The refusal of a derivative along each axis built per value (a kind's setting that is not one number, or a
+    component of one): the declared cut."""
+    return [Refusal(
+        "gradient.built-value", RefusalClass.USER,
+        f"{axis.path} is a kind's setting that is not one number, built per value: {BUILT_CUT}",
+        "take the derivative along a value a node holds as a leaf, `study.gradient(of, wrt=['<a kind's number, a "
+        "thing's value or a law's setting>'])`, or compare the study's members, each value its own build",
+        why="a derivative is taken through the parameters of one program") for axis in axes if axis.built]
 
 
 def derivative_refusals(graph: Any, mode: str, directions: int, members: int, steps: int) -> list[Refusal]:

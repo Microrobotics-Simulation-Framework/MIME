@@ -56,6 +56,7 @@ from mime.build._watch import WATCHED_FAMILY, ContainmentPlan, UnwatchedContainm
 from mime.core import VELOCITY_RULES, jnp, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
+from mime.fields._solved import ExchangeFrame
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
 from mime.core.multibody._tree import as_vector3, rotation_matrix
 from mime.core.multibody._urdf import ISSUES
@@ -435,6 +436,10 @@ class EntryPlan:
     hulls: dict[str, Hull] = field(default_factory=dict[str, Hull])
     #: What an observation of the whole scene sees (``mime.registry.Roster``); empty for any other entry.
     roster: Roster = field(default_factory=Roster)
+    #: By each medium role an interaction is bound to, the exchange frame of the field it carries (SF-4).
+    exchanges: dict[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
+    #: A reader's plan context, kept for its checks once its values are resolved (``Interaction.value_problems``).
+    context: PlanContext | None = None
     position: int = 0
     segment: Segment | None = None
     mount: ResolvedMount | None = None
@@ -974,7 +979,9 @@ class _Planner:
             for plan in plans:
                 others = ", ".join(repr(name) for name in names if name != plan.bindings["body"]
                                    and not (plan.joined and name in joined))
-                if plan.joined:
+                if getattr(plan.entry, "rung", None) == "stokes":
+                    line = self.stokes_shared_line(plan, plans, medium)
+                elif plan.joined:
                     coupled = ", ".join(repr(name) for name in joined if name != plan.bindings["body"])
                     line = (f"{plan.bindings['body']!r}'s drag is solved jointly with {coupled}'s in the medium "
                             f"{medium!r}'s near field ({plan.joined}): each body's resistance takes the others into "
@@ -984,9 +991,52 @@ class _Planner:
                 else:
                     line = (f"the bodies {', '.join(repr(name) for name in names)} share the medium {medium!r}: "
                             f"{plan.bindings['body']!r}'s drag is computed alone, as if {others} were absent, and no "
-                            f"body outside a near field in it changes another's (bodies interact hydrodynamically "
-                            f"only through a medium's near field, drag 0.5.0's mrs rung)")
+                            f"body outside a near field or the solved flow in it changes another's (bodies interact "
+                            f"hydrodynamically only through a medium's near field, drag 0.5.0's mrs rung, or through "
+                            f"its solved flow, the stokes rung's)")
                 self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), line)
+
+    def stokes_shared_line(self, plan: EntryPlan, plans: Sequence[EntryPlan], medium: str) -> str:
+        """A stokes body's shared-medium line: its drag reads the medium's solved flow, into which every other two-way
+        stokes body scatters its reaction, so those bodies interact through the grid, a step apart; with the point
+        bodies' nearest starting separation over their radius and their volume fraction in the grid's box."""
+        body = plan.bindings["body"]
+        stokes = [other for other in plans if getattr(other.entry, "rung", None) == "stokes"]
+        scattering = sorted(other.bindings["body"] for other in stokes
+                            if other is not plan and not getattr(other.entry, "one_way", None))
+        alone = sorted(other.bindings["body"] for other in plans
+                       if other is not plan and other.bindings["body"] not in scattering)
+        named = ", ".join(repr(name) for name in scattering)
+        line = f"{body!r}'s drag reads the medium {medium!r}'s solved flow, " + (
+            f"into which {named} {'scatters its reaction' if len(scattering) == 1 else 'scatter their reactions'}: "
+            f"the bodies interact through the grid, resolved to the exchange kernel's width and read a step after "
+            f"they are scattered (lagged, no joint step)" if scattering
+            else "into which no other body in it scatters a reaction")
+        if alone:
+            line += f"; {', '.join(repr(name) for name in alone)} in the medium changes nothing of it"
+        starts = {other.bindings["body"]: self.start_of(other.bindings["body"]) for other in stokes}
+        hulls = {other.bindings["body"]: self.hull_of(other.bindings["body"]) for other in stokes}
+        placed = {name: (start, hull.kind.enclosing_radius(hull.settings)) for name, start in starts.items()
+                  for hull in (hulls[name],) if start is not None and hull is not None}
+        frame = self.exchange_frame_of(medium)
+        if len(placed) == len(stokes) >= 2 and frame is not None:
+            (own_start, own_radius) = placed[body]
+            nearest = min(math.dist(own_start, start) / max(own_radius, radius)
+                          for name, (start, radius) in placed.items() if name != body)
+            box = math.prod(frame.cells) * frame.spacing ** 3
+            fraction = sum(4.0 / 3.0 * math.pi * radius ** 3 for _, radius in placed.values()) / box
+            line += (f"; its nearest point body starts {nearest:.3g} radii from it, and the point bodies fill "
+                     f"{fraction:.3g} of the grid's box")
+        return line
+
+    def start_of(self, body: str) -> tuple[float, float, float] | None:
+        """``body``'s starting position (m), where its dynamics holds one of three numbers."""
+        dynamics = self.dynamics.get(body)
+        held: object = dynamics.initial.get("position") if dynamics is not None else None
+        if not isinstance(held, tuple) or len(cast(tuple[float, ...], held)) != 3:
+            return None
+        x, y, z = (float(c) for c in cast(tuple[float, ...], held))
+        return (x, y, z)
 
     def watch_plans(self) -> tuple[Watched, ...]:
         """The inputs of the post-run watch of every entry of the hydrodynamic family, from what the experiment
@@ -1856,6 +1906,15 @@ class _Planner:
                         f"name one of its {noun}s, `<structure>.<{noun}>`. {did_you_mean(part, candidates)}")
             return None
         return path
+
+    def exchange_frame_of(self, medium: str) -> ExchangeFrame | None:
+        """The exchange frame of the field medium ``medium`` carries, where its dynamics gives one (SF-4: what a field
+        that takes exchange deliveries tells its partners), from the dynamics' plan: its region and settings in SI."""
+        plan = self.dynamics.get(medium)
+        frame_of = getattr(plan.entry, "exchange_frame", None) if plan is not None else None
+        if plan is None or frame_of is None:
+            return None
+        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings))
 
     def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
         """The fields carried in the region medium ``medium`` fills, by their ids (``water.flow``): its own and those of
@@ -2948,9 +3007,11 @@ class _Planner:
         provided = {role: self.fields_in_region_of(name) for role, name in bindings.items()
                     if cls.roles[role] is RoleKind.MEDIUM}
         roster = self.roster() if section is Section.OBSERVATION and getattr(cls, "sees_scene", False) else Roster()
+        exchanges = {role: frame for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
+                     for frame in (self.exchange_frame_of(name),) if frame is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
                               hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided,
-                              roster=roster)
+                              exchanges=exchanges, roster=roster)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -2975,7 +3036,8 @@ class _Planner:
             self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}",
                         problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
-                               plan=plan, settings=settings, regions=regions, hulls=hulls, roster=roster)
+                               plan=plan, settings=settings, regions=regions, hulls=hulls, exchanges=exchanges,
+                               context=context, roster=roster)
         if plan.notes:
             self.checked[owner] = (*self.checked.get(owner, ()), *plan.notes)
         if plan.mounted_on is not None:
@@ -3592,6 +3654,29 @@ class _Planner:
                 if read.wall:
                     thing = self.fills.get(thing, "").partition(".")[0]
                 self.value(plan, label, thing, read.name)
+            self.interaction_value_problems(plan)
+
+    def interaction_value_problems(self, plan: EntryPlan) -> None:
+        """What an interaction says is wrong with the values it reads, once all are resolved, at its plan's context."""
+        assert plan.plan is not None
+        entry = plan.entry
+        if plan.section is not Section.INTERACTION or not isinstance(entry, Interaction) or \
+                set(plan.values) != set(plan.plan.values) or plan.context is None:
+            return
+        try:
+            problems = entry.value_problems({label: value.value for label, value in plan.values.items()},
+                                            plan.context)
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(type(entry), f"value_problems() raised {error!r}", error)
+            return
+        where = f"{plan.owner} ({type(entry).label()})"
+        for problem in problems:
+            uncatalogued = catalogue_problem(problem.code, RefusalClass.USER)
+            if uncatalogued is not None:
+                self.defect(type(entry), f"its value problem ({problem.message}) has a code it cannot be refused "
+                                         f"with: {uncatalogued}")
+                continue
+            self.refuse(problem.code, RefusalClass.USER, f"{where}: {problem.message}", problem.action)
 
     def dynamics_value_problems(self, plan: EntryPlan) -> None:
         """What the dynamics says is wrong with the values it reads, once all are resolved: a value that was refused

@@ -80,7 +80,7 @@ def _interpolated(low: float, high: float, span: float) -> Callable[[Parameters,
 def polyline(points: Sequence[Sequence[float]], radii: Sequence[float] | None = None, *,
              filament_radius: float | None = None) -> Centreline:
     """A centreline through declared ``points`` (``(k, 3)``, m, in the kind's frame, two or more): straight segments
-    joined at junctions ``j1`` to ``j(k-2)`` at the inner points, the frame's normal carried round each corner
+    joined at junctions ``junction_0`` to ``junction_(k-3)`` at the inner points, in order along the line from its first point, the frame's normal carried round each corner
     (:func:`transported`), each segment's local radius interpolated linearly between ``radii`` at its ends where they
     are given; ``filament_radius`` the one radius a slender law's coefficients take (the largest of ``radii`` where
     they are given and it is not). The points are fixed into the program, as undeclared geometry is: the route for a
@@ -109,7 +109,7 @@ def polyline(points: Sequence[Sequence[float]], radii: Sequence[float] | None = 
         segments.append(straight((lambda parameters, start=held[i]: start), tangent,
                                  (lambda parameters, span=float(lengths[i]): span), normal=normal, radius=local,
                                  filament_radius=None if thickest is None else (lambda parameters, r=thickest: r)))
-    junctions = tuple(Junction(f"j{i}", ((i - 1, 1), (i, 0))) for i in range(1, len(segments)))
+    junctions = tuple(Junction(f"junction_{i - 1}", ((i - 1, 1), (i, 0))) for i in range(1, len(segments)))
     return Centreline(tuple(segments), junctions)
 
 

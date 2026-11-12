@@ -62,6 +62,9 @@ HELD: dict[str, set[str]] = {
     "bound_robot_with_parts": {"things/UMR/parts/Shell/solid/settings/semi_axes/value"},
     "mrs_solids": {"things/brick/parts/shell/solid/settings/size/value",
                    "things/egg/parts/shell/solid/settings/semi_axes/value"},
+    # The grid's spacing, which the point body's drag consumes at build (its exchange kernel's tables and the
+    # self-field it removes); a field's setting is written where it is, never overridden, so a new box is a rebuild.
+    "point_body_flow": {"things/water/fields/flow/settings/domain/settings/length/value"},
 }
 #: The keys whose numbers are not moved: a direction, a version, the seed.
 SKIPPED = {"orientation", "up", "schema", "mime", "seed"}
@@ -197,22 +200,22 @@ REBUILDS = {
 
 
 @pytest.mark.parametrize("name", list(REBUILDS))
-def test_a_held_setting_takes_a_rebuild_an_override_and_a_sweep_are_refused(name: str):
+def test_a_held_setting_takes_a_rebuild_an_override_is_refused_and_a_sweep_builds_each_value(name: str):
     """What makes the walk's held fires acceptable: no run varies a leaf the step cannot read. An override of the
-    setting and a sweep over it are refused (``study.held-geometry``: a kind's setting that is not one number names no
-    axis, whose nodes hold it as built), so a new value takes a new experiment, a rebuild; neither runs at the built
-    value. The control: a value the step reads is overridden and planned as one group of two members, nothing
-    refused."""
+    setting is refused (``override.structural``: a kind's setting that is not one number is built per value, so a run
+    on the built step cannot take another), and a sweep over it builds each value, one group a value split by the
+    axis, so no group's members differ in the leaf. The control: a value the step reads is overridden and planned as
+    one group of two members, nothing refused."""
     make, path, base, moved, leaf, axis, own, other = REBUILDS[name]
     exp = make()
     built = exp.build()
     assert leaf in unreadable_leaves(built.graph)
-    with pytest.raises(ArgumentRefused) as raised:
+    with pytest.raises(BuildRefused) as raised:
         built.run(ms(2.0), override={path: moved})
-    assert raised.value.codes() == ["study.held-geometry"]
-    with pytest.raises(ArgumentRefused) as swept:
-        Study(exp).sweep(grid({path: [base, moved]}), duration=ms(2.0)).run()
-    assert swept.value.codes() == ["study.held-geometry"]
+    assert raised.value.codes() == ["override.structural"]
+    swept = Study(exp).sweep(grid({path: [base, moved]}), duration=ms(2.0)).plan()
+    assert [group.members for group in swept.groups] == [[0], [1]] and not swept.refused, swept.text()
+    assert swept.groups[1].reasons[0].startswith(f"its value of {path}, a kind's setting"), swept.groups[1].reasons
 
     built.run(ms(2.0), override={axis: other})
     control = Study(exp).sweep(grid({axis: [own, other]}), duration=ms(2.0)).plan()

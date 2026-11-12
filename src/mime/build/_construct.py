@@ -26,7 +26,7 @@ from mime.build._builders import (
     ProviderBuilder,
     RestrictedBuilder,
 )
-from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks
+from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks, solving_lines
 from mime.build._control import Mode
 from mime.build._declared_lags import net_of_declared_lags
 from mime.build._derived import DerivedGraph, derive
@@ -88,7 +88,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               derived_hash: str | None = None, lags: Sequence[EdgeLag] = (),
               models: tuple[str, ...] | None = None,
               computed: Mapping[str, tuple[str, ...]] | None = None, energy: tuple[str, ...] = (),
-              unmetered: Mapping[str, str] | None = None) -> BuildReport:
+              unmetered: Mapping[str, str] | None = None, solving: tuple[str, ...] = ()) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name))
@@ -107,7 +107,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
         checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
                                                  for owner, lines in (computed or {}).items()}}.items())),
-        energy=energy, unmetered=dict(unmetered or {}))
+        energy=energy, unmetered=dict(unmetered or {}), solving=solving)
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -202,7 +202,24 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
                         rates_read=plan.rates_read, mass_read=plan.mass_read,
                         members={member.owner: _context(member, plans) for member in plan.members},
-                        entry=plan.entry, roster=plan.roster)
+                        entry=plan.entry, roster=plan.roster, exchanges=dict(plan.exchanges),
+                        starts={role: dict(body.initial) for role, name in plan.bindings.items() if plan.exchanges
+                                for body in plans.entries if body.section is Section.DYNAMICS and body.owner == name},
+                        frequencies=_drive_frequencies(plan, plans))
+
+
+def _drive_frequencies(plan: EntryPlan, plans: PlanSet) -> dict[str, float]:
+    """For a law exchanging with a medium's field, by its medium role, the highest frequency in SI of the laws bound
+    to that medium whose settings declare one (a pulsatile drive's)."""
+    found: dict[str, float] = {}
+    for role in plan.exchanges:
+        medium = plan.bindings.get(role)
+        held = [float(cast(float, other.settings["frequency"])) for other in plans.entries
+                if other.section is Section.INTERACTION and other is not plan and medium in other.bindings.values()
+                and isinstance(other.settings.get("frequency"), float)]
+        if held:
+            found[role] = max(held)
+    return found
 
 
 def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder, list[str]]:
@@ -412,7 +429,8 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     for node in nodes:
         graph.add_node(node)
     for edge in edges:
-        add_edge(graph, edge.source, edge.target, additive=edge.additive, units=edge.units)
+        add_edge(graph, edge.source, edge.target, additive=edge.additive, units=edge.units, mapping=edge.mapping,
+                 geometry=edge.geometry)
     for group in sorted(groups, key=lambda members: position[members[0]]):
         held = next(g for g in plans.groups if set(g.nodes) == set(group))
         add_coupling_group(graph, group, max_iterations=held.max_iterations, tolerance=held.tolerance)
@@ -458,4 +476,4 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
     return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
                             merged(node_lines(graph, plans), held.flags), energy,
-                            held.energy.unmetered if held.energy is not None else None), derived
+                            held.energy.unmetered if held.energy is not None else None, solving_lines(graph)), derived

@@ -11,17 +11,23 @@ and given its own: the displaced-medium rule, exact along each ray while a child
 leaves its parent (a robot past the wall it rides on) by more than its tolerance is flagged.
 
 **Static structure** (subjects not moving) is rendered once per camera into a :class:`StaticCache`, keyed by the hash
-of every number it was made from; a cache whose key differs from the camera's and the static subjects' numbers now is
-refused as stale, and one whose numbers are traced (a derivative in them) is refused too: the cache carries no
-derivative in the intrinsics or the structure, so a calibration renders without it."""
+of every input it was made from (every field of the camera, its pose and each static subject, read from the
+dataclasses, and the corner sub-samples); a cache whose key differs from the render's inputs now is refused as stale,
+and one whose numbers are traced (a derivative in them) is refused too: the cache carries no derivative in the
+intrinsics or the structure, so a calibration renders without it.
+
+**Behind the camera:** every form is taken on the ray (``t >= 0``), so a body behind the camera covers nothing and one
+straddling its plane only what lies in front; ``behind`` reports a body whose enclosing ball reaches the plane."""
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, NamedTuple, cast
 
 import jax
@@ -43,6 +49,10 @@ _jax: Any = cast(Any, jax)
 #: Below this projected radius (pixels) a silhouette's box edge loses accuracy (5.5 % in its derivative at 6 px, 8 % at
 #: 3); a subject imaged with the box edge there is flagged.
 SMALL_SILHOUETTE_PX = 6.0
+
+
+#: Sub-frames this many pixels or more apart (a subject's projected centre between neighbours) raise ``ghosting``.
+GHOSTING_PX = 1.0
 
 
 @dataclass(frozen=True)
@@ -119,42 +129,55 @@ def _parameters(subject: Subject, dtype: Any) -> dict[str, Any]:
     return {name: jnp.asarray(value, dtype=dtype) for name, value in subject.placed.parameters.items()}
 
 
-def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any,
-                  corner_samples: int) -> Any:
+def _lines(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any) -> list[coverage.Line]:
+    """Each of the subject's pieces as its edge's line in the pixel, its gradient read along the ray table's
+    derivatives by one ``jvp`` each way."""
     form = subject.placed.form
 
-    def edges(dx: Any, dy: Any, dz: Any) -> tuple[Any, tuple[Any, ...]]:
-        direction = (dx, dy, dz)
-        return form.edge(p, o, direction), form.pieces(p, o, direction)
+    def pieces(dx: Any, dy: Any, dz: Any) -> tuple[Any, ...]:
+        return form.pieces(p, o, (dx, dy, dz))
 
-    (g, pieces), linear = _jax.linearize(edges, *d)
-    gu, pieces_u = linear(*du)
-    gv, pieces_v = linear(*dv)
-    single = coverage.box(g, gu, gv)
-    if not form.corners or corner_samples <= 1:
+    values, linear = _jax.linearize(pieces, *d)
+    along_u, along_v = linear(*du), linear(*dv)
+    lines = [coverage.line(g, gu, gv) for g, gu, gv in zip(values, along_u, along_v, strict=True)]
+    for inner, bound in form.bounds:
+        lines[inner] = coverage.greater(lines[inner], lines[bound])
+    return lines
+
+
+def _composed(subject: Subject, lines: Sequence[coverage.Line]) -> coverage.Line:
+    return subject.placed.form.compose(lines, coverage.lesser, coverage.greater)
+
+
+def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any,
+                  corner_samples: int) -> Any:
+    lines = _lines(subject, p, o, d, du, dv)
+    single = coverage.covered(_composed(subject, lines))
+    if not subject.placed.form.corners or corner_samples <= 1:
         return single
-    crossing = sum((coverage.near(pk, pu, pv).astype(g.dtype) for pk, pu, pv in zip(pieces, pieces_u, pieces_v,
-                                                                                     strict=True)),
-                   start=jnp.zeros_like(g))
-    corner = crossing >= 2.0
-
-    def edge(dx: Any, dy: Any, dz: Any) -> Any:
-        return form.edge(p, o, (dx, dy, dz))
+    form = subject.placed.form
+    crossing = sum((coverage.near(line).astype(single.dtype) for line in lines), start=jnp.zeros_like(single))
+    turning = sum((coverage.near(lines[i]).astype(single.dtype) for i in form.turning), start=jnp.zeros_like(single))
+    corner = (crossing >= 2.0) | (turning >= 1.0)
 
     def one(total: Any, offset: Any) -> tuple[Any, None]:
         su, sv = offset[0], offset[1]
         moved: tuple[Any, Any, Any] = (d[0] + su * du[0] + sv * dv[0], d[1] + su * du[1] + sv * dv[1],
                                        d[2] + su * du[2] + sv * dv[2])
         scale = 1.0 / jnp.sqrt(forms.dot(moved, moved))
-        h, sub_linear = _jax.linearize(edge, moved[0] * scale, moved[1] * scale, moved[2] * scale)
-        return total + coverage.box(h, sub_linear(*du), sub_linear(*dv), 1.0 / corner_samples), None
+        sub = _composed(subject, _lines(subject, p, o, tuple(c * scale for c in moved), du, dv))
+        return total + coverage.covered(sub, 1.0 / corner_samples), None
 
     def sub_sampled() -> Any:
-        offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=g.dtype)
-        total, _ = lax.scan(one, jnp.zeros_like(g), offsets)
-        return jnp.where(corner, total / corner_samples ** 2, single)
+        offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
+        total, _ = lax.scan(one, jnp.zeros_like(single), offsets)
+        return total / corner_samples ** 2
 
-    # The sub-samples only where some pixel holds a corner: a tube whose ends are out of view pays nothing for them.
+    # Sub-sampled where some pixel holds a corner (two pieces cross it) or a piece whose own outline turns within a
+    # pixel (a cap seen near edge-on, its ellipse's ends a fraction of a pixel round): every pixel then takes its
+    # sub-samples, which cost the same once computed, and which no piece's line can steer from (inside a cap's thin
+    # ellipse its first-order distance is inflated, past the corner reach); a tube whose ends are out of view pays
+    # nothing for them.
     return lax.cond(jnp.any(corner), sub_sampled, lambda: single)
 
 
@@ -178,12 +201,21 @@ def _seen(subject: Subject, rays: Rays, rotation: Any, origin: Any, dtype: Any, 
     o = _into(rotation, tuple(rays.origin[i] - origin[i] for i in range(3)))
     d, du, dv = _into(rotation, rays.direction), _into(rotation, rays.along_u), _into(rotation, rays.along_v)
     form = subject.placed.form
-    interval = form.interval(p, o, d)
+    interval = forms.ahead(form.interval(p, o, d))
     if subject.coverage == "disc":
         camera_rotation = _rotation(pose.orientation, dtype)
         centre = camera_rotation.T @ (origin - jnp.asarray(pose.position, dtype=dtype))
         corners_x, corners_y = _corners(camera, start, rays.beyond.shape)
-        covered = coverage.disc(corners_x, corners_y, centre, p["radius"])
+
+        def exact() -> Any:
+            return coverage.disc(corners_x, corners_y, centre, p["radius"])
+
+        def on_the_ray() -> Any:
+            return _box_coverage(subject, p, o, d, du, dv, corner_samples)
+
+        # The conic is an ellipse only for a ball wholly in front of the camera; one reaching behind it (its image
+        # unbounded, or nothing) is covered by the box edge on the ray.
+        covered = lax.cond(centre[2] > p["radius"], exact, on_the_ray)
     else:
         covered = _box_coverage(subject, p, o, d, du, dv, corner_samples)
     return Seen(covered, interval)
@@ -199,9 +231,9 @@ def _transmits(appearance: Appearance, parent: Appearance | None, chord: Any, dt
     return jnp.exp(-(jnp.asarray(appearance.attenuation, dtype=dtype) - jnp.asarray(around, dtype=dtype)) * chord)
 
 
-def _window_rays(rays: Rays, start: tuple[Any, Any], size: int) -> Rays:
+def _window_rays(rays: Rays, start: tuple[Any, Any], size: tuple[int, int]) -> Rays:
     def cut(a: Any) -> Any:
-        return lax.dynamic_slice(a, start, (size, size))
+        return lax.dynamic_slice(a, start, size)
 
     return Rays(rays.origin, tuple(cut(a) for a in rays.direction), tuple(cut(a) for a in rays.along_u),
                 tuple(cut(a) for a in rays.along_v), cut(rays.beyond))
@@ -214,8 +246,18 @@ def _implicit_lumens(subjects: Sequence[Subject]) -> list[Subject]:
             for s in subjects if s.kind == "tube" and s.region == "wall" and s.name not in filled]
 
 
+#: A subject's fields made from its others (its placed form, from its kind, settings and region): left out of the key.
+DERIVED_FIELDS = frozenset({"placed"})
+
+
 def _numbers(value: Any) -> Any:
-    """``value``'s numbers as plain Python numbers (raising on a traced value)."""
+    """``value``'s numbers as plain Python numbers, a dataclass's by its every field (but those derived from others),
+    an enumeration by its value (raising on a traced value)."""
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _numbers(getattr(value, f.name)) for f in dataclasses.fields(value)
+                if f.name not in DERIVED_FIELDS}
+    if isinstance(value, Enum):
+        return _numbers(value.value)
     if isinstance(value, Mapping):
         held = cast(Mapping[str, Any], value)
         return {str(k): _numbers(held[k]) for k in sorted(held, key=str)}
@@ -226,22 +268,24 @@ def _numbers(value: Any) -> Any:
     return np.asarray(value, dtype=np.float64).tolist()
 
 
-def cache_key(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, dtype: Any) -> str:
-    """The hash of every number the static subjects' transmission is made from: the camera's, its pose, each static
-    subject's, the dtype and the renderer's own declared constants."""
+def cache_key(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, dtype: Any,
+              corner_samples: int = coverage.CORNER_SAMPLES) -> str:
+    """The hash of every input the static subjects' transmission and flags are made from: the camera's every field, its
+    pose, each static subject's every field (with its parent's appearance, which it displaces), the corner sub-samples,
+    the dtype and the renderer's own declared constants. Read from the dataclasses' fields, so a field added later is
+    keyed without a change here."""
+    by_name = {s.name: s for s in subjects}
     try:
         record = {
-            "camera": [camera.width, camera.height, _numbers([camera.fx, camera.fy, camera.cx, camera.cy]),
-                       _numbers([camera.distortion.k1, camera.distortion.k2, camera.distortion.p1,
-                                 camera.distortion.p2, camera.distortion.k3])],
-            "pose": _numbers([pose.position, pose.orientation]),
-            "subjects": [[s.name, s.kind, s.region, _numbers(s.settings), _numbers(list(s.pose)), s.parent, s.coverage,
-                          None if s.appearance is None else [s.appearance.look.value,
-                                                             _numbers([s.appearance.attenuation,
-                                                                       s.appearance.blocks])]]
+            "camera": _numbers(camera),
+            "pose": _numbers(pose),
+            "subjects": [[_numbers(s), None if s.parent is None else _numbers(by_name[s.parent].appearance)]
                          for s in subjects if not s.moving],
+            "corner_samples": corner_samples,
             "dtype": str(np.dtype(dtype)),
-            "constants": [forms.GRAZING, coverage.CORNER_SAMPLES, detector.UNDISTORT_STEPS],
+            "constants": [forms.GRAZING, forms.PARALLEL, forms.FAR, coverage.CORNER_REACH, coverage.FLAT,
+                          detector.UNDISTORT_STEPS, detector.TANGENTIAL_STEPS, SMALL_SILHOUETTE_PX, THIN_CAP_SUBPIXELS,
+                          SILHOUETTE_POINTS, list(SILHOUETTE_MARGIN)],
         }
     except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
         raise ArgumentRefused([Refusal(
@@ -252,14 +296,18 @@ def cache_key(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, dt
     return hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
 
 
-def _window_of(subject: Subject, camera: Pinhole, pose: CameraPose, origin: Any) -> int | None:
-    """A subject's window's half-size in pixels: its declared one, or for exact disc coverage (always windowed) its
-    silhouette's reach at its pose with a margin, which needs the pose and the camera as numbers; ``None`` for a
-    box-edged subject with none declared (it is rendered over the whole frame)."""
-    if subject.window is not None or subject.coverage != "disc":
-        return subject.window
+def _window_of(subject: Subject, camera: Pinhole, pose: CameraPose, origin: Any) -> tuple[int, int] | None:
+    """A subject's window's half-sizes in pixels, ``(rows, columns)``: its declared one each way, or for exact disc
+    coverage (always windowed) its silhouette's bounding box about its projected centre at its pose with a pixel's
+    margin, which needs the pose and the camera as numbers (the whole image where the ball reaches behind the camera);
+    ``None`` for a box-edged subject with none declared (it is rendered over the whole frame)."""
+    if subject.window is not None:
+        return subject.window, subject.window
+    if subject.coverage != "disc":
+        return None
     try:
-        reach = float(np.asarray(_projected_reach(camera, pose, origin, subject.enclosing())))
+        low, high, in_front = (np.asarray(x) for x in _silhouette_box(camera, pose, origin, subject.enclosing()))
+        centre = np.round(np.asarray(project(camera, pose, origin)[0]))
     except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
         raise ArgumentRefused([Refusal(
             "camera.subject", RefusalClass.USER,
@@ -268,7 +316,10 @@ def _window_of(subject: Subject, camera: Pinhole, pose: CameraPose, origin: Any)
             "Subject(..., coverage=\"box_edge\")",
             why="a window's size is fixed when the program is made; a derivative traces the numbers it would be made "
                 "from")]) from error
-    return math.ceil(1.1 * reach) + 2
+    if not bool(in_front):
+        return camera.height, camera.width
+    reach = np.maximum(centre - low, high - centre)
+    return math.ceil(float(reach[1])) + 1, math.ceil(float(reach[0])) + 1
 
 
 def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, Any] | None, rays: Rays, position: Any,
@@ -280,12 +331,12 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
     pixel, depth = project(camera, pose, origin)
     window = _window_of(subject, camera, pose, origin)
     if window is not None:
-        size = min(2 * window + 1, camera.height, camera.width)
-        start = (jnp.round(pixel[1]).astype(jnp.int32) - window, jnp.round(pixel[0]).astype(jnp.int32) - window)
-        start = (jnp.clip(start[0], 0, camera.height - size), jnp.clip(start[1], 0, camera.width - size))
+        size = _window_size(window, camera)
+        start = (jnp.clip(jnp.round(pixel[1]).astype(jnp.int32) - window[0], 0, camera.height - size[0]),
+                 jnp.clip(jnp.round(pixel[0]).astype(jnp.int32) - window[1], 0, camera.width - size[1]))
         seen_rays = _window_rays(rays, start, size)
     else:
-        start, seen_rays = None, rays
+        size, start, seen_rays = None, None, rays
     seen = _seen(subject, seen_rays, rotation, origin, dtype, camera, pose, start, corner_samples)
     assert subject.appearance is not None
     chord = forms.chord(seen.interval)
@@ -295,33 +346,68 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
     if parent is not None and parent_pose is not None:
         parent_rotation, parent_origin = _local(parent, parent_pose[0], parent_pose[1], dtype)
         o = _into(parent_rotation, tuple(seen_rays.origin[i] - parent_origin[i] for i in range(3)))
-        inside = parent.placed.form.interval(_parameters(parent, dtype), o, _into(parent_rotation, seen_rays.direction))
+        inside = forms.ahead(parent.placed.form.interval(_parameters(parent, dtype), o,
+                                                         _into(parent_rotation, seen_rays.direction)))
         limit = 2.0 * subject.enclosing() * math.sqrt(2.0 * subject.tolerance)
         outside = jnp.sum((chord - forms.overlap(seen.interval, inside)) > limit)
         flags[f"outside_parent:{name}"] = flags.get(f"outside_parent:{name}", 0) + outside
-    if start is not None and window is not None:
+    if start is not None and size is not None:
         factor = lax.dynamic_update_slice(jnp.ones(shape, dtype=factor.dtype), factor, start)
-        reach = _projected_reach(camera, pose, origin, subject.enclosing())
-        flags[f"window_overflow:{name}"] = flags.get(f"window_overflow:{name}", False) | (reach + 1.5 > window)
+        flags[f"window_overflow:{name}"] = flags.get(f"window_overflow:{name}", False) | _overflows(
+            camera, pose, origin, subject.enclosing(), start, size)
     if subject.coverage == "box_edge":
         small = camera.fx * subject.feature() / depth < SMALL_SILHOUETTE_PX
         flags[f"small_silhouette:{name}"] = flags.get(f"small_silhouette:{name}", False) | small
-    flags[f"behind:{name}"] = flags.get(f"behind:{name}", False) | (depth < subject.enclosing())
+    flags[f"behind:{name}"] = flags.get(f"behind:{name}", False) | _behind(depth, subject)
     if subject.placed.form.corners:
-        flags[f"thin_cap:{name}"] = flags.get(f"thin_cap:{name}", False) | _thin_cap(subject, rotation, origin, camera,
-                                                                                      pose, dtype)
+        flags[f"thin_cap:{name}"] = flags.get(f"thin_cap:{name}", False) | _thin_cap(
+            subject, rotation, origin, camera, pose, dtype, corner_samples)
     return factor, pixel
 
 
-#: A cap whose ellipse is thinner than this many pixels across (seen within a pixel of edge-on) and in view raises
-#: ``thin_cap``: its outline is resolved to about a seventh of a pixel's area by the corner sub-samples there (the cap's
-#: edge function changes across its ellipse faster than a sub-pixel's line follows), measured on a side-on cylinder.
-THIN_CAP_PX = 1.0
+def _window_size(window: tuple[int, int], camera: Pinhole) -> tuple[int, int]:
+    """A window's rows and columns: each axis clipped to the image on its own (a window wider than the image's shorter
+    side keeps its width)."""
+    return min(2 * window[0] + 1, camera.height), min(2 * window[1] + 1, camera.width)
 
 
-def _thin_cap(subject: Subject, rotation: Any, origin: Any, camera: Pinhole, pose: CameraPose, dtype: Any) -> Any:
-    """Whether a capped cylinder shows a cap in view seen nearly edge-on: the cap's ellipse's minor axis (twice
-    ``f R |cos|`` over its depth, the cosine between the line of sight and the axis) under ``THIN_CAP_PX``."""
+def _behind(depth: Any, subject: Subject) -> Any:
+    """Whether a subject is not wholly in front of the camera: its enclosing ball reaches the camera's plane (the part
+    behind it is not imaged)."""
+    return depth < subject.enclosing()
+
+
+def _overflows(camera: Pinhole, pose: CameraPose, origin: Any, radius: float, start: tuple[Any, Any],
+               size: tuple[int, int]) -> Any:
+    """Whether any part of a ball's silhouette that lies in the image lies outside the window (``start``, ``size``:
+    rows, then columns); for a ball reaching behind the camera, whether the window is less than the whole image."""
+    low, high, in_front = _silhouette_box(camera, pose, origin, radius)
+    lost = jnp.zeros((), dtype=bool)
+    for axis, extent in ((0, camera.width), (1, camera.height)):
+        first, count = start[1 - axis], size[1 - axis]
+        seen_low = jnp.clip(low[axis], -0.5, extent - 0.5)
+        seen_high = jnp.clip(high[axis], -0.5, extent - 0.5)
+        showing = seen_high > seen_low
+        lost = lost | (showing & ((seen_low < first - 0.5) | (seen_high > first + count - 0.5)))
+    whole = size == (camera.height, camera.width)
+    return jnp.where(in_front, lost, not whole)
+
+
+#: A cap whose ellipse is narrower than this many sub-pixels across (seen near edge-on) and in view raises
+#: ``thin_cap``. The sub-samples' straight lines resolve a cap's outline where its ellipse spans two sub-pixels or more;
+#: in a narrower one a sub-pixel holds both of its sides and the cap's first-order line there is inflated (its edge
+#: function changes fastest across the ellipse), and a pixel misses by up to about one sub-pixel's area. Measured
+#: against the exact hull (``tests/sensing/test_corners.py``): with 4 x 4 sub-samples up to 7.7 % at ellipses 0.16 to
+#: 0.25 px across, within 3.9 % at every view measured with no cap narrower than half a pixel; at the worst thin view 2.7 % with
+#: 8 x 8 and 0.7 % with 16 x 16 (resolution). The threshold is declared and measured at the default sub-samples only.
+THIN_CAP_SUBPIXELS = 2.0
+
+
+def _thin_cap(subject: Subject, rotation: Any, origin: Any, camera: Pinhole, pose: CameraPose, dtype: Any,
+              corner_samples: int) -> Any:
+    """Whether a capped cylinder shows a cap in view whose ellipse is narrower than ``THIN_CAP_SUBPIXELS`` sub-pixels
+    (``1 / corner_samples`` px each): its minor axis, twice ``f R |cos|`` over its depth, the cosine between the line
+    of sight and the axis."""
     radius, half = subject.placed.parameters["radius"], subject.placed.parameters["length"] / 2.0
     axis = rotation[:, 2]
     position = jnp.asarray(pose.position, dtype=dtype)
@@ -335,7 +421,7 @@ def _thin_cap(subject: Subject, rotation: Any, origin: Any, camera: Pinhole, pos
         reach = camera.fx * radius / depth
         seen = (pixel[0] > -reach) & (pixel[0] < camera.width + reach) & (pixel[1] > -reach) \
             & (pixel[1] < camera.height + reach) & (depth > 0)
-        found = found | (seen & (across < THIN_CAP_PX))
+        found = found | (seen & (across < THIN_CAP_SUBPIXELS / max(corner_samples, 1)))
     return found
 
 
@@ -369,7 +455,7 @@ def static_cache(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose,
     rays = lax.stop_gradient(ray_table(camera, pose))
     flags: dict[str, Any] = {}
     transmission = lax.stop_gradient(_static(held, rays, camera, pose, dtype, corner_samples, flags))
-    return StaticCache(cache_key(held, camera, pose, dtype), transmission, rays,
+    return StaticCache(cache_key(held, camera, pose, dtype, corner_samples), transmission, rays,
                        tuple(s.name for s in held if not s.moving), flags)
 
 
@@ -447,7 +533,7 @@ def render(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, poses
     del sources, notes
     dtype = jnp.result_type(camera.fx, float)
     if cache is not None:
-        if cache_key(held, camera, pose, dtype) != cache.key:
+        if cache_key(held, camera, pose, dtype, corner_samples) != cache.key:
             raise ArgumentRefused([Refusal(
                 "camera.cache-stale", RefusalClass.USER,
                 "the static cache was made from other numbers than this camera's and its static subjects'",
@@ -491,25 +577,47 @@ def exposed(held: Sequence[Subject], camera: Pinhole, pose: CameraPose, rays: Ra
     for name, held_centres in centres.items():
         if len(held_centres) > 1:
             steps = jnp.stack([jnp.linalg.norm(b - a) for a, b in zip(held_centres, held_centres[1:], strict=False)])
-            flags[f"ghosting:{name}"] = jnp.max(steps) > 1.0
+            flags[f"ghosting:{name}"] = jnp.max(steps) >= GHOSTING_PX
     transmission = static * total / frames
     expected, image, saturated = respond(transmission, response, key)
     flags["saturated"] = saturated
     return Capture(image, expected, transmission, flags)
 
 
-def _projected_reach(camera: Pinhole, pose: CameraPose, origin: Any, radius: float) -> Any:
-    """A ball's image's half-size in pixels, to a window's flag: the largest distance from its projected centre to the
-    projection of a point on it along the camera's axes, widened by the perspective of its silhouette (whose half-angle
-    is ``asin(R / D)``, not ``atan``), and by a twentieth for the distortion's change across it."""
+#: Points of a ball's tangent circle projected to bound its silhouette, and the margin (pixels, plus a share of the
+#: silhouette's size) added for the arcs between them: a chord of a circle cut in N arcs lies within
+#: ``1 - cos(pi / N)`` of its radius (3e-4 at 128) of the arc, and the distortion's change across an arc is smaller.
+SILHOUETTE_POINTS = 128
+SILHOUETTE_MARGIN = (0.5, 1e-3)
+
+
+def _silhouette_box(camera: Pinhole, pose: CameraPose, origin: Any, radius: float) -> tuple[Any, Any, Any]:
+    """The bounding box in pixels of the silhouette of a ball of ``radius`` at ``origin`` (its least and greatest
+    ``(u, v)``), from points of its tangent circle through the camera's projection (distortion included), and whether
+    the ball is wholly in front of the camera (otherwise its silhouette is unbounded or empty, and the box is not
+    read)."""
     dtype = jnp.result_type(camera.fx, float)
     axes = _rotation(pose.orientation, dtype)
-    points = jnp.stack([origin + sign * radius * axes[:, i] for i in range(2) for sign in (-1.0, 1.0)])
+    sight = origin - jnp.asarray(pose.position, dtype=dtype)
+    distance = jnp.sqrt(jnp.sum(sight * sight))
+    axis = sight / distance
+    # A direction across the line of sight: the camera's x axis made orthogonal to it, or its y axis where the line of
+    # sight is near the x axis.
+    across = [axes[:, i] - jnp.sum(axes[:, i] * axis) * axis for i in range(2)]
+    lengths = [jnp.sum(a * a) for a in across]
+    first = jnp.where(lengths[0] > 0.25, across[0] / jnp.sqrt(lengths[0]), across[1] / jnp.sqrt(lengths[1]))
+    second = jnp.cross(axis, first)
+    sine = jnp.minimum(radius / distance, 1.0)
+    cosine = jnp.sqrt(1.0 - sine * sine)
+    phi = jnp.arange(SILHOUETTE_POINTS, dtype=dtype) * (2.0 * math.pi / SILHOUETTE_POINTS)
+    ring = (cosine * axis[None, :] + sine * (jnp.cos(phi)[:, None] * first[None, :]
+                                             + jnp.sin(phi)[:, None] * second[None, :]))
+    points = jnp.asarray(pose.position, dtype=dtype)[None, :] + distance * cosine * ring
     pixels, _ = project(camera, pose, points)
-    centre, _ = project(camera, pose, origin)
-    distance = jnp.linalg.norm(origin - jnp.asarray(pose.position, dtype=dtype))
-    widened = 1.0 / jnp.sqrt(jnp.maximum(1.0 - (radius / distance) ** 2, 1e-6))
-    return 1.05 * widened * jnp.max(jnp.linalg.norm(pixels - centre, axis=-1))
+    low, high = jnp.min(pixels, axis=0), jnp.max(pixels, axis=0)
+    margin = SILHOUETTE_MARGIN[0] + SILHOUETTE_MARGIN[1] * (high - low)
+    _, depth = project(camera, pose, origin)
+    return low - margin, high + margin, depth > radius
 
 
 def appearance_sources(subjects: Sequence[Subject], stage: Mapping[str, Any] | None = None) -> tuple[dict[str, AppearanceSource],
@@ -522,5 +630,13 @@ def appearance_sources(subjects: Sequence[Subject], stage: Mapping[str, Any] | N
 #: The renderer's parts the in-loop camera's node calls, under public names: the node holds the static structure's image
 #: and the rays itself, guarded by its leaves, and sizes each disc subject's window from its pose at the start.
 prepared = _prepared
-projected_reach = _projected_reach
 static_part = _static
+
+
+def projected_reach(camera: Pinhole, pose: CameraPose, origin: Any, radius: float) -> Any:
+    """The greatest distance in pixels from a ball's projected centre to its silhouette's bounding box (``_silhouette_box``,
+    the distortion included), the largest over both axes; not finite where the ball reaches behind the camera."""
+    low, high, in_front = _silhouette_box(camera, pose, origin, radius)
+    centre = project(camera, pose, origin)[0]
+    reach = jnp.max(jnp.maximum(centre - low, high - centre))
+    return jnp.where(in_front, reach, jnp.inf)

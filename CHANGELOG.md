@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
+  ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
+  (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector
+  (`"egg.parts.shell.semi_axes"`), or one component by its index (`"vessel.radii[3]"`, `Axis.component`). Each point
+  rebuilds the kind with the value written, and each value is a group of its own, split by it (the point's key is its
+  structure key with the setting's value), the split reason naming the axis; its inertness is judged on the points'
+  traced steps as well. No derivative is taken along one, a declared cut stated in the plan and refused where a study
+  or a fit asks for one (`gradient.built-value`); an override of one is refused (`override.structural`), and so is a
+  range (`range.units`). New refusals: `study.component-path` (a component of what is not a vector of numbers, or a
+  second index, `vessel.radii[3][0]`), `study.component-spelling` (an index in another spelling than one whole number
+  from 0, `vessel.radii[03]`, so that one component has one path), `study.component-index`, `study.vector-value`;
+  `study.held-geometry` now refuses only a kind's structure, names or reference (a tree's segments); `study.axis-twice`
+  judges what each axis writes, not its spelling. The study folder and the spec file hold a tuple of bare numbers (a
+  direction, a body's initial orientation, refused at save until now) as the list of its numbers, read back as the
+  tuple. Gated (`tests/study/test_vector_axes.py`): a study over the MRS egg's semi-axes (whole, and one component by
+  the water's viscosity) and over a plane's normal (whole, and one component: two groups of one structure key, split
+  by the value alone) equals the same points written by hand, bit for bit per point; the FVM tree's fourth radius
+  equals them at its points (structure, leaves, initial state and traced step; no run).
+
+- **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
+  and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
+  scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's
+  average, its Laplacian and its antisymmetric dipole), Faxén's corrections paired so the exchange stays workless, the
+  kernel's own steady field removed from the drag's and the couple's readings, and Maxey and Riley's
+  fluid-acceleration force and added mass read on the flow without the body: by default the body's own free-box flow
+  advanced exactly by the grid's operator each step (`self_history="exact"`, with Hasimoto's image term), or fitted
+  decay modes (`self_history="modes"`, the declared opt-in for many bodies, its gate a swap test against the exact
+  route), and under the field's steady limit the steady response to last step's force. Lagged, two-way by default for
+  the force and the couple, `one_way=True` the declared approximation. The build widens the kernel (`kernel_width=`, on
+  a ladder at or above max(h, a/1.7)) until the coupled one-step margins of the force and the couple clear their floor,
+  and refuses a body too large for the widest kernel (`drag.stokes-size`) or under the floor at every allowed width
+  (`drag.stokes-floor`), each naming the coarser grid and the larger step that plan it; a sphere only
+  (`drag.stokes-sphere`), in a flow on a grid stepped by IMEX Euler or its steady limit (`drag.stokes-scheme`), on a
+  periodic box (an open vessel refuses its exchange partners, `flow.open-exchange`). The drag's sign is judged by its
+  node each step (the law's power at one velocity, `cluster_gift_steps`, read onto both of its ledger rows), and its
+  own dissipation booked net of the fluid's dissipation of the kernel's field, so the lagged exchange's unpaired work is
+  first order. The FVM takes exchange partners (`flow.exchange_x`..`_z`, `flow.partners`), publishes its face sets
+  (`flow.faces`) and books the exchange's work per law; the energy ledger books the Maxey-Riley part under its own row
+  (`<id>.maxey_riley`). Point bodies in one medium interact through its flow, lagged a step; the build reports it on
+  each one's drag, with their nearest starting separation in radii and their volume fraction in the grid's box.
+  Flags `below_floor`, `history_flagged`, `rate_feedback`, `near_wall`, `reynolds_flagged` (stokes).
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
   patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the
@@ -129,6 +170,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   geometry, never by a law's role: `root` at the first segment's start, the others `end_0`, `end_1`, ... in the order of
   their points or as `ends` names them (`TubeTree.end_names`), each a surface reached through the structure's handle
   (`vessel.root`) and an opening of the lumen (`Geometry.opening_names`, per instance beside the class's `openings`).
+  Its junctions are named by order, `junction_0`, `junction_1`, ... in the order they are found walking outward from the
+  first segment's start (`TubeTree.junction_names`), or as `junctions=(...)` names the first of them; `mime.scene.polyline`
+  names its junctions `junction_0`, ... along the line.
   A tree whose fillet would fuse tubes that share no point (solid between them thinner than its diameter) is refused
   when planned (`setting.value`), naming a smaller fillet or a thicker wall. The round-trip case `tree_flow`.
 
@@ -1147,6 +1191,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
+  projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse
+  mode transposes in, so the transpose solve was the wrong one: through two steps the viscosity's derivative of the
+  openings' pressures read 5.27 in reverse mode against forward mode's 7.24, and the inflow's amplitude's 6.69
+  against 6.13 (the laws' resistances and compliance right); forward mode was right. The transpose solve is now the
+  weighted one, `V (P A P)^-1 V^-1` (`mime.nodes.flow.fvm._solve.projected_solve`); the periodic box's grid has no
+  weights and is unchanged. Found by F2b's gradient gate with ports.
 - **A body force on the open vessel's fluid booked its work over the planes' half cells counted whole**: its pairing,
   the fluid's momentum, now weighs each face as the open box's inner product does, so a driven open vessel's books close
   (they failed at 5e12 of their floor; the open box was admitted with a body force and not gated with one).

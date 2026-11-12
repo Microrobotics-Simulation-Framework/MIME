@@ -63,7 +63,7 @@ def edge_distance(size: float, seed: int) -> bool:
 
     def moved(g, gu, gv):
         distance, nu, nv = held(g, gu, gv)
-        return distance + size, nu, nv
+        return coverage.Line(distance + size, nu, nv)
 
     coverage.line = moved
     try:
