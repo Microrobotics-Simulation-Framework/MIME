@@ -40,9 +40,10 @@ from mime.nodes.hydro.near_field._node import JointDragNode
 PREFIX = "schwarz_"
 #: The flow's own constants for its Schwarz partner (the rest under :data:`PREFIX` are the hosted near field's): the
 #: bodies, the laws' ids, the grid's origin in the world, the bodies' starting poses and the drive at the first step's
-#: end (the initial preparation's), the GMRES's tolerance, the body's extent and the report leaf.
+#: end (the initial preparation's), the GMRES's tolerance, the body's extent, the report leaf, and the free box's side
+#: in cells where it is written (a structural setting; else ``mime.nodes.flow.fvm._schwarz.box_side`` of the extent).
 OWN = ("schwarz_members", "schwarz_ids", "schwarz_origin", "schwarz_starts", "schwarz_drive", "schwarz_tolerance",
-       "schwarz_extent", "schwarz_report")
+       "schwarz_extent", "schwarz_report", "schwarz_box")
 #: The hosted near field's constants the flow does not hold under the prefix: its viscosity is the flow's, and its report
 #: leaf the flow's own (two blocks, :data:`REPORT_BLOCKS`).
 NOT_HOSTED = ("viscosity", "solve_report", "solve_report_rows")
@@ -69,7 +70,9 @@ class SchwarzHost:
                                   viscosity=float(constants["viscosity"]), solve="gmres",
                                   **({"tolerance": float(tolerance)} if tolerance is not None else {}), **hosted)
         self.spacing = float(spacing)
-        self.side = box_side(float(constants["schwarz_extent"]), self.spacing, int(-(-TRUNCATION * WIDTH // 1)))
+        given = constants.get("schwarz_box")
+        self.side = int(given) if given is not None else box_side(float(constants["schwarz_extent"]), self.spacing,
+                                                                  int(-(-TRUNCATION * WIDTH // 1)))
 
     @property
     def count(self) -> int:

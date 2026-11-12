@@ -1,0 +1,141 @@
+{
+  "written": "2026-11-12, committed before the PR's gates run on Actions (the commit that adds this file is the timestamp): F5's PR 1, an MRS body coupled to the FVM's grid by Schwarz (the near field in free space, the walls by the grid, the body's own field in a free box, the response handed to the body, the staggered order)",
+  "phase": "F5 (Schwarz coupling, lane F), PR 1",
+  "labels": "predictions by F5's builder (Opus, the second agent) from the first step's prototype (probe/f5-cost, smoke at D/h 8), derivation (the step is linear: every unknown a linear function of solves stopped at their tolerances), and the local development runs listed in seen_before (a prediction made after seeing a number says so)",
+  "seen_before": [
+    "local, float64, laptop under load (tests/flow/test_schwarz_step.py at this file's commit, 10 x 10 x 8 cells, h 0.1 mm, tube 0.4 mm, MRS sphere a 0.15 mm off the axis, free box 32^3, GMRES 1e-10, walled CG 1e-12): IMEX Euler against the monolithic dense LU: field 9.5e-13, tractions 7.5e-11, twist 7.9e-13 relative, composed residual 3.3e-12; GMRES 4 iterations, 519 walled CG iterations over its products. Control GMRES capped at one product: twist off 3.1e-4, composed residual 3.4e-4 (flagged). The steady case was NaN (the box's decay 0/0 at wavenumber zero), fixed before this file",
+    "local, through the node (tests/flow/test_schwarz_flow.py, same case, Schwarz tolerance 1e-11): field, twist and the body's wrench against the monolithic step under 1e-7; composition dropped: missed; the composition read at the body's live pose: field off 4.1e-6, composed residual 1.5e-5 (flagged)",
+    "local build smoke (D/h 8 periodic tube, IMEX, BodyForce 1 m/s^2, MRS sphere a 0.15 mm, 3 steps): the order body force, ball, water.flow; the handed response read the step before, planned as prepared; GMRES 3 iterations, composed residual 3.1e-9 at the 1e-8 tolerance; the handed 6x6's diagonal 1.015 times 6 pi mu a (the wall's reflection screened under the inertial step), margin 0.9999",
+    "local (tests/flow/test_schwarz_free_box.py, 24^3 periodic grid with no wall, own box 32^3, the sphere at a = 1.5 cells): the handed 6x6 against the free-space MRS's (with Hasimoto's term for the grid box in the steady limit) under 1e-3 (IMEX) and 3e-3 (steady), the box-omitted control 1.6e-2 under IMEX (the grid's own response of the body screened)"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "GitHub runner, 4 vCPU (the gates' probe); the local numbers above are development runs",
+    "sizes_and_parameters": "a straight periodic tube along z, 10 x 10 x 8 cells of 0.1 mm, tube radius 0.4 mm, water (1 mPa s, 1000 kg/m^3), Stokes, IMEX Euler at dt 1 ms (r = 0.1, lambda = a / sqrt(nu dt) 4.7) and its steady limit; MIME's MRS sphere a = 0.15 mm at a spacing of 0.1 mm, off the axis by 0.045 mm; free box 32^3 cells; Schwarz GMRES 1e-10 to 1e-11, walled CG 1e-12 (inner share 1e-2 provisional, the solve-mask spike's report pending)",
+    "seeds_and_draws": "DETECTION_SEED draws the body's place within a cell, its twist and loads (up to 0.2 mm/s, 0.3 rad/s, 2 nN, 1e-16 N m), the box's carried field and its image term (up to 3 um/s); zero by default"
+  },
+  "gate_1_free_box": {
+    "claim": "one MRS body coupled through a grid with no wall is the body uncoupled: the handed 6x6 is the free-space MRS's own, with Hasimoto's term for the grid box's images in the steady limit",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_free_box.py::test_one_body_coupled_through_a_grid_with_no_wall_is_the_body_uncoupled (IMEX through the flow's own CG on a box with no wall; steady through a free periodic box as the grid)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-06,
+        0.003
+      ],
+      "unit": "the largest entry of the 6x6's difference, each row and column scaled by the square root of its diagonal",
+      "basis": "derived and measured-before (seen_before)",
+      "why": "the free box removes the body's own discretised field exactly (one lattice, one kernel); what is left are the boxes' images: screened under the inertial step (their irrotational part about 6 pi nu dt a / L^3 of the self term, 2e-4), Hasimoto's next term 4.19 (a/L)^3 (1e-3) in the steady limit"
+    },
+    "metric": "the scaled 6x6 difference",
+    "control": {
+      "plant": "the free box's subtraction omitted (MIME_PLANT_SCHWARZ=box)",
+      "expected_rate": "every run, both schemes",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "1.6e-2 under the inertial step against a line of 1e-3 (16 times); of the order of the 6x6 in the steady limit"
+    },
+    "if_wrong": "a clean miss above the line is the box's alignment with the grid's lattice or the image term's",
+    "cannot_discriminate_if": "the grid's own response of the body is below the line (a very screened step): r = nu dt / h^2 = 0.1 here keeps it at 1.6e-2"
+  },
+  "gate_3_monolithic": {
+    "claim": "the Schwarz step (seven columns by GMRES with the walled CG in each product, the body stepping through the handed response, the composition) is the monolithic step (one dense LU of the field's every face, the tractions and the twist) within the solves' line",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_step.py::test_the_schwarz_step_is_the_monolithic_step (functions, IMEX and steady) and tests/flow/test_schwarz_flow.py::test_the_flow_node_steps_as_the_monolithic_step (the node's initial preparation and first step)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-13,
+        1e-08
+      ],
+      "unit": "relative (field, tractions, twist, the body's wrench)",
+      "basis": "measured-before (seen_before) and derived",
+      "why": "every unknown is a linear function of solves stopped at their tolerances (GMRES 1e-10, CG 1e-12); the steady limit's conditioning is the near field's, a few times IMEX's"
+    },
+    "metric": "the largest relative difference over the field, the tractions, the twist and the wrench",
+    "control": {
+      "plant": "GMRES capped at one product (restart 1, cap 1); the composition dropped (the field left at its base); the composition read at the body's live pose",
+      "environment_variable": "MIME_PLANT_SCHWARZ: cap (GMRES capped at one product), drop (the composition dropped), live (the composition read at the body's live pose)",
+      "expected_rate": "every run, each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "each plant moves the compared unknowns by 4e-6 or more against a line of 1e-7 [measured-before]"
+    },
+    "if_wrong": "a clean miss is the scheme's or the reference's defect: compare a product's reflection with the reference's Jacobian columns",
+    "cannot_discriminate_if": "the body's force did not reach the field (no cross term): the body's twist and the drive are nonzero and the composition moves the field by orders above the line"
+  },
+  "gate_6_frozen": {
+    "claim": "the step is composed at the pose its columns were prepared at, and the next step prepared at the pose the body reached",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_flow.py::test_the_flow_node_steps_as_the_monolithic_step (the prepared pose recorded and equal to the body's) and its live-pose control",
+    "prediction": {
+      "value": 0.0,
+      "band": [
+        0.0,
+        0.0
+      ],
+      "unit": "the prepared pose's difference from the body's pose, m",
+      "basis": "derived",
+      "why": "the pose is stored state, written once a step"
+    },
+    "metric": "the stored pose against the body's, and the field against the monolithic step's",
+    "control": {
+      "plant": "the composition read at the body's live pose",
+      "expected_rate": "every run",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a move of dt V' moves the field by 4e-6 against a line of 1e-7, and flags the composed residual",
+      "environment_variable": "MIME_PLANT_SCHWARZ=live"
+    },
+    "if_wrong": "a frozen value read live is what the 0.2 line's moving targets were",
+    "cannot_discriminate_if": "the body does not move within the step: its twist is drawn nonzero"
+  },
+  "gate_9_definiteness": {
+    "claim": "the handed 6x6's margin is reported each step, and an indefinite one stops the run by name (flow.schwarz-indefinite)",
+    "kind": "acceptance",
+    "case": "tests/flow/test_schwarz_flow.py::test_a_planted_indefinite_response_stops_the_run_by_name",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.5,
+        1.0
+      ],
+      "unit": "the scaled least eigenvalue of the handed 6x6 at the gates' poses",
+      "basis": "measured-before (0.9999 in the smoke)",
+      "why": "a sphere off the wall by cells: the free-space MRS's own resistance dominates"
+    },
+    "metric": "schwarz_0_margin; the stop and its code",
+    "control": {
+      "plant": "the prepared response's sign turned",
+      "expected_rate": "every run",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "structural (on or off)"
+    },
+    "if_wrong": "a positive margin read indefinite would be the scaling's (a zero diagonal reads NaN)",
+    "cannot_discriminate_if": "the margin is NaN in both arms"
+  },
+  "build_and_refusals": {
+    "claim": "Drag.MRS in a medium the FVM fills is a Schwarz partner (no drag node, the body before its medium's flow, the response a prepared delivery read the step before and planned); a wall kind written, a second body, an open vessel and the opt-ins not built are refused by name",
+    "kind": "acceptance",
+    "case": "tests/flow/test_schwarz_flow.py::test_an_mrs_drag_in_a_flowing_medium_is_a_schwarz_partner_its_body_before_the_flow and ::test_what_the_schwarz_coupling_does_not_take_is_refused_by_name",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "pass",
+      "basis": "derived",
+      "why": "the canonical order's rank and the plan's registration"
+    }
+  },
+  "bits": {
+    "cases": "every released program and every merged program with no MRS body in a flowing medium, base (f3/one-elimination's head) against this head, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal: the shared GMRES traces as before unless an operator reports its own solves; the canonical order's ranks move no existing node; the defaults' plan context gains the exchange frames, which no existing default reads"
+  },
+  "outcomes": null
+}

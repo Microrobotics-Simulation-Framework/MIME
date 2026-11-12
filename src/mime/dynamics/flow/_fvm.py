@@ -494,8 +494,8 @@ class FVM(Dynamics):
                             f"{coupled[0].id} couples its MRS body to the flow by Schwarz, and {', '.join(others)} "
                             f"exchange with the same flow: a flow holds one Schwarz body and nothing else until the "
                             f"body-set host steps several bodies' joint step",
-                            "give the other bodies a medium of their own, or a drag that reads no grid; or put the "
-                            "point bodies in a flow of their own")]
+                            "give the other bodies a medium of their own, exp.add_medium(Medium(...)), with the "
+                            "flow's own FVM(...) or none")]
         if coupled and self.open:
             return [Problem("flow.schwarz-open",
                             f"{coupled[0].id} couples its MRS body to the flow by Schwarz, and the flow is an open "
@@ -759,7 +759,7 @@ class FVM(Dynamics):
             return {}
         registration = coupled[0]
         member = ctx.partners[registration.id]
-        arguments = cast(Any, member.entry).schwarz_member(member)
+        arguments = member.entry.schwarz_member(member)
         start = member.starts.get("body", {})
         position = tuple(float(c) for c in cast(Sequence[float], start.get("position", (0.0, 0.0, 0.0))))
         orientation = tuple(float(c) for c in cast(Sequence[float], start.get("orientation", (1.0, 0.0, 0.0, 0.0))))

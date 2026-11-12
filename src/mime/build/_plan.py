@@ -779,6 +779,7 @@ class _Planner:
         self.finish_profile()
         self.judge_ranges()
         self.note_shared_media()
+        self.schwarz_drives()
         if self.refusals or self.frame is None:
             raise BuildRefused(self.refusals, BuildReport(self.settings.experiment, self.dt or None,
                                                           vocabulary=vocabulary.versions(),
@@ -989,6 +990,34 @@ class _Planner:
                     "give every body in the medium's near field the base step, RigidInertial() with no rate=..., or "
                     "raise dt to the bodies' rate: Experiment(..., dt=...)")
         return True
+
+    def schwarz_drives(self) -> None:
+        """A medium's flow holding a Schwarz partner prepares each step's base at the end of the step before, its drive
+        read from the waveform the laws driving it deliver (a declared schedule, ``BodyForce``'s): a drive by any other
+        law, whose value a node of the step makes, would reach the preparation a step early (``flow.schwarz-drive``)."""
+        for dynamics in self.dynamics.values():
+            if not any(r.kind == vocabulary.SCHWARZ_PARTNER for r in dynamics.registrations):
+                continue
+            nodes = set(dynamics.node_names())
+            driving = sorted(plan.owner for plan in self.readers if plan.section is Section.INTERACTION
+                             and getattr(plan.entry, "name", None) != "body_force"
+                             and any(target.node in nodes and target.interface in (vocabulary.FLOW_BODY_FORCE.name,
+                                                                                   vocabulary.FLOW_WAVEFORM.name)
+                                     for target in plan.delivers.values()))
+            metered = sorted(plan.owner for plan in self.readers if plan.section is Section.OBSERVATION
+                             and getattr(plan.entry, "name", None) == "energy_ledger")
+            if metered:
+                self.refuse("flow.schwarz-ledger", RefusalClass.USER,
+                            f"{dynamics.owner} holds a Schwarz partner and the experiment observes the energy ledger "
+                            f"({', '.join(metered)}): the Schwarz exchange's rows (the near field's own dissipation "
+                            f"and the free box's) are not booked yet",
+                            "run it without exp.observe(EnergyLedger()) for now")
+            if driving:
+                self.refuse("flow.schwarz-drive", RefusalClass.USER,
+                            f"{dynamics.owner} holds a Schwarz partner and is driven by {', '.join(driving)}: the "
+                            f"flow prepares each step's base at the end of the step before, its drive a declared "
+                            f"schedule's, and a drive another law makes during the step would reach it a step early",
+                            "drive the flow with BodyForce(...), whose waveform is declared")
 
     def note_shared_media(self) -> None:
         """A validity line the build computes for each entry of the hydrodynamic family whose medium another body's

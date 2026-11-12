@@ -4,6 +4,7 @@
 # length is printed, never stored. It records a cut, so a line added needs its reason logged.
 command.ambiguous         # no test names it
 dynamics.wrong-thing      # no test names it
+flow.schwarz-drive        # reached only by a lab's law driving a flow (MIME's one drive, BodyForce, is a declared schedule); no lab fixture drives a flow yet
 frame.gravity-invalid     # no test names it
 group.no-dynamics         # no test names it
 load.namespace-import     # no test names it

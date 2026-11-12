@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **An MRS body coupled to the FVM by Schwarz: `Drag.MRS()` in a medium the FVM fills** (F5, PR 1). The drag law and
+  the medium choose the coupling; nothing is written for it. The body's near field is the joint near field's in free
+  space (drag 0.5.0's mrs rung, held in the flow's step), the walls are the grid's, and the body's own field on the
+  grid is removed by a free box at the grid's spacing advanced by the grid's step operator (with Hasimoto's image term
+  relaxed at the box's slowest rate). Each step the flow solves seven columns (the body's six rigid motions and its
+  load at zero twist) by the operator form of the shared GMRES (`reported_operator_solve`: the matrix as its product,
+  each product one walled solve and one free-box transform, the products' own solves reported in a second block), and
+  hands the body its response and load, which the body's own step solves through with its other loads (the dynamics
+  owns its step). The order is staggered and exact: the body steps before its medium's flow, which composes the body's
+  step (one walled solve, so the stored field and its kinetic energy are the solved ones) and prepares the next from
+  what is known at the step's end; the build plans the body's read of the prepared response as a delivery prepared the
+  step before. Each step reports the near field's residual at the composed field over every force point
+  (`schwarz_residual`, flagged above ten times the tolerance) and the handed response's definiteness margin (an
+  indefinite one stops the run, `flow.schwarz-indefinite`). Refused by name: a wall kind written on the near field
+  (`drag.schwarz-wall-kind`), a second body in the flow (`flow.schwarz-bodies`), an open vessel
+  (`flow.schwarz-open`), a drive that is not a declared schedule (`flow.schwarz-drive`), the energy ledger on such a
+  flow (`flow.schwarz-ledger`) and the one-way and lagged opt-ins on the mrs rung (`drag.schwarz-scheme`), each until
+  its part is built.
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
   scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's

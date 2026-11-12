@@ -129,8 +129,9 @@ WALL_COUNTS = ("wall_unrefined", "wall_unconverged", "wall_unplanned")
 #: and its counts, made from its leaves once a chunk.
 TREE_WALL = "tree_wall"
 TREE_WALL_COUNTS = "tree_wall_counts"
-#: The fields a held state still writes: the stop's own record.
-_STOP_RECORD = frozenset({STOP_FIELD, "stopped_cfl"})
+#: The fields a held state still writes: the stop's own record (with a Schwarz partner, the indefinite response that
+#: stopped it and its margin).
+_STOP_RECORD = frozenset({STOP_FIELD, "stopped_cfl", "schwarz_indefinite", "schwarz_0_margin"})
 #: The hosted laws a metered node books, by the field their delivery names: the fluid's viscosity and the wall's band.
 HOSTED_FIELDS = ("viscous", "penalty")
 #: The inputs a law driving the fluid delivers into: its body force, read where the scheme reads its drive at the
@@ -426,12 +427,14 @@ class ImplicitFlowNode(MimeNode):
                                                            "solves' reports come out as its gradient")
             for key, text in (("schwarz_origin", "the world point of the grid's origin, which a body's pose is read "
                                                  "from (structural)"),
-                              ("schwarz_starts", "each Schwarz body's starting pose, the initial preparation's "
-                                                 "(an initial condition)"),
+                              ("schwarz_starts", "each Schwarz body's starting pose (m; the orientation's quaternion "
+                                                 "unitless), the initial preparation's (an initial condition)"),
                               ("schwarz_drive", "the drive at the first step's end, the initial preparation's "
                                                 "(read from the laws bound to the medium at the build)"),
-                              ("schwarz_extent", "the Schwarz body's extent, which sizes its free box (structural)")):
-                wall[key] = ParamSpec(trainable=False, units="1" if key == "schwarz_drive" else "m", description=text)
+                              ("schwarz_extent", "the Schwarz body's extent, which sizes its free box (structural)"),
+                              ("schwarz_box", "the free box's side in cells, where written (structural)")):
+                wall[key] = ParamSpec(trainable=False, units={"schwarz_drive": "m/s^2", "schwarz_box": "1"}.get(key, "m"),
+                                      description=text)
             wall["schwarz_tolerance"] = ParamSpec(trainable=False, units="1",
                                                   description="the Schwarz columns' GMRES: its relative tolerance on "
                                                               "each column's true residual; the walled solves inside "
@@ -1019,7 +1022,7 @@ class ImplicitFlowNode(MimeNode):
         tolerance = as_run_array(p["schwarz_tolerance"])
         inner = self.walled_solve(p, grid, sigma, shift, self.stopping_of(p, grid, INNER_SHARE * tolerance),
                                   jnp.zeros(REPORT_SIZE, dtype=dtype))
-        constants = self.schwarz.near.constants()
+        constants = host.near.constants()
         stopping = GmresStopping(tolerance, restart=int(constants["restart"]), cap=int(constants["cap"]))
         made = prepared(grid, box, held, body, lambda rhs: inner(rhs), base, own_decayed(box, own, shift, nu),
                         decay * image, shift, nu, rho, now, stopping, jnp.asarray(p["schwarz_report"], dtype=dtype))
@@ -1047,10 +1050,14 @@ class ImplicitFlowNode(MimeNode):
         fields = self.fields(p, grid)
         drive = jnp.asarray(c.get("schwarz_drive", (0.0, 0.0, 0.0)), dtype=dtype)
         pose = schwarz_starts(c, host.count)[0]
+        def made_at_start() -> tuple[Velocity, StageParts, Prepared, Array]:
+            return self.schwarz_prepare(p, velocity, jnp.asarray(0, dtype=jnp.int32), self.delta_t,
+                                        self.schwarz_forcing(fields, {}, drive, dtype), pose,
+                                        grid_zero_box(self.schwarz_box()), jnp.zeros(3, dtype=dtype))
+
+        # Made once, from the node's constants, outside whatever traces the step that first asks for it.
         with cast(Any, jax).ensure_compile_time_eval():
-            base, _, made, margin = self.schwarz_prepare(p, velocity, jnp.asarray(0, dtype=jnp.int32), self.delta_t,
-                                                         self.schwarz_forcing(fields, {}, drive, dtype), pose,
-                                                         grid_zero_box(self.schwarz_box()), jnp.zeros(3, dtype=dtype))
+            base, _, made, margin = cast(Any, jax).jit(made_at_start)()
         held.update({f"{SCHWARZ}base_{x}": base[k] for k, x in enumerate("xyz")})
         held.update({f"{SCHWARZ}0_columns": made.columns, f"{SCHWARZ}0_at": pose,
                      f"{SCHWARZ}0_resistance": made.resistance, f"{SCHWARZ}0_load": made.load,
@@ -1343,7 +1350,36 @@ class ImplicitFlowNode(MimeNode):
                              f"run near its steady state stops short of it by about that share; run in float64 "
                              f"(JAX_ENABLE_X64=1), or with a larger dt")
         lines += self.held_lines()
+        lines += self.schwarz_lines()
         return lines
+
+    def schwarz_lines(self) -> list[str]:
+        """The Schwarz partner's lines at the build: the coupling and its order, the free box, the tolerances, and the
+        body's gap to the wall at its start in coarse cells against the window spike's lines (C4: the walls' share of
+        the drag to 1 % wall-normal from about 6.6 to 8.5 cells, 2 % from 5 to 7, wall-parallel 1 % from 3 to 4)."""
+        host = self.schwarz
+        if host is None or self.walled_by_tree:
+            return []
+        c = self.constants()
+        h = float(c["spacing"])
+        start: np.ndarray = np.asarray(c["schwarz_starts"], dtype=np.float64)[:3] - np.asarray(
+            c["schwarz_origin"], dtype=np.float64)
+        axis: np.ndarray = np.asarray(c["tube_axis"], dtype=np.float64)
+        axis = axis / float(np.linalg.norm(axis))
+        off: np.ndarray = start - np.asarray(c["tube_centre"], dtype=np.float64)
+        radial = float(np.linalg.norm(off - float(np.dot(off, axis)) * axis))
+        gap = (float(c["tube_radius"]) - radial - 0.5 * float(c["schwarz_extent"])) / h
+        body = ", ".join(host.near.members)
+        line = (f"the flow couples {body}'s MRS drag by Schwarz, one pass and exact: the near field in free space, the "
+                f"walls by the grid, the body's own field removed by a free box of {host.side}^3 cells; the body steps "
+                f"before the flow, which composes its step and prepares the next (the staggered order); the columns' "
+                f"GMRES to {float(c['schwarz_tolerance']):.3g} on each column's true residual, the walled solves in "
+                f"its products at {INNER_SHARE:g} of it (provisional); at its start the body is {gap:.3g} coarse "
+                f"cells from the wall")
+        if gap < 6.6:
+            line += (", under the window spike's line for the walls' share of its drag to 1 % wall-normal (about 6.6 "
+                     "to 8.5 cells) and, under 5, to 2 %: measured to that line, unknown beyond it")
+        return [line]
 
     def held_lines(self) -> list[str]:
         """The point bodies the flow holds in its one elimination, and what holding them costs a step: a unit field a

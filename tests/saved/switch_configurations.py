@@ -10,7 +10,8 @@ and the motor's step identities, and the impulses split by the friction's share)
 sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
 no round-trip case's body is fine enough for (where the package has the hand-over); the point body with its fitted
 self-history (``self_history="modes"``), which no round-trip case writes; the point body lagged where declared
-(``coupling="lagged"``) and held one pass in an open vessel's flow beside its openings; and those steps traced and
+(``coupling="lagged"``) and held one pass in an open vessel's flow beside its openings; an MRS sphere its medium's
+flow couples by Schwarz (``schwarz_experiments``); and those steps traced and
 scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
 configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
@@ -65,6 +66,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
 
         found["drag/point_body_lagged"] = partial(point_body_flow, coupling="lagged")
         found["drag/point_body_open"] = point_body_open
+    if hasattr(Drag, "schwarz"):  # a merge base before F5's Schwarz coupling builds no such flow
+        from schwarz_experiments import schwarz_sphere
+
+        found["drag/schwarz_sphere"] = schwarz_sphere
     if hasattr(Drag, "handover_window"):  # a merge base before lubrication's hand-over builds no such drag
         from lubrication_cases import above_plane
 

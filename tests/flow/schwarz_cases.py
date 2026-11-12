@@ -7,6 +7,7 @@ the seven columns, GMRES, its preconditioner, the walled solves inside its produ
 from __future__ import annotations
 
 import math
+import os
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -35,6 +36,17 @@ WATER_MU, WATER_RHO = 1e-3, 1e3
 COLUMNS = 24
 #: The walled solves' tolerance in the function-level cases: tight, so that the comparison is the scheme's.
 TIGHT = 1e-12
+
+
+def plant() -> str:
+    """The Schwarz gates' plant switched on for this run (``MIME_PLANT_SCHWARZ``'s value), or an empty string."""
+    return os.environ.get("MIME_PLANT_SCHWARZ", "")
+
+
+def draw() -> np.random.Generator:
+    """The run's draws (``DETECTION_SEED``, zero by default): poses within a cell, twists and histories at physical
+    scales."""
+    return np.random.default_rng(int(os.environ.get("DETECTION_SEED", "0")))
 
 
 def sphere_member(radius: float, spacing: float) -> Any:
@@ -214,7 +226,7 @@ def decayed(box: Any, field: Velocity, at: Pieces) -> Velocity:
     return own_decayed(box, field, at.shift, at.nu)
 
 
-__all__ = ["COLUMNS", "TIGHT", "WATER_MU", "WATER_RHO", "Monolithic", "Pieces", "box_for", "carried_field",
+__all__ = ["COLUMNS", "TIGHT", "draw", "plant", "WATER_MU", "WATER_RHO", "Monolithic", "Pieces", "box_for", "carried_field",
            "decayed", "monolithic_step", "pieces", "reach_cells", "schwarz_body", "sphere_member", "stencils",
            "tube_flow"]
 

@@ -5,16 +5,18 @@ face, the tractions and the twist: ``schwarz_cases.monolithic_step``), in float6
 with a history in the free box and its image term, the body off the axis and moving.
 
 The case: the composed field, the tractions and the twist each within ``LINE`` of the monolithic step's, relative to
-its own size; the near field's residual at the composed field under the outer tolerance. The control, GMRES capped at
-one product: its report counts every column stopped at the cap, and its twist misses the monolithic one past ``LINE``,
-and its composed residual is past the flag's line (the step is flagged, never silent)."""
+its own size; the near field's residual at the composed field under the outer tolerance. The body's offset within a
+cell, its twist and loads, the box's carried field and its image term are drawn from ``DETECTION_SEED``. The control,
+GMRES capped at one product (``MIME_PLANT_SCHWARZ=cap`` plants it in the case, for ``detection_rate.py``): its report
+counts every column stopped at the cap, its twist misses the monolithic one past ``LINE``, and its composed residual is
+past the flag's line (the step is flagged, never silent)."""
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from schwarz_cases import box_for, carried_field, decayed, monolithic_step, pieces, schwarz_body, sphere_member, \
-    tube_flow
+from schwarz_cases import box_for, carried_field, decayed, draw, monolithic_step, pieces, plant, schwarz_body, \
+    sphere_member, tube_flow
 
 from mime.nodes.flow.fvm._schwarz import RESIDUAL_LINE, composed, image_terms, prepared, stencils
 from mime.nodes.hydro.near_field._gmres import REPORT_SIZE, Stopping
@@ -31,17 +33,20 @@ LINE = 1e-7
 
 
 def case(scheme: str, cap: int | None = None) -> dict[str, float]:
+    if cap is None and plant() == "cap":
+        cap = 1
     with jax.enable_x64(True):
         dt = 1e-3
         node = tube_flow(CELLS, LENGTH, SPACING, TUBE, dt, scheme)
         at = pieces(node, dt)
         member = sphere_member(RADIUS, 1e-4)
-        centre = np.array([0.5 * CELLS * SPACING + 0.4e-4, 0.5 * CELLS * SPACING - 0.2e-4, 0.5 * LENGTH * SPACING])
+        rng = draw()
+        offset = rng.uniform(-0.5, 0.5, 3) * SPACING
+        centre = np.array([0.5 * CELLS * SPACING, 0.5 * CELLS * SPACING, 0.5 * LENGTH * SPACING]) + offset
         pose = jnp.asarray([*centre, 1.0, 0.0, 0.0, 0.0])
         body = schwarz_body(member, pose, at.mu)
         box = box_for(RADIUS, SPACING, side=BOX)
         held = stencils(at.grid, box, body.placed.force, 1.0)
-        rng = np.random.default_rng(7)
         grid = at.grid
         before = at.project(tuple(jnp.asarray(1e-3 * rng.standard_normal(grid.shape(k))) for k in range(3)))
         p = node.params_pytree()
@@ -49,15 +54,15 @@ def case(scheme: str, cap: int | None = None) -> dict[str, float]:
         drive = node.drive(fields, jnp.asarray([0.0, 0.0, 2.0]))
         rhs = tuple(at.shift * before[k] + drive[k] for k in range(3))
         base, _ = at.walled(rhs)
-        carried = decayed(box, carried_field(box, 3, 1e-9), at)
-        image = jnp.asarray([2e-6, -1e-6, 3e-6])
+        carried = decayed(box, carried_field(box, int(rng.integers(1 << 30)), 1e-9), at)
+        image = jnp.asarray(rng.uniform(-3e-6, 3e-6, 3))
         now, _ = image_terms(box.side, box.spacing, at.shift, at.nu, at.mu)
         stopping = Stopping(OUTER) if cap is None else Stopping(OUTER, restart=1, cap=cap)
         step = prepared(grid, box, held, body, lambda r: at.walled(r), base, carried, image, at.shift, at.nu, at.rho,
                         now, stopping, jnp.zeros(2 * REPORT_SIZE))
         mass = np.diag([3e-8] * 3 + [5e-16] * 3) / dt
-        twist0 = np.array([1e-4, 0.0, -2e-4, 0.3, -0.1, 0.2])
-        right = mass @ twist0 + np.array([1e-9, 0.0, -2e-9, 0.0, 1e-16, 0.0])
+        twist0 = rng.uniform(-1.0, 1.0, 6) * np.array([2e-4] * 3 + [0.3] * 3)
+        right = mass @ twist0 + rng.uniform(-1.0, 1.0, 6) * np.array([2e-9] * 3 + [1e-16] * 3)
         twist = np.linalg.solve(mass + np.asarray(step.resistance), right + np.asarray(step.load))
         done = composed(grid, box, held, body, step, jnp.asarray(twist), lambda r: at.walled(r), base, carried, image,
                         at.shift, at.nu, at.rho, now)
