@@ -42,6 +42,8 @@ CELLS = 6.0
 WOBBLE_LINE = 1e-2
 SNAP_LINE = 2e-3
 SNAP_STRADDLE = 1e-6
+#: The stale_given plant's lag, in fine cells of motion (its discriminating range is the probe's).
+STALE_LAG = 0.04
 MARGIN = 4
 VISCOSITY = 1e-3
 
@@ -126,9 +128,9 @@ def metric_function(patch, sphere, forces, wall_offset=0.0):
         placements = tuple(placed(patch, [Plane(wall_offset)], origin, lower + k, points, eps2, VISCOSITY,
                                   quadrature=quadrature) for k in (0, 1))
         # The given values are the undilated wall's, as the coarse grid hands them (its solve is untouched).
-        # The stale_given plant reads the given values at the corner the patch had 0.04 cells of motion before: a snap
-        # that moves the box without re-reading its faces (its second flip inside the sweep's snap interval).
-        at = snapped_origin(patch, centre - jnp.asarray([0.0, 0.0, 0.04 * patch.spacing])) \
+        # The stale_given plant reads the given values at the corner the patch had STALE_LAG cells of motion before: a
+        # snap that moves the box without re-reading its faces (its second flip inside the sweep's snap interval).
+        at = snapped_origin(patch, centre - jnp.asarray([0.0, 0.0, STALE_LAG * patch.spacing])) \
             if plant() == "stale_given" else origin
         given = exact_given(patch, at, points, eps2, forces, wall_offset)
         values, _, _ = blended_reflection(patch, placements, weight, given, forces, None, stopping,
