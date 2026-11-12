@@ -84,6 +84,7 @@ from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.nodes.actuation import RampNode
+from mime.nodes.flow.fvm._band import plug_depth
 from mime.nodes.body import PhaseLagNode
 from mime.scene import Cylinder, Ellipsoid, Screw, Sphere
 from mime.units import dimensionless, mm
@@ -1189,6 +1190,10 @@ def test_control_a_step_traced_before_the_setting_opened_fails(graph):
 
 # -- the domain guards ---------------------------------------------------------------------------------------------
 
+#: Points about a porous plug of radius 0.5 and length 1 at the origin: inside, outside its round side, past an end.
+PLUG_POINTS = np.asarray([[0.1, 0.2, 0.1], [0.7, 0.0, 0.3], [0.0, 0.1, 0.9]])
+
+
 def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); a body held by its hull's points, one of
@@ -1198,7 +1203,7 @@ def guard_points(graph):
     the drag's MRS samples on FL-9's screw and on an ellipsoid, where each kind's surface element (each sample's
     ``nonzero_norm``) is; and the drag's hand-over above a plane within the lift's band, a sphere (the near contact's
     search, its support and its width along the normal) and a mild ellipsoid, which takes the film's form (its reach's
-    ``nonzero_norm``, and the film's solves)."""
+    ``nonzero_norm``, and the film's solves); and a porous plug's depth along its axis (its ``nonzero_norm``)."""
 
     def body(state):
         unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
@@ -1362,6 +1367,13 @@ def guard_points(graph):
         return node.fresh_update(node.initial_state(), given, DT)
 
     no_field = jnp.zeros(3)
+
+    def plug(axis):
+        """A porous plug's depth (``plug_depth``, its axis's ``nonzero_norm``) at points inside, outside its round side
+        and past an end, along its axis as the build gives it."""
+        return {"depth": plug_depth(jnp.asarray(PLUG_POINTS, dtype=axis.dtype), jnp.zeros(3), axis, 0.5, 1.0)}
+
+    plug_axis = jnp.asarray((0.0, 0.0, 1.0))
     return {
         "the phase lag in no field, before observing": (lambda: lag_with(no_field),
                                                         lambda: jax.jacfwd(lag_with)(no_field)),
@@ -1391,6 +1403,7 @@ def guard_points(graph):
                                         lambda: jax.jacfwd(tube_read)(on_the_tube_axis)),
         "a log-log table read past its range": (lambda: logarithmic(not_positive),
                                                 lambda: jax.jacfwd(logarithmic)(not_positive)),
+        "the porous plug's depth along its axis": (lambda: plug(plug_axis), lambda: jax.jacfwd(plug)(plug_axis)),
         **tracking_points(),
     }
 

@@ -220,6 +220,12 @@ flow.open-scheme              user
 flow.opening-law              user
 flow.opening-unknown          user
 flow.openings-ill-posed       user
+flow.permeability-not-positive user
+flow.porous-axis              user
+flow.porous-kind              user
+flow.porous-outside           user
+flow.porous-period            user
+flow.porous-scheme            user
 flow.preconditioner           user
 flow.prescribed-alpha         user
 flow.prescribed-region        user

@@ -31,6 +31,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.1.0, kept, are frictionless and keep their margin required. Refused under `confinement.no-hull`, now one code for
   every setting read at a hull's points (`spacing=`, `friction=`) on a body held as a sphere of its extent, its message
   naming both routes (give the body a hull, or remove the setting). Registered: MIME-ANO-157, the frictionless hold's float32 allowance at sub-microsecond steps.
+- **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
+  structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
+  `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
+  `um2` and the dimension `AREA`; no OpenMaterica record holds one yet), and `exp.attach(Darcy(), medium=...,
+  structure=...)`: the medium's flow holds it in its step as a resistivity `mu / K` added to the wall's (B5's seam,
+  `wall_fields`), on IMEX Euler or its steady limit, on a periodic box (a straight tube along z or a tube tree) or an
+  open vessel. Its resistivity in the wall's band is its share of the fluid over the face's fluid fraction
+  (`FLUID_FLOOR`, 0.01, at least), carried into the wall's solid behind it, so a pressure-driven Darcy flux is carried by
+  the band's fluid and the band's solid does not leak round a plug that closes the vessel (the plug's forms measured
+  against each other: the PR's table). Its loss is booked under its id; its sampled permeability not a finite number
+  above zero is flagged at sampling and refuses the run after it (`flow.permeability-not-positive`); each step reports
+  its mean pressure on the planes a band's half width outside its two ends (`porous_face_pressure`). The build reports
+  its `sqrt(K)` in cells where its Brinkman layer is under one, and that its flux is unmeasured where `sqrt(K)/h` is
+  under the range measured: a plug closing a straight tube is resolved down to `sqrt(K)/h` 0.003 with the default 0.1h
+  interior (within 0.4 % at D/h 32, a `K` of about 1e-14 m^2 in a 1 mm vessel) and 0.01 with 0.01h, unmeasured below
+  (the first step's cold solve stops there, flagged); the floor, the wall's leak past a plug closing the tube (the
+  intercept of its flux against `K`), is under 4e-11 of the open tube's flux at D/h 32. These are on `lumen_flux`, which
+  with a porous region reports the box's whole axial flux, the plug's throughflow: past a closing plug in a box driven
+  by a body force the open part carries a loop through the wall's band (2.5e-3 of the open flux at D/h 16 with 0.1h,
+  K-independent), which the lumen's own mean would carry. A region outside what was measured (under that range, or
+  leaving a gap to the wall under `sqrt(K)/h` 1, where a coaxial core's gap flux read 12 to 16 % low) raises
+  `porous_flagged` with a warning. A periodic box reads a plug anywhere along the tube at its image in the period.
+  Refused: a structure of another kind (`flow.porous-kind`), RK3 (`flow.porous-scheme`), a tilted box
+  (`flow.porous-axis`), a plug longer than a periodic box's period (`flow.porous-period`) or outside an open vessel's
+  span (`flow.porous-outside`). A tube tree holding a plug runs but is unmeasured. The stall detector's denominator
+  takes the porous losses beside the viscous one.
+
 - **A body resolved on the FVM's grid: `Drag.Penalty()`** (drag 0.5.0's penalty rung, F4, its first part). The body's
   solid is lifted onto the grid's faces by the wall's own band from its solid region's exact signed distance (a
   sphere's, a capsule's; another kind is refused, `drag.penalty-kind`) at its pose each step, on a window of faces
