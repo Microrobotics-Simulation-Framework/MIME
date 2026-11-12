@@ -1253,6 +1253,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The FVM CG's stagnation stop could not fire before its iteration cap on a large box**.
+  A stagnation restarts the CG up to three times before one stops it, and each restart begins its window again, so the
+  stop needs four windows after the true residual's plateau sets in: on a float32 tube tree 73 by 49 by 109 at the default
+  1e-5 the window is 66 checks (1320 iterations) and four of them need 5280 of the 5000-iteration cap, so every solve of
+  a plateau at the rounding floor (true residual 3.6e-5 to 7.3e-5) ran to the cap, flagged at the cap and not
+  stagnated, and no solve there was ever stopped for stagnation. A stagnation now restarts the CG only where another
+  whole window fits before the cap (`mime.nodes.flow.fvm._solve.restart_fits`), and otherwise stops there, flagged, the
+  window, the factor and the restarts unchanged. A solve that never stagnates, or restarts at a stall with room to
+  spare, is bit for bit what it was; one that would have restarted with less than a window left before the cap now stops
+  stagnated there instead of running on to the cap. A window cut to fit its four in the cap is not enough (2 of 3
+  planted plateaus still ran to the cap): the plateau sets in after the start.
+
 - **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
   projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse
   mode transposes in, so the transpose solve was the wrong one: through two steps the viscosity's derivative of the
