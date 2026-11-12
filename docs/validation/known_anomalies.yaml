@@ -3802,8 +3802,8 @@ anomalies:
       long axis and is 1.4 to 1.7 times worse than the film on the tilted bodies; the torque about the wall's axis +12
       to +33 % where the film's was -6 to +7 %. Through the node (an aspect-2
       spheroid at a force spacing of 0.2 of its minor semi-axis, gaps 0.1 to 0.02 of it, turned about the wall's normal;
-      tests/oracles/test_elliptic_gates.py): the rolling rate 22.5 % at worst lying and 16.7 % at 30 degrees, the worst
-      entry on its own scale 33 % and 18 %. On a sphere
+      tests/oracles/test_elliptic_gates.py, judged in the spheroid's own frame): the rolling rate 22.5 % at worst lying
+      and 17.0 % at 30 degrees, the worst entry on its own scale 28.5 % and 17.9 %, the same at every drawn turn. On a sphere
       given it (as a kind with no closed form), above a plane through the node against the MFS and Goldman, Cox and
       Brenner's asymptotes (tests/oracles/test_lubrication.py): the rolling rate +22 % at worst at a force spacing of
       0.2 radii (gaps 0.1 to 0.001 radii: +16 to +22 % in the band, +19, +15, +12 and +10 % at 0.01, 0.005, 0.002 and
