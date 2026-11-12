@@ -20,6 +20,7 @@ control that fails on every run (nothing here is drawn; the drawn suites are ``t
   the contact carries the whole load. The control: the gap's rounding band taken out, float32 loses most of the load to
   the squeeze film and misses."""
 
+import functools
 import math
 
 import jax
@@ -293,6 +294,20 @@ SLIP_STEPS = 20
 SLIP_DIFFERENCE = {jnp.float64: (1e-6, 1e-6), jnp.float32: (1e-3, 2e-2)}
 
 
+#: Each body's shape, mass, moments and the factor on ``mu`` of its stick threshold's slope (``tan(theta)``).
+SLIP_BODIES = {"sphere": (BALL, MASS, (MOMENT,) * 3, 3.5), "block": (ROD, ROD_MASS, ROD_MOMENTS, 1.0)}
+SLIP_MU = 0.2
+
+
+@functools.cache
+def compiled_slip(body: str, dtype):
+    """The slip after :data:`SLIP_STEPS` steps in ``(theta, mu)`` on ``body``'s node with its reverse-mode gradient,
+    one program per body and dtype: the four ratios and the central differences' points are its arguments."""
+    shape, mass, inertia, _ = SLIP_BODIES[body]
+    slip = slip_after(plane_node(shape, mu=SLIP_MU, mass=mass, inertia=inertia), mass, dtype)
+    return jax.jit(jax.value_and_grad(slip, argnums=(0, 1)))
+
+
 @pytest.mark.parametrize("body", ["sphere", "block"])
 @pytest.mark.parametrize("ratio", [0.5, 0.99, 1.01, 2.0])
 def test_the_slip_speeds_derivative_is_its_central_differences_either_side_of_the_threshold(dtype, body, ratio):
@@ -300,16 +315,12 @@ def test_the_slip_speeds_derivative_is_its_central_differences_either_side_of_th
     mode against central differences taken on the point's own side of the stick threshold (a span across it reads the
     kink): zero sticking, the sliding slip's slope past it (the review's -0.562 in ``mu`` on the sphere at 1.001). The
     control below takes the slip through a stopped value, as the field was, and reads zero against it."""
-    mu = 0.2
-    shape, mass, inertia, factor = ((BALL, MASS, (MOMENT,) * 3, 3.5) if body == "sphere" else
-                                    (ROD, ROD_MASS, ROD_MOMENTS, 1.0))
-    theta = math.atan(factor * mu * ratio)
-    node = plane_node(shape, mu=mu, mass=mass, inertia=inertia)
-    slip = slip_after(node, mass, dtype)
-    gradient = jax.jit(jax.grad(slip, argnums=(0, 1)))
+    mu = SLIP_MU
+    theta = math.atan(SLIP_BODIES[body][3] * mu * ratio)
+    with_gradient = compiled_slip(body, dtype)
     span, tolerance = SLIP_DIFFERENCE[dtype]
     at = (jnp.asarray(theta, dtype), jnp.asarray(mu, dtype))
-    measured = [float(d) for d in gradient(*at)]
+    measured = [float(d) for d in with_gradient(*at)[1]]
     side = min(span, 0.25 * abs(ratio - 1.0))
     eps = float(jnp.finfo(dtype).eps)
     scale = G * SLIP_STEPS * DT  # the slip's slope's own size, m/s per unit of mu or of angle
@@ -317,7 +328,7 @@ def test_the_slip_speeds_derivative_is_its_central_differences_either_side_of_th
         h = value * side
         up, down = list(at), list(at)
         up[index], down[index] = at[index] + h, at[index] - h
-        central = (float(slip(*up)) - float(slip(*down))) / (2 * h)
+        central = (float(with_gradient(*up)[0]) - float(with_gradient(*down)[0])) / (2 * h)
         rounding = 64 * eps * scale * SLIP_STEPS * DT / h
         print(f"\n{body} at {ratio} of its threshold: d slip / d {name} AD {measured[index]:.9g}, CD {central:.9g}")
         assert abs(measured[index] - central) <= tolerance * scale + rounding, (name, measured[index], central)
