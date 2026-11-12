@@ -142,6 +142,12 @@ def step_program(graph: Any) -> Program:
     return nested_program(traced)
 
 
+def assembled_program(settings: RunSettings, declarations: Sequence[Declaration]) -> Program:
+    """The step of the experiment ``declarations`` declare, assembled as a study assembles a point, traced
+    (:func:`step_program`)."""
+    return step_program(_built(settings, declarations).graph)
+
+
 def programs_differ(a: Program, b: Program) -> bool:
     (text_a, consts_a), (text_b, consts_b) = a, b
     return text_a != text_b or len(consts_a) != len(consts_b) or any(
@@ -345,5 +351,5 @@ def range_check(experiment: Experiment) -> RangeCheck:
     return found
 
 
-__all__ = ["CHECK_REASON", "HELD", "MOVE", "NOT_DISCRIMINATING", "RangeCheck", "forget", "independence", "range_check",
-           "step_program", "traced"]
+__all__ = ["CHECK_REASON", "HELD", "MOVE", "NOT_DISCRIMINATING", "RangeCheck", "assembled_program", "forget",
+           "independence", "programs_differ", "range_check", "step_program", "traced"]
