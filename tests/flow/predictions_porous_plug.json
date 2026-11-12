@@ -1,0 +1,271 @@
+{
+  "written": "2026-11-11, committed before any gate of the porous plug ran (the commit that adds this file is the timestamp): a static porous region of declared Darcy permeability in the FVM, sampled through B5's seam, its resistivity added to the wall's",
+  "phase": "Lane F, dev2: the static porous plug",
+  "labels": "predictions by the builder (Opus) from the band's algebra and the interior spike's table; the first step's predictions (resolution, floor) were sent before any run and are copied here unchanged; everything under seen_before was measured before this file",
+  "seen_before": [
+    "the interior spike's leak table (straight periodic tube, a full occlusion one diameter long, wall material): 7.3e-3 / 1.26e-3 / 2.4e-4 at D/h 16 / 32 / 64 with the 0.1h interior, 9.0e-5 / 1.45e-5 / 2.7e-6 with 0.01h",
+    "an exploratory run of the share form only (laptop, float64, this file's parent tree, a long plug filling the period, steady Stokes, D = 1, nu = rho = 1, g = 8, box 2 cells along z): Q / Q_Brinkman - 1 = +1.10 / +2.24 / +3.06 / +2.19 / +1.81 % at D/h 16 and +0.45 / +1.00 / +1.36 / +0.80 / +0.41 % at D/h 32, for sqrt(K)/h = 0.03 / 0.1 / 0.3 / 1 / 3; the projected CG took 5 to 44 iterations. Against Darcy's G K pi R^2 / mu (the unresolved Brinkman layer's deficit 2 sqrt(K)/R removed) the two sqrt(K)/h = 0.03 points read +0.34 % and +0.07 % [arithmetic]: the first step's 'under 0.1 %' against Brinkman is refuted at D/h 16 and 32 by that seen number, and is kept below unchanged as the prediction it was",
+    "the plain form (the plug's own band times 1/K, added) had not been run when this file was written"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 where gate 8 says"],
+    "platform": "CPU; GitHub runners (4 vCPU) for the measurements and rates, this laptop for single gate runs",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "a straight periodic tube along z, D = 1 (R = 0.5), nu = rho = 1, a body force g = 8 on the fluid; steady Stokes (the steady limit of IMEX Euler) unless stated; the default band (W 2h, delta 0.3h); the stiff interior 0.1h or 0.01h as stated; D/h 16 and 32 (64 on the probes); a plug a solid circular cylinder coaxial with the tube unless stated",
+    "seeds_and_draws": "Hypothesis draws at physical scales (sqrt(K)/h 0.01 to 10, a plug's radius 0.2 R to 1.2 R, its length 0.5 D to the period, its centre within the lumen); the controls' rates 200 draws on Actions unless stated"
+  },
+  "measure_1_resolution": {
+    "claim": "how the bulk Darcy flux of a plug filling the tube comes out when its Brinkman layer is not resolved, the plain sum against the share rule, and from what sqrt(K)/h the profile is right",
+    "kind": "estimates",
+    "case": "a long plug (longer than the period, so no ends) of the lumen's radius; the box 2 cells along z; the node's lumen flux against Brinkman's Q_B = (G K pi R^2 / mu)(1 - 2 sqrt(K) I1(R/sqrt K) / (R I0(R/sqrt K))), G = rho g",
+    "operating_point": "sqrt(K)/h 0.03, 0.1, 0.3, 1, 3; D/h 16, 32, 64; the 0.1h interior",
+    "prediction": {
+      "value": "plain: Q/Q_B - 1 = (1 + h/R)^2 - 1 = +26.6 / +12.9 / +6.3 % at D/h 16 / 32 / 64 for sqrt(K)/h <= 0.1; share: |Q/Q_B - 1| < 0.1 %; the profile within about 2 % of the centreline from sqrt(K)/h about 1",
+      "band": [null, null],
+      "unit": "relative flux",
+      "basis": "derived (the first step's, unchanged): in the wall's band the plug's own ramp is 1 - chi, so the plain sum's resistivity (1 - chi)/K cancels the drive's (1 - chi) and the Darcy velocity G K / mu reaches R + h; the share rule's 1/K across the fluid of the band leaves the integral of (1 - chi), within 0.19 (h/R)^2 of pi R^2",
+      "why": "the operating point is the done case's regime, sqrt(K) far under h"
+    },
+    "metric": "the lumen's flux (the whole box's axial flux over the period), the quantity a pressure drop is read from"
+  },
+  "measure_2_floor": {
+    "claim": "the floor: the flux an impermeable plug filling the tube lets through the wall's solid around it, over the open tube's",
+    "kind": "estimates",
+    "case": "a plug of the lumen's radius, one diameter long, sqrt(K)/h = 1e-3 (its Darcy flux about 1e-6 of the open tube's), in a period of four diameters; the same box with no plug",
+    "operating_point": "the 0.1h and 0.01h interiors; D/h 16, 32, 64",
+    "prediction": {
+      "value": "within 3 times of the interior spike's 7.3e-3 / 1.26e-3 / 2.4e-4 (0.1h) and 9.0e-5 / 1.45e-5 / 2.7e-6 (0.01h)",
+      "band": [null, null],
+      "unit": "Q_leak / Q_open",
+      "basis": "measured-before (the interior spike's occlusion, of wall material); the plug's resistivity blocks the lumen and the band's fluid as the occlusion's did, and adds nothing to the solid beyond",
+      "why": "the bypass runs through the band's solid half and the interior's ramp, the same in both"
+    },
+    "metric": "Q_leak / Q_open, compared at the build with the plug's own Darcy flux over the open tube's, 8 K L_box / (R^2 L)"
+  },
+  "measure_3_face": {
+    "claim": "the plug's face against free fluid: the shift, in cells, of the plug's radius that makes the exact Brinkman-core and Stokes-annulus flux equal the measured one",
+    "kind": "estimates",
+    "case": "a long coaxial plug of radius 0.5 R in the tube (a gap of 0.25 D), its flux against the composite closed form",
+    "operating_point": "sqrt(K)/h 0.03, 0.1, 0.3, 1, 3; D/h 16, 32; the 0.1h interior",
+    "prediction": {
+      "value": "+0.7 to +1.0 cells (outward: the plug reads larger) at sqrt(K)/h 0.03; +0.4 to +0.8 at 0.1; within +-0.2 at 0.3 and above",
+      "band": [null, null],
+      "unit": "cells",
+      "basis": "derived, rough: a stiff band holds the flow where its ramp first reaches about K/h^2, near the band's fluid edge; at sqrt(K)/h near 0.3 the plug's ramp is the calibrated band's own depth",
+      "why": "B3: a stiff penalty in a smooth band moves its effective wall"
+    },
+    "metric": "the fitted radius's shift in cells, which predicts the annulus's flux error (its flux goes as the gap cubed)"
+  },
+  "measure_4_cost": {
+    "claim": "the projected CG's iterations with a plug, against the same box without one",
+    "kind": "estimates",
+    "case": "gate 1's finite plug, steady Stokes",
+    "prediction": {
+      "value": "within 2 times of the box without a plug at the same interior, at every sqrt(K)/h measured",
+      "band": [0.5, 2.0],
+      "unit": "iterations, plug over no plug",
+      "basis": "guess, after the exploratory 5 to 44 iterations on a 2-cell box (seen_before)",
+      "why": "Jacobi scales the plug's large diagonal away; the stiff interior already sets the count"
+    }
+  },
+  "gate_1_darcy": {
+    "claim": "a finite plug filling the tube gives Darcy's pressure drop, dp = mu L Q / (K pi R^2) (with Brinkman's wall factor), and the tube's flux the series closed form, within the measured resolution error, over K and resolution",
+    "kind": "bounds",
+    "case": "a plug of the lumen's radius, one diameter long, in a period of four diameters; Q against rho g L_box / (8 mu (L_box - L) / (pi R^4) + mu L / (K pi R^2 F_B)), F_B Brinkman's factor; the plug's dp read as rho g L_box less the open part's Poiseuille drop at the measured Q",
+    "operating_point": "sqrt(K)/h 0.1, 0.3, 1; D/h 16, 32; the 0.01h interior (the leak's share under 1e-3) and the 0.1h one (the leak's share added to the line)",
+    "prediction": {
+      "value": "within 2 % of the series form at D/h 32 and 4 % at D/h 16 with the 0.01h interior; with 0.1h, high by the leak's share F / (8 K L_box / (R^2 L)) on top",
+      "band": [-0.02, 0.04],
+      "unit": "relative flux",
+      "basis": "measured-before (the exploratory long-plug numbers, seen_before) and derived (the leak's share)",
+      "why": "the plug's resistance is nearly all of the series"
+    },
+    "metric": "the lumen's flux; the plug's dp follows from it",
+    "control": {
+      "plant": "the plug's permeability read 2 % high in the step",
+      "environment_variable": "MIME_PLANT_PLUG_K",
+      "expected_rate": "N/N where the gate's line is under 2 % (D/h 32, 0.01h); the gate states the range it cannot discriminate",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "cannot_discriminate_if": "the leak's share is not under the line (0.1h at small K): the gate then reads the floor, not Darcy"
+  },
+  "gate_2_brinkman_profile": {
+    "claim": "where sqrt(K) is resolved the profile in a long plug is Brinkman's, u = (G K / mu)(1 - I0(r / sqrt K) / I0(R / sqrt K))",
+    "kind": "bounds",
+    "case": "a long plug of the lumen's radius; the axial velocity at the cells' centres within R - 2h against the closed form",
+    "operating_point": "sqrt(K)/h 2 and 4; D/h 16 and 32",
+    "prediction": {
+      "value": "the largest error at most 2 % of u_B(0) at D/h 32, about halving from D/h 16",
+      "band": [0.0, 0.02],
+      "unit": "relative to the centreline",
+      "basis": "guess, from the wall's calibrated first-order shift",
+      "why": "first order at the wall, second in the fluid"
+    },
+    "control": {
+      "plant": "the plug's permeability read 2 % high",
+      "environment_variable": "MIME_PLANT_PLUG_K",
+      "expected_rate": "N/N at D/h 32",
+      "runs": 30,
+      "clean_expected": "0/30"
+    }
+  },
+  "gate_3_annulus": {
+    "claim": "a plug with an annular gap splits the flux as the exact Brinkman core matched to a Stokes annulus (parallel resistances as sqrt(K)/gap goes to zero); the wall's leak judged against B3's line",
+    "kind": "bounds",
+    "case": "a long coaxial plug of radius 0.5 R; total and plug fluxes against the composite closed form",
+    "operating_point": "sqrt(K)/h 0.3, 1, 3; D/h 16 and 32",
+    "prediction": {
+      "value": "the total within 3 % and the plug's share within 5 % at D/h 32; below sqrt(K)/h 0.3 the face's shift (measure 3) sets the error, stated as the range's edge",
+      "band": [-0.03, 0.03],
+      "unit": "relative flux",
+      "basis": "guess",
+      "why": "the gap carries nearly all the flux; its error is the plug face's shift"
+    },
+    "control": {
+      "plant": "the plug's radius read a quarter cell larger",
+      "environment_variable": "MIME_PLANT_PLUG_RADIUS",
+      "expected_rate": "N/N at D/h 32",
+      "runs": 30,
+      "clean_expected": "0/30"
+    }
+  },
+  "gate_4_resistivities_add": {
+    "claim": "a plug overlapping the wall's band reads the sum of the two resistivities at every face, and nothing else",
+    "kind": "equality",
+    "case": "the node's fields with a drawn plug against the wall's fields alone and the plug's alone",
+    "prediction": {"value": 0.0, "band": [0.0, 0.0], "unit": "the largest difference, in the field's own rounding", "basis": "derived: the step adds them", "why": "one rule"},
+    "control": {
+      "plant": "the larger of the two in place of their sum",
+      "environment_variable": "MIME_PLANT_POROUS_MAX",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "gate_5_positivity": {
+    "claim": "a permeability of zero or below (or not finite) is refused on every draw: at the build where it is declared, and after the run where a study or a range moved it there",
+    "kind": "acceptance",
+    "prediction": {"value": "200/200 refused", "band": [null, null], "unit": "", "basis": "derived", "why": "the value kind is above zero; the step checks the sampled field and the leaf"},
+    "control": {
+      "plant": "the sampled check removed",
+      "environment_variable": "MIME_PLANT_POSITIVITY_OFF",
+      "expected_rate": "200/200 not refused (the test fails)",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "gate_6_ledger": {
+    "claim": "with the ledger attached the step identity closes with the plug's Darcy loss booked under its law, at rounding, and the loss equals the drive's work through the plug in a steady flow",
+    "kind": "equality",
+    "prediction": {"value": "the identity's residual within its rounding floor on every draw; the plug's loss within 1e-6 of Q dp_plug dt at a converged steady state", "band": [null, null], "unit": "", "basis": "derived", "why": "the porous term is one more hosted dissipation, paired at the step's solution"},
+    "control": {
+      "plant": "the plug's loss booked with its sign flipped",
+      "environment_variable": "MIME_PLANT_POROUS_SIGN",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "gate_7_gradients": {
+    "claim": "derivatives of the box's flux in the plug's permeability, its centre (off the axis) and its length, forward and reverse, equal central differences in float64",
+    "kind": "equality",
+    "prediction": {"value": "within 1e-6 relative (K) and 1e-4 (geometry, the band's ripple being the discretisation's own)", "band": [null, null], "unit": "relative", "basis": "derived: one discretisation, differentiated", "why": "the field is a smooth function of its leaves away from the switches"},
+    "control": {
+      "plant": "stop_gradient on the plug's field values",
+      "environment_variable": "MIME_PLANT_POROUS_STOP",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/30"
+    }
+  },
+  "gate_8_float32": {
+    "claim": "float32 gives gate 1's and gate 3's fluxes within its rounding floor of float64's where it resolves them; the range where it does not is stated",
+    "kind": "bounds",
+    "prediction": {"value": "within 1e-4 relative at sqrt(K)/h >= 0.1, D/h 16 and 32", "band": [0.0, 1e-4], "unit": "relative", "basis": "guess", "why": "the solve's float32 tolerance 1e-5 and its floor"}
+  },
+  "bits": {
+    "cases": "every released program and every merged program with no plug, base origin/release/v0.3.0 against the head, one job, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal",
+    "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "one leaf one ulp up: arrays differ"}
+  },
+  "outcomes": {
+    "measure_1_resolution": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "plain": "Q/Q_B - 1 at sqrt(K)/h 0.03: +20.6 / +9.8 / +5.2 % at D/h 16 / 32 / 64 (predicted +26.6 / +12.9 / +6.3 %: the mechanism and its first order held, the size about 0.8 of the prediction); at 0.1: +15.9 / +7.6 / +3.8 %",
+      "share": "against Brinkman +1.10 / +0.45 / +0.20 % at sqrt(K)/h 0.03 (predicted under 0.1 %: missed at every D/h, by the unresolved layer's deficit 2 sqrt(K)/R that the discrete flux omits); against Darcy +0.35 / +0.07 / +0.02 %",
+      "profile": "where resolved (sqrt(K)/h 1 and 3) the profile within 0.36 to 1.27 % of the centreline at every D/h (predicted about 2 %: held)",
+      "verdict": "plain refuted as the default (first order, about 2h/R high); the approved share rule right on a body-force-driven plug, superseded by measure 2 of the forms file on a pressure-driven one"
+    },
+    "measure_2_floor": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "value": "the share form, no reach: 0.1h 7.4e-3 / 1.21e-3 / 1.7e-4, 0.01h 8.5e-4 / 2.0e-4 / 1.0e-5 at D/h 16 / 32 / 64 (the D/h 64 0.01h plug solve at its 20000-iteration cap, flagged)",
+      "verdict": "held at 0.1h (within 1.4 times of the spike's occlusion); missed at 0.01h (9.4, 14 and 3.7 times the spike's): the band's solid half and the interior's ramp leak round a plug that stops at the wall, which a wall-material occlusion does not have"
+    },
+    "measure_3_face": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "value": "shift +0.24 / +0.42 / +0.41 cells at sqrt(K)/h 0.03, +0.25 / +0.37 / +0.39 at 0.1, +0.17 / +0.25 / +0.28 at 0.3, -0.004 / +0.08 / +0.11 at 1, -0.14 / -0.01 / +0.02 at 3 (D/h 16 / 32 / 64); the annulus's flux -15 / -13 / -6.8 % at 0.03",
+      "verdict": "the direction held, the size missed (predicted +0.7 to +1.0 at 0.03): the stiff band's wall sits about 0.4 cells outward, not one"
+    },
+    "measure_4_cost": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "value": "the finite plug (share form) 406 to 439 iterations against the empty box's 25 at D/h 16 with 0.01h, 954 to 1026 against 51 at 32; with 0.1h 50 to 55 against 25 and 105 to 118 against 51",
+      "verdict": "missed at 0.01h (16 to 20 times, predicted within 2): the plug drives a pressure gradient across the stiff interior, as a stenosis does (the interior spike's 0.01h stenosis 301 / 822); held at 0.1h (2.0 to 2.3 times)"
+    },
+    "note": "the gates run in CI at D/h 16 (their lines 4 %, 2 % and 3 %); the controls' plants are sized above each gate's measured resolution there (predictions_porous_plug_ranges.json), not at the D/h 32 sizes this file's controls name",
+    "gate_1_darcy": {
+      "value": "the parallel form against the series: -1.4 to +1.6 % (D/h 16), -0.3 to +0.9 % (32), 0.0 to +0.6 % (64) for sqrt(K)/h 0.01 to 1 with 0.01h; -1.7 to +2.0 % and -0.3 to +1.4 % with 0.1h at 16 and 32; at 0.003 with 0.1h -1.8 / -0.4 / -0.005 %; the face drop within 3.5 % of Darcy's at the measured flux",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084858227",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123280055"
+      ],
+      "control": "K read 10 % high (the D/h 16 gate at sqrt(K)/h 0.3): 30/30, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218, arm sized); its resolution 2.2 % (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43121427627)",
+      "verdict": "held: within 2 % at D/h 32 and 4 % at 16 (0.01h), and at 0.1h too"
+    },
+    "gate_2_brinkman_profile": {
+      "value": "within 0.92 / 1.04 / 1.03 % of the centreline at sqrt(K)/h 1 and 0.61 / 0.83 / 1.21 % at 3, D/h 16 / 32 / 64",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084858227"
+      ],
+      "control": "K read 10 % high (the D/h 16 gate at sqrt(K)/h 2): 30/30, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218); its resolution 2.6 % (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43121427627)",
+      "verdict": "held within 2 % at every D/h; it does not halve from 16 to 32 (the profile's error is the band's at the wall, about 1 %)"
+    },
+    "gate_3_annulus": {
+      "value": "the total against the composite at sqrt(K)/h 1 / 3: +0.14 / +2.08 % (D/h 16), -1.97 / +0.15 % (32); at 0.1 -16 % (16) and -12 % (32), the face's shift of 0.25 to 0.37 cells: the range's edge, stated in the validity line",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084858227"
+      ],
+      "control": "the radius read a quarter cell larger (the D/h 16 gate at sqrt(K)/h 1): 30/30, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218); its resolution 0.091 cells (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43121427627)",
+      "verdict": "held at sqrt(K)/h 1 and 3 (within 3 % at D/h 32); below 0.3 the face's shift sets the error, as predicted"
+    },
+    "gate_4_resistivities_add": {
+      "value": "array_equal at every face on every drawn plug (CI)",
+      "control": "the larger of the two in place of the sum: 200/200, clean 0/200 (four arms of 50 seeds each, https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43145020089; the first single arm of 200 was still running after five hours)",
+      "verdict": "held"
+    },
+    "gate_5_positivity": {
+      "value": "flagged at sampling on every drawn K of zero or below or not finite; refused after the run (flow.permeability-not-positive) and when declared (value.not-positive)",
+      "control": "the sampled check removed: 200/200, clean 0/200 (four arms of 50, https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43145020089)",
+      "verdict": "held"
+    },
+    "gate_6_ledger": {
+      "value": "the identity closes with the plug's loss booked under its law, in both dtypes (CI)",
+      "control": "the loss's sign flipped: 30/30 in float64 and 30/30 in float32, clean 0/30 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218, arm ledger); 30 runs, not the 200 named (the case is deterministic)",
+      "verdict": "held"
+    },
+    "gate_7_gradients": {
+      "value": "forward and reverse within 1e-6 (K) and 1e-4 (offset, length) of the central difference (CI, float64)",
+      "control": "stop_gradient on the field: 30/30 in each of K, offset and length, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218, arm gradients)",
+      "verdict": "held"
+    },
+    "gate_8_float32": {
+      "value": "float32 within 1e-4 of float64 on the finite plug (sqrt(K)/h 0.3) and the annulus (1), D/h 16 (CI)",
+      "verdict": "held at D/h 16; D/h 32 not run in float32"
+    },
+    "bits": {
+      "value": "every saved program with no plug (48 cases, float64 and float32: 96 programs), base d6220d2 against head a4c3ffc, eight steps, every array: all equal (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124616730); twisted_toy is refused at its build in both trees",
+      "controls": "repeat: 4/4 programs equal; one ulp up: 4/4 differ (11 to 18 arrays each)",
+      "verdict": "held"
+    }
+  }
+}

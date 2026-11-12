@@ -13,6 +13,7 @@ from typing import cast
 
 from mime.things import ThingKind, did_you_mean
 from mime.units import (
+    AREA,
     DENSITY,
     DIMENSIONLESS,
     DYNAMIC_VISCOSITY,
@@ -123,6 +124,13 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
         "roughness": ValueKind(LENGTH, (), "the roughness of the structure's surface, where a medium fills its region: "
                                            "with a body's, where lubrication's film hands the gap over to contact (a "
                                            "declared length, never fitted)", above_zero=_ROUGH),
+        # No OpenMaterica field holds a permeability yet (its vocabulary has none): declared only, until one does.
+        "permeability": ValueKind(AREA, (), "the isotropic Darcy permeability K of the porous material the structure "
+                                            "is (a clot): the flux through it per unit area is K / mu times the "
+                                            "pressure gradient", above_zero=AboveZero(
+                                                "a permeability is above zero: at zero a porous region's resistivity "
+                                                "1/K is not a number, and below it its drag puts energy into the "
+                                                "flow", "um2", 1e-12, 0.01, "a fibrin clot")),
     },
     ThingKind.APPARATUS: {
         "magnetic_moment": ValueKind(MAGNETIC_MOMENT, (3,), "the permanent moment of the apparatus's magnet part, in "

@@ -382,6 +382,11 @@ class ResolvedRegistration:
     #: each, and each one's parameters, in the order written; a single surface's alone otherwise.
     subjects: tuple[str, ...] = ()
     subjects_parameters: tuple[Mapping[str, Magnitude], ...] = ()
+    #: Where the subject is a structure (a porous region held in a flow): its geometry kind, resolved.
+    geometry: GeometryPlan | None = None
+    #: The values the registering interaction reads, by label, as phase 1 resolves them (filled once they are, before
+    #: any entry builds): what a dynamics holding the law builds it from (a porous region's permeability).
+    values: Mapping[str, materials.ResolvedValue] = field(default_factory=dict[str, "materials.ResolvedValue"])
     #: Where the subject is a body: its hull (a resolved body's solid, which a flow holding it on its grid lifts).
     hull: Hull | None = None
 
@@ -3384,12 +3389,13 @@ class _Planner:
                 except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
                     self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
                     return
+        geometry = self.geometries.get(subject) if cls.roles.get(registration.subject) is RoleKind.STRUCTURE else None
         hull = self.hull_of(subject) if cls.roles.get(registration.subject) is RoleKind.BODY else None
         dynamics.registrations.append(
             ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
                                  _plain_settings(plan.entry, plan.settings), each[0] if each else {},
                                  subjects if len(subjects) > 1 else (), tuple(each) if len(subjects) > 1 else (),
-                                 hull))
+                                 geometry, plan.values, hull))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()

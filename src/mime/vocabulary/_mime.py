@@ -149,3 +149,7 @@ FLOW_OPENING = define(Interface(
     "flow.opening", TargetKind.REGISTRATION, "", None, (),
     description="a law held at one of a medium's flow's openings, its pressure or its flux over each stage: the flow "
                 "includes it in its own step"))
+FLOW_POROUS = define(Interface(
+    "flow.porous", TargetKind.REGISTRATION, "", None, (),
+    description="a porous structure's drag on the fluid that permeates it (Darcy's law): the flow includes it in its "
+                "own step, its resistivity added to the wall's"))

@@ -1,0 +1,41 @@
+{
+  "written": "2026-11-12, committed before the fix round's final bits probe ran (the commit that adds this file is the timestamp): PR #264's head after its fix round",
+  "phase": "Lane F, dev2: the static porous plug, fix round (the brief's item 7)",
+  "labels": "the builder (Opus); as predictions_porous_plug.json's bits and run 43124616730",
+  "seen_before": [
+    "run 43124616730 on the pre-review head: 96 programs equal; repeat 4/4 equal, one ulp 4/4 differ"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runners (4 vCPU), one job, one CPU, one thread",
+    "sizes_and_parameters": "every saved program without a plug, its first eight steps, every recorded array",
+    "seeds_and_draws": "none"
+  },
+  "gate_1_bits": {
+    "claim": "a program without a porous region computes what the release tip computes, bit for bit",
+    "kind": "equality",
+    "case": "probe/run.sh arms bits_a to bits_e (bit_compare.py), base origin/release/v0.3.0",
+    "prediction": {
+      "value": "every array np.array_equal",
+      "basis": "derived: every change a plug-free program reaches is behind `if self.porous_laws` or a porous registration",
+      "why": "the fix's code paths are Python conditionals on the porous laws"
+    },
+    "control": {
+      "plant": "repeat (the head twice) and one ulp up",
+      "expected_rate": "repeat 4/4 equal, one ulp 4/4 differ"
+    }
+  },
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43161915116",
+    "head": "f6eb1fe (the probe's 664d920 adds only probe/), base ff9624c (the release tip)",
+    "gate_1_bits": {
+      "value": "96 of 96 programs equal, every recorded array (48 cases in float64 and float32; twisted_toy is refused at its build in both trees, vocabulary.reserved); repeat 4/4 equal; one ulp up 4/4 differ (11 to 18 arrays each)",
+      "verdict": "held"
+    },
+    "memory": "six arms read over the FVM proxy's bound: bit-compare processes the proxy does not size, the proxy's miss (as run 43124616730), no calibration row",
+    "after": "the only later commit fills this outcome (a JSON file no program reads)"
+  }
+}
