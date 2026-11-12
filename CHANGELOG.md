@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own Darcy relation whatever drives it. `porous_flagged` keeps its gap rule and fires for a plug below the line
   beside a resolved body; below the line a closing plug is the hand-over's, no longer flagged. The build report states
   each plug's route and the line with its source. **Fixed:** a flow holding a porous plug and a resolved body
-  (`Drag.Penalty`) took each body's loss off the walls' penalty twice, so its books did not close.
+  (`Drag.Penalty`) took each body's own loss off a walls' penalty that, with a porous region, never held it, so its books did not close. The line was measured on periodic tubes: in an open vessel driven by pressures, and in two parallel tubes from one inlet plane at the node level, the solve at the 0.1h line stagnates or goes not finite (flagged); the 0.01h interior's converges.
 
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,

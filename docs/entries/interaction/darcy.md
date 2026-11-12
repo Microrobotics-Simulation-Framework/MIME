@@ -26,7 +26,7 @@ round it) acts as a wall the band smears, shifted outward by a fraction of a cel
 driven by a body force alone, with no pressure drop across it (a porous medium filling a periodic box), reads a few
 per cent low. A plug closing a straight tube is resolved down to a `sqrt(K)` of a few thousandths of a cell with the
 default stiff interior (a hundredth with the stiffer one): the hand-over's line, below which the two-way solve stops
-converging; the wall lets no measurable flux past it (the floor, bounded far under the plug's own flux there).
+converging; the wall lets no measurable flux past it (the floor, bounded far under the plug's own flux there). The line was measured on periodic tubes: in an open vessel driven by pressures the solve at the default interior's line stagnates (flagged, `solve_flagged`), where the stiffer interior's converges.
 These hold for the flux the run reports, `lumen_flux`, which with a porous region is the box's whole axial flux: the
 flux through every section, the plug's throughflow. In a periodic box driven by a body force the velocity next to a
 closing plug is not its throughflow's: the pressure that holds the drive back pushes the wall's porous solid (which the
