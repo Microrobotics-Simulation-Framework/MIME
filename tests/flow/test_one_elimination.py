@@ -264,6 +264,27 @@ def test_the_plan_holds_a_free_body_one_pass_and_lags_one_whose_step_is_not_line
     assert "not one the flow's one elimination can hold" in line, line
 
 
+def test_the_build_report_names_lagged_the_cheaper_route_from_the_measured_body_count(float64):
+    """The build report's line for the bodies a flow holds one pass names coupling='lagged' as the cheaper route from
+    HELD_SUGGESTS_LAGGED bodies on (the maintainer's item 2 (a)), the count set from the cost measured through the node.
+    The control: one body fewer, the line states the cost and suggests nothing."""
+    from mime.nodes.flow.fvm._node import HELD_SUGGESTS_LAGGED
+
+    def line(count: int) -> str:
+        h = 1e-5
+        node = ImplicitFlowNode("flow", 1e-4, cells_x=8, cells_y=8, cells_z=8, spacing=h, viscosity=WATER_MU,
+                                density=WATER_RHO, tube_centre=(4 * h, 4 * h, 0.0), tube_axis=(0.0, 0.0, 1.0),
+                                tube_radius=2.8 * h, scheme="imex_euler", convection=False,
+                                partner_radius=[h] * count, partner_widths=[1.0] * count,
+                                partner_ids=[f"drag:b{i}" for i in range(count)])
+        (held,) = node.held_lines()
+        return held
+
+    assert "coupling='lagged'" in line(HELD_SUGGESTS_LAGGED)
+    fewer = line(HELD_SUGGESTS_LAGGED - 1)
+    assert f"{6 * (HELD_SUGGESTS_LAGGED - 1)} unit fields" in fewer and "lagged" not in fewer, fewer
+
+
 def test_an_open_vessels_flow_holds_a_body_one_pass_and_refuses_a_lagged_one_by_name(float64):
     """An open vessel's flow holds its partners in its one elimination only: a free body plans one pass beside the
     openings; a one-way body, a contact's body (lagged) and one with coupling='lagged' are refused by name

@@ -50,6 +50,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`<id>.maxey_riley`). Point bodies in one medium interact through its flow, lagged a step; the build reports it on
   each one's drag, with their nearest starting separation in radii and their volume fraction in the grid's box.
   Flags `below_floor`, `history_flagged`, `rate_feedback`, `near_wall`, `reynolds_flagged` (stokes).
+- **One elimination over a flow's exchange partners; point bodies held one pass** (F3's second PR,
+  `mime.core.elimination`). The flow solves a unit field for each delivery of every partner (an opening's pressure, a
+  point body's force and couple), reads each unit field for every partner, and solves all their rows in one dense LU
+  (`exchange_system`, through `dense_solve`). It replaces the open flow's port system: openings alone take its
+  single-partner branch, with the port system's operations. A point body whose own step is linear is now held one pass
+  by default: the flow holds its drag law and its step's row (`body.step_row`) with the body's other loads and
+  resistances delivered into it, closes the body's twist with the field within the step, and hands the body its load
+  and 6x6 response. The exchange is then workless, and the drag's two ledger rows sum to its own dissipation with no
+  lagged residual. The lagged exchange stays where one pass cannot apply (one-way, a contact confining the body, a
+  dynamics that publishes no step row), with the drag's build line saying why, and as the declared cheaper route,
+  `Drag.Stokes(coupling="lagged")`; what an experiment observes never chooses the scheme. From five bodies held one
+  pass, the build report names lagged as the cheaper route (one pass's step measured at 4.9, 6.8 and 9.5 times
+  lagged's at 1, 2 and 5 bodies). An open vessel's flow holds its bodies one pass and refuses a lagged one
+  (`flow.open-exchange`). New refusals: `drag.stokes-one-pass` (one pass written for a body whose step is not linear),
+  `flow.tree-exchange` (a tube tree's flow takes no exchange partner yet; it raised `entry.defect` before). Readings
+  `row_mismatch`, `row_mismatch_flagged` on a one-pass drag's node.
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
   patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the

@@ -144,8 +144,11 @@ PARTNER = "partner_"
 #: The fields a flow holding point bodies returns to each (``partner_<b>_<name>``): the load and response it is handed.
 PARTNER_HANDED = ("resistance", "load")
 #: The count of held point bodies from which the build report names the lagged exchange as the cheaper route: six unit
-#: solves a body a step against the lagged exchange's none (the cost measured in F3's second PR).
-HELD_SUGGESTS_LAGGED = 3
+#: solves a body a step against the lagged exchange's none. Measured through the node (F3's second PR, float64, 40 um
+#: spheres in the 1 mm periodic tube at D/h 16, a 4 vCPU runner), one pass's step took 4.9, 6.8 and 9.5 times the
+#: lagged one's at 1, 2 and 5 bodies, and its compile 3.5, 5.4 and 9.7 times: the line is where both reach about ten
+#: times (a declared line on those ratios; ten bodies unmeasured).
+HELD_SUGGESTS_LAGGED = 5
 
 
 class FlowFields(TypedDict):
