@@ -1,14 +1,15 @@
 """The patch's state and its small rules: the held field moved by whole cells at a snap, the uncovered slab taken from
 the coarse grid's fill (gate 10's slab, here exactly); the snapped origin; the whole-cell dilations and their blend
-weight; the build report's numbers and the window's lines (flags, never refusals)."""
+weight; the build report's numbers and the window's lines (flags, never refusals); a solve's three flags (the own
+field's overflow, the given values' net flux, reads outside the box), each raised alone by its own cause."""
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from mime.nodes.flow.fvm._patch import RefinementPatch, moved, patch_numbers, rule_two_cell, snapped_origin, \
-    whole_cell_dilations
+from mime.nodes.flow.fvm._patch import FLUX_SHARE_LINE, PatchSolve, RefinementPatch, moved, patch_flags, \
+    patch_numbers, placed, rule_two_cell, snapped_origin, whole_cell_dilations
 
 
 @pytest.fixture(autouse=True)
@@ -65,4 +66,26 @@ def test_the_numbers_flag_a_contact_below_the_window_and_never_refuse_it():
     assert inside.read_holds
     pointed = RefinementPatch((110, 110, 110), cell, read="point")
     assert not patch_numbers(pointed, 156.25e-6, a, a, 2.0 * cell, 0.25 * a).read_holds
-    assert patch_numbers(pointed, 156.25e-6, a, a, 2.0 * cell, 0.1 * a).read_holds
+    assert patch_numbers(pointed, 156.25e-6, a, a, 2.0 * cell, 0.05 * a).read_holds
+
+
+def test_each_of_a_solves_three_flags_is_raised_by_its_own_cause_alone():
+    class Plane:
+        region = "wall"
+
+        def signed_distance(self, points):
+            return 4.0 * 5e-5 - points[..., 2]
+
+    patch = RefinementPatch((10, 10, 10), 5e-5, read="point")
+    placement = placed(patch, [Plane()], jnp.zeros(3, jnp.int32), 0, jnp.zeros((2, 3)) + 2.5e-4, 1e-10, 1e-3)
+    short = RefinementPatch((10, 10, 10), 5e-5, read="point", shell_capacity=int(placement.shell_needed) - 1)
+
+    def solve(flux, outside):
+        return PatchSolve(jnp.zeros((2, 3)), patch.grid().zeros(jnp.float64), jnp.zeros(6), jnp.asarray(flux),
+                          jnp.asarray(outside))
+
+    clean = patch_flags(patch, placement, solve(0.5 * FLUX_SHARE_LINE, 0))
+    assert not any(bool(flag) for flag in clean)
+    assert [bool(f) for f in patch_flags(short, placement, solve(0.0, 0))] == [True, False, False]
+    assert [bool(f) for f in patch_flags(patch, placement, solve(-2.0 * FLUX_SHARE_LINE, 0))] == [False, True, False]
+    assert [bool(f) for f in patch_flags(patch, placement, solve(0.0, 3))] == [False, False, True]

@@ -1,9 +1,10 @@
 """Gate 7's structure: one uniform dilation per patch (decided 4 (5)). A patch between two walls (a plane below and
 one above), dilated by ``l`` whole fine cells, holds exactly the walls of the same two planes each moved ``l`` cells
-into its solid: one offset of the one signed distance, both contacts opened alike. The accuracy of that rule at a
-hand-over gap of at most 0.1 of the local radius is the window spike's (6.4 % worst over 28 two-wall pairs); the
-patch adds nothing to which contact is opened. Control ``PATCH_PLANT=one_wall``: the dilation applied to the lower
-wall only (a per-contact offset)."""
+into its solid: one offset of the one signed distance, both contacts opened alike. That is all this gate checks: its
+accuracy cannot be measured on this code. The window spike's 6.4 % (worst over 28 two-wall pairs at a hand-over gap of
+0.1 of the local radius) has no patch in it (MIME's coarse MRS with a plane image, a resolved disc, the seam's films,
+an MFS oracle); measuring it here needs the seam's films and a two-wall oracle. Control ``PATCH_PLANT=one_wall``: the
+dilation applied to the lower wall only (a per-contact offset)."""
 
 import os
 
