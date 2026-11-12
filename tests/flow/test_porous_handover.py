@@ -14,6 +14,8 @@ permeability and its throughflow is read one way from its face pressures.
 5. **Float32**: the reading below the line within its rounding of float64.
 6. **Beside a resolved body**: a plug and a ``Drag.Penalty`` body in one flow build, close their books and leave the
    plug's throughflow; control, a body's loss taken off the walls' penalty twice.
+7. **A held solve gone not finite** is refused by name (``flow.porous-solve-not-finite``), at the node and through the
+   experiment, never a flag on a finished run; control, that refusal left silent.
 
 Each plant is switched by ``MIME_PLANT_<NAME>``, each drawn case by ``DETECTION_SEED`` (``porous_handover_cases``)."""
 
@@ -26,10 +28,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from fvm_cases import in_dtype
-from porous_handover_cases import Forced, beside_a_body, body_twice, forced_draw, gradient_vessel, occluded_twin, \
-    overlap, planted, quiet_draw, seeded, tube_reading, vessel
+from open_cases import scan
+from porous_handover_cases import Forced, beside_a_body, body_twice, forced_draw, gradient_vessel, line_at, \
+    not_finite_draw, occluded_twin, overlap, planted, quiet_draw, seeded, tube_reading, twin_node, vessel
 
 import mime.nodes.flow.fvm._porous as porous
+from mime.build import RunFailed
 from mime.testing import ledger_closes
 from mime.units import ms
 
@@ -67,26 +71,23 @@ def test_a_fixed_inflow_through_a_plug_below_the_line_is_flagged(float64):
 
 @pytest.mark.parametrize("case", ["periodic", "pressure", "gap", "twin"])
 def test_a_driven_tube_a_gap_and_an_occluded_branch_are_not_flagged(float64, case):
-    """Below the line: the periodic tube driven by a body force (the loop present), the open vessel between a given
-    pressure and a resistance, a coaxial plug of half the lumen's radius with a fixed inflow, and two parallel tubes
-    from one inlet with the second closed and a fixed inflow upstream."""
+    """Below the line: the periodic tube driven by a body force (the loop present), and at the open vessel's 0.1h line
+    the open vessel between a given pressure and a resistance, a coaxial plug of half the lumen's radius with a fixed
+    inflow, and two parallel tubes from one inlet with the second closed and a fixed inflow upstream."""
     drawn = forced_draw(seeded())
     if case == "periodic":
-        found = tube_reading(16, math.sqrt(drawn.ratio) * porous.HANDOVER_LINE["0.01h"], "0.01h")
+        found = tube_reading(16, math.sqrt(drawn.ratio) * porous.HANDOVER_LINE["periodic"]["0.01h"], "0.01h")
         flagged, solve = found["forced_flagged"], found["solve_flagged"]
     else:
         if case == "twin":
             point, ratio = quiet_draw(seeded())
-            # The 0.01h interior: at the 0.1h line the rig's solve (the held plug's, as the resolved one's at the line)
-            # went not finite at D/h 12, flagged (the PR states it); the case tests the topology, not that solve.
-            held = occluded_twin(point, ratio, interior="0.01h")
+            held = occluded_twin(point, ratio)
         elif case == "pressure":
-            # The 0.01h interior: at the 0.1h line the open vessel's solve between a given pressure and a resistance
-            # stopped stagnated near 3e-5 on 49 of 50 draws, flagged (the PR states it).
-            held = vessel(drawn, laws=("pressure", "windkessel"), interior="0.01h")
+            held = vessel(drawn, laws=("pressure", "windkessel"))
         else:
             held = vessel(drawn, radius=0.25)
-        flagged, solve = float(held["forced_flagged"]), float(held["solve_flagged"])
+        # Every step's solve, the cold first among them: the run's counts of a cap, a stagnation and a NaN.
+        flagged, solve = float(held["forced_flagged"]), float(np.sum(np.asarray(held["solve_report_sum"])[2:5]))
     # A quiet run is quiet with its solve converged: a flagged or non-finite solve is no evidence of quiet.
     assert (flagged, solve) == (0.0, 0.0)
 
@@ -181,7 +182,7 @@ def test_the_flow_forced_through_a_plug_is_warned_of_through_the_experiment(floa
 
     from porous_cases import open_experiment
 
-    K = 0.1 * (porous.HANDOVER_LINE["0.1h"] * 1e-3 / 16) ** 2
+    K = 0.1 * (porous.HANDOVER_LINE["open"]["0.1h"] * 1e-3 / 16) ** 2
     built = open_experiment(K).build()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -189,7 +190,7 @@ def test_the_flow_forced_through_a_plug_is_warned_of_through_the_experiment(floa
     assert float(final["forced_flagged"]) == 1.0
     assert any(porous.FORCED_FLAG in str(w.message) for w in caught)
     line = next(line for line in built.report.text().splitlines() if "the porous region" in line)
-    assert "below the hand-over's line" in line and "43123280055" in line
+    assert "below the hand-over's line" in line and "an open vessel" in line and "43213789033" in line
 
 
 def test_drawn_forced_cases_are_physical():
@@ -198,3 +199,44 @@ def test_drawn_forced_cases_are_physical():
         drawn = forced_draw(index)
         assert 1e-4 <= drawn.ratio <= 0.5 and 0.7 <= drawn.at <= 1.3 and drawn.at + drawn.length / 2 < 2.0
     assert isinstance(forced_draw(0), Forced)
+
+
+def test_a_held_solve_that_goes_not_finite_is_refused_by_name(float64):
+    """The twin rig at D/h 12, its line moved to the periodic box's 0.1h line (sqrt(K)/h 0.003), where its held solve
+    went not finite on every such draw (run 43201390806): the node's stop names it, with its line and box type."""
+    point, ratio = not_finite_draw(seeded())
+    with line_at(porous.HANDOVER_LINE["periodic"]["0.1h"]), planted():
+        node = twin_node(point, ratio)
+        final, _ = scan(node, 2)
+        problem = node.stop_problem(final)
+    # The premise: the held solve went not finite (a draw on which it did not is no evidence either way).
+    assert float(np.asarray(final["solve_report_sum"])[4]) > 0.0
+    assert problem is not None and problem.code == "flow.porous-solve-not-finite", problem
+    assert "an open vessel" in problem.message and "0.003" in problem.message
+
+
+def test_a_porous_flows_solve_gone_not_finite_is_refused_by_name_through_the_experiment(float64):
+    """The open vessel holding a plug below the line, a NaN in the step's drive from its third step (planted as the
+    flow's own NaN tests plant it): the run is refused flow.porous-solve-not-finite, naming the region, where without
+    it the run's own refusal would be run.non-finite; the state's sum counts the not-finite stops."""
+    import jax.numpy as jnp
+    from porous_cases import open_experiment
+
+    import mime.nodes.flow.fvm._node as flow_node
+
+    made = flow_node.ImplicitFlowNode.forcing
+
+    def forcing(self, fields, boundary_inputs, scheme, dtype_):
+        force = made(self, fields, boundary_inputs, scheme, dtype_)
+        return lambda stage, time: tuple(jnp.where(time > 2.5 * self.delta_t, jnp.nan, c) for c in force(stage, time))
+
+    K = 0.1 * (porous.HANDOVER_LINE["open"]["0.1h"] * 1e-3 / 16) ** 2
+    with pytest.MonkeyPatch.context() as patched, planted():
+        patched.setattr(flow_node.ImplicitFlowNode, "forcing", forcing)
+        built = open_experiment(K).build()
+        with pytest.raises(RunFailed) as raised:
+            built.run(ms(1.0))
+    assert [r.code for r in raised.value.refusals] == ["flow.porous-solve-not-finite"], raised.value.refusals
+    assert "darcy" in raised.value.refusals[0].message
+    result = raised.value.result
+    assert result is not None and float(np.asarray(result.final["water.flow"]["solve_report_sum"])[4]) == 2.0

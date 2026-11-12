@@ -10,8 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **The porous plug's hand-over below the resolved line** (lane F, dev2; a follow-up to the plug). A plug whose
-  `sqrt(K)/h` lies under the line (0.003 with the default 0.1h interior, 0.01 with 0.01h: the least at which a plug
-  closing a tube was resolved, the wall's leak at most 1 % of its throughflow) is held by the solve at the line's
+  `sqrt(K)/h` lies under the line, by box type (in a periodic box 0.003 with the default 0.1h interior and 0.01 with
+  0.01h; in an open vessel 0.01 with either: the least at which the held solve converged on every draw measured, the
+  wall's leak at most 1 % of the throughflow) is held by the solve at the line's
   permeability, a wall for the outer flow to within the flux that held plug passes, and its throughflow is read one way
   from its face pressures, Darcy's law in Brinkman's form with the body force on its own fluid: `porous_flux` (each
   region's throughflow by its route: the solve's flux through its mid-section at or above the line, the reading below
@@ -22,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own Darcy relation whatever drives it. `porous_flagged` keeps its gap rule and fires for a plug below the line
   beside a resolved body; below the line a closing plug is the hand-over's, no longer flagged. The build report states
   each plug's route and the line with its source. **Fixed:** a flow holding a porous plug and a resolved body
-  (`Drag.Penalty`) took each body's own loss off a walls' penalty that, with a porous region, never held it, so its books did not close. The line was measured on periodic tubes: in an open vessel driven by pressures, and in two parallel tubes from one inlet plane at the node level, the solve at the 0.1h line stagnates or goes not finite (flagged); the 0.01h interior's converges.
+  (`Drag.Penalty`) took each body's own loss off a walls' penalty that, with a porous region, never held it, so its
+  books did not close. The periodic line's solve at 0.003 with 0.1h stagnated in an open vessel driven by pressures
+  and went not finite in two parallel tubes from one inlet plane (at the node level), so the line is keyed by box type
+  (`HANDOVER_LINE`, a node kind's `HANDOVER_BOX`), the open vessel's measured on its own. **New refusal:** a solve that
+  goes not finite at any step in a flow holding a porous region is refused after the run,
+  `flow.porous-solve-not-finite`, naming its regions, the line and the box type, never a flag on a finished run.
 
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,

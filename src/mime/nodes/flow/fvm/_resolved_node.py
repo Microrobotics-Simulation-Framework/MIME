@@ -425,7 +425,7 @@ class ResolvedFlowNode(ImplicitFlowNode):
         past = [(index, motion) for index, motion in motions if not motion <= MOTION_LINE]
         if step < 0 or not past:
             held = super().stop_problem(state)
-            if held is None or not motions:
+            if held is None or not motions or held.code != "flow.cfl-exceeded":
                 return held
             c = self.constants()
             moved = ", ".join(f"{c[f'body_{index}_name']}'s solid {motion:.3g} cells" for index, motion in motions)

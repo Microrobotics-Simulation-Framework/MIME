@@ -28,8 +28,8 @@ from mime.nodes.flow.fvm._node import porous_leaves
 LAW = "darcy:clot"
 #: The plants, each by its variable's name: the reading's permeability doubled; the face pressures' signs flipped; the
 #: forced-flow comparison disabled; the topology test answering "forced" for every region; the face pressures, or the
-#: permeability in the reading, held from the derivative.
-PLANTS = ("READING_K2", "FACE_SIGN", "FORCED_OFF", "FORCED_EVERYWHERE", "FACE_STOP", "K_STOP")
+#: permeability in the reading, held from the derivative; a porous flow's solve gone not finite left unnamed.
+PLANTS = ("READING_K2", "FACE_SIGN", "FORCED_OFF", "FORCED_EVERYWHERE", "FACE_STOP", "K_STOP", "NOT_FINITE_SILENT")
 
 
 @contextlib.contextmanager
@@ -51,21 +51,23 @@ def planted() -> Iterator[None]:
         if plant("FORCED_EVERYWHERE"):
             for owner in (ImplicitFlowNode, OpenFlowNode):
                 patched.setattr(owner, "through_plug", lambda self, p, grid, gaps: [jnp.asarray(True) for _ in gaps])
+        if plant("NOT_FINITE_SILENT"):
+            patched.setattr(ImplicitFlowNode, "porous_not_finite", lambda self, state: None)
         yield
 
 
 @contextlib.contextmanager
 def line_at(line: float) -> Iterator[None]:
-    """The hand-over's line moved to ``line`` (``sqrt(K)/h``, both interiors) for a block: the overlap gate's hand-over
-    arm, a plug above the real line read as the route below it reads one."""
+    """The hand-over's line moved to ``line`` (``sqrt(K)/h``, every box type and interior) for a block: the overlap
+    gate's hand-over arm, a plug above the real line read as the route below it reads one; the open line's probe."""
     with pytest.MonkeyPatch.context() as patched:
-        patched.setattr(porous, "HANDOVER_LINE", {"0.1h": line, "0.01h": line})
+        patched.setattr(porous, "HANDOVER_LINE", {box: {"0.1h": line, "0.01h": line} for box in porous.HANDOVER_LINE})
         yield
 
 
-def line_permeability(dh: int, interior: str) -> float:
+def line_permeability(dh: int, interior: str, box: str) -> float:
     """The line's permeability in a tube of D = 1 at D/h ``dh``."""
-    return (porous.HANDOVER_LINE[interior] / dh) ** 2
+    return (porous.HANDOVER_LINE[box][interior] / dh) ** 2
 
 
 # -- gates 1 and 3: the periodic tube ------------------------------------------------------------------------------
@@ -124,7 +126,7 @@ def vessel(drawn: Forced, *, cells: int = 16, radius: float = R, interior: str =
     """An open tube two diameters long, the drawn inflow at its start (or a given pressure, ``laws`` ``("pressure",
     "windkessel")``) and a resistance of three tubes' at its end, steady Stokes, no body force, a plug of ``radius`` (the lumen's: closing it) on its axis."""
     dh = cells
-    K = drawn.ratio * line_permeability(dh, interior)
+    K = drawn.ratio * line_permeability(dh, interior, "open")
     resistance = 3.0 * tube_resistance(2.0)
     flux = drawn.inflow * math.pi / 4.0
     # A given pressure that would drive the inflow through the open vessel and its outlet, where the start holds one.
@@ -154,30 +156,42 @@ class PluggedTwins(TwinNode):
 def occluded_twin(point: Point, ratio: float, *, interior: str = "0.1h") -> dict[str, Any]:
     """Two parallel tubes from one inlet plane (``twin_cases``): a fixed inflow at the start, a resistance of three
     tubes' at each outlet, steady Stokes, the second tube closed at mid-length by a plug below the line; the flow
-    takes the first."""
+    takes the first. Two steady steps' final state."""
+    with planted():
+        final, _ = scan(twin_node(point, ratio, interior=interior), 2)
+    return final
+
+
+def twin_node(point: Point, ratio: float, *, interior: str = "0.1h") -> PluggedTwins:
+    """:func:`occluded_twin`'s node, its plug at ``ratio`` of the open line's permeability (the plants act where its
+    step is traced, under :func:`planted`)."""
     held = layout_of(point)
     h = held["spacing"]
-    K = ratio * (porous.HANDOVER_LINE[interior] * h) ** 2
+    K = ratio * (porous.HANDOVER_LINE["open"][interior] * h) ** 2
     resistance = 3.0 * tube_resistance(point.length)
     centre = (held["tube_centre"][0] + held["twin_offset"], held["tube_centre"][1], 0.5 * held["cells_z"] * h)
-    with planted():
-        node = PluggedTwins(
-            "flow", 1.0, cells_x=held["cells_x"], cells_y=held["cells_y"], cells_z=held["cells_z"], spacing=h,
-            viscosity=1.0, density=1.0, tube_centre=held["tube_centre"], tube_axis=(0.0, 0.0, 1.0), tube_radius=0.5,
-            openings=("tube.start", "tube.end_0", "tube.end_1"), opening_laws=("inflow", "windkessel", "windkessel"),
-            opening_parameters=[[FLUX, 0.0, 0.0, 0.0], resistor(resistance), resistor(resistance)],
-            opening_planes=("low", "high", "high"),
-            opening_centres=((held["centres"][0][0], held["centres"][0][1]), *held["centres"]),
-            twin_offset=held["twin_offset"], scheme="steady", convection=False, interior=interior, porous_laws=[LAW],
-            **porous_leaves([dict(centre=centre, axis=(0.0, 0.0, 1.0), radius=0.5, length=0.5, permeability=K)]))
-        final, _ = scan(node, 2)
-    return final
+    return PluggedTwins(
+        "flow", 1.0, cells_x=held["cells_x"], cells_y=held["cells_y"], cells_z=held["cells_z"], spacing=h,
+        viscosity=1.0, density=1.0, tube_centre=held["tube_centre"], tube_axis=(0.0, 0.0, 1.0), tube_radius=0.5,
+        openings=("tube.start", "tube.end_0", "tube.end_1"), opening_laws=("inflow", "windkessel", "windkessel"),
+        opening_parameters=[[FLUX, 0.0, 0.0, 0.0], resistor(resistance), resistor(resistance)],
+        opening_planes=("low", "high", "high"),
+        opening_centres=((held["centres"][0][0], held["centres"][0][1]), *held["centres"]),
+        twin_offset=held["twin_offset"], scheme="steady", convection=False, interior=interior, porous_laws=[LAW],
+        **porous_leaves([dict(centre=centre, axis=(0.0, 0.0, 1.0), radius=0.5, length=0.5, permeability=K)]))
 
 
 def quiet_draw(index: int) -> tuple[Point, float]:
     """The twin rig's drawn point and a plug's permeability over the line's (log-uniform 1e-4 to 0.5)."""
     rng = np.random.default_rng(91_000 + index)
     return twin_draw(index), float(math.exp(rng.uniform(math.log(1e-4), math.log(0.5))))
+
+
+def not_finite_draw(index: int) -> tuple[Point, float]:
+    """The ``index``-th of :func:`quiet_draw`'s first 50 draws at D/h 12 (30 of them, cycled), where the twin rig's held
+    solve at the periodic box's 0.1h line, sqrt(K)/h 0.003, went not finite on every one (run 43201390806)."""
+    twelve = [seed for seed in range(50) if twin_draw(seed).cells == 12]
+    return quiet_draw(twelve[index % len(twelve)])
 
 
 def seeded() -> int:
@@ -192,7 +206,7 @@ def gradient_vessel(cells: int = 8, ratio: float = 0.3, interior: str = "0.01h",
     of the line's permeability): ``outputs(x)``, its plug's ``porous_flux`` and two face pressures after ``steps``
     steady steps as a function of ``x = (K, inflow)``, under :func:`planted`, and ``x`` at the case's values."""
     resistance = 3.0 * tube_resistance(2.0)
-    K = ratio * line_permeability(cells, interior)
+    K = ratio * line_permeability(cells, interior, "open")
     flux = math.pi / 4.0
     probe = open_node(cells)
     centre = (*probe.constants()["tube_centre"][:2], 1.0)

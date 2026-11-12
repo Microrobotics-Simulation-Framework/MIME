@@ -2,8 +2,8 @@
 permeability against the grid, where its Brinkman layer (about ``sqrt K`` thick) is under a cell, the route its
 throughflow takes, and where it lies outside what was measured. None is a refusal.
 
-**The hand-over** (the record's item 54, row #369). Above :data:`HANDOVER_LINE` (``sqrt(K)/h``, by the stiff interior)
-the penalty resolves a region's throughflow two-way. Below it the solve holds the region at the line's permeability
+**The hand-over** (the record's item 54, row #369). Above :data:`HANDOVER_LINE` (``sqrt(K)/h``, by the box type and the
+stiff interior) the penalty resolves a region's throughflow two-way. Below it the solve holds the region at the line's permeability
 (:func:`held_permeability`): a wall for the outer flow, to within the flux the held region passes, and never stiffer
 than the solve was measured converging at. The throughflow is then read one way from the solved face pressures, Darcy's
 law in Brinkman's form (:func:`darcy_reading`). The reading needs the solved drop to be the plug's, which holds where
@@ -28,13 +28,26 @@ from mime.core import jnp
 #: Where ``sqrt(K)`` is at least this many cells the plug's Brinkman profile is resolved (within 1.3 % of its
 #: centreline from one cell, POROUS_MEASURED); under it the layer is sub-cell, and its bulk Darcy flux is what holds.
 RESOLVED_CELLS = 1.0
-#: The hand-over's line, ``sqrt(K)/h`` by the stiff interior: the least at which a plug closing a straight tube was
-#: resolved with the solve converged, and the wall's leak (the intercept of the throughflow against K) at most 1 % of
-#: its throughflow (the line rule, the record's item 54): at 0.003 with 0.1h the leak is under 3.5e-10 / 3.8e-11 / 4e-12
-#: of the open tube's flux at D/h 16 / 32 / 64 against a throughflow of 4.3e-6 / 1.1e-6 / 2.8e-7, and at 0.01 with
-#: 0.01h under 7.3e-8 / 9.9e-9 against about 5e-5 / 1.3e-5 (the porous plug's intercept and lumen probes, runs
-#: 43123280055 and 43159332258); below them the cold solve stagnated or reached its cap. Measured at D/h 16 to 64.
-HANDOVER_LINE = {"0.1h": 0.003, "0.01h": 0.01}
+#: The hand-over's line, ``sqrt(K)/h`` by box type (a node kind's :attr:`HANDOVER_BOX`) and stiff interior: the least at
+#: which the held solve converged on every draw and the wall's leak (the intercept of the throughflow against K) was at
+#: most 1 % of the throughflow (the line rule, the record's item 54). **Periodic** (a plug closing a straight periodic
+#: tube): at 0.003 with 0.1h the leak is under 3.5e-10 / 3.8e-11 / 4e-12 of the open tube's flux at D/h 16 / 32 / 64
+#: against a throughflow of 4.3e-6 / 1.1e-6 / 2.8e-7, and at 0.01 with 0.01h under 7.3e-8 / 9.9e-9 against about 5e-5 /
+#: 1.3e-5 (the porous plug's intercept and lumen probes, runs 43123280055 and 43159332258); below them the cold solve
+#: stagnated or reached its cap; measured at D/h 16 to 64. **Open** (an open vessel; two parallel tubes from one inlet
+#: plane among them): the periodic line's solve at 0.003 with 0.1h stopped stagnated in the vessel between a given
+#: pressure and a resistance (49 of 50 draws) and went not finite in the twin rig (32 of 50) (run 43201390806); at 0.01
+#: with 0.1h it converged at every step of 50 of 50 draws in each of four cases (a fixed inflow, a given pressure, a
+#: coaxial plug leaving a gap, the twin rig), and the wall's leak (the intercept of the conductance, the throughflow over
+#: the face drop, against K) was resolved to under 2.7e-3 / 1.4e-3 of it at D/h 8 / 16, no leak above that (run
+#: 43213789033); at 0.01 with 0.01h the four converged on every draw (runs 43213789033, 43201390806, 43207166164);
+#: measured at D/h 8 to 16, and between 0.003 and 0.01 with 0.1h not at all.
+HANDOVER_LINE = {"periodic": {"0.1h": 0.003, "0.01h": 0.01}, "open": {"0.1h": 0.01, "0.01h": 0.01}}
+#: Where each box type's line was measured, as the build report names it.
+HANDOVER_SOURCE = {"periodic": "the porous plug's intercept and lumen probes, runs 43123280055 and 43159332258",
+                   "open": "the hand-over's open-vessel probes, runs 43213789033, 43201390806 and 43207166164"}
+#: The box types by name, as the texts state them.
+BOX_NAMES = {"periodic": "a periodic box", "open": "an open vessel"}
 #: The least ``sqrt(K)/h`` at which a region leaving a gap to the wall (a channel past a clot that does not fill the
 #: vessel) was measured within the annulus gate's line: within 2.1 % at sqrt(K)/h 1 and 3; at 0.1 to 0.01 its flux
 #: read 12 to 16 % low (a coaxial core of half the lumen's radius, D/h 16 and 32), its face against the free fluid a
@@ -42,12 +55,19 @@ HANDOVER_LINE = {"0.1h": 0.003, "0.01h": 0.01}
 GAP_MEASURED_DOWN_TO = 1.0
 #: The state field a flow holding porous regions raises at each step a region lies outside what was measured.
 POROUS_FLAG = "porous_flagged"
+
+
+def lines_stated() -> str:
+    """The hand-over's lines as the texts state them, every box type's at both interiors."""
+    return "; ".join(f"{BOX_NAMES[box]}: sqrt(K)/h {lines['0.1h']:g} with 0.1h, {lines['0.01h']:g} with 0.01h"
+                     for box, lines in HANDOVER_LINE.items())
+
+
 POROUS_FLAG_MEANING = (
     f"a porous region (Darcy) lay outside what was measured: it left a gap to the wall (it does not close the lumen, or "
     f"the vessel is a tube tree, where none was measured) with sqrt(K)/h under {GAP_MEASURED_DOWN_TO:g}, where a "
     f"coaxial core's gap flux read 12 to 16 % low at sqrt(K)/h 0.1 to 0.01; or it lay below the hand-over's line "
-    f"(sqrt(K)/h {HANDOVER_LINE['0.1h']:g} with 0.1h, {HANDOVER_LINE['0.01h']:g} with 0.01h) in a box holding a "
-    f"resolved body, whose displacement the forced-flow test does not see: the run's flux and pressure drop there are "
+    f"({lines_stated()}) in a box holding a resolved body, whose displacement the forced-flow test does not see: the run's flux and pressure drop there are "
     f"unmeasured. A finer spacing raises sqrt(K)/h")
 #: How far the one-way reading may fall short of the solve's flux through a plug a law forces flow through before
 #: ``forced_flagged`` fires: the reading's own error at the held permeability (its face drop against Darcy's at the
@@ -114,10 +134,12 @@ HANDOVER_MEASURED = (
     "is under the held region's acts as forced, which only the gap rule flags; the cold steady solve at the 0.1h line "
     "takes 7,129 / 16,736 iterations at D/h 16 / 32 (over the default cap of 5,000, flagged), and on a box two "
     "diameters long it stops stagnated at 1,600 (float64 residual 0.82, its reading within 1.7 %; float32 residual 1.0, "
-    "its reading 0.31 of the series), where IMEX Euler's warm start converges; the line was measured on periodic tubes, "
-    "and in an open vessel between a given pressure and a resistance the solve at the 0.1h line stopped stagnated near "
-    "3e-5 on 49 of 50 draws, and in two parallel tubes from one inlet plane (a node's rig) went not finite on 32 of 50, "
-    "flagged, where the 0.01h interior's converged")
+    "its reading 0.31 of the series), where IMEX Euler's warm start converges; the line is the box type's: the "
+    "periodic tube's at 0.003 with 0.1h stopped stagnated near 3e-5 in an open vessel between a given pressure and a "
+    "resistance (49 of 50 draws) and went not finite in two parallel tubes from one inlet plane, a node's rig (32 of "
+    "50), so an open vessel's is its own, 0.01 with either interior, converged at every step of every draw of four "
+    "open cases, its leak resolved to under 3e-3 of the throughflow; a solve that goes not finite in a flow holding a "
+    "porous region is refused (flow.porous-solve-not-finite)")
 
 
 def leaves_a_gap(radius: Any, offset_squared: Any, lumen_radius: Any) -> Any:
@@ -127,21 +149,21 @@ def leaves_a_gap(radius: Any, offset_squared: Any, lumen_radius: Any) -> Any:
     return (radius < lumen_radius) | (offset_squared > (radius - lumen_radius) ** 2)
 
 
-def line_permeability(spacing: Any, interior: str) -> Any:
-    """The permeability at the hand-over's line, ``(HANDOVER_LINE[interior] h)^2`` (m^2)."""
-    return (HANDOVER_LINE[interior] * spacing) ** 2
+def line_permeability(spacing: Any, interior: str, box: str) -> Any:
+    """The permeability at the hand-over's line, ``(HANDOVER_LINE[box][interior] h)^2`` (m^2)."""
+    return (HANDOVER_LINE[box][interior] * spacing) ** 2
 
 
-def handed_over(permeability: Any, spacing: Any, interior: str) -> Any:
+def handed_over(permeability: Any, spacing: Any, interior: str, box: str) -> Any:
     """Whether a region's permeability lies below the hand-over's line (:func:`line_permeability`)."""
-    return permeability < line_permeability(spacing, interior)
+    return permeability < line_permeability(spacing, interior, box)
 
 
-def held_permeability(permeability: Any, spacing: Any, interior: str) -> Any:
+def held_permeability(permeability: Any, spacing: Any, interior: str, box: str) -> Any:
     """The permeability the solve holds a region at: its own at or above the hand-over's line, the line's below it, so
     the solve is never stiffer than at the line, where it was measured converging. Below the line the solve's flux
     through the region is the held one's, and its own is the reading (:func:`darcy_reading`)."""
-    return jnp.maximum(permeability, line_permeability(spacing, interior))
+    return jnp.maximum(permeability, line_permeability(spacing, interior, box))
 
 
 def wall_factor(permeability: Any, radius: Any) -> Any:
@@ -220,31 +242,31 @@ def isolated(lumen: np.ndarray, touches: Sequence[np.ndarray], fixing: Sequence[
     return False
 
 
-def outside_measured(permeability: Any, gap: Any, spacing: Any, interior: str, bodies: bool = False) -> Any:
+def outside_measured(permeability: Any, gap: Any, spacing: Any, interior: str, box: str, bodies: bool = False) -> Any:
     """Whether a region lies outside what was measured: a gap (:func:`leaves_a_gap`) with ``sqrt(K)/h`` under
     :data:`GAP_MEASURED_DOWN_TO`, or below the hand-over's line in a box holding resolved bodies (``bodies``);
     compared as ``K`` against ``(line h)^2``. A plug closing the lumen below the line is the hand-over's, not outside."""
     gapped = gap & (permeability < (GAP_MEASURED_DOWN_TO * spacing) ** 2)
-    return gapped | (handed_over(permeability, spacing, interior) & bodies) if bodies else gapped
+    return gapped | (handed_over(permeability, spacing, interior, box) & bodies) if bodies else gapped
 
 
-def porous_flagged(permeabilities: Sequence[Array], gaps: Sequence[Array], spacing: Any, interior: str,
+def porous_flagged(permeabilities: Sequence[Array], gaps: Sequence[Array], spacing: Any, interior: str, box: str,
                    bodies: bool = False) -> Array:
     """The step's :data:`POROUS_FLAG`: any region outside what was measured (:func:`outside_measured`)."""
-    return jnp.any(jnp.stack([outside_measured(k, gap, spacing, interior, bodies)
+    return jnp.any(jnp.stack([outside_measured(k, gap, spacing, interior, box, bodies)
                               for k, gap in zip(permeabilities, gaps, strict=True)]))
 
 
 def porous_lines(laws: Sequence[str], regions: Sequence[Mapping[str, Any]], gaps: Sequence[bool], spacing: float,
-                 interior: str) -> list[str]:
+                 interior: str, box: str) -> list[str]:
     """Each region's line where its Brinkman layer is under :data:`RESOLVED_CELLS`: its profile across the layer is
-    not resolved; its route (resolved two-way at or above the interior's :data:`HANDOVER_LINE`, read one way below it,
-    with the line and its source); one leaving a gap (``gaps``) is outside what was measured under
+    not resolved; its route (resolved two-way at or above the box type's and interior's :data:`HANDOVER_LINE`, read one
+    way below it, with the line and its source); one leaving a gap (``gaps``) is outside what was measured under
     :data:`GAP_MEASURED_DOWN_TO`, which the run flags."""
-    least = HANDOVER_LINE[interior]
-    line = (f"the hand-over's line, sqrt(K)/h {least:g} with the {interior} interior (the least at which a plug "
-            f"closing a straight tube was resolved, the wall's leak at most 1 % of its throughflow: the porous plug's "
-            f"intercept and lumen probes, runs 43123280055 and 43159332258)")
+    least = HANDOVER_LINE[box][interior]
+    line = (f"the hand-over's line, sqrt(K)/h {least:g} with the {interior} interior in {BOX_NAMES[box]} (the least "
+            f"at which the held solve converged on every draw, the wall's leak at most 1 % of the throughflow: "
+            f"{HANDOVER_SOURCE[box]})")
     lines: list[str] = []
     for law, region, gap in zip(laws, regions, gaps, strict=True):
         permeability = float(region["permeability"])
@@ -274,8 +296,8 @@ def porous_lines(laws: Sequence[str], regions: Sequence[Mapping[str, Any]], gaps
     return lines
 
 
-__all__ = ["DROP_RESOLVED", "FORCED_FLAG", "FORCED_FLAG_MEANING", "FORCED_LINE", "GAP_MEASURED_DOWN_TO",
-           "HANDOVER_LINE", "HANDOVER_MEASURED", "LOOP_MEASURED", "POROUS_FLAG", "POROUS_FLAG_MEANING", "POROUS_MEASURED", "RESOLVED_CELLS",
-           "branch_cut", "darcy_reading", "forced_through", "handed_over", "held_permeability", "isolated",
-           "leaves_a_gap", "line_permeability", "outside_measured", "porous_flagged", "porous_lines", "section_area",
-           "wall_factor"]
+__all__ = ["BOX_NAMES", "DROP_RESOLVED", "FORCED_FLAG", "FORCED_FLAG_MEANING", "FORCED_LINE", "GAP_MEASURED_DOWN_TO",
+           "HANDOVER_LINE", "HANDOVER_MEASURED", "HANDOVER_SOURCE", "LOOP_MEASURED", "POROUS_FLAG", "POROUS_FLAG_MEANING",
+           "POROUS_MEASURED", "RESOLVED_CELLS", "branch_cut", "darcy_reading", "forced_through", "handed_over",
+           "held_permeability", "isolated", "leaves_a_gap", "line_permeability", "lines_stated", "outside_measured",
+           "porous_flagged", "porous_lines", "section_area", "wall_factor"]

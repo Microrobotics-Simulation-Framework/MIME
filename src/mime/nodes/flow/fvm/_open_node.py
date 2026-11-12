@@ -189,6 +189,7 @@ class OpenFlowNode(ImplicitFlowNode):
                "product, so the projection's term does not fall with the tolerance (C13); the open_face_projection "
                "flag bounds it")})
     LEDGER_FLAGS = OPEN_FLAGS
+    HANDOVER_BOX: ClassVar[str] = "open"
 
     def __init__(self, name: str, timestep: float, *, openings: Sequence[str], opening_laws: Sequence[str],
                  opening_parameters: Any, opening_law_ids: Sequence[str] = (), initial_opening_state: Any = None,
@@ -543,11 +544,11 @@ class OpenFlowNode(ImplicitFlowNode):
 
     @override
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
-        """The periodic node's, its routes the open vessel's: no ``dt='auto'`` and no steady drive, the step taken from
-        the inflow's peak."""
+        """The periodic node's, its CFL stop's routes the open vessel's: no ``dt='auto'`` and no steady drive, the step
+        taken from the inflow's peak."""
         problem = super().stop_problem(state)
-        if problem is None:
-            return None
+        if problem is None or problem.code != "flow.cfl-exceeded":
+            return problem
         cfl = float(np.asarray(state["stopped_cfl"]))
         line = float(self.scheme.cfl_limit(self.constants()["tube_axis"]))
         safe = f"dt <= {self.delta_t * line / cfl:.4g} s, " if math.isfinite(cfl) and cfl > 0.0 else "a smaller dt, "
