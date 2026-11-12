@@ -13,9 +13,9 @@ stages:
   OpenCV's five coefficients in OpenCV's order and conventions (+y down the image, +z forward, a pixel's centre at
   integer coordinates). `ray_table` traces each pixel's ray from the intrinsics' leaves, so a derivative in any of
   them flows through every ray: the undistortion is a bracketed Newton solve of the radial map on its first monotone
-  branch, then Newton steps for the tangential terms, with its derivative held, then one step with it flowing (the
-  implicit function's derivative). A pixel the distortion cannot reach from its first branch is flagged
-  (`beyond_distortion`). `project` is OpenCV's `projectPoints` on the same model.
+  branch, then Newton steps for the tangential terms, with its derivative held; the point is judged after the last
+  step, and one more step adds its derivative, not its value (the implicit function's derivative). A pixel the
+  distortion cannot reach from its first branch, or whose point did not converge, is flagged (`beyond_distortion`). `project` is OpenCV's `projectPoints` on the same model.
 - **The closed-form route** (`_forms.py`), on the sphere, the capsule, the capped cylinder and the straight tube's
   wall and lumen: each gives its chord along a ray (the grazing square root through a declared softplus, `GRAZING`, so
   values and derivatives stay finite at a tangent ray) and its **pieces**, edge functions negative where the ray meets
