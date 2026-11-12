@@ -209,8 +209,10 @@ def slip(coupling: Array, start: Array, forces: Array) -> Array:
 
 def friction_power(coupling: Array, start: Array, forces: Array, pairs: Sequence[tuple[int, int]], rows: Array,
                    moved: Array) -> Array:
-    """The guard: each held point's friction power at the solved twist, ``P = sum_g l_g . u_g``, over its scale ``D =
-    sum_g |l_g| (sqrt(|b_g|^2 + |u_g|^2) + c U)``, the largest over the points: never above :func:`power_floor` at a
+    """The guard: each held point's friction power at the solved twist, pair by pair, ``P_g = l_g . u_g``, over its
+    scale ``D_g = |l_g| (sqrt(|b_g|^2 + |u_g|^2) + c U)``, the largest over the points and their pairs (a pair apart,
+    so that a rolling pair pushing is not diluted by the sliding pair's scale beside it): never above
+    :func:`power_floor` at a
     converged solve, whose friction never pushes the motion it leaves. ``b_g`` is the pair's free slip (in the scale
     so that a sticking point, its slip at rounding, reads its rounding, and a planted sign flip reads about one: the
     spike's normalisation), ``U`` the free step's fastest held point's speed (``rows``' levers, the twist ``moved``)
@@ -228,18 +230,17 @@ def friction_power(coupling: Array, start: Array, forces: Array, pairs: Sequence
     fastest = jnp.max(linear + lever * angular)
     rounding = switch.ROUNDING_ULPS * float(np.sqrt(np.finfo(np.dtype(start.dtype)).eps))
     reach = arms(rows)
-    power = jnp.zeros(start.shape[:1], dtype=start.dtype)
-    measure = jnp.zeros(start.shape[:1], dtype=start.dtype)
+    worst = jnp.zeros(start.shape[:1], dtype=start.dtype)
     for pair in pairs:
         index = np.asarray(pair)
         force, rate, free = forces[:, index], moving[:, index], start[:, index]
         largest = jnp.max(jnp.abs(force), axis=-1, keepdims=True)
         length = largest[:, 0] * jnp.sqrt(jnp.sum((force / (largest + tiny)) ** 2, axis=-1))
-        power = power + jnp.sum(force * rate, axis=-1)
         # a rolling pair's rates are rad/s and its forces N m: its rounding is the fastest speed over the point's arm
         floor = rounding * fastest / (reach + tiny) if tuple(pair) == ROLLING else rounding * fastest
-        measure = measure + length * (jnp.sqrt(jnp.sum(free * free + rate * rate, axis=-1)) + floor)
-    return jnp.max(power / (measure + tiny))
+        measure = length * (jnp.sqrt(jnp.sum(free * free + rate * rate, axis=-1)) + floor)
+        worst = jnp.maximum(worst, jnp.sum(force * rate, axis=-1) / (measure + tiny))
+    return jnp.max(worst)
 
 
 #: The guard's line in float64, a share of a point's friction power's scale: declared above what a converged

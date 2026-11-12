@@ -31,7 +31,7 @@ import pytest
 from mime.interactions import Contact
 from mime.interactions.friction import ADHESION_RESERVED, ROW_KINDS, Coulomb, Hold, NormalLaw
 from mime.nodes.body._friction import disk_update
-from mime.testing import friction_law_suite, normal_law_suite, row_kind_suite
+from mime.testing import friction_law_suite, normal_law_suite, rolling_resistance_suite, row_kind_suite
 from mime.testing._friction import held_node
 
 
@@ -75,6 +75,30 @@ def _by_body(detail: str) -> dict[str, tuple[int, int]]:
     assert found is not None, detail
     return {name: (int(flagged), int(acted)) for name, flagged, acted in
             re.findall(r"(\w+) (\d+)/(\d+)", found.group(1))}
+
+
+def test_rolling_resistance_is_passive_on_every_draw(dtype):
+    """Rolling resistance dissipates, never injects (the review of #261, M2): the guard, the rolling pair's power
+    included, and the residual quiet on every draw of the sphere and the cylinder on its side, a rolling resistance
+    drawn with each; ``W2B_PLANT=rollflip`` plants the control here for ``.github/probe/detection_rate.py``."""
+    planted = os.environ.get("W2B_PLANT") == "rollflip"
+    result = rolling_resistance_suite(planted=planted)
+    print(f"\n{result.detail}")
+    assert result.status == "PASS", result.detail
+
+
+def test_control_rolling_resistances_sign_flipped_is_flagged_on_every_draw_where_it_acts(dtype):
+    """The control: the rolling pair's bound negated in the solve (its torque along the rotation it acts on) raises the
+    guard or ``unconverged`` on every draw where rolling resistance acts, the clean step settled, on both bodies."""
+    result = rolling_resistance_suite(planted=True, max_examples=100)
+    print(f"\n{result.detail}")
+    assert result.status == "FAIL", result.detail
+    import re
+
+    acted = dict(re.findall(r"(\w+) (\d+)", re.search(r"acted by body: ([^;]*)", result.detail).group(1)))
+    flagged = dict(re.findall(r"(\w+) (\d+)", re.search(r"flagged by body: ([^;]*)", result.detail).group(1)))
+    assert set(acted) == {"sphere", "cylinder"} and all(int(acted[b]) > 0 for b in acted), result.detail
+    assert acted == flagged, result.detail
 
 
 def test_hold_passes_the_normal_law_suite(dtype):

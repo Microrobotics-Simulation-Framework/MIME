@@ -68,15 +68,18 @@ def _body(name: str) -> tuple[Any, dict[str, Any], float, tuple[float, ...], flo
             radius)
 
 
-def held_node(name: str, *, mu: float = 0.3, friction: bool = True) -> Any:
-    """A body of :data:`BODIES` held by its hull on the half-space ``z >= 0`` with Coulomb friction (``mu``, a leaf),
-    its lowest point on the plane (the contact 0.5.0's loops)."""
+def held_node(name: str, *, mu: float = 0.3, friction: bool = True, rolling: float | None = None) -> Any:
+    """A body of :data:`BODIES` held by its hull on the half-space ``z >= 0`` with Coulomb friction (``mu``, a leaf;
+    with ``rolling``, rolling resistance of that length, a leaf too), its lowest point on the plane (the contact
+    0.5.0's loops)."""
     from mime.nodes.body import HULL, RigidInertialMidpointNode
     from mime.scene._sampling import quadrature_counts
 
     kind, settings, mass, moments, lowest = _body(name)
     patches = tuple(kind.patches)
-    held = {"friction": "coulomb", "friction_mu": mu, "friction_law": "contact:body.friction"} if friction else {}
+    held = {"friction": "coulomb" if rolling is None else "coulomb_rolling", "friction_mu": mu,
+            "friction_law": "contact:body.friction",
+            **({} if rolling is None else {"friction_rolling": rolling})} if friction else {}
     return RigidInertialMidpointNode(
         "body", _DT, mass=mass, inertia=moments, initial_pose=(0.0, 0.0, lowest, 1.0, 0.0, 0.0, 0.0),
         initial_twist=(0.0,) * 6, surface_shape="half_space", surface_normal=(0.0, 0.0, 1.0), surface_offset=0.0,
@@ -424,6 +427,150 @@ def _sphere_limits(law: Any, stepper: Callable[..., Any], drawn: tuple[Any, ...]
     return found
 
 
+#: The bodies the rolling suite holds (a sphere and a cylinder lying on its side: the two that roll on the plane), and
+#: the drawn rolling resistance as a share of the body's radius, log-uniform (a 1 mm sphere's mu_r from 0.1 um to
+#: 0.1 mm: the friction spike's range, its stopping deceleration (5/7) mu_r g / a up to a fourteenth of g).
+ROLLING_BODIES = ("sphere", "cylinder")
+ROLLING_SHARE = (1e-4, 0.1)
+
+
+def rolling_resistance_suite(law: Any = None, *, bodies: tuple[str, ...] = ROLLING_BODIES, max_examples: int = 200,
+                             planted: bool = False, sweeps: int = SUITE_SWEEPS) -> VerificationResult:
+    """**Rolling resistance dissipates, never injects**, through the body's frictional hold with its rolling rows
+    (``law``, a ``Coulomb`` with ``rolling``; one of 1 um where none is given), on the friction law suite's draws with
+    a rolling resistance drawn too (:data:`ROLLING_SHARE` of the body's radius), in the run's dtype, solved at
+    ``sweeps``: each held point's friction power at the solved twist, its rolling pair's included, never above the
+    guard's floor and the step not unconverged (a draw unconverged at ``sweeps`` solved again at
+    :data:`SUITE_DEEPER`'s counts, for up to :data:`DEEPER_SHARE` of a body's draws). ``planted``, the control: the
+    rolling resistance's sign flipped in the solve (its bound ``-mu_r N``: the rolling pair's torque along the
+    rotation it acts on), which must raise the guard or ``unconverged`` on every draw where rolling resistance acts at
+    its limit (the body turning about the plane's tangents at the solved twist), the clean step settled (the draws
+    where it holds the rotation inside its limit, where a flipped bound moves nothing, where it moves the step's
+    turning by less than the guard's line of the load's moment, or where the clean step itself is flagged, counted
+    apart)."""
+    import jax
+    from hypothesis import HealthCheck, Phase, given, settings
+
+    from mime.interactions.friction import Coulomb, unheld
+    from mime.nodes.body._friction import FRICTION_CONVERGED, power_floor
+    from mime.units import um
+
+    held = Coulomb(mu=0.3, rolling=um(1.0)) if law is None else law
+    refused = unheld(held, None)
+    if refused or held.rolling is None:
+        return VerificationResult("rolling resistance", "FAIL", detail=f"{type(held).__name__}: not run: "
+                                  f"{refused[0] if refused else 'it holds no rolling resistance (rolling=...)'}")
+    dtype = jnp.zeros(()).dtype
+    floor = power_floor(dtype)
+    declared = _converged(bodies, sweeps)
+    counts = {key: dict.fromkeys(bodies, 0) for key in ("acted", "flagged", "under", "unsettled", "deeper")}
+    failures: list[str] = []
+    judged: list[bool] = []
+    try:
+        steppers = {name: _rolling_stepper(name, dtype) for name in bodies}
+        deeper: dict[tuple[str, int], Callable[..., dict[str, Any]]] = {}
+
+        @settings(max_examples=max_examples, deadline=None, database=None, phases=(Phase.generate,),
+                  suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much])
+        @given(_draws(), _rolling_shares())
+        def check(drawn: tuple[Any, ...], share: float) -> None:
+            found: list[str] = []
+            for name, stepper in steppers.items():
+                pose, twist, load, mu, _ = _drawn(name, drawn, dtype)
+                _, _, _, moments, radius = _body(name)
+                mu_r = jnp.asarray(share * radius, dtype=dtype)
+                clean = stepper(pose, twist, load, mu, mu_r)
+                room = counts["deeper"][name] < max(1, int(DEEPER_SHARE * max_examples))
+                for count in [count for count in SUITE_DEEPER if count > sweeps and room]:
+                    if not (float(clean["contact_residual"]) > FRICTION_CONVERGED
+                            or float(clean["contact_friction_power_ratio"]) > floor):
+                        break
+                    if (name, count) not in deeper:
+                        held_count = _converged((name,), count)
+                        try:
+                            deeper[name, count] = _rolling_stepper(name, dtype)
+                            deeper[name, count](*_drawn(name, _AT_REST, dtype)[:4], mu_r)
+                        finally:
+                            _restored(held_count)
+                    clean = deeper[name, count](pose, twist, load, mu, mu_r)
+                    counts["deeper"][name] += 1
+                settled = not (float(clean["contact_residual"]) > FRICTION_CONVERGED
+                               or float(clean["contact_friction_power_ratio"]) > floor)
+                if not planted:
+                    if not settled:
+                        found.append(f"{name}: flagged (power {float(clean['contact_friction_power_ratio']):.3g}, "
+                                     f"residual {float(clean['contact_residual']):.3g}) at {drawn}, mu_r {share:g} a")
+                    continue
+                # where rolling resistance acts and is at its limit (a flipped bound moves only a pair on it): the
+                # body turns about the plane's tangents at the solved twist, and rolling resistance changes the step's
+                # turning, as a moment, by more than the guard's line of the load's
+                free = stepper(pose, twist, load, mu, jnp.zeros_like(mu_r))
+                spun = np.asarray(clean["twist"][3:], dtype=np.float64)
+                turned = spun - np.asarray(free["twist"][3:], dtype=np.float64)
+                moment = float(np.linalg.norm(turned * np.asarray(moments))) / _DT
+                loaded = float(np.linalg.norm(np.asarray(load[:3], dtype=np.float64))) * radius
+                speed = float(np.linalg.norm(np.asarray(clean["twist"][:3], dtype=np.float64))) + radius * float(
+                    np.linalg.norm(spun)) + _G * _DT
+                rolls = float(np.linalg.norm(spun[:2])) * radius > math.sqrt(float(jnp.finfo(dtype).eps)) * speed
+                acts = moment > floor * loaded and rolls and settled
+                counts["unsettled"][name] += int(not settled)
+                counts["under"][name] += int(settled and not acts)
+                if not acts:
+                    continue
+                out = stepper(pose, twist, load, mu, -mu_r)
+                raised = (float(out["contact_friction_power_ratio"]) > floor
+                          or float(out["contact_residual"]) > FRICTION_CONVERGED)
+                counts["acted"][name] += 1
+                counts["flagged"][name] += int(raised)
+                if not raised:
+                    found.append(f"{name}: rolling resistance's sign flipped and nothing raised at {drawn}, mu_r "
+                                 f"{share:g} a")
+            judged.append(not found)
+            failures.extend(found)
+
+        check()
+    finally:
+        _restored(declared)
+        jax.clear_caches()
+    detail = "; ".join(f"{key} by body: {', '.join(f'{name} {value[name]}' for name in bodies)}"
+                       for key, value in counts.items())
+    failed = judged.count(False)
+    if planted:
+        missed = sum(counts["acted"][name] - counts["flagged"][name] for name in bodies)
+        status = "FAIL" if missed == 0 and all(counts["acted"].values()) else "PASS"
+        return VerificationResult("rolling resistance", status, detail=f"planted: {detail}; first quiet: "
+                                                                      f"{failures[0] if failures else 'none'}")
+    if failed:
+        return VerificationResult("rolling resistance", "FAIL", detail=f"failed on {failed} of {len(judged)} draws; "
+                                                                      f"{detail}; first: {failures[0]}")
+    return VerificationResult("rolling resistance", "PASS", detail=f"passive on {len(judged)} draws; {detail}")
+
+
+def _rolling_shares() -> Any:
+    from hypothesis import strategies as st
+
+    return st.floats(math.log(ROLLING_SHARE[0]), math.log(ROLLING_SHARE[1])).map(math.exp)
+
+
+def _rolling_stepper(name: str, dtype: Any) -> Callable[..., dict[str, Any]]:
+    """One step of ``name`` with rolling resistance from a drawn pose, twist, load, coefficient and rolling resistance,
+    compiled once."""
+    import jax
+
+    node = held_node(name, rolling=1e-6)
+    leaves = node.params_pytree()
+    start = node.initial_state()
+
+    def step(pose: Any, twist: Any, load: Any, mu: Any, mu_r: Any) -> dict[str, Any]:
+        state = {**start, "pose": pose, "twist": twist}
+        given = {"applied_wrench": load, "resistance": jnp.zeros((6, 6), dtype=dtype),
+                 "background_load": jnp.zeros(6, dtype=dtype)}
+        return node.advance({**node._step_constants(None), **leaves, "friction_mu": mu,  # noqa: SLF001
+                             "friction_rolling": mu_r}, state, given, _DT)
+
+    return cast(Callable[..., dict[str, Any]], cast(Any, jax).jit(step))
+
+
 def normal_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max_examples: int = 100,
                      sweeps: int = SUITE_SWEEPS) -> VerificationResult:
     """``law`` (a ``NormalLaw``; ``Hold()`` where none is given) through the frictional hold on the module's draws: the
@@ -560,5 +707,5 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
     return VerificationResult("row kind", "PASS", detail=f"{kind}: its rows measure {measured}")
 
 
-__all__ = ["BODIES", "DEEPER_SHARE", "SUITE_DEEPER", "SUITE_SWEEPS", "friction_law_suite", "held_node",
-           "normal_law_suite", "row_kind_suite"]
+__all__ = ["BODIES", "DEEPER_SHARE", "ROLLING_BODIES", "ROLLING_SHARE", "SUITE_DEEPER", "SUITE_SWEEPS",
+           "friction_law_suite", "held_node", "normal_law_suite", "rolling_resistance_suite", "row_kind_suite"]

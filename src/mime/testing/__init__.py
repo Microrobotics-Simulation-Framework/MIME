@@ -46,7 +46,7 @@ from mime.testing._energy import PORT_CASES, PORT_DRAWS, PortCase, dynamics_rig,
 from mime.testing._ledger_harness import FlagReading, FlagReport, OrderCheck, OrderReport, active_flags, flag_problems, \
     flag_readings, judge_flags, ledger_closes, run_flags, term_orders
 from mime.testing._port_laws import PORT_LAW_DRAWS, port_law_suite
-from mime.testing._friction import friction_law_suite, normal_law_suite, row_kind_suite
+from mime.testing._friction import friction_law_suite, normal_law_suite, rolling_resistance_suite, row_kind_suite
 from mime.testing._loopback import Certificates, ConnectProxy, LoopbackStore, Seen, certificates
 from mime.testing._families import (
     OUTWARD_SPEED,
@@ -217,6 +217,7 @@ __all__ = [
     "port_law_suite",
     "friction_law_suite",
     "normal_law_suite",
+    "rolling_resistance_suite",
     "row_kind_suite",
     "OUTWARD_SPEED",
     "PORT_CASES",
