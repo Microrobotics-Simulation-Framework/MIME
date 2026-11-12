@@ -1,0 +1,21 @@
+{
+  "written": "2026-11-12, committed before its probe ran (the commit that adds this file is the timestamp): the fix round's pressure-driven quiet case failed its clean arm on 49 of 50 draws (run 43201390806), its solve at the 0.1h line stagnated near 3e-5 (flagged), which the quiet case now refuses to read as quiet; it moves to the 0.01h interior",
+  "phase": "lane F, dev2: the porous plug's hand-over, gate 2's second fix round",
+  "labels": "the builder's, from run 43201390806 and two laptop draws",
+  "seen_before": [
+    "run 43201390806: g2_everywhere_pressure caught 50/50, its clean arm flagged 49/50 (the solve flagged)",
+    "laptop, draws 0 and 1 at 0.1h: stagnated at 2.7e-5 and 3.1e-5 after 3380 and 3520 iterations; at 0.01h converged (9.8e-9, 9.3e-9), not flagged"
+  ],
+  "operating_point": {"dtype": ["float64"], "platform": "GitHub runner 4 vCPU", "sizes_and_parameters": "gate 2's pressure-driven open vessel at the 0.01h interior", "seeds_and_draws": "50 draws"},
+  "gate_2_pressure": {
+    "claim": "the open vessel between a given pressure and a resistance, a plug closing it below the line, is quiet with its solve converged on every draw; the topology answering forced flags it on every draw",
+    "kind": "acceptance (a flag)",
+    "case": "tests/flow/test_porous_handover.py::test_a_driven_tube_a_gap_and_an_occluded_branch_are_not_flagged[pressure]",
+    "prediction": {"value": "clean 0/50; FORCED_EVERYWHERE 50/50", "band": [null, null], "unit": "draws", "basis": "measured-before (two draws)", "why": "at the 0.01h line the open vessel's solve converged on the draws seen"},
+    "metric": "the test's pass on every draw",
+    "control": {"plant": "FORCED_EVERYWHERE", "environment_variable": "MIME_PLANT_FORCED_EVERYWHERE", "expected_rate": "50/50", "runs": 50, "clean_expected": "0/50", "resolution": "a flag"},
+    "if_wrong": "a clean draw failing is one whose solve stopped flagged at 0.01h too: reported with its draw",
+    "cannot_discriminate_if": "every draw flagged by its solve"
+  },
+  "outcomes": null
+}
