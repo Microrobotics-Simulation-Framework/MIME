@@ -32,5 +32,10 @@
     "case": "probe/dump.py a0@64 and a0@32 through .github/probe/bit_compare.py, base d6220d2f69385fd73acffab962562daa300221cc",
     "prediction": "np.array_equal in both dtypes (A0 has no drag 0.5.0 near-contact hand-over)"
   },
-  "outcomes": null
+  "outcomes": {
+    "_note": "added after round 4 ran (Actions run 43135464705, probe/w2a-1b2-r4 at f5cfb31); the predictions above are unchanged",
+    "gate_1_control_increment_x2": "held: caught 5/5 (seeds 0 to 4), clean 0/5, none inconclusive.",
+    "gate_8_two_contacts_coarse_blob": "the identity held: reverse and forward equal Richardson's difference to 1e-9 of the scale at each of the three gaps, in the wall's radius and the position (passed). The memory MISSED: 7.80 GiB alone (7990 MiB), against the predicted 4: the coarser quadrature took 2 GiB off the 9.73, so most of the peak is not the near field's quadrature; the test stays marked memory_heavy at its measured peak, its file giving JAX's programs back between tests.",
+    "gate_10_bits_a0": "held: A0 with its controller np.array_equal in float64 and float32 against d6220d2f (one CPU, one thread)."
+  }
 }

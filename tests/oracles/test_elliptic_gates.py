@@ -33,6 +33,7 @@ import os
 from typing import Any
 from pathlib import Path
 
+import _cache_ceiling
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -71,6 +72,22 @@ SPHEROID_PINNED: dict[float, tuple[float, float]] = {0.0: (0.2246, 0.2854), 30.0
 SPHEROID_PIN = 0.02
 #: The coupling entries judged on their own size: those over this share of their block's largest (probe B's rule).
 SIGNIFICANT = 0.05
+
+
+HEADROOM_MIB = 1024
+LIMIT_MIB: list[float] = []
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    """As ``test_lubrication.py``'s: give JAX's compiled programs back once a worker grows past its headroom."""
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
 
 
 @pytest.fixture(autouse=True)

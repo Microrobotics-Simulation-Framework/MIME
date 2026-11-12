@@ -1,5 +1,5 @@
 {
- "source": "CI run 43019767384 (a push at d7c4106, every shard cold), the median over its five lanes, every file its reports hold; maddening-main's and openmaterica-main's shard 5, cancelled at 30 minutes before they uploaded, take default Python 3.12's report of that shard from the same run (the same tests)",
+ "source": "CI run 43019767384 (a push at d7c4106, every shard cold), the median over its five lanes, every file its reports hold; maddening-main's and openmaterica-main's shard 5, cancelled at 30 minutes before they uploaded, take default Python 3.12's report of that shard from the same run (the same tests); tests/oracles/test_elliptic_gates.py (W2a PR 1b-ii-a, new) is split by test from its heavy tests' times alone on a runner in probe runs 43129930010 and 43135464705, its total their sum, until a rebuild reads it from CI",
  "over": 0.0,
  "tests_over": 1.0,
  "seconds": {
@@ -247,6 +247,7 @@
   "tests/oracles/test_drag_bodies_alone.py": 21,
   "tests/oracles/test_dynamic_arm.py": 357,
   "tests/oracles/test_dynamic_motor.py": 132,
+  "tests/oracles/test_elliptic_gates.py": 938,
   "tests/oracles/test_frame_rates.py": 44,
   "tests/oracles/test_full_inertia_tensor.py": 193,
   "tests/oracles/test_graded_sampling.py": 186,
@@ -550,6 +551,12 @@
   "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one"
  },
  "split": {
+  "tests/oracles/test_elliptic_gates.py": {
+   "test_gate1_a_spheroids_rolling_and_entries_against_the_mfs_at_every_gap_below_the_handover[0.0]": 121,
+   "test_gate1_a_spheroids_rolling_and_entries_against_the_mfs_at_every_gap_below_the_handover[30.0]": 124,
+   "test_gate5_two_contacts_closed_the_lift_holds_and_each_control_fails": 317,
+   "test_gate8_two_contacts_forward_and_reverse_equal_the_difference": 376
+  },
   "tests/oracles/test_lubrication.py": {
    "test_a_body_past_the_films_window_is_the_coarse_mrss_by_the_builds_rule_and_reported": 19,
    "test_a_shared_flowing_medium_collects_both_refusals_at_once": 4,
