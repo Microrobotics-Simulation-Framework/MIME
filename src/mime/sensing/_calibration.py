@@ -4,7 +4,8 @@ camera matrix, the distortion coefficients and the image size (``camera_matrix``
 
 What is read is a fit, not a declaration: it is labelled with the file's name and sha256. A distortion model beyond the five
 coefficients ``k1, k2, p1, p2, k3`` (OpenCV's rational, thin-prism and tilted models write 8, 12 and 14) is refused, as is
-an image size other than the camera's it is read for: a matrix fitted at one size is not the same camera at another.
+a camera matrix that is not ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]`` (the pinhole has no skew), as is an image size other
+than the camera's it is read for: a matrix fitted at one size is not the same camera at another.
 OpenCV's fisheye model writes four coefficients under the same name as the pinhole model's four, and the file does not
 say which it is: the reader takes four as the pinhole model's ``k1, k2, p1, p2``."""
 
@@ -81,6 +82,13 @@ def read_calibration(path: str | Path) -> Calibration:
             "camera.calibration-file", RefusalClass.USER,
             f"{file.name}'s {MATRIX} is {matrix['rows']} by {matrix['cols']}, not 3 by 3",
             "write the camera matrix `calibrateCamera` returned with `cv2.FileStorage`")])
+    if [values[1], values[3], *values[6:9]] != [0.0, 0.0, 0.0, 0.0, 1.0]:
+        raise ArgumentRefused([Refusal(
+            "camera.calibration-model", RefusalClass.USER,
+            f"{file.name}'s {MATRIX} is not [[fx, 0, cx], [0, fy, cy], [0, 0, 1]] (its skew is {values[1]:g}, its last "
+            f"row {values[6:9]}), and the camera's model is a pinhole with no skew",
+            "calibrate with `calibrateCamera` without a skew (OpenCV's writes none), or rectify the image in OpenCV "
+            "and import the rectified camera matrix")])
     coefficients = _numbers(matrices[DISTORTION]["data"])
     if len(coefficients) not in (4, 5):
         raise ArgumentRefused([Refusal(

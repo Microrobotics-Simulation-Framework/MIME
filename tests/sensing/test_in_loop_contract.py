@@ -5,11 +5,14 @@
   refuses the camera (its image declared a scalar, held as 120 by 160).
 * ``Plan.mounted_on`` and ``ObservationBuilder.mount``: the mounted frame's poses reach the node. **Control**
   (``CAMERA_PLANT=mount-unwired``): the builder's ``mount`` does nothing, and the build refuses the unwired input.
+  A plan that names a mount on anything but an observation is a defect, named (**control**: the check removed, the
+  entry vanishes from the graph with no word, and the test fails).
 * ``PlanContext.roster``, ``Read(of=)`` and ``Observation.sees_scene``: one pose read per body of the roster, none for a
   structure; the registry refuses an observation that sees the scene and binds a role."""
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 
 import pytest
@@ -49,6 +52,17 @@ def test_one_pose_is_read_for_each_body_of_the_roster_and_none_for_a_structure(d
     built = ballistic(ms(3), balls=2).build()
     fields = sorted(edge.target_field for edge in built.graph.edges if edge.target_node == "camera:")
     assert fields == ["pose_ball0", "pose_ball1"]
+
+
+def test_a_law_whose_plan_names_a_mount_is_refused_by_name(monkeypatch):
+    from mime.testing.toys import ToySpring, coupled_toy
+
+    original = ToySpring.plan
+    monkeypatch.setattr(ToySpring, "plan", lambda self, ctx: dataclasses.replace(original(self, ctx), mounted_on="a.b.c"))
+    with pytest.raises(BuildRefused) as raised:
+        coupled_toy().build()
+    assert raised.value.codes() == ["entry.defect"]
+    assert "Plan.mounted_on" in raised.value.refusals[0].message
 
 
 def test_an_observation_that_sees_the_scene_binds_no_role():

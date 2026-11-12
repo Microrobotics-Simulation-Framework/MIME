@@ -24,17 +24,23 @@ build report states the latency range, and a controller called between chunks re
 a chunk later.
 
 **Mounts.** `World(position, orientation)` fixes the camera in the world, and `Mounted(frame="<apparatus>.<segment>.<frame>")`
-fixes it to a frame of an apparatus's chain. The structure's image is rendered once at the build where the camera and the
-structure share the world's frame, and rendered again in every frame where the camera may move; no stale image is ever
-read, and the build report says which holds.
+fixes it to a frame of an apparatus's chain. The structure's image is rendered once, at the first step, where the camera and
+the structure share the world's frame, and held in the node's state with the numbers it was made from (the detector's nine
+numbers, the scene's numbers, the camera's pose); it is rendered again at any step where one of them differs, as when a run
+is continued with another detector number, so no stale image is read. Where the camera may move it is rendered in every
+frame, and the build report says which holds. One camera to an experiment: a second is refused (`id.duplicate`), and a
+second view is a second experiment.
 
 **Recording and re-rendering.** In-loop frames are not recorded: `record=` of `image` or `expected` is refused
-(`camera.recorded-frames`); `history=True` keeps every field of every node at every step, a camera's frames too, and is the
-verification and debugging path, not for a long run. The poses are recorded, and a frame is reproduced by rendering them again with
+(`camera.recorded-frames`); `history=True` keeps every field of every node at every step, a camera's frames and its cache too (the cache is ten arrays of
+the image's size, so megabytes a step at a useful size: gigabytes over a long run), and is the verification and debugging path, not for a long run. The poses are recorded, and a frame is reproduced by rendering them again with
 `mime.sensing.render` and the frame's noise key, `mime.sensing.frame_key(seed, frame_step)`. The re-render is two compiled
 programs, not one, so it is not bit for bit: it is exact where it was measured exact (float64), and in float32 it agrees
 to within one count, the few pixels whose value before rounding lies within the last bits of a rounding boundary rounding
 the other way (the line the gate holds it to is derived from that mechanism in `tests/sensing/test_in_loop_replay.py`).
+The replay is exact only while a frame's `window_overflow` flag is zero: a body that comes closer than its disc window was
+sized for (from its initial pose, with the focal length raised by a quarter) is drawn clipped to the window, the flag is raised without
+a warning, and the frame no longer equals the offline render, whose window is derived per frame.
 
 **When not to use it.**
 - For a microscope's or a real camera's optics: the model is a pinhole with OpenCV's five distortion coefficients, backlit,

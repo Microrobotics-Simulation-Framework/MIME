@@ -739,7 +739,8 @@ class Output:
     #: entry gives through :meth:`Observation.output_shape`; ``shape`` is then not read.
     shape_from_settings: bool = False
     #: Whether a run may record the output's series. An output that is not (a camera's image, a frame a step) is refused
-    #: by ``record=`` and by ``history=True``, naming the output.
+    #: by ``record=``, naming the output. (``history=True`` keeps every output at every step and is not refused: with a
+    #: camera it holds the image, the expected image and the static cache, about 8 MB a step at 320 x 240 in float64.)
     recordable: bool = True
 
 

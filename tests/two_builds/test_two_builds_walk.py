@@ -67,8 +67,11 @@ HELD: dict[str, set[str]] = {
     "point_body_flow": {"things/water/fields/flow/settings/domain/settings/length/value"},
     # The in-loop camera's scene: the subjects' settings (the tube's and the ball's sizes) and the absorbers' coefficients,
     # which it consumes when it is built, into its subjects and its response (``scene_numbers``, unread by the step); the
-    # world-mounted camera's placement, held as built with the cache it is made at. A camera on a frame that moves has no
-    # placement of the world's to hold. The detector's nine numbers are leaves the step reads, and are quiet.
+    # world-mounted camera's placement, held as built with the cache it is made at. A camera on a frame that moves holds its
+    # placement too (``camera_pose`` reads it from the node's constants and composes it onto the frame), but the walk
+    # skips zeros and ``camera_on_gantry`` mounts at zero, so its ``mount/settings/position`` is not walked: a nonzero one
+    # fires (measured, with ``position=(1e-4, 0, 0)``), so this set is the case's as written, not the kind's. The
+    # detector's nine numbers are leaves the step reads, and are quiet.
     "camera_scene": {"things/ball/parts/steel/solid/settings/radius/value",
                      "things/tube/geometry/settings/inner_radius/value", "things/tube/geometry/settings/wall/value",
                      "things/tube/geometry/settings/length/value", "observations/0/settings/absorbers/0/1",

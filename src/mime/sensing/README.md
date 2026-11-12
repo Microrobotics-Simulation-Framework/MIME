@@ -86,10 +86,12 @@ base steps (the node's own count; `rate=` is refused) over the last `sub_frames`
 `frame_step`, `age` and `new_frame` are the clock's. The detector's nine numbers are the node's leaves (bounded about the
 build's: the disc windows are sized for them), so a study can fit them, and `expected` is the differentiable output.
 
-- **The static cache.** Where the camera is fixed in the world the structure's image is made once at the build and used only
-  while the leaves equal the numbers it was made from (compared at the step; a derivative in them takes the uncached path).
-  A camera mounted on a frame of a chain (`Mounted`) is taken to move: it has no cache, and the structure is rendered in
-  every frame, which the build report states. A stale image is never read.
+- **The static cache.** Where the camera is fixed in the world the structure's image is made at the first step and held in
+  the node's state with every number it was made from (the nine leaves, the scene's numbers, the camera's pose). At any
+  step where one of them differs from the step's own (a run continued with another leaf, a state carried into a run with
+  other numbers) it is made again, so a stale image is never read; otherwise it is read from the state. A camera mounted
+  on a frame of a chain (`Mounted`) is taken to move: it has no cache, and the structure is rendered in every frame, which
+  the build report states.
 - **Recording and re-rendering.** In-loop frames are not recorded (`record=` of `image` or `expected` is refused,
   `camera.recorded-frames`; `history=True`, the all-fields verification path, is not refused). The poses are, and a frame is
   reproduced by rendering them again with `render` and `frame_key(seed, frame_step)`. The re-render is a second compiled

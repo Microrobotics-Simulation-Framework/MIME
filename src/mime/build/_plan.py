@@ -3057,7 +3057,10 @@ class _Planner:
         if plan.notes:
             self.checked[owner] = (*self.checked.get(owner, ()), *plan.notes)
         if plan.mounted_on is not None:
-            if section is not Section.OBSERVATION or not self.mount_observation(entry_plan, plan.mounted_on, where):
+            if section is not Section.OBSERVATION:
+                self.defect(cls, "its plan names a mount (Plan.mounted_on), which only an observation's has")
+                return
+            if not self.mount_observation(entry_plan, plan.mounted_on, where):
                 return
         if section is Section.OBSERVATION:
             self.defer_rate(entry_plan, getattr(entry, "rate", None), where)

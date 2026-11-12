@@ -1,5 +1,5 @@
 """G13, calibration fitted in MIME from a sphere grid: ``Study.fit`` recovers a camera's focal lengths, principal point and
-two radial coefficients from the in-loop camera's own live render of a 3 x 3 grid of spheres on a tilted plane, with the
+two radial coefficients from the in-loop camera's own live render of a 2 x 2 grid of spheres on a tilted plane (48 x 36 pixels), with the
 detector's numbers as the node's leaves; the fitted camera is labelled fitted, with its fit.
 
 This **estimates** a model's parameters from the data that model generated (noiseless, so the optimum is the truth): it

@@ -2,7 +2,8 @@
 ``make_calibration_files.py`` and pinned by their sha256) are read to the camera built by hand from the same numbers,
 labelled fitted with the file's name and sha256; ``project`` with the imported numbers matches ``cv2.projectPoints``
 within 64 units in the last place of the pixel's scale (the camera core's G1 line), in both dtypes. A model beyond the five
-coefficients (the rational model's eight) and an image size other than the camera's are refused with their codes.
+coefficients (the rational model's eight), a camera matrix with a skew or another last row, and an image size other than
+the camera's are refused with their codes.
 
 **The controls** swap p1 and p2 on import (``CAMERA_PLANT=p-swap``) and drop k3 (``CAMERA_PLANT=k3-drop``): each fails the
 equality and the projection, every run (the files carry all five coefficients distinct and far from zero)."""
@@ -68,6 +69,19 @@ def test_a_model_beyond_the_five_coefficients_is_refused():
     with pytest.raises(ArgumentRefused) as error:
         Pinhole.from_calibration(FILES / "rational.yml")
     assert "camera.calibration-model" in str(error.value)
+
+
+@pytest.mark.parametrize(("old", "new"), [("911.8516936884148, 0.,", "911.8516936884148, 0.12,"),
+                                          ("0., 0., 1. ]", "0., 0.001, 1. ]")], ids=["skew", "last-row"])
+def test_a_camera_matrix_with_a_skew_or_another_last_row_is_refused(tmp_path, old, new):
+    text = (FILES / "camera_a.yml").read_text()
+    assert text.count(old) == 1
+    path = tmp_path / "skewed.yml"
+    path.write_text(text.replace(old, new))
+    with pytest.raises(ArgumentRefused) as error:
+        Pinhole.from_calibration(path)
+    assert "camera.calibration-model" in str(error.value)
+    assert Pinhole.from_calibration(FILES / "camera_a.yml").fx == 911.8516936884148
 
 
 def test_an_image_size_other_than_the_cameras_is_refused():
