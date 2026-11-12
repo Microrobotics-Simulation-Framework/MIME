@@ -96,8 +96,12 @@ def test_rolling_on_a_flat_slows_at_five_sevenths_mu_r_g_over_a_and_then_stays(d
     speeds, mu_r, v0 = rolling_on_the_flat(dtype)
     rate = 5.0 / 7.0 * mu_r * G / RADIUS
     expected = np.maximum(v0 - rate * DT * (np.arange(len(speeds)) + 1), 0.0)
-    print(f"\nworst {np.max(np.abs(speeds - expected)):.3g} m/s against v0 {v0:g}; last {speeds[-1]:.3g}")
-    assert np.max(np.abs(speeds - expected)) <= 10 * EXACT[dtype] * v0 + rate * DT
+    # every step but the one the closed form stops within, where the discrete stop lands inside one step's change
+    stopping = int(np.argmax(expected == 0.0))
+    judged = np.arange(len(speeds)) != stopping
+    print(f"\nworst {np.max(np.abs(speeds - expected)[judged]):.3g} m/s against v0 {v0:g}; last {speeds[-1]:.3g}")
+    assert np.max(np.abs(speeds - expected)[judged]) <= 10 * EXACT[dtype] * v0
+    assert abs(speeds[stopping] - expected[stopping]) <= rate * DT
     assert abs(speeds[-1]) <= EXACT[dtype] * v0
 
 

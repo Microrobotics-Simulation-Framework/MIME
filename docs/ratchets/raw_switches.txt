@@ -593,3 +593,5 @@ nodes/body/_friction.py friction_power abs 1  # inside the stopped report (the p
 nodes/body/_friction.py friction_power sqrt 4  # inside the stopped report (the power guard's reading): a pair's force's length on its largest component, zero at a free point
 nodes/body/_friction.py friction_power sqrt 5  # inside the stopped report (the power guard's reading): a pair's free and solved slips' length, zero at rest
 nodes/body/_friction.py friction_power max 4  # inside the stopped report (the power guard's reading): the worst point's reading
+nodes/body/_friction.py friction_power maximum 1  # inside the stopped report (the power guard's reading): the worst pair of each point, a pair apart
+nodes/body/_friction.py arms sqrt 1  # each held point's arm |r| from its normal and sliding rows, never zero for a hull's point; read only by the stopped reports (the guard, the frictional residual), which take a rolling pair's rates to m/s by it

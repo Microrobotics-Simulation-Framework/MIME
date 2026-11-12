@@ -176,7 +176,7 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
     h = CURVATURE_STEP * estimate
     below, at, above = (np.asarray(residual(final), dtype=np.float64)
                         for final in finals([estimate - h, estimate, estimate + h]))
-    errors = []
+    errors: list[float | None] = []
     for side in (below, above):
         curvature = float(np.sum(((side - at) / (h * noise)) ** 2))
         errors.append(1.0 / math.sqrt(curvature) if curvature > 0.0 else None)
@@ -188,7 +188,7 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
     forces = np.asarray(data["contact_forces"], dtype=np.float64)
     slips = np.asarray(data["contact_slip_speed"], dtype=np.float64)
     traction = np.asarray(data["contact_friction_forces"], dtype=np.float64)
-    mu = estimate if axis.endswith(".friction.mu") else float(cast(Any, experiment.handle(owner).law).friction.mu)
+    mu = estimate if axis.endswith(".friction.mu") else float(cast(Any, experiment.handle(owner)).law.friction.mu)
     held_points = forces > 0.0
     on_limit = np.linalg.norm(traction, axis=-1) >= (1.0 - ON_LIMIT) * mu * forces
     held_steps = int(np.sum(np.any(held_points, axis=-1)))
