@@ -21,5 +21,8 @@
     "if_wrong": "a constant of the patch's solve depends on the transposed input (the coordinator's NotImplementedError) or its transpose is not its own",
     "cannot_discriminate_if": "the patch's reflection is negligible against the identity in the outer matvec (it is scaled to half of it here)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43171529756",
+    "gate_nested_transpose": "the clean test passed on every clean run (0/3 flagged) and the loose transpose was caught 3/3: the identity holds within 1e-8 of its scale nested, and no NotImplementedError arose either way (the patch's solve constants do not depend on the transposed input)"
+  }
 }
