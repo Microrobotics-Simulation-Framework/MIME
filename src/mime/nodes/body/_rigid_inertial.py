@@ -254,9 +254,9 @@ FRICTION_ROLE = "friction"
 #: 1e-3 at the 99th percentile: a sphere after 1 sweep, an ellipsoid 3, a capsule 5, a cylinder 10, each held at 20; a
 #: box held by its samples after 160 and FL-9's screw past 320, so they take the bound, 80 (the maintainer's trade of
 #: the count's cost). At those counts the share of steps left more than ``_friction.FRICTION_LINE`` of their change from
-#: the solution (W2b's fix round, 4,000 draws a kind, both dtypes alike) is FL-9's 7.1 %, the box's 1.8 %, a cylinder's
-#: 0.2 %, a capsule's and an ellipsoid's 0.1 %, a sphere's none; each raises ``unconverged``
-#: (``_friction.FRICTION_CONVERGED``).
+#: the solution (W2b's fix round, ten seeds of 1,000 draws a kind, both dtypes alike) is FL-9's 7.0 to 7.3 %, the box's
+#: 1.8 to 2.1 %, a cylinder's 0.2 %, a capsule's and an ellipsoid's under 0.15 %, a sphere's none; each raises
+#: ``unconverged`` (``_friction.FRICTION_CONVERGED``).
 FRICTION_SWEEPS: dict[str, int] = {"sphere": 20, "ellipsoid": 20, "capsule": 20, "cylinder": 20}
 FRICTION_SWEEPS_DEFAULT = 80
 

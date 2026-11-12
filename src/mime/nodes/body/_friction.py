@@ -255,7 +255,9 @@ FRICTION_LINE = 1e-3
 #: first at 1e-5, chosen at one seed (the least residual of a step past the line 6.1e-5, FL-9) and raised on every step
 #: past the line at four more at the declared counts, but at a quarter of the counts (the control) one ellipsoid draw
 #: 1.8e-3 of its change from the solution read 9.3e-6 (3.9e-6 in float32); so 2e-6, validated at five fresh seeds
-#: (ROUND5). It also rises on steps within the line (the shares are FRICTION_SWEEPS's).
+#: (about 27,000 held draws a dtype): every step past the line raised it, 436 a dtype at the declared counts and 870 at
+#: a quarter of them, none silent. It also rises on steps within the line (FL-9's flag rate 10.3 % against a true 7.2 %;
+#: the shares are FRICTION_SWEEPS's).
 FRICTION_CONVERGED = 2e-6
 
 
