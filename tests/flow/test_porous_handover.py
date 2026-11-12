@@ -80,8 +80,12 @@ def test_a_driven_tube_a_gap_and_an_occluded_branch_are_not_flagged(float64, cas
             # The 0.01h interior: at the 0.1h line the rig's solve (the held plug's, as the resolved one's at the line)
             # went not finite at D/h 12, flagged (the PR states it); the case tests the topology, not that solve.
             held = occluded_twin(point, ratio, interior="0.01h")
+        elif case == "pressure":
+            # The 0.01h interior: at the 0.1h line the open vessel's solve between a given pressure and a resistance
+            # stopped stagnated near 3e-5 on 49 of 50 draws, flagged (the PR states it).
+            held = vessel(drawn, laws=("pressure", "windkessel"), interior="0.01h")
         else:
-            held = vessel(drawn, laws=("pressure", "windkessel")) if case == "pressure" else vessel(drawn, radius=0.25)
+            held = vessel(drawn, radius=0.25)
         flagged, solve = float(held["forced_flagged"]), float(held["solve_flagged"])
     # A quiet run is quiet with its solve converged: a flagged or non-finite solve is no evidence of quiet.
     assert (flagged, solve) == (0.0, 0.0)

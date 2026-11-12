@@ -8,7 +8,9 @@
     "laptop, draws 0, 1, 3, 4, 7 with the 0.01h interior: converged, not flagged"
   ],
   "operating_point": {
-    "dtype": ["float64"],
+    "dtype": [
+      "float64"
+    ],
     "platform": "GitHub runner 4 vCPU",
     "sizes_and_parameters": "as predictions_porous_handover.json's gate 2; the twin rig now at the 0.01h interior; a quiet run now also requires its solve not flagged",
     "seeds_and_draws": "50 draws a case"
@@ -17,9 +19,25 @@
     "claim": "the quiet cases are quiet with converged solves on every draw; the topology answering forced flags each on every draw; the forced case flagged on every draw with the test now flagging a value not finite",
     "kind": "acceptance (a flag)",
     "case": "tests/flow/test_porous_handover.py, the forced and the four quiet cases",
-    "prediction": {"value": "forced 50/50 flagged; quiet 0/50 each (clean arms); FORCED_OFF 50/50; FORCED_EVERYWHERE 50/50 on each quiet case", "band": [null, null], "unit": "draws", "basis": "derived, and the laptop draws listed", "why": "a quiet case's solve now converges or the test fails, so a control's catch is the comparison's, not a NaN's"},
+    "prediction": {
+      "value": "forced 50/50 flagged; quiet 0/50 each (clean arms); FORCED_OFF 50/50; FORCED_EVERYWHERE 50/50 on each quiet case",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "draws",
+      "basis": "derived, and the laptop draws listed",
+      "why": "a quiet case's solve now converges or the test fails, so a control's catch is the comparison's, not a NaN's"
+    },
     "metric": "the test's pass on every draw",
-    "control": {"plant": "FORCED_OFF, FORCED_EVERYWHERE", "environment_variable": "MIME_PLANT_FORCED_OFF, MIME_PLANT_FORCED_EVERYWHERE", "expected_rate": "50/50", "runs": 50, "clean_expected": "0/50", "resolution": "a flag"},
+    "control": {
+      "plant": "FORCED_OFF, FORCED_EVERYWHERE",
+      "environment_variable": "MIME_PLANT_FORCED_OFF, MIME_PLANT_FORCED_EVERYWHERE",
+      "expected_rate": "50/50",
+      "runs": 50,
+      "clean_expected": "0/50",
+      "resolution": "a flag"
+    },
     "if_wrong": "a quiet draw failing its clean arm is one whose solve stopped flagged: reported with its draw",
     "cannot_discriminate_if": "every draw of a quiet case flagged by its solve"
   },
@@ -27,11 +45,39 @@
     "claim": "how often the twin rig's solve at the 0.1h line goes not finite (a measurement for the validity line, not a gate)",
     "kind": "estimates",
     "case": "probe/twin_line.py: occluded_twin at the 0.1h interior on draws 0 to 49",
-    "prediction": {"value": "not finite on the 30 draws at D/h 12 and about 2 of 20 at D/h 8", "band": [null, null], "unit": "draws", "basis": "measured-before (the first run's misses)", "why": "the same draws the control missed"},
+    "prediction": {
+      "value": "not finite on the 30 draws at D/h 12 and about 2 of 20 at D/h 8",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "draws",
+      "basis": "measured-before (the first run's misses)",
+      "why": "the same draws the control missed"
+    },
     "metric": "finite velocity and solve_flagged at the run's end",
-    "control": {"plant": "none (a count)", "expected_rate": "n/a", "runs": 50, "clean_expected": "n/a", "resolution": "n/a", "environment_variable": ""},
+    "control": {
+      "plant": "none (a count)",
+      "expected_rate": "n/a",
+      "runs": 50,
+      "clean_expected": "n/a",
+      "resolution": "n/a",
+      "environment_variable": ""
+    },
     "if_wrong": "fewer would mean the misses had another cause, looked for before the line is stated",
     "cannot_discriminate_if": "n/a"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after run 43201390806; the predictions above are unchanged",
+    "gate_2_fixround": {
+      "result": "as predicted but for the pressure-driven case",
+      "measured": "FORCED_OFF 50/50, the forced case flagged on 50 of 50 (clean 0/50); FORCED_EVERYWHERE 50/50 on the periodic tube, the gap and the twin rig (0.01h), their clean arms 0/50; the pressure-driven vessel 50/50 but its clean arm 49/50 flagged: its solve at the 0.1h line stagnated near 3e-5 (flagged), re-run at 0.01h (predictions_porous_handover_fixround2.json)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43201390806"
+    },
+    "twin_at_the_line": {
+      "result": "as predicted",
+      "measured": "not finite on 32 of 50 draws (all 30 at D/h 12, 2 of 20 at D/h 8), stopped flagged but finite on 4 more; forced_flagged 0 on all (their topology is not forced)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43201390806"
+    }
+  }
 }
