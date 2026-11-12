@@ -273,5 +273,33 @@
     },
     "if_wrong": "a draw misjudged would be the line's encoding (the comparison's strictness at 2 cells or at a tenth of the radius)",
     "cannot_discriminate_if": "no draw lies below the line, which the test asserts against"
+  },
+  "gate_3_open_vessel": {
+    "written": "2026-11-12, by F5's fourth builder, before this test ran (one float32 smoke of the build was seen: the inflow's flux -9.9999997e-10 against -1e-9, the composed residual 6.2e-5 at a float32 tolerance of 1e-4, not flagged)",
+    "claim": "in an open vessel the openings are eliminated inside each Schwarz product and in the composition by the base's unit fields: the composed step meets every opening's law (the inflow's flux), the near field's equations hold at the composed field (the products and the composition solve one walled problem, openings included), nothing is flagged",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_open.py (float64, the sphere of tests/schwarz_experiments.py in the open vessel: a steady inflow at its start, a Windkessel at its end, three steps)",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-09
+      ],
+      "unit": "the inflow's flux at the composed field against its law, relative; the composed residual under its line (10 times the columns' tolerance)",
+      "basis": "derived: the face flux is linear in the field and the composition adds the body's response with the openings' moves solved to hold each row with no law's own terms, so the inflow's row holds to rounding; seen once in float32 (above)",
+      "why": "a flux row's homogeneous form is zero flux: the body's forces move no fluid through the inflow"
+    },
+    "metric": "|q_start - q_inflow| / |q_inflow|; schwarz_residual",
+    "control": {
+      "plant": "the body-opening cross terms zeroed: the body's response not corrected by the unit fields",
+      "environment_variable": "MIME_PLANT_SCHWARZ: cross",
+      "expected_rate": "every run",
+      "runs": 10,
+      "clean_expected": "0/10",
+      "resolution": "a sphere a third of the tube's radius moving at about the flow's speed pushes a flux of order its speed times its section, about a tenth of the inflow's, eight decades over the line"
+    },
+    "if_wrong": "an inflow's flux off its law would be the units of another step than the base's, or the law's rows at another instant; a residual above its line would be the products and the composition eliminating different openings",
+    "cannot_discriminate_if": "the body does not move (asserted against)",
+    "not_yet": "the dense monolithic reference with the openings' rows (F3 PR 2's monolithic step extended with the Schwarz body's tractions): this gate checks the openings' laws and the near field's equations at the composed step, not the step against an independent dense solve"
   }
 }
