@@ -1,0 +1,57 @@
+{
+  "written": "2026-11-12, committed before the loop probe ran (the commit that adds this file is the timestamp): the fix round of PR #264 finds the mechanism of the review's B2 (the lumen's reported flux past a closing plug carries a constant, K-independent excess over the box's flux) with controls, before any fix",
+  "phase": "Lane F, dev2: the static porous plug, fix round (review B2)",
+  "labels": "predictions by the fix round's builder (Opus) from a one-dimensional model of the box: per cross-section, the lumen's conductance C and the wall solid's W; the body force g drives the fluid share (1 - chi) only, while the pressure gradient G acts on every face; the plug's reach makes W about zero in the plug's span. Then the box's flux Q is the same in every section, the period's mean of G is zero, and the lumen's mean flux less Q is minus the solid's mean flux, (L_open / P) W_open G_open / P-mean, with G_open about rho g once the plug closes the tube: K-independent, positive, the solid's mean flux backward",
+  "seen_before": [
+    "the review's run 43155358996 (arm lumen, GitHub runners, float64, head 432867b plus plants read from unset variables), a plug one diameter long closing the tube in a period of four, its ends on face planes: (lumen_flux - box flux) / Q_open = 2.51e-3 (D/h 16, 0.1h), 2.80e-4 (16, 0.01h), 3.70e-4 (32, 0.1h), 6.2e-5 (32, 0.01h), the same to three digits at sqrt(K)/h 0.03, 0.01 and 0.003; bypass_ratio -0.85 to -0.998",
+    "the review's run 43154269639 (arm icpt-0.1h), the reach removed (MIME_PLANT_NO_REACH): the box's flux intercept 7.40e-3 of Q_open at D/h 16, 0.1h",
+    "the straight tube's bypass under the body force on the fluid alone, BYPASS_MEASURED: 4.8e-4 at D/h 16 with 0.1h"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "CPU, GitHub runners (4 vCPU)",
+    "sizes_and_parameters": "tests/flow/porous_cases.py's units (D = 1, nu = rho = 1, g = 8), steady Stokes, the default band, the 0.1h interior unless an arm says 0.01h; D/h 16; a plug of the lumen's radius one diameter long (two in arm length2) in a period of four, its ends on face planes; sqrt(K)/h 0.03 and 0.01; the CG's tolerance 1e-8, its cap 250000; every flux read from the step's velocity: the box's (every face), the lumen's and the solid's (ImplicitFlowNode.fluxes, the split at the band's middle)",
+    "seeds_and_draws": "none drawn: each row one deterministic case"
+  },
+  "gate_1_loop_baseline": {
+    "claim": "the loop the review measured: (lumen - box) / Q_open the same at sqrt(K)/h 0.03 and 0.01",
+    "kind": "estimates",
+    "case": "probe/loop.py variant base",
+    "prediction": {"value": 2.51e-3, "band": [2.45e-3, 2.57e-3], "unit": "(lumen - box) / Q_open", "basis": "measured-before (the review's run)", "why": "the same program as the review's"},
+    "metric": "(lumen - box) / Q_open at each K; their ratio within 1 % of one"
+  },
+  "gate_2_mechanism_drive_on_every_face": {
+    "claim": "with the body force on every face (the solid too, as a mean pressure gradient), the loop goes: the open part's solid then feels g - G/rho, about zero once the plug closes",
+    "kind": "estimates",
+    "case": "probe/loop.py variant drive_all (ImplicitFlowNode.drive monkeypatched in the probe: delivered on every face)",
+    "prediction": {"value": "under 2.5e-5", "band": [null, 2.5e-5], "unit": "|lumen - box| / Q_open", "basis": "derived (the model: the solid's net drive in the open part is about g Q / Q_open, so the loop about (3/4)(W/C)(Q/Q_open), some 1e-6 at sqrt(K)/h 0.03)", "why": "the loop is the pressure's push on a solid that the drive does not reach"},
+    "control": {"plant": "this arm is the mechanism's control: it removes the cause the model names; a loop within a factor of 10 of the baseline refutes the model", "expected_rate": "1/1 (deterministic)"},
+    "if_wrong": "a loop that stays is not the pressure on an undriven solid: look at the band's inner half and the plug's own faces next"
+  },
+  "gate_3_mechanism_no_reach": {
+    "claim": "with the plug's depth not carried into the wall's solid, W is the same along the tube, the period's mean of W G vanishes and so does the loop in the lumen's mean (the box's flux then leaks past the plug, the review's 7.4e-3)",
+    "kind": "estimates",
+    "case": "probe/loop.py variant no_reach (band.wall_reach monkeypatched to zero in the probe)",
+    "prediction": {"value": "under a quarter of the baseline", "band": [null, 6.3e-4], "unit": "|lumen - box| / Q_open", "basis": "derived (the model; the plug's own indicator still lowers W a little in the band next to it)", "why": "the loop needs W lower where G is large and forward"},
+    "control": {"plant": "the second control: removes the non-uniformity of W the model needs", "expected_rate": "1/1 (deterministic)"}
+  },
+  "gate_4_mechanism_open_length": {
+    "claim": "the loop scales with the open part's share of the period: a plug two diameters long in the period of four gives (2/4) / (3/4) of the baseline",
+    "kind": "estimates",
+    "case": "probe/loop.py variant length2",
+    "prediction": {"value": 1.67e-3, "band": [1.42e-3, 1.92e-3], "unit": "(lumen - box) / Q_open", "basis": "derived (the model's L_open / P)", "why": "the solid's backward flux runs along the open part only"}
+  },
+  "gate_5_mechanism_size_from_the_solids_conductance": {
+    "claim": "the loop's size is the solid's conductance under a uniform drive: in the tube with no plug and the drive on every face, the solid's flux over the lumen's is W / C, and the baseline is about (3/4) W / C",
+    "kind": "estimates",
+    "case": "probe/loop.py variant drive_all_open (no plug, the drive on every face)",
+    "prediction": {"value": 3.35e-3, "band": [1.7e-3, 5.0e-3], "unit": "solid / lumen", "basis": "derived (the model, from the baseline; the band wide for the viscous coupling between the lumen and the band the model leaves out)", "why": "the same solid carries the uniform drive's flux and the loop's"}
+  },
+  "gate_6_interior": {
+    "claim": "the 0.01h interior's loop is the review's 2.80e-4 and goes with the drive on every face",
+    "kind": "estimates",
+    "case": "probe/loop.py variants base and drive_all at 0.01h (arm loop01)",
+    "prediction": {"value": 2.8e-4, "band": [2.6e-4, 3.0e-4], "unit": "(lumen - box) / Q_open (base); drive_all under 1e-5", "basis": "measured-before (base); derived (drive_all)", "why": "as gates 1 and 2"}
+  },
+  "outcomes": null
+}
