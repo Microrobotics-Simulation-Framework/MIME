@@ -1,5 +1,5 @@
 {
- "source": "CI runs 43126570717 (a push at 469304c) and 43130649375 (a push at 72e9dd8), every shard cold, the median over their ten lanes, every file their reports hold",
+ "source": "CI runs 43126570717 (a push at 469304c) and 43130649375 (a push at 72e9dd8), every shard cold, the median over their ten lanes, every file their reports hold; F5's four gate files (tests/flow/test_schwarz_walls.py, _poiseuille, _contact and _far_field) from the arms of probe run 43252442175 (a job each, 4 vCPU), their seconds summed",
  "over": 0.0,
  "tests_over": 1.0,
  "seconds": {
@@ -194,6 +194,10 @@
   "tests/flow/test_point_couple.py": 128,
   "tests/flow/test_point_history.py": 135,
   "tests/flow/test_port_laws.py": 20,
+  "tests/flow/test_schwarz_contact.py": 137,
+  "tests/flow/test_schwarz_far_field.py": 73,
+  "tests/flow/test_schwarz_poiseuille.py": 431,
+  "tests/flow/test_schwarz_walls.py": 2497,
   "tests/flow/test_womersley_flow.py": 15,
   "tests/gradients/test_controller_leaves.py": 110,
   "tests/gradients/test_gate6_what_the_run_raised.py": 117,
@@ -558,6 +562,25 @@
   "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one"
  },
  "split": {
+  "tests/flow/test_schwarz_walls.py": {
+   "test_the_walls_by_the_grid_reproduce_the_band[0.1-1]": 136,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.1-2]": 122,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.1-4]": 104,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.2-1]": 163,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.2-2]": 148,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.2-4]": 128,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.2-8]": 109,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.2-axis]": 86,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.3-1]": 234,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.3-2]": 201,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.3-4]": 180,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.34-1]": 240,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.34-2]": 221,
+   "test_the_walls_by_the_grid_reproduce_the_band[0.34-4]": 191,
+   "test_the_walls_by_the_grid_reproduce_the_band_in_float32[0.2-1]": 88,
+   "test_the_walls_by_the_grid_reproduce_the_band_in_float32[0.2-2]": 72,
+   "test_the_walls_by_the_grid_reproduce_the_band_in_float32[0.34-2]": 75
+  },
   "tests/oracles/test_lubrication.py": {
    "test_a_body_past_the_films_window_is_the_coarse_mrss_by_the_builds_rule_and_reported": 18,
    "test_a_shared_flowing_medium_collects_both_refusals_at_once": 4,

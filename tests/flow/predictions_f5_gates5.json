@@ -151,5 +151,26 @@
     "if_wrong": "a median past the line: the kernel's or the box's images, or the helix's sub-cell place (drawn)",
     "cannot_discriminate_if": "never"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, by F5's sixth builder, after the fifth gates probe (probe/f5-gates5 at d1b3bdf2, run 43252442175; the tests at e503b6f8; rates by .github/probe/detection_rate.py, seeds from 1000)",
+    "gate_2_walls_by_the_grid": {
+      "result": "17/17 pass (14 float64, 3 float32). Each pose's error less the band's, radial / axial pp: a/R 0.1 at 1, 2, 4 cells +0.20/+0.49, +0.18/+0.14, +0.06/+0.03; 0.2 at 1, 2, 4, 8, axis +0.21/+0.32, +0.23/+0.15, +0.13/+0.12, +0.09/+0.13, +0.06/+0.15; 0.3 at 1, 2, 4 +0.42/+0.41, +0.49/+0.34, +0.39/+0.36; 0.34 (the band extrapolated) +0.73/+0.45, +0.82/+0.42, +0.65/+0.44: all inside the predicted [-1.5, 2], MIME's errors a little smaller than the band's, growing with a/R. float32 within 1e-3 pp of float64 at (0.2, 1), (0.2, 2) and (0.34, 2). Controls: offset 3/3, image 3/3, clean 0/3 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43252442175"
+    },
+    "gate_4_contact_one_pass": {
+      "result": "passes: field 8.4e-13, tractions 1.3e-11, twist 1.3e-12, normal velocity 9.8e-14 of the speed, contact active (multiplier 2.0e-9); diagonal-block control 5/5, clean 0/5 (twist miss 4.2e-4)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43252442175"
+    },
+    "gate_7_poiseuille_read": {
+      "result": "4/4 pass: held -1.02, -1.37, -1.80 % at a/R 0.1, 0.2, 0.3 on the axis; free -0.80, -0.84, -0.97 %; Faxen at a/R 0.1, b/R 0.4 -0.90 %; across-flow speed 6e-8 to 1e-6 of V; all inside the predicted bands; the free misses are the kernel's read (0.785 %). Control unread 3/3, clean 0/3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43252442175"
+    },
+    "gate_10_helix_far_field": {
+      "result": "passes: plane medians 2.18, 1.55, 0.91, 1.02 % at 0.75, 1, 1.5, 2 D, axis 2 D 3.74 % (inside the predicted bands); control net 3/3, clean 0/3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43252442175"
+    },
+    "memory": {
+      "result": "the raw estimates (2.46 to 2.50 GiB) were UNDERESTIMATES on seven arms: walls_a 4.24, walls_b 3.97, image 3.46, poiseuille 3.17, walls32 3.14, offset 2.99, unread 2.99 GiB (ratios 1.21 to 1.72); far 1.81 and contact 1.87 under their bounds. Calibration rows in each arm's mem_check.json, not yet added to mem_calibration.json; those arms are red by that check only"
+    }
+  }
 }
