@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The moving refinement patch's kind** (the patch phase; not reachable from an experiment yet: the Schwarz coupling
+  that hosts it wires it). A fixed fine box near a body by a wall (`RefinementPatch`, a grid kind with every face given,
+  `NestedMACGrid`, whose fast solve is the cosine transform on three axes), its corner in whole fine cells snapped to
+  the body (so a move never recompiles), its walls resampled from the same signed distance and dilated by whole fine
+  cells with the two neighbouring dilations blended; it solves the cluster's near-wall reflection under the flow's step
+  operator (`shift - mu L + mu/K`, the steady limit at zero shift) through the FVM's projected CG, its given values the
+  coarse grid's reflection, its source the cluster's own field (the current step's in closed form, the regularised
+  Stokeslet and the Brinkman difference; the history's from the flow's own box), read at the near field's points or
+  over their cells; one column of forces a call, vmappable, linear without history, with its transpose
+  (`patch_reflection`, `patch_reflection_transpose`); the backward-Euler form carries the last step's field as state.
+  Its two transfers are registered mapping kinds, `mime.patch_boundary` and `mime.patch_read`, with MADDENING 0.4's
+  workarounds in `mime.mappings`.
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
   scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's

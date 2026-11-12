@@ -236,11 +236,15 @@ def placed(patch: RefinementPatch, solids: Sequence[Any], origin: Array, dilatio
     corner = origin.astype(dtype) * h
     by = jnp.asarray(dilation).astype(dtype) * h
     opened = [_DilatedFaced(solid, by) if isinstance(solid, FacedSolid) else _Dilated(solid, by) for solid in solids]
-    fields = wall_fields(grid, cast(Any, opened), band_named(patch.band), interior_depth(patch.interior), dtype,
-                         offset=lambda at: at + corner)
-    resistivity = fields.inverse_permeability
+    if opened:
+        fields = wall_fields(grid, cast(Any, opened), band_named(patch.band), interior_depth(patch.interior), dtype,
+                             offset=lambda at: at + corner)
+        resistivity, distances = fields.inverse_permeability, fields.signed_distance
+    else:
+        resistivity = grid.zeros(dtype)
+        distances = tuple(jnp.full(grid.interior_shape(c), -jnp.inf, dtype=dtype) for c in range(3))
     flat_k = jnp.concatenate([k.reshape(-1) for k in resistivity])
-    flat_phi = jnp.concatenate([phi.reshape(-1) for phi in fields.signed_distance])
+    flat_phi = jnp.concatenate([phi.reshape(-1) for phi in distances])
     wanted = flat_k > 0.0
     if patch.shell_depth is not None:
         wanted = wanted & (flat_phi <= patch.shell_depth * h)
