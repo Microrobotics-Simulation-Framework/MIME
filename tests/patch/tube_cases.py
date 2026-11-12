@@ -132,7 +132,7 @@ def coupled(case: TubeCase, form: str) -> dict[str, Any]:
     if form == "patch":
         hf = h / case.ratio
         side = case.npc * case.ratio
-        patch = RefinementPatch((side, side, side), hf)
+        patch = RefinementPatch((side, side, side), hf, read="point")
         origin = snapped_origin(patch, jnp.asarray(centre))
         placement = placed(patch, [solid], origin, 0, jnp.asarray(points, dtype=dtype),
                            jnp.asarray(sphere.eps_squared, dtype=dtype), VISCOSITY)

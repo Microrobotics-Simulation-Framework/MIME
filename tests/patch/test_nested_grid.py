@@ -81,7 +81,7 @@ def exterior_error(cells, scale_given=1.0):
     of its interior field against the same Stokeslet, over the field's largest value."""
     side = 1e-3
     h = side / cells
-    patch = RefinementPatch((cells, cells, cells), h)
+    patch = RefinementPatch((cells, cells, cells), h, read="point")
     grid = patch.grid()
     source = np.array([-0.6, 0.4, 0.5]) * side
     force = np.array([0.3, -0.2, 1.0]) * 1e-6
@@ -146,7 +146,7 @@ def test_the_own_response_is_the_brinkman_stokeslet_far_from_the_blob(float64, s
     """A plane wall through a 12-cell patch; one force point 6 cells above it; the shell's faces against the singular
     Brinkman Stokeslet (the steady Stokeslet at shift zero), where the blob is a thousandth of the distance."""
     h = 5e-5
-    patch = RefinementPatch((12, 12, 12), h)
+    patch = RefinementPatch((12, 12, 12), h, read="point")
 
     class Plane:
         region = "wall"
@@ -190,7 +190,7 @@ def test_the_own_field_on_every_solid_face_and_not_a_shell_four_cells_deep(float
     forces = jnp.asarray(rng.normal(size=(12, 3)) * 1e-9)
 
     def reads(capacity, deep=None):
-        patch = RefinementPatch((14, 14, 18), h, shell_capacity=capacity)
+        patch = RefinementPatch((14, 14, 18), h, read="point", shell_capacity=capacity)
         placement = placed(patch, [Plane()], jnp.zeros(3, jnp.int32), 0, sources, (0.3 * h) ** 2, 1e-3)
         if deep is not None:
             kept = placement.shell_points[:, 2] >= (9.0 - deep) * h
@@ -207,6 +207,6 @@ def test_the_own_field_on_every_solid_face_and_not_a_shell_four_cells_deep(float
     scale = np.max(np.abs(every))
     assert np.max(np.abs(planned - every)) <= 1e-10 * scale
     assert np.max(np.abs(shallow - every)) > 0.05 * scale
-    short = RefinementPatch((14, 14, 18), h, shell_capacity=needed // 2)
+    short = RefinementPatch((14, 14, 18), h, read="point", shell_capacity=needed // 2)
     assert int(placed(short, [Plane()], jnp.zeros(3, jnp.int32), 0, sources, (0.3 * h) ** 2, 1e-3).shell_needed) > \
         short.capacity()

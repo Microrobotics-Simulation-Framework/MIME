@@ -230,7 +230,7 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
     base_out: list[float] = []
     if form in ("be_patch", "quasi_steady"):
         size = int(math.ceil(2.0 * (case.cells + case.margin)))
-        patch = RefinementPatch((size, size, size), case.fine)
+        patch = RefinementPatch((size, size, size), case.fine, read="point")
         state = patch.initial_state(snapped_origin(patch, jnp.asarray(centre)), jnp.float64)
     for step in range(case.steps):
         if case.moving and step > 0:

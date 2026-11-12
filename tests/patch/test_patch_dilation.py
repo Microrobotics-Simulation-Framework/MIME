@@ -36,7 +36,7 @@ def float64():
 @pytest.mark.parametrize("cells", [1, 2, 3])
 def test_gate7_one_dilation_moves_both_walls_by_the_same_whole_cells(cells):
     h = 4e-5
-    patch = RefinementPatch((14, 14, 16), h)
+    patch = RefinementPatch((14, 14, 16), h, read="point")
     lower, upper = 3.3 * h, 12.7 * h
     points = jnp.asarray([[7.1 * h, 6.9 * h, 8.0 * h]])
     origin = jnp.zeros(3, jnp.int32)

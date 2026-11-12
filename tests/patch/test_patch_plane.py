@@ -106,3 +106,14 @@ def test_gate12_float32_reaches_its_floor_unflagged_within_a_line_of_float64(flo
     assert held["at_cap"] == 0 and held["stagnated"] == 0 and held["not_finite"] == 0, held
     scale = float(np.max(np.abs(np.asarray(exact.values))))
     assert float(np.max(np.abs(values - np.asarray(exact.values)))) <= 1e-4 * scale
+
+
+def test_gate8_the_cell_reads_normal_overshoot_near_contact_is_under_its_line(float64_module):
+    """The read near contact (decided 4 (3)): the MRS with the plane's exact image read over each force point's cell, at
+    a gap of 0.1 radii and MIME's default force spacing, overshoots Brenner's normal entry by under 5 % (measured +2.3 %
+    on the probe); read at the points it is +47 % (the control ``point_read``)."""
+    case = Case(spacing=0.25, cells=8.0, gap=0.1, margin=4)
+    read = "point" if os.environ.get("PATCH_PLANT") == "point_read" else "cell"
+    found = normal_k(resistance(case, image_reader(case, read), ("Uz",)))
+    overshoot = 100.0 * (found / brenner(case.gap) - 1.0)
+    assert 0.0 <= overshoot <= 5.0, overshoot

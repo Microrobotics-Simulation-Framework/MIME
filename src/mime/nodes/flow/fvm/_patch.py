@@ -6,8 +6,11 @@ grid's under-resolved one in what the near field reads. The coarse solve is unto
 field ``v = u - u_own`` of the cluster, ``(shift - mu L + mu/K) v + G q = shift v_prev - (mu/K) u_own``, ``D v = 0``,
 every face given by the coarse grid's reflection (:func:`patch_boundary`); ``shift = rho/dt`` (zero: the steady limit),
 ``1/K`` the walls' band resampled from the same signed distance at the box's faces, ``u_own`` the cluster's own field
-under the same operator, nonzero only where ``1/K`` is. The near field reads ``v`` at its points (trilinear: the
-measured default), or each force point's cell average (:func:`cell_read`).
+under the same operator, nonzero only where ``1/K`` is. The near field reads ``v`` over each force point's cell (its
+average over the body's quadrature, :func:`cell_read`: the default, decided 4 (3)'s first route), or at the force
+points (trilinear). Measured on the plane oracle at 20 fine cells across the radius and MIME's default force spacing
+(0.25 radii): read at the points, the MRS's own normal overshoot at a gap of 0.1 radii is +47 % and the patch arm's
++15 %; read over the cells +2.3 % and -2.8 %, and +2.8 % and +1.4 % at 0.15 radii.
 
 **The own field, in two parts** (the interface's (a) and (b)). The current step's: linear in the forces, the step
 operator's regularised Stokeslet, MIME's regularised Stokeslet (the MRS's own blob) plus the Brinkman Stokeslet's
@@ -83,13 +86,14 @@ SERIES_TERMS = 20
 @dataclass(frozen=True)
 class RefinementPatch:
     """The kind: a box of ``cells`` fine cells of side ``spacing`` (m), the coarse grid's band and interior by name, the
-    near field's read (:data:`READS`) and the own field's capacity in faces (zero: every interior face)."""
+    near field's read (:data:`READS`; the cell read takes the body's quadrature in its placement) and the own field's
+    capacity in faces (zero: every interior face)."""
 
     cells: tuple[int, int, int]
     spacing: float
     band: str = DEFAULT_BAND
     interior: str = DEFAULT_INTERIOR
-    read: str = "point"
+    read: str = "cell"
     shell_capacity: int = 0
 
     def __post_init__(self) -> None:

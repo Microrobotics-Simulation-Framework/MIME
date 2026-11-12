@@ -66,7 +66,7 @@ def setting(extra=0):
     sphere = mrs_sphere(0.25)
     h = RADIUS / CELLS
     n = int(math.ceil(2 * (CELLS + MARGIN))) + extra
-    patch = RefinementPatch((n, n, n), h)
+    patch = RefinementPatch((n, n, n), h, read="point")
     free = sla.lu_solve(sla.lu_factor(sphere.matrix / VISCOSITY), np.tile([0.0, 0.0, 1e-3], sphere.count))
     forces = jnp.asarray(free.reshape(-1, 3) * sphere.area[:, None])
     return patch, sphere, forces

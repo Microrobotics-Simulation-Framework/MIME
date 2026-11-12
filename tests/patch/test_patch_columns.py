@@ -38,7 +38,7 @@ def case(dtype):
     (0.1 Pa s) at a step of 1 ms (rho/dt = 1.26e6); each column's given values and forces drawn at a body's scales."""
     rng = np.random.default_rng(7)
     h = 5e-5
-    patch = RefinementPatch((12, 12, 12), h)
+    patch = RefinementPatch((12, 12, 12), h, read="point")
     points = jnp.asarray(rng.uniform(4.0, 8.0, size=(9, 3)) * h + np.array([0.0, 0.0, 2.0 * h]), dtype=dtype)
     placement = placed(patch, [PlaneSolid(4.3 * h)], jnp.zeros(3, jnp.int32), 0, points, (0.3 * h) ** 2, 0.1,
                        shift=1260.0 / 1e-3)
