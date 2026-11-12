@@ -13,8 +13,9 @@ its LU), each product a column (the forces' reflection, no history), the base co
 - ``quasi_steady``: the same given values, the patch's shift zero and no history.
 
 The box is periodic with a solid slab (the plane below the sphere, a far wall above it). The own box is a periodic box
-of the same cells, solved by its transform: the step operator is diagonal there. Plants (``PATCH_PLANT``): ``slab_unfilled``
-leaves the slab a snap uncovers zero, for a sphere moved one fine cell a step along the wall."""
+of the same cells, solved by its transform: the step operator is diagonal there. Plants (``PATCH_PLANT``), for a sphere
+moved one fine cell a step along the wall: ``slab_unfilled`` leaves the slab a snap uncovers zero; ``history_unmoved``
+keeps the last step's field where it was, one cell off the moved patch."""
 
 from __future__ import annotations
 
@@ -260,7 +261,10 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
                                jnp.zeros(3))
             if plant() == "slab_unfilled":
                 fill = grid.zeros(jnp.float64)
-            held = patch.held_field(state, origin, fill) if stepped else grid.zeros(jnp.float64)
+            if stepped and plant() == "history_unmoved":
+                held = (state["patch_field_x"], state["patch_field_y"], state["patch_field_z"])
+            else:
+                held = patch.held_field(state, origin, fill) if stepped else grid.zeros(jnp.float64)
             start = held if case.warm and stepped else None
             history = PatchHistory(held, shell_sample(placement.shell_points, placement.shell_components, box.grid,
                                                       history_own, jnp.zeros(3))) if stepped else None
