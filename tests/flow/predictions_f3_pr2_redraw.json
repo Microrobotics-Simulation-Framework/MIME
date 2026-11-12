@@ -1,0 +1,55 @@
+{
+  "written": "2026-11-12, committed before gate 1's redrawn periodic box ran on Actions and before the bits ran (the commit that adds this file is the timestamp): gate 1's two bodies drawn 1 to 2.5 cells apart, after its cross control missed 2 of 30 float32 draws; the bits of the programs without a body held one pass, against the release tip",
+  "phase": "F3 PR 2: the one elimination over exchange partners; gate 1 redrawn, and the bits",
+  "labels": "made by the PR's finishing builder (Opus) from the gate probe (run 43130158330) and the local runs listed under seen_before; every number marked guess is one",
+  "seen_before": [
+    "gate 1 as first drawn (bodies anywhere in the box), run 43130158330: 30/30 passed in both dtypes, worst float64 7.2e-10 (field), worst float32 1.05e-3 (a twist, seed 2); drop caught 30/30 and cross 30/30 in float64; drop 30/30 and cross 28/30 in float32 (missed seeds 12 and 22); clean 0/10 each",
+    "the cross plant at the missed seeds, the laptop: seed 12 (bodies 4.8 cells apart) moved a body's force by 1.68e-3, seed 22 (6.2 cells apart) by 1.88e-3, in float64 and float32 alike: under float32's line 2e-3",
+    "the first draw's float32 clean errors at the two closest pairs (1.3 and 1.5 cells apart, seeds 14 and 20): 1.2e-4 and 9.4e-4"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-pr2-gates2)",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 1: a periodic box 8^3 (h 10 um, water) with two bodies 1 to 2.5 cells apart in a drawn direction (wrapped), radius 0.8 to 1.5 h, kernel 1 or 1.5 cells, density ratio 0.5 to 3, r = nu dt/h^2 0.05 to 1, IMEX Euler under Stokes, a random initial field and drive (even seeds); or the open vessel 8 x 8 x 16 as before (odd seeds, unchanged); CG tolerance 1e-12 (float64), 1e-5 (float32). Bits: tests/saved/cases.py's periodic_tube_flow, tree_flow, open_tube_flow, open_tube_loop, script_a_with_drag and point_body_flow lagged, 10 ms each",
+    "seeds_and_draws": "DETECTION_SEED 0 to 29 per dtype for the gate, 0 to 29 planted and 0 to 9 clean per control"
+  },
+  "gate_1_return_path_redrawn": {
+    "claim": "the coupled step is the monolithic step within the field's solve's line, both dtypes, every draw's two partners reading each other above float32's line",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_the_coupled_step_is_the_monolithic_step_within_the_solves_line[<dtype>]",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-12,
+        1e-8
+      ],
+      "unit": "relative (field, force, twist, pressure, flux), float64; float32 [1e-7, 2e-3]",
+      "basis": "measured-before (the first draw's 30 seeds) and derived: closer bodies change the cross terms' size, not the CG's tolerance the line carries",
+      "why": "every unknown is a linear function of the unit fields' solves, each stopped at the CG's tolerance [guess: float32's worst stays under 1.5e-3 with the bodies close; the closest first draw reached 9.4e-4]"
+    },
+    "metric": "the largest relative difference over the field and every partner's unknowns",
+    "control": {
+      "plant": "drop: the last partner dropped from the elimination; cross: every partner's rows read only its own deliveries",
+      "environment_variable": "MIME_PLANT_ELIMINATION",
+      "expected_rate": "30/30 each, both dtypes",
+      "runs": 30,
+      "clean_expected": "0/10",
+      "resolution": "derived: within 2.5 cells the other body's unit field read at a body is of the order of a tenth of its own (the projection's dipolar return falls as the cube of the distance, the kernels overlap below two widths), so zeroing the cross terms moves a force by a share far above float32's 2e-3 [guess: not measured per draw]; structural (on or off), not measured with discriminating_range.py"
+    },
+    "if_wrong": "a cross miss in float32 at a close pair means the cross terms are weaker than derived there: print the plant's size per draw and widen the line's margin or move the bodies closer",
+    "cannot_discriminate_if": "two bodies that do not read each other: the draw now places them within 2.5 cells"
+  },
+  "bits": {
+    "cases": "programs without a body held one pass: periodic_tube_flow, tree_flow (no exchange partner), open_tube_flow, open_tube_loop (openings alone, through exchange_system's single-partner branch), script_a_with_drag (a released program, its rigid body the one that now publishes a step row where read), and point_body_flow lagged (coupling='lagged' on the head, the default on the base), float32 and float64; base origin/release/v0.3.0 at 72e9dd8 against the head, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal",
+    "controls": {
+      "repeat": "the head's lagged point body recorded twice: identical",
+      "one_ulp": "the open vessel with the water's viscosity one ulp up: arrays differ"
+    }
+  },
+  "outcomes": null
+}

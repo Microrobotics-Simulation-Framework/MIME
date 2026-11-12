@@ -5,7 +5,9 @@ openings (one pass, the default wherever a body's own step is linear).
 reference (``elimination_cases.monolithic_step``: the whole step, every face, each opening's pressure, each body's
 force, couple and twist, as one dense system solved by one LU in float64, independent of the unit fields, their warm
 starts, the elimination's small system and the conjugate gradient). Each draw has two partners or more, so that the
-cross terms carry: a periodic box with two bodies, or an open vessel with its two openings and a body. Its controls
+cross terms carry: a periodic box with two bodies 1 to 2.5 cells apart, or an open vessel with its two openings and a
+body. (The box's bodies were first drawn anywhere in it: at 4.8 and 6.2 cells apart the cross terms moved a body's
+force by 1.7e-3 and 1.9e-3, under float32's line, and the cross control missed 2 of 30 float32 draws.) Its controls
 (``MIME_PLANT_ELIMINATION``): ``drop``, the last partner dropped from the elimination (its deliveries held at zero);
 ``cross``, every partner's rows read only its own deliveries (the cross terms zeroed). The line is the field's solve's:
 the conjugate gradient stops at its tolerance on the field, which the elimination carries into every partner.
@@ -69,17 +71,21 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _periodic_draw(rng: np.random.Generator) -> tuple[ImplicitFlowNode, list[Body], float]:
-    """A periodic box of 8 cells a side with two bodies drawn in it: radius 0.8 to 1.5 cells, kernel one or 1.5 cells
-    wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel holds as any), density 0.5 to 3
-    times the water's, a twist of the body's own scales and a load on each."""
+    """A periodic box of 8 cells a side with two bodies drawn in it, the second 1 to 2.5 cells from the first in a drawn
+    direction (so that each reads the other's field above float32's line): radius 0.8 to 1.5 cells, kernel one or 1.5
+    cells wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel holds as any), density 0.5 to
+    3 times the water's, a twist of the body's own scales and a load on each."""
     cells, h = 8, 1e-5
     side = cells * h
     dt = float(rng.uniform(0.05, 1.0)) * h * h * WATER_RHO / WATER_MU
     bodies = []
-    for _ in range(2):
+    first = rng.uniform(0.0, side, 3)
+    direction = rng.normal(0.0, 1.0, 3)
+    second = np.mod(first + float(rng.uniform(1.0, 2.5)) * h * direction / np.linalg.norm(direction), side)
+    for at in (first, second):
         a = float(rng.uniform(0.8, 1.5)) * h
         mass, moment = sphere_mass(a, float(rng.uniform(0.5, 3.0)))
-        point = tuple(float(c) for c in rng.uniform(0.0, side, 3))
+        point = tuple(float(c) for c in at)
         twist = (*(rng.normal(0.0, 1e-3, 3)), *(rng.normal(0.0, 1e-3 / a, 3)))
         loads = (*(rng.normal(0.0, 6 * math.pi * WATER_MU * a * 1e-3, 3)),
                  *(rng.normal(0.0, 8 * math.pi * WATER_MU * a ** 3 * 1e-3 / a, 3)))
