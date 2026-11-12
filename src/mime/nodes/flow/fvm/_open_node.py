@@ -73,7 +73,8 @@ BACKFLOW_BETA = 1.0
 #: inward faces above which the run is flagged (``opening_reversed_flagged``). Placed by FB8's measurement.
 REVERSAL_LINE = 0.05
 #: Where the outlet watch's line comes from, said beside it.
-REVERSAL_MEASURED = "declared, pending FB8's measurement"
+REVERSAL_MEASURED = ("declared, unmeasured: FB8's plane 0.5 D after a throat read no reversed face at Re 80 to 120, so its "
+                     "control could not fire there")
 #: The solid's share of a lone opening's net flux beyond the band's half width in steady flow, measured at 8 cells
 #: across by the stiff interior (#246's FA1 = FB14 arms: 0.4 to 3.7 % at D/h 16 to 8 at 0.1h, 0.01 to 0.4 % at
 #: 0.01h): the bound the exchange flag's line is derived from.
