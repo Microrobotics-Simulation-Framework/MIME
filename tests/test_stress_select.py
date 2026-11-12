@@ -6,6 +6,7 @@ import copy
 import importlib.util
 import itertools
 import json
+import math
 import re
 import sys
 from pathlib import Path, PurePosixPath
@@ -449,7 +450,8 @@ def test_control_a_split_that_drops_a_file_or_divides_one_or_double_counts_a_run
 
 
 def test_a_large_pull_requests_changed_set_is_dealt_by_the_real_table_so_that_no_part_but_a_lone_file_passes_the_budget():
-    """The tube tree PR's changed files (a measure of 4806 seconds that ran 36 to 46 minutes in one job) by the committed table."""
+    """The tube tree PR's changed files (a measure of 4806 seconds on the table of the day, which ran 36 to 46 minutes in one
+    job) by the committed table: as many parts as its seconds need at the budget, whatever the table's rebuild makes them."""
     changed = ["tests/docs/test_lists.py", "tests/docs/test_none_declared.py", "tests/flow/test_fvm_curved_wall.py",
                "tests/flow/test_fvm_general_wall.py", "tests/flow/test_fvm_tree_declaration.py", "tests/saved/test_golden_outputs.py",
                "tests/saved/test_shape_suite.py", "tests/scene/test_centreline.py", "tests/scene/test_exact_union.py",
@@ -457,7 +459,8 @@ def test_a_large_pull_requests_changed_set_is_dealt_by_the_real_table_so_that_no
                "tests/scene/test_union_reverse.py", "tests/scene/test_union_tie.py", "tests/two_builds/test_tree_walk.py"]
     seconds, unlisted = stress.table_seconds()
     request = stress.select("", changed, lambda path: True, lambda: 1)
-    assert coverage_problems(request) == [] and len(request.parts) == 5
+    assert coverage_problems(request) == []
+    assert len(request.parts) == math.ceil(sum(seconds[f] for f in changed) / stress.PART_SECONDS)
     loads = [sum(seconds.get(t, unlisted) for t in part) for part in request.parts]
     assert sum(loads) == sum(seconds[f] for f in changed)
     assert max(loads) <= max(seconds[f] for f in changed) + 0.2 * stress.PART_SECONDS, loads

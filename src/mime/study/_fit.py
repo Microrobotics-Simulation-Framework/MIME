@@ -34,8 +34,8 @@ from mime.results._fit import FitIterate, FitResult, LineMargin
 from mime.results._watch import read_watch
 from mime.saved._pins import keeping_pins
 from mime.study._axes import STUDY_REASON, Axis, range_of, resolve
-from mime.study._gradient import REPORT_LEAF, Written, final_state, magnitude, objective_nodes, path_nodes, \
-    path_statuses, prepare, stacked_members, written
+from mime.study._gradient import REPORT_LEAF, Written, built_refusals, final_state, magnitude, objective_nodes, \
+    path_nodes, path_statuses, prepare, stacked_members, written
 from mime.study._point import Point, build_point, precision
 from mime.study._study import stacked_state
 from mime.units import Quantity
@@ -305,6 +305,8 @@ def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[o
                                        "start={'umr.mass': kg(1e-5)}, noise=..., duration=...)`")])
     _, declarations, _ = experiment.declared_as()
     axes = [resolve(path, declarations) for path in start]
+    if refused := built_refusals(axes):
+        raise BuildRefused(refused)
     starts = {axis: value for axis, value in zip(axes, start.values(), strict=True)}
     sigma = np.asarray(_si(noise) if isinstance(noise, Quantity) else noise, np.float64) if noise is not None else None
     if sigma is None or not np.all(np.isfinite(sigma) & (sigma > 0)):

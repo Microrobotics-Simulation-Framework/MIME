@@ -40,6 +40,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.1.0, kept, are frictionless and keep their margin required. Refused under `confinement.no-hull`, now one code for
   every setting read at a hull's points (`spacing=`, `friction=`) on a body held as a sphere of its extent, its message
   naming both routes (give the body a hull, or remove the setting). Registered: MIME-ANO-157, the frictionless hold's float32 allowance at sub-microsecond steps.
+- **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
+  ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
+  (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector
+  (`"egg.parts.shell.semi_axes"`), or one component by its index (`"vessel.radii[3]"`, `Axis.component`). Each point
+  rebuilds the kind with the value written, and each value is a group of its own, split by it (the point's key is its
+  structure key with the setting's value), the split reason naming the axis; its inertness is judged on the points'
+  traced steps as well. No derivative is taken along one, a declared cut stated in the plan and refused where a study
+  or a fit asks for one (`gradient.built-value`); an override of one is refused (`override.structural`), and so is a
+  range (`range.units`). New refusals: `study.component-path` (a component of what is not a vector of numbers, or a
+  second index, `vessel.radii[3][0]`), `study.component-spelling` (an index in another spelling than one whole number
+  from 0, `vessel.radii[03]`, so that one component has one path), `study.component-index`, `study.vector-value`;
+  `study.held-geometry` now refuses only a kind's structure, names or reference (a tree's segments); `study.axis-twice`
+  judges what each axis writes, not its spelling. The study folder and the spec file hold a tuple of bare numbers (a
+  direction, a body's initial orientation, refused at save until now) as the list of its numbers, read back as the
+  tuple. Gated (`tests/study/test_vector_axes.py`): a study over the MRS egg's semi-axes (whole, and one component by
+  the water's viscosity) and over a plane's normal (whole, and one component: two groups of one structure key, split
+  by the value alone) equals the same points written by hand, bit for bit per point; the FVM tree's fourth radius
+  equals them at its points (structure, leaves, initial state and traced step; no run).
+
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
   scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's
@@ -1203,6 +1222,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
+  projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse
+  mode transposes in, so the transpose solve was the wrong one: through two steps the viscosity's derivative of the
+  openings' pressures read 5.27 in reverse mode against forward mode's 7.24, and the inflow's amplitude's 6.69
+  against 6.13 (the laws' resistances and compliance right); forward mode was right. The transpose solve is now the
+  weighted one, `V (P A P)^-1 V^-1` (`mime.nodes.flow.fvm._solve.projected_solve`); the periodic box's grid has no
+  weights and is unchanged. Found by F2b's gradient gate with ports.
 - **A body force on the open vessel's fluid booked its work over the planes' half cells counted whole**: its pairing,
   the fluid's momentum, now weighs each face as the open box's inner product does, so a driven open vessel's books close
   (they failed at 5e12 of their floor; the open box was admitted with a body force and not gated with one).

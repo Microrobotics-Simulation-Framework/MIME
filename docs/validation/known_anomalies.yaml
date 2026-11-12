@@ -3335,8 +3335,9 @@ anomalies:
       With the three values as leaves that pair's run still moves by 7.0e6 units in the last place over five steps
       [measured, float64]: the semi-axes' points dominate that run. Whether the three floats contributed some part of
       the spike's 1.6e-9 is not separated by that [estimate, not a bound]. No run varies the
-      semi-axes: an override of them is refused (value.unknown) and a sweep over them refuses every point and its run, so
-      a new value is a new build.
+      semi-axes on one build: an override of them is refused (override.structural), and a sweep over them builds each
+      value, one group a value (a kind's setting that is not one number is built per value, 0.3.0.dev2), so a new value
+      is a new build.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -3358,17 +3359,18 @@ anomalies:
       - "tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[hull_contact_looped]"
       - "tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[bound_robot_with_parts]"
       - "tests/two_builds/test_two_builds_walk.py::test_control_the_leaves_closed_over_fire_on_every_pair_whose_leaves_move[hull_contact_looped]"
-      - "tests/two_builds/test_two_builds_walk.py::test_a_held_setting_takes_a_rebuild_an_override_and_a_sweep_are_refused[bound_robot_with_parts]"
+      - "tests/two_builds/test_two_builds_walk.py::test_a_held_setting_takes_a_rebuild_an_override_is_refused_and_a_sweep_builds_each_value[bound_robot_with_parts]"
     residual_risk: >
       The derivative of the contact with respect to a hull setting through these three values is zero, as their leaves
       declare (they set where the search starts and when it stops); that the converged point does not depend on them is
       that declaration's reasoning, not measured here. The hull's start count and start places are structure the build
-      makes from the shape and that the structure key does not hold; no study axis reaches them, since a hull's shape is
-      no axis, and declared geometry ranges (lane S's next phase) are to fix them. Not measured: a large change of a hull
+      makes from the shape and that the structure key does not hold; a study over a hull's vector setting (the
+      ellipsoid's semi-axes) builds each value, one group a value, so each value has its own, and declared geometry
+      ranges (lane S's next phase) are to fix them for a hull's numbers. Not measured: a large change of a hull
       setting; hull kinds other than the walk's (FL-9's hull and the ellipsoid); float32, in which the two-builds check
       does not run.
-    workaround: "None needed for the three values. A hull's shape is varied by building the experiment again at each value, which an override or a sweep of it says."
-    planned_resolution: "Done in lane S's S-F0-1: the three values are leaves of each build, read by the step as arguments, the arrays bit for bit the program they replace. The ellipsoid's semi-axes, held as built, are no axis; declared geometry is lane S's next phase."
+    workaround: "None needed for the three values. A hull's vector setting is varied by a study, which builds each value, or by building the experiment again at each value, which an override of it says."
+    planned_resolution: "Done in lane S's S-F0-1: the three values are leaves of each build, read by the step as arguments, the arrays bit for bit the program they replace. The ellipsoid's semi-axes, held as built, are an axis built per value (0.3.0.dev2); declared geometry is lane S's next phase."
 
   - anomaly_id: MIME-ANO-146
     title: "The arm-tracking controller's home pose reaches the run through the controller's held write and not through params, so a check of the step's parameters does not see it"
@@ -3889,7 +3891,7 @@ anomalies:
     planned_resolution: "Open, before a fit or a descent in a shape leaf relies on the MRS rung near a wall: find the held value that depends on the radius (the two builds' force points and quadratures compared first), and make it a leaf or make the two-builds check run the step. This entry changes no code."
 
   - anomaly_id: MIME-ANO-157
-    title: "In float32 below a step of about sqrt(ulp(z) / a), the frictionless hull hold leaves a resting body's twist an approach speed into the wall that its frozen position never takes, which a resistance near the wall turns into a load"
+    title: "In float32 below a step of about sqrt(ulp(z) / a), the frictionless hull hold leaves a resting body's twist an approach speed into the wall that its frozen position never takes; on the friction spike's prototype a resistance near the wall turned it into a load"
     description: >
       A body held by its hull (the contact 0.5.0 and 0.4.0, rigid_inertial's hold) resting on the wall under a load
       that accelerates it into the wall at a, in float32: once a step moves its normal coordinate z by less than half an
@@ -3903,9 +3905,11 @@ anomalies:
       the same step with a resistance near the wall (the done case's sphere in glycerol, its squeeze film's R_zz 0.663 N
       s/m), the unrealised approach speed (2.95e-5 m/s, delta / dt) drew R_zz delta / dt from the film, so the contact
       carried 0.29 of the load at 0.36 us and 0.93 at 3.6 us (dt* 3.1 us), and none with the plane 10 mm from the origin.
-      A frictionless contact's normal force only splits the load with the film, so the trajectory moves little; with
-      friction its bound mu lambda_n falls with it (W2b's frictional hold takes the gap less its rounding band and is not
-      affected: the prototype's error with the band, 1.56e-5 of a omega0, is float64's). float64's dt* is below 1 ns.
+      The released node's load split under a near-wall resistance, and how far a frictionless trajectory moves with
+      it, are not measured (the split above is the prototype's). With friction its bound mu lambda_n would fall with
+      it: W2b's frictional hold takes the gap less its rounding band, and at the one operating point measured (the
+      spun sphere at 0.36 us, its gate G7) its error is float64's (2.52e-5 against 2.58e-5 of a omega0, the contact
+      carrying the whole load). float64's dt* is below 1 ns.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -3920,5 +3924,5 @@ anomalies:
     residual_risk: >
       Measured on a sphere through the node and on the spike's prototype with a constant resistance; other kinds, a
       resistance delivered by the MRS rung, and the projection's own pass at such steps are not measured.
-    workaround: "Run in float64 at sub-microsecond steps or far from the origin, or keep dt above sqrt(ulp(|x|) / a); with friction the frictional hold is not affected."
+    workaround: "Run in float64 at sub-microsecond steps or far from the origin, or keep dt above sqrt(ulp(|x|) / a); the frictional hold takes the gap's rounding band (measured at one operating point, gate G7 of W2b)."
     planned_resolution: "Open: the frictionless hold's allowance less the gap's rounding band, as the frictional hold takes it, moves the released programs' bits, so it waits for a release that may move them (the next minor release's bits review); this entry changes no code."

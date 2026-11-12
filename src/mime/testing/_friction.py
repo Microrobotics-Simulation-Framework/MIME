@@ -13,7 +13,12 @@ test_friction.py``, breakaway at ``tan(theta) = mu``).
   ``limit(load, speed)`` read against the solve); **its derivative** in the law's coefficient, reverse mode against
   central differences, on sliding draws.
 - :func:`normal_law_suite`: the normal force never below the law's least (``NormalLaw.least``), no point past the
-  shrunk wall after the step beyond rounding, and the hold's complementarity met (its residual under ``CONVERGED``).
+  shrunk wall after the step beyond rounding, and the hold's complementarity met (its residual under
+  ``FRICTION_CONVERGED``).
+
+Each suite runs the law it is given through the solve, so a law the contact's solve does not hold (refused by the
+contact by name, ``mime.interactions.friction.unheld``) fails its suite unrun, never judged as the default in its
+place.
 - :func:`row_kind_suite`: a built row kind's rows measure what it declares (sliding: the slip of the body's own point,
   ``t . (v + omega x r)``, on a frame across the normal; rolling: the rotation about the tangents, ``t . omega``); a
   reserved kind is refused by the contact with its reason.
@@ -175,13 +180,17 @@ def _drawn(name: str, drawn: tuple[Any, ...], dtype: Any) -> tuple[Any, Any, Any
 #: judged at its solution. At the declared count a trip of the guard on an unconverged iterate raises unconverged
 #: (the frictional hold's residual), which the sweep-count measurement reports.
 SUITE_SWEEPS = 400
-#: Where a clean solve is left unconverged at the suite's count (its residual past ``CONVERGED``), the counts it is
-#: solved again at, in turn, and judged at the first it converges at, or the last: a box face down on the plane,
+#: Where a clean solve is left unconverged at the suite's count (its residual past ``FRICTION_CONVERGED``), the counts
+#: it is solved again at, in turn, and judged at the first it converges at, or the last: a box face down on the plane,
 #: rocking with mu 1, five or six of its eight points held in no unique share, converges slowly and not monotonically
 #: (rocking at 1 rad/s: 0.12 at 400 sweeps, 0.013 at 1,600, 3e-5 at 6,400; at 0.086 rad/s: 0.016 at 400, 0.020 at
 #: 1,600, 0.017 at 6,400, 0.0057 at 25,600, 6.3e-4 at 102,400; float64, about one box draw in 1,000 of the suite's
 #: past 400 and one in 4,000 past 25,600).
 SUITE_DEEPER = (1600, 6400, 25600, 102400, 409600)
+#: The share of a body's draws the suite solves again at the deeper counts, at most: past it a draw left unconverged is
+#: judged at the suite's count, where it fails, so a solve broken into slowness fails naming its count rather than
+#: running the deeper counts on every draw (the review's planted bugs took 59 to 158 minutes there).
+DEEPER_SHARE = 0.05
 
 
 def _converged(names: tuple[str, ...], sweeps: int) -> dict[str, int | None]:
@@ -214,18 +223,23 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     failed, a control's rate. ``plant``, for a control, replaces ``_friction.disk_update`` while the suite runs (the
     sign flip: ``lambda x: -x`` on its force); the clean solve beside it says where friction acts, its friction above
     the guard's line of the load (below it a plant moves the step by less than any check resolves: a load within
-    1e-8 rad of the normal, the solve's friction 1e-8 of it), and the detail counts those draws apart. Unplanted, a
-    draw left unconverged at ``sweeps`` is solved again at :data:`SUITE_DEEPER`'s counts and judged at its solution
-    (the detail counts them)."""
+    1e-8 rad of the normal, the solve's friction 1e-8 of it), and the detail counts those draws apart, as it counts
+    apart the draws whose clean solve is itself unconverged at ``sweeps`` (where the clean step raises the flag the
+    plant is judged by). Unplanted, a draw left unconverged at ``sweeps`` is solved again at :data:`SUITE_DEEPER`'s
+    counts and judged at its solution, for up to :data:`DEEPER_SHARE` of a body's draws (the detail counts them)."""
     import jax
     from hypothesis import HealthCheck, Phase, given, settings
 
     import mime.nodes.body._friction as friction_module
-    from mime.interactions.friction import Coulomb
-    from mime.nodes.body._contact import CONVERGED
+    from mime.interactions.friction import Coulomb, unheld
+    from mime.nodes.body._friction import FRICTION_CONVERGED
     from mime.nodes.body._friction import power_floor
 
     held = Coulomb(mu=0.3) if law is None else law
+    refused = unheld(held, None)
+    if refused:
+        return VerificationResult("friction law", "FAIL", detail=f"{type(held).__name__}: not run, the contact refuses "
+                                                                 f"it: {refused[0]}")
     dtype = jnp.zeros(()).dtype
     floor = power_floor(dtype)
     eps = float(jnp.finfo(dtype).eps)
@@ -237,6 +251,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     flagged = dict.fromkeys(bodies, 0)
     under = dict.fromkeys(bodies, 0)
     solved_deeper = dict.fromkeys(bodies, 0)
+    unsettled = dict.fromkeys(bodies, 0)
     quiet: list[str] = []
     declared = _converged(bodies, sweeps)
     try:
@@ -266,8 +281,9 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                 # judged at its solution: solved again at the deeper counts while unconverged (a planted arm is
                 # judged at the suite's count, where its flags must rise)
                 deepened = False
-                for count in [count for count in SUITE_DEEPER if count > sweeps and plant is None]:
-                    if not float(out["contact_residual"]) > CONVERGED:
+                room = solved_deeper[name] < max(1, int(DEEPER_SHARE * max_examples))
+                for count in [count for count in SUITE_DEEPER if count > sweeps and plant is None and room]:
+                    if not float(out["contact_residual"]) > FRICTION_CONVERGED:
                         break
                     if (name, count) not in deeper:
                         deeper[name, count] = _traced_at(name, count, dtype)
@@ -279,20 +295,26 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                 loaded = float(np.linalg.norm(np.asarray(load[:3], dtype=np.float64)))
                 reference = clean[name](pose, twist, load, mu) if name in clean else out
                 pulled = _pulled(reference)
-                acts = pulled > floor * loaded
+                # a planted arm is judged where the clean solve is itself converged at the suite's count: where it is
+                # not, the clean step raises the flag the plant is judged by, and the draw is counted apart
+                settled = name not in clean or not (float(reference["contact_residual"]) > FRICTION_CONVERGED
+                                                    or float(reference["contact_friction_power_ratio"]) > floor)
+                unsettled[name] += int(not settled)
+                acts = pulled > floor * loaded and settled
                 any_friction = any_friction or acts
                 # the step is never silent: the guard reads friction pushing, or unconverged rises (the residual,
                 # where a planted flip lifts the body off and leaves no friction to read)
-                raised = not power <= floor or left > CONVERGED
+                raised = not power <= floor or left > FRICTION_CONVERGED
                 acted[name] += int(acts)
                 flagged[name] += int(acts and raised)
-                under[name] += int(not acts)
+                under[name] += int(not acts and settled)
                 if acts and not raised:
                     quiet.append(f"{name} at {drawn}: friction {pulled:.3g} N over the load {loaded:.3g} N, power "
                                  f"{power:.3g}, residual {left:.3g}")
                 if raised:
                     found.append(f"{name}: flagged, friction's power at the solved twist {power:.3g} over its scale "
-                                 f"(its floor {floor:.3g}) and the residual {left:.3g} (CONVERGED {CONVERGED:g}), at "
+                                 f"(its floor {floor:.3g}) and the residual {left:.3g} (its line "
+                                 f"{FRICTION_CONVERGED:g}), at "
                                  f"{drawn}")
                 if name == "sphere" and plant is None:
                     found += _sphere_limits(held, stepper, (pose, twist, load, mu), out, weight, eps, drawn)
@@ -310,7 +332,10 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
               f"{', '.join(f'{name} {flagged[name]}/{acted[name]}' for name in bodies)}; "
               f"friction under the guard's line of the load, by body: "
               f"{', '.join(f'{name} {under[name]}' for name in bodies)}; solved past {sweeps} sweeps to converge, by "
-              f"body: {', '.join(f'{name} {solved_deeper[name]}' for name in bodies)}")
+              f"body: {', '.join(f'{name} {solved_deeper[name]}' for name in bodies)} (at most "
+              f"{max(1, int(DEEPER_SHARE * max_examples))} a body, past which a draw is judged at {sweeps})"
+              + (f"; the clean solve unconverged at {sweeps}, counted apart from the plant's, by body: "
+                 f"{', '.join(f'{name} {unsettled[name]}' for name in bodies)}" if clean else ""))
     if failed:
         return VerificationResult("friction law", "FAIL", detail=f"{type(held).__name__}: failed on {failed} of "
                                                                  f"{len(judged)} draws ({rubbed.count(True)} with "
@@ -403,14 +428,18 @@ def normal_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max_e
                      sweeps: int = SUITE_SWEEPS) -> VerificationResult:
     """``law`` (a ``NormalLaw``; ``Hold()`` where none is given) through the frictional hold on the module's draws: the
     normal force never below the law's least, no point past the shrunk plane after the step beyond rounding, and the
-    hold's residual under ``CONVERGED``."""
+    hold's residual under ``FRICTION_CONVERGED``."""
     import jax
     from hypothesis import HealthCheck, Phase, given, settings
 
-    from mime.interactions.friction import Hold
-    from mime.nodes.body._contact import CONVERGED
+    from mime.interactions.friction import Hold, unheld
+    from mime.nodes.body._friction import FRICTION_CONVERGED
 
     held = Hold() if law is None else law
+    refused = unheld(None, held)
+    if refused:
+        return VerificationResult("normal law", "FAIL", detail=f"{type(held).__name__}: not run, the contact refuses "
+                                                               f"it: {refused[0]}")
     dtype = jnp.zeros(()).dtype
     eps = float(jnp.finfo(dtype).eps)
     failures: list[str] = []
@@ -433,8 +462,9 @@ def normal_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max_e
                 deepest = float(np.min(np.asarray(gaps(out["pose"]), dtype=np.float64)))
                 if deepest < -1e3 * eps * 1e-2:
                     found.append(f"{name}: a point {-deepest:.3g} m past the shrunk plane after the step")
-                if float(out["contact_residual"]) > CONVERGED and name == "sphere":
-                    found.append(f"{name}: the hold's residual {float(out['contact_residual']):.3g} past CONVERGED")
+                if float(out["contact_residual"]) > FRICTION_CONVERGED and name == "sphere":
+                    found.append(f"{name}: the hold's residual {float(out['contact_residual']):.3g} past its line "
+                                 f"{FRICTION_CONVERGED:g}")
             judged.append(not found)
             failures.extend(f"{failure}, at {drawn}" for failure in found)
 
@@ -530,5 +560,5 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
     return VerificationResult("row kind", "PASS", detail=f"{kind}: its rows measure {measured}")
 
 
-__all__ = ["BODIES", "SUITE_DEEPER", "SUITE_SWEEPS", "friction_law_suite", "held_node", "normal_law_suite",
-           "row_kind_suite"]
+__all__ = ["BODIES", "DEEPER_SHARE", "SUITE_DEEPER", "SUITE_SWEEPS", "friction_law_suite", "held_node",
+           "normal_law_suite", "row_kind_suite"]

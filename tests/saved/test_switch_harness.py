@@ -18,9 +18,8 @@ and no output shows it).
 
 The frictional hold's two switches are placed on a held ball with Coulomb friction, pressed into the wall:
 ``contact.friction`` sliding at the speed whose sticking traction's square is the row's offset above its bound's, so
-that the pair's update sits on the stick-slip boundary; ``contact.slip``, which only a metered body's books read, on
-the same ball with the ledger attached, sliding so that its traction times the slip the step leaves is the offset, the
-books' per-law work its output.
+that the pair's update sits on the stick-slip boundary; ``contact.slip``, the point's slip speed, on
+the same ball sliding so that the slip the step leaves is the offset, the state's ``contact_slip_speed`` its output.
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
@@ -934,30 +933,25 @@ def frictional_nodes(on_the_axis: int):
     return ball, rod
 
 
-def friction_ball_step(sliding: float, metered: bool = False):
+def friction_ball_step(sliding: float, slip: bool = False):
     """The held ball (one group, its lowest point straight below its centre on the shrunk wall), with Coulomb friction
     ``FRICTION_MU``, pressed into the wall at ``PRESSED`` and moving along the tube's axis at ``sliding``: its pose and
-    twist after one step; ``metered``, with the energy ledger attached (its contact and its friction hosted), and the
-    books' per-law work (``ledger_work``) besides."""
-    from mime.core import ledger
+    twist after one step; ``slip``, with its point's slip speed (``contact_slip_speed``) besides."""
     from mime.nodes.body import RigidInertialNode
 
     first, _ = lowest_two()
     pose = ball_below(first, 0.0, upright(first))
     reference = held_ball([[first]], pose, loops=True)
-    books = (ledger.LedgerDelivery("confinement", "contact:umr", ledger.DISSIPATIVE, ledger.HOSTED).encoded(),
-             ledger.LedgerDelivery("friction", "contact:umr.friction", ledger.DISSIPATIVE, ledger.HOSTED).encoded())
     node = RigidInertialNode("umr", DT, **{**{key: value for key, value in reference.constants().items()
                                               if key not in ("name", "timestep")},
                                            "friction": "coulomb", "friction_mu": FRICTION_MU,
-                                           "friction_law": "contact:umr.friction", **({"ledger": books} if metered
-                                                                                       else {})})
+                                           "friction_law": "contact:umr.friction"})
     state = {**node.initial_state(), "pose": jnp.asarray(pose),
              "twist": jnp.asarray((sliding, 0.0, -PRESSED, 0.0, 0.0, 0.0))}
     out = node.fresh_update(state, {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)),
                                     "background_load": jnp.zeros(6)}, DT)
     held = {"pose": out["pose"], "twist": out["twist"]}
-    return {**held, "ledger_work": out["ledger_work"]} if metered else held
+    return {**held, "contact_slip_speed": out["contact_slip_speed"]} if slip else held
 
 
 @cache
@@ -984,23 +978,23 @@ def friction_rows(declared) -> list[SwitchRow]:
     """The frictional hold's switches on the held ball: ``contact.friction``, the ball pressed into the wall and sliding
     along it at the speed whose sticking traction's square is ``offset`` above its bound's (``FRICTION_MU`` times its
     normal force, squared), so that the pair's update sits on the stick-slip boundary at the row's offset; and
-    ``contact.slip``, which only a metered body's books read: its row on the same ball measures nothing, as its
-    declaration says."""
+    ``contact.slip``, the point's slip speed, on the same ball sliding so that the slip it leaves is the row's
+    offset."""
     def at_the_cone(offset: float):
         normal, per_speed = friction_scale()
         bound = FRICTION_MU * normal
         return friction_ball_step(math.sqrt(bound * bound + offset) / per_speed)
 
     def at_rest(offset: float):
-        """Sliding so that the step's own traction times the slip it leaves is ``offset``: the slip after the step is
-        the free one less the bound over the point's compliance (``1 / per_speed``)."""
+        """Sliding so that the slip the step leaves is ``offset``: the slip after the step is the free one less the
+        bound over the point's compliance (``1 / per_speed``)."""
         normal, per_speed = friction_scale()
         bound = FRICTION_MU * normal
-        return friction_ball_step(offset / bound + bound / per_speed, metered=True)
+        return friction_ball_step(offset + bound / per_speed, slip=True)
 
     bound = FRICTION_MU * friction_scale()[0]
     return [SwitchRow(declared["contact.friction"], at_the_cone, 1e-3 * bound * bound),
-            SwitchRow(declared["contact.slip"], at_rest, 1e-3 * bound * 1e-3)]
+            SwitchRow(declared["contact.slip"], at_rest, 1e-6)]
 
 
 def all_rows(graph) -> dict[str, SwitchRow]:

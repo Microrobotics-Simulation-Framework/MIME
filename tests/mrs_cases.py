@@ -167,11 +167,10 @@ def mrs_tube() -> Experiment:
     return experiment
 
 
-def mrs_plane() -> Experiment:
+def mrs_plane(normal: tuple[float, float, float] = (0.0, 0.6, 0.8)) -> Experiment:
     """The round-trip case of the plane wall kind: a ball of 0.5 mm radius a radius above a plane wall along a turned
     normal, off the world's origin, moving along the plane and turning, with the rung in the plane wall kind at a coarse
-    spacing."""
-    normal = (0.0, 0.6, 0.8)
+    spacing. ``normal`` is the plane's (the study tests write it again)."""
     experiment = Experiment("mrs_plane", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=normal, offset=mm(-1.0))))
     experiment.add_medium(Medium("water", fills=floor.half_space))

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
 from mime.core import switch
 from mime.gradients import GradientStatus
-from mime.interactions.friction import ROW_KINDS, FrictionLaw, NormalLaw
+from mime.interactions.friction import ROW_KINDS, FrictionLaw, NormalLaw, unheld
 from mime.registry import DESIGN, NUMERICAL, PHYSICAL, convention, determined, numerical_default
 from mime.registry import (
     BuildContext,
@@ -165,11 +165,11 @@ FRICTION_SWITCHES = (
               "differences)"),
     switch.Declaration(
         owner="contact.slip",
-        indicator="a held point's friction force's magnitude times its slip's at the solved twist, N m/s (zero "
-                  "where it sticks or is free)",
-        orders={"ledger_work": 0},
-        route="none: the work exact Coulomb does is -|l| |u|, whose magnitude has a kink where either is zero; live "
-              "only in a metered body's books, the work its friction is booked, which nothing of the step's motion "
+        indicator="a held point's slip speed at the solved twist, the length of its sliding rows' rates, m/s (zero "
+                  "where it sticks)",
+        orders={"contact_slip_speed": 0},
+        route="none: a speed is a length, with a kink where the slip is zero and the sticking side's derivative, "
+              "zero, there; it is a report of the state (contact_slip_speed), which nothing of the step's motion "
               "reads"),
 )
 
@@ -322,13 +322,21 @@ class Contact(Interaction):
         "is Hold(adhesion=...), reserved)",
         "projection: with friction, the sweeps' count is declared per hull kind (FRICTION_SWEEPS, from the measured "
         "count each kind's solve converges in; a kind held by its samples, the box, and the screw take the bound, "
-        "FRICTION_SWEEPS_DEFAULT) and a multi-point hold may leave the cone's residual above CONVERGED, raising "
-        "unconverged, as may the friction power guard on an unconverged solve: a share of the box's and the screw's "
-        "steps stay unconverged at the bound and are flagged, never silent; each held point is a point contact, so a "
+        "FRICTION_SWEEPS_DEFAULT), and a step whose held twist may stand more than FRICTION_LINE (1e-3) of the hold's "
+        "change from its solution, in the step's own norm, raises unconverged: its cone's residual over the hold's "
+        "change at the held points passes FRICTION_CONVERGED (1e-5), a line measured to raise it on every such step of "
+        "about 43,000 drawn steps (none silent; it rises on some steps within the line too), or its power guard trips. "
+        "At the declared counts such steps are 7.1 % of FL-9's held steps and 1.8 % of the box's (a cylinder's 0.2 %), "
+        "flagged; the step's norm weights rotation by the body's inertia, so on those steps a millimetre body's spin, "
+        "which friction often brings near rest within the step, may be off by more than its own size; the reference "
+        "is 4,000 sweeps, itself short of the solution on the slowest box draws; each held point is a point contact, so a "
         "line contact's friction moment about its normal is under-resolved (its seam: POINT_SETS['line']), and spin "
         "friction is not held (declared for soft contact); rolling resistance (Coulomb(rolling=...)) is a length, "
         "unmeasured for any mm-scale rolling capsule, which a synchronous rolling speed does not depend on: only data "
         "past step-out identify it",
+        "projection: with friction, rigid Coulomb may have no exact solution at a point (a Painleve-type "
+        "configuration: a box at a high coefficient under a load far off the normal), where the solve's forces "
+        "stand far from the hold's own scaling and its residual raises unconverged",
         "projection: with friction, the power guard sees a friction law push only where friction carries more than the "
         "guard's line of the load (POWER_LINE in float64, the square root of float32's resolution): a load within "
         "rounding of the normal on a body at rest leaves the solve's friction at its own rounding, where a law pushing "
@@ -375,6 +383,8 @@ class Contact(Interaction):
             found.append(f"normal={normal!r} is not a normal law: write normal=Hold()")
         elif normal is not None:
             found += normal.problems()
+        if isinstance(friction, FrictionLaw | None) and isinstance(normal, NormalLaw | None):
+            found += unheld(friction, normal)
         spacing = settings.get("spacing")
         if spacing is not None and not (isinstance(spacing, float) and math.isfinite(spacing) and spacing > 0.0):
             found.append(f"spacing is {spacing!r} m, not a length above zero: the hull's points lie about spacing "

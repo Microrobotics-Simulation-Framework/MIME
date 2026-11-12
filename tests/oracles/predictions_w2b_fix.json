@@ -1,0 +1,130 @@
+{
+  "written": "2026-11-12, committed before any gate of W2b PR 1's fix round ran (the commit that adds this file is the timestamp): the unconverged flag made to read the distance from the solution, friction booked with its sign, the normal-law seam refused until built, the slip speed's derivative, and the gates' evidence",
+  "phase": "W2b PR 1 (#253), fix round after the refuting review",
+  "labels": "predictions by the fix round's builder (Opus) from the review's measurements (named in seen_before) and from derivations; a number seen before is marked measured-before",
+  "seen_before": [
+    "review probe B (run 43136876634, seed 11, 1000 draws a kind and dtype, tube floor): at 80 sweeps FL-9 held 893, 70 past 1e-3 of the hold's change from the 4000-sweep solution (66 unflagged), 36 past 1e-2 (32 unflagged), 5 past 3e-2; box held 907, 21 past 1e-3, 8 past 1e-2; cylinder at 20, none past 1e-3",
+    "review scratch/ledger_flip.py: friction's sign flipped, a sliding sphere on the tilted tube's floor, 100 steps, float64: booked -5.8e-7 J while doing +5.8e-7 J, gift_steps 0, no finding",
+    "review scratch/derivatives.py: contact_slip_speed sliding at 1.001 of the threshold, d/dmu AD 0 against CD -0.562; d/dtheta AD 0 against CD 0.239",
+    "review scratch/seams.py: normal_law_suite(Bouncy()) returned PASS having run Hold()",
+    "review m1 (scratch/flip_premise.py): the flip is raised down to friction/load 3e-11 (sphere, float64) and 3e-6 (sphere, float32) at rest"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runners (4 vCPU) for probes, the laptop's light lane for touched tests",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "the builder's sweep-count draws (a hull kind on a 3.175 mm tube's floor, 1e-9 m above the shrunk wall, linear speed 1e-6 to 5e-2 m/s, angular 1e-3 to 50 rad/s, a load of 0.3 to 3 weights up to 1.4 rad off the normal, mu log-uniform 0.01 to 1.2, dt 1 ms); the declared counts (20 for the sphere, ellipsoid, capsule, cylinder; 80 for the box and FL-9); the reference 4000 sweeps",
+    "seeds_and_draws": "1000 draws a kind and dtype at seed 101 (the estimate is chosen on these) and 1000 at seed 202 (validated on these, never chosen on them)"
+  },
+  "gate_b1_unconverged_rate": {
+    "claim": "the true share of held steps whose twist is further than the line from the 4000-sweep solution, in the step's own norm over the hold's whole change, at each kind's declared count",
+    "kind": "estimates",
+    "case": "probe/b1.py through RigidInertialMidpointNode.frictional_held and its iterates (frictional_sweeps from a carried start)",
+    "prediction": {
+      "value": null,
+      "band": [0.04, 0.10],
+      "unit": "share of FL-9's held draws past 1e-3 at 80 sweeps (box: 0.01 to 0.04; the four smooth kinds at 20: under 0.002)",
+      "basis": "measured-before (review probe B, seed 11: FL-9 0.078, box 0.023, cylinder 0)",
+      "why": "the same draws' distribution at other seeds; the screw's crest passes and long levers hold a slow mode the sweeps leave"
+    },
+    "metric": "the held twist's distance from the 4000-sweep solution in the step's norm over the hold's whole change: the metric the counts were declared by",
+    "control": {
+      "plant": "none: a measurement; the flag below is its control",
+      "expected_rate": "n/a",
+      "runs": 2000,
+      "clean_expected": "n/a",
+      "resolution": "the reference's own distance from the solution (4000 sweeps), under 1e-6 of the hold's change on all but the box's slowest draws"
+    },
+    "if_wrong": "a rate far above 1 % at 80 sweeps is reported to the coordinator before any count is changed (the count's cost is the maintainer's trade)",
+    "cannot_discriminate_if": "the reference is itself unconverged on a draw (it reads that draw's distance short): the box face-down draws, about 1 in 1000"
+  },
+  "gate_b1_flag": {
+    "claim": "unconverged rises on every held step whose twist is further than the line from its solution, read in the step from the sweeps' last changes (an a-posteriori estimate of the distance still to come)",
+    "kind": "bounds",
+    "case": "probe/b1.py, and the node's own flag through frictional_held at the declared counts",
+    "prediction": {
+      "value": 0,
+      "band": [0, 0],
+      "unit": "held draws past the line with the flag down, per kind and dtype, at the validation seed",
+      "basis": "guess (the estimate's form is chosen on seed 101's draws, then judged on seed 202's)",
+      "why": "projected Gauss-Seidel's tail converges about linearly once the active set settles, so the last changes and their ratio bound the distance still to come; a ratio near one (stagnation) raises the flag outright"
+    },
+    "metric": "silent draws (past the line, flag down) and false alarms (flag up, within the line) at the validation seed",
+    "control": {
+      "plant": "the sweeps cut to a quarter of the declared count: the draws past the line rise and every one must be flagged",
+      "environment_variable": "none (a count in the probe)",
+      "expected_rate": "every draw past the line flagged",
+      "runs": 1000,
+      "clean_expected": "false alarms reported, not judged",
+      "resolution": "the line itself"
+    },
+    "if_wrong": "a silent draw at the validation seed: the estimate is not a bound; widen it (a factor, or the rate cap) on seed 101 again and validate on a third seed",
+    "cannot_discriminate_if": "no draw of a kind is past the line at its count (the smooth kinds at 20): the flag is then judged on the cut-count control alone"
+  },
+  "gate_m1_ledger_sign": {
+    "claim": "friction is booked with its sign (dt sum l . u at the solved twist), and a step where it does positive work beyond rounding on the step's scale is a gift, counted on friction's row and named in the ledger's findings",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction.py's ledger case (a sphere on the tilted tube's floor, metered built.run)",
+    "prediction": {
+      "value": null,
+      "band": [1, 100],
+      "unit": "gift steps on friction's row with the flip planted (100 steps); 0 clean",
+      "basis": "derived: a flipped friction does +mu N |u| dt on every sliding step",
+      "why": "the flip makes l . u positive at the solved twist on every step the sphere slips"
+    },
+    "metric": "ledger_gift_steps on friction's row and the run's findings",
+    "control": {
+      "plant": "friction's sign flipped in the solve (the review's planted flip)",
+      "environment_variable": "W2B_PLANT=flip",
+      "expected_rate": "N/N over drawn slopes and coefficients",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "a push of friction beyond IDENTITY_ULPS eps of the step's scale"
+    },
+    "if_wrong": "gift_steps stays 0 under the flip: friction's row is not judged as a dissipative law's",
+    "cannot_discriminate_if": "the sphere rolls without slipping (no slip, no work either sign): the drawn slopes are past the rolling threshold"
+  },
+  "gate_m2_normal_law": {
+    "claim": "Contact(normal=...) is refused by name for any law but Hold() (built), and normal_law_suite refuses a law the solve cannot run rather than judging Hold() in its place",
+    "kind": "acceptance",
+    "case": "a lab's NormalLaw (the review's Bouncy) through Contact.setting_problems and the build, and normal_law_suite",
+    "prediction": {"value": null, "band": [null, null], "unit": "refused / FAIL naming the law", "basis": "derived", "why": "the solve holds only Hold()"},
+    "metric": "the refusal's text and the suite's status",
+    "control": {"plant": "Bouncy(NormalLaw)", "expected_rate": "refused every run (deterministic)", "runs": 1, "clean_expected": "Hold() passes", "resolution": "n/a"},
+    "if_wrong": "the seam still accepts what it ignores",
+    "cannot_discriminate_if": "n/a"
+  },
+  "gate_m3_slip_derivative": {
+    "claim": "contact_slip_speed's derivative in mu and in the slope equals central differences on both sides of the stick threshold (zero sticking)",
+    "kind": "equality",
+    "case": "the block and the sphere on the node's plane, 20 steps, at 0.5, 0.99, 1.01, 2 of the threshold",
+    "prediction": {
+      "value": -0.562,
+      "band": [-0.57, -0.55],
+      "unit": "d(slip)/dmu, the sphere at 1.001 of the threshold (review's CD); 0 sticking",
+      "basis": "measured-before (review's central difference)",
+      "why": "the slip speed is the norm of the sliding rows' rates, smooth away from zero"
+    },
+    "metric": "|AD - CD| over the CD's scale, 1e-6 float64, 1e-2 float32",
+    "control": {"plant": "the slip taken through stop_gradient (the previous code)", "environment_variable": "W2B_PLANT=slipstop", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "a derivative error of the CD's own rounding"},
+    "if_wrong": "AD differs from CD sliding: the norm's derivative or the active set's",
+    "cannot_discriminate_if": "sticking (AD and CD both zero): the sliding side carries the gate"
+  },
+  "gate_m4_controls": {
+    "claim": "each gate's control caught on every run over drawn operating points, through detection_rate.py, with its discriminating range from discriminating_range.py",
+    "kind": "acceptance",
+    "case": "probe/gates.py per gate (G1 block, G2 sphere, G5 gradient, G6 off the wall, G8 multi-point, G10 the guard)",
+    "prediction": {"value": null, "band": [null, null], "unit": "caught/N", "basis": "guess", "why": "each control is planted at ten times its oracle's resolution"},
+    "metric": "caught/N and the clean arm's flagged/N",
+    "control": {"plant": "per gate", "environment_variable": "W2B_PLANT", "expected_rate": "N/N", "runs": 30, "clean_expected": "0/N", "resolution": "per gate, measured"},
+    "if_wrong": "a control missing a run: plant above its measured resolution, or sharpen the oracle",
+    "cannot_discriminate_if": "a plant below the oracle's resolution"
+  },
+  "bits": {
+    "cases": "script A, A0, the sphere settling, hull_contact (0.5.0 and 0.4.0), the rod, the near contact on a plane and in a tube, float64 and float32; base the release tip merged, head the final head; one job, one CPU, one thread",
+    "prediction": "every array np.array_equal",
+    "controls": {"one_ulp": "FL-9 one ulp of angle further in the head tree: arrays differ"}
+  },
+  "costs": {"prediction": "", "measured_at": ""},
+  "outcomes": null
+}
