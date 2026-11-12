@@ -487,13 +487,26 @@ class _Compiled(Exception):
     """The study's derivative reached its compile (planted to stop there)."""
 
 
-@pytest.mark.parametrize(("precision", "mode"), [("float32", "reverse"), ("float64", "reverse"), ("float32", "forward")])
-def test_a_float32_reverse_derivative_through_a_resolved_body_is_refused_before_it_compiles(monkeypatch, precision,
-                                                                                            mode):
+#: The float32 reverse-mode refusal's cases: the precision, the mode, R3's settings, and the reason the refusal names
+#: (None: quiet, the derivative reaching its compile).
+FLOAT32_REVERSE_CASES = [
+    ("float32", "reverse", {}, None),
+    ("float32", "reverse", {"delta_in": 0.01}, "0.01h interior"),
+    ("float32", "reverse", {"feature_cells": 7, "dt": 6e-5}, "cells across its radius"),
+    ("float64", "reverse", {"delta_in": 0.01}, None),
+    ("float32", "forward", {"delta_in": 0.01}, None),
+]
+
+
+@pytest.mark.parametrize(("precision", "mode", "settings", "reason"), FLOAT32_REVERSE_CASES,
+                         ids=["default", "interior", "cells", "float64", "forward"])
+def test_a_float32_reverse_derivative_outside_its_measured_envelope_is_refused_before_it_compiles(
+        monkeypatch, precision, mode, settings, reason):
     """drag.penalty-float32-reverse (``_resolved_node.FLOAT32_REVERSE_MEASURED``): a study's derivative in reverse
-    mode in float32 through the penalty rung is refused by name before it compiles, the FVM's unverified path
-    acknowledged (the refusal is not acknowledged away); in float64, and in forward mode in float32, it reaches the
-    compile, planted to stop there, so neither arm can pass for the other."""
+    mode in float32 through the penalty rung is refused by name before it compiles where it was measured off (the
+    0.01h interior) or not measured (N above 6), the FVM's unverified path acknowledged (the refusal is not
+    acknowledged away); inside the measured envelope (R3's sphere at 3 cells a radius, the default interior), in
+    float64 and in forward mode it reaches the compile, planted to stop there, so no arm can pass for another."""
     from mime.study import PRECISION, Study, along
     from mime.study import _gradient
     from mime.units import mPa_s
@@ -502,22 +515,24 @@ def test_a_float32_reverse_derivative_through_a_resolved_body_is_refused_before_
         raise _Compiled
 
     monkeypatch.setattr(_gradient, "prepare", compiled)
-    study = Study(r3_experiment(1.4)).sweep(along({PRECISION: [precision], "water.viscosity": [mPa_s(1.0)]}),
-                                            duration=ms(0.3))
+    dt = settings.get("dt", 1.5e-4)
+    experiment = r3_experiment(1.4, **{key: value for key, value in settings.items() if key != "dt"}, dt=dt)
+    study = Study(experiment).sweep(along({PRECISION: [precision], "water.viscosity": [mPa_s(1.0)]}),
+                                    duration=ms(2.0 * dt * 1e3))
 
     def derivative() -> object:
         return study.gradient(lambda final: final["ball"]["twist"][2], wrt=["water.viscosity"], mode=mode,
                               acknowledged={"water.flow": "the FVM's derivative path, unverified: the refusal is judged"})
 
-    if (precision, mode) == ("float32", "reverse"):
-        with pytest.raises(BuildRefused) as refused:
-            derivative()
-        found = [each for each in refused.value.refusals if each.code == "drag.penalty-float32-reverse"]
-        assert len(found) == 1 and "ball" in found[0].message, refused.value.refusals
-        assert "float64" in found[0].action and "mode='forward'" in found[0].action
-    else:
+    if reason is None:
         with pytest.raises(_Compiled):
             derivative()
+        return
+    with pytest.raises(BuildRefused) as refused:
+        derivative()
+    found = [each for each in refused.value.refusals if each.code == "drag.penalty-float32-reverse"]
+    assert len(found) == 1 and "ball" in found[0].message and reason in found[0].message, refused.value.refusals
+    assert all(route in found[0].action for route in ("float64", "mode='forward'", "inside the float32 program"))
 
 
 # -- the build: the spacing rule and the refusals -----------------------------------------------------------------------

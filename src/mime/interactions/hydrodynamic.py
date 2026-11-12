@@ -1736,6 +1736,16 @@ class Drag(UncoupledDrag):
         "start times dt / h; declared): the window is placed afresh each step, but a solid jumping a cell between "
         "solves is not resolved in time, and a lagged coupling past its stable step grows until it crosses the line; "
         "the run stops at the first step past it (drag.penalty-motion, naming the body and its coupling)",
+        "penalty: a study's derivative in float32 against float64's, on a sphere in the default 0.1h interior at 3 and "
+        "6 cells a radius: through the steady step, in its position, the viscosity and the drive, within 8.0e-5 and "
+        "3.6e-4 in reverse mode (5.5e-5 and 1.6e-4 forward); on the study's own path (a sphere free at Re 76, IMEX "
+        "Euler, 40 steps), its velocity's derivative in the viscosity within 2.1e-3 and 4.7e-4 in reverse mode "
+        "(7.5e-4 and 2.5e-4 forward) and in its mass 7e-6 [measured through the node and the study]; outside that "
+        "envelope reverse mode in float32 is refused (drag.penalty-float32-reverse: the 0.01h interior, measured "
+        "3.2e-2 off in position at 6 cells with no solve flagged; more than 6 cells a radius, or a capsule, "
+        "unmeasured), routed to float64 or forward mode: float32's stop on the transpose's right-hand side is the "
+        "cause, and the solves run in float64 inside the float32 program close it at the default interior (a guard "
+        "not built)",
         "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
         "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
