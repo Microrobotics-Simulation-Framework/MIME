@@ -132,7 +132,7 @@ class CameraNode(MountedNode):
     rendered in every frame, and no cache is ever held (a stale one would be a wrong image)."""
 
     meta = NodeMeta(
-        algorithm_id="MIME-NODE-130",
+        algorithm_id="MIME-NODE-133",
         description="A declared camera model in the loop: the sensor core's frame of the whole scene, rendered on "
                     "frame steps of the base step's clock from a ring of the bodies' poses, held between them.",
         governing_equations=EQUATIONS,
