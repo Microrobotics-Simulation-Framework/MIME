@@ -364,7 +364,9 @@ class FVM(Dynamics):
         f"on IMEX Euler or its steady limit in a box along z; in the wall's band its share of the fluid over the face's "
         f"fluid fraction (at least {FLUID_FLOOR:g}, declared) and carried into the wall's solid behind it. {POROUS_MEASURED}. "
         f"No OpenMaterica record gives a permeability yet: it is declared. The build reports the run's sqrt(K) in cells "
-        f"where it is under {RESOLVED_CELLS:g}, and says where it is below {FLUX_MEASURED_DOWN_TO:g}: unmeasured",
+        f"where it is under {RESOLVED_CELLS:g}, and says where it is below the range measured (sqrt(K)/h "
+        f"{FLUX_MEASURED_DOWN_TO['0.1h']:g} with the 0.1h interior, {FLUX_MEASURED_DOWN_TO['0.01h']:g} with 0.01h): "
+        f"unmeasured",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "
         f"float64 and {STALL_PER_TOLERANCE['float32']:g} in float32 (stall_flagged), is written with the energy ledger "
         f"attached (exp.observe(EnergyLedger())); a run without it has no stall report. The reading scales with the "

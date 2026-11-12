@@ -22,8 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   above zero is flagged at sampling and refuses the run after it (`flow.permeability-not-positive`); each step reports
   its mean pressure on the planes a band's half width outside its two ends (`porous_face_pressure`). The build reports
   its `sqrt(K)` in cells where its Brinkman layer is under one, and that its flux is unmeasured where `sqrt(K)/h` is
-  under 0.01: a plug closing a straight tube is resolved down to `sqrt(K)/h` 0.01 (within 0.3 % at D/h 32, a `K` of
-  about 1e-13 m^2 in a 1 mm vessel) and unmeasured below. Refused: a structure of another kind (`flow.porous-kind`),
+  under the range measured: a plug closing a straight tube is resolved down to `sqrt(K)/h` 0.003 with the default 0.1h
+  interior (within 0.4 % at D/h 32, a `K` of about 1e-14 m^2 in a 1 mm vessel) and 0.01 with 0.01h, unmeasured below
+  (the solve stagnates); the floor, the wall's leak past a plug closing the tube (the intercept of its flux against
+  `K`), is under 4e-11 of the open tube's flux at D/h 32. Refused: a structure of another kind (`flow.porous-kind`),
   RK3 (`flow.porous-scheme`), a tilted box (`flow.porous-axis`). The stall detector's denominator takes the porous
   losses beside the viscous one.
 

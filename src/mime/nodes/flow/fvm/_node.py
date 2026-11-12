@@ -1086,7 +1086,7 @@ class ImplicitFlowNode(MimeNode):
 
             regions = [{name: c[porous_leaf(index, name)] for name in POROUS_LEAVES}
                        for index in range(len(self.porous_laws))]
-            lines += porous_lines(self.porous_laws, regions, float(c["spacing"]))
+            lines += porous_lines(self.porous_laws, regions, float(c["spacing"]), str(c["interior"]))
         return lines
 
     @override

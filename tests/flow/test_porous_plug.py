@@ -264,12 +264,15 @@ def test_float32_gives_the_plugs_flux_within_its_rounding_of_float64(case):
 def test_the_build_report_says_where_the_plugs_layer_is_under_a_cell_and_where_its_flux_is_unmeasured():
     h = 1.0 / 16
     said = {}
-    for root in (2.0, 0.1, 0.003):
-        node = plug_node(16, [dict(radius=R, length=1.0, permeability=(root * h) ** 2)], length_cells=4)
-        said[root] = [line for line in node.built_lines(None, None) if LAW in line]
-    assert said[2.0] == []
-    assert len(said[0.1]) == 1 and "are resolved (measured down to sqrt(K)/h 0.01)" in said[0.1][0]
-    assert len(said[0.003]) == 1 and "unmeasured here" in said[0.003][0]
+    for root, interior in ((2.0, "0.1h"), (0.1, "0.1h"), (0.005, "0.1h"), (0.005, "0.01h"), (0.002, "0.1h")):
+        node = plug_node(16, [dict(radius=R, length=1.0, permeability=(root * h) ** 2)], length_cells=4,
+                         interior=interior)
+        said[root, interior] = [line for line in node.built_lines(None, None) if LAW in line]
+    assert said[2.0, "0.1h"] == []
+    resolved = "are resolved (measured down to sqrt(K)/h"
+    assert len(said[0.1, "0.1h"]) == 1 and resolved in said[0.1, "0.1h"][0]
+    assert len(said[0.005, "0.1h"]) == 1 and resolved in said[0.005, "0.1h"][0]
+    assert all(len(said[key]) == 1 and "unmeasured here" in said[key][0] for key in ((0.005, "0.01h"), (0.002, "0.1h")))
 
 
 def _codes(exp) -> set[str]:

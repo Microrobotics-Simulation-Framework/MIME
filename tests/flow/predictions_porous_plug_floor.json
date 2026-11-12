@@ -55,5 +55,24 @@
       "why": "the CG's true residual at 1e-8 relative to the drive; the plug's flux is small but the penalty carries the drive, so the residual measures the Darcy balance itself"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123280055",
+    "head": "b6af81a (the porous plug's branch at 5972c8d with the probe's files; eight arms grouped by interior)",
+    "gate_1_floor_intercept": {
+      "parallel_0.1h": "the converged rows sqrt(K)/h 0.03, 0.01, 0.003; the pairwise intercepts fall about a hundredfold for each smaller pair (D/h 16: 3.5e-8 from 0.01 and 0.03, 3.5e-10 from 0.003 and 0.01; D/h 32: 3.8e-9, 3.8e-11; D/h 64: 4.1e-10, 4e-12 from 0.003 and 0.01, the two rows from two arms of one program), a curvature in K, not a leak: the floor is under 3.5e-10 / 3.8e-11 / 4e-12 of the open flux at D/h 16 / 32 / 64, under 1e-4 of the plug's own flux at 0.003 (4.3e-6 / 1.1e-6 / 2.8e-7)",
+      "parallel_0.01h": "only sqrt(K)/h 0.03 and 0.01 converged: the one pair's intercept 7.3e-8 / 9.9e-9 / 1.4e-9 at D/h 16 / 32 / 64, the size of the 0.1h interior's pair at the same roots (3.5e-8 / 3.8e-9 / 4.1e-10): a bound only, the curvature's",
+      "control_share": "the share form's intercept from all four rows 7.406e-3 (D/h 16, 0.1h), 8.537e-4 (16, 0.01h), 1.207e-3 (32, 0.1h), its pairwise intercepts equal to 0.3 % and its sqrt(K)/h 0.001 row 7.402e-3 / 8.537e-4 / 1.207e-3 (the first measurements' 7.4e-3 / 8.5e-4 / 1.21e-3): recovered on 3 of 3 arms, twenty million times the parallel form's bound at D/h 16",
+      "verdict": "held: within its resolution of zero at every D/h, stated as a bound (0.1h under the predicted 4e-9 / 1e-9 / 3e-10; 0.01h only to 7.3e-8 at D/h 16, over the band's 1e-8, because its 0.003 rows did not converge); the interiors not compared within the 0.1h bound for that reason"
+    },
+    "gate_2_floor_convergence": {
+      "value": "0.1h: sqrt(K)/h 0.003 converged at 7129 / 16736 / 35934 iterations (1e-8; 8381 / 19449 / 41996 at 1e-10), D/h 16 / 32 / 64; 0.01h: 0.003 stopped stagnated at every D/h (true residual 0.34 / 0.21 / 0.13, flagged, at 3180 / 6340 / 12460 iterations); 0.001 stopped stagnated at every D/h and both interiors (0.5 to 1.0), as the forms probe's floor arms did",
+      "verdict": "held at 0.1h (about 2.3 times the 0.01 row's iterations, under the predicted three); missed at 0.01h, where 0.003 stagnates; 0.001 held (stagnated)"
+    },
+    "gate_3_floor_tolerance": {
+      "value": "each converged row's Q at 1e-10 within 1e-10 of its value at 1e-8 (relative; the largest change 9.6e-11)",
+      "verdict": "held, a million times inside the predicted 1e-4"
+    },
+    "resolution": "at the 0.1h interior (the default) a plug closing the tube at sqrt(K)/h 0.003 reads the series closed form within -1.83 / -0.39 / -0.005 % at D/h 16 / 32 / 64 (0.01: -1.67 / -0.31 / +0.04 %): resolved down to 0.003 there, a K of about 1e-14 m^2 in a 1 mm vessel at D/h 32; with the 0.01h interior down to 0.01; unmeasured below (the solve stagnates)",
+    "memory": "the arm parallel-64-0.1h-b peaked at 2.01 GiB over its 1.96 GiB bound (the plug-free 64 box's estimate, 1.12 GiB, times 1.75): its row is in .github/probe/mem_calibration.json, the FVM's forward factor 1.8"
+  }
 }

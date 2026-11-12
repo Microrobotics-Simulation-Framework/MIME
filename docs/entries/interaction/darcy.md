@@ -24,10 +24,12 @@ the flow can afford. Its bulk Darcy flux and pressure drop still hold through th
 spacing; its profile across the layer is resolved from about a cell; its face against free fluid (a plug with a gap
 round it) acts as a wall the band smears, shifted outward by a fraction of a cell where the layer is sub-cell; a plug
 driven by a body force alone, with no pressure drop across it (a porous medium filling a periodic box), reads a few
-per cent low. A plug closing a straight tube is resolved down to a `sqrt(K)` of a hundredth of a cell and unmeasured
-below. The flow's entry gives the measured figures, and the build report states the run's own: its `sqrt(K)` in cells
-where the layer is under a cell, and that its flux is unmeasured where `sqrt(K)` is under a hundredth of a cell. The
-flow's other "Darcy flow", the wall's stiff interior's bypass, is the wall's numerical porosity, not the clot's.
+per cent low. A plug closing a straight tube is resolved down to a `sqrt(K)` of a few thousandths of a cell with the
+default stiff interior (a hundredth with the stiffer one) and unmeasured below, where the solve stagnates; the wall lets
+no measurable flux past it (the floor, bounded far under the plug's own flux there). The flow's entry gives the
+measured figures, and the build report states the run's own: its `sqrt(K)` in cells where the layer is under a cell,
+and that its flux is unmeasured where `sqrt(K)` is under the range measured. The flow's other "Darcy flow", the wall's
+stiff interior's bypass, is the wall's numerical porosity, not the clot's.
 
 **When not to use it.**
 - For a clot that cores, moves or breaks: the region is static (an evolving permeability is a dynamics' state, later).
