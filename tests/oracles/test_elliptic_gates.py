@@ -64,9 +64,10 @@ SPHEROIDS_SHA256 = "062c4f33fe1540ba1c0b045eb6737c29105586de50c272e53ec94d250251
 SPHEROID_GAPS = (0.1, 0.075, 0.06, 0.04, 0.03, 0.02)
 TURNS = 3
 #: The measured worst misses gate 1 pins (rate; entry on its own scale), by tilt, and how far each may move.
-#: Measured (W2a PR 1b-ii-a, laptop heavy slot, float64, 3 turns a tilt): lying, the rate 22.46 % (probe B's 22.5 %)
-#: and an entry 33.3 % (probe B's T_y 28.5 %); at 30 degrees 16.67 % (17.0 %) and 17.9 % (17.9 %).
-SPHEROID_PINNED: dict[float, tuple[float, float]] = {0.0: (0.2246, 0.3331), 30.0: (0.1667, 0.1793)}
+#: Measured in the reference's frame (W2a PR 1b-ii-a's round 3, a GitHub runner, float64, seeds 1 to 5 of 3 turns
+#: each, every seed the same to four places): lying, the rate 22.46 % (probe B's 22.5 %) and an entry 28.54 % (probe
+#: B's T_y 28.5 %); at 30 degrees 17.01 % (17.0 %) and 17.92 % (17.9 %).
+SPHEROID_PINNED: dict[float, tuple[float, float]] = {0.0: (0.2246, 0.2854), 30.0: (0.1701, 0.1792)}
 SPHEROID_PIN = 0.02
 #: The coupling entries judged on their own size: those over this share of their block's largest (probe B's rule).
 SIGNIFICANT = 0.05
@@ -133,7 +134,8 @@ def spheroid_misses(tilt: float, plant: str | None = None) -> dict[tuple[float, 
     its resistance turned back into the reference's frame before it is judged. Judged in the world's frame, a coupling
     after a turn is a difference of the body's two (``cos t sin t (c1 - c2)``), its own scale a cancellation, so its miss
     moved with the drawn turn (the worst entry 0.29 to 0.40 over five seeds, the rate the same to 2e-5); in the
-    reference's frame each entry is the body's own, and the turns test that the node's resistance turns with the body."""
+    reference's frame each entry is the body's own (the same at every seed to four places), and the turns test that the
+    node's resistance turns with the body."""
     rows = spheroid_rows()
     axes = np.array([2.0, 1.0, 1.0]) * RADIUS
     rng = np.random.default_rng(int(os.environ.get("DETECTION_SEED", "1")))
@@ -344,7 +346,9 @@ def test_gate5_two_contacts_closed_the_lift_holds_and_each_control_fails():
 @pytest.mark.memory_heavy
 def test_gate8_two_contacts_forward_and_reverse_equal_the_difference():
     with planted():
-        built = across_tube(COARSE, True).build()
+        # blob 0.25: the derivative's identity, not the resistance's accuracy, is judged, and the step's structure (the
+        # search, the opening, the shares, the sum) is the same at any blob; at blob 0.05 the test peaked at 9.7 GiB alone
+        built = across_tube(COARSE, True, blob=0.25).build()
         found = compared(built, lambda g: across(g * RADIUS, 0.1e-3 - g * RADIUS), (0.07, 0.06, 0.04),
                          ("wall_radius",))
     for gap, name, reverse, forward, difference, scale in found:

@@ -83,6 +83,7 @@
     "gate_8_gradients": "held: plane and tube (the sphere given the elliptic form, eight slots) and the two-contact tube (wall radius and position) to about 1e-9; controls lift_stopped 0.032 and hard_max 0.022 of the scale (caught).",
     "bits": "see the PR body (round 2)",
     "gate_11_refusals_and_flags": "held: both refusals reached with the route; unwritten, left out with the reason; the line and ring flags 1 at every step at 0.1, 0.03 and 0.005 a, the point's 0.",
-    "gate_12_cutoff": "held: unchanged."
+    "gate_12_cutoff": "held: unchanged.",
+    "gate_1_elliptic_spheroids_amended": "2026-11-12: the entry above was judged in the world's frame at seed 1; round 2's control arm found the clean worst entry moving with the seed (0.287, 0.403, 0.286 at seeds 2 to 4), a coupling after a turn being a difference of the body's two. Judged since in the reference's frame (predictions_w2a_1b2_r3.json, round 3): lying, rate 22.46 %, entry 28.54 %; at 30 degrees, rate 17.01 %, entry 17.92 %, the same at five seeds. Re-pinned; the 33.3 % above is withdrawn as a measurement of the form."
   }
 }

@@ -44,5 +44,12 @@
     "case": "scripts/measure_test_memory.py, one process per id",
     "prediction": {"band": [2.0, 9.0], "unit": "GiB, each id", "basis": "measured-before", "why": "round 2's in-worker increments: gate 1's spheroids about 2.5 and 1.3, gate 5's first case 4.7, gate 8 on two contacts 8.9 (its reverse derivative through two contacts)"}
   },
-  "outcomes": null
+  "outcomes": {
+    "_note": "added after round 3 ran (Actions run 43129930010, probe/w2a-1b2-r3 at ae1cbef); the predictions above are unchanged",
+    "gate_1_spheroids_in_the_references_frame": "held: lying, the worst rate 0.2246 and the worst entry 0.2854 at every seed 1 to 5 (band [0.26, 0.31]; the rate's [0.2236, 0.2256]); the spread over seeds 0 to four places (band [0, 0.005]). Pinned at (0.2246, 0.2854).",
+    "prediction_tilted": "the entry held: 0.1792 at every seed (band [0.15, 0.21]). The rate MISSED its band: 0.1701 against [0.1647, 0.1687]: the band assumed the rate turn-invariant, which round 2 showed lying only; tilted, the world frame mixed the two rolling axes by the turn (round 2's 0.1667 at seed 1), and the reference's frame reads each axis's own. Pinned at (0.1701, 0.1792).",
+    "prediction_spread": "held: 0 to four places at both tilts.",
+    "gate_10_bits": "held for every program that ran: plane_030, plane_040, tube_040, sphere_plane_050, sphere_tube_050, sphere_plane_050_off and script_a np.array_equal in float64 and float32 (one CPU, one thread, base d6220d2f); ellipsoid_050 differs in both (film to elliptic). a0 did not run in either tree (the probe's dump built A0 without its controller, command.undriven): no evidence for A0 here; it runs again in round 4.",
+    "memory": "alone in a fresh process: gate 1's spheroids 2.93 GiB (the larger parameter) and gate 5's first case 5.53 GiB held; gate 8 on two contacts MISSED: 9.73 GiB, over the band's top of 9, on a runner of 16 GB. Gate 8 is moved to blob 0.25 (its identity does not depend on the quadrature) and measured again in round 4. The arms' estimates were under every peak (bits 2.05 vs bound 1.66, spheroid 2.87 vs 2.78, memory 9.74 vs 5.06): calibration rows in each arm's mem_check.json."
+  }
 }
