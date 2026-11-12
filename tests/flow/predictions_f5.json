@@ -192,5 +192,32 @@
     },
     "if_wrong": "a clean run off by more than 1e-4 would be a solve's tangent stopped short (its report) or the probe point's factor; a plant inside the line would mean the first step carries no viscosity dependence at this point",
     "cannot_discriminate_if": "the body does not move (the drive off)"
+  },
+  "gate_restart_and_fork": {
+    "written": "2026-11-12, by F5's fourth builder, before any of these tests ran",
+    "claim": "the Schwarz flow's prepared response is stored state: a run continued from where the last ended is the uninterrupted run bit for bit; an override of a value the preparation reads (the viscosity) on a run from the start prepares the first step again, so the run is the experiment declared with that value; after the start such an override is refused by name (override.initial-after-start, naming the flow)",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_restart.py (float64; the driven sphere of tests/schwarz_experiments.py, four and two steps)",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-09
+      ],
+      "unit": "continued run: fields differing (0, bit for bit); override: |position - declared position| / |declared position - base position|",
+      "basis": "derived: the continued run carries every field and runs the same compiled step (MIME's chunking claims bit for bit); the override's point assembles the flow at the new leaves, whose initial state holds the preparation made at them, the same arithmetic as the declared build's on the same values, so its miss is rounding (expected 0 or about 1e-15 relative)",
+      "why": "the preparation is in the flow's initial state, which the override's point re-makes and compares against the base's (study/_override.py: a changed initial state is set on a run from the start and refused after it)"
+    },
+    "metric": "the fields that differ; the override's position miss on the scale of the viscosity's own effect on the position",
+    "control": {
+      "plant": "restart: the continued run's flow given the initial preparation in place of the stored one; stale: the flow's preparation made at the build's viscosity whatever the override",
+      "environment_variable": "MIME_PLANT_SCHWARZ: restart, stale",
+      "expected_rate": "every run",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "restart: the initial preparation is the first step's, at the starting pose and the drive's first instant, not the stored step's: every field after it differs; stale: the first step's response at a viscosity off by the drawn factor (1.5 to 3) moves the position by about the first step's share of the viscosity's effect, of order 1e-1 of it, eight decades over the line"
+    },
+    "if_wrong": "a continued run that differs would be state the flow does not carry (a field outside its state) or a chunk-dependent program; an override off the declared run past the line would be a leaf the point's assembly does not re-make (a held near-field constant made at the build's viscosity)",
+    "cannot_discriminate_if": "the viscosity does not move the body (no drive), which the test asserts against (moved > 0)"
   }
 }
