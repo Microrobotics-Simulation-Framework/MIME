@@ -21,14 +21,15 @@ from mime.units import A_m2, Hz, Pa_s, Pa_s_per_m3, kg, kg_m2, kg_per_m3, m3_per
 def schwarz_sphere(*, second: str = "", wall_kind: str | None = None, opened: bool = False,
                    settings: dict | None = None, viscosity: float = 1e-3, flowing: bool = True,
                    offset: float = 0.05, length: float = 4.0, magnetic: bool = False,
-                   amplitude: float = 1.0) -> Experiment:
+                   amplitude: float = 1.0, drive: float = 1.0) -> Experiment:
     """A neutral MRS sphere, ``ball``, 0.05 mm off a 1 mm tube's axis in water the FVM solves (8 cells across);
     ``second`` another body (``pebble`` a point body, else an MRS one), ``wall_kind`` written on the drag, ``opened``
     the vessel open at its ends, ``settings`` the drag's others, ``viscosity`` the water's (Pa s); ``flowing=False``
     the water at rest, no flow solved (no Schwarz coupling); ``offset`` the sphere's distance from the axis (mm);
     ``length`` the tube's (mm); ``magnetic`` the ball a magnet (1e-11 A m^2 along its x) in a field turning about the
     tube's axis at 0.1 Hz (``field``, 1 mT; the rotation's Reynolds number 0.014), its torque about the axis moving
-    the off-axis ball along the wall only through the wall's reflection; ``amplitude`` the field's (mT)."""
+    the off-axis ball along the wall only through the wall's reflection; ``amplitude`` the field's (mT); ``drive``
+    the periodic water's body force along the axis (m/s^2), none at zero."""
     exp = Experiment("schwarz_sphere", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(1e-3))
     exp.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(0.5), wall=mm(0.1),
                                                       length=mm(length))))
@@ -62,8 +63,8 @@ def schwarz_sphere(*, second: str = "", wall_kind: str | None = None, opened: bo
         exp.attach(Inflow(steady=mL_per_s(1e-3)), medium="water", surface="tube.start")
         exp.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
                    medium="water", surface="tube.end")
-    elif flowing:
-        exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    elif flowing and drive:
+        exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(drive)), medium="water")
     return exp
 
 
