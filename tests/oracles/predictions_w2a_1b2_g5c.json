@@ -1,0 +1,39 @@
+{
+  "written": "2026-11-12, committed before any of these cases ran (the commit that adds this file is the timestamp): further two-contact cases to separate the built composition (the wall opened once by the contacts' soft least gap, each contact's increment from its gap to its opened gap) from a per-body lift (the body moved off its nearer contact to the hand-over gap, each contact's increment from its moved gap back to its own)",
+  "phase": "W2a PR 1b-ii-a, gate 5, further cases (the coordinator's item: the cheapest cases that separate the two compositions; the choice between them is the maintainer's)",
+  "labels": "the builder's guesses, from the separating case (predictions_w2a_1b2_gate5.json and _g5b.json): built additivity 0.31 and 0.33, the per-body lift's 0.19 and 0.23, errors 0.41/0.43 against 0.29/0.33, all in R_yy first",
+  "seen_before": [
+    "the separating case at a finer reference of 0.06 mm and blob 0.1: the numbers above; the no-contact error 0.0003",
+    "the geometry of the cases below, by the cross-section z = 0 (the deepest points' plane): the floor body (1.3, 0.5, 1.6) mm touches the 2 mm tube at x = +-1.15 mm, its contact normals 36 degrees off the floor's (the two normals' cosine 0.30); a rounder body (1.2, 0.6, 1.4) mm touches at x = +-0.81 mm, 24.5 degrees off (cosine 0.66), its width along a normal 0.37 of the diameter"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runners through the probe workflow (each arm's estimate under 12 GiB), else held for the maintainer's word",
+    "sizes_and_parameters": "drag 0.5.0's mrs rung, coarse force spacing 0.13 mm (hand-over gap 0.0975 mm), blob 0.05, roughness 1 nm, the 2 mm tube; the reference MIME's MRS at 0.06 mm and blob 0.25 with the hand-over off (cheaper than blob 0.1, its resolution measured in arm floor-blob25 against the committed blob-0.1 rows); gap pairs (mm, -x then +x): floor body (0.05, 0.05), (0.05, 0.045) [the measured rows, for the blob check], (0.045, 0.09) asymmetric, (0.07, 0.07) nearer the hand-over gap, with their one-contact rows (0.35, g) and the no-contact row (0.35, 0.35); rounder body (0.05, 0.05), (0.045, 0.09), their one-contact rows and the no-contact row; centres solved on the cross-section",
+    "seeds_and_draws": "none: fixed poses, deterministic"
+  },
+  "case_0_reference_resolution": {
+    "claim": "the blob-0.25 reference reads the committed blob-0.1 rows of the floor body within a margin that can tell the two compositions apart",
+    "kind": "estimates (a reference's own resolution)",
+    "prediction": {"band": [0.0, 0.05], "unit": "worst entry on sqrt(R_ii R_jj) of each row, blob 0.25 against blob 0.1, the five committed rows", "basis": "guess", "why": "the near field's quadrature at 0.25 of the spacing resolves gaps above about 0.75 spacings as the blob-0.1 one does; unmeasured"},
+    "cannot_discriminate_if": "past 0.06 (half the 0.12 between the compositions' errors at the measured rows): the blob-0.25 rows then cannot separate them and the cases below are no evidence"
+  },
+  "case_1_asymmetric_pair": {
+    "claim": "at (0.045, 0.09) on the floor body the per-body lift is nearer the reference than the built composition, as at the measured rows",
+    "kind": "estimates against a finer model of the same family (never hardware)",
+    "prediction": {"band": [0.03, 0.30], "unit": "the built lift's worst-entry error less the per-body lift's", "basis": "guess", "why": "the measured rows' 0.10 to 0.12; the asymmetric pair opens the farther contact by the dilation's delta in the built form and by a third of the body's move in the per-body one, so they part further"},
+    "metric": "each composition's worst entry against the reference, and its additivity with the no-contact error added back"
+  },
+  "case_2_nearer_the_handover": {
+    "claim": "at (0.07, 0.07) on the floor body both compositions are nearer the reference than at (0.05, 0.05), and nearer each other",
+    "kind": "estimates",
+    "prediction": {"band": [0.0, 0.08], "unit": "|built error - per-body error|, worst entry", "basis": "guess", "why": "the increments span less (0.07 to the opened gap), so how they compose matters less"}
+  },
+  "case_3_rounder_body": {
+    "claim": "on the rounder body, whose contact normals are nearer parallel (cosine 0.66 against 0.30), the two compositions agree more closely than on the floor body",
+    "kind": "estimates",
+    "prediction": {"band": [0.0, 0.06], "unit": "|built error - per-body error| at (0.05, 0.05), worst entry", "basis": "guess", "why": "moving the body along one contact's normal opens the other by the normals' cosine of the move: nearer one, the per-body lift opens both nearly as the dilation does"}
+  },
+  "decides": "if the per-body lift is nearer the reference at every two-contact row past the reference's resolution: (b) per-body for two contacts is supported; if the built composition is nearer at some: neither holds everywhere and the miss is stated (a); the maintainer chooses",
+  "outcomes": null
+}
