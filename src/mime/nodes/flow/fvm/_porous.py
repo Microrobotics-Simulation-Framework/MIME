@@ -122,7 +122,8 @@ POROUS_MEASURED = (
 HANDOVER_MEASURED = (
     "Below the line the solve holds a region at the line's permeability, so the outer flow carries the flux the held "
     "region passes (about 32 K_line / R^2 of the open tube's for a plug a quarter of its period long: 4.3e-6 / 1.1e-6 "
-    "at D/h 16 / 32 with 0.1h, 5e-5 / 1.3e-5 with 0.01h), and the reading's error is that region's feedback, about its "
+    "at D/h 16 / 32 at the periodic 0.1h line, 5e-5 / 1.3e-5 at a line of 0.01, the 0.01h interior's and an open "
+    "vessel's), and the reading's error is that region's feedback, about its "
     "flux over the outer flow's, beside the face pressures' own error. Where both routes hold (a plug closing the tube, "
     "a quarter of its period long, the hand-over's arm holding it at nine times its K), the reading against the "
     "resolved lumen_flux: +0.4 to -0.5 % at sqrt(K)/h 0.003 to 0.03 and -4.3 % at 0.1 (D/h 16), +0.03 to -0.4 % and "
