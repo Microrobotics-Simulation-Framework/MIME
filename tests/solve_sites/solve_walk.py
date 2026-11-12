@@ -254,23 +254,23 @@ def _extra_solve(form: str, anchor: Any, order: int = 2) -> Any:
 def bypass_dense(patch: Any) -> None:
     """Both dense callers take ``jnp.linalg.solve`` raw, as a new solve written without the shared function would."""
     _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _raw)
-    _patch(patch, "mime.nodes.flow.fvm._ports", "dense_solve", _raw)
+    _patch(patch, "mime.core.elimination", "dense_solve", _raw)
 
 
 def downcast_dense(patch: Any) -> None:
     """The dense helper's elimination run in float32 inside its own scope, whatever the run's dtype."""
     _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _downcast_dense)
-    _patch(patch, "mime.nodes.flow.fvm._ports", "dense_solve", _downcast_dense)
+    _patch(patch, "mime.core.elimination", "dense_solve", _downcast_dense)
 
 
 def rounded_before_dense(patch: Any) -> None:
     _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _rounded_before)
-    _patch(patch, "mime.nodes.flow.fvm._ports", "dense_solve", _rounded_before)
+    _patch(patch, "mime.core.elimination", "dense_solve", _rounded_before)
 
 
 def rounded_after_dense(patch: Any) -> None:
     _patch(patch, "mime.nodes.hydro.near_field._contract", "dense_solve", _rounded_after)
-    _patch(patch, "mime.nodes.flow.fvm._ports", "dense_solve", _rounded_after)
+    _patch(patch, "mime.core.elimination", "dense_solve", _rounded_after)
 
 
 def downcast_cg(patch: Any) -> None:

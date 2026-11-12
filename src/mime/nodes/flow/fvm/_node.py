@@ -208,6 +208,32 @@ class MeteredTreeFlowState(FlowFields, _WallCounts, FlowRecords, closed=True):
     records."""
 
 
+class PartnerFields(TypedDict):
+    """A flow holding point bodies in its one elimination (:meth:`ImplicitFlowNode.partner_fields`): beside these, the
+    load and response each body is handed, ``partner_<b>_load`` and ``partner_<b>_resistance``, a state's extra items,
+    their units the edges' that deliver them."""
+
+    #: Each body's six unit fields a face set, the velocity a unit force (the first three of each six, m/(s N)) or a
+    #: unit couple (the last three, 1/(s N)) drives over a step: one block, as verify judges it.
+    partner_units_x: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    partner_units_y: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    partner_units_z: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    #: What the step solved for each body (``mime.vocabulary.FLOW_PARTNER_SOLUTION``, its units).
+    partner_solution: ReadOnly[Annotated[Float[Array, "bodies 21"],  # noqa: F722 - a jaxtyping shape
+                                         Units("N; N m; m/s; rad/s; m/s; 1/(m s); rad/s")]]
+    partner_reach: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+
+
+class PartneredFlowState(FlowFields, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
+    """A flow holding point bodies: the flow's fields, the bodies' and their handed loads and responses (whatever else
+    it holds, the ledger's records or an open vessel's fields, another of its states names)."""
+
+
+class MeteredPartneredFlowState(FlowFields, FlowRecords, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
+    """A metered flow holding point bodies: the flow's fields, the stall detector, the ledger's records and the bodies'
+    fields."""
+
+
 class FlowInputs(TypedDict, closed=True):
     body_force: NotRequired[ReadOnly[Annotated[Float[Array, "3"], Units("m/s^2")]]]  # noqa: F722 - a jaxtyping shape
     waveform: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("1")]]]  # noqa: F722 - a jaxtyping shape
@@ -1199,5 +1225,5 @@ def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
 
 
 __all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
-           "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
+           "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "MeteredPartneredFlowState", "PartnerFields", "PartneredFlowState",
            "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries"]

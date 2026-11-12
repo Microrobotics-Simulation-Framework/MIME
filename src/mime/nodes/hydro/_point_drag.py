@@ -144,10 +144,12 @@ class PointDragState(TypedDict, closed=True):
     #: 1)``), and Hasimoto's image term beside it; one entry each on route 1, one-way or under the steady limit.
     own_field: ReadOnly[Annotated[Float[Array, "2 3 n n m"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     own_image: ReadOnly[Annotated[Float[Array, "3"], Units("m/s")]]
-    resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
-    background_load: ReadOnly[Float[Array, "6"]]
-    added_resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
-    added_load: ReadOnly[Float[Array, "6"]]
+    #: The drag's resistance and load (delivered to the body lagged; one pass, the flow hands the body its response in
+    #: their place) and the Maxey-Riley part's (delivered under both), in the units of the body's inputs.
+    resistance: ReadOnly[Annotated[Float[Array, "6 6"], Units("N s/m; N s; N m s")]]  # noqa: F722 - a jaxtyping shape
+    background_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
+    added_resistance: ReadOnly[Annotated[Float[Array, "6 6"], Units("N s/m; N s; N m s")]]  # noqa: F722 - a shape
+    added_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
     steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     #: The law's own dissipation over the run, ``sum dt (f . (V - G_F u) + T . (W - Omega))`` with each force and couple
     #: against the slip from the raw reading it was felt at (the step before's, summed a step late): the drag's

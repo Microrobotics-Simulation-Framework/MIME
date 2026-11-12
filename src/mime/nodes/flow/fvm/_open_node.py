@@ -48,7 +48,7 @@ from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negativ
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
-    FlowFields, FlowRecords, check_deliveries
+    FlowFields, FlowRecords, PartnerFields, check_deliveries
 from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
 from mime.nodes.flow.fvm._partners import BodyPartner, Openings, Partnered, combined, partnered_step
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, opening_rows, \
@@ -112,6 +112,16 @@ class OpenFlowState(FlowFields, OpenFlowFields, closed=True):
 class MeteredOpenFlowState(FlowFields, OpenFlowFields, FlowRecords, books.LawRecords, closed=True):
     """A metered open flow's state: the open flow's fields, the stall detector, the ledger's records and, where a law it
     holds stores energy, that law's own."""
+
+
+class OpenPartneredFlowState(FlowFields, OpenFlowFields, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
+    """An open flow holding point bodies beside its openings: the open flow's fields and the bodies' (their handed
+    loads and responses its extra items)."""
+
+
+class MeteredOpenPartneredFlowState(FlowFields, OpenFlowFields, FlowRecords, books.LawRecords, PartnerFields,
+                                    extra_items=ReadOnly[Float[Array, "..."]]):
+    """A metered open flow holding point bodies: the metered open flow's fields and the bodies'."""
 
 
 class OpenPorts(NamedTuple):
@@ -719,5 +729,5 @@ def check_open_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
     check_deliveries(plain)
 
 
-__all__ = ["FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "MeteredOpenFlowState", "OpenFlowState", "OpenFlowFields", "OpenFlowNode", "OpenPorts", "check_open_deliveries",
+__all__ = ["FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "MeteredOpenFlowState", "MeteredOpenPartneredFlowState", "OpenPartneredFlowState", "OpenFlowState", "OpenFlowFields", "OpenFlowNode", "OpenPorts", "check_open_deliveries",
            "combined", "opening_role"]
