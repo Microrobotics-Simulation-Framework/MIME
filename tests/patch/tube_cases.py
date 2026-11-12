@@ -25,7 +25,7 @@ from patch_cases import mrs_sphere
 from time_cases import _gather, _reflect, _scatter, _walled
 from mime.nodes.flow.fvm._band import DEFAULT_BAND, DEFAULT_INTERIOR, TubeSolid, band_named, interior_depth, \
     wall_fields
-from mime.nodes.flow.fvm._exchange import HASIMOTO, steady_free
+from mime.nodes.flow.fvm._exchange import HASIMOTO
 from mime.nodes.flow.fvm._grid import MACGrid
 from mime.nodes.flow.fvm._patch import RefinementPatch, patch_stopping, placed, snapped_origin
 from mime.nodes.flow.fvm._patch_transfers import patch_boundary
@@ -61,9 +61,21 @@ def offset() -> np.ndarray:
     return np.array([0.37, 0.21, 0.0]) if os.environ.get("PATCH_PLANT") == "r2_offset" else np.zeros(3)
 
 
+@functools.partial(jax.jit, static_argnums=(0,))
 def _free(grid: MACGrid, density: Any) -> Any:
-    """The own field in the free box, steady, by the transform (host-side: ``steady_free`` reads numpy)."""
-    return tuple(steady_free(grid, density[c], c) / VISCOSITY for c in range(3))
+    """The own field in the free box, steady: each component by the Laplacian's transform, its mean mode zero (the box's
+    net force balanced by a uniform pressure gradient, Hasimoto's term added apart), then the grid's exact projector,
+    which couples the components (``steady_free`` takes one face set's response to its own forcing alone: F3's
+    self-mobility, not a field)."""
+    h = grid.spacing
+    s = [jnp.sin(jnp.pi * jnp.arange(n) / n) ** 2 for n in grid.cells]
+    symbol = VISCOSITY * (4.0 / h ** 2) * (s[0][:, None, None] + s[1][None, :, None] + s[2][None, None, :])
+    safe = symbol.at[0, 0, 0].set(1.0)
+    held = []
+    for r in density:
+        modes = jnp.fft.fftn(r) / safe
+        held.append(jnp.fft.ifftn(modes.at[0, 0, 0].set(0.0)).real.astype(r.dtype))
+    return grid.project((held[0], held[1], held[2]))
 
 
 def table_reference(case: TubeCase) -> dict[str, float]:
