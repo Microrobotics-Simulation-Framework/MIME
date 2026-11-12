@@ -52,9 +52,18 @@ rows are solved through. The state adds each point's friction (`contact_friction
 (`contact_slip_speed`) and the guard's reading (`contact_friction_power_ratio`). Unwritten, the contact is frictionless and compiles the program it
 always did. The seams for what is left out (`mime.interactions.friction`): `FrictionLaw` (a speed-dependent law, a
 static coefficient above the kinetic), `NormalLaw` with `Hold()` its default (restitution, soft contact; `Hold`'s
-`adhesion` reserved), the row kinds (rolling resistance next, spin declared) and the point sets (line and patch
-contacts), each with its conformance suite in `mime.testing`. One contact per body, against a fixed structure's surface. Its rung is `projection`; `penalty`
-is reserved. `Contact.Projection(...)` is `Contact(rung="projection", ...)` and saves identically.
+`adhesion` reserved), the row kinds (rolling resistance built, spin declared) and the point sets (line and patch
+contacts), each with its conformance suite in `mime.testing`. **Rolling resistance**, `Coulomb(mu=..., rolling=...)`
+(a length), adds a pair of angular rows at each point (the body's turn about the surface's tangents), a
+torque bounded by the length times the normal force: a sphere on a flat slows while it rolls, and one on a slope stays
+put below the threshold the length over the radius sets. A synchronous rolling speed does not depend on it (the torque
+budget absorbs it until step-out), so only data past step-out identify it; at zero its derivative is the slope into
+the admissible side. **Identifying mu** (`mime.study.fit_friction`): `Study.fit` on the data a run gives, a
+gradient-free search over the register's range on the same loss as its control, and a verdict: `identified`, `bounded
+below only` (data that stick or roll without slipping hold only a lower bound) or `confounded`; a fitted value ships
+as a named record pinned by its content's and its data's hashes, never a default. One contact per body, against a
+fixed structure's surface. Its rung is `projection`; `penalty` is reserved.
+`Contact.Projection(...)` is `Contact(rung="projection", ...)` and saves identically.
 
 What a run says of it, as flags: `touching` where a point takes a force, `unconverged` where the solve left more of the
 free step's speed unmet than its tolerance allows, `held_by_samples` where a kind with no support query is held at its

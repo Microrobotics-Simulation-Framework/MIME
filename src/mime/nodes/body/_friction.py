@@ -47,7 +47,7 @@ FRICTION_REPEATS = 3
 TRUST_NEWTON = 12
 #: The rows a held point carries with the sliding pair: the normal and the pair. Row kinds after it (rolling
 #: resistance) add pairs of their own.
-NORMAL, SLIDING = 0, (1, 2)
+NORMAL, SLIDING, ROLLING = 0, (1, 2), (3, 4)
 
 
 class Traction(NamedTuple):
@@ -62,18 +62,23 @@ class Traction(NamedTuple):
         return 1 + 2 * len(self.pairs)
 
 
-def traction_rows(rows: Array, points: Array, centre: Array, along: Array) -> Array:
-    """Each held point's rows, ``K x 3 x 6``: its normal row (``rows``, the hold's ``[n; r x n]``) and the sliding pair
-    ``[t_i; r x t_i]``, ``t_1`` the direction ``along`` taken across the normal and ``t_2 = n x t_1``. ``along`` is
-    never along a normal at a valid state (a tube's axis, across every normal of its wall; a plane's frame fixed at
-    build), so the frame has no switch."""
+def traction_rows(rows: Array, points: Array, centre: Array, along: Array, *, rolling: bool = False) -> Array:
+    """Each held point's rows, ``K x R x 6``: its normal row (``rows``, the hold's ``[n; r x n]``), the sliding pair
+    ``[t_i; r x t_i]``, ``t_1`` the direction ``along`` taken across the normal and ``t_2 = n x t_1``, and with
+    ``rolling`` the rolling pair ``[0; t_i]`` (the body's rotation about the tangents). ``along`` is never along a normal
+    at a valid state (a tube's axis, across every normal of its wall; a plane's frame fixed at build), so the frame has
+    no switch."""
     normals = rows[:, :3]
     arms = points - centre
     across = along - jnp.sum(along * normals, axis=-1, keepdims=True) * normals
     first = across / switch.nonzero_norm(across, axis=-1)[:, None]
     second = jnp.cross(normals, first)
-    return jnp.stack([rows, jnp.concatenate([first, jnp.cross(arms, first)], axis=-1),
-                      jnp.concatenate([second, jnp.cross(arms, second)], axis=-1)], axis=1)
+    held = [rows, jnp.concatenate([first, jnp.cross(arms, first)], axis=-1),
+            jnp.concatenate([second, jnp.cross(arms, second)], axis=-1)]
+    if rolling:
+        none = jnp.zeros_like(first)
+        held += [jnp.concatenate([none, first], axis=-1), jnp.concatenate([none, second], axis=-1)]
+    return jnp.stack(held, axis=1)
 
 
 def _solved2(block: Array, vector: Array) -> Array:
@@ -204,13 +209,16 @@ def slip(coupling: Array, start: Array, forces: Array) -> Array:
 
 def friction_power(coupling: Array, start: Array, forces: Array, pairs: Sequence[tuple[int, int]], rows: Array,
                    moved: Array) -> Array:
-    """The guard: each held point's friction power at the solved twist, ``P = sum_g l_g . u_g``, over its scale ``D =
-    sum_g |l_g| (sqrt(|b_g|^2 + |u_g|^2) + c U)``, the largest over the points: never above :func:`power_floor` at a
+    """The guard: each held point's friction power at the solved twist, pair by pair, ``P_g = l_g . u_g``, over its
+    scale ``D_g = |l_g| (sqrt(|b_g|^2 + |u_g|^2) + c U)``, the largest over the points and their pairs (a pair apart,
+    so that a rolling pair pushing is not diluted by the sliding pair's scale beside it): never above
+    :func:`power_floor` at a
     converged solve, whose friction never pushes the motion it leaves. ``b_g`` is the pair's free slip (in the scale
     so that a sticking point, its slip at rounding, reads its rounding, and a planted sign flip reads about one: the
     spike's normalisation), ``U`` the free step's fastest held point's speed (``rows``' levers, the twist ``moved``)
     and ``c = ROUNDING_ULPS sqrt(eps)``, so that a power at the rounding of its own arithmetic (``64 eps |l| U``) reads
-    under the line where every slip is at rounding (a body at rest). Each force's length is taken on its largest
+    under the line where every slip is at rounding (a body at rest); a rolling pair's (its rates rad/s, its forces
+    N m) takes ``c U`` over the point's arm (:func:`arms`), so that each pair's scale is a power. Each force's length is taken on its largest
     component, so a share at the body's rounding (one of a sphere's eight groups sharing its point) does not underflow
     its own scale. Taken on stopped values: a report, through which no derivative passes."""
     coupling, start, forces, rows, moved = lax.stop_gradient((coupling, start, forces, rows, moved))
@@ -218,19 +226,21 @@ def friction_power(coupling: Array, start: Array, forces: Array, pairs: Sequence
     tiny = jnp.finfo(start.dtype).tiny
     linear = jnp.sqrt(jnp.sum(moved[:3] * moved[:3]))
     angular = jnp.sqrt(jnp.sum(moved[3:] * moved[3:]))
-    lever = jnp.sqrt(jnp.max(jnp.sum(rows[:, :, 3:] * rows[:, :, 3:], axis=-1), axis=-1))
+    lever = jnp.sqrt(jnp.max(jnp.sum(rows[:, :3, 3:] * rows[:, :3, 3:], axis=-1), axis=-1))
     fastest = jnp.max(linear + lever * angular)
     rounding = switch.ROUNDING_ULPS * float(np.sqrt(np.finfo(np.dtype(start.dtype)).eps))
-    power = jnp.zeros(start.shape[:1], dtype=start.dtype)
-    measure = jnp.zeros(start.shape[:1], dtype=start.dtype)
+    reach = arms(rows)
+    worst = jnp.zeros(start.shape[:1], dtype=start.dtype)
     for pair in pairs:
         index = np.asarray(pair)
         force, rate, free = forces[:, index], moving[:, index], start[:, index]
         largest = jnp.max(jnp.abs(force), axis=-1, keepdims=True)
         length = largest[:, 0] * jnp.sqrt(jnp.sum((force / (largest + tiny)) ** 2, axis=-1))
-        power = power + jnp.sum(force * rate, axis=-1)
-        measure = measure + length * (jnp.sqrt(jnp.sum(free * free + rate * rate, axis=-1)) + rounding * fastest)
-    return jnp.max(power / (measure + tiny))
+        # a rolling pair's rates are rad/s and its forces N m: its rounding is the fastest speed over the point's arm
+        floor = rounding * fastest / (reach + tiny) if tuple(pair) == ROLLING else rounding * fastest
+        measure = length * (jnp.sqrt(jnp.sum(free * free + rate * rate, axis=-1)) + floor)
+        worst = jnp.maximum(worst, jnp.sum(force * rate, axis=-1) / (measure + tiny))
+    return jnp.max(worst)
 
 
 #: The guard's line in float64, a share of a point's friction power's scale: declared above what a converged
@@ -261,11 +271,30 @@ FRICTION_LINE = 1e-3
 FRICTION_CONVERGED = 2e-6
 
 
-def cone_residual(coupling: Array, start: Array, forces: Array, traction: Traction) -> Array:
+def arms(rows: Array) -> Array:
+    """Each held point's distance from the body's centre, ``|r|``, from its normal and sliding rows (``|r x e|^2``
+    summed over an orthonormal frame is ``2 |r|^2``): the length a rolling pair's rates (rad/s) are taken to the
+    point's speeds by, so that every row's residual and change read in m/s."""
+    levers = rows[:, :3, 3:]
+    return jnp.sqrt(0.5 * jnp.sum(levers * levers, axis=(-2, -1)))
+
+
+def _in_speeds(values: Array, traction: Traction, reach: Array | None) -> Array:
+    """``values`` (``K x R``, each row's rate or residual) with each rolling pair's taken to m/s by the point's arm."""
+    if reach is None:
+        return values
+    rolling = {row for pair in traction.pairs if tuple(pair) == ROLLING for row in pair}
+    ones = jnp.ones_like(reach)
+    return values * jnp.stack([reach if row in rolling else ones for row in range(values.shape[1])], axis=1)
+
+
+def cone_residual(coupling: Array, start: Array, forces: Array, traction: Traction,
+                  reach: Array | None = None) -> Array:
     """How far the solve is from exact Coulomb, a report: the largest over the held points of the normal rows' unmet
     complementarity as ``_contact.residual`` reads it, ``min(f C_kk, b + C f)``, and each friction pair's natural-map
     residual ``|x - P(x - u / c)| c`` (``P`` the disk's projection, ``c`` the pair's mean diagonal: zero iff the pair
-    sticks inside its disk or slides on it anti-parallel to its slip), in m/s. On stopped values."""
+    sticks inside its disk or slides on it anti-parallel to its slip), in m/s (a rolling pair's taken there by
+    ``reach``, the points' arms). On stopped values."""
     coupling, start, forces = lax.stop_gradient((coupling, start, forces))
     points, count = start.shape
     left = slip(coupling, start, forces)
@@ -278,27 +307,28 @@ def cone_residual(coupling: Array, start: Array, forces: Array, traction: Tracti
         reach = jnp.sqrt(jnp.sum(trial * trial, axis=-1, keepdims=True))
         bound = lax.stop_gradient(coefficient) * forces[:, NORMAL:NORMAL + 1]
         projected = trial * jnp.minimum(1.0, bound / (reach + jnp.finfo(start.dtype).tiny))
-        worst = jnp.maximum(worst, jnp.sqrt(jnp.sum((forces[:, index] - projected) ** 2, axis=-1)) * own[:, 0])
+        unmet = jnp.sqrt(jnp.sum((forces[:, index] - projected) ** 2, axis=-1)) * own[:, 0]
+        worst = jnp.maximum(worst, unmet * reach if reach is not None and tuple(pair) == ROLLING else unmet)
     return jnp.max(worst)
 
 
 def unconverged_share(coupling: Array, start: Array, forces: Array, traction: Traction, rows: Array,
-                      moved: Array) -> Array:
+                      moved: Array, reach: Array | None = None) -> Array:
     """The frictional hold's residual as its flag reads it, a report: the cone's residual (:func:`cone_residual`) less
     the rounding of the arithmetic it is formed from (``ROUNDING_ULPS`` units of eps of the free step's fastest held
     point's speed, ``_contact.residual``'s scale), over the hold's change at the held points (the largest of ``C f``,
     each row's velocity change the forces make), past :data:`FRICTION_CONVERGED` where the held twist may stand more
     than :data:`FRICTION_LINE` of the hold's change from its solution. On stopped values."""
-    coupling, start, forces, rows, moved = lax.stop_gradient((coupling, start, forces, rows, moved))
-    worst = cone_residual(coupling, start, forces, traction)
+    coupling, start, forces, rows, moved, reach = lax.stop_gradient((coupling, start, forces, rows, moved, reach))
+    worst = cone_residual(coupling, start, forces, traction, reach)
     linear = jnp.sqrt(jnp.sum(moved[:3] * moved[:3]))
     angular = jnp.sqrt(jnp.sum(moved[3:] * moved[3:]))
     lever = jnp.sqrt(jnp.sum(rows[:, 3:] * rows[:, 3:], axis=-1))
     rounding = switch.ROUNDING_ULPS * jnp.finfo(start.dtype).eps * jnp.max(linear + lever * angular)
-    change = jnp.max(jnp.abs(slip(coupling, start, forces) - start))
+    change = jnp.max(jnp.abs(_in_speeds(slip(coupling, start, forces) - start, traction, reach)))
     return jnp.maximum(worst - rounding, 0.0) / (change + jnp.finfo(start.dtype).tiny)
 
 
-__all__ = ["FRICTION_CONVERGED", "FRICTION_LINE", "FRICTION_REPEATS", "NORMAL", "POWER_LINE", "SLIDING", "TRUST_NEWTON",
-           "Traction", "cone_residual", "disk_update", "friction_power", "frictional_sweeps", "normal_work_free",
-           "point_update", "power_floor", "slip", "traction_rows", "unconverged_share"]
+__all__ = ["FRICTION_CONVERGED", "FRICTION_LINE", "FRICTION_REPEATS", "NORMAL", "POWER_LINE", "ROLLING", "SLIDING",
+           "TRUST_NEWTON", "Traction", "arms", "cone_residual", "disk_update", "friction_power", "frictional_sweeps",
+           "normal_work_free", "point_update", "power_floor", "slip", "traction_rows", "unconverged_share"]

@@ -1,0 +1,54 @@
+{
+  "written": "2026-11-12, committed before the second fix round's gates ran (the commit that adds this file is the timestamp): the fit's agreement line derived from the control's grid, the verdict and the rolling passivity suite at fresh seeds",
+  "phase": "W2b PR 2 (#261), second fix round",
+  "labels": "predictions by the second fix round's builder (Opus) from the derivation and the earlier rounds' measurements; numbers seen before are marked measured-before",
+  "seen_before": [
+    "round 1 (run 43166927233, seeds 0 to 19, the line 1e-4): sliding 18/20 identified (seeds 2, 8 confounded, the control 6.0e-4 and 6.7e-4 of the estimate from it, the estimate at the truth to 2e-10), stick 20/20 bounded below only; |estimate - control| / control at most 7.349e-4 over the 20 sliding draws, search (0.01, 2.5)",
+    "round 2 (run 43175511053, seeds 0 to 19, ROLLING_DEEPER_SHARE 0.25): the rolling suite's flip 20/20 a dtype, clean 0/20",
+    "the derivation (this round, scratch): the control's worst |ln(control / least)| on data linear in mu, 100,001 truths a range, 0.99994 (register) and 0.99992 (0.01 to 2.5) of d^2/2"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runners (4 vCPU) for probes, the laptop for touched tests",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "the fit: the block (a cylinder lying down a tilted tube's floor), 0.05 s, mu_true 0.1 to 0.8, start mu_true x 0.4 to 2.5, search (0.01, 2.5), sliding draws tan(theta) 1.3 to 3 of mu (noise 1e-3 of the observed speed), never-sliding 0.2 to 0.95 (noise 1e-3 of g sin(theta) T), float64; the rolling suite: the module's draws, 400 sweeps, 200 draws a run",
+    "seeds_and_draws": "fresh: the fit at seeds 200 to 219 (rounds 1 and 3 used 0 to 19 and 100 to 119); the rolling suite at Hypothesis seeds 1000 to 1019 (rounds 1 and 2 used 0 to 19)"
+  },
+  "gate_agreement_line": {
+    "claim": "the gradient-free control stands within control_resolution(search) = d^2 / 2 of the loss's least in ln mu on data linear in mu, and the line is the grid's own (tight)",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction_fit.py::test_the_control_stands_within_its_resolution_of_the_least_on_data_linear_in_mu",
+    "prediction": {"value": null, "band": [0.9, 1.0], "unit": "the worst |ln(control / least)| over 4,001 truths, as a share of d^2 / 2 (5.53e-4 on the register's range, 7.35e-4 on (0.01, 2.5))", "basis": "derived", "why": "the loss in ln mu is C (e^x - e^x*)^2 / 2 for any data linear in mu, L''' = 3 L'' at the least, so the three-point vertex's error is at most (L'''/6L'') d^2 = d^2/2, attained where the least sits on a grid point"},
+    "metric": "the worst gap over the truths, against d^2/2",
+    "control": {"plant": "a line nine tenths as wide", "environment_variable": "none", "expected_rate": "crossed on every run (deterministic)", "runs": 1, "clean_expected": "the line holds", "resolution": "the derivation's next order, under 1e-4 of the line"},
+    "if_wrong": "a gap past d^2/2: the control's grid or its clamp is not what the derivation assumes",
+    "cannot_discriminate_if": "n/a (deterministic)"
+  },
+  "gate_b1_fit_verdict_fresh": {
+    "claim": "at fresh seeds, every sliding draw reads identified and no never-sliding draw does (they read bounded below only)",
+    "kind": "acceptance",
+    "case": "probe/gates261.py fit (fit_friction through built.run), W2B_PLANT=1 the never-sliding data",
+    "prediction": {"value": null, "band": [20, 20], "unit": "never-sliding draws reading bounded below only, of 20 (and none identified); sliding draws reading identified, 20 of 20", "basis": "derived", "why": "the sliding draws' |estimate - control| is at most d^2/2 = 7.35e-4 of it on this search (the derivation), within the line before the standard error is added; the never-sliding draws' loss is flat above the threshold, so no standard error and never identified"},
+    "metric": "the verdict per draw",
+    "control": {"plant": "the data: a block under its threshold", "environment_variable": "W2B_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20 not identified on sliding data", "resolution": "n/a"},
+    "if_wrong": "a sliding draw confounded: its data are curved in mu (a slip that stops) or the path did not reach the least; a never-sliding draw identified: the verdict overclaims",
+    "cannot_discriminate_if": "a draw within the curvature step (1e-3) of the threshold"
+  },
+  "gate_m2_rolling_passivity_fresh": {
+    "claim": "rolling resistance never injects at fresh seeds: the clean suite raises nothing, its sign flipped is raised on every run",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction_suites.py::test_rolling_resistance_is_passive_on_every_draw (W2B_PLANT=rollflip)",
+    "prediction": {"value": null, "band": [20, 20], "unit": "planted runs caught of 20 a dtype; clean 0 of 20", "basis": "measured-before (round 2, at seeds 0 to 19)", "why": "the deeper re-solves' share (0.25) was raised for round 1's two clean float64 runs that hit it, and round 2 passed those seeds; fresh seeds test that the share holds beyond them"},
+    "metric": "detection_rate.py caught/N, both arms",
+    "control": {"plant": "the rolling bound's sign flipped", "environment_variable": "W2B_PLANT=rollflip", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "the suite's guard and residual lines"},
+    "if_wrong": "a clean run flagged: the deeper share or a draw past the solve's reach; a planted run missed: the acts premise",
+    "cannot_discriminate_if": "rolling resistance inside its limit on every draw"
+  },
+  "costs": {"prediction": "", "measured_at": ""},
+  "outcomes": {
+    "written": "2026-11-12, after the gates ran (run 43182794064, probe/w2b-fix-261d at e95a0b0d; the derivation's test locally)",
+    "gate_agreement_line": "held: the worst |ln(control / least)| over 4,001 truths 0.99994 of d^2/2 on the register's range and 0.99992 on (0.01, 2.5); the line nine tenths as wide crossed on both",
+    "gate_b1_fit_verdict_fresh": "held: at seeds 200 to 219 the sliding draws read identified 20/20 (three started again from the control; the worst |estimate - control| 0.994 of the line before the standard error; the estimate at the truth to 2.4e-10), the never-sliding draws bounded below only 20/20, none identified",
+    "gate_m2_rolling_passivity_fresh": "held: at Hypothesis seeds 1000 to 1019 the flipped rolling bound caught 20/20 in float64 and 20/20 in float32 (95 % lower bound 0.86), the clean suite flagged 0/20 in both"
+  }
+}

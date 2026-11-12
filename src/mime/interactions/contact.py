@@ -333,8 +333,9 @@ class Contact(Interaction):
         "own size; the reference solution is a finite count of sweeps, itself short of the solution on the slowest "
         "box draws; each held point is a point contact, so a "
         "line contact's friction moment about its normal is under-resolved (its seam: POINT_SETS['line']), and spin "
-        "friction and rolling resistance are not held (spin declared for soft contact; rolling resistance comes as a "
-        "row kind of its own)",
+        "friction is not held (declared for soft contact); rolling resistance (Coulomb(rolling=...)) is a length, "
+        "unmeasured for any mm-scale rolling capsule, which a synchronous rolling speed does not depend on: only data "
+        "past step-out identify it",
         "projection: with friction, rigid Coulomb may have no exact solution at a point (a Painleve-type "
         "configuration: a box at a high coefficient under a load far off the normal), where the solve's forces "
         "stand far from the hold's own scaling and its residual raises unconverged",
@@ -377,7 +378,7 @@ class Contact(Interaction):
             found.append(f"friction={friction!r} is not a friction law: write friction=Coulomb(mu=0.15)")
         elif friction is not None:
             found += friction.problems()
-            unbuilt = [ROW_KINDS[kind].reason for kind in friction.rows if not ROW_KINDS[kind].built]
+            unbuilt = [ROW_KINDS[kind].reason for kind in friction.held_rows() if not ROW_KINDS[kind].built]
             found += unbuilt
         normal = cast(object, self.normal)
         if normal is not None and not isinstance(normal, NormalLaw):
@@ -442,7 +443,8 @@ class Contact(Interaction):
                 f"{' and '.join(written)}"),)
             return Plan(nodes=(), values={"extent": Value("body", "extent")}, problems=unread,
                         confines=(Confinement("body", CONFINEMENT.name, "surface", ctx.scalar("margin"), self.rule),))
-        friction = None if self.friction is None else Friction(self.friction.law, self.friction.coefficients())
+        friction = None if self.friction is None else Friction(self.friction.solve_name(),
+                                                               self.friction.coefficients())
         return Plan(nodes=(), confines=(Confinement(
             "body", CONFINEMENT.name, "surface", ctx.scalar("margin"), self.rule, extent=None,
             spacing=ctx.scalar("spacing"), loops=self.loops, friction=friction),))

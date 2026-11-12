@@ -143,10 +143,12 @@ class _Fit:
     """The fit's evaluation of an iterate on the program the start built."""
 
     def __init__(self, experiment: Experiment, axes: Sequence[Axis], start: Mapping[Axis, object], residual: Any,
-                 duration: Quantity, noise: np.ndarray, acknowledged: Mapping[str, str]) -> None:
+                 duration: Quantity, noise: np.ndarray, acknowledged: Mapping[str, str],
+                 taken: frozenset[str] = frozenset()) -> None:
         from mime.study._study import Study, along
 
         self.axes = tuple(axes)
+        self.taken = taken
         self.settings, self.declarations, self.saved = experiment.declared_as()
         study = Study(experiment).sweep(along({axis.path: [start[axis]] for axis in self.axes}), duration=duration)
         plan = study.plan()
@@ -247,9 +249,10 @@ class _Fit:
                   watches: Sequence[WatchPlan]) -> list[LineMargin]:
         counted, _, _ = (np.asarray(each) for each in tally)
         meanings = dict(self.prepared.meanings)
+        states = {i for i, flag in enumerate(self.built.layout.flags) if flag.name in self.taken}
         found = [LineMargin(f"{test.node}.{test.field}", "run", float(counted[i]), 0.0, -float(counted[i]),
                             meanings.get(f"{test.node}.{test.field}", ""))
-                 for i, test in enumerate(self.prepared.tests) if int(counted[i]) > 0]
+                 for i, test in enumerate(self.prepared.tests) if int(counted[i]) > 0 and i not in states]
         found += [LineMargin(refusal.code, "run", 1.0, 0.0, -1.0, refusal.message)
                   for refusal in stopped_refusals(self.built.graph, final)]
         found += self.watch_lines(final, watches)
@@ -288,8 +291,10 @@ class _Fit:
 
 def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[object, object], noise: object,
         duration: Quantity, iterations: int, bounds: Mapping[object, tuple[object, object]] | None,
-        tolerance: float | None, acknowledged: Mapping[str, str] | None) -> FitResult:
-    """``Study.fit``."""
+        tolerance: float | None, acknowledged: Mapping[str, str] | None,
+        taken: frozenset[str] = frozenset()) -> FitResult:
+    """``Study.fit``; ``taken``, the flags a caller's fit takes as a state the run is in rather than a line (none for
+    ``Study.fit``: ``mime.study.fit_friction`` takes ``touching``, its bodies touching by design)."""
     if not callable(residual):
         raise ArgumentRefused([Refusal("call.wrong-type", RefusalClass.USER,
                                        f"the residual is a function of the final state, not {type(residual).__name__}",
@@ -310,7 +315,7 @@ def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[o
                                        f"residual entry), not {noise!r}: the Fisher information and the loss are "
                                        f"over it, and a unit noise would make them a statement about nothing",
                                        "declare the residual's noise, `Study(exp).fit(..., noise=1e-3)`")])
-    run = _Fit(experiment, axes, starts, residual, duration, sigma, dict(acknowledged or {}))
+    run = _Fit(experiment, axes, starts, residual, duration, sigma, dict(acknowledged or {}), taken)
     given = {resolve(path, declarations): pair for path, pair in (bounds or {}).items()}
     theta = {axis: _si(starts[axis]) for axis in axes}
     boxes = {axis: _box(axis, write, run.leader, theta[axis], declarations, run.built, given.get(axis))

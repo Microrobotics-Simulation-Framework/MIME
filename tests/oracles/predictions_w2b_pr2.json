@@ -1,0 +1,115 @@
+{
+  "written": "2026-11-11, committed before any gate of W2b's PR 2 ran (the commit that adds this file is the timestamp): rolling resistance as a row kind, the spun sphere, identifying mu with its verdict",
+  "phase": "W2b PR 2: Coulomb(rolling=...), the spun sphere's stick, fit_friction (Study.fit with a gradient-free control and the identifiability verdict)",
+  "labels": "the W2b builder (Opus), from closed forms derived here and the friction spike's measurements; 'guess' where neither applies",
+  "seen_before": [
+    "the spike's case 2 with rolling resistance (prototype, inner3): rolls 5.7e-16, slips 2.2e-15, held still 3.4e-13 of g T, every threshold at 0.9995 and 1.0005 on its side",
+    "the spike's case 3 dry: stick within 0.5 to 0.75 of a step of 2 a omega0 / (7 mu g), final (2/7) a omega0 to 6e-14",
+    "the spike's gradients: d/dmu_r rolling AD = CD to 1e-10, closed form 5e-16; at mu_r = 0 AD 0, the right slope the closed form (one-sided)",
+    "PR 1's node at this branch's base: the sliding pair's oracles to 1e-15 (float64) and 8e-7 (float32)"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU",
+    "sizes_and_parameters": "a 1 mm sphere of 2000 kg/m^3 on the node's half-space; mu 0.2 (slope), 0.3 (flat), 0.1 and 0.5 (spun); mu_r 0.05 a; dt 1 ms (slopes, flat), 0.1 ms (spun, omega0 100 rad/s); the fit through built.run on the tilted tube's floor, float64, 0.1 s, the block a cylinder 0.5 by 3 mm lying down the slope",
+    "seeds_and_draws": "fixed cases"
+  },
+  "gate_1_rolling_thresholds": {
+    "claim": "with rolling resistance a sphere is held still for tan(theta) <= mu_r/a, rolls without slip at (5/7) g (sin - (mu_r/a) cos) for tan(theta) <= (7/2) mu - (5/2) mu_r/a, and slips past it, either side of each threshold at 0.9995 and 1.0005",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction_rolling.py::test_a_sphere_with_rolling_resistance_is_held_rolls_or_slips_either_side_of_each_threshold",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-11
+      ],
+      "unit": "|a - a_oracle| / g, float64 (float32 5e-5)",
+      "basis": "measured-before (the spike's inner3)"
+    },
+    "control": {
+      "plant": "the thresholds' other side: a state in the wrong branch misses by the branch gap (1e-1 g)",
+      "expected_rate": "1/1"
+    }
+  },
+  "gate_2_rolling_flat": {
+    "claim": "rolling on a flat slows at (5/7) mu_r g / a and then stays",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction_rolling.py::test_rolling_on_a_flat_slows_at_five_sevenths_mu_r_g_over_a_and_then_stays",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-09
+      ],
+      "unit": "worst |v - v_oracle| / v0 beyond a step's change, float64",
+      "basis": "derived"
+    },
+    "control": {
+      "plant": "rolling resistance's rows turned about the normal ([0; n])",
+      "expected_rate": "1/1: the rolling never slows"
+    }
+  },
+  "gate_3_spun": {
+    "claim": "a sphere spun on a flat sticks within a step of 2 a omega0 / (7 mu g) and rolls at (2/7) a omega0",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction_rolling.py::test_a_sphere_spun_on_a_flat_sticks_on_time_and_rolls_at_two_sevenths_a_omega0",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1.0
+      ],
+      "unit": "|first rolling step - stick time| / dt",
+      "basis": "measured-before"
+    },
+    "control": {
+      "plant": "friction at the centre ([t; 0])",
+      "expected_rate": "1/1: the spin never turns into rolling"
+    }
+  },
+  "gate_4_rolling_gradient": {
+    "claim": "d v / d mu_r while rolling is -(5/7) g cos(theta) T / a (AD and CD); at mu_r = 0 reverse mode reads zero and the right slope the closed form",
+    "kind": "equality",
+    "case": "tests/oracles/test_friction_rolling.py::test_the_derivative_in_mu_r_rolling_is_the_closed_form_and_one_sided_at_zero",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-09
+      ],
+      "unit": "|AD - closed| / |closed| at mu_r = 0.05 a, float64",
+      "basis": "measured-before"
+    }
+  },
+  "gate_5_fit": {
+    "claim": "fit_friction on sliding data (the block, data at mu 0.3) from 0.2 ends within one standard error of 0.3, the gradient-free control agrees, the verdict identified; on pure rolling data the verdict is bounded below only with the bound (2/7) tan(theta)",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction_fit.py",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-06
+      ],
+      "unit": "|estimate - 0.3| (noise-free data, so the standard error from noise 1e-3 of the speed is about 1e-3 of mu; the estimate's own error far below it)",
+      "basis": "derived"
+    },
+    "control": {
+      "plant": "pure rolling data",
+      "expected_rate": "1/1: bounded below only"
+    }
+  },
+  "outcomes": {
+    "written": "2026-11-11, after the runs (laptop CPU, the touched files at w2b/rolling with PR 1's final head merged); the predictions above are as committed in d69324d",
+    "gate_1_rolling_thresholds": "held: float64 worst 8.5e-13 g (held still at 0.9995 of mu_r/a: 8.36e-12 m/s^2 against 0), rolling and slipping either side to the 10 digits printed (3.187781098, 3.191180027 m/s^2); float32 worst 1.7e-7 g (3.187782764 against 3.187781098). Each side of each threshold in its branch, both dtypes (predicted under 1e-11 g, float32 5e-5)",
+    "gate_2_rolling_flat": "held: worst |v - v_oracle| 5.93e-13 m/s against v0 2e-3 (3.0e-10 of v0; float32 8.8e-11 m/s), then still (last speed -7e-30). Control (the rolling rows turned about the normal): the rolling never slows, 1/1 (predicted under 1e-9 of v0)",
+    "gate_3_spun": "held: the first rolling step 292 against 291.25 (mu 0.1) and 59 against 58.25 (mu 0.5): 0.75 of a step each, both dtypes; final (2/7) a omega0 to the 10 digits printed in float64, 1.9e-6 relative in float32. Control (friction at the centre): the spin never turns into rolling, 1/1 (predicted within one step)",
+    "gate_4_rolling_gradient": "missed at mu_r = 0, held elsewhere: the prediction said reverse mode reads zero at mu_r = 0 and the right slope the closed form; measured, AD equals the closed form at 0 too (-343.5534439, the one-sided slope into mu_r >= 0), which the test now asserts; at mu_r 0.05 a, -343.5534439 against the closed form, float64, to the 10 digits printed (under 3e-10 relative); float32 -343.5532837, 4.7e-7 relative. The test the prediction named (..._and_one_sided_at_zero) does not exist: it is test_the_derivative_in_mu_r_rolling_is_the_closed_form_even_at_zero (the fix round's note, after the review's minor 1)",
+    "gate_5_fit": "held: sliding data (mu 0.3, the block) fitted from 0.2 end at 0.3 to the 9 digits printed (|estimate - 0.3| under 5e-10), one standard error 3.0e-4 at a noise of 1e-3 of the speed, the gradient-free control 0.299877 (within one standard error), verdict identified, 50 of 50 held steps sliding. Control (pure rolling data): bounded below only, the bound 0.06 = (2/7) tan(theta) to 1e-6, 1/1 (predicted |estimate - 0.3| under 1e-6)",
+    "not_predicted": "Study.fit took touching as a line and ended every fit of a held body at its start; STATE_FLAGS (touching) is no longer a line, the fit's existing tests (tests/gradients/test_gate8_fit.py, test_controller_leaves.py) pass unchanged"
+  }
+}

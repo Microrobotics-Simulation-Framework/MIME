@@ -9,8 +9,8 @@ own, built with its solve and its oracle (the contact refuses a law its solve do
 - :class:`NormalLaw`, how a point is held along its normal: :class:`Hold` now (no penetration, no rebound); the adhesion
   offset in its limit (:attr:`Hold.adhesion`: the normal force may pull to ``-F_adh`` and friction's limit becomes
   ``mu (N + F_adh)``), restitution and soft or compliant laws later.
-- :data:`ROW_KINDS`, the rows a law adds beside each point's normal row: sliding now; rolling resistance with W2b's
-  second pull request; spin declared, not built.
+- :data:`ROW_KINDS`, the rows a law adds beside each point's normal row: sliding and rolling resistance
+  (``Coulomb(rolling=...)``) now; spin declared, not built.
 - :data:`POINT_SETS`, how a contact's points are held: one point a group now; line and patch contacts later, as
   distributed point sets with weights.
 
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from typing import Annotated, ClassVar, cast, override
 
 from mime.registry import PHYSICAL, SettingGroup, convention, register_setting_group
-from mime.units import Force, Quantity
+from mime.units import LENGTH, Force, Length, Quantity, UnitError, si
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -40,8 +40,16 @@ class FrictionLaw(SettingGroup):
     group: ClassVar[str] = "friction_law"
     #: The law's name as the body's solve takes it (``mime.nodes.body._rigid_inertial.FRICTION_LAWS``).
     law: ClassVar[str] = ""
-    #: The row kinds the law adds beside each point's normal row, by :data:`ROW_KINDS`' names.
+    #: The row kinds the law may add beside each point's normal row, by :data:`ROW_KINDS`' names.
     rows: ClassVar[tuple[str, ...]] = ()
+
+    def held_rows(self) -> tuple[str, ...]:
+        """The row kinds this law's values add: :attr:`rows` by default."""
+        return self.rows
+
+    def solve_name(self) -> str:
+        """The name the body's solve takes for this law's values: :attr:`law` by default."""
+        return self.law
 
     def limit(self, load: float, speed: float) -> float:
         """The most the traction may be (N) at a normal ``load`` (N) and slip ``speed`` (m/s)."""
@@ -64,15 +72,33 @@ class Coulomb(FrictionLaw):
     otherwise, its traction ``mu N`` against its slip. Exact sticking, never a regularised creep: a block on a slope
     stays put below ``tan(theta) = mu``. The slip is the body's own point's (``v + omega x r``), so a body rolls without
     slipping where its sliding rows stick. A static coefficient above the kinetic one is another law, which adds a jump
-    at breakaway, to follow with its evidence."""
+    at breakaway, to follow with its evidence.
+
+    ``rolling``, the rolling resistance ``mu_r`` (a length), adds the rolling row kind: a torque about the surface's
+    tangents at each point bounded by ``mu_r N``, so a sphere held still on a slope below ``tan(theta) = mu_r / a``
+    stays put and one rolling on a flat slows at ``(5/7) mu_r g / a``. Unwritten, no rolling rows are built (the
+    program of the sliding pair alone); written, ``0`` included, they are, so ``mu_r`` is a study's axis, whose
+    derivative at zero is the slope into ``mu_r >= 0`` (measured). It does not enter a synchronous rolling speed at all
+    (the torque budget absorbs it until step-out): it is identified only from stepped-out data."""
 
     group = "coulomb"
     law = "coulomb"
-    rows = ("sliding",)
+    rows = ("sliding", "rolling")
     setting_roles = {"mu": convention(PHYSICAL, "a declared coefficient of the body's and the wall's surfaces in "
                                                 "contact, never fitted unless a fit names it: static and kinetic in "
-                                                "one")}
+                                                "one"),
+                     "rolling": convention(PHYSICAL, "none: no rolling rows, no rolling resistance; written, a length "
+                                                     "(0 a study's start), the rolling row kind held")}
     mu: float
+    rolling: Annotated[Quantity | None, Length] = None
+
+    @override
+    def held_rows(self) -> tuple[str, ...]:
+        return ("sliding",) if self.rolling is None else ("sliding", "rolling")
+
+    @override
+    def solve_name(self) -> str:
+        return "coulomb" if self.rolling is None else "coulomb_rolling"
 
     @override
     def limit(self, load: float, speed: float) -> float:
@@ -80,14 +106,27 @@ class Coulomb(FrictionLaw):
 
     @override
     def coefficients(self) -> Mapping[str, float]:
-        return {"mu": float(self.mu)}
+        """``mu``, and ``mu_r`` where rolling resistance is written (SI: the setting's metres, as phase 1 holds a
+        dimensioned value)."""
+        found = {"mu": float(self.mu)}
+        if self.rolling is not None:
+            found["mu_r"] = float(cast(float, si(self.rolling, LENGTH, what="Coulomb's rolling=")))  # a scalar length
+        return found
 
     @override
     def problems(self) -> list[str]:
         mu = cast(object, self.mu)  # a script's value, checked like a script's
+        found: list[str] = []
         if not (isinstance(mu, (int, float)) and not isinstance(mu, bool) and math.isfinite(mu) and mu >= 0.0):
-            return [f"friction's mu is {self.mu!r}, not a coefficient from 0 on: write Coulomb(mu=0.15)"]
-        return []
+            found.append(f"friction's mu is {self.mu!r}, not a coefficient from 0 on: write Coulomb(mu=0.15)")
+        if self.rolling is not None:
+            try:
+                rolling = si(self.rolling, LENGTH, what="Coulomb's rolling=")
+            except (UnitError, TypeError):
+                return [*found, f"friction's rolling is {self.rolling!r}, not a length: write rolling=um(1.0)"]
+            if not (isinstance(rolling, float) and math.isfinite(rolling) and rolling >= 0.0):
+                found.append(f"friction's rolling is {self.rolling!r}, not a length from 0 on")
+        return found
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -190,8 +229,7 @@ ROW_KINDS: Mapping[str, RowKind] = {
     "sliding": RowKind("sliding", 2, "[t; r x t]", "the slip of the body's own point along the surface, v + omega x r",
                        "mu N, on the elliptic cone", "N", "1", True),
     "rolling": RowKind("rolling", 2, "[0; t]", "the body's rotation about the surface's tangents at the point",
-                       "mu_r N, mu_r a length", "N m", "m", False,
-                       "rolling resistance comes with W2b's second pull request, as Coulomb(rolling=...)"),
+                       "mu_r N, mu_r a length, on its own disk", "N m", "m", True),
     "spin": RowKind("spin", 1, "[0; n]", "the body's rotation about the normal at the point",
                     "mu_spin N, mu_spin a length", "N m", "m", False,
                     "spin friction needs a finite contact patch: zero for a rigid point contact, declared for soft "

@@ -33,6 +33,20 @@ ROD_MOMENTS = (0.5 * ROD_MASS * 5e-4 ** 2, ROD_MASS * (3 * 5e-4 ** 2 + 3e-3 ** 2
 TUBE_RADIUS = 3.175e-3
 
 
+def rolling_oracle(theta: float, mu: float, mu_r: float, a: float = RADIUS) -> tuple[str, float, float]:
+    """A solid sphere on a slope of ``theta`` with friction ``mu`` and rolling resistance ``mu_r`` (a length): its state,
+    its acceleration down the slope and its spin's: held still for ``tan(theta) <= mu_r / a`` (and ``<= mu``); rolling
+    without slip for ``tan(theta) <= (7/2) mu - (5/2) mu_r / a`` at ``(5/7) g (sin - (mu_r/a) cos)``; else slipping at
+    ``g (sin - mu cos)``, its spin growing at ``(mu a - mu_r) g cos / (2/5 a^2)``."""
+    s, c = math.sin(theta), math.cos(theta)
+    if math.tan(theta) <= mu_r / a and math.tan(theta) <= mu:
+        return "still", 0.0, 0.0
+    if math.tan(theta) <= 3.5 * mu - 2.5 * mu_r / a:
+        acceleration = 5.0 / 7.0 * G * (s - mu_r / a * c)
+        return "roll", acceleration, acceleration / a
+    return "slip", G * (s - mu * c), max((mu * a - mu_r) * G * c / (0.4 * a * a), 0.0)
+
+
 def incline_oracle(theta: float, mu: float, rolls: bool) -> tuple[str, float]:
     """The state and the acceleration down the slope of a solid sphere (``rolls``) or a body that cannot roll: a sphere
     rolls without slipping for ``tan(theta) <= (7/2) mu`` at ``(5/7) g sin(theta)``, else slips; a block sticks for
@@ -46,13 +60,16 @@ def incline_oracle(theta: float, mu: float, rolls: bool) -> tuple[str, float]:
 
 def plane_node(body=BALL, *, mu: float = 0.2, dt: float = 1e-3, mass: float = MASS,
                inertia=(MOMENT,) * 3, friction: bool = True, spacing: float = 2e-4, margin: float = 0.0,
-               cls=RigidInertialMidpointNode):
+               rolling: float | None = None, cls=RigidInertialMidpointNode):
     """``body``'s node held by its hull on the half-space ``z >= 0`` (the contact 0.5.0's loops), with Coulomb friction
-    ``mu`` (or none), its lowest point on the shrunk plane."""
+    ``mu`` (or none) and, where ``rolling`` is given, rolling resistance of that length, its lowest point on the
+    shrunk plane."""
     kind, settings = body
     patches = tuple(kind.patches)
     lowest = settings["radius"]
-    held = {"friction": "coulomb", "friction_mu": mu, "friction_law": "contact:body.friction"} if friction else {}
+    held = {"friction": "coulomb" if rolling is None else "coulomb_rolling", "friction_mu": mu,
+            "friction_law": "contact:body.friction",
+            **({} if rolling is None else {"friction_rolling": rolling})} if friction else {}
     return cls("body", dt, mass=mass, inertia=tuple(inertia), initial_pose=(0.0, 0.0, lowest + margin, 1, 0, 0, 0),
                initial_twist=(0.0,) * 6, surface_shape="half_space", surface_normal=(0.0, 0.0, 1.0),
                surface_offset=0.0, margin=margin, velocity_rule="remove_outward", hull_kind=kind.name,
@@ -71,11 +88,14 @@ def slope_inputs(mass: float, theta: float, dtype=None) -> dict:
 
 def on_the_floor(name: str = "friction_sphere", *, theta: float = 0.3, mu: float | None = 0.2, body=BALL,
                  density: float = DENSITY, fluid_density: float = 1.0, dt: float = 1e-3, margin: float | None = None,
-                 roughness: float | None = None, spacing: float | None = None) -> Experiment:
+                 roughness: float | None = None, spacing: float | None = None, rolling: float | None = None,
+                 along: bool = False) -> Experiment:
     """``body`` on the floor of a tube whose axis is tilted ``theta`` up from x about -y (``axis(theta)``), so that
     gravity pulls down the tube's lowest line by ``g sin(theta)`` and into the floor by ``g cos(theta)``, held by the contact with ``Coulomb(mu)`` (none where
-    ``mu`` is ``None``), its margin the contact's default (the roughness cutoff) unless written; in a gas of
-    ``fluid_density`` (its buoyancy in the gravity law)."""
+    ``mu`` is ``None``; with rolling resistance ``rolling`` where given), its margin the contact's default (the roughness
+    cutoff) unless written, its hull's spacing the contact's default unless written; in a gas of ``fluid_density`` (its
+    buoyancy in the gravity law). ``along`` turns the body's x along the tube's axis (a cylinder lying on the floor down
+    the slope: the block)."""
     kind, settings = body
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(G), dt=s(dt))
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=axis(theta), inner_radius=m(TUBE_RADIUS),
@@ -85,7 +105,7 @@ def on_the_floor(name: str = "friction_sphere", *, theta: float = 0.3, mu: float
     lowest = settings["radius"]
     ball = experiment.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
         position=m(tuple(float(c) * (TUBE_RADIUS - held - lowest) for c in floor(theta))),
-        orientation=(1.0, 0.0, 0.0, 0.0),
+        orientation=(math.cos(theta / 2), 0.0, -math.sin(theta / 2), 0.0) if along else (1.0, 0.0, 0.0, 0.0),
         velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0))),
         parts={"shell": Part(kind)}))
     experiment.declare("ball.parts.shell.density", kg_per_m3(density), reason="the spike's sphere")
@@ -96,7 +116,8 @@ def on_the_floor(name: str = "friction_sphere", *, theta: float = 0.3, mu: float
     experiment.attach(Gravity(), body=ball, medium=gas)
     contact = Contact.Projection(**({} if margin is None else {"margin": m(margin)}),
                                  **({} if spacing is None else {"spacing": m(spacing)}),
-                                 **({} if mu is None else {"friction": Coulomb(mu=mu)}))
+                                 **({} if mu is None else {"friction": Coulomb(
+                                     mu=mu, **({} if rolling is None else {"rolling": m(rolling)}))}))
     experiment.attach(contact, body=ball, surface=tube.inner_surface)
     return experiment
 
@@ -116,7 +137,7 @@ def net(density: float = DENSITY, fluid_density: float = 1.0) -> float:
     return 1.0 - fluid_density / density
 
 
-__all__ = ["BALL", "MASS", "MOMENT", "ROD", "axis", "floor", "incline_oracle", "net", "on_the_floor", "plane_node", "slope_inputs"]
+__all__ = ["BALL", "MASS", "MOMENT", "ROD", "axis", "floor", "incline_oracle", "rolling_oracle", "net", "on_the_floor", "plane_node", "slope_inputs"]
 
 
 #: The done case's sphere in glycerol-water (the friction spike's case 3 with fluid): radius, mass, moment, net load,

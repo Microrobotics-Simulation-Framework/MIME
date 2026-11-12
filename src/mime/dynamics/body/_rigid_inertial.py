@@ -194,6 +194,8 @@ class RigidInertial(Dynamics):
         if held.friction is not None:
             hull.update(friction=held.friction.law, friction_mu=float(held.friction.coefficients["mu"]),
                         friction_law=f"{held.id}.friction")
+            if "mu_r" in held.friction.coefficients:
+                hull["friction_rolling"] = float(held.friction.coefficients["mu_r"])
         surface: dict[str, Any] = {f"{SURFACE}{name}": value for name, value in held.parameters.items()}
         b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
                         initial_twist=twist, surface_shape=held.shape, extent=held.extent, margin=held.margin,
