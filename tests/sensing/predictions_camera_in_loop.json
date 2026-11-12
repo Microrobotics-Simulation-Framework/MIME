@@ -185,7 +185,135 @@
     "prediction": "a non-frame step adds at most 0.1 ms to the same graph without the camera (the ring shift and the cond's hold); a frame step costs PR 1's disc-window frame (about 1.1 ms at 320x240, 2.5 ms at 640x480 in float32, float64 about 1.4x) plus the response and the noise draw, within 2x; a camera mounted on a moving frame renders the static tube in every frame: about 36 ms at 320x240 and 130 to 200 ms at 640x480 more (PR 1's uncached tube)",
     "measured_at": "the camera core's frame times, a different graph; this gate's sizes are measured, not fitted"
   },
-  "outcomes": null,
+  "outcomes": {
+    "written": "2026-11-12",
+    "probe_heads": "run 43119066763 on 5aa40e46b (the code of camera/in-loop 5d6d604; later commits only docs and one test); run 43126988337 on d5d5e19e0 (camera/in-loop 654f2bbc)",
+    "controls_by_detection_rate": {
+      "G4 clock, latency (off by one)": {
+        "gate": "gate_4_clock",
+        "caught": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "replay, ring": {
+        "gate": "gate_replay",
+        "caught": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "replay, key": {
+        "gate": "gate_replay",
+        "caught": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "replay, shift": {
+        "gate": "gate_replay",
+        "caught": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "whole scene, drop-body": {
+        "gate": "gate_whole_scene",
+        "caught": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "mounts, stale-cache": {
+        "gate": "gate_mounts",
+        "first_run": "0/30 (run 43119066763): the control did not fail ANY run",
+        "caught_after_fix": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43126988337",
+        "why": "the prediction's resolution premise ('the tube's wall edge moves with the camera by more than a pixel') was wrong: the gantry moved the camera along the tube's axis (x), where the tube looks the same, and the test compared only the ball's centroid, which a moving subject draws at the present pose whatever the cache holds. The test now moves the carriage across the tube (z, 4.5 um, 3.4 px) and holds the tube's image to the offline render's from the present pose (largest gap 133 counts with the plant, under 1 count without); found by the control, as the repo's notes say",
+        "predictions_status": "missed, then repaired; the prediction text above is unchanged"
+      },
+      "calibration import, p-swap": {
+        "gate": "gate_calibration_import",
+        "caught": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "calibration import, k3-drop": {
+        "gate": "gate_calibration_import",
+        "caught": "30/30",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "G11 refusals, frame-period / recordable / box-form": {
+        "gate": "gate_11_refusals",
+        "caught": "30/30 each",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": "three of the refusals' controls (the planted removal of the refusal); the remaining refusals are asserted by the test but have no planted removal"
+      },
+      "contract, shape-ignored / mount-unwired": {
+        "gate": "contract_changes",
+        "caught": "30/30 each",
+        "clean_flagged": "0/30",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "note": ""
+      },
+      "G13, frozen-leaf": {
+        "gate": "gate_13_calibration_fit",
+        "caught": "10/10 (30 predicted: each run is a fit, minutes long; 10 is a lower bound of 0.74, not the 0.90 of 30)",
+        "clean_flagged": "0/10",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+        "memory": "this arm's peak (2.85 GiB) exceeded its estimate's bound (1.17 GiB; estimate 0.47): the arm 'failed' the memory check after its script ran; the estimate was of the case without the fit's derivative. Calibration row ratio 6.08 (uncalibrated family); the detection result stands"
+      }
+    },
+    "replay": "float64 exact (0 pixels flipped). float32 MISSED the prediction 'bit for bit': the in-loop frame and the offline render are two compiled programs and the noisy value differs in its last bits, a few pixels round the other way (<= 1 count); the float32 line is derived from that mechanism in test_in_loop_replay.py. Prediction logged as missed",
+    "g13_grid": "the predicted 3x3 grid at 64x48 took 232 s in its first run; the grid was shrunk AFTER that run to 2x2 at 48x36 (lines unchanged). The float32 Fisher information warns rank 4 of 6 at the noise floor. Fit errors are inside the committed lines in both dtypes in the local run; not re-measured on Actions (only the frozen-leaf control was)",
+    "discriminating_range": "discriminating_range.py not run",
+    "bits": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+      "result": "all_equal true: script_a_f64, script_a_f32, gantry_f64, ballistic_f64, base origin/camera/core 400d651 against head, one job, one thread (OMP/MKL 1, XLA single thread), max_abs_difference 0",
+      "not_done": "the predicted 'repeat' and 'one_ulp' controls were not run in this probe, and the sphere-in-the-tube and energy-ledger programs are not among the four compared; 'every merged program with no camera' is therefore covered by these four and by CI's saved-case bits, not by a larger set"
+    },
+    "costs": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43119066763",
+      "how": "node_measure.py through the built graph, 100 steps, 5 repeats, minimum of the steady runs; the done case's scene (a ball and a tube); Actions 4 vCPU; two 640x480 f32 arms flagged timing_on_loaded_machine by the tool",
+      "rows_ms_per_step": {
+        "float32 320x240": {
+          "no camera": 0.013,
+          "camera held (non-frame step)": 0.074,
+          "frame step": 1.86,
+          "moving mount, every frame": 20.4
+        },
+        "float32 640x480": {
+          "no camera": 0.027,
+          "camera held": 0.255,
+          "frame step (loaded flag)": 12.6,
+          "moving mount (loaded flag)": 187.0
+        },
+        "float64 320x240": {
+          "no camera": 0.044,
+          "camera held": 0.186,
+          "frame step": 4.71,
+          "moving mount": 91.3
+        },
+        "float64 640x480": {
+          "no camera": 0.041,
+          "camera held": 0.248,
+          "frame step": 20.0,
+          "moving mount": 408.0
+        }
+      },
+      "against_the_predictions": {
+        "non-frame overhead <= 0.1 ms": "held minus no camera is 0.06, 0.23, 0.14, 0.21 ms: MISSED in 3 of 4 (held step still carries the ring write and the cond)",
+        "frame step within 2x of PR 1's disc-window frame plus response": "float32 320: 1.86 vs 1.1 (1.7x, held); float32 640: 12.6 vs 2.5 (5x, loaded flag, missed); float64 320: 4.7 vs 1.5 (3x, missed); float64 640: 20 vs 3.5 (5.7x, missed)",
+        "moving mount, tube every frame: +36 ms (320), +130 to 200 ms (640)": "float32: 20 and 187 (held, within the range), float64: 91 and 408 (about 2.5x and 2x over)"
+      },
+      "status": "reported, not gated; the frame step's excess over PR 1's frame times is not explained here (the frame arm includes the response, the noise draw and the exposure's sub-frames, not separated)"
+    }
+  },
   "gate_13_calibration_fit": {
     "added": "2026-11-11, after the coordinator's correction put G13 in this PR, and after the clock and replay gates had run; committed before any fit of the sphere grid ran (the replay's own outcome is logged in 'outcomes' as a miss)",
     "claim": "Study.fit recovers a camera's intrinsics and distortion (fx, fy, cx, cy, k1, k2) from a 3 x 3 grid of spheres on a tilted plane, rendered live by the in-loop camera with the detector's numbers as leaves; the fitted camera is labelled fitted, with its fit",
