@@ -1,0 +1,3 @@
+# every arm bounded by the largest: a periodic tube box at D/h 64 with a period of four diameters holding a plug
+# closing it (probe/estimate_case.py); the open arms (D/h 32, two diameters) and the smaller periodic ones lie within it
+*: --case estimate_case:tube --path probe --arg cells_across=64 --arg length_cells=256 --steps 1
