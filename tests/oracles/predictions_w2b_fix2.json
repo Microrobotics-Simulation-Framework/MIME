@@ -40,5 +40,10 @@
     "controls": {"one_ulp": "FL-9 one ulp of angle further in the probe's tree: arrays differ in float64 (float32 rounds the ulp away)"}
   },
   "costs": {"prediction": "", "measured_at": ""},
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the gates ran (run 43182441811, probe/w2b-fix-253f at 0d2921dc)",
+    "gate_m1_flip_line": "held: at FLIP_SEEN, Hypothesis seeds 3000 to 3019 (fresh), the planted flip caught 20/20 in float64 and 20/20 in float32 (95 % lower bound 0.86), the clean suite flagged 0/20 in both",
+    "gate_m8_diagonal": "held (local, both dtypes): the deceleration mu g to 1e-12 of g in float64 and 2.5e-7 m/s^2 off in float32, across speed 1.7e-18 m/s, spin 6e-15 (float64) and 2.4e-6 rad/s (float32); the square cone 4.162 m/s^2 against 2.943, caught",
+    "bits": "held: the 16 programs equal against e1072449, both dtypes, one thread; the one-ulp control differs in float64 (float32 rounds it away). The bits job is red only on the memory route's check (1.82 GiB against a 1.35 GiB bound: the estimator's underestimate, a calibration row in mem_check.json)"
+  }
 }
