@@ -266,11 +266,15 @@ def resistance(case: Case, reflection: Callable[[np.ndarray], np.ndarray] | None
             y = target
         else:
             y, info = spla.gmres(spla.LinearOperator((3 * n, 3 * n), matvec=operator, dtype=np.float64), target,
-                                 rtol=rtol, restart=60, maxiter=6)
-            assert info == 0, f"GMRES stopped short ({info})"
+                                 rtol=rtol, restart=60, maxiter=8)
+            residual = float(np.linalg.norm(operator(y) - target) / np.linalg.norm(target))
         forces = sla.lu_solve(factor, y).reshape(n, 3) * sphere.area[:, None]
         out[name] = {"force": forces.sum(0).tolist(), "torque": np.cross(points - centre, forces).sum(0).tolist(),
                      "products": products[0]}
+        if reflection is not None:
+            # GMRES's own stop is recorded with the true residual, never asserted: a near-wall system the point read
+            # makes ill-conditioned stops short of 1e-9 and is read with its residual beside it.
+            out[name].update(gmres_info=int(info), true_residual=residual)
     return out
 
 

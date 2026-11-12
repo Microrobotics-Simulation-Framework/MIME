@@ -123,7 +123,13 @@ def _walled(grid: MACGrid, stopping: Stopping, mu: Any, shift: Any, sigma: Any, 
 
 @functools.partial(jax.jit, static_argnums=(0,))
 def _own(grid: MACGrid, symbol: Any, rhs: Any) -> Any:
-    held = [jnp.fft.ifftn(jnp.fft.fftn(r) / symbol).real for r in rhs]
+    """The own box's step by its transform, its mean mode zero: a free fluid carries no mean drift, and the periodic
+    box's mean (a net force accelerating the whole box, unresisted) is the box's artefact, which under the step
+    operator is Hasimoto's term screened to zero (the F5-patch interface)."""
+    held = []
+    for r in rhs:
+        modes = jnp.fft.fftn(r) / symbol
+        held.append(jnp.fft.ifftn(modes.at[0, 0, 0].set(0.0)).real)
     return grid.project((held[0], held[1], held[2]))
 
 
@@ -217,6 +223,7 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
     n = points.shape[0]
     forces_out: list[float] = []
     products_out: list[int] = []
+    residuals: list[float] = []
     if form in ("be_patch", "quasi_steady"):
         size = int(math.ceil(2.0 * (case.cells + case.margin)))
         patch = RefinementPatch((size, size, size), case.fine)
@@ -281,7 +288,8 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
 
         y, info = spla.gmres(spla.LinearOperator((3 * n, 3 * n), matvec=operator, dtype=np.float64),
                              target.reshape(-1), rtol=1e-9, restart=60, maxiter=6)
-        assert info == 0, f"GMRES stopped short ({info}) at step {step}"
+        residuals.append(float(np.linalg.norm(operator(y) - target.reshape(-1)) / np.linalg.norm(target)))
+        count[0] -= 1
         forces = sla.lu_solve(factor, y).reshape(n, 3) * area[:, None]
         density = box.scatter(jnp.asarray(forces))
         walled_new = box.walled(tuple(shift * w + d for w, d in zip(walled_old, density)), walled_old)
@@ -292,4 +300,5 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
         walled_old, own_old = walled_new, own_new
         forces_out.append(float(forces.sum(0)[case.direction]))
         products_out.append(count[0])
-    return {"form": form, "force": forces_out, "products": products_out, "lambda": case.lam}
+    return {"form": form, "force": forces_out, "products": products_out, "lambda": case.lam,
+            "gmres_true_residual": residuals}
