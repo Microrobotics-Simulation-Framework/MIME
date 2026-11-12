@@ -1,0 +1,6 @@
+# the bits arms build and run saved cases one at a time in fresh processes (two trees); the largest a saved case's
+# FVM box is under the proxy's (D/h 32, a period of eight diameters, sized to the peaks of earlier bits probes): the MRS cases' are measured families too
+*: --case estimate_case:tube --path probe --arg cells_across=32 --arg length_cells=256 --steps 1
+bits_d: --case mrs_cases:mrs_near_field_gmres --path tests --steps 1
+bits_d: --case mrs_cases:mrs_graded --path tests --steps 1
+bits_d: --case mrs_cases:mrs_solids --path tests --steps 1
