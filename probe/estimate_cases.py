@@ -1,6 +1,8 @@
 """The fifth gates probe's estimates (raw programs): the walls gate's step prepared at D/h 32 for its largest sphere
 (a/R 0.34, a cell from the wall), the heaviest of the tube arms; and the far-field gate's helix built and scattered into
-its 128-cell box."""
+its 128-cell box. Each factory does what its test's process does before the run (the tube table's reference build, the
+program's compilation), so that the resident set it reports carries them: the earlier probes' raw lines, without them,
+were underestimates of 1.2 to 2.4 times."""
 import sys
 from pathlib import Path
 
@@ -15,7 +17,7 @@ import jax.numpy as jnp  # noqa: E402
 
 
 def walls_step():
-    from schwarz_cases import TUBE_CELLS, box_for, flux_free, schwarz_body, sphere_member, steady_tube
+    from schwarz_cases import TUBE_CELLS, box_for, flux_free, schwarz_body, sphere_member, steady_tube, tube_table
 
     from mime.nodes.flow.fvm._schwarz import image_terms, prepared, stencils
     from mime.nodes.hydro.near_field._gmres import REPORT_SIZE, Stopping
@@ -38,7 +40,10 @@ def walls_step():
         return prepared(at.grid, box, held, body, walled, base, (still, still, still), jnp.zeros(3), 0.0, at.nu,
                         at.rho, now, Stopping(1e-6), jnp.zeros(2 * REPORT_SIZE)).resistance
 
-    return jax.jit(step), (at.grid.zeros(jnp.float64),)
+    tube_table(radius, 0.2512 * radius, tube, tube - radius - spacing)
+    arguments = (at.grid.zeros(jnp.float64),)
+    jax.jit(step).lower(*arguments).compile()
+    return jax.jit(step), arguments
 
 
 def far_field():
@@ -60,4 +65,6 @@ def far_field():
         forces = jnp.linalg.solve(matrix, motions)[:, 3].reshape(-1, 3) * body.placed.area[:, None]
         return own_response(box, tuple(scatter(grid, k, forces[:, k], held[k]) for k in range(3)), 0.0, MU / RHO, RHO)
 
-    return jax.jit(scattered), (body.matrix, body.placed.motions())
+    arguments = (body.matrix, body.placed.motions())
+    jax.jit(scattered).lower(*arguments).compile()
+    return jax.jit(scattered), arguments
