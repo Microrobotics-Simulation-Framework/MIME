@@ -1,0 +1,341 @@
+{
+  "written": "2026-11-12, committed before any arm of this probe ran (the commit that adds this file is the timestamp): float32 against float64 derivatives through the merged penalty rung (#259's ResolvedFlowNode), forward and reverse mode, with controls that separate the cause",
+  "phase": "focused check on merged code: float32 gradients through Drag.Penalty (#259, e107244), after the solve-mask spike's part C read float32 reverse mode through a penalty sphere 85 to 155 % off",
+  "labels": "predictions by the probe's agent from a derivation (the CG's stop judged on its own right-hand side's norm) and guesses, before any number of this probe was seen; [derived] or [guess] per gate",
+  "seen_before": [
+    "#259's gate 6 (tests/flow/test_resolved_bodies.py, float64, 3 cells a radius, the sphere 0.2 R off the axis): jax.grad (reverse mode) of R_zz in x -0.0053167 against a central difference of 0.01 h -0.0053149, 3.4e-4 apart (tests/flow/predictions_f4.json outcomes)",
+    "#259's gate 7: the steady drag at 6 cells a radius in float32 within 1e-3 of float64's (passed in CI)",
+    "the solve-mask spike's part C, a different case (an open tree under IMEX Euler, two steps, a nested masked solve, a penalty sphere's x): float32 vjp against jvp 1.55 and 0.85 (sphere), 1.3e-3 and 2.1e-2 (radius), 1.3e-5 and 3.8e-4 (flow); its float32 jvp itself unverified; float64 vjp against jvp 2e-9 to 2e-8 (sphere) with the weighted transpose",
+    "round 1 (run 43200714550, 22 of 23 arms read before this amendment): float32 within 4e-4 of float64's converged derivative in both modes at 3 and 6 cells; at 3 cells with the 0.01h interior float32's x 3.4e-3 (jvp) and 4.1e-3 (vjp) off its float64; float64 at 1e-5 reproduces the base gap. The gate below is predicted from those numbers: a fit, labelled so",
+    "round 2 (run 43202597797) read before this amendment: at 0.01h and 6 cells float32 x jvp 1.65e-2, vjp 3.2e-2, mu and drive vjp 1.6e-3. A 2-step float32 reverse smoke of round 3's script at 3 cells ran locally (it finished; its numbers were not compared with anything)"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner (4 vCPU, its CPU model recorded per arm in cpu_<arm>.txt)",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "#259's gate-6 case: a sphere of radius 0.5 mm in a periodic tube of R = a/0.375 = 1.333 mm, 4 R long, the sphere's centre 0.2 R off the axis, water (mu 1e-3 Pa s, rho 1e3 kg/m^3), the flow node's steady step under Stokes, the band smooth_2h_0.3h, the interior 0.1h, Jacobi CG; 3 cells a radius (box 27 x 27 x 32, h 1.667e-4 m) and 6 (43 x 43 x 64, h 8.33e-5 m); the CG's default stop: 1e-8 in float64, 1e-5 at its rounding floor in float32, cap 5000",
+    "seeds_and_draws": "deterministic: no draws; each derivative is one number at one point. Derivatives: x (R_zz, the flux-free axial column of HeldSphere, in the lateral position), mu (R_zz in the viscosity; exactly R_zz/mu), drive (the held body's axial load at rest under g = 1 m/s^2, in g; exactly F/g)"
+  },
+  "gate_1_float64_forward": {
+    "claim": "in float64 the forward-mode derivative through the penalty rung is right: x against central differences, mu and drive against their exact oracles",
+    "kind": "equality",
+    "case": "probe/f32grad.py, arms c3_f64 and c6_f64",
+    "prediction": {
+      "value": {
+        "x_vs_cd_best_step": 0.0005,
+        "mu_vs_oracle": 1e-07,
+        "drive_vs_oracle": 1e-07
+      },
+      "band": {
+        "x_vs_cd_best_step": [
+          0.0,
+          0.002
+        ],
+        "mu_vs_oracle": [
+          0.0,
+          1e-06
+        ],
+        "drive_vs_oracle": [
+          0.0,
+          1e-06
+        ]
+      },
+      "unit": "1 (relative)",
+      "basis": "measured-before for x (gate 6, reverse mode, 3.4e-4); derived for mu and drive (R_zz is proportional to mu, the at-rest load to g; the residual 1e-8 bounds the rest)",
+      "why": "the steady step is linear in mu's and g's right-hand sides; x carries the band's ripple within a cell (gate 5)"
+    },
+    "metric": "|jvp - reference| / |reference|",
+    "control": {
+      "plant": "plant=position_stop (the position held out of the lift, gate 6's plant): the jvp of x reads 0, 100 % off",
+      "environment_variable": "--variant plant=position_stop (arm c3_f64_plant_pos)",
+      "expected_rate": "1/1 (deterministic, one case)",
+      "runs": 1,
+      "clean_expected": "0/1 (c3_f64's x)",
+      "resolution": "the central difference's own spread over its steps (0.003 h to 0.1 h), read from the arm"
+    },
+    "if_wrong": "a forward-mode defect in float64: the cause is in the derivative, not the precision; stop and isolate it there",
+    "cannot_discriminate_if": "the central differences' spread over their steps exceeds the line (then x's comparison is the ripple's, not the derivative's)"
+  },
+  "gate_2_float64_reverse": {
+    "claim": "in float64 reverse mode agrees with forward mode through the penalty rung",
+    "kind": "equality",
+    "case": "arms c3_f64, c6_f64",
+    "prediction": {
+      "value": 1e-08,
+      "band": [
+        0.0,
+        1e-06
+      ],
+      "unit": "1 (relative, vjp against jvp, each derivative)",
+      "basis": "derived: the periodic box's transpose is the primal solve (symmetric=True, Euclidean product), both solved to 1e-8",
+      "why": "the tangent and transpose solves each meet 1e-8 on their own right-hand sides"
+    },
+    "metric": "|vjp - jvp| / |jvp|",
+    "control": {
+      "plant": "plant=transpose_cap (the transpose solves alone capped at 40 iterations, no stall restart): a reverse-only defect",
+      "environment_variable": "--variant plant=transpose_cap (arms c3_f64_plant_tcap, c6_f64_plant_tcap)",
+      "expected_rate": "6/6 (two sizes, three derivatives) past a line of 1e-4",
+      "runs": 6,
+      "clean_expected": "0/6 (c3_f64, c6_f64)",
+      "resolution": "the clean arms' vjp-against-jvp, at most 1e-6 predicted"
+    },
+    "if_wrong": "a transpose defect in float64 (the spike's open-grid kind): a derivative defect, not precision",
+    "cannot_discriminate_if": "the planted transpose solve converges within 40 iterations anyway (its report's at_cap is 0)"
+  },
+  "gate_3_float32_forward": {
+    "claim": "float32's forward-mode derivative against float64's, each derivative and size",
+    "kind": "estimates",
+    "case": "arms c3_f32, c6_f32 against c3_f64, c6_f64; float32's central differences reported with their spread",
+    "prediction": {
+      "value": {
+        "x": 0.003,
+        "mu": 0.0001,
+        "drive": 0.0001
+      },
+      "band": {
+        "x": [
+          1e-05,
+          0.03
+        ],
+        "mu": [
+          1e-07,
+          0.001
+        ],
+        "drive": [
+          1e-07,
+          0.001
+        ]
+      },
+      "unit": "1 (relative, float32 jvp against float64 jvp)",
+      "basis": "guess, from gate 7's 1e-3 primal line and the tangent solve's 1e-5 stop on a right-hand side in the fluid (drive) or the band (x, mu)",
+      "why": "forward mode reads its answer on the body, where the stiff penalty damps the fluid's solve error"
+    },
+    "metric": "|jvp32 - jvp64| / |jvp64|; float32's central differences only where their spread over steps is under the gap",
+    "control": {
+      "plant": "none: a comparison between dtypes (float64 verified by gates 1 and 2)",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "above 1e-2 (the line this probe calls right, declared: ten times gate 7's primal line): float32 forward mode is wrong too, and the refusal covers both modes",
+    "cannot_discriminate_if": "float64's own derivative fails gate 1"
+  },
+  "gate_4_float32_reverse": {
+    "claim": "float32's reverse-mode derivative against float64's, each derivative and size",
+    "kind": "estimates",
+    "case": "arms c3_f32, c6_f32 against c3_f64, c6_f64",
+    "prediction": {
+      "value": {
+        "x": 0.3,
+        "mu": 0.001,
+        "drive": 0.1
+      },
+      "band": {
+        "x": [
+          0.003,
+          2.0
+        ],
+        "mu": [
+          1e-06,
+          0.01
+        ],
+        "drive": [
+          0.001,
+          1.0
+        ]
+      },
+      "unit": "1 (relative, float32 vjp against float64 jvp)",
+      "basis": "derived bound with guessed constants: the transpose solve's right-hand side is the load's penalty functional rho nu/K h^3 on the body, its norm set by the interior's resistivity (about 111/h^2 against the Laplacian's 6/h^2), so a relative stop of 1e-5 on it allows an error in the adjoint's fluid part about (sigma_in/lambda_min) sqrt(N_body) 1e-5, of order 0.1 at 3 cells and 1 at 6, which the gradient reads; the spike's 0.85 to 1.55 is a different case",
+      "why": "forward mode's right-hand side is in the fluid and its answer read on the body; reverse mode's right-hand side is on the stiff body and its answer read in the fluid"
+    },
+    "metric": "|vjp32 - jvp64| / |jvp64|",
+    "control": {
+      "plant": "none: a comparison between dtypes",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "under 1e-2 on every derivative and size: float32 reverse mode through the merged rung is right at this case, the spike's number belonged to its own case, and no PR",
+    "cannot_discriminate_if": "float64 fails gate 2"
+  },
+  "gate_5_cause_tolerance": {
+    "claim": "the float32 gap is the CG's stop (its tolerance relative to the right-hand side's norm), not float32's arithmetic",
+    "kind": "estimates",
+    "case": "arms c3_f64_tol5, c6_f64_tol5 (float64 arithmetic at float32's tolerance); c3_f32_tol6, c3_f32_tol7, c6_f32_tol6 (float32 tightened, its floor stop off)",
+    "prediction": {
+      "value": "float64 at 1e-5 reproduces float32's gap within a factor 3 in each mode and derivative; float32 at 1e-6 shrinks the reverse gap about tenfold where the solve reaches it, and at 1e-7 it stops stagnated (flagged) near its floor",
+      "band": "factor 1/3 to 3 (tol5 against f32); 3 to 30 shrink (f32 tol6)",
+      "unit": "ratio of relative gaps",
+      "basis": "derived (the stop's scale), with guessed constants",
+      "why": "the error the stop allows is the tolerance times the right-hand side's norm, in either dtype"
+    },
+    "metric": "the gap ratio, each mode and derivative",
+    "control": {
+      "plant": "the float64 tol-1e-5 arm is itself the control: float64's arithmetic with float32's stop",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "float64 at 1e-5 is right where float32 is wrong: the cause is float32's arithmetic (rounding in the tangent or transpose right-hand side, or in the solve), not the stop: gate 6 then says which",
+    "cannot_discriminate_if": "both float32 and float64-at-1e-5 are right (then there is no gap to explain)"
+  },
+  "gate_6_cause_solve_precision": {
+    "claim": "the solve's precision alone carries the gap: float64 solves inside the float32 program close it, float32 solves inside the float64 program reproduce it",
+    "kind": "estimates",
+    "case": "arms c3_wide (float32 program, float64 solve at 1e-5), c3_wide_tol10, c6_wide_tol10 (at 1e-10), c3_narrow, c6_narrow (float64 program, the CG's vectors and stop in float32 at its default)",
+    "prediction": {
+      "value": "wide at 1e-10 within 1e-4 of float64 on every derivative and mode; wide at 1e-5 as float64 at 1e-5; narrow within a factor 3 of float32's gap",
+      "band": "wide_tol10 under 1e-3; narrow 1/3 to 3 of f32",
+      "unit": "1 (relative to float64's jvp)",
+      "basis": "derived",
+      "why": "the program outside the solve (the lift, the load's sums, alpha) is float32-accurate at about 1e-6 relative"
+    },
+    "metric": "|d_variant - jvp64| / |jvp64|; and the vjp program's custom_linear_solve dtypes (solve_dtypes_vjp), which must read float64 in the wide arms; the wide arms' region is the projected solve with its operator, projector and their derivative terms (a tangent's right-hand side's A-dot x), reverse mode's transpose of it traced with float64 enabled (the program outside keeps float32 avals), checked trace-only before this file was committed",
+    "control": {
+      "plant": "solve_dtypes_vjp: a wide arm whose transpose solve traced in float32 is void, not a result",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "wide at 1e-10 still off: the float32 arithmetic outside the solve is the cause (the tangent or transpose right-hand side's cancellation)",
+    "cannot_discriminate_if": "the wide arm's transpose solve is not float64 (its dtypes say so)"
+  },
+  "gate_7_derivative_defect": {
+    "claim": "no derivative defect: with float64 solves converged to 1e-12 every derivative agrees in both modes and with its oracle",
+    "kind": "equality",
+    "case": "arms c3_f64_tol12, c6_f64_tol12 (cap 20000)",
+    "prediction": {
+      "value": {
+        "vjp_vs_jvp": 1e-11,
+        "mu_drive_vs_oracle": 1e-11,
+        "x_vs_cd_best": 0.0005
+      },
+      "band": {
+        "vjp_vs_jvp": [
+          0.0,
+          1e-09
+        ],
+        "mu_drive_vs_oracle": [
+          0.0,
+          1e-09
+        ],
+        "x_vs_cd_best": [
+          0.0,
+          0.002
+        ]
+      },
+      "unit": "1",
+      "basis": "derived",
+      "why": "exact derivative rules of custom_linear_solve on a symmetric operator; x's CD carries the ripple"
+    },
+    "metric": "relative differences",
+    "control": {
+      "plant": "gate 2's transpose_cap plant at float64 (the oracle can fail)",
+      "expected_rate": "6/6"
+    },
+    "if_wrong": "a defect in the derivative itself: fix it rather than refuse",
+    "cannot_discriminate_if": "the 1e-12 solves stop stagnated far above 1e-12 (their reports say)"
+  },
+  "gate_8_stiffness": {
+    "claim": "the float32 reverse gap grows with the penalty's stiffness",
+    "kind": "estimates",
+    "case": "arms c3_f32_int001 and c3_f64_int001 (interior 0.01h: its resistivity times 100), c3_f32_band05 and c3_f64_band05 (the body's band depth halved: its band's resistivity times 4), against c3_f32 and c3_f64; and 6 cells against 3",
+    "prediction": {
+      "value": "interior 0.01h: the reverse gap times 3 to 100; band 0.5: times 1.5 to 4; 6 cells against 3: times 1.5 to 10",
+      "band": "as stated",
+      "unit": "ratio of relative gaps (float32 vjp against its own float64 jvp)",
+      "basis": "derived from the stop's scale (sigma_in / lambda_min) with guessed constants",
+      "why": "the transpose's right-hand side's norm grows with the resistivity; the fluid's answer does not"
+    },
+    "metric": "gap ratios",
+    "control": {
+      "plant": "none",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "the gap does not move with stiffness: the stop's scale is not the mechanism; say so, and the refusal stays a refusal (its trigger, the rung and float32, does not rest on the mechanism)",
+    "cannot_discriminate_if": "the stiffer float32 solves stop at their cap (their reports say)"
+  },
+  "gate_9_stiff_interior_at_6_cells": {
+    "claim": "at the stiffest offered setting measured (FVM delta_in 0.01, 6 cells a radius) float32's derivatives against float64's",
+    "kind": "estimates",
+    "case": "round 2 arms c6_f32_int001 and c6_f64_int001 (added after round 1; arms.txt holds only them)",
+    "prediction": {
+      "value": {
+        "x_jvp": 0.01,
+        "x_vjp": 0.018,
+        "mu": 0.0001,
+        "drive": 0.0001
+      },
+      "band": {
+        "x_jvp": [
+          0.003,
+          0.03
+        ],
+        "x_vjp": [
+          0.005,
+          0.05
+        ],
+        "mu": [
+          1e-06,
+          0.001
+        ],
+        "drive": [
+          1e-06,
+          0.001
+        ]
+      },
+      "unit": "1 (relative, float32 against float64's jvp at the same setting)",
+      "basis": "fit from round 1: c3 int001's 3.4e-3 and 4.1e-3 times base's c6-over-c3 ratios (2.9 forward, 4.5 reverse)",
+      "why": "the stop's error grows with the interior's resistivity and with the cells (round 1's trend)"
+    },
+    "metric": "|d32 - jvp64| / |jvp64|",
+    "control": {
+      "plant": "none: a comparison between dtypes; round 1's c6 transpose_cap plant shows the comparison sees a 1e-2 error",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "over 1e-2 in either mode: float32 position derivatives at the stiff interior are off by more than the line called right; set against the position derivative's own declared ripple (0.30 to 1.68 of its cell-mean slope at 6 cells) before calling it wrong",
+    "cannot_discriminate_if": "the float32 solves stop at their cap (their reports say)"
+  },
+  "gate_10_study_path_imex": {
+    "claim": "on the study's own path (Study.gradient: the chunked, checkpointed run of the coupled experiment, IMEX Euler, the default 0.1h interior) float32's derivatives in both modes are within 1e-3 of float64's",
+    "kind": "estimates",
+    "case": "probe/f32study.py: R3's experiment (tests/flow/resolved_cases.r3_experiment(1.4, feature_cells=N)), Re 76, dt 1.5e-4 s at N 3 and 6e-5 s at N 6 (gate 2's: the CFL refuses 1.5e-4 at N 6), 40 steps from rest, the ball's axial velocity differentiated in water.viscosity and ball.mass; N 3 and 6; reference float64 forward at FVM tolerance 1e-12",
+    "operating_point": "IMEX Euler with convection (Re 76), the body free (RigidInertial) and lagged-coupled, the study's chunked run (reverse mode checkpointed)",
+    "prediction": {
+      "value": {
+        "reverse": 0.0002,
+        "forward": 0.0001
+      },
+      "band": {
+        "reverse": [
+          1e-06,
+          0.001
+        ],
+        "forward": [
+          1e-07,
+          0.001
+        ]
+      },
+      "unit": "1 (relative, float32 against the float64 reference, each axis)",
+      "basis": "fit from rounds 1 and 2 (steady at 0.1h: 8e-5 to 3.6e-4 reverse), with IMEX's shift 1/dt improving the operator's conditioning; a guess for the coupling over steps",
+      "why": "the stop's slack against the transpose's stiff right-hand side, less with the time term"
+    },
+    "metric": "|d32 - d64ref| / |d64ref| per axis; float64 forward against float64 reverse as the reference's own check",
+    "control": {
+      "plant": "none new: rounds 1 and 2's controls; the float64 at 1e-8 arms against the 1e-12 reference give the reference's resolution",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "over 1e-3: the study's path (IMEX, the chunked run, the coupling) is outside the allowed envelope and the refusal covers it",
+    "cannot_discriminate_if": "the float64 reference's forward and reverse disagree by more than the float32 gap"
+  },
+  "outcomes": {
+    "gate_1_float64_forward": "held. jvp against CD (best step): x 3.0e-5 (3 cells), 4.4e-5 (6); mu against R/mu 1.5e-9, 9.1e-9; drive against F/g 0 (NOT discriminating: at g = 1 the tangent solve is the primal solve, bit for bit). Control position_stop 1/1 (jvp 0, 100 % off CD).",
+    "gate_2_float64_reverse": "held. vjp against jvp: x 1.5e-7, 1.1e-7; mu 1.8e-10, 1.4e-9; drive 5.2e-9, 1.6e-8. Control transpose_cap 3/6 against 6/6 predicted: at 6 cells 3/3 (9.7e-3, 1.3e-2, 2.1e-2; transposes at the cap with 4.7e-4 to 9.6e-4), at 3 cells 0/3 against the 1e-4 line (1.8e-5, 4.0e-7, 4.3e-6): there the 40-iteration cap reaches 9e-6, so the plant is about float32's own stop and cannot discriminate (the gate's cannot_discriminate_if).",
+    "gate_3_float32_forward": "held (drive below its band). float32 jvp against float64's: x 5.5e-5, 1.6e-4; mu 2.2e-7, 1.6e-7; drive 5.4e-8, 7.1e-8. float32 jvp against its own CD (best step): x 4.3e-4, 5.6e-3; mu 9.6e-8, 2.7e-5; drive 4.5e-7, 9.2e-8: float32's CD is noise-bound at small steps (x at 6 cells 3.1e-2 at 0.003 h) and ripple-bound at large ones, so it checks x only to about 5e-3 at 6 cells; the cross-dtype comparison is the check.",
+    "gate_4_float32_reverse": "MISSED (predicted x 0.3, mu 1e-3, drive 0.1): float32 vjp against float64's jvp: x 8.0e-5, 3.6e-4; mu 6.0e-7, 1.7e-5; drive 2.4e-6, 2.8e-5. float32 vjp against float32 jvp: x 2.5e-5, 2.0e-4; mu 8.2e-7, 1.7e-5; drive 2.5e-6, 2.8e-5. The derived bound (the stop's slack landing in the adjoint's fluid low mode) was 3 to 4 orders too pessimistic. float32 reverse mode through the merged rung is right at this case.",
+    "gate_5_cause_tolerance": "held. float64 at 1e-5 against float32 (x, jvp / vjp): 5.6e-5 / 7.7e-5 against 5.5e-5 / 8.0e-5 (3 cells), 2.1e-4 / 3.9e-4 against 1.6e-4 / 3.6e-4 (6): ratio 1.0 to 1.3. float32 tightened: 1e-6 gives 8.6e-6 / 1.6e-5 (3 cells), 1.8e-5 / 9.0e-6 (6), several solves then stagnated (flagged) near 1e-6 to 3e-5; 1e-7 gives 5.9e-7 / 3.6e-6 with every solve stagnated at 3.8e-7 to 6.9e-7, flagged.",
+    "gate_6_cause_solve_precision": "held. float64 solve inside the float32 program: at 1e-5 5.6e-5 / 8.3e-5 (as float32: the solve's precision is not the cause, its stop is); at 1e-10 1.6e-7 / 4.1e-6 (3 cells), 2.5e-7 / 9.5e-6 (6), solve_dtypes float64 in both modes. float32 solve inside the float64 program: 5.7e-5 / 7.6e-5, 1.6e-4 / 3.2e-4 (as float32).",
+    "gate_7_derivative_defect": "held. float64 at 1e-12: vjp against jvp 1.1e-11, 6.4e-12 (x), 2.5e-13, 1.5e-12 (mu), 2.0e-13, 1.3e-12 (drive); mu against R/mu 5.3e-14, 1.2e-11. No derivative defect.",
+    "gate_8_stiffness": "held. the gap against its own float64 (x, jvp / vjp): interior 0.01h 3.4e-3 / 4.1e-3 at 3 cells (x60 / x50 base); band depth halved 8.1e-5 / 1.4e-4 (x1.5 / x1.8); 6 cells against 3 x2.9 / x4.5.",
+    "side_finding": "the moved column's tangent solve in mu stagnates in every dtype (float32 1620 to 3160 iterations at 4e-2 to 9e-2, float64 1680 at 7e-8, float64 at 1e-12 1640 at 1e-3), flagged, while the derivative is right (against R/mu 1.5e-9 float64, 4.8e-7 float32): with no drive both the penalty's push and the operator are proportional to nu, so the tangent's right-hand side b' - A'u = (b - Au)/nu is the primal's residual, which the CG cannot reduce relative to itself. A study's derivative in viscosity of a body-driven, undriven Stokes flow would warn of a stop short and recheck a right derivative: loud, not silent.",
+    "gate_9_stiff_interior_at_6_cells": "held for x and the forward mode, missed above the band for mu's and the drive's reverse mode. float32 against float64 at the same setting (0.01h, 6 cells): x jvp 1.65e-2 (its moved tangent solve flagged stagnated at 9.8e-4), x vjp 3.22e-2 (every transpose solve converged, 465 to 482 iterations at 9e-6: no flag); mu jvp 3.9e-5, vjp 1.65e-3; drive jvp 2.8e-6, vjp 1.61e-3 (bands 1e-6 to 1e-3). float64's own: vjp against jvp 1.5e-7 (x), 2.9e-7 (mu), 3.7e-7 (drive). The reverse-mode gap at this setting is past the 1e-2 line this probe called right, with no flag: the refusal (drag.penalty-float32-reverse) follows from it.",
+    "_how_measured": "outcomes of probe/predictions_f32_penalty_grad.json, written after the runs (round 1 run 43200714550 at 402e9f2, 23 arms; round 2 run 43202597797 at c69878d). Relative numbers; reference = float64 at tolerance 1e-12 (cap 20000) of the same size unless named. Every red arm in round 1 is the memory check only (peaks 0.79-1.28 GiB against a compile-only factory's 0.85 GiB bound, 18 of 23 over), never the script.",
+    "gate_10_study_path_imex": "held for forward mode and the mass; reverse mode in the viscosity at 3 cells missed above its band. float32 against float64 forward at FVM tolerance 1e-12 (run 43207448153; R3's sphere, Re 76, IMEX Euler, 40 steps, the study's chunked run): viscosity reverse 2.1e-3 (3 cells) and 4.7e-4 (6), forward 7.5e-4 and 2.5e-4; mass reverse 7.0e-6 and 6.7e-6, forward 7.5e-6 and 6.6e-6; the value 8.7e-7 and 5.4e-6. No solve warned and no recheck ran (the only flag the flow's bypass_flagged). float64 at its default 1e-8 against the reference: 6e-7 or less in every axis and mode. The study's path at the default interior is inside the allowed envelope, its error stated in the rung's validity line."
+  },
+  "committed_at": "the probe branch probe/f32-penalty-grad, commit 402e9f2 (before round 1's run 43200714550), and the amendment of gate_9 at commit c69878d on probe/f32-penalty-grad-r2 (before round 2's run 43202597797); and of gate_10 at commits 0472486 and 3471b2d on probe/f32-penalty-grad-r3 (before round 3's run 43207448153); copied here unchanged, the outcomes added"
+}

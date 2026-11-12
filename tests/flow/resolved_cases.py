@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from mime.core import run_dtype
-from mime.dynamics import FVM, RigidInertial, Scheme
+from mime.dynamics import FVM, Band, RigidInertial, Scheme
 from mime.experiment import Experiment
 from mime.interactions import BodyForce, Drag, Inflow, Windkessel
 from mime.nodes.flow.fvm import band_named, periodic_tube_layout
@@ -167,13 +167,15 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
                   stokes: bool = False, unnamed: bool = False, at: Any = None,
                   start: tuple[float, float, float] = (0.0, 0.0, 0.0),
                   velocity: tuple[float, float, float] = (0.0, 0.0, 0.0),
-                  spin: tuple[float, float, float] = (0.0, 0.0, 0.0), tolerance: float | None = None) -> Experiment:
+                  spin: tuple[float, float, float] = (0.0, 0.0, 0.0), tolerance: float | None = None,
+                  delta_in: float | None = None) -> Experiment:
     """The coupling spike's R3 case at Re 76: a sphere of radius 0.1875 D (3 cells a radius at D/h 16) free on a
     periodic tube's axis (D = 1 mm, 4 D long) in water, the fluid driven by the uniform force that gives the empty
     tube a mean speed of 76 nu / D; the body's density ``ratio`` times the fluid's; from rest. ``tree``: the same
     straight lumen as a tube tree's (two segments reaching a diameter past each end of the period). ``reynolds`` the
     drive's, ``stokes`` the flow's Stokes approximation, ``unnamed`` no scheme written (the FVM's own choice), ``at``
-    the part's place off the body's centre, ``start`` and ``velocity`` the body's initial position and velocity."""
+    the part's place off the body's centre, ``start`` and ``velocity`` the body's initial position and velocity,
+    ``delta_in`` the FVM's stiff interior (its band's ``delta_in``, cells)."""
     diameter = 1e-3
     nu = WATER_MU / WATER_RHO
     mean = reynolds * nu / diameter
@@ -191,7 +193,8 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
     flow = FVM(domain=domain, cells_across=16,
                **({} if unnamed else {"scheme": Scheme.IMEXEuler() if scheme is None else scheme}),
                **({"stokes": True} if stokes else {}), **({"spacing": spacing} if spacing is not None else {}),
-               **({"tolerance": tolerance} if tolerance is not None else {}))
+               **({"tolerance": tolerance} if tolerance is not None else {}),
+               **({"wall": Band(delta_in=delta_in)} if delta_in is not None else {}))
     exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     exp.declare("water.viscosity", mPa_s(WATER_MU * 1e3), reason="water")
     exp.declare("water.density", kg_per_m3(WATER_RHO), reason="water")
