@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The region builder: a vessel's region cut by planes, its cuts extended and bent onto the box's faces; the open tube
+  tree; tilted open vessels; the backflow term; the outlet watch.** `FVM(domain=VesselRegion(around="junction_0", reach=mm(3),
+  extension_diameters=4, bend_diameters=2))` cuts the vessel (a `Tube`, a `TubeTree`) by planes normal to its
+  centreline at arc length `reach` from the junction `around` (neither: the whole vessel at its own ends), continues
+  each cut straight for its extension, turns it by a circular bend onto the nearer z face of the box and runs it to
+  the plane (`mime.scene._region`): the vessel's own part a tube tree, each opening's extension, bend and run a ball
+  swept along a tangent-continuous path, the two one solid. Each opening keeps the name of the vessel end beyond its
+  cut, so the laws attached at the vessel's ends bind the cuts; the upstream opening is the cut leading to the root, by
+  the centreline (a tree with no root is refused, `flow.region-upstream`; `flow.region-cut`, `flow.region-face` the
+  other refusals; `flow.open-axis` is gone: a tilted vessel is built). The build reports each opening's plane, its
+  neighbours, its extension, bend and run and their series resistance, and the Reynolds number its extension develops.
+  The backflow term (`f = -|min(w, 0)| w' / h` on the fluid of each outlet's half cell, its coefficient from the step's
+  start and `w'` the step's end velocity, a diagonal beside the wall's penalty that can only remove energy, normal
+  only) is booked as `<node>.backflow`, its sign checked (`backflow_flagged`); the outlet watch, an observer, reads each
+  opening's reversed share while its net flux is outward (`opening_reversed`, `opening_reversed_flagged`). Two openings
+  on one plane exchange flow through the solid between their patches: `opening_exchange` and
+  `opening_exchange_flagged` watch it, and where a built region's plane holds two openings the stiff interior is 0.01h
+  unless `Band(delta_in=...)` is written (`Band.delta_in` now defaults to none: 0.1h elsewhere). Renamed
+  (unreleased): `port_kinetic_flux` is `opening_kinetic_flux`.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
@@ -121,7 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the valve's at every stiffness (the raw number mixes a flux row's units with a pressure row's).
   `exp.attach(SharedDistal(first=..., second=..., distal=...), medium=blood, surface=(a, b))`: two openings each
   through its own resistance into one shared distal resistance, its off-diagonals solved, its own books kept (a lagged
-  off-diagonal leaves a first-order residual in them). `port_kinetic_flux`, an active flag, an operator check of
+  off-diagonal leaves a first-order residual in them). `opening_kinetic_flux`, an active flag, an operator check of
   convection at the planes: the kinetic energy the books hold as crossing the openings against each opening's own, the
   scheme's convective power split by plane (exact to the field's divergence: the divergence form is conservative), the
   planes' net judged on each opening's flux in magnitude, so its scale does not cancel; it sees no port work (the

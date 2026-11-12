@@ -95,7 +95,8 @@ def fvm_rig(scheme: str, dtype: str, opened: bool = False) -> tuple[object, Fiel
         from open_cases import draw, monolithic_distance, point_node, scan
 
         with in_dtype(dtype):
-            open_node = point_node(draw(0), ledger=False, scheme=scheme, convection=scheme != "steady")
+            open_node = point_node(draw(0), ledger=False, scheme=scheme, convection=scheme != "steady",
+                                   pressure_inlet=True)
             before, _ = scan(open_node, 4)
             after, _ = scan(open_node, 1, state=before)
             return monolithic_distance(open_node, before, after), AFFINE_LINE[dtype]

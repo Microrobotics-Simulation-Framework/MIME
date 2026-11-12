@@ -1,0 +1,31 @@
+{
+  "written": "2026-11-12, committed before the probe ran (the commit that adds this file is the timestamp): float32 on the region builder's trees, checked on #258's head after the solve-mask spike (part D) found plain 0.1h and 0.01h at their CG cap on every float32 solve of these trees",
+  "phase": "F2b PR 4a, the float32 rows of the open tree",
+  "labels": "predictions by the builder (Opus) from the spike's measurement (a fit where they repeat it) and from this PR's float32 line (run 43131692204: each float32 draw 2 to 5 times its float64 time)",
+  "seen_before": [
+    "the solve-mask spike, part D (runs 43137265060 and 43151365880, on #258's trees): float32, no mask, 0.1h and 0.01h: every steady solve flagged (10/10 each), 8.2k to 16.6k iterations, the split within 1.3e-6 and 2.7e-6 of float64's, the books closing 10/10; the IMEX cost tree at its cap on every solve, 167 s a step against float64's 0.95 s (0.1h) and 2.2 s (0.01h)",
+    "this PR's float32 line (run 43131692204): 40 draws, the split within 1.83e-3 of the network (as float64's), each draw 109 to 919 s against float64's 54 to 178 s, the books closing 37/40"
+  ],
+  "operating_point": {
+    "dtype": ["float32", "float64"],
+    "platform": "CPU, GitHub Actions runner (4 vCPU), the probe workflow; one runner an arm, so times are one runner's, not a timing claim",
+    "sizes_and_parameters": "tests/flow/region_cases.py, draw seed 1: steady Stokes (experiment, 2 ms, two steps) and IMEX Euler (cost_tree, Re about 10, three steps of 0.2 ms), the stiff interior 0.01h and 0.1h, the tolerance the dtype's default (float32: 1e-5 or the solve's rounding floor where higher, the floor counting only under 100 times the tolerance) or given as 1e-4 and 1e-3",
+    "seeds_and_draws": "one tree (seed 1), the coordinator's ask: one tree case"
+  },
+  "gate_float32_trees": {
+    "claim": "float32 on the region's trees at the default tolerance stops each solve at its iteration cap, flagged, at both stiff interiors; a float32 tolerance at or above the reachable floor stops it cleanly with the split held to float64's",
+    "kind": "estimates",
+    "case": "probe/f32.py",
+    "prediction": {
+      "default": {"value": "every solve at its cap, flagged", "basis": "measured-before (the spike): a fit"},
+      "steady_split_default": {"value": 3e-6, "band": [0, 1e-4], "unit": "|split float32 - split float64|", "basis": "measured-before (the spike): a fit"},
+      "reachable_residual": {"value": 3e-4, "band": [5e-5, 3e-3], "unit": "the worst true relative residual a capped float32 solve holds", "basis": "guess: the floor grows with the stiff interior's resistivity"},
+      "tolerance_1e-3": {"value": "converged, unflagged, under 500 iterations a solve", "basis": "guess"},
+      "split_1e-3": {"value": 1e-5, "band": [0, 1e-4], "unit": "|split float32 at 1e-3 - split float64|", "basis": "guess"},
+      "why": "the 100-times guard on the floor: where the solve's rounding floor passes 100 times the tolerance the tolerance holds, so a float32 solve whose floor is far above 1e-5 neither converges nor stops at its floor; the stagnation stop, with its restarts and a window of 12 iterations a cell along the box, reaches the cap first"
+    },
+    "control": {"plant": "float64 at the default tolerance", "expected_rate": "converged, unflagged (the reference)", "clean_expected": "the reference"},
+    "cannot_discriminate_if": "the float32 default converges here: then the spike's finding does not reproduce on this tree"
+  },
+  "outcomes": null
+}

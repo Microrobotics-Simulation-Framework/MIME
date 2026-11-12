@@ -20,6 +20,15 @@ edges), so the kinetic energy convection carries through the openings is the sch
 and, along z, the cell-centred Dirichlet Laplacian's own orthonormal sine basis (``sin(pi (m + 1) (j + 1/2) / nz)``),
 applied as a dense ``nz x nz`` product at the highest matmul precision. Its symbol has no zero, so no mean is fixed.
 
+**A prescribed plane** (the maintainer's inflow decision (A), 2026-11-12: a velocity inlet). Where ``prescribed`` names a
+plane, its faces are given, not evolved: the normal velocity is a law's profile (``mime.nodes.flow.fvm._inlet``), the
+tangential velocity zero at the plane (in the viscous ghost, ``-a_0``, and in convection's edge flux). The projector
+holds those faces: their gradient is zero (the pressure Neumann there, Dirichlet at the other plane), the fast solve's
+basis along z the mixed one (``sqrt(2 / n) cos(pi (m + 1/2) (j + 1/2) / n)``, mirrored for the high plane), and the
+projection zeroes the given faces before it removes the divergence, ``P = P_N M``: orthogonal under the half-weight
+product on the fields whose given faces are zero, the subspace the solve works in. A field carrying the given faces is
+lifted (:meth:`OpenMACGrid.prescribed_field`: those faces, made divergence-free by ``P_N`` alone, which keeps them).
+
 **The openings** (:class:`OpeningLayout`): each opening is a patch of one plane, the low or the high; where a plane holds
 one opening it is the whole plane, and where it holds several each of the plane's cells belongs to the opening whose
 centre is nearest (in cells; the lower index on a tie), so the solid's faces on a plane belong to its openings too and
@@ -35,7 +44,7 @@ after the projector."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, override
 
@@ -60,6 +69,17 @@ def _sine_basis(count: int) -> np.ndarray:
     basis = np.sqrt(2.0 / count) * np.sin(np.pi * m * j / count)
     basis[:, -1] = np.sqrt(1.0 / count) * np.cos(np.pi * np.arange(count))
     return basis
+
+
+def _mixed_basis(count: int, low: bool) -> np.ndarray:
+    """The orthonormal eigenvectors of the cell-centred Laplacian on ``count`` cells with a Neumann plane (the low one
+    where ``low``, else the high) and a homogeneous Dirichlet one (columns): ``sqrt(2 / n) cos(pi (m + 1/2) (j + 1/2) /
+    n)`` for a Neumann low plane, its rows reversed for a Neumann high one; eigenvalues ``-(4 / h^2) sin^2(pi (m + 1/2)
+    / (2 n))``."""
+    j = np.arange(count)[:, None] + 0.5
+    m = np.arange(count)[None, :] + 0.5
+    basis = np.sqrt(2.0 / count) * np.cos(np.pi * m * j / count)
+    return basis if low else basis[::-1, :]
 
 
 def _end_weight(shape: tuple[int, ...], dtype: Any) -> Array:
@@ -138,6 +158,8 @@ class OpenMACGrid(MACGrid):
     conditions, and the openings' patches)."""
 
     layout: OpeningLayout = OpeningLayout()
+    #: The plane whose faces are given (:data:`LOW` or :data:`HIGH`, the module's prescribed plane), or none.
+    prescribed: int | None = None
 
     kind: ClassVar[str] = "cartesian_mac_open_z"
     version: ClassVar[str] = "0.1.0"
@@ -185,11 +207,12 @@ class OpenMACGrid(MACGrid):
 
     @override
     def gradient(self, pressure: Array) -> Velocity:
-        """``G p``, the planes held at zero: the end faces' half-cell gradient ``2 (p_0 - 0) / h``."""
+        """``G p``, the planes held at zero: the end faces' half-cell gradient ``2 (p_0 - 0) / h``; zero on a prescribed
+        plane's faces (its pressure Neumann)."""
         h = self.spacing
-        low = 2.0 * pressure[..., :1] / h
+        low = jnp.zeros_like(pressure[..., :1]) if self.prescribed == LOW else 2.0 * pressure[..., :1] / h
         inside = (pressure[..., 1:] - pressure[..., :-1]) / h
-        high = -2.0 * pressure[..., -1:] / h
+        high = jnp.zeros_like(pressure[..., -1:]) if self.prescribed == HIGH else -2.0 * pressure[..., -1:] / h
         return (_difference_to_face(pressure, 0, h), _difference_to_face(pressure, 1, h),
                 jnp.concatenate([low, inside, high], axis=-1))
 
@@ -200,12 +223,14 @@ class OpenMACGrid(MACGrid):
         return sum(((jnp.roll(a, 1, axis) + jnp.roll(a, -1, axis) + sign * 2.0 * a) for axis in (0, 1)),
                    start=jnp.zeros_like(a)) / h2
 
-    @staticmethod
-    def _along_centred(a: Array, h2: Any, magnitude: bool) -> Array:
-        """The z part on a cell-centred component, zero gradient at both planes (its ghost equals its end value)."""
+    def _along_centred(self, a: Array, h2: Any, magnitude: bool) -> Array:
+        """The z part on a cell-centred component, zero gradient at both planes (its ghost equals its end value); zero
+        at a prescribed plane (its ghost the end value negated; in magnitude, the same terms)."""
         sign = 1.0 if magnitude else -1.0
-        below = jnp.concatenate([a[..., :1], a[..., :-1]], axis=-1)
-        above = jnp.concatenate([a[..., 1:], a[..., -1:]], axis=-1)
+        held_low = self.prescribed == LOW and not magnitude
+        held_high = self.prescribed == HIGH and not magnitude
+        below = jnp.concatenate([-a[..., :1] if held_low else a[..., :1], a[..., :-1]], axis=-1)
+        above = jnp.concatenate([a[..., 1:], -a[..., -1:] if held_high else a[..., -1:]], axis=-1)
         return (below + above + sign * 2.0 * a) / h2
 
     @staticmethod
@@ -259,7 +284,9 @@ class OpenMACGrid(MACGrid):
         cv = cv + _difference_to_centre(xy, 0, h)
 
         def at_planes(a: Array) -> Array:
-            return jnp.concatenate([a[..., :1], 0.5 * (a[..., 1:] + a[..., :-1]), a[..., -1:]], axis=-1)
+            low = jnp.zeros_like(a[..., :1]) if self.prescribed == LOW else a[..., :1]
+            high = jnp.zeros_like(a[..., -1:]) if self.prescribed == HIGH else a[..., -1:]
+            return jnp.concatenate([low, 0.5 * (a[..., 1:] + a[..., :-1]), high], axis=-1)
 
         xz = at_planes(u) * _average_to_face(w, 0)
         yz = at_planes(v) * _average_to_face(w, 1)
@@ -286,15 +313,18 @@ class OpenMACGrid(MACGrid):
         nx, ny, nz = self.cells
         sx = jnp.sin(jnp.pi * jnp.arange(nx, dtype=dtype) / nx) ** 2
         sy = jnp.sin(jnp.pi * jnp.arange(ny // 2 + 1, dtype=dtype) / ny) ** 2
-        sz = jnp.sin(jnp.pi * (jnp.arange(nz, dtype=dtype) + 1.0) / (2.0 * nz)) ** 2
+        shift = 0.5 if self.prescribed is not None else 1.0
+        sz = jnp.sin(jnp.pi * (jnp.arange(nz, dtype=dtype) + shift) / (2.0 * nz)) ** 2
         return -(4.0 / h2) * (sx[:, None, None] + sy[None, :, None] + sz[None, None, :])
 
     @override
     def poisson(self, source: Array) -> Array:
-        """``phi`` with ``D G phi = source``, the planes held at zero, by the fast transform."""
+        """``phi`` with ``D G phi = source``, the planes held at zero (a prescribed one Neumann), by the fast
+        transform."""
         nx, ny, nz = self.cells
         with solving(POISSON_SITE):
-            basis = jnp.asarray(_sine_basis(nz), dtype=source.dtype)
+            held = _sine_basis(nz) if self.prescribed is None else _mixed_basis(nz, self.prescribed == LOW)
+            basis = jnp.asarray(held, dtype=source.dtype)
             across = jnp.fft.rfft2(source, axes=(0, 1))
             modes = jnp.einsum("jm,abj->abm", basis, across, precision=_HIGHEST)
             modes = modes / self._symbol(source.dtype)
@@ -304,16 +334,51 @@ class OpenMACGrid(MACGrid):
     @override
     def project(self, velocity: Velocity) -> Velocity:
         """``P u = u - G (D G)^-1 D u``: the projection onto discretely divergence-free fields, orthogonal under
-        :meth:`inner`."""
-        phi = self.poisson(self.divergence(velocity))
+        :meth:`inner`; with a prescribed plane, onto those whose given faces are zero (``P_N M``, the module's)."""
+        held = self.held_out(velocity)
+        phi = self.poisson(self.divergence(held))
         correction = self.gradient(phi)
-        return (velocity[0] - correction[0], velocity[1] - correction[1], velocity[2] - correction[2])
+        return (held[0] - correction[0], held[1] - correction[1], held[2] - correction[2])
 
     @override
     def pressure_of(self, remainder: Velocity) -> Array:
-        """The pressure's field part (kinematic, zero on the planes, whose values the openings' forces carry) whose
-        gradient balances ``remainder``: ``(D G)^-1 D (rhs - A u)``."""
-        return self.poisson(self.divergence(remainder))
+        """The pressure's field part (kinematic, zero on the planes, whose values the openings' forces carry; Neumann
+        at a prescribed plane) whose gradient balances ``remainder``: ``(D G)^-1 D M (rhs - A u)``, the given faces'
+        rows (their reaction, :meth:`given_part`) left out."""
+        return self.poisson(self.divergence(self.held_out(remainder)))
+
+    # -- a prescribed plane -----------------------------------------------------------------------------------------
+    def _given_index(self) -> int:
+        assert self.prescribed is not None, "the grid has no prescribed plane"
+        return 0 if self.prescribed == LOW else -1
+
+    def held_out(self, velocity: Velocity) -> Velocity:
+        """``M u``: ``velocity`` with a prescribed plane's faces zero (``velocity`` itself where none is)."""
+        if self.prescribed is None:
+            return velocity
+        return (velocity[0], velocity[1], velocity[2].at[..., self._given_index()].set(0.0))
+
+    def given_part(self, velocity: Velocity) -> Array:
+        """``velocity``'s ``w`` on the prescribed plane's faces (``nx x ny``)."""
+        return velocity[2][..., self._given_index()]
+
+    def prescribed_field(self, face: Array) -> Velocity:
+        """The divergence-free field whose prescribed plane's faces are ``face`` (``nx x ny``, ``w`` there): those faces
+        alone, less the gradient that removes their divergence (``P_N``, which keeps them): the lift a solve in the
+        prescribed subspace adds back."""
+        zero = self.zeros(face.dtype)
+        given = (zero[0], zero[1], zero[2].at[..., self._given_index()].set(face))
+        correction = self.gradient(self.poisson(self.divergence(given)))
+        return (given[0] - correction[0], given[1] - correction[1], given[2] - correction[2])
+
+    def given_pressure_work(self, pressure: Array, velocity: Velocity) -> Array:
+        """The work per unit density and time (m^5/s^3) the field's pressure ``pressure`` (kinematic) does on the fluid
+        through the prescribed plane's faces, ``h^2 sum p_c w_b n_in`` (``p_c`` the end cell's, ``n_in`` +1 for the low
+        plane, -1 for the high): ``-<G p, u>`` less the pressure's work against ``D u`` (rounding after the
+        projector), the term the half-weight product's projection books where no plane is given."""
+        at = self._given_index()
+        inward = 1.0 if self.prescribed == LOW else -1.0
+        return inward * self.spacing ** 2 * jnp.sum(pressure[..., at] * velocity[2][..., at])
 
     # -- the openings ---------------------------------------------------------------------------------------------
     @property
@@ -361,6 +426,8 @@ class OpenMACGrid(MACGrid):
             su = 0.5 * (u[..., at] ** 2 + jnp.roll(u[..., at] ** 2, -1, 0))
             sv = 0.5 * (v[..., at] ** 2 + jnp.roll(v[..., at] ** 2, -1, 1))
             wb = w[..., at]
+            if self.layout.planes[k] == self.prescribed:
+                return 0.5 * (su + sv + wb * wb) * wb - self._given_edges(u[..., at], v[..., at], wb, k)
             return 0.5 * (su + sv + wb * wb) * wb
 
         area = self.spacing ** 2
@@ -368,6 +435,60 @@ class OpenMACGrid(MACGrid):
         flux = signs * area * self._patch_sums(density)
         size = area * self._patch_sums(lambda k: jnp.abs(density(k)))
         return flux, size
+
+    def _given_edges(self, u: Array, v: Array, wb: Array, opening: int) -> Array:
+        """At a prescribed plane, what its tangential velocity held at zero in convection's edge flux moves the
+        scheme's convective power by, per face, over the opening's outward sign: the end cells' ``a`` (``u``, ``v``)
+        carried by the plane's ``w`` averaged to their faces ``W``, ``a^2 W + a W (w_- - w) / (2 n)`` (``w_-`` the
+        neighbour's along ``a``'s axis, ``n`` the outward sign), so the fluxes stay the scheme's own power exactly."""
+        outward = self._outward(opening)
+        total = jnp.zeros_like(wb)
+        for a, axis in ((u, 0), (v, 1)):
+            behind = jnp.roll(wb, 1, axis)
+            carried = 0.5 * (behind + wb)
+            total = total + a * a * carried + a * carried * (behind - wb) / (2.0 * outward)
+        return total
+
+    def _plane_masks(self, openings: Sequence[int], dtype: Any) -> tuple[Array, Array]:
+        """The low and the high plane's faces that belong to one of ``openings``' patches (ones there), ``nx x ny``."""
+        masks = self.layout.masks(self.cells)
+        planes: list[Array] = []
+        for plane in (LOW, HIGH):
+            held = np.zeros(self.cells[:2])
+            for k in openings:
+                if self.layout.planes[k] == plane:
+                    held = held + masks[k]
+            planes.append(jnp.asarray(held, dtype=dtype))
+        return planes[0], planes[1]
+
+    def backflow_coefficient(self, velocity: Velocity, openings: Sequence[int], beta: Any = 1.0,
+                             fluid: Array | None = None) -> Array:
+        """The directional backflow term's coefficient on ``w``'s faces (F0's B6 and B7, decision 12, in its lagged
+        implicit form): on ``openings``' patches' half cells ``beta |min(w_n, 0)| / h``, ``w_n`` the face's outward
+        velocity in ``velocity`` (the step's start), weighted by ``fluid`` (on ``w``'s faces) where given; zero
+        wherever the flow leaves, and on every other face. The term it makes with the step's end velocity,
+        ``f = -c w'``, is a diagonal beside the wall's penalty: its power ``-c w'^2`` is never positive."""
+        w = velocity[2]
+        coefficient = jnp.zeros_like(w)
+        if not openings:
+            return coefficient
+        low, high = self._plane_masks(openings, w.dtype)
+        if fluid is not None:
+            low, high = low * fluid[..., 0], high * fluid[..., -1]
+        inward_low, inward_high = jnp.maximum(w[..., 0], 0.0), jnp.maximum(-w[..., -1], 0.0)
+        return coefficient.at[..., 0].set(beta * low * inward_low / self.spacing) \
+            .at[..., -1].set(beta * high * inward_high / self.spacing)
+
+    def opening_reversed_fluxes(self, velocity: Velocity, fluid: Array) -> Array:
+        """The volume flux (m^3/s) entering through each opening's patch where its faces' flow is inward, each face
+        weighted by ``fluid`` (the faces' ``1 - chi``, on ``w``'s faces): ``h^2 sum_patch (1 - chi) max(-w_n, 0)``."""
+        w = velocity[2]
+
+        def inward(k: int) -> Array:
+            outward = self._outward(k) * self._plane(w, k)
+            return self._plane(fluid, k) * jnp.maximum(-outward, 0.0)
+
+        return self.spacing ** 2 * self._patch_sums(inward)
 
     def port_force(self, pressures: Any, density: Any) -> Velocity:
         """The force per unit mass of the openings' pressures (Pa, the layout's order) on the planes' half cells, each

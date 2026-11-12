@@ -124,6 +124,39 @@ class TubeSolid:
         return nearest
 
 
+@dataclass(frozen=True)
+class PathSolid:
+    """The solid around the lumens a region builder lays from each cut to its face (``mime.scene._region``): a ball of
+    the cut's radius swept along a straight extension, a circular bend and a straight run
+    (``mime.scene._region.path_distance``), positive in the solid; ``paths`` (``(openings, PATH_ROW)``, m) a leaf of
+    the step."""
+
+    paths: Any
+    region: str = "wall"
+
+    def signed_distance(self, points: Array) -> Array:
+        from mime.scene._region import path_distance
+
+        return path_distance(jnp.asarray(self.paths, dtype=points.dtype), points)
+
+
+@dataclass(frozen=True)
+class RegionSolid:
+    """The solid around a built region's one lumen: the vessel's own part (a :class:`TreeSolid`) and each opening's
+    swept path (a :class:`PathSolid`) joined, the lesser of the two distances on every face, so that one solid region
+    holds them (the solids :func:`wall_fields` is given are separate regions whose resistivities add: given apart,
+    each one's solid would fill the other's lumen)."""
+
+    tree: TreeSolid
+    paths: PathSolid
+    region: str = "wall"
+
+    def face_distances(self, points: tuple[Array, Array, Array]) -> tuple[tuple[Array, Array, Array], Array]:
+        held, counts = self.tree.face_distances(points)
+        joined = tuple(jnp.minimum(held[k], self.paths.signed_distance(points[k])) for k in range(3))
+        return (joined[0], joined[1], joined[2]), counts
+
+
 #: The least of the plan's sizes (:func:`plan_rung`), in faces.
 PLAN_QUANTUM = 256
 
@@ -374,6 +407,6 @@ def negative_resistivity(fields: WallFields, permeabilities: Sequence[Any] = ())
 
 
 __all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_INTERIOR", "FLUID_FLOOR", "INTERIORS", "INTERIOR_RAMP_END", "PLAN_QUANTUM", "Band",
-           "FacedSolid", "PorousRegion", "TreeSolid", "TubeSolid", "WallFields", "band_named", "fluid_share",
-           "interior_depth", "interior_ramp", "negative_resistivity", "plan_rung", "plug_depth", "porous_field", "ramp",
-           "resistivities_added", "wall_fields", "wall_reach"]
+           "FacedSolid", "PathSolid", "PorousRegion", "RegionSolid", "TreeSolid", "TubeSolid", "WallFields", "band_named",
+           "fluid_share", "interior_depth", "interior_ramp", "negative_resistivity", "plan_rung", "plug_depth", "porous_field",
+           "ramp", "resistivities_added", "wall_fields", "wall_reach"]

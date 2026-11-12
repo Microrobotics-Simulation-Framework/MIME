@@ -160,6 +160,36 @@ def periodic_tree_layout(points: Sequence[Sequence[float]], segments: Sequence[S
                       tuple((float(p[0]), float(p[1]), float(p[2])) for p in moved))
 
 
+def open_region_layout(points: Sequence[Sequence[float]] | np.ndarray, segments: Sequence[Sequence[int]],
+                       radii: Sequence[Sequence[float]] | np.ndarray, low: float, high: float, *,
+                       cells_across: int = DEFAULT_CELLS_ACROSS, spacing: float | None = None,
+                       reach_cells: float = DEFAULT_REACH, margin_cells: int = DEFAULT_MARGIN) -> TreeLayout:
+    """The box open along z for a region built as a tube tree (``mime.scene.build_region``: ``points`` in m in the
+    world's frame, ``segments`` and their ``radii``), its two planes at ``low`` and ``high`` (m along z): the spacing the
+    largest that fits a whole number of cells between the planes and no coarser than the narrowest lumen's diameter over
+    ``cells_across`` (or ``spacing``), and across x and y the tree's balls' extent with the band's reach and the
+    margin, the box's corner on the world's lattice of that spacing (so that a vessel moved by part of a cell moves on
+    the grid), with a cell more for the corner's rounding."""
+    held = np.asarray(points, dtype=np.float64)
+    radius = np.asarray(radii, dtype=np.float64)
+    if not high > low or held.ndim != 2 or held.shape[1] != 3:
+        raise ValueError(f"an open region's planes are ordered and its points three numbers each, not {low}, {high} "
+                         f"and {held.shape}")
+    starts, ends = held[[a for a, _ in segments]], held[[b for _, b in segments]]
+    least = np.minimum(starts - radius[:, :1], ends - radius[:, 1:]).min(axis=0)
+    most = np.maximum(starts + radius[:, :1], ends + radius[:, 1:]).max(axis=0)
+    target = spacing if spacing is not None else 2.0 * float(radius.min()) / cells_across
+    along = max(1, counted((high - low) / target))
+    h = (high - low) / along
+    cells = tuple(_odd(counted(float(most[k] - least[k]) / h + reach_cells + margin_cells + 1.0)) for k in range(2))
+    middle = 0.5 * (least + most)
+    origin = (h * math.floor(float(middle[0]) / h - cells[0] / 2), h * math.floor(float(middle[1]) / h - cells[1] / 2),
+              float(low))
+    moved = held - np.asarray(origin)
+    return TreeLayout((cells[0], cells[1], along), h, origin,
+                      tuple((float(p[0]), float(p[1]), float(p[2])) for p in moved))
+
+
 def period_mismatch(minimum: Any, layout: TreeLayout, reach: float) -> float:
     """How far the tree fails to repeat over its period where the fields read it: the largest difference, over the
     cell centres of the box's first layer along z within ``reach`` (m) of the wall, between the tree's distance there
@@ -174,5 +204,6 @@ def period_mismatch(minimum: Any, layout: TreeLayout, reach: float) -> float:
     return float(np.max(np.abs(a - b)[near])) if near.any() else 0.0
 
 
-__all__ = ["DEFAULT_CELLS_ACROSS", "DEFAULT_MARGIN", "DEFAULT_REACH", "TreeLayout", "TubeLayout", "period_mismatch",
+__all__ = ["DEFAULT_CELLS_ACROSS", "DEFAULT_MARGIN", "DEFAULT_REACH", "TreeLayout", "TubeLayout", "open_region_layout",
+           "period_mismatch",
            "periodic_tree_layout", "periodic_tube_layout", "same_discretisation"]

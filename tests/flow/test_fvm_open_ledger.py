@@ -63,7 +63,7 @@ def test_control_a_loss_written_into_n_wk_fails_its_order(float64, monkeypatch):
 
 def test_the_open_flags_are_declared_and_none_claims_coverage_unshown():
     assert not flag_problems(OPEN_FLAGS)
-    assert [flag.name for flag in OPEN_FLAGS] == ["open_face_projection", "port_kinetic_flux"]
+    assert [flag.name for flag in OPEN_FLAGS] == ["open_face_projection", "opening_kinetic_flux"]
     assert all(flag.active and not flag.pending for flag in OPEN_FLAGS)
     assert OpenFlowNode.LEDGER_FLAGS is OPEN_FLAGS
 
@@ -85,11 +85,11 @@ def test_the_projection_flag_is_quiet_and_catches_its_plant(dtype, monkeypatch, 
 
 @pytest.mark.parametrize("plant", [None, "kinetic_in_n_conv"])
 def test_the_kinetic_flux_flag_is_quiet_and_catches_its_plant(dtype, monkeypatch, plant):
-    """port_kinetic_flux on a drawn run: under its line clean, past it with the kinetic energy crossing the openings
+    """opening_kinetic_flux on a drawn run: under its line clean, past it with the kinetic energy crossing the openings
     left inside N_conv (the step identity still closing). Its rates over fresh draws are its evidence's."""
     if plant:
         PLANTS[plant](monkeypatch.setattr)
-    flag = next(f for f in OPEN_FLAGS if f.name == "port_kinetic_flux")
+    flag = next(f for f in OPEN_FLAGS if f.name == "opening_kinetic_flux")
     node = point_node(draw(SEEDS[0]))
     final, found = scan(node, STEPS, lambda p, b, a: flag.reading(node, p, b, a))
     assert int(final["stopped_at"]) < 0

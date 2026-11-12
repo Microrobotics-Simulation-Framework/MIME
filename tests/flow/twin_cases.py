@@ -132,6 +132,10 @@ def twin_node(point: Point, laws: tuple[str, ...], parameters: Any, *, law_openi
     held = layout_of(point)
     three = len(openings) == 3
 
+    # The rig's start plane holds both tubes' starts, no one round section a prescribed inflow is made for: its Inflow
+    # keeps the free face (its flux pinned, its profile the field's), stable in these Stokes rigs.
+    free = {"free_inflow": True} if "inflow" in laws else {}
+
     def made(**extra: Any) -> TwinNode:
         return TwinNode("flow", dt, cells_x=held["cells_x"], cells_y=held["cells_y"], cells_z=held["cells_z"],
                         spacing=held["spacing"], viscosity=1.0, density=1.0, tube_centre=held["tube_centre"],
@@ -140,7 +144,7 @@ def twin_node(point: Point, laws: tuple[str, ...], parameters: Any, *, law_openi
                         opening_planes=("low", "high", "high") if three else ("low", "high"),
                         opening_centres=((held["centres"][0][0], held["centres"][0][1]), *held["centres"]) if three
                         else (), law_openings=law_openings, twin_offset=held["twin_offset"],
-                        **({"twin_plug": plug} if plug is not None else {}), **settings, **extra)
+                        **({"twin_plug": plug} if plug is not None else {}), **free, **settings, **extra)
 
     return made() if "ledger" in settings else made(ledger=metered(made()))
 

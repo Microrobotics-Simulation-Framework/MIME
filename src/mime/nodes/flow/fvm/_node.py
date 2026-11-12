@@ -62,8 +62,8 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_ar
     run_constants_given, run_dtype
 from mime.core import ledger as books
 from mime.core._node import STAGNATED, rechecked
-from mime.nodes.flow.fvm._band import PorousRegion, TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
-    negative_resistivity, plan_rung, ramp, wall_fields
+from mime.nodes.flow.fvm._band import PorousRegion, RegionSolid, TreeSolid, TubeSolid, WallFields, band_named, \
+    interior_depth, negative_resistivity, plan_rung, ramp, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
@@ -170,7 +170,7 @@ class FlowState(FlowFields, closed=True):
     """The flow's state without the energy ledger."""
 
 
-class _WallCounts(TypedDict):
+class WallCounts(TypedDict):
     """A tube tree's wall's report: where its distance was not exact, counted over the faces (failing faces in the band's
     reach past the plan's size; chosen faces whose candidates did not stand; pairs of tubes within reach the union does
     not hold as meeting), and its flag."""
@@ -181,7 +181,7 @@ class _WallCounts(TypedDict):
     wall_inexact: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
-class TreeFlowState(FlowFields, _WallCounts, closed=True):
+class TreeFlowState(FlowFields, WallCounts, closed=True):
     """A flow walled by a tube tree, without the energy ledger: the flow's fields and the wall's report."""
 
 
@@ -197,7 +197,7 @@ class MeteredFlowState(FlowFields, FlowRecords, closed=True):
     """A metered flow's state: the flow's fields, the stall detector and the ledger's records."""
 
 
-class MeteredTreeFlowState(FlowFields, _WallCounts, FlowRecords, closed=True):
+class MeteredTreeFlowState(FlowFields, WallCounts, FlowRecords, closed=True):
     """A metered flow walled by a tube tree: the flow's fields, the wall's report, the stall detector and the ledger's
     records."""
 
@@ -502,7 +502,7 @@ class ImplicitFlowNode(MimeNode):
         if dtype not in cache:
             tree = self.tree()
             c = self.constants()
-            grid = MACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), float(c["spacing"]))
+            grid = self.grid({"spacing": float(c["spacing"])})
             # Made from the values built, outside whatever traces the step that first asks for it.
             with cast(Any, jax).ensure_compile_time_eval():
                 points = jnp.concatenate([grid.face_points(k, run_dtype()).reshape(-1, 3) for k in range(3)])
@@ -530,7 +530,10 @@ class ImplicitFlowNode(MimeNode):
         if not self.walled_by_tree:
             return leaves
         c = self.constants()
-        faces = 3 * int(c["cells_x"]) * int(c["cells_y"]) * int(c["cells_z"])
+        grid = self.grid({"spacing": float(c["spacing"])})
+        cells = int(c["cells_x"]) * int(c["cells_y"]) * int(c["cells_z"])
+        # An open grid's w holds a plane more than its cells (its periodic x and y hold none).
+        faces = 3 * cells + (int(c["cells_x"]) * int(c["cells_y"]) if not grid.periodic[2] else 0)
         return {**leaves, TREE_WALL: jnp.zeros(faces, dtype=run_dtype()),
                 TREE_WALL_COUNTS: jnp.zeros(len(WALL_COUNTS), dtype=run_dtype())}
 
@@ -570,7 +573,7 @@ class ImplicitFlowNode(MimeNode):
             return as_run_array((1.0, 1.0, 1.0))
         return p["tube_axis"]
 
-    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid]:
+    def solids(self, p: Mapping[str, Any], grid: MACGrid) -> Sequence[TubeSolid | TreeSolid | RegionSolid]:
         if self.walled_by_tree:
             return [self.tree_solid(p, grid)]
         extents = [count * grid.spacing for count in grid.cells]

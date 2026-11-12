@@ -211,10 +211,11 @@ flow.box-axis                 user
 flow.box-margin               user
 flow.cfl-exceeded             user
 flow.cfl-predicted            user
+flow.inflow-count             user
+flow.inflow-plane             user
 flow.interior                 user
 flow.memory                   user
 flow.no-openings              user
-flow.open-axis                user
 flow.open-exchange            user
 flow.open-resolved            user
 flow.open-scheme              user
@@ -231,9 +232,13 @@ flow.preconditioner           user
 flow.prescribed-alpha         user
 flow.prescribed-region        user
 flow.region                   user
+flow.region-cut               user
+flow.region-face              user
+flow.region-upstream          user
 flow.resolution               user
 flow.solve-report-rows        user
 flow.steady-convection        user
+flow.tree-float32-reverse     user
 flow.tree-period              user
 flow.tree-resolved            user
 flow.tree-scheme              user

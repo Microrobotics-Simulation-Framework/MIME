@@ -1,0 +1,272 @@
+{
+  "written": "2026-11-12, committed before any gate below ran (the commit that adds this file is the timestamp): the maintainer's inflow decision (A) in product code, the Inflow's opening prescribed (w Poiseuille plus Womersley scaled to the law's flux at the step's end, u = v = 0, the projector Neumann there), R-15's gates re-run on it under IMEX Euler with both backflow forms and both dtypes, the bits with his condition 3's exception, and the measurements its validity text states (the development length past the opening, the profile's convective residual)",
+  "phase": "F2b PR 4a, decision (A) and R-15's gates on it (record item 63, items 1 to 3)",
+  "labels": "predictions by the builder (Opus, the third agent on #258) from derivations and from the numbers in seen_before; a prediction near one of those is a fit to it and says so; guesses say so",
+  "seen_before": [
+    "4b's test-only patch of (A) under RK3 (probe run 43137787804): FB7's point (Re_R 300, the stenosis 0.9 D before the outlet, D/h 16) held 2.29 T in both backflow forms and both dtypes; the term removed diverged at 0.213 T at the outlet (w -70 U); the damping point (Re_R 100, 1.4 D, 1 T) held in every form, its reversal damping equal between the forms to 5 digits (0.08676); with w alone prescribed (tangential free) FB7 stopped at 0.43 T; the profile's convective residual 0.04 to 0.3 % at the gate points and 4 to 14 % over 40 drawn RK3 rigs (alpha 6 to 13); the booked convective power 15 % off the face formula (median, RK3's stage quadrature)",
+    "this branch before (A) (runs 43124710151 and 43133109128, 4b's): the free inflow face unstable at FB7's point by 0.105 T under IMEX and RK3 alike, at Re_R 100 by 0.44 T",
+    "this agent's smoke on the head's working copy (laptop, float64, 30 steps of the open rig's draws 0 and 3, tests/flow/open_cases.py): the face equal to the profile to 7e-18 and 6e-16 of its peak, the inlet's flux the law's to 0.003 and 0.004 of FB2's floor, the divergence 1e-14 of U/h, the step identity's worst 0.009 and 0.11 of its floor, the inlet's pressure 345,778 and 15,637.9 against the free face's 301,669 and 15,643.8 (the outlet's equal to its last digit)",
+    "the release (74d7354) bits of open_tube_flow against #258's implicit term, before (A) (run 43144060683): float64 velocity 4e-18, pressure 5.6e-15; float32 pressure 3.6e-6; every other program compared equal (open_tube_loop, closed_tube, porous_plug, tree_flow, point_body_flow and resolved_body_flow were not in that arm)"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub Actions runner (4 vCPU, 16 GB), the probe workflow, one arm a runner; the head carrying this file (the implicit form); the explicit form's arms on the same head with the term moved out of the operator into the drive by a test-only patch in probe/fb7node.py; the FB7 and damping arms run without the energy ledger (their gate is the run's reach and the outlet's inward flux; the ledger under (A) is judged on the open rig's draws in CI)",
+    "sizes_and_parameters": "FB7's case on the open node (probe/fb7node.py, the open-ports spike's question 5 in SI): D 1 mm, the tube 4 D along z in the node's own box (the build's margin: 24 x 24 x 64 cells at D/h 16, the axis 0.31 and -0.17 cells off the cells' centre), a cosine stenosis 1 D long halving the radius centred 0.9 D before the outlet (the spike's), water (nu 1e-6, rho 1e3), Inflow(Q_m (1 + 1.5 sin wt)) at alpha 5.5, Windkessel(1e8, 1e-11, 1e9), IMEX Euler at 0.9 of its CFL line along the tube (0.4) at 1.25 times the spike's largest speed (7.45 U_m at mean Re_R 300, 8.1 at 100): 12,880 steps a period at mean Re_R 300, 4,673 at 100; the run a whole number of 250-step chunks; a 19,500 s wall budget. (Not the region path of predictions_backflow.json: its wide box, 45 x 45 x 128 cells, takes 87,000 steps at its diagonal line, past a runner's six hours.) The development length: an open straight tube (tests/flow/open_cases.py's open_node, D = nu = rho = 1), a steady Inflow at Re_D 10, 50, 150, 300 and 600, D/h 8 and 16, (4 + 0.05 Re_D) D long, IMEX Euler at 0.9 of its line at the centreline's 2U, from the prescribed profile laid along the tube, to steady state",
+    "seeds_and_draws": "one run a form and dtype at each case point; the convective residual over the open rig's draws 3000 to 3039 (tests/flow/open_cases.py: Re 1 to 100, D/h 8 to 16, 30 steps); bits on named programs"
+  },
+  "gate_fb7_prescribed": {
+    "claim": "R-15's first condition with (A) in product code, under IMEX Euler: FB7's case holds at least 2.25 periods with the lagged implicit term and with the explicit one, in float64 and float32; removing the term breaks it",
+    "kind": "acceptance",
+    "case": "probe/fb7node.py --reynolds 300 --periods 2.25 --form implicit | explicit | off, JAX_ENABLE_X64 1 and 0",
+    "prediction": {
+      "implicit": {
+        "value": 2.25,
+        "band": [
+          2.25,
+          2.25
+        ],
+        "unit": "periods held, finite, no CFL stop",
+        "basis": "measured-before (4b's RK3 run of the same patch, 2.29 T) carried to IMEX, whose smaller step and first-order damping hold more, not less [inference]"
+      },
+      "explicit": {
+        "value": 2.25,
+        "band": [
+          2.25,
+          2.25
+        ],
+        "unit": "periods held",
+        "basis": "as the implicit arm"
+      },
+      "off": {
+        "value": 0.3,
+        "band": [
+          0.15,
+          2.25
+        ],
+        "unit": "periods held before it diverges or the CFL check stops it",
+        "basis": "measured-before (RK3: 0.213 T at the outlet); IMEX's damping may hold it longer (guess)"
+      },
+      "why": "the inlet's growth (the free face drawing in momentum) is gone with the face prescribed; the outlet's reversal is what the term cures, and the two forms damp an inward face alike at the step's start velocity"
+    },
+    "metric": "the periods reached before a non-finite chunk or a CFL stop, per arm; and the largest speed over the mean speed and its plane",
+    "control": {
+      "plant": "the term removed (--form off)",
+      "expected_rate": "diverges or stops before 2.25 periods, in each dtype (one run each)",
+      "clean_expected": "the implicit and explicit arms hold 2.25 periods"
+    },
+    "if_wrong": "an implicit arm short of the explicit one goes back to the maintainer before #258 merges; a budget that stops an arm early is reported as its reach, not a pass",
+    "cannot_discriminate_if": "the off arm also holds 2.25 periods: then IMEX shows no instability here for the term to cure, and the gate says only that neither form broke the case"
+  },
+  "gate_damping_prescribed": {
+    "claim": "R-15's second condition with (A): a genuine reversal at the outlet is damped by the lagged implicit term as by the explicit one",
+    "kind": "estimates",
+    "case": "probe/fb7node.py --reynolds 100 --periods 2 --form implicit | explicit | off, both dtypes",
+    "metric": "over the second period, against the off arm: damping = 1 - (the outlet's largest inward flux through its patch, fluid-weighted, with the term) / (its largest without); the implicit arm's damping over the explicit arm's",
+    "prediction": {
+      "value": 1.0,
+      "band": [
+        0.95,
+        1.05
+      ],
+      "unit": "implicit damping over explicit damping",
+      "basis": "measured-before (4b, RK3, under the same patch: equal to 5 digits) and derived (the two forms' damping of an inward face agree at the step's start velocity, first order in the term)"
+    },
+    "also_read": {
+      "damping": "each form's damping, 0.02 to 0.3 (guess; 4b's 0.087 at 1.4 D under RK3)",
+      "off_holds": "the off arm holds the two periods at mean Re_R 100 (the spike's: stable with and without the term)"
+    },
+    "control": {
+      "plant": "the off arm is the reference, not a control",
+      "expected_rate": "n/a",
+      "clean_expected": "n/a"
+    },
+    "if_wrong": "a ratio outside the band goes back to the maintainer before #258 merges, with both arms' series",
+    "cannot_discriminate_if": "the outlet never reverses at this point (its largest inward flux zero in the off arm): then there is no reversal to damp, said so"
+  },
+  "gate_bits_prescribed": {
+    "claim": "condition 3 as the maintainer accepted it: every released program bit for bit against the release, in both dtypes, but open_tube_flow, whose move is stated with its measured size",
+    "kind": "equality",
+    "cases": "bit_compare.py base 74d73542 (the release tip merged), head this file's commit with (A): script_a, script_a_metered, hull_contact, coupled_toy, dynamic_rpm, kinematic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow, prescribed_tube_flow, tree_flow, nudged_toy, point_body_flow, resolved_body_flow, porous_plug, open_tube_loop, closed_tube, open_tube_flow; float64 and float32; 20 ms each; one CPU, one thread",
+    "prediction": {
+      "equal": "every array of every program but open_tube_flow, open_tube_loop and closed_tube",
+      "open_tube_flow": {
+        "value": 0.1,
+        "band": [
+          0.001,
+          1.0
+        ],
+        "unit": "the velocity's largest difference over its largest value",
+        "basis": "guess: (A) changes its inflow (the face the developed Womersley profile from the first step, not the free face evolving from rest), not a rounding; plus the implicit term's rounding (measured-before, 1e-15)"
+      },
+      "open_tube_loop_and_closed_tube": {
+        "value": "move at rounding: float64 about 1e-15, float32 about 1e-6 relative",
+        "basis": "inference: the build places the backflow term on each one's second opening, so c = 0 sits in their operators as in open_tube_flow's (the cause measured there); neither has an Inflow, so (A) does not touch them"
+      }
+    },
+    "controls": {
+      "repeat": "bit_compare.py's own head-against-head arm: every array identical",
+      "one_ulp": "not run: the comparison's power to fail is shown by open_tube_flow's difference"
+    },
+    "if_wrong": "a released program other than open_tube_flow that moves is not covered by his acceptance: it goes back to him before #258 merges, with its size and cause"
+  },
+  "gate_development_length": {
+    "claim": "the development length past a prescribed opening, measured: the distance over which the field adjusts from the profile to its own developed state, inside which readings are flagged",
+    "kind": "estimates",
+    "case": "probe/devlen.py --reynolds R --cells N (steady Inflow, an open straight tube), R in 10, 50, 150, 300, 600 and N in 8, 16, float64",
+    "metric": "L_1: the largest distance from the plane (in D) at which the centreline's w differs from its developed value (its mean over the tube's middle third past the development) by more than 1 % of that value; L_01 at 0.1 %; and the mismatch at the plane, the profile's centreline over the field's developed one, less one",
+    "prediction": {
+      "L_1": {
+        "value": "0.5 D + 0.02 Re_D D",
+        "band": [
+          "0.1 D + 0.005 Re_D D",
+          "2 D + 0.05 Re_D D"
+        ],
+        "basis": "guess: a small mismatch decays as the entrance problem's slowest mode, its length growing with Re (a plug's 99 % entrance length is about 0.06 Re D)"
+      },
+      "mismatch": {
+        "value": "D/h 8: 0.05, D/h 16: 0.02",
+        "band": [
+          0.005,
+          0.15
+        ],
+        "unit": "relative, at the plane",
+        "basis": "derived from FB9's measured developed centreline at the band (0.906 of 2U at D/h 8 along z; 0.981 at 16, steady 0.01h) against the profile's, which sums its weights over the band's fluid share"
+      }
+    },
+    "if_wrong": "a length past the band at high Re is stated as measured (the flag uses the measured fit, never a guess); a length that does not grow with Re says the mismatch is the band's, not convection's",
+    "cannot_discriminate_if": "the run does not reach steady state (its centreline still changing over the last chunks by more than 1e-4): then the arm reports unconverged"
+  },
+  "gate_convective_residual": {
+    "claim": "the profile's own convective residual, as measured: the convective power on the prescribed half cells (the grid's half weight there) over the net kinetic energy flux into the box, which the profile, never evolved, does not balance",
+    "kind": "estimates",
+    "case": "probe/residual.py over the open rig's draws 3000 to 3039 (30 steps each, every step read), and at every step of the FB7 and damping arms (probe/fb7node.py's readings)",
+    "metric": "|(1/2) h^3 sum C(u)_w w| on the prescribed plane over |<C(u), u>| (the net kinetic energy flux into the box, the scheme's own power), its median and largest over steps; and the scheme's kinetic flux through the prescribed plane (the open grid's exact telescoped form, which the books hold) against the face formula h^2 sum (1/2) w^3 there (the tangential velocity zero at the plane), over the formula",
+    "prediction": {
+      "draws": {
+        "value": 0.08,
+        "band": [
+          0.005,
+          0.3
+        ],
+        "unit": "median over the draws of each draw's median",
+        "basis": "measured-before (4b: 4 to 14 % over RK3's draws at alpha 6 to 13; the spike 8 %); these draws' alpha is 30 to 70 (40 steps a period)"
+      },
+      "gate_points": {
+        "value": 0.003,
+        "band": [
+          0.0001,
+          0.05
+        ],
+        "basis": "measured-before (4b: 0.04 to 0.3 % at the gate points)"
+      },
+      "books_against_formula": {
+        "value": 0.05,
+        "band": [
+          0.001,
+          0.3
+        ],
+        "basis": "guess, after a correction found before any run: the end cells' tangential velocity, half a cell from the plane where it is held at zero, moves the scheme's power off the face formula (locally, in the agent's smoke of 40 steps at FB7's point: 3.8 % and 0.5 %); the books hold the scheme's own power, exact to rounding (the open grid's kinetic flux now telescopes with the prescribed plane: 3e-16 on random fields)"
+      }
+    },
+    "if_wrong": "a residual above the band is stated as measured; the books' line off the formula beyond rounding is a bug in the prescribed plane's convection or kinetic flux, fixed before the PR"
+  },
+  "gate_open_flags": {
+    "claim": "the open box's two ledger flags under (A): their clean readings over the open rig's 200 draws a dtype, from which their lines are set (about three times the worst, as #246's were), and each plant caught on every draw",
+    "kind": "acceptance",
+    "case": "probe/flags.py --lines over draws 0 to 199 (open_cases.point_node, metered, 60 steps), and detection_rate.py over draws 3000 to 3039 with each plant: weights_uniform (open_face_projection), kinetic_in_n_conv, end_full_cell and start_full_cell (opening_kinetic_flux), at provisional lines (projection 1e-14 in float64 and 3e-6 in float32; the kinetic flag's own, 1e-14 and 5e-6)",
+    "prediction": {
+      "open_face_projection_worst": {
+        "value": {
+          "float64": "3e-17",
+          "float32": "3e-8"
+        },
+        "band": [
+          {
+            "float64": "5e-18",
+            "float32": "2e-9"
+          },
+          {
+            "float64": "5e-15",
+            "float32": "1e-6"
+          }
+        ],
+        "basis": "inference: under (A) the projection's term is the difference of the field pressure's work through the prescribed plane and its face formula, each of the order of the inlet's pressure work, so it reads at that work's rounding; the agent's smoke read 1.08e-8 in float32 on draw 0 (above #246's line of 1e-8)"
+      },
+      "opening_kinetic_flux_worst": {
+        "value": {
+          "float64": "3e-15",
+          "float32": "2e-6"
+        },
+        "band": [
+          {
+            "float64": "1e-16",
+            "float32": "1e-7"
+          },
+          {
+            "float64": "1e-14",
+            "float32": "5e-6"
+          }
+        ],
+        "basis": "measured-before (#246's worst 3.4e-15 and 1.8e-6) with the prescribed plane's exact telescoping (random fields: 3e-16)"
+      },
+      "rates": {
+        "value": "40/40 each plant and dtype, clean 0/40",
+        "basis": "measured-before (#246: 40/40 each) for plants far above rounding"
+      }
+    },
+    "control": {
+      "plant": "weights_uniform; kinetic_in_n_conv; end_full_cell; start_full_cell",
+      "environment_variable": "OPEN_PLANT",
+      "expected_rate": "40/40",
+      "runs": 40,
+      "clean_expected": "0/40"
+    },
+    "if_wrong": "a plant missed at the provisional line is not caught at a lower final line either: the flag is reworked before the PR; a clean reading above the provisional line sets the line from the measurement and the plants are re-run there",
+    "cannot_discriminate_if": "a plant does nothing on the prescribed rig (start_full_cell: the start plane's half cell is the prescribed face's, whose equation is not solved): its rate then says nothing of the flag at that plane, said so"
+  },
+  "gate_float32_tree_reverse": {
+    "claim": "float32 reverse mode on a built tube tree at its float32 default tolerance (1e-4) is right (offered) or wrong or unmeasured (refused by name, flow.tree-float32-reverse, as #276 refuses the penalty rung's), measured before either",
+    "kind": "bounds",
+    "case": "probe/f32rev.py on region_cases.cost_tree draws 1 to 3 (IMEX Euler with convection, Re about 10, a pulsatile inflow, the shared distal law), 4 steps, at the stiff interiors 0.1h and 0.01h: the inlet's pressure and the first outlet's share, each leaf's (the viscosity, the shared distal law's three resistances) derivative on its log scale, reverse and forward mode in float32 at 1e-4 and in float64 at 1e-8",
+    "metric": "each derivative's distance from float64's reverse mode over the largest of that loss's float64 derivatives, the worst over draws, leaves and losses, for float32 reverse and forward mode",
+    "prediction": {
+      "value": 0.002,
+      "band": [
+        1e-05,
+        0.05
+      ],
+      "unit": "relative",
+      "basis": "guess: the transpose solve stops at 1e-4 on the cotangent's right-hand side (#276: a stop at 1e-5 put the penalty rung's reverse mode 3.2e-2 off at its stiffest setting, 3.6e-4 at the default)"
+    },
+    "decides": "offered where the worst float32 reverse reading of an interior is at most 5e-3 and forward mode's as close; refused by name at an interior that reads past it, and wherever unmeasured (a tree's flow other than the measured kind is not refused for it: the refusal names the interiors measured off)",
+    "if_wrong": "a reading past 5e-3 refuses float32 reverse mode on trees at that interior, routed to float64 or forward mode"
+  },
+  "gate_fb9_prescribed": {
+    "claim": "FB9's explanation holds with the prescribed inlet: the inflow's centreline at the start's cut after a bend is the developed value at the spacing times the lumen's share (one less the solid's) times the bend's development",
+    "kind": "estimates",
+    "case": "probe/fb9.py (region_cases.bend_reading), the arms of run 43129054767 and 43132114405 re-run on the head: tilted 30 degrees at extensions 0.25, 2 and 4 D at 0.1h and 0.25, 2 D at 0.01h; along z; steady at D/h 8 and 16",
+    "prediction": {
+      "value": "each reading within 0.02 of the three factors' product, the factors as read on the run",
+      "band": [
+        0.0,
+        0.03
+      ],
+      "basis": "measured-before (within 0.01 on the free inflow face); the prescribed face holds the solid's deep faces at zero at the plane, so the start's solid share is smaller there and develops along the extension [inference]"
+    },
+    "also_read": {
+      "centreline": "the readings move from the free face's by up to 0.05 (guess)"
+    },
+    "if_wrong": "a reading the product misses by more than 0.03 means a factor is missing under (A): stated, and the validity text's FB9 sentence changed to what was measured"
+  },
+  "amendments": [
+    {
+      "written": "2026-11-12, after the first probe (run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43252920973) and before any re-run of the arms below; the predictions above unchanged",
+      "what": "every FB7 and damping arm (both forms, the off arm, both dtypes) stopped at the CFL check, none at a divergence: the case's stenotic jet reached 10.5 U_m by 0.14 of a period at mean Re_R 300 and 11.3 U_m by 0.23 at 100 and was still rising (the throat's mean speed at the inflow's peak is 10 U_m), past the spike's 7.45 and 8.1 the step was sized from; the near-inlet speed stayed at 3.2 and 4.0 U_m (no inlet growth). The development length's arms at Re 150 and above stopped at the same check from the start's transient past 2U, unsettled. Neither stop is a gate's verdict: the probe's step, as the earlier chunk bug was the probe's",
+      "changed": "probe/fb7node.py sizes its step from a largest speed of 25 U_m at both points (43,200 steps a period at mean Re_R 300, 14,400 at 100); probe/devlen.py at 0.9 of the line at 4U; every other arm, setting and prediction as written"
+    }
+  ],
+  "outcomes": null
+}
