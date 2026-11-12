@@ -34,6 +34,7 @@ LAYOUT = {
     "results",
     "saved",
     "scene",
+    "sensing",
     "study",
     "surrogates",
     "testing",

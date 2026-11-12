@@ -119,6 +119,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`fields/`](fields/) | field providers | new | dev1 |
 | [`interactions/`](interactions/) | physical laws, one module per family | new | dev1 |
 | [`observations/`](observations/) | what an experiment measures | new | dev1 |
+| [`sensing/`](sensing/) | the sensor core: a declared camera model (a distorted pinhole, closed-form chords, the box edge, media on two levels, exposure and response), rendered in JAX | new | dev2 |
 | [`errors/`](errors/) | the boundary of the public calls: every error a MIME error with a code in one shape (what, why, what to do, where, its page), errors from below translated, the script's own frames shown and the full chain kept, written to a file and shown with `MIME_TRACEBACK=full` | new | dev1 |
 | [`results/`](results/) | a run's result, from a run and from a run's folder: each observation's declared outputs by name with their units, series with their time axes, windows by time, the flags raised over them, and the exports (a table, CSV, NPZ, a run folder's manifest) | new | dev1 |
 | [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1 |
