@@ -240,6 +240,7 @@ def gate_one(drawn: int, porous: bool = False) -> dict[str, float]:
     return found
 
 
+@pytest.mark.memory_heavy
 def test_the_coupled_step_is_the_monolithic_step_within_its_derived_line(dtype, monkeypatch):
     """Gate 1, the return path: one freshly drawn step of the flow holding its partners against the monolithic step
     (the module states both), its field, each body's force, couple, velocity and spin, and the openings' pressures and
@@ -256,6 +257,7 @@ def _porous_pair(drawn: int) -> list[dict[str, float]]:
     return [gate_one(seeded, porous=True) for seeded in (first, first + 1)]
 
 
+@pytest.mark.memory_heavy
 def test_a_porous_plug_beside_held_bodies_steps_as_the_monolithic_step_and_its_faces_read_their_forces(
         dtype, monkeypatch):
     """Where point bodies held one pass meet a porous plug in one flow (#264's Darcy region): a freshly drawn step of
@@ -508,6 +510,7 @@ def test_an_open_vessels_flow_holds_a_body_one_pass_and_refuses_a_lagged_one_by_
 
 
 @pytest.mark.parametrize("mode", ["forward", "reverse"])
+@pytest.mark.memory_heavy
 def test_a_derivative_through_the_one_elimination_matches_a_central_difference(float64, monkeypatch, mode):
     """Gate 3: one pass, the body's axial position after 10 steps in the fluid's viscosity, forward and reverse mode by
     ``Study.gradient`` (reverse is what its auto mode takes past two numbers), against a central difference of two runs
