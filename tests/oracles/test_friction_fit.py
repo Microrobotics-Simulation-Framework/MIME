@@ -8,6 +8,9 @@ tube's floor (float64):
 - **The control, pure rolling data**: a sphere rolling without slipping at ``tan(theta) = 0.7 mu``: its speed does not
   depend on ``mu`` above its threshold, and the verdict is ``bounded below only``, with the bound the data hold
   (``(2/7) tan(theta)``, the traction rolling needs over its normal force).
+- **Data that never slide** (the review's blocker): a block under its threshold, fitted from above it and from below,
+  reads ``bounded below only`` with the slope's ``tan(theta)`` its bound, never ``identified``; sliding data fitted from
+  a start where the model sticks start again from the control and read ``identified``.
 - **The record**: a fitted value ships as a named record pinned by its content's and its data's hashes, never a default
   (``Coulomb`` has none for ``mu``)."""
 
@@ -87,6 +90,52 @@ def test_control_pure_rolling_data_are_bounded_below_only():
     print(f"\n{found.verdict}: lower bound {found.lower_bound:.9g} against (2/7) tan = {2 / 7 * math.tan(theta):.9g}")
     assert found.verdict == "bounded below only"
     assert abs(found.lower_bound - 2.0 / 7.0 * math.tan(theta)) <= 1e-6
+
+
+#: Blocks on a slope under their threshold, ``tan(theta) = ratio mu_true``, which never slide (the review's all-stick
+#: draws): ``(mu_true, ratio, start / mu_true)``, one started above the threshold (where the loss is flat) and one
+#: below it (the path climbs to the threshold, where the loss is flat above).
+STUCK = [(0.194, 0.773, 2.18), (0.5, 0.9, 0.6)]
+#: The search for data drawn past the register's range: starts up to 2.5 of a coefficient of 0.8.
+WIDE = (0.01, 2.5)
+
+
+@pytest.mark.parametrize("mu_true, ratio, share", STUCK, ids=["started-above", "started-below"])
+def test_data_that_never_slide_bound_mu_below_only_never_identified(mu_true, ratio, share):
+    """The review's blocker: a block that never slides holds ``mu`` from below only, whatever the start; the verdict
+    says so (one standard error read above the estimate is flat: a larger coefficient moves no datum), and its bound
+    is the slope's ``tan(theta)``, the traction over the normal force, at most the true coefficient."""
+    theta = math.atan(ratio * mu_true)
+    observed = data(on_the_floor(theta=theta, mu=mu_true, body=ROD, along=True, **COARSE), theta)
+
+    def residual(final):
+        return jnp.atleast_1d(speed_down(theta)(final) - observed)
+
+    start = share * mu_true
+    found = fit_friction(on_the_floor(theta=theta, mu=start, body=ROD, along=True, **COARSE), residual, axis=AXIS,
+                         start=start, noise=1e-3 * 9.81 * math.sin(theta) * DURATION, duration=s(DURATION),
+                         body="ball", search=WIDE)
+    print(f"\n{found.verdict}: {found.why}")
+    assert found.verdict == "bounded below only", found.why
+    assert found.uncertainty is None and found.lower_bound is not None
+    assert abs(found.lower_bound - math.tan(theta)) <= 1e-6 * math.tan(theta) and found.lower_bound <= mu_true
+
+
+def test_sliding_data_started_where_the_model_sticks_start_again_from_the_control():
+    """Sliding data fitted from a start past the threshold (the model sticks there, its derivative zero; the review's
+    minor 2): the path starts again from the gradient-free control and identifies mu."""
+    mu_true, ratio = 0.769, 1.6
+    theta = math.atan(ratio * mu_true)
+    observed = data(on_the_floor(theta=theta, mu=mu_true, body=ROD, along=True, **COARSE), theta)
+
+    def residual(final):
+        return jnp.atleast_1d(speed_down(theta)(final) - observed)
+
+    found = fit_friction(on_the_floor(theta=theta, mu=1.84, body=ROD, along=True, **COARSE), residual, axis=AXIS,
+                         start=1.84, noise=1e-3 * abs(observed), duration=s(DURATION), body="ball", search=WIDE)
+    print(f"\n{found.verdict} (restarted {found.restarted}): {found.estimate:.9g}; {found.why}")
+    assert found.restarted and found.verdict == "identified", found.why
+    assert found.uncertainty is not None and abs(found.estimate - mu_true) <= found.uncertainty
 
 
 def test_a_fitted_value_ships_as_a_hash_pinned_record_never_a_default(sliding):
