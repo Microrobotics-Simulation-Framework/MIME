@@ -220,6 +220,10 @@ class ResolvedFlowNode(ImplicitFlowNode):
         return int(self.constants().get("bodies", 0))
 
     @override
+    def holds_bodies(self) -> bool:
+        return self.count > 0
+
+    @override
     def param_specs(self) -> dict[str, ParamSpec]:
         held = super().param_specs()
         fixed = ("a structural setting: the hull's volume at build, the displaced share's, held with the window, which "
@@ -494,7 +498,8 @@ class ResolvedFlowNode(ImplicitFlowNode):
         penalty, scale = terms["penalty"], terms["scale"]
         for index in range(self.count):
             own, work, size = self.penalty_work(p, fields, stage.solved, index, dt)
-            penalty = penalty - own
+            # With porous regions the base books the walls' penalty alone (``WallFields.walls``, the bodies' not in it).
+            penalty = penalty if fields.porous else penalty - own
             terms[f"body_{index}"] = work
             scale = scale + size
         return {**terms, "penalty": penalty, "scale": scale}

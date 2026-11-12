@@ -164,6 +164,13 @@ class FlowFields(TypedDict):
     #: With porous regions, whether one lay outside what was measured (``_porous.porous_flagged``); absent where there
     #: are none.
     porous_flagged: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    #: With porous regions, each region's throughflow along its axis by its route (``_porous``'s hand-over): the
+    #: solve's flux through its mid-section at or above the line, its one-way Darcy reading below it; and that flux
+    #: over its section, the seepage velocity. Absent where there are none.
+    porous_flux: NotRequired[ReadOnly[Annotated[Float[Array, "n"], Units("m^3/s")]]]  # noqa: F722 - a jaxtyping shape
+    porous_seepage: NotRequired[ReadOnly[Annotated[Float[Array, "n"], Units("m/s")]]]  # noqa: F722 - a jaxtyping shape
+    #: With porous regions, whether a law forced flow through one below the line (``_porous.forced_through``).
+    forced_flagged: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class FlowState(FlowFields, closed=True):
@@ -600,13 +607,18 @@ class ImplicitFlowNode(MimeNode):
 
     def porous_regions(self, p: Mapping[str, Any], grid: MACGrid) -> list[PorousRegion]:
         """The porous regions at the step's leaves (:class:`PorousRegion`), each centre placed in the box
-        (:meth:`porous_centre`)."""
+        (:meth:`porous_centre`), each held at its permeability or the hand-over's line's, the larger
+        (``_porous.held_permeability``): what the solve holds; :meth:`permeabilities` are their own."""
+        from mime.nodes.flow.fvm._porous import held_permeability
+
         images = self.porous_images(grid)
+        interior = str(self.constants()["interior"])
         regions: list[PorousRegion] = []
         for index in range(len(self.porous_laws)):
             leaves = {name: as_run_array(p[porous_leaf(index, name)]) for name in POROUS_LEAVES}
-            regions.append(PorousRegion(**{**leaves, "centre": self.porous_centre(leaves["centre"], grid)},
-                                        images=images))
+            held = held_permeability(leaves["permeability"], grid.spacing, interior)
+            regions.append(PorousRegion(**{**leaves, "centre": self.porous_centre(leaves["centre"], grid),
+                                           "permeability": held}, images=images))
         return regions
 
     def porous_face_pressures(self, p: Mapping[str, Any], grid: MACGrid, applied: Velocity,
@@ -646,32 +658,104 @@ class ImplicitFlowNode(MimeNode):
             rows.append(jnp.stack(faces))
         return jnp.stack(rows)
 
-    def porous_gaps(self, p: Mapping[str, Any], grid: MACGrid) -> list[Array]:
-        """Whether each porous region leaves a gap to the wall (``_porous.leaves_a_gap``) against the straight tube's
-        lumen; in a tube tree every region does (none was measured there)."""
-        from mime.nodes.flow.fvm._porous import leaves_a_gap
+    def porous_sections(self, p: Mapping[str, Any], grid: MACGrid) -> tuple[list[Array], list[Array]]:
+        """Each porous region's section within the straight tube's lumen (m^2, ``_porous.section_area``) and whether it
+        leaves a gap to the wall (``_porous.leaves_a_gap``); in a tube tree its own disc, and every region leaves a gap
+        (none was measured there)."""
+        from mime.nodes.flow.fvm._porous import leaves_a_gap, section_area
 
         regions = self.porous_regions(p, grid)
         if self.walled_by_tree:
-            return [jnp.asarray(True) for _ in regions]
+            return [jnp.pi * region.radius * region.radius for region in regions], [jnp.asarray(True) for _ in regions]
         centre, axis = as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"])
+        lumen = as_run_array(p["tube_radius"])
+        areas: list[Array] = []
         gaps: list[Array] = []
         for region in regions:
             across = jnp.asarray(region.centre, dtype=centre.dtype) - centre
             along = jnp.sum(across * axis)
             offset_squared = jnp.sum(across * across) - along * along / jnp.sum(axis * axis)
-            gaps.append(leaves_a_gap(region.radius, offset_squared, as_run_array(p["tube_radius"])))
-        return gaps
+            areas.append(section_area(region.radius, offset_squared, lumen))
+            gaps.append(leaves_a_gap(region.radius, offset_squared, lumen))
+        return areas, gaps
 
-    def porous_report(self, p: Mapping[str, Any], grid: MACGrid, applied: Velocity, rhs: Velocity,
-                      dtype: Any) -> dict[str, Array]:
-        """The state fields a flow holding porous regions adds: their face pressures and its flag."""
-        from mime.nodes.flow.fvm._porous import POROUS_FLAG, porous_flagged
+    def porous_gaps(self, p: Mapping[str, Any], grid: MACGrid) -> list[Array]:
+        """Whether each porous region leaves a gap to the wall (:meth:`porous_sections`)."""
+        return self.porous_sections(p, grid)[1]
 
-        flagged = porous_flagged(self.permeabilities(p), self.porous_gaps(p, grid), grid.spacing,
-                                 str(self.constants()["interior"]))
-        return {"porous_face_pressure": self.porous_face_pressures(p, grid, applied, rhs).astype(dtype),
-                POROUS_FLAG: flagged.astype(dtype)}
+    def porous_section_fluxes(self, p: Mapping[str, Any], grid: MACGrid, fields: WallFields,
+                              velocity: Velocity) -> list[Array]:
+        """Each porous region's flux through its mid-section (m^3/s, along its axis): the velocity along the box's axis
+        on the faces of the planes bracketing the region's centre, interpolated linearly to it, each face weighted by
+        the region's share of its fluid (``_band.fluid_share`` of the region's indicator, its depth carried into the
+        wall's solid), so the band's fluid beside a region closing the lumen counts whole; times a face's area. Exact
+        for an aligned region; a tilted one's is the flux through the plane across the box at its centre."""
+        from mime.nodes.flow.fvm._band import fluid_share, wall_reach
+
+        w = velocity[2]
+        points = grid.face_points(2, w.dtype)
+        h = grid.spacing
+        width = band_named(self.constants()["band"]).width * h
+        fluid = 1.0 - fields.chi[2]
+        fluxes: list[Array] = []
+        for region in self.porous_regions(p, grid):
+            axis = jnp.asarray(region.axis, dtype=w.dtype)
+            share = fluid_share(ramp(region.depth(points) + wall_reach(fields.signed_distance[2]), width), fluid)
+            plane = jnp.zeros_like(w)
+            for shift in region.images:
+                along = points[..., 2] - jnp.asarray(shift, dtype=w.dtype)[2] - jnp.asarray(region.centre,
+                                                                                             dtype=w.dtype)[2]
+                plane = plane + jnp.maximum(1.0 - jnp.abs(along) / h, 0.0)
+            fluxes.append(jnp.sign(axis[2]) * h * h * jnp.sum(share * plane * w))
+        return fluxes
+
+    def through_plug(self, p: Mapping[str, Any], grid: MACGrid, gaps: Sequence[Array]) -> list[Array]:
+        """Whether a law fixes the flux through each porous region: every path through the lumen from an opening whose
+        law fixes its flux to every other opening passes through it. A periodic box has no opening, so none does."""
+        del p, grid
+        return [jnp.asarray(False) for _ in gaps]
+
+    def holds_bodies(self) -> bool:
+        """Whether the box holds resolved bodies, whose displacement the forced-flow test does not see."""
+        return False
+
+    def porous_report(self, p: Mapping[str, Any], grid: MACGrid, fields: WallFields, applied: Velocity,
+                      rhs: Velocity, velocity: Velocity, delivered: Array, dtype: Any) -> dict[str, Array]:
+        """The state fields a flow holding porous regions adds: their face pressures, each one's throughflow by its
+        route and its seepage velocity, and the flags (``_porous``'s hand-over). ``velocity`` is the step's solution,
+        ``delivered`` the body force on the fluid (m/s^2)."""
+        from mime.nodes.flow.fvm._porous import FORCED_FLAG, POROUS_FLAG, darcy_reading, forced_through, \
+            handed_over, porous_flagged
+
+        c = self.constants()
+        interior = str(c["interior"])
+        faces = self.porous_face_pressures(p, grid, applied, rhs)
+        areas, gaps = self.porous_sections(p, grid)
+        own = self.permeabilities(p)
+        sections = self.porous_section_fluxes(p, grid, fields, velocity)
+        through = self.through_plug(p, grid, gaps)
+        rho, mu = as_run_array(p["density"]), as_run_array(p["viscosity"])
+        width = band_named(c["band"]).width * grid.spacing
+        tolerance = as_run_array(p["tolerance"])
+        fluxes: list[Array] = []
+        forced: list[Array] = []
+        for index, region in enumerate(self.porous_regions(p, grid)):
+            axis = jnp.asarray(region.axis, dtype=faces.dtype)
+            axis = axis / jnp.sqrt(jnp.sum(axis * axis))
+            drive = rho * jnp.sum(jnp.asarray(delivered, dtype=faces.dtype) * axis) * (region.length + width)
+            drop = faces[index, 0] - faces[index, 1] + drive
+            reading = darcy_reading(own[index], areas[index], region.length, drop, mu)
+            handed = handed_over(own[index], grid.spacing, interior)
+            fluxes.append(jnp.where(handed, reading, sections[index]))
+            scale = jnp.abs(faces[index, 0]) + jnp.abs(faces[index, 1]) + jnp.abs(drive)
+            forced.append(forced_through(through[index], handed, sections[index], reading, drop, scale, tolerance))
+        flux = jnp.stack(fluxes)
+        area = jnp.stack(areas)
+        flagged = porous_flagged(own, gaps, grid.spacing, interior, self.holds_bodies())
+        return {"porous_face_pressure": faces.astype(dtype), POROUS_FLAG: flagged.astype(dtype),
+                "porous_flux": flux.astype(dtype),
+                "porous_seepage": jnp.where(area > 0.0, flux / jnp.where(area > 0.0, area, 1.0), 0.0).astype(dtype),
+                FORCED_FLAG: jnp.any(jnp.stack(forced)).astype(dtype)}
 
     def permeabilities(self, p: Mapping[str, Any]) -> list[Array]:
         """Each porous region's permeability as the step reads it (m^2)."""
@@ -831,6 +915,9 @@ class ImplicitFlowNode(MimeNode):
         if self.porous_laws:
             common["porous_face_pressure"] = jnp.zeros((len(self.porous_laws), 2), dtype=dtype)
             common["porous_flagged"] = z
+            common["porous_flux"] = jnp.zeros(len(self.porous_laws), dtype=dtype)
+            common["porous_seepage"] = jnp.zeros(len(self.porous_laws), dtype=dtype)
+            common["forced_flagged"] = z
         return common
 
     @override
@@ -911,7 +998,9 @@ class ImplicitFlowNode(MimeNode):
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
             negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype))
         if self.porous_laws:
-            ended.update(self.porous_report(p, grid, operator(stage.shift)(stage.solved), stage.rhs, dtype))
+            delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
+            ended.update(self.porous_report(p, grid, fields, operator(stage.shift)(stage.solved), stage.rhs,
+                                            ended_velocity, delivered, dtype))
         held = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
             TreeFlowState(**ended, **self.wall_report(fields.counts)))
         if self.metered:

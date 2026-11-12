@@ -949,16 +949,16 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
 
 
 def porous_flags(plan: EntryPlan) -> list[FlagLayout]:
-    """The flag of a flow holding porous regions (a law registering one, ``mime.interactions.Darcy``), read from the
-    field its node holds for them, warned of after a run that raised it: a region outside what was measured. None for
-    a dynamics holding none."""
+    """The flags of a flow holding porous regions (a law registering one, ``mime.interactions.Darcy``), read from the
+    fields its node holds for them, warned of after a run that raised them: a region outside what was measured, and
+    flow forced through a plug below the hand-over's line. None for a dynamics holding none."""
     from mime.dynamics.flow._fvm import POROUS_LAW
-    from mime.nodes.flow.fvm._porous import POROUS_FLAG, POROUS_FLAG_MEANING
+    from mime.nodes.flow.fvm._porous import FORCED_FLAG, FORCED_FLAG_MEANING, POROUS_FLAG, POROUS_FLAG_MEANING
 
     if not any(registration.kind == POROUS_LAW for registration in plan.registrations):
         return []
-    return [FlagLayout(plan.owner, plan.registered.cls.label(), plan.node_name(""), POROUS_FLAG, POROUS_FLAG_MEANING,
-                       warns=True)]
+    return [FlagLayout(plan.owner, plan.registered.cls.label(), plan.node_name(""), flag, meaning, warns=True)
+            for flag, meaning in ((POROUS_FLAG, POROUS_FLAG_MEANING), (FORCED_FLAG, FORCED_FLAG_MEANING))]
 
 
 def registration_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
