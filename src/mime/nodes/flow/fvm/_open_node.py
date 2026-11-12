@@ -126,6 +126,12 @@ TREE_FLOAT32_MEASURED = ("on a built two-outlet tree of 73 x 49 x 109 cells, ste
                          "(0.01h) iterations, its split within 1e-7 of float64's, in 33 to 54 s")
 
 
+#: The stiff interiors at which float32 reverse mode on an open tree was measured right at its float32 default
+#: (``TREE_FLOAT32_REVERSE_MEASURED``); elsewhere, and where unmeasured, it is refused (``flow.tree-float32-reverse``).
+TREE_FLOAT32_REVERSE_RIGHT: frozenset[str] = frozenset()
+TREE_FLOAT32_REVERSE_MEASURED = "unmeasured"
+
+
 #: Why an open vessel's flow bounds no step of its own, said where ``dt='auto'`` is refused and where the CFL check
 #: stops a run.
 OPEN_STEP = ("the open vessel's flow (FVM(domain=VesselRegion())) has no step rule yet: the CFL number it would predict "
@@ -321,9 +327,10 @@ class OpenFlowNode(ImplicitFlowNode):
             placed["opening_paths"] = paths
         if free_inflow:
             if settings.get("convection", True):
-                raise ValueError("an Inflow's free face (its flux pinned, its profile the field's) grows at the inflow "
-                                 "plane under convection (F2b 4b's measurement, probe run 43124710151): the node-level "
-                                 "free face is for Stokes rigs (convection=False); the prescribed face is the default")
+                raise ValueError("an Inflow's free face (flow.inflow-free-face: its flux pinned, its profile the "
+                                 "field's) grows at the inflow plane under convection (probe run 43124710151): the "
+                                 "node-level free face is for Stokes rigs (convection=False); the prescribed face is the "
+                                 "default")
             placed["free_inflow"] = True
         else:
             _check_inlet(laws, bound, planes, parameters, settings, placed)
@@ -778,6 +785,26 @@ class OpenFlowNode(ImplicitFlowNode):
         distance = fields.signed_distance[2]
         solid = jnp.where(distance >= depth, velocity[2], 0.0)
         return grid.opening_fluxes((velocity[0], velocity[1], solid))
+
+    def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
+        """A gradient study's derivative in reverse mode in a float32 run through an open vessel walled by a tube tree
+        at a stiff interior where it was not measured right (:data:`TREE_FLOAT32_REVERSE_RIGHT`), refused before the
+        study compiles it (``flow.tree-float32-reverse``): its transpose solves stop at the trees' float32 tolerance
+        (:data:`TREE_FLOAT32_TOLERANCE`) on the cotangent's right-hand side (:data:`TREE_FLOAT32_REVERSE_MEASURED`). Forward
+        mode and float64 are not refused."""
+        del directions, members, steps
+        if mode != "reverse" or not self.walled_by_tree or jnp.dtype(run_dtype()) != jnp.dtype(jnp.float32):
+            return None
+        interior = str(self.constants()["interior"])
+        if interior in TREE_FLOAT32_REVERSE_RIGHT:
+            return None
+        return Problem(
+            "flow.tree-float32-reverse",
+            f"the derivative in reverse mode in float32 passes through an open vessel walled by a tube tree at the "
+            f"{interior} interior, where it was not measured right at the trees' float32 tolerance "
+            f"({TREE_FLOAT32_TOLERANCE:g}; {TREE_FLOAT32_REVERSE_MEASURED}), so it could be off with no flag",
+            "run the study in float64, `Study(exp).sweep(grid({PRECISION: ['float64'], ...}), ...)` or "
+            "JAX_ENABLE_X64=1; or take the derivative in forward mode, `study.gradient(..., mode='forward')`")
 
     @override
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:

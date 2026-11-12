@@ -166,3 +166,42 @@ def test_an_inflow_sharing_its_plane_is_refused(float64):
     tree = TubeTree(points=mm((0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 4.0, 2.5, 0.0, 0.8)),
                     segments=((0, 1), (1, 2), (1, 3)), radii=mm((0.5, 0.5, 0.4, 0.4, 0.35, 0.35)))
     assert _refused(tree_vessel(tree=tree, ledger=False)) == ["flow.inflow-plane"]
+
+
+class _Compiled(Exception):
+    """The derivative reached its compile (planted to stop there)."""
+
+
+@pytest.mark.parametrize(("precision", "mode", "refused"), [("float32", "reverse", True), ("float64", "reverse", False),
+                                                             ("float32", "forward", False)],
+                         ids=["float32-reverse", "float64", "forward"])
+def test_a_float32_reverse_derivative_through_an_open_tree_is_refused_where_unmeasured(monkeypatch, precision, mode,
+                                                                                       refused):
+    """flow.tree-float32-reverse: a study's derivative in reverse mode in float32 through an open vessel walled by a
+    tube tree, at an interior where it was not measured right at the trees' float32 tolerance, is refused by name
+    before it compiles; float64 and forward mode reach the compile, planted to stop there."""
+    from test_fvm_region import tree_vessel
+
+    from mime.build import BuildRefused
+    from mime.study import PRECISION, Study, _gradient, along
+    from mime.units import Pa_s, ms
+
+    def compiled(*_: object, **__: object) -> None:
+        raise _Compiled
+
+    monkeypatch.setattr(_gradient, "prepare", compiled)
+    study = Study(tree_vessel(ledger=False)).sweep(along({PRECISION: [precision], "water.viscosity": [Pa_s(1e-3)]}),
+                                                  duration=ms(2.0))
+
+    def derivative() -> object:
+        return study.gradient(lambda final: final["water.flow"]["opening_flux"][1], wrt=["water.viscosity"], mode=mode,
+                              acknowledged={"water.flow": "the FVM's derivative path, unverified: the refusal is judged"})
+
+    if not refused:
+        with pytest.raises(_Compiled):
+            derivative()
+        return
+    with pytest.raises(BuildRefused) as found:
+        derivative()
+    codes = [each for each in found.value.refusals if each.code == "flow.tree-float32-reverse"]
+    assert len(codes) == 1 and all(route in codes[0].action for route in ("float64", "mode='forward'"))

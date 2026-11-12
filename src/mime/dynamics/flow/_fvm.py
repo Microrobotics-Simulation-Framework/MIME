@@ -760,7 +760,10 @@ class FVM(Dynamics):
                             "or SharedDistal(...)")]
         if not inflows:
             return []
-        built = self.region_built(region)
+        try:
+            built = self.region_built(region)
+        except (RegionRefused, ValueError):
+            return []  # the region's own refusal names it
         if built is None:
             return []
         name = inflows[0].surfaces[0].rpartition(".")[2]
