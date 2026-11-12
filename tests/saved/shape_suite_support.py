@@ -1,4 +1,4 @@
-"""What the shape suite's files share (``test_shape_suite.py`` and the two tube tree files beside it): the fixed examples,
+"""What the shape suite's files share (``test_shape_suite.py`` and ``test_shape_suite_tube_tree.py``): the fixed examples,
 one near each declared set of each shape, their planted-tangent control, and the points-side property's body.
 
 The tube tree's tests were split out of ``test_shape_suite.py`` so that each file can take a shard of its own: the tube

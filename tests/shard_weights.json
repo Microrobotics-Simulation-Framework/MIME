@@ -1,5 +1,5 @@
 {
- "source": "CI runs 43126570717 (469304c), 43130649375 (72e9dd8), 43164499364 (7c762f4) and 43172901124 (e107244), pushes with every shard cold, the median over their twenty lanes (a file a run did not yet have is judged over the runs that did, below); the 3.12 lane of e107244's shard 6, cancelled at 30 minutes, takes the 3.13 lane's report of that shard from the same run; the 19 files that a run did not yet have (the camera's sensing tests and four more) are the median over the lanes of the runs that had them, scripts/shard_weights.py's own functions, since a median over all twenty lanes would count the missing runs as 0 s; test_shape_suite.py split in three (2026-11-12): the two tube tree files' rows are the median over the lanes of the same four runs, taken from those runs' reports with the seven tube tree tests read as belonging to them",
+ "source": "CI runs 43126570717 (469304c), 43130649375 (72e9dd8), 43164499364 (7c762f4) and 43172901124 (e107244), pushes with every shard cold, the median over their twenty lanes (a file a run did not yet have is judged over the runs that did, below); the 3.12 lane of e107244's shard 6, cancelled at 30 minutes, takes the 3.13 lane's report of that shard from the same run; the 19 files that a run did not yet have (the camera's sensing tests and four more) are the median over the lanes of the runs that had them, scripts/shard_weights.py's own functions, since a median over all twenty lanes would count the missing runs as 0 s; test_shape_suite.py split in two (2026-11-12): the tube tree file's row is the median over the lanes of the same four runs, taken from those runs' reports with its seven tests read as belonging to it",
  "over": 0.0,
  "tests_over": 1.0,
  "seconds": {
@@ -371,8 +371,7 @@
   "tests/saved/test_schema.py": 47,
   "tests/saved/test_setting_roles.py": 24,
   "tests/saved/test_shape_suite.py": 400,
-  "tests/saved/test_shape_suite_tube_tree_examples.py": 520,
-  "tests/saved/test_shape_suite_tube_tree_points.py": 405,
+  "tests/saved/test_shape_suite_tube_tree.py": 895,
   "tests/saved/test_solve_walk.py": 382,
   "tests/saved/test_stage_writer.py": 9,
   "tests/saved/test_switch_harness.py": 813,
@@ -575,8 +574,7 @@
   "tests/viz/test_visuals.py": 3
  },
  "alone": {
-  "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one",
-  "tests/saved/test_shape_suite_tube_tree_examples.py": "four tests of 76 to 146 s each (a lane's median 520 s), all marked memory_heavy (2.5 to 3.2 GB), so the run's lock makes them take turns: beside other files they start last and run one at a time while the shard's other workers idle, as in the first split's run 43184773791, where it shared shard 15 with test_switch_harness and 3.12's was cancelled at 30 minutes with its last tests still queued on the lock; measured on that run"
+  "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one"
  },
  "split": {
   "tests/oracles/test_lubrication.py": {

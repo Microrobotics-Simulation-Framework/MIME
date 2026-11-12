@@ -420,9 +420,8 @@
     Jacobian, a recorded artefact (`artefacts/`), with the constant-zero branch as its control; and on the screw's
     focal set the distance is exact with the normal its derivative (the review's settings, FL-9's and the most
     twisted), measured once differentiable there, with the Newton step forced on the set as its control. The tube tree's
-    probes (`test_shape_suite_tube_tree_points.py`) and fixed examples with their control
-    (`test_shape_suite_tube_tree_examples.py`) are in files of their own, so that each takes a shard; `shape_suite_support.py`
-    holds what the three share.
+    probes, fixed examples and their control are in `test_shape_suite_tube_tree.py`, so that they take a shard of their
+    own; `shape_suite_support.py` holds what the two files share.
     `test_registry_walk.py` also runs the kind-conformance harness on every kind that samples its surface and on the
     helix at every setting it accepts, with its controls (a closed form or the samples planted wrong, a cap sampled
     without its twist at every count of starts);
