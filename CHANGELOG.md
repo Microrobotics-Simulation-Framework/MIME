@@ -24,10 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its `sqrt(K)` in cells where its Brinkman layer is under one, and that its flux is unmeasured where `sqrt(K)/h` is
   under the range measured: a plug closing a straight tube is resolved down to `sqrt(K)/h` 0.003 with the default 0.1h
   interior (within 0.4 % at D/h 32, a `K` of about 1e-14 m^2 in a 1 mm vessel) and 0.01 with 0.01h, unmeasured below
-  (the solve stagnates); the floor, the wall's leak past a plug closing the tube (the intercept of its flux against
-  `K`), is under 4e-11 of the open tube's flux at D/h 32. Refused: a structure of another kind (`flow.porous-kind`),
-  RK3 (`flow.porous-scheme`), a tilted box (`flow.porous-axis`). The stall detector's denominator takes the porous
-  losses beside the viscous one.
+  (the first step's cold solve stops there, flagged); the floor, the wall's leak past a plug closing the tube (the
+  intercept of its flux against `K`), is under 4e-11 of the open tube's flux at D/h 32. These are on `lumen_flux`, which
+  with a porous region reports the box's whole axial flux, the plug's throughflow: past a closing plug in a box driven
+  by a body force the open part carries a loop through the wall's band (2.5e-3 of the open flux at D/h 16 with 0.1h,
+  K-independent), which the lumen's own mean would carry. A region outside what was measured (under that range, or
+  leaving a gap to the wall under `sqrt(K)/h` 1, where a coaxial core's gap flux read 12 to 16 % low) raises
+  `porous_flagged` with a warning. A periodic box reads a plug anywhere along the tube at its image in the period.
+  Refused: a structure of another kind (`flow.porous-kind`), RK3 (`flow.porous-scheme`), a tilted box
+  (`flow.porous-axis`), a plug longer than a periodic box's period (`flow.porous-period`) or outside an open vessel's
+  span (`flow.porous-outside`). A tube tree holding a plug runs but is unmeasured. The stall detector's denominator
+  takes the porous losses beside the viscous one.
 
 - **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
   ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now

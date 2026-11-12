@@ -25,11 +25,20 @@ spacing; its profile across the layer is resolved from about a cell; its face ag
 round it) acts as a wall the band smears, shifted outward by a fraction of a cell where the layer is sub-cell; a plug
 driven by a body force alone, with no pressure drop across it (a porous medium filling a periodic box), reads a few
 per cent low. A plug closing a straight tube is resolved down to a `sqrt(K)` of a few thousandths of a cell with the
-default stiff interior (a hundredth with the stiffer one) and unmeasured below, where the solve stagnates; the wall lets
-no measurable flux past it (the floor, bounded far under the plug's own flux there). The flow's entry gives the
-measured figures, and the build report states the run's own: its `sqrt(K)` in cells where the layer is under a cell,
-and that its flux is unmeasured where `sqrt(K)` is under the range measured. The flow's other "Darcy flow", the wall's
-stiff interior's bypass, is the wall's numerical porosity, not the clot's.
+default stiff interior (a hundredth with the stiffer one) and unmeasured below, where the first step's cold solve
+stops (flagged); the wall lets no measurable flux past it (the floor, bounded far under the plug's own flux there).
+These hold for the flux the run reports, `lumen_flux`, which with a porous region is the box's whole axial flux: the
+flux through every section, the plug's throughflow. In a periodic box driven by a body force the velocity next to a
+closing plug is not its throughflow's: the pressure that holds the drive back pushes the wall's porous solid (which the
+drive does not reach) backward along the open part, and the plug closes the solid in its own span, so the open part
+carries a loop through the wall's band, a few thousandths of the open tube's flux at 16 cells across with the default
+interior, a tenth of that with the stiffer one, whatever `K` (`bypass_ratio` near -1 shows it). A plug that leaves a gap
+to the wall (a channel past it) is measured within 2 % where `sqrt(K)` is at least a cell and reads 12 to 16 % low at a
+tenth to a hundredth of one. The flow's entry gives the measured figures; the build report states the run's own: its
+`sqrt(K)` in cells where the layer is under a cell, and where it lies outside what was measured; and the run raises
+`porous_flagged`, with a warning, at each step a region lies outside (under the range measured, or a gap under a
+cell). A periodic box reads a plug anywhere along the tube at its image in the period. The flow's other "Darcy flow",
+the wall's stiff interior's bypass, is the wall's numerical porosity, not the clot's.
 
 **When not to use it.**
 - For a clot that cores, moves or breaks: the region is static (an evolving permeability is a dynamics' state, later).
@@ -37,6 +46,12 @@ stiff interior's bypass, is the wall's numerical porosity, not the clot's.
 - With RK3: its stages split the penalty from the projection, which leaves a Darcy flux to the splitting
   (`flow.porous-scheme`).
 - In a tilted vessel: the box must run along z (`flow.porous-axis`).
+- Longer than a periodic box's period (it would overlap its own image, `flow.porous-period`), or outside an open
+  vessel's span between its openings (`flow.porous-outside`).
+- For the velocity field next to a closing plug in a box driven by a body force (the loop above); its throughflow and
+  pressure drop hold.
+- In a tube tree, or tilted against the tube, its flux is unmeasured (a plug tilted 10 degrees is bounded only near
+  2e-7 of the open flux).
 
 **Where its values come from.** The structure's `permeability` (in square metres, above zero), declared in the experiment with its
 reason: no OpenMaterica record holds a permeability yet. A value of zero or below is refused where it is declared

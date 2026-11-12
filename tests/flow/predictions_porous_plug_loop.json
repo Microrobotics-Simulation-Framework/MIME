@@ -53,5 +53,33 @@
     "case": "probe/loop.py variants base and drive_all at 0.01h (arm loop01)",
     "prediction": {"value": 2.8e-4, "band": [2.6e-4, 3.0e-4], "unit": "(lumen - box) / Q_open (base); drive_all under 1e-5", "basis": "measured-before (base); derived (drive_all)", "why": "as gates 1 and 2"}
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43158029624",
+    "head": "probe/porous-plug-loop at the porous plug's branch cec14e1 (432867b plus this file) with probe/loop.py",
+    "gate_1_loop_baseline": {
+      "value": "(lumen - box) / Q_open 2.509e-3 at sqrt(K)/h 0.03 and 2.511e-3 at 0.01 (D/h 16, 0.1h), K-independent to 0.1 %; bypass_ratio -0.853 / -0.981; the box's flux -1.21 / -1.67 % of the series, the lumen's own mean +573 / +5143 %",
+      "verdict": "held"
+    },
+    "gate_2_mechanism_drive_on_every_face": {
+      "value": "-4.6e-6 / -5.1e-7: 550 and 4900 times smaller than the baseline; the box's flux moves by about 3.7 % of the series (the solid's conductance now driven)",
+      "verdict": "held: the control removes the loop, so the mechanism is the pressure's push on a solid the drive does not reach"
+    },
+    "gate_3_mechanism_no_reach": {
+      "value": "9.9e-5 / 1.0e-4, 25 times smaller; the box's flux 7.9e-3 / 7.5e-3 of Q_open (the leak the reach closes, the review's 7.4e-3)",
+      "verdict": "held"
+    },
+    "gate_4_mechanism_open_length": {
+      "value": "1.456e-3 at both K: 0.58 of the baseline against the model's 0.667",
+      "verdict": "held (inside the band, 13 % under the model's ratio)"
+    },
+    "gate_5_mechanism_size_from_the_solids_conductance": {
+      "value": "W / C = 4.78e-3 (the plug-free tube under the drive on every face); the baseline is 0.70 of (3/4) W / C",
+      "verdict": "held (inside the band): the loop is the solid's conductance under the open part's pressure gradient"
+    },
+    "gate_6_interior": {
+      "value": "base 2.789e-4 / 2.802e-4; drive_all -3.0e-6 / -3.6e-7",
+      "verdict": "held"
+    },
+    "mechanism": "confirmed by two controls that each remove one of its two causes (the undriven solid: drive on every face; the reach's closing of the solid in the plug's span: no reach) and by its scaling with the open part's length and the solid's conductance. The fix reports the box's whole flux as lumen_flux with a porous region (the loop crosses every section twice); the field's loop stays and is stated"
+  }
 }

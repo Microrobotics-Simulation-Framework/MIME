@@ -186,15 +186,20 @@ def test_a_declared_permeability_of_zero_or_below_is_refused_at_the_build():
         assert "value.not-positive" in {r.code for r in raised.value.refusals}
 
 
+def _flip_porous_losses(monkeypatch) -> None:
+    """Gate 6's plant: each porous region's loss booked with its sign flipped."""
+    original = node_module.ImplicitFlowNode.porous_losses
+
+    def flipped(fields, solved, nu, rho, dt, grid):
+        held = original(fields, solved, nu, rho, dt, grid)
+        return {k: (-v if k.startswith(node_module.POROUS) else v) for k, v in held.items()}
+
+    monkeypatch.setattr(node_module.ImplicitFlowNode, "porous_losses", staticmethod(flipped))
+
+
 def _metered_plug(dtype: str, sign_flipped: bool, monkeypatch) -> tuple:
     if sign_flipped:
-        original = node_module.ImplicitFlowNode.porous_losses
-
-        def flipped(fields, solved, nu, rho, dt, grid):
-            held = original(fields, solved, nu, rho, dt, grid)
-            return {k: (-v if k.startswith(node_module.POROUS) else v) for k, v in held.items()}
-
-        monkeypatch.setattr(node_module.ImplicitFlowNode, "porous_losses", staticmethod(flipped))
+        _flip_porous_losses(monkeypatch)
     with in_dtype(dtype):
         delivery = books.LedgerDelivery("porous_0", LAW, books.DISSIPATIVE, books.HOSTED).encoded()
         node = plug_node(8, [dict(radius=0.5 * R, length=100.0, permeability=(0.5 / 8) ** 2)], length_cells=4,
@@ -319,16 +324,27 @@ def test_a_plug_in_a_tilted_tube_is_refused():
     assert "flow.porous-axis" in _codes(exp)
 
 
-def test_a_plug_in_an_open_vessel_reads_darcys_drop_on_its_faces(float64):
+def test_a_plug_in_an_open_vessel_reads_darcys_drop_on_its_faces_and_its_books_close(float64, monkeypatch):
     """The open vessel (an inflow at its start, a Windkessel at its end, no body force), two millimetres long, a plug
     half a millimetre long filling it at 16 cells across: its face pressures' drop is Darcy's at the inflow (measured
-    -3.9 % on a vessel twice as long, its own drop between its openings -4.0 % of the series at this resolution)."""
+    -3.9 % on a vessel twice as long, its own drop between its openings -4.0 % of the series at this resolution); with
+    the energy ledger its identity closes, the plug's loss booked under its law (review minor 5). Control, gate 6's: the
+    loss booked with its sign flipped (``POROUS_SIGN``)."""
+    from mime.observations import EnergyLedger
+
+    if plant("POROUS_SIGN"):
+        _flip_porous_losses(monkeypatch)
     radius, h = 0.5e-3, 1e-3 / 16
     K = h ** 2
-    final = open_experiment(K).build().run(ms(1.0)).final["water.flow"]
+    exp = open_experiment(K)
+    exp.observe(EnergyLedger())
+    result = exp.build().run(ms(1.0))
+    final = result.final["water.flow"]
     faces = np.asarray(final["porous_face_pressure"], np.float64)[0]
     darcy = 1e-9 * plug_resistance(K, 0.5e-3, radius, 1e-3)
     assert abs((faces[0] - faces[1]) / darcy - 1.0) < 0.06
+    judged = ledger_closes(result)
+    assert judged.passed, judged.detail
 
 
 def test_a_plug_anywhere_along_a_periodic_tube_is_read_at_its_image_in_the_box(float64):
