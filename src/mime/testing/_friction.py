@@ -188,8 +188,10 @@ SUITE_SWEEPS = 400
 SUITE_DEEPER = (1600, 6400, 25600, 102400, 409600)
 #: The share of a body's draws the suite solves again at the deeper counts, at most: past it a draw left unconverged is
 #: judged at the suite's count, where it fails, so a solve broken into slowness fails naming its count rather than
-#: running the deeper counts on every draw (the review's planted bugs took 59 to 158 minutes there).
-DEEPER_SHARE = 0.05
+#: running the deeper counts on every draw (the review's planted bugs took 59 to 158 minutes there). At the frictional
+#: line a clean run needs them on 0 to 5 of a body's 200 draws (four runs, both dtypes: the box the most), so a share of
+#: 0.15, 30 draws, leaves a clean run room.
+DEEPER_SHARE = 0.15
 
 
 def _converged(names: tuple[str, ...], sweeps: int) -> dict[str, int | None]:
