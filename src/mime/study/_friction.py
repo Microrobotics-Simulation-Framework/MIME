@@ -41,16 +41,11 @@ if TYPE_CHECKING:
 #: The register's range of a friction coefficient, where the gradient-free control searches and the gradient path's
 #: iterates are kept.
 FRICTION_RANGE = (0.01, 1.2)
-#: The gradient-free control's two sweeps: log-spaced coefficients over the register's range, then over the two cells
-#: about the least loss, the control the vertex of the parabola through the least and its neighbours there (the two
-#: cells span a twelfth of the range's logarithm, the second sweep's cells a 72nd of it, about 7 % of the coefficient,
-#: within which the parabola's vertex is the least loss's to the loss's own third derivative).
+#: The gradient-free control's two sweeps: log-spaced coefficients over the search, then over the two cells about the
+#: least loss, the control the vertex of the parabola through the least and its neighbours there (the two cells span a
+#: twelfth of the search's logarithm, the second sweep's cells a 144th of it: 3.4 % of the coefficient on the
+#: register's range).
 CONTROL_POINTS = (25, 13)
-#: How far the gradient path's estimate and the control's may differ, as a share of the control's, before the verdict
-#: is ``confounded``: the control's own resolution, the parabola's vertex in cells of about 7 % of the coefficient (on
-#: two of twenty sliding draws the control stood 6e-4 of it from an estimate equal to the truth to 1e-6, the fix round's
-#: probe), with room.
-AGREEMENT = 2e-3
 #: The verdict claims ``identified`` only where one standard error, read from the loss's curvature on each side of
 #: the estimate apart, is within this share of it: a verdict claims no more than its standard error supports (data that
 #: never slide leave the loss flat above the threshold, a standard error of about 1e11 from that side).
@@ -123,6 +118,39 @@ def _loss(residual: Callable[[Any], Any], noise: float, final: Mapping[str, Any]
     return 0.5 * float(np.sum(scaled * scaled))
 
 
+def control_resolution(search: tuple[float, float]) -> float:
+    """How far the gradient-free control stands from the loss's least, in ``ln mu``, on data linear in ``mu``
+    (Coulomb's sliding): ``d^2 / 2``, ``d`` the second sweep's cell in ``ln mu`` (5.5e-4 on the register's range,
+    7.4e-4 on (0.01, 2.5)). A sum of squares of functions linear in ``mu`` is one quadratic in ``mu``, so the loss in
+    ``x = ln mu`` is ``C (e^x - e^x*)^2 / 2`` plus a constant, whatever the data's number, weights or noise, and its
+    third derivative is 3 times its second at the least; the parabola through three points ``d`` apart, the middle
+    the least of them (within ``d / 2`` of the least), has its vertex within ``d^2 / 6`` times that ratio, ``d^2 / 2``,
+    of it, the next order under 1e-4 of that (the worst of 100,001 truths across either range: 0.99994 of it). Data
+    curved in ``mu`` (a slip that stops within the run) can stand further and read ``confounded``: the verdict then
+    claims less, never more."""
+    cell = 2.0 * math.log(search[1] / search[0]) / ((CONTROL_POINTS[0] - 1) * (CONTROL_POINTS[1] - 1))
+    return 0.5 * cell * cell
+
+
+def gradient_free_control(losses: Callable[[list[float]], list[float]], search: tuple[float, float]) -> float:
+    """The least of ``losses`` (each value's loss, one call a sweep) over ``search``: :data:`CONTROL_POINTS`
+    log-spaced sweeps, the second over the first's two cells about its least, and the vertex of the parabola through
+    the second's least and its neighbours (inside their cells)."""
+    low, high = math.log(search[0]), math.log(search[1])
+    grid = list(np.linspace(low, high, CONTROL_POINTS[0]))
+    held = losses([math.exp(x) for x in grid])
+    best = int(np.argmin(held))
+    low, high = grid[max(best - 1, 0)], grid[min(best + 1, len(grid) - 1)]
+    grid = list(np.linspace(low, high, CONTROL_POINTS[1]))
+    held = losses([math.exp(x) for x in grid])
+    best = min(max(int(np.argmin(held)), 1), len(grid) - 2)
+    x0, x1, x2 = grid[best - 1:best + 2]
+    y0, y1, y2 = held[best - 1:best + 2]
+    bend = y0 - 2 * y1 + y2
+    vertex = x1 - 0.5 * (x1 - x0) * (y2 - y0) / bend if bend > 0.0 else x1
+    return math.exp(min(max(vertex, x0), x2))
+
+
 def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis: str, start: float, noise: float,
                  duration: Quantity, body: str, iterations: int = 20,
                  search: tuple[float, float] = FRICTION_RANGE) -> FrictionFit:
@@ -132,7 +160,7 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
     by round, each a study's sweep, every member from the start), from which the gradient path starts again where its
     own start left it stuck (:data:`RESTART_LOSS`); the verdict from the loss's curvature on each side of the estimate,
     the two searches' agreement, and the run at the estimate (its ``body``'s held points' traction and slip)."""
-    from mime.study._fit import fit
+    from mime.study._fit import default_tolerance, fit
 
     owner = _owner(axis)
     if not search[0] <= start <= search[1]:
@@ -155,20 +183,8 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
                     taken=TAKEN)
         return found, float(np.asarray(found.values[axis]).reshape(()))
 
-    low, high = math.log(search[0]), math.log(search[1])
-    grid = list(np.linspace(low, high, CONTROL_POINTS[0]))
-    held = [_loss(residual, noise, final) for final in finals([math.exp(x) for x in grid])]
-    best = int(np.argmin(held))
-    low, high = grid[max(best - 1, 0)], grid[min(best + 1, len(grid) - 1)]
-    grid = list(np.linspace(low, high, CONTROL_POINTS[1]))
-    held = [_loss(residual, noise, final) for final in finals([math.exp(x) for x in grid])]
-    best = min(max(int(np.argmin(held)), 1), len(grid) - 2)
-    # the parabola through the least loss and its neighbours, its vertex the control (inside their cells)
-    x0, x1, x2 = grid[best - 1:best + 2]
-    y0, y1, y2 = held[best - 1:best + 2]
-    bend = y0 - 2 * y1 + y2
-    vertex = x1 - 0.5 * (x1 - x0) * (y2 - y0) / bend if bend > 0.0 else x1
-    control = math.exp(min(max(vertex, x0), x2))
+    control = gradient_free_control(lambda values: [_loss(residual, noise, final) for final in finals(values)],
+                                    search)
 
     fitted, estimate = path(start)
     lost, against = (_loss(residual, noise, final) for final in finals([estimate, control]))
@@ -187,6 +203,7 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
 
     history = experiment.build().run(duration, override={axis: estimate}, history=True).history
     data: Mapping[str, Any] = {} if history is None else cast(Mapping[str, Any], history[body])
+    x64 = np.asarray(data["contact_forces"]).dtype == np.float64
     forces = np.asarray(data["contact_forces"], dtype=np.float64)
     slips = np.asarray(data["contact_slip_speed"], dtype=np.float64)
     traction = np.asarray(data["contact_friction_forces"], dtype=np.float64)
@@ -198,11 +215,16 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
     shown = ", ".join(f"{name} {'flat' if error is None or error > IDENTIFIED_SHARE * estimate else f'{error:.3g}'}"
                       for name, error in zip(("below", "above"), errors, strict=True))
     lower: float | None = None
-    if uncertainty is not None and abs(estimate - control) <= AGREEMENT * control + uncertainty:
+    # the two searches agree where they stand within the control's resolution (its grid's, in ln mu), the gradient
+    # path's stop (at the arithmetic's floor in float32) and one standard error, which holds the data's rounding as
+    # long as the noise declared is not below it
+    line = control_resolution(search) + default_tolerance(x64)
+    if uncertainty is not None and abs(estimate - control) <= math.expm1(line) * max(estimate, control) + uncertainty:
         verdict, why = "identified", (
             f"one standard error {uncertainty:.3g} (read on each side of the estimate: {shown}), within "
-            f"{IDENTIFIED_SHARE:g} of it; the gradient-free control {control:.9g} agrees; the run at the estimate "
-            f"slides on {sliding_steps} of {held_steps} held steps")
+            f"{IDENTIFIED_SHARE:g} of it; the gradient-free control {control:.9g} agrees (within {line:.2g} of the "
+            f"estimate in ln mu and one standard error); the run at the estimate slides on {sliding_steps} of "
+            f"{held_steps} held steps")
     elif flat[1]:
         # the body's whole traction over its whole normal force at each held step: |sum t_k| <= mu sum n_k whatever
         # the points' split (one point held by several groups shares its forces in no unique way), so its largest is
@@ -219,10 +241,11 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
         verdict, why = "confounded", (
             f"the loss is curved above the estimate but its standard error ({shown}) is not within "
             f"{IDENTIFIED_SHARE:g} of it on both sides, or the gradient path's estimate {estimate:.9g} and the "
-            f"gradient-free control's {control:.9g} disagree: another axis may carry what mu would")
+            f"gradient-free control's {control:.9g} disagree (by more than {line:.2g} in ln mu and one standard "
+            f"error): another axis may carry what mu would")
     return FrictionFit(axis, estimate, control, uncertainty, verdict, why, lower, held_steps, sliding_steps, restarted,
                        fitted)
 
 
-__all__ = ["AGREEMENT", "CONTROL_POINTS", "CURVATURE_STEP", "FRICTION_RANGE", "IDENTIFIED_SHARE", "ON_LIMIT",
-           "RESTART_LOSS", "TAKEN", "VERDICTS", "FrictionFit", "fit_friction"]
+__all__ = ["CONTROL_POINTS", "CURVATURE_STEP", "FRICTION_RANGE", "IDENTIFIED_SHARE", "ON_LIMIT", "RESTART_LOSS",
+           "TAKEN", "VERDICTS", "FrictionFit", "control_resolution", "fit_friction", "gradient_free_control"]

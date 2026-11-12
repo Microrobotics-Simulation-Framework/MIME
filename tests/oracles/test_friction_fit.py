@@ -25,6 +25,8 @@ from friction_cases import BALL, ROD, axis, on_the_floor
 
 from mime.interactions.friction import Coulomb
 from mime.study import fit_friction
+from mime.study._fit import default_tolerance
+from mime.study._friction import FRICTION_RANGE, control_resolution, gradient_free_control
 from mime.units import s
 
 AXIS = "contact:ball.friction.mu"
@@ -75,7 +77,8 @@ def test_sliding_data_identify_mu_and_the_gradient_free_control_agrees(sliding):
           f"{found.uncertainty}); {found.why}")
     assert found.verdict == "identified"
     assert found.uncertainty is not None and abs(found.estimate - TRUE) <= found.uncertainty
-    assert abs(found.estimate - found.control) <= 1e-4 * TRUE + found.uncertainty
+    line = math.expm1(control_resolution(FRICTION_RANGE) + default_tolerance(True))
+    assert abs(found.estimate - found.control) <= line * max(found.estimate, found.control) + found.uncertainty
 
 
 def test_control_pure_rolling_data_are_bounded_below_only():
@@ -136,6 +139,36 @@ def test_sliding_data_started_where_the_model_sticks_start_again_from_the_contro
     print(f"\n{found.verdict} (restarted {found.restarted}): {found.estimate:.9g}; {found.why}")
     assert found.restarted and found.verdict == "identified", found.why
     assert found.uncertainty is not None and abs(found.estimate - mu_true) <= found.uncertainty
+
+
+def control_gaps(search: tuple[float, float], truths: np.ndarray, seed: int = 0) -> np.ndarray:
+    """``|ln(control / least)|`` for losses of three data linear in ``mu`` (``a_i + b_i mu``, weights and noise
+    drawn), each truth's data made at it: the least is the weighted least squares', ``sum w b (d - a) / sum w b^2``."""
+    rng = np.random.default_rng(seed)
+    gaps = []
+    for truth in truths:
+        a, b, w = rng.normal(size=3), rng.uniform(0.5, 2.0, size=3) * rng.choice([-1.0, 1.0], size=3), rng.uniform(
+            0.2, 5.0, size=3)
+        d = a + b * truth + 1e-3 * truth * rng.normal(size=3)
+        least = float(np.sum(w * b * (d - a)) / np.sum(w * b * b))
+
+        def losses(values, a=a, b=b, w=w, d=d):
+            return [0.5 * float(np.sum(w * (a + b * value - d) ** 2)) for value in values]
+        gaps.append(abs(math.log(gradient_free_control(losses, search) / least)))
+    return np.asarray(gaps)
+
+
+@pytest.mark.parametrize("search", [FRICTION_RANGE, WIDE], ids=["register", "wide"])
+def test_the_control_stands_within_its_resolution_of_the_least_on_data_linear_in_mu(search):
+    """The agreement line's derivation (``control_resolution``): on data linear in ``mu`` (Coulomb's sliding), of any
+    number, weights and noise, the control's parabola stands within ``d^2 / 2`` of the loss's least in ``ln mu``, over
+    truths across the search; the control: the bound is the grid's own, a line nine tenths as wide is crossed."""
+    truths = np.exp(np.linspace(math.log(1.05 * search[0]), math.log(0.95 * search[1]), 4001))
+    gaps = control_gaps(search, truths)
+    resolution = control_resolution(search)
+    print(f"\nsearch {search}: d^2/2 {resolution:.6g}, worst {gaps.max():.6g} ({gaps.max() / resolution:.5f} of it)")
+    assert gaps.max() <= resolution
+    assert gaps.max() > 0.9 * resolution
 
 
 def test_a_fitted_value_ships_as_a_hash_pinned_record_never_a_default(sliding):
