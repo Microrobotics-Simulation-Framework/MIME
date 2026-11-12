@@ -8,7 +8,8 @@
   points from `grid({...})` (every combination), `along({...})` (taken together) or a list of rows. `study.plan()`
   says what will run; `study.run()` returns a `mime.results.StudyResult`.
 - **Axes through handles** (`_axes.py`): an apparatus's commands (`field.commands.frequency`), a thing's value as
-  `declare` takes it (`"umr.mass"`), a law's setting through the handle `attach` returns (`drag.lubrication.epsilon`),
+  `declare` takes it (`"umr.mass"`), a law's setting through the handle `attach` returns (`drag.lubrication.epsilon`), an observation's setting by its id
+  (`"camera:.detector.fx"`),
   a body's initial state (`umr.initial.position`), and `DT` and `PRECISION`. Strings are the paths' dotted forms, with
   did-you-mean.
 - **A point is the experiment with its values declared** (`_point.py`): each declaration an axis names is replaced by

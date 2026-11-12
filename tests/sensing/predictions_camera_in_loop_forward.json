@@ -1,0 +1,63 @@
+{
+  "written": "2026-11-12, committed before the forward-derivative gate's probe (#266): forward-mode derivatives of the in-loop camera's expected against central differences, through the built graph",
+  "phase": "camera lane PR 2 (#266), the forward-mode gate (the maintainer's decision logged under #133: verify forward mode before merge; reverse stays refused by name)",
+  "labels": "the builder's predictions from local development runs of this test (listed in seen_before); the tolerances are derived from the mechanism in tests/sensing/test_in_loop_forward.py's docstring, not fitted to the results; the step sizes were chosen after seeing float64 convergence",
+  "seen_before": [
+    "float64 and float32 convergence of the central difference in the step, for the three objectives (script outputs of this session): fy relative error 2.5e-5, 1.0e-4, 4.0e-4 at h = 0.5, 1, 2; cx 7.3e-5, 7.0e-4, 1.9e-3, 3.8e-3, 3.8e-3 at h = 0.05, 0.1, 0.2, 0.5, 1 px; the settling 3.5e-6, 2.6e-3, 9.5e-3, 1.8e-2 at h = 0.25, 0.5, 1, 2 kg/m^3; float32 agrees with float64 to the rounding term. The derivative errors at the chosen steps and the plant run once locally in float32 (both silhouette cases fail, the interior passes): the rates below are predictions of the probe"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64"
+    ],
+    "platform": "GitHub runner 4 vCPU",
+    "sizes_and_parameters": "a 20 um bead of density 1100 kg/m^3 settling in the 60 um tube's water for 5 ms at a 1 ms base step, a 160x120 camera seeing the whole scene, a frame every step; objectives: the first moment of the 40x60 window about the ball (silhouette) and the sum of the tube wall's rows 9 to 12 (interior); steps 0.25 kg/m^3, 0.05 px, 1.0 in fy",
+    "seeds_and_draws": "none: the test is deterministic; 10 runs of the planted and of the clean arm are the rate (a deterministic test says the same each run; the runs show the harness is repeatable)"
+  },
+  "gate_forward_derivative": {
+    "claim": "the forward-mode derivative of the in-loop camera's expected, through the built graph, equals the central difference of the same run within the step's truncation and rounding: a ball's settling and the principal point across a silhouette, and the focal length in the tube wall's interior, in both dtypes",
+    "kind": "bounds",
+    "case": "tests/sensing/test_in_loop_forward.py (Study.gradient mode forward against built.run at +-h)",
+    "prediction": {
+      "band": [
+        0.0,
+        0.0114
+      ],
+      "unit": "relative error of the derivative: silhouette tolerance = 1e-2 h/unit + 50 spacing(f)/(2 h |d|); interior = 1e-3 (h/unit)^2 + the same rounding; at the chosen steps float64 2.5e-3, 5e-4, 1e-3 (density, cx, fy), float32 2.5e-3 + 8.9e-3, 5e-4 + 4.2e-4, 1e-3 + 2e-3 as computed in the test",
+      "basis": "derived",
+      "why": "the box edge is piecewise (a pixel corner is a kink, a tangent to a pixel's side a square-root rise), so the silhouette's central difference errs linearly in h up to a saturation, and the interior's quadratically; float32 adds the rounding of a 2400-pixel sum; measured errors were far inside (3.5e-6, 7.3e-5, 1.0e-4 in float64; 1.4e-4, 2.0e-4, 1.4e-4 in float32)"
+    },
+    "metric": "|jvp - central| / |jvp|, per case and dtype",
+    "control": {
+      "plant": "stop_gradient on the edge measure: the line's box coverage (coverage.covered) and the disc's (coverage.disc)",
+      "environment_variable": "CAMERA_PLANT=edge-stopped",
+      "expected_rate": "N/N on the two silhouette cases (float32), the interior case unchanged",
+      "runs": 10,
+      "clean_expected": "0/N",
+      "resolution": "the planted derivative is the absorption under the ball and the window's shift, orders of magnitude from the edge's: relative error 6e3 in cx against a tolerance of 0.2"
+    },
+    "if_wrong": "a derivative through the loop's cond, the ring or the leaves is wrong or missing: find the path before the camera is called forward verified",
+    "cannot_discriminate_if": "the objective is invariant under the parameter (a total of the darkness is invariant under the ball's motion, which is why the silhouette objectives are first moments), or the step spans none of the box edge's pieces"
+  },
+  "outcomes": {
+    "written": "2026-11-12",
+    "probe": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43305069195 (probe branch at c4dadb5b1, code c8f4739f; deleted after download)",
+    "gate_forward_derivative": {
+      "errors_at_the_chosen_steps (jvp against central difference, relative)": {
+        "float64": {
+          "density (h 0.25)": 3.5e-06,
+          "cx (h 0.05)": 7.3e-05,
+          "fy (h 1)": 0.0001
+        },
+        "float32": {
+          "density": 0.00014,
+          "cx": 0.0002,
+          "fy": 0.00014
+        }
+      },
+      "tolerances (before the rounding term was set to its sqrt(2400) units)": "float64 2.5e-3, 5e-4, 1e-3; float32 3.2e-3, 5.3e-4, 1.2e-3 with 4 units; the test as committed uses 50 units (float32 about 1.1e-2, 1.0e-3, 3.0e-3)",
+      "control": "edge-stopped on the float32 silhouette cases: density 10/10 caught, cx 10/10 caught (lower 95 % bound 0.741 for 10 runs), clean 0/10 flagged for each; the interior case is not planted-sensitive by design; the 10 runs of a deterministic test are its rate",
+      "status": "as predicted; the rounding term was raised from 4 to 50 units after the float32 cx excess over float64 (15 units) showed 4 was not the sum's rounding; the tolerance was not tightened or loosened to a result otherwise"
+    }
+  }
+}

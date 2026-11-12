@@ -91,6 +91,10 @@ from mime.registry import (
     Registration,
     Role,
     RoleKind,
+    Roster,
+    RosterBody,
+    RosterPart,
+    RosterStructure,
     Segment,
     Solid,
     StepQuery,
@@ -437,6 +441,8 @@ class EntryPlan:
     command: ResolvedCommand | None = None
     regions: dict[str, Region] = field(default_factory=dict[str, Region])
     hulls: dict[str, Hull] = field(default_factory=dict[str, Hull])
+    #: What an observation of the whole scene sees (``mime.registry.Roster``); empty for any other entry.
+    roster: Roster = field(default_factory=Roster)
     #: By each medium role an interaction is bound to, the exchange frame of the field it carries (SF-4).
     exchanges: dict[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
     #: A reader's plan context, kept for its checks once its values are resolved (``Interaction.value_problems``).
@@ -3016,11 +3022,12 @@ class _Planner:
                      for mount in (self.source_mount(name),) if mount is not None}
         provided = {role: self.fields_in_region_of(name) for role, name in bindings.items()
                     if cls.roles[role] is RoleKind.MEDIUM}
+        roster = self.roster() if section is Section.OBSERVATION and getattr(cls, "sees_scene", False) else Roster()
         exchanges = {role: frame for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
                      for frame in (self.exchange_frame_of(name),) if frame is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
                               hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided,
-                              exchanges=exchanges)
+                              exchanges=exchanges, roster=roster)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -3046,7 +3053,15 @@ class _Planner:
                         problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
                                plan=plan, settings=settings, regions=regions, hulls=hulls, exchanges=exchanges,
-                               context=context)
+                               context=context, roster=roster)
+        if plan.notes:
+            self.checked[owner] = (*self.checked.get(owner, ()), *plan.notes)
+        if plan.mounted_on is not None:
+            if section is not Section.OBSERVATION:
+                self.defect(cls, "its plan names a mount (Plan.mounted_on), which only an observation's has")
+                return
+            if not self.mount_observation(entry_plan, plan.mounted_on, where):
+                return
         if section is Section.OBSERVATION:
             self.defer_rate(entry_plan, getattr(entry, "rate", None), where)
         if section is Section.OBSERVATION and (plan.delivers or plan.registrations or plan.groups):
@@ -3182,9 +3197,12 @@ class _Planner:
 
     def state_read(self, plan: EntryPlan, where: str, read: Read) -> ResolvedRead | None:
         cls = plan.reader_cls()
-        role_kind = cls.roles.get(read.role)
+        role_kind = RoleKind.BODY if read.of is not None else cls.roles.get(read.role)
         if role_kind is None or role_kind is RoleKind.FIELD:
             self.defect(cls, f"it reads state through role {read.role!r}, which is not one of its thing roles")
+            return None
+        if read.of is not None and (read.of not in plan.roster.bodies or read.of not in self.dynamics):
+            self.defect(cls, f"it reads state of {read.of!r}, which is no body of the roster with a dynamics")
             return None
         entry = self.interface(cls, read.interface, (ReadKind,), "reads")
         if entry is None:
@@ -3192,7 +3210,7 @@ class _Planner:
         if entry.kind is not ReadKind.STATE:
             self.defect(cls, f"it reads the field {read.interface!r} as state; read it through a field role")
             return None
-        thing = plan.bindings[read.role]
+        thing = read.of if read.of is not None else plan.bindings[read.role]
         dynamics = self.dynamics.get(thing)
         port = dynamics.record.publishes.get(read.interface) if dynamics and dynamics.record else None
         if dynamics is None or port is None:
@@ -3209,6 +3227,43 @@ class _Planner:
             self.mass_reads.add(dynamics.owner)
             dynamics.mass_read = True
         return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
+
+    def roster(self) -> Roster:
+        """Every body (the parts that lie inside no other, its pose at the start) and every structure the experiment
+        declares, in SI: what an observation of the whole scene sees."""
+        bodies: dict[str, RosterBody] = {}
+        for name, thing in sorted(self.things.items()):
+            if not isinstance(thing, Body):
+                continue
+            parts = tuple(RosterPart(line.name, line.registered.cls.name, dict(line.settings), line.centre, line.rotation)
+                          for line in self.parts.get(name, {}).values() if line.inside is None)
+            held = self.dynamics.get(name)
+            initial = held.initial if held is not None else {}
+            pose: tuple[float, ...] | None = None
+            if "position" in initial and "orientation" in initial:
+                pose = (*(float(c) for c in cast(tuple[float, ...], initial["position"])),
+                        *(float(c) for c in cast(tuple[float, ...], initial["orientation"])))
+            bodies[name] = RosterBody(parts, pose)
+        structures = {name: RosterStructure(plan.registered.cls.name, dict(plan.settings))
+                      for name, plan in sorted(self.geometries.items())}
+        return Roster(bodies, structures)
+
+    def mount_observation(self, plan: EntryPlan, spec: str, where: str) -> bool:
+        """The frame ``<apparatus>.<segment>.<frame>`` an observation is mounted on, resolved into ``plan.mount``;
+        refused (``camera.mount``) where the apparatus, segment or frame is none."""
+        apparatus, _, rest = spec.partition(".")
+        local, _, frame = rest.partition(".")
+        host = {held.owner.partition(".")[2]: held for held in self.segments.get(apparatus, [])}.get(local)
+        named = [f"{app}.{held.owner.partition('.')[2]}.{f}" for app, held_list in sorted(self.segments.items())
+                 for held in held_list if held.segment is not None for f in held.segment.frames]
+        if host is None or host.segment is None or host.record is None or frame not in host.segment.frames:
+            self.refuse("camera.mount", RefusalClass.USER,
+                        f"{where} is mounted on {spec!r}, which is no <apparatus>.<segment>.<frame> of an apparatus's chain",
+                        "mount it on a frame of a chain segment, Mounted(\"<apparatus>\", \"<segment>.<frame>\"), or "
+                        "on the world, World(...). " + did_you_mean(spec, named))
+            return False
+        plan.mount = self.mount_on(host, frame)
+        return True
 
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
         cls = plan.reader_cls()

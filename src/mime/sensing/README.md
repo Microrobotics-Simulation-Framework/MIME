@@ -74,10 +74,32 @@ about a sub-pixel's area).
 
 ## What it does not do yet
 
-The in-loop camera (its clock, latency and `frame_step`), the tracker and the controller that reads it, the stage
-reader, the sampled route and its crease measures, meshes and the display view's lighting and colour, X-ray
+The tracker and the controller that reads the in-loop camera, the stage reader, the sampled route and its crease measures, meshes and the display view's lighting and colour, X-ray
 detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
 intersections) are raw `jnp` operations, written for a node that renders inside its own `lax.cond`.
+
+## The in-loop camera (`mime.observations.Camera`, node `_node.py`)
+
+The renderer on the base step's clock, as an observation that sees the whole scene (the experiment's roster, never a
+list from the user; `hide=` leaves some out and the build report says which). A frame is rendered every `frame_period`
+base steps (the node's own count; `rate=` is refused) over the last `sub_frames` poses of every body, held between, and
+`frame_step`, `age` and `new_frame` are the clock's. The detector's nine numbers are the node's leaves (bounded about the
+build's: the disc windows are sized for them), so a study can fit them, and `expected` is the differentiable output.
+
+- **The static cache.** Where the camera is fixed in the world the structure's image is made at the first step and held in
+  the node's state with every number it was made from (the nine leaves, the scene's numbers, the camera's pose). At any
+  step where one of them differs from the step's own (a run continued with another leaf, a state carried into a run with
+  other numbers) it is made again, so a stale image is never read; otherwise it is read from the state. A camera mounted
+  on a frame of a chain (`Mounted`) is taken to move: it has no cache, and the structure is rendered in every frame, which
+  the build report states.
+- **Recording and re-rendering.** In-loop frames are not recorded (`record=` of `image` or `expected` is refused,
+  `camera.recorded-frames`; `history=True`, the all-fields verification path, is not refused). The poses are, and a frame is
+  reproduced by rendering them again with `render` and `frame_key(seed, frame_step)`. The re-render is a second compiled
+  program, so it is not bit for bit: exact in float64 where it was measured exact, and in float32 within one count, the pixels
+  whose value before rounding lies within the last bits of a rounding boundary rounding the other way; the line the gate holds
+  it to is derived from that mechanism (`tests/sensing/test_in_loop_replay.py`).
+- **Forward mode only.** Reverse mode and a batched (vmapped) study are refused, naming the offline renderer
+  (`camera.reverse`, `camera.batched`): under `vmap` a `cond` is a `select`, and reverse mode would keep every frame step's render.
 
 ## Accuracy and cost, measured
 

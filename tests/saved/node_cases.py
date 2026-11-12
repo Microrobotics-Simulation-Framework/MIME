@@ -36,6 +36,14 @@ ARM = NodeCase(options={"boundary_bounds": {"joint_positions": (-7.0, 7.0), "mou
                                    "frame_angular_velocities": (-100.0, 100.0)},
                         "constrain_boundary": lambda given: {**given, "mount_poses": unit_poses(given["mount_poses"])},
                         "constrain_state": lambda state: {**state, "frame_poses": unit_poses(state["frame_poses"])}})
+#: The camera's drawn poses are those of a body in its view (within 50 um of the tube's axis, 1 mm from the camera, the
+#: field being 0.2 mm wide) with unit quaternions, as every pose a body publishes has; a drawn state with a body behind the
+#: lens would test the draw.
+CAMERA = NodeCase(options={
+    "bounds": {"ring": (-5e-5, 5e-5), "image": (0.0, 1000.0), "expected": (0.0, 1000.0)},
+    "boundary_bounds": {"pose_ball": (-5e-5, 5e-5), "mount_poses": (-1.0, 1.0), "mount_rates": (-1.0, 1.0)},
+    "constrain_state": lambda state: {**state, "ring": unit_poses(state["ring"])},
+    "constrain_boundary": lambda given: {**given, "pose_ball": unit_poses(given["pose_ball"])}})
 MOTOR = NodeCase(options={"boundary_bounds": {"angle": (-7.0, 7.0), "velocity": (-100.0, 100.0),
                                               "mount_poses": (-1.0, 1.0), "mount_rates": (-100.0, 100.0)},
                           "bounds": {"angle": (-7.0, 7.0), "frame_poses": (-1.0, 1.0),
@@ -250,6 +258,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "rigid_inertial's, verified under its own case and, holding a hull with its loops looped, against "
                 "0.4.0's by tests/oracles/test_contact_loops.py"),
     ("observation", "swim_speed", "0.1.0"): NodeCase(),
+    ("observation", "camera", "0.1.0"): CAMERA,
     ("observation", "energy_ledger", "0.1.0"): NodeCase(
         no_node="a switch: it builds no node, and its account is the metered bodies' records, rigid_inertial's, "
                 "verified under its own case and by tests/energy"),

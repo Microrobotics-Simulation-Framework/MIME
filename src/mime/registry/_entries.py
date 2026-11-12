@@ -100,6 +100,9 @@ class Read:
     interface: str
     at: Read | None = None
     offset: str | None = None
+    #: A body the plan names itself, from the roster, in place of one a role binds (an observation that sees every
+    #: body: a camera). Only a state read of a body's interface takes it; ``role`` is then ignored.
+    of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -207,6 +210,12 @@ class Plan:
     confines: tuple[Confinement, ...] = ()
     problems: tuple[Problem, ...] = ()
     assets: tuple[str, ...] = ()
+    #: An observation mounted on a frame of an apparatus's chain, ``<apparatus>.<segment>.<frame>``: the build wires
+    #: that frame's pose into the observation's node (:meth:`ObservationBuilder.mount`).
+    mounted_on: str | None = None
+    #: Lines the plan adds to the build report, computed from the experiment as built (a camera's route per subject,
+    #: what it hides, its frame's cost).
+    notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -309,6 +318,44 @@ class Hull:
 
 
 @dataclass(frozen=True)
+class RosterPart:
+    """One part of a body for an observation that sees the whole scene: its name, its solid's kind name, its settings in SI,
+    and where it sits in the body's frame (its centroid, and the rotation from its frame to the body's, as rows)."""
+
+    name: str
+    kind: str
+    settings: Mapping[str, Magnitude]
+    centre: tuple[float, float, float]
+    rotation: tuple[tuple[float, ...], ...]
+
+
+@dataclass(frozen=True)
+class RosterBody:
+    """A body as the roster lists it: the parts that lie inside no other, and its pose at the start (its position and
+    orientation quaternion ``(w, x, y, z)``, body to world), ``None`` where its dynamics gives none."""
+
+    parts: tuple[RosterPart, ...]
+    pose: tuple[float, ...] | None
+
+
+@dataclass(frozen=True)
+class RosterStructure:
+    """A structure's geometry kind name and its settings in SI, fixed in the world."""
+
+    kind: str
+    settings: Mapping[str, Magnitude]
+
+
+@dataclass(frozen=True)
+class Roster:
+    """Everything an experiment declares that an observation of the whole scene sees, by name: its bodies and its
+    structures. Plain data, in SI."""
+
+    bodies: Mapping[str, RosterBody] = field(default_factory=dict[str, RosterBody])
+    structures: Mapping[str, RosterStructure] = field(default_factory=dict[str, RosterStructure])
+
+
+@dataclass(frozen=True)
 class PlanContext:
     """What an entry may consult while planning: run settings in SI, its bindings by role, the capability record of
     each bound thing's dynamics or bound field's provider, its own dimensioned settings in SI (``settings``, read
@@ -333,6 +380,8 @@ class PlanContext:
         default_factory=dict[str, Mapping[str, tuple[str, ...]]])
     #: By each medium role, the exchange frame of the field its medium carries that takes exchange deliveries (SF-4).
     exchanges: Mapping[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
+    #: Every body and structure the experiment declares (:class:`Roster`), for an observation of the whole scene.
+    roster: Roster = field(default_factory=Roster)
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
@@ -450,6 +499,8 @@ class BuildContext:
     #: By each medium role of a law exchanging with its field, the highest frequency (Hz) of the drives bound to that
     #: medium, where one is pulsatile: a point body's Basset number is read from it.
     frequencies: Mapping[str, float] = field(default_factory=dict[str, float])
+    #: The roster its plan saw (:class:`Roster`).
+    roster: Roster = field(default_factory=Roster)
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -684,6 +735,13 @@ class Output:
     reduces: str | None = None
     rule: Reduction | None = None
     after: str | None = None
+    #: Whether the output's shape comes from the entry's settings (a camera's image: its detector's size), which the
+    #: entry gives through :meth:`Observation.output_shape`; ``shape`` is then not read.
+    shape_from_settings: bool = False
+    #: Whether a run may record the output's series. An output that is not (a camera's image, a frame a step) is refused
+    #: by ``record=``, naming the output. (``history=True`` keeps every output at every step and is not refused: with a
+    #: camera it holds the image, the expected image and the static cache, about 8 MB a step at 320 x 240 in float64.)
+    recordable: bool = True
 
 
 @dataclass(frozen=True)
@@ -1159,6 +1217,12 @@ class Observation(Entry):
     reads: ClassVar[Mapping[str, Read]] = _EMPTY
     outputs: ClassVar[tuple[Output, ...]] = ()
     meters_energy: ClassVar[bool] = False
+    #: Whether the observation sees the whole scene: it binds no role, and its plan is given the experiment's
+    #: :class:`Roster` (every body and structure) and names the bodies it reads (``Read(of=)``).
+    sees_scene: ClassVar[bool] = False
+    #: Why a run through the observation is forward only, or ``None``: reverse mode (``Study.gradient``) and a batched
+    #: study are refused, naming it.
+    forward_only: ClassVar[str | None] = None
     #: The roles ``(body, field)`` whose laws an observation is net of: the laws bound to that body and field read the
     #: body's pose and the field a number of steps behind the observation's own read, as the build's lag accounting
     #: declares (the build report's edges), and the build hands the difference to :meth:`net_of`. ``None`` for an
@@ -1172,6 +1236,11 @@ class Observation(Entry):
     def bindings(self) -> dict[str, Any]:
         return {role: getattr(self, role, None) for role in self.roles}
 
+    def output_shape(self, output: Output) -> tuple[int, ...]:
+        """The shape of ``output`` as this observation, with its settings, keeps it in its node's state: the output's
+        own for every output but one that declares ``shape_from_settings``, whose entry overrides this."""
+        return output.shape
+
     def net_of(self, node: Any, behind: int, why: str) -> Any:
         """``node`` (the one this observation built) made net of ``behind`` steps, the lag the build declares for the
         laws bound to its body and field, and ``why`` in words for the build report. Called once for an observation
@@ -1183,6 +1252,11 @@ class Observation(Entry):
 
     def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
         raise NotImplementedError
+
+
+def forward_only_of(cls: type[Entry]) -> str | None:
+    """Why a run through an entry of class ``cls`` is forward only (:attr:`Observation.forward_only`), or ``None``."""
+    return cls.forward_only if issubclass(cls, Observation) else None
 
 
 @dataclass(frozen=True, kw_only=True)

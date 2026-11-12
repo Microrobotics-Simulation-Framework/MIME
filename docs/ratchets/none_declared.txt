@@ -25,3 +25,5 @@ interaction shared_distal 0.1.0 references  # a definition: two resistances into
 interaction valve 0.1.0 references  # a definition: a closed opening, no flux, resting on no work; route: none to close
 interaction body_force 0.1.0 references  # a definition: a uniform force per unit mass on the fluid, steady or harmonic, resting on no work; route: none to close unless the drive takes a modelled waveform
 node BodyForceNode references  # a definition: a uniform force per unit mass, steady or harmonic, resting on no work; route: none to close unless the drive takes a modelled waveform
+node CameraNode references  # the pinhole and OpenCV's five coefficients are the conventions the detector states (its docstring), not a published model reproduced; a reference would be a claim the entry does not make; route: cite the calibration model's paper with its bibliography entry if the entry comes to reproduce one
+observation camera 0.1.0 references  # as the node's: a declared camera model, whose conventions are stated in mime.sensing's README, not a reproduction of a published model

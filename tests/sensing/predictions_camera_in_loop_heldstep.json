@@ -1,0 +1,81 @@
+{
+  "written": "2026-11-12, committed before the held-step probe of #266 (after the coordinator's question: the held step at 640x480 measured 4.6 to 7.6 times the merged head's on Actions)",
+  "phase": "camera lane PR 2 (#266), the held step's cost across the fix round",
+  "labels": "the builder's predictions; basis: the Actions run 43169707692 (merged head, held 640x480 f32 0.17 ms on an EPYC 9V74), run 43283574940 (pushed code, 0.78 ms on an EPYC 9V74), and a local A/B on one shared laptop (the node before and after the cache change: 0.91 against 0.93 and 1.21 ms; not a timing claim)",
+  "seen_before": [
+    "run 43169707692 and run 43283574940's costs; the local A/B above. The cause is NOT known: the guess that the comparison or the extra carried array moved the cost is unchecked, and the local A/B does not support it. The guess that the runner varies is also unchecked: this probe is the test of both."
+  ],
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64"
+    ],
+    "platform": "one GitHub runner, 4 vCPU, one CPU pinned, one thread, the three commits' trees side by side in one job",
+    "sizes_and_parameters": "the done case's scene, 320x240 and 640x480; held step (a frame every 100000 steps) and frame step (a frame every step), the camera in the world; three rounds, the order of the sides rotating, each process the minimum of 8 repeats",
+    "seeds_and_draws": "none; deterministic programs"
+  },
+  "gate_held_step": {
+    "claim": "the held step of the pushed head is within noise of the held step before the fix round and of the merged head's, on the same CPU, at every size and dtype",
+    "kind": "bounds",
+    "case": "probe/interleaved.py, sides head (2cdc6ced), before (b7f3297a), merged (7c8a4371)",
+    "prediction": {
+      "band": [
+        0.8,
+        1.25
+      ],
+      "unit": "head / before, the median over three rounds of each program's min ms per step",
+      "basis": "guess",
+      "why": "the change adds a few dozen numbers to the state and a comparison that a held step does not execute (the held step takes the `keep` branch); a ratio outside the band is the cause to find"
+    },
+    "metric": "the head's held-step time over each other side's, per program, per round: the rounds' spread says the noise",
+    "control": {
+      "plant": "none: the comparison is between commits; the rounds' spread (the same program on the same side in three rounds) is the noise floor it is judged against",
+      "environment_variable": "none",
+      "expected_rate": "n/a",
+      "runs": 3,
+      "clean_expected": "n/a",
+      "resolution": "a ratio is read only if it exceeds the largest spread of one side's rounds"
+    },
+    "if_wrong": "the cause is in the change (a copy of the cache through the cond's operands, or the extra state array): find it, fix it, re-run this probe",
+    "cannot_discriminate_if": "the three sides' held steps disagree among themselves across rounds by more than the band (the runner varies within a job)"
+  },
+  "gate_frame_step": {
+    "claim": "the frame step is within the same band",
+    "kind": "bounds",
+    "case": "as above",
+    "prediction": {
+      "band": [
+        0.8,
+        1.25
+      ],
+      "unit": "head / before",
+      "basis": "guess",
+      "why": "the frame step makes the same renders; the cond over a stale flag adds a predicate"
+    },
+    "metric": "as above",
+    "control": {
+      "plant": "none",
+      "environment_variable": "none",
+      "expected_rate": "n/a",
+      "runs": 3,
+      "clean_expected": "n/a",
+      "resolution": "as above"
+    },
+    "if_wrong": "as above",
+    "cannot_discriminate_if": "as above"
+  },
+  "outcomes": {
+    "written": "2026-11-12",
+    "probe": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43293161434 (first launch 43292758333 failed: a short hash in a shallow checkout; probe branch deleted)",
+    "gate_held_step": {
+      "head_over_before_b7f3297a": "held 320 f32 1.03, held 640 f32 1.00, held 320 f64 0.95, held 640 f64 2.75 (rounds 1.3, 0.41, 1.1 against 0.39, 0.40, 1.0: bimodal on both sides); within the band except the bimodal cell",
+      "head_over_merged_7c8a4371": "1.45, 2.93, 1.95, 12.9: the held step has been dearer since e2e81c32 (the cache moved into the state), before the fix round",
+      "status": "the fix round did not move the held step; an earlier commit did. The prediction's guess that the change was the cause was wrong; the runner-variance guess was half right (the same side's rounds differ by up to 3x at 640x480)"
+    },
+    "gate_frame_step": {
+      "head_over_before": "0.94 to 1.01 at every size and dtype",
+      "head_over_merged": "0.90 to 1.00",
+      "status": "as predicted"
+    }
+  }
+}

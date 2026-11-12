@@ -425,7 +425,7 @@ def _outputs(w: Writer, record: Record) -> None:
             w.table(OUTPUT_HEADERS, [
                 [code(o.get("field", "")), "per step" if o.get("kind") == "per_step" else "at the end",
                  str(mapping(o.get("dimension")).get("dimension", "")), code(mapping(o.get("dimension")).get("unit", "")),
-                 code(tuple(o.get("shape") or ())), w.prose(f"output {o.get('field')} description",
+                 code("set by its settings" if o.get("shape_from_settings") else tuple(o.get("shape") or ())), w.prose(f"output {o.get('field')} description",
                                                             str(o.get("description", ""))), _reduced_from(o)]
                 for o in outputs])
     flags = [mapping(held) for held in items(class_var(record, "raises", []))]

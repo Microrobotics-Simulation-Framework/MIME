@@ -1,0 +1,138 @@
+{
+  "written": "2026-11-12, committed before the fix round's probe of #266 (head after the review's B1, M1, minor 9): the static cache made again whenever the numbers it was made from differ; a test that the cache is served",
+  "phase": "camera lane PR 2 (#266), fix round of the refuting review",
+  "labels": "the builder's predictions, from the review's measurements (scratch scripts a5.py, a10.py: B1 reproduced locally, 999.997 counts at the tube's edge) and a local run of the new tests against both planted mutants (CAMERA_PLANT)",
+  "seen_before": [
+    "the review's mutant table (run 43261467117): cache-every-frame 0 of 8 caught by the six test_in_loop_* files; the two new plants were run locally once each before this file (numbers-not-compared: 6 of 6 tests fail; cache-every-frame: 2 of 6 fail, the served test in both dtypes): the rates below are predictions of the probe, not discoveries"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64"
+    ],
+    "platform": "GitHub runner 4 vCPU",
+    "sizes_and_parameters": "the ballistic sphere beside a 60 um tube, 160x120 for the tests (a continued run of 12 ms, fy 750 to 800), 320x240 and 640x480 for the costs",
+    "seeds_and_draws": "the tests are deterministic (no draw); 30 runs of the planted and of the clean arm"
+  },
+  "gate_cache_numbers": {
+    "claim": "a run continued with another detector leaf draws the whole frame at it: the frame equals a fresh build's, to 1e-2 counts, with the ball visible and without",
+    "kind": "equality",
+    "case": "tests/sensing/test_in_loop_cache.py::test_a_continued_run_with_another_leaf_draws_the_frame_at_it",
+    "prediction": {
+      "value": 0.0,
+      "unit": "largest difference in counts between the continued run's expected image and a fresh build's (line 1e-2)",
+      "basis": "derived",
+      "why": "the cache is made again at the step where the held numbers differ, from the step's own numbers, by the same operations as a fresh build's first step; the review measured 0.0 for the tube alone and the stale code 999.997"
+    },
+    "metric": "max |continued - fresh| over the frame, and that the leaf moved the image by more than 100 counts (the test can tell)",
+    "control": {
+      "plant": "the comparison removed (CAMERA_PLANT=numbers-not-compared): the cache made at the first step only, the review's code",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "the stale image differs by 999.997 counts at an edge pixel, 1e5 times the line"
+    },
+    "if_wrong": "the comparison does not reach the continued run (the numbers are equal at the step, or the cond is a select)",
+    "cannot_discriminate_if": "the leaf does not move the image (the test asserts it moves it by more than 100 counts)"
+  },
+  "gate_cache_served": {
+    "claim": "the cache is served: a cache written into the state whose numbers hold is the frame's static part, and a cache whose held number differs, whichever of them, is made again",
+    "kind": "equality",
+    "case": "tests/sensing/test_in_loop_cache.py::test_the_cache_is_served_while_its_numbers_hold_and_made_again_when_any_differs",
+    "prediction": {
+      "value": 0.0,
+      "unit": "counts: the marked frame equals 1000 x the marker (to allclose), and each perturbed number's frame equals the clean one exactly",
+      "basis": "derived",
+      "why": "the transmission multiplies the backlight; a re-render would erase the marker, and a skipped comparison of number i would keep it"
+    },
+    "metric": "the frame's equality with the marker, and with the clean frame for each of the held numbers",
+    "control": {
+      "plant": "the static part made at every frame (CAMERA_PLANT=cache-every-frame): correct images, dearer; the review's mutant, 0 of 8 caught by the in_loop files",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "the marker is 250 counts against 1000 and 809 of the clean frame"
+    },
+    "if_wrong": "the marker is not read as the static part, or the state's write is not seen by the next step",
+    "cannot_discriminate_if": "the written state is overwritten before the step reads it"
+  },
+  "gate_fix_round_bits": {
+    "claim": "every program without a camera is bit for bit the release branch's at fee7aa56, and a camera run from step 0 gives the frames it gave before the fix",
+    "kind": "equality",
+    "case": "bit_compare.py, base origin/release/v0.3.0 against this head, script A (float64, float32), the gantry, the ballistic scene (float64, float32), one job, one thread; the camera's frames before and after the change were compared locally for a fixed mount (one, three sub-frames, hidden ball with absorbers), float32: equal",
+    "prediction": {
+      "value": 0,
+      "unit": "largest absolute difference",
+      "basis": "derived",
+      "why": "the change is inside the camera node and a defect check on a plan that names a mount; neither is read by a program without a camera"
+    },
+    "metric": "all_equal",
+    "control": {
+      "plant": "the one-ulp variant of the ballistic scene (probe/dump.py)",
+      "environment_variable": "none",
+      "expected_rate": "1/1",
+      "runs": 1,
+      "clean_expected": "equal",
+      "resolution": "as the earlier probe: a one-ulp change in the ball's speed moves the final state by 1e-20 to 4e-19"
+    },
+    "if_wrong": "the change reached a program with no camera",
+    "cannot_discriminate_if": "a program's final state is insensitive to the change"
+  },
+  "costs": {
+    "how": "through the built graph (node_measure.py) as the earlier probes, on this head",
+    "prediction": "frame step, moving mount unchanged within noise of the earlier merged-head measurement (run 43169707692); the held step up by the comparison of 20 to 60 numbers and the cond's predicate, under 0.05 ms; a guess",
+    "measured_at": "the merged head 910becb5f on the same runner type (run 43169707692); the runner's CPU model is not controlled"
+  },
+  "outcomes": {
+    "written": "2026-11-12",
+    "probe": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43283574940 (probe branch at 9ba5869, code 8cd1176d; deleted after download)",
+    "gate_cache_numbers": {
+      "planted_caught": "30/30",
+      "lower_bound_95": 0.905,
+      "clean_flagged": "0/30",
+      "every_run": true,
+      "status": "as predicted"
+    },
+    "gate_cache_served": {
+      "planted_caught": "30/30",
+      "lower_bound_95": 0.905,
+      "clean_flagged": "0/30",
+      "every_run": true,
+      "status": "as predicted (the review's cache-every-frame mutant, 0 of 8 against the six in_loop files, is caught by the new test on every run)"
+    },
+    "gate_fix_round_bits": {
+      "result": "all_equal against origin/release/v0.3.0 (fee7aa56): script_a_f64, script_a_f32, gantry_f64, ballistic_f64, ballistic_f32",
+      "one_ulp": "differs (ball.pose 1.4e-20, ball.twist 4.3e-19)",
+      "camera_frames": "a camera run from step 0 gives the same frames bit for bit as before the fix (a fixed mount, one and three sub-frames, a hidden ball with an absorbing tube, float32, compared locally before and after)",
+      "status": "as predicted"
+    },
+    "costs": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43283574940",
+      "rows_ms_per_step_held_frame_moving": {
+        "float32 320x240": [
+          0.139,
+          1.91,
+          5.68
+        ],
+        "float32 640x480": [
+          0.78,
+          9.11,
+          32.1
+        ],
+        "float64 320x240": [
+          0.224,
+          4.3,
+          16.1
+        ],
+        "float64 640x480": [
+          0.946,
+          16.2,
+          65.9
+        ]
+      },
+      "status": "MISSED for the held step at 640x480: 4.6 to 7.6 times the merged head's (0.17 / 0.124), predicted under 0.05 ms more. Not explained: a local A/B of the node before and after the change (one shared laptop, float32 640x480 held step, not a timing claim) gave 0.91 ms before and 0.93 and 1.21 ms after, so the Actions difference is read as the runner; not isolated. The 320x240 held cells agree within 6 %."
+    }
+  }
+}

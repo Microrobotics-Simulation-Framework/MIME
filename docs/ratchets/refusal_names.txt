@@ -54,3 +54,4 @@ tube_tree.boundary  # the tube tree's case in the shape conformance suite: the s
 wall.roughness  # the name a plan reads the roughness of the wall a medium fills by (PlanContext.value(role, 'wall.roughness')), not a refusal code
 water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
+mount.position  # a dimensioned setting of the camera's mount group, read in SI by the build
