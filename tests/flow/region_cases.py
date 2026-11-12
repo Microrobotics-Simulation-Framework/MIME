@@ -117,11 +117,12 @@ def tree_of(d: YDraw) -> TubeTree:
 GATE_INTERIOR = 0.01
 
 
-def experiment(d: YDraw, *, distal_scale: float = 1.0, interior: float = GATE_INTERIOR) -> Experiment:
+def experiment(d: YDraw, *, distal_scale: float = 1.0, interior: float = GATE_INTERIOR,
+               tolerance: float | None = None) -> Experiment:
     exp = Experiment("region_y", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
     exp.add_structure(Structure("vessel", geometry=tree_of(d)))
     flow = FVM(domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across, stokes=True,
-               scheme=Scheme.Steady(), wall=Band(delta_in=interior))
+               scheme=Scheme.Steady(), wall=Band(delta_in=interior), tolerance=tolerance)
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": flow}))
     exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
     exp.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
@@ -653,7 +654,7 @@ def estimate_watch(arm: str = "far") -> Experiment:
     return watch_experiment(stenosis_draw(0), arm)[0]
 
 
-def cost_tree(interior: float = 0.1, seed: int = 1) -> Experiment:
+def cost_tree(interior: float = 0.1, seed: int = 1, tolerance: float | None = None) -> Experiment:
     """The cost case of the shared-plane default (row #367's condition): a drawn tree of the two-outlet gate stepped by
     IMEX Euler with convection on, a pulsatile inflow at Re about 10, its laws as drawn, at the stiff interior
     ``interior`` (cells), for ``node_measure.py`` (time a step, the CG's iterations in ``solve_report_sum``)."""
@@ -664,7 +665,7 @@ def cost_tree(interior: float = 0.1, seed: int = 1) -> Experiment:
     exp.add_structure(Structure("vessel", geometry=tree_of(d)))
     exp.add_medium(Medium("water", fills="vessel.lumen", fields={"flow": FVM(
         domain=VesselRegion(extension_diameters=d.extension), cells_across=d.cells_across,
-        scheme=Scheme.IMEXEuler(), wall=Band(delta_in=float(interior)))}))
+        scheme=Scheme.IMEXEuler(), wall=Band(delta_in=float(interior)), tolerance=tolerance)}))
     exp.declare("water.viscosity", Pa_s(MU), reason="water near 20 C")
     exp.declare("water.density", kg_per_m3(RHO), reason="water near 20 C")
     flux = 10.0 * (MU / RHO) * math.pi * d.radii[0] / 2.0
