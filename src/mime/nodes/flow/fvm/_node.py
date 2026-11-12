@@ -536,6 +536,12 @@ class ImplicitFlowNode(MimeNode):
         return wall_fields(grid, self.solids(p, grid), band_named(c["band"]), interior_depth(c["interior"]),
                            run_dtype())
 
+    def step_fields(self, p: Mapping[str, Any], grid: MACGrid, boundary_inputs: Mapping[str, Array]) -> WallFields:
+        """The solid's fields a step reads: the wall's (:meth:`fields`); a node with bodies on its grid adds theirs at
+        the poses its inputs give."""
+        del boundary_inputs
+        return self.fields(p, grid)
+
     @staticmethod
     def kinematic(p: Mapping[str, Any]) -> Array:
         """``nu = mu / rho`` (m^2/s), made in the step from the two leaves (never at build)."""
@@ -690,7 +696,7 @@ class ImplicitFlowNode(MimeNode):
         scheme: TimeScheme[StageParts] = self.scheme
         grid = self.grid(p)
         dtype = run_dtype()
-        fields = self.fields(p, grid)
+        fields = self.step_fields(p, grid, boundary_inputs)
         sigma = self.resistivity(p, fields)
         operator = self.operator_of(p, grid, sigma)
         stopping = Stopping(tolerance=as_run_array(p["tolerance"]), at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
@@ -892,14 +898,14 @@ class ImplicitFlowNode(MimeNode):
         energy = parts.energy
         dtype = jnp.asarray(energy["krylov"]).dtype
         rows = books.laws(held)
-        check_deliveries(held)
+        check_deliveries(held, self.hosted_fields())
         work, unattributed, drive_scale = self.drive_work(held, boundary_inputs, rows, dt, energy["momentum"],
                                                           energy["momentum_size"])
         if self.exchanges:
             exchanged, plain, exchange_scale = self.exchange_work(held, boundary_inputs, rows, dt, self.grid(p),
                                                                   parts.stage.solved)
             work, unattributed, drive_scale = work + exchanged, unattributed + plain, drive_scale + exchange_scale
-        hosted_work = {"viscous": -energy["viscous"], "penalty": -energy["penalty"]}
+        hosted_work = self.hosted_work(energy)
         named: set[str] = set()
         for delivery in held:
             if delivery.kind == books.HOSTED:
@@ -911,6 +917,14 @@ class ImplicitFlowNode(MimeNode):
         return books.StepAccount(work=work, hosted=jnp.zeros((len(rows), 2), dtype=dtype), unattributed=unattributed,
                                  terms=terms, storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
                                  scale=energy["scale"] + drive_scale, operators={})
+
+    def hosted_fields(self) -> tuple[str, ...]:
+        """The roles of the laws the node holds in its step (:meth:`hosted_laws`): the viscosity's and the wall's."""
+        return HOSTED_FIELDS
+
+    def hosted_work(self, energy: Mapping[str, Array]) -> dict[str, Array]:
+        """Each hosted law's work on the fluid over the step, by its role: the viscosity's and the wall's, ``-D``."""
+        return {"viscous": -energy["viscous"], "penalty": -energy["penalty"]}
 
     # -- at the build and after the run ---------------------------------------------------------------------------
     def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
@@ -994,11 +1008,11 @@ class ImplicitFlowNode(MimeNode):
             if finite else "use a smaller timestep, dt=..., or dt='auto', or the Stokes approximation FVM(stokes=True)")
 
 
-def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
-    """Refuse a delivery the flow does not take: a hosted law other than its viscosity and its wall's band, or a
-    delivered one into anything but its drive's inputs (``fluid``'s loads)."""
+def check_deliveries(held: Sequence[books.LedgerDelivery], hosted_fields: Sequence[str] = HOSTED_FIELDS) -> None:
+    """Refuse a delivery the flow does not take: a hosted law other than those it holds (its viscosity and its wall's
+    band, and any body it resolves), or a delivered one into anything but its drive's inputs (``fluid``'s loads)."""
     for delivery in held:
-        hosted = delivery.kind == books.HOSTED and delivery.field in HOSTED_FIELDS
+        hosted = delivery.kind == books.HOSTED and delivery.field in hosted_fields
         driven = delivery.kind == books.LOAD and delivery.field in (*DRIVE_FIELDS, *EXCHANGE_FIELDS)
         if not (hosted or driven):
             raise ValueError(f"the flow node hosts {list(HOSTED_FIELDS)} and is driven through {list(DRIVE_FIELDS)}: "
