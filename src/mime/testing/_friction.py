@@ -199,15 +199,12 @@ SUITE_DEEPER = (1600, 6400, 25600, 102400, 409600)
 #: judged at the suite's count, where it fails, so a solve broken into slowness fails naming its count rather than
 #: running the deeper counts on every draw (the review's planted bugs took 59 to 158 minutes there). At the frictional
 #: line a clean run needs them on 0 to 5 of a body's 200 draws in most runs (four runs, both dtypes: the box the most),
-#: but Hypothesis's draws can cluster: one run of W2b PR 1's CI (Python 3.13, float32) needed them on more than 41 of
-#: 187 box draws, each converging, so the share is a half, 100 draws, and a draw whose residual stalls stops early
-#: (:data:`STALLED`), so that a broken solve's draws each cost two deeper counts, not five.
+#: but Hypothesis's draws can cluster: one run of W2b PR 1's CI (Python 3.13, float32) needed them on 41 of 187 box
+#: draws, each converging, so the share is a half, 100 draws. The trade: a solve broken into slowness re-solves up to
+#: that many of a body's draws at every deeper count before it fails naming the count. A stop where the residual
+#: stalls was measured and withdrawn: slow box draws (mu 1, 1e-5 to 6e-5 at 400 sweeps) stall for two counts and then
+#: converge, and it failed 3 stress runs of 20.
 DEEPER_SHARE = 0.5
-#: A deeper count that leaves the residual above this share of the count before it makes no progress; two in a row and
-#: the draw stops there, judged a configuration with no solution where its guard is quiet (:data:`NO_SOLUTION_DRAWS`).
-#: The slowest converging box of the measurement above (0.016 at 400, 0.020 at 1,600, 0.017 at 6,400, 0.0057 at
-#: 25,600) falls by more than a tenth at every other count; the Painleve-type box stalls at 0.0247 from 1,600 on.
-STALLED = 0.9
 #: The share of the load above which a planted sign flip of friction is seen, a control's "friction acts", by dtype:
 #: the flip measured raised down to 3e-11 of the load on the sphere in float64 (1e-17 on the cylinder and the box) and
 #: 3e-6 in float32 (W2b's review: a body at rest under a load drawn off the normal, three bodies), each line three times
@@ -217,9 +214,9 @@ FLIP_SEEN = {"float64": 1e-10, "float32": 1e-5}
 #: A draw at a high coefficient under a load far off the normal can be a configuration rigid Coulomb holds no solution
 #: for (Painleve-type, the validity line's: the review's box at mu 1.18 and 78 deg, held at a residual of 0.017 at 80
 #: and 4,000 sweeps; a stress run's box at mu 1.2 and 82 deg, 0.025 at every count to 409,600, both dtypes alike). Its
-#: step raises unconverged, as it should, and its friction stays passive. Unplanted, a draw whose deeper counts stall
-#: (:data:`STALLED`) or reach the deepest unconverged, with the guard quiet, is counted apart as such, at most this many
-#: a body a run: past them the draws fail, as a broken solve leaves more.
+#: step raises unconverged, as it should, and its friction stays passive. Unplanted, a draw still unconverged at the
+#: deepest count with the guard quiet is counted apart as such, at most this many a body a run: past them the draws
+#: fail, as a broken solve leaves more.
 NO_SOLUTION_DRAWS = 2
 
 
@@ -257,8 +254,8 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     apart the draws whose clean solve is itself unconverged at ``sweeps`` (where the clean step raises the flag the
     plant is judged by). Unplanted, a draw left unconverged at ``sweeps`` is solved again at :data:`SUITE_DEEPER`'s
     counts and judged at its solution, for up to :data:`DEEPER_SHARE` of a body's draws (the detail counts them); one
-    whose residual stalls (:data:`STALLED`) unconverged with the guard quiet is a configuration rigid Coulomb holds no
-    solution for, counted apart for up to :data:`NO_SOLUTION_DRAWS` a body."""
+    still unconverged at the deepest with the guard quiet is a configuration rigid Coulomb holds no solution for,
+    counted apart for up to :data:`NO_SOLUTION_DRAWS` a body."""
     import jax
     from hypothesis import HealthCheck, Phase, given, settings
 
@@ -314,21 +311,15 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                 out = stepper(pose, twist, load, mu)
                 # judged at its solution: solved again at the deeper counts while unconverged (a planted arm is
                 # judged at the suite's count, where its flags must rise)
-                deepened, stalled, strikes = False, False, 0
+                deepened, deepest = False, sweeps
                 room = solved_deeper[name] < max(1, int(DEEPER_SHARE * max_examples))
                 for count in [count for count in SUITE_DEEPER if count > sweeps and plant is None and room]:
-                    before = float(out["contact_residual"])
-                    if not before > FRICTION_CONVERGED:
+                    if not float(out["contact_residual"]) > FRICTION_CONVERGED:
                         break
                     if (name, count) not in deeper:
                         deeper[name, count] = _traced_at(name, count, dtype)
                     out = deeper[name, count](pose, twist, load, mu)
-                    deepened = True
-                    # two deeper counts in a row that leave the residual where it was: no solution to come
-                    strikes = strikes + 1 if float(out["contact_residual"]) > STALLED * before else 0
-                    stalled = strikes == 2 or count == SUITE_DEEPER[-1]
-                    if strikes == 2:
-                        break
+                    deepened, deepest = True, count
                 solved_deeper[name] += int(deepened)
                 power = float(out["contact_friction_power_ratio"])
                 left = float(out["contact_residual"])
@@ -345,8 +336,8 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                 # the step is never silent: the guard reads friction pushing, or unconverged rises (the residual,
                 # where a planted flip lifts the body off and leaves no friction to read)
                 raised = not power <= floor or left > FRICTION_CONVERGED
-                # unplanted, stalled unconverged with the guard quiet: no solution to hold (counted apart)
-                unsolved = (stalled and power <= floor and left > FRICTION_CONVERGED
+                # unplanted, unconverged at the deepest count with the guard quiet: no solution to hold (counted apart)
+                unsolved = (deepest == SUITE_DEEPER[-1] and power <= floor and left > FRICTION_CONVERGED
                             and no_solution[name] < NO_SOLUTION_DRAWS)
                 no_solution[name] += int(unsolved)
                 acted[name] += int(acts and not unsolved)
@@ -378,7 +369,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
               f"{', '.join(f'{name} {under[name]}' for name in bodies)}; solved past {sweeps} sweeps to converge, by "
               f"body: {', '.join(f'{name} {solved_deeper[name]}' for name in bodies)} (at most "
               f"{max(1, int(DEEPER_SHARE * max_examples))} a body, past which a draw is judged at {sweeps}); "
-              f"stalled unconverged with the guard quiet, a configuration rigid Coulomb holds no "
+              f"unconverged at {SUITE_DEEPER[-1]} sweeps with the guard quiet, a configuration rigid Coulomb holds no "
               f"solution for, counted apart (at most {NO_SOLUTION_DRAWS} a body), by body: "
               f"{', '.join(f'{name} {no_solution[name]}' for name in bodies)}"
               + (f"; the clean solve unconverged at {sweeps}, counted apart from the plant's, by body: "
@@ -479,7 +470,7 @@ ROLLING_SHARE = (1e-4, 0.1)
 #: The share of a body's draws the rolling suite solves again at the deeper counts, at most: a cylinder rocking on its
 #: line contact with its rolling rows converges slowly (one float64 run of 200 draws needed the deeper counts on 11 of
 #: its cylinder draws, at mu 1 turning about every axis; another on none): a quarter, 50 draws, past which a broken
-#: solve fails naming the count (the friction suite's share and its stall stop are its own, :data:`DEEPER_SHARE`).
+#: solve fails naming the count (the friction suite's share is its own, :data:`DEEPER_SHARE`).
 ROLLING_DEEPER_SHARE = 0.25
 
 
