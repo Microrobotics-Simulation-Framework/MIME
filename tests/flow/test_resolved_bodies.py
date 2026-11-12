@@ -483,6 +483,43 @@ def test_the_steady_drag_in_float32_is_within_its_line_of_float64s():
     assert difference < 1e-3, values
 
 
+class _Compiled(Exception):
+    """The study's derivative reached its compile (planted to stop there)."""
+
+
+@pytest.mark.parametrize(("precision", "mode"), [("float32", "reverse"), ("float64", "reverse"), ("float32", "forward")])
+def test_a_float32_reverse_derivative_through_a_resolved_body_is_refused_before_it_compiles(monkeypatch, precision,
+                                                                                            mode):
+    """drag.penalty-float32-reverse (``_resolved_node.FLOAT32_REVERSE_MEASURED``): a study's derivative in reverse
+    mode in float32 through the penalty rung is refused by name before it compiles, the FVM's unverified path
+    acknowledged (the refusal is not acknowledged away); in float64, and in forward mode in float32, it reaches the
+    compile, planted to stop there, so neither arm can pass for the other."""
+    from mime.study import PRECISION, Study, along
+    from mime.study import _gradient
+    from mime.units import mPa_s
+
+    def compiled(*_: object, **__: object) -> None:
+        raise _Compiled
+
+    monkeypatch.setattr(_gradient, "prepare", compiled)
+    study = Study(r3_experiment(1.4)).sweep(along({PRECISION: [precision], "water.viscosity": [mPa_s(1.0)]}),
+                                            duration=ms(0.3))
+
+    def derivative() -> object:
+        return study.gradient(lambda final: final["ball"]["twist"][2], wrt=["water.viscosity"], mode=mode,
+                              acknowledged={"water.flow": "the FVM's derivative path, unverified: the refusal is judged"})
+
+    if (precision, mode) == ("float32", "reverse"):
+        with pytest.raises(BuildRefused) as refused:
+            derivative()
+        found = [each for each in refused.value.refusals if each.code == "drag.penalty-float32-reverse"]
+        assert len(found) == 1 and "ball" in found[0].message, refused.value.refusals
+        assert "float64" in found[0].action and "mode='forward'" in found[0].action
+    else:
+        with pytest.raises(_Compiled):
+            derivative()
+
+
 # -- the build: the spacing rule and the refusals -----------------------------------------------------------------------
 @pytest.mark.parametrize(("cells", "across"), [(3, 16), (6, 32)])
 def test_the_fvm_takes_the_finer_of_the_lumens_spacing_and_n_cells_across_the_bodys_radius(float64, cells, across):

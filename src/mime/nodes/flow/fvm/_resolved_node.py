@@ -80,6 +80,19 @@ MOTION_LINE = 1.0
 #: MRS's rate at 4 cells, 8.3 % at 3, 23 % at 2 (its first step's probe): within 3 cells the body is the near-wall
 #: resolved-body phase's.
 NEAR_WALL_CELLS = 3.0
+#: Why a gradient study's reverse-mode derivative through a resolved body is refused in float32
+#: (``drag.penalty-float32-reverse``, :meth:`ResolvedFlowNode.derivative_problem`): what measured it.
+FLOAT32_REVERSE_MEASURED = (
+    "measured through the node's steady step on the rung's position-derivative case (a sphere of a/R 0.375 held 0.2 R "
+    "off a periodic tube's axis: its axial resistance in its lateral position and in the viscosity, its load at rest in "
+    "the drive), "
+    "float32 against float64 solved to 1e-12 (runs 43200714550 and 43202597797): at the default interior (0.1h) reverse "
+    "mode within 8.0e-5 at 3 cells a radius and 3.6e-4 at 6 (forward mode 5.5e-5 and 1.6e-4), the gap growing 4.5 times "
+    "from 3 cells to 6; with the 0.01h interior at 6 cells reverse mode 3.2e-2 off in position and 1.6e-3 in the "
+    "viscosity and the drive, every transpose solve reporting convergence (forward mode 1.7e-2 in position, its tangent "
+    "solve flagged stagnated). float64 at float32's tolerance (1e-5) reproduces each gap and float64 solves inside the "
+    "float32 program at 1e-10 close it to under 1e-5: float32's stop on the transpose's right-hand side (the penalty's "
+    "load on the stiff body), not a derivative defect (float64 at 1e-12: reverse against forward mode 1e-11)")
 #: The per-body inputs, ``body_<i>_<name>``: the body's pose, twist and mass matrix at the step's start.
 BODY_INPUTS = ("pose", "twist", "mass")
 #: A body's books in the step (the module's docstring states them): the penalty's load, its interior's momentum, its
@@ -445,6 +458,29 @@ class ResolvedFlowNode(ImplicitFlowNode):
             "(drag.penalty-lagged) at the values it was given, and a body driven past them moves faster than the grid "
             "resolves; or the one-pass affine coupling, which pairs the exchange at one twist, the route this rung "
             "comes with next")
+
+    def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
+        """A gradient study's derivative in reverse mode in a float32 run, refused before the study compiles it
+        (``drag.penalty-float32-reverse``): its transpose solves stop at float32's tolerance on a right-hand side the
+        stiff body dominates and report convergence where the derivative is off (:data:`FLOAT32_REVERSE_MEASURED`).
+        Forward mode, whose tangent solve was flagged stagnated wherever its derivative was off by more than 1e-3,
+        and float64 are not refused."""
+        del directions, members, steps
+        if mode != "reverse" or not self.count or jnp.dtype(run_dtype()) != jnp.dtype(jnp.float32):
+            return None
+        c = self.constants()
+        bodies = ", ".join(f"{c[f'body_{index}_name']} ({c[f'body_{index}_law']})" for index in range(self.count))
+        return Problem(
+            "drag.penalty-float32-reverse",
+            f"the derivative in reverse mode in float32 passes through the bodies resolved on the medium's grid, "
+            f"{bodies}: their transpose solves stop at float32's tolerance on a right-hand side the stiff body "
+            f"dominates and report convergence where the derivative is off (measured on a held sphere: with the 0.01h "
+            f"interior at 6 cells a radius 3.2 % in its position and 0.16 % in the viscosity and the drive; at the "
+            f"default interior 0.036 % at 6 cells, the gap growing 4.5 times from 3 cells to 6), so the derivative "
+            f"would be off with no flag",
+            "run the study in float64, `Study(exp).sweep(grid({PRECISION: ['float64'], ...}), ...)` or "
+            "JAX_ENABLE_X64=1; or take the derivative in forward mode, `study.gradient(..., mode='forward')`, whose "
+            "tangent solve was flagged stagnated wherever its derivative was off by more than 0.1 %")
 
     @override
     def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
