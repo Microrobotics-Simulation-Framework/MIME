@@ -5,7 +5,8 @@ test_friction.py``, breakaway at ``tan(theta) = mu``).
 
 - :func:`friction_law_suite`: **passivity, never silent**, each held point's friction power at the solved twist never
   above its floor (``_friction.power_floor``: the spike's guard, which caught a planted sign flip in every draw where
-  the kinetic energy missed most) and the step not unconverged, at a converged count; a planted sign flip raises one of
+  the kinetic energy missed most) and the step not unconverged, at a converged count (but where rigid Coulomb holds no
+  solution, a draw counted apart: ``NO_SOLUTION_DRAWS``); a planted sign flip raises one of
   the two in every draw of every body where friction acts, the clean solve's friction above the guard's line of the
   load (the guard, or ``unconverged`` where the flip lifts the body off and leaves no friction to read: two draws in
   915 of a box's in W2b's probe); **the sticking limits**, a sphere's point whose sticking traction is within the
@@ -206,6 +207,13 @@ DEEPER_SHARE = 0.15
 #: that. Under it the flip moves the body by 5.6e-15 m/s a step in float64 and 5.6e-9 m/s in float32, under any
 #: check's resolution; the guard's own line (``_friction.power_floor``) is a power's share, not this.
 FLIP_SEEN = {"float64": 1e-10, "float32": 1e-5}
+#: A draw at a high coefficient under a load far off the normal can be a configuration rigid Coulomb holds no solution
+#: for (Painleve-type, the validity line's: the review's box at mu 1.18 and 78 deg, held at a residual of 0.017 at 80
+#: and 4,000 sweeps; a stress run's box at mu 1.2 and 82 deg, 0.025 at every count to 409,600, both dtypes alike). Its
+#: step raises unconverged, as it should, and its friction stays passive. Unplanted, a draw still unconverged at the
+#: deepest count with the guard quiet is counted apart as such, at most this many a body a run: past them the draws
+#: fail, as a solve broken into slowness leaves more.
+NO_SOLUTION_DRAWS = 2
 
 
 def _converged(names: tuple[str, ...], sweeps: int) -> dict[str, int | None]:
@@ -241,7 +249,9 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     rounding of the normal on a body at rest), and the detail counts those draws apart, as it counts
     apart the draws whose clean solve is itself unconverged at ``sweeps`` (where the clean step raises the flag the
     plant is judged by). Unplanted, a draw left unconverged at ``sweeps`` is solved again at :data:`SUITE_DEEPER`'s
-    counts and judged at its solution, for up to :data:`DEEPER_SHARE` of a body's draws (the detail counts them)."""
+    counts and judged at its solution, for up to :data:`DEEPER_SHARE` of a body's draws (the detail counts them); one
+    still unconverged at the deepest with the guard quiet is a configuration rigid Coulomb holds no solution for,
+    counted apart for up to :data:`NO_SOLUTION_DRAWS` a body."""
     import jax
     from hypothesis import HealthCheck, Phase, given, settings
 
@@ -268,6 +278,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     under = dict.fromkeys(bodies, 0)
     solved_deeper = dict.fromkeys(bodies, 0)
     unsettled = dict.fromkeys(bodies, 0)
+    no_solution = dict.fromkeys(bodies, 0)
     quiet: list[str] = []
     declared = _converged(bodies, sweeps)
     try:
@@ -296,7 +307,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                 out = stepper(pose, twist, load, mu)
                 # judged at its solution: solved again at the deeper counts while unconverged (a planted arm is
                 # judged at the suite's count, where its flags must rise)
-                deepened = False
+                deepened, deepest = False, sweeps
                 room = solved_deeper[name] < max(1, int(DEEPER_SHARE * max_examples))
                 for count in [count for count in SUITE_DEEPER if count > sweeps and plant is None and room]:
                     if not float(out["contact_residual"]) > FRICTION_CONVERGED:
@@ -304,7 +315,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                     if (name, count) not in deeper:
                         deeper[name, count] = _traced_at(name, count, dtype)
                     out = deeper[name, count](pose, twist, load, mu)
-                    deepened = True
+                    deepened, deepest = True, count
                 solved_deeper[name] += int(deepened)
                 power = float(out["contact_friction_power_ratio"])
                 left = float(out["contact_residual"])
@@ -321,13 +332,17 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                 # the step is never silent: the guard reads friction pushing, or unconverged rises (the residual,
                 # where a planted flip lifts the body off and leaves no friction to read)
                 raised = not power <= floor or left > FRICTION_CONVERGED
-                acted[name] += int(acts)
-                flagged[name] += int(acts and raised)
+                # unplanted, unconverged at the deepest count with the guard quiet: no solution to hold (counted apart)
+                unsolved = (deepest == SUITE_DEEPER[-1] and power <= floor and left > FRICTION_CONVERGED
+                            and no_solution[name] < NO_SOLUTION_DRAWS)
+                no_solution[name] += int(unsolved)
+                acted[name] += int(acts and not unsolved)
+                flagged[name] += int(acts and raised and not unsolved)
                 under[name] += int(not acts and settled)
                 if acts and not raised:
                     quiet.append(f"{name} at {drawn}: friction {pulled:.3g} N over the load {loaded:.3g} N, power "
                                  f"{power:.3g}, residual {left:.3g}")
-                if raised:
+                if raised and not unsolved:
                     found.append(f"{name}: flagged, friction's power at the solved twist {power:.3g} over its scale "
                                  f"(its floor {floor:.3g}) and the residual {left:.3g} (its line "
                                  f"{FRICTION_CONVERGED:g}), at "
@@ -349,7 +364,10 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
               f"friction under the flip's resolution of the load ({seen:g}), by body: "
               f"{', '.join(f'{name} {under[name]}' for name in bodies)}; solved past {sweeps} sweeps to converge, by "
               f"body: {', '.join(f'{name} {solved_deeper[name]}' for name in bodies)} (at most "
-              f"{max(1, int(DEEPER_SHARE * max_examples))} a body, past which a draw is judged at {sweeps})"
+              f"{max(1, int(DEEPER_SHARE * max_examples))} a body, past which a draw is judged at {sweeps}); "
+              f"unconverged at {SUITE_DEEPER[-1]} sweeps with the guard quiet, a configuration rigid Coulomb holds no "
+              f"solution for, counted apart (at most {NO_SOLUTION_DRAWS} a body), by body: "
+              f"{', '.join(f'{name} {no_solution[name]}' for name in bodies)}"
               + (f"; the clean solve unconverged at {sweeps}, counted apart from the plant's, by body: "
                  f"{', '.join(f'{name} {unsettled[name]}' for name in bodies)}" if clean else ""))
     if failed:
