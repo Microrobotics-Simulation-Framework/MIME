@@ -1,5 +1,5 @@
 {
- "source": "CI runs 43126570717 (469304c), 43130649375 (72e9dd8), 43164499364 (7c762f4) and 43172901124 (e107244), pushes with every shard cold, the median over their twenty lanes (a file a run did not yet have is judged over the runs that did, below); the 3.12 lane of e107244's shard 6, cancelled at 30 minutes, takes the 3.13 lane's report of that shard from the same run; the 19 files that a run did not yet have (the camera's sensing tests and four more) are the median over the lanes of the runs that had them, scripts/shard_weights.py's own functions, since a median over all twenty lanes would count the missing runs as 0 s",
+ "source": "CI runs 43126570717 (469304c), 43130649375 (72e9dd8), 43164499364 (7c762f4) and 43172901124 (e107244), pushes with every shard cold, the median over their twenty lanes (a file a run did not yet have is judged over the runs that did, below); the 3.12 lane of e107244's shard 6, cancelled at 30 minutes, takes the 3.13 lane's report of that shard from the same run; the 19 files that a run did not yet have (the camera's sensing tests and four more) are the median over the lanes of the runs that had them, scripts/shard_weights.py's own functions, since a median over all twenty lanes would count the missing runs as 0 s; test_shape_suite.py split in three (2026-11-12): the two tube tree files' rows are the median over the lanes of the same four runs, taken from those runs' reports with the seven tube tree tests read as belonging to them",
  "over": 0.0,
  "tests_over": 1.0,
  "seconds": {
@@ -370,7 +370,9 @@
   "tests/saved/test_save_reference.py": 137,
   "tests/saved/test_schema.py": 47,
   "tests/saved/test_setting_roles.py": 24,
-  "tests/saved/test_shape_suite.py": 1318,
+  "tests/saved/test_shape_suite.py": 400,
+  "tests/saved/test_shape_suite_tube_tree_examples.py": 520,
+  "tests/saved/test_shape_suite_tube_tree_points.py": 405,
   "tests/saved/test_solve_walk.py": 382,
   "tests/saved/test_stage_writer.py": 9,
   "tests/saved/test_switch_harness.py": 813,
