@@ -15,10 +15,12 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
+import scipy.linalg
 
 from mime.core import run_dtype
 from mime.nodes.flow.fvm import ImplicitFlowNode, OpenFlowNode
 from mime.nodes.flow.fvm._partners import DELIVERIES, delivered, read, stencils
+from mime.nodes.flow.fvm._open import OpenMACGrid
 from mime.nodes.flow.fvm._ports import RowKind
 
 WATER_MU, WATER_RHO = 1e-3, 1e3
@@ -78,6 +80,24 @@ class Monolithic:
     forces: np.ndarray
     twists: np.ndarray
     readings: np.ndarray
+    system: System
+
+
+@dataclass(frozen=True)
+class System:
+    """The monolithic step as one linear system ``matrix @ z = right`` (float64) and its solution, refined once in
+    float64 (Wilkinson's refinement: its residual's componentwise backward error then ``gamma_(n+1)``): the unknowns the
+    field's faces (``faces`` of them, each weighed ``weights`` in the grid's inner product), then each opening's
+    pressure relative to the reference and the level, then each body's force, couple and twist. ``pressures`` and
+    ``fluxes`` are the openings' absolute pressures and fluxes as rows over ``z``."""
+
+    matrix: np.ndarray
+    right: np.ndarray
+    solution: np.ndarray
+    faces: int
+    weights: np.ndarray
+    pressures: np.ndarray
+    fluxes: np.ndarray
 
 
 def monolithic_step(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping[str, Any],
@@ -170,7 +190,10 @@ def monolithic_step(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping
                 start + jnp.arange(chunk), n - 1)].set(1.0)
             transposed.append(np.asarray(columns(basis))[:min(chunk, n - start)])
         matrix = np.concatenate(transposed, axis=0).T
-        solution = np.linalg.solve(matrix, -np.asarray(offset))
+        right = -np.asarray(offset)
+        factors = scipy.linalg.lu_factor(matrix)
+        solution = scipy.linalg.lu_solve(factors, right)
+        solution = solution + scipy.linalg.lu_solve(factors, right - matrix @ solution)
         u = tuple(np.asarray(c) for c in _unflat(jnp.asarray(solution[:faces]), shapes))
         start = faces
         pressures = fluxes = np.zeros(0)
@@ -187,7 +210,195 @@ def monolithic_step(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping
             else np.zeros((0, 6))
         readings = np.stack([np.asarray(read(grid, held[b], tuple(jnp.asarray(c) for c in u), body.reading))
                              for b, body in enumerate(bodies)]) if bodies else np.zeros((0, 6))
-        return Monolithic((u[0], u[1], u[2]), pressures, fluxes, forces, twists, readings)
+        weights = grid.weights(jnp.float64) if isinstance(grid, OpenMACGrid) else grid.zeros(jnp.float64)
+        if not isinstance(grid, OpenMACGrid):
+            weights = tuple(w + 1.0 for w in weights)
+        pressure_rows = np.zeros((count, n))
+        flux_rows = np.zeros((count, n))
+        if opened:
+            for k, j in enumerate(others):
+                pressure_rows[j, faces + k] = 1.0
+            pressure_rows[:, faces + count - 1] = 1.0
+            flux_rows[:, :faces] = np.asarray(jax.jacrev(lambda f: grid.opening_fluxes(_unflat(f, shapes)))(
+                jnp.zeros(faces, dtype=jnp.float64)))
+        system = System(matrix, right, solution, faces, float(grid.cell_volume) * np.asarray(_flat(weights)),
+                        pressure_rows, flux_rows)
+        return Monolithic((u[0], u[1], u[2]), pressures, fluxes, forces, twists, readings, system)
+
+
+#: The float rounding the derived line carries, each a count of the unit roundoff ``u`` (half the dtype's epsilon) per
+#: operation, from the arithmetic that forms it (Higham's ``gamma_k = k u``, first order):
+#: - the field's rows (the conjugate gradient's true residual ``P b - P A P x``, recomputed in the run's dtype): the
+#:   operator's nine terms a face (the shift, the Laplacian's seven, the resistivity), the projector's two fast
+#:   transforms (``log2`` of the cells each) and its difference stencils, the subtraction: ``FIELD_ROUNDING`` plus
+#:   ``2 log2(cells)``, normwise in the grid's inner product on ``|A| |x| + |P b|`` (the solve's own floor,
+#:   ``mime.nodes.flow.fvm._solve.rounding_floor``'s form);
+#: - the partners' rows, by the elimination's two stages (``mime.core.elimination``): the deliveries ``x = x0 + X V``
+#:   from every partner's rows with each body's twist free (a dense LU of ``n1`` deliveries, ``3 n1``), then the twists
+#:   from each body's own row with ``x`` put in (``3 n2`` for ``n2`` twists, ``n1`` more for ``X`` put in), each row's
+#:   rounding componentwise on the stage's own terms in magnitude (``|x0|``, ``|X| |V|``, not ``|x|``: a cancellation
+#:   between them is the stage's, Oettli and Prager's scale), the readings of the unit fields a sum over the kernel's
+#:   faces (``log2`` of their count) on the unit fields in magnitude, and ``ROW_ROUNDING`` more;
+#: - the field's sum of its base and each unit field times its delivery, one rounding a term, componentwise.
+FIELD_ROUNDING = 13
+ROW_ROUNDING = 2
+
+
+@dataclass(frozen=True)
+class Lines:
+    """The derived line of every quantity gate 1 judges, each in its own units: the field on each face (m/s), each
+    body's force and couple (N; N m) and twist (m/s; rad/s), the openings' pressures (Pa) and fluxes (m^3/s); and the
+    sizes of the terms forming them (``parts``: the field's residual from the solves' achieved residual and from their
+    rounding, both in the grid's norm, and the reported residual), for the record."""
+
+    field: np.ndarray
+    forces: np.ndarray
+    twists: np.ndarray
+    pressures: np.ndarray
+    fluxes: np.ndarray
+    parts: dict[str, float]
+
+
+def float_lines(node: ImplicitFlowNode, p: Mapping[str, Any], state: Mapping[str, Any], inputs: Mapping[str, Any],
+                dt: float, reference: Monolithic, ended: Mapping[str, Any]) -> Lines:
+    """Gate 1's line, derived per draw from the step's own solve and the dtype's rounding, carried through the
+    monolithic step's inverse (the field's conditioning and the small system's together, first order).
+
+    The step's answer ``z`` (its field, each opening's pressure, each body's force, couple and twist) solves the
+    monolithic system ``K z = c`` up to a residual ``d``, and its error is ``K^-1 d``. Its field rows' residual is the
+    solves' combined: the base's and each unit field's times its delivery ``x_s``, each solve's true residual at most
+    its reported relative residual ``rho`` (the step's worst, ``solve_report``) times its right-hand side, in the grid's
+    norm, plus the residual's own rounding (:data:`FIELD_ROUNDING`); a field-row error enters a quantity ``k`` through
+    row ``k`` of ``K^-1`` on the field's columns in the dual norm (Cauchy and Schwarz). The partners' rows (each body's
+    law and own row, each opening's) are solved to their rounding, componentwise (:data:`ROW_ROUNDING`), through
+    ``|K^-1|``; the field's assembly adds its own rounding. The reference's own error (float64, refined once) enters as
+    the partners' does at float64's ``u`` over every row (``gamma_(n+1)``). Nothing in the line reads the elimination's
+    answer: its deliveries are the reference's, and the solves' unit fields enter only in magnitude, so a fault in the
+    elimination is judged against the solves' accuracy and never absorbed by it (the base field's magnitude is the
+    reference's field less the unit fields at the reference's deliveries)."""
+    system = reference.system
+    dtype = np.dtype(str(ended["velocity_x"].dtype))
+    u = float(np.finfo(dtype).eps) / 2.0
+    u64 = float(np.finfo(np.float64).eps) / 2.0
+    with jax.enable_x64(True):
+        p = {k: (jnp.asarray(v, dtype=jnp.float64) if isinstance(v, (np.ndarray, jax.Array, float)) else v)
+             for k, v in p.items()}
+        before64 = {k: jnp.asarray(v, dtype=jnp.float64) for k, v in state.items()
+                    if jnp.issubdtype(jnp.asarray(v).dtype, jnp.floating)}
+        inputs = {k: jnp.asarray(v, dtype=jnp.float64) for k, v in inputs.items()}
+        grid = node.grid(p)
+        fields = node.fields(p, grid)
+        sigma = node.resistivity(p, fields)
+        scheme = node.scheme
+        shift = 1.0 / dt if scheme.stores_inertia else 0.0
+        rho = jnp.asarray(p["density"])
+        before = (before64["velocity_x"], before64["velocity_y"], before64["velocity_z"])
+        drive = node.forcing(fields, inputs, scheme, jnp.float64)(0, 0.0)
+        convection = grid.convection(before) if node.constants()["convection"] else grid.zeros(jnp.float64)
+        rhs = tuple(shift * before[k] + drive[k] + convection[k] for k in range(3))
+        magnitude = node.magnitude_of(p, grid, sigma)(shift)
+        bodies = node.body_partners(p, inputs, dt, jnp.float64) if node.body_count else []
+        held = [stencils(grid, body.point, body.width) for body in bodies]
+        faces = system.faces
+        solves: list[tuple[float, Any, Any]] = []
+        base_rhs = rhs
+        if isinstance(node, OpenFlowNode):
+            count = node.opening_count()
+            predicted = np.asarray(before64["opening_pressure_relative"])
+            for k, j in enumerate(node.others()):
+                moved = float(system.solution[faces + k]) - float(predicted[j])
+                unit = tuple(jnp.asarray(np.asarray(ended[f"unit_{x}"][k], dtype=np.float64)) for x in "xyz")
+                solves.append((moved, grid.port_force(jnp.zeros(count, dtype=jnp.float64).at[j].set(1.0), rho), unit))
+            port = grid.port_force(jnp.asarray(predicted), rho)
+            base_rhs = tuple(rhs[k] + port[k] for k in range(3))
+        for b, body in enumerate(bodies):
+            for k in range(DELIVERIES):
+                force = delivered(grid, held[b], jnp.zeros(DELIVERIES, dtype=jnp.float64).at[k].set(1.0),
+                                  body.delivery)
+                unit = tuple(jnp.asarray(np.asarray(ended[f"partner_units_{x}"][DELIVERIES * b + k], dtype=np.float64))
+                             for x in "xyz")
+                solves.append((float(reference.forces[b, k]), tuple(f / rho for f in force), unit))
+        base = tuple(jnp.asarray(v) for v in reference.velocity)
+        for c, _, unit in solves:
+            base = tuple(base[k] - c * unit[k] for k in range(3))
+        solves.insert(0, (1.0, base_rhs, base))
+
+        def norm(v: Any) -> float:
+            return float(jnp.sqrt(grid.inner(v, v)))
+
+        achieved = float(np.asarray(ended["solve_report"])[1])
+        cells = int(np.prod(grid.cells))
+        field_gamma = (FIELD_ROUNDING + 2 * math.ceil(math.log2(cells))) * u
+        solved_part = 0.0
+        floor = grid.zeros(jnp.float64)
+        magnitudes = grid.zeros(jnp.float64)
+        for c, b, unit in solves:
+            projected = grid.project(b)
+            solved_part += abs(c) * achieved * norm(projected)
+            size = magnitude(tuple(jnp.abs(x) for x in unit))
+            floor = tuple(floor[k] + abs(c) * (size[k] + jnp.abs(projected[k])) for k in range(3))
+            magnitudes = tuple(magnitudes[k] + abs(c) * jnp.abs(unit[k]) for k in range(3))
+        rounding_part = field_gamma * norm(floor)
+        residual = solved_part + rounding_part
+        in_magnitude = np.asarray(_flat(magnitudes))
+        assembly = (len(solves) + 1 + 2 * math.ceil(math.log2(cells))) * u * in_magnitude
+        matrix, z = system.matrix, system.solution
+        inverse = np.linalg.inv(matrix)
+        n = matrix.shape[0]
+        shapes = [grid.shape(k) for k in range(3)]
+        weights = jnp.asarray(system.weights)
+
+        def dual_norm(row: Any) -> Any:
+            """The size of a quantity's row on the field's columns against a divergence-free residual of unit norm:
+            ``|| P W^-1 g ||_W``, the solves' residuals being projected (``K`` is the identity on the gradients)."""
+            projected = _flat(grid.project(_unflat(row / weights, shapes)))
+            return jnp.sqrt(jnp.sum(weights * projected * projected))
+
+        def dual_norms(rows: np.ndarray) -> np.ndarray:
+            normed = jax.jit(jax.vmap(dual_norm))
+            return np.concatenate([np.asarray(normed(jnp.asarray(rows[i:i + COLUMNS])))
+                                   for i in range(0, rows.shape[0], COLUMNS)]) if rows.shape[0] else np.zeros(0)
+
+        dual = dual_norms(inverse[:, :faces])
+        flux_dual = dual_norms(system.fluxes @ inverse[:, :faces])
+    rest = np.arange(faces, n)
+    count = len(reference.pressures)
+    twists = np.concatenate([faces + count + 12 * b + 6 + np.arange(6) for b in range(len(bodies))]).astype(int) \
+        if bodies else np.zeros(0, dtype=int)
+    deliveries = np.setdiff1d(rest, twists)
+    # The field taken out (its Schur complement, float64): the partners' rows over their deliveries and the twists.
+    eliminated = scipy.linalg.lu_solve(scipy.linalg.lu_factor(matrix[:faces, :faces]),
+                                       np.concatenate([matrix[:faces, faces:], system.right[:faces, None]], axis=1))
+    schur = matrix[faces:, faces:] - matrix[faces:, :faces] @ eliminated[:, :-1]
+    reduced = system.right[faces:] - matrix[faces:, :faces] @ eliminated[:, -1]
+    d, w = deliveries - faces, twists - faces
+    first = schur[np.ix_(d, d)]
+    solved = np.linalg.solve(first, np.concatenate([reduced[d, None], -schur[np.ix_(d, w)]], axis=1))
+    at_rest, response = solved[:, 0], solved[:, 1:]
+    twist = z[twists]
+    terms = np.zeros(n - faces)
+    terms[d] = np.abs(first) @ np.abs(at_rest) + np.abs(reduced[d]) + (
+        (np.abs(first) @ np.abs(response) + np.abs(schur[np.ix_(d, w)])) @ np.abs(twist))
+    if len(w):
+        closing = schur[np.ix_(w, w)] + schur[np.ix_(w, d)] @ response
+        terms[w] = np.abs(closing) @ np.abs(twist) + np.abs(reduced[w]) + np.abs(schur[np.ix_(w, d)]) @ (
+            np.abs(at_rest) + np.abs(response) @ np.abs(twist))
+    reach = np.count_nonzero(matrix[faces:, :faces], axis=1)
+    reads = np.ceil(np.log2(np.maximum(reach, 2))) * u * (np.abs(matrix[faces:, :faces]) @ in_magnitude)
+    gammas = np.full(n - faces, (3 * len(d) + ROW_ROUNDING) * u)
+    gammas[w] = (3 * len(w) + len(d) + ROW_ROUNDING) * u
+    rows_bound = gammas * terms + reads
+    reference_terms = np.abs(matrix) @ np.abs(z) + np.abs(system.right)
+    lines = dual * residual + np.abs(inverse[:, faces:]) @ rows_bound + \
+        np.abs(inverse) @ ((n + 1) * u64 * reference_terms)
+    lines[:faces] += assembly
+    pressure_lines = np.abs(system.pressures) @ lines if count else np.zeros(0)
+    flux_lines = (flux_dual * residual + np.abs(system.fluxes @ inverse[:, faces:]) @ rows_bound +
+                  np.abs(system.fluxes[:, :faces]) @ assembly) if count else np.zeros(0)
+    start = faces + count
+    rows = np.reshape(lines[start:], (len(bodies), 2, DELIVERIES))
+    return Lines(lines[:faces], rows[:, 0], rows[:, 1], pressure_lines, flux_lines,
+                 {"achieved": achieved, "solved": solved_part, "rounding": rounding_part})
 
 
 def sphere_mass(radius: float, ratio: float) -> tuple[float, float]:
@@ -196,4 +407,5 @@ def sphere_mass(radius: float, ratio: float) -> tuple[float, float]:
     return mass, 0.4 * mass * radius ** 2
 
 
-__all__ = ["WATER_MU", "WATER_RHO", "Body", "Monolithic", "body_inputs", "monolithic_step", "sphere_mass"]
+__all__ = ["FIELD_ROUNDING", "ROW_ROUNDING", "WATER_MU", "WATER_RHO", "Body", "Lines", "Monolithic", "System",
+           "body_inputs", "float_lines", "monolithic_step", "sphere_mass"]

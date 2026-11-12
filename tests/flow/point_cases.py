@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import os
+import secrets
 from collections.abc import Callable
 from typing import Any
 
@@ -42,6 +43,13 @@ def plant(name: str) -> str:
 
 def seed() -> int:
     return int(os.environ.get("DETECTION_SEED", "0"))
+
+
+def fresh_seed() -> int:
+    """A draw's seed: ``DETECTION_SEED`` where the detection-rate harness sets it, else a new one each run, so that
+    CI's every run is a fresh draw (a gate prints it: ``DETECTION_SEED=<it>`` replays the draw)."""
+    held = os.environ.get("DETECTION_SEED")
+    return int(held) if held is not None else secrets.randbelow(2 ** 31)
 
 
 def body_step(mass: float, resistance: Any, load: Any, velocity: Any, dt: float, rows: slice = slice(0, 3)) -> Any:
@@ -135,8 +143,10 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
                      drive: float = 1.0, mass_ratio: float = 1.0, one_way: bool = False, steady: bool = False,
                      kernel_width: float | None = None, scheme: str = "", flow: bool = True,
                      hull: str = "sphere", viscosity: float = WATER_MU, self_history: str | None = None,
-                     opened: bool = False, tree: bool = False, coupling: str | None = None) -> Experiment:
-    """A point sphere of ``radius`` (m) ``offset`` (m) off a straight tube's axis, in water whose flow is the FVM
+                     opened: bool = False, tree: bool = False, coupling: str | None = None,
+                     along: float = 0.0) -> Experiment:
+    """A point sphere of ``radius`` (m) ``offset`` (m) off a straight tube's axis and ``along`` (m) it from the tube's
+    middle, in water whose flow is the FVM
     (Stokes, IMEX Euler or its steady limit, or ``scheme="rk3"``) driven along the axis by a uniform ``drive``
     (m/s^2); ``flow=False`` leaves the medium at rest with no field, ``hull="capsule"`` gives the body a capsule,
     ``opened=True`` opens the vessel at its ends (an inflow at its start, a Windkessel at its end) in place of the
@@ -155,7 +165,7 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
     shape = Sphere(radius=um(radius * 1e6)) if hull == "sphere" else Capsule(radius=um(radius * 1e6),
                                                                              height=um(4.0 * radius * 1e6), axis=(0.0, 0.0, 1.0))
     exp.add_body(Body("ball", dynamics=RigidInertial(), parts={"shell": Part(shape)},
-                      initial=State(position=mm((offset * 1e3, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                      initial=State(position=mm((offset * 1e3, 0.0, along * 1e3)), orientation=(1.0, 0.0, 0.0, 0.0),
                                     velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     mass = mass_ratio * WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
     exp.declare("ball.mass", kg(mass), reason="a sphere of the drawn density")
@@ -173,13 +183,14 @@ def point_experiment(*, radius: float = 40e-6, offset: float = 0.0, dt: float = 
 
 
 def with_second_body(exp: Experiment, at: tuple[float, float, float], *, radius: float = 40e-6,
-                     one_way: bool = False, coupling: str | None = None) -> Experiment:
-    """``exp`` with a second neutral point sphere, ``bob``, of ``radius`` (m) starting ``at`` (m) in the same water."""
+                     one_way: bool = False, coupling: str | None = None, mass_ratio: float = 1.0) -> Experiment:
+    """``exp`` with a second point sphere, ``bob``, of ``radius`` (m) and ``mass_ratio`` times water's density
+    (neutral by default) starting ``at`` (m) in the same water."""
     exp.add_body(Body("bob", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=um(radius * 1e6)))},
                       initial=State(position=mm(tuple(c * 1e3 for c in at)), orientation=(1.0, 0.0, 0.0, 0.0),
                                     velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
-    mass = WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
-    exp.declare("bob.mass", kg(mass), reason="a neutral sphere")
+    mass = mass_ratio * WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
+    exp.declare("bob.mass", kg(mass), reason="a sphere of the given density")
     exp.declare("bob.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
     exp.attach(Drag.Stokes(one_way=one_way, coupling=coupling), body="bob", medium="water")
     return exp

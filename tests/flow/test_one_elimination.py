@@ -5,15 +5,17 @@ openings (one pass, the default wherever a body's own step is linear).
 reference (``elimination_cases.monolithic_step``: the whole step, every face, each opening's pressure, each body's
 force, couple and twist, as one dense system solved by one LU in float64, independent of the unit fields, their warm
 starts, the elimination's small system and the conjugate gradient). Each draw has two partners or more, so that the
-cross terms carry: a periodic box with two bodies 1 to 2.5 cells apart, or an open vessel with its two openings and a
-body. (The box's bodies were first drawn anywhere in it: at 4.8 and 6.2 cells apart the cross terms moved a body's
-force by 1.7e-3 and 1.9e-3, under float32's line, and the cross control missed 2 of 30 float32 draws.) Its controls
-(``MIME_PLANT_ELIMINATION``): ``drop``, the last partner dropped from the elimination (its deliveries held at zero);
-``cross``, every partner's rows read only its own deliveries (the cross terms zeroed). The line is the field's solve's:
-the conjugate gradient stops at its tolerance on the field, which the elimination carries into every partner. A
-body's twist is judged on the scale it came from, the larger of its own and the twist it started the step with: a
-small body's spin decays several times over in one step, the remainder of a cancellation (a draw's float32 spin missed
-by 3e-3 of its solved value and 8e-4 of its starting one).
+cross terms carry: a periodic box with two bodies anywhere in it that two spheres can be (their centres at least the
+sum of their radii apart), or an open vessel with its two openings and a body. The draw is fresh each run
+(``point_cases.fresh_seed``). **Its line is derived, per draw and per quantity** (``elimination_cases.float_lines``):
+the step's own solves' achieved residual and the dtype's rounding carried through the monolithic step's inverse,
+each quantity in its own units (a face's velocity, an opening's pressure and flux, and each body's force, couple,
+velocity and spin, each vector against its own components' largest line), so a force is judged against force and a
+spin against spin, never one scale for quantities some 1e5 apart. Its controls (``MIME_PLANT_ELIMINATION``): ``drop``, the last partner dropped from the elimination (its
+deliveries held at zero); ``cross``, every partner's rows read only its own deliveries (the cross terms zeroed);
+``crossx<f>``, the cross terms scaled by ``f`` (the discriminating range's); ``twistsign``, the closed velocity's sign
+flipped in the solution the flow writes (the refuting review's mutant, which one scale for twist and spin missed in
+float32 at every periodic draw).
 
 **The ledger** (gate 2): a body coupled one pass, metered, closes its books at every step with the drag's two rows
 summing to the law's own dissipation, ``-dt f . (M0 - M_inf) f``, as the drag's node books it: no lagged residual."""
@@ -22,26 +24,21 @@ from __future__ import annotations
 
 import math
 import os
+import warnings
 from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from elimination_cases import WATER_MU, WATER_RHO, Body, body_inputs, monolithic_step, sphere_mass
-from point_cases import point_experiment, seed
+from elimination_cases import WATER_MU, WATER_RHO, Body, body_inputs, float_lines, monolithic_step, sphere_mass
+from point_cases import fresh_seed, point_experiment, seed
+from point_cases import plant as plant_named
 
 import mime.core.elimination as elimination
 import mime.nodes.flow.fvm._partners as partners
 from mime.core import run_dtype
 from mime.nodes.flow.fvm import ImplicitFlowNode, OpenFlowNode
 from mime.units import ms, um
-
-#: The return-path gate's lines, by dtype: the largest difference from the monolithic step of the field (on the field's
-#: largest magnitude), of each body's force and couple (on their largest) and of its twist (on its largest), and of the
-#: openings' pressures and fluxes (on theirs). The field's solve stops at its tolerance (1e-12 in float64, 1e-5 in
-#: float32), which every partner's unknowns carry through the elimination.
-LINES = {"float64": 1e-8, "float32": 2e-3}
-
 
 def plant() -> str:
     return os.environ.get("MIME_PLANT_ELIMINATION", "")
@@ -53,6 +50,20 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
     kind = plant()
     if not kind:
         return
+    if kind == "twistsign":
+        import mime.nodes.flow.fvm._node as flow_node
+        import mime.nodes.flow.fvm._open_node as open_node
+
+        stepped = partners.partnered_step
+
+        def flipped(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            found = stepped(*args, **kwargs)
+            return found._replace(twists=found.twists.at[:, :3].multiply(-1.0))
+
+        monkeypatch.setattr(flow_node, "partnered_step", flipped)
+        monkeypatch.setattr(open_node, "partnered_step", flipped)
+        return
+    factor = float(kind[len("crossx"):]) if kind.startswith("crossx") else None
 
     def planted(rows):  # noqa: ANN001, ANN202
         counts = [int(r.matrix.shape[0]) for r in rows]
@@ -64,9 +75,10 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
                 matrix = jnp.zeros_like(r.matrix).at[:, own].set(jnp.eye(counts[k], dtype=r.matrix.dtype))
                 free = None if r.free is None else jnp.zeros_like(r.free)
                 changed.append(elimination.PartnerRows(matrix, jnp.zeros_like(r.right), free))
-            elif kind == "cross":
+            elif kind == "cross" or factor is not None:
                 mask = jnp.zeros_like(r.matrix).at[:, own].set(1.0)
-                changed.append(elimination.PartnerRows(r.matrix * mask, r.right, r.free))
+                scale = mask if factor is None else mask + factor * (1.0 - mask)
+                changed.append(elimination.PartnerRows(r.matrix * scale, r.right, r.free))
             else:
                 changed.append(r)
         return held(changed)
@@ -75,19 +87,22 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _periodic_draw(rng: np.random.Generator) -> tuple[ImplicitFlowNode, list[Body], float]:
-    """A periodic box of 8 cells a side with two bodies drawn in it, the second 1 to 2.5 cells from the first in a drawn
-    direction (so that each reads the other's field above float32's line): radius 0.8 to 1.5 cells, kernel one or 1.5
-    cells wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel holds as any), density 0.5 to
-    3 times the water's, a twist of the body's own scales and a load on each."""
+    """A periodic box of 8 cells a side with two bodies drawn anywhere in it that two spheres can be (redrawn until
+    their centres' least distance across the box's images is at least the sum of their radii): radius 0.8 to 1.5
+    cells, kernel one or 1.5 cells wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel
+    holds as any), density 0.5 to 3 times the water's, a twist of the body's own scales and a load on each."""
     cells, h = 8, 1e-5
     side = cells * h
     dt = float(rng.uniform(0.05, 1.0)) * h * h * WATER_RHO / WATER_MU
+    radii = [float(rng.uniform(0.8, 1.5)) * h for _ in range(2)]
+    while True:
+        points = rng.uniform(0.0, side, (2, 3))
+        apart = points[1] - points[0]
+        apart -= side * np.round(apart / side)
+        if float(np.linalg.norm(apart)) >= radii[0] + radii[1]:
+            break
     bodies = []
-    first = rng.uniform(0.0, side, 3)
-    direction = rng.normal(0.0, 1.0, 3)
-    second = np.mod(first + float(rng.uniform(1.0, 2.5)) * h * direction / np.linalg.norm(direction), side)
-    for at in (first, second):
-        a = float(rng.uniform(0.8, 1.5)) * h
+    for at, a in zip(points, radii, strict=True):
         mass, moment = sphere_mass(a, float(rng.uniform(0.5, 3.0)))
         point = tuple(float(c) for c in at)
         twist = (*(rng.normal(0.0, 1e-3, 3)), *(rng.normal(0.0, 1e-3 / a, 3)))
@@ -133,21 +148,13 @@ def _open_draw(rng: np.random.Generator) -> tuple[OpenFlowNode, list[Body], floa
     return node, [body], dt
 
 
-def _relative(found: np.ndarray, reference: np.ndarray, came_from: Any = 0.0) -> float:
-    """The largest difference over the larger of the reference's largest magnitude and ``came_from``, the scale of the
-    terms the result came from where they cancel."""
-    scale = max(float(np.max(np.abs(reference))), float(np.max(np.abs(came_from))))
-    return float(np.max(np.abs(np.asarray(found) - reference))) / scale if scale > 0.0 else 0.0
-
-
-def test_the_coupled_step_is_the_monolithic_step_within_the_solves_line(dtype, monkeypatch):
-    """Gate 1, the return path: one drawn step of the flow holding its partners against the monolithic step (the module
-    states both), its field, each body's force, couple and twist, and the openings' pressures and fluxes, each within
-    the line of the field's solve. Even seeds draw a periodic box with two bodies, odd ones an open vessel with a body
-    beside its openings."""
-    _planted(monkeypatch)
-    rng = np.random.default_rng(seed())
-    node, bodies, dt = (_periodic_draw if seed() % 2 == 0 else _open_draw)(rng)
+def gate_one(drawn: int) -> dict[str, float]:
+    """Gate 1 at the draw of ``drawn``: each quantity's largest difference from the monolithic step over its derived
+    line (a ratio; the gate holds at most one), by block: the field, the bodies' force, couple, velocity and spin, and
+    an open vessel's pressures and fluxes. Even seeds draw a periodic box with two bodies, odd ones an open vessel with
+    a body beside its openings."""
+    rng = np.random.default_rng(drawn)
+    node, bodies, dt = (_periodic_draw if drawn % 2 == 0 else _open_draw)(rng)
     state = dict(node.initial_state())
     scale = 1e-3 if isinstance(node, ImplicitFlowNode) and not isinstance(node, OpenFlowNode) else 0.03
     for x in "xyz":
@@ -158,19 +165,47 @@ def test_the_coupled_step_is_the_monolithic_step_within_the_solves_line(dtype, m
     if not isinstance(node, OpenFlowNode):
         inputs["body_force"] = jnp.asarray(rng.normal(0.0, 0.5, 3), dtype=run_dtype())
     ended = node.update(dict(state), inputs, dt)
-    reference = monolithic_step(node, node._step_constants(None), state, inputs, dt)
-    solution = np.asarray(ended["partner_solution"])
-    found = {"field": max(_relative(np.asarray(ended[f"velocity_{x}"]), reference.velocity[k])
-                          for k, x in enumerate("xyz")),
-             "force": max(_relative(solution[b, :6], reference.forces[b]) for b in range(len(bodies))),
-             "twist": max(_relative(solution[b, 6:12], reference.twists[b], np.asarray(bodies[b].twist))
-                          for b in range(len(bodies)))}
+    p = node._step_constants(None)
+    reference = monolithic_step(node, p, state, inputs, dt)
+    lines = float_lines(node, p, state, inputs, dt, reference, ended)
+    solution = np.asarray(ended["partner_solution"], dtype=np.float64)
+
+    def over(found: Any, wanted: Any, line: Any) -> float:
+        """The largest difference over the line: of each face, each opening's value, or each body's vector (its
+        force, couple, velocity or spin, a row of three) against the largest line of its components, a vector's
+        rounding being its own size's, not each component's."""
+        miss = np.abs(np.asarray(found, dtype=np.float64) - wanted)
+        if miss.ndim == 2:
+            return float(np.max(np.max(miss, axis=1) / np.max(line, axis=1)))
+        return float(np.max(miss / line))
+
+    field = np.concatenate([np.ravel(np.asarray(ended[f"velocity_{x}"], dtype=np.float64)) for x in "xyz"])
+    wanted = np.concatenate([np.ravel(v) for v in reference.velocity])
+    found = {"field": over(field, wanted, lines.field),
+             "force": over(solution[:, :3], reference.forces[:, :3], lines.forces[:, :3]),
+             "couple": over(solution[:, 3:6], reference.forces[:, 3:], lines.forces[:, 3:]),
+             "velocity": over(solution[:, 6:9], reference.twists[:, :3], lines.twists[:, :3]),
+             "spin": over(solution[:, 9:12], reference.twists[:, 3:], lines.twists[:, 3:])}
     if isinstance(node, OpenFlowNode):
-        found["pressure"] = _relative(np.asarray(ended["opening_pressure"]), reference.pressures)
-        found["flux"] = _relative(np.asarray(ended["opening_flux"]), reference.fluxes)
-    print(f"F3 PR 2 gate 1 [{dtype}, seed {seed()}, {type(node).__name__}]: " +
-          ", ".join(f"{key} {value:.3g}" for key, value in found.items()))
-    assert max(found.values()) <= LINES[dtype], found
+        found["pressure"] = over(ended["opening_pressure"], reference.pressures, lines.pressures)
+        found["flux"] = over(ended["opening_flux"], reference.fluxes, lines.fluxes)
+    sharpest = {"force": float(np.max(lines.forces[:, :3]) / np.max(np.abs(reference.forces[:, :3]))),
+                "spin": float(np.max(lines.twists[:, 3:]) / np.max(np.abs(reference.twists[:, 3:])))}
+    print(f"F3 PR 2 gate 1 [{jnp.dtype(run_dtype()).name}, seed {drawn}, "
+          f"{type(node).__name__}]: over the line " + ", ".join(f"{key} {value:.3g}" for key, value in found.items()) +
+          f"; the line against the force's and the spin's own scales {sharpest['force']:.2g}, {sharpest['spin']:.2g}; "
+          f"the solves' reported residual {lines.parts['achieved']:.3g}")
+    return found
+
+
+def test_the_coupled_step_is_the_monolithic_step_within_its_derived_line(dtype, monkeypatch):
+    """Gate 1, the return path: one freshly drawn step of the flow holding its partners against the monolithic step
+    (the module states both), its field, each body's force, couple, velocity and spin, and the openings' pressures and
+    fluxes, each within its line derived from the step's own solves and the dtype's rounding (``float_lines``)."""
+    _planted(monkeypatch)
+    drawn = fresh_seed()
+    found = gate_one(drawn)
+    assert max(found.values()) <= 1.0, (f"DETECTION_SEED={drawn}", found)
 
 
 def _metered(coupling: str | None):  # noqa: ANN202
@@ -367,3 +402,97 @@ def test_the_body_steps_with_the_row_the_flow_closed_and_the_flag_sees_a_load_th
     print(f"F3 PR 2 gate 4 [{dtype}] a={radius:.3g} ratio {ratio:.2f}: worst row mismatch {mismatch.max():.3g}, "
           f"flagged in {int(flagged.sum())} of {flagged.size} steps")
     assert flagged.sum() == 0.0, mismatch.max()
+
+
+def test_a_body_within_its_kernels_reach_of_an_open_plane_raises_partner_reach(float64):
+    """An open vessel's flow holding a body one pass raises ``partner_reach`` (declared, with a warning after the run)
+    at every step its kernel's truncated reach meets an opening's plane, where the exchange is no transpose pair in the
+    open grid's product and does work the books do not pair (the refuting review's M4: 4e-5 of the drag's dissipation
+    at 4.8 cells from the plane, 1e-2 at 1.6); a body beyond the reach raises nothing. The draw is fresh each run: the
+    near body from half a cell to a cell inside the reach, the far one from a cell beyond it to 30 cells, each from the
+    high plane (2 mm from the 4 mm tube's middle); the far run is the near run's control."""
+    from mime.nodes.flow.fvm._grid import TRUNCATION
+    from mime.nodes.hydro._point_drag import kernel_width
+
+    drawn = fresh_seed()
+    rng = np.random.default_rng(drawn)
+    h = 2.0 * 0.5e-3 / 16.0
+    width, _, _ = kernel_width(40e-6, WATER_MU, WATER_RHO, h, 2e-4, False)
+    assert width is not None
+    reach = math.ceil(TRUNCATION * width) + 2
+    near, far = float(rng.uniform(0.5, reach - 1.0)), float(rng.uniform(reach + 1.0, 30.0))
+
+    def raised(cells: float) -> tuple[bool, bool]:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = point_experiment(opened=True, along=2e-3 - cells * h).build().run(ms(1.0))
+        flagged = any(flag.path == "water.flow.partner_reach" and flag.was_raised for flag in result.flags)
+        return flagged, any("partner_reach" in str(warning.message) for warning in caught)
+
+    found = {"near": raised(near), "far": raised(far)}
+    print(f"F3 PR 2 the plane's reach [seed {drawn}]: kernel {width:g} cells wide, reach {reach} cells; near body "
+          f"{near:.3g} cells from the plane {found['near']}, far {far:.3g} cells {found['far']}")
+    assert found == {"near": (True, True), "far": (False, False)}, (drawn, found)
+
+
+#: The pair's line, relative to its products' magnitudes: a few units of rounding (the periodic box's own gate,
+#: ``tests/flow/test_point_bodies.py``'s ``ADJOINT_LINE``).
+PAIR_LINE = {"float32": 1e-5, "float64": 1e-13}
+#: The open grid's draws: this many a run, at 0.8 to 4.8 cells from a drawn plane, the first within 1.6 (where the old
+#: scatter, the control, missed by 6.9e-2 and more), and this many on the periodic box.
+PAIR_DRAWS = {"open": 40, "periodic": 20}
+
+
+def _pair_miss(rng: np.random.Generator, grid: Any, dtype: str, near: float | None) -> float:
+    """``<S_F f, u>_W`` against ``f . G_F u`` (the held body's delivery and reading, ``_partners.delivered`` and
+    ``read``) at one drawn point, force and couple, Faxén coefficient and field, relative to the products'
+    magnitudes; ``near``, the point that many cells from a drawn plane of the open grid (``None``, anywhere in the
+    periodic box)."""
+    from mime.nodes.flow.fvm._exchange import faxen
+    from mime.nodes.flow.fvm._partners import delivered, read, stencils
+
+    h = float(grid.spacing)
+    cells = grid.cells
+    width = float(rng.choice([1.0, 1.5]))
+    z = float(rng.uniform(0.0, cells[2] * h)) if near is None else (
+        near * h if rng.random() < 0.5 else cells[2] * h - near * h)
+    point = jnp.asarray([*(rng.uniform(0.0, cells[0] * h, 2)), z], dtype=dtype)
+    coefficient = faxen(float(rng.uniform(0.8, 1.5)) * h, width * h, 1.0 / 6.0)
+    values = jnp.asarray(rng.normal(size=6), dtype=dtype)
+    field = tuple(jnp.asarray(rng.normal(size=grid.shape(k)), dtype=dtype) for k in range(3))
+    held = stencils(grid, point, width)
+    density = delivered(grid, held, values, coefficient)
+    reading = read(grid, held, field, coefficient)
+    left, right = grid.inner(density, field), jnp.sum(values * reading)
+    scale = grid.inner_magnitude(density, field) + jnp.sum(jnp.abs(values * reading))
+    return float(jnp.abs(left - right) / scale)
+
+
+def test_the_held_bodys_delivery_and_reading_are_a_transpose_pair_up_to_an_open_plane(dtype, monkeypatch):
+    """The exchange a flow holds a body by is a transpose pair in its grid's inner product, ``<S_F f, u>_W = f . G_F u``,
+    to rounding: on the open grid at 0.8 to 4.8 cells from either plane (the kernel folded onto the plane's faces,
+    which carry half a cell), and on the periodic box, fresh draws each run. The control (``MIME_PLANT_PAIR=whole``)
+    puts back the scatter that delivered a whole cell's density on the planes' faces (#270's review, M4: the exchange
+    then did work the books did not pair), and fails every run: its first open draw lies within 1.6 cells."""
+    from mime.nodes.flow.fvm import MACGrid
+
+    if plant_named("PAIR") == "whole":
+        held_scatter = partners.scatter
+
+        def whole(grid, component, values, stencil, mode="average"):  # noqa: ANN001, ANN202
+            density = held_scatter(grid, component, values, stencil, mode)
+            weighed = getattr(grid, "weights", None)
+            return density if weighed is None else density * weighed(values.dtype)[component]
+
+        monkeypatch.setattr(partners, "scatter", whole)
+    drawn = fresh_seed()
+    rng = np.random.default_rng(drawn)
+    node, _, _ = _open_draw(np.random.default_rng(drawn))
+    opened = node.grid(node._step_constants(None))
+    periodic = MACGrid((8, 8, 8), 1e-5)
+    misses = [_pair_miss(rng, opened, dtype, float(rng.uniform(0.8, 1.6 if k == 0 else 4.8)))
+              for k in range(PAIR_DRAWS["open"])]
+    misses += [_pair_miss(rng, periodic, dtype, None) for _ in range(PAIR_DRAWS["periodic"])]
+    print(f"F3 PR 2 the held pair [{dtype}, seed {drawn}]: largest relative miss {max(misses):.3g} (open grid "
+          f"{max(misses[:PAIR_DRAWS['open']]):.3g}, periodic {max(misses[PAIR_DRAWS['open']:]):.3g})")
+    assert max(misses) <= PAIR_LINE[dtype], (f"DETECTION_SEED={drawn}", max(misses))

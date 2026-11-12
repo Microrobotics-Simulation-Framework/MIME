@@ -304,8 +304,9 @@ def test_the_entry_lists_its_validity_lines_and_flags():
     text = " ".join(FVM.validity)
     for line in ("CFL", "tolerance", "cells", "bypass", "Reynolds", "eps x tau/dt", "geometry", "stall detector"):
         assert line in text, line
-    assert {flag.field for flag in FVM.raises} == {"solve_flagged", "reynolds_flagged", "bypass_flagged"}
-    assert [flag.field for flag in FVM.raises if flag.warns] == ["solve_flagged"]
+    assert {flag.field for flag in FVM.raises} == {"solve_flagged", "reynolds_flagged", "bypass_flagged",
+                                                   "partner_reach"}
+    assert [flag.field for flag in FVM.raises if flag.warns] == ["solve_flagged", "partner_reach"]
 
 
 def test_the_flow_builds_with_its_defaults_but_its_domain():

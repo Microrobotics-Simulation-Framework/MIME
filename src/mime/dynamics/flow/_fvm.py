@@ -139,6 +139,12 @@ TREE = "tube_tree"
 #: The registration kinds of a point body's exchange with the flow: lagged (its law scatters onto the grid) and one
 #: pass (held in the flow's one elimination).
 PARTNER_KINDS = (EXCHANGE_PARTNER, ONE_PASS_PARTNER)
+#: What a body near an open plane does to the books, measured (the refuting review of the one elimination: a 40 um body
+#: on the open vessel's axis, metered, 50 steps; the drag's two rows against its own dissipation).
+PLANE_REACH_MEASURED = ("the share of the drag's own dissipation its two rows miss, measured on a 40 um body on the "
+                        "axis: 1.3e-7 at 8 cells from the plane (the books' floor, as 32 cells away), 4.3e-5 at 4.8, "
+                        "3.8e-3 at 3.2 and 1.3e-2 at 1.6, a neutral body; https://github.com/"
+                        "Microrobotics-Simulation-Framework/MIME/actions/runs/43165251892")
 
 
 def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
@@ -244,6 +250,13 @@ class FVM(Dynamics):
         Flag("bypass_flagged", f"the flux through the solid beyond the band's middle was more than {BYPASS_LINE:g} "
                                f"of the lumen's (bypass_ratio): a finer spacing lowers it, and the stiffer interior "
                                f"wall=Band(delta_in=0.01) about halves it (the validity line's measurements)"),
+        Flag("partner_reach", "a point body the open vessel's flow holds in its one elimination lay within its "
+                              "exchange kernel's reach of an opening's plane (its truncated reach and the Laplacian's "
+                              "cell): there the kernel's delivery and reading are no transpose pair in the open grid's "
+                              "product (the planes' faces carry half a cell), so the exchange does work the energy "
+                              "books do not pair, and the drag's self-response is the free box's, not the plane's "
+                              f"({PLANE_REACH_MEASURED}); keep the body farther from the vessel's ends, or lengthen "
+                              "the vessel's margin", kinds=(ONE_PASS_PARTNER,), warns=True),
     )
     validity = (
         "the CFL number max|u| dt / h, with convection on, at most the scheme's line along the vessel's axis n, "

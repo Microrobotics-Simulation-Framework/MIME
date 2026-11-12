@@ -21,8 +21,8 @@ from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
 from mime.nodes.hydro._point_drag import AVERAGES, COUPLE, FAXEN_FORCES, FLOOR, FORCES, HISTORY_LINE, LAPLACIANS, \
-    KERNEL_WIDTHS, REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, WALL_LINE, PointDragNode, free_space_margins, \
-    kernel_width
+    KERNEL_WIDTHS, RATE_SHARE, REYNOLDS_LINE, RINGING_STEPS, ROTATIONS, ROW_ULPS, WALL_LINE, PointDragNode, \
+    free_space_margins, kernel_width
 from mime.nodes.hydro._point_drag import ROUTES as HISTORY_ROUTES
 from mime.nodes.hydro._rft_drag import (
     COEFFICIENT_SETS,
@@ -1589,9 +1589,18 @@ class Drag(UncoupledDrag):
                                 f"the range's last step (its span, in the build report), where the fit is unjudged",
              rung="stokes"),
         Flag("rate_feedback", f"the Maxey-Riley rate terms' load reversed its sign and grew in {RINGING_STEPS} steps in "
-                              f"a row: the lagged loop through what remains of the body's own field in the reading "
-                              f"(a wall's reflection of it) has a gain above one, as for a light body at a small step; "
-                              f"a larger step, a denser body or one_way=True are the routes", rung="stokes"),
+                              f"a row (held one pass, at more than {RATE_SHARE:g} of the drag's own scale R0 (|V| + "
+                              f"|u_d|), above which a settled body's reading, read to its solve's tolerance, never "
+                              f"rings): the loop through what remains of the body's own field in the reading (a wall's "
+                              f"reflection of it, another body's) has a gain above one, as for a light body at a small "
+                              f"step, under the field's steady limit above all; a larger step, a denser body, "
+                              f"one_way=True or, held one pass, coupling='lagged' (bounded in each such case measured) "
+                              f"are the routes. A load that grows without reversing is not this flag's", rung="stokes"),
+        Flag("row_mismatch_flagged", f"held one pass, the body stepped to a twist other than the one its flow's "
+                                     f"one elimination closed, by more than {ROW_ULPS:g} times the run's eps of the "
+                                     f"two: a load or resistance reached the body's step that its row in the flow did "
+                                     f"not hold, so the exchange was not the one solved (row_mismatch)",
+             rung="stokes", kinds=(ONE_PASS_PARTNER,)),
         Flag("near_wall", f"the point body lay within {WALL_LINE:g} of its radii of the vessel's wall, where the point "
                           f"model reads -5.0 % at a = h and -8.9 % at a = 2h (the window spike, re-read): the MRS near "
                           f"field or a resolved body is the route", rung="stokes"),

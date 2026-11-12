@@ -11,7 +11,7 @@ import math
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from point_cases import WATER_MU, WATER_RHO, FreeBox, plant, point_experiment, seed
+from point_cases import WATER_MU, WATER_RHO, FreeBox, plant, point_experiment, seed, with_second_body
 
 from mime.nodes.flow.fvm import _exchange
 from mime.nodes.hydro import _point_drag
@@ -72,12 +72,15 @@ def test_the_fitted_self_history_matches_the_exact_one_within_its_residual(dtype
 
 
 def _light_run(steady: bool, ratio: float, radius: float, steps: int, own_field: bool = True,  # noqa: ANN202
-               offset: float = 0.0, coupling: str | None = None):
+               offset: float = 0.0, coupling: str | None = None, apart: float = 0.0):
     """A light body from rest in the driven tube, Maxey and Riley on, the review's arm: dt 50 us, ``steps`` steps,
     under the field's steady limit or IMEX Euler; ``own_field=False`` leaves the body's own field in the rate terms'
-    reading under the steady limit (the PR's reading); ``coupling`` the drag's (one pass by default). Run without a
-    history: route 2's own field is megabytes a step."""
+    reading under the steady limit (the PR's reading); ``coupling`` the drag's (one pass by default); ``apart`` (in
+    radii), a second such body that far along the axis. Run without a history: route 2's own field is megabytes a
+    step."""
     exp = point_experiment(radius=radius, dt=5e-5, mass_ratio=ratio, steady=steady, offset=offset, coupling=coupling)
+    if apart:
+        exp = with_second_body(exp, (offset, 0.0, apart * radius), radius=radius, coupling=coupling, mass_ratio=ratio)
     held = _point_drag.PointDragNode.responses
     if not own_field:
         def planted(self, p, dt):  # noqa: ANN001, ANN202
@@ -91,20 +94,34 @@ def _light_run(steady: bool, ratio: float, radius: float, steps: int, own_field:
         _point_drag.PointDragNode.responses = held  # type: ignore[method-assign]
 
 
+#: Gate 14's steady-limit arm runs past the one-pass ringing the refuting review of #270 found from step 115 on a body
+#: at rest in its flow (its M3, raised to step 1500), which the rate load's share of the drag's scale now holds quiet.
+SETTLED_STEPS = 1500
+
+
 @pytest.mark.parametrize("coupling", [None, "lagged"])
 def test_a_light_body_stays_bounded_under_each_scheme(dtype, coupling):
     """Gate 14 (the review's B2), one pass and lagged, at the review's diverging arm (a 40 um body of 0.05 of water's
     density, Maxey and Riley on, dt 50 us), its starting offset drawn: from rest in the driven tube under the field's
     steady limit it settles with the flow (its own field removed from the rate terms' reading by the steady limit's own
-    self-history), the ringing flag never raised; and under IMEX Euler it stays finite and leads the fluid by Maxey and
-    Riley's (m_f - m) g / R0. The plant leaves the body's own field in the steady limit's reading (OWN_FIELD), which diverged there (at
+    self-history), the ringing flag never raised over SETTLED_STEPS steps (held one pass the reading rings at its solve's
+    tolerance from about step 110, under RATE_SHARE of the drag's scale: the plant RATE_SHARE sets the share to zero,
+    the flag's reading before #270's fix round, which raises it there); and under IMEX Euler it stays finite and leads
+    the fluid by Maxey and Riley's (m_f - m) g / R0. The plant leaves the body's own field in the steady limit's reading (OWN_FIELD), which diverged there (at
     radii of 31 and 33 um and densities of 0.12 and 0.2 the PR's reading was itself stable: the gate is held at the
     arm where it was not). The plant diverges under both schemes: lagged it rings and grows; one pass it runs away
     without the sign reversals the flag counts (the body at about -1e3 m/s after 100 steps at every one of 20 draws,
     the flag raised at none of them), so there the slip catches it."""
     rng = np.random.default_rng(14000 + seed())
     ratio, radius, offset = 0.05, 40e-6, float(rng.uniform(0.0, 0.1e-3))
-    steady = _light_run(True, ratio, radius, 100, own_field=not plant("OWN_FIELD"), offset=offset, coupling=coupling)
+    held_share = _point_drag.RATE_SHARE
+    if plant("RATE_SHARE"):
+        _point_drag.RATE_SHARE = 0.0
+    try:
+        steady = _light_run(True, ratio, radius, SETTLED_STEPS, own_field=not plant("OWN_FIELD"), offset=offset,
+                            coupling=coupling)
+    finally:
+        _point_drag.RATE_SHARE = held_share
     velocity = float(np.asarray(steady.final["ball"]["twist"])[2])
     reading = float(np.asarray(steady.final["drag:ball"]["drag_reading"])[2])
     ringing = _rang(steady)
@@ -118,6 +135,33 @@ def test_a_light_body_stays_bounded_under_each_scheme(dtype, coupling):
           f"/ R0 = {closed:.4g}")
     assert math.isfinite(velocity) and slip < 0.05 and not ringing, (slip, ringing)
     assert math.isfinite(lead) and not _rang(timed)
+
+
+#: The refuting review of #270's three one-pass runaways under the steady limit (M2): a light body (0.05 of water's
+#: density) of 150 um on the axis, of 40 um 0.4 mm off it, and two of 40 um 2.5 radii apart along it; each run to a
+#: step past its flag's onset and before it goes non-finite (measured: the flag at 24, 28 and 18 in float64, 16, 28 and
+#: 18 in float32; non-finite at 39 and 111 in float64, 32 and 123 in float32; the pair bounded at about 7 m/s).
+RUNAWAYS = {"light150": dict(radius=150e-6, steps=28), "near_wall": dict(offset=0.4e-3, steps=50),
+            "pair": dict(apart=2.5, steps=30)}
+
+
+@pytest.mark.parametrize("case", sorted(RUNAWAYS))
+def test_the_ringing_flag_names_each_one_pass_runaway_and_lagged_holds_it(dtype, case):
+    """Each of the review's one-pass runaways under the steady limit raises rate_feedback (its rate load reversing and
+    growing above RATE_SHARE of the drag's scale) before it goes non-finite, and the route the flag names holds it:
+    coupling='lagged' runs the same steps bounded (under 0.5 m/s, the flow's speed some 0.06) with the flag quiet.
+    Gate 14's settled arm is the flag's control (one pass, quiet to SETTLED_STEPS)."""
+    settings = RUNAWAYS[case]
+    steps = int(settings["steps"])
+    kwargs = {k: v for k, v in settings.items() if k != "steps"}
+    radius = float(kwargs.pop("radius", 40e-6))
+    one_pass = _light_run(True, 0.05, radius, steps, **kwargs)
+    lagged = _light_run(True, 0.05, radius, steps, coupling="lagged", **kwargs)
+    bodies = ["ball", "bob"] if "apart" in kwargs else ["ball"]
+    fastest = max(float(np.max(np.abs(np.asarray(lagged.final[b]["twist"])[:3]))) for b in bodies)
+    print(f"F3 PR 2 the runaway flag [{dtype}, {case}]: one pass raised {_rang(one_pass)}; lagged raised "
+          f"{_rang(lagged)}, fastest {fastest:.3g} m/s")
+    assert _rang(one_pass) and not _rang(lagged) and math.isfinite(fastest) and fastest < 0.5, (case, fastest)
 
 
 def _rang(result) -> bool:  # noqa: ANN001

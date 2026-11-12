@@ -154,8 +154,9 @@ class OpenMACGrid(MACGrid):
     @override
     def stencil_indices(self, axis: int, component: int, lattice: Array) -> Array:
         """Wrapped across x and y; along the open z axis held inside the face set (``w``'s ``nz + 1`` faces, the
-        others' ``nz``): a kernel that reaches a plane is no transpose pair there (the planes' faces carry half a
-        cell), which :meth:`stencil_reaches_plane` tells."""
+        others' ``nz``): a kernel's weight beyond a plane is folded onto the plane's faces, read and delivered there
+        alike, and the delivery takes each face's weight (``mime.nodes.flow.fvm._exchange.scatter``), so the pair is
+        a transpose pair in this grid's product up to the planes."""
         if axis != 2:
             return super().stencil_indices(axis, component, lattice)
         return jnp.clip(lattice, 0, self.shape(component)[2] - 1)

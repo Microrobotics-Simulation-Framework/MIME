@@ -457,6 +457,13 @@ class EntryPlan:
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
 
+    @property
+    def registration_kinds(self) -> frozenset[str]:
+        """The kinds of the registrations its plan makes (an interaction's) and takes (a dynamics'), which a flag of a
+        chosen scheme is raised under (``Flag.kinds``)."""
+        made = self.plan.registrations if self.plan is not None else ()
+        return frozenset({r.kind for r in made} | {r.kind for r in self.registrations})
+
     def node_names(self) -> list[str]:
         return [self.node_name(local) for local in self.nodes]
 

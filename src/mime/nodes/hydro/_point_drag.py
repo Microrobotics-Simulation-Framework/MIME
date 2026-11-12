@@ -91,6 +91,20 @@ BASSET_LINE = 0.3
 #: lagged loop through the body's own field whose gain is above one rings so (the refuting review's light body under
 #: the steady limit, 14 % a step); a stable loop's alternation decays. Declared.
 RINGING_STEPS = 3
+#: Held one pass, the share of the drag's own scale ``R0 (|V| + |u_d|)`` (the load the body's step balances) above which
+#: the rate terms' load counts towards ``rate_feedback``: one pass reads the field as its solve left it, to the solve's
+#: tolerance, and a settled body's rate load rings at that noise, its reading's error over the step (#270's review, M3:
+#: the flag raised from step 115 on a body at rest in its flow), where a runaway's grows past any share of it. Declared;
+#: measured on the review's cases (RATE_SHARE_MEASURED). The lagged reading's noise is its rounding, which the rate
+#: load's own floor holds.
+RATE_SHARE = 1e-2
+RATE_SHARE_MEASURED = (
+    "gate 14's settled arm (a 40 um body of 0.05 of water's density under the steady limit, one pass, 1500 steps): the "
+    "rate load at most 6.1e-8 of the drag's scale after step 100 in float64 and 8.6e-5 in float32; the review's three "
+    "runaways (150 um on the axis, 40 um 0.4 mm off it, two 40 um bodies 2.5 radii apart) pass the line at the onset of "
+    "their ringing, the flag raised at steps 24, 28 and 18 in float64 (16, 28 and 18 in float32), as without it, and "
+    "the two physical arms under IMEX Euler (densities 1 and 0.05) never ring; https://github.com/"
+    "Microrobotics-Simulation-Framework/MIME/actions/runs/43172335100")
 #: The self-history's routes: the body's own free-box flow advanced exactly (the default), or fitted modes.
 ROUTES = ("exact", "modes")
 #: Why a two-way body takes the lagged exchange, as the build gives it: none (one pass, or one-way), ``declared``
@@ -635,8 +649,10 @@ class PointDragNode(MimeNode):
         size_now, before_size = jnp.sum(rate_load * rate_load), jnp.sum(previous * previous)
         noise = IDENTITY_ULPS * jnp.finfo(dtype).eps * (share + added) * (
             jnp.sum(jnp.abs(clean)) + jnp.sum(jnp.abs(jnp.asarray(state["clean_reading"], dtype=dtype)))) / dt
+        # Counted only where it drives the body: above RATE_SHARE of the drag's own scale, R0 (|V| + |u_d|).
+        drive = _lax.stop_gradient(RATE_SHARE * r0 * (jnp.linalg.norm(velocity) + jnp.linalg.norm(drag_reading)))
         reversing = started & (jnp.sum(rate_load * previous) < 0.0) & (size_now > before_size) & (
-            before_size > noise ** 2)
+            before_size > noise ** 2) & (size_now > drive ** 2)
         ringing = jnp.where(reversing, jnp.asarray(state["ringing"]) + 1.0, 0.0)
         relative = jnp.sqrt(jnp.sum((velocity - drag_reading) ** 2))
         reynolds = 2.0 * a * relative * rho / mu
