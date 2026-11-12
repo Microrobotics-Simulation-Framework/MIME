@@ -13,7 +13,10 @@
     "scene": "the in-loop camera's ballistic case (probe/r1_core.py:case): a 20 um steel ball moving along a 60 um bore tube (wall 10 um, absorbing 3000 per m), seen across it from 1 mm by a camera fixed in the world, fx = fy = 750 px at 160 wide scaled with the width, no distortion; the base step 1 ms",
     "objective": "J = sum over the steps of |c - p|^2 (pixels squared): c the darkness-weighted centroid of the camera's expected counts after the step (dark = 1 - expected / backlight, the tube's faint walls weighing in), p the ball's centre projected at the run's own leaves",
     "parameters": "v0x (the ball's starting speed along the tube) and z0 (its starting height): they move a silhouette; fy, cy, k1: the detector's leaves",
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "CPU, GitHub runner (4 vCPU, 16 GB), JAX_PLATFORMS=cpu",
     "sizes_and_parameters": "correctness at 160x120 (draws and the fixed point) and 320x240 (the fixed point), 12 steps, frame period 2 to 4 (draws) or 3; costs at 320x240 and 640x480, 10, 100 and 1000 steps, a frame every step (period 1) and every 10th at one point",
     "seeds_and_draws": "per seed: x0 uniform in [-45, 0] um, |z0| uniform in [8, 30] um either sign (the ball inside the lumen, off its axis so the vertical centroid is not degenerate), speed uniform in [0.5, 3] mm/s, period 2, 3 or 4"
@@ -22,9 +25,22 @@
     "claim": "the run-level scalar's gradient by vjp equals its gradient by jvp to the rounding of the chain, in both dtypes, at every draw",
     "kind": "equality",
     "case": "probe/r1_grad.py, judged by probe/r1_judge.py T1",
-    "prediction": {"value": "every draw and both fixed points pass; |vjp - jvp| at most 4 eps S", "band": [0, 4], "unit": "eps S", "basis": "derived (the same program's derivative in two orders), fitted at the 160 fixed point", "why": "reverse and forward mode multiply the same local Jacobians in opposite orders and sum the same terms in other trees; nothing branches differently because the cond's predicates are residuals"},
+    "prediction": {
+      "value": "every draw and both fixed points pass; |vjp - jvp| at most 4 eps S",
+      "band": [
+        0,
+        4
+      ],
+      "unit": "eps S",
+      "basis": "derived (the same program's derivative in two orders), fitted at the 160 fixed point",
+      "why": "reverse and forward mode multiply the same local Jacobians in opposite orders and sum the same terms in other trees; nothing branches differently because the cond's predicates are residuals"
+    },
     "metric": "|vjp - jvp| / (eps S), S the sum of the absolute contributions of every pixel and projected centre (the scale the result came from)",
-    "control": {"plant": "edge-stop, cache-stop and held-stop (gate 7) leave T1 passing (they cut the derivative in both modes alike): T1 is not a control of the cut paths; T2 is", "expected_rate": "n/a", "clean_expected": "0/36 flagged"},
+    "control": {
+      "plant": "edge-stop, cache-stop and held-stop (gate 7) leave T1 passing (they cut the derivative in both modes alike): T1 is not a control of the cut paths; T2 is",
+      "expected_rate": "n/a",
+      "clean_expected": "0/36 flagged"
+    },
     "if_wrong": "a mode-dependent derivative (a custom rule in one mode only, a cond whose transpose takes another branch): read the failing parameter's per-step rows",
     "cannot_discriminate_if": "a path is cut in both modes: T1 then passes; that is why T2 and the controls exist"
   },
@@ -32,9 +48,25 @@
     "claim": "the reverse-mode gradient agrees with central differences within a bound derived from the ladder (truncation, the box edge's piecewise second derivative, J's rounding), in both dtypes, in all five parameters",
     "kind": "bounds",
     "case": "probe/r1_grad.py ladder of 8 steps sqrt(10) apart (0.1 to 3e-5 of a pixel of image motion), r1_judge.py T2",
-    "prediction": {"value": "pass at every draw and both fixed points; the float64 bound 1e-6 relative or tighter, the float32 bound 0.2 to 5 % (J's float32 rounding is about 3e-6 of J, over a step of a tenth of a pixel)", "band": [1e-10, 0.05], "unit": "relative bound", "basis": "derived, fitted at the 160 fixed point", "why": "the coverage (exact disc, box edge) is C1 in the edge's offset, so central differences converge, at worst as h where a pixel's kink is inside the step"},
+    "prediction": {
+      "value": "pass at every draw and both fixed points; the float64 bound 1e-6 relative or tighter, the float32 bound 0.2 to 5 % (J's float32 rounding is about 3e-6 of J, over a step of a tenth of a pixel)",
+      "band": [
+        1e-10,
+        0.05
+      ],
+      "unit": "relative bound",
+      "basis": "derived, fitted at the 160 fixed point",
+      "why": "the coverage (exact disc, box edge) is C1 in the edge's offset, so central differences converge, at worst as h where a pixel's kink is inside the step"
+    },
     "metric": "|AD - D(h*)| / bound(h*)",
-    "control": {"plant": "edge-stop (stop_gradient on the ball's exact disc coverage), cache-stop (stop_gradient on the held cache's path), held-stop (stop_gradient on a held frame)", "environment_variable": "CAMERA_R1_PLANT", "expected_rate": "30/30 each", "runs": 30, "clean_expected": "0/36", "resolution": "the float32 bound, 0.2 to 5 % of the gradient; each plant removes a path worth 10 to 100 % of some parameter's gradient (cache-stop's share is the tube's weight in the centroid, about a third, in cy's derivative; the ball off the axis keeps it from vanishing)"},
+    "control": {
+      "plant": "edge-stop (stop_gradient on the ball's exact disc coverage), cache-stop (stop_gradient on the held cache's path), held-stop (stop_gradient on a held frame)",
+      "environment_variable": "CAMERA_R1_PLANT",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/36",
+      "resolution": "the float32 bound, 0.2 to 5 % of the gradient; each plant removes a path worth 10 to 100 % of some parameter's gradient (cache-stop's share is the tube's weight in the centroid, about a third, in cy's derivative; the ball off the axis keeps it from vanishing)"
+    },
     "if_wrong": "a missed control: the plant's effect is under the float32 bound on that draw; a clean flag: the bound misses a mechanism (a non-C1 piece) - read the ladder",
     "cannot_discriminate_if": "both AD and CD are zero in a parameter, or the plant's path carries none of J's derivative on a draw (z0 near 0 for cache-stop)"
   },
@@ -42,18 +74,39 @@
     "claim": "with the render inside the cond under jax.checkpoint the gradient equals the unchecked one to rounding",
     "kind": "equality",
     "case": "r1_grad.py with MIME_SPIKE_RENDER_CHECKPOINT=1 against without, the fixed points, r1_judge.py T3",
-    "prediction": {"value": "within 4 eps S in both dtypes; bit for bit in float64: a guess, no (the recomputation is compiled in another fusion order)", "band": [0, 4], "unit": "eps S", "basis": "derived", "why": "jax.checkpoint recomputes the same primal operations in the backward pass; only XLA's fusion and so the rounding can differ"},
+    "prediction": {
+      "value": "within 4 eps S in both dtypes; bit for bit in float64: a guess, no (the recomputation is compiled in another fusion order)",
+      "band": [
+        0,
+        4
+      ],
+      "unit": "eps S",
+      "basis": "derived",
+      "why": "jax.checkpoint recomputes the same primal operations in the backward pass; only XLA's fusion and so the rounding can differ"
+    },
     "metric": "|g_ckpt - g| / (eps S)",
-    "control": {"plant": "none of its own: the checkpointed run also answers T2 against the same ladder, so a checkpoint that dropped a path fails T2", "expected_rate": "n/a"},
+    "control": {
+      "plant": "none of its own: the checkpointed run also answers T2 against the same ladder, so a checkpoint that dropped a path fails T2",
+      "expected_rate": "n/a"
+    },
     "if_wrong": "a checkpoint that changes the program's value (a non-deterministic op, a random key inside the render): the key is folded from the step count, deterministic"
   },
   "gate_4_held_frames": {
     "claim": "a parameter's effect on a frame reaches every later held step's reading: each held step's centroid derivative (reverse) equals its frame step's, and the ball's speed's derivative at each held step matches its own central difference",
     "kind": "equality",
     "case": "r1_grad.py --per-step (jacrev and jvp of each step's centroid), r1_judge.py H1, H2",
-    "prediction": {"value": "float64 bit for bit; float32 within 128 eps of the parameter's largest; every held step's derivative nonzero and within its CD bound", "basis": "derived, fitted at the 160 fixed point", "why": "on a held step the cond's keep branch is the identity on expected, so the cotangent passes unchanged to the frame step; the frame step's cotangent then enters the same render"},
+    "prediction": {
+      "value": "float64 bit for bit; float32 within 128 eps of the parameter's largest; every held step's derivative nonzero and within its CD bound",
+      "basis": "derived, fitted at the 160 fixed point",
+      "why": "on a held step the cond's keep branch is the identity on expected, so the cotangent passes unchanged to the frame step; the frame step's cotangent then enters the same render"
+    },
     "metric": "max over held steps of the gap to the frame step's derivative",
-    "control": {"plant": "held-stop (stop_gradient on the held frame in the keep branch)", "environment_variable": "CAMERA_R1_PLANT=held-stop", "expected_rate": "30/30", "clean_expected": "0/36"},
+    "control": {
+      "plant": "held-stop (stop_gradient on the held frame in the keep branch)",
+      "environment_variable": "CAMERA_R1_PLANT=held-stop",
+      "expected_rate": "30/30",
+      "clean_expected": "0/36"
+    },
     "if_wrong": "a held step reading a different frame than it shows (the clock off by one), or the hold cutting the derivative",
     "cannot_discriminate_if": "period 1 (no held step): the draws' periods are 2 to 4"
   },
@@ -61,18 +114,32 @@
     "claim": "from the run's start (the cache made at step 0 from the step's own leaves) the leaves' derivative passes through the held cache to every frame; nothing of the moving ball reaches the cache (its tangent in v0x and z0 is exactly zero)",
     "kind": "equality",
     "case": "T2 in fy, cy, k1 with and without cache-stop; r1_judge.py H4",
-    "prediction": {"value": "the cache path carries 20 to 80 % of cy's derivative and 5 to 50 % of fy's and k1's (the tube's darkness is a third of the frame's in the centroid); H4 exactly zero", "basis": "derived from the centroid's weights (ball 700 to 2800 dark pixels, tube 600 to 1400)", "why": "the cache is made inside the differentiated run at step 0 and carried in the state; a held step's cotangent on it flows back to step 0's make"},
+    "prediction": {
+      "value": "the cache path carries 20 to 80 % of cy's derivative and 5 to 50 % of fy's and k1's (the tube's darkness is a third of the frame's in the centroid); H4 exactly zero",
+      "basis": "derived from the centroid's weights (ball 700 to 2800 dark pixels, tube 600 to 1400)",
+      "why": "the cache is made inside the differentiated run at step 0 and carried in the state; a held step's cotangent on it flows back to step 0's make"
+    },
     "metric": "1 - g(cache-stop) / g, per leaf, from the controls' JSON",
-    "control": {"plant": "cache-stop", "expected_rate": "30/30"},
+    "control": {
+      "plant": "cache-stop",
+      "expected_rate": "30/30"
+    },
     "if_wrong": "the cache made outside the differentiated program (a constant) would give the cache-stop gradient unplanted: T2 fails clean"
   },
   "gate_6_continued_run": {
     "claim": "from a continued state (the cache made in an earlier run and its numbers equal) the derivative in the leaves misses the cache's part: the cond takes the held branch, whose state is a constant of the run, while any nudged leaf remakes it. Not a reverse-mode defect: forward mode does the same",
     "kind": "estimates",
     "case": "r1_grad.py --continued 6 at the 160 fixed point, both dtypes, T2",
-    "prediction": {"value": "T2 FAILS in fy, cy and k1 (AD short of CD by the cache's share, 20 to 80 % in cy) and passes in v0x and z0, in both dtypes; T1 passes (both modes miss it alike)", "basis": "derived", "why": "cache_from equals the step's numbers at the unperturbed leaves, so no remake; a perturbed leaf differs and remakes"},
+    "prediction": {
+      "value": "T2 FAILS in fy, cy and k1 (AD short of CD by the cache's share, 20 to 80 % in cy) and passes in v0x and z0, in both dtypes; T1 passes (both modes miss it alike)",
+      "basis": "derived",
+      "why": "cache_from equals the step's numbers at the unperturbed leaves, so no remake; a perturbed leaf differs and remakes"
+    },
     "metric": "AD / CD per leaf",
-    "control": {"plant": "the run from the start (gate 5) is the arm that passes", "expected_rate": "n/a"},
+    "control": {
+      "plant": "the run from the start (gate 5) is the arm that passes",
+      "expected_rate": "n/a"
+    },
     "if_wrong": "if T2 passes: the derivative does flow (a remake under every trace, or the comparison traced differently); read cache_tangent",
     "cannot_discriminate_if": "a leaf the tube's image does not depend on (fx: the tube is uniform along u)"
   },
@@ -80,7 +147,11 @@
     "claim": "each planted control fails every run on drawn operating points; the clean runs are quiet",
     "kind": "acceptance",
     "case": ".github/probe/detection_rate.py --script probe/r1_check.py, 6 arms x 5 planted runs (and 2 clean) per plant",
-    "prediction": {"value": "edge-stop 30/30, cache-stop 30/30, held-stop 30/30; clean 0/36", "basis": "derived (edge-stop removes the silhouette's whole derivative in v0x and z0; held-stop zeroes every held step's derivative, caught by H1; cache-stop removes the tube's third of cy's)", "why": "see each gate"},
+    "prediction": {
+      "value": "edge-stop 30/30, cache-stop 30/30, held-stop 30/30; clean 0/36",
+      "basis": "derived (edge-stop removes the silhouette's whole derivative in v0x and z0; held-stop zeroes every held step's derivative, caught by H1; cache-stop removes the tube's third of cy's)",
+      "why": "see each gate"
+    },
     "metric": "caught/N with the 95 % lower bound",
     "if_wrong": "a miss names its seed; the plant's size against T2's bound on that draw is read from the JSON"
   },
@@ -90,33 +161,170 @@
     "case": "probe/node_measure.py --case r1_core:cost_case --reverse camera:.fy [--no-checkpoint]",
     "prediction": {
       "mechanism": "a cond's residuals are its largest branch's, kept at EVERY step whichever branch runs, and the frame's render nests the cache's remake (the ray table's undistortion, the tube's static part with its 16 corner sub-samples) under another cond, so every step keeps the residuals of a remake plus a render: R full frames a step, R about 60 to 200 (a guess within that band). Checkpointing the render keeps its inputs instead: the held cache (11 frames) and the state's frames, about 12 a step. MIME's chunked run keeps sqrt(N) chunk starts (the state, 13 frames) and one chunk's steps' residuals",
-      "forward_ms_per_step_float64": {"320x240": [3, 8], "640x480": [10, 20]},
+      "forward_ms_per_step_float64": {
+        "320x240": [
+          3,
+          8
+        ],
+        "640x480": [
+          10,
+          20
+        ]
+      },
       "forward_peak_gib": "under 1.2 at every point (the state, 13 frames, and the frame's temporaries)",
-      "reverse_time_over_forward": {"plain": [2.0, 4.0], "chunked": [2.5, 5.0], "chunked, render checkpointed": [3.0, 6.0]},
-      "reverse_peak_gib_float64_plain_render_unchecked": {"320 x 10": [0.8, 2.0], "320 x 100": [4, 13], "320 x 1000": "40 to 120 (extrapolated, not run)", "640 x 10": [1.5, 6], "640 x 100": "15 to 50 (beyond a runner)", "640 x 1000": "150 to 500 (extrapolated)"},
-      "reverse_peak_gib_float64_plain_render_checkpointed": {"320 x 10": [0.6, 1.2], "320 x 100": [1.2, 2.0], "320 x 1000": [7, 10], "640 x 10": [0.8, 1.6], "640 x 100": [3, 5], "640 x 1000": "30 to 35 (beyond a runner)"},
-      "reverse_peak_gib_float64_chunked_render_unchecked": {"320 x 1000": [1.5, 5], "640 x 1000": [6, 18]},
-      "reverse_peak_gib_float64_chunked_render_checkpointed": {"320 x 1000": [0.8, 1.5], "640 x 1000": [2, 3.5]},
+      "reverse_time_over_forward": {
+        "plain": [
+          2.0,
+          4.0
+        ],
+        "chunked": [
+          2.5,
+          5.0
+        ],
+        "chunked, render checkpointed": [
+          3.0,
+          6.0
+        ]
+      },
+      "reverse_peak_gib_float64_plain_render_unchecked": {
+        "320 x 10": [
+          0.8,
+          2.0
+        ],
+        "320 x 100": [
+          4,
+          13
+        ],
+        "320 x 1000": "40 to 120 (extrapolated, not run)",
+        "640 x 10": [
+          1.5,
+          6
+        ],
+        "640 x 100": "15 to 50 (beyond a runner)",
+        "640 x 1000": "150 to 500 (extrapolated)"
+      },
+      "reverse_peak_gib_float64_plain_render_checkpointed": {
+        "320 x 10": [
+          0.6,
+          1.2
+        ],
+        "320 x 100": [
+          1.2,
+          2.0
+        ],
+        "320 x 1000": [
+          7,
+          10
+        ],
+        "640 x 10": [
+          0.8,
+          1.6
+        ],
+        "640 x 100": [
+          3,
+          5
+        ],
+        "640 x 1000": "30 to 35 (beyond a runner)"
+      },
+      "reverse_peak_gib_float64_chunked_render_unchecked": {
+        "320 x 1000": [
+          1.5,
+          5
+        ],
+        "640 x 1000": [
+          6,
+          18
+        ]
+      },
+      "reverse_peak_gib_float64_chunked_render_checkpointed": {
+        "320 x 1000": [
+          0.8,
+          1.5
+        ],
+        "640 x 1000": [
+          2,
+          3.5
+        ]
+      },
       "period_10_against_period_1": "the same reverse memory within 15 % at 320 x 100 (every step keeps the render's residuals); reverse time per step about 4 to 8 times lower",
       "float32": "memory about half of float64's at the same point, time 0.5 to 0.8 of it",
       "basis": "derived from frame counts and the PR's forward times; the residual count R is a guess within its band"
     },
     "metric": "peak resident set of the reverse phase (node_measure.py's reverse_peak_mib) and reverse_steady seconds per step",
-    "control": {"plant": "the estimator's own check: each arm's peak against its mem_estimate.py bound (an underestimate fails the arm)", "expected_rate": "n/a"},
+    "control": {
+      "plant": "the estimator's own check: each arm's peak against its mem_estimate.py bound (an underestimate fails the arm)",
+      "expected_rate": "n/a"
+    },
     "if_wrong": "R far outside 60 to 200 frames: count the reverse program's residuals by aval (jaxpr) before reading a mechanism into it",
     "cannot_discriminate_if": "an arm's peak is the build's or the compile's, not the run's (read the phases)"
   },
   "gate_9_switch_scan_report": {
     "claim": "report only: does the switch scan's rule hold for the camera's reverse program",
     "kind": "estimates",
-    "prediction": {"value": "the scan traces the forward step only (make_jaxpr of the node's step), so it says nothing about the reverse program directly. With the render checkpointed inside the cond the traced step gains a checkpoint around raw sites only: no switch function sits there, so no new hit, and the raw-switch list stands (tests/saved/test_switch_scan.py passes with the flag on). The listed reasons that rest on derivatives (round and the flags carry none; the frame cond chooses which value is kept) hold in reverse, where the cond's transpose takes the forward's branch. One listed reason is stale: the camera node's lines cite 'the cache's guard and its custom rule', a custom_jvp the merge's fix removed", "basis": "derived from mime.docs._switches and the node's history"},
+    "prediction": {
+      "value": "the scan traces the forward step only (make_jaxpr of the node's step), so it says nothing about the reverse program directly. With the render checkpointed inside the cond the traced step gains a checkpoint around raw sites only: no switch function sits there, so no new hit, and the raw-switch list stands (tests/saved/test_switch_scan.py passes with the flag on). The listed reasons that rest on derivatives (round and the flags carry none; the frame cond chooses which value is kept) hold in reverse, where the cond's transpose takes the forward's branch. One listed reason is stale: the camera node's lines cite 'the cache's guard and its custom rule', a custom_jvp the merge's fix removed",
+      "basis": "derived from mime.docs._switches and the node's history"
+    },
     "if_wrong": "a hit under checkpoint: a switch function reached inside the render"
   },
   "gate_10_batching_R3": {
     "claim": "only if 1 to 4 are done: under vmap the frame cond is a select, both branches every step",
     "kind": "estimates",
-    "prediction": {"value": "forward: every batched step renders B frames (held steps included): about B times a frame step's cost every step, B = 4 and 16 at 320x240; reverse: memory as the unbatched reverse times B (the residuals were kept every step already), time B times a frame step's reverse at every step; so camera.batched lifts cheaply only at period 1; at period P it costs P times the unbatched-in-sequence work, and needs Ask 52 or a batch by lax.map", "basis": "derived"},
+    "prediction": {
+      "value": "forward: every batched step renders B frames (held steps included): about B times a frame step's cost every step, B = 4 and 16 at 320x240; reverse: memory as the unbatched reverse times B (the residuals were kept every step already), time B times a frame step's reverse at every step; so camera.batched lifts cheaply only at period 1; at period P it costs P times the unbatched-in-sequence work, and needs Ask 52 or a batch by lax.map",
+      "basis": "derived"
+    },
     "if_wrong": "XLA keeping the cond under vmap where the predicate is unbatched (the frame clock is the same for every member): then held steps stay cheap, and the refusal can lift without Ask 52"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the arms ran; the predictions above are unchanged",
+    "runs": {
+      "gradient gates and controls (160x120, Actions)": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43302162837",
+      "costs, placements' equality, batching (Actions)": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43304313029",
+      "320x240 gradient gate": "local route on the maintainer's laptop (i7-12850HX), memory-bound correctness only, peak 20.5 GiB against XLA's 18.7"
+    },
+    "gate_1_reverse_against_forward": {
+      "status": "as predicted",
+      "result": "every check passed at the fixed points (160 and 320) and the 12 clean draws, both dtypes; largest |vjp - jvp| 1.5 eps S"
+    },
+    "gate_2_against_central_differences": {
+      "status": "as predicted",
+      "result": "clean draws: largest |AD - CD| / bound 0.44; float64 bounds 1e-9 to 6e-7 relative, float32 0.16 to 3.9 % at the fixed points"
+    },
+    "gate_3_checkpointed_render": {
+      "status": "within the bound as predicted; the bit-for-bit guess missed both ways",
+      "result": "320x240: bit for bit in all five parameters, both dtypes; 160x120: bit for bit in v0x, z0, cy (float64), within 0.6 eps S elsewhere; the spike's other placements (each sub-sample, the cache's remake) within 0.31 eps S",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43304313029"
+    },
+    "gate_4_held_frames": {
+      "status": "as predicted but for bit-for-bit",
+      "result": "every held step's reverse derivative equals its frame step's (laptop: float64 bit for bit; the runner: within 9.1e-13 of 6.9e-11), reached every held step against CD; held-stop caught 30/30"
+    },
+    "gate_5_cache_remake_from_the_start": {
+      "status": "the path carries the derivative as predicted; its share MISSED (larger)",
+      "result": "1 - g(cache-stop)/g over 12 draws: fy 0.34 to 1.15, cy 1.68 to 2.11, k1 0.75 to 1.08 (predicted 0.05 to 0.5, 0.2 to 0.8, 0.05 to 0.5): the tube darkens its whole band (both walls on every ray through it), not only its walls; the cache's tangent in v0x and z0 exactly zero"
+    },
+    "gate_6_continued_run": {
+      "status": "as predicted in kind; the size MISSED (larger)",
+      "result": "T2 fails in fy (AD 1.08, CD 2.39), cy (AD -125, CD 82.5), k1 (AD -1.80, CD 7.47) in both dtypes; v0x, z0 and every T1 pass"
+    },
+    "gate_7_controls": {
+      "status": "caught as predicted; the clean rate MISSED",
+      "result": "edge-stop 30/30, cache-stop 30/30, held-stop 30/30 (each 95 % lower bound 0.905); clean 3 of 36 runs flagged, all seed 1001 (one of 12 distinct draws), float32 H2 in fy at 1.19 of its bound: H2's scale is the parameter's largest per-step derivative, not its terms' (dc/dfy is a difference of the ball's and the tube's parts), the CLAUDE.md flake cause 'judge a result on the scale it came from'"
+    },
+    "gate_8_costs": {
+      "status": "MISSED for the reverse program as built; within the bands for the forward and for the fixed placements",
+      "result": "per-step tape as built about 6000 full frames, not 60 to 200: 5736 of 6419 frames (at 64 px) are the residuals of the tube's 16 corner sub-samples, a branch never taken here, under the cache's remake, a branch taken at step 0 only, kept at every step because a cond keeps its largest branch's residuals. Reverse as built (render checkpointed, the only variant a runner holds) 180 to 260 ms/step at 320x240, 39 to 55 times the forward, peak 5.8 to 7.1 GiB; unchecked: XLA 18 to 3600 GB (not run). With each sub-sample and the remake checkpointed: 320x240 and 640x480, 10 to 1000 steps, 2.4 to 5.9 GiB, 4.3 to 4.9 times the forward at 1000 steps. Period 10 against 1: reverse memory within 2 % (predicted 15 %), time 2.0 to 2.3 times lower (predicted 4 to 8: missed)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43304313029"
+    },
+    "gate_9_switch_scan_report": {
+      "status": "as predicted",
+      "result": "the scan over the camera's forward trace and its reverse trace (the step's gradient in its leaves and state), the render checkpointed or not: 138 sites each, none added, none nested; tests/saved/test_switch_scan.py itself was not run with the flag on (its arm was dropped for memory). The stale reason confirmed: the custom_jvp the camera node's four lines cite was removed in e2e81c32"
+    },
+    "gate_10_batching_R3": {
+      "status": "MISSED (worse than predicted)",
+      "result": "320x240, 20 steps, period 5, the spike's placements: unbatched 1.25 ms/step forward, 23 ms/step reverse; stacked (a batched study's form) B=4 and 16: 11.8 and 9.8 ms per member-step forward, 2389 and 5250 ms reverse, peak 4.3 and 9.8 GiB; only the speed mapped (clock unbatched): 35 to 36 ms forward, 584 to 790 ms reverse per member-step: the frame cond's outputs batch the carried cache, so the remake's cond becomes a select at every step either way",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43304313029"
+    }
+  }
 }
