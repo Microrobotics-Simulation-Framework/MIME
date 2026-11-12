@@ -7,9 +7,14 @@ all of them: the switch scan's traced configurations took 262 to 452 s on each o
 43079637575), and a shard was cancelled at its 30 minutes. Each such test carries ``@pytest.mark.fixture_first``; they
 go to the head of the collection, in their order, the rest after them in theirs. The head of the first worker's queue is
 not stolen while that worker is working through it, so the first marked test pays and the others find the fixture built.
-Every worker sorts the one collection the one way, as xdist requires. The one test that still pays is the first marked
-test of its file, so its row in ``tests/duration_allowlist.txt`` is the one that stays, not whichever test xdist's order
-gave a worker first.
+That holds only while the rest of the shard outlasts the build: a steal takes the tail half of the longest queue, and
+each steal halves it, so the marked block at the head is reached once the thieves have been idle through a few
+steals. At 30 shards the switch scan's shard is short beside the build (about 150 to 340 s) and 5 of the file's 11 marked
+tests paid it in one run (43239668452; the file was whole in its shard). Reproduced with four ``--dist worksteal`` workers,
+a 3 s module fixture, 6 marked tests first and 120 others of 0.05 s: 3 or 4 workers built it in 3 runs of 3; with 1200
+others, one worker did in 3 of 3. So every reader of such a fixture is listed in ``tests/duration_allowlist.txt``, not
+only the first, and a fix that stops the steal (a scheduler that returns marked tests to their worker) is not made.
+Every worker sorts the one collection the one way, as xdist requires.
 """
 
 from __future__ import annotations
