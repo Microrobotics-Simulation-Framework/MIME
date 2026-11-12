@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The moving refinement patch's kind** (the patch phase; not reachable from an experiment yet: the Schwarz coupling
+  that hosts it wires it). A fixed fine box near a body by a wall (`RefinementPatch`, a grid kind with every face given,
+  `NestedMACGrid`, whose fast solve is the cosine transform on three axes), its corner in whole fine cells snapped to
+  the body (so a move never recompiles), its walls resampled from the same signed distance and dilated by whole fine
+  cells with the two neighbouring dilations blended; it solves the cluster's near-wall reflection under the flow's step
+  operator (`shift - mu L + mu/K`, the steady limit at zero shift) through the FVM's projected CG, its given values the
+  coarse grid's reflection, its source the cluster's own field (the current step's in closed form, the regularised
+  Stokeslet and the Brinkman difference; the history's from the flow's own box), read at the near field's points or
+  over their cells (the default); one column of forces a call, vmappable, linear without history, with its transpose
+  (`patch_reflection`, `patch_reflection_transpose`; the own response's transpose written by hand,
+  `own_response_transpose`, which reverse mode takes too, so neither holds a kernel per face-point pair); the
+  backward-Euler form carries the last step's field as state, the signed default (gate 10 measures an agreement with a
+  fine monolithic reference, which at a runner's size cannot separate the time forms). A column starts at zero and the
+  base column at zero or from its history's field: any other start is refused. The penalty and the own field's drive
+  cover the whole solid (a depth, `solid_depth`, is an opt-in: within 0.16 % where the given values are consistent in
+  the solid, -10.5 % where not, and slower at stage 1's box), the own field's capacity is planned by the host
+  (`planned_capacity`: the same values at 2.4 times fewer pairs), and an overflow, a large net flux or a read outside the
+  box is flagged (`patch_flags`). Its two transfers are registered mapping kinds, `mime.patch_boundary` and `mime.patch_read`,
+  with MADDENING 0.4's workarounds in `mime.mappings`.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,

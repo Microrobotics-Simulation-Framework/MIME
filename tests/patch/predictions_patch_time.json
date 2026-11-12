@@ -1,0 +1,54 @@
+{
+  "written": "2026-11-12, committed before the time harness (item 3, gate 10) was written or run: the patch's time form measured in F5's structure, as the signed F5-patch interface's point 5 asks",
+  "phase": "the patch phase (lane F, stage 1): item 3 and gate 10, the patch in time",
+  "labels": "the builder (Opus), from arithmetic on the stage-1 operating points and the patch spike's steady numbers; no run of this harness had been seen",
+  "seen_before": [
+    "nothing of this harness: the steady oracle's smoke (8 fine cells across the radius, gap 0.3 a: the patch's share -2.7 %) and the column gate only"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner, 4 vCPU, CPU",
+    "sizes_and_parameters": "MIME's 338-point MRS sphere, a = 0.7 mm, density of the fluid 1260 kg/m^3; a periodic coarse box of 24^3 cells of 140 um with a solid slab 4 cells thick (a plane wall below the sphere, another 1.2 mm above it); the fine cell 70 um (10 fine cells across the radius, ratio 2), the patch the sphere plus 8 fine cells a side (36^3); the sphere's surface 0.3 a and 0.15 a above the wall, held in place, given an impulsive velocity along the wall's normal and along the wall at t = 0; stage 1's corners: mu 50 and 200 mPa s, dt 0.5 and 5 ms, so lambda = a / sqrt(nu dt) = 4.9, 1.6, 2.5, 0.78 (the 1.69 mm sphere's 6.0 is the first's at a = 0.845 mm, not run separately); 40 steps an arm or until the force settles to 1e-4",
+    "seeds_and_draws": "none (deterministic arms)"
+  },
+  "gate_10_in_time": {
+    "claim": "in F5's structure (per step: GMRES over the near field's forces under the step operator, the base column carrying the history), the backward-Euler patch with state follows the fine monolithic BE reference's force history after an impulsive start; the quasi-steady patch (shift zero, no history) is a declared opt-in only where its transient excess stays within the patch's own steady error at every stage-1 corner",
+    "kind": "estimates (each form against the fine monolithic reference: the whole box at the fine cell, the walled BE step and the own box at the fine cell, no patch)",
+    "case": "tests/patch/time_cases.py: arms reference, be_patch, quasi_steady_patch, coarse_only at the four corners and two gaps, normal and along the wall",
+    "prediction": {
+      "value": null,
+      "band": [0.0, 0.05],
+      "unit": "the BE patch's transient excess over its own steady error, max over steps of |e(t) - e(final)|, e = F_form / F_reference - 1, at every corner; the quasi-steady patch's excess 0.1 to 0.4 of the wall's share of the force in the first steps at lambda 2.5 and 4.9, and within 0.02 at lambda 0.78",
+      "basis": "guess",
+      "why": "under the step operator the reflection is screened beyond sqrt(nu dt) = a / lambda; a quasi-steady patch hands back the unscreened steady reflection inside the box at every step, so it over-states the wall's share until the reflection's diffusion time a^2 / nu = lambda^2 dt has passed; at lambda 0.78 that is under one step"
+    },
+    "metric": "e(t) for each form against the reference, and its excess over e(final); the quasi-steady's excess over the BE patch's, against the patch's steady error at 20 fine cells (gate 1's share at the same gap in fine cells)",
+    "control": {
+      "plant": "the BE patch with the snap's uncovered slab left unfilled (zero) and the sphere moved one fine cell a step along the wall, so every step snaps",
+      "environment_variable": "PATCH_PLANT=slab_unfilled",
+      "expected_rate": "the force history departs from the filled one by more than 1 % at every snapping step, every run (deterministic)",
+      "runs": 3,
+      "clean_expected": "0/N",
+      "resolution": "the slab's share of the reflection at the sphere, about the box's margin over its size [guess]"
+    },
+    "if_wrong": "the BE patch's excess beyond 5 %: the history's own-field part (the own box's history at the shell) or the slab fill is wrong; read it arm by arm, the history's near-body error first (the interface's point 2: that number goes in the validity line)",
+    "cannot_discriminate_if": "lambda under about 0.5 (both forms then agree by construction) or the force settles in one step"
+  },
+  "item_3_history_error": {
+    "claim": "the own field's history taken from the coarse own box (the interface's (b)) moves the BE patch's force from the reference's by a stated amount near the body",
+    "prediction": "at 0.15 a and lambda 4.9: within 3 % of the reference's force at every step after the first (band 0.5 to 6 %); at lambda 0.78 within 1 %",
+    "basis": "guess: the history is smoothed over a / lambda, at 4.9 under two coarse cells at ratio 2"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43151596075 (32 arms, the impulse along the wall's normal; the along-wall arms of the first launch were dropped with its cancellation)",
+    "runs_not_outcomes": "three launches before it were cancelled and none of their numbers is an outcome: the own box kept its periodic mean mode (forces grew without bound), the own field ran on a 4-cell shell (17 % off, the product's bug, fixed), and the GMRES at 1e-9 under 1e-8 inner solves ran past three hours; the harness's walled CG went to 1e-8 and its GMRES to 1e-7 for the measured run",
+    "gate_10_in_time": {
+      "be_patch": "against the fine monolithic BE reference, its final error -1.9 to +3.2 % and its transient excess max |e(t) - e(final)| 0.15 to 1.80 % over the eight corner-gap arms (lambda 0.79 to 4.97): within the predicted 5 %",
+      "quasi_steady": "final +3.7 to +7.8 %, first step +5.5 to +11.3 %, excess 1.7 to 4.5 %: outside the BE patch's own error at every corner, so not offered as an opt-in (the signed interface's condition); its first-step excess is 0.1 to 0.2 of the wall's share at lambda 2.5 and 5 (held), and at lambda 0.79 it is +5.5 % first and +3.7 % final, not within 0.02 (missed: under the step operator a steady patch over-states the reflection even when settled)",
+      "coarse": "final -3.8 to -7.6 %",
+      "controls": "the slab left unfilled and the held field left unmoved: 3/3 each, clean 0/3, at a line of 1e-6 of the force (run 43139574942); their effects are 3.3e-5 and 1.0e-4 of the force, so the first round's 1 % line missed both (0/3, run 43136621960)",
+      "cost": "the BE patch's CG iterations a step (8 to 10 column products, the base and the composition) 393 to 1569 at 36^3, more at small lambda (a weaker shift)"
+    },
+    "item_3_history_error": "the BE patch with the own box's history at the shell, against the reference: -1.9 % (lambda 4.97, 0.15 a) to +3.2 % (lambda 0.79, 0.15 a) at the end, within 1.8 % of that over the transient; the prediction (within 3 % after the first step at 4.9, 1 % at 0.78) held at 4.97 and missed at 0.79 (+2.5 % first, +3.2 % final at 0.15 a), where the steady patch's own error at 10 fine cells across the radius is a part of it"
+  }
+}

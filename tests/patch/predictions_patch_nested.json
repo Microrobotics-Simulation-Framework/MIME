@@ -1,0 +1,28 @@
+{
+  "written": "2026-11-12, committed before the nested transpose test's control rate is measured on a probe (the coordinator's finding for F5's product)",
+  "phase": "the patch phase: the patch column nested in an outer Krylov solve that reverse mode transposes",
+  "labels": "the builder; seen once locally before this file, so the rate is the measured quantity, not the clean result",
+  "seen_before": [
+    "the laptop, float64: tests/patch/test_patch_nested.py passed (the identity within 1e-8 of its scale) and failed with PATCH_PLANT=loose_transpose (the identity's error 2.0e-2 of its scale), one run each"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner, 4 vCPU",
+    "sizes_and_parameters": "a 12^3 patch of 50 um cells, a plane, 6 force points, shift rho/dt = 1.26e6, the patch CG at 1e-12, the outer GMRES (jax.scipy) at 1e-12",
+    "seeds_and_draws": "a fixed draw (deterministic)"
+  },
+  "gate_nested_transpose": {
+    "claim": "the dot-product identity <J v, w> = <v, J^T w> of an outer GMRES whose matvec holds a patch column holds to the solves' tolerance: the patch's solve transposes nested",
+    "kind": "equality to the solves' tolerance",
+    "case": "tests/patch/test_patch_nested.py",
+    "prediction": {"value": null, "band": [0.0, 1e-8], "unit": "relative to the terms' scale", "basis": "measured-before (once, locally)", "why": "a symmetric custom_linear_solve transposes by solving again; its constants are frozen"},
+    "metric": "|<J v, w> - <v, J^T w>| over |J v||w| + |v||J^T w|",
+    "control": {"plant": "the patch's transpose solve capped at two iterations", "environment_variable": "PATCH_PLANT=loose_transpose", "expected_rate": "3/3", "runs": 3, "clean_expected": "0/3", "resolution": "the plant reads 2e-2 against the line 1e-8"},
+    "if_wrong": "a constant of the patch's solve depends on the transposed input (the coordinator's NotImplementedError) or its transpose is not its own",
+    "cannot_discriminate_if": "the patch's reflection is negligible against the identity in the outer matvec (it is scaled to half of it here)"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43171529756",
+    "gate_nested_transpose": "the clean test passed on every clean run (0/3 flagged) and the loose transpose was caught 3/3: the identity holds within 1e-8 of its scale nested, and no NotImplementedError arose either way (the patch's solve constants do not depend on the transposed input)"
+  }
+}

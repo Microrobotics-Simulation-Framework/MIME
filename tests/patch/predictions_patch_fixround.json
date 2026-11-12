@@ -1,0 +1,114 @@
+{
+  "written": "2026-11-12, committed before any of the fix round's probes (memory and cost at stage 1's size, the solid depth on the plane, gate 5 at stage 1's cell, the control rates, gate 10's dropped history) ran: the fix round of PR 267 after its refuting review (B1, M1 to M5)",
+  "phase": "the patch phase (lane F, stage 1), its fix round: reverse mode by a hand-written transpose, the solid depth and the planned capacity, the cell read's gate, the interface's start rules in the functions, gate 5 across the snap, gate 10 at its own scale",
+  "labels": "the fix round's builder (Opus), from the review's measurements (REVIEW of PR 267, its probes' runs 43181936959, 43182430897, 43184979492, 43182643372) and the CI-size readings below; nothing at stage 1's size had run on this code",
+  "seen_before": [
+    "the review's measurements, all on the PR's head before this round: the transpose's and the vjp's compiled temporaries 83.2 GiB at 107^3, 117.4 at 120^3, 0.33/0.99/2.25 GiB at 16/24/32^3, the forward's 0.054/0.057/0.064; a forward product at 107^3 (every face) 55.3 s at lambda 4.97 and 150.2 s at 0.79, 120^3 127.2 s, the own field 14.2 to 32.4 s of it, a planned capacity 5.4 to 13.3 s; the plane oracle's penalty and drive kept to 4 and 8 cells -0.335 and -0.051 % normal, -0.037 and -0.010 % along; the drive alone -53.3 and -32.5 %; gate 5 at stage 1's cell, steady: true jumps 2.0e-6 and 1.8e-6 (point), 1.6e-7 and 2.2e-7 (cell), wobble 8.1e-4 and 3.4e-4; gate 10 with the history dropped (shift kept): -4.07 % of the BE patch's force at lambda 0.79 and -12.9 % at 4.97",
+    "this round, on this laptop (float64 unless stated, CI sizes): the hand-written transpose's compiled temporaries 0.047/0.049/0.051 GiB at 16/24/32^3 with 338 points, the vjp's the same, the vjp in the force points 0.137 to 0.143, the forward 0.054 to 0.069 (scratch, compile only); the reverse gate's dot-product identities at 12^3 at most 8.5e-13 (float64, CG at 1e-12) and 1.7e-5 (float32), the 1 % transpose plant 2e-6 and 1e-3; the map_transposed plant's transpose 0.55 GiB at 24^3 against the forward's 0.059",
+    "this round, the column gate at 12^3: the solve-free parts vmapped equal the loop to 1e-16; at float64's 1e-8 the vmapped columns depart 1.1e-9 from the loop, a one-ulp nudge of the loop's given values 4.4e-8 at equal iterations; at 1e-14, 4.7e-16 and 3.4e-16; float32 at its floor 2.0e-5 and 2.2e-5; the short_cap plant 4.6e-4",
+    "this round, gate 1 at CI size (8 cells, 0.3 a): the point read's share -2.69 %, the cell read's -2.61 %, the cell_scale plant's +26.9 %; gate 5 at CI size (6 cells, point read): the snap read across the corner's flip 1.7e-4 (the old mid-interval pair 1.4e-4), the stale_given plant 1.7e-2"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 for the CI gates"],
+    "platform": "GitHub runner, 4 vCPU, CPU; the CI gates on CI's runners",
+    "sizes_and_parameters": "stage 1's: Landers' 1.4 mm sphere (a = 0.7 mm) as MIME's 338-point MRS sphere, the cell read, rule 2's fine cell a / 20 = 35 um, 0.1 a from the wall of the 5 mm straight tube, the patch 107^3 (0.75 D) and 120^3 (0.84 D); lambda 4.97 (50 mPa s, 0.5 ms) and 0.79 (200 mPa s, 5 ms); the patch CG at 1e-8 (float64); the solid depth 8 fine cells, the capacity planned at the pose with a margin of 1.1",
+    "seeds_and_draws": "every target deterministic: control rates are counted over fresh processes (5 a control, 2 for gate 10's slow arms), which shows the plant keeps its margin, not a draw distribution"
+  },
+  "gate_b1_reverse_memory": {
+    "claim": "reverse mode through the patch, the transpose and the vjp in the forces and given values and in the force points, holds about what the forward holds at stage 1's size: the own response's transpose is the hand-written one, so no face-point pair's kernel is stacked",
+    "kind": "bounds (compiled temporaries and a measured process peak)",
+    "case": "probe/cost_op.py, arms rev107-l497 and rev120-l079 (the new default: solid depth 8, planned capacity); CI: tests/patch/test_patch_reverse.py at 24^3",
+    "prediction": {"value": null, "band": [0.03, 0.5], "unit": "GiB of compiled temporaries for the transpose and the vjp at 107^3 and 120^3; the arm's peak under 4 GiB", "basis": "derived", "why": "the CI-size temporaries are flat in the box (0.047 to 0.051 GiB) and the chunk is 64 MiB; at 107^3 the fields are 3 x 1.2 M doubles a component, a few tens of MB each, so a few hundred MB"},
+    "metric": "temp_size_in_bytes of the compiled transpose and vjp, against the forward's; the arm's peak (mem_check)",
+    "control": {"plant": "the own response as the plain chunked map JAX transposes (the PR's head)", "environment_variable": "PATCH_PLANT=map_transposed", "expected_rate": "5/5 (deterministic: 0.55 GiB against a line of 2 x 0.059 at 24^3)", "runs": 5, "clean_expected": "0/5", "resolution": "the line at twice the forward's temporaries; the plant reads nine times the forward's"},
+    "if_wrong": "a residual of the CG or of the checkpointed map is stacked after all: read the vjp's jaxpr for a scan output of shape (chunks, size, n)",
+    "cannot_discriminate_if": "the compiled program never holds the map (a capacity of zero faces)"
+  },
+  "gate_b1_identities": {
+    "claim": "the column and patch_reflection_transpose, and jax.jvp against jax.vjp through the column, satisfy the dot-product identity in the given values, the forces and the force points, both reads, both dtypes, under the step operator",
+    "kind": "equality to the solves' tolerance",
+    "case": "tests/patch/test_patch_reverse.py at 12^3 (CI); probe/cost_op.py's rev arms at stage 1's size (the transpose's identity and the vjp against the transpose)",
+    "prediction": {"value": null, "band": [0.0, 1e-8], "unit": "|<R x, c> - <x, R^T c>| over the products' scale at stage 1's size, float64 at the CG's 1e-8; the vjp equals the transpose to 1e-12", "basis": "derived", "why": "the CG is its own transpose solve and the rest are exact transposes; the identity's departure is the two solves' tolerance"},
+    "metric": "the departure over the products' scale",
+    "control": {"plant": "the hand-written transpose 1 % off", "environment_variable": "PATCH_PLANT=transpose_scaled", "expected_rate": "5/5", "runs": 5, "clean_expected": "0/5", "resolution": "1e-3 (float32) and 2e-6 (float64) of the scale against lines of 2e-4 and 1e-11"},
+    "if_wrong": "the cell read's or the source's transpose is not the transpose: gate 4 for the transfers first",
+    "cannot_discriminate_if": "the forces' share is lost under the given values' (hence each input on its own scale)"
+  },
+  "gate_m2_cost": {
+    "claim": "a forward product at stage 1's size with the solid depth 8 and the planned capacity, its own field's share, and its values against every face's",
+    "kind": "estimates (a runner's seconds inside a jitted function: no node hosts the patch until F5)",
+    "case": "probe/cost_op.py, arms cost107-l497, cost107-l079, cost120-l079",
+    "prediction": {"value": null, "band": [0.5, 0.95], "unit": "the forward product's time over the every-face product's; the own field 1 to 4 s of it; the values within 3e-3 of every face's (relative, the read points), the planned whole solid within 1e-12", "basis": "derived", "why": "the review's planned capacity took the own field from 14 to 5 s at 107^3; the depth cuts the faces about three times more (the solid deeper than 8 cells is most of the 1.39 M); the CG's 126 to 295 iterations dominate and the depth leaves them about as they are"},
+    "metric": "the median of two timed products after the compile; the values' largest departure from every face's over their largest",
+    "control": {"plant": "none (a cost); the planned whole solid's values must equal every face's (the capacity's own check)", "environment_variable": "", "expected_rate": "", "runs": 0, "clean_expected": "", "resolution": ""},
+    "if_wrong": "the planned capacity overflows at the pose (flagged), or the depth changes the CG's conditioning",
+    "cannot_discriminate_if": "the timing's spread between runners exceeds the saving (one runner per arm: the review's 120^3 against 107^3 differed by runner)"
+  },
+  "gate_m2_solid_depth": {
+    "claim": "the implemented solid depth (the penalty and the drive kept together d cells into the solid) reads the review's values on the plane oracle",
+    "kind": "estimates (against the whole solid's penalty on every face)",
+    "case": "probe/truncation_op.py (the review's, on the implementation)",
+    "prediction": {"value": null, "band": [-0.0006, 0.0], "unit": "the normal entry's relative change at d = 8 (-0.051 % by the review), and -0.0034 to 0 at d = 4; the drive alone -0.6 to -0.2", "basis": "measured-before", "why": "the same variants as the review's, now through the kind's setting and planned_capacity"},
+    "metric": "the coupled resistance's normal and along-wall entries over the every-face reference's",
+    "control": {"plant": "the drive alone cut at d cells, the penalty kept (the PR's rejected shell)", "environment_variable": "", "expected_rate": "departs by tens of per cent (deterministic)", "runs": 1, "clean_expected": "", "resolution": "the planned whole solid identical to every face"},
+    "if_wrong": "the kind's depth is measured from another surface than the review's (the dilated solid's signed distance)",
+    "cannot_discriminate_if": "the box holds less solid than d cells (then every variant is the reference)"
+  },
+  "gate_m3_cell_read": {
+    "claim": "the default cell read has a physics gate in CI that catches a 5 % scale on the cell read and its transpose every run",
+    "kind": "acceptance (a regression band at CI size, not an accuracy claim)",
+    "case": "tests/patch/test_patch_plane.py::test_gate1_the_patchs_share_of_the_normal_entry_is_the_bands[cell]; gate 11 with the cell read",
+    "prediction": {"value": null, "band": [-6.0, -1.0], "unit": "the cell read's share of the normal entry, per cent of Brenner's (measured -2.61 at CI size before this file)", "basis": "measured-before", "why": "the same band as the point read's"},
+    "metric": "the share",
+    "control": {"plant": "the patch's cell read and its transpose 5 % up", "environment_variable": "PATCH_PLANT=cell_scale", "expected_rate": "5/5 (deterministic: +26.9 against the band's -1)", "runs": 5, "clean_expected": "0/5", "resolution": "the band"},
+    "if_wrong": "the plant is not active in the worker (the review's check)",
+    "cannot_discriminate_if": "the gate reads the harness's numpy image instead of the patch's read"
+  },
+  "gate_m5_columns": {
+    "claim": "vmapped over seven columns the reflection and its transpose are the loop within the loop's own rounding spread (a one-ulp nudge of its input), at the default tolerance and at the floor (1e-14 in float64: to rounding, under 1e3 eps); a start on a column, a base start from any field but its history's, and a start on a transpose are refused",
+    "kind": "equality to the solve's rounding; refusals",
+    "case": "tests/patch/test_patch_columns.py",
+    "prediction": {"value": null, "band": [0.0, 10.0], "unit": "the vmapped columns' departure over the loop's one-ulp spread", "basis": "measured-before", "why": "both are one draw of the same rounding's effect on the CG"},
+    "metric": "the largest departure over the columns, each on its own scale",
+    "control": {"plant": "the vmapped solves stopped at 20 iterations", "environment_variable": "PATCH_PLANT=short_cap", "expected_rate": "5/5 (4.6e-4 against at most 4.4e-7)", "runs": 5, "clean_expected": "0/5", "resolution": "ten spreads"},
+    "if_wrong": "a lane's solve differs in more than rounding: its iterations first",
+    "cannot_discriminate_if": "the spread is the tolerance's (it is, at 1e-8: hence the floor arm)"
+  },
+  "gate_m4_snap": {
+    "claim": "a snap moves m by a small share of it, read across the snapped corner's flip, at stage 1's cell against the steady wobble",
+    "kind": "estimates",
+    "case": "probe/gate5_op.py, arms g5-steady-point and g5-steady-cell (20 fine cells across the radius, 56^3, the plane's exact steady given values); CI: test_patch_motion.py's gate 5 at 6 cells",
+    "prediction": {"value": null, "band": [1e-8, 1e-5], "unit": "the straddled jump over m at stage 1's cell (the review's sweep: 2e-6 point, 2e-7 cell); the mid-interval pair 3e-5 to 4e-5 (the slope, as the review read); the wobble 3e-4 to 1e-3", "basis": "measured-before", "why": "the given values are exact, so a snap moves only the lattice's place against the band, a second-order change"},
+    "metric": "|m(flip + 1e-6) - m(flip - 1e-6)| / |m|; the sweep's two sides extrapolated to the flip",
+    "control": {"plant": "the given values read at the corner of 0.04 cells before (a snap without its faces re-read)", "environment_variable": "PATCH_PLANT=stale_given", "expected_rate": "5/5 at CI size (1.7e-2 against a line of 2e-3)", "runs": 5, "clean_expected": "0/5", "resolution": "the CI line 2e-3 over a clean 1.7e-4"},
+    "if_wrong": "the flip is not where the bisection says (the snapped corner's rounding)",
+    "cannot_discriminate_if": "the straddle's slope part exceeds the jump (1e-6 cells keeps it under 1e-7 of m)"
+  },
+  "gate_10_dropped_history": {
+    "claim": "gate 10's agreement (the BE patch against the fine monolithic BE reference at equal steps, within 5 % at every step) fails when the base column's history is dropped, at the corners where the history's share is above the BE patch's own departure",
+    "kind": "estimates (an agreement at a 1.5-cell gap in a 24-cell periodic box, not an accuracy: the review's box and finer-cell arms)",
+    "case": "probe/gate10_control.py at m50-dt0.5-g0.15 (lambda 4.97), m200-dt0.5-g0.15 (2.48), m200-dt5-g0.15 (0.79), through detection_rate.py",
+    "prediction": {"value": null, "band": [0.0, 0.035], "unit": "the clean BE patch's largest |F / F_ref - 1| over the steps at each corner (warm columns read 0.0062 to 0.0318 at the end); cold columns within 1e-5 of the warm-column run; the planted run's -12 to -16 % at lambda 4.97 (caught), -4 to -10 % at 2.48 (caught), about -1 % at 0.79 (NOT caught: the history's -4.07 % there points towards the reference from the BE patch's +3.18 %)", "basis": "measured-before", "why": "the review's dropped-history arms plus the BE patch's measured departures"},
+    "metric": "the largest |F / F_ref - 1| over the steps",
+    "control": {"plant": "the base column's history dropped, the shift kept", "environment_variable": "PATCH_PLANT=history_dropped", "expected_rate": "2/2 at lambda 4.97 and 2.48; 0/2 at 0.79 (the gate cannot see the history there)", "runs": 2, "clean_expected": "0/2", "resolution": "5 % against the clean departures"},
+    "if_wrong": "the cold columns moved the BE patch's force by more than the GMRES tolerance: the harness, not the form",
+    "cannot_discriminate_if": "lambda under about 1 at this box: the history's share is of the BE patch's own departure's size and sign-opposite"
+  },
+  "bits": {
+    "cases": "the switch scan's configurations (no patch in any), base origin/release/v0.3.0 against the final head, one job, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal",
+    "controls": {"repeat": "bit_compare's own", "one_ulp": "bit_compare's own"}
+  },
+  "outcomes": {
+    "written": "2026-11-12, after runs 43239921793 (op), 43251803675 (reverse mode at the default), 43240080205 (rates), 43244149545 (rates2), 43240586519 (ranges), 43244908567 (the tube, its own predictions file) and 43240217752 (bits)",
+    "gate_b1_reverse_memory": "held: at the default (the whole solid, its planned capacity: 1,498,536 faces at 107^3, 2,277,863 at 120^3) the transpose's and the vjp's compiled temporaries 0.64 GiB at 107^3 (the forward's 0.72) and 0.91 GiB at 120^3 (0.98), the vjp in the force points 0.60 and 0.84; the arms' process peaks 2.10 and 2.37 GiB with both run (run 43251803675); at the solid depth 8 (run 43239921793) 0.62 and 0.86 GiB, peaks 1.97 and 2.30; control map_transposed 5/5, clean 0/5 (run 43240080205)",
+    "gate_b1_identities": "held: 1.35e-13 at 107^3 and 6.1e-12 at 120^3 at the default (run 43251803675; 2.2e-13 and 2.0e-12 at depth 8, run 43239921793), the vjp equal to the transpose exactly; CI 12^3 at most 8.5e-13 (float64) and 1.7e-5 (float32); control transpose_scaled 5/5, clean 0/5 (run 43240080205); resolution a transpose scale of 1e-7 or less, the scan's floor (run 43240586519)",
+    "gate_m2_cost": "the planned capacity's product 0.82 to 0.92 of every face's (66.3 s against 80.4 at 107^3 lambda 4.97, 123.8 against 135.0 at 0.79, 88.9 against 101.5 at 120^3 0.79), inside the band; the own field 7.3 to 9.6 s at the whole solid's planned capacity (missed the band's 1 to 4 s, which assumed the depth: the depth's own field read 1.8 to 2.5 s, but its product 68.7, 142.9 and 96.0 s, its CG 17 to 22 % more iterations); values identical to every face's (0.0) (run 43239921793)",
+    "gate_m2_solid_depth": "held on the plane: -0.335 % (4), -0.051 % (8) normal, -0.037 and -0.010 % along; the drive alone -53.3 and -32.5 % (run 43239921793); in the tube see predictions_patch_fixround_tube.json: within 0.16 % with consistent given values, but more CG iterations, so the depth is an opt-in and the whole solid the default",
+    "gate_m3_cell_read": "held: the cell read's share -2.61 % at CI size (the laptop) within the band; cell_scale 5/5, clean 0/5 (run 43240080205); resolution a scale of 0.36 % (refined; 0.52 % on the grid) (run 43240586519); gate 11 with the cell read: read_stopped 5/5, clean 0/5",
+    "gate_m5_columns": "missed as predicted: the vmapped columns' departure against a one-ulp nudge's spread is not bounded (a runner read 4.5e-8 against a spread of 3.0e-10, run 43240080205: the clean arm flagged 5/5); restated after that reading, so not a prediction: within 50 solve tolerances at the default, to rounding at the floor (4.7e-16 at 1e-14, float64); short_cap 5/5, clean 0/5 on the restated test (run 43244149545); the start refusals hold (CI)",
+    "gate_m4_snap": "held: across the corner's flip 1.9e-7 (cell read) and 2.0e-7 (point read) of m at stage 1's cell, two snaps each (1.2e-7 at the second), the sweep's sides extrapolated 1.2e-6 and 5.5e-7; the review's mid-interval pair 3.6e-5 (the slope); wobble 3.4e-4 and 8.1e-4 (run 43239921793); CI stale_given 5/5, clean 0/5 (run 43240080205); resolution a lag of 1e-5 cells or less, the scan's floor (run 43240586519)",
+    "gate_10_dropped_history": "held as predicted (run 43244149545): clean largest |F / F_ref - 1| 1.92 % (lambda 4.97), 0.62 % (2.48), 3.18 % (0.79), the cold columns within 1.4e-8 of the warm-column run; history dropped -14.6 % (caught 2/2), -12.8 % (caught 2/2), and at 0.79 a final -1.01 % within the line (caught 0/2: there the gate cannot see the history at this box); clean 0/2 at each",
+    "bits": "held: 62 switch configurations, every array equal, base release 9ff1ca1 against the head, one job, one thread (run 43240217752)"
+  }
+}
