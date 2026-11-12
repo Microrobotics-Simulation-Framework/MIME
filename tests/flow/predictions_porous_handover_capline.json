@@ -53,5 +53,17 @@
     "if_wrong": "as gate_line_periodic",
     "cannot_discriminate_if": "every arm converges"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after run 43247885625 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43247885625); the predictions above are unchanged",
+    "gate_line_periodic": {
+      "result": "as predicted at D/h 8, 16 and 32; missed at D/h 64 (0.03 converged on 5 of 5, predicted none)",
+      "measured": "converged draws (most iterations): 0.1h: D/h 8: 0.003 5/10 (the rest stagnated, residual 0.68 to 1), 0.01 10/10 (1,488); D/h 16: 0.003 0/10, 0.01 10/10 (3,368), 0.03 10/10 (1,156); D/h 32: 0.01 0/10 (at the cap, residual 1.1e-6 to 8.9e-6), 0.03 10/10 (2,287), 0.1 10/10 (710); D/h 64: 0.03 5/5 (4,632), 0.1 5/5 (1,405). 0.01h: D/h 8: 0.003 0/10, 0.01 10/10 (1,379); D/h 16: 0.003 0/10, 0.01 10/10 (3,031), 0.03 10/10 (1,092); D/h 32: 0.01 0/10 (at the cap), 0.03 10/10 (2,249), 0.1 10/10 (1,015); D/h 64: 0.03 5/5 (4,511), 0.1 5/5 (2,026). The reading against the series closed form at the line (converged): 0.1h -4.3 to -6.8 % (D/h 8), -1.5 to -1.9 % (16), -0.4 to -0.5 % (32), -0.1 to -0.2 % (64 at 0.1); 0.01h -3.9 to -5.3 %, -1.3 to -1.6 %, -0.3 to -0.5 %, -0.1 to -0.2 %",
+      "what_it_means": "the line at the default cap: 0.01 at D/h 8 and 16, 0.03 at 32, at both interiors. At D/h 64 the five draws' periods reached only 3.05 of the drawn 2 to 4 diameters and the count rose with the period to within 8 % of the cap, so 0.03's 'every draw' does not cover the drawn range: a supplement over periods 3.5 to 4 (predictions_porous_handover_capline64.json) decides the D/h 64 row; until it does the row is 0.1, which converged with the count a third of the cap"
+    },
+    "gate_line_open_32": {
+      "result": "as predicted",
+      "measured": "0.01: the fixed inflow converged on 2 of 10 (0.1h) and 5 of 10 (0.01h), the rest at the cap; 0.03 and 0.1: 10 of 10 in each of the fixed inflow, the given pressure and the gap at both interiors (at most 2,040 iterations at 0.03)",
+      "what_it_means": "the open vessel's line at D/h 32 is 0.03 at either interior; with D/h 8 to 16's 0.01, measured at D/h 8 to 32"
+    }
+  }
 }

@@ -30,6 +30,7 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Mapping, Sequence
+from functools import cached_property
 from types import MappingProxyType
 from typing import Any, ClassVar, NamedTuple, override
 
@@ -47,7 +48,7 @@ from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negativ
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
-    FlowFields, FlowRecords, check_deliveries, porous_leaf, porous_role
+    FlowFields, FlowRecords, PorousStep, check_deliveries, porous_leaf, porous_role
 from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, port_law_named, \
     port_system, reference_of, well_posed
@@ -262,25 +263,37 @@ class OpenFlowNode(ImplicitFlowNode):
                           ((0.0, 0.0, 0.0),))]
 
     @override
-    def through_plug(self, p: Mapping[str, Any], grid: MACGrid, gaps: Sequence[Array]) -> list[Array]:
-        """A region closing the lumen (no gap, in the program) whose branch every path from an opening whose law fixes
-        its flux to every other opening crosses (:meth:`plugged_paths`, at the build's geometry)."""
-        return [jnp.asarray(plugged) & ~gap for plugged, gap in zip(self.plugged_paths(), gaps, strict=True)]
+    def through_plug(self, closing: Sequence[Array]) -> list[Array]:
+        """Whether a law fixes the flux through each region, from the vessel's topology at the build's geometry for
+        the set of regions the program finds below the line closing the lumen (``closing``): every such region's
+        branch cut at once (``_porous.forced_table``, :meth:`porous_topology`)."""
+        table = jnp.asarray(self.porous_topology_held[1])
+        index = sum((jnp.asarray(c).astype(jnp.int32) << k for k, c in enumerate(closing)), jnp.asarray(0, jnp.int32))
+        row = table[index]
+        return [row[k] for k in range(len(closing))]
 
-    def plugged_paths(self) -> tuple[bool, ...]:
-        """Per porous region, at the build's geometry: whether every path through the lumen (the cells inside every
-        solid, joined through their faces) from an opening whose law fixes its flux (an inflow, a closed valve) to every
-        other opening crosses the region's branch, the lumen's part across the box's axis at the cell layer of the
-        region's centre that its disc meets (``_porous.branch_cut``, ``_porous.isolated``)."""
+    @override
+    def series_pairs(self) -> np.ndarray:
+        """Which regions share a flow path in the vessel, pairwise (``_porous.series_pairs``, :meth:`porous_topology`)."""
+        return self.porous_topology_held[0]
+
+    @cached_property
+    def porous_topology_held(self) -> tuple[np.ndarray, np.ndarray]:
+        """:meth:`porous_topology`, made once (the build's geometry does not change)."""
+        return self.porous_topology()
+
+    def porous_topology(self) -> tuple[np.ndarray, np.ndarray]:
+        """At the build's geometry, each porous region's branch cut (the lumen's part across the box's axis at the cell
+        layer of its centre that its disc meets, ``_porous.branch_cut``; the lumen, the cells inside every solid,
+        joined through their faces) read against the openings (each opening's lumen cells on its patch, its law's row:
+        a flux or a pressure): which regions share a flow path (``_porous.series_pairs``) and, for each set of them
+        that may lie below the line closing the lumen, which a law forces flow through (``_porous.forced_table``)."""
         import jax
 
         from mime.nodes.flow.fvm._open import LOW
-        from mime.nodes.flow.fvm._porous import branch_cut, isolated
+        from mime.nodes.flow.fvm._porous import branch_cut, forced_table, series_pairs
 
-        fixing = [k for k, row in enumerate(self.rows()) if row is RowKind.FLUX]
         count = len(self.porous_laws)
-        if not fixing or not count:
-            return (False,) * count
         c = self.constants()
         with jax.ensure_compile_time_eval():
             grid = self.open_grid(c)
@@ -300,7 +313,7 @@ class OpenFlowNode(ImplicitFlowNode):
             layer = 0 if plane == LOW else lumen.shape[2] - 1
             touch[:, :, layer] = lumen[:, :, layer] & patches[k]
             touches.append(touch)
-        plugged: list[bool] = []
+        cuts: list[np.ndarray] = []
         for index in range(count):
             centre = np.asarray(c[porous_leaf(index, "centre")], dtype=float)
             axis = np.asarray(c[porous_leaf(index, "axis")], dtype=float)
@@ -310,9 +323,9 @@ class OpenFlowNode(ImplicitFlowNode):
             offset = held[:, :, layer] - centre
             along = offset @ axis
             across = np.sum(offset * offset, axis=-1) - along * along
-            disc = across <= max(radius, 0.5 * h) ** 2
-            plugged.append(isolated(lumen, touches, fixing, branch_cut(lumen, disc, layer)))
-        return tuple(plugged)
+            cuts.append(branch_cut(lumen, across <= max(radius, 0.5 * h) ** 2, layer))
+        fixes = [row is RowKind.FLUX for row in self.rows()]
+        return series_pairs(lumen, touches, cuts), forced_table(lumen, touches, fixes, cuts)
 
     def laws(self) -> list[PortLaw]:
         return [port_law_named(law) for law in self.constants()["opening_laws"]]
@@ -505,8 +518,9 @@ class OpenFlowNode(ImplicitFlowNode):
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})
         if self.porous_laws:
             delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
-            ended.update(self.porous_report(p, grid, fields, operator(stage.shift)(stage.solved),
-                                            _add(stage.rhs, ports.force), ended_velocity, delivered, dtype))
+            ended.update(self.porous_report(p, grid, fields, state, PorousStep(
+                operator(stage.shift)(stage.solved), _add(stage.rhs, ports.force), stage.rhs, sigma, ended_velocity,
+                delivered, reported), dtype))
         held = node_fields(ended)
         energy: dict[str, Array] = {}
         if self.metered:

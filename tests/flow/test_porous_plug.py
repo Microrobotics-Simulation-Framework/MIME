@@ -280,17 +280,18 @@ def test_float32_gives_the_plugs_flux_within_its_rounding_of_float64(case):
 def test_the_build_report_says_where_the_plugs_layer_is_under_a_cell_and_which_route_its_flux_takes():
     h = 1.0 / 16
     said = {}
-    for root, interior in ((2.0, "0.1h"), (0.1, "0.1h"), (0.005, "0.1h"), (0.005, "0.01h"), (0.002, "0.1h")):
+    for root, interior in ((2.0, "0.1h"), (0.1, "0.1h"), (0.02, "0.1h"), (0.005, "0.01h"), (0.005, "0.1h")):
         node = plug_node(16, [dict(radius=R, length=1.0, permeability=(root * h) ** 2)], length_cells=4,
                          interior=interior)
         said[root, interior] = [line for line in node.built_lines(None, None) if LAW in line]
     assert said[2.0, "0.1h"] == []
     resolved = "its throughflow is resolved two-way"
     assert len(said[0.1, "0.1h"]) == 1 and resolved in said[0.1, "0.1h"][0]
-    assert len(said[0.005, "0.1h"]) == 1 and resolved in said[0.005, "0.1h"][0]
-    # Below the hand-over's line: held as a wall at the line's permeability, read one way, the line's runs named.
-    assert all(len(said[key]) == 1 and "below the hand-over's line" in said[key][0] and "43159332258" in said[key][0]
-               for key in ((0.005, "0.01h"), (0.002, "0.1h")))
+    assert len(said[0.02, "0.1h"]) == 1 and resolved in said[0.02, "0.1h"][0]
+    # Below the hand-over's line at D/h 16 (0.01 with either interior): held as a wall at the line's permeability, read
+    # one way, the line's run named.
+    assert all(len(said[key]) == 1 and "below the hand-over's line" in said[key][0] and "43247885625" in said[key][0]
+               for key in ((0.005, "0.01h"), (0.005, "0.1h")))
 
 
 def _codes(exp) -> set[str]:

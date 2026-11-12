@@ -137,3 +137,20 @@ def _plan_refusals(tree: TubeTree) -> list:
     except BuildRefused as refused:
         return list(refused.refusals)
     return []
+
+
+def test_a_porous_plug_in_a_tree_is_refused_with_its_route():
+    """No hand-over line was measured in a tube tree (it is per box type: a periodic straight tube, an open vessel), so
+    a plug there is refused, not given another box's line."""
+    from mime.interactions import Darcy
+    from mime.scene import Plug
+    from mime.units import m2
+
+    experiment = tree_experiment(TubeTree(**PERIODIC))
+    experiment.add_structure(Structure("clot", geometry=Plug(axis=+Z, radius=mm(0.4), length=mm(0.2),
+                                                             centre=mm((0.0, 0.0, 0.5)))))
+    experiment.declare("clot.permeability", m2(1e-14), reason="a dense clot's")
+    experiment.attach(Darcy(), medium="water", structure="clot")
+    with pytest.raises(BuildRefused) as refused:
+        experiment.build()
+    assert "flow.porous-tree" in _codes(refused)

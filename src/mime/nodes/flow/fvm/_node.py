@@ -66,11 +66,12 @@ from mime.nodes.flow.fvm._band import PorousRegion, TreeSolid, TubeSolid, WallFi
     negative_resistivity, plan_rung, ramp, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
+from mime.nodes.flow.fvm._porous import Handover
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
-from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, DEFAULT_CAP, REPORT_FIELDS, REPORT_SIZE, Stopping, \
-    default_tolerance, preconditioner_named, projected_solve, recheck_stopping, stagnation_window
+from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, DEFAULT_CAP, REPORT_SIZE, Stopping, default_tolerance, \
+    preconditioner_named, projected_solve, recheck_stopping, stagnation_window
 from mime.registry import Problem
 
 EQUATIONS = (r"\frac{\mathbf{u}_{n+1} - \mathbf{u}_{n}}{h} = -\nabla \cdot \left( \mathbf{u}_{n} \mathbf{u}_{n} \right) + "
@@ -171,6 +172,12 @@ class FlowFields(TypedDict):
     porous_seepage: NotRequired[ReadOnly[Annotated[Float[Array, "n"], Units("m/s")]]]  # noqa: F722 - a jaxtyping shape
     #: With porous regions, whether a law forced flow through one below the line (``_porous.forced_through``).
     forced_flagged: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    #: With porous regions, whether one below the line closing the lumen shared a flow path with another at the step
+    #: (``_porous.in_series``), which the run refuses (flow.porous-series).
+    porous_series: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    #: With porous regions, how many steps' velocity went not finite from a finite start, drive and resistivity: the
+    #: solve's own, which the run refuses (flow.porous-solve-not-finite).
+    porous_not_finite: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class FlowState(FlowFields, closed=True):
@@ -223,8 +230,29 @@ class StepParts(NamedTuple):
     energy: Mapping[str, Array]
 
 
+class PorousStep(NamedTuple):
+    """What a flow holding porous regions reads of its step for their report (``ImplicitFlowNode.porous_report``): the
+    operator applied to the solve's unknown and the right-hand side it was solved against, the right-hand side the step
+    made from its inputs before solving (an open vessel's without its openings' forces, which come out of the solve),
+    the resistivity, the step's velocity, the body force delivered to the fluid (m/s^2) and the box's axial flux as the
+    flow reports it."""
+
+    applied: Velocity
+    rhs: Velocity
+    given: Velocity
+    sigma: Velocity
+    velocity: Velocity
+    delivered: Array
+    reported: Array
+
+
 def _velocity(state: Mapping[str, Array]) -> Velocity:
     return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+
+
+def all_finite(*arrays: Array) -> Array:
+    """Whether every value of every array is finite."""
+    return jnp.all(jnp.stack([jnp.all(jnp.isfinite(array)) for array in arrays]))
 
 
 def porous_role(index: int) -> str:
@@ -273,7 +301,8 @@ class ImplicitFlowNode(MimeNode):
     #: The state field the run reads between chunks for the step the CFL check stopped it at.
     STOP_FIELD: ClassVar[str] = STOP_FIELD
     rechecks: ClassVar[bool] = True
-    #: The box type whose hand-over line the node's porous regions are held and read at (``_porous.HANDOVER_LINE``).
+    #: The box type whose hand-over line the node's porous regions are held and read at (``_porous.HANDOVER_LINE``);
+    #: a tube tree's box has none (:meth:`handover`).
     HANDOVER_BOX: ClassVar[str] = "periodic"
 
     meta = NodeMeta(
@@ -614,11 +643,12 @@ class ImplicitFlowNode(MimeNode):
         from mime.nodes.flow.fvm._porous import held_permeability
 
         images = self.porous_images(grid)
-        interior = str(self.constants()["interior"])
+        handover = self.handover()
+        line = handover.line if handover is not None else None
         regions: list[PorousRegion] = []
         for index in range(len(self.porous_laws)):
             leaves = {name: as_run_array(p[porous_leaf(index, name)]) for name in POROUS_LEAVES}
-            held = held_permeability(leaves["permeability"], grid.spacing, interior, self.HANDOVER_BOX)
+            held = held_permeability(leaves["permeability"], grid.spacing, line)
             regions.append(PorousRegion(**{**leaves, "centre": self.porous_centre(leaves["centre"], grid),
                                            "permeability": held}, images=images))
         return regions
@@ -711,53 +741,81 @@ class ImplicitFlowNode(MimeNode):
             fluxes.append(jnp.sign(axis[2]) * h * h * jnp.sum(share * plane * w))
         return fluxes
 
-    def through_plug(self, p: Mapping[str, Any], grid: MACGrid, gaps: Sequence[Array]) -> list[Array]:
-        """Whether a law fixes the flux through each porous region: every path through the lumen from an opening whose
-        law fixes its flux to every other opening passes through it. A periodic box has no opening, so none does."""
-        del p, grid
-        return [jnp.asarray(False) for _ in gaps]
+    def handover(self) -> Handover | None:
+        """The hand-over at the build (``_porous.handover_of``): the line of the node kind's box type
+        (:attr:`HANDOVER_BOX`) at its interior and its lumen's D/h; none in a tube tree's box, where no line was
+        measured."""
+        from mime.nodes.flow.fvm._porous import handover_of
+
+        if self.walled_by_tree:
+            return None
+        c = self.constants()
+        return handover_of(self.HANDOVER_BOX, str(c["interior"]), 2.0 * float(c["tube_radius"]) / float(c["spacing"]))
+
+    def through_plug(self, closing: Sequence[Array]) -> list[Array]:
+        """Whether a law fixes the flux through each porous region (``_porous.forced_by``), given which lie below the
+        line closing the lumen (``closing``, in the program). A periodic box has no opening, so none does."""
+        return [jnp.asarray(False) for _ in closing]
+
+    def series_pairs(self) -> np.ndarray:
+        """Which porous regions share a flow path, pairwise (``_porous.series_pairs``): in a periodic box's one tube,
+        every two."""
+        count = len(self.porous_laws)
+        return ~np.eye(count, dtype=bool)
 
     def holds_bodies(self) -> bool:
         """Whether the box holds resolved bodies, whose displacement the forced-flow test does not see."""
         return False
 
-    def porous_report(self, p: Mapping[str, Any], grid: MACGrid, fields: WallFields, applied: Velocity,
-                      rhs: Velocity, velocity: Velocity, delivered: Array, dtype: Any) -> dict[str, Array]:
-        """The state fields a flow holding porous regions adds: their face pressures, each one's throughflow by its
-        route and its seepage velocity, and the flags (``_porous``'s hand-over). ``velocity`` is the step's solution,
-        ``delivered`` the body force on the fluid (m/s^2)."""
+    def porous_report(self, p: Mapping[str, Any], grid: MACGrid, fields: WallFields, state: Mapping[str, Array],
+                      step: PorousStep, dtype: Any) -> dict[str, Array]:
+        """The state fields a flow holding porous regions adds (``_porous``'s hand-over): their face pressures, each
+        one's throughflow by its route and its seepage velocity, the flags, ``lumen_flux`` counting each region below
+        the line at its reading in place of the held flux through it, whether one below the line closing the lumen
+        shared a flow path with another (refused), and the count of steps whose velocity went not finite from a
+        finite start (refused)."""
         from mime.nodes.flow.fvm._porous import FORCED_FLAG, POROUS_FLAG, darcy_reading, forced_through, \
-            handed_over, porous_flagged
+            handed_over, in_series, porous_flagged
 
         c = self.constants()
-        interior = str(c["interior"])
-        faces = self.porous_face_pressures(p, grid, applied, rhs)
+        handover = self.handover()
+        line = handover.line if handover is not None else None
+        faces = self.porous_face_pressures(p, grid, step.applied, step.rhs)
         areas, gaps = self.porous_sections(p, grid)
         own = self.permeabilities(p)
-        sections = self.porous_section_fluxes(p, grid, fields, velocity)
-        through = self.through_plug(p, grid, gaps)
+        sections = self.porous_section_fluxes(p, grid, fields, step.velocity)
+        handed = [handed_over(k, grid.spacing, line) for k in own]
+        closing = [held & ~gap for held, gap in zip(handed, gaps, strict=True)]
+        through = self.through_plug(closing)
         rho, mu = as_run_array(p["density"]), as_run_array(p["viscosity"])
         width = band_named(c["band"]).width * grid.spacing
         tolerance = as_run_array(p["tolerance"])
         fluxes: list[Array] = []
         forced: list[Array] = []
+        held_over = jnp.zeros((), dtype=faces.dtype)
         for index, region in enumerate(self.porous_regions(p, grid)):
             axis = jnp.asarray(region.axis, dtype=faces.dtype)
             axis = axis / jnp.sqrt(jnp.sum(axis * axis))
-            drive = rho * jnp.sum(jnp.asarray(delivered, dtype=faces.dtype) * axis) * (region.length + width)
+            drive = rho * jnp.sum(jnp.asarray(step.delivered, dtype=faces.dtype) * axis) * (region.length + width)
             drop = faces[index, 0] - faces[index, 1] + drive
             reading = darcy_reading(own[index], areas[index], region.length, drop, mu)
-            handed = handed_over(own[index], grid.spacing, interior, self.HANDOVER_BOX)
-            fluxes.append(jnp.where(handed, reading, sections[index]))
+            fluxes.append(jnp.where(handed[index], reading, sections[index]))
+            held_over = held_over + jnp.where(handed[index], sections[index] - reading, 0.0)
             scale = jnp.abs(faces[index, 0]) + jnp.abs(faces[index, 1]) + jnp.abs(drive)
-            forced.append(forced_through(through[index], handed, sections[index], reading, drop, scale, tolerance))
+            forced.append(forced_through(through[index], handed[index], sections[index], reading, drop, scale,
+                                         tolerance))
         flux = jnp.stack(fluxes)
         area = jnp.stack(areas)
-        flagged = porous_flagged(own, gaps, grid.spacing, interior, self.HANDOVER_BOX, self.holds_bodies())
+        flagged = porous_flagged(own, gaps, grid.spacing, handover, self.holds_bodies())
+        began = all_finite(*_velocity(state), *step.given, *step.sigma)
+        went = began & ~all_finite(*step.velocity)
         return {"porous_face_pressure": faces.astype(dtype), POROUS_FLAG: flagged.astype(dtype),
                 "porous_flux": flux.astype(dtype),
                 "porous_seepage": jnp.where(area > 0.0, flux / jnp.where(area > 0.0, area, 1.0), 0.0).astype(dtype),
-                FORCED_FLAG: jnp.any(jnp.stack(forced)).astype(dtype)}
+                FORCED_FLAG: jnp.any(jnp.stack(forced)).astype(dtype),
+                "lumen_flux": (step.reported - held_over).astype(dtype),
+                "porous_series": in_series(self.series_pairs(), closing).astype(dtype),
+                "porous_not_finite": (jnp.asarray(state["porous_not_finite"]) + went.astype(dtype)).astype(dtype)}
 
     def permeabilities(self, p: Mapping[str, Any]) -> list[Array]:
         """Each porous region's permeability as the step reads it (m^2)."""
@@ -920,6 +978,8 @@ class ImplicitFlowNode(MimeNode):
             common["porous_flux"] = jnp.zeros(len(self.porous_laws), dtype=dtype)
             common["porous_seepage"] = jnp.zeros(len(self.porous_laws), dtype=dtype)
             common["forced_flagged"] = z
+            common["porous_series"] = z
+            common["porous_not_finite"] = z
         return common
 
     @override
@@ -1001,8 +1061,9 @@ class ImplicitFlowNode(MimeNode):
             negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype))
         if self.porous_laws:
             delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
-            ended.update(self.porous_report(p, grid, fields, operator(stage.shift)(stage.solved), stage.rhs,
-                                            ended_velocity, delivered, dtype))
+            ended.update(self.porous_report(p, grid, fields, state, PorousStep(
+                operator(stage.shift)(stage.solved), stage.rhs, stage.rhs, sigma, ended_velocity, delivered, reported),
+                dtype))
         held = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
             TreeFlowState(**ended, **self.wall_report(fields.counts)))
         if self.metered:
@@ -1248,33 +1309,55 @@ class ImplicitFlowNode(MimeNode):
                        for index in range(len(self.porous_laws))]
             p = self._step_constants(None)
             gaps = [bool(gap) for gap in self.porous_gaps(p, self.grid(p))]
-            lines += porous_lines(self.porous_laws, regions, gaps, float(c["spacing"]), str(c["interior"]),
-                                  self.HANDOVER_BOX)
+            lines += porous_lines(self.porous_laws, regions, gaps, float(c["spacing"]), self.handover())
         return lines
 
     def porous_not_finite(self, state: Mapping[str, Any]) -> Problem | None:
-        """``flow.porous-solve-not-finite``: in a flow holding porous regions, a solve whose residual went not finite
-        at some step of the run (``solve_report_sum``'s count; its step's velocity NaN). A region below the hand-over's
-        line is held at the line's permeability, the solve's stiffest term, so the line's held solve is named with its
-        box type, and the route: the stiffer interior, whose line's solve converged in every box measured."""
-        from mime.nodes.flow.fvm._porous import BOX_NAMES, HANDOVER_LINE
+        """``flow.porous-solve-not-finite``: in a flow holding porous regions, a step whose velocity went not finite from
+        a finite start, right-hand side and resistivity (``porous_not_finite``'s count): the solve's own, never a value
+        it was given (that is the run's own refusal's, run.non-finite, naming the first node and field). Worded by the
+        regions' route at the build: a region below the hand-over's line is held at the line's permeability, the solve's
+        stiffest term."""
+        from mime.nodes.flow.fvm._porous import handed_over
 
-        counts = np.asarray(state.get("solve_report_sum", np.zeros(REPORT_SIZE)), dtype=float)
-        stops = counts[REPORT_FIELDS.index("not_finite")]
-        if not self.porous_laws or not stops > 0.0:
+        count = float(np.asarray(state.get("porous_not_finite", 0.0)))
+        if not self.porous_laws or not count > 0.0:
             return None
-        interior = str(self.constants()["interior"])
-        line = HANDOVER_LINE[self.HANDOVER_BOX][interior]
+        c = self.constants()
+        handover = self.handover()
+        below = handover is not None and any(
+            bool(handed_over(float(c[porous_leaf(index, "permeability")]), float(c["spacing"]), handover.line))
+            for index in range(len(self.porous_laws)))
+        held = (f"below {handover.stated()}, the solve holds a region at the line's permeability, its stiffest term, "
+                f"and here that held solve did not stay finite (a box unlike those the line was measured converging in)"
+                if below and handover is not None else
+                "every region was resolved two-way at its own permeability (at the build's values), and its solve did "
+                "not stay finite")
         return Problem("flow.porous-solve-not-finite",
-                       f"the flow holds the porous regions {', '.join(self.porous_laws)}, and its solves went not "
-                       f"finite {int(stops)} time(s) in the run, each of a step's solves counted (its residual no "
-                       f"longer a number, that step's velocity NaN): below the hand-over's line, sqrt(K)/h {line:g} with the {interior} interior in "
-                       f"{BOX_NAMES[self.HANDOVER_BOX]}, the solve holds a region at the line's permeability, its "
-                       f"stiffest term, and here that held solve did not stay finite (a box unlike those the line was "
-                       f"measured converging in), or a value in the step's drive was not a number",
-                       "build the flow with the stiffer interior, FVM(wall=Band(delta_in=0.01)), whose line's held "
-                       "solve converged in every box measured; or a spacing at which each region's sqrt(K)/h is above "
-                       "the line, which resolves it two-way; and check that the step's inputs are finite")
+                       f"the flow holds the porous regions {', '.join(self.porous_laws)}, and at {int(count)} step(s) "
+                       f"its velocity went not finite though the step began finite, with a finite drive and "
+                       f"resistivity: {held}",
+                       "build the flow with the stiffer interior, FVM(wall=Band(delta_in=0.01)); or a spacing at which "
+                       "each region's sqrt(K)/h is at or above the line there (the line rises with D/h), which "
+                       "resolves it two-way")
+
+    def porous_series_problem(self, state: Mapping[str, Any]) -> Problem | None:
+        """``flow.porous-series``: a region below the hand-over's line closing the lumen shared a flow path with another
+        porous region at some step (``porous_series``): the held region passes the line's flux, which every region in
+        its path carries, so neither's throughflow, nor the box's, is the plugs'."""
+        if not self.porous_laws or not float(np.asarray(state.get("porous_series", 0.0))) > 0.0:
+            return None
+        handover = self.handover()
+        line = f" ({handover.stated()})" if handover is not None else ""
+        return Problem("flow.porous-series",
+                       f"the flow holds the porous regions {', '.join(self.porous_laws)} in one flow path, and one "
+                       f"lay below the hand-over's line{line} closing the lumen: the solve holds it at the line's "
+                       f"permeability, a wall to within the flux it passes, and that held flux is what every other "
+                       f"region in its path carries, so each one's reading takes a drop the other shares (two plugs in "
+                       f"series read 88 and 0.88 times the closed form, unflagged, before this refusal)",
+                       "hold one plug a flow path (each in its own run, the denser alone), or resolve every region "
+                       "two-way: a spacing at which each region's sqrt(K)/h is at or above the line there (the line "
+                       "rises with D/h, so a coarser spacing lifts a region toward it)")
 
     @override
     def recheck_route(self, cause: str, dtype: str) -> str:
@@ -1305,9 +1388,10 @@ class ImplicitFlowNode(MimeNode):
         that is not finite is the run's own refusal's to name (the first node and field that went so), so none here,
         unless a porous region's permeability was not a finite number above zero where it was sampled
         (``negative_resistivity``), which is named first: its resistivity is then no drag, whatever the run did with
-        it; or, in a flow holding porous regions, a solve went not finite at some step (``solve_report_sum``'s count),
-        whose region the solve holds at the line's stiffness below it: never a flag on a finished run, whether or not
-        a later step came back finite (:meth:`porous_not_finite`)."""
+        it; or, in a flow holding porous regions, a step's velocity went not finite from a finite start, drive and
+        resistivity (the solve's own: never a flag on a finished run, whether or not a later step came back finite,
+        :meth:`porous_not_finite`), or a region below the line closing the lumen shared a flow path with another
+        (:meth:`porous_series_problem`), each named before the CFL's stop."""
         if self.porous_laws and float(np.asarray(state.get("negative_resistivity", 0.0))) > 0.0:
             return Problem("flow.permeability-not-positive",
                            f"a porous region's permeability ({', '.join(self.porous_laws)}) was not a finite number "
@@ -1315,9 +1399,12 @@ class ImplicitFlowNode(MimeNode):
                            f"the run held it (a declared range's, a study's or a fit's) is a basic mistake",
                            "give each porous region a permeability above zero, exp.declare('<structure>.permeability', "
                            "...), and keep a range or a study's values above zero")
+        porous = self.porous_not_finite(state) or self.porous_series_problem(state)
+        if porous is not None:
+            return porous
         step = int(np.asarray(state[STOP_FIELD])) if STOP_FIELD in state else -1
         if step < 0 or not all(np.isfinite(np.asarray(state[f"velocity_{c}"])).all() for c in "xyz"):
-            return self.porous_not_finite(state)
+            return None
         cfl = float(np.asarray(state["stopped_cfl"]))
         c = self.constants()
         line = float(self.scheme.cfl_limit((1.0, 1.0, 1.0) if self.walled_by_tree else c["tube_axis"]))
@@ -1351,5 +1438,5 @@ def check_deliveries(held: Sequence[books.LedgerDelivery], hosted_fields: Sequen
 
 __all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "POROUS", "POROUS_LEAVES", "STALL_SECTION", "STOKES_REYNOLDS",
            "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
-           "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries", "porous_leaf", "porous_leaves",
+           "MeteredTreeFlowState", "PorousStep", "StepParts", "TreeFlowState", "all_finite", "check_deliveries", "porous_leaf", "porous_leaves",
            "porous_role"]
