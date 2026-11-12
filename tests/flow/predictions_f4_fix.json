@@ -262,5 +262,87 @@
     "if_wrong": "a flag at ratio 1 means the ratio is not the mass over rho V",
     "cannot_discriminate_if": "both raise it, or neither"
   },
+  "amendment_4": "2026-11-12, committed before the gates below ran: gate 2 re-measured at the default N = 6 with its metric changed, gate 2b (B1's lagged edge at rest at the refusal's line) and B1's refusal",
+  "gate_2_at_n6": {
+    "claim": "Gate 2 re-measured at the default N = 6: R3's case at Re 76 (dt 7.5e-5 s), ratios 0.3 and 1.4, runs 200 steps unstopped, finite, the body under twice the flow's largest speed. Its metric changed: the old one (four alternating changes in a row) read a decaying start-up ring as unstable at ratio 0.3, and no growth metric of the body's velocity discriminates in a run driven at Re 76, so stability is judged at rest (gate 2b)",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_r3_runs_unstopped_and_bounded_at_the_default_n",
+    "operating_point": "both dtypes; N = 6, IMEX Euler, Re 76, dt 7.5e-5 s",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "ran and bounded",
+      "basis": "measured-before (the second edge probe's gate 2 arms, run 43136806547: 200 steps unstopped at N = 6, both ratios, both dtypes; the old metric's longest alternating run 5 at ratio 0.3)",
+      "why": "dt/tau_t 0.10 and 0.02, well inside the edges measured at rest"
+    },
+    "metric": "the run's completion (no stop), finiteness and max|V| < 2 max|u|",
+    "control": {
+      "plant": "the body's load reversed (MIME_PLANT_LOAD_SIGN): the body runs away and is stopped or exceeds the bound",
+      "environment_variable": "MIME_PLANT_LOAD_SIGN",
+      "expected_rate": "N/N",
+      "runs": 3,
+      "clean_expected": "0/N",
+      "resolution": "n/a: a stop or a bound"
+    },
+    "if_wrong": "a stop at N = 6 inside the measured edges means the edge moves with Re",
+    "cannot_discriminate_if": "a slow growth too slow to reach a stop in 200 steps: that is gate 2b's to see, at rest"
+  },
+  "gate_2b_lagged_edge_at_rest": {
+    "claim": "At the largest step the lagged refusal admits (its margin's share of the edge measured at N = 6, the binding mode's), R3's uniform sphere at a density ratio of 0.3 at rest decays: its kinetic energy over the last quarter is under its start's",
+    "kind": "bounds",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_lagged_loop_at_rest_decays_at_the_largest_step_the_refusal_admits",
+    "operating_point": "both dtypes; N = 6, IMEX Euler, quiescent, 160 steps",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        0.1
+      ],
+      "unit": "the energy over its start's",
+      "basis": "measured-before (the third edge probe's brackets: E/E0 1e-8 to 1e-3 at the stable end at N = 3)",
+      "why": "at 0.8 of the stable end every mode decays"
+    },
+    "metric": "max E over the last quarter / E(0)",
+    "control": {
+      "plant": "the step a quarter past the measured edge (MIME_PLANT_PAST_EDGE; the refusal set aside): the energy grows past its start's or the motion guard stops the run",
+      "environment_variable": "MIME_PLANT_PAST_EDGE",
+      "expected_rate": "N/N",
+      "runs": 3,
+      "clean_expected": "0/N",
+      "resolution": "the bracket's width, 1.06"
+    },
+    "if_wrong": "growth at the admitted step means the margin is too thin or the binding mode is not the one measured",
+    "cannot_discriminate_if": "the plant's step is refused at build (the refusal not set aside)"
+  },
+  "gate_B1_refusal": {
+    "claim": "A step past the lagged coupling's measured edge is refused at build (drag.penalty-lagged), naming the largest step the edges admit and the affine coupling; a body lighter than the least measured ratio is refused",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_step_past_the_lagged_edge_is_refused_naming_the_step_it_admits and ::test_a_body_lighter_than_the_lagged_ranges_edge_is_refused_naming_the_route",
+    "operating_point": "float64; the refuting review's Stokes case (R3, N 3, dt 7e-3 s, ratio 1) and R3 at ratio 0.2",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "refusal codes and text",
+      "basis": "derived",
+      "why": "x_T 2.9 and x_R 3.0 against edges near 0.85 and 0.9 at N 3 ratio 1 with the fluid's inertia stored"
+    },
+    "metric": "the code and its action's text",
+    "control": {
+      "plant": "none: gate 2b's clean arm is the refusal's inside, this its outside",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "no refusal means the table does not reach this point",
+    "cannot_discriminate_if": "n/a"
+  },
   "outcomes": null
 }
