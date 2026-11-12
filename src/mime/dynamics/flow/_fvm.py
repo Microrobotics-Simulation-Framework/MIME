@@ -33,7 +33,8 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
 from mime.nodes.flow.fvm._box import TreeLayout, TubeLayout, period_mismatch, periodic_tree_layout
 from mime.nodes.flow.fvm._band import FLUID_FLOOR
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
-from mime.nodes.flow.fvm._porous import HANDOVER_LINE, GAP_MEASURED_DOWN_TO, POROUS_MEASURED, RESOLVED_CELLS
+from mime.nodes.flow.fvm._porous import GAP_MEASURED_DOWN_TO, HANDOVER_LINE, HANDOVER_MEASURED, POROUS_MEASURED, \
+    RESOLVED_CELLS
 from mime.nodes.flow.fvm._resolved_node import ResolvedFlowNode
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
@@ -370,10 +371,13 @@ class FVM(Dynamics):
         f"on IMEX Euler or its steady limit in a box along z; in the wall's band its share of the fluid over the face's "
         f"fluid fraction (at least {FLUID_FLOOR:g}, declared) and carried into the wall's solid behind it. {POROUS_MEASURED}. "
         f"No OpenMaterica record gives a permeability yet: it is declared. The build reports the run's sqrt(K) in cells "
-        f"where it is under {RESOLVED_CELLS:g}, and says where it is below the range measured (sqrt(K)/h "
-        f"{HANDOVER_LINE['0.1h']:g} with the 0.1h interior, {HANDOVER_LINE['0.01h']:g} with 0.01h) or "
-        f"leaves a gap to the wall under sqrt(K)/h {GAP_MEASURED_DOWN_TO:g}: unmeasured, and the run raises "
-        f"porous_flagged at each such step, with a warning; a plug whose extent along the axis is not under a periodic "
+        f"where it is under {RESOLVED_CELLS:g}, and the route its throughflow takes: resolved two-way at or above the "
+        f"hand-over's line (sqrt(K)/h {HANDOVER_LINE['0.1h']:g} with the 0.1h interior, {HANDOVER_LINE['0.01h']:g} "
+        f"with 0.01h), below it held as a wall at the line's permeability and read one way from its face pressures "
+        f"(porous_flux, porous_seepage). {HANDOVER_MEASURED}. A region leaving a gap to the wall under sqrt(K)/h "
+        f"{GAP_MEASURED_DOWN_TO:g}, or below the line in a box holding a resolved body, is unmeasured, and the run raises "
+        f"porous_flagged at each such step, with a warning; where a law fixes the flux on every path through the plug "
+        f"below the line the run raises forced_flagged, with a warning; a plug whose extent along the axis is not under a periodic "
         f"box's period is refused (flow.porous-period), as is one outside an open vessel's span (flow.porous-outside), "
         f"and a periodic box reads a plug anywhere along the tube at its image in the period",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "

@@ -71,16 +71,17 @@ def line_permeability(dh: int, interior: str) -> float:
 # -- gates 1 and 3: the periodic tube ------------------------------------------------------------------------------
 
 def tube_reading(dh: int, root: float, interior: str, *, length: float = 0.5, period: float = 2.0,
-                 line: float | None = None, cap: int = 20000, dtype_tolerance: float | None = None) -> dict[str, float]:
+                 line: float | None = None, cap: int = 20000, steps: int = 1, **settings: Any) -> dict[str, float]:
     """A plug ``length`` long closing the periodic tube in a period ``period`` (diameters), ``sqrt(K)/h = root``,
-    steady Stokes driven by ``g``: the run's ``lumen_flux``, ``porous_flux`` and flags, against the series closed form;
-    with ``line`` the hand-over's line moved there (:func:`line_at`)."""
+    driven by ``g``, steady Stokes (or ``settings``' scheme, ``steps`` steps): the run's ``lumen_flux``, ``porous_flux``
+    and flags, against the series closed form; with ``line`` the hand-over's line moved there (:func:`line_at`)."""
+    from fvm_cases import run
+
     K = (root / dh) ** 2
     with planted(), (line_at(line) if line is not None else contextlib.nullcontext()):
         node = plug_node(dh, [dict(radius=R, length=length, permeability=K)], length_cells=int(period * dh),
-                         interior=interior, cap=cap,
-                         **({"tolerance": dtype_tolerance} if dtype_tolerance is not None else {}))
-        state = steady(node)
+                         interior=interior, cap=cap, **settings)
+        state = steady(node) if steps == 1 else run(node, steps)
     closed = series_flux(K, length, period)
     report = np.asarray(state["solve_report"], np.float64)
     return {"lumen": float(state["lumen_flux"]) / closed, "reading": float(np.asarray(state["porous_flux"])[0]) / closed,

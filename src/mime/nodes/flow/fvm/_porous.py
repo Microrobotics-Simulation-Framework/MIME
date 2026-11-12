@@ -97,6 +97,20 @@ POROUS_MEASURED = (
     "it, reads up to 5.2 % low at D/h 16, 2.7 % at 32 and 1.4 % at 64, against Brinkman; float32 measured at sqrt(K)/h "
     "0.3 and 1 only; a tube tree holding a plug runs, unmeasured (flagged where sqrt(K)/h is under 1)")
 
+#: What was measured of the hand-over (its gates and probe, GitHub runners, float64 unless named), as the flow's validity
+#: line states it.
+HANDOVER_MEASURED = (
+    "The hand-over below the line: the solve holds a region at the line's permeability, so the outer flow carries the "
+    "flux the held region passes (about 32 K_line / R^2 of the open tube's for a plug a quarter of its period long: "
+    "4.3e-6 / 1.1e-6 at D/h 16 / 32 with 0.1h, 5e-5 / 1.3e-5 with 0.01h), and the reading's error is that held "
+    "region's feedback, about its flux over the outer flow's, beside the face pressures' own error; where both routes "
+    "hold the reading agrees with the resolved throughflow within the held region's feedback and 2 % at D/h 16 "
+    "[MEASURE]; far below the line (sqrt(K)/h 1e-3 to 1e-4) its error against the series closed form is constant in K "
+    "[MEASURE]; a body's displacement is not in the forced-flow test, and a thin gap whose conductance is under the held "
+    "region's acts as forced while the gap rule flags it; the cold steady solve at the line takes some 7,000 to 17,000 "
+    "iterations at D/h 16 to 32 with 0.1h (over the default cap of 5,000, flagged) and stops stagnated on a box two "
+    "diameters long, where IMEX Euler's warm start converges; float32 [MEASURE]")
+
 
 def leaves_a_gap(radius: Any, offset_squared: Any, lumen_radius: Any) -> Any:
     """Whether a region leaves a gap between itself and a straight lumen's wall: its radius under the lumen's, or its
@@ -249,7 +263,7 @@ def porous_lines(laws: Sequence[str], regions: Sequence[Mapping[str, Any]], gaps
 
 
 __all__ = ["DROP_RESOLVED", "FORCED_FLAG", "FORCED_FLAG_MEANING", "FORCED_LINE", "GAP_MEASURED_DOWN_TO",
-           "HANDOVER_LINE", "LOOP_MEASURED", "POROUS_FLAG", "POROUS_FLAG_MEANING", "POROUS_MEASURED", "RESOLVED_CELLS",
+           "HANDOVER_LINE", "HANDOVER_MEASURED", "LOOP_MEASURED", "POROUS_FLAG", "POROUS_FLAG_MEANING", "POROUS_MEASURED", "RESOLVED_CELLS",
            "branch_cut", "darcy_reading", "forced_through", "handed_over", "held_permeability", "isolated",
            "leaves_a_gap", "line_permeability", "outside_measured", "porous_flagged", "porous_lines", "section_area",
            "wall_factor"]
