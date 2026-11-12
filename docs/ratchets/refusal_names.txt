@@ -26,6 +26,8 @@ mermaid.min.js  # the file name of Mermaid's single-file build, shipped in mime/
 mime.asset_adapters  # the entry-point group an asset adapter is registered through
 mime.entries             # the entry-point group a load finds namespaces by
 mime.gaussian_mac        # the exchange law's mapping kind, registered with MADDENING (mime.mappings)
+mime.patch_boundary      # the refinement patch's boundary transfer, a mapping kind registered with MADDENING (mime.mappings)
+mime.patch_read          # the refinement patch's read transfer, a mapping kind registered with MADDENING (mime.mappings)
 model-viewer.min.js  # the web viewer's script, inlined into a page from mime/viz/_viewer/ (mime.viz._web)
 no-locations-file.toml  # the empty locations file the adapter harness points MIME at
 plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
