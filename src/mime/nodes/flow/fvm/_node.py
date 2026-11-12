@@ -636,8 +636,10 @@ class ImplicitFlowNode(MimeNode):
 
     def fields(self, p: Mapping[str, Any], grid: MACGrid) -> WallFields:
         c = self.constants()
-        return wall_fields(grid, self.solids(p, grid), band_named(c["band"]), interior_depth(c["interior"]),
-                           run_dtype(), regions=self.porous_regions(p, grid))
+        held = (grid, self.solids(p, grid), band_named(c["band"]), interior_depth(c["interior"]), run_dtype())
+        regions = self.porous_regions(p, grid)
+        # A flow with no porous region calls the seam as before one existed.
+        return wall_fields(*held, regions=regions) if regions else wall_fields(*held)
 
     @staticmethod
     def kinematic(p: Mapping[str, Any]) -> Array:

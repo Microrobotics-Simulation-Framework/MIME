@@ -8,10 +8,12 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, cast, override
+from typing import Annotated, Any, cast, override
 
+from mime.core import jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL, Direction, DirectionLike, Geometry, Native, convention, register_geometry
+from mime.scene._sampling import length_of, magnitude_of
 from mime.units import Length, Magnitude, Quantity, m
 
 
@@ -50,6 +52,17 @@ class Plug(Geometry):
         if not (isinstance(centre, tuple) and len(centre) == 3):
             found.append(f"centre is {centre!r}, not a point (three lengths)")
         return found
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """The solid cylinder's support, exact: its centre's reach, its radius across the axis and its half length
+        along it."""
+        d = jnp.asarray(direction)
+        axis = jnp.asarray(parameters["axis"], dtype=d.dtype)
+        axis = axis / switch.nonzero_norm(axis)
+        along = jnp.dot(d, axis)
+        return (jnp.dot(d, jnp.asarray(parameters["centre"], dtype=d.dtype)) + parameters["radius"]
+                * length_of(d - along * axis) + parameters["length"] / 2.0 * magnitude_of(along))
 
     @override
     def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:

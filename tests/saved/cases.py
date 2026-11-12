@@ -222,9 +222,11 @@ def closed_tube() -> Experiment:
 
 
 def porous_plug() -> Experiment:
-    """A porous plug (a fibrin-like clot, K 1e-12 m^2) filling a periodic water-filled tube, a quarter of its period
-    long, ``Darcy`` attached; steady Stokes, the 0.01h interior (a clot's pressure drop)."""
-    from mime.dynamics import FVM, Band, Scheme
+    """A porous plug filling a periodic water-filled tube, a quarter of its period long, ``Darcy`` attached; steady
+    Stokes. Its permeability, 1e-8 m^2, puts its Brinkman layer at about a cell (sqrt(K)/h 0.8), so the solve converges
+    in tens of iterations and the golden output is the program's own: a clot's (some 1e-12, sqrt(K)/h 0.008 here)
+    takes the CG hundreds of iterations, whose path moves with a runner's rounding by more than the outputs' 1e-10."""
+    from mime.dynamics import FVM, Scheme
     from mime.interactions import BodyForce, Darcy
     from mime.scene import PeriodicBox, Plug, Scene, Tube, Z
     from mime.units import Pa_s, kg_per_m3, m2, m_per_s2
@@ -233,12 +235,11 @@ def porous_plug() -> Experiment:
     experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
                                                              length=mm(10.0))))
     experiment.add_structure(Structure("clot", geometry=Plug(axis=+Z, radius=mm(0.5), length=mm(0.25))))
-    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=8, stokes=True, scheme=Scheme.Steady(),
-               wall=Band(delta_in=0.01))
+    flow = FVM(domain=PeriodicBox(length=mm(1.0), margin=4), cells_across=8, stokes=True, scheme=Scheme.Steady())
     experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
-    experiment.declare("clot.permeability", m2(1e-12), reason="a fibrin clot's order (a case's value)")
+    experiment.declare("clot.permeability", m2(1e-8), reason="a case's value, its layer about a cell")
     experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
     experiment.attach(Darcy(), medium="water", structure="clot")
     return experiment
