@@ -189,5 +189,83 @@
     "prediction": "every array np.array_equal",
     "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "one leaf one ulp up: arrays differ"}
   },
-  "outcomes": null
+  "outcomes": {
+    "measure_1_resolution": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "plain": "Q/Q_B - 1 at sqrt(K)/h 0.03: +20.6 / +9.8 / +5.2 % at D/h 16 / 32 / 64 (predicted +26.6 / +12.9 / +6.3 %: the mechanism and its first order held, the size about 0.8 of the prediction); at 0.1: +15.9 / +7.6 / +3.8 %",
+      "share": "against Brinkman +1.10 / +0.45 / +0.20 % at sqrt(K)/h 0.03 (predicted under 0.1 %: missed at every D/h, by the unresolved layer's deficit 2 sqrt(K)/R that the discrete flux omits); against Darcy +0.35 / +0.07 / +0.02 %",
+      "profile": "where resolved (sqrt(K)/h 1 and 3) the profile within 0.36 to 1.27 % of the centreline at every D/h (predicted about 2 %: held)",
+      "verdict": "plain refuted as the default (first order, about 2h/R high); the approved share rule right on a body-force-driven plug, superseded by measure 2 of the forms file on a pressure-driven one"
+    },
+    "measure_2_floor": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "value": "the share form, no reach: 0.1h 7.4e-3 / 1.21e-3 / 1.7e-4, 0.01h 8.5e-4 / 2.0e-4 / 1.0e-5 at D/h 16 / 32 / 64 (the D/h 64 0.01h plug solve at its 20000-iteration cap, flagged)",
+      "verdict": "held at 0.1h (within 1.4 times of the spike's occlusion); missed at 0.01h (9.4, 14 and 3.7 times the spike's): the band's solid half and the interior's ramp leak round a plug that stops at the wall, which a wall-material occlusion does not have"
+    },
+    "measure_3_face": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "value": "shift +0.24 / +0.42 / +0.41 cells at sqrt(K)/h 0.03, +0.25 / +0.37 / +0.39 at 0.1, +0.17 / +0.25 / +0.28 at 0.3, -0.004 / +0.08 / +0.11 at 1, -0.14 / -0.01 / +0.02 at 3 (D/h 16 / 32 / 64); the annulus's flux -15 / -13 / -6.8 % at 0.03",
+      "verdict": "the direction held, the size missed (predicted +0.7 to +1.0 at 0.03): the stiff band's wall sits about 0.4 cells outward, not one"
+    },
+    "measure_4_cost": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43076292520",
+      "value": "the finite plug (share form) 406 to 439 iterations against the empty box's 25 at D/h 16 with 0.01h, 954 to 1026 against 51 at 32; with 0.1h 50 to 55 against 25 and 105 to 118 against 51",
+      "verdict": "missed at 0.01h (16 to 20 times, predicted within 2): the plug drives a pressure gradient across the stiff interior, as a stenosis does (the interior spike's 0.01h stenosis 301 / 822); held at 0.1h (2.0 to 2.3 times)"
+    },
+    "note": "the gates run in CI at D/h 16 (their lines 4 %, 2 % and 3 %); the controls' plants are sized above each gate's measured resolution there (predictions_porous_plug_ranges.json), not at the D/h 32 sizes this file's controls name",
+    "gate_1_darcy": {
+      "value": "the parallel form against the series: -1.4 to +1.6 % (D/h 16), -0.3 to +0.9 % (32), 0.0 to +0.6 % (64) for sqrt(K)/h 0.01 to 1 with 0.01h; -1.7 to +2.0 % and -0.3 to +1.4 % with 0.1h at 16 and 32; at 0.003 with 0.1h -1.8 / -0.4 / -0.005 %; the face drop within 3.5 % of Darcy's at the measured flux",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084858227",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123280055"
+      ],
+      "control": "K read 10 % high (the D/h 16 gate at sqrt(K)/h 0.3): 30/30, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218, arm sized); its resolution 2.2 % (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43121427627)",
+      "verdict": "held: within 2 % at D/h 32 and 4 % at 16 (0.01h), and at 0.1h too"
+    },
+    "gate_2_brinkman_profile": {
+      "value": "within 0.92 / 1.04 / 1.03 % of the centreline at sqrt(K)/h 1 and 0.61 / 0.83 / 1.21 % at 3, D/h 16 / 32 / 64",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084858227"
+      ],
+      "control": "K read 10 % high (the D/h 16 gate at sqrt(K)/h 2): 30/30, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218); its resolution 2.6 % (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43121427627)",
+      "verdict": "held within 2 % at every D/h; it does not halve from 16 to 32 (the profile's error is the band's at the wall, about 1 %)"
+    },
+    "gate_3_annulus": {
+      "value": "the total against the composite at sqrt(K)/h 1 / 3: +0.14 / +2.08 % (D/h 16), -1.97 / +0.15 % (32); at 0.1 -16 % (16) and -12 % (32), the face's shift of 0.25 to 0.37 cells: the range's edge, stated in the validity line",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43084858227"
+      ],
+      "control": "the radius read a quarter cell larger (the D/h 16 gate at sqrt(K)/h 1): 30/30, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218); its resolution 0.091 cells (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43121427627)",
+      "verdict": "held at sqrt(K)/h 1 and 3 (within 3 % at D/h 32); below 0.3 the face's shift sets the error, as predicted"
+    },
+    "gate_4_resistivities_add": {
+      "value": "array_equal at every face on every drawn plug (CI)",
+      "control": "the larger of the two in place of the sum: 200/200, clean 0/200 (four arms of 50 seeds each, https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43145020089; the first single arm of 200 was still running after five hours)",
+      "verdict": "held"
+    },
+    "gate_5_positivity": {
+      "value": "flagged at sampling on every drawn K of zero or below or not finite; refused after the run (flow.permeability-not-positive) and when declared (value.not-positive)",
+      "control": "the sampled check removed: 200/200, clean 0/200 (four arms of 50, https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43145020089)",
+      "verdict": "held"
+    },
+    "gate_6_ledger": {
+      "value": "the identity closes with the plug's loss booked under its law, in both dtypes (CI)",
+      "control": "the loss's sign flipped: 30/30 in float64 and 30/30 in float32, clean 0/30 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218, arm ledger); 30 runs, not the 200 named (the case is deterministic)",
+      "verdict": "held"
+    },
+    "gate_7_gradients": {
+      "value": "forward and reverse within 1e-6 (K) and 1e-4 (offset, length) of the central difference (CI, float64)",
+      "control": "stop_gradient on the field: 30/30 in each of K, offset and length, clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43123225218, arm gradients)",
+      "verdict": "held"
+    },
+    "gate_8_float32": {
+      "value": "float32 within 1e-4 of float64 on the finite plug (sqrt(K)/h 0.3) and the annulus (1), D/h 16 (CI)",
+      "verdict": "held at D/h 16; D/h 32 not run in float32"
+    },
+    "bits": {
+      "value": "every saved program with no plug (48 cases, float64 and float32: 96 programs), base d6220d2 against head a4c3ffc, eight steps, every array: all equal (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43124616730); twisted_toy is refused at its build in both trees",
+      "controls": "repeat: 4/4 programs equal; one ulp up: 4/4 differ (11 to 18 arrays each)",
+      "verdict": "held"
+    }
+  }
 }
