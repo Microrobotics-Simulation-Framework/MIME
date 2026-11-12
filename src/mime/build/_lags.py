@@ -10,7 +10,9 @@ A loop closed by a back edge is **planned** when every edge on it that reads the
 published state to the law, provider, dynamics or observation that reads it: each reader takes the state at the start
 of the step, and each dynamics advances with this step's loads. That is what the canonical order builds. One load is
 planned a step late: a chain segment's reaction on the segment it is mounted on, which is built after it (a staggered
-coupling, stated in the report). Any other previous-step read (a delivered load, a field, a command, read a step
+coupling, stated in the report). And one is prepared a step ahead: a flow's response to its Schwarz body, which the flow
+makes at the end of the step before from what was known then and the body reads at the start of its step (the
+staggered order, exact: :data:`PREPARED`). Any other previous-step read (a delivered load, a field, a command, read a step
 late) is refused unless a coupling group closes the loop.
 """
 
@@ -27,6 +29,10 @@ from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 #: The rule the build report states for a planned previous-step read.
 PLANNED = ("a law, provider, dynamics or observation reads the published state of a thing bound to it as it stood at "
            "the start of the step")
+#: The note the build report gives a flow's response to its Schwarz body, read the previous step.
+PREPARED = ("planned: a flow's response and load to its Schwarz body, prepared at the end of the step before from the "
+            "field, the pose and the drive known then, and read by the body at the start of its step (the staggered "
+            "order: the flow composes the body's step after it)")
 #: The note the build report gives a chain segment's reaction, read the previous step.
 STAGGERED = ("planned: a chain segment's reaction loads the segment it is mounted on a step late, what its stator "
              "passed over the step before (a staggered coupling)")
@@ -48,10 +54,11 @@ class EdgeLag:
     lag: Lag
     carries: str
     by: str
+    prepared: bool = False
 
     @property
     def planned(self) -> bool:
-        return self.lag is not Lag.PREVIOUS_STEP or self.carries in (STATE, REACTION)
+        return self.lag is not Lag.PREVIOUS_STEP or self.carries in (STATE, REACTION) or self.prepared
 
     @property
     def text(self) -> str:
@@ -138,7 +145,7 @@ def classify(order: Sequence[str], edges: Sequence[EdgeDecl], groups: Sequence[S
             lag = Lag.PREVIOUS_STEP
         else:
             lag = Lag.THIS_STEP
-        lags.append(EdgeLag(edge.source, edge.target, lag, edge.carries, edge.by))
+        lags.append(EdgeLag(edge.source, edge.target, lag, edge.carries, edge.by, edge.prepared))
     return tuple(lags)
 
 

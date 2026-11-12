@@ -102,7 +102,8 @@ from mime.registry import (
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
 from mime.vocabulary import BACKGROUND_LOAD, EXCHANGE_PARTNER, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
-    FLOW_FACES, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, ONE_PASS_PARTNER, POSE, RESISTANCE, STEP_ROW, TWIST, Capability, \
+    FLOW_FACES, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, ONE_PASS_PARTNER, POSE, RESISTANCE, SCHWARZ_PARTNER, STEP_ROW, \
+    TWIST, Capability, \
     Definiteness, EnergyClass
 from mime.walls import RESERVED
 
@@ -1836,6 +1837,68 @@ class Drag(UncoupledDrag):
         held = cast(object, self.near_field)
         return held if isinstance(held, NearField) else NearField()
 
+    def schwarz(self, ctx: PlanContext) -> bool:
+        """Whether the mrs rung couples to its medium's flow by Schwarz: where the medium's field is solved on a grid
+        that takes exchange partners (the FVM). The user never writes it: the drag law and the medium choose it."""
+        return self.rung == "mrs" and ctx.exchanges.get("medium") is not None
+
+    @override
+    def default_wall_kind(self, ctx: PlanContext) -> str | None:
+        """Free space where the mrs rung couples by Schwarz (the grid carries the walls, C4); else 0.4.0's choice."""
+        if self.schwarz(ctx):
+            return "free_space"
+        return super().default_wall_kind(ctx)
+
+    def _schwarz_plan(self, ctx: PlanContext) -> Plan:
+        """The mrs rung in a medium whose flow the FVM solves: the body registered with the flow as its Schwarz partner
+        (``SCHWARZ_PARTNER``: the flow reads the body's pose and twist after its own step and hands it its response and
+        load, ``mime.nodes.flow.fvm._schwarz_host``), the drag's own node none. The medium's flow is read, so the
+        at-rest refusal does not apply; a near field with a wall of its own is refused (the grid carries the walls);
+        the declared opt-ins of the exchange, one-way and lagged, are not built on this rung yet."""
+        body = ctx.bindings["body"]
+        # The near field is free space by construction: the region's wall kind is the grid's, never the near field's.
+        problems = [problem for problem in self._mrs_problems(ctx)
+                    if problem.code not in ("drag.wall-kind", "drag.wall-range")]
+        written = cast(object, self.wall_kind)
+        if written is not None and _wall_kind(written) != _wall_kind("free_space"):
+            problems.append(Problem(
+                "drag.schwarz-wall-kind",
+                f"wall_kind={written!r} is written, and {body}'s mrs drag couples to its medium's flow, whose grid "
+                f"carries the walls: a wall kind in the near field as well would count the wall twice",
+                "leave wall_kind= out (the near field is then free space, the walls the grid's)"))
+        for name in ("one_way", "coupling"):
+            if getattr(self, name) is not None:
+                problems.append(Problem(
+                    "drag.schwarz-scheme",
+                    f"{name}= is written on {body}'s mrs drag, which couples to its medium's flow one pass (exact): its "
+                    f"declared opt-ins, one-way and lagged, are not built on the mrs rung yet",
+                    f"leave {name}= out for the exact one-pass coupling"))
+        hull = ctx.geometry(of="body")
+        extent = 2.0 * float(hull.kind.enclosing_radius(hull.settings)) if hull is not None else 0.0
+        if not problems and hull is not None and "spacing" in ctx.settings:
+            self._sampled_hull(_owner(self, ctx.bindings), hull, ctx.scalar("spacing"), ctx.settings)
+        return Plan(nodes=(), values=dict(self.values), problems=tuple(problems), assets=self._wall_assets(),
+                    registrations=(Registration("medium", FLOW_PARTNERS.name, SCHWARZ_PARTNER, "body",
+                                                reads={"pose": POSE.name, "twist": TWIST.name},
+                                                returns={"resistance": RESISTANCE.name,
+                                                         "background_load": BACKGROUND_LOAD.name},
+                                                parameters={"extent": extent}),))
+
+    def schwarz_member(self, ctx: BuildContext) -> dict[str, Any]:
+        """The arguments a flow hosting this drag's body as its Schwarz partner gives its near field: the joint near
+        field's (``JointDragNode``) for one member, its wall kind's and the member's own under ``m0_``, the viscosity
+        the flow's own."""
+        arguments = self._mrs_arguments(ctx)
+        for key in ("lubrication", "handover_spacing", "roughness_body", "roughness_wall", "near_contact_form",
+                    "handover_declined"):
+            arguments.pop(key, None)  # no hand-over in the Schwarz near field: the patch's form is the near contact
+        arguments.pop("viscosity")
+        kind, version = arguments.pop("wall_kind"), arguments.pop("wall_kind_version")
+        names = {f"{WALL}{name}" for name in wall_correction_named(kind, version).parameters}
+        walls = {key: arguments.pop(key) for key in names}
+        return {"wall_kind": kind, "wall_kind_version": version, **walls,
+                **{f"{member_prefix(0)}{key}": value for key, value in arguments.items()}}
+
     def _stokes_plan(self, ctx: PlanContext) -> Plan:
         """The stokes rung's plan, by its exchange's scheme (:meth:`coupling_of`). Lagged (or one way): the body's pose
         and twist and the medium's face sets read, the drag, the couple and their Maxey-Riley part delivered to the
@@ -2174,6 +2237,8 @@ class Drag(UncoupledDrag):
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        if self.rung == "mrs" and ctx.exchanges.get("medium") is not None:
+            return  # a Schwarz partner: the medium's flow builds its near field and hands the body its response
         if ctx.members:
             self._build_near_field(ctx, b)
             return
@@ -2448,6 +2513,8 @@ class Drag(UncoupledDrag):
         stokes rung's its own (:meth:`_stokes_plan`)."""
         if self.rung == "stokes":
             return self._stokes_plan(ctx)
+        if self.schwarz(ctx):
+            return self._schwarz_plan(ctx)
         found = super().plan(ctx)
         if self.lubrication is not None:
             found = dataclasses.replace(found, problems=(*found.problems, self._retired()))

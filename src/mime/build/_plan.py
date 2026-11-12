@@ -156,7 +156,10 @@ MANIFEST_NAME = re.compile(r"[a-z0-9_]+")
 _RATE_RTOL = 1e-9
 #: How far a placement's quaternion's norm may be from one.
 _UNIT = 1e-6
-_DYNAMICS_ORDER = {ThingKind.MEDIUM: 0, ThingKind.BODY: 1, ThingKind.APPARATUS: 2, ThingKind.STRUCTURE: 3}
+_DYNAMICS_ORDER = {ThingKind.MEDIUM: 0, ThingKind.BODY: 1, ThingKind.APPARATUS: 3, ThingKind.STRUCTURE: 4}
+#: Where a medium whose flow holds a Schwarz partner is added: after the bodies, so that a body steps before the flow
+#: that composes its step (the staggered order, ``mime.nodes.flow.fvm._schwarz_host``).
+_STAGGERED_MEDIUM = 2
 #: A body's values its hull's kind gives, so that declaring one beside it is refused: the extent (the hull's radial
 #: reach), and the shape values a law reads from the kind's family parameters.
 FROM_THE_KIND = ("extent", "radius", "length", "helix_wavenumber")
@@ -476,7 +479,9 @@ class EntryPlan:
     def canonical_key(self) -> tuple[int, int, str, int, str]:
         """Sections in order; dynamics by kind of thing and thing, a chain's segments in chain order; then by id."""
         if self.section is Section.DYNAMICS and self.thing_kind is not None:
-            return (self.section.value, _DYNAMICS_ORDER[self.thing_kind], self.thing or "", self.position, self.owner)
+            rank = _STAGGERED_MEDIUM if self.thing_kind is ThingKind.MEDIUM and any(
+                r.kind == vocabulary.SCHWARZ_PARTNER for r in self.registrations) else _DYNAMICS_ORDER[self.thing_kind]
+            return (self.section.value, rank, self.thing or "", self.position, self.owner)
         return (self.section.value, 0, "", 0, self.owner)
 
 
@@ -875,7 +880,9 @@ class _Planner:
         for plan in self.readers:
             joins = getattr(plan.entry, "joins_near_field", None)
             medium = plan.bindings.get("medium")
-            if plan.section is Section.INTERACTION and callable(joins) and joins() and medium is not None:
+            coupled = plan.plan is not None and any(r.kind == vocabulary.SCHWARZ_PARTNER for r in plan.plan.registrations)
+            if plan.section is Section.INTERACTION and callable(joins) and joins() and medium is not None \
+                    and not coupled:
                 by_medium.setdefault(medium, []).append(plan)
         for medium, members in sorted(by_medium.items()):
             if len(members) < 2:
@@ -3108,7 +3115,9 @@ class _Planner:
                                for region in (self.region_of(name),) if region is not None},
                               {role: hull for role, name in given.items() if roles[role] is RoleKind.BODY
                                for hull in (self.hull_of(name),) if hull is not None},
-                              approaches=self.approaches(roles, given))
+                              approaches=self.approaches(roles, given),
+                              exchanges={role: frame for role, name in given.items() if roles[role] is RoleKind.MEDIUM
+                                         for frame in (self.exchange_frame_of(name),) if frame is not None})
         taken: dict[str, object] = {}
         computed = [(name, None, declared) for name, declared in sorted(record.roles.items())]
         computed += [(name, inner, declared) for name in setting_names(record.cls)

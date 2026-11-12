@@ -41,6 +41,10 @@ class EdgeDecl:
     #: moving geometry it reads, ``(anchor, field)`` of the edge's source or target node. ``None`` for a plain edge.
     mapping: object | None = None
     geometry: tuple[str, str] | None = None
+    #: A delivery its source prepared at the end of the step before, from state known then (a flow's response handed
+    #: to its Schwarz body, read under the staggered order): read from the previous step by design (``mime.build.
+    #: _lags``).
+    prepared: bool = False
 
 
 @dataclass(frozen=True)
@@ -337,6 +341,17 @@ class DynamicsBuilder(RestrictedBuilder):
         if registration not in self._plan.registrations:
             raise EntryBuildError(f"registration {registration.id} is not addressed to it")
         return registration
+
+    def hand(self, source: PortRef, *, into: TargetRef) -> None:
+        """An output of one of its own nodes that it prepared at the end of the step before (its published state, made
+        from what was known then) into a registered thing's target: a delivery the thing reads at the start of its
+        step, as the staggered order schedules it (a flow's response to its Schwarz body)."""
+        if not self._own(source):
+            raise EntryBuildError(f"hand({source!r}): an output of its own nodes")
+        target = into.target
+        self.edges.append(EdgeDecl(target.by, (source.node, source.field), (target.node, target.field),
+                                   target.kind.additive, target.units, len(self.edges), DELIVERY, prepared=True))
+        self._connected[into.key] += 1
 
     def read(self, registration: ResolvedRegistration, label: str) -> ReadRef:
         reads = self._registration(registration).reads

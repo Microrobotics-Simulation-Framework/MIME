@@ -38,6 +38,7 @@ from mime.nodes.hydro.mrs._solve import PRECISION
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
 from mime.nodes.hydro.near_field._contract import (
     OVERLAP_RESOLUTION,
+    Joint,
     Placed,
     blocks_of,
     booked_work,
@@ -50,7 +51,7 @@ from mime.nodes.hydro.near_field._contract import (
     pair_gaps,
     quadratic_form,
 )
-from mime.nodes.hydro.near_field._gmres import CAP, REPORT_SIZE, RESTART, Stopping, recheck_stopping
+from mime.nodes.hydro.near_field._gmres import CAP, REPORT_SIZE, RESTART, Operator, Stopping, recheck_stopping
 from mime.nodes.hydro.near_field._mrs import CROSS_SHARE, REACH, MRSOperator, Quadrature
 from mime.registry import Problem
 
@@ -708,6 +709,27 @@ class JointDragNode(MimeNode):
 
         return checkpoint(solve)(held, leaves, poses, p["viscosity"], parameters, p["reach"], inverses, tap,
                                  p["tolerance"] if iterative else None)
+
+    def free_space_system(self, p: Mapping[str, Any], poses: Array) -> tuple[Joint, list[Operator], list[Operator]]:
+        """The joint system at ``poses`` (``(K, 7)``) from the constants ``p`` (each member's free part held or made, as
+        :meth:`solved` takes it), with each member's preconditioner block and its transpose, from its held inverse, held
+        out of every derivative: what a flow holding the medium's bodies as Schwarz partners solves through beside its
+        grid (``mime.nodes.flow.fvm._schwarz``). The iterative route only, which holds the inverses."""
+        if not self.iterative:
+            raise ValueError("a Schwarz partner's near field is held on the iterative route, solve='gmres'")
+        wall = self._wall()
+        parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
+        count = len(self._members)
+        joint = joint_matrix(self._operators, [self._leaves(i, p) for i in range(count)],
+                             [self._held_value(i, p) for i in range(count)], poses, p["viscosity"], wall, parameters,
+                             p["reach"])
+        turns, viscosity = _lax.stop_gradient(poses), _lax.stop_gradient(p["viscosity"])
+        inverses = [self._held_inverse_value(i, p) for i in range(count)]
+        blocks = [op.preconditioner(inverse, turns[i], viscosity)
+                  for i, (op, inverse) in enumerate(zip(self._operators, inverses, strict=True))]
+        transposed = [op.preconditioner(inverse, turns[i], viscosity, transpose=True)
+                      for i, (op, inverse) in enumerate(zip(self._operators, inverses, strict=True))]
+        return joint, blocks, transposed
 
     @staticmethod
     def body_gaps(placed: Sequence[Placed]) -> tuple[Array, Array, Array]:

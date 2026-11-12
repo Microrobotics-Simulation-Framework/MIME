@@ -460,6 +460,11 @@ class BuildContext:
     #: row of that field's partners' solution that is its own (the field holds its partners in the order of their ids)
     #: and how many rows it has.
     partner_rows: Mapping[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
+    #: For a dynamics holding Schwarz partners (a medium's flow holding an MRS body's near field), each partner law's own
+    #: context by its id (what the flow builds the body's near field from); and the body force per unit mass (m/s^2)
+    #: the laws bound to its medium drive its fluid with at the end of the run's first step (the initial preparation's).
+    partners: Mapping[str, BuildContext] = field(default_factory=dict[str, "BuildContext"])
+    drive_start: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""

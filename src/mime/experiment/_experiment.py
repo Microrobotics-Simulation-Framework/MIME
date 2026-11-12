@@ -901,8 +901,8 @@ def run_layout(plans: PlanSet) -> Layout:
     for plan in plans.entries:
         cls = plan.registered.cls
         rung = getattr(plan.entry, "rung", None)
-        if plan.joined:
-            continue  # its group's plan builds its node, and lays out the flags its node raises
+        if plan.joined or not plan.nodes:
+            continue  # its group's plan builds its node (or a field holds its law), which lays out the flags it raises
         flags += [FlagLayout(plan.owner, cls.label(), plan.node_name(flag.node), flag.field, flag.meaning)
                   for flag in cls.raises if flag.raised_by(rung, bool(plan.members), plan.entry)]
         speed = speed_limit_flag(plans, plan)
@@ -1388,7 +1388,7 @@ class BuiltExperiment:
         """A warning for each flag that warns (``Flag.warns``) and the run raised, with its count and where."""
         warns = {f"{plan.node_name(flag.node)}.{flag.field}" for plan in self._plans.entries
                  for flag in plan.registered.cls.raises
-                 if flag.warns and not plan.joined
+                 if flag.warns and not plan.joined and plan.nodes
                  and flag.raised_by(getattr(plan.entry, "rung", None), bool(plan.members), plan.entry)}
         for read in result.flags:
             if read.path in warns and read.was_raised:

@@ -67,7 +67,15 @@ from mime.nodes.flow.fvm._band import TreeSolid, TubeSolid, WallFields, band_nam
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._exchange import box_side, faxen, held_spectrum, steady_response
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._partners import DELIVERIES, SOLUTION_COLUMNS, BodyPartner, Partnered, partnered_step
+from mime.nodes.flow.fvm._partners import DELIVERIES, SOLUTION_COLUMNS, BodyPartner, Partnered, combined, \
+    partnered_step
+from mime.nodes.flow.fvm._schwarz import INNER_SHARE, RESIDUAL_LINE, SCHWARZ_TOLERANCE, Composed, Prepared, composed, \
+    image_terms, own_decayed, prepared, stencils
+from mime.nodes.flow.fvm._schwarz_host import PREFIX as SCHWARZ, REPORT_BLOCKS, WIDTH as SCHWARZ_WIDTH, SchwarzHost, \
+    inputs_of as schwarz_inputs, starts as schwarz_starts
+from mime.nodes.flow.fvm._exchange import OwnBox, own_box
+from mime.nodes.hydro.near_field._gmres import Stopping as GmresStopping
+from mime.nodes.hydro.mrs._quadrature import scaled_least_eigenvalue
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
@@ -333,6 +341,9 @@ class ImplicitFlowNode(MimeNode):
         # with; otherwise the stop at the floor is float32's default, where no tolerance is given. Its solve_report
         # parameter is zeros sized by solve_report_rows, made here again, so the one it is given back is not read.
         del solve_report
+        extra.pop("schwarz_report", None)
+        if "schwarz_members" in extra and extra.get("schwarz_tolerance") is None:
+            extra["schwarz_tolerance"] = SCHWARZ_TOLERANCE[str(jnp.dtype(run_dtype()))]
         if at_floor is None:
             at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
         if tolerance is None:
@@ -360,12 +371,19 @@ class ImplicitFlowNode(MimeNode):
                          preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
                          periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
                          solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
+                         **({"schwarz_report": np.zeros(REPORT_BLOCKS)} if "schwarz_members" in extra else {}),
                          **({"wall_name": str(wall_name)} if wall_name else {}),
                          **({"exchange": True} if exchange else {}), **partners, **extra,
                          **({"ledger": tuple(ledger)} if ledger else {}))
         self.partner_spectra = {width: (held_spectrum("force", width, box_side(width), str(run_dtype())),
                                         held_spectrum("couple", width, box_side(width), str(run_dtype())))
                                 for width in sorted(set(widths))}
+        self.schwarz: SchwarzHost | None = None
+        if "schwarz_members" in extra:
+            if widths or exchange:
+                raise ValueError("a flow holds its Schwarz partner beside no point body and no lagged exchange "
+                                 "(flow.schwarz-bodies until the body-set host)")
+            self.schwarz = SchwarzHost(name, timestep, self.constants(), float(spacing))
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -401,7 +419,25 @@ class ImplicitFlowNode(MimeNode):
             wall["partner_origin"] = ParamSpec(trainable=False, units="m",
                                                description="the world point of the grid's origin, which a body's pose "
                                                            "is read from (structural)")
-        held_keys = {*self.constants(), *((TREE_WALL, TREE_WALL_COUNTS) if self.walled_by_tree else ())}
+        if self.schwarz is not None:
+            wall.update(self.schwarz.hosted_specs())
+            wall["schwarz_report"] = ParamSpec(trainable=False, units="1",
+                                               description="zeros, never moved: the Schwarz preparation's derivative "
+                                                           "solves' reports come out as its gradient")
+            for key, text in (("schwarz_origin", "the world point of the grid's origin, which a body's pose is read "
+                                                 "from (structural)"),
+                              ("schwarz_starts", "each Schwarz body's starting pose, the initial preparation's "
+                                                 "(an initial condition)"),
+                              ("schwarz_drive", "the drive at the first step's end, the initial preparation's "
+                                                "(read from the laws bound to the medium at the build)"),
+                              ("schwarz_extent", "the Schwarz body's extent, which sizes its free box (structural)")):
+                wall[key] = ParamSpec(trainable=False, units="1" if key == "schwarz_drive" else "m", description=text)
+            wall["schwarz_tolerance"] = ParamSpec(trainable=False, units="1",
+                                                  description="the Schwarz columns' GMRES: its relative tolerance on "
+                                                              "each column's true residual; the walled solves inside "
+                                                              "its products at a hundredth of it")
+        held_keys = {*self.constants(), *((TREE_WALL, TREE_WALL_COUNTS) if self.walled_by_tree else ()),
+                     *(self.schwarz.hosted_params() if self.schwarz is not None else ())}
         return {**super().param_specs(), **{key: spec for key, spec in wall.items() if key in held_keys},
                 "spacing": ParamSpec(trainable=False, units="m", description=fixed),
                 "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None),
@@ -437,7 +473,10 @@ class ImplicitFlowNode(MimeNode):
                 own[field] = node_input("N/m^3", shape, additive=True,
                                         description="the force density the exchange partners' laws scatter onto the "
                                                     "faces of one set, on the fluid and the solid alike")
-        return {**own, **self.partner_inputs()}
+        return {**own, **self.partner_inputs(), **{
+            name: node_input(units, shape, description=f"the Schwarz body's {name.rpartition('_')[2]} after its own "
+                                                       f"step, which closes the step the flow prepared for it")
+            for name, (shape, units) in schwarz_inputs(self.schwarz.count if self.schwarz else 0).items()}}
 
     @property
     def exchanges(self) -> bool:
@@ -458,7 +497,7 @@ class ImplicitFlowNode(MimeNode):
     def row_inputs(self) -> tuple[str, ...]:
         """The inputs each held body's row is read into (its pose and step's row, its other laws' loads and
         resistances): state the flow reads, no delivery to it, so the energy ledger books none of them here."""
-        return tuple(self.partner_inputs())
+        return (*self.partner_inputs(), *schwarz_inputs(self.schwarz.count if self.schwarz else 0))
 
     def body_partners(self, p: Mapping[str, Any], boundary_inputs: Mapping[str, Array], dt: Any,
                       dtype: Any) -> list[BodyPartner]:
@@ -569,6 +608,8 @@ class ImplicitFlowNode(MimeNode):
         which a chunk makes from the tree's leaves before its steps read them."""
         inherited: Any = super()
         leaves = cast(dict[str, Any], inherited.params_pytree())
+        if self.schwarz is not None:
+            leaves = {**leaves, **self.schwarz.hosted_params()}
         if not self.walled_by_tree:
             return leaves
         c = self.constants()
@@ -580,13 +621,19 @@ class ImplicitFlowNode(MimeNode):
     def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
         """A tube tree's wall, made once a chunk from its leaves (:class:`TreeSolid`): its distance on every face and
         its counts. None for a straight tube's, whose wall the step makes (a few operations a face)."""
+        held = self.schwarz.run_constants(params) if self.schwarz is not None else {}
         if not self.walled_by_tree or TREE_WALL not in params:
-            return {}
+            return held
         grid = self.grid(params)
         points = (grid.face_points(0, run_dtype()), grid.face_points(1, run_dtype()), grid.face_points(2, run_dtype()))
         distance, counts = self.tree_solid(params, grid).made(points)
-        return {TREE_WALL: distance.astype(jnp.asarray(params[TREE_WALL]).dtype),
+        return {**held, TREE_WALL: distance.astype(jnp.asarray(params[TREE_WALL]).dtype),
                 TREE_WALL_COUNTS: counts.astype(jnp.asarray(params[TREE_WALL_COUNTS]).dtype)}
+
+    @override
+    def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """The Schwarz partner's hosted near field's held free parts made again (``JointDragNode.made_again``)."""
+        return self.schwarz.made_again(params) if self.schwarz is not None else {}
 
     def tree_leaves(self, p: Mapping[str, Any]) -> dict[str, Array]:
         """The tree's leaves as its lumen reads them, from the step's parameters."""
@@ -737,7 +784,7 @@ class ImplicitFlowNode(MimeNode):
         common = self.initial_fields()
         held = node_fields(FlowState(**common)) if not self.walled_by_tree else node_fields(
             TreeFlowState(**common, **self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=run_dtype()))))
-        held = {**held, **self.partner_fields()}
+        held = {**held, **self.partner_fields(), **self.schwarz_initial()}
         if not self.metered:
             return held
         z = as_run_array(0.0)
@@ -825,6 +872,8 @@ class ImplicitFlowNode(MimeNode):
 
     def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> tuple[dict[str, Array], StepParts]:
+        if self.schwarz is not None:
+            return self.schwarz_stepped(p, state, boundary_inputs, dt)
         c = self.constants()
         scheme: TimeScheme[StageParts] = self.scheme
         grid = self.grid(p)
@@ -902,6 +951,187 @@ class ImplicitFlowNode(MimeNode):
             line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
         return held, StepParts(stage, fields, energy)
+
+    # -- the Schwarz partner (F5: ``mime.nodes.flow.fvm._schwarz_host`` states the order) ----------------------------
+    def stopping_of(self, p: Mapping[str, Any], grid: MACGrid, tolerance: Any) -> Stopping:
+        """The CG's stop at ``tolerance`` with the node's own cap, checks and window (a recheck's where the step is
+        one)."""
+        c = self.constants()
+        stopping = Stopping(tolerance=tolerance, at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
+                            check_every=int(c["check_every"]),
+                            window=stagnation_window(grid.cells, int(c["check_every"])))
+        return recheck_stopping(stopping) if rechecked(p) else stopping
+
+    def walled_solve(self, p: Mapping[str, Any], grid: MACGrid, sigma: Velocity, shift: Any, stopping: Stopping,
+                     tap: Array) -> Callable[..., tuple[Velocity, Array]]:
+        """One solve of the step's operator, ``walled(rhs, guess=None) -> (u, report)``."""
+        operator = self.operator_of(p, grid, sigma)(shift)
+        diagonal = self.diagonal_of(p, grid, sigma, shift)
+        magnitude = self.magnitude_of(p, grid, sigma)(shift)
+        preconditioner = preconditioner_named(self.constants()["preconditioner"])
+
+        def walled(rhs: Velocity, guess: Velocity | None = None) -> tuple[Velocity, Array]:
+            return projected_solve(grid, operator, diagonal, rhs, guess, stopping, tap, preconditioner, magnitude)
+
+        return walled
+
+    def schwarz_box(self) -> OwnBox:
+        host = self.schwarz
+        assert host is not None
+        return own_box(host.side, host.spacing, run_dtype())
+
+    def schwarz_forcing(self, fields: WallFields, boundary_inputs: Mapping[str, Array],
+                        drive: Array | None, dtype: Any) -> Callable[[int, Any], Velocity]:
+        """The drive the prepared step reads at its instant: the delivered waveform evaluated there (a declared
+        schedule's coefficients are the run's), or ``drive`` itself (the initial preparation's, as the build gives it)."""
+        if drive is not None:
+            held = drive.astype(dtype)
+            return lambda stage, time: self.drive(fields, held)
+        coefficients = jnp.asarray(boundary_inputs.get("waveform", jnp.zeros(WAVEFORM_SIZE, dtype=dtype)), dtype=dtype)
+        return lambda stage, time: self.drive(fields, waveform_at(coefficients, time).astype(dtype))
+
+    def schwarz_prepare(self, p: Mapping[str, Any], velocity: Velocity, steps: Array, dt: float,
+                        force: Callable[[int, Any], Velocity], pose: Array, own: Velocity,
+                        image: Array) -> tuple[Velocity, StageParts, Prepared, Array]:
+        """The next step's preparation from the field ``velocity`` after ``steps`` steps: the scheme's step with no
+        body's force (its base), and the seven columns at ``pose`` with the box's field ``own`` and image term ``image``
+        carried a step; with the scheme's stage and the handed response's margin (its least scaled eigenvalue)."""
+        host = self.schwarz
+        assert host is not None
+        dtype = run_dtype()
+        grid = self.grid(p)
+        fields = self.fields(p, grid)
+        sigma = self.resistivity(p, fields)
+        scheme: TimeScheme[StageParts] = self.scheme
+        shift = 1.0 / dt if scheme.stores_inertia else 0.0
+        tap = self.report_row(p, steps)
+        flow = self.walled_solve(p, grid, sigma, shift, self.stopping_of(p, grid, as_run_array(p["tolerance"])), tap)
+        context = StepContext(grid, self.operator_of(p, grid, sigma), force, bool(self.constants()["convection"]),
+                              lambda shift, rhs, guess: flow(rhs, guess if self.constants()["scaling_start"] else None),
+                              self.kinematic(p), sigma)
+        ended, stage = scheme.step(context, {"velocity": velocity}, steps.astype(dtype) * dt, dt)
+        base: Velocity = ended["velocity"]
+        box = self.schwarz_box()
+        nu, mu, rho = self.kinematic(p), as_run_array(p["viscosity"]), as_run_array(p["density"])
+        now, decay = image_terms(host.side, host.spacing, shift, nu, mu)
+        body = host.body(p, pose)
+        held = stencils(grid, box, body.placed.force - as_run_array(p["schwarz_origin"]), SCHWARZ_WIDTH)
+        tolerance = as_run_array(p["schwarz_tolerance"])
+        inner = self.walled_solve(p, grid, sigma, shift, self.stopping_of(p, grid, INNER_SHARE * tolerance),
+                                  jnp.zeros(REPORT_SIZE, dtype=dtype))
+        constants = self.schwarz.near.constants()
+        stopping = GmresStopping(tolerance, restart=int(constants["restart"]), cap=int(constants["cap"]))
+        made = prepared(grid, box, held, body, lambda rhs: inner(rhs), base, own_decayed(box, own, shift, nu),
+                        decay * image, shift, nu, rho, now, stopping, jnp.asarray(p["schwarz_report"], dtype=dtype))
+        return base, stage, made, scaled_least_eigenvalue(made.resistance).astype(dtype)
+
+    def schwarz_initial(self) -> dict[str, Array]:
+        """The Schwarz partner's fields at the run's start, its first step prepared at the body's starting pose from
+        the flow's initial field, the drive at the first step's end as the build gives it (none without a partner)."""
+        host = self.schwarz
+        if host is None:
+            return {}
+        return dict(self._schwarz_initial)
+
+    @cached_property
+    def _schwarz_initial(self) -> dict[str, Array]:
+        host = self.schwarz
+        assert host is not None
+        c = self.constants()
+        p = {**c, **self.params_pytree()}
+        grid = self.grid(c)
+        dtype = run_dtype()
+        held = host.fields(host.count, host.near.member_nodes[0].sample_count, grid)
+        start = self.initial_fields()
+        velocity = (start["velocity_x"], start["velocity_y"], start["velocity_z"])
+        fields = self.fields(p, grid)
+        drive = jnp.asarray(c.get("schwarz_drive", (0.0, 0.0, 0.0)), dtype=dtype)
+        pose = schwarz_starts(c, host.count)[0]
+        with cast(Any, jax).ensure_compile_time_eval():
+            base, _, made, margin = self.schwarz_prepare(p, velocity, jnp.asarray(0, dtype=jnp.int32), self.delta_t,
+                                                         self.schwarz_forcing(fields, {}, drive, dtype), pose,
+                                                         grid_zero_box(self.schwarz_box()), jnp.zeros(3, dtype=dtype))
+        held.update({f"{SCHWARZ}base_{x}": base[k] for k, x in enumerate("xyz")})
+        held.update({f"{SCHWARZ}0_columns": made.columns, f"{SCHWARZ}0_at": pose,
+                     f"{SCHWARZ}0_resistance": made.resistance, f"{SCHWARZ}0_load": made.load,
+                     f"{SCHWARZ}0_margin": margin, f"{SCHWARZ}report": made.report})
+        return {key: jnp.asarray(value, dtype=dtype) for key, value in held.items()}
+
+    def schwarz_stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
+                        dt: float) -> tuple[dict[str, Array], StepParts]:
+        """A Schwarz flow's step (``mime.nodes.flow.fvm._schwarz_host`` states it): the body's step composed, the
+        scheme's step for the next base, and the next step prepared at the body's pose."""
+        host = self.schwarz
+        assert host is not None
+        dtype = run_dtype()
+        grid = self.grid(p)
+        fields = self.fields(p, grid)
+        sigma = self.resistivity(p, fields)
+        scheme: TimeScheme[StageParts] = self.scheme
+        shift = 1.0 / dt if scheme.stores_inertia else 0.0
+        steps = jnp.asarray(state["steps"])
+        tap = self.report_row(p, steps)
+        flow = self.walled_solve(p, grid, sigma, shift, self.stopping_of(p, grid, as_run_array(p["tolerance"])), tap)
+        box = self.schwarz_box()
+        nu, mu, rho = self.kinematic(p), as_run_array(p["viscosity"]), as_run_array(p["density"])
+        now, decay = image_terms(host.side, host.spacing, shift, nu, mu)
+        origin = as_run_array(p["schwarz_origin"])
+        at = jnp.asarray(state[f"{SCHWARZ}0_at"], dtype=dtype)
+        body = host.body(p, at)
+        held = stencils(grid, box, body.placed.force - origin, SCHWARZ_WIDTH)
+        step = Prepared(state[f"{SCHWARZ}0_columns"], state[f"{SCHWARZ}0_resistance"], state[f"{SCHWARZ}0_load"],
+                        state[f"{SCHWARZ}report"])
+        base = (state[f"{SCHWARZ}base_x"], state[f"{SCHWARZ}base_y"], state[f"{SCHWARZ}base_z"])
+        own = (state[f"{SCHWARZ}own_x"], state[f"{SCHWARZ}own_y"], state[f"{SCHWARZ}own_z"])
+        twist = jnp.asarray(boundary_inputs.get(f"{SCHWARZ}0_twist", jnp.zeros(6, dtype=dtype)), dtype=dtype)
+        done: Composed = composed(grid, box, held, body, step, twist, lambda rhs: flow(rhs), base,
+                                  own_decayed(box, own, shift, nu), decay * state[f"{SCHWARZ}image"], shift, nu, rho,
+                                  now)
+        velocity = done.field
+        pose = jnp.asarray(boundary_inputs.get(f"{SCHWARZ}0_pose", at), dtype=dtype)
+        speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in velocity]))
+        cfl = speed * dt / grid.spacing
+        checked = bool(self.constants()["convection"]) and scheme.cfl_line is not None
+        past = ~(cfl <= scheme.cfl_limit(self.cfl_axis(p))) if checked else jnp.asarray(False)
+        base_next, stage, made, margin = self.schwarz_prepare(
+            p, velocity, steps + 1, dt, self.schwarz_forcing(fields, boundary_inputs, None, dtype), pose, done.own,
+            done.image)
+        report = combined([done.report, stage.report])
+        indefinite = ~(margin > 0.0)
+        stopped_before = jnp.asarray(state["stopped_at"]) >= 0
+        stops = past | indefinite
+        axis = self.vessel_axis(p)
+        axis = axis / jnp.sqrt(jnp.sum(axis * axis))
+        lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, velocity)
+        ratio = self.ratio(solid, lumen, lumen_scale)
+        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * self.vessel_radius(p) * self.kinematic(p))
+        tolerance = as_run_array(p["schwarz_tolerance"])
+        inner_short = made.report[REPORT_SIZE + 2] + made.report[REPORT_SIZE + 3] + made.report[REPORT_SIZE + 4]
+        flagged = (done.residual > RESIDUAL_LINE * tolerance) | (made.report[2] + made.report[3] + made.report[4] > 0) \
+            | (inner_short > 0)
+        ended: dict[str, Array] = dict(
+            velocity_x=velocity[0], velocity_y=velocity[1], velocity_z=velocity[2], steps=steps + 1,
+            solve_report=report, solve_report_sum=jnp.asarray(state["solve_report_sum"]) + report,
+            solve_flagged=(report[2] + report[3] + report[4] > 0).astype(dtype), cfl=cfl.astype(dtype),
+            stopped_at=jnp.where(stopped_before, jnp.asarray(state["stopped_at"]),
+                                 jnp.where(stops, steps + 1, -1)).astype(jnp.int32),
+            stopped_cfl=jnp.where(stopped_before, jnp.asarray(state["stopped_cfl"]),
+                                  jnp.where(past, cfl, 0.0)).astype(dtype),
+            lumen_flux=lumen, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
+            reynolds=reynolds.astype(dtype),
+            reynolds_flagged=((reynolds > STOKES_REYNOLDS) & (not bool(self.constants()["convection"]))).astype(dtype),
+            negative_resistivity=negative_resistivity(fields).astype(dtype))
+        held_fields = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
+            TreeFlowState(**ended, **self.wall_report(fields.counts)))
+        mine: dict[str, Array] = {f"{SCHWARZ}base_{x}": base_next[k] for k, x in enumerate("xyz")}
+        mine.update({f"{SCHWARZ}own_{x}": done.own[k] for k, x in enumerate("xyz")})
+        mine.update({f"{SCHWARZ}0_columns": made.columns, f"{SCHWARZ}0_at": pose,
+                     f"{SCHWARZ}0_resistance": made.resistance, f"{SCHWARZ}0_load": made.load,
+                     f"{SCHWARZ}0_margin": margin, f"{SCHWARZ}image": done.image, f"{SCHWARZ}report": made.report,
+                     f"{SCHWARZ}residual": done.residual.astype(dtype), f"{SCHWARZ}flagged": flagged.astype(dtype),
+                     f"{SCHWARZ}indefinite": jnp.where(stopped_before, jnp.asarray(state[f"{SCHWARZ}indefinite"]),
+                                                       indefinite.astype(dtype))})
+        return {**held_fields, **mine}, StepParts(stage, fields, {})
 
     @staticmethod
     def wall_report(counts: Array) -> dict[str, Array]:
@@ -1165,6 +1395,16 @@ class ImplicitFlowNode(MimeNode):
         step = int(np.asarray(state[STOP_FIELD])) if STOP_FIELD in state else -1
         if step < 0 or not all(np.isfinite(np.asarray(state[f"velocity_{c}"])).all() for c in "xyz"):
             return None
+        if float(np.asarray(state.get(f"{SCHWARZ}indefinite", 0.0))) > 0.0:
+            margin = float(np.asarray(state[f"{SCHWARZ}0_margin"]))
+            return Problem(
+                "flow.schwarz-indefinite",
+                f"at its step {step} (t = {step * self.delta_t:.6g} s) the response the flow prepared for its Schwarz "
+                f"body turned indefinite: its least eigenvalue, each row and column scaled by its diagonal, was "
+                f"{margin:.3g}, so the body's step through it would not be dissipative; the flow's state was held from "
+                f"that step and the run ended at the end of its chunk",
+                "move the body off the wall by a coarse cell or more, or refine the flow's grid (FVM(spacing=...)) "
+                "so that the gap to the wall is resolved")
         cfl = float(np.asarray(state["stopped_cfl"]))
         c = self.constants()
         line = float(self.scheme.cfl_limit((1.0, 1.0, 1.0) if self.walled_by_tree else c["tube_axis"]))
@@ -1181,6 +1421,12 @@ class ImplicitFlowNode(MimeNode):
              f"(4 nu) bounds it); or dt='auto', the step from the drive's predicted peak; or the Stokes approximation "
              f"FVM(stokes=True) where convection is negligible")
             if finite else "use a smaller timestep, dt=..., or dt='auto', or the Stokes approximation FVM(stokes=True)")
+
+
+def grid_zero_box(box: OwnBox) -> Velocity:
+    """A free box's three face sets, zero (its field at the run's start)."""
+    zero = jnp.zeros((box.side, box.side, box.side), dtype=box.eigenvalue.dtype)
+    return (zero, zero, zero)
 
 
 def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
