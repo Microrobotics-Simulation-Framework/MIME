@@ -326,8 +326,9 @@ class Contact(Interaction):
         "from its solution, in the step's own norm, raises unconverged: its cone's residual over the hold's change at "
         "the held points passes FRICTION_CONVERGED, a line measured to raise it on every such step of the drawn steps "
         "it was validated on (none silent; it rises on some steps within the line too), or its power guard trips. At "
-        "the declared counts such steps are a share of the screw's and the box's held steps, flagged (FRICTION_SWEEPS "
-        "records the measured shares); the step's norm weights rotation by the body's inertia, so on those steps a "
+        "the declared counts such steps are a share of the held steps, flagged, measured on a tube's floor over ten "
+        "seeds: 7.0 to 7.3 % of the screw's and 1.8 to 2.1 % of the box's at 80 sweeps, at most 0.2 % of the smooth "
+        "kinds' at 20 (FRICTION_SWEEPS records them); the step's norm weights rotation by the body's inertia, so on those steps a "
         "millimetre body's spin, which friction often brings near rest within the step, may be off by more than its "
         "own size; the reference solution is a finite count of sweeps, itself short of the solution on the slowest "
         "box draws; each held point is a point contact, so a "
@@ -338,10 +339,10 @@ class Contact(Interaction):
         "projection: with friction, rigid Coulomb may have no exact solution at a point (a Painleve-type "
         "configuration: a box at a high coefficient under a load far off the normal), where the solve's forces "
         "stand far from the hold's own scaling and its residual raises unconverged",
-        "projection: with friction, the power guard sees a friction law push only where friction carries more than the "
-        "guard's line of the load (POWER_LINE in float64, the square root of float32's resolution): a load within "
-        "rounding of the normal on a body at rest leaves the solve's friction at its own rounding, where a law pushing "
-        "is seen by no check (the friction law suite counts those draws apart from those it judges)",
+        "projection: with friction, a friction law that pushes is seen by the power guard or unconverged only where "
+        "friction carries more than the flip's measured resolution of the load (mime.testing's FLIP_SEEN): a load "
+        "within rounding of the normal on a body at rest leaves the solve's friction at its own rounding, where a law "
+        "pushing is seen by no check (the friction law suite counts those draws apart from those it judges)",
         "projection: with friction, float32 resolves a body's motion only where a step moves its position by more than "
         "its coordinates' rounding (dt |v| above about ulp(|x|)); the contact's allowance takes the gap less its "
         "rounding band, so a point frozen a part of an ulp above the wall is held, not left an approach speed the "

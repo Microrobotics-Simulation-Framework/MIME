@@ -1,0 +1,404 @@
+{
+  "written": "2026-11-12, committed before any gate of PR 259's fix round ran (the commit that adds this file is the timestamp): the fix round's gates for the penalty rung (Drag.Penalty): the part's place and the window (M1), the solid a cell off its pose (M3), the share's couple (M4), the FVM naming no scheme (M2); B1's refusal, the run-time guard, M5 and M6 are added as amendments before they run",
+  "phase": "F4 PR 1 fix round (PR 259)",
+  "labels": "the fix round's builder (Opus); from the refuting review's measurements, the code read, and one scratch measurement named under seen_before",
+  "seen_before": [
+    "scratch, this builder, float64, laptop: the lifted indicator's centroid about the solid's place in a free 32^3 box, a sphere of 3 cells a radius at three parts' places (centred, 2 radii along x, (0, 1.3, 0.7) radii) and three drawn poses each: clean at most 0.0030 cells; with the solid a cell off its pose on every axis, 0.997 to 1.002 cells",
+    "the refuting review: gate 3b's held sphere reads its net load 3.7 % of rho V g; FVM() with no scheme refused as entry.defect (KeyError 'viscosity')"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU (CI runner, laptop for scratch)",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "F1: a free periodic box of 32^3 cells, h = 10 um, a sphere of 3 cells a radius; F2: gate 3b's held sphere (a/R 0.375, 6 cells a radius, the steady Stokes step) with its part a quarter radius along the axis; F3: R3's case (N = 3, dt 1.5e-4 s) with no scheme written",
+    "seeds_and_draws": "F1: one pose a run from DETECTION_SEED (a sub-cell position in [-1, 1] cells about the box's centre, a uniformly random turn); the others deterministic"
+  },
+  "gate_F1_part_place": {
+    "claim": "The lifted solid sits at the pose's position plus its turn of the part's place, on every face set, to 0.05 cells",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_lifted_solid_sits_at_its_parts_place_about_the_pose",
+    "operating_point": "both dtypes",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        0.01
+      ],
+      "unit": "cells, the largest centroid offset",
+      "basis": "measured-before",
+      "why": "a sphere's indicator is symmetric about its centre; the band's smooth ramp makes the discrete centroid's error a quadrature error, 0.003 cells measured in float64; float32's rounding adds about 1e-7 of the box's side"
+    },
+    "metric": "the indicator's centroid off the expected place, read from the grid's fields (so a lift placed on the wrong faces shows)",
+    "control": {
+      "plant": "the solid a cell off its pose on every axis (MIME_PLANT_POSE_CELL): about 1 cell, 20 times the line",
+      "environment_variable": "MIME_PLANT_POSE_CELL",
+      "expected_rate": "N/N",
+      "runs": 20,
+      "clean_expected": "0/N",
+      "resolution": "the line, 0.05 cells: a shift of a twentieth of a cell"
+    },
+    "if_wrong": "a centroid off by the part's offset is M1 (the shape's centre overwriting the part's); off on the offset arms only by a few cells, the window clipping the solid",
+    "cannot_discriminate_if": "the centroid were read from the window's offsets rather than the grid (self-consistent under the plant)"
+  },
+  "gate_F2_share_couple": {
+    "claim": "A neutral sphere held off its centre of mass in a closed tube under a drive across the axis takes no net couple: the field's push's couple and the share's, given at the hull's centroid, cancel",
+    "kind": "bounds",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_neutral_sphere_held_off_its_centre_of_mass_in_a_closed_tube_takes_no_net_couple",
+    "operating_point": "both dtypes; steady Stokes; lever a quarter radius",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        0.06
+      ],
+      "unit": "the net couple over lever x rho V g",
+      "basis": "derived",
+      "why": "the field's push acts on the hull, so its couple is the lever times the push, which gate 3b measured within 3.7 % of rho V g; the share's couple the lever times rho V g"
+    },
+    "metric": "max |net couple| / (lever rho V g)",
+    "control": {
+      "plant": "the share given at the centre of mass (MIME_PLANT_SHARE_AT_COM): the net couple the field's alone, about 1",
+      "environment_variable": "MIME_PLANT_SHARE_AT_COM",
+      "expected_rate": "N/N",
+      "runs": 5,
+      "clean_expected": "0/N",
+      "resolution": "the line, 0.1 of the couple"
+    },
+    "if_wrong": "a couple near 1 means the solid is not at the hull's place (M1) or the share is at the centre",
+    "cannot_discriminate_if": "the hull is centred (no lever): the review's oracle could not discriminate for that reason"
+  },
+  "gate_F3_no_scheme": {
+    "claim": "FVM() and FVM(stokes=True) naming no scheme are judged at the scheme the FVM chooses: at R3's step RK3, refused as drag.penalty-scheme, not entry.defect",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_an_fvm_naming_no_scheme_is_judged_at_the_scheme_it_chooses",
+    "operating_point": "float64",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "refusal codes",
+      "basis": "derived",
+      "why": "nu dt/h^2 = 0.038 at R3's step, under RK3's 0.15, so chosen_scheme gives RK3"
+    },
+    "metric": "the refusal codes",
+    "control": {
+      "plant": "none: the review's run is the control (entry.defect before the fix)",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "entry.defect means a value the plan does not read is still read",
+    "cannot_discriminate_if": "n/a: a code equality"
+  },
+  "amendment_1": "2026-11-12, committed before the gates below ran: the moving start (the review's m7), the run-time guard on a body's motion (B1), and the near-wall step flag (M6)",
+  "gate_F4_moving_start": {
+    "claim": "A neutral body moving at U with a fluid already moving at U keeps its speed over the first step: the interior's momentum change at a run's first step is taken from the start's field",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_neutral_body_moving_with_a_uniformly_moving_fluid_keeps_its_speed_over_the_first_step",
+    "operating_point": "both dtypes; a free 24^3 box, h 10 um, a sphere of 3 cells a radius, U = 1 mm/s, nu dt/h^2 = 0.1, IMEX Euler without convection",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-05
+      ],
+      "unit": "the first step's velocity change over U",
+      "basis": "measured-before (the refuting review: 5e-17 clean, 1.06 planted, float64)",
+      "why": "the field and the body move together, so the penalty's load and the interior's change are both zero to the solve's tolerance"
+    },
+    "metric": "|dt F_z / (rho V)| / U",
+    "control": {
+      "plant": "the interior's momentum at the first step taken as zero (MIME_PLANT_START_AT_REST): a kick of about U",
+      "environment_variable": "MIME_PLANT_START_AT_REST",
+      "expected_rate": "N/N",
+      "runs": 5,
+      "clean_expected": "0/N",
+      "resolution": "the line, 1e-3 of U"
+    },
+    "if_wrong": "a kick means the first step's change is taken from rest",
+    "cannot_discriminate_if": "the fluid starts at rest (every other gate's start)"
+  },
+  "gate_G_motion_guard": {
+    "claim": "A lagged run past its stable step is stopped by the body's own motion (more than a cell a step) with drag.penalty-motion, naming the body and its coupling, not left to finish at 1e7 m/s",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_diverging_lagged_run_is_stopped_naming_the_coupling",
+    "operating_point": "float64 (the dtype that ran unstopped); the refuting review's Stokes case: R3's tube, N = 3, IMEX Euler with stokes=True, Re 0.1's drive, density ratio 1.0, a uniform sphere's inertia, dt 7e-3 s (x_T 2.9, x_R 3.0); the build's lagged refusal set aside so the run reaches the guard",
+    "prediction": {
+      "value": null,
+      "band": [
+        3,
+        30
+      ],
+      "unit": "the step the run stops at",
+      "basis": "measured-before (scratch, this builder: stopped at step 7)",
+      "why": "the body's speed grows each step past the edge; it starts near 1e-4 m/s, about 0.01 cells a step, so a growth of about 2 a step crosses the line within ten steps"
+    },
+    "metric": "the refusal's code (drag.penalty-motion) and that it names the body and the lagged coupling",
+    "control": {
+      "plant": "the guard removed (MIME_PLANT_NO_MOTION_GUARD: the line infinite): the run ends unstopped, as the review measured (6e7 m/s at 100 steps)",
+      "environment_variable": "MIME_PLANT_NO_MOTION_GUARD",
+      "expected_rate": "N/N",
+      "runs": 5,
+      "clean_expected": "0/N",
+      "resolution": "n/a: a stop or none"
+    },
+    "if_wrong": "a stop by another code first (run.non-finite) means the line is too high; no stop means the guard does not see the body's twist",
+    "cannot_discriminate_if": "the run is refused at build (the lagged refusal not set aside)"
+  },
+  "gate_W_near_wall_flag": {
+    "claim": "A resolved body nearer the tube's wall than 3 cells raises body_<i>_near_wall each step, owned by its drag; a body on the axis raises none",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_body_nearer_the_wall_than_three_cells_is_flagged_each_step",
+    "operating_point": "float64; R3's tube at N = 3, Stokes (Re 0.1's drive), a body started 2 cells from the wall, and on the axis (quiet)",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "flags raised",
+      "basis": "derived",
+      "why": "the gap is the tube's radius less the body's distance from the axis less its radius, started 2 cells from it: 2 cells; on the axis 5 cells at N = 3 (R 8 cells, a 3)"
+    },
+    "metric": "the flag water.flow.body_0_near_wall raised or not; body_0_gap",
+    "control": {
+      "plant": "none: the quiet case beside it is the control (a body on the axis must not raise it)",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "a flag on the axis means the gap is not measured from the axis",
+    "cannot_discriminate_if": "both cases raise it, or neither"
+  },
+  "amendment_2": "2026-11-12, committed before the gate below ran: the interior's momentum change telescopes over a run (the review's m8)",
+  "gate_F5_telescoping": {
+    "claim": "The interior's momentum change summed over a run is its momentum at the end less at the start: each step's change taken from the value the step before held, so it telescopes",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_interiors_momentum_change_telescopes_over_a_run",
+    "operating_point": "both dtypes; gate 3's free 24^3 box, a neutral sphere of 3 cells a radius, g = 50 m/s^2 (the body moves about 1.7 cells in 80 steps), IMEX Euler without convection",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-08
+      ],
+      "unit": "|sum dt (load - penalty) - Q_end| / |Q_end|, the largest component",
+      "basis": "measured-before (scratch, this builder: 2.5e-24 in float64, 1.1e-9 in float32)",
+      "why": "the sum telescopes exactly; float32's rounding of each step's difference sums to about 1e-9 of the end's momentum"
+    },
+    "metric": "the largest component's mismatch over the largest of Q_end",
+    "control": {
+      "plant": "the change taken on the step's own indicator (MIME_PLANT_OWN_INDICATOR): measured 1.0e-4 in both dtypes, the indicator's change times the field as the body crosses cells",
+      "environment_variable": "MIME_PLANT_OWN_INDICATOR",
+      "expected_rate": "N/N",
+      "runs": 5,
+      "clean_expected": "0/N",
+      "resolution": "the line, 1e-6"
+    },
+    "if_wrong": "a mismatch means a step's change is not taken from the held value",
+    "cannot_discriminate_if": "the body does not move across cells (the plant's error is the indicator's change)"
+  },
+  "amendment_3": "2026-11-12, committed before the gates below ran: the penalty rung's Reynolds watch (M6) and the density-ratio flag (M6)",
+  "gate_R_reynolds_watch": {
+    "claim": "The penalty rung declares a Reynolds line (150 at the default N, the highest particle Re N = 6 was measured at, falling as N squared below it); the post-run watch is computed (the viscosity read, M2) and raised past the line at the run's N, quiet under it",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_penalty_rungs_reynolds_watch_flags_a_body_past_its_line_at_the_runs_n",
+    "operating_point": "float64; R3's tube at N = 3 (the line 150 x (3/6)^2 = 37.5), stokes=True at Re 0.1's drive, two steps of 1.5e-4 s; the body started at 0.2 m/s (Re 75 by its diameter) and at rest",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "the watch's status",
+      "basis": "derived",
+      "why": "the body keeps most of 0.2 m/s over two steps (tau_t 2.4 ms), its Re about 70 past 37.5; at rest about 0.002 under it"
+    },
+    "metric": "WatchRead.status ('above' / 'within') and its upper (37.5)",
+    "control": {
+      "plant": "none: the quiet case beside it is the control",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "'not_computed' means the viscosity is still not read; an upper of 150 at N = 3 means the line does not move with N",
+    "cannot_discriminate_if": "both read the same status"
+  },
+  "gate_D_ratio_flag": {
+    "claim": "A body whose density ratio lies outside the range the lagged coupling's edge was measured over raises its drag's flag (body_<i>_ratio_unmeasured) every step; one inside raises none",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_density_ratio_outside_the_measured_range_is_flagged_each_step",
+    "operating_point": "float64; R3's tube at N = 3, stokes=True at Re 0.1's drive, three steps of 1.5e-5 s; ratios 25 (past the measured 20) and 1",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "flags raised",
+      "basis": "derived",
+      "why": "the node reads the body's mass from its mass matrix and the hull's volume"
+    },
+    "metric": "the flag water.flow.body_0_ratio_unmeasured raised or not; body_0_ratio",
+    "control": {
+      "plant": "none: the quiet case beside it is the control",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "a flag at ratio 1 means the ratio is not the mass over rho V",
+    "cannot_discriminate_if": "both raise it, or neither"
+  },
+  "amendment_4": "2026-11-12, committed before the gates below ran: gate 2 re-measured at the default N = 6 with its metric changed, gate 2b (B1's lagged edge at rest at the refusal's line) and B1's refusal",
+  "gate_2_at_n6": {
+    "claim": "Gate 2 re-measured at the default N = 6: R3's case at Re 76 (dt 7.5e-5 s), ratios 0.3 and 1.4, runs 200 steps unstopped, finite, the body under twice the flow's largest speed. Its metric changed: the old one (four alternating changes in a row) read a decaying start-up ring as unstable at ratio 0.3, and no growth metric of the body's velocity discriminates in a run driven at Re 76, so stability is judged at rest (gate 2b)",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_r3_runs_unstopped_and_bounded_at_the_default_n",
+    "operating_point": "both dtypes; N = 6, IMEX Euler, Re 76, dt 7.5e-5 s",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "ran and bounded",
+      "basis": "measured-before (the second edge probe's gate 2 arms, run 43136806547: 200 steps unstopped at N = 6, both ratios, both dtypes; the old metric's longest alternating run 5 at ratio 0.3)",
+      "why": "dt/tau_t 0.10 and 0.02, well inside the edges measured at rest"
+    },
+    "metric": "the run's completion (no stop), finiteness and max|V| < 2 max|u|",
+    "control": {
+      "plant": "the body's load reversed (MIME_PLANT_LOAD_SIGN): the body runs away and is stopped or exceeds the bound",
+      "environment_variable": "MIME_PLANT_LOAD_SIGN",
+      "expected_rate": "N/N",
+      "runs": 3,
+      "clean_expected": "0/N",
+      "resolution": "n/a: a stop or a bound"
+    },
+    "if_wrong": "a stop at N = 6 inside the measured edges means the edge moves with Re",
+    "cannot_discriminate_if": "a slow growth too slow to reach a stop in 200 steps: that is gate 2b's to see, at rest"
+  },
+  "gate_2b_lagged_edge_at_rest": {
+    "claim": "At the largest step the lagged refusal admits (its margin's share of the edge measured at N = 6, the binding mode's), R3's uniform sphere at a density ratio of 0.3 at rest decays: its kinetic energy over the last quarter is under its start's",
+    "kind": "bounds",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_lagged_loop_at_rest_decays_at_the_largest_step_the_refusal_admits",
+    "operating_point": "both dtypes; N = 6, IMEX Euler, quiescent, 160 steps",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        0.1
+      ],
+      "unit": "the energy over its start's",
+      "basis": "measured-before (the third edge probe's brackets: E/E0 1e-8 to 1e-3 at the stable end at N = 3)",
+      "why": "at 0.8 of the stable end every mode decays"
+    },
+    "metric": "max E over the last quarter / E(0)",
+    "control": {
+      "plant": "the step a quarter past the measured edge (MIME_PLANT_PAST_EDGE; the refusal set aside): the energy grows past its start's or the motion guard stops the run",
+      "environment_variable": "MIME_PLANT_PAST_EDGE",
+      "expected_rate": "N/N",
+      "runs": 3,
+      "clean_expected": "0/N",
+      "resolution": "the bracket's width, 1.06"
+    },
+    "if_wrong": "growth at the admitted step means the margin is too thin or the binding mode is not the one measured",
+    "cannot_discriminate_if": "the plant's step is refused at build (the refusal not set aside)"
+  },
+  "gate_B1_refusal": {
+    "claim": "A step past the lagged coupling's measured edge is refused at build (drag.penalty-lagged), naming the largest step the edges admit and the affine coupling; a body lighter than the least measured ratio is refused",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_step_past_the_lagged_edge_is_refused_naming_the_step_it_admits and ::test_a_body_lighter_than_the_lagged_ranges_edge_is_refused_naming_the_route",
+    "operating_point": "float64; the refuting review's Stokes case (R3, N 3, dt 7e-3 s, ratio 1) and R3 at ratio 0.2",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "refusal codes and text",
+      "basis": "derived",
+      "why": "x_T 2.9 and x_R 3.0 against edges near 0.85 and 0.9 at N 3 ratio 1 with the fluid's inertia stored"
+    },
+    "metric": "the code and its action's text",
+    "control": {
+      "plant": "none: gate 2b's clean arm is the refusal's inside, this its outside",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "no refusal means the table does not reach this point",
+    "cannot_discriminate_if": "n/a"
+  },
+  "amendment_5": "2026-11-12, committed before gate 2 at N = 6 ran: its step is 6e-5 s, not the 7.5e-5 s named in gate_2_at_n6 above (left as committed): the edge measured at N = 6 for a density ratio of 0.3 is x_T 0.119 (the third edge probe, run 43137909114), and the refusal admits 0.8 of it, so 7.5e-5 s (x_T 0.103) is refused; 6e-5 s (x_T 0.082, x_R 0.085) is inside. The prediction stands at the new step. Also: feature_cells written beside a coarser written spacing is refused (drag.penalty-spacing; tests/flow/test_resolved_bodies.py::test_feature_cells_written_beside_a_coarser_written_spacing_is_refused, predicted refused, the review's m4)",
+  "amendment_6": "2026-11-12, committed before the gate below ran (the coordinator's question from the near-wall spike: a float32 steady drive solve of a held sphere stagnated at 1.7e-3 against 1e-5, read by hand)",
+  "gate_S_solve_flag": {
+    "claim": "A resolved body's flow whose solve stops above its tolerance (stagnated or capped) raises solve_flagged in its step's state and, in a run, the FVM's warned flag with its count; the same run at the default tolerance raises neither",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_resolved_bodys_solve_that_stops_short_is_flagged_and_warned_of",
+    "operating_point": "both dtypes; R3's tube at N = 3, the steady scheme (stokes=True), Re 0.1's drive, three steps of 1.5e-4 s; the tolerance planted at 1e-30, below either dtype's rounding",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "flag raised at 3 of 3 steps and one warning; none at the default",
+      "basis": "derived",
+      "why": "ResolvedFlowNode takes its parent's step, whose report sets solve_flagged where the CG stops other than converging, and the FVM declares the flag warns=True (tests/flow/test_fvm_experiment.py holds it for the plain node)"
+    },
+    "metric": "result.flags' water.flow.solve_flagged (raised, steps), the UserWarning naming it, the last report's stop counts",
+    "control": {
+      "plant": "the planted tolerance itself; the default tolerance is the quiet case beside it",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "a quiet flag at 1e-30 means the resolved node's step drops its parent's report",
+    "cannot_discriminate_if": "both cases raise it (the default would then stagnate too)"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after the gates and the probes ran; the predictions above are as committed (9fd3b1d and its amendments 0543e65, e0c23b6, 43bf4b9, f1a5212, e70dae3), each before its gate ran",
+    "runs": {
+      "controls_first": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137312348 (probe/f4fix-rates at cb855e4; its predictions committed first there)",
+      "controls_second_and_ranges": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144793043 (probe/f4fix-rates2 at 94703ad; its predictions committed first there)",
+      "lagged_edge": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137909114 (probe/f4fix-edge3 at e4bd5b8; two earlier runs, 43132101981 and 43136806547, whose metrics could not discriminate, named in its predictions)",
+      "m5_spread": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43134235748 (probe/f4fix-deriv at 509e7ff)",
+      "gates_by_hand": "the gates' printed values from laptop runs of tests/flow/test_resolved_bodies.py at this head's code, both dtypes"
+    },
+    "memory_route": "arms at 6 cells a radius failed the workflow at the memory-against-estimate step only (the FVM family's estimator low, as the PR's own probes found); outputs complete",
+    "gate_F1_part_place": "held: the indicator's centroid 0.0022 to 0.0031 cells off the part's place (in the band [0, 0.01]), centred, two radii off and off on two axes, both dtypes. Control (a cell off): 20/20 in float64 and 20/20 in float32 over drawn poses, clean 0/20 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137312348). The oracle resolves 0.050 cells on all 40 drawn poses, no false alarm (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144793043). A window sized from the radius alone reads 0.82 cells off (by hand)",
+    "gate_F2_share_couple": "held: the net couple 0.036 of lever x rho V g (band [0, 0.06]), the field's -0.964 and the share's 1.000, both dtypes. Control (the share at the centre of mass) 0.964: 5/5 in each dtype, clean 0/5 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137312348; deterministic, so N repeats). The oracle resolves a couple short by 0.136 of the share's (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144793043)",
+    "gate_F3_no_scheme": "held: FVM() and FVM(stokes=True) with no scheme at R3's step refused drag.penalty-scheme, no entry.defect",
+    "gate_F4_moving_start": "held: the first step's velocity change at the rounding floor (band [0, 1e-5]), both dtypes. Control (start at rest): 5/5 in each dtype, clean 0/5 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137312348)",
+    "gate_F5_telescoping": "held: 2.5e-24 in float64 and 1.1e-9 in float32 (band [0, 1e-8]). Control (the change on the step's own indicator, 1.0e-4): 5/5 in each dtype, clean 0/5 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137312348)",
+    "gate_G_motion_guard": "held: the review's Stokes case stopped at step 7 (band [3, 30]) by drag.penalty-motion, naming the body and its lagged coupling. Control (the guard removed): 5/5, clean 0/5 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43137312348)",
+    "gate_W_near_wall_flag": "held: a body 2.0 cells from the wall raised water.flow.body_0_near_wall, owned by drag:ball; on the axis (5 cells) none",
+    "gate_R_reynolds_watch": "held: the watch computed; its line at N = 3 37.5; a body at 0.2 m/s 'above', at rest 'within'",
+    "gate_D_ratio_flag": "held: ratio 25 raised water.flow.body_0_ratio_unmeasured every step, ratio 1 none; the ratio read 25 and 1 to 1e-9",
+    "gate_2_at_n6": "held at dt 6e-5 s (amendment_5): 200 steps unstopped, finite and bounded at ratios 0.3 and 1.4 in both dtypes (the body's largest speed 0.0332 and 0.0272 m/s against the flow's 0.0330 and 0.0290 at the end). Control (the load reversed): 3/3 at each ratio in each dtype, clean 0/3 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144793043)",
+    "gate_2b_lagged_edge_at_rest": "held: at the admitted 6.96e-5 s the energy over its last quarter 6.3e-4 of its start's (band [0, 0.1]), both dtypes. Control (a quarter past the edge, 1.09e-4 s): 3/3 in each dtype (it grew to the CFL stop), clean 0/3 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144793043)",
+    "gate_B1_refusal": "held: the review's Stokes case (dt 7e-3 s) refused drag.penalty-lagged naming 'dt=... at most' the admitted step and the affine coupling; ratio 0.2 refused",
+    "probe_edge": "the third edge probe's brackets, every float32 end agreeing with float64's: the steady edge 2.53 for the translation (predicted [1.9, 2.8]) and 1.79 for the rotation (predicted [1.5, 2.2]), the same at N 3 and 6 and at ratios 0.3 and 8; with the fluid's inertia the translation's 0.533 to 2.38 at N 3 and 0.119 to 2.25 at N 6 rising with the ratio (predicted rising; ratio 0.3 at N 6 0.119, inside its guessed 0.1 to 0.4), the rotation's 0.711 to 1.42 and 0.475 to 1.42 (predicted [0.5, 1.3]: 1.42 at ratio 8 above it); convection on or off alike at rest",
+    "m5_spread": "the drag's derivative in the lateral position from -0.15 to 2.20 of its cell-mean slope at N 3 (the review's numbers again) and 0.30 to 1.68 at N 6 (predicted 1.3 to 1.8 above and 0.3 to 0.8 below)",
+    "gate_7_control": "new: the float32 solve stopped at a relative tolerance of 1.04e-3 or more is caught by gate 7's line (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144793043)",
+    "gate_3b_range": "the closed box's oracle resolves a share short by 0.137 of itself (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144793043)",
+    "gate_S_solve_flag": "held: the planted tolerance (1e-30, the steady scheme) raised water.flow.solve_flagged at 3 of 3 steps with one warning naming its count, the report stagnated (about 3200 iterations), in both dtypes; at the default tolerance neither, the solve converged in 36 (float32) and 56 (float64) iterations (laptop, this head)"
+  }
+}

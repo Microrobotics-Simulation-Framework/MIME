@@ -20,6 +20,7 @@ control that fails on every run (nothing here is drawn; the drawn suites are ``t
   the contact carries the whole load. The control: the gap's rounding band taken out, float32 loses most of the load to
   the squeeze film and misses."""
 
+import functools
 import math
 
 import jax
@@ -99,6 +100,69 @@ def test_control_mu_doubled_moves_breakaway_as_predicted(dtype):
         found[coefficient] = float(slid(node, slope_inputs(ROD_MASS, theta, dtype))["twist"][0]) / (STEPS * DT)
     assert abs(found[mu] - incline_oracle(theta, mu, rolls=False)[1]) <= EXACT[dtype] * G
     assert abs(found[2 * mu]) <= EXACT[dtype] * G
+
+
+#: The rod laid along the plane's diagonal, at 45 degrees to its friction frame (a quarter turn about z halved), and
+#: its sliding start: stopped by friction after v0 / (mu g), 17 ms, past the steps it is judged over.
+DIAGONAL, DIAGONAL_SPEED, DIAGONAL_STEPS = math.pi / 4, 0.05, 10
+
+
+def slid_along_the_diagonal(dtype, mu: float = 0.3) -> tuple[float, float, float]:
+    """The rod on its rims sliding along its own axis, laid at :data:`DIAGONAL` to the plane's friction frame, on the
+    level plane: its deceleration along its axis, its speed across it and its largest spin after the steps."""
+    node = plane_node(ROD, mu=mu, mass=ROD_MASS, inertia=ROD_MOMENTS)
+    along = np.asarray((math.cos(DIAGONAL), math.sin(DIAGONAL), 0.0))
+    held = node.initial_state()
+    turned = jnp.asarray((math.cos(DIAGONAL / 2), 0.0, 0.0, math.sin(DIAGONAL / 2)), held["pose"].dtype)
+    start = {**held, "pose": held["pose"].at[3:].set(turned),
+             "twist": jnp.asarray((*(DIAGONAL_SPEED * along), 0.0, 0.0, 0.0), held["twist"].dtype)}
+    inputs = slope_inputs(ROD_MASS, 0.0, dtype)
+
+    def run(state):
+        return jax.lax.scan(lambda carried, _: (node.update(carried, inputs, DT), None), state, None,
+                            length=DIAGONAL_STEPS)[0]
+
+    twist = np.asarray(jax.jit(run)(start)["twist"], dtype=np.float64)
+    across = np.asarray((-along[1], along[0], 0.0))
+    return ((float(twist[:3] @ along) - DIAGONAL_SPEED) / (DIAGONAL_STEPS * DT), float(twist[:3] @ across),
+            float(np.max(np.abs(twist[3:]))))
+
+
+def test_a_rod_sliding_at_45_degrees_to_the_friction_frame_decelerates_at_mu_g_along_its_slip(dtype):
+    """The cone's shape and the slip's direction (the review's m8): the closed forms above slide along a frame axis,
+    where a square cone and a round one agree. The rod on its two rims slides along its own axis at 45 degrees to the
+    frame, on the level plane: friction ``mu m g`` against its slip, so it decelerates at ``mu g``, never slips across
+    its axis and never turns. The control below: a square cone (each frame component clipped to the bound alone)."""
+    mu = 0.3
+    deceleration, across, spin = slid_along_the_diagonal(dtype, mu)
+    print(f"\nalong {deceleration:.12g} m/s^2 against {-mu * G:.12g}; across {across:.3g} m/s; spin {spin:.3g} rad/s")
+    assert abs(deceleration + mu * G) <= EXACT[dtype] * G
+    assert abs(across) <= EXACT[dtype] * G * DIAGONAL_STEPS * DT
+    assert spin <= EXACT[dtype] * G * DIAGONAL_STEPS * DT / 1e-3
+
+
+def test_control_a_square_cone_decelerates_the_diagonal_slide_by_its_corner():
+    """The control: each frame component of the pair's force clipped to the bound alone (a square cone, the shape
+    the frame-axis cases cannot see) lets the rod's friction reach ``sqrt(2) mu m g`` along the diagonal: the gate
+    above reads 41 % too much deceleration."""
+    import mime.nodes.body._friction as friction_module
+
+    original = friction_module.disk_update
+
+    def square(block, load, bound):
+        free = -jnp.linalg.solve(block, load)
+        return jnp.clip(free, -bound, bound)
+
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    friction_module.disk_update = square
+    try:
+        deceleration, _, _ = slid_along_the_diagonal(jnp.float64)
+    finally:
+        friction_module.disk_update = original
+        jax.config.update("jax_enable_x64", held)
+    print(f"\nthe square cone: {deceleration:.9g} m/s^2 against {-0.3 * G:.9g}")
+    assert abs(deceleration + 0.3 * G) > 0.3 * 0.3 * G
 
 
 @pytest.mark.parametrize("ratio", [0.5, 0.9995, 1.0005, 2.0])
@@ -293,6 +357,20 @@ SLIP_STEPS = 20
 SLIP_DIFFERENCE = {jnp.float64: (1e-6, 1e-6), jnp.float32: (1e-3, 2e-2)}
 
 
+#: Each body's shape, mass, moments and the factor on ``mu`` of its stick threshold's slope (``tan(theta)``).
+SLIP_BODIES = {"sphere": (BALL, MASS, (MOMENT,) * 3, 3.5), "block": (ROD, ROD_MASS, ROD_MOMENTS, 1.0)}
+SLIP_MU = 0.2
+
+
+@functools.cache
+def compiled_slip(body: str, dtype):
+    """The slip after :data:`SLIP_STEPS` steps in ``(theta, mu)`` on ``body``'s node with its reverse-mode gradient,
+    one program per body and dtype: the four ratios and the central differences' points are its arguments."""
+    shape, mass, inertia, _ = SLIP_BODIES[body]
+    slip = slip_after(plane_node(shape, mu=SLIP_MU, mass=mass, inertia=inertia), mass, dtype)
+    return jax.jit(jax.value_and_grad(slip, argnums=(0, 1)))
+
+
 @pytest.mark.parametrize("body", ["sphere", "block"])
 @pytest.mark.parametrize("ratio", [0.5, 0.99, 1.01, 2.0])
 def test_the_slip_speeds_derivative_is_its_central_differences_either_side_of_the_threshold(dtype, body, ratio):
@@ -300,16 +378,12 @@ def test_the_slip_speeds_derivative_is_its_central_differences_either_side_of_th
     mode against central differences taken on the point's own side of the stick threshold (a span across it reads the
     kink): zero sticking, the sliding slip's slope past it (the review's -0.562 in ``mu`` on the sphere at 1.001). The
     control below takes the slip through a stopped value, as the field was, and reads zero against it."""
-    mu = 0.2
-    shape, mass, inertia, factor = ((BALL, MASS, (MOMENT,) * 3, 3.5) if body == "sphere" else
-                                    (ROD, ROD_MASS, ROD_MOMENTS, 1.0))
-    theta = math.atan(factor * mu * ratio)
-    node = plane_node(shape, mu=mu, mass=mass, inertia=inertia)
-    slip = slip_after(node, mass, dtype)
-    gradient = jax.jit(jax.grad(slip, argnums=(0, 1)))
+    mu = SLIP_MU
+    theta = math.atan(SLIP_BODIES[body][3] * mu * ratio)
+    with_gradient = compiled_slip(body, dtype)
     span, tolerance = SLIP_DIFFERENCE[dtype]
     at = (jnp.asarray(theta, dtype), jnp.asarray(mu, dtype))
-    measured = [float(d) for d in gradient(*at)]
+    measured = [float(d) for d in with_gradient(*at)[1]]
     side = min(span, 0.25 * abs(ratio - 1.0))
     eps = float(jnp.finfo(dtype).eps)
     scale = G * SLIP_STEPS * DT  # the slip's slope's own size, m/s per unit of mu or of angle
@@ -317,7 +391,7 @@ def test_the_slip_speeds_derivative_is_its_central_differences_either_side_of_th
         h = value * side
         up, down = list(at), list(at)
         up[index], down[index] = at[index] + h, at[index] - h
-        central = (float(slip(*up)) - float(slip(*down))) / (2 * h)
+        central = (float(with_gradient(*up)[0]) - float(with_gradient(*down)[0])) / (2 * h)
         rounding = 64 * eps * scale * SLIP_STEPS * DT / h
         print(f"\n{body} at {ratio} of its threshold: d slip / d {name} AD {measured[index]:.9g}, CD {central:.9g}")
         assert abs(measured[index] - central) <= tolerance * scale + rounding, (name, measured[index], central)

@@ -20,6 +20,8 @@ from mime.nodes.flow import fvm as flow
 from mime.nodes.flow._body_force import BodyForceNode, BodyForceState
 from mime.nodes.flow._womersley import PrescribedFlowInputs, PrescribedFlowNode, PrescribedFlowState
 from mime.nodes.hydro._point_drag import PointDragInputs, PointDragNode, PointDragState
+from mime.nodes.flow.fvm._resolved_node import BODY_FIELDS, BODY_INPUTS, ResolvedFlowInputs, ResolvedFlowNode, \
+    ResolvedFlowState, ResolvedSpec
 from mime.core.multibody import read_urdf
 from mime.data import asset
 from mime.nodes import actuation, body, control, hydro, magnetic
@@ -80,6 +82,12 @@ TYPED = [
     (flow.ImplicitFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=2, spacing=1e-4, viscosity=1e-3, density=1e3,
                            tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
      flow.FlowState, flow.FlowInputs, set()),
+    (ResolvedFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=8, spacing=1e-4, viscosity=1e-3, density=1e3,
+                      tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=4e-4,
+                      bodies=[ResolvedSpec("ball", "drag:ball", "sphere", {"centre": (0.0, 0.0, 0.0), "radius": 1.5e-4},
+                                           (0.0, 0.0, 0.0), (1, 0, 0, 0, 1, 0, 0, 0, 1), 9, 1.4e-11)]),
+     ResolvedFlowState, ResolvedFlowInputs,
+     {f"body_0_{field}" for field in (*BODY_FIELDS, *BODY_INPUTS)}),
     (flow.OpenFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=4, spacing=1e-4, viscosity=1e-3, density=1e3,
                        tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4,
                        openings=("tube.start", "tube.end"), opening_laws=("inflow", "windkessel"),
