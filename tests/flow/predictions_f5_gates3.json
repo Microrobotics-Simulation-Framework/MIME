@@ -173,5 +173,32 @@
   "if_wrong": "a miss in the pressures alone: the reference's openings rows; in the twist alone: the handed response's openings part",
   "cannot_discriminate_if": ""
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-12, by F5's fifth builder, after the third gates probe (probe/f5-gates3 at 6ffde5ae, run 43181574129; rates by .github/probe/detection_rate.py, seeds from 1000 unless stated, each a fresh process)",
+  "gate_transpose_derived_lines": {
+   "result": "clean 0/20 failing in both dtypes under the derived lines (the cases arm at seed 0: float32 walled 5.7e-8 against 5.66e-4, whole 1.3e-8 against 3.7e-5; float64 walled 8.1e-13 against 2.8e-10, whole 2.3e-15 against 8.8e-13). The plain transpose: float64 caught 20/20; float32 caught 15/20 (missed seeds 1000, 1001, 1004, 1015, 1016), as predicted: float32 does not discriminate this plant under a line derived from the CG's stop, and the control is float64's",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43181574129"
+  },
+  "gate_5_books_float32_drawn": {
+   "result": "the books closed on 12/12 drawn cases in float32 without float64 inner solves (clean 0/12 failing); the gift caught 12/12. No float64 guard is declared for the inner solves: the solve-mask spike's 0 to 4 in 10 does not carry to F5's walled CG (its projection is exact)",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43181574129"
+  },
+  "gate_lagged_books_float32_drawn": {
+   "result": "12/12 drawn lagged runs passed in float32 (books close, residual booked); the hidden residual caught 12/12 in float32, so its work resolves above float32's 1e-3 line",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43181574129"
+  },
+  "gate_restart_cause": {
+   "result": "on the runner, one thread, both dtypes: the whole run twice equal; at splits 1, 2 and 3 (a) the same continued program from the same saved state equal twice, (b) the preparation it starts from the stored one, and a fresh build restarted from the saved state the continued run, each bit for bit; split 2 the whole run bit for bit; splits 1 and 3 differ by the programs' last bits: float64 at most 4.4e-14 of a field's scale, no solve's count moved; float32 at most 1.9e-5 at split 1, where one GMRES count moved (a stop an iteration apart), 5.1e-7 at split 3. The compiled program, as MIME's record says: the line stays",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43181574129"
+  },
+  "gate_restart_relative_fields": {
+   "result": "the restart plant caught 20/20, clean 0/20 over seeds 0 to 19 (splits of 1 at seeds 11 and 14 among them), the relative fields judged on their own scale",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43181574129"
+  },
+  "gate_3_openings_dense": {
+   "result": "passes (seed 0): field 5.8e-12, pressures 1.6e-12, twist 1.5e-11, wrench 4.2e-12, the composed residual 1.1e-13, unflagged; the cross-term plant caught 10/10, clean 0/10",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43181574129"
+  },
+  "memory": "the cause and cases arms over the sphere estimate's 3.0 GiB bound (peaks 3.6 and 5.1 GiB): UNDERESTIMATE rows for the calibration table, those arms red by that alone"
+ }
 }

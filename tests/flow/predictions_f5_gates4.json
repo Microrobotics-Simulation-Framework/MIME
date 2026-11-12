@@ -40,5 +40,14 @@
     "if_wrong": "a clean miss over 1e-4: a tangent or transpose solve that is not the forward solve's (or a leaf baked at build); a stopped plant passing on the viscosity: the reflection's share of that derivative under the line",
     "cannot_discriminate_if": "the stopped plant on the amplitude in forward mode (above)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, by F5's fifth builder, after the fourth gates probe (probe/f5-gates4 at 05eb1eb6, run 43184879628; rates by .github/probe/detection_rate.py, seeds 1000 to 1002, each a fresh process)",
+    "gate_11_proper": {
+      "result": "every case passes (the cases arm, seed 0): the viscosity forward 4.75e-8 and reverse 4.77e-8 off the difference; the amplitude forward 2.8e-9, reverse 9.6e-7; the position at the node forward and reverse equal to the printed digits, 2.1e-7 off the difference (its truncation); no run flagged, the node's columns converged",
+      "controls": "stopped caught 3/3 on all five (the viscosity both modes, the amplitude both modes, the position), clean 0/3 each; capped caught 3/3 (the viscosity forward by the run's flag, the position by the node's residual), clean 0/3",
+      "against_the_prediction": "WRONG on one point: the stopped plant was predicted unable to fail the amplitude's forward derivative (the tangent of a solve on a moved right-hand side, the operator unmoved); it failed it 3/3. The mechanism assumed was wrong: the tangent solve applies the products' linearisation, which a stop_gradient on the reflection zeroes, so the tangent is solved with the near field alone. The control discriminates every case (detection_rate keeps no record of a caught run, so the size of each planted miss is not in the artifact)",
+      "memory": "six arms over the sphere estimate's 2.9 GiB bound (peaks 3.6 to 6.4 GiB; the gradient programs and the dense references dominate): UNDERESTIMATE rows for the calibration table, the arms red by that alone",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43184879628"
+    }
+  }
 }

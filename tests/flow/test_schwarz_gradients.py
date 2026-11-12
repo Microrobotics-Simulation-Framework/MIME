@@ -18,6 +18,7 @@ converged (``test_schwarz_flow.py``, ``test_schwarz_open.py``).
 
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 import jax
@@ -74,6 +75,21 @@ def _case(name: str, value: float) -> Any:
             (lambda final: final["ball"]["pose"][1]))
 
 
+@functools.cache
+def _difference(name: str, value: float, planted: str) -> tuple[float, list[str]]:
+    """The case's central difference at ``value`` and the Schwarz flags its run raised, made once a process for both
+    modes (``planted`` keys it to the plant it ran under)."""
+    from mime.units import ms
+
+    del planted
+    _, h = CASES[name]
+    of = _case(name, value)[2]
+    ends = [float(of(_case(name, value * (1 + sign * h))[0].build().run(ms(STEPS_MS)).final)) for sign in (1, -1)]
+    run = _case(name, value)[0].build().run(ms(STEPS_MS))
+    flagged = [read.flag.field for read in run.flags if read.was_raised and "schwarz" in read.flag.field]
+    return (ends[0] - ends[1]) / (2.0 * h * value), flagged
+
+
 @pytest.mark.parametrize("mode", ["forward", "reverse"])
 @pytest.mark.parametrize("name", list(CASES))
 def test_a_derivative_through_the_coupled_run_matches_its_central_difference(float64, name, mode):
@@ -93,13 +109,10 @@ def test_a_derivative_through_the_coupled_run_matches_its_central_difference(flo
             acknowledged={"water.flow": "gate 11: the derivative is in the viscosity and the field's amplitude; the "
                                         "flow's geometry leaves are not moved"})
         derivative = float(np.asarray(result.member(0).gradient[path]))
-        ends = [float(of(_case(name, value * (1 + sign * h))[0].build().run(ms(STEPS_MS)).final)) for sign in (1, -1)]
-        run = _case(name, value)[0].build().run(ms(STEPS_MS))
+        difference, flagged = _difference(name, value, plant())
     finally:
         if replaced is not None:
             setattr(*replaced)
-    difference = (ends[0] - ends[1]) / (2.0 * h * value)
-    flagged = [read.flag.field for read in run.flags if read.was_raised and "schwarz" in read.flag.field]
     miss = abs(derivative - difference) / abs(difference)
     print(f"F5 gate 11 [{name}, {mode}]: derivative {derivative:.10g}, central difference {difference:.10g}, "
           f"relative {miss:.3g}; flagged {flagged}")

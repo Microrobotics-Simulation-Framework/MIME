@@ -376,5 +376,40 @@
     },
     "if_wrong": "NotImplementedError would be a constant of an inner solve that depends on the tractions (a guess or a stop formed outside the solve); a miss over the line with the clean transpose would be the openings' elimination's own transpose",
     "cannot_discriminate_if": "the plant's miss lies under the line (the field at the opening planes negligible)"
+  },
+  "outcomes_probe_2": {
+    "written": "2026-11-12, by F5's fifth builder, after the second gates probe (probe/f5-gates2 at 842eeb0e, run 43174481090; the tests at 87845f2d; rates by .github/probe/detection_rate.py, seeds 0 to N-1, each a fresh process)",
+    "gate_restart_and_fork": {
+      "result": "the restart plant caught 20/20, but the clean arm FAILED 14/20: the composed residual (schwarz_residual, a relative residual of about 3e-9) was judged on its own value, a cancellation's remainder, and moved 1.2e-9 of itself on the runner. The test's own premise, not the restart: on one thread the same continued program from the same saved state is equal twice, the preparation it starts from is the stored one bit for bit and a fresh build restarted from the saved state is the continued run bit for bit (local, before b15f4bd6); the fix (b15f4bd6) judges a relative field on its own inputs' scale, one, and the third probe's restart and cause arms re-run it. The override: stale caught 20/20, clean 0/20 (the override's run is the declared run; the preparation made at the build's viscosity misses it every run)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    },
+    "gate_lagged_and_one_way": {
+      "result": "the hidden residual caught 20/20, clean 0/20; the one-way plant (the composition kept) 20/20, clean 0/20; the cases arm's lagged, one-way and settings tests passed",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    },
+    "gate_window_flag": {
+      "result": "the window plant caught 30/30, clean 0/30; the run test passed",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    },
+    "gate_3_open_vessel": {
+      "result": "the cross-term plant caught 10/10, clean 0/10; the open gate passed (float64)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    },
+    "gate_transpose_dot": {
+      "result": "float64: the plain transpose caught 19/20 at the line 1e-8 on the whole product's scale (seed 19 missed: the plant's miss is a bilinear form in the drawn b and c, whose density peaks at zero, so a line 3 decades under its typical size still misses about one draw in a few hundred); float32: 13/20 at the 1e-6 line set after the first run, which is withdrawn. The third probe judges the walled read's own identity under lines derived from the CG's stop (b15f4bd6): float64 by six decades, float32 not discriminating, as its docstring states",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    },
+    "bits": {
+      "result": "92 programs, 2000 arrays, every one np.array_equal against F3's head 49035c9c (one CPU, one thread)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    },
+    "solve_walk": {
+      "result": "63 passed (the solve walk and the solve sites with the lagged and open configurations); the arm is red only by its memory check (peak 4.17 GiB against the 2.99 GiB bound of the sphere's estimate: an UNDERESTIMATE row for the calibration table)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    },
+    "cases": {
+      "result": "43 passed, 1 failed (the restart's premise, above); the arm also an UNDERESTIMATE (peak 7.32 GiB against 2.98 GiB: the dense monolithic references dominate, not the sphere's run the estimate names)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43174481090"
+    }
   }
 }
