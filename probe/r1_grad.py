@@ -113,6 +113,8 @@ def main() -> int:
     jax.block_until_ready(g_vjp)
     report["seconds_vjp_first"] = time.perf_counter() - t0
     report["g_vjp"] = np.asarray(g_vjp, dtype=np.float64).tolist()
+    del grad
+    jax.clear_caches()  # each program's executable and buffers freed before the next: the process's peak is one program's
 
     # Forward mode: one jvp per parameter, the tangents of every step's frame and projected centre kept for the scale.
     frames_run = core.scalar_run(graph, steps, core.per_step_objective(graph, keep_frames=True), checkpoint=False)
@@ -148,6 +150,8 @@ def main() -> int:
     report["scale"] = scale
     report["dc_fwd"] = per_step_fwd  # [parameter][step][u, v]
     report["cache_tangent_maxabs"] = cache_tangent
+    del tangent, cotangent
+    jax.clear_caches()
 
     if arguments.per_step:
         def centroids(theta):
@@ -157,6 +161,7 @@ def main() -> int:
         jac = jax.jit(jax.jacrev(centroids))(theta0)  # (steps, 2, parameters)
         report["seconds_jacrev"] = time.perf_counter() - t0
         report["dc_rev"] = np.moveaxis(np.asarray(jac, dtype=np.float64), -1, 0).tolist()
+        jax.clear_caches()
         report["frame_step_of"] = [int(((arguments.continued + t) // point["period"]) * point["period"])
                                    for t in range(steps)]
 
