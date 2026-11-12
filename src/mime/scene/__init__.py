@@ -66,6 +66,7 @@ from mime.scene._resolution import (
 )
 from mime.scene._tube_tree import FILLET_SHARE, TubeTree, WallFeatures
 from mime.scene._union import Ball, ExactUnion, Region, RoundCone, UnionDistance, UnionNormal
+from mime.scene._camera import CameraPrim, display_primvars, read_camera, write_camera
 from mime.scene._helix import Helix
 from mime.scene._screw import Screw
 from mime.scene._kinds import kind_frame, placed, shape_settings
@@ -113,6 +114,7 @@ STAGE_FILE = "scene/scene.usda"
 __all__ = [
     "PeriodicBox",
     "VesselRegion",
+    "CameraPrim", "display_primvars", "read_camera", "write_camera",
     "ARROW", "Asset", "Axis", "active_visual_pins", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
     "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
     "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",

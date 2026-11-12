@@ -74,6 +74,12 @@ Also:
   vector in the part's frame, the direction the part is magnetised along. It is the smallest form usd-core reads
   without a plugin: the schema's name in the prim's `apiSchemas` and its namespaced attribute, with no compiled or
   codeless schema registered. The attribute without the schema, or the schema without the attribute, is refused.
+- **A camera's prim** (`write_camera`, `read_camera`, `CameraPrim`): a `UsdGeomCamera` with the detector's resolution,
+  pixel pitch and OpenCV's five distortion coefficients as `mime:camera:*` attributes, written with the four conventions
+  between OpenCV's pinhole and USD's camera (+y down against +y up; lens and filmback in tenths of a scene unit; a
+  pixel's centre half a pixel in; the aperture offsets' signs) and read back. USD draws its pinhole, not its
+  distortion. `display_primvars(prim)` reads a prim's `displayColor` and `displayOpacity`, its own or the nearest
+  parent's.
 - **`check_stage(path)`** runs every validator usd-core registers (its `UsdValidation` framework, which `usdchecker`
   runs; the older Python `ComplianceChecker` is gone from usd-core 26) and returns their findings.
 - The world frame (`WorldFrame`, `world_frame`) moved here from the build.
