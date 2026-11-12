@@ -1,0 +1,53 @@
+{
+  "written": "2026-11-12, committed before any gate of W2b PR 2's fix round ran (the commit that adds this file is the timestamp): the fit's verdict on one-sided standard errors, Study.fit restored, rolling resistance's passivity suite, the R gates' evidence",
+  "phase": "W2b PR 2 (#261), fix round after the refuting review",
+  "labels": "predictions by the fix round's builder (Opus) from the review's measurements and the fix's derivation; numbers seen before are marked measured-before",
+  "seen_before": [
+    "review probe C (run 43136526939): fit-stick 7/10 identified, 3/10 confounded, 0/10 bounded below only; fit-roll 10/10 bounded below only; fit-clean 7/8 identified (one confounded, a start where the model sticks); rolling sign plant 10/10 by the fixed oracles only; R2 control 30/30, R3 control 30/30, R5 10/10; the spun sphere's range 4.3e-2 of mu",
+    "the fix round's local runs (laptop): the two stick blocks of the new test read bounded below only; the restart case identified; the rolling suite's clean and planted tests pass (10 passed)"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runners (4 vCPU) for probes",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "the fit: a cylinder lying down a tilted tube's floor (the block), 0.05 s, mu_true 0.1 to 0.8, start mu_true x 0.4 to 2.5, search (0.01, 2.5); never-sliding data tan(theta) 0.2 to 0.95 of mu, noise 1e-3 of g sin(theta) T; sliding data 1.3 to 3 of mu, noise 1e-3 of the observed speed. The rolling suite: the friction law suite's draws on the plane, the sphere and the cylinder on its side, mu_r 1e-4 to 0.1 of the radius, 400 sweeps",
+    "seeds_and_draws": "detection_rate.py seeds 0 to N-1; the suite's Hypothesis seeds by --hypothesis-seed"
+  },
+  "gate_b1_fit_verdict": {
+    "claim": "data that never slide read bounded below only, never identified; sliding data read identified",
+    "kind": "acceptance",
+    "case": "probe/gates261.py fit (fit_friction through built.run)",
+    "prediction": {"value": null, "band": [20, 20], "unit": "never-sliding draws reading bounded below only, of 20; sliding draws reading identified, 20 of 20", "basis": "derived", "why": "the loss is flat above the threshold for data that stick, so the standard error read above the estimate is unbounded; sliding data are curved on both sides"},
+    "metric": "the verdict per draw",
+    "control": {"plant": "the data: a block under its threshold", "environment_variable": "W2B_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20 not identified on sliding data", "resolution": "n/a (a verdict)"},
+    "if_wrong": "a never-sliding draw read identified: the verdict overclaims; a sliding draw not identified: the share or the restart",
+    "cannot_discriminate_if": "a draw within the curvature step (1e-3) of the threshold"
+  },
+  "gate_m2_rolling_passivity": {
+    "claim": "rolling resistance never injects: the guard and the residual quiet on every draw; its sign flipped is raised on every draw where it acts at its limit",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction_suites.py::test_rolling_resistance_is_passive_on_every_draw (W2B_PLANT=rollflip)",
+    "prediction": {"value": null, "band": [20, 20], "unit": "planted runs caught of 20 a dtype; clean 0 of 20", "basis": "guess", "why": "the flipped bound pushes the rotation it acts on, about one of its own scale, pair by pair"},
+    "metric": "detection_rate.py caught/N",
+    "control": {"plant": "the rolling bound's sign flipped", "environment_variable": "W2B_PLANT=rollflip", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "a push of the rolling pair above the guard's line of its own scale"},
+    "if_wrong": "a run missed: the acts premise or the guard's per-pair scale",
+    "cannot_discriminate_if": "rolling resistance inside its limit on every draw (a flipped bound moves nothing there)"
+  },
+  "gate_m3_r_controls": {
+    "claim": "R1 to R4's controls caught at drawn operating points; R1 to R4's oracles' discriminating ranges stated",
+    "kind": "acceptance",
+    "case": "probe/gates261.py held, flat, spun, slope",
+    "prediction": {"value": null, "band": [null, null], "unit": "caught/N", "basis": "guess, the spun sphere's range measured-before (4.3e-2 of mu)", "why": "each control planted at the oracle's resolution's order or above"},
+    "metric": "caught/N, resolution",
+    "control": {"plant": "mu_r (1 + size), mu (1 + size), the derivative times (1 + size)", "environment_variable": "W2B_PLANT", "expected_rate": "N/N at size 1", "runs": 30, "clean_expected": "0/N", "resolution": "measured"},
+    "if_wrong": "an oracle silent at size 1: its tolerance or its premise",
+    "cannot_discriminate_if": "a plant below the resolution"
+  },
+  "bits": {
+    "cases": "script A, A0, the sphere settling, hull_contact (0.5.0 and 0.4.0), the rod, the near contact on a plane and in a tube, float64 and float32; base the release tip, head this branch's final head",
+    "prediction": "every array np.array_equal",
+    "controls": {"one_ulp": "FL-9 one ulp of angle further in the probe's tree: arrays differ"}
+  },
+  "costs": {"prediction": "", "measured_at": ""},
+  "outcomes": null
+}
