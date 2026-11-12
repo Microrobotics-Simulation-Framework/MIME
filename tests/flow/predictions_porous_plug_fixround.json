@@ -86,5 +86,49 @@
     "prediction": "every array np.array_equal",
     "controls": {"repeat": "the head recorded twice: identical", "one_ulp": "a leaf one ulp up: arrays differ"}
   },
-  "outcomes": null
+  "outcomes": {
+    "rates_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43159255803",
+    "measure_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43159332258",
+    "golden_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43159648253",
+    "loop_run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43158029624",
+    "gate_B1_placement": {
+      "value": "the gate passes in CI's form (laptop: equal within 1e-12); NO_WRAP 30/30, clean 0/30",
+      "verdict": "held"
+    },
+    "gate_M1_reach": {
+      "value": "NO_REACH 30/30 on [0.3-0.1h] and 30/30 on [0.03-0.1h], clean 0/30 each",
+      "verdict": "held"
+    },
+    "gate_B2_reported_flux": {
+      "value": "LUMEN_LOOP 30/30 on [0.03-0.1h] and 30/30 on [0.3-0.1h], clean 0/30 each",
+      "verdict": "held"
+    },
+    "gate_M2_flag": {
+      "value": "NO_GAP 30/30 on [0.25], clean 0/30",
+      "verdict": "held"
+    },
+    "gate_K_existing_control": {
+      "value": "PLUG_K (0.1) 30/30 on [0.03-0.1h], clean 0/30",
+      "verdict": "held"
+    },
+    "gate_minor5_open_ledger": {
+      "value": "closes; POROUS_SIGN 30/30, clean 0/30 (golden run, arm open_sign); its memory read 0.92 GiB against the FVM proxy's 0.82 bound, a pytest process the proxy does not size: the proxy's miss, no calibration row",
+      "verdict": "held"
+    },
+    "measure_lumen_flux_line": {
+      "value": "lumen_flux equal to the box's flux within 1e-13 on every row; against the series, 0.1h, sqrt(K)/h 0.03 / 0.01 / 0.003: D/h 16 -1.21 / -1.66 / -1.83 % (7129 iterations at 0.003), D/h 32 -0.08 / -0.31 / -0.39 % (16736); 0.01h, 0.03 / 0.01: D/h 16 -0.98 / -1.37 %, D/h 32 -0.08 / -0.26 %, 0.003 stagnated (residual 0.34 / 0.21), solve_flagged and porous_flagged raised. The intercept on lumen_flux / Q_open: 3.5e-10 / 3.8e-11 (0.1h, from 0.01 and 0.003), 7.3e-8 / 9.9e-9 (0.01h, from 0.03 and 0.01), the floor probe's to two digits. The loop (the lumen's own mean less lumen_flux): 2.51e-3 / 3.70e-4 (0.1h, D/h 16 / 32), 2.80e-4 / 6.2e-5 (0.01h), the same at every K to 0.1 %",
+      "verdict": "held: the line and the floor stand on lumen_flux"
+    },
+    "measure_user_path": {
+      "value": "-1.833 % on each of the three steps; the first at the cap (5000, residual 1.7e-5, solve_flagged with its warning), the second converged (2727 iterations), the third one iteration; porous_flagged not raised (0.003 is within the 0.1h range)",
+      "verdict": "held"
+    },
+    "golden_on_runners": {
+      "value": "byte-equal on three runners (AMD EPYC 7763, 9V74, 9V74): plug sha256 0dc52dc4..., darcy 458fb494...; the golden test passes against them on each; 727 iterations on the first step. The laptop takes 732, so these two goldens fail off the runners",
+      "verdict": "held: the saved case is at K 1e-12"
+    },
+    "bits": {
+      "value": "run on the final head: predictions_porous_plug_bits_final.json"
+    }
+  }
 }
