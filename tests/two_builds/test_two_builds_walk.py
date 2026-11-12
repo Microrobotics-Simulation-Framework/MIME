@@ -277,12 +277,11 @@ CAMERA_LEAVES = ("observations/0/settings/detector/settings/fy", "observations/0
 @pytest.mark.parametrize("plant", ["structure-as-built", "numbers-as-built"])
 def test_control_the_cameras_structure_made_at_build_fires_on_its_leaves(plant: str, monkeypatch: pytest.MonkeyPatch,
                                                                         tmp_path: Path):
-    """The camera's static structure, a leaf the run makes once from its leaves: planted back as a constant of the step
+    """The camera's static structure, a leaf beside the numbers it was made at: planted back as a constant of the step
     (the build's structure given to every chunk), or compared with the numbers it was made at held as constants (the
     guard e2e81c32 removed), each fires on the detector's leaves, while the step as written is quiet on them (the walk
     above). So the camera's quiet leaves are the structure and its numbers being arguments, not a form that cannot see
     them."""
-    from mime.nodes.hydro.mrs._quadrature import held_or_made
     from mime.sensing._node import STRUCTURE, CameraNode
 
     if plant == "structure-as-built":
@@ -291,12 +290,10 @@ def test_control_the_cameras_structure_made_at_build_fires_on_its_leaves(plant: 
 
         monkeypatch.setattr(CameraNode, "run_constants", made)
     else:
-        def compared(self: CameraNode, p: Any, intrinsics: Any) -> Any:
-            theta = {"numbers": self._structure_numbers(intrinsics)}  # noqa: SLF001
-            built = {"numbers": np.asarray(self._structure[1])}  # noqa: SLF001
-            return held_or_made(self._make, built)(theta, p[STRUCTURE])  # noqa: SLF001
+        def compared(self: CameraNode, p: Any, numbers: Any) -> Any:
+            return jax.numpy.all(numbers == np.asarray(self._structure[1]))  # noqa: SLF001
 
-        monkeypatch.setattr(CameraNode, "_structure_at", compared)
+        monkeypatch.setattr(CameraNode, "holds_at", compared)
     case = next(case for case in CASES if case.name == "camera_scene")
     document, load = loader(case, tmp_path)
     paths = {"/".join(map(str, path)): path for path in numbers(document)}

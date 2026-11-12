@@ -17,13 +17,13 @@ recorded poses again with that key reproduces the frame exactly.
 so a study can fit them; the ray table and the structure's image follow them. **The static structure** (a camera fixed in
 the world: the ray table, the standing subjects' transmission and their flags, packed flat) is a leaf of its own,
 ``static_structure``, beside the numbers it was made at, ``static_structure_from`` (the nine intrinsics, the scene's numbers
-as built, the camera's pose): both made once when the node's parameters are made, so a study's point and an override's tree
-hold the structure at their own leaves. A run makes it once, before its steps (``MimeNode.run_constants``, in every chunk a
-MIME run compiles): the held one where its numbers are the run's, made from the run's leaves where any differs; a run
-MADDENING's own scan steps (a recorded run, the save's reference steps) makes that choice at each frame step instead. Either
-way it is read, never carried: the state holds no cache, a held step costs what holding the image costs, and nothing of the
-structure is a constant of the program. Its derivative in the leaves is the make's, whichever is read
-(``held_or_made``'s rule), so a derivative taken from a continued state is right, not only one from the first step.
+as built, the camera's pose): both made when the node's parameters are made, by one compiled maker, so the build's tree, a
+study's point's and an override's hold the structure at their own leaves, and the save's rerun is given it at its nudged
+ones (``made_again``). A frame step reads it where its numbers are the step's and makes it where any differs (a tree whose
+leaves were written without it): read, never carried, so the state holds no cache and a held step costs what holding the
+image costs. A run makes it a run-constant (``MimeNode.run_constants``, once per chunk, before its steps) that carries the
+make's derivative in the leaves (:func:`carrying`), so a derivative is right from a continued state as from the first
+step, and its tangent is made once a chunk, not in every frame. Nothing of the structure is a constant of the program.
 ``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
 **Forward mode only.** A derivative passes in forward mode (the ring's poses and the leaves); reverse mode and a batched
@@ -52,7 +52,6 @@ from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, 
     run_constants_given, run_dtype, typed_view
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode
-from mime.nodes.hydro.mrs._quadrature import held_or_made
 from mime.sensing import _scene as scene
 from mime.sensing._coverage import CORNER_SAMPLES
 from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays, ray_table
@@ -60,6 +59,9 @@ from mime.sensing._render import Exposure, Response, exposed, frame_key, prepare
 from mime.sensing._subjects import Subject
 
 lax: Any = jax.lax
+_custom_jvp: Any = cast(Any, jax).custom_jvp
+_jvp: Any = cast(Any, jax).jvp
+_checkpoint: Any = cast(Any, jax).checkpoint
 
 #: The detector's nine numbers, the node's leaves, in the order a Pinhole and OpenCV give them.
 INTRINSICS = ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3")
@@ -186,6 +188,28 @@ def structure_maker(spec: str, placement: tuple[float, ...]) -> tuple[Callable[[
         return packed(rays, static, flags, names, dtype)
 
     return cast(Callable[[Array], Array], jit(made)), names
+
+
+def carrying(make: Callable[[Array], Array]) -> Callable[[Array, Array], Array]:
+    """``held``, the static structure a tree holds, carrying ``make``'s derivative at ``numbers``: its value is ``held``
+    itself (no copy of it is made), and its tangent is ``make``'s forward derivative at ``numbers`` (checkpointed, so
+    that reverse mode makes it again rather than keeping what ``make`` holds inside), whatever ``held`` was made from.
+    The step reads it only where ``held``'s numbers are ``numbers`` (it makes the structure otherwise), so the
+    derivative is the structure's at the run's leaves wherever the run starts: from its first step or a continued
+    state."""
+
+    @_custom_jvp
+    def value(held: Array, numbers: Array) -> Array:
+        del numbers
+        return held
+
+    def tangent(primals: tuple[Array, Array], tangents: tuple[Array, Array]) -> tuple[Array, Array]:
+        held, numbers = primals
+        _, moved = _jvp(_checkpoint(make), (numbers,), (tangents[1],))
+        return held, moved.astype(held.dtype)
+
+    value.defjvp(tangent)
+    return cast(Callable[[Array, Array], Array], value)
 
 
 SCENE_HELD = ("held as built: the scene's numbers (the subjects' settings and appearances, the response) are consumed when "
@@ -360,30 +384,23 @@ class CameraNode(MountedNode):
         return jnp.concatenate([intrinsics, jnp.asarray(scene_numbers, dtype=dtype).reshape(-1),
                                 jnp.stack([jnp.asarray(c, dtype=dtype) for c in placement])])
 
-    def _make(self, theta: Mapping[str, Array]) -> Array:
-        """The static structure made at ``theta``'s numbers (their first nine, the intrinsics)."""
-        return self._maker()[0](theta["numbers"][:len(INTRINSICS)])
-
-    def _structure_at(self, p: Mapping[str, Any], intrinsics: Array) -> Array:
-        """The static structure at ``intrinsics``: the one ``p`` holds where its numbers are ``intrinsics``' (with the
-        scene and the pose as built), made from them where any differs, and made where ``p`` holds none (a step called
-        with the node's constants alone); its derivative is the make's in either case (``held_or_made``)."""
-        theta = {"numbers": self._structure_numbers(intrinsics)}
-        if STRUCTURE not in p:
-            return self._make(theta)
-        return held_or_made(self._make, {"numbers": p[STRUCTURE_FROM]})(theta, p[STRUCTURE])
+    def _make(self, numbers: Array) -> Array:
+        """The static structure made at ``numbers`` (their first nine, the intrinsics)."""
+        return self._maker()[0](numbers[:len(INTRINSICS)])
 
     def _intrinsics(self, p: Mapping[str, Any], dtype: Any) -> Array:
         return jnp.stack([jnp.asarray(p[name], dtype=dtype) for name in INTRINSICS])
 
     @override
     def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
-        """The static structure at the run's leaves (:meth:`_structure_at`'s choice), made once per chunk, outside its
-        steps: read by every frame step, carried by none."""
+        """The held static structure with its derivative in the run's leaves, the make's (:func:`carrying`), made once
+        per chunk, outside its steps: a forward run reads the leaf as it is, and a derivative computes the make's
+        tangent once, not in every frame and never from the state."""
         if STRUCTURE not in params:
             return {}
-        dtype = jnp.asarray(params[STRUCTURE]).dtype
-        return {STRUCTURE: self._structure_at(params, self._intrinsics(params, dtype))}
+        held = jnp.asarray(params[STRUCTURE])
+        numbers = self._structure_numbers(self._intrinsics(params, held.dtype))
+        return {STRUCTURE: carrying(self._make)(held, numbers)}
 
     @override
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
@@ -393,8 +410,7 @@ class CameraNode(MountedNode):
             return {}
         dtype = jnp.asarray(params[STRUCTURE]).dtype
         intrinsics = self._intrinsics(params, dtype)
-        numbers = self._structure_numbers(intrinsics)
-        return {STRUCTURE: self._maker()[0](intrinsics), STRUCTURE_FROM: numbers}
+        return {STRUCTURE: self._maker()[0](intrinsics), STRUCTURE_FROM: self._structure_numbers(intrinsics)}
 
     # -- the step ---------------------------------------------------------------------------------------------------
 
@@ -428,23 +444,12 @@ class CameraNode(MountedNode):
         base = compose(jnp.asarray(given["mount_poses"][index], dtype=dtype), placement)
         return CameraPose(base[:3], base[3:])
 
-    def _static_part(self, p: Mapping[str, Any], intrinsics: Array, pose: CameraPose,
-                     dtype: Any) -> tuple[Rays, Array, dict[str, Any]]:
-        """The rays and the static structure's transmission at ``intrinsics``, and its flags. Where the camera is fixed in
-        the world, the structure as the chunk made it (:meth:`run_constants`), or chosen here where no chunk did
-        (:meth:`_structure_at`); a camera on a frame that may move renders them in every frame."""
-        if self._structure is None:
-            _, subjects = self._held
-            moved = detector_of(self._spec(), intrinsics)
-            rays = ray_table(moved, pose)
-            flags: dict[str, Any] = {}
-            return rays, static_part(subjects, rays, moved, pose, dtype, CORNER_SAMPLES, flags), flags
-        flat = p[STRUCTURE] if run_constants_given(p) else self._structure_at(p, intrinsics)
-        rows, columns = self.image_shape()
-        return unpacked(flat, rows, columns, self._maker()[1])
-
     def _rendered(self, p: Mapping[str, Any], ring: Array, intrinsics: Array, pose: CameraPose, key: Any,
                   dtype: Any) -> tuple[Array, Array, dict[str, Array]]:
+        """The frame over the static structure: for a camera fixed in the world the one the tree holds where its numbers
+        are the step's (with its derivative in the leaves, the make's: :meth:`run_constants`, or here where no chunk made
+        it), and one made from the step's numbers where any differs (a tree whose leaves were written without it) or
+        where the step was given none (the node's constants alone); a camera on a frame that may move renders it."""
         _, subjects = self._held
         held = self.constants()
         spec = self._spec()
@@ -454,16 +459,43 @@ class CameraNode(MountedNode):
             for name in spec["body_subjects"][body]:
                 moves[name] = (ring[:, index, :3], ring[:, index, 3:]) if sub_frames > 1 \
                     else (ring[0, index, :3], ring[0, index, 3:])
-        rays, static, flags = self._static_part(p, intrinsics, pose, dtype)
         camera = detector_of(spec, intrinsics)
-        captured = exposed(subjects, camera, pose, rays, static, dict(flags), moves, Exposure(sub_frames),
-                           response_of(spec), key)
-        totals = {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS}
-        for flag, value in captured.flags.items():
-            kind = flag.split(":")[0]
-            if kind in totals:
-                totals[kind] = totals[kind] + jnp.asarray(value, dtype=dtype)
-        return captured.image.astype(dtype), captured.expected.astype(dtype), totals
+
+        def framed(rays: Rays, static: Array, flags: dict[str, Any]) -> tuple[Array, Array, dict[str, Array]]:
+            captured = exposed(subjects, camera, pose, rays, static, dict(flags), moves, Exposure(sub_frames),
+                               response_of(spec), key)
+            totals = {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS}
+            for flag, value in captured.flags.items():
+                kind = flag.split(":")[0]
+                if kind in totals:
+                    totals[kind] = totals[kind] + jnp.asarray(value, dtype=dtype)
+            return captured.image.astype(dtype), captured.expected.astype(dtype), totals
+
+        if self._structure is None:
+            rays = ray_table(camera, pose)
+            flags: dict[str, Any] = {}
+            return framed(rays, static_part(subjects, rays, camera, pose, dtype, CORNER_SAMPLES, flags), flags)
+        rows, columns = self.image_shape()
+        names = self._maker()[1]
+        numbers = self._structure_numbers(intrinsics)
+
+        def made() -> tuple[Array, Array, dict[str, Array]]:
+            return framed(*unpacked(self._make(numbers), rows, columns, names))
+
+        if STRUCTURE not in p:
+            return made()
+        given = p[STRUCTURE] if run_constants_given(p) else carrying(self._make)(p[STRUCTURE], numbers)
+
+        def read() -> tuple[Array, Array, dict[str, Array]]:
+            return framed(*unpacked(given, rows, columns, names))
+
+        # The choice renders the frame in each branch rather than choosing the structure: a branch that gave the
+        # structure out would copy it (measured: about 12 ms a copy chain at 640x480 in float64).
+        return lax.cond(self.holds_at(p, numbers), read, made)
+
+    def holds_at(self, p: Mapping[str, Any], numbers: Array) -> Array:
+        """Whether the structure ``p`` holds was made at ``numbers``: every one of them equal to its own."""
+        return jnp.all(numbers == p[STRUCTURE_FROM])
 
     def frame_due(self, count: Array, period: int) -> Array:
         """Whether the step with count ``count`` is a frame step."""

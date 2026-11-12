@@ -1,15 +1,16 @@
-"""The static structure, a leaf: read while the numbers beside it are the run's, made again whenever any differs.
+"""The static structure, a leaf: read while the numbers beside it are the step's, made again whenever any differs.
 
 The node holds the structure (``static_structure``) beside every number it was made at (``static_structure_from``: the
-nine intrinsics, the scene's numbers, the camera's pose); a run makes it once, before its steps, where any differs from
-the run's own, and a run that MADDENING's own scan steps (a recorded run) makes the same choice in its frame step. Three
-claims:
+nine intrinsics, the scene's numbers, the camera's pose); a frame step reads it where those are the step's and makes it
+where any differs. A run whose chunks make the run-constants and one MADDENING's own scan steps (a recorded run) take the
+same choice: the run-constant is the held leaf itself, carrying the make's derivative (a choice there would copy the
+structure at every chunk). Three claims:
 
 * a run continued with another leaf draws the whole frame at it (the review of #266 found the tube drawn at the old
   ``fy`` and the ball at the new one);
 * a held number that differs, whichever of them, makes the structure again, and one that does not leaves the held one
   read (it is *served*: a camera that renders the static structure in every frame is correct and dearer, and no
-  image-level test can tell it), on both routes: a chunk that makes the run-constants and MADDENING's history scan;
+  image-level test can tell it), on both routes;
 * the state carries nothing of it, so a held step holds the image alone.
 
 **The controls.** ``CAMERA_PLANT=numbers-not-compared`` reads the held structure whatever its numbers;
@@ -29,23 +30,14 @@ import pytest
 from in_loop_cases import DETECTOR, ballistic, planted
 
 from mime.build import _maddening
-from mime.sensing import _node
 from mime.sensing._node import STRUCTURE, STRUCTURE_FROM, CameraNode
 from mime.units import ms
 
 if planted("numbers-not-compared"):
-    def not_compared(self, p, intrinsics):
-        return p[STRUCTURE] if STRUCTURE in p else self._make({"numbers": self._structure_numbers(intrinsics)})  # noqa: SLF001
-
-    CameraNode._structure_at = not_compared  # type: ignore[method-assign]  # noqa: SLF001
+    CameraNode.holds_at = lambda self, p, numbers: jnp.asarray(True)  # type: ignore[method-assign]
 
 if planted("cache-every-frame"):
-    def every_frame(self, p, intrinsics, pose, dtype):
-        rows, columns = self.image_shape()
-        flat = self._make({"numbers": self._structure_numbers(intrinsics)})  # noqa: SLF001
-        return _node.unpacked(flat, rows, columns, self._maker()[1])  # noqa: SLF001
-
-    CameraNode._static_part = every_frame  # type: ignore[method-assign]  # noqa: SLF001
+    CameraNode.holds_at = lambda self, p, numbers: jnp.asarray(False)  # type: ignore[method-assign]
 
 MARKER = 0.25
 CAMERA = "camera:"
