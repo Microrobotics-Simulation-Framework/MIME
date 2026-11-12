@@ -1,5 +1,5 @@
 {
-  "scope": "TWO FAMILIES OF NODES, EACH ON A HANDFUL OF CASES ON A CPU, AND THE RAW-PROGRAM ROUTE ON ONE. The raw_program family (the estimate of a jitted function that is not an experiment, from XLA's compiled memory analysis, mem_estimate.py --raw) rests on one case, a dense solve at one size on one runner: its factor is the rule applied to that one ratio (1.07, so the minimum 1.10), which says nothing about a program with a different mix of temporaries, a callback or a host-side table, and the next raw arm's peak is a row for this table. The two families of nodes:  The MRS drag with its near field: 12 forward cases (10 of them the near field's, measured when the node's own memory estimate was fitted to the same peaks, so they agree by construction in part) and reverse cases of one sphere near a plane (peaks measured on the plain chunk by a CI probe, on the checkpointed run locally), plus two reverse cases that were killed, which give lower bounds only. The FVM: periodic tubes at 32 to 192 cells across, steady and IMEX, float64 and float32, forward and reverse, all measured locally and all below 2.2 GiB: whether the ratio holds at 10 GiB is unknown (it fell with size over the sizes seen: the miss is mostly additive, compile and runtime memory the estimate does not see). No other family (a point body coupled to the FVM, the Stokeslet and lubrication nodes, the surrogates, a GPU) was measured: a graph with one takes the uncalibrated factor. A family's factor is the largest measured/estimated ratio among its completed cases of the mode, up to 0.05, never under 1.10 (`min_factor`); the estimate times it lies over the measured peak on these cases only, by construction. A peak marked as a lower bound belongs to a run that was killed: its ratio shows an underestimate only when over 1 and it does not enter a factor. The table grows from probe runs: a run whose peak exceeds its bound is flagged and its row is printed.",
+  "scope": "TWO FAMILIES OF NODES, EACH ON A HANDFUL OF CASES ON A CPU, AND THE RAW-PROGRAM ROUTE ON ONE. The raw_program family (the estimate of a jitted function that is not an experiment, from XLA's compiled memory analysis, mem_estimate.py --raw) rests on one case, a dense solve at one size on one runner: its factor is the rule applied to that one ratio (1.07, so the minimum 1.10), which says nothing about a program with a different mix of temporaries, a callback or a host-side table, and the next raw arm's peak is a row for this table. The two families of nodes:  The MRS drag with its near field: 12 forward cases (10 of them the near field's, measured when the node's own memory estimate was fitted to the same peaks, so they agree by construction in part) and reverse cases of one sphere near a plane (peaks measured on the plain chunk by a CI probe, on the checkpointed run locally), plus two reverse cases that were killed, which give lower bounds only. The FVM: periodic tubes at 32 to 192 cells across, steady and IMEX, float64 and float32, forward and reverse, measured locally but for two CI probes (a porous plug's box, several builds in one process against one plug-free build's estimate: the forward factor's cases), all below 2.2 GiB: whether the ratio holds at 10 GiB is unknown (it fell with size over the sizes seen: the miss is mostly additive, compile and runtime memory the estimate does not see). No other family (a point body coupled to the FVM, the Stokeslet and lubrication nodes, the surrogates, a GPU) was measured: a graph with one takes the uncalibrated factor. A family's factor is the largest measured/estimated ratio among its completed cases of the mode, up to 0.05, never under 1.10 (`min_factor`); the estimate times it lies over the measured peak on these cases only, by construction. A peak marked as a lower bound belongs to a run that was killed: its ratio shows an underestimate only when over 1 and it does not enter a factor. The table grows from probe runs: a run whose peak exceeds its bound is flagged and its row is printed. Added 2026-11-12 from the probe runs of the previous 24 hours: the mem_check.json of 1,093 arms were read, and 7 rows of the FVM's forward factor kept, the arms whose script runs the declared case through node_measure.py and nothing else (the solve-mask spike's cost arms, float64 and float32, ratios 1.60 to 2.22 on 1.0 to 1.6 GiB estimates, a miss of 0.9 to 1.4 GiB each, so the miss is mostly additive here too, and the forward factor follows the rule to 2.25). The other 1,086 are not calibration rows: an arm's check compares the largest process of its whole script (pytest gates, detection-rate and bit-compare worktrees, finite-difference sweeps, a derivative sweep of many steps where the estimate is a 2-step chunk) with the estimate of the one case its estimate line declares, so a red check there says the arm did more than it declared, not that the estimator is low for the declared case; none of them was fitted. Added the same day: a probe of the gradient tree whose arms run the declared case through node_measure.py and nothing else, forward at 6 and 10 cells across (ratios 1.86 and 1.43) and in reverse mode in the tree's radii at 6, 8, 10 and 12 (2.34, 1.92, 1.61 and 1.35: the ratio falls with size, as the forward one does; the largest peak 5.1 GiB): the first clean reverse-mode rows of the FVM. The solve-mask spike's C arms read the same case 4.6 to 5.5 times low because their script (grad.py) runs the forward and reverse derivatives and a ten-step central-difference sweep in one process, which retains every compiled program; the clean reverse run reads 1.9 to 2.3.",
   "estimate": "mem_estimate.py: the largest of the build's peak, the resident set after the build plus the compiled program's bytes (in reverse mode the larger of the checkpointed run and the plain chunk) and the nodes' own estimates",
   "min_factor": 1.1,
   "uncalibrated": {
@@ -23,8 +23,8 @@
       "node_modules": [
         "mime.nodes.flow.fvm"
       ],
-      "forward": 1.6,
-      "reverse": 1.8
+      "forward": 2.25,
+      "reverse": 2.35
     },
     "raw_program": {
       "node_modules": [],
@@ -393,6 +393,30 @@
       "measured_mib": 871.5
     },
     {
+      "name": "fvm_porous_s64_probe",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "steady (Stokes) periodic tube, 64 cells across and 256 along, float64, forward: six builds in one process (the open tube and a porous plug at five permeabilities), estimated as the plug-free box of the same size",
+      "estimate_gib": 1.16,
+      "measured_gib": 1.991,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.717,
+      "where": "a CI runner probe (run 43084858227, arm finite-parallel-64-0.01h, 2026-11-11): the largest process's peak (ru_maxrss), compile included; it was over its bound of 1.86 GiB, so flagged an underestimate"
+    },
+    {
+      "name": "fvm_porous_s64_floor",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "steady (Stokes) periodic tube, 64 cells across and 256 along, float64, forward: three builds in one process (the open tube and a porous plug at two tolerances, CG solves of 36000 and 42000 iterations), estimated as the plug-free box of the same size",
+      "estimate_gib": 1.122,
+      "measured_gib": 2.01,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.792,
+      "where": "a CI runner probe (run 43123280055, arm parallel-64-0.1h-b, 2026-11-12): the largest process's peak (ru_maxrss), compile included; it was over its bound of 1.96 GiB, so flagged an underestimate"
+    },
+    {
       "name": "raw_dense_solve_n8000",
       "family": "raw_program",
       "mode": "program",
@@ -404,6 +428,162 @@
       "ratio": 1.072,
       "where": "a CI runner probe (run 43042249664, 2026-11-11): the largest process's peak (ru_maxrss), compile included, predicted in [0.8, 1.4] before it ran",
       "measured_mib": 1800.3
+    },
+    {
+      "name": "fvm_cost_0p01h_float32",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the FVM cost tree through the node (node_measure.py, 20 steps, 2 repeats), 0.01h float32, one process the declared case alone",
+      "estimate_gib": 1.037,
+      "measured_gib": 2.02,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.948,
+      "where": "a CI probe (run 43137265060, arm cost_0.01h_float32): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_cost_0p01h_float64",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the FVM cost tree through the node (node_measure.py, 20 steps, 2 repeats), 0.01h float64, one process the declared case alone",
+      "estimate_gib": 1.518,
+      "measured_gib": 2.426,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.598,
+      "where": "a CI probe (run 43137265060, arm cost_0.01h_float64): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_cost_0p1h_float32",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the FVM cost tree through the node (node_measure.py, 20 steps, 2 repeats), 0.1h float32, one process the declared case alone",
+      "estimate_gib": 1.048,
+      "measured_gib": 2.008,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.916,
+      "where": "a CI probe (run 43137265060, arm cost_0.1h_float32): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_cost_0p1h_float64",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the FVM cost tree through the node (node_measure.py, 20 steps, 2 repeats), 0.1h float64, one process the declared case alone",
+      "estimate_gib": 1.506,
+      "measured_gib": 2.471,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.641,
+      "where": "a CI probe (run 43137265060, arm cost_0.1h_float64): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_cost_mask_float32",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the FVM cost tree through the node (node_measure.py, 20 steps, 2 repeats), mask float32, one process the declared case alone",
+      "estimate_gib": 1.091,
+      "measured_gib": 2.325,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 2.131,
+      "where": "a CI probe (run 43137265060, arm cost_mask_float32): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_cost_mask_float64",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the FVM cost tree through the node (node_measure.py, 20 steps, 2 repeats), mask float64, one process the declared case alone",
+      "estimate_gib": 1.571,
+      "measured_gib": 2.946,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.875,
+      "where": "a CI probe (run 43137265060, arm cost_mask_float64): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_cost_d3_mask_float32",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the FVM cost tree through the node (node_measure.py, 20 steps, 2 repeats), mask float32, one process the declared case alone",
+      "estimate_gib": 1.078,
+      "measured_gib": 2.39,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 2.217,
+      "where": "a CI probe (run 43151130815, arm cost_mask_float32): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_gradtree_rev6",
+      "family": "fvm",
+      "mode": "reverse",
+      "what": "the gradient tree (IMEX Euler under Stokes, 6 cells across, 2 steps, float64) through node_measure.py, reverse mode in the tree's radii (its forward first run in the same process)",
+      "estimate_gib": 1.077,
+      "measured_gib": 2.522,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 2.342,
+      "where": "a CI probe (run 43199314391, arm rev6): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_gradtree_rev8",
+      "family": "fvm",
+      "mode": "reverse",
+      "what": "the gradient tree (IMEX Euler under Stokes, 8 cells across, 2 steps, float64) through node_measure.py, reverse mode in the tree's radii (its forward first run in the same process)",
+      "estimate_gib": 1.593,
+      "measured_gib": 3.053,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.917,
+      "where": "a CI probe (run 43199314391, arm rev8): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_gradtree_fwd6",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the gradient tree (IMEX Euler under Stokes, 6 cells across, 2 steps, float64) through node_measure.py, forward",
+      "estimate_gib": 0.969,
+      "measured_gib": 1.8,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.858,
+      "where": "a CI probe (run 43199314391, arm fwd6): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_gradtree_fwd10",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "the gradient tree (IMEX Euler under Stokes, 10 cells across, 2 steps, float64) through node_measure.py, forward",
+      "estimate_gib": 2.052,
+      "measured_gib": 2.943,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.434,
+      "where": "a CI probe (run 43199314391, arm fwd10): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_gradtree_rev10",
+      "family": "fvm",
+      "mode": "reverse",
+      "what": "the gradient tree (IMEX Euler under Stokes, 10 cells across, 2 steps, float64) through node_measure.py, reverse mode in the tree's radii (its forward first run in the same process)",
+      "estimate_gib": 2.412,
+      "measured_gib": 3.876,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.607,
+      "where": "a CI probe (run 43199314391, arm rev10): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
+    },
+    {
+      "name": "fvm_gradtree_rev12",
+      "family": "fvm",
+      "mode": "reverse",
+      "what": "the gradient tree (IMEX Euler under Stokes, 12 cells across, 2 steps, float64) through node_measure.py, reverse mode in the tree's radii (its forward first run in the same process)",
+      "estimate_gib": 3.813,
+      "measured_gib": 5.144,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.349,
+      "where": "a CI probe (run 43199314391, arm rev12): the largest process's peak (ru_maxrss), compile included; the arm runs the declared case and nothing else"
     }
   ]
 }

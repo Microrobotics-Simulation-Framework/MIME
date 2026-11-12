@@ -163,6 +163,10 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "windkessel", "0.1.0"): FamilyCase(no_family=PORT_LAW),
     ("interaction", "valve", "0.1.0"): FamilyCase(no_family=PORT_LAW),
     ("interaction", "shared_distal", "0.1.0"): FamilyCase(no_family=PORT_LAW),
+    ("interaction", "darcy", "0.1.0"): FamilyCase(
+        no_family="a porous structure's drag held in a flow's step, which no body's family rig holds: its delivery is "
+                  "the flow field's, its loss booked under its id and gated with the porous plug "
+                  "(tests/flow/test_porous_plug.py)"),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.lift", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.hold", "0.1.0"): FamilyCase(no_family=TOY),

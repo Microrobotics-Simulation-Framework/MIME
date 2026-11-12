@@ -41,6 +41,7 @@ from mime.scene._frame import (
     world_frame,
 )
 from mime.scene._geometry import Axis, Plane, Tube, X, Y, Z
+from mime.scene._plug import Plug
 from mime.scene._previous import KEPT
 from mime.scene._sampling import (
     QUADRATURE,
@@ -117,7 +118,7 @@ __all__ = [
     "CameraPrim", "display_primvars", "read_camera", "write_camera",
     "ARROW", "Asset", "Axis", "active_visual_pins", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
     "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
-    "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",
+    "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane", "Plug",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
     "Helix", "polyline", "straight",
     "Ball", "CURVATURE_LINE", "ExactUnion", "FILLET_SHARE", "LAYER_LINES", "Region", "ResolutionEntry", "ResolutionReport",
