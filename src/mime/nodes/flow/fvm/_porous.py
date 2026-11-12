@@ -100,16 +100,21 @@ POROUS_MEASURED = (
 #: What was measured of the hand-over (its gates and probe, GitHub runners, float64 unless named), as the flow's validity
 #: line states it.
 HANDOVER_MEASURED = (
-    "The hand-over below the line: the solve holds a region at the line's permeability, so the outer flow carries the "
-    "flux the held region passes (about 32 K_line / R^2 of the open tube's for a plug a quarter of its period long: "
-    "4.3e-6 / 1.1e-6 at D/h 16 / 32 with 0.1h, 5e-5 / 1.3e-5 with 0.01h), and the reading's error is that held "
-    "region's feedback, about its flux over the outer flow's, beside the face pressures' own error; where both routes "
-    "hold the reading agrees with the resolved throughflow within the held region's feedback and 2 % at D/h 16 "
-    "[MEASURE]; far below the line (sqrt(K)/h 1e-3 to 1e-4) its error against the series closed form is constant in K "
-    "[MEASURE]; a body's displacement is not in the forced-flow test, and a thin gap whose conductance is under the held "
-    "region's acts as forced while the gap rule flags it; the cold steady solve at the line takes some 7,000 to 17,000 "
-    "iterations at D/h 16 to 32 with 0.1h (over the default cap of 5,000, flagged) and stops stagnated on a box two "
-    "diameters long, where IMEX Euler's warm start converges; float32 [MEASURE]")
+    "Below the line the solve holds a region at the line's permeability, so the outer flow carries the flux the held "
+    "region passes (about 32 K_line / R^2 of the open tube's for a plug a quarter of its period long: 4.3e-6 / 1.1e-6 "
+    "at D/h 16 / 32 with 0.1h, 5e-5 / 1.3e-5 with 0.01h), and the reading's error is that region's feedback, about its "
+    "flux over the outer flow's, beside the face pressures' own error. Where both routes hold (a plug closing the tube, "
+    "a quarter of its period long, the hand-over's arm holding it at nine times its K), the reading against the "
+    "resolved lumen_flux: +0.4 to -0.5 % at sqrt(K)/h 0.003 to 0.03 and -4.3 % at 0.1 (D/h 16), +0.03 to -0.4 % and "
+    "-1.8 % (D/h 32), the held region's feedback 4 % and 1 % at 0.1; far below the line (sqrt(K)/h 1e-3 to 1e-4) the "
+    "reading against the series closed form -1.5 / -1.2 % at D/h 16 and -0.4 / -0.3 % at 32 (0.1h / 0.01h), the same "
+    "to 1e-6 at every K, not the carried region's share of the lumen (4 h / R); float32 reads within 2e-4 of float64 "
+    "there, its solve converged at D/h 16 with 0.01h and stopped stagnated at 1.2e-3 to 2.6e-3 at the 0.1h line and near 5e-5 at "
+    "D/h 32 with 0.01h, flagged; a body's displacement is not in the forced-flow test, and a thin gap whose conductance "
+    "is under the held region's acts as forced, which only the gap rule flags; the cold steady solve at the 0.1h line "
+    "takes 7,129 / 16,736 iterations at D/h 16 / 32 (over the default cap of 5,000, flagged), and on a box two "
+    "diameters long it stops stagnated at 1,600 (float64 residual 0.82, its reading within 1.7 %; float32 residual 1.0, "
+    "its reading 0.31 of the series), where IMEX Euler's warm start converges")
 
 
 def leaves_a_gap(radius: Any, offset_squared: Any, lumen_radius: Any) -> Any:
