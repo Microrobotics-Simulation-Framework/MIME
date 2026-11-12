@@ -51,5 +51,17 @@
       "one_ulp": "the open vessel with the water's viscosity one ulp up: arrays differ"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the run below",
+    "gate_1_return_path_redrawn": {
+      "result": "float64 30/30, worst 3.8e-10 (field); float32 29/30, seed 18 failing at a twist difference of 4.0e-3 of the solved twist (a small body spun down from 96 to 25 rad/s in the step): the guess under 1.5e-3 was wrong; the twist is now judged on the scale it came from (predictions_f3_pr2_scale.json)",
+      "control": "drop and cross 30/30 in both dtypes, clean 0/10 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140877536"
+    },
+    "bits": {
+      "result": "every array equal for all 12 programs (periodic_tube_flow, tree_flow, open_tube_flow, open_tube_loop, script_a_with_drag, point_body_flow lagged; float32 and float64) against 72e9dd8; the repeat identical; the one-ulp control did not run (it declared the viscosity a second time, which a build refuses): re-run with predictions_f3_pr2_scale.json",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43140877536"
+    }
+  }
+
 }

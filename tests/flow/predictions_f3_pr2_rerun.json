@@ -138,5 +138,30 @@
     "if_wrong": "the plant rings under one pass past 30 steps: the flag test can run one pass at that length, and the PR says so in place of 'the plant does not diverge'",
     "cannot_discriminate_if": "every run NaN or every run raising the flag for another cause: the slip and the finiteness are recorded beside the flag"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the run below",
+    "gate_3_one_pass": {
+      "result": "10/10 per dtype; worst 6.7e-16 (float64), 4.2e-7 (float32): inside both bands",
+      "control": "MAXEY_RILEY 10/10 per dtype, clean 0/3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "gate_3_lagged": {
+      "result": "10/10 per dtype; worst 5.6e-16 (float64), 3.0e-7 (float32)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "gate_14_lagged": {
+      "result": "10/10 per dtype; slip at most 3.9e-9 (float64), 8.0e-7 (float32); the flag never raised",
+      "control": "OWN_FIELD 20/20 per dtype, clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "ringing_flag_lagged": {
+      "result": "raised within 30 steps (passed)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "one_pass_under_the_plant": {
+      "result": "the guess was wrong: under one pass the plant diverges, the body at -990 to -1580 m/s after 100 steps at 20 of 20 draws, without the reversals the flag counts (raised at 0 of 20 within 100 steps, 7 of 20 within 300); clean, the run settles (slip 1e-9 to 5e-9 float64, 9e-7 to 3e-6 float32), the flag silent at 20 of 20; the plant moved the velocity at 20 of 20. Gate 14 now runs under both schemes (predictions_f3_pr2_gate14.json); the ringing flag test stays lagged",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    }
+  }
+
 }

@@ -42,5 +42,14 @@
     "if_wrong": "a clean miss on a twist judged on its starting scale: the elimination's float32 rounding is above the CG's line there; print the body's system's condition",
     "cannot_discriminate_if": "a plant caught only through the twist, whose scale this widens: the force carries the plants (above)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the run below",
+    "gate_1_return_path_twist_on_its_scale": {
+      "result": "30/30 per dtype; worst 3.8e-10 (float64, field) and 1.3e-3 (float32, a force at seed 2; the twists at most 1.1e-3): inside both bands",
+      "control": "drop and cross 30/30 in both dtypes, clean 0/10 each",
+      "bits": "every array equal for 12 programs (periodic_tube_flow, tree_flow, open_tube_flow, open_tube_loop, script_a_with_drag, point_body_flow lagged; float32 and float64) against ff9624c, one CPU, one thread; the one-ulp control (open_tube_flow, float64, the viscosity one ulp up on the head) differs; the head recorded twice identical",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43149114312"
+    }
+  }
+
 }

@@ -42,5 +42,13 @@
     "if_wrong": "a planted run that settles under one pass: the loop's divergence there depends on the draw, and the gate needs an arm where it does not",
     "cannot_discriminate_if": "the plant bounded: measured above at 20 of 20 draws, it is not"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the run below",
+    "gate_14_one_pass": {
+      "result": "10/10 per dtype; slip at most 5.1e-9 (float64) and 3.3e-6 (float32), inside both bands; the flag never raised",
+      "control": "OWN_FIELD 20/20 per dtype (caught by the slip), clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144461084"
+    }
+  }
+
 }
