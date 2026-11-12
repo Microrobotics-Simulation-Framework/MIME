@@ -110,5 +110,74 @@
     "prediction": "each cell within 1.5x of the pre-merge measurement (run 43119066763): the fix round changed the renderer's pieces (B1 composed edges, B2 windows, 12+1 Newton steps) and the in-loop window's sizing moved to the silhouette box; a guess, 'frame step' most likely above, the held step unchanged",
     "measured_at": "the pre-merge head on the same runner type"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12",
+    "probe": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43169707692 (probe branch at 910becb5f on camera/in-loop 7c8a4371, release tip 7c762f43 merged)",
+    "gate_ahead": {
+      "planted_caught": "30/30",
+      "lower_bound_95": 0.905,
+      "clean_flagged": "0/30",
+      "every_run": true,
+      "clean_error": "under the float32 line 1.5e-5 and the float64 line (both dtypes pass in the local run)",
+      "planted_error": "0.65 relative (float32), as predicted"
+    },
+    "gate_bits_controls": {
+      "repeat": "all arrays equal (script_a_f64, ballistic_f64; the head against itself)",
+      "one_ulp": "differs: ball.pose by 1.4e-20, ball.twist by 4.3e-19 after 40 steps, so the comparison tells a one-ulp change in the ball's speed; as predicted"
+    },
+    "gate_merged_bits": {
+      "result": "all_equal against origin/release/v0.3.0 (7c762f43): script_a_f64, script_a_f32, gantry_f64, ballistic_f64, ballistic_f32, max_abs_difference 0",
+      "not_done": "the energy-ledger program is not among the five"
+    },
+    "gate_resolution": {
+      "method": "discriminating_range.py on tests/sensing/resolution_oracles.py::replay_flags, 200 draws, 14 sizes from 1e-14 to 1e-1, run on the laptop's CPU (not Actions: a small numpy comparison on frames rendered once)",
+      "float64": {
+        "resolution": 1e-10,
+        "refined": 1.42e-11,
+        "plant_at": 1.42e-10,
+        "false_alarms": "0/200",
+        "non_monotone": []
+      },
+      "float32": {
+        "resolution": 0.01,
+        "refined": 0.00763,
+        "plant_at": 0.0763,
+        "false_alarms": "0/200",
+        "non_monotone": []
+      },
+      "status": "as predicted (the floors 1.4e-11 and 7.6e-3 counts); by construction, since the comparison is a threshold at its floor: it confirms the floor is what the text states, not that the frames agree to it (the replay test itself shows they do)"
+    },
+    "costs": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43169707692",
+      "rows_ms_per_step": {
+        "float32 320x240": {
+          "no camera": 0.022,
+          "camera held": 0.141,
+          "frame step": 2.7,
+          "moving mount, every frame": 6.75
+        },
+        "float32 640x480": {
+          "no camera": 0.022,
+          "camera held": 0.17,
+          "frame step": 9.88,
+          "moving mount, every frame (loaded flag)": 31.5
+        },
+        "float64 320x240": {
+          "no camera": 0.0265,
+          "camera held (loaded flag)": 0.21,
+          "frame step (loaded flag)": 6.32,
+          "moving mount (loaded flag)": 20.4
+        },
+        "float64 640x480": {
+          "no camera": 0.0128,
+          "camera held": 0.124,
+          "frame step": 12.4,
+          "moving mount, every frame": 52.4
+        }
+      },
+      "against_the_prediction (each cell within 1.5x of the pre-merge measurement)": "frame step: float32 320 1.45x (within), float32 640 0.78x (within), float64 320 1.3x (within, loaded flag), float64 640 0.62x (within); held step: 1.9x, 0.7x, 1.1x, 0.5x (two outside); moving mount: 0.33x, 0.17x, 0.22x, 0.13x, i.e. 3 to 8 times cheaper than before the merge: MISSED, in the other direction, and not explained here (the fix round rebuilt the renderer's pieces; a different runner CPU is possible: not separated)",
+      "non_frame_overhead_over_no_camera_ms": "0.12, 0.15, 0.18 (loaded flag), 0.11: still above the earlier 0.1 ms prediction",
+      "status": "reported, not gated"
+    }
+  }
 }
