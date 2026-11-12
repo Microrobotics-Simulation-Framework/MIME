@@ -7,6 +7,8 @@ from __future__ import annotations
 import dataclasses
 import math
 import warnings
+
+import numpy as np
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -56,7 +58,7 @@ from mime.registry import (
     Interaction,
     Observation,
 )
-from mime.vocabulary import ONE_PASS_PARTNER
+from mime.vocabulary import ONE_PASS_PARTNER, SCHWARZ_PARTNER
 
 _BUILDERS: dict[Section, type[RestrictedBuilder]] = {
     Section.PROVIDER: ProviderBuilder,
@@ -177,9 +179,11 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     not hold in its state as declared: a declaration a run's result could not read."""
     cls = plan.registered.cls
     rung = getattr(plan.entry, "rung", None)
+    # An entry whose plan builds no node of its own (a Schwarz partner, whose medium's flow holds its law) raises
+    # nothing on one: the node that holds it raises its flags.
     held: list[tuple[str, str, str, tuple[int, ...] | None]] = [
         ("flag", flag.node, flag.field, None) for flag in cls.raises
-        if flag.raised_by(rung, bool(plan.members), plan.entry)]
+        if flag.raised_by(rung, bool(plan.members), plan.entry) and plan.nodes]
     if issubclass(cls, Observation):
         held += [("output", output.node, output.field, output.shape) for output in cls.outputs]
     found: list[str] = []
@@ -207,7 +211,33 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         entry=plan.entry, exchanges=dict(plan.exchanges),
                         starts={role: dict(body.initial) for role, name in plan.bindings.items() if plan.exchanges
                                 for body in plans.entries if body.section is Section.DYNAMICS and body.owner == name},
-                        frequencies=_drive_frequencies(plan, plans), partner_rows=_partner_rows(plan, plans))
+                        frequencies=_drive_frequencies(plan, plans), partner_rows=_partner_rows(plan, plans),
+                        partners={r.id: _context(other, plans) for r in plan.registrations
+                                  if r.kind == SCHWARZ_PARTNER for other in plans.entries if other.owner == r.id},
+                        drive_start=_drive_start(plan, plans))
+
+
+def _drive_start(plan: EntryPlan, plans: PlanSet) -> tuple[float, float, float]:
+    """For a medium's dynamics holding a Schwarz partner, the body force per unit mass (m/s^2) the body-force laws bound
+    to its medium drive its fluid with at the end of the run's first step, summed (their declared schedules, read
+    from their settings in SI); zero for any other plan."""
+    if not any(r.kind == SCHWARZ_PARTNER for r in plan.registrations) or plan.thing is None:
+        return (0.0, 0.0, 0.0)
+    total = np.zeros(3)
+    for other in plans.entries:
+        if other.section is not Section.INTERACTION or other.bindings.get("medium") != plan.thing:
+            continue
+        along = getattr(other.entry, "along", None)
+        steady = other.settings.get("steady")
+        if along is None or not isinstance(steady, float):
+            continue
+        amplitude = other.settings.get("amplitude")
+        frequency = other.settings.get("frequency")
+        swing = float(amplitude) * math.cos(2.0 * math.pi * float(frequency) * plans.dt
+                                            + float(getattr(other.entry, "phase", 0.0))) \
+            if isinstance(amplitude, float) and isinstance(frequency, float) else 0.0
+        total += np.asarray(along, dtype=np.float64) * (steady + swing)
+    return (float(total[0]), float(total[1]), float(total[2]))
 
 
 def held_rows(built: Mapping[str, SimulationNode], edges: Sequence[EdgeDecl]) -> list[EdgeDecl]:

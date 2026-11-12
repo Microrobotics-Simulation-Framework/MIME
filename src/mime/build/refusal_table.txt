@@ -161,6 +161,8 @@ drag.patches                  user
 drag.rft-coefficients         user
 drag.rft-indefinite           user
 drag.rft-wall-range           user
+drag.schwarz-scheme           user
+drag.schwarz-wall-kind        user
 drag.stokes-floor             user
 drag.stokes-one-pass          user
 drag.stokes-scheme            user
@@ -212,6 +214,9 @@ flow.prescribed-alpha         user
 flow.prescribed-region        user
 flow.region                   user
 flow.resolution               user
+flow.schwarz-bodies           user
+flow.schwarz-drive            user
+flow.schwarz-indefinite       user
 flow.solve-report-rows        user
 flow.steady-convection        user
 flow.tree-exchange            user

@@ -47,15 +47,15 @@ from mime.core.ledger import TermOrder
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negative_resistivity
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
+from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, SchwarzStep, StepParts, \
     FlowFields, FlowRecords, PartnerFields, check_deliveries
 from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
 from mime.nodes.flow.fvm._partners import BodyPartner, Openings, Partnered, combined, partnered_step
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, opening_rows, \
     openings_solved, port_law_named, reference_of, well_posed
 from mime.nodes.flow.fvm._schemes import StageParts, StepContext
-from mime.nodes.flow.fvm._solve import Stopping, preconditioner_named, projected_solve, recheck_stopping, \
-    stagnation_window
+from mime.nodes.flow.fvm._solve import REPORT_SIZE, Stopping, preconditioner_named, projected_solve, \
+    recheck_stopping, stagnation_window
 from mime.registry import Problem
 
 #: The roles the open node's hosted rows take beside its viscosity's and wall's: each opening's law, by its index,
@@ -140,6 +140,10 @@ class OpenPorts(NamedTuple):
     @property
     def pressures(self) -> Array:
         return self.solution.pressures
+
+
+#: A Schwarz flow's openings' solution for its prepared base (``PortSolution``'s fields, in order), stored with it.
+SCHWARZ_PORTS = ("schwarz_port_pressures", "schwarz_port_relative", "schwarz_port_moved", "schwarz_port_fluxes")
 
 
 def _velocity(state: Mapping[str, Array]) -> Velocity:
@@ -346,15 +350,17 @@ class OpenFlowNode(ImplicitFlowNode):
                 "opening_pressure_relative": jnp.zeros(openings, dtype=dtype),
                 "opening_flux": jnp.zeros(openings, dtype=dtype),
                 "opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype), **unit,
-                **self.partner_fields()}
+                **self.partner_fields(), **self.schwarz_initial()}
         if not self.metered:
             return node_fields(held)
         z = as_run_array(0.0)
-        return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z})
+        return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z, **self.schwarz_book_fields()})
 
     @override
     def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> tuple[dict[str, Array], StepParts]:
+        if self.schwarz is not None:
+            return self.schwarz_stepped(p, state, boundary_inputs, dt)
         c = self.constants()
         scheme = self.scheme
         grid = self.open_grid(p)
@@ -472,6 +478,184 @@ class OpenFlowNode(ImplicitFlowNode):
             held = {**held, "stall_ratio": stall, "stall_flagged": (stall > line).astype(dtype)}
         return held, StepParts(stage, fields, energy)
 
+    # -- a Schwarz body: the openings inside each product ----------------------------------------------------------
+    @override
+    def schwarz_start_fields(self) -> dict[str, Array]:
+        """The openings' state the first preparation starts from: the laws' initial state, no pressure predicted, no
+        unit field to start from."""
+        c = self.constants()
+        grid = self.open_grid(c)
+        dtype = run_dtype()
+        count = len(self.others())
+        return {"opening_state": jnp.asarray(c["initial_opening_state"], dtype=dtype),
+                "opening_pressure_relative": jnp.zeros(self.opening_count(), dtype=dtype),
+                **{f"unit_{x}": jnp.zeros((count, *grid.shape(k)), dtype=dtype) for k, x in enumerate("xyz")}}
+
+    @override
+    def started_fields(self) -> tuple[str, ...]:
+        """The periodic node's, and the open vessel's: the base's unit fields and its openings' solution."""
+        if self.schwarz is None:
+            return ()
+        return (*super().started_fields(), *(f"unit_{x}" for x in "xyz"), *SCHWARZ_PORTS)
+
+    def homogeneous(self, grid: OpenMACGrid, rows: Sequence[RowKind], blocks: Array, units: Sequence[Velocity],
+                    response: Array, velocity: Velocity) -> tuple[Velocity, PortSolution]:
+        """A response from rest with the openings eliminated in it: the openings' rows with no law's own terms and no
+        pressure predicted (linear in ``velocity``), solved for the moves, each unit field times its move added."""
+        dtype = velocity[0].dtype
+        count = self.opening_count()
+        solution = self.solve_ports(rows, jnp.zeros(count, dtype=dtype), blocks, grid.opening_fluxes(velocity),
+                                    response, jnp.zeros(count, dtype=dtype), self.reference())
+        for k, j in enumerate(self.others()):
+            velocity = _add(velocity, units[k], solution.moved[j])
+        return velocity, solution
+
+    def opening_response(self, grid: OpenMACGrid, units: Sequence[Velocity]) -> Array:
+        dtype = run_dtype()
+        return jnp.stack([grid.opening_fluxes(unit) for unit in units], axis=1) if units else \
+            jnp.zeros((self.opening_count(), 0), dtype=dtype)
+
+    def instant_of(self, steps: Array, dt: float) -> Array:
+        """The instant the laws' rows of the step after ``steps`` steps are evaluated at."""
+        return steps.astype(run_dtype()) * dt + self.scheme.drive_instants[0] * dt
+
+    @override
+    def schwarz_solves(self, p: Mapping[str, Any], grid: MACGrid, sigma: Velocity, shift: Any, tap: Array,
+                       held: Mapping[str, Array], steps: Array, dt: float) -> tuple[Any, Any]:
+        """The open vessel's: the base solved with its openings at their laws (the laws' state, the pressures
+        predicted and the unit fields to start from, ``held``'s), as the open step solves; and the products' walled
+        solve with the openings eliminated in it by that step's unit fields (:meth:`homogeneous`), with the base's
+        unit fields and openings' solution for the state."""
+        c = self.constants()
+        opened = self.open_grid(p)
+        dtype = run_dtype()
+        rho = as_run_array(p["density"])
+        rows, reference, others, count = self.rows(), self.reference(), self.others(), self.opening_count()
+        predicted = jnp.asarray(held["opening_pressure_relative"], dtype=dtype)
+        starts = [(held["unit_x"][k], held["unit_y"][k], held["unit_z"][k]) for k in range(len(others))]
+        a, blocks = self.law_rows(as_run_array(p["opening_parameters"]), jnp.asarray(held["opening_state"]),
+                                  self.instant_of(steps, dt), dt)
+        flow = self.walled_solve(p, opened, sigma, shift, self.stopping_of(p, opened, as_run_array(p["tolerance"])),
+                                 tap)
+        recorded: dict[str, Any] = {}
+
+        def solve(shift: Any, rhs: Velocity, guess: Velocity | None) -> tuple[Velocity, Array]:
+            base, report = flow(_add(rhs, opened.port_force(predicted, rho)), guess if c["scaling_start"] else None)
+            units: list[Velocity] = []
+            reports = [report]
+            for k, j in enumerate(others):
+                unit, unit_report = flow(opened.port_force(jnp.zeros(count, dtype=dtype).at[j].set(1.0), rho),
+                                         starts[k] if c["scaling_start"] else None)
+                units.append(unit)
+                reports.append(unit_report)
+            response = self.opening_response(opened, units)
+            solution = self.solve_ports(rows, a, blocks, opened.opening_fluxes(base), response, predicted, reference)
+            solved = base
+            for k, j in enumerate(others):
+                solved = _add(solved, units[k], solution.moved[j])
+            recorded.update(units=units, response=response, solution=solution)
+            return solved, combined(reports)
+
+        def after(tolerance: Any) -> tuple[Any, dict[str, Array]]:
+            inner = self.walled_solve(p, opened, sigma, shift, self.stopping_of(p, opened, tolerance),
+                                      jnp.zeros(REPORT_SIZE, dtype=dtype))
+            units, response, solution = recorded["units"], recorded["response"], recorded["solution"]
+
+            def walled(rhs: Velocity) -> tuple[Velocity, Array]:
+                found, report = inner(rhs)
+                return self.homogeneous(opened, rows, blocks, units, response, found)[0], report
+
+            extra = {f"unit_{x}": (jnp.stack([unit[k] for unit in units]) if units else
+                                   jnp.asarray(held[f"unit_{x}"])) for k, x in enumerate("xyz")}
+            extra.update({name: jnp.asarray(value, dtype=dtype) for name, value in zip(SCHWARZ_PORTS, solution,
+                                                                                         strict=True)})
+            return walled, extra
+
+        return solve, after
+
+    @override
+    def schwarz_composing(self, p: Mapping[str, Any], grid: MACGrid, sigma: Velocity, shift: Any, tap: Array,
+                          state: Mapping[str, Array], steps: Array, dt: float) -> tuple[Any, dict[str, Any]]:
+        """The composition's walled solve with the openings eliminated by the base's unit fields, at the laws' rows
+        the base was solved with; it records the openings' moves the body's forces make."""
+        opened = self.open_grid(p)
+        rows = self.rows()
+        units = [(state["unit_x"][k], state["unit_y"][k], state["unit_z"][k]) for k in range(len(self.others()))]
+        response = self.opening_response(opened, units)
+        _, blocks = self.law_rows(as_run_array(p["opening_parameters"]), jnp.asarray(state["opening_state"]),
+                                  self.instant_of(steps, dt), dt)
+        flow = self.walled_solve(p, opened, sigma, shift, self.stopping_of(p, opened, as_run_array(p["tolerance"])),
+                                 tap)
+        recorded: dict[str, Any] = {"units": units, "response": response, "blocks": blocks}
+
+        def walled(rhs: Velocity) -> tuple[Velocity, Array]:
+            found, report = flow(rhs)
+            velocity, solution = self.homogeneous(opened, rows, blocks, units, response, found)
+            recorded["moved"] = solution
+            return velocity, report
+
+        return walled, recorded
+
+    @override
+    def schwarz_closed(self, p: Mapping[str, Any], grid: MACGrid, state: Mapping[str, Array], velocity: Velocity,
+                       recorded: dict[str, Any], steps: Array, dt: float) -> dict[str, Array]:
+        """The openings closed at the composed step: their solution the base's plus the body's forces' (none where
+        one way delivers nothing), the fluxes of the composed field, and each law advanced by them."""
+        opened = self.open_grid(p)
+        dtype = run_dtype()
+        base = PortSolution(*(jnp.asarray(state[name], dtype=dtype) for name in SCHWARZ_PORTS))
+        moved = recorded.get("moved")
+        solution = base if moved is None else PortSolution(*(x + y for x, y in zip(base, moved, strict=True)))
+        flux = opened.opening_fluxes(velocity)
+        parameters = as_run_array(p["opening_parameters"])
+        law_state = jnp.asarray(state["opening_state"])
+        ended = jnp.stack([law.advanced(parameters[i], law_state[i], self.per_law(law, held, flux),
+                                        self.per_law(law, held, solution.pressures), dt)
+                           for i, (law, held) in enumerate(zip(self.laws(), self.law_openings(), strict=True))])
+        recorded["composed"] = solution
+        return {"opening_pressure": solution.pressures.astype(dtype),
+                "opening_pressure_relative": solution.relative.astype(dtype), "opening_flux": flux.astype(dtype),
+                "opening_state": ended.astype(dtype)}
+
+    @override
+    def schwarz_stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
+                        dt: float) -> tuple[dict[str, Array], StepParts]:
+        """A Schwarz flow's step in an open vessel (``ImplicitFlowNode.schwarz_core``), with the lumen's reports and
+        the openings closed at the composed step."""
+        core: SchwarzStep = self.schwarz_core(p, state, boundary_inputs, dt)
+        dtype = run_dtype()
+        opened = self.open_grid(p)
+        velocity = core.done.field
+        axis = as_run_array(p["tube_axis"])
+        axis = axis / jnp.sqrt(jnp.sum(axis * axis))
+        lumen, solid, lumen_scale = self.fluxes(opened, core.fields, axis, velocity)
+        ratio = self.ratio(solid, lumen, lumen_scale)
+        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
+        units = {f"unit_{x}": core.mine.pop(f"unit_{x}") for x in "xyz"}
+        ended: dict[str, Array] = dict(
+            **core.common, lumen_flux=lumen, bypass_ratio=ratio,
+            bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype), reynolds=reynolds.astype(dtype),
+            reynolds_flagged=((reynolds > STOKES_REYNOLDS) & (not bool(self.constants()["convection"]))).astype(dtype),
+            **core.closed, **units)
+        held = node_fields(ended)
+        if not self.metered:
+            return {**held, **core.mine}, StepParts(core.stage, core.fields, {})
+        took, before, density = self.schwarz_took(p, state, boundary_inputs, core, dt)
+        recorded = core.recorded
+        solution: PortSolution = recorded["composed"]
+        composed_units: list[Velocity] = recorded["units"]
+        part = velocity
+        for k, j in enumerate(self.others()):
+            part = _add(part, composed_units[k], -solution.moved[j])
+        ports = OpenPorts(solution, part, tuple(composed_units), recorded["response"],
+                          opened.port_force(solution.relative, as_run_array(p["density"])), recorded["blocks"])
+        energy = self.open_energy_terms(p, opened, before, took, core.sigma, core.fields, dt, ports,
+                                        core.closed["opening_flux"], jnp.asarray(state["opening_state"]),
+                                        core.closed["opening_state"], as_run_array(p["opening_parameters"]),
+                                        schwarz=density)
+        return {**held, **core.mine, **self.schwarz_booked(p, state, core, energy, dt)}, \
+            StepParts(took, core.fields, energy)
+
     def solve_with_bodies(self, one: Any, grid: OpenMACGrid, rhs: Velocity, guess: Velocity | None,
                           bodies: Sequence[BodyPartner], held: Sequence[Velocity], rho: Array,
                           solved_ports: dict[str, OpenPorts], partnered: dict[str, Partnered],
@@ -564,9 +748,10 @@ class OpenFlowNode(ImplicitFlowNode):
     def open_energy_terms(self, p: Mapping[str, Any], grid: OpenMACGrid, before: Velocity, stage: StageParts,
                           sigma: Velocity, fields: WallFields, dt: float, ports: OpenPorts, flux: Array,
                           law_state: Array, law_ended: Array, parameters: Array,
-                          partnered: Partnered | None = None) -> dict[str, Array]:
+                          partnered: Partnered | None = None, schwarz: Velocity | None = None) -> dict[str, Array]:
         """Each term of the step's identity (J), the openings' laws' work and own books, the fluid's momentum the
-        drive is paired with, and the magnitude of the arithmetic forming them (``scale``)."""
+        drive is paired with, a Schwarz body's tractions' work (``schwarz``, their force density over the fluid's
+        density, as the periodic node's), and the magnitude of the arithmetic forming them (``scale``)."""
         fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2])
         rho, nu = as_run_array(p["density"]), self.kinematic(p)
         solved = stage.solved
@@ -576,7 +761,7 @@ class OpenFlowNode(ImplicitFlowNode):
         penalised = (sigma[0] * solved[0], sigma[1] * solved[1], sigma[2] * solved[2])
         forced = _add(stage.rhs, ports.force)
         partner_forces = partnered.forces if partnered is not None else ()
-        for force in partner_forces:
+        for force in (*partner_forces, *((schwarz,) if schwarz is not None else ())):
             forced = _add(forced, force)
         applied = self.operator_of(p, grid, sigma)(stage.shift)(solved)
         remainder = _add(forced, applied, -1.0)
@@ -632,6 +817,9 @@ class OpenFlowNode(ImplicitFlowNode):
         if partner_forces:
             terms["partners"] = jnp.stack([dt * rho * inner(force, solved) for force in partner_forces])
             scale = scale + rho * dt * sum((size(force, solved) for force in partner_forces), start=zero)
+        if schwarz is not None:
+            terms["schwarz"] = dt * rho * inner(schwarz, solved)
+            scale = scale + rho * dt * size(schwarz, solved)
         return {**terms, "scale": scale + port_scale + law_scale}
 
     @override
@@ -689,7 +877,8 @@ class OpenFlowNode(ImplicitFlowNode):
         hosted_work: dict[str, Array] = {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
                                          KINETIC_FLUX: energy[KINETIC_FLUX],
                                          **{opening_role(i): energy["ports"][i] for i in range(len(self.laws()))},
-                                         **{f"partner_{b}": energy["partners"][b] for b in range(self.body_count)}}
+                                         **{f"partner_{b}": energy["partners"][b] for b in range(self.body_count)},
+                                         **({"schwarz_0": energy["schwarz"]} if "schwarz" in energy else {})}
         stored = jnp.zeros((len(rows), len(books.LAW_BOOKS)), dtype=dtype)
         named: set[str] = set()
         for delivery in held:
@@ -729,5 +918,5 @@ def check_open_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
     check_deliveries(plain)
 
 
-__all__ = ["FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "MeteredOpenFlowState", "MeteredOpenPartneredFlowState", "OpenPartneredFlowState", "OpenFlowState", "OpenFlowFields", "OpenFlowNode", "OpenPorts", "check_open_deliveries",
+__all__ = ["FLOAT32_PORTS", "KINETIC_FLUX", "OPENING", "OPEN_STEP", "PLANES", "SCHWARZ_PORTS", "MeteredOpenFlowState", "MeteredOpenPartneredFlowState", "OpenPartneredFlowState", "OpenFlowState", "OpenFlowFields", "OpenFlowNode", "OpenPorts", "check_open_deliveries",
            "combined", "opening_role"]

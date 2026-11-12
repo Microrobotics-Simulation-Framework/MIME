@@ -53,7 +53,8 @@ from mime.scene import PeriodicBox, VesselRegion
 from mime.things import ThingKind
 from mime.units import Length, Quantity
 from mime.vocabulary import EXCHANGE_PARTNER, FLOW_BODY_FORCE, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
-    FLOW_FACES, FLOW_OPENING, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, FLOW_WAVEFORM, FLUID, ONE_PASS_PARTNER, OPENING
+    FLOW_FACES, FLOW_OPENING, FLOW_PARTNER_SOLUTION, FLOW_PARTNERS, FLOW_WAVEFORM, FLUID, ONE_PASS_PARTNER, OPENING, \
+    SCHWARZ_PARTNER
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -138,7 +139,7 @@ PERIOD_LINE = 1e-6
 TREE = "tube_tree"
 #: The registration kinds of a point body's exchange with the flow: lagged (its law scatters onto the grid) and one
 #: pass (held in the flow's one elimination).
-PARTNER_KINDS = (EXCHANGE_PARTNER, ONE_PASS_PARTNER)
+PARTNER_KINDS = (EXCHANGE_PARTNER, ONE_PASS_PARTNER, SCHWARZ_PARTNER)
 
 
 def tree_of(region: Region) -> tuple[Any, Any, tuple[tuple[int, int], ...], float]:
@@ -230,7 +231,7 @@ class FVM(Dynamics):
     #: ``Windkessel``, ``Valve``, ``SharedDistal``), and the exchange partners a point body's law registers
     #: (``Drag.Stokes``).
     registration_kinds = frozenset({InflowLaw.name, WindkesselLaw.name, ValveLaw.name, SharedDistalLaw.name,
-                                    EXCHANGE_PARTNER, ONE_PASS_PARTNER})
+                                    EXCHANGE_PARTNER, ONE_PASS_PARTNER, SCHWARZ_PARTNER})
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
                               "true residual no longer falling), so the step's values hold only to the residual it "
@@ -486,6 +487,15 @@ class FVM(Dynamics):
                                                   f"reads its grid from a straight tube's periodic box or open vessel)",
                             "put the body in a straight Tube's flow, FVM(domain=PeriodicBox(length=...)), or give it a "
                             "drag that reads no grid, Drag.MRS(...)")]
+        coupled = [r for r in partners if r.kind == SCHWARZ_PARTNER]
+        if coupled and (len(coupled) > 1 or len(partners) > len(coupled)):
+            others = [r.id for r in partners if r not in coupled[:1]]
+            return [Problem("flow.schwarz-bodies",
+                            f"{coupled[0].id} couples its MRS body to the flow by Schwarz, and {', '.join(others)} "
+                            f"exchange with the same flow: a flow holds one Schwarz body and nothing else until the "
+                            f"body-set host steps several bodies' joint step",
+                            "give the other bodies a medium of their own, exp.add_medium(Medium(...)), with the "
+                            "flow's own FVM(...) or none")]
         lagged = [r for r in partners if r.kind == EXCHANGE_PARTNER]
         if self.open and lagged:
             return [Problem("flow.open-exchange", f"{', '.join(r.id for r in lagged)} exchanges with the flow lagged, "
@@ -733,9 +743,38 @@ class FVM(Dynamics):
                 "partner_origin": tuple(float(c) for c in origin)}
 
     @staticmethod
+    def schwarz_partner(ctx: BuildContext, registrations: Sequence[ResolvedRegistration],
+                        origin: Sequence[float]) -> dict[str, Any]:
+        """The flow node's arguments for the MRS body it couples by Schwarz (``SCHWARZ_PARTNER``; one, the plan's
+        refusal holds): its near field's, from the drag's own context (``Drag.schwarz_member``), under ``schwarz_``;
+        the body and the law's id; the grid's origin in the world; the body's starting pose and the drive at the first
+        step's end (the initial preparation's); the scheme its drag declares; the body's extent, which sizes its free
+        box."""
+        coupled = [r for r in registrations if r.kind == SCHWARZ_PARTNER]
+        if not coupled:
+            return {}
+        registration = coupled[0]
+        member = ctx.partners[registration.id]
+        arguments = member.entry.schwarz_member(member)
+        start = member.starts.get("body", {})
+        position = tuple(float(c) for c in cast(Sequence[float], start.get("position", (0.0, 0.0, 0.0))))
+        orientation = tuple(float(c) for c in cast(Sequence[float], start.get("orientation", (1.0, 0.0, 0.0, 0.0))))
+        return {**{f"schwarz_{key}": value for key, value in arguments.items()},
+                "schwarz_members": (registration.reads["pose"].node,), "schwarz_ids": (registration.id,),
+                "schwarz_origin": tuple(float(c) for c in origin), "schwarz_starts": (*position, *orientation),
+                "schwarz_drive": tuple(ctx.drive_start), "schwarz_scheme": member.entry.schwarz_scheme(),
+                "schwarz_extent": float(cast(float, registration.parameters["extent"]))}
+
+    @staticmethod
     def connect_partners(b: DynamicsBuilder, node: Any, registrations: Sequence[ResolvedRegistration]) -> None:
         """Each held body's pose and own step's row into the flow, and the response the flow hands it into the body's
-        resistance and background load, under its drag's id."""
+        resistance and background load, under its drag's id; a Schwarz body's pose and twist after its own step, and
+        the response and load the flow prepared for it at the end of the step before (``DynamicsBuilder.hand``)."""
+        for k, registration in enumerate(r for r in registrations if r.kind == SCHWARZ_PARTNER):
+            b.connect(b.read(registration, "pose"), into=node[f"schwarz_{k}_pose"])
+            b.connect(b.read(registration, "twist"), into=node[f"schwarz_{k}_twist"])
+            b.hand(node[f"schwarz_{k}_resistance"], into=b.target(registration, "resistance"))
+            b.hand(node[f"schwarz_{k}_load"], into=b.target(registration, "background_load"))
         held = [r for r in registrations if r.kind == ONE_PASS_PARTNER]
         for k, registration in enumerate(held):
             b.connect(b.read(registration, "pose"), into=node[f"partner_{k}_pose"])
@@ -772,13 +811,14 @@ class FVM(Dynamics):
                 tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
                 convection=not self.stokes, band=band, interior=interior, periodic_images=images, wall_name=wall))
             return
+        coupled = self.schwarz_partner(ctx, registrations, frame.origin) if frame else {}
         node = b.add_node(ImplicitFlowNode(
             ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
             spacing=layout.spacing, viscosity=viscosity, density=density,
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
             interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows,
-            wall_name=wall, exchange=partners, **held))
+            wall_name=wall, exchange=partners, **held, **coupled))
         self.connect_partners(b, node, registrations)
 
     def build_tree(self, ctx: BuildContext, b: DynamicsBuilder, region: Region) -> None:
@@ -849,6 +889,7 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
     assert point is not None
     origin = (float(point[0]) - layout.centre[0], float(point[1]) - layout.centre[1], float(cast(float, low["offset"])))
     held = fvm.held_partners(ctx, registrations, layout.spacing, scheme, origin)
+    coupled = fvm.schwarz_partner(ctx, registrations, origin)
     node = b.add_node(OpenFlowNode(
         ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
         spacing=layout.spacing, viscosity=viscosity, density=density, tube_centre=layout.centre,
@@ -858,7 +899,7 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
-        **placed, **held))
+        **placed, **held, **coupled))
     fvm.connect_partners(b, node, registrations)
 
 

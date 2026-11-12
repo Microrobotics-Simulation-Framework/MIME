@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **An MRS body coupled to the FVM by Schwarz: `Drag.MRS()` in a medium the FVM fills** (F5, PR 1). The drag law and
+  the medium choose the coupling; nothing is written for it. The body's near field is the joint near field's in free
+  space (drag 0.5.0's mrs rung, held in the flow's step), the walls are the grid's, and the body's own field on the
+  grid is removed by a free box at the grid's spacing advanced by the grid's step operator (with Hasimoto's image term
+  relaxed at the box's slowest rate). Each step the flow solves seven columns (the body's six rigid motions and its
+  load at zero twist) by the operator form of the shared GMRES (`reported_operator_solve`: the matrix as its product,
+  each product one walled solve and one free-box transform, the products' own solves reported in a second block), and
+  hands the body its response and load, which the body's own step solves through with its other loads (the dynamics
+  owns its step). The order is staggered and exact: the body steps before its medium's flow, which composes the body's
+  step (one walled solve, so the stored field and its kinetic energy are the solved ones) and prepares the next from
+  what is known at the step's end; the build plans the body's read of the prepared response as a delivery prepared the
+  step before. Each step reports the near field's residual at the composed field over every force point
+  (`schwarz_residual`, flagged above ten times the tolerance) and the handed response's definiteness margin (an
+  indefinite one stops the run, `flow.schwarz-indefinite`). With the energy ledger the drag is held in the flow's
+  step under its own id: its row on the flow is its tractions' work on the composed field, its row on the body the
+  handed response's, and their sum, judged by the flow each step (`schwarz_0_gift_steps`), is the near field's own
+  dissipation less the free box's, with the rung's quadrature and the composed residual's work booked beside it
+  (`schwarz_0_books`). The first step's preparation is made in the flow's initial state from the build's leaves, and
+  again from the run's in a derivative's program (`MimeNode.started`), so a derivative in the viscosity passes through
+  the first step. In an open vessel the openings are eliminated inside each product and in the composition by the
+  base's unit fields. The declared routes `one_way=True` (nothing delivered to the flow, judged at one velocity) and
+  `coupling='lagged'` (one Schwarz pass a step from the last step's tractions, its residual reported and booked) are
+  built on the mrs rung, refused where the medium has no flow on a grid (`drag.schwarz-scheme`). Each step reports the
+  body's gap to the wall in cells and flags near contact below the window's line (`schwarz_0_near_contact_window`), and
+  the run's flags carry it and `schwarz_flagged`. The prepared response is stored state: a continued run carries it, and
+  an override of a value it read sets the flow's initial state on a run from the start and is refused after it
+  (`override.initial-after-start`). Refused by name: a wall kind written on the near field
+  (`drag.schwarz-wall-kind`), a second body in the flow (`flow.schwarz-bodies`) and a drive that is not a declared
+  schedule (`flow.schwarz-drive`), each until its part is built.
 - **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
   ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
   (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector

@@ -9,10 +9,11 @@ its centre of mass, in the world frame, with the load a flowing medium puts on t
 a medium at rest). The rung is written in the script, and there is no default: `Drag.Surrogate(...)`, `Drag.MRS(...)`
 or `Drag.RFT(...)`.
 
-Every rung assumes the medium at rest. Wherever the region its medium fills carries a field (`fields={"flow":
+Every rung but one assumes the medium at rest. Wherever the region its medium fills carries a field (`fields={"flow":
 FVM(...)}` or `fields={"flow": Womersley()}`, on the drag's medium or on another filling the same region), each rung is
 refused when the experiment is planned (`drag.medium-flows`, naming the field), whatever quantities the field's kind
-declares it provides: a rung that reads the medium's flow, its load on the body held still, is a later release's.
+declares it provides. The exception is the mrs rung in a medium the FVM fills, which couples to the flow by Schwarz
+(below, "In a medium the FVM fills").
 
 ## Rung `surrogate`
 
@@ -317,6 +318,33 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
 - As the converged value of a de Jongh helix at the counts the v0.2 line used: its samples and that line's triangle
   mesh differ there, by how much its validity lines say, and neither has converged; the converged diagonal lies
   between the two (MIME-ANO-116). A surrogate trained on either inherits that error.
+
+### In a medium the FVM fills
+
+`Drag.MRS(...)` in a medium whose flow the FVM solves couples to it by Schwarz; nothing is written for it. The body's
+near field is the regularised-Stokeslet one above in free space (its wall kind is free space, and a wall kind written
+is refused, `drag.schwarz-wall-kind`: the grid carries the walls), and the flow's grid carries the walls and the flow:
+each step the flow solves the body's tractions for its six rigid motions and its load held still, with the walls'
+reflection read from one solve of the flow's own step per product of the solve, and the body's own field on the grid
+removed by a free box at the grid's spacing. The body is handed its response and load, which its own step solves
+through with its other loads (a contact and a friction among them); the flow then composes the body's step into its
+field, so the field it stores is the solved one. The near field's equations are checked at the composed field every
+step (`schwarz_residual`, flagged above ten times the solve's tolerance), and an indefinite response stops the run
+(`flow.schwarz-indefinite`). One body a flow for now: a second body is refused until the body-set host
+(`flow.schwarz-bodies`). In an open vessel the openings are eliminated inside each product and in the composition, by
+the unit fields of the step's base, so the composed step meets each opening's law. Two declared routes:
+`Drag.MRS(one_way=True)`, the body reading the flow and delivering nothing to it (valid where the body's own field on
+the flow and the walls' reflection of it are negligible), and `Drag.MRS(coupling='lagged')`, one Schwarz pass a step
+from the last step's tractions, whose error (the walls' reflection of the step's change of tractions) is reported each
+step as `schwarz_residual` and booked in the law's books; written where the medium has no flow on a grid, they are
+refused (`drag.schwarz-scheme`). Each step reports the body's gap to the wall in the grid's cells
+(`schwarz_0_wall_gap_cells`) and flags near contact below the near-contact window's line
+(`schwarz_0_near_contact_window`: nearer than two cells, or within a tenth of a local radius under twenty cells), never a
+refusal. With the energy ledger the drag is held in the flow's step: its row on the flow is its tractions' work
+on the composed field, its row on the body the handed response's, and their sum (the near field's own dissipation less
+the free box's) is judged by the flow each step. The body's own unsteady terms (Basset's history, its added
+mass) are not in the near field, which is Stokes: under the flow's inertial step the walls' share of the drag arrives
+through the flow's history.
 
 ## Rung `rft`
 

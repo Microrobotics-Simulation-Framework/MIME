@@ -188,8 +188,13 @@ def written(axis: Axis, point: Point, settings: Any, declarations: Sequence[Any]
     specs = parameter_specs(built.graph)
     changed = sorted({(node, leaf) for probe in probes for node, leaves in probe.tree.items()
                       for leaf, held in leaves.items() if not _same(held, point.tree[node][leaf])})
+    # A field the node makes from its leaves at the run's start (``MimeNode.started``) is made in the program from the
+    # leaves the derivative is taken in, and is no initial state the axis moves.
+    started = {(node, field) for node in built.graph.node_names
+               if isinstance(held_node := built.graph.get_node(node), MimeNode) for field in held_node.started_fields()}
     moved_state = sorted({(node, name) for probe in probes for node, fields in probe.state.items()
-                          for name, held in fields.items() if not _same(held, point.state[node][name])})
+                          for name, held in fields.items()
+                          if (node, name) not in started and not _same(held, point.state[node][name])})
     unread = unreadable_leaves(built.graph)
     baked = [(node, leaf) for node, leaf in changed if (node, leaf) in unread and not leaf.startswith("initial_")]
     if baked:

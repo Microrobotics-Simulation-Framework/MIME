@@ -59,7 +59,7 @@ from mime.core import ledger
 from mime.registry import Dynamics, Interaction, Observation
 from mime.validity import Profile
 from mime.things import ThingKind
-from mime.vocabulary import CONFINEMENT, Definiteness, DeliveryKind, port_kind
+from mime.vocabulary import CONFINEMENT, SCHWARZ_PARTNER, Definiteness, DeliveryKind, port_kind
 
 #: The sections whose entries produce: what may be outside.
 _PRODUCERS = (Section.DYNAMICS, Section.PROVIDER, Section.DRIVE)
@@ -125,6 +125,18 @@ def _chained(plans: PlanSet) -> set[str]:
     An apparatus with no chain (a field's coils) is one thing, as a body is."""
     return {plan.thing for plan in plans.entries if plan.section is Section.DYNAMICS and plan.thing is not None
             and plans.things.get(plan.thing) is ThingKind.APPARATUS}
+
+
+#: How a Schwarz body's drag is judged, on both its rows (the build report's line).
+SCHWARZ_JUDGED = ("its sign judged each step by the flow that holds it, not on this row (the flow carries the body): "
+                  "the sum of its two rows, its tractions' work on the composed field and the handed response's on the "
+                  "body, never above their rounding floor (schwarz_<b>_gift_steps)")
+
+
+def _schwarz(plan: EntryPlan | None) -> bool:
+    """Whether ``plan`` is a law a flow couples its body to by Schwarz (``SCHWARZ_PARTNER``): its two rows, the flow's
+    and the body's, are judged in their sum by the flow."""
+    return plan is not None and plan.plan is not None and any(r.kind == SCHWARZ_PARTNER for r in plan.plan.registrations)
 
 
 def _class_line(law: Interaction | None) -> str:
@@ -359,7 +371,8 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
         # the one its receiver solves with, and not on the loads it delivers beside it (the MRS rung's background load).
         check = ledger.CHECK_DEFINITE if interaction is not None and paired.value == ledger.SOLVED and \
             interaction.definiteness() is Definiteness.STATE else ""
-        if by in laws and laws[by].members or interaction is not None and interaction.judged_in_sum():
+        if by in laws and laws[by].members or interaction is not None and interaction.judged_in_sum() or \
+                _schwarz(laws.get(by)):
             check = ledger.CHECK_CLUSTER  # judged in a sum by the law's node: a near field's, an exchange's
         energy_class, supplier = _class_line(interaction), ",".join(supplied_by.get(by, ()))
         if interaction is None:
@@ -385,7 +398,7 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
         # A registered law judged in the sum of its rows by its own node (a point body's drag held in a flow's step:
         # the flow carries the body, so its fluid's row alone may be positive) is judged there, not on this row.
         law = laws[law_id].entry if law_id in registered and law_id in laws else None
-        cluster = isinstance(law, Interaction) and bool(law.judged_in_sum())
+        cluster = isinstance(law, Interaction) and bool(law.judged_in_sum()) or _schwarz(laws.get(law_id))
         held.append(ledger.LedgerDelivery(role, law_id, energy_class, ledger.HOSTED,
                                           ledger.CHECK_CLUSTER if cluster else "", exchanged or source or ""))
     return tuple(held), problems
@@ -404,7 +417,8 @@ def _receiver_lines(name: str, dynamics: Dynamics, held: Sequence[ledger.LedgerD
             notes.append("its resistance checked definite at each step")
         entry = laws[law].entry if law in laws else None
         if first.check == ledger.CHECK_CLUSTER:
-            own = entry.judged_in_sum() if isinstance(entry, Interaction) else ""
+            own = SCHWARZ_JUDGED if _schwarz(laws.get(law)) else \
+                entry.judged_in_sum() if isinstance(entry, Interaction) else ""
             notes.append(own or "its cross loads judged in its cluster's sum by its node, the grand resistance's "
                                 "quadratic form at the step's starting twists, not on this row (one body drags another)")
         if first.energy_class == ledger.UNMETERED and _unmetered_reason(entry) and first.supplied_by != law:

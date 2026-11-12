@@ -138,6 +138,10 @@ EXCHANGE_PARTNER = "flow.exchange_partner"
 #: The registration kind of an exchange partner the flow holds in its step (:data:`FLOW_PARTNERS`): a point body whose
 #: drag law the flow's one elimination solves with the field, its own step's row closing its twist (one pass).
 ONE_PASS_PARTNER = "flow.one_pass_partner"
+#: The registration kind of an MRS body the flow couples by Schwarz (:data:`FLOW_PARTNERS`): its near field in free space
+#: held in the flow's step, the walls carried by the grid, the coupled response handed to the body, whose own step
+#: closes its twist before the flow composes the step (the staggered order).
+SCHWARZ_PARTNER = "flow.schwarz_partner"
 FLOW_WAVEFORM = define(Interface(
     "flow.waveform", TargetKind.EQUALITY_CONSTRAINT, "1", "world", (7,),
     sign="on the fluid of a medium, per unit mass", magnitude=1.0,

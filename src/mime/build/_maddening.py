@@ -222,6 +222,19 @@ def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[s
     return {**params, "nodes": nodes, "mappings": mappings}
 
 
+def with_started(graph: GraphManager, state: Mapping[str, Any], params: Mapping[str, Any]) -> dict[str, Any]:
+    """``state``, a run's initial state, with each node's started fields (``MimeNode.started``) made from its entry of
+    ``params`` (the run-constants made): called inside a differentiated run's program, before its steps, so that a
+    derivative in a leaf passes through what the node made from it at the run's start."""
+    nodes = cast(Mapping[str, Mapping[str, Any]], params["nodes"])
+    held = dict(state)
+    for name in graph.node_names:
+        node = graph.get_node(name)
+        if isinstance(node, MimeNode) and node.started_fields():
+            held[name] = {**held[name], **node.started(node.constants(nodes[name]), held[name])}
+    return held
+
+
 def chunk_function(graph: GraphManager, steps: int, fed: Fed | None = None) -> Callable[[Any, Any], Any]:
     """``steps`` steps of the compiled graph as one scan, a pure function of the state (every node's fields and
     ``_meta``, as the graph holds it) and the parameter tree, with ``fed`` held through them: each node's run-constants
@@ -561,12 +574,13 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
 
     def run(state: Any, params: Any) -> Tallied:
         none = FlagTally.none(count)
-        carry = (state, jnp.asarray(none.count, jnp.int32), jnp.asarray(none.first, jnp.int32),
-                 jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
-        parts: list[Any] = []
         # The run-constants made once for the whole run, outside every chunk's checkpoint: reverse mode keeps them
-        # and derives each once, where made in each chunk it made them again in each chunk's recomputation.
+        # and derives each once, where made in each chunk it made them again in each chunk's recomputation. The
+        # started fields are made from them at the run's start, in the program, so that the derivative passes them.
         made = with_run_constants(graph, params)
+        carry = (with_started(graph, state, made), jnp.asarray(none.count, jnp.int32),
+                 jnp.asarray(none.first, jnp.int32), jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
+        parts: list[Any] = []
         with run_constants_made(names), differentiated_nodes(every):
             if stretches is not None:
                 for length, external in stretches:

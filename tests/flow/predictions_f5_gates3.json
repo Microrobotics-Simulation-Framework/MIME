@@ -1,0 +1,177 @@
+{
+ "written": "2026-11-12, by F5's fifth builder, before the third gates probe (probe/f5-gates3) runs; the local development runs it has seen are listed in seen_before (seeds 0 to 7; the probe draws fresh seeds from 1000)",
+ "phase": "F5 (Schwarz coupling, lane F), PR 1, the coordinator's points on builder 4's handoff",
+ "labels": "predictions by F5's fifth builder (Opus): the transpose gate's lines derived from the CG's stop and the dtype's rounding; the books in float32 over drawn cases; the restart's cause; gate 3 with openings",
+ "seen_before": [
+  "local, float32, the 4 mm open vessel, seeds 0-4, per part of the product (a development script): the plain-transpose plant's miss lives only in the walled solve (the near field's and the box's identities equal clean and planted, 0 to 1.6e-8 of their scales); the walled solve's own identity clean 0 to 2.9e-8, planted 1.4e-3 to 7.4e-3; the whole product's clean 8e-9 to 1.7e-8, planted 2.8e-6 to 2.0e-5; float64 planted the same, clean 7e-16 to 1.6e-15 (whole), 1.7e-13 to 5.6e-13 (walled)",
+  "local, the rewritten gate, the 1 mm open vessel, seeds 0-7: float32 walled clean 3.7e-9 to 6.3e-8 against its line 5.66e-4, planted 6.1e-4 to 2.9e-2 (seed 7 at 1.08 times the line, seed 6 at 1.55); whole clean 1.7e-9 to 1.7e-8 against 3.7e-5, planted 2.0e-6 to 8.0e-5 (five of eight under the line); float64 walled clean 5.2e-13 to 3.0e-12 against 2.8e-10, planted as float32's; whole clean 1.2e-15 to 7.4e-15 against 6e-13 to 1e-12, planted 2.0e-6 to 8.0e-5",
+  "local, float64, one thread, the driven sphere four steps: the whole run twice equal; split 1, 2, 3: the same continued program from the same saved state twice equal, the preparation it starts from the stored one bit for bit, a restart in a fresh build from the saved state the continued run bit for bit (splits 1 and 3); against the uninterrupted run split 2 bit for bit, splits 1 and 3 not (largest field miss 5.4e-14 of its scale, the twist at split 1; no solve's iteration count moved; the composed residual 3.3e-9 moved 1.3e-16, 3.9e-8 of its own value)",
+  "local, gate 3 with openings (float64, 1 mm): a first run failed by the reference's own bug (the stencils made without the grid's origin: twist off by 7.6); after the fix, one run (seed 0): field 5.7e-12, pressures 1.6e-12, twist 1.4e-11, wrench 4.2e-12, composed residual 1.1e-13, unflagged"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float32",
+   "float64"
+  ],
+  "platform": "GitHub runner, 4 vCPU (the probe); the cause arm on one CPU, one thread",
+  "sizes_and_parameters": "tests/schwarz_experiments.py's sphere (a = 0.15 mm, 8 cells across a 1 mm tube, IMEX Euler, dt 1 ms, Stokes): periodic 4 mm, or open (inflow 1e-3 mL/s, Windkessel) at 1 mm for the transpose and gate 3; columns' GMRES 1e-8 (float64) and 1e-4 (float32), the walled CG at 1e-2 of it, float32's raised to its floor under 100 tolerances",
+  "seeds_and_draws": "DETECTION_SEED from 1000 (fresh): b, c for the transpose; the sphere's offset 0 to 0.15 mm and the viscosity 0.5 to 4 mPa s (log-uniform) for the books; the split 1 to 3 (seeds from 0, so that splits of 1 are drawn) for the restart"
+ },
+ "gate_transpose_derived_lines": {
+  "claim": "the columns' operator transposes through its walled solves: the walled read's identity <c', A^-1 r> = <A^-T c', r> on that solve's own inputs' scale within the CG's stop, and the whole product's on its own within the walled read's share of that line and the dense parts' rounding",
+  "kind": "equality",
+  "case": "tests/flow/test_schwarz_transpose.py::test_the_columns_operator_transposes_through_its_walled_solves[float32-open] and [float64-open]",
+  "prediction": {
+   "value": null,
+   "band": [
+    0.0,
+    0.000566
+   ],
+   "unit": "the walled read's miss on |y||r| + |c'||x|; the whole product's on |c||J b| + |J^T c||b|",
+   "basis": "derived: the miss is <y, rho_1> - <rho_2, x>, at most tau each way on the solve's inputs' scale; tau at most the inner tolerance (1e-2 of the columns') raised to the floor under 100 tolerances plus the floor again (2e-4 float32, 1e-10 float64), sqrt(2) for the half-weighted norm, so 5.66e-4 and 2.8e-10; the whole line adds 2 n eps (n = 3N = 150) and carries the walled line at its measured share of the scale",
+   "why": "the near field's dense product and the box's spectral solve are exact transposes up to rounding (measured: their misses equal clean and planted); only the CG stops short"
+  },
+  "metric": "both identities' misses, evaluated in float64 from the run's vectors",
+  "control": {
+   "plant": "plain: the shared CG's solves declared symmetric, the open grid's weighted transpose dropped",
+   "environment_variable": "MIME_PLANT_SCHWARZ: plain",
+   "expected_rate": "float64: 20/20 by both identities. float32: NOT every run: the derived line cannot separate the plant (its least miss seen 1.08 times the walled line; the whole line above most planted draws), so float32 is reported as not discriminating this plant, and the control is float64's",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "float64: the plant 6.1e-4 at least on the walled read against a line of 2.8e-10, and 2e-6 on the whole against 1e-12. float32: the walled line 5.66e-4 (the CG stop's guaranteed bound, not the 8e-7 these solves reach) against the plant's 6.1e-4 to 2.9e-2"
+  },
+  "if_wrong": "a clean walled miss over the line would be a transpose solve that is not the forward solve's transpose (or a stop looser than the rule); a planted draw under it, the plant's share at the opening planes smaller than seen",
+  "cannot_discriminate_if": "float32: it does not (above); float64: a plant draw under 2.8e-10 on the walled read"
+ },
+ "gate_5_books_float32_drawn": {
+  "claim": "the books close in float32 without float64 inner solves, over drawn cases: every receiver's books close (ledger_closes), the hand-over workless and the law's identity within 1e-3 (gate 5's float32 line)",
+  "kind": "acceptance",
+  "case": "tests/flow/test_schwarz_flow.py::test_the_books_close_with_the_drag_held_in_the_flows_step_and_the_exchange_workless[float32], the sphere drawn (schwarz_cases.drawn_sphere)",
+  "prediction": {
+   "value": null,
+   "band": [
+    12,
+    12
+   ],
+   "unit": "clean runs whose books close, of 12",
+   "basis": "measured-before at the default case (builder 4: gate 5's float32 ledger passed) and derived: the walled CG's projection is exact here (no inexact projector, the solve-mask spike's failing term), so the inner floor moves the field, not the books' identity",
+   "why": "the spike's 0 to 4 in 10 came from its mask's inexact projection (divergence 1e-5); F5's walled solve projects exactly"
+  },
+  "metric": "clean pass count; the gift plant's caught count",
+  "control": {
+   "plant": "gift: the load handed to the body scaled by 1.5",
+   "environment_variable": "MIME_PLANT_SCHWARZ: gift",
+   "expected_rate": "12/12",
+   "runs": 12,
+   "clean_expected": "0/12 failing",
+   "resolution": "the gift moves the hand-over by a third of the body's row against a line of 1e-3"
+  },
+  "if_wrong": "any clean failure: the float64 guard for the inner solves is declared (CLAUDE.md: a rig that needs float64 says so by a declared guard)",
+  "cannot_discriminate_if": "the drive is off (it is not: 1 m/s^2 along the tube)"
+ },
+ "gate_lagged_books_float32_drawn": {
+  "claim": "a lagged run's books close in float32 over drawn cases, its residual booked, without float64 inner solves",
+  "kind": "acceptance",
+  "case": "tests/flow/test_schwarz_schemes.py::test_a_lagged_run_books_its_residual_and_its_books_close[float32], the sphere drawn",
+  "prediction": {
+   "value": null,
+   "band": [
+    12,
+    12
+   ],
+   "unit": "clean runs that pass, of 12",
+   "basis": "as gate 5's float32 books, and builder 4's float32 lagged pass at the default case",
+   "why": "as above"
+  },
+  "metric": "clean pass count; the hidden plant's caught count",
+  "control": {
+   "plant": "hidden: the residual book zeroed",
+   "environment_variable": "MIME_PLANT_SCHWARZ: hidden",
+   "expected_rate": "12/12 if the residual's work exceeds 1e-3 of the identity's scale in float32; else reported as not resolved there",
+   "runs": 12,
+   "clean_expected": "0/12 failing",
+   "resolution": "unknown in float32 before the run: the residual's work against float32's line of 1e-3"
+  },
+  "if_wrong": "any clean failure: the float64 guard for the inner solves is declared",
+  "cannot_discriminate_if": "the lagged residual's work under 1e-3 of the identity's scale (then float64's hidden arm carries the control)"
+ },
+ "gate_restart_cause": {
+  "claim": "the restart's last bits are the compiled program's: (a) the same continued program from the same saved state is equal twice; (b) the preparation the continued run starts from is the stored one bit for bit; a restart in a fresh build from the saved state is the continued run bit for bit; against the uninterrupted run, a split with a one-step chunk differs by rounding only (no solve's iteration count moved)",
+  "kind": "equality",
+  "case": "probe/restart_cause.py, splits 1 to 3, float64 and float32, one CPU and one thread",
+  "prediction": {
+   "value": null,
+   "band": [
+    0.0,
+    1e-12
+   ],
+   "unit": "(a), (b), fresh build: fields differing (0); against the whole run: the largest field miss on its scale (float64), counts moved (none)",
+   "basis": "measured-before locally in float64 (seen_before)",
+   "why": "MIME's record: bit for bit is per compiled program; XLA compiles a one-step scan as another program"
+  },
+  "metric": "fields differing; largest miss; reports' counts moved",
+  "control": {
+   "plant": "none in this arm (the restart plant is the next gate's)",
+   "environment_variable": "",
+   "expected_rate": "",
+   "runs": 1,
+   "clean_expected": "",
+   "resolution": ""
+  },
+  "if_wrong": "(a) failing would be a run that is not deterministic on one thread; (b) or the fresh build failing, a field the state does not carry (then the gate goes back to bit for bit after the fix)",
+  "cannot_discriminate_if": ""
+ },
+ "gate_restart_relative_fields": {
+  "claim": "a continued run is the uninterrupted run to the line 1e-12 of each field's scale, a relative field (a residual, a report) on its own inputs' scale, one; the restart plant (the initial preparation in place of the stored one) caught",
+  "kind": "equality",
+  "case": "tests/flow/test_schwarz_restart.py::test_a_continued_run_is_the_uninterrupted_run[float64], seeds 0 to 19 (splits of 1 at seeds 11 and 14)",
+  "prediction": {
+   "value": null,
+   "band": [
+    0.0,
+    1e-12
+   ],
+   "unit": "the largest field miss on its scale",
+   "basis": "measured-before (seen_before: 5.4e-14 at split 1)",
+   "why": "the programs' last bits through the step's solves, no stop moved"
+  },
+  "metric": "fields off the line",
+  "control": {
+   "plant": "restart",
+   "environment_variable": "MIME_PLANT_SCHWARZ: restart",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "the initial preparation is a step's preparation away from the stored one: order one on the columns"
+  },
+  "if_wrong": "a clean failure at a split of 1 on a field not relative: the line misses the programs' amplification; on a report's count: a solve's stop moved by the last bits",
+  "cannot_discriminate_if": ""
+ },
+ "gate_3_openings_dense": {
+  "claim": "in an open vessel the Schwarz step (the openings eliminated in each product and in the composition) is the dense step whose unknowns are the field, the openings' pressures, the tractions and the twist",
+  "kind": "equality",
+  "case": "tests/flow/test_schwarz_open.py::test_the_open_flow_node_steps_as_the_dense_step_with_the_openings_rows (float64, 1 mm, the node remade at CG 1e-12 and columns 1e-11)",
+  "prediction": {
+   "value": null,
+   "band": [
+    1e-13,
+    1e-07
+   ],
+   "unit": "relative (field, pressures, twist, wrench)",
+   "basis": "derived, as the periodic gate 3 (every unknown a linear function of solves stopped at their tolerances)",
+   "why": "the openings' rows are linear and eliminated exactly by the base's unit fields"
+  },
+  "metric": "the four relative errors; the composed residual; flagged",
+  "control": {
+   "plant": "cross: the body-opening cross terms zeroed",
+   "environment_variable": "MIME_PLANT_SCHWARZ: cross",
+   "expected_rate": "10/10",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "the cross terms move the field by the fluid the body's forces push through the openings: far above 1e-7 (the open gate's control moved the inflow's flux)"
+  },
+  "if_wrong": "a miss in the pressures alone: the reference's openings rows; in the twist alone: the handed response's openings part",
+  "cannot_discriminate_if": ""
+ },
+ "outcomes": null
+}

@@ -1,0 +1,380 @@
+{
+  "written": "2026-11-12, committed before the PR's gates run on Actions (the commit that adds this file is the timestamp): F5's PR 1, an MRS body coupled to the FVM's grid by Schwarz (the near field in free space, the walls by the grid, the body's own field in a free box, the response handed to the body, the staggered order)",
+  "phase": "F5 (Schwarz coupling, lane F), PR 1",
+  "labels": "predictions by F5's builder (Opus, the second agent) from the first step's prototype (probe/f5-cost, smoke at D/h 8), derivation (the step is linear: every unknown a linear function of solves stopped at their tolerances), and the local development runs listed in seen_before (a prediction made after seeing a number says so)",
+  "seen_before": [
+    "local, float64, laptop under load (tests/flow/test_schwarz_step.py at this file's commit, 10 x 10 x 8 cells, h 0.1 mm, tube 0.4 mm, MRS sphere a 0.15 mm off the axis, free box 32^3, GMRES 1e-10, walled CG 1e-12): IMEX Euler against the monolithic dense LU: field 9.5e-13, tractions 7.5e-11, twist 7.9e-13 relative, composed residual 3.3e-12; GMRES 4 iterations, 519 walled CG iterations over its products. Control GMRES capped at one product: twist off 3.1e-4, composed residual 3.4e-4 (flagged). The steady case was NaN (the box's decay 0/0 at wavenumber zero), fixed before this file",
+    "local, through the node (tests/flow/test_schwarz_flow.py, same case, Schwarz tolerance 1e-11): field, twist and the body's wrench against the monolithic step under 1e-7; composition dropped: missed; the composition read at the body's live pose: field off 4.1e-6, composed residual 1.5e-5 (flagged)",
+    "local build smoke (D/h 8 periodic tube, IMEX, BodyForce 1 m/s^2, MRS sphere a 0.15 mm, 3 steps): the order body force, ball, water.flow; the handed response read the step before, planned as prepared; GMRES 3 iterations, composed residual 3.1e-9 at the 1e-8 tolerance; the handed 6x6's diagonal 1.015 times 6 pi mu a (the wall's reflection screened under the inertial step), margin 0.9999",
+    "local (tests/flow/test_schwarz_free_box.py, 24^3 periodic grid with no wall, own box 32^3, the sphere at a = 1.5 cells): the handed 6x6 against the free-space MRS's (with Hasimoto's term for the grid box in the steady limit) under 1e-3 (IMEX) and 3e-3 (steady), the box-omitted control 1.6e-2 under IMEX (the grid's own response of the body screened)",
+    "local, builder 3, float64, laptop under load (scratch smoke of tests/schwarz_experiments.py's driven sphere, metered, 3 steps): every receiver's books close (identity worst 3.1e-16); the drag's row on the body 7.545361311810242e-15 J against the flow's exchange -7.54536131181024e-15 J (relative 3e-16); the flow's row -2.7394018077792196e-14 J against the composed field's work at the force points -2.739401807779221e-14 J; near field 2.02e-14 J, free box 4.0e-16 J, quadrature 1.8e-20 J, composed residual's work -1.5e-24 J; no gift steps",
+    "local, builder 3, tests/flow/test_schwarz_flow.py's gate 5 before this file's gate 5 entry was written: three node steps against the monolithic step from the node's own state, field 5.1e-13 to 7.3e-13, kinetic energy 0 to 3.7e-15, twist 1.8e-11 to 2.9e-10 relative; the composition dropped misses all three; the metered run's hand-over and transpose pair to rounding in both dtypes (float32: body 7.54533e-15 J against the exchange -7.54533e-15 J); the planted hand-over gift (the handed load x1.5) caught in both dtypes, one run each",
+    "local, builder 3, before gate 11-early's entry was written: the derivative of the ball's axial position after two steps in the viscosity by Study.gradient (forward) 4.958871861e-4 m/(Pa s) against the central difference of two builds 4.958872065e-4 (relative 4.1e-8; 6.2 min on the loaded laptop); planted (the first preparation held as the initial state's) 1.363008397e-4, relative 0.725, caught"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "GitHub runner, 4 vCPU (the gates' probe); the local numbers above are development runs",
+    "sizes_and_parameters": "a straight periodic tube along z, 10 x 10 x 8 cells of 0.1 mm, tube radius 0.4 mm, water (1 mPa s, 1000 kg/m^3), Stokes, IMEX Euler at dt 1 ms (r = 0.1, lambda = a / sqrt(nu dt) 4.7) and its steady limit; MIME's MRS sphere a = 0.15 mm at a spacing of 0.1 mm, off the axis by 0.045 mm; free box 32^3 cells; Schwarz GMRES 1e-10 to 1e-11, walled CG 1e-12 (inner share 1e-2 provisional, the solve-mask spike's report pending)",
+    "seeds_and_draws": "DETECTION_SEED draws the body's place within a cell, its twist and loads (up to 0.2 mm/s, 0.3 rad/s, 2 nN, 1e-16 N m), the box's carried field and its image term (up to 3 um/s); zero by default"
+  },
+  "gate_1_free_box": {
+    "claim": "one MRS body coupled through a grid with no wall is the body uncoupled: the handed 6x6 is the free-space MRS's own, with Hasimoto's term for the grid box's images in the steady limit",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_free_box.py::test_one_body_coupled_through_a_grid_with_no_wall_is_the_body_uncoupled (IMEX through the flow's own CG on a box with no wall; steady through a free periodic box as the grid)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-06,
+        0.003
+      ],
+      "unit": "the largest entry of the 6x6's difference, each row and column scaled by the square root of its diagonal",
+      "basis": "derived and measured-before (seen_before)",
+      "why": "the free box removes the body's own discretised field exactly (one lattice, one kernel); what is left are the boxes' images: screened under the inertial step (their irrotational part about 6 pi nu dt a / L^3 of the self term, 2e-4), Hasimoto's next term 4.19 (a/L)^3 (1e-3) in the steady limit"
+    },
+    "metric": "the scaled 6x6 difference",
+    "control": {
+      "plant": "the free box's subtraction omitted (MIME_PLANT_SCHWARZ=box)",
+      "expected_rate": "every run, both schemes",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "1.6e-2 under the inertial step against a line of 1e-3 (16 times); of the order of the 6x6 in the steady limit"
+    },
+    "if_wrong": "a clean miss above the line is the box's alignment with the grid's lattice or the image term's",
+    "cannot_discriminate_if": "the grid's own response of the body is below the line (a very screened step): r = nu dt / h^2 = 0.1 here keeps it at 1.6e-2"
+  },
+  "gate_3_monolithic": {
+    "claim": "the Schwarz step (seven columns by GMRES with the walled CG in each product, the body stepping through the handed response, the composition) is the monolithic step (one dense LU of the field's every face, the tractions and the twist) within the solves' line",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_step.py::test_the_schwarz_step_is_the_monolithic_step (functions, IMEX and steady) and tests/flow/test_schwarz_flow.py::test_the_flow_node_steps_as_the_monolithic_step (the node's initial preparation and first step)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-13,
+        1e-08
+      ],
+      "unit": "relative (field, tractions, twist, the body's wrench)",
+      "basis": "measured-before (seen_before) and derived",
+      "why": "every unknown is a linear function of solves stopped at their tolerances (GMRES 1e-10, CG 1e-12); the steady limit's conditioning is the near field's, a few times IMEX's"
+    },
+    "metric": "the largest relative difference over the field, the tractions, the twist and the wrench",
+    "control": {
+      "plant": "GMRES capped at one product (restart 1, cap 1); the composition dropped (the field left at its base); the composition read at the body's live pose",
+      "environment_variable": "MIME_PLANT_SCHWARZ: cap (GMRES capped at one product), drop (the composition dropped), live (the composition read at the body's live pose)",
+      "expected_rate": "every run, each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "each plant moves the compared unknowns by 4e-6 or more against a line of 1e-7 [measured-before]"
+    },
+    "if_wrong": "a clean miss is the scheme's or the reference's defect: compare a product's reflection with the reference's Jacobian columns",
+    "cannot_discriminate_if": "the body's force did not reach the field (no cross term): the body's twist and the drive are nonzero and the composition moves the field by orders above the line"
+  },
+  "gate_6_frozen": {
+    "claim": "the step is composed at the pose its columns were prepared at, and the next step prepared at the pose the body reached",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_flow.py::test_the_flow_node_steps_as_the_monolithic_step (the prepared pose recorded and equal to the body's) and its live-pose control",
+    "prediction": {
+      "value": 0.0,
+      "band": [
+        0.0,
+        0.0
+      ],
+      "unit": "the prepared pose's difference from the body's pose, m",
+      "basis": "derived",
+      "why": "the pose is stored state, written once a step"
+    },
+    "metric": "the stored pose against the body's, and the field against the monolithic step's",
+    "control": {
+      "plant": "the composition read at the body's live pose",
+      "expected_rate": "every run",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a move of dt V' moves the field by 4e-6 against a line of 1e-7, and flags the composed residual",
+      "environment_variable": "MIME_PLANT_SCHWARZ=live"
+    },
+    "if_wrong": "a frozen value read live is what the 0.2 line's moving targets were",
+    "cannot_discriminate_if": "the body does not move within the step: its twist is drawn nonzero"
+  },
+  "gate_9_definiteness": {
+    "claim": "the handed 6x6's margin is reported each step, and an indefinite one stops the run by name (flow.schwarz-indefinite)",
+    "kind": "acceptance",
+    "case": "tests/flow/test_schwarz_flow.py::test_a_planted_indefinite_response_stops_the_run_by_name",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.5,
+        1.0
+      ],
+      "unit": "the scaled least eigenvalue of the handed 6x6 at the gates' poses",
+      "basis": "measured-before (0.9999 in the smoke)",
+      "why": "a sphere off the wall by cells: the free-space MRS's own resistance dominates"
+    },
+    "metric": "schwarz_0_margin; the stop and its code",
+    "control": {
+      "plant": "the prepared response's sign turned",
+      "expected_rate": "every run",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "structural (on or off)"
+    },
+    "if_wrong": "a positive margin read indefinite would be the scaling's (a zero diagonal reads NaN)",
+    "cannot_discriminate_if": "the margin is NaN in both arms"
+  },
+  "build_and_refusals": {
+    "claim": "Drag.MRS in a medium the FVM fills is a Schwarz partner (no drag node, the body before its medium's flow, the response a prepared delivery read the step before and planned); a wall kind written, a second body, an open vessel and the opt-ins not built are refused by name",
+    "kind": "acceptance",
+    "case": "tests/flow/test_schwarz_flow.py::test_an_mrs_drag_in_a_flowing_medium_is_a_schwarz_partner_its_body_before_the_flow and ::test_what_the_schwarz_coupling_does_not_take_is_refused_by_name",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "pass",
+      "basis": "derived",
+      "why": "the canonical order's rank and the plan's registration"
+    }
+  },
+  "bits": {
+    "cases": "every released program and every merged program with no MRS body in a flowing medium, base (f3/one-elimination's head) against this head, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal: the shared GMRES traces as before unless an operator reports its own solves; the canonical order's ranks move no existing node; the defaults' plan context gains the exchange frames, which no existing default reads"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after the gates probe (probe/f5-gates at 559e8e68, run 43146910170; the controls' rates by .github/probe/detection_rate.py, each a fresh process a seed, float64)",
+    "gate_1_free_box": {
+      "result": "the coupled body equals the uncoupled one under IMEX and in the steady limit on every clean run",
+      "control": "the free box omitted 30/30 (IMEX) and 30/30 (steady), clean 0/30 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_3_monolithic": {
+      "result": "the step's functions and the node's step equal the dense monolithic step on every clean run",
+      "control": "GMRES capped at one product 30/30; the composition dropped 30/30; clean 0/30 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_6_frozen": {
+      "result": "the step composed at the pose its columns were prepared at",
+      "control": "a position read from the live pose 30/30, clean 0/30",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_9_definiteness": {
+      "result": "the handed response definite, its margin reported",
+      "control": "a planted indefinite response stopped by name 30/30, clean 0/30",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_5_return_path_and_ledger": {
+      "result": "three node steps' field and kinetic energy equal the monolithic step's; the books close in both dtypes with the drag held in the flow's step",
+      "control": "the return path dropped 30/30, clean 0/30; a hand-over gift 5/5, clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_11_early_first_step_derivative": {
+      "result": "Study.gradient's forward derivative through the first preparation matches the central difference on every clean run (locally 4.958871861e-4 against 4.958872065e-4, 4.1e-8)",
+      "control": "the first preparation held as the initial state's 5/5, clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "build_and_refusals": {
+      "result": "the cases arm: 32 passed in 19 min; the arm is red on its memory check only (one pytest process's peak 6.93 GiB against a 2.93 GiB bound from the estimate of one case: a calibration row, the process holding every case's compiled programs)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "bits": {
+      "result": "every array equal for 92 programs (46 saved cases, float32 and float64) against f3/one-elimination at 3c55862b, one CPU, one thread: as predicted",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "seen_locally_before_probe_2": {
+      "gate_restart_and_fork": "the continued run's prediction (bit for bit) was wrong: at a split of 3 of 4 steps, float64, the last bits differ (at most 1.4e-16 of a field's scale): another compiled scan; the test's line is now the field's rounding (1e-12 float64, 1e-3 float32), set after this run. The override from the start and its refusal after the start passed locally.",
+      "gate_transpose_dot": "open float32: clean miss 1.55e-8, the plain transpose 1.55e-5, inside the predicted 1e-3 line, so float32's line was set to 1e-6 (the inner solves' tolerance) after the run; float64's plain transpose 1.55e-5 is caught at 1e-8. No NotImplementedError: the inner stop is formed inside each inner solve.",
+      "gate_3_open_vessel": "float64: the inflow's flux off its law by 4.1e-16, the composed residual 7.2e-9 (line 1e-7), not flagged",
+      "gate_lagged_and_one_way": "local, float64 and float32: the lagged books close with the residual booked, the hidden control breaks the identity, the lagged position is within 3e-2 of the exact run's displacement, the one-way flow is the bodiless flow to 1e-8 (numbers in the probe's cases arm)",
+      "gate_window_flag": "107 of 200 draws below the line (the prediction's 'about a fifth' was the resolution note, wrong: about half), each flagged, none above; the run test's far case read a flag no step raised as a key (result.flags lists raised flags only): fixed before the probe",
+      "probe_2": "probe/f5-gates2 at 842eeb0e (launched 2026-11-12): arms cases hidden delivered restart stale window cross plain plainf32 walk bits"
+    }
+  },
+  "gate_5_return_path_and_ledger": {
+    "claim": "the flow's stored field and its kinetic energy are the monolithic step's each step; the hand-over is workless (the drag's row on the body is the flow's exchange with its sign turned); the flow's row is the composed field's work at the force points; every receiver's books close each step; the law's sum (its two rows) is the near field's own dissipation less the free box's, judged by the flow, never a gift",
+    "kind": "equality and acceptance",
+    "case": "tests/flow/test_schwarz_flow.py::test_the_stored_field_and_its_energy_are_the_monolithic_steps_each_step (three steps through the node, float64) and ::test_the_books_close_with_the_drag_held_in_the_flows_step_and_the_exchange_workless (the metered driven sphere, both dtypes)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-16,
+        1e-09
+      ],
+      "unit": "relative (field, kinetic energy and twist each step; the hand-over's two rows; the flow's row against the force points' read)",
+      "basis": "measured-before for the books (seen_before, builder 3's smoke) and derived for the steps (every unknown a linear function of solves stopped at their tolerances, as gate 3)",
+      "why": "the composition is one more walled solve of the same operator; the exchange's rows are two products of the same tractions and twist; the scatter and gather are a transpose pair in the grid's inner product"
+    },
+    "metric": "per step: the stored field's and its kinetic energy's relative error against the monolithic step from the node's own state; over the run: |body + exchange| / max, |fluid - grid read| / max, ledger_closes, schwarz_0_gift_steps",
+    "control": {
+      "plant": "the composition dropped (the field left at its base); a hand-over gift (the load handed to the body scaled by 1.5)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: drop (node steps), gift (the metered run)",
+      "expected_rate": "every run, each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "drop moves the energy by the body's whole field (order 1 against 1e-7); the gift moves the hand-over by a third of the body's row against a line of 1e-9 (float64)"
+    },
+    "if_wrong": "a step's energy off with its field right would be the storage's (the composed field read at another instant); a hand-over off by rounding in float32 beyond 1e-3 would be the body's pairing of its load with its position's change",
+    "cannot_discriminate_if": "the drive is off (every row zero): the gates drive the flow along the tube at 1 m/s^2"
+  },
+  "gate_11_early_first_step_derivative": {
+    "claim": "a derivative in the viscosity passes through the run's first step: the first preparation, made in the flow's initial state from the build's leaves, is made again from the run's leaves in the derivative's program (MimeNode.started), so the body's axial position after two steps has the derivative a central difference of two builds gives",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_flow.py::test_a_derivative_through_the_first_step_matches_a_central_difference (float64, Study.gradient forward mode)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-09,
+        0.0001
+      ],
+      "unit": "relative, the derivative against the central difference",
+      "basis": "derived: the columns' GMRES at 1e-8 and the walled CG at 1e-10 move each of the difference's two runs by about that share of the position's change; the difference's truncation is the step squared (1e-6)",
+      "why": "the derivative is taken by the implicit route through each solve, the difference through the solves as stopped"
+    },
+    "metric": "|derivative - difference| / |difference|",
+    "control": {
+      "plant": "the first preparation held as the initial state's in the derivative's program (started making nothing)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: started",
+      "expected_rate": "every run",
+      "runs": 5,
+      "clean_expected": "0/5",
+      "resolution": "the first step's preparation carries the drag's whole dependence on the viscosity for the first of two steps: the derivative misses about half of it"
+    },
+    "if_wrong": "a clean run off by more than 1e-4 would be a solve's tangent stopped short (its report) or the probe point's factor; a plant inside the line would mean the first step carries no viscosity dependence at this point",
+    "cannot_discriminate_if": "the body does not move (the drive off)"
+  },
+  "gate_restart_and_fork": {
+    "written": "2026-11-12, by F5's fourth builder, before any of these tests ran",
+    "claim": "the Schwarz flow's prepared response is stored state: a run continued from where the last ended is the uninterrupted run bit for bit; an override of a value the preparation reads (the viscosity) on a run from the start prepares the first step again, so the run is the experiment declared with that value; after the start such an override is refused by name (override.initial-after-start, naming the flow)",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_restart.py (float64; the driven sphere of tests/schwarz_experiments.py, four and two steps)",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-09
+      ],
+      "unit": "continued run: fields differing (0, bit for bit); override: |position - declared position| / |declared position - base position|",
+      "basis": "derived: the continued run carries every field and runs the same compiled step (MIME's chunking claims bit for bit); the override's point assembles the flow at the new leaves, whose initial state holds the preparation made at them, the same arithmetic as the declared build's on the same values, so its miss is rounding (expected 0 or about 1e-15 relative)",
+      "why": "the preparation is in the flow's initial state, which the override's point re-makes and compares against the base's (study/_override.py: a changed initial state is set on a run from the start and refused after it)"
+    },
+    "metric": "the fields that differ; the override's position miss on the scale of the viscosity's own effect on the position",
+    "control": {
+      "plant": "restart: the continued run's flow given the initial preparation in place of the stored one; stale: the flow's preparation made at the build's viscosity whatever the override",
+      "environment_variable": "MIME_PLANT_SCHWARZ: restart, stale",
+      "expected_rate": "every run",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "restart: the initial preparation is the first step's, at the starting pose and the drive's first instant, not the stored step's: every field after it differs; stale: the first step's response at a viscosity off by the drawn factor (1.5 to 3) moves the position by about the first step's share of the viscosity's effect, of order 1e-1 of it, eight decades over the line"
+    },
+    "if_wrong": "a continued run that differs would be state the flow does not carry (a field outside its state) or a chunk-dependent program; an override off the declared run past the line would be a leaf the point's assembly does not re-make (a held near-field constant made at the build's viscosity)",
+    "cannot_discriminate_if": "the viscosity does not move the body (no drive), which the test asserts against (moved > 0)"
+  },
+  "gate_lagged_and_one_way": {
+    "written": "2026-11-12, by F5's fourth builder, before any of these tests ran",
+    "claim": "the declared schemes on the mrs rung: lagged (coupling='lagged') makes one Schwarz pass a step from the last step's tractions; its composed residual (the reflection of the step's change of tractions) is reported and booked in the law's books, every receiver's books close and the law's identity holds with it, and its position after three steps is near the exact one-pass run's; one way (one_way=True) leaves the flow as the flow without the body, delivers nothing (the law's row on the flow zero) and is never a gift",
+    "kind": "equality (the books, the one-way flow) and estimate (lagged against exact)",
+    "case": "tests/flow/test_schwarz_schemes.py (the driven sphere of tests/schwarz_experiments.py, metered, three steps; the lagged books in both dtypes, its control in float64)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-05,
+        0.03
+      ],
+      "unit": "lagged: |position - one-pass position| / |one-pass displacement| after three steps; the books' identity and the one-way flow within the gate-5 lines (float64 1e-9, float32 1e-3) and 1e-8 relative",
+      "basis": "guess from the first step's smoke (probe/f5-cost, D/h 8): under IMEX each product's reflection is about two decades under the near field (GMRES gains two decades a product), so the gain is about 1e-2; the first step starts from zero tractions (an error of about the gain), later steps from the last step's (the gain times the change)",
+      "why": "here sqrt(nu dt) = 32 um against a 150 um sphere: the step operator screens the walls' reflection, so one pass from the last tractions is close; the one-way flow is the scheme's step with no body force, the same solves as the bodiless flow's"
+    },
+    "metric": "lagged: the position's miss on the scale of its displacement; the residual book's work against the identity's line",
+    "control": {
+      "plant": "hidden: the lagged run's residual book zeroed (MIME_PLANT_SCHWARZ=hidden), which breaks the law's identity by the residual's work; delivered: the one-way body's composition kept (MIME_PLANT_SCHWARZ=delivered), which moves the flow off the bodiless one",
+      "environment_variable": "MIME_PLANT_SCHWARZ: hidden, delivered",
+      "expected_rate": "every run",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "hidden: the residual's work is about the gain times the near field's dissipation, about 1e-2 of it, seven decades over float64's 1e-9 line (float32's 1e-3 line would not resolve it, so the control runs in float64); delivered: the body's force on the flow is the drag's whole size, many decades over 1e-8"
+    },
+    "if_wrong": "lagged off the exact run past 3e-2 would be a gain near one (the steady limit, or a body near the wall at a step that does not screen it), which the gain/(1-gain) line says diverges; a one-way flow off the bodiless one would be a force left in the grid",
+    "cannot_discriminate_if": "the body does not move (no drive) or the lagged residual is zero (no change of tractions between steps)"
+  },
+  "gate_window_flag": {
+    "written": "2026-11-12, by F5's fourth builder, before any of these tests ran",
+    "claim": "near contact below the window's line (decided on the window spike: local radius at least about 20 cells of the resolving grid, the gap 2 to 3 of them and at most 0.1 of the local radius) raises schwarz_0_near_contact_window at the step, with the gap in cells reported, and the run goes on (flagged, never refused)",
+    "kind": "acceptance",
+    "case": "tests/flow/test_schwarz_window.py: 200 draws a run of the local radius (0.5 to 80 cells) and the gap (0.05 to 30 cells), log-uniform; and the driven sphere 0.2 mm off the axis (1.2 cells from the wall) against 0.05 mm (2.4 cells), one step each",
+    "prediction": {
+      "value": null,
+      "band": [
+        1.0,
+        1.0
+      ],
+      "unit": "share of draws below the line flagged (and 0 of those above); the near run's flag raised, the far run's not",
+      "basis": "derived: the flag is the line written as a function of the two numbers; without the patch the coarse grid's cells resolve the gap, and the sphere's enclosing radius is its local radius",
+      "why": "the check is the decided line itself; the run reads the gap from the body's pose each step"
+    },
+    "metric": "draws below the line flagged, draws above it not",
+    "control": {
+      "plant": "the check removed (no step flagged)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: window",
+      "expected_rate": "every run",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "about a fifth of the draws lie below the line in every run (the gap under 2 cells over its log range), each missed by the plant"
+    },
+    "if_wrong": "a draw misjudged would be the line's encoding (the comparison's strictness at 2 cells or at a tenth of the radius)",
+    "cannot_discriminate_if": "no draw lies below the line, which the test asserts against"
+  },
+  "gate_3_open_vessel": {
+    "written": "2026-11-12, by F5's fourth builder, before this test ran (one float32 smoke of the build was seen: the inflow's flux -9.9999997e-10 against -1e-9, the composed residual 6.2e-5 at a float32 tolerance of 1e-4, not flagged)",
+    "claim": "in an open vessel the openings are eliminated inside each Schwarz product and in the composition by the base's unit fields: the composed step meets every opening's law (the inflow's flux), the near field's equations hold at the composed field (the products and the composition solve one walled problem, openings included), nothing is flagged",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_open.py (float64, the sphere of tests/schwarz_experiments.py in the open vessel: a steady inflow at its start, a Windkessel at its end, three steps)",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-09
+      ],
+      "unit": "the inflow's flux at the composed field against its law, relative; the composed residual under its line (10 times the columns' tolerance)",
+      "basis": "derived: the face flux is linear in the field and the composition adds the body's response with the openings' moves solved to hold each row with no law's own terms, so the inflow's row holds to rounding; seen once in float32 (above)",
+      "why": "a flux row's homogeneous form is zero flux: the body's forces move no fluid through the inflow"
+    },
+    "metric": "|q_start - q_inflow| / |q_inflow|; schwarz_residual",
+    "control": {
+      "plant": "the body-opening cross terms zeroed: the body's response not corrected by the unit fields",
+      "environment_variable": "MIME_PLANT_SCHWARZ: cross",
+      "expected_rate": "every run",
+      "runs": 10,
+      "clean_expected": "0/10",
+      "resolution": "a sphere a third of the tube's radius moving at about the flow's speed pushes a flux of order its speed times its section, about a tenth of the inflow's, eight decades over the line"
+    },
+    "if_wrong": "an inflow's flux off its law would be the units of another step than the base's, or the law's rows at another instant; a residual above its line would be the products and the composition eliminating different openings",
+    "cannot_discriminate_if": "the body does not move (asserted against)",
+    "not_yet": "the dense monolithic reference with the openings' rows (F3 PR 2's monolithic step extended with the Schwarz body's tractions): this gate checks the openings' laws and the near field's equations at the composed step, not the step against an independent dense solve"
+  },
+  "gate_transpose_dot": {
+    "written": "2026-11-12, by F5's fourth builder, on the coordinator's relay of the solve-mask spike's finding (a nested custom_linear_solve whose constants depend on the transposed input cannot be transposed by JAX; #269's open-grid form transposes with symmetric=False and a weighted transpose_solve), before this test ran",
+    "claim": "the Schwarz columns' operator, its walled CG inside each product (and, in an open vessel, the openings eliminated in it), is transposed by reverse mode: <c, J b> = <J^T c, b> through the whole matvec, J^T by jax.vjp, in both dtypes",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_transpose.py: the sphere's operator at the run's start, open vessel and periodic box, one drawn b and c a run",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-08
+      ],
+      "unit": "|<c, J b> - <J^T c, b>| over |c||J b| + |J^T c||b|; float64 within 1e-8, float32 within 1e-3",
+      "basis": "derived: the inner CG stops relative to its own right-hand side inside its own solve (projected_solve's solver), its guess none in a product, so no constant of the outer matvec depends on the tractions and JAX transposes each inner solve by its own transpose_solve; the miss is the inner solves' tolerance (1e-10 in float64)",
+      "why": "the spike's failure needed an inner stop or floor closed over from the right-hand side; F5's products close over only frozen step quantities (stencils, operator, units, blocks)"
+    },
+    "metric": "the identity's relative miss",
+    "control": {
+      "plant": "plain: the open grid's face weights hidden from the shared CG, which then transposes the open solve as symmetric (the plain transpose)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: plain",
+      "expected_rate": "every run (the open case)",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "unknown before the run: the plain transpose is off by the half weights on the opening planes' faces, so its miss is the share of the products' cotangent that reaches those planes; if under the line in a dtype, the control does not discriminate there and is reported so"
+    },
+    "if_wrong": "NotImplementedError would be a constant of an inner solve that depends on the tractions (a guess or a stop formed outside the solve); a miss over the line with the clean transpose would be the openings' elimination's own transpose",
+    "cannot_discriminate_if": "the plant's miss lies under the line (the field at the opening planes negligible)"
+  }
+}

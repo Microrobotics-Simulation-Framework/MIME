@@ -1,0 +1,44 @@
+{
+  "written": "2026-11-12, by F5's fifth builder, before the fourth gates probe (probe/f5-gates4) runs: gate 11 proper; the local development runs seen are in seen_before",
+  "phase": "F5 (Schwarz coupling, lane F), PR 1, gate 11 proper",
+  "labels": "predictions by F5's fifth builder (Opus): the derivatives through the coupled solve against central differences, with the gate's two controls",
+  "seen_before": [
+    "local, float64, at the undrawn values (1 mPa s, 1 mT, the pose's x 0.05 mm): the viscosity's derivative of the axial position after two steps forward 4.958871599e-4, reverse 4.958871598e-4, central difference (h 1e-6) 4.958871586e-4 (the field at 10 Hz then); the amplitude's (undriven, the position along the wall) forward 6.809913838e-12 against its difference 6.809913787e-12 (7.6e-9), reverse 6.809920356e-12 (9.7e-7); the node's position derivative of the radial resistance and the axial load forward and reverse equal to all printed digits, 2.1e-7 off the difference; the columns' residual 1.2e-12",
+    "local: ball.initial.position as a study axis is refused (gradient.leaf-unread, the flow's start read only by the initial state; and a vector into the seven-field pose is gradient.shape), hence the node-level position case"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "GitHub runner, 4 vCPU",
+    "sizes_and_parameters": "tests/schwarz_experiments.py's sphere, two steps of 1 ms: driven (1 m/s^2) for the viscosity; undriven and magnetic (1e-11 A m^2, the field 1 mT turning at 0.1 Hz about the axis) for the amplitude; the node remade at CG 1e-12 and columns 1e-11 for the position",
+    "seeds_and_draws": "DETECTION_SEED from 1000: the viscosity or the amplitude within a quarter of 1 mPa s or 1 mT; the pose's x from the axis to 0.1 mm"
+  },
+  "gate_11_proper": {
+    "claim": "derivatives through the coupled Schwarz solve by the implicit route, forward and reverse, agree with central differences: in the viscosity and the field's amplitude through two steps of the run, and in the body's position through the first preparation at the node",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_gradients.py (five tests)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-09,
+        0.0001
+      ],
+      "unit": "|derivative - central difference| / |central difference|",
+      "basis": "measured-before at the undrawn values (seen_before) and derived: the difference's noise, the solves' tolerance over its relative step (1e-8 / h), and its truncation, h^2 where the map curves",
+      "why": "every unknown of the step is a linear function of solves stopped at their tolerances, differentiated by their own tangent and transpose solves"
+    },
+    "metric": "the relative miss; the run's Schwarz flags (none); the node's columns' residual",
+    "control": {
+      "plant": "stopped: jax.lax.stop_gradient on the reflection's output (MIME_PLANT_SCHWARZ=stopped); capped: the columns' GMRES capped at one product (MIME_PLANT_SCHWARZ=capped)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: stopped, capped",
+      "expected_rate": "stopped: 3/3 on the viscosity (both modes) and the position (the operator moves with them, its reflection's part dropped); on the amplitude forward 0/3 (its tangent is the solve's own on a moved right-hand side, through no derivative of the operator: the plant cannot fail it, a non-discriminating pairing reported as such), reverse unknown before the run (the transposed operator's stop_gradient may drop the reflection from the transpose solve). capped: 3/3 by the run's flag (viscosity forward) and the node's residual (position)",
+      "runs": 3,
+      "clean_expected": "0/3",
+      "resolution": "the walls' reflection is the whole of the position's derivative (free space's near field does not move with the pose) and part of the viscosity's; a capped GMRES leaves a composed residual decades over its line"
+    },
+    "if_wrong": "a clean miss over 1e-4: a tangent or transpose solve that is not the forward solve's (or a leaf baked at build); a stopped plant passing on the viscosity: the reflection's share of that derivative under the line",
+    "cannot_discriminate_if": "the stopped plant on the amplitude in forward mode (above)"
+  },
+  "outcomes": null
+}
