@@ -153,7 +153,7 @@ class CameraNode(MountedNode):
                      "is a multiple of it, exposed over the sub-frames' base steps ending at that step",
                      "The scene is the experiment's bodies (their outermost parts) and structures, imaged by the "
                      "closed form of their kinds; a body is taken to move, a structure to stand"),
-        limitations=("Forward only: a derivative through it is refused",
+        limitations=("Forward mode only: reverse mode and a batched study through it are refused",
                      "A camera on a frame that moves is exposed at the frame step's pose throughout the exposure",
                      "A declared camera model: backlit, one bin, no optics beyond the pinhole and its distortion"),
     )

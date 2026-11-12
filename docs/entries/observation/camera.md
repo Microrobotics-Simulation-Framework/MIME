@@ -50,8 +50,11 @@ a warning, and the frame no longer equals the offline render, whose window is de
 - For a batched study or reverse mode: both are refused, naming the offline renderer, which is differentiable and vmaps.
 - For frames at every step in a long run: the images are not recorded; record the poses.
 
-**Its derivative** is forward mode only, and unverified until the in-loop path through a moving body has a check of its
-own: `expected` carries the derivative in the poses and the detector's nine numbers (which are its leaves, so a study can
+**Its derivative** is forward mode only (reverse mode is refused by name, `camera.reverse`), checked through the built graph
+against central differences in both dtypes (a ball's settling and the principal point across a silhouette, and the focal
+length in the tube wall's interior, with a planted `stop_gradient` on the edge measure as the control) and still declared
+unverified: the renderer's switches are listed raw and not declared, so no exact or piecewise status follows from them, and
+the status has no value that says forward verified and reverse refused: `expected` carries the derivative in the poses and the detector's nine numbers (which are its leaves, so a study can
 fit them), `image` and the counters carry none. The entry's gradient record states where, why and the route.
 
 **Versions.** `camera` 0.1.0 is its first.

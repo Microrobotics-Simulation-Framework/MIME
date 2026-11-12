@@ -148,19 +148,25 @@ class Camera(Observation):
     steps ending at the frame step, and holds it between: its outputs are ``image`` (counts), ``frame_step`` (the step
     the held image was made at), ``age`` (steps since) and ``new_frame``. A frame's noise is drawn from the run's seed and the
     frame's step, so rendering its recorded poses again reproduces it exactly. Frames are not recorded by default, and
-    recording them in the loop is refused. Forward only: a derivative, a batched study and ``rate=`` are refused."""
+    recording them in the loop is refused. Forward mode only: reverse mode (``camera.reverse``), a batched study and ``rate=`` are refused."""
 
     name = "camera"
     version = "0.1.0"
     differentiability = GradientStatus.UNVERIFIED
     gradient = GradientRecord(
         where="expected, the frame's counts before noise and quantisation, in forward mode: the poses and the detector's "
-              "nine numbers; image, frame_step, age and new_frame carry none (a rounding and counts)",
-        reason="the renderer's derivative is checked offline against central differences (the camera core's G9) and "
-               "the fit of a sphere grid's intrinsics recovers them in the loop (G13), but the in-loop path through "
-               "the cond and the held frame has no check of its own on a moving body's pose",
-        route="the derivative of expected in the pose of a moving body against central differences through the loop, "
-              "with the switches the renderer evaluates declared (mime.core.switch)")
+              "nine numbers; image, frame_step, age and new_frame carry none (a rounding and counts). Reverse mode is "
+              "refused by name (camera.reverse)",
+        reason="forward mode is checked through the built graph against central differences of the same run "
+               "(tests/sensing/test_in_loop_forward.py): a ball's settling and the principal point across a silhouette "
+               "(the box edge, whose central differences are piecewise, so judged with an allowance per unit of step) and "
+               "the focal length in the tube wall's interior (quadratic), in both dtypes, with a stop_gradient on the edge "
+               "measure planted as the control. The status stays unverified: the renderer's switches are listed raw "
+               "and not declared (mime.core.switch), so no exact or piecewise status follows from them, and the enum has "
+               "no direction: it cannot say forward verified and reverse refused",
+        route="declare the renderer's switches (a pixel corner is a kink, a tangent to a pixel's side a square-root "
+              "rise), which gives the status the check supports; reverse mode stays refused (the cond over frame steps "
+              "would keep every frame's render): differentiate mime.sensing.render offline")
     forward_only: ClassVar[str] = ("the frame is rendered under a cond on frame steps (a select under vmap, so a batched "
                                    "study would render at every step) and reverse mode would keep every frame step's "
                                    "render: differentiate the offline renderer, mime.sensing.render, in the recorded "
