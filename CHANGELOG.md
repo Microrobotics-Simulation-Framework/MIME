@@ -1191,6 +1191,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
+  projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse
+  mode transposes in, so the transpose solve was the wrong one: through two steps the viscosity's derivative of the
+  openings' pressures read 5.27 in reverse mode against forward mode's 7.24, and the inflow's amplitude's 6.69
+  against 6.13 (the laws' resistances and compliance right); forward mode was right. The transpose solve is now the
+  weighted one, `V (P A P)^-1 V^-1` (`mime.nodes.flow.fvm._solve.projected_solve`); the periodic box's grid has no
+  weights and is unchanged. Found by F2b's gradient gate with ports.
 - **A body force on the open vessel's fluid booked its work over the planes' half cells counted whole**: its pairing,
   the fluid's momentum, now weighs each face as the open box's inner product does, so a driven open vessel's books close
   (they failed at 5e12 of their floor; the open box was admitted with a body force and not gated with one).
