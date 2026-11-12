@@ -23,8 +23,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from resolved_cases import (WATER_RHO, FreeBox, HeldSphere, deeper_band, haberman_sayre, patched, plant, r3_experiment,
-                            r3_history, rigid_interior, shift_cells, stable)
+from resolved_cases import (WATER_RHO, FreeBox, HeldSphere, a_cell_off, deeper_band, free_node, haberman_sayre,
+                            indicator_centroids, patched, plant, r3_experiment, r3_history, rigid_interior, seed,
+                            own_indicator, share_at_the_centre, shift_cells, stable, start_at_rest)
 
 from dataclasses import dataclass
 
@@ -100,6 +101,21 @@ def test_a_neutral_sphere_in_a_uniformly_driven_free_box_accelerates_with_the_fl
     assert abs(error) < 0.005, error
 
 
+def test_the_interiors_momentum_change_telescopes_over_a_run(dtype):
+    """The fix round's gate F5 (the review's m8): gate 3's neutral sphere driven harder (g 50 m/s^2), so that it crosses
+    about 1.7 cells in 80 steps: the interior's momentum change summed over the run, sum dt (load - penalty), is its
+    momentum at the end (the fluid starts at rest), to 1e-6 of it: each step's change is taken from the value the step
+    before held. The plant takes it on the step's own indicator (1e-4 off)."""
+    box = FreeBox(g=50.0)
+    with patched(ResolvedFlowNode, "stepped", own_indicator(ResolvedFlowNode.stepped)) if plant("OWN_INDICATOR") \
+            else contextlib.nullcontext():
+        box.run(80)
+    end = np.asarray(box.state["body_0_momentum"], dtype=np.float64)
+    mismatch = float(np.max(np.abs(box.changed - end)) / np.max(np.abs(end)))
+    print(f"F4 fix F5 [{dtype}]: the summed change against the end's momentum {mismatch:.3g}")
+    assert mismatch < 1e-6, mismatch
+
+
 def test_a_neutral_sphere_held_in_a_closed_tube_under_a_drive_across_it_takes_no_net_load(dtype):
     """Gate 3's second control: a sphere of 6 cells a radius held at rest on the tube's axis (a/R 0.375, the steady
     Stokes step) under a drive across the axis, which the wall stops: the pressure the drive builds pushes the body
@@ -115,6 +131,133 @@ def test_a_neutral_sphere_held_in_a_closed_tube_under_a_drive_across_it_takes_no
           f"field's push {float(load[0]) / scale:.4g}, the share {float(share[0]) / scale:.4g}")
     assert along < 0.1, along
     assert across < 0.1, across
+
+
+@pytest.mark.parametrize("at", [(0.0, 0.0, 0.0), (6.0, 0.0, 0.0), (0.0, 3.9, 2.1)],
+                         ids=["centred", "two radii off", "off on two axes"])
+def test_the_lifted_solid_sits_at_its_parts_place_about_the_pose(dtype, at):
+    """The fix round's gate F1: a sphere of 3 cells a radius in a free 32^3 box, its part placed ``at`` (cells) off the
+    body's centre, at a pose drawn (``DETECTION_SEED``: a sub-cell position and a turn): on every face set the lifted
+    indicator's centroid, read from the grid's own fields, is the pose's position plus its turn of the part's place,
+    to 0.05 cells (measured 0.003 clean). It holds the part's place (the key the shape's own centre overwrote) and the
+    window sized for it (two radii off clips a window sized from the radius alone). The plant lifts the solid a cell
+    off its pose on every axis."""
+    h = 1e-5
+    node = free_node(32, 3.0, tuple(c * h for c in at))
+    draws = np.random.default_rng(seed())
+    turn = draws.normal(size=4)
+    pose = jnp.asarray(np.concatenate([(16.0 + draws.uniform(-1.0, 1.0, 3)) * h, turn / np.linalg.norm(turn)]),
+                       dtype=run_dtype())
+    if plant("POSE_CELL"):
+        with patched(_resolved_node, "body_faces", a_cell_off(_resolved_node.body_faces)):
+            centroids = indicator_centroids(node, pose)
+    else:
+        centroids = indicator_centroids(node, pose)
+    print(f"F4 fix F1 [{dtype}] at {at} cells: the indicator's centroid off the solid's place, largest "
+          f"{float(np.max(np.abs(centroids))):.3g} cells")
+    assert float(np.max(np.abs(centroids))) < 0.05, centroids
+
+
+def test_a_neutral_sphere_held_off_its_centre_of_mass_in_a_closed_tube_takes_no_net_couple(dtype):
+    """The fix round's gate F2 (gate 3b with an offset hull): a sphere of 6 cells a radius held at rest on the tube's
+    axis (a/R 0.375, the steady Stokes step), its part placed a quarter radius along the axis from the body's centre,
+    under a drive across the axis: the field's push acts at the hull, so its couple about the centre of mass is the
+    lever's, and the displaced share, given at the hull's centroid, cancels it. The plant gives the share at the centre
+    of mass."""
+    lever = 0.25 * 0.5e-3
+    held = HeldSphere(0.375, 6.0, at=(0.0, 0.0, lever))
+    g = 1.0
+    if plant("SHARE_AT_COM"):
+        with patched(ResolvedFlowNode, "stepped", share_at_the_centre(ResolvedFlowNode.stepped)):
+            load, share = held.at_rest((g, 0.0, 0.0))
+    else:
+        load, share = held.at_rest((g, 0.0, 0.0))
+    total = np.asarray(load) + np.asarray(share)
+    weight = WATER_RHO * 4.0 / 3.0 * math.pi * held.radius ** 3 * g
+    couple = float(np.max(np.abs(total[3:]))) / (lever * weight)
+    along = abs(total[0]) / weight
+    print(f"F4 fix F2 [{dtype}]: the net couple over the lever times rho V g {couple:.3g} (the field's "
+          f"{float(load[4]) / (lever * weight):.4g}, the share's {float(share[4]) / (lever * weight):.4g}), the net "
+          f"force along the drive {along:.3g}")
+    assert couple < 0.1, couple
+    assert along < 0.1, along
+
+
+@pytest.mark.parametrize("stokes", [False, True], ids=["fvm", "fvm-stokes"])
+def test_an_fvm_naming_no_scheme_is_judged_at_the_scheme_it_chooses(float64, stokes):
+    """The fix round's gate F3: ``FVM()`` and ``FVM(stokes=True)`` naming no scheme are planned at the scheme the FVM
+    chooses at the run's values, never refused as an entry's defect: at R3's step RK3 (nu dt / h^2 0.038 under its
+    0.15), which takes no resolved body (drag.penalty-scheme)."""
+    found = _refusals(r3_experiment(1.0, unnamed=True, stokes=stokes))
+    assert "drag.penalty-scheme" in found and "entry.defect" not in found, found
+
+
+def test_a_neutral_body_moving_with_a_uniformly_moving_fluid_keeps_its_speed_over_the_first_step(dtype):
+    """The review's moving-start oracle (its m7): a neutral sphere of 3 cells a radius moving at U with a free box's
+    fluid already moving at U (the node's initial velocity): the first step's load leaves its speed unchanged, so its
+    interior's momentum change at a run's first step is taken from the start's field, not from rest. The plant takes it
+    from rest (a kick of about U)."""
+    h, cells, speed = 1e-5, 24, 1e-3
+    dt = 0.1 * h * h * WATER_RHO / 1e-3
+    tolerance = 1e-10 if run_dtype() == jnp.float64 else 1e-5
+    node = free_node(cells, 3.0, h=h, dt=dt, tolerance=tolerance,
+                     initial_velocity_z=np.full((cells, cells, cells), speed))
+    side = cells * h
+    pose = jnp.asarray((side / 2 + 0.3 * h, side / 2 + 0.2 * h, side / 2 + 0.1 * h, 1.0, 0.0, 0.0, 0.0),
+                       dtype=run_dtype())
+    twist = jnp.asarray((0.0, 0.0, speed, 0.0, 0.0, 0.0), dtype=run_dtype())
+    with patched(ResolvedFlowNode, "stepped", start_at_rest(ResolvedFlowNode.stepped)) if plant("START_AT_REST") \
+            else contextlib.nullcontext():
+        state = node.update(dict(node.initial_state()), {"body_0_pose": pose, "body_0_twist": twist,
+                                                         "body_force": jnp.zeros(3, dtype=run_dtype())}, dt)
+    volume = 4.0 / 3.0 * math.pi * (3.0 * h) ** 3
+    change = dt * float(state["body_0_load"][2]) / (WATER_RHO * volume)
+    print(f"F4 fix m7 [{dtype}]: the first step's velocity change over the speed {change / speed:.3g}")
+    assert abs(change) < 1e-3 * speed, change
+
+
+def _without_the_lagged_refusal():  # noqa: ANN202 - the build's lagged refusal set aside, so a run reaches the guard
+    original = Drag.penalty_value_problems
+
+    def problems(self, values, ctx):  # noqa: ANN001, ANN202
+        return [problem for problem in original(self, values, ctx) if problem.code != "drag.penalty-lagged"]
+    return patched(Drag, "penalty_value_problems", problems)
+
+
+def test_a_diverging_lagged_run_is_stopped_naming_the_coupling(float64):
+    """The fix round's gate G: the refuting review's Stokes case (R3's tube at 3 cells a radius, IMEX Euler with
+    stokes=True, a neutral uniform sphere, dt 7e-3 s: 2.9 times its translation's relaxation time and 3.0 times its
+    rotation's), past the lagged coupling's edge, which ran unstopped to 6e7 m/s in float64: with the build's refusal
+    set aside the body's own motion stops it, past a cell a step (drag.penalty-motion), naming the body and its
+    coupling. The plant removes the guard."""
+    from mime.units import s as seconds
+
+    line = math.inf if plant("NO_MOTION_GUARD") else _resolved_node.MOTION_LINE
+    with _without_the_lagged_refusal(), patched(_resolved_node, "MOTION_LINE", line):
+        built = r3_experiment(1.0, dt=7e-3, reynolds=0.1, stokes=True).build()
+        with pytest.raises(RunFailed) as stopped:
+            built.run(seconds(100 * 7e-3))
+    found = {refusal.code: refusal.message for refusal in stopped.value.refusals}
+    print(f"F4 fix G: stopped {sorted(found)}: {found.get('drag.penalty-motion', '')[:160]}")
+    assert "drag.penalty-motion" in found, found
+    assert "ball" in found["drag.penalty-motion"] and "lagged coupling" in found["drag.penalty-motion"], found
+
+
+@pytest.mark.parametrize("start", [1.875e-4, 0.0], ids=["two cells from the wall", "on the axis"])
+def test_a_body_nearer_the_wall_than_three_cells_is_flagged_each_step(float64, start):
+    """The fix round's gate W (M6): a resolved body whose solid comes within 3 cells of the tube's wall, where the
+    free body's accuracy was measured to fall (the near-wall resolved-body phase's), raises its drag's flag
+    (water.flow.body_0_near_wall) at every step; on the axis (5 cells away at 3 cells a radius) it raises none."""
+    from mime.units import s as seconds
+
+    built = r3_experiment(1.0, dt=1.5e-4, reynolds=0.1, stokes=True, start=(start, 0.0, 0.0)).build()
+    declared = {flag.path: flag.owner for flag in built.layout.flags}
+    result = built.run(seconds(3 * 1.5e-4))
+    raised = {read.path for read in result.flags if read.was_raised}
+    gap = float(np.asarray(result.final["water.flow"]["body_0_gap"]))
+    print(f"F4 fix W: start {start} m, gap {gap:.3g} cells, flags raised {sorted(raised)}")
+    assert declared.get("water.flow.body_0_near_wall") == "drag:ball", declared
+    assert ("water.flow.body_0_near_wall" in raised) is (start > 0.0), (gap, raised)
 
 
 # -- gate 4: the books ----------------------------------------------------------------------------------------------

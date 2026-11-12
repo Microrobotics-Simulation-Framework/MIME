@@ -48,9 +48,13 @@ def haberman_sayre(ratio: float) -> float:
                                           + 0.72603 * ratio ** 6)
 
 
-def sphere_spec(radius: float, spacing: float, law: str = "drag:ball") -> ResolvedSpec:
-    return ResolvedSpec("ball", law, "sphere", {"centre": (0.0, 0.0, 0.0), "radius": radius}, (0.0, 0.0, 0.0),
-                        (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), window_cells(radius, spacing, BAND),
+def sphere_spec(radius: float, spacing: float, law: str = "drag:ball",
+                at: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> ResolvedSpec:
+    """A sphere of ``radius`` as the build describes it, its part placed ``at`` in the body's frame (off its centre of
+    mass), its window sized for the offset."""
+    return ResolvedSpec("ball", law, "sphere", {"centre": (0.0, 0.0, 0.0), "radius": radius}, at,
+                        (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+                        window_cells(radius + math.dist(at, (0.0, 0.0, 0.0)), spacing, BAND),
                         4.0 / 3.0 * math.pi * radius ** 3)
 
 
@@ -61,7 +65,7 @@ class HeldSphere:
     corner (in cells)."""
 
     def __init__(self, ratio: float, cells: float, offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
-                 radius: float = 0.5e-3, lateral: float = 0.0) -> None:
+                 radius: float = 0.5e-3, lateral: float = 0.0, at: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> None:
         self.radius, self.ratio = radius, ratio
         tube = radius / ratio
         self.layout = periodic_tube_layout(tube, 4.0 * tube, spacing=radius / cells)
@@ -70,7 +74,7 @@ class HeldSphere:
             "flow", 1.0, cells_x=self.layout.cells[0], cells_y=self.layout.cells[1], cells_z=self.layout.cells[2],
             spacing=h, viscosity=WATER_MU, density=WATER_RHO, tube_centre=self.layout.centre,
             tube_axis=self.layout.axis, tube_radius=self.layout.radius, scheme="steady", convection=False,
-            bodies=[sphere_spec(radius, h)])
+            bodies=[sphere_spec(radius, h, at=at)])
         self.centre = np.asarray((self.layout.centre[0] + lateral + offset[0] * h, self.layout.centre[1] + offset[1] * h,
                                   0.5 * self.layout.cells[2] * h + offset[2] * h))
         self.step = jax.jit(lambda pose, twist, drive: self.node.update(
@@ -155,14 +159,19 @@ def deeper_band(scale: float) -> Callable[..., Any]:
 
 def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, hull: Any = None,
                   one_way: bool | None = None, spacing: Any = None, scheme: Any = None,
-                  length: Any = None, opened: bool = False, tree: bool = False) -> Experiment:
+                  length: Any = None, opened: bool = False, tree: bool = False, reynolds: float = 76.0,
+                  stokes: bool = False, unnamed: bool = False, at: Any = None,
+                  start: tuple[float, float, float] = (0.0, 0.0, 0.0),
+                  velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Experiment:
     """The coupling spike's R3 case at Re 76: a sphere of radius 0.1875 D (3 cells a radius at D/h 16) free on a
     periodic tube's axis (D = 1 mm, 4 D long) in water, the fluid driven by the uniform force that gives the empty
     tube a mean speed of 76 nu / D; the body's density ``ratio`` times the fluid's; from rest. ``tree``: the same
-    straight lumen as a tube tree's (two segments reaching a diameter past each end of the period)."""
+    straight lumen as a tube tree's (two segments reaching a diameter past each end of the period). ``reynolds`` the
+    drive's, ``stokes`` the flow's Stokes approximation, ``unnamed`` no scheme written (the FVM's own choice), ``at``
+    the part's place off the body's centre, ``start`` and ``velocity`` the body's initial position and velocity."""
     diameter = 1e-3
     nu = WATER_MU / WATER_RHO
-    mean = 76.0 * nu / diameter
+    mean = reynolds * nu / diameter
     drive = 8.0 * nu * mean / (diameter / 2.0) ** 2
     radius = 0.1875 * diameter
     exp = Experiment("resolved_r3", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(dt))
@@ -175,16 +184,17 @@ def r3_experiment(ratio: float, *, dt: float = 1.5e-4, feature_cells: int = 3, h
                                                           length=m(0.1))))
     domain = VesselRegion(margin=4) if opened else PeriodicBox(length=m(4.0 * diameter) if length is None else length)
     flow = FVM(domain=domain, cells_across=16,
-               scheme=Scheme.IMEXEuler() if scheme is None else scheme,
-               **({"spacing": spacing} if spacing is not None else {}))
+               **({} if unnamed else {"scheme": Scheme.IMEXEuler() if scheme is None else scheme}),
+               **({"stokes": True} if stokes else {}), **({"spacing": spacing} if spacing is not None else {}))
     exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     exp.declare("water.viscosity", mPa_s(WATER_MU * 1e3), reason="water")
     exp.declare("water.density", kg_per_m3(WATER_RHO), reason="water")
     mass = ratio * WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
     exp.add_body(Body("ball", dynamics=RigidInertial(),
-                      parts={"shell": Part(Sphere(radius=m(radius)) if hull is None else hull)},
-                      initial=State(position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
-                                    velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+                      parts={"shell": Part(Sphere(radius=m(radius)) if hull is None else hull,
+                                           **({"at": m(at)} if at is not None else {}))},
+                      initial=State(position=m(start), orientation=(1.0, 0.0, 0.0, 0.0),
+                                    velocity=m_per_s(velocity), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     exp.declare("ball.mass", kg(mass), reason="the density ratio the gate holds")
     exp.declare("ball.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="a uniform sphere")
     if opened:
@@ -232,6 +242,83 @@ def stable(velocities: np.ndarray, top: float, run: int = 4) -> tuple[bool, int]
     return bool(np.max(np.abs(velocities)) < 2.0 * top and longest < run - 1), longest
 
 
+def a_cell_off(original: Callable[..., Any]) -> Callable[..., Any]:
+    """The body's lift placed a cell off its pose on every axis (the plant): its window's lattice index one more,
+    its faces' coordinates left as computed."""
+    def faces(grid: Any, component: int, body: Any, position: Any, turn: Any, band: Any, interior: float) -> Any:
+        held = original(grid, component, body, position, turn, band, interior)
+        return held._replace(lattice=tuple(jnp.mod(index + 1, count) for index, count in zip(held.lattice, grid.cells,
+                                                                                             strict=True)))
+    return faces
+
+
+def share_at_the_centre(original: Callable[..., Any]) -> Callable[..., Any]:
+    """The displaced share given at the body's centre of mass, not at its hull's centroid (the plant): its couple
+    left out."""
+    def stepped(self: Any, p: Any, state: Any, inputs: Any, dt: float) -> Any:
+        held, parts = original(self, p, state, inputs, dt)
+        return {**held, "body_0_share": held["body_0_share"].at[3:].set(0.0)}, parts
+    return stepped
+
+
+def free_node(cells: int, radius_cells: float, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
+              h: float = 1e-5, dt: float = 1e-4, **settings: Any) -> ResolvedFlowNode:
+    """A sphere of ``radius_cells`` in a free periodic box of ``cells`` a side (the tube outside it), its part placed
+    ``at`` (m) off the body's centre."""
+    side = cells * h
+    return ResolvedFlowNode("flow", dt, cells_x=cells, cells_y=cells, cells_z=cells, spacing=h, viscosity=WATER_MU,
+                            density=WATER_RHO, tube_centre=(side / 2, side / 2, 0.0), tube_axis=(0.0, 0.0, 1.0),
+                            tube_radius=10.0 * side, scheme="imex_euler", convection=False,
+                            bodies=[sphere_spec(radius_cells * h, h, at=at)], **settings)
+
+
+def own_indicator(original: Callable[..., Any]) -> Callable[..., Any]:
+    """The interior's momentum change taken on the step's own indicator, the start's field against the end's, not from
+    the value the step before held (the plant): it no longer telescopes as the body crosses cells."""
+    def stepped(self: Any, p: Any, state: Any, inputs: Any, dt: float) -> Any:
+        held, parts = original(self, p, state, inputs, dt)
+        before = (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+        started = self.body_books(p, parts.fields, before, 0)[1]
+        return {**held, "body_0_load": held["body_0_penalty"] + (held["body_0_momentum"] - started) / dt}, parts
+    return stepped
+
+
+def start_at_rest(original: Callable[..., Any]) -> Callable[..., Any]:
+    """The interior's momentum at a run's first step taken as zero, not from the start's field (the plant)."""
+    def stepped(self: Any, p: Any, state: Any, inputs: Any, dt: float) -> Any:
+        held, parts = original(self, p, state, inputs, dt)
+        before = (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+        started = self.body_books(p, parts.fields, before, 0)[1]
+        first = jnp.asarray(state["steps"]) == 0
+        return {**held, "body_0_load": held["body_0_load"] + jnp.where(first, started / dt, 0.0)}, parts
+    return stepped
+
+
+def indicator_centroids(node: ResolvedFlowNode, pose: Any) -> np.ndarray:
+    """The body's lifted indicator's centroid on each face set (``3 x 3``, rows the face sets), in cells, about where
+    the solid should sit: the pose's position plus its turn of the part's place (``body_0_at``), each coordinate
+    wrapped on the periodic box. The node's own step's fields, read from the grid (not from the window's offsets)."""
+    from mime.core._quaternion import rotation_matrix
+
+    p = node._step_constants(None)  # noqa: SLF001 - the step's constants, as the step reads them
+    grid = node.grid(p)
+    fields = node.step_fields(p, grid, {"body_0_pose": pose, "body_0_twist": jnp.zeros(6, dtype=run_dtype())})
+    h = float(node.constants()["spacing"])
+    target = np.asarray(pose[:3]) + np.asarray(rotation_matrix(pose[3:])) @ np.asarray(node.constants()["body_0_at"])
+    rows = []
+    for component in range(3):
+        chi = np.asarray(fields.chi[component], dtype=np.float64)
+        axes = np.meshgrid(*[(np.arange(count) + (0.0 if a == component else 0.5)) * h
+                             for a, count in enumerate(grid.cells)], indexing="ij")
+        row = []
+        for a, count in enumerate(grid.cells):
+            length = count * h
+            wrapped = (axes[a] - target[a] + length / 2.0) % length - length / 2.0
+            row.append(float(np.sum(chi * wrapped) / np.sum(chi)) / h)
+        rows.append(row)
+    return np.asarray(rows)
+
+
 def rigid_interior(ratio: float, original: Callable[..., Any]) -> Callable[..., Any]:
     """The rigid-interior shortcut (the plant), R3's: the interior taken to move with the body, so its momentum change
     cancels the body's displaced mass and the body's equation is ``(m_s - m_f) dV/dt = F``, the penalty's load alone:
@@ -263,6 +350,7 @@ class FreeBox:
         self.g, self.share = g, share
         self.position = jnp.asarray((side / 2 + 0.3 * h, side / 2 + 0.2 * h, side / 2 + 0.1 * h), dtype=run_dtype())
         self.velocity = jnp.zeros(3, dtype=run_dtype())
+        self.changed = np.zeros(6)
         self.state = dict(self.node.initial_state())
         dtype = run_dtype()
         self._step = jax.jit(lambda state, pose, twist: self.node.update(
@@ -270,13 +358,16 @@ class FreeBox:
                     "body_force": jnp.asarray((0.0, 0.0, g), dtype=dtype)}, self.dt))
 
     def run(self, steps: int) -> list[float]:
-        """``steps`` steps; the body's axial velocity after each."""
+        """``steps`` steps; the body's axial velocity after each (the interior's momentum change summed over them,
+        ``sum dt (load - penalty)``, in ``changed``)."""
         held: list[float] = []
         dtype = run_dtype()
         for _ in range(steps):
             pose = jnp.concatenate([self.position, jnp.asarray((1.0, 0.0, 0.0, 0.0), dtype=dtype)])
             twist = jnp.concatenate([self.velocity, jnp.zeros(3, dtype=dtype)])
             self.state = self._step(self.state, pose, twist)
+            self.changed = self.changed + self.dt * np.asarray(self.state["body_0_load"] - self.state["body_0_penalty"],
+                                                               dtype=np.float64)
             load = self.state["body_0_load"][:3] + (self.state["body_0_share"][:3] if self.share else 0.0)
             self.velocity = self.velocity + self.dt * load / self.mass
             self.position = self.position + self.dt * self.velocity
@@ -284,6 +375,7 @@ class FreeBox:
         return held
 
 
-__all__ = ["BAND", "WATER_MU", "WATER_RHO", "FreeBox", "HeldSphere", "deeper_band", "effective_ratio",
+__all__ = ["BAND", "WATER_MU", "WATER_RHO", "FreeBox", "HeldSphere", "a_cell_off", "deeper_band", "effective_ratio",
+           "free_node", "indicator_centroids", "own_indicator", "share_at_the_centre", "start_at_rest",
            "haberman_sayre", "patched", "plant", "r3_experiment", "r3_history", "rigid_interior", "seed",
            "shift_cells", "stable", "sphere_spec"]

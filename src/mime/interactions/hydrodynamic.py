@@ -102,8 +102,8 @@ from mime.registry import (
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
 from mime.vocabulary import BACKGROUND_LOAD, EXCHANGE_PARTNER, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
-    FLOW_FACES, FLOW_PARTNERS, FLOW_RESOLVED, POSE, RESISTANCE, RESOLVED_PARTNER, TWIST, Capability, Definiteness, \
-    EnergyClass
+    FLOW_FACES, FLOW_PARTNERS, FLOW_RESOLVED, MASS_MATRIX, POSE, RESISTANCE, RESOLVED_PARTNER, TWIST, Capability, \
+    Definiteness, EnergyClass
 from mime.walls import RESERVED
 
 if TYPE_CHECKING:
@@ -1699,14 +1699,23 @@ class Drag(UncoupledDrag):
         f"measured above it; its exchange is not paired at one twist, so its unpaired work is booked in the drag's "
         f"rows: the one-pass affine coupling, which pairs it, is the route this rung comes with next",
         "penalty: the displaced share of the medium's drive (the drive acts on the fluid alone) given to the body at its "
-        "hull's centroid, its volume the hull's, under the drag's part drag:<body>.displaced; a body moved through the "
-        "cells carries a ripple in its force and more in its force's derivative in its position (gate 5: the drag's "
-        "spread through a cell 0.17 % at 6 cells a radius, its change a cell 0.5 %) [measured]; the free body only: "
-        "a sphere at 6 cells a radius beside a tube's wall (a/R 0.222), spun force-free, translates within 4.2 % of "
-        "the MRS's rate (its near-contact law on) at a gap of 4 cells and 8.3 % at 3, 23 % at 2, its wall-normal "
-        "resistance 3.7, 6.1 and 12 % under [measured through the node]: within 3 cells of the wall the body is the "
-        "near-wall resolved-body phase's, not this rung's; a delivered added mass on it is refused "
-        "(drag.penalty-added-mass), its grid carrying the fluid's inertia",
+        "hull's centroid, its volume the hull's, under the drag's part drag:<body>.displaced; a derivative in the "
+        "body's position carries the lift's ripple: a sphere held off a tube's axis (a/R 0.375, its centre 0.2 R "
+        "across), its drag differentiated in its lateral position, reads a derivative that moves within a cell from "
+        "0.30 to 1.68 times its cell-mean slope at 6 cells a radius and from -0.15 to 2.20 at 3 (the derivative of the "
+        "discrete drag, exact to its central difference; the static tube's ripple, for comparison, is +-20 % at D/h 8 "
+        "to 16) [measured through the node]: a gradient in position is a cell-mean's to that spread, and the drag "
+        "itself moves 0.17 % through a cell at 6 cells a radius (gate 5); the free body only: a sphere at 6 cells a "
+        "radius beside a tube's wall (a/R 0.222), spun force-free, translates within 4.2 % of the MRS's rate (its "
+        "near-contact law on) at a gap of 4 cells and 8.3 % at 3, 23 % at 2, its wall-normal resistance 3.7, 6.1 and "
+        "12 % under [measured through the node]: within 3 cells of the wall the body is the near-wall resolved-body "
+        "phase's, not this rung's, and a body there is flagged each step (body_<i>_near_wall, its part's enclosing "
+        "sphere's gap); a delivered added mass on it is refused (drag.penalty-added-mass), its grid carrying the "
+        "fluid's inertia",
+        "penalty: a body is held to move its solid at most a cell a step (its farthest point's speed at the step's "
+        "start times dt / h; declared): the window is placed afresh each step, but a solid jumping a cell between "
+        "solves is not resolved in time, and a lagged coupling past its stable step grows until it crosses the line; "
+        "the run stops at the first step past it (drag.penalty-motion, naming the body and its coupling)",
         "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
         "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
@@ -1929,11 +1938,16 @@ class Drag(UncoupledDrag):
 
     def _penalty_plan(self, ctx: PlanContext) -> Plan:
         """The penalty rung's plan: the body registered with the medium's field as a resolved partner, which reads its
-        pose and twist and returns its load into the body's background load; its mass and the fluid's density read
-        for the lagged coupling's range."""
-        return Plan(nodes=(), values={"mass": Value("body", "mass"), "density": Value("medium", "density")},
+        pose, twist and mass matrix (its density ratio flagged where unmeasured) and returns its load into the body's
+        background load; the body's mass and inertia and the
+        fluid's density and viscosity read for the lagged coupling's edge (and the scheme the FVM chooses where none is
+        written)."""
+        return Plan(nodes=(), values={"mass": Value("body", "mass"), "inertia": Value("body", "inertia"),
+                                      "density": Value("medium", "density"),
+                                      "viscosity": Value("medium", "viscosity")},
                     registrations=(Registration("medium", FLOW_RESOLVED.name, RESOLVED_PARTNER, "body",
-                                                reads={"pose": POSE.name, "twist": TWIST.name},
+                                                reads={"pose": POSE.name, "twist": TWIST.name,
+                                                       "mass": MASS_MATRIX.name},
                                                 returns={"load": BACKGROUND_LOAD.name,
                                                          "displaced": BACKGROUND_LOAD.name}),),
                     problems=tuple(self._penalty_problems(ctx)))
@@ -1958,7 +1972,7 @@ class Drag(UncoupledDrag):
         """The penalty rung at the run's values: a flow stepped by RK3 (``drag.penalty-scheme``); a body lighter than
         the lagged coupling's measured range (``drag.penalty-lagged``); a body whose smallest feature holds fewer cells
         than the thinnest-feature line (``drag.penalty-thin``)."""
-        from mime.dynamics.flow._resolved import feature_radius
+        from mime.dynamics.flow._resolved import body_reach, feature_radius
 
         if "medium" not in ctx.exchanges or ctx.geometry(of="body") is None:
             return []
@@ -1985,7 +1999,7 @@ class Drag(UncoupledDrag):
         from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND
         from mime.nodes.flow.fvm._resolved import window_cells
 
-        window = window_cells(float(hull.kind.enclosing_radius(hull.settings)), frame.spacing, BANDS[DEFAULT_BAND])
+        window = window_cells(body_reach(hull), frame.spacing, BANDS[DEFAULT_BAND])
         if window > min(frame.cells):
             found.append(Problem("drag.penalty-box",
                                  f"{body} with the band about it spans {window} cells, more than the medium's box holds "

@@ -687,6 +687,24 @@ class FVM(Dynamics):
                                     cells_across=self.cells_across, spacing=spacing if asked is None else asked,
                                     margin_cells=self.domain.margin, lattice=lattice)
 
+    def registration_flags(self, registrations: Sequence[ResolvedRegistration]) -> tuple[tuple[str, str, str], ...]:
+        """The flags the flow's node raises for each body resolved on its grid, owned by the drag that registered it
+        (its id, the node's field, what it means): the body nearer the tube's wall than the free body's measured line
+        (``body_<i>_near_wall``)."""
+        from mime.nodes.flow.fvm._resolved_node import LAGGED_RATIOS, NEAR_WALL_CELLS
+
+        resolved = [r for r in registrations if r.kind == RESOLVED_PARTNER]
+        return tuple(flag for index, r in enumerate(resolved) for flag in (
+            (r.id, f"body_{index}_near_wall",
+             f"{r.subject}'s solid came within {NEAR_WALL_CELLS:g} cells of the tube's wall (its part's enclosing "
+             f"sphere's gap, body_{index}_gap, in cells): a free resolved body's accuracy was measured to fall there "
+             f"(spun force-free beside a tube's wall, 8.3 % off the MRS's rate at 3 cells and 23 % at 2), so within "
+             f"it the body is the near-wall resolved-body phase's"),
+            (r.id, f"body_{index}_ratio_unmeasured",
+             f"{r.subject}'s density ratio (body_{index}_ratio, its mass over the fluid's density times its hull's "
+             f"volume) lay outside the {LAGGED_RATIOS[0]:g} to {LAGGED_RATIOS[1]:g} over which the lagged coupling's "
+             f"edge was measured: the build judged its step against the nearest measured ratio's edge")))
+
     def resolved_spacing(self, region: Region, registrations: Sequence[object]) -> float | None:
         """The finer of the lumen's spacing (its diameter over ``cells_across``) and each resolved body's (N cells
         across its smallest feature's radius), where a resolved body asks a finer one; ``None`` where none does."""
@@ -788,6 +806,7 @@ def _resolved_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, resolved: S
     for index, registration in enumerate(resolved):
         b.connect(b.read(registration, "pose"), into=node[f"body_{index}_pose"])
         b.connect(b.read(registration, "twist"), into=node[f"body_{index}_twist"])
+        b.connect(b.read(registration, "mass"), into=node[f"body_{index}_mass"])
         b.connect(node[f"body_{index}_load"], into=b.target(registration, "load"))
         b.connect(node[f"body_{index}_share"], into=b.target(registration, "displaced"), part="displaced")
 

@@ -4,6 +4,7 @@ the lumen's D/h 32 and N cells across the body's smallest feature, B12 (b))."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 
 from mime.nodes.flow.fvm._band import Band
@@ -52,16 +53,22 @@ def finest_spacing(hull: Hull | None, settings: Mapping[str, Magnitude]) -> floa
     return None if radius is None else radius / feature_cells(settings)
 
 
+def body_reach(hull: Hull) -> float:
+    """How far the hull's solid reaches from the body's centre (m), in any orientation: its part's offset from the
+    centre plus the kind's enclosing radius about the part. The window about the body's centre is sized from it."""
+    return float(hull.kind.enclosing_radius(hull.settings)) + math.dist(hull.centre, (0.0, 0.0, 0.0))
+
+
 def resolved_spec(hull: Hull, law: str, spacing: float, band: Band) -> ResolvedSpec:
     """The node's description of the hull's body, resolved by the drag ``law``, on a grid of ``spacing`` (its window
-    sized for the band)."""
+    sized for the band and the part's offset from the body's centre)."""
     region = solid_region(hull)
     assert region is not None, "the drag's plan refuses a hull that is not resolvable"
     shape, parameters = region
     rotation = tuple(float(value) for row in hull.rotation for value in row)
     return ResolvedSpec(hull.body, law, shape, {key: _number(value) for key, value in parameters.items()},
                         (float(hull.centre[0]), float(hull.centre[1]), float(hull.centre[2])), rotation,
-                        window_cells(hull.kind.enclosing_radius(hull.settings), spacing, band),
+                        window_cells(body_reach(hull), spacing, band),
                         float(hull.kind.volume(hull.settings)))
 
 
@@ -71,4 +78,4 @@ def _number(value: Magnitude) -> float | tuple[float, ...]:
     return float(value)
 
 
-__all__ = ["FEATURE_CELLS", "feature_cells", "feature_radius", "finest_spacing", "resolved_spec", "solid_region"]
+__all__ = ["FEATURE_CELLS", "body_reach", "feature_cells", "feature_radius", "finest_spacing", "resolved_spec", "solid_region"]

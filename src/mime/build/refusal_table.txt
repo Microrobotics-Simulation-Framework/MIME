@@ -162,6 +162,7 @@ drag.penalty-added-mass       user
 drag.penalty-box              user
 drag.penalty-kind             user
 drag.penalty-lagged           user
+drag.penalty-motion           user
 drag.penalty-scheme           user
 drag.penalty-thin             user
 drag.rft-coefficients         user

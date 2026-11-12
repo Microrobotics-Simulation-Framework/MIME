@@ -43,13 +43,14 @@ RESOLVED_SHAPES = ("sphere", "capsule")
 WINDOW_MARGIN = 3
 
 
-def window_cells(enclosing_radius: float, spacing: float, band: Band) -> int:
-    """The window's side in cells for a body of ``enclosing_radius`` (m) on a grid of ``spacing``: every face whose
-    distance from the body is under the band's outer half (where its indicator is above zero) lies inside it. Counted
-    as the box's counts are (``mime.scene._sampling.counted``, the ceiling less a relative slack), so that a body
-    whose reach is a whole number of cells keeps its window when a study moves its size by a part in a million."""
-    reach = enclosing_radius / spacing + 0.5 * band.width + WINDOW_MARGIN
-    return 2 * counted(reach) + 1
+def window_cells(reach: float, spacing: float, band: Band) -> int:
+    """The window's side in cells for a body whose solid reaches ``reach`` (m) from its centre (its part's offset plus
+    the part's enclosing radius) on a grid of ``spacing``: every face whose distance from the body is under the band's
+    outer half (where its indicator is above zero) lies inside it. Counted as the box's counts are
+    (``mime.scene._sampling.counted``, the ceiling less a relative slack), so that a body whose reach is a whole number
+    of cells keeps its window when a study moves its size by a part in a million."""
+    cells = reach / spacing + 0.5 * band.width + WINDOW_MARGIN
+    return 2 * counted(cells) + 1
 
 
 @dataclass(frozen=True)
