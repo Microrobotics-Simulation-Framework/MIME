@@ -109,12 +109,13 @@ class Pieces:
     mu: float
 
 
-def pieces(node: ImplicitFlowNode, dt: float, tolerance: float = TIGHT) -> Pieces:
+def pieces(node: ImplicitFlowNode, dt: float, tolerance: float = TIGHT, steady: bool = False) -> Pieces:
+    """The node's step pieces; ``steady`` its operator at zero shift (Stokes's steady limit), the step's otherwise."""
     p = node.params_pytree()
     grid = node.grid(p)
     fields = node.fields(p, grid)
     sigma = node.resistivity(p, fields)
-    shift = 1.0 / dt if node.scheme.stores_inertia else 0.0
+    shift = 1.0 / dt if node.scheme.stores_inertia and not steady else 0.0
     operator = node.operator_of(p, grid, sigma)(shift)
     diagonal = node.diagonal_of(p, grid, sigma, shift)
     magnitude = node.magnitude_of(p, grid, sigma)(shift)
@@ -127,6 +128,73 @@ def pieces(node: ImplicitFlowNode, dt: float, tolerance: float = TIGHT) -> Piece
 
     mu, rho = float(p["viscosity"]), float(p["density"])
     return Pieces(grid, operator, grid.project, walled, shift, mu / rho, rho, mu)
+
+
+#: The walls-by-the-grid gates' tube (the coupling spike's R2, the window spike's q7): its diameter in cells, its grid
+#: eight cells more across and two diameters long.
+TUBE_CELLS = 32
+
+
+def steady_tube(radius: float, offset: Sequence[float] = (0.0, 0.0), tolerance: float = TIGHT,
+                cells: int = TUBE_CELLS) -> tuple[ImplicitFlowNode, Pieces]:
+    """A straight periodic tube of ``radius`` along z, ``cells`` across its diameter, its axis ``offset`` (m) from the
+    grid's middle, Stokes in the steady limit, and its pieces."""
+    spacing = 2.0 * radius / cells
+    across = cells + 8
+    node = ImplicitFlowNode("flow", 1e-3, cells_x=across, cells_y=across, cells_z=2 * cells, spacing=spacing,
+                            viscosity=WATER_MU, density=WATER_RHO, convection=False, tolerance=tolerance,
+                            tube_centre=(0.5 * across * spacing + offset[0], 0.5 * across * spacing + offset[1], 0.0),
+                            tube_axis=(0.0, 0.0, 1.0), tube_radius=radius, scheme="imex_euler")
+    return node, pieces(node, 1e-3, tolerance, steady=True)
+
+
+def flux_free(at: Pieces) -> Any:
+    """``at``'s walled solve with its net flux along the axis removed by the response to a uniform axial force (exact,
+    by superposition): the periodic tube's standing for an infinite tube's, whose far field carries no flux (the
+    coupling spike's R2). Without it a net axial force drives a Poiseuille flux through the period, about
+    ``1.5 K a / L`` of a sphere's own mobility (12 % at a/R 0.2 in two diameters)."""
+    zeros = at.grid.zeros(jnp.zeros(()).dtype)
+    unit, _ = at.walled((zeros[0], zeros[1], jnp.ones_like(zeros[2])))
+    carried = jnp.sum(unit[2])
+
+    def walled(rhs: Velocity, guess: Velocity | None = None) -> tuple[Velocity, Any]:
+        found, report = at.walled(rhs, guess)
+        share = jnp.sum(found[2]) / carried
+        return (found[0] - share * unit[0], found[1] - share * unit[1], found[2] - share * unit[2]), report
+
+    return walled
+
+
+def free_resistance(body: SchwarzBody) -> np.ndarray:
+    """The body's free-space 6x6 at its near field's matrix (its own discretisation)."""
+    from mime.nodes.hydro.mrs._solve import force_sums  # noqa: PLC0415
+
+    placed = body.placed
+    return np.asarray(force_sums(placed.wrench(), jnp.linalg.solve(body.matrix, placed.motions())), dtype=np.float64)
+
+
+def tube_table(radius: float, spacing: float, tube: float, offset: float) -> tuple[float, float]:
+    """dev1's tube table through the MRS rung (``Drag.MRS(wall_kind="tube")``, float64) for a sphere of ``radius`` at
+    ``offset`` from the axis of a tube of radius ``tube``: its radial and axial resistance over the free sphere's at
+    the same force spacing (the window spike's ``mime_refs.py``), the near-contact law's hand-over left out (the table's
+    read alone, as dev1 made it)."""
+    from near_field_cases import bodies  # noqa: PLC0415
+
+    from mime.build._maddening import node_state, parameter_leaves
+    from mime.interactions import Drag
+    from mime.scene import Sphere
+    from mime.units import m
+
+    with jax.enable_x64(True):
+        built = bodies("tube_table", {"s0": (Sphere(radius=m(radius)), (0.0, offset, 0.0))},
+                       Drag.MRS(wall_kind="tube", spacing=m(spacing), near_contact=False), tube=tube).build()
+        node = built.graph.get_node("drag:s0")
+        pose = jnp.asarray(node_state(built.graph, "s0")["pose"], dtype=jnp.float64)
+        found = node.update(node_state(built.graph, "drag:s0"), {"pose": pose}, 1e-3,
+                            params=parameter_leaves(built.graph)["drag:s0"])
+        walled = np.asarray(found["resistance"], dtype=np.float64)
+        free = free_resistance(schwarz_body(sphere_member(radius, spacing), pose, WATER_MU))
+    return float(walled[1, 1] / free[1, 1]), float(walled[0, 0] / free[0, 0])
 
 
 def reach_cells(width: float) -> int:
@@ -164,14 +232,18 @@ class Monolithic:
     velocity: tuple[np.ndarray, np.ndarray, np.ndarray]
     tractions: np.ndarray
     twist: np.ndarray
+    #: The contact row's multiplier (N over the step's ``1/dt``), where one is held; none otherwise.
+    multiplier: float | None = None
 
 
 def monolithic_step(at: Pieces, box: Any, held: Stencils, body: SchwarzBody, rhs: Velocity, carried: Velocity,
-                    image: Any, mass: np.ndarray, right: np.ndarray, origin: Any) -> Monolithic:
+                    image: Any, mass: np.ndarray, right: np.ndarray, origin: Any, normal: np.ndarray | None = None,
+                    closing: float = 0.0) -> Monolithic:
     """One step of the flow with the body as one dense system in float64: the field's every face, the body's tractions
     and its twist; the field's projected momentum ``P A u + (I - P) u = P (rhs + S F / rho)``, the near field's
     equations ``K t + G u - G (u_o + O(S F)) - (c_carried + c F) = M V`` and the body's own row ``(M / dt) V + W^T t =
-    r``. Its matrix by the step's own operators applied to unit vectors, solved by one LU."""
+    r``. Its matrix by the step's own operators applied to unit vectors, solved by one LU. With a contact's ``normal``
+    (``N``, 6, outward), its row held as an equality: ``(M / dt) V + W^T t + lambda N = r`` and ``N . V = closing``."""
     del origin
     grid = at.grid
     shapes = [grid.shape(k) for k in range(3)]
@@ -185,12 +257,13 @@ def monolithic_step(at: Pieces, box: Any, held: Stencils, body: SchwarzBody, rhs
     boxed = MACGrid((box.side,) * 3, box.spacing)
     motions = placed.motions()
     wrench = placed.wrench()
-    n = faces + 3 * count + 6
+    held_row = normal is not None
+    n = faces + 3 * count + 6 + int(held_row)
 
     def residual(z: Any) -> Any:
         u = _unflat(z[:faces], shapes)
         t = z[faces:faces + 3 * count]
-        v = z[faces + 3 * count:]
+        v = z[faces + 3 * count:faces + 3 * count + 6]
         forces = placed.area[:, None] * t.reshape(count, 3)
         density = tuple(scatter(grid, k, forces[:, k], held.grid[k]) for k in range(3))
         forcing = tuple(rhs[k] + density[k] / at.rho for k in range(3))
@@ -205,7 +278,11 @@ def monolithic_step(at: Pieces, box: Any, held: Stencils, body: SchwarzBody, rhs
         images = image + now * jnp.sum(forces, axis=0)
         near = body.matrix @ t + (read - read_own - images[None, :]).reshape(-1) - motions @ v
         row = jnp.asarray(mass) @ v + wrench.T @ t - jnp.asarray(right)
-        return jnp.concatenate([_flat(tuple(projected[k] + complement[k] for k in range(3))), near, row])
+        contact = []
+        if held_row:
+            row = row + z[-1] * jnp.asarray(normal)
+            contact = [jnp.reshape(jnp.dot(jnp.asarray(normal), v) - closing, (1,))]
+        return jnp.concatenate([_flat(tuple(projected[k] + complement[k] for k in range(3))), near, row, *contact])
 
     zero = jnp.zeros(n, dtype=jnp.float64)
     offset, linear = jax.linearize(residual, zero)
@@ -219,7 +296,8 @@ def monolithic_step(at: Pieces, box: Any, held: Stencils, body: SchwarzBody, rhs
     matrix = np.concatenate(transposed, axis=0).T
     solution = np.linalg.solve(matrix, -np.asarray(offset))
     u = tuple(np.asarray(c) for c in _unflat(jnp.asarray(solution[:faces]), shapes))
-    return Monolithic((u[0], u[1], u[2]), solution[faces:faces + 3 * count], solution[faces + 3 * count:])
+    return Monolithic((u[0], u[1], u[2]), solution[faces:faces + 3 * count],
+                      solution[faces + 3 * count:faces + 3 * count + 6], float(solution[-1]) if held_row else None)
 
 
 def open_monolithic_step(node: Any, p: Mapping[str, Any], state: Mapping[str, Any], body: SchwarzBody,

@@ -1,0 +1,155 @@
+{
+  "written": "2026-11-12, by F5's sixth builder, before the fifth gates probe (probe/f5-gates5) runs: gates 2, 4, 7 and 10; the local development runs seen are in seen_before",
+  "phase": "F5 (Schwarz coupling, lane F), PR 1, gates 2, 4, 7 and 10",
+  "labels": "predictions by F5's sixth builder (Opus): the walls by the grid against the tube table, a contact body's one-pass step, the read of a provided Poiseuille flow, a rotating helix's far field; each with its controls",
+  "seen_before": [
+    "local, gate 2 (float64, D/h 32 steady, flux-free, a/R 0.2 at 2 cells): first at the tube's axis on a lattice node and GMRES 1e-8, radial -15.52 %, axial -2.25 %; then the test at seed 0's lattice draw and GMRES 1e-6, radial -16.18 %, axial -2.92 % (the band's -16.41, -3.07); float32 at GMRES 1e-4 and CG 1e-5 the same to 1e-4 pp, in 933 s against float64's 292 s (so float32 now runs at 1e-3 and 1e-4, at its floor)",
+    "local: the tube table read through Drag.MRS(wall_kind tube) with its default near-contact hand-over is 0.73 % (radial) and 0.45 % (axial) under the read the band used at 2 cells; with near_contact=False it is the band's reference to 7 digits (3.194533 and 1.816931 against 3.1945340 and 1.8169151), so the reference leaves the hand-over out",
+    "local, gate 4 (seed 0): field 7.7e-13, tractions 3.2e-11, twist 1.3e-12, the normal velocity held to 9.8e-14 of the speed, the contact active (outward 0.43 of the speed before it is held, multiplier 2.0e-9); the diagonal-block plant misses the twist by 4.2e-4",
+    "local, gate 7 (seed 0): a/R 0.2 on the axis held -1.37 %, free -0.84 % against Haberman and Sayre; a/R 0.1 at b/R 0.4 Faxén -0.90 %; across-flow speed 3e-7 of V. Then measured: the exchange kernel's gather of the Poiseuille base at a point reads 2 h^2 / (R^2 - b^2) low (-0.785 % on the axis, -0.940 % at b/R 0.4, against 0.782 % and 0.932 %), which is the free sphere's miss; the lines were set after this, from it (free 1.5 %, Faxén 2 %)",
+    "local, gate 2's image plant (seed 0, after the plant was given its own matrix's inverse as its preconditioner: with the free one it ran past 60 CPU-minutes): radial -169 %, axial +659 %, 9 products, not capped",
+    "local, gate 10 (the dev script, the helix's centre at R5's sub-cell offset, no turn): plane medians 2.04, 1.53, 0.81, 1.00 % at 0.75, 1, 1.5, 2 D; axis 2 D 3.73 %; U / (Omega D) 0.0253; 1460 force points; then the test at seed 0's draw (sub-cell place and turn): 2.18, 1.55, 0.91, 1.02 %, axis 3.74 %, after which the plane's line was set at 3 % (2.5 % before: 0.32 % of margin at 0.75 D)"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32 (gate 2's three poses)"
+    ],
+    "platform": "GitHub runner, 4 vCPU",
+    "sizes_and_parameters": "gates 2 and 7: a straight periodic tube of radius 1 mm at D/h 32 (40 x 40 x 64 cells), water, the steady limit, the walled solve flux-free by superposition; the MRS sphere at the 338-point sampling (force spacing 0.2512 a); GMRES 1e-6 and CG 1e-8 (float32 1e-3 and 1e-4). Gate 4: gate 3's small tube (10 x 10 x 8 cells of 0.1 mm, radius 0.4 mm), the 0.15 mm sphere a quarter of a cell from the wall, IMEX Euler at 1 ms, GMRES 1e-10. Gate 10: R6's helix (2.5 turns, pitch 0.6 mm, radius 0.15 mm, filament 0.03 mm) at force spacing 20 um, a 128-cell free box of 16 mm",
+    "seeds_and_draws": "DETECTION_SEED (0 in the cases, from 1000 in the rates): gates 2 and 7 the tube's axis within a cell across and the body's place within a cell along it; gate 4 the contact's azimuth, the body's place along the tube, its twist along the wall, its loads, the field's history; gate 10 the helix's place within a cell and its turn about its axis"
+  },
+  "gate_2_walls_by_the_grid": {
+    "claim": "the walls carried by the grid reproduce the corrected band (the window spike's question 7: K over the free sphere's against dev1's tube table at the true position, both over the free sphere's) at a/R 0.1 to 0.34 from about one cell of gap to the axis, within 2 pp + 0.1 |e_band|, both dtypes",
+    "kind": "band",
+    "case": "tests/flow/test_schwarz_walls.py (14 float64 poses, 3 float32)",
+    "prediction": {
+      "value": null,
+      "band": [
+        -1.5,
+        2.0
+      ],
+      "unit": "the pose's error less the band's, percentage points (radial and axial)",
+      "basis": "measured-before at (0.2, 2 cells): +0.23 radial, +0.15 axial at seed 0's lattice draw, +0.89 and +0.82 with the tube's axis on a lattice node: the lattice alignment moves it by about 0.7 pp there (the band's own control moved 0.35 pp for R2's offset); MIME's band carries an interior ramp the spike's did not (row #315), so its wall may sit a few hundredths of a cell from the spike's, about 0.8 pp a tenth of a cell at 2 cells (the error's slope there); the a/R 0.34 row is an extrapolation of the band, so its poses may sit nearer the line; float32 within 0.2 pp of float64",
+      "why": "the coupling is the spike's own (the 338-point sphere, the projected CG, the kernel, the free box with Hasimoto's term, the flux-free tube): the same numbers to the grid's wall placement and the lattice"
+    },
+    "metric": "per pose: 100 (K/K_table - 1) radial and axial; GMRES products; at_cap",
+    "control": {
+      "plant": "offset: the reference read 0.37 of a cell farther from the wall (R2's own error); image: the near field's matrix plus the tube's image at its force points (the walls counted twice)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: offset, image",
+      "expected_rate": "offset 3/3 at (0.2, 2 cells): the table's slope there moves the read by about 8 pp (R2 read about half the true error below 5 cells), three to four times the line; image 3/3: seen once locally (seed 0) radial -169 %, axial +659 % with 9 products and no cap: the tube's point-read image 2 cells from the wall makes the near field's matrix ill-posed rather than adding the walls' share once more (the +15 to +60 % first expected, before that run, was wrong), so it is caught by far",
+      "runs": 3,
+      "clean_expected": "0/3",
+      "resolution": "the offset's shift falls under the line beyond about 6 cells (the band's slope there), so it is run at 2 cells"
+    },
+    "if_wrong": "a pose past the line by more than its lattice spread: a wall placed other than the band's (the band's interior ramp, its effective radius), the free box's images or the flux removal; float32 past 0.2 pp of float64: its CG's floor in the steady limit",
+    "cannot_discriminate_if": "the offset plant at gaps of 8 cells or more"
+  },
+  "gate_4_contact_one_pass": {
+    "claim": "a body in contact folds the handed response into its own step (RigidInertialNode.stepped and held, the confinement held inside its solve): the composed field, tractions and twist equal the monolithic step with the active contact row held as an equality",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_contact.py",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-14,
+        1e-09
+      ],
+      "unit": "relative miss of field, tractions and twist",
+      "basis": "measured-before (seed 0: 7.7e-13, 3.2e-11, 1.3e-12) and gate 3's at the same tolerances; the tractions' miss the largest, the near-contact columns' conditioning",
+      "why": "the contact row is linear in the twist and the handed response is the whole step's Schur complement onto the twist"
+    },
+    "metric": "the misses; the normal velocity held; the contact active in both (outward before held, multiplier positive)",
+    "control": {
+      "plant": "the handed response replaced by its diagonal blocks (translation and rotation decoupled)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: diagonal",
+      "expected_rate": "5/5: the twist misses by about 1e-4 to 1e-3 (seen 4.2e-4), three decades past the line",
+      "runs": 5,
+      "clean_expected": "0/5",
+      "resolution": "the coupling of translation and rotation a quarter of a cell from the wall"
+    },
+    "if_wrong": "a miss past the line with the contact active: the node's solve system other than M/dt + R, or the multiplier along another normal; a draw where the contact is not active fails on its premise, not on the law",
+    "cannot_discriminate_if": "never on an active contact"
+  },
+  "gate_7_poiseuille_read": {
+    "claim": "the read of a provided flow: an MRS sphere held, then free, in the tube's Poiseuille flow on the FVM, against Haberman and Sayre on the axis (a/R 0.1 to 0.3) and free-space Faxén off it (a/R 0.1, b/R 0.4)",
+    "kind": "band",
+    "case": "tests/flow/test_schwarz_poiseuille.py (four cases)",
+    "prediction": {
+      "value": null,
+      "band": {
+        "held": [
+          -2.5,
+          0.0
+        ],
+        "free": [
+          -1.2,
+          -0.5
+        ],
+        "faxen": [
+          -1.5,
+          -0.5
+        ]
+      },
+      "unit": "percent",
+      "basis": "measured-before (a/R 0.2: held -1.37, free -0.84; Faxén -0.90) and derived: the kernel's read 2 h^2/(R^2 - b^2) low (0.78 % on the axis, measured), the free speed's miss; the held force adds the grid's floor on the axis (the walls' band: -0.4 to -1.9 % from a/R 0.1 to 0.3, MIME's a little smaller); Haberman and Sayre's reflections accurate to about 0.1 % at these a/R [recalled]",
+      "why": "the near field reads the base field through the exchange kernel's average; the walls are the grid's"
+    },
+    "metric": "held F/(R_free V)/K_HS - 1; free U/V over Haberman and Sayre's - 1; Faxén U over V(1 - b^2/R^2 - 2/3 lambda^2) - 1; the across-flow speed",
+    "control": {
+      "plant": "the read removed: the base a medium at rest's zero",
+      "environment_variable": "MIME_PLANT_SCHWARZ: unread",
+      "expected_rate": "3/3: the held force and the free speed zero, -100 %",
+      "runs": 3,
+      "clean_expected": "0/3",
+      "resolution": "the whole read"
+    },
+    "if_wrong": "held past 3 % or free past 1.5 %: a read other than the kernel's average (the base gathered at the wrong points or the box's carried field read into the load), or the recalled formula; a free speed across the flow: a reflection not reciprocal",
+    "cannot_discriminate_if": "never: the plant removes the whole read"
+  },
+  "gate_10_helix_far_field": {
+    "claim": "a rotating helix's scattered MRS distribution carries its far field (the torque's rotlet and the stresslet) through a large free box: the plane medians within 3 % from 0.75 to 2 D, the axis at 2 D within 5 %",
+    "kind": "band",
+    "case": "tests/flow/test_schwarz_far_field.py",
+    "prediction": {
+      "value": null,
+      "band": {
+        "plane_0.75": [
+          0.012,
+          0.03
+        ],
+        "plane_1.0": [
+          0.008,
+          0.02
+        ],
+        "plane_1.5": [
+          0.004,
+          0.012
+        ],
+        "plane_2.0": [
+          0.005,
+          0.015
+        ],
+        "axis_2.0": [
+          0.02,
+          0.05
+        ]
+      },
+      "unit": "median relative miss",
+      "basis": "measured-before (2.04, 1.53, 0.81, 1.00 %; axis 3.73 %); R5 measured 0.9, 0.6, 0.6, 0.5 % for a line of Stokeslets at the same box: the MRS surface distribution and MIME's kernel read about twice that near the helix, where the kernel's average of a field curving over 4 to 5 cells is the term (the gate 7 mechanism, here (h/r)^2 at r about 0.6 D)",
+      "why": "the scattered distribution keeps every moment; the box's images of the torque and stresslet are small at 16 D"
+    },
+    "metric": "the medians over twelve plane points per distance and the axis's two points",
+    "control": {
+      "plant": "the net force alone scattered at the centre",
+      "environment_variable": "MIME_PLANT_SCHWARZ: net",
+      "expected_rate": "3/3: the net lateral force's Stokeslet is about 3 % of the rotlet at 1 D, so the miss is about the whole field (over 90 %)",
+      "runs": 3,
+      "clean_expected": "0/3",
+      "resolution": "the rotlet's whole share"
+    },
+    "if_wrong": "a median past the line: the kernel's or the box's images, or the helix's sub-cell place (drawn)",
+    "cannot_discriminate_if": "never"
+  },
+  "outcomes": null
+}
