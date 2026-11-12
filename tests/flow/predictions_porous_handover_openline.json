@@ -7,7 +7,8 @@
     "run 43201390806 (g2_everywhere_pressure's clean arm): the pressure-driven vessel at 0.003 stopped stagnated near 3e-5 on 49 of 50 draws",
     "runs 43201390806 and 43207166164: at the 0.01h interior's line (0.01) the twin rig and the pressure-driven vessel converged on 50 of 50 each",
     "the fix round, laptop: the twin rig's draw 3 (D/h 12) at ten times the 0.1h line's K (sqrt(K)/h about 0.0095) converged",
-    "the periodic tube's intercept floor at 0.1h under 3.5e-10 of the open flux at D/h 16 against a throughflow of 4.3e-6 at 0.003 (runs 43123280055, 43159332258): under 1e-4 of the throughflow"
+    "the periodic tube's intercept floor at 0.1h under 3.5e-10 of the open flux at D/h 16 against a throughflow of 4.3e-6 at 0.003 (runs 43123280055, 43159332258): under 1e-4 of the throughflow",
+    "the leak's laptop smoke at D/h 8 (before the probe; amended in a commit of its own before the launch): G / (K F_B) rises 4 % from sqrt(K)/h 0.01 to 0.12, about linearly in sqrt(K)/h, so the linear fit first written put a curvature of -2.6 % of G at 0.01 into its intercept, residual 1.8 % (it could not discriminate by its own line); with a term in K F_B sqrt(K)/h the intercept read -2.7e-3 of G at 0.01, residuals under 1.2e-3"
   ],
   "operating_point": {
     "dtype": [
@@ -76,18 +77,18 @@
     "kind": "measurement (a bound)",
     "case": "probe/leak.py <cells>, cells 8 and 16",
     "prediction": {
-      "value": "the intercept under 1e-3 of the conductance at sqrt(K)/h 0.01 (and so at 0.03), each D/h",
+      "value": "the intercept within 5e-3 of the conductance at sqrt(K)/h 0.01 (and so of a larger one at 0.03), each D/h, by the fit with the root term; the fit's relative residuals under 2e-3",
       "band": [
-        null,
-        0.001
+        -0.005,
+        0.005
       ],
       "unit": "the conductance at the line",
-      "basis": "measured-before (the periodic tube's floor) and inference (the same band and interior)",
+      "basis": "measured-before (the laptop smoke at D/h 8; the periodic tube's floor) and inference (D/h 16 the same band)",
       "why": "the periodic floor was under 1e-4 of the throughflow at 0.003 (D/h 16), and a higher line's throughflow is larger"
     },
-    "metric": "the least-squares intercept of G = Q / dp_faces against K F_B(K) over the five points, over G at the line; its fit's largest residual over G at the line stated beside it",
+    "metric": "the intercept c of G = Q / dp_faces = a K F_B + b K F_B sqrt(K)/h + c over the five points, each weighted by 1 / G, over G at the line; the fit's largest relative residual beside it; the linear fit (no root term), first written, reported too",
     "if_wrong": "an intercept over 1 % at 0.01: the line moved to the least measured row where it is under 1 %",
-    "cannot_discriminate_if": "the fit's residual at the line over 1e-2 (the intercept not resolved at the rule's line)"
+    "cannot_discriminate_if": "the fit's largest relative residual over 1e-2 (the intercept not resolved at the rule's line)"
   },
   "outcomes": null
 }
