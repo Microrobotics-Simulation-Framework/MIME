@@ -199,8 +199,8 @@
     },
     "gate_2_forced": {
       "result": "as predicted",
-      "measured": "forced flagged on 50 of 50 draws; the periodic tube, the pressure-driven vessel and the gap quiet on 50 of 50 draws each; the twin rig TWIN",
-      "controls": "FORCED_OFF missed the forced case 50/50; FORCED_EVERYWHERE flagged periodic 50/50, pressure 50/50, gap 50/50, twin TWIN; clean 0 each",
+      "measured": "forced flagged on 50 of 50 draws; the periodic tube, the pressure-driven vessel and the gap quiet on 50 of 50 draws each; the twin rig's clean arm passed 50/50 but 32 of them were draws whose solve went not finite at the 0.1h line, read as quiet (a defect of the test, fixed in its fix round: predictions_porous_handover_fixround.json)",
+      "controls": "FORCED_OFF missed the forced case 50/50; FORCED_EVERYWHERE flagged periodic 50/50, pressure 50/50, gap 50/50, twin 18/50 (its misses the non-finite draws); clean 0 each",
       "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633"
     },
     "gate_3_carried_depth": {
