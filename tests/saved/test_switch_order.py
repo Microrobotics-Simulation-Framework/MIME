@@ -4,7 +4,7 @@ The scan reads each equation's recorded frames. JAX keeps small jaxprs it builds
 caches that outlive a trace, and an equation of such a jaxpr carries the frames of the trace that first built it. Run
 ``tests/scene/test_tube_tree.py`` first and the arm's step, which runs no union, had 164 equations in ``ExactUnion.evaluate``'s
 frames (27 steps in all), so the scan put that function in scope and found two raw sites in it: both of its control tests failed,
-in one process, on any shard that put the file before a late scan test. ``trace_fresh`` empties JAX's caches before each trace.
+in one process, on any shard that put the file before a late scan test. ``traced_steps`` empties JAX's caches before it traces.
 
 Each case is a process of its own (``switch_order_probe.py``): the order is the thing under test, and a cache cannot be
 emptied in the process that has to show it was not."""

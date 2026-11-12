@@ -50,7 +50,7 @@ import importlib.util
 import inspect
 import math
 import re
-from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from importlib.machinery import ModuleSpec
@@ -250,10 +250,8 @@ def trace_fresh(function: Callable[..., object], *arguments: object) -> Jaxpr:
     return make_jaxpr(function, *arguments)
 
 
-def traced_step(configuration: str, name: str, node: SimulationNode, state: object, given: object,
-                leaves: object) -> TracedStep:
-    """One node's step traced with no switch context open, from the state, inputs and ``params`` leaves the graph
-    gives it, on fresh caches (:func:`trace_fresh`)."""
+def _traced(configuration: str, name: str, node: SimulationNode, state: object, given: object,
+            leaves: object) -> TracedStep:
     step = step_function(node)
     dt = cast(float, cast(Any, node).delta_t)
 
@@ -264,8 +262,30 @@ def traced_step(configuration: str, name: str, node: SimulationNode, state: obje
         return step(state, given, dt)
 
     if "params" in inspect.signature(step).parameters:
-        return TracedStep(configuration, name, type(node), trace_fresh(with_leaves, state, given, leaves))
-    return TracedStep(configuration, name, type(node), trace_fresh(plain, state, given))
+        return TracedStep(configuration, name, type(node), make_jaxpr(with_leaves, state, given, leaves))
+    return TracedStep(configuration, name, type(node), make_jaxpr(plain, state, given))
+
+
+def traced_step(configuration: str, name: str, node: SimulationNode, state: object, given: object,
+                leaves: object) -> TracedStep:
+    """One node's step traced with no switch context open, from the state, inputs and ``params`` leaves the graph
+    gives it, on fresh caches (:func:`trace_fresh`)."""
+    cast(Any, jax).clear_caches()
+    return _traced(configuration, name, node, state, given, leaves)
+
+
+def traced_steps(cases: Iterable[tuple[str, str, SimulationNode, object, object, object]]) -> tuple[TracedStep, ...]:
+    """:func:`traced_step` for each of ``cases`` (the arguments of one call), with JAX's caches emptied once, before the first
+    trace and not before each: the steps then share what the series builds, as they do in a fresh process, and the answer
+    is the fresh process's whatever the process traced before. (Emptied before each, the same scan took 40 % longer here and
+    more than twice as long on a CI runner, for the same raw sites and the same scope.) ``cases`` may be lazy: the first is
+    drawn before the caches are emptied, so what building it left in them is dropped too."""
+    traced: list[TracedStep] = []
+    for position, case in enumerate(cases):
+        if position == 0:
+            cast(Any, jax).clear_caches()
+        traced.append(_traced(*case))
+    return tuple(traced)
 
 
 # -- the source ----------------------------------------------------------------------------------------------------
@@ -1020,4 +1040,4 @@ __all__ = ["CAPPING", "EXEMPT", "GUARDS", "ITEM", "MODULE_LEVEL", "RAW_OPERATION
            "Frame", "Function", "GuardSite", "ListedSite", "SwitchScan", "TracedStep", "caps", "declaration_problems",
            "declarations", "declared_owners", "equation_frames", "equations", "item_form", "listed_sites",
            "module_aliases", "scan_definition", "scan_module_statements", "scan_problems", "scan_switches",
-           "step_function", "trace_fresh", "traced_step", "tree_aliases"]
+           "step_function", "trace_fresh", "traced_step", "traced_steps", "tree_aliases"]

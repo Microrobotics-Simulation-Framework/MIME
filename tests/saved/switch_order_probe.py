@@ -4,8 +4,8 @@
 ``polluted`` after a test of the tube tree's union (``tests/scene/test_tube_tree.py::test_its_normal_is_unit_and_its_nearest_point_on_the_wall``,
 which ``pytest`` ran first in the order that failed) has traced the union in this process, and prints how many equations of the arm's
 step carry a frame in ``scene/_union.py``: the arm runs no union, so the scan's answer is 0. The environment variable
-``MIME_PLANT_STALE_FRAMES`` traces as the scan did before ``trace_fresh`` (``make_jaxpr`` on whatever JAX had cached): the plant of the
-detection rate in the pull request that fixed this."""
+``MIME_PLANT_STALE_FRAMES`` leaves JAX's caches as they are (``jax.clear_caches`` does nothing), which is how the scan traced before
+``traced_steps`` emptied them: the plant of the detection rate in the pull request that fixed this."""
 
 import json
 import os
@@ -46,14 +46,14 @@ def union_frames_in_the_arms_step() -> int:
     graph = configurations()[configuration]().build().graph
     node = graph.get_node(name)
     given = {**zero_inputs(node), **resolved_inputs(graph, name)}
-    step = switches.traced_step(configuration, name, node, node_state(graph, name), given, parameter_leaves(graph).get(name))
+    (step,) = switches.traced_steps([(configuration, name, node, node_state(graph, name), given, parameter_leaves(graph).get(name))])
     return sum(any(frame.file.replace("\\", "/").endswith("scene/_union.py") for frame in switches.equation_frames(equation))
                for _, equation in switches.equations(step.jaxpr))
 
 
 if __name__ == "__main__":
     if os.environ.get("MIME_PLANT_STALE_FRAMES"):
-        switches.trace_fresh = lambda function, *arguments: switches.make_jaxpr(function, *arguments)
+        jax.clear_caches = lambda: None
     if sys.argv[1] == "polluted":
         trace_the_union()
     print(json.dumps({"union_frames": union_frames_in_the_arms_step()}))
