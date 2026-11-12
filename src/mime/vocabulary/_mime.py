@@ -16,6 +16,14 @@ MASS_MATRIX = define(Interface(
                 "the body's pose, on the rotations' block, published only where a plan reads it (a medium's near "
                 "field, whose lagged gain needs every body's); a step that takes the gyroscopic term implicitly "
                 "solves with this less half the step times its stiffness, which vanishes for an isotropic body"))
+STEP_ROW = define(Interface(
+    "body.step_row", ReadKind.STATE, "kg; N", "world", (6, 7), magnitude=1e-6,
+    description="the body's own step's row at the start of the next step, as its integrator takes it, published only "
+                "where a plan reads it (a flow holding the body in its one elimination): the stepping mass M' (its "
+                "first six columns; the mass matrix, less half the step times the gyroscopic stiffness where that "
+                "term is implicit) and the free load M' V / dt + g (its last column; g the gyroscopic term where it "
+                "is explicit), so that (M' / dt + R) V' = M' V / dt + g + F with the resistances R and loads F its laws "
+                "deliver"))
 APPLIED_WRENCH = define(Interface(
     "body.applied_wrench", TargetKind.LOAD, "N; N m", "world", (6,), sign="on the body, about its centre of mass",
     magnitude=1e-6, description="[force; torque], summed over every law that loads the body"))
@@ -111,12 +119,25 @@ def _exchange(name: str, axis: str) -> Interface:
 FLOW_EXCHANGE_X = _exchange("flow.exchange_x", "x")
 FLOW_EXCHANGE_Y = _exchange("flow.exchange_y", "y")
 FLOW_EXCHANGE_Z = _exchange("flow.exchange_z", "z")
+FLOW_PARTNER_SOLUTION = define(Interface(
+    "flow.partner_solution", ReadKind.STATE, "N; N m; m/s; rad/s; m/s; 1/(m s); rad/s", "world", (-1, 21),
+    magnitude=1e-6,
+    description="what a flow holding point bodies in its one elimination solved for each in its step, a row a body in "
+                "the order of their laws' ids: the force and couple its drag law delivered to the fluid, the body's "
+                "twist as the flow closed its own step's row, and the solved flow as the body's exchange kernel reads "
+                "it at the point the force was delivered at (its average, its Laplacian's average and the fluid's "
+                "rotation), which the drag's own node books and reads its rate terms from the step after"))
 FLOW_PARTNERS = define(Interface(
     "flow.partners", TargetKind.REGISTRATION, "", None, (),
     description="the exchange partners a medium's field takes deliveries from through an exchange law (a point body's "
-                "drag): each registers with the field, which then takes their scattered force on its grid"))
-#: The registration kind of an exchange partner (:data:`FLOW_PARTNERS`).
+                "drag): each registers with the field, which then takes their scattered force on its grid (lagged) or "
+                "holds the law and the body's own step's row in its one elimination (one pass)"))
+#: The registration kind of a lagged exchange partner (:data:`FLOW_PARTNERS`): its law scatters the force of the step
+#: before onto the field's grid.
 EXCHANGE_PARTNER = "flow.exchange_partner"
+#: The registration kind of an exchange partner the flow holds in its step (:data:`FLOW_PARTNERS`): a point body whose
+#: drag law the flow's one elimination solves with the field, its own step's row closing its twist (one pass).
+ONE_PASS_PARTNER = "flow.one_pass_partner"
 FLOW_RESOLVED = define(Interface(
     "flow.resolved", TargetKind.REGISTRATION, "", None, (),
     description="the bodies a medium's field resolves on its grid (a resolved body's drag): each registers with the "

@@ -382,6 +382,8 @@ class ResolvedRegistration:
     #: each, and each one's parameters, in the order written; a single surface's alone otherwise.
     subjects: tuple[str, ...] = ()
     subjects_parameters: tuple[Mapping[str, Magnitude], ...] = ()
+    #: The values the registering law gives the receiving dynamics (``Registration.parameters``).
+    parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     #: Where the subject is a structure (a porous region held in a flow): its geometry kind, resolved.
     geometry: GeometryPlan | None = None
     #: The values the registering interaction reads, by label, as phase 1 resolves them (filled once they are, before
@@ -451,6 +453,8 @@ class EntryPlan:
     rates_read: bool = True
     #: Whether a plan reads this body's mass matrix (``body.mass_matrix``), which its dynamics publishes only then.
     mass_read: bool = False
+    #: Whether a plan reads this body's own step's row (``body.step_row``), which its dynamics publishes only then.
+    row_read: bool = False
     #: For a member of a joint group (a medium's near field), the id of the group's plan, which builds for it: a
     #: member builds no node, and its reads and deliveries are the group's.
     joined: str = ""
@@ -459,6 +463,13 @@ class EntryPlan:
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
+
+    @property
+    def registration_kinds(self) -> frozenset[str]:
+        """The kinds of the registrations its plan makes (an interaction's) and takes (a dynamics'), which a flag of a
+        chosen scheme is raised under (``Flag.kinds``)."""
+        made = self.plan.registrations if self.plan is not None else ()
+        return frozenset({r.kind for r in made} | {r.kind for r in self.registrations})
 
     def node_names(self) -> list[str]:
         return [self.node_name(local) for local in self.nodes]
@@ -811,6 +822,29 @@ class _Planner:
         return {role: approach for role, name in bindings.items() if roles[role] is RoleKind.BODY and media
                 for approach in (self.approach_of(name, media[0]),) if approach is not None}
 
+    def confining(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, tuple[str, ...]]:
+        """By each body role an entry binds, the ids of the laws attached in the experiment that hold that body off a
+        surface (a law whose class names that setting, ``Interaction.holds_off``: a contact, whose rule projects the
+        body's step), for ``PlanContext.confined``; a body none confines has no entry."""
+        found: dict[str, tuple[str, ...]] = {}
+        for role, name in bindings.items():
+            if roles[role] is not RoleKind.BODY:
+                continue
+            held: list[str] = []
+            for declaration in self.declarations:
+                if not isinstance(declaration, Attachment):
+                    continue
+                law_cls = type(cast(object, declaration.law))
+                law_roles = cast(Mapping[str, RoleKind], getattr(law_cls, "roles", {}))
+                if not isinstance(getattr(law_cls, "holds_off", None), str):
+                    continue
+                bound = {r: binding_name(value) for r, value in declaration.bindings.items()}
+                if name in (bound.get(r) for r, kind in law_roles.items() if kind is RoleKind.BODY):
+                    held.append(entry_id(cast(type[Interaction], law_cls), declaration.bindings))
+            if held:
+                found[role] = tuple(sorted(held))
+        return found
+
     def approach_of(self, body: str, medium: str) -> float | None:
         """The least margin (m) by which a law attached in the experiment holds ``body`` off a surface of the structure
         whose region ``medium`` fills (a law whose class names that setting, ``Interaction.holds_off``): the body's
@@ -1008,10 +1042,16 @@ class _Planner:
         alone = sorted(other.bindings["body"] for other in plans
                        if other is not plan and other.bindings["body"] not in scattering)
         named = ", ".join(repr(name) for name in scattering)
+
+        def held(other: EntryPlan) -> bool:
+            return other.plan is not None and any(r.kind == vocabulary.ONE_PASS_PARTNER for r in other.plan.registrations)
+
+        together = held(plan) and all(held(other) for other in stokes if other.bindings["body"] in scattering)
         line = f"{body!r}'s drag reads the medium {medium!r}'s solved flow, " + (
             f"into which {named} {'scatters its reaction' if len(scattering) == 1 else 'scatter their reactions'}: "
-            f"the bodies interact through the grid, resolved to the exchange kernel's width and read a step after "
-            f"they are scattered (lagged, no joint step)" if scattering
+            f"the bodies interact through the grid, resolved to the exchange kernel's width, " + (
+                "solved together within the step (one pass: the flow's one elimination closes every body's row)"
+                if together else "read a step after they are scattered (lagged, no joint step)") if scattering
             else "into which no other body in it scatters a reaction")
         if alone:
             line += f"; {', '.join(repr(name) for name in alone)} in the medium changes nothing of it"
@@ -1918,12 +1958,24 @@ class _Planner:
 
     def exchange_frame_of(self, medium: str) -> ExchangeFrame | None:
         """The exchange frame of the field medium ``medium`` carries, where its dynamics gives one (SF-4: what a field
-        that takes exchange deliveries tells its partners), from the dynamics' plan: its region and settings in SI."""
+        that takes exchange deliveries tells its partners), from the dynamics' plan: its region and settings in SI,
+        and the parameters of each opening of the region, as its geometry gives them (where the field is open)."""
         plan = self.dynamics.get(medium)
         frame_of = getattr(plan.entry, "exchange_frame", None) if plan is not None else None
         if plan is None or frame_of is None:
             return None
-        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings,
+        region = plan.regions.get("medium")
+        ends: dict[str, Mapping[str, Magnitude]] = {}
+        owner = region.path.partition(".")[0] if region is not None else ""
+        if region is not None and owner in self.geometries:
+            geometry = self.geometries[owner]
+            for surface in region.openings:
+                try:
+                    ends[surface] = dict(geometry.geometry.surface_parameters(surface.partition(".")[2] or surface,
+                                                                              geometry.settings))
+                except Exception:  # noqa: BLE001 - a geometry's defect is refused where its openings are bound
+                    return None
+        return cast(ExchangeFrame | None, frame_of(plan.node_name(), region, plan.settings, ends,
                                                    tuple(plan.registrations)))
 
     def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
@@ -3020,7 +3072,7 @@ class _Planner:
                      for frame in (self.exchange_frame_of(name),) if frame is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
                               hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided,
-                              exchanges=exchanges)
+                              exchanges=exchanges, confined=self.confining(cls.roles, bindings))
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -3208,6 +3260,8 @@ class _Planner:
         if read.interface == vocabulary.MASS_MATRIX.name:
             self.mass_reads.add(dynamics.owner)
             dynamics.mass_read = True
+        if read.interface == vocabulary.STEP_ROW.name:
+            dynamics.row_read = True
         return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
 
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
@@ -3394,8 +3448,10 @@ class _Planner:
         dynamics.registrations.append(
             ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
                                  _plain_settings(plan.entry, plan.settings), each[0] if each else {},
-                                 subjects if len(subjects) > 1 else (), tuple(each) if len(subjects) > 1 else (),
-                                 geometry, plan.values, hull))
+                                 subjects=subjects if len(subjects) > 1 else (),
+                                 subjects_parameters=tuple(each) if len(subjects) > 1 else (),
+                                 parameters=dict(registration.parameters), geometry=geometry, values=plan.values,
+                                 hull=hull))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()
@@ -3631,10 +3687,12 @@ class _Planner:
                 set(plan.values) != set(plan.plan.values) or plan.context is None:
             return
         # The exchange frames as they stand now, every registration made: a resolved body's asks its medium's grid for
-        # the spacing it needs, so a frame taken while the entries were planned may be coarser than the one built.
+        # the spacing it needs, and a porous region's the scheme it is held with, so a frame taken while the entries
+        # were planned may not be the one built; the entry's build reads these too.
         exchanges = {role: frame for role, frame in plan.context.exchanges.items()
                      for fresh in (self.exchange_frame_of(plan.bindings[role]),) if fresh is not None
                      for frame in (fresh,)}
+        plan.exchanges.update(exchanges)
         context = dataclasses.replace(plan.context, exchanges=exchanges) if exchanges else plan.context
         try:
             problems = entry.value_problems({label: value.value for label, value in plan.values.items()}, context)

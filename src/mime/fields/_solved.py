@@ -99,6 +99,9 @@ class ExchangeFrame:
     exchanges: tuple[str, str, str]
     #: The time scheme the field declares (its kind's name), or ``None`` where it chooses one from the run's values.
     scheme: str | None = None
+    #: Whether the field takes a lagged partner's deliveries into its inputs (a periodic box's), or holds its partners
+    #: in its one elimination only (an open vessel's).
+    lagged: bool = True
 
     def grid_point(self, world: tuple[float, ...]) -> tuple[float, float, float]:
         """A world point in the grid's coordinates."""

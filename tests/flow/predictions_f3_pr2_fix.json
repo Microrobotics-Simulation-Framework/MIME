@@ -1,0 +1,136 @@
+{
+  "written": "2026-11-12, committed before #270's fix-round gates ran on Actions: gate 1 on fresh seeds with its line derived per draw and quantity, after the elimination's small solves were equilibrated and refined; the held pair up to an open plane after the delivery's fix; the one-pass rate share; the plane's unpaired work re-checked",
+  "phase": "F3 PR 2 (#270) fix round: B1, M1, M4, M6 and the rate share's control",
+  "labels": "made by the fix round's builder (Opus) from the derivation in tests/flow/elimination_cases.float_lines and local diagnostics on the laptop (listed under seen_before, so the gate-1 ratio bands are informed by them, not blind)",
+  "seen_before": [
+    "laptop, float32, the old elimination: seed 102 of the review's draw with the two small solves in float64 agreed with the monolithic step to 1.5e-6 (force) against 1.4e-3 with them in float32; the same step in float64 at the CG's float32 tolerance 1e-5: 1.5e-6",
+    "laptop, float32, equilibrated and refined, gate 1's new draw, seeds 0, 2, 8, 126 (periodic): the largest ratio to the derived line 0.064 (field), each body's vectors 0.009 to 0.041; before the refinement seeds 2 and 126 were at 41 and 35 on the couple and spin",
+    "laptop, float64, seed 0: clean 5e-4 of the line; cross 1.6e5, drop 9.4e8, twistsign 3.2e7, crossx0.98 3.2e3 times the line",
+    "laptop, the held pair after the fix: largest relative miss 4.2e-8 (float32) and 1.1e-16 (float64) over 40 open and 20 periodic draws; the old scatter 4.5e-2 and 1.9e-2",
+    "run 43172335100 (probe/f3-fix-runaway): gate 14's settled arm one pass, the rate load at most 6.1e-8 (float64) and 8.6e-5 (float32) of the drag's scale after step 100, the old flag raised at 152 and 146",
+    "the review's run 43165251892: the drag's paired work against its own dissipation near the open plane, before the fix: 1.3e-7 at 32 and 8 cells, 4.3e-5 at 4.8, 3.8e-3 at 3.2, 1.3e-2 at 1.6 (neutral); 3.7e-4 at 32 and 8 cells, 8.1e-4, 3.9e-2, 1.2e-1 (density 3)"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-fix-gates), an arm each",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 1: a periodic box of 8 cells (h 10 um) with two bodies anywhere two spheres can be (radii 0.8 to 1.5 cells, kernels 1 or 1.5 cells, densities 0.5 to 3), dt 0.05 to 1 h^2/nu, IMEX Euler, the CG at 1e-12 (float64) or 1e-5 (float32); or an open vessel 8 x 8 x 16 (nondimensional) with an inflow, a Windkessel and a body in its middle third. The held pair: that open grid, a point 0.8 to 4.8 cells from a plane (the first within 1.6), and a periodic 8^3 box. Gate 14: a 40 um body of 0.05 of water's density, the steady limit, dt 50 us, 1500 steps. The plane: the review's plane.py (a 40 um body on the open vessel's axis, metered, 50 steps of 0.2 ms, at 0, 1.5, 1.7, 1.8, 1.9 mm)",
+    "seeds_and_draws": "gate 1: seeds 5000-5029 (twistsign, and clean), 6000-6029 (cross, 5 clean), 7000-7029 (drop, 5 clean), 8000-8029 (crossx0.98, 5 clean), none seen before; the range: seeds 9000-9019 at 5 sizes; the pair: 10000-10029; gate 14's plant: 11000-11001"
+  },
+  "gate_1_fresh_seeds": {
+    "claim": "the coupled step agrees with the monolithic step within its derived line at every fresh draw, each quantity on its own scale, in both dtypes",
+    "kind": "bounds",
+    "case": "tests/flow/test_one_elimination.py::test_the_coupled_step_is_the_monolithic_step_within_its_derived_line, 45 clean draws a dtype",
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "clean draws over the line (the largest ratio: float32 under 0.3, float64 under 0.01)",
+      "basis": "derived (float_lines) and measured-before (8 draws)",
+      "why": "the line bounds the step's error at first order from its solves' achieved residual and the small solves' componentwise rounding, which the refinement holds"
+    },
+    "metric": "each quantity's largest difference over its derived line",
+    "control": {
+      "plant": "twistsign (the review's mutant), cross, drop: each O(1) of the quantity or more; crossx0.98: 2 % of the cross terms",
+      "environment_variable": "MIME_PLANT_ELIMINATION",
+      "expected_rate": "30/30 for twistsign, cross and drop in both dtypes; crossx0.98 30/30 in float64 and 25 to 30 of 30 in float32",
+      "runs": 30,
+      "clean_expected": "0/45 a dtype",
+      "resolution": "the range arms: a cross-term scaling of 1 - s caught at every draw from s about 1e-3 in float32 and 1e-7 in float64 [guess]"
+    },
+    "if_wrong": "a clean draw over the line names a rounding the derivation misses: its row and stage are found by the residual's decomposition (as for seeds 2 and 126) before anything changes",
+    "cannot_discriminate_if": "a plant's ratio near one at clean ratios near one (none seen)"
+  },
+  "gate_held_pair": {
+    "claim": "the held body's delivery and reading are a transpose pair in the grid's product up to an open plane, to rounding",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_the_held_bodys_delivery_and_reading_are_a_transpose_pair_up_to_an_open_plane",
+    "prediction": {
+      "value": null,
+      "band": [
+        0,
+        1e-07
+      ],
+      "unit": "the largest relative miss in float32 (float64 under 1e-15)",
+      "basis": "measured-before",
+      "why": "the scatter divided by the face weights is the gather's transpose in the weighted product"
+    },
+    "metric": "|<S_F f, u>_W - f . G_F u| over the products' magnitudes",
+    "control": {
+      "plant": "the old scatter (a whole cell's density on the planes' faces)",
+      "environment_variable": "MIME_PLANT_PAIR=whole",
+      "expected_rate": "30/30 in both dtypes (the first draw within 1.6 cells, a miss of 7e-2 there)",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "the miss at 4.8 cells (2.5e-7) is under float32's line: the control is caught by its near draw"
+    },
+    "if_wrong": "a clean miss names a face weight the delivery or the reading still misses",
+    "cannot_discriminate_if": "no draw lies within the kernel's reach of a plane"
+  },
+  "gate_rate_share_control": {
+    "claim": "gate 14's settled arm under one pass raises rate_feedback when the share is set to zero (the old criterion), so the gate's quiet run is evidence",
+    "kind": "acceptance",
+    "case": "tests/flow/test_point_history.py::test_a_light_body_stays_bounded_under_each_scheme[<dtype>-None] with MIME_PLANT_RATE_SHARE=1",
+    "prediction": {
+      "value": 2,
+      "band": [
+        2,
+        2
+      ],
+      "unit": "runs failing of 2 a dtype (clean 0 of 2)",
+      "basis": "measured-before",
+      "why": "the old flag was raised at step 152 (float64) and 146 (float32) of the settled arm"
+    },
+    "metric": "the gate's verdict",
+    "control": {
+      "plant": "RATE_SHARE = 0",
+      "environment_variable": "MIME_PLANT_RATE_SHARE",
+      "expected_rate": "2/2",
+      "runs": 2,
+      "clean_expected": "0/2",
+      "resolution": "n/a"
+    },
+    "if_wrong": "a quiet plant means the drawn offset settles without the noise ringing: the arm is then no control at that offset",
+    "cannot_discriminate_if": "the run is shorter than the ringing's onset"
+  },
+  "gate_plane_work": {
+    "claim": "after the delivery's fix, a body held one pass near an open plane does no work the books do not pair: the drag's two rows against its own dissipation as far from the plane as at its middle",
+    "kind": "estimates",
+    "case": "the review's probe/plane.py, densities 1 and 3",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "[guess] the paired-work share at 1.5 to 1.9 mm within twice the 0 mm control's (1.3e-7 neutral, 3.7e-4 at density 3, the last step's booking being omitted)",
+      "basis": "guess from the pair's identity",
+      "why": "the unpaired work was the pair's miss at the planes' half cells"
+    },
+    "metric": "|paired + own| / |own| (gate 2's measure), and the flags raised",
+    "control": {
+      "plant": "none: the pre-fix numbers of the review's run 43165251892 are the comparison",
+      "environment_variable": "none",
+      "expected_rate": "n/a",
+      "runs": 10,
+      "clean_expected": "n/a",
+      "resolution": "the 0 mm control's share"
+    },
+    "if_wrong": "a share that still grows near the plane is something the pair does not cover (the kernel folded onto the plane, or the law's free-box self-response): partner_reach then stays, gated at the measured distance",
+    "cannot_discriminate_if": "the ledger does not close (its verdict is printed)"
+  },
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43177302208",
+    "gate_1_fresh_seeds": "not this file's evidence: this run's gate 1 used the flux's earlier line, under which float64's open draws failed the flux (clean flagged 7/15, 8/15, 2/5 at the odd seeds); float32: clean 0/15, 0/15, 0/5, 0/5, 0/5, twistsign 15/15 and 15/15, cross 30/30, drop 30/30, crossx0.98 29/30 (seed 8006 missed). The final line's run is predictions_f3_pr2_fix_g1.json's",
+    "gate_held_pair": "MIME_PLANT_PAIR=whole caught 30/30 in both dtypes, clean 0/30 each (every_run); local clean misses 4.2e-8 (float32) and 1.1e-16 (float64), in the predicted bands",
+    "gate_rate_share_control": "2/2 caught in both dtypes (the settled arm raises the old flag), clean 0/2 each: as predicted",
+    "gate_plane_work": "the drag's paired-work share at 32, 8, 4.8, 3.2 and 1.6 cells from the plane: 1.33e-7, 1.33e-7, 1.33e-7, 1.33e-7, 1.34e-7 (neutral) and 3.67e-4 to 3.77e-4 (density 3), the floor at every distance (before the fix 4.3e-5 to 1.3e-2 and 8.1e-4 to 1.2e-1): within twice the control, as predicted; the ledger PASS and no gift at every distance. partner_reach is dropped: nothing measured remains at its reach",
+    "memory": "every gate-1 arm's pytest process peaked at 3.0 to 3.1 GiB against a bound of about 1.77 GiB (UNDERESTIMATE, the job's failure status): calibration rows, the estimate being of an experiment the arms do not build"
+  },
+  "committed_at": "4d2c5431 on its probe branch, before the run (the predictions unchanged here; outcomes added after it)"
+}

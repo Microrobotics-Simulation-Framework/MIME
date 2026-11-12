@@ -361,7 +361,8 @@ class RigidInertialNode(MimeNode):
                  hull_kind_version: str = "", hull_patches: Sequence[str] = (),
                  hull_counts: Sequence[Sequence[int]] = (), hull_centre: Sequence[float] = (0.0, 0.0, 0.0),
                  hull_rotation: Sequence[float] = _IDENTITY, hull_groups: np.ndarray | None = None,
-                 contact_loops: bool = False, publishes_mass_matrix: bool = False, ledger: Sequence[str] = (),
+                 contact_loops: bool = False, publishes_mass_matrix: bool = False, publishes_step_row: bool = False,
+                 ledger: Sequence[str] = (),
                  **constants: object) -> None:
         surface = {key: value for key, value in constants.items() if key.startswith(SURFACE)}
         settings = {key.removeprefix(HULL): value for key, value in constants.items() if key.startswith(HULL)}
@@ -443,7 +444,8 @@ class RigidInertialNode(MimeNode):
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
                          margin=margin, velocity_rule=velocity_rule, **hull, **surface,
                          **{f"{HULL}{name}": value for name, value in settings.items()},
-                         **({"publishes_mass_matrix": True} if publishes_mass_matrix else {}), ledger=ledger)
+                         **({"publishes_mass_matrix": True} if publishes_mass_matrix else {}),
+                         **({"publishes_step_row": True} if publishes_step_row else {}), ledger=ledger)
 
     def _body_points(self, hull: Mapping[str, Any], settings: Mapping[str, object]) -> np.ndarray:
         """The hull's points in the body's frame at its settings as built, in float64: what its groups are made of."""
@@ -557,11 +559,21 @@ class RigidInertialNode(MimeNode):
         mass = jnp.asarray(p["mass"], dtype=dtype)
         return jnp.zeros((6, 6), dtype=dtype).at[:3, :3].set(mass * jnp.eye(3, dtype=dtype)).at[3:, 3:].set(inertia)
 
+    @property
+    def publishes_step_row(self) -> bool:
+        """Whether the body publishes its own step's row in its state (``step_row``, :meth:`step_row`): only where a
+        plan reads it (a flow holding the body in its one elimination), so that every other program is the one it
+        was."""
+        return bool(self.constants().get("publishes_step_row", False))
+
     def _published(self, p: Mapping[str, Any], fields: NodeFields) -> NodeFields:
-        """``fields`` with the mass matrix at its pose, where the body publishes it; ``fields`` itself otherwise."""
-        if not self.publishes_mass_matrix:
-            return fields
-        return {**fields, "mass_matrix": self.world_mass_matrix(p, fields["pose"])}
+        """``fields`` with the mass matrix at its pose and its own step's row at its pose and twist, each where the body
+        publishes it; ``fields`` itself otherwise."""
+        if self.publishes_mass_matrix:
+            fields = {**fields, "mass_matrix": self.world_mass_matrix(p, fields["pose"])}
+        if self.publishes_step_row:
+            fields = {**fields, "step_row": self.step_row(p, jnp.asarray(fields["pose"]), jnp.asarray(fields["twist"]))}
+        return fields
 
     @override
     def initial_state(self) -> NodeFields:
@@ -759,17 +771,31 @@ class RigidInertialNode(MimeNode):
         with it implicit at the midpoint, which is not symmetric), and the twist the solve gives with no confinement:
         what a confinement is held in, read by the oracles from the node itself. The projection after the step takes
         ``M``, whose norm it needs symmetric."""
+        mass_matrix, stepping, gyroscopic = self.inertial(p, pose, twist, dt)
+        none = jnp.zeros_like(twist)
+        load = given.get("applied_wrench", none) + given.get("background_load", none) + gyroscopic
+        resistance = given.get("resistance", jnp.zeros((6, 6), dtype=twist.dtype))
+        return mass_matrix, stepping / dt + resistance, self.velocities(stepping, resistance, twist, load, dt)
+
+    def inertial(self, p: Mapping[str, Any], pose: Array, twist: Array, dt: float) -> tuple[Array, Array, Array]:
+        """The step's inertial parts at ``pose`` and ``twist``: the mass matrix ``M`` in the world, the stepping mass
+        ``M'`` (:meth:`stepping_mass`) and the gyroscopic load ``[0; -omega x I omega]``, which the step adds to its
+        loads (zero for an isotropic body)."""
         rotation = quaternion.rotation_matrix(pose[3:])
         omega = twist[3:]
         inertia = rotation @ self.body_inertia(p, twist.dtype) @ rotation.T
         mass_matrix = jnp.zeros((6, 6), dtype=twist.dtype)
         mass_matrix = mass_matrix.at[:3, :3].set(p["mass"] * jnp.eye(3, dtype=twist.dtype)).at[3:, 3:].set(inertia)
-        none = jnp.zeros_like(twist)
-        load = (given.get("applied_wrench", none) + given.get("background_load", none)
-                + jnp.concatenate([jnp.zeros_like(omega), -jnp.cross(omega, inertia @ omega)]))
-        resistance = given.get("resistance", jnp.zeros((6, 6), dtype=twist.dtype))
-        stepping = self.stepping_mass(p, mass_matrix, rotation, omega, dt)
-        return mass_matrix, stepping / dt + resistance, self.velocities(stepping, resistance, twist, load, dt)
+        gyroscopic = jnp.concatenate([jnp.zeros_like(omega), -jnp.cross(omega, inertia @ omega)])
+        return mass_matrix, self.stepping_mass(p, mass_matrix, rotation, omega, dt), gyroscopic
+
+    def step_row(self, p: Mapping[str, Any], pose: Array, twist: Array) -> Array:
+        """The body's own step's row at ``pose`` and ``twist`` (``mime.vocabulary.STEP_ROW``): its stepping mass
+        ``M'`` beside its free load ``M' V / dt + g``, so that its step is ``(M'/dt + R) V' = M' V / dt + g + F`` with
+        the resistances ``R`` and loads ``F`` its laws deliver, as :meth:`stepped` solves it."""
+        dt = self.delta_t
+        _, stepping, gyroscopic = self.inertial(p, pose, twist, dt)
+        return jnp.concatenate([stepping, (stepping @ twist / dt + gyroscopic)[:, None]], axis=1)
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],

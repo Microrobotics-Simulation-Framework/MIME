@@ -135,15 +135,15 @@ def sites_of(node_class: type) -> tuple[SolveSite, ...]:
 
 DENSE = register(SolveSite(
     "dense", "dense", "mime.core.solves.dense_solve",
-    nodes=("DynamicArmNode", "JointDragNode", "MRSDragNode", "OpenFlowNode", "RFTDragNode", "RigidInertialMidpointNode",
-           "RigidInertialNode", "RigidInertialTensorNode"),
+    nodes=("DynamicArmNode", "ImplicitFlowNode", "JointDragNode", "MRSDragNode", "OpenFlowNode", "RFTDragNode",
+           "RigidInertialMidpointNode", "RigidInertialNode", "RigidInertialTensorNode"),
 ))
 
 
 def dense_solve(matrix: Array, rhs: Array) -> Array:
     """``matrix^-1 rhs`` by one dense LU of ``matrix`` (``jnp.linalg.solve``, whose derivative reuses the factors): the
-    one place MIME eliminates a dense system whose size a recipe could matter to. The near field's joint matrix and the
-    port system go through it, in the run's dtype."""
+    one place MIME eliminates a dense system whose size a recipe could matter to. The near field's joint matrix and a
+    flow's one elimination over its exchange partners (``mime.core.elimination``) go through it, in the run's dtype."""
     with solving(DENSE):
         return jnp.linalg.solve(matrix, rhs)
 

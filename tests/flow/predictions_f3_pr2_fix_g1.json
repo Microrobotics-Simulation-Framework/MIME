@@ -1,0 +1,70 @@
+{
+  "written": "2026-11-12, committed before gate 1 ran on its final line on Actions: the flux's line taken from its plane's face lines after float64's open draws failed it on the laptop (seeds 1 and 3: 39 and 65 of the line on the flux alone)",
+  "phase": "F3 PR 2 (#270) fix round: gate 1 on its final line (B1, M1, M6)",
+  "labels": "made by the fix round's builder (Opus) from the derivation in tests/flow/elimination_cases.float_lines and local diagnostics on the laptop (listed under seen_before, so the gate-1 ratio bands are informed by them, not blind)",
+  "seen_before": [
+    "laptop, float32, the old elimination: seed 102 of the review's draw with the two small solves in float64 agreed with the monolithic step to 1.5e-6 (force) against 1.4e-3 with them in float32; the same step in float64 at the CG's float32 tolerance 1e-5: 1.5e-6",
+    "laptop, float32, equilibrated and refined, gate 1's new draw, seeds 0, 2, 8, 126 (periodic): the largest ratio to the derived line 0.064 (field), each body's vectors 0.009 to 0.041; before the refinement seeds 2 and 126 were at 41 and 35 on the couple and spin",
+    "laptop, float64, seed 0: clean 5e-4 of the line; cross 1.6e5, drop 9.4e8, twistsign 3.2e7, crossx0.98 3.2e3 times the line",
+    "laptop, the held pair after the fix: largest relative miss 4.2e-8 (float32) and 1.1e-16 (float64) over 40 open and 20 periodic draws; the old scatter 4.5e-2 and 1.9e-2",
+    "run 43172335100 (probe/f3-fix-runaway): gate 14's settled arm one pass, the rate load at most 6.1e-8 (float64) and 8.6e-5 (float32) of the drag's scale after step 100, the old flag raised at 152 and 146",
+    "the review's run 43165251892: the drag's paired work against its own dissipation near the open plane, before the fix: 1.3e-7 at 32 and 8 cells, 4.3e-5 at 4.8, 3.8e-3 at 3.2, 1.3e-2 at 1.6 (neutral); 3.7e-4 at 32 and 8 cells, 8.1e-4, 3.9e-2, 1.2e-1 (density 3)",
+    "laptop, float64, gate 1's open draws under the earlier flux line (the dual norm of the flux's row): seeds 1 and 3 at 38.6 and 64.9 of the line on the flux alone, every other block under 3e-3; with the flux's line from its plane's faces: seeds 1, 3, 5 at 3.1e-4 at most on the flux, 2.8e-3 on the field",
+    "laptop, float32, seeds 1, 3, 5, 10: clean at most 0.067 of the line; cross 224 to 1.7e4, drop 1.7e4 to 2.1e5, twistsign 2.9e4 to 7.3e4, crossx0.98 4.5 to 358 times the line",
+    "probe/f3-fix-gates (run 43177302208), the same gate 1 under the earlier flux line, seeds 5000-8029: its results are not this file's evidence"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-fix-g1), an arm each",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 1: a periodic box of 8 cells (h 10 um) with two bodies anywhere two spheres can be (radii 0.8 to 1.5 cells, kernels 1 or 1.5 cells, densities 0.5 to 3), dt 0.05 to 1 h^2/nu, IMEX Euler, the CG at 1e-12 (float64) or 1e-5 (float32); or an open vessel 8 x 8 x 16 (nondimensional) with an inflow, a Windkessel and a body in its middle third. The held pair: that open grid, a point 0.8 to 4.8 cells from a plane (the first within 1.6), and a periodic 8^3 box. Gate 14: a 40 um body of 0.05 of water's density, the steady limit, dt 50 us, 1500 steps. The plane: the review's plane.py (a 40 um body on the open vessel's axis, metered, 50 steps of 0.2 ms, at 0, 1.5, 1.7, 1.8, 1.9 mm)",
+    "seeds_and_draws": "gate 1: seeds 5100-5129 (twistsign, and clean), 6100-6129 (cross, 5 clean), 7100-7129 (drop, 5 clean), 8100-8129 (crossx0.98, 5 clean), none seen before; the range: seeds 9100-9119 at 5 sizes (float32 1e-5 to 1e-1, float64 1e-9 to 1e-5)"
+  },
+  "gate_1_fresh_seeds": {
+    "claim": "the coupled step agrees with the monolithic step within its derived line at every fresh draw, each quantity on its own scale, in both dtypes",
+    "kind": "bounds",
+    "case": "tests/flow/test_one_elimination.py::test_the_coupled_step_is_the_monolithic_step_within_its_derived_line, 45 clean draws a dtype",
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "clean draws over the line of 45 a dtype (the largest ratio: float32 under 0.3, float64 under 0.01)",
+      "basis": "derived (float_lines) and measured-before (8 draws)",
+      "why": "the line bounds the step's error at first order from its solves' achieved residual and the small solves' componentwise rounding, which the refinement holds"
+    },
+    "metric": "each quantity's largest difference over its derived line",
+    "control": {
+      "plant": "twistsign (the review's mutant), cross, drop: each O(1) of the quantity or more; crossx0.98: 2 % of the cross terms",
+      "environment_variable": "MIME_PLANT_ELIMINATION",
+      "expected_rate": "30/30 for twistsign, cross and drop in both dtypes; crossx0.98 30/30 in float64 and 25 to 30 of 30 in float32",
+      "runs": 30,
+      "clean_expected": "0/45 a dtype",
+      "resolution": "the range arms: a cross-term scaling of 1 - s caught at every draw from s about 1e-3 in float32 and 1e-7 in float64 [guess]"
+    },
+    "if_wrong": "a clean draw over the line names a rounding the derivation misses: its row and stage are found by the residual's decomposition (as for seeds 2 and 126) before anything changes",
+    "cannot_discriminate_if": "a plant's ratio near one at clean ratios near one (none seen)"
+  },
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43181927950",
+    "collected": "2026-11-12, after every arm finished (probe/f3-fix-g1, 12 arms, CPU runners, Python 3.12.15). Every arm's job is marked failed by the probe's memory check (see memory), not by its result",
+    "planted_arms": {
+      "twistsign": "tw1 and tw2 (15 runs each, seeds 5100-5129), both dtypes: 30/30 caught a dtype, every_run true, inconclusive 0; clean 0 flagged of 15 per arm (0/30 a dtype)",
+      "cross": "seeds 6100-6129: 30/30 caught in float32 and in float64, every_run true; clean 0/5 a dtype",
+      "drop": "seeds 7100-7129: 30/30 caught in float32 and in float64, every_run true; clean 0/5 a dtype",
+      "crossx0.98": "seeds 8100-8129: 30/30 caught in float32 and in float64, every_run true; clean 0/5 a dtype; the 95 % lower bound on the rate 0.905 (30 of 30)",
+      "against_the_prediction": "expected_rate 30/30 for twistsign, cross, drop in both dtypes: met. crossx0.98 expected 30/30 in float64 and 25 to 30 of 30 in float32: 30/30 in both. clean_expected 0/45 a dtype: measured 0 of 45 a dtype (15 + 15 on the twistsign arms, 5 each on cross, drop and crossx0.98), none over the line"
+    },
+    "discriminating_range": {
+      "oracle": "g1_range:crossx (cross terms scaled by 1 - s), 20 fresh draws a size (seeds 9100-9119), 0/20 false alarms in both dtypes, no non-monotone holes",
+      "float32": "caught of 20: 0 at s=1e-5, 10 at 1e-4, 12 at 1e-3, 18 at 1e-2, 20 at 1e-1. Resolution (the smallest s caught at every draw) 0.1 on the probe's grid, refined to 0.031 (3 %) by the harness; the plant at 10 times that, 0.31. The draws missed at 1e-2 are seeds 9108 and 9114, the two whose ratios to the line are smallest in the arm (field 0.034 and 0.050 of the line, against 0.3 to 44 for the others); the 95 % lower bound on the detection rate at the resolution 0.86",
+      "float64": "caught of 20: 1 at s=1e-9, 10 at 1e-8, 10 at 1e-7, 14 at 1e-6, 19 at 1e-5 (seed 9108 missed). No size on the grid reached 20 of 20: the grid stopped at 1e-5, so the resolution is not measured in float64, only bounded: a cross-term scaling of 1e-5 is caught at 19 of 20 draws. The draws caught at 1e-8 are the odd, open ones; the draws missed at every size below 1e-5 are the even, periodic ones (an observation of this arm, not a mechanism)",
+      "against_the_prediction": "WRONG by about two orders of magnitude in float32: predicted caught at every draw from s about 1e-3 (a guess), measured 12 of 20 at 1e-3 and 20 of 20 only at 1e-1; in float64 predicted 1e-7, measured 10 of 20 there and 19 of 20 at 1e-5. The gate's derived line is not the sharp instrument the guess assumed for a uniform small scaling of the cross terms: the periodic draws' cross terms are small against the line of their own quantity. What the gate does bound: the review's mutants (twistsign, cross, drop, crossx0.98 at 2 %) at 30/30 in both dtypes, and a 10 % scaling of the cross terms at 20/20 in float32. A 1e-5 scaling in float64 stays a statement of 19/20, not of every run"
+    },
+    "memory": "every arm's job failed the probe's memory check: peak 2.96 to 3.15 GiB (3.73 to 3.74 GiB for the range arms) against estimates of 0.70 to 0.72 GiB (UNDERESTIMATE, ratio 4.2 to 5.3 of the estimator's fvm family); the arm results above were written before the check and stand. The peak is gate 1 itself (float64 measured alone in one process locally: 3.1 GiB)"
+  }
+}

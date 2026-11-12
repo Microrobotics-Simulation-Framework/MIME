@@ -4,6 +4,7 @@ graph."""
 
 from __future__ import annotations
 
+import dataclasses
 import math
 import warnings
 from collections.abc import Callable, Mapping, Sequence
@@ -17,6 +18,7 @@ from maddening.warnings import UnitMismatchWarning
 from mime.build import _ledger, _testing
 from mime.build._flags import merged, structural_flags
 from mime.build._builders import (
+    STATE,
     DriveBuilder,
     DynamicsBuilder,
     EdgeDecl,
@@ -54,6 +56,7 @@ from mime.registry import (
     Interaction,
     Observation,
 )
+from mime.vocabulary import ONE_PASS_PARTNER
 
 _BUILDERS: dict[Section, type[RestrictedBuilder]] = {
     Section.PROVIDER: ProviderBuilder,
@@ -176,7 +179,7 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     rung = getattr(plan.entry, "rung", None)
     held: list[tuple[str, str, str, tuple[int, ...] | None]] = [
         ("flag", flag.node, flag.field, None) for flag in cls.raises
-        if flag.raised_by(rung, bool(plan.members), plan.entry)]
+        if flag.raised_by(rung, bool(plan.members), plan.entry, plan.registration_kinds)]
     if issubclass(cls, Observation):
         held += [("output", output.node, output.field, output.shape) for output in cls.outputs]
     found: list[str] = []
@@ -199,12 +202,47 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
                         plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls), plan.mount,
                         dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
-                        rates_read=plan.rates_read, mass_read=plan.mass_read,
+                        rates_read=plan.rates_read, mass_read=plan.mass_read, row_read=plan.row_read,
                         members={member.owner: _context(member, plans) for member in plan.members},
                         entry=plan.entry, exchanges=dict(plan.exchanges),
                         starts={role: dict(body.initial) for role, name in plan.bindings.items() if plan.exchanges
                                 for body in plans.entries if body.section is Section.DYNAMICS and body.owner == name},
-                        frequencies=_drive_frequencies(plan, plans))
+                        frequencies=_drive_frequencies(plan, plans), partner_rows=_partner_rows(plan, plans))
+
+
+def held_rows(built: Mapping[str, SimulationNode], edges: Sequence[EdgeDecl]) -> list[EdgeDecl]:
+    """The edges that give a flow the rest of each body's row it holds in its one elimination: every load and
+    resistance delivered into the body (``PARTNER_SUMS``) but the flow's own, read by the flow as well (its
+    ``partner_<k>_loads`` and ``partner_<k>_resistances``), so that the row it closes the body's twist with is the step
+    the body takes. Each is a state read of the delivering node, made by the flow's entry, carrying no work: the body's
+    receiver books the delivery, once (the energy ledger's check reads past these inputs, ``ImplicitFlowNode.
+    row_inputs``)."""
+    from mime.nodes.flow.fvm._node import PARTNER_SUMS
+
+    found: list[EdgeDecl] = []
+    for name, node in built.items():
+        bodies = tuple(cast(Mapping[str, Any], getattr(node, "constants", dict)()).get("partner_bodies", ()))
+        for k, body in enumerate(bodies):
+            for edge in edges:
+                if edge.target[0] == body and edge.target[1] in PARTNER_SUMS and edge.source[0] != name:
+                    found.append(dataclasses.replace(edge, target=(name, f"partner_{k}_{PARTNER_SUMS[edge.target[1]]}"),
+                                                     additive=True, carries=STATE))
+    return found
+
+
+def _partner_rows(plan: EntryPlan, plans: PlanSet) -> dict[str, tuple[int, int]]:
+    """For a law a medium's field holds in its one elimination (``ONE_PASS_PARTNER``), by its medium role, its row
+    among that field's held partners, which the field orders by their ids, and how many it holds."""
+    found: dict[str, tuple[int, int]] = {}
+    for role in plan.exchanges:
+        medium = plan.bindings.get(role)
+        for dynamics in plans.entries:
+            if dynamics.section is not Section.DYNAMICS or dynamics.thing != medium:
+                continue
+            held = sorted(r.id for r in dynamics.registrations if r.kind == ONE_PASS_PARTNER)
+            if plan.owner in held:
+                found[role] = (held.index(plan.owner), len(held))
+    return found
 
 
 def _drive_frequencies(plan: EntryPlan, plans: PlanSet) -> dict[str, float]:
@@ -389,6 +427,7 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
+    edges += held_rows(built, edges)
     refusals, flags = structural_flags(plans, edges)
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals))

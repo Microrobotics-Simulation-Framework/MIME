@@ -90,16 +90,21 @@ def gather(grid: MACGrid, component: int, field: Array, stencil: ExchangeStencil
 
 def scatter(grid: MACGrid, component: int, values: Array, stencil: ExchangeStencil, mode: str = "average") -> Array:
     """``S f`` on the ``component``-th face set (the grid's shape): each point's value ``values`` (``(n,)``; ``(n, 3)``
-    for the couple's mode, a couple) times the mode's weights, summed onto the faces; a force (N) becomes a force
-    density (N/m^3). The transpose of :func:`gather` in :meth:`MACGrid.inner`."""
+    for the couple's mode, a couple) times the mode's weights, summed onto the faces, each face's over its weight in
+    the grid's inner product where the grid weighs its faces (an open box's planes carry half a cell, ``weights``); a
+    force (N) becomes a force density (N/m^3). The transpose of :func:`gather` in :meth:`MACGrid.inner`, the planes
+    included: a plane's face holds half a cell's fluid, so the density there is twice the whole cell's for the same
+    momentum (without it the pair missed by 4.5e-4 at 3.2 cells from a plane and 7e-2 at 1.6, and the exchange did
+    work the energy books did not pair)."""
     index = stencil.lattice
-    density = jnp.zeros(grid.cells, dtype=values.dtype)
+    density = jnp.zeros(grid.shape(component), dtype=values.dtype)
     for coefficient, column, (wx, wy, wz) in _terms(stencil, mode, component):
         each = coefficient * (values[:, column] if mode in VECTOR_MODES else values)
         spread = each[:, None, None, None] * wx[:, :, None, None] * wy[:, None, :, None] * wz[:, None, None, :]
         density = density.at[index[:, 0, :, None, None], index[:, 1, None, :, None],
                              index[:, 2, None, None, :]].add(spread)
-    return density
+    weighed = getattr(grid, "weights", None)
+    return density if weighed is None else density / weighed(values.dtype)[component]
 
 
 def faxen(radius: Any, width: Any, share: float) -> Any:

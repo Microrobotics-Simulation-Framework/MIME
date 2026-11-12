@@ -21,6 +21,7 @@ from mime.vocabulary import (
     POSE,
     RESISTANCE,
     RIGID_BODY,
+    STEP_ROW,
     TWIST,
     Capability,
 )
@@ -140,7 +141,8 @@ class RigidInertial(Dynamics):
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,
                        Capability.PROJECTS_CONFINEMENT, Capability.HOLDS_HULL})
-    publishes = {POSE.name: Port("pose"), TWIST.name: Port("twist"), MASS_MATRIX.name: Port("mass_matrix")}
+    publishes = {POSE.name: Port("pose"), TWIST.name: Port("twist"), MASS_MATRIX.name: Port("mass_matrix"),
+                 STEP_ROW.name: Port("step_row")}
     port_kinds = (RIGID_BODY.name,)
     accepts = {APPLIED_WRENCH.name: Port("applied_wrench"), RESISTANCE.name: Port("resistance"),
                BACKGROUND_LOAD.name: Port("background_load"), CONFINEMENT.name: Port("confinement")}
@@ -175,7 +177,8 @@ class RigidInertial(Dynamics):
         pose = (*initial["position"], *initial["orientation"])
         twist = (*initial["velocity"], *initial["angular_velocity"])
         mass, inertia = ctx.scalar_value("mass"), self.node_inertia(ctx.vector_value("inertia"))
-        published: dict[str, Any] = {"publishes_mass_matrix": True} if ctx.mass_read else {}
+        published: dict[str, Any] = {**({"publishes_mass_matrix": True} if ctx.mass_read else {}),
+                                     **({"publishes_step_row": True} if ctx.row_read else {})}
         if not ctx.confinements:
             b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
                             initial_twist=twist, **published))

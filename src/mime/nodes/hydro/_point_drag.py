@@ -30,11 +30,17 @@ bounds). The fluid-acceleration force carries the drive's share of a body that d
 neither it nor the added mass is delivered to the fluid, which already fills the body's volume and takes the same
 stresses and drive.
 
-**The exchange.** Lagged: the fluid's step takes the drag and the couple the body felt in the step before, ``f = R0 (V -
-u_d)`` and ``T = R_r (W - Omega_d)``, at the body's point at this step's start, by the scatter's edges (``S f``, ``L S
-(c6 f)`` and the dipole's ``(1/2) curl (T w)``: the transposes of the readings', so the pairs are workless at one
-field). ``one_way`` delivers none and corrects for none; the field then takes nothing from the law, so the graph steps
-it first and the readings are the field the step has just made (two-way, the field at the step's start).
+**The exchange.** One pass (``partner_row`` given, the default where the body's own step is linear): the flow holds the
+law and the body's own step's row in its one elimination (``mime.nodes.flow.fvm._partners``), so the force, the couple
+and the twist are solved with the field within the step and the flow hands the body its response; this node delivers
+neither, reads the flow's solution for the body the step after (its force and couple, the twist the flow closed, its
+kernel's reading of the solved field), books the law and checks it there, and delivers the rate terms' load and the
+added mass, which the flow's row holds as the body's other loads. Lagged: the fluid's step takes the drag and the couple
+the body felt in the step before, ``f = R0 (V - u_d)`` and ``T = R_r (W - Omega_d)``, at the body's point at this
+step's start, by the scatter's edges (``S f``, ``L S (c6 f)`` and the dipole's ``(1/2) curl (T w)``: the transposes
+of the readings', so the pairs are workless at one field). ``one_way`` delivers none and corrects for none; the field
+then takes nothing from the law, so the graph steps it first and the readings are the field the step has just made
+(two-way, the field at the step's start).
 
 **Its checks, each step** (each a flag; the build refuses what it can see at its own values): the coupled one-step
 margin of the force and of the couple against the floor; the law's power at one velocity (its gift, judged here for
@@ -61,6 +67,7 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_ar
 from mime.core.ledger import IDENTITY_ULPS
 from mime.nodes.flow.fvm._exchange import HISTORY_MODES, JUDGED_PLACES, KernelSpectrum, box_side, faxen, \
     held_spectrum, image_mode, own_advance, own_box, own_kernels, own_read, self_history, steady_response, step_response
+from mime.nodes.flow.fvm._partners import DELIVERIES, SOLUTION_COLUMNS
 
 #: The coupled one-step margin a definite point body is held above, the force's and the couple's alike (the floor
 #: sweep's knee: the one-step resistance within -0.42..+0.61 of the exact sphere's above it, growing as 1/margin below;
@@ -84,8 +91,31 @@ BASSET_LINE = 0.3
 #: lagged loop through the body's own field whose gain is above one rings so (the refuting review's light body under
 #: the steady limit, 14 % a step); a stable loop's alternation decays. Declared.
 RINGING_STEPS = 3
+#: Held one pass, the share of the drag's own scale ``R0 (|V| + |u_d|)`` (the load the body's step balances) above which
+#: the rate terms' load counts towards ``rate_feedback``: one pass reads the field as its solve left it, to the solve's
+#: tolerance, and a settled body's rate load rings at that noise, its reading's error over the step (a refuting
+#: review found the flag raised from step 115 on a body at rest in its flow), where a runaway's grows past any share of
+#: it. Declared; measured on the review's cases (RATE_SHARE_MEASURED). The lagged reading's noise is its rounding, which
+#: the rate load's own floor holds.
+RATE_SHARE = 1e-2
+RATE_SHARE_MEASURED = (
+    "gate 14's settled arm (a 40 um body of 0.05 of water's density under the steady limit, one pass, 1500 steps): the "
+    "rate load at most 6.1e-8 of the drag's scale after step 100 in float64 and 8.6e-5 in float32; the review's three "
+    "runaways (150 um on the axis, 40 um 0.4 mm off it, two 40 um bodies 2.5 radii apart) pass the line at the onset of "
+    "their ringing, the flag raised at steps 24, 28 and 18 in float64 (16, 28 and 18 in float32), as without it, and "
+    "the two physical arms under IMEX Euler (densities 1 and 0.05) never ring; https://github.com/"
+    "Microrobotics-Simulation-Framework/MIME/actions/runs/43172335100")
 #: The self-history's routes: the body's own free-box flow advanced exactly (the default), or fitted modes.
 ROUTES = ("exact", "modes")
+#: Why a two-way body takes the lagged exchange, as the build gives it: none (one pass, or one-way), ``declared``
+#: (coupling='lagged' written) or ``not_linear`` (its own step is not one the flow's one elimination can hold).
+LAGGED_BECAUSE = {"": "", "declared": "coupling='lagged' declared, the cheaper route",
+                  "not_linear": "the body's own step is not one the flow's one elimination can hold (a contact projects "
+                                "it, or its dynamics publishes no step row)"}
+#: One pass: the body's twist against the twist the flow's row closed, relative, above which ``row_mismatch_flagged``
+#: is raised, in units of the run's eps: the body's own 6 x 6 solve with the handed response and the flow's dense
+#: elimination differ by their rounding alone where the flow held every load and resistance the body stepped with.
+ROW_ULPS = 1e4
 #: The fields the scatters read and the reading's inputs (each mode a face set's).
 FORCES = ("force_x", "force_y", "force_z")
 FAXEN_FORCES = ("faxen_x", "faxen_y", "faxen_z")
@@ -128,10 +158,12 @@ class PointDragState(TypedDict, closed=True):
     #: 1)``), and Hasimoto's image term beside it; one entry each on route 1, one-way or under the steady limit.
     own_field: ReadOnly[Annotated[Float[Array, "2 3 n n m"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
     own_image: ReadOnly[Annotated[Float[Array, "3"], Units("m/s")]]
-    resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
-    background_load: ReadOnly[Float[Array, "6"]]
-    added_resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
-    added_load: ReadOnly[Float[Array, "6"]]
+    #: The drag's resistance and load (delivered to the body lagged; one pass, the flow hands the body its response in
+    #: their place) and the Maxey-Riley part's (delivered under both), in the units of the body's inputs.
+    resistance: ReadOnly[Annotated[Float[Array, "6 6"], Units("N s/m; N s; N m s")]]  # noqa: F722 - a jaxtyping shape
+    background_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
+    added_resistance: ReadOnly[Annotated[Float[Array, "6 6"], Units("N s/m; N s; N m s")]]  # noqa: F722 - a shape
+    added_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
     steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     #: The law's own dissipation over the run, ``sum dt (f . (V - G_F u) + T . (W - Omega))`` with each force and couple
     #: against the slip from the raw reading it was felt at (the step before's, summed a step late): the drag's
@@ -156,6 +188,11 @@ class PointDragState(TypedDict, closed=True):
     rate_load: ReadOnly[Annotated[Float[Array, "3"], Units("N")]]
     ringing: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     rate_feedback: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    #: One pass: the body's twist against the twist the flow's one elimination closed its row with, ``|V - V_row| /
+    #: (|V| + |V_row|)`` (the step before's): above rounding, the body stepped with a load or resistance the flow's row
+    #: did not hold.
+    row_mismatch: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]
+    row_mismatch_flagged: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]
 
 
 class PointDragInputs(TypedDict, closed=True):
@@ -170,6 +207,8 @@ class PointDragInputs(TypedDict, closed=True):
     rotation_x: NotRequired[ReadOnly[Float[Array, "1 3"]]]  # noqa: F722 - a jaxtyping shape
     rotation_y: NotRequired[ReadOnly[Float[Array, "1 3"]]]  # noqa: F722 - a jaxtyping shape
     rotation_z: NotRequired[ReadOnly[Float[Array, "1 3"]]]  # noqa: F722 - a jaxtyping shape
+    #: One pass: the flow's partners' solution (``flow.partner_solution``), a row a body it holds.
+    partner_solution: NotRequired[ReadOnly[Float[Array, "partners 21"]]]  # noqa: F722 - a jaxtyping shape
 
 
 class PointDragNode(MimeNode):
@@ -188,8 +227,9 @@ class PointDragNode(MimeNode):
                      "line)",
                      "The flow's solver fills the body's volume: the fluid-acceleration force and the added mass are "
                      "not delivered back to it",
-                     "Lagged: the fluid's step takes the drag and the couple the body felt in the step before, at its "
-                     "point at this step's start"),
+                     "One pass where the body's own step is linear (the flow's one elimination holds the law and the "
+                     "body's row); lagged otherwise or where declared: the fluid's step takes the drag and the couple "
+                     "the body felt in the step before, at its point at this step's start"),
         limitations=("No torque from the fluid's rotational acceleration (the displaced fluid's angular inertia, of "
                      "order (a^2/nu)/T against the viscous couple)",
                      "The drag's reading keeps the grid's undeveloped self-field as a history term: the lagged first "
@@ -216,10 +256,16 @@ class PointDragNode(MimeNode):
                  faxen: bool = True, maxey_riley: bool = True, added_mass: bool = True, one_way: bool = False,
                  scheme: str = "imex_euler", self_history: str = "exact", flow_cells: int = 0,
                  vessel_centre: Sequence[float] = (), vessel_axis: Sequence[float] = (),
-                 vessel_radius: float = 0.0, drive_frequency: float = 0.0) -> None:
+                 vessel_radius: float = 0.0, drive_frequency: float = 0.0, partner_row: int | None = None,
+                 partners: int = 0, lagged_because: str = "") -> None:
         if scheme not in ("imex_euler", "steady") or self_history not in ROUTES:
             raise ValueError(f"a point body's field steps by 'imex_euler' or 'steady', and its self-history is one of "
                              f"{ROUTES}: not {scheme!r}, {self_history!r}")
+        if partner_row is not None and (one_way or not 0 <= partner_row < partners):
+            raise ValueError(f"a body the flow holds in its one elimination is two-way and reads its own row of the "
+                             f"flow's solution: row {partner_row} of {partners}, one_way={one_way}")
+        if lagged_because not in LAGGED_BECAUSE:
+            raise ValueError(f"a lagged body's reason is one of {sorted(LAGGED_BECAUSE)}, not {lagged_because!r}")
         modes = self_history == "modes"
         super().__init__(name, timestep, radius=float(radius), viscosity=float(viscosity), density=float(density),
                          spacing=float(spacing), width_cells=float(width_cells),
@@ -235,7 +281,10 @@ class PointDragNode(MimeNode):
                          **({"vessel_centre": tuple(float(c) for c in vessel_centre),
                              "vessel_axis": tuple(float(c) for c in vessel_axis),
                              "vessel_radius": float(vessel_radius)} if vessel_radius > 0.0 else {}),
-                         **({"drive_frequency": float(drive_frequency)} if drive_frequency > 0.0 else {}))
+                         **({"drive_frequency": float(drive_frequency)} if drive_frequency > 0.0 else {}),
+                         **({"partner_row": int(partner_row), "partners": int(partners)} if partner_row is not None
+                            else {}),
+                         **({"lagged_because": lagged_because} if lagged_because else {}))
         self.spectra = self.made_spectra()
 
     def made_spectra(self) -> dict[str, KernelSpectrum]:
@@ -276,6 +325,13 @@ class PointDragNode(MimeNode):
         return str(self.constants()["self_history"])
 
     @property
+    def one_pass(self) -> bool:
+        """Whether the flow holds the body in its one elimination (one pass): the node then reads the flow's solution
+        for it, delivers no force to the grid and no drag to the body (the flow returns the body its response), and
+        books and checks the law a step late."""
+        return "partner_row" in self.constants()
+
+    @property
     def holds_own_field(self) -> bool:
         """Whether the node advances its own free-box field (route 2, two-way, stepped in time)."""
         c = self.constants()
@@ -296,7 +352,7 @@ class PointDragNode(MimeNode):
         side = self.side
         field = (2, 3, side, side, side // 2 + 1) if self.holds_own_field else (2, 3, 1, 1, 1)
         modes = HISTORY_MODES + 1 if self.route == "modes" else 1
-        return node_fields(PointDragState(
+        held = node_fields(PointDragState(
             points=start[None, :], force_x=one, force_y=one, force_z=one, faxen_x=one, faxen_y=one, faxen_z=one,
             couple=as_run_array(jnp.zeros((1, 3))), drag_reading=three, raw_reading=three, rotation_reading=three,
             raw_rotation=three, clean_reading=three, history=as_run_array(jnp.zeros((modes, 3))),
@@ -306,10 +362,16 @@ class PointDragNode(MimeNode):
             margin=zero, couple_margin=zero, below_floor=zero, history_residual=zero, history_flagged=zero,
             wall_gap=zero, near_wall=zero, particle_reynolds=zero, reynolds_flagged=zero, rate_load=three,
             ringing=zero, rate_feedback=zero))
+        return {**held, "row_mismatch": zero, "row_mismatch_flagged": zero} if self.one_pass else held
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         inputs = {"pose": node_input("m; 1", (7,)), "twist": node_input("m/s; rad/s", (6,))}
+        if self.one_pass:
+            inputs["partner_solution"] = node_input(
+                "N; N m; m/s; rad/s; m/s; 1/(m s); rad/s", (int(self.constants()["partners"]), SOLUTION_COLUMNS),
+                description="the flow's partners' solution, a row a body it holds (flow.partner_solution)")
+            return inputs
         for field in AVERAGES:
             inputs[field] = node_input("m/s", (1,), description="the flow read by the exchange kernel's average")
         for field in LAPLACIANS:
@@ -323,6 +385,8 @@ class PointDragNode(MimeNode):
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
+        if self.one_pass:
+            return self.stepped_one_pass(p, state, boundary_inputs, dt)
         return self.stepped(p, state, boundary_inputs, dt)
 
     def coefficients(self, p: Mapping[str, Any]) -> tuple[Array, Array, Array]:
@@ -511,6 +575,110 @@ class PointDragNode(MimeNode):
             rate_feedback=(ringing >= RINGING_STEPS).astype(dtype))
         return node_fields(ended)
 
+    def stepped_one_pass(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
+                         dt: float) -> NodeFields:
+        """The step held in the flow's one elimination: the flow solved the law with the field in its step before and
+        handed the body its response; here its solution (its force and couple, the twist it closed and its kernel's
+        reading, :data:`mime.vocabulary.FLOW_PARTNER_SOLUTION`) is read, the body's own field advanced by the force
+        and read where it was delivered (advance, then read: the flow's field holds that force), the rate terms' load
+        formed for the body's step now, and the law's books and checks made a step late against the twist the body
+        reached (its input now)."""
+        c = self.constants()
+        mu, rho, a = as_run_array(p["viscosity"]), as_run_array(p["density"]), as_run_array(p["radius"])
+        dtype = mu.dtype
+        pose = jnp.asarray(boundary_inputs.get("pose", jnp.zeros(7, dtype=dtype)), dtype=dtype)
+        twist = jnp.asarray(boundary_inputs.get("twist", jnp.zeros(6, dtype=dtype)), dtype=dtype)
+        solution = jnp.asarray(boundary_inputs.get(
+            "partner_solution", jnp.zeros((int(c["partners"]), SOLUTION_COLUMNS), dtype=dtype)), dtype=dtype)
+        row = solution[int(c["partner_row"])]
+        started = jnp.asarray(state["steps"]) > 0.0
+        delivered = jnp.where(started, row[:DELIVERIES], 0.0)
+        closed = row[DELIVERIES:2 * DELIVERIES]
+        kernel = row[2 * DELIVERIES:]
+        average, laplacian, rotation = kernel[:3], kernel[3:6], kernel[6:9]
+        drag_c, average_c, delivery_c = self.coefficients(p)
+        made = self.made(p, dt)
+        force, couple = delivered[:3], delivered[3:]
+        held_points = jnp.asarray(state["points"], dtype=dtype)
+        # The readings the law was solved with (the constant correction), and the flow without the body's.
+        raw = average + drag_c * laplacian
+        drag_reading = raw - made["steady"] * force
+        rotation_reading = rotation - made["couple_steady"] * couple
+        own_field, own_image = jnp.asarray(state["own_field"], dtype=dtype), jnp.asarray(state["own_image"], dtype=dtype)
+        history = jnp.asarray(state["history"], dtype=dtype)
+        if c["scheme"] == "steady":
+            own = made["steady_clean"] * force
+        elif self.route == "modes":
+            history = made["decay"][:, None] * (history + made["amplitude"][:, None] * force[None, :])
+            own = jnp.sum(history, axis=0)
+        else:
+            box = own_box(self.side, float(c["spacing"]), dtype)
+            kernels = own_kernels(box, held_points[0], float(c["width_cells"]))
+            decay = 1.0 / (1.0 + mu / rho * dt * box.eigenvalue)
+            gain = jnp.where(box.eigenvalue == 0.0, 0.0, dt / rho * decay)
+            own_field = own_advance(box, own_field, kernels, force, delivery_c, decay, gain)
+            own_image = made["image_decay"] * own_image + made["image"] * force
+            own = own_read(box, own_field, kernels, average_c) + own_image
+        clean = average + average_c * laplacian - own
+        rate = jnp.where(started, (clean - jnp.asarray(state["clean_reading"], dtype=dtype)) / dt, 0.0)
+        velocity = twist[:3]
+        r0 = 6.0 * jnp.pi * mu * a
+        rotational = 8.0 * jnp.pi * mu * a ** 3
+        fluid_mass = 4.0 / 3.0 * jnp.pi * a ** 3 * rho
+        added = 0.5 * fluid_mass if c["maxey_riley"] and c["added_mass"] else jnp.zeros((), dtype=dtype)
+        share = fluid_mass if c["maxey_riley"] else jnp.zeros((), dtype=dtype)
+        eye = jnp.eye(3, dtype=dtype)
+        resistance = jnp.zeros((6, 6), dtype=dtype).at[:3, :3].set(r0 * eye).at[3:, 3:].set(rotational * eye)
+        background = jnp.concatenate([r0 * drag_reading, rotational * rotation_reading])
+        added_resistance = jnp.zeros((6, 6), dtype=dtype).at[:3, :3].set(added / dt * eye)
+        rate_load = (share + added) * rate
+        added_load = jnp.concatenate([added / dt * velocity + rate_load, jnp.zeros(3, dtype=dtype)])
+        # The law's power at one velocity: its load on the body (the fluid's force on it, -f) at the twist the body
+        # reached, and its reaction against the readings it was solved with: -f . (V - u_d) - T . (W - Omega_d).
+        readings = jnp.concatenate([drag_reading, rotation_reading])
+        terms = jnp.concatenate([-delivered * twist, delivered * readings])
+        power = jnp.sum(terms)
+        floor = IDENTITY_ULPS * jnp.finfo(dtype).eps * jnp.sum(jnp.abs(terms))
+        gave = started & (power > floor)
+        dissipated = jnp.asarray(state["dissipated"]) + jnp.where(
+            started, dt * jnp.sum(delivered * (twist - jnp.concatenate([raw, rotation]))), 0.0)
+        size = jnp.sqrt(jnp.sum(twist * twist)) + jnp.sqrt(jnp.sum(closed * closed))
+        mismatch = jnp.where(started & (size > 0.0), jnp.sqrt(jnp.sum((twist - closed) ** 2)) / jnp.where(
+            size > 0.0, size, 1.0), 0.0)
+        previous = jnp.asarray(state["rate_load"], dtype=dtype)
+        size_now, before_size = jnp.sum(rate_load * rate_load), jnp.sum(previous * previous)
+        noise = IDENTITY_ULPS * jnp.finfo(dtype).eps * (share + added) * (
+            jnp.sum(jnp.abs(clean)) + jnp.sum(jnp.abs(jnp.asarray(state["clean_reading"], dtype=dtype)))) / dt
+        # Counted only where it drives the body: above RATE_SHARE of the drag's own scale, R0 (|V| + |u_d|).
+        drive = _lax.stop_gradient(RATE_SHARE * r0 * (jnp.linalg.norm(velocity) + jnp.linalg.norm(drag_reading)))
+        reversing = started & (jnp.sum(rate_load * previous) < 0.0) & (size_now > before_size) & (
+            before_size > noise ** 2) & (size_now > drive ** 2)
+        ringing = jnp.where(reversing, jnp.asarray(state["ringing"]) + 1.0, 0.0)
+        relative = jnp.sqrt(jnp.sum((velocity - drag_reading) ** 2))
+        reynolds = 2.0 * a * relative * rho / mu
+        gap = self.wall_gap(p, pose[:3], a)
+        margin = made["margin"].astype(dtype)
+        couple_margin = made["couple_margin"].astype(dtype)
+        residual = made["residual"].astype(dtype) if "residual" in made else jnp.zeros((), dtype=dtype)
+        past_span = (jnp.asarray(state["steps"]) + 1.0 > made["span"]) if "span" in made else jnp.asarray(False)
+        points = (pose[:3] + as_run_array(p["origin"]))[None, :]
+        ended = PointDragState(
+            points=points.astype(dtype), force_x=force[0:1], force_y=force[1:2], force_z=force[2:3],
+            faxen_x=delivery_c * force[0:1], faxen_y=delivery_c * force[1:2], faxen_z=delivery_c * force[2:3],
+            couple=couple[None, :], drag_reading=drag_reading, raw_reading=raw, rotation_reading=rotation_reading,
+            raw_rotation=rotation, clean_reading=clean, history=history, own_field=own_field, own_image=own_image,
+            resistance=resistance, background_load=background, added_resistance=added_resistance,
+            added_load=added_load, steps=jnp.asarray(state["steps"]) + 1.0, dissipated=dissipated,
+            power=jnp.where(started, power, 0.0), cluster_gift_steps=jnp.asarray(state[GIFT_STEPS]) + gave.astype(dtype),
+            margin=margin, couple_margin=couple_margin,
+            below_floor=(jnp.minimum(margin, couple_margin) < FLOOR).astype(dtype), history_residual=residual,
+            history_flagged=((residual > HISTORY_LINE) | past_span).astype(dtype), wall_gap=gap,
+            near_wall=(gap < WALL_LINE).astype(dtype), particle_reynolds=_lax.stop_gradient(reynolds),
+            reynolds_flagged=(reynolds > REYNOLDS_LINE).astype(dtype), rate_load=rate_load, ringing=ringing,
+            rate_feedback=(ringing >= RINGING_STEPS).astype(dtype))
+        return {**node_fields(ended), "row_mismatch": _lax.stop_gradient(mismatch),
+                "row_mismatch_flagged": (mismatch > ROW_ULPS * jnp.finfo(dtype).eps).astype(dtype)}
+
     def own_field_bytes(self) -> int:
         """The bytes route 2's own field holds for this body (its transform's real and imaginary parts, three face
         sets) in the run's dtype."""
@@ -537,6 +705,16 @@ class PointDragNode(MimeNode):
                  f"{float(made['couple_margin']):.4g} (the couple) in free space at r = nu dt/h^2 = {r:.4g}"
                  f"{steady_line} (floor {FLOOR:g}; the wall lowers the force's, by up to 0.15 at half a radius at r = 3 "
                  f"in the floor sweep)"]
+        if self.one_pass:
+            lines.append(f"one pass: the flow's one elimination holds the drag law and the body's own step's row (its "
+                         f"row {int(c['partner_row'])} of {int(c['partners'])}), its force, couple and twist solved "
+                         f"with the field within the step (exact with IMEX Euler, the exchange workless); this node "
+                         f"books the law and checks it the step after, and coupling='lagged' is the cheaper route")
+        elif not c["one_way"]:
+            because = LAGGED_BECAUSE[str(c.get("lagged_because", ""))]
+            lines.append(f"lagged: the fluid's step takes the force and couple of the step before"
+                         f"{f' ({because})' if because else ''}; the exchange's unpaired work is first order in the "
+                         f"step")
         if c["one_way"]:
             lines.append("one-way: the rate terms read the flow as it is, the body's own field being none")
         elif c["scheme"] == "steady":
@@ -586,6 +764,31 @@ class PointDragNode(MimeNode):
         return _lax.stop_gradient(gap)
 
 
+#: The kernel widths, in cells, the stokes rung chooses among: the narrowest at or above max(1, a/(1.7 h)) whose
+#: coupled one-step margins clear the floor at the run's values.
+KERNEL_WIDTHS: tuple[float, ...] = (1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
+
+
+def kernel_width(radius: float, viscosity: float, density: float, spacing: float, dt: float, steady: bool,
+                 written: float | None = None, ladder: Sequence[float] = KERNEL_WIDTHS
+                 ) -> tuple[float | None, float, tuple[float, ...]]:
+    """The exchange kernel's width in cells a point body of ``radius`` takes: ``written``, or the narrowest on
+    ``ladder`` at or above max(1, a/(1.7 h)) whose free-space coupled one-step margins (the force's and the couple's)
+    clear the floor; with the least margin read there and the widths tried. ``None`` where none clears it. The drag's
+    node and a flow holding the body in its step read the one width from here."""
+    least = max(1.0, radius / (1.7 * spacing))
+    tried_ladder = (float(written),) if written is not None else tuple(
+        w for w in ladder if w >= least - 1e-12) or (ladder[-1],)
+    margin = float("nan")
+    tried: list[float] = []
+    for width in tried_ladder:
+        tried.append(width)
+        margin = min(free_space_margins(radius, viscosity, density, spacing, width, dt, steady))
+        if margin >= FLOOR and width >= least - 1e-12:
+            return width, margin, tuple(tried)
+    return None, margin, tuple(tried)
+
+
 def free_space_margins(radius: float, viscosity: float, density: float, spacing: float, width_cells: float, dt: float,
                        steady_limit: bool = False, faxen_on: bool = True) -> tuple[float, float]:
     """The coupled one-step margins a point body of ``radius`` reads in a free box, the force's and the couple's (the
@@ -610,5 +813,5 @@ def free_space_margins(radius: float, viscosity: float, density: float, spacing:
 
 
 __all__ = ["AVERAGES", "BASSET_LINE", "COUPLE", "FAXEN_FORCES", "FLOOR", "FORCES", "GIFT_STEPS", "HISTORY_LINE",
-           "LAPLACIANS", "REYNOLDS_LINE", "RESPONSES", "RINGING_STEPS", "ROTATIONS", "ROUTES", "WALL_LINE",
-           "PointDragInputs", "PointDragNode", "PointDragState", "free_space_margins"]
+           "KERNEL_WIDTHS", "LAPLACIANS", "REYNOLDS_LINE", "RESPONSES", "RINGING_STEPS", "ROTATIONS", "ROUTES", "WALL_LINE",
+           "PointDragInputs", "PointDragNode", "PointDragState", "free_space_margins", "kernel_width"]

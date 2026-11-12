@@ -57,9 +57,12 @@ RTOL = 1e-10
 #: carries some 5e-4 of the flux, and that small flux moves with the solves' path (XLA's threads on a runner, the
 #: tree's wall's rounding) by 1e-9 of itself between runs of one program on one CPU model (runs 42968465331 and
 #: 42968836338), some 4e-13, while a share moved by a ten-billionth is not rounding.
+#: A point body's row mismatch held one pass, a share (one): the body's twist against the one its flow closed, the two
+#: solves' rounding (some 1e-16), which moves with any change to their arithmetic (their scaling and refinement moved
+#: it), while a share moved by a ten-billionth is not rounding (its flag's line is 1e4 eps).
 FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_short": 1e-4,
           "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0,
-          "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2, "bypass_ratio": 1.0}
+          "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2, "bypass_ratio": 1.0, "row_mismatch": 1.0}
 LEDGER_FLOOR = 1e-9
 #: A field judged on another field's scale, by name: an open flow's unit fields' components across a tube along z are
 #: the solve's rounding, which moves by its own size across machines (flake cause 2), so each is judged on the unit

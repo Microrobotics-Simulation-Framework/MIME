@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -121,6 +121,9 @@ class Registration:
     subject: str
     reads: Mapping[str, str] = field(default_factory=dict[str, str])
     returns: Mapping[str, str] = field(default_factory=dict[str, str])
+    #: Values the registering law gives the receiving dynamics in SI, which it holds the law with (a point body's
+    #: radius, from its hull).
+    parameters: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
 
 
 @dataclass(frozen=True)
@@ -333,6 +336,9 @@ class PlanContext:
         default_factory=dict[str, Mapping[str, tuple[str, ...]]])
     #: By each medium role, the exchange frame of the field its medium carries that takes exchange deliveries (SF-4).
     exchanges: Mapping[str, ExchangeFrame] = field(default_factory=dict[str, "ExchangeFrame"])
+    #: By each body role, the ids of the laws attached in the experiment that hold the body off a surface (a contact:
+    #: the body's step is then projected, not linear in its twist); a body none confines has no entry.
+    confined: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
@@ -439,6 +445,9 @@ class BuildContext:
     spin_asymmetry: tuple[float, ...] = ()
     rates_read: bool = True
     mass_read: bool = False
+    #: Whether a plan reads this body's own step's row (``body.step_row``: a flow holding it in its one elimination),
+    #: which a body publishes only then.
+    row_read: bool = False
     members: Mapping[str, BuildContext] = field(default_factory=dict[str, "BuildContext"])
     #: The entry the context is for: what a group's entry builds each member's part from.
     entry: Any = None
@@ -450,6 +459,10 @@ class BuildContext:
     #: By each medium role of a law exchanging with its field, the highest frequency (Hz) of the drives bound to that
     #: medium, where one is pulsatile: a point body's Basset number is read from it.
     frequencies: Mapping[str, float] = field(default_factory=dict[str, float])
+    #: By each medium role of a law the medium's field holds in its one elimination (a one-pass exchange partner), the
+    #: row of that field's partners' solution that is its own (the field holds its partners in the order of their ids)
+    #: and how many rows it has.
+    partner_rows: Mapping[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -695,7 +708,9 @@ class Flag:
     run reports the flags raised over each window it reads, and a flag never blocks a read. A flag that ``warns`` is
     also warned of after a run that raised it, with its count: one whose steps hold values that are not what the step
     computes to its stated accuracy (a solve that stopped short). ``written``, where given, names settings of which
-    one written (not ``None``, and not ``False`` for a switch) makes the node raise it: a flag of an opt-in option."""
+    one written (not ``None``, and not ``False`` for a switch) makes the node raise it: a flag of an opt-in option.
+    ``kinds``, where given, names registration kinds of which one made or taken by the entry's plan makes the node raise
+    it: a flag of a scheme the plan chose (a point body held in its flow's one elimination)."""
 
     field: str
     meaning: str
@@ -704,11 +719,15 @@ class Flag:
     group: bool | None = None
     warns: bool = False
     written: tuple[str, ...] = ()
+    kinds: tuple[str, ...] = ()
 
-    def raised_by(self, rung: str | None, group: bool, entry: object = None) -> bool:
-        """Whether the node built for ``rung``, for a group or not, from ``entry`` (its settings), raises it."""
+    def raised_by(self, rung: str | None, group: bool, entry: object = None,
+                  kinds: Collection[str] = ()) -> bool:
+        """Whether the node built for ``rung``, for a group or not, from ``entry`` (its settings), its plan making or
+        taking registrations of ``kinds``, raises it."""
         return (self.rung is None or self.rung == rung) and (self.group is None or self.group == group) and (
-            not self.written or any(getattr(entry, name, None) not in (None, False) for name in self.written))
+            not self.written or any(getattr(entry, name, None) not in (None, False) for name in self.written)) and (
+            not self.kinds or any(kind in kinds for kind in self.kinds))
 
 
 @dataclass(frozen=True)

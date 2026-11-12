@@ -904,7 +904,8 @@ def run_layout(plans: PlanSet) -> Layout:
         if plan.joined:
             continue  # its group's plan builds its node, and lays out the flags its node raises
         flags += [FlagLayout(plan.owner, cls.label(), plan.node_name(flag.node), flag.field, flag.meaning)
-                  for flag in cls.raises if flag.raised_by(rung, bool(plan.members), plan.entry)]
+                  for flag in cls.raises
+                  if flag.raised_by(rung, bool(plan.members), plan.entry, plan.registration_kinds)]
         speed = speed_limit_flag(plans, plan)
         if speed is not None:
             flags.append(speed)
@@ -1417,7 +1418,8 @@ class BuiltExperiment:
         warns = {f"{plan.node_name(flag.node)}.{flag.field}" for plan in self._plans.entries
                  for flag in plan.registered.cls.raises
                  if flag.warns and not plan.joined
-                 and flag.raised_by(getattr(plan.entry, "rung", None), bool(plan.members), plan.entry)}
+                 and flag.raised_by(getattr(plan.entry, "rung", None), bool(plan.members), plan.entry,
+                                    plan.registration_kinds)}
         warns |= {flag.path for flag in self.layout.flags if flag.warns}
         for read in result.flags:
             if read.path in warns and read.was_raised:

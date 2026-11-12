@@ -176,6 +176,7 @@ drag.rft-coefficients         user
 drag.rft-indefinite           user
 drag.rft-wall-range           user
 drag.stokes-floor             user
+drag.stokes-one-pass          user
 drag.stokes-scheme            user
 drag.stokes-size              user
 drag.stokes-sphere            user
@@ -232,8 +233,10 @@ flow.prescribed-alpha         user
 flow.prescribed-region        user
 flow.region                   user
 flow.resolution               user
+flow.resolved-exchange        user
 flow.solve-report-rows        user
 flow.steady-convection        user
+flow.tree-exchange            user
 flow.tree-period              user
 flow.tree-resolved            user
 flow.tree-scheme              user

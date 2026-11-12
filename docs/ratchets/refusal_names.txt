@@ -15,6 +15,7 @@ domain.length  # a setting of a group, read in SI by an entry's build (ctx.scala
 dx.doi.org  # a host doi.org answers to, compared with an address's
 files.enabled  # the records API's field a draft is saved naming while its files are still to come
 flow.exchange_partner    # the registration kind of a medium field's exchange partner (mime.vocabulary)
+flow.one_pass_partner    # the registration kind of a point body a flow holds in its one elimination (mime.vocabulary)
 flow.resolved_partner    # the registration kind of a body a medium's field resolves on its grid (mime.vocabulary)
 fluid.dynamic_viscosity  # an OpenMaterica record field a value is read from
 half_space.boundary  # the half-space's case in the shape conformance suite: the set its probes are placed about, which no switch owns

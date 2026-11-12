@@ -1,0 +1,49 @@
+{
+  "written": "2026-11-12, committed before the bit comparison ran: the programs that existed before #270 against the release tip, after the fix round",
+  "phase": "F3 PR 2 (#270) fix round: bits",
+  "labels": "made by the fix round's builder (Opus) from where the round's changes act",
+  "seen_before": [
+    "#270's first round: 12 programs equal against ff9624c; the review's re-run (run 43164101366): equal with a float32-ulp and a float64-ulp control that each differ"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner, one CPU and one BLAS thread (bit_compare.py), base and head in one job",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "the saved cases open_tube_flow and open_tube_loop (open vessels without bodies) and point_body_flow lagged (point_lagged), 10 ms each, against the release tip 7c762f4",
+    "seeds_and_draws": "deterministic"
+  },
+  "gate_bits": {
+    "claim": "no released program moves: the scatter's face weights act only on an open grid's delivery, which only a body held one pass makes (no released program has one); the equilibrated solves only where partners are stacked or free (an open vessel's openings alone keep their lone solve); the rate share only under one pass",
+    "kind": "equality",
+    "case": "probe/run.sh (bit_compare.py and probe/dump.py)",
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "arrays differing over the six programs",
+      "basis": "derived",
+      "why": "none of the round's changes is on these programs' paths"
+    },
+    "metric": "numpy.array_equal per array",
+    "control": {
+      "plant": "the viscosity one ulp up: float32's ulp on open_tube_loop-f32, float64's on point_lagged-f64",
+      "environment_variable": "none (the program's name)",
+      "expected_rate": "both controls differ",
+      "runs": 2,
+      "clean_expected": "the repeat of point_lagged-f64 identical",
+      "resolution": "one ulp of the viscosity"
+    },
+    "if_wrong": "a moved array names a path the round touched after all",
+    "cannot_discriminate_if": "a control equal (it could not fail)"
+  },
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43180072517",
+    "gate_bits": "open_tube_flow, open_tube_loop and point_lagged in float32 and float64: 0 arrays differ of 23, 23, 26, 26, 57, 57; the float32-ulp control on open_tube_loop-f32 differs in 15 of 26 arrays, the float64-ulp control on point_lagged-f64 in 35 of 57; point_lagged-f64 recorded twice identical: as predicted"
+  },
+  "committed_at": "9ba766d0 on its probe branch, before the run (the predictions unchanged here; outcomes added after it)"
+}

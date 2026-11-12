@@ -170,6 +170,14 @@ def test_a_resistance_splits_into_its_translational_coupling_and_rotational_bloc
     assert held["N s"][:3, 3:].all() and held["N s"][3:, :3].all(), "both coupling blocks share their unit"
 
 
+def test_a_composite_of_more_parts_splits_its_last_axis_three_columns_a_part():
+    held = dict(blocks("N; N m; m/s; rad/s; m/s; 1/(m s); rad/s", (2, 21)))
+    assert {name: int(mask.sum()) for name, mask in held.items()} == {"N": 6, "N m": 6, "m/s": 12, "rad/s": 12,
+                                                                       "1/(m s)": 6}
+    assert held["m/s"][:, 6:9].all() and held["m/s"][:, 12:15].all() and not held["m/s"][:, 9:12].any()
+    assert names_and_sizes("a; b; c; d", (3, 10)) == {"a; b; c; d": 30}, "parts that do not fit three a part: whole"
+
+
 def test_one_unit_is_one_block_and_so_is_a_field_whose_units_are_not_declared_or_do_not_fit():
     assert names_and_sizes("T/m", (3, 3)) == {"T/m": 9}
     assert names_and_sizes(None, (8, 3)) == {UNDECLARED: 24}

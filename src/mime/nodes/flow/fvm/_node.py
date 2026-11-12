@@ -65,7 +65,9 @@ from mime.core._node import STAGNATED, rechecked
 from mime.nodes.flow.fvm._band import PorousRegion, TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \
     negative_resistivity, plan_rung, ramp, wall_fields
 from mime.nodes.flow.fvm._flags import FLAGS, STALL_PER_TOLERANCE
+from mime.nodes.flow.fvm._exchange import box_side, faxen, held_spectrum, steady_response
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
+from mime.nodes.flow.fvm._partners import DELIVERIES, SOLUTION_COLUMNS, BodyPartner, Partnered, partnered_step
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
@@ -135,6 +137,24 @@ DRIVE_FIELDS = ("body_force", "waveform")
 #: The inputs an exchange partner's law delivers its scattered force into, a force density (N/m^3) on each face set
 #: (``mime.nodes.flow.fvm._exchange``): a node built with ``exchange=True`` takes them.
 EXCHANGE_FIELDS = ("exchange_x", "exchange_y", "exchange_z")
+#: A point body's inputs a flow holding it in its one elimination takes (``partner_<b>_<name>``, each with its shape and
+#: units): its pose and its own step's row at the step's start (``body.step_row``: its stepping mass beside its free
+#: load, as its dynamics publishes it), and the loads and resistances of its other laws, summed (the build delivers
+#: each to the flow as to the body: ``mime.build._construct``).
+PARTNER_INPUTS = {"pose": ((7,), "m; 1"), "step_row": ((6, 7), "kg; N"), "loads": ((6,), "N; N m"),
+                  "resistances": ((6, 6), "N s/m; N s; N m s")}
+#: The inputs among them the build sums each of the body's other laws' deliveries into, by the body's input.
+PARTNER_SUMS = {"applied_wrench": "loads", "background_load": "loads", "resistance": "resistances"}
+#: The prefix of a held point body's inputs, fields and hosted row.
+PARTNER = "partner_"
+#: The fields a flow holding point bodies returns to each (``partner_<b>_<name>``): the load and response it is handed.
+PARTNER_HANDED = ("resistance", "load")
+#: The count of held point bodies from which the build report names the lagged exchange as the cheaper route: six unit
+#: solves a body a step against the lagged exchange's none. Measured through the node (F3's second PR, float64, 40 um
+#: spheres in the 1 mm periodic tube at D/h 16, a 4 vCPU runner), one pass's step took 4.9, 6.8 and 9.5 times the
+#: lagged one's at 1, 2 and 5 bodies, and its compile 3.5, 5.4 and 9.7 times: the line is where both reach about ten
+#: times (a declared line on those ratios; ten bodies unmeasured).
+HELD_SUGGESTS_LAGGED = 5
 
 
 class FlowFields(TypedDict):
@@ -202,6 +222,31 @@ class MeteredTreeFlowState(FlowFields, _WallCounts, FlowRecords, closed=True):
     records."""
 
 
+class PartnerFields(TypedDict):
+    """A flow holding point bodies in its one elimination (:meth:`ImplicitFlowNode.partner_fields`): beside these, the
+    load and response each body is handed, ``partner_<b>_load`` and ``partner_<b>_resistance``, a state's extra items,
+    their units the edges' that deliver them."""
+
+    #: Each body's six unit fields a face set, the velocity a unit force (the first three of each six, m/(s N)) or a
+    #: unit couple (the last three, 1/(s N)) drives over a step: one block, as verify judges it.
+    partner_units_x: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    partner_units_y: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    partner_units_z: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    #: What the step solved for each body (``mime.vocabulary.FLOW_PARTNER_SOLUTION``, its units).
+    partner_solution: ReadOnly[Annotated[Float[Array, "bodies 21"],  # noqa: F722 - a jaxtyping shape
+                                         Units("N; N m; m/s; rad/s; m/s; 1/(m s); rad/s")]]
+
+
+class PartneredFlowState(FlowFields, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
+    """A flow holding point bodies: the flow's fields, the bodies' and their handed loads and responses (whatever else
+    it holds, the ledger's records or an open vessel's fields, another of its states names)."""
+
+
+class MeteredPartneredFlowState(FlowFields, FlowRecords, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
+    """A metered flow holding point bodies: the flow's fields, the stall detector, the ledger's records and the bodies'
+    fields."""
+
+
 class FlowInputs(TypedDict, closed=True):
     body_force: NotRequired[ReadOnly[Annotated[Float[Array, "3"], Units("m/s^2")]]]  # noqa: F722 - a jaxtyping shape
     waveform: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("1")]]]  # noqa: F722 - a jaxtyping shape
@@ -218,6 +263,15 @@ class StepParts(NamedTuple):
 
 def _velocity(state: Mapping[str, Array]) -> Velocity:
     return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+
+
+def with_partner_forces(rhs: Velocity, partnered: Partnered | None) -> Velocity:
+    """The step's right-hand side with each held point body's delivered force added (none without them): what the
+    solved field balances, as its energy terms and a pressure recovered from it read it."""
+    forced = rhs
+    for force in (partnered.forces if partnered is not None else ()):
+        forced = (forced[0] + force[0], forced[1] + force[1], forced[2] + force[2])
+    return forced
 
 
 def porous_role(index: int) -> str:
@@ -310,7 +364,9 @@ class ImplicitFlowNode(MimeNode):
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
                  solve_report_rows: int = 0, wall_name: str = "", solve_report: Any = None,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
-                 exchange: bool = False, porous_laws: Sequence[str] = (), ledger: Sequence[str] = (),
+                 exchange: bool = False, partner_radius: Any = None, partner_widths: Sequence[float] = (),
+                 partner_ids: Sequence[str] = (), partner_origin: Sequence[float] = (0.0, 0.0, 0.0),
+                 partner_bodies: Sequence[str] = (), porous_laws: Sequence[str] = (), ledger: Sequence[str] = (),
                  **extra: Any) -> None:
         chosen = scheme_named(scheme)
         if chosen.stage_kind is not StageKind.MONOLITHIC_PROJECTED_CG or chosen.state_fields != ("velocity",) or \
@@ -351,6 +407,16 @@ class ImplicitFlowNode(MimeNode):
             at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
         if tolerance is None:
             tolerance = default_tolerance(run_dtype())
+        widths = tuple(float(w) for w in partner_widths)
+        radii = np.atleast_1d(np.asarray(partner_radius if partner_radius is not None else (), dtype=np.float64))
+        if len(radii) != len(widths) or len(tuple(partner_ids)) != len(widths) or \
+                (partner_bodies and len(tuple(partner_bodies)) != len(widths)):
+            raise ValueError(f"each point body the flow holds gives its radius, its kernel's width and its law's id: "
+                             f"{len(radii)} radii, {len(widths)} widths, {len(tuple(partner_ids))} ids")
+        partners: dict[str, Any] = {} if not widths else dict(
+            partner_radius=radii, partner_widths=widths, partner_ids=tuple(str(i) for i in partner_ids),
+            partner_origin=tuple(float(c) for c in partner_origin),
+            **({"partner_bodies": tuple(str(b) for b in partner_bodies)} if partner_bodies else {}))
         count = len(porous_laws)
         if any(porous_leaf(index, name) not in extra for index in range(count) for name in POROUS_LEAVES) or \
                 porous_leaf(count, "permeability") in extra:
@@ -370,9 +436,12 @@ class ImplicitFlowNode(MimeNode):
                          periodic_images=str(periodic_images), solve_report_rows=int(solve_report_rows),
                          solve_report=np.zeros((max(int(solve_report_rows), 1), REPORT_SIZE)), **initial,
                          **({"wall_name": str(wall_name)} if wall_name else {}),
-                         **({"exchange": True} if exchange else {}), **extra,
+                         **({"exchange": True} if exchange else {}), **partners, **extra,
                          **({"porous_laws": tuple(str(law) for law in porous_laws)} if porous_laws else {}),
                          **({"ledger": tuple(ledger)} if ledger else {}))
+        self.partner_spectra = {width: (held_spectrum("force", width, box_side(width), str(run_dtype())),
+                                        held_spectrum("couple", width, box_side(width), str(run_dtype())))
+                                for width in sorted(set(widths))}
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -397,6 +466,17 @@ class ImplicitFlowNode(MimeNode):
                 TREE_WALL_COUNTS: ParamSpec(trainable=False, units="1",
                                             description=f"the tube tree's wall's counts (wall_unrefined, "
                                                         f"wall_unconverged, wall_unplanned); {made}")}
+        if self.body_count:
+            wall["partner_radius"] = ParamSpec(units="m", bounds=(0.0, None),
+                                               description="each point body's radius, whose drag law the flow holds in "
+                                                           "its step (one pass): its Stokes drag and couple and its "
+                                                           "Faxén coefficients")
+            wall["partner_widths"] = ParamSpec(trainable=False, units="1",
+                                               description="each point body's exchange kernel's width in cells "
+                                                           "(structural: its stencil's reach was held with it)")
+            wall["partner_origin"] = ParamSpec(trainable=False, units="m",
+                                               description="the world point of the grid's origin, which a body's pose "
+                                                           "is read from (structural)")
         held_keys = {*self.constants(), *((TREE_WALL, TREE_WALL_COUNTS) if self.walled_by_tree else ())}
         porous = ("a porous region's {what}, in the box's frame; its value is sampled in the program each step, and a "
                   "geometry derivative through the band carries the band's ripple")
@@ -444,12 +524,61 @@ class ImplicitFlowNode(MimeNode):
                 own[field] = node_input("N/m^3", shape, additive=True,
                                         description="the force density the exchange partners' laws scatter onto the "
                                                     "faces of one set, on the fluid and the solid alike")
-        return own
+        return {**own, **self.partner_inputs()}
 
     @property
     def exchanges(self) -> bool:
         """Whether the node takes its exchange partners' scattered force (built with ``exchange=True``)."""
         return bool(self.constants().get("exchange", False))
+
+    @property
+    def body_count(self) -> int:
+        """How many point bodies the flow holds in its one elimination (their drag laws held in its step)."""
+        return len(self.constants().get("partner_widths", ()))
+
+    def partner_inputs(self) -> dict[str, Any]:
+        """Each held point body's inputs (:data:`PARTNER_INPUTS`), ``partner_<b>_<name>``."""
+        return {f"partner_{b}_{name}": node_input(units, shape, additive=name in PARTNER_SUMS.values(),
+                                                  description=f"held point body {b}'s {name.replace('_', ' ')}")
+                for b in range(self.body_count) for name, (shape, units) in PARTNER_INPUTS.items()}
+
+    def row_inputs(self) -> tuple[str, ...]:
+        """The inputs each held body's row is read into (its pose and step's row, its other laws' loads and
+        resistances): state the flow reads, no delivery to it, so the energy ledger books none of them here."""
+        return tuple(self.partner_inputs())
+
+    def body_partners(self, p: Mapping[str, Any], boundary_inputs: Mapping[str, Array], dt: Any,
+                      dtype: Any) -> list[BodyPartner]:
+        """Each held point body's law and own row over the step (``mime.nodes.flow.fvm._partners``): its point from
+        its pose (less the grid's origin), its Stokes drag and couple less the kernel's own steady self-responses in a
+        free box by the grid's operators (``M0 - M_inf``, ``K0 - K_inf``: the constant correction), Faxén's
+        coefficient beyond the kernel's own second moment, and its own step's matrix and right-hand side from what it
+        publishes and its other laws deliver."""
+        c = self.constants()
+        h = float(c["spacing"])
+        mu = as_run_array(p["viscosity"])
+        radii = as_run_array(p["partner_radius"])
+        origin = as_run_array(p["partner_origin"])
+        found: list[BodyPartner] = []
+        for b, width in enumerate(c["partner_widths"]):
+            a = radii[b]
+            spectrum, dipole = self.partner_spectra[width]
+            coefficient = faxen(a, width * h, 1.0 / 6.0)
+            steady = steady_response(spectrum, coefficient / h ** 2, coefficient / h ** 2) / (mu * h)
+            spin = steady_response(dipole, images=False) / (mu * h ** 3)
+            translation = 1.0 / (6.0 * jnp.pi * mu * a) - steady
+            rotation = 1.0 / (8.0 * jnp.pi * mu * a ** 3) - spin
+            law = jnp.concatenate([jnp.full(3, translation, dtype=dtype), jnp.full(3, rotation, dtype=dtype)])
+
+            def given(name: str, b: int = b) -> Array:
+                shape = PARTNER_INPUTS[name][0]
+                return jnp.asarray(boundary_inputs.get(f"partner_{b}_{name}", jnp.zeros(shape, dtype=dtype)),
+                                   dtype=dtype)
+
+            row = given("step_row")
+            found.append(BodyPartner(given("pose")[:3] - origin, float(width), coefficient, coefficient, law,
+                                     row[:, :DELIVERIES] / dt + given("resistances"), row[:, DELIVERIES] + given("loads")))
+        return found
 
     def exchanged(self, boundary_inputs: Mapping[str, Array], dtype: Any) -> Velocity | None:
         """The exchange partners' force density on each face set (N/m^3), as the step reads it (every law's own input
@@ -808,10 +937,50 @@ class ImplicitFlowNode(MimeNode):
         common = self.initial_fields()
         held = node_fields(FlowState(**common)) if not self.walled_by_tree else node_fields(
             TreeFlowState(**common, **self.wall_report(jnp.zeros(len(WALL_COUNTS), dtype=run_dtype()))))
+        held = {**held, **self.partner_fields()}
         if not self.metered:
             return held
         z = as_run_array(0.0)
         return books.with_records(self, {**held, "stall_ratio": z, "stall_flagged": z})
+
+    def partner_fields(self) -> dict[str, Array]:
+        """The held point bodies' fields at the run's start (none without them): each body's six unit fields a face
+        set (``partner_units_<x|y|z>``, the last step's, which warm-start this one's), the solution a row a body
+        (``partner_solution``: its force and couple, its twist as the field closed it, its reading, ``SOLUTION``), the
+        load and response each is handed (``partner_<b>_load``, ``partner_<b>_resistance``)."""
+        count = self.body_count
+        if not count:
+            return {}
+        grid = self.grid(self.constants())
+        dtype = run_dtype()
+        held: dict[str, Array] = {f"partner_units_{x}": jnp.zeros((DELIVERIES * count, *grid.shape(k)), dtype=dtype)
+                                  for k, x in enumerate("xyz")}
+        held["partner_solution"] = jnp.zeros((count, SOLUTION_COLUMNS), dtype=dtype)
+        for b in range(count):
+            held[f"partner_{b}_resistance"] = jnp.zeros((DELIVERIES, DELIVERIES), dtype=dtype)
+            held[f"partner_{b}_load"] = jnp.zeros(DELIVERIES, dtype=dtype)
+        return held
+
+    def held_partner_units(self, state: Mapping[str, Array]) -> list[Velocity]:
+        """The held bodies' unit fields the last step solved, in order (each body's six)."""
+        return [(state["partner_units_x"][k], state["partner_units_y"][k], state["partner_units_z"][k])
+                for k in range(DELIVERIES * self.body_count)]
+
+    def partner_ended(self, grid: MACGrid, bodies: Sequence[BodyPartner], partnered: Partnered,
+                      held_units: int) -> dict[str, Array]:
+        """The held bodies' fields at the step's end from its one elimination: the last ``DELIVERIES`` times the
+        bodies' unit fields (the openings' come first), the solution and what each body is handed."""
+        units = partnered.units[held_units:]
+        count = len(bodies)
+        first = int(partnered.deliveries.shape[0]) - DELIVERIES * count
+        forces = jnp.reshape(partnered.deliveries[first:], (count, DELIVERIES))
+        ended: dict[str, Array] = {f"partner_units_{x}": jnp.stack([unit[k] for unit in units])
+                                   for k, x in enumerate("xyz")}
+        ended["partner_solution"] = jnp.concatenate([forces, partnered.twists, partnered.kernels], axis=1)
+        for b in range(count):
+            ended[f"partner_{b}_resistance"] = partnered.handed_resistance[b]
+            ended[f"partner_{b}_load"] = partnered.handed_load[b]
+        return ended
 
     def initial_fields(self) -> dict[str, Array]:
         """The flow's state fields at the run's start, without the ledger's."""
@@ -869,11 +1038,21 @@ class ImplicitFlowNode(MimeNode):
         tap = self.report_row(p, steps)
 
         magnitude = self.magnitude_of(p, grid, sigma)
+        bodies = self.body_partners(p, boundary_inputs, dt, dtype) if self.body_count else []
+        held_units = self.held_partner_units(state) if bodies else []
+        partnered: dict[str, Partnered] = {}
 
         def solve(shift: Any, rhs: Velocity, guess: Velocity | None) -> tuple[Velocity, Array]:
-            return projected_solve(grid, operator(shift), self.diagonal_of(p, grid, sigma, shift), rhs,
-                                   guess if c["scaling_start"] else None, stopping, tap, preconditioner,
-                                   magnitude(shift))
+            def one(b: Velocity, start: Velocity | None) -> tuple[Velocity, Array]:
+                return projected_solve(grid, operator(shift), self.diagonal_of(p, grid, sigma, shift), b,
+                                       start if c["scaling_start"] else None, stopping, tap, preconditioner,
+                                       magnitude(shift))
+
+            if not bodies:
+                return one(rhs, guess)
+            result = partnered_step(one, grid, rhs, guess, bodies, held_units, as_run_array(p["density"]))
+            partnered["step"] = result
+            return result.solved, result.report
 
         context = StepContext(grid, operator, self.with_exchange(p, self.forcing(fields, boundary_inputs, scheme, dtype),
                                                                  boundary_inputs, dtype),
@@ -897,7 +1076,8 @@ class ImplicitFlowNode(MimeNode):
         reported = self.reported_flux(lumen, solid)
         reynolds = 2.0 * jnp.abs(reported) / (jnp.pi * self.vessel_radius(p) * self.kinematic(p))
         stokes = not bool(c["convection"])
-        energy = self.energy_terms(p, grid, velocity, stage, sigma, fields, dt) if self.metered else {}
+        solved_partners = partnered.get("step")
+        energy = self.energy_terms(p, grid, velocity, stage, sigma, fields, dt, solved_partners) if self.metered else {}
         ended: dict[str, Array] = dict(
             **_held_of(ended_state), steps=steps + 1, solve_report=report,
             solve_report_sum=jnp.asarray(state["solve_report_sum"]) + report,
@@ -911,9 +1091,14 @@ class ImplicitFlowNode(MimeNode):
             reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
             negative_resistivity=negative_resistivity(fields, self.permeabilities(p)).astype(dtype))
         if self.porous_laws:
-            ended.update(self.porous_report(p, grid, operator(stage.shift)(stage.solved), stage.rhs, dtype))
+            # The pressure a porous region's faces read balances everything the step solved against: the drive and
+            # each held body's delivered force.
+            ended.update(self.porous_report(p, grid, operator(stage.shift)(stage.solved),
+                                            with_partner_forces(stage.rhs, solved_partners), dtype))
         held = node_fields(FlowState(**ended)) if fields.counts is None else node_fields(
             TreeFlowState(**ended, **self.wall_report(fields.counts)))
+        if solved_partners is not None:
+            held = {**held, **self.partner_ended(grid, bodies, solved_partners, 0)}
         if self.metered:
             stall = self.stall_ratio(energy)
             line = STALL_PER_TOLERANCE[jnp.dtype(dtype).name] * as_run_array(p["tolerance"])
@@ -936,9 +1121,10 @@ class ImplicitFlowNode(MimeNode):
         return 0.5 * as_run_array(p["density"]) * self.grid(p).inner(velocity, velocity)
 
     def energy_terms(self, p: Mapping[str, Any], grid: MACGrid, before: Velocity, stage: StageParts, sigma: Velocity,
-                     fields: WallFields, dt: float) -> dict[str, Array]:
+                     fields: WallFields, dt: float, partnered: Partnered | None = None) -> dict[str, Array]:
         """Each term of the step's identity (J), the fluid's momentum at the solution the drive is paired with
-        (:meth:`fluid_momentum`), and the magnitude of the arithmetic forming them (``scale``)."""
+        (:meth:`fluid_momentum`), each held point body's force's work on the fluid at the solution (``partners``, under
+        its law: ``dt <S_F f, u'>``), and the magnitude of the arithmetic forming them (``scale``)."""
         fluid = (1.0 - fields.chi[0], 1.0 - fields.chi[1], 1.0 - fields.chi[2])
         rho, nu = as_run_array(p["density"]), self.kinematic(p)
         solved = stage.solved
@@ -947,7 +1133,9 @@ class ImplicitFlowNode(MimeNode):
         minus_laplacian = (-laplacian[0], -laplacian[1], -laplacian[2])
         penalised = (sigma[0] * solved[0], sigma[1] * solved[1], sigma[2] * solved[2])
         applied = self.operator_of(p, grid, sigma)(stage.shift)(solved)
-        remainder = (stage.rhs[0] - applied[0], stage.rhs[1] - applied[1], stage.rhs[2] - applied[2])
+        forced = with_partner_forces(stage.rhs, partnered)
+        partner_forces = partnered.forces if partnered is not None else ()
+        remainder = (forced[0] - applied[0], forced[1] - applied[1], forced[2] - applied[2])
         change = (solved[0] - before[0], solved[1] - before[1], solved[2] - before[2])
         stores = self.scheme.stores_inertia
         zero = jnp.zeros((), dtype=solved[0].dtype)
@@ -965,6 +1153,9 @@ class ImplicitFlowNode(MimeNode):
                              + size(stage.convection, solved) + nu * size(minus_laplacian, solved)
                              + size(penalised, solved))
                        + (size(before, before) + size(solved, solved) + size(before, solved) if stores else 0.0))
+        if partner_forces:
+            terms["partners"] = jnp.stack([dt * rho * inner(force, solved) for force in partner_forces])
+            scale = scale + rho * dt * sum((size(force, solved) for force in partner_forces), start=zero)
         return {**terms, "scale": scale}
 
     @staticmethod
@@ -1004,10 +1195,18 @@ class ImplicitFlowNode(MimeNode):
     def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
         """The laws the flow holds in its own step, each ``(role, law, class)``: the fluid's viscosity under the node's
         name (``water.flow.viscosity``) and the wall's band under the wall's own (``wall_name``, as the build gives it:
-        ``tube.wall``; the node's ``.wall`` otherwise), both dissipative. The drive is delivered, not held."""
+        ``tube.wall``; the node's ``.wall`` otherwise), both dissipative; each porous region's Darcy drag under its
+        law and each held point body's drag (:meth:`partner_laws`). The drive is delivered, not held."""
         wall = str(self.constants().get("wall_name", "")) or f"{self.name}.wall"
         return (("viscous", f"{self.name}.viscosity", books.DISSIPATIVE), ("penalty", wall, books.DISSIPATIVE),
-                *((porous_role(index), law, books.DISSIPATIVE) for index, law in enumerate(self.porous_laws)))
+                *((porous_role(index), law, books.DISSIPATIVE) for index, law in enumerate(self.porous_laws)),
+                *self.partner_laws())
+
+    def partner_laws(self) -> tuple[tuple[str, str, str], ...]:
+        """Each held point body's drag law, held in the step under its own id (``partner_<b>``): dissipative, its
+        sign judged in the sum of its two rows by the drag's own node (``cluster_gift_steps``)."""
+        return tuple((f"partner_{b}", str(law), books.DISSIPATIVE)
+                     for b, law in enumerate(self.constants().get("partner_ids", ())))
 
     def drive_work(self, held: Sequence[books.LedgerDelivery], boundary_inputs: Mapping[str, Array],
                    rows: Sequence[str], dt: float, momentum: Array, size: Array) -> tuple[Array, Array, Array]:
@@ -1107,15 +1306,17 @@ class ImplicitFlowNode(MimeNode):
                                  scale=energy["scale"] + drive_scale, operators={})
 
     def hosted_fields(self) -> tuple[str, ...]:
-        """The roles of the laws the node holds in its step (:meth:`hosted_laws`): the viscosity's, the wall's and each
-        porous region's."""
-        return (*HOSTED_FIELDS, *(porous_role(index) for index in range(len(self.porous_laws))))
+        """The roles of the laws the node holds in its step (:meth:`hosted_laws`): the viscosity's, the wall's, each
+        porous region's and each held point body's drag."""
+        return (*HOSTED_FIELDS, *(porous_role(index) for index in range(len(self.porous_laws))),
+                *(f"{PARTNER}{b}" for b in range(self.body_count)))
 
     def hosted_work(self, energy: Mapping[str, Array]) -> dict[str, Array]:
         """Each hosted law's work on the fluid over the step, by its role: the viscosity's, the wall's and each porous
-        region's, ``-D``."""
+        region's, ``-D``; and each held point body's drag's, its force's work on the fluid at the solution."""
         return {"viscous": -energy["viscous"], "penalty": -energy["penalty"],
-                **{porous_role(index): -energy[porous_role(index)] for index in range(len(self.porous_laws))}}
+                **{porous_role(index): -energy[porous_role(index)] for index in range(len(self.porous_laws))},
+                **{f"{PARTNER}{b}": energy["partners"][b] for b in range(self.body_count)}}
 
     # -- at the build and after the run ---------------------------------------------------------------------------
     def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
@@ -1158,7 +1359,28 @@ class ImplicitFlowNode(MimeNode):
             p = self._step_constants(None)
             gaps = [bool(gap) for gap in self.porous_gaps(p, self.grid(p))]
             lines += porous_lines(self.porous_laws, regions, gaps, float(c["spacing"]), str(c["interior"]))
+        lines += self.held_lines()
         return lines
+
+    def held_lines(self) -> list[str]:
+        """The point bodies the flow holds in its one elimination, and what holding them costs a step: a unit field a
+        delivery, six a body, each a projected solve warm-started from the last step's, and the bodies' unit fields
+        held between steps; where the bodies are many (:data:`HELD_SUGGESTS_LAGGED` or more), coupling='lagged' named
+        as the cheaper route."""
+        count = self.body_count
+        if not count:
+            return []
+        c = self.constants()
+        faces = sum(int(np.prod(self.grid(c).shape(k))) for k in range(3))
+        held = DELIVERIES * count * faces * int(jnp.dtype(run_dtype()).itemsize)
+        line = (f"the flow holds {count} point bod{'y' if count == 1 else 'ies'} in its one elimination (one pass: "
+                f"{', '.join(str(i) for i in c['partner_ids'])}): {DELIVERIES * count} unit fields solved a step "
+                f"beside its own solve, each warm-started from the last step's, and {held / 2 ** 20:.3g} MiB of them "
+                f"held between steps")
+        if count >= HELD_SUGGESTS_LAGGED:
+            line += (f"; with {count} bodies the lagged exchange, Drag.Stokes(coupling='lagged') on each, takes one "
+                     f"solve a step in all and is the cheaper route (its error first order in the step)")
+        return [line]
 
     @override
     def recheck_route(self, cause: str, dtype: str) -> str:
@@ -1224,7 +1446,7 @@ def check_deliveries(held: Sequence[books.LedgerDelivery], hosted_fields: Sequen
     (``fluid``'s loads)."""
     for delivery in held:
         hosted = delivery.kind == books.HOSTED and (delivery.field in hosted_fields
-                                                    or delivery.field.startswith(POROUS))
+                                                    or delivery.field.startswith((POROUS, PARTNER)))
         driven = delivery.kind == books.LOAD and delivery.field in (*DRIVE_FIELDS, *EXCHANGE_FIELDS)
         if not (hosted or driven):
             raise ValueError(f"the flow node hosts {list(HOSTED_FIELDS)} and is driven through {list(DRIVE_FIELDS)}: "
@@ -1232,6 +1454,6 @@ def check_deliveries(held: Sequence[books.LedgerDelivery], hosted_fields: Sequen
 
 
 __all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "POROUS", "POROUS_LEAVES", "STALL_SECTION", "STOKES_REYNOLDS",
-           "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
+           "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "MeteredPartneredFlowState", "PartnerFields", "PartneredFlowState",
            "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries", "porous_leaf", "porous_leaves",
-           "porous_role"]
+           "porous_role", "with_partner_forces"]

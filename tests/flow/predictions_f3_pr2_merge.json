@@ -1,0 +1,131 @@
+{
+  "written": "2026-11-12, by the merge of the release tip 92f698f (#259's resolved bodies, #264's porous plug) into #270, before the bit comparison and CI ran these gates",
+  "phase": "F3 PR 2 (#270): the merge with F4's first PR and the porous plug",
+  "labels": "made by the merge's builder (Opus) from where the three features meet in one flow",
+  "seen_before": [
+    "while writing the plug's gates, one local run at DETECTION_SEED=0 (seeds 0 and 1, a periodic and an open draw): clean, gate 1's quantities at most 0.082 of their lines and the faces 0.0046 (float32) and 0.0072 (float64) of theirs; the porousrhs control's faces 289 and 647 times their line in float32, 1.6e11 and 3.5e11 in float64",
+    "a local smoke of the plug beside gate 2's body: ledger_closes PASS one pass and lagged, the Darcy row negative, the drag's gift steps zero"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU: the gates on CI's runners and locally; the bits in one local job, base and head on one CPU set and one BLAS thread (bit_compare.py)",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 1's draws (a periodic box of 8 cells, an open vessel of 8 x 8 x 16) with a plug on the tube's axis (0.3 to 1 of its radius, 1 to 3 cells long, sqrt(K) 0.1 to 1 cell); gate 2's body (40 um, twice water's density, dt 0.2 ms, D/h 16) beside a plug filling the 1 mm tube (0.25 mm long, sqrt(K) a cell); bits: saved cases without an exchange partner",
+    "seeds_and_draws": "gate 1's plug draws fresh each run (fresh_seed, DETECTION_SEED replays one); the rest deterministic"
+  },
+  "gate_plug_one_pass": {
+    "claim": "a flow holding a porous plug and point bodies one pass steps as the monolithic step whose operator holds the plug's resistivity, and the plug's face pressures read every held body's force",
+    "kind": "bound",
+    "case": "tests/flow/test_one_elimination.py::test_a_porous_plug_beside_held_bodies_steps_as_the_monolithic_step_and_its_faces_read_their_forces",
+    "prediction": {
+      "value": 1.0,
+      "band": [
+        0,
+        1.0
+      ],
+      "unit": "each quantity's largest miss over its derived line (gate 1's and face_pressure_miss's)",
+      "basis": "derived",
+      "why": "the plug's resistivity enters the field's operator, which the elimination's unit solves and the monolithic step both use; the faces are recomputed from the step's own answer, so they miss only by rounding"
+    },
+    "metric": "gate_one(porous=True)'s found values",
+    "control": {
+      "plant": "the plug's faces read without the held bodies' forces (the plug's own reading before the merge)",
+      "environment_variable": "MIME_PLANT_ELIMINATION=porousrhs",
+      "expected_rate": "caught at every draw, both dtypes (its own test, test_control_a_plugs_faces_read_without_the_held_bodies_forces_miss_at_every_draw)",
+      "runs": "every CI run, fresh draws",
+      "clean_expected": "0 failures",
+      "resolution": "a body's force's own pressure on the faces against the reading's rounding"
+    },
+    "if_wrong": "the elimination does not see the plug, or the faces read another right-hand side than the step solved",
+    "cannot_discriminate_if": "the control's faces within their line (a body's force with no pressure on the faces)"
+  },
+  "gate_plug_books": {
+    "claim": "beside a plug a point body's books close one pass and lagged, each law on its own row",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_a_point_body_beside_a_porous_plug_closes_the_books_each_law_on_its_own_row",
+    "prediction": {
+      "value": "PASS",
+      "band": [
+        "PASS",
+        "PASS"
+      ],
+      "unit": "ledger_closes's verdict; the drag's gift steps; the Darcy row's sign",
+      "basis": "derived",
+      "why": "the hosted rows are the union of the plug's (porous_<i>) and the body's (partner_<b>), each booked from its own term"
+    },
+    "metric": "ledger_closes(result).status",
+    "control": {
+      "plant": "the plug's own sign-flip control (POROUS_SIGN, #264's gate 6) on the plug's ledger; this gate adds no new plant",
+      "environment_variable": "MIME_PLANT_POROUS_SIGN",
+      "expected_rate": "as #264 measured",
+      "runs": "CI",
+      "clean_expected": "PASS in both dtypes and both couplings",
+      "resolution": "the identity's own line"
+    },
+    "if_wrong": "a row the merge left out of the union of hosted rows",
+    "cannot_discriminate_if": "not applicable: ledger_closes is the books' own check"
+  },
+  "gate_resolved_point": {
+    "claim": "a point body in a flow that resolves another body is refused by name, whichever is attached first",
+    "kind": "equality",
+    "case": "tests/flow/test_one_elimination.py::test_a_flow_resolving_a_body_refuses_a_point_body_by_name_whichever_is_attached_first",
+    "prediction": {
+      "value": "flow.resolved-exchange",
+      "band": [
+        "flow.resolved-exchange",
+        "flow.resolved-exchange"
+      ],
+      "unit": "refusal code",
+      "basis": "derived",
+      "why": "the flow's registration check sees every registration, so the order of attachment cannot reach it"
+    },
+    "metric": "the plan's refusal codes",
+    "control": {
+      "plant": "none: each experiment without the other body plans",
+      "environment_variable": "none",
+      "expected_rate": "the controls plan",
+      "runs": "CI",
+      "clean_expected": "refused in the three couplings (one pass, lagged, one-way) and both orders",
+      "resolution": "not applicable"
+    },
+    "if_wrong": "a combination built silently",
+    "cannot_discriminate_if": "a control refused"
+  },
+  "gate_bits": {
+    "claim": "no program without an exchange partner moves against the release tip: the merge's own changes act only where a plug and a body meet (the faces' right-hand side, the frame's scheme), where a resolved body and a point body meet (refused), on a penalty rung's written coupling (refused) and on the frames a drag's build reads, which change only where a resolved body or a plug changes them",
+    "kind": "equality",
+    "case": "bit_compare.py against 92f698f, locally, one job",
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "arrays differing over the programs",
+      "basis": "derived",
+      "why": "none of the merge's changes is on these programs' paths"
+    },
+    "metric": "numpy.array_equal per array",
+    "control": {
+      "plant": "the viscosity one ulp up, float64's on a float64 program and float32's on a float32 one",
+      "environment_variable": "none (the program's name)",
+      "expected_rate": "both controls differ",
+      "runs": 1,
+      "clean_expected": "a program recorded twice identical",
+      "resolution": "one ulp of the viscosity"
+    },
+    "if_wrong": "a moved array names a path the merge touched after all",
+    "cannot_discriminate_if": "a control equal (it could not fail)"
+  },
+  "outcomes": {
+    "gate_bits": "bit_compare.py against 92f698f, locally, base and head in one job on CPU 0 and one thread (a laptop, not a runner): periodic_tube_flow (f32, f64), open_tube_flow (f32, f64), open_tube_loop (f32, f64), porous_plug (f32, f64), resolved_body_flow (f32, f64), tree_flow (f64) and point_body_flow lagged (f64): 0 arrays differ of 19, 19, 23, 23, 26, 26, 21, 21, 35, 35, 23 and 57; the float64-ulp control on periodic_tube_flow-f64 differs in 9 of 19 arrays, the float32-ulp control on open_tube_flow-f32 in 15 of 23; periodic_tube_flow-f64 recorded twice identical; steady_tube_flow named no function of the cases module on either side (a lambda case), so it ran on neither: as predicted for the 13 that ran",
+    "gate_plug_one_pass": "local, seeds 0 to 7 (4 periodic and 4 open draws a dtype), both dtypes: 0 over; gate 1's quantities at most 0.097 of their lines, the faces at most 0.028 of theirs; the porousrhs control 8/8 a dtype, the faces 45 to 7.6e3 times their line (float32) and 2.4e10 to 4.1e12 (float64); CI draws fresh on every run",
+    "gate_plug_books": "local: PASS in both dtypes, one pass and lagged; the Darcy row's work negative with no gift step, the drag's gift steps 0 on both its rows",
+    "gate_resolved_point": "local: flow.resolved-exchange in the three couplings with the point body after the resolved one (the only code) and before it; each experiment alone plans",
+    "gate_scheme": "local: with no scheme written the plug attached before and after the drag builds, the flow and the drag both imex_euler, and runs; without the plug the plan is refused drag.stokes-scheme"
+  },
+  "committed_at": "with the merge's outcomes commit; the predictions were written before the bits ran and before CI ran the gates (their local runs while writing them are under seen_before)"
+}

@@ -59,6 +59,7 @@ from mime.core.ledger import IDENTITY_ULPS
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import EQUATIONS, STOP_FIELD, FlowFields, ImplicitFlowNode, StepParts
+from mime.nodes.flow.fvm._partners import Partnered
 from mime.nodes.flow.fvm._resolved import BodyFaces, ResolvedBody, body_faces, moments, placed, pose_turn, \
     rigid_velocity, scattered, united
 from mime.registry import Problem
@@ -555,10 +556,10 @@ class ResolvedFlowNode(ImplicitFlowNode):
 
     @override
     def energy_terms(self, p: Mapping[str, Any], grid: MACGrid, before: Velocity, stage: Any, sigma: Velocity,
-                     fields: WallFields, dt: float) -> dict[str, Array]:
+                     fields: WallFields, dt: float, partnered: Partnered | None = None) -> dict[str, Array]:
         """The flow's terms with the bodies' penalty apart from the wall's: each body's work on the fluid under
         ``body_<i>``, the wall's penalty the rest of the step's."""
-        terms = super().energy_terms(p, grid, before, stage, sigma, fields, dt)
+        terms = super().energy_terms(p, grid, before, stage, sigma, fields, dt, partnered)
         if not isinstance(fields, ResolvedFields):
             return terms
         penalty, scale = terms["penalty"], terms["scale"]

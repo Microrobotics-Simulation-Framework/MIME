@@ -17,10 +17,19 @@ import numpy as np
 import pytest
 from hypothesis import Phase, given, settings
 
-from mime.nodes.flow.fvm._ports import PORT_LAWS, GivenPressure, Inflow, RowKind, Windkessel, port_system, \
-    waveforms_cancel, well_posed
+from mime.core.elimination import exchange_system
+from mime.nodes.flow.fvm._ports import PORT_LAWS, GivenPressure, Inflow, PortSolution, RowKind, Windkessel, \
+    opening_rows, openings_solved, waveforms_cancel, well_posed
 from mime.testing import PORT_LAW_DRAWS, port_law_suite
 from mime.testing._port_laws import books_residual
+
+
+def port_system(rows, a, b, base, response, predicted, reference, coupling=None) -> PortSolution:  # noqa: ANN001
+    """The openings alone through the one elimination: their rows (``opening_rows``), solved as the one partner
+    (``exchange_system``), their pressures and fluxes back (``openings_solved``)."""
+    partner, held, gauge = opening_rows(rows, a, b, base, response, predicted, reference, coupling)
+    deliveries = exchange_system([partner]).deliveries
+    return openings_solved(len(rows), reference, held, gauge, deliveries, base, response, predicted)
 
 
 @pytest.fixture(autouse=True)
