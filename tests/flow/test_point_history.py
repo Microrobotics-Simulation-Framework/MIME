@@ -10,6 +10,7 @@ import math
 
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from point_cases import WATER_MU, WATER_RHO, FreeBox, plant, point_experiment, seed
 
 from mime.nodes.flow.fvm import _exchange
@@ -90,28 +91,31 @@ def _light_run(steady: bool, ratio: float, radius: float, steps: int, own_field:
         _point_drag.PointDragNode.responses = held  # type: ignore[method-assign]
 
 
-def test_a_light_body_stays_bounded_under_each_scheme(dtype):
-    """Gate 14 (the review's B2), at the review's diverging arm (a 40 um body of 0.05 of water's density, Maxey and Riley
-    on, dt 50 us), its starting offset drawn: from rest in the driven tube under the field's steady limit it settles
-    with the flow (its own field removed from the rate terms' reading by the steady limit's own self-history), the
-    ringing flag never raised; and under IMEX Euler it stays finite and leads the fluid by Maxey and Riley's (m_f - m) g
-    / R0. The plant leaves the body's own field in the steady limit's reading (OWN_FIELD), which diverged there (at
+@pytest.mark.parametrize("coupling", [None, "lagged"])
+def test_a_light_body_stays_bounded_under_each_scheme(dtype, coupling):
+    """Gate 14 (the review's B2), one pass and lagged, at the review's diverging arm (a 40 um body of 0.05 of water's
+    density, Maxey and Riley on, dt 50 us), its starting offset drawn: from rest in the driven tube under the field's
+    steady limit it settles with the flow (its own field removed from the rate terms' reading by the steady limit's own
+    self-history), the ringing flag never raised; and under IMEX Euler it stays finite and leads the fluid by Maxey and
+    Riley's (m_f - m) g / R0. The plant leaves the body's own field in the steady limit's reading (OWN_FIELD), which diverged there (at
     radii of 31 and 33 um and densities of 0.12 and 0.2 the PR's reading was itself stable: the gate is held at the
-    arm where it was not). Lagged (declared), where the plant diverges: one pass passed this gate on F3's second PR's
-    probe, but its plant did not ring there, so that arm would have no control."""
+    arm where it was not). The plant diverges under both schemes: lagged it rings and grows; one pass it runs away
+    without the sign reversals the flag counts (the body at about -1e3 m/s after 100 steps at every one of 20 draws,
+    the flag raised at none of them), so there the slip catches it."""
     rng = np.random.default_rng(14000 + seed())
     ratio, radius, offset = 0.05, 40e-6, float(rng.uniform(0.0, 0.1e-3))
-    steady = _light_run(True, ratio, radius, 100, own_field=not plant("OWN_FIELD"), offset=offset, coupling="lagged")
+    steady = _light_run(True, ratio, radius, 100, own_field=not plant("OWN_FIELD"), offset=offset, coupling=coupling)
     velocity = float(np.asarray(steady.final["ball"]["twist"])[2])
     reading = float(np.asarray(steady.final["drag:ball"]["drag_reading"])[2])
     ringing = _rang(steady)
     slip = abs(velocity - reading) / abs(reading)
-    timed = _light_run(False, ratio, radius, 100, offset=offset, coupling="lagged")
+    timed = _light_run(False, ratio, radius, 100, offset=offset, coupling=coupling)
     lead = float(np.asarray(timed.final["ball"]["twist"])[2] - np.asarray(timed.final["drag:ball"]["drag_reading"])[2])
     m_f = WATER_RHO * 4.0 / 3.0 * math.pi * radius ** 3
     closed = (1.0 - ratio) * m_f * 1.0 / (6.0 * math.pi * WATER_MU * radius)
-    print(f"F3 gate 14 [{dtype}]: density {ratio:.3g}, radius {radius * 1e6:.3g} um: steady limit slip {slip:.3g} of the "
-          f"flow, ringing {ringing:g}; IMEX Euler lead {lead:.4g} m/s against (m_f - m) g / R0 = {closed:.4g}")
+    print(f"F3 gate 14 [{dtype}, {coupling or 'one pass'}]: density {ratio:.3g}, radius {radius * 1e6:.3g} um: steady "
+          f"limit slip {slip:.3g} of the flow, ringing {ringing:g}; IMEX Euler lead {lead:.4g} m/s against (m_f - m) g "
+          f"/ R0 = {closed:.4g}")
     assert math.isfinite(velocity) and slip < 0.05 and not ringing, (slip, ringing)
     assert math.isfinite(lead) and not _rang(timed)
 
@@ -124,8 +128,10 @@ def _rang(result) -> bool:  # noqa: ANN001
 def test_the_ringing_flag_names_a_diverging_rate_loop(float64):
     """The ringing flag (rate_feedback) raised in the run that diverges: the light body under the steady limit with
     its own field left in the rate terms' reading (gate 14's plant, the PR's reading), within its first 30 steps,
-    lagged (declared: the arm where that loop was measured to diverge; one pass did not ring there within the 30 steps
-    on F3's second PR's probe); gate 14's clean runs are its control (never raised)."""
+    lagged (declared): the flag counts the lagged loop's signature, a load that reverses its sign and grows. One pass,
+    the same plant runs away without those reversals (F3's second PR's probe: the flag raised at none of 20 draws within
+    100 steps, at 7 of 20 within 300, while the body reached about -1e3 m/s), which the flag does not name: gate 14's
+    slip catches it there. Gate 14's clean runs are its control (never raised)."""
     run = _light_run(True, 0.05, 40e-6, 30, own_field=False, coupling="lagged")
     held = [flag for flag in run.flags if flag.path.endswith("rate_feedback")]
     print(f"F3 the ringing flag: {held}")
