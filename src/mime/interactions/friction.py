@@ -1,7 +1,7 @@
 """Friction at a contact: the laws a ``Contact`` solves in its own sweeps (``Contact(friction=Coulomb(mu=0.15))``), and
 the seams for what is left out, each a small declared protocol with a default and a conformance suite
 (``mime.testing.friction_law_suite``, ``normal_law_suite``, ``row_kind_suite``), so that adding one is a law of its
-own, never a change to the solve:
+own, built with its solve and its oracle (the contact refuses a law its solve does not hold, by name, until it is):
 
 - :class:`FrictionLaw`, the sliding limit as a function of the normal load and the slip speed: :class:`Coulomb` now
   (one coefficient, static and kinetic alike); a speed-dependent law (Stribeck's, a fitted table) or a static above the
@@ -142,6 +142,31 @@ class Hold(NormalLaw):
         return [] if self.adhesion is None else [ADHESION_RESERVED]
 
 
+#: The laws the contact's solve holds, each a class run as it is written (a subclass that changes a limit or a hold is
+#: a law of its own, which the solve does not run until it is built): a friction law by its class, keyed by the name
+#: the body's solve takes (``mime.nodes.body._rigid_inertial.FRICTION_LAWS``), and the normal law, the hold.
+BUILT_FRICTION_LAWS: Mapping[str, type[FrictionLaw]] = {"coulomb": Coulomb}
+BUILT_NORMAL_LAWS: tuple[type[NormalLaw], ...] = (Hold,)
+
+
+def unheld(friction: FrictionLaw | None, normal: NormalLaw | None) -> list[str]:
+    """Why the contact's solve cannot run ``friction`` or ``normal``, one reason each, naming the law: empty for the
+    built laws (:data:`BUILT_FRICTION_LAWS`, :data:`BUILT_NORMAL_LAWS`) and for none written."""
+    found: list[str] = []
+    if friction is not None and BUILT_FRICTION_LAWS.get(friction.law) is not type(friction):
+        found.append(f"friction={type(friction).__name__}(...) is a friction law the contact's solve does not hold: it "
+                     f"runs {', '.join(f'{c.__name__}(...)' for c in BUILT_FRICTION_LAWS.values())} as written, and a "
+                     f"law of its own (another limit, a speed-dependent one, a static coefficient above the kinetic) "
+                     f"is a FrictionLaw built with its solve and its oracle (mime.interactions.friction.LEFT_OUT): "
+                     f"write friction=Coulomb(mu=...)")
+    if normal is not None and type(normal) not in BUILT_NORMAL_LAWS:
+        found.append(f"normal={type(normal).__name__}(...) is a normal law the contact's solve does not hold: it runs "
+                     f"{', '.join(f'{c.__name__}()' for c in BUILT_NORMAL_LAWS)} (no penetration, no rebound, never "
+                     f"pulling), and restitution, adhesion or a soft law is a NormalLaw built with its solve and its "
+                     f"oracle (mime.interactions.friction.LEFT_OUT): write normal=Hold(), or leave it out")
+    return found
+
+
 @dataclass(frozen=True)
 class RowKind:
     """A kind of friction row a law may add beside a point's normal row: its rows' count and form, what they measure,
@@ -206,5 +231,5 @@ LEFT_OUT = {
     "line contacts": "POINT_SETS['line'], a distributed point set with weights",
 }
 
-__all__ = ["ADHESION_RESERVED", "LEFT_OUT", "POINT_SETS", "ROW_KINDS", "Coulomb", "FrictionLaw", "Hold", "NormalLaw",
-           "PointSet", "RowKind"]
+__all__ = ["ADHESION_RESERVED", "BUILT_FRICTION_LAWS", "BUILT_NORMAL_LAWS", "LEFT_OUT", "POINT_SETS", "ROW_KINDS",
+           "Coulomb", "FrictionLaw", "Hold", "NormalLaw", "PointSet", "RowKind", "unheld"]

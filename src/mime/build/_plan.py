@@ -3850,6 +3850,7 @@ class _Planner:
                                                          confinement.margin, 0.0, confinement.rule, hull, counts,
                                                          confinement.loops, confinement.friction))
         from mime.nodes.body._contact import CONVERGED
+        from mime.nodes.body._friction import FRICTION_CONVERGED, FRICTION_LINE
 
         held = len(quadrature_arrays(hull.kind, hull.settings, patches, counts)[0])
         convex = getattr(shape_named(shape), "convex", False)
@@ -3881,8 +3882,12 @@ class _Planner:
                 f"their forces and the solve's residual are {body}'s "
                 f"state (contact_points, contact_forces, contact_short, contact_residual), a step that holds one "
                 f"raises the flag "
-                f"{body}.touching, and one whose solve is left above {CONVERGED:g} of the free step's speed at the held "
-                f"points raises {body}.unconverged")
+                f"{body}.touching, and "
+                + (f"one whose solve is left above {CONVERGED:g} of the free step's speed at the held points raises "
+                   f"{body}.unconverged" if rubbing is None else
+                   f"one whose frictional solve's cone residual is left above {FRICTION_CONVERGED:g} of the hold's "
+                   f"change at the held points (its held twist possibly more than {FRICTION_LINE:g} of that change "
+                   f"from its solution), or whose friction pushes at the solved twist, raises {body}.unconverged"))
         self.checked = {**self.checked, plan.owner: (*self.checked.get(plan.owner, ()), line)}
 
     def spacing_short(self, owner: str, hull: Hull, spacing: float, margin: float) -> float | None:

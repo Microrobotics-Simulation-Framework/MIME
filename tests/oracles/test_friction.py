@@ -45,6 +45,7 @@ import mime.nodes.body._rigid_inertial as rigid_module
 from mime.build import BuildRefused
 from mime.interactions import Contact
 from mime.interactions.friction import Coulomb
+from mime.nodes.body._friction import FRICTION_CONVERGED
 from mime.units import s
 
 G = 9.81
@@ -112,7 +113,7 @@ def test_a_sphere_on_an_incline_rolls_without_slip_below_its_threshold_and_slips
     print(f"\n{state}: {v / T:.10g} against {acceleration:.10g} m/s^2, spin {spin:.10g} against {expected_spin:.10g}")
     assert abs(v / T - acceleration) <= EXACT[dtype] * G
     assert abs(spin - expected_spin) <= EXACT[dtype] * max(abs(expected_spin), 1.0)
-    assert float(out["contact_residual"]) <= rigid_module.CONVERGED
+    assert float(out["contact_residual"]) <= FRICTION_CONVERGED
 
 
 def test_control_frictionless_the_sphere_slides_and_never_turns(dtype):
@@ -210,6 +211,34 @@ def test_the_ledger_books_friction_as_mu_n_times_the_slip_distance_and_rolling_a
     assert account.findings == (), account.findings
 
 
+def flipped_solve(monkeypatch):
+    """Friction's sign flipped in the solve (each pair's force negated, the review's planted flip), for a test's
+    build: the step reads ``_friction.disk_update`` when it is traced."""
+    import mime.nodes.body._friction as friction_module
+
+    original = friction_module.disk_update
+    monkeypatch.setattr(friction_module, "disk_update", lambda block, load, bound: -original(block, load, bound))
+
+
+def test_control_friction_that_pushes_is_booked_with_its_sign_and_counted_a_gift(monkeypatch):
+    """The control of the ledger's friction row: friction's sign flipped in the solve (the sphere sliding down the
+    tilted floor, ratio 2) does positive work on every sliding step; it is booked so, a gain on friction's row, each
+    such step counted a gift (``gift_steps``, named in the law's line), as any dissipative law's, where a book of
+    ``-|l||u|`` read a loss whatever the solve did."""
+    from mime.observations import EnergyLedger
+
+    flipped_solve(monkeypatch)
+    mu = 0.2
+    experiment = on_the_floor(theta=math.atan(3.5 * mu * 2.0), mu=mu, **COARSE)
+    experiment.observe(EnergyLedger())
+    account = experiment.build().run(s(STEPS * DT)).energy
+    assert account is not None
+    row = {row.law: row for row in account.laws}["contact:ball.friction"]
+    print(f"\n{row.line()}")
+    assert row.lost < 0.0 and row.gift_steps >= STEPS // 2, row
+    assert f"positive in {row.gift_steps} steps" in row.line(), row.line()
+
+
 # -- gradients in mu ---------------------------------------------------------------------------------------------------
 
 #: The derivative's resolution against the closed form, and the central difference's relative step, by dtype.
@@ -256,6 +285,75 @@ def test_control_mu_stopped_has_no_derivative():
             "twist"][0]
 
     assert float(jax.grad(speed)(jnp.asarray(mu))) == 0.0 != -G * math.cos(theta) * steps * DT
+
+
+#: The slip speed's derivative against central differences: the steps, and the difference's relative span and the
+#: tolerance on the derivative's scale, by dtype.
+SLIP_STEPS = 20
+SLIP_DIFFERENCE = {jnp.float64: (1e-6, 1e-6), jnp.float32: (1e-3, 2e-2)}
+
+
+@pytest.mark.parametrize("body", ["sphere", "block"])
+@pytest.mark.parametrize("ratio", [0.5, 0.99, 1.01, 2.0])
+def test_the_slip_speeds_derivative_is_its_central_differences_either_side_of_the_threshold(dtype, body, ratio):
+    """``contact_slip_speed`` after 20 steps on the slope, its derivative in ``mu`` and in the slope's angle by reverse
+    mode against central differences taken on the point's own side of the stick threshold (a span across it reads the
+    kink): zero sticking, the sliding slip's slope past it (the review's -0.562 in ``mu`` on the sphere at 1.001). The
+    control below takes the slip through a stopped value, as the field was, and reads zero against it."""
+    mu = 0.2
+    shape, mass, inertia, factor = ((BALL, MASS, (MOMENT,) * 3, 3.5) if body == "sphere" else
+                                    (ROD, ROD_MASS, ROD_MOMENTS, 1.0))
+    theta = math.atan(factor * mu * ratio)
+    node = plane_node(shape, mu=mu, mass=mass, inertia=inertia)
+    slip = slip_after(node, mass, dtype)
+    gradient = jax.jit(jax.grad(slip, argnums=(0, 1)))
+    span, tolerance = SLIP_DIFFERENCE[dtype]
+    at = (jnp.asarray(theta, dtype), jnp.asarray(mu, dtype))
+    measured = [float(d) for d in gradient(*at)]
+    side = min(span, 0.25 * abs(ratio - 1.0))
+    eps = float(jnp.finfo(dtype).eps)
+    scale = G * SLIP_STEPS * DT  # the slip's slope's own size, m/s per unit of mu or of angle
+    for index, (name, value) in enumerate((("theta", theta), ("mu", mu))):
+        h = value * side
+        up, down = list(at), list(at)
+        up[index], down[index] = at[index] + h, at[index] - h
+        central = (float(slip(*up)) - float(slip(*down))) / (2 * h)
+        rounding = 64 * eps * scale * SLIP_STEPS * DT / h
+        print(f"\n{body} at {ratio} of its threshold: d slip / d {name} AD {measured[index]:.9g}, CD {central:.9g}")
+        assert abs(measured[index] - central) <= tolerance * scale + rounding, (name, measured[index], central)
+    if ratio > 1.0:
+        assert abs(measured[1]) > 0.1 * scale, measured  # sliding, the slip moves with mu: the gate discriminates
+
+
+def slip_after(node, mass: float, dtype, stopped: bool = False):
+    """``(theta, mu) ->`` the largest held point's slip speed after :data:`SLIP_STEPS` steps on the slope ``theta``
+    (``stopped``: taken through a stopped value, the control)."""
+    leaves = node.params_pytree()
+
+    def slip(theta, mu):
+        inputs = {"applied_wrench": jnp.stack([mass * G * jnp.sin(theta), jnp.zeros((), dtype),
+                                               -mass * G * jnp.cos(theta), *(jnp.zeros((), dtype),) * 3]),
+                  "resistance": jnp.zeros((6, 6), dtype), "background_load": jnp.zeros(6, dtype)}
+        ended = slid(node, inputs, SLIP_STEPS, params={**leaves, "friction_mu": mu})
+        speed = jnp.max(ended["contact_slip_speed"])
+        return jax.lax.stop_gradient(speed) if stopped else speed
+
+    return slip
+
+
+def test_control_a_stopped_slip_speed_reads_no_derivative_against_its_central_difference(dtype):
+    """The control: the slip speed taken through a stopped value (the field before the fix) reads zero where the
+    central difference reads the sliding slope, so the gate above tells a silent zero from the derivative."""
+    mu, ratio = 0.2, 2.0
+    theta = math.atan(3.5 * mu * ratio)
+    node = plane_node(BALL, mu=mu)
+    stopped = slip_after(node, MASS, dtype, stopped=True)
+    held = (jnp.asarray(theta, dtype), jnp.asarray(mu, dtype))
+    slip = slip_after(node, MASS, dtype)
+    h = SLIP_DIFFERENCE[dtype][0] * mu
+    central = (float(slip(held[0], held[1] + h)) - float(slip(held[0], held[1] - h))) / (2 * h)
+    assert float(jax.grad(stopped, argnums=1)(*held)) == 0.0
+    assert abs(central) > 0.1 * G * SLIP_STEPS * DT, central
 
 
 # -- a body off the wall ------------------------------------------------------------------------------------------------

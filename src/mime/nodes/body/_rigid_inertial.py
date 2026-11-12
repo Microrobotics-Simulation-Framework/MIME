@@ -41,7 +41,6 @@ from mime.core import ledger as books
 from mime.core.solves import dense_solve
 from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.nodes.body._contact import (
-    CONVERGED,
     START_APART,
     Contacts,
     Hull,
@@ -58,16 +57,17 @@ from mime.nodes.body._contact import (
 )
 from mime.nodes.body._contact import sweeps as _sweeps
 from mime.nodes.body._friction import (
+    FRICTION_CONVERGED,
     NORMAL,
     SLIDING,
     Traction,
-    cone_residual,
     friction_power,
     frictional_sweeps,
     normal_work_free,
     power_floor,
     slip,
     traction_rows,
+    unconverged_share,
 )
 from mime.registry import Geometry, implements
 from mime.units import Magnitude
@@ -163,7 +163,10 @@ class RigidFrictionState(TypedDict, closed=True):
     friction at its point (``contact_friction_forces``, the force along the surface in the world, N, zero where the
     point was free), the slip speed of the body's point there at the solved twist (``contact_slip_speed``, m/s, zero
     where it was free) and the friction power guard's reading (``contact_friction_power_ratio``: the largest point's
-    friction power at the solved twist over its scale, never above ``_friction.power_floor`` at a converged solve)."""
+    friction power at the solved twist over its scale, never above ``_friction.power_floor`` at a converged solve).
+    Its ``contact_residual`` is the frictional solve's own: the cone's residual over the hold's change at the held
+    points (``_friction.unconverged_share``), raised past ``_friction.FRICTION_CONVERGED`` where the power guard trips,
+    which ``unconverged`` reads at that line."""
 
     pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
     twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
@@ -248,10 +251,12 @@ FRICTION_ROLE = "friction"
 #: The sweeps of a frictional hold, by hull kind (``FRICTION_SWEEPS_DEFAULT`` for a kind not listed): declarations from
 #: each kind's measurement through the node's hold (W2b's probe: 1,000 draws a kind and dtype of one step's problem on
 #: a tube's floor, the change still to come in the held twist against 4,000 sweeps', over the hold's whole change). Under
-#: 1e-3 at the 99th percentile: a sphere after 1 sweep, an ellipsoid 3, a capsule 5, a cylinder 10, each held at 20 with
-#: none past CONVERGED; a box held by its samples after 160 and FL-9's screw past 320, so they take the bound, 80, where
-#: 0.9 % of the box's and 0.9 % of the screw's draws stay past CONVERGED (raising unconverged) and the power guard trips
-#: on 0.2 % and 0.65 % (float64; float32 alike), the residual and the flag taking the rest.
+#: 1e-3 at the 99th percentile: a sphere after 1 sweep, an ellipsoid 3, a capsule 5, a cylinder 10, each held at 20; a
+#: box held by its samples after 160 and FL-9's screw past 320, so they take the bound, 80 (the maintainer's trade of
+#: the count's cost). At those counts the share of steps left more than ``_friction.FRICTION_LINE`` of their change from
+#: the solution (W2b's fix round, 4,000 draws a kind, both dtypes alike) is FL-9's 7.1 %, the box's 1.8 %, a cylinder's
+#: 0.2 %, a capsule's and an ellipsoid's 0.1 %, a sphere's none; each raises ``unconverged``
+#: (``_friction.FRICTION_CONVERGED``).
 FRICTION_SWEEPS: dict[str, int] = {"sphere": 20, "ellipsoid": 20, "capsule": 20, "cylinder": 20}
 FRICTION_SWEEPS_DEFAULT = 80
 
@@ -329,7 +334,8 @@ def point_groups(points: np.ndarray, count: int) -> np.ndarray:
 
 class FrictionalHold(NamedTuple):
     """A frictional hold's step (``RigidInertialNode.frictional_held``): the held twist, each group's point and normal
-    force, the solve's residual (the cone's, raised past ``CONVERGED`` where the power guard trips), how far each point
+    force, the solve's residual (``_friction.unconverged_share``, raised past ``FRICTION_CONVERGED`` where the power
+    guard trips), how far each point
     stood shallower than its seed, each point's friction in the world and its slip speed, the guard's reading, and for
     the ledger each point's friction forces and the slips they act on, pair by pair."""
 
@@ -900,12 +906,14 @@ class RigidInertialNode(MimeNode):
         rates = slip(coupling, start, forces)
         pairs = np.asarray([row for pair in traction.pairs for row in pair])
         power = friction_power(coupling, start, forces, traction.pairs, rows, moved)
-        left = jnp.maximum(cone_residual(coupling, start, forces, traction, found.rows, moved),
-                           CONVERGED * power / power_floor(dtype))
+        left = jnp.maximum(unconverged_share(coupling, start, forces, traction, found.rows, moved),
+                           FRICTION_CONVERGED * power / power_floor(dtype))
         along = jnp.einsum("kr,krj->kj", forces[:, pairs], rows[:, pairs, :3])
-        sliding = lax.stop_gradient(rates[:, np.asarray(SLIDING)])
-        speed = jnp.where(lax.stop_gradient(forces[:, NORMAL]) > 0.0, jnp.sqrt(jnp.sum(sliding * sliding, axis=-1)),
-                          0.0)
+        sliding = rates[:, np.asarray(SLIDING)]
+        speeds = jnp.stack([switch.norm(sliding[k], owner="contact.slip", resolution=0.0,
+                                        indicator=lambda k=k: jnp.sqrt(jnp.sum(sliding[k] * sliding[k])))
+                            for k in range(points)])
+        speed = jnp.where(lax.stop_gradient(forces[:, NORMAL]) > 0.0, speeds, 0.0)
         return FrictionalHold(moved + response @ forces.reshape(-1), found.points, forces[:, NORMAL],
                               lax.stop_gradient(left), found.short, along, speed, power, forces[:, pairs],
                               rates[:, pairs])
@@ -1079,9 +1087,8 @@ class RigidInertialNode(MimeNode):
         for index, delivery in enumerate(held):
             row = rows.index(delivery.law)
             if delivery.kind == books.HOSTED and delivery.field == FRICTION_ROLE and rubbed is not None:
-                actual, ideal, magnitude = rubbed
-                work = work.at[row].add(ideal)
-                hosted = hosted.at[row].set(jnp.stack([jnp.zeros((), dtype=dtype), ideal - actual]))
+                actual, magnitude = rubbed
+                work = work.at[row].add(actual)
                 size = size + magnitude
                 continue
             if delivery.kind == books.HOSTED:
@@ -1116,22 +1123,12 @@ class RigidInertialNode(MimeNode):
             storage_start=self.storage(p, state), storage_end=self.storage(p, ended), scale=size, operators=operators)
 
     @staticmethod
-    def _friction_books(forces: Array, slips: Array, dt: float) -> tuple[Array, Array, Array]:
+    def _friction_books(forces: Array, slips: Array, dt: float) -> tuple[Array, Array]:
         """A frictional hold's friction in the books: its paired work, ``dt sum l . u`` over each point's pairs (the
-        traction on the slip it acts on at the solved twist); the work exact Coulomb does with those forces, ``-dt sum
-        |l| |u|`` (anti-parallel: ``mu lambda_n`` times the slip sliding, zero sticking), which friction is booked; and
-        the arithmetic's magnitude. The first less the second, ``dt sum (l . u + |l| |u|)``, never negative and zero at
-        the exact solution, is the sweeps' unconverged remainder, friction's own numerical column (the power guard's
-        numerator, summed)."""
-        pairs = forces.reshape(forces.shape[0], -1, 2)
-        rates = slips.reshape(slips.shape[0], -1, 2)
-        actual = dt * jnp.sum(pairs * rates)
-        products = (pairs[..., :, None] * rates[..., None, :]).reshape(-1, 4)
-        ideal = jnp.zeros((), dtype=forces.dtype)
-        for product in products:
-            ideal = ideal - dt * switch.norm(product, owner="contact.slip", resolution=0.0,
-                                             indicator=lambda product=product: jnp.sqrt(jnp.sum(product * product)))
-        return actual, ideal, dt * jnp.sum(jnp.abs(pairs) * jnp.abs(rates))
+        traction on the slip it acts on at the solved twist), booked with its sign, so that a step where friction
+        pushes the motion it leaves is a gift on friction's row (``gift_steps``), as any dissipative law's; and the
+        arithmetic's magnitude, ``dt sum |l_i| |u_i|`` over the components."""
+        return dt * jnp.sum(forces * slips), dt * jnp.sum(jnp.abs(forces) * jnp.abs(slips))
 
     @staticmethod
     def _paired(field: str, effort: Array, change: Array, solved: Array, dt: float) -> tuple[Array, Array]:

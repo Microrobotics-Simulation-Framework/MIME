@@ -10,7 +10,9 @@ on every draw where friction acts (decided Fr6: every implementation of a seam p
   load; the draws under it (a load within about 1e-8 rad of the normal and no motion, where the solve's friction is
   1e-8 of the load and a flip of it moves the step below any check's resolution) are counted apart, never dropped;
 - the reserved row kinds (rolling resistance, spin) are refused by the contact with their reasons, and an adhesion
-  written into ``Hold`` is refused as reserved.
+  written into ``Hold`` is refused as reserved;
+- a law the contact's solve does not hold (a lab's restitution, a hold that pulls, a friction limit of its own) is
+  refused by the contact by name and fails its suite unrun, never judged as the default in its place.
 
 And the extremes the suites' draws leave out, on purpose: a bound at rounding (a coefficient of 1e-30) and a normal
 force of zero (a point free of the wall) give a zero traction and no non-finite value, either dtype, in value and in
@@ -18,6 +20,8 @@ reverse mode (the spike's float32 defect, ``0 x inf``)."""
 
 import math
 import os
+from dataclasses import dataclass
+from typing import ClassVar
 
 import jax
 import jax.numpy as jnp
@@ -25,7 +29,7 @@ import numpy as np
 import pytest
 
 from mime.interactions import Contact
-from mime.interactions.friction import ADHESION_RESERVED, ROW_KINDS, Coulomb, Hold
+from mime.interactions.friction import ADHESION_RESERVED, ROW_KINDS, Coulomb, Hold, NormalLaw
 from mime.nodes.body._friction import disk_update
 from mime.testing import friction_law_suite, normal_law_suite, row_kind_suite
 from mime.testing._friction import held_node
@@ -84,6 +88,64 @@ def test_each_row_kind_passes_its_suite(dtype, kind):
     result = row_kind_suite(kind)
     print(f"\n{result.detail}")
     assert result.status == "PASS", result.detail
+
+
+@dataclass(frozen=True, kw_only=True)
+class Bouncy(NormalLaw):
+    """A lab's restitution law (the review's plant): a normal law the contact's solve does not hold."""
+
+    group: ClassVar[str] = "bouncy"
+    restitution: float = 0.5
+
+    def least(self) -> float:
+        return 0.0
+
+    def load(self, normal: float) -> float:
+        return normal
+
+
+@dataclass(frozen=True, kw_only=True)
+class Pulling(Hold):
+    """A hold that may pull (its least below zero): Hold's class extended, which the solve does not run either."""
+
+    def least(self) -> float:
+        return -1e-6
+
+
+@dataclass(frozen=True, kw_only=True)
+class Faster(Coulomb):
+    """A friction law with Coulomb's name and another limit: the solve holds Coulomb's own."""
+
+    def limit(self, load: float, speed: float) -> float:
+        return self.mu * load * (1.0 + speed)
+
+
+@pytest.mark.parametrize("law", [Bouncy(), Pulling()], ids=["restitution", "hold-subclass"])
+def test_a_normal_law_the_solve_does_not_hold_is_refused_by_name_and_fails_its_suite_unrun(law):
+    """The plant: a lab's normal law is refused by the contact, by its name, and ``normal_law_suite`` fails it unrun,
+    where it once judged ``Hold()`` in its place and passed; ``Hold()`` itself passes (above)."""
+    found = Contact.Projection(margin=1e-4, normal=law).setting_problems({"margin": 1e-4})
+    name = type(law).__name__
+    assert any(f"normal={name}(...)" in problem for problem in found), found
+    result = normal_law_suite(law)
+    assert result.status == "FAIL" and f"{name}: not run" in result.detail, result.detail
+
+
+def test_a_friction_law_the_solve_does_not_hold_is_refused_by_name_and_fails_its_suite_unrun():
+    law = Faster(mu=0.3)
+    found = Contact.Projection(margin=1e-4, friction=law).setting_problems({"margin": 1e-4})
+    assert any("friction=Faster(...)" in problem for problem in found), found
+    result = friction_law_suite(law)
+    assert result.status == "FAIL" and "Faster: not run" in result.detail, result.detail
+    assert not Contact.Projection(margin=1e-4, friction=Coulomb(mu=0.3), normal=Hold()).setting_problems(
+        {"margin": 1e-4})
+
+
+def test_the_built_laws_are_the_ones_the_body_solve_holds():
+    from mime.interactions.friction import BUILT_FRICTION_LAWS
+    from mime.nodes.body._rigid_inertial import FRICTION_LAWS
+
+    assert all(name in FRICTION_LAWS and law.law == name for name, law in BUILT_FRICTION_LAWS.items())
 
 
 def test_an_adhesion_is_refused_as_reserved():
