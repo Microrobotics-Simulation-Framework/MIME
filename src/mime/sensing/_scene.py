@@ -129,6 +129,17 @@ def dumps(spec: Mapping[str, Any]) -> str:
     return json.dumps(spec, sort_keys=True, allow_nan=False)
 
 
+def numbers(spec: object) -> tuple[float, ...]:
+    """Every float of a camera's spec, in the order of its keys (sorted) and lists: the numbers the node consumes when it
+    is built (the subjects' settings and appearances, the response), which it holds as a leaf its step does not read."""
+    if isinstance(spec, Mapping):
+        held = cast(Mapping[str, object], spec)
+        return tuple(x for key in sorted(held) for x in numbers(held[key]))
+    if isinstance(spec, (list, tuple)):
+        return tuple(x for each in cast(Sequence[object], spec) for x in numbers(each))
+    return (float(spec),) if isinstance(spec, float) else ()
+
+
 def frame_window(reach: float, width: int, height: int) -> int:
     """A window's half-size in pixels from a silhouette's reach, widened as the offline renderer widens it; half the
     frame where the reach is not a finite number (a sphere behind the camera at the start)."""

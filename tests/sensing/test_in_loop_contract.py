@@ -17,10 +17,12 @@ from in_loop_cases import DETECTOR, LOOK_ACROSS, ballistic, planted
 from test_in_loop_mounts import moving_gantry
 
 from mime.build import BuildRefused, ObservationBuilder
+from mime.build._maddening import unreadable_leaves
+from mime.study import Study, grid
 from mime.observations import Camera, Mounted
 from mime.registry import EntryKind, Observation, RoleKind
 from mime.registry._registry import _problems  # noqa: PLC2701
-from mime.units import ms
+from mime.units import ms, um
 
 if planted("shape-ignored"):
     Camera.output_shape = lambda self, output: output.shape  # type: ignore[method-assign]
@@ -56,3 +58,19 @@ def test_an_observation_that_sees_the_scene_binds_no_role():
     assert any("binds no role" in problem for problem in _problems(EntryKind.OBSERVATION, Binding))
     assert not any("binds no role" in problem for problem in _problems(EntryKind.OBSERVATION, Camera))
     assert Observation.sees_scene is False and Camera.sees_scene is True
+
+
+def test_the_scenes_numbers_are_held_as_built_an_override_is_refused_and_a_sweep_builds_each_value(dtype):
+    """The camera consumes the scene's numbers (a tube's and a ball's sizes, the absorbers') when it is built, into its
+    subjects and its response: they are one leaf its step does not read, so a run on the built step cannot take another
+    value. An override is refused (``override.structural``) and a sweep builds each value. (The walk's control, a value the
+    step reads overridden and planned as one group, cannot run through a camera: a batched group of it is refused,
+    ``camera.batched``, which ``test_in_loop_refusals`` holds.)"""
+    exp = ballistic(ms(3))
+    built = exp.build()
+    assert ("camera:", "scene_numbers") in unreadable_leaves(built.graph)
+    with pytest.raises(BuildRefused) as raised:
+        built.run(ms(2.0), override={"tube.inner_radius": um(61.0)})
+    assert raised.value.codes() == ["override.structural"]
+    swept = Study(exp).sweep(grid({"tube.inner_radius": [um(60.0), um(61.0)]}), duration=ms(2.0)).plan()
+    assert [group.members for group in swept.groups] == [[0], [1]] and not swept.refused, swept.text()
