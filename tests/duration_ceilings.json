@@ -1,7 +1,7 @@
 {
  "written_by": "scripts/duration_triage.py: do not edit by hand",
  "generated": "2026-11-09",
- "source": "35 push and manual runs of ci.yml on release/v0.3.0, runs 42157721518 to 42538025458, Python 3.12 and 3.14, cold only; the ceilings of three tests whose cost moved, refitted on 2026-11-10 by the same rule from the cold Python 3.12 and 3.14 reports of runs 42551949655 to 42841389484 (the 16-shard table: 40 reports of one test, 30 of each of the other two), scripts/duration_triage.py's own functions; the ceiling of tests/saved/test_shape_suite.py's probes-share test refitted on 2026-11-12 by the same rule (scripts/duration_triage.py's own functions) from the cold Python 3.12 and 3.14 reports of the 16 push runs 42967420822 to 43164499364 (32 reports: median 8.8 s, 95th percentile 220 s, largest 226 s); the ceiling of tests/saved/test_shape_suite.py's probes-share test refitted again on 2026-11-12, now with the PR run 43184773791 of the split (a pull request run, cold, its 3.12 and 3.14 reports) added to the window, by the same rule (scripts/duration_triage.py's own functions) from the cold Python 3.12 and 3.14 reports of the 17 push runs 42967420822 to 43184773791 (34 reports: median 9.5 s, 95th percentile 321 s, largest 471 s)",
+ "source": "35 push and manual runs of ci.yml on release/v0.3.0, runs 42157721518 to 42538025458, Python 3.12 and 3.14, cold only; the ceilings of three tests whose cost moved, refitted on 2026-11-10 by the same rule from the cold Python 3.12 and 3.14 reports of runs 42551949655 to 42841389484 (the 16-shard table: 40 reports of one test, 30 of each of the other two), scripts/duration_triage.py's own functions; the ceiling of tests/saved/test_shape_suite.py's probes-share test refitted on 2026-11-12 by the same rule (scripts/duration_triage.py's own functions) from the cold Python 3.12 and 3.14 reports of the 16 push runs 42967420822 to 43164499364 (32 reports: median 8.8 s, 95th percentile 220 s, largest 226 s); the ceiling of tests/saved/test_shape_suite.py's probes-share test refitted again on 2026-11-12, now with the PR run 43184773791 of the split (a pull request run, cold, its 3.12 and 3.14 reports) added to the window, by the same rule (scripts/duration_triage.py's own functions) from the cold Python 3.12 and 3.14 reports of the 17 push runs 42967420822 to 43184773791 (34 reports: median 9.5 s, 95th percentile 321 s, largest 471 s); the ceiling of tests/live/test_serve.py's held-reply test refitted on 2026-11-12 by the same rule (scripts/duration_triage.py's own functions) from the cold Python 3.12 and 3.14 reports of the 24 push runs 42967420822 to 43239668452 (47 reports: median 23.7 s, 95th percentile 37.4 s, largest 64.6 s, run 43239668452, Python 3.14 shard 18)",
  "rule": "the larger of 3 times the test's median and 1.2 times its 95th percentile over the cold reports of the source, at least 60 s",
  "ceilings": {
   "tests/assets/test_asset_integrity.py::test_control_without_the_lock_the_same_processes_fail_or_download_twice": 60.0,
@@ -204,7 +204,7 @@
   "tests/live/test_rigs_finite.py::test_each_rig_runs_ten_seconds_with_every_field_finite[a0_callback]": 60.0,
   "tests/live/test_rigs_finite.py::test_each_rig_runs_ten_seconds_with_every_field_finite[tracked]": 60.0,
   "tests/live/test_serve.py::test_a_killed_server_leaves_a_log_that_replays_every_frame_it_sent": 68.0,
-  "tests/live/test_serve.py::test_a_reply_held_across_a_chunk_goes_to_the_client_that_asked_never_to_its_descriptors_next_holder": 60.0,
+  "tests/live/test_serve.py::test_a_reply_held_across_a_chunk_goes_to_the_client_that_asked_never_to_its_descriptors_next_holder": 71.0,
   "tests/live/test_serve.py::test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole": 60.0,
   "tests/live/test_serve.py::test_a_stop_read_either_side_of_a_chunk_reads_alike_and_acts_where_its_reply_allows": 60.0,
   "tests/live/test_serve.py::test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state": 98.0,
@@ -899,7 +899,7 @@
   "tests/live/test_rigs_finite.py::test_each_rig_runs_ten_seconds_with_every_field_finite[a0_callback]": 15.4,
   "tests/live/test_rigs_finite.py::test_each_rig_runs_ten_seconds_with_every_field_finite[tracked]": 13.0,
   "tests/live/test_serve.py::test_a_killed_server_leaves_a_log_that_replays_every_frame_it_sent": 22.3,
-  "tests/live/test_serve.py::test_a_reply_held_across_a_chunk_goes_to_the_client_that_asked_never_to_its_descriptors_next_holder": 19.3,
+  "tests/live/test_serve.py::test_a_reply_held_across_a_chunk_goes_to_the_client_that_asked_never_to_its_descriptors_next_holder": 23.7,
   "tests/live/test_serve.py::test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole": 15.2,
   "tests/live/test_serve.py::test_a_stop_read_either_side_of_a_chunk_reads_alike_and_acts_where_its_reply_allows": 7.2,
   "tests/live/test_serve.py::test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state": 32.5,
