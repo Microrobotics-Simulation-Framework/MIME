@@ -301,5 +301,32 @@
     "if_wrong": "an inflow's flux off its law would be the units of another step than the base's, or the law's rows at another instant; a residual above its line would be the products and the composition eliminating different openings",
     "cannot_discriminate_if": "the body does not move (asserted against)",
     "not_yet": "the dense monolithic reference with the openings' rows (F3 PR 2's monolithic step extended with the Schwarz body's tractions): this gate checks the openings' laws and the near field's equations at the composed step, not the step against an independent dense solve"
+  },
+  "gate_transpose_dot": {
+    "written": "2026-11-12, by F5's fourth builder, on the coordinator's relay of the solve-mask spike's finding (a nested custom_linear_solve whose constants depend on the transposed input cannot be transposed by JAX; #269's open-grid form transposes with symmetric=False and a weighted transpose_solve), before this test ran",
+    "claim": "the Schwarz columns' operator, its walled CG inside each product (and, in an open vessel, the openings eliminated in it), is transposed by reverse mode: <c, J b> = <J^T c, b> through the whole matvec, J^T by jax.vjp, in both dtypes",
+    "kind": "equality",
+    "case": "tests/flow/test_schwarz_transpose.py: the sphere's operator at the run's start, open vessel and periodic box, one drawn b and c a run",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-08
+      ],
+      "unit": "|<c, J b> - <J^T c, b>| over |c||J b| + |J^T c||b|; float64 within 1e-8, float32 within 1e-3",
+      "basis": "derived: the inner CG stops relative to its own right-hand side inside its own solve (projected_solve's solver), its guess none in a product, so no constant of the outer matvec depends on the tractions and JAX transposes each inner solve by its own transpose_solve; the miss is the inner solves' tolerance (1e-10 in float64)",
+      "why": "the spike's failure needed an inner stop or floor closed over from the right-hand side; F5's products close over only frozen step quantities (stencils, operator, units, blocks)"
+    },
+    "metric": "the identity's relative miss",
+    "control": {
+      "plant": "plain: the open grid's face weights hidden from the shared CG, which then transposes the open solve as symmetric (the plain transpose)",
+      "environment_variable": "MIME_PLANT_SCHWARZ: plain",
+      "expected_rate": "every run (the open case)",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "unknown before the run: the plain transpose is off by the half weights on the opening planes' faces, so its miss is the share of the products' cotangent that reaches those planes; if under the line in a dtype, the control does not discriminate there and is reported so"
+    },
+    "if_wrong": "NotImplementedError would be a constant of an inner solve that depends on the tractions (a guess or a stop formed outside the solve); a miss over the line with the clean transpose would be the openings' elimination's own transpose",
+    "cannot_discriminate_if": "the plant's miss lies under the line (the field at the opening planes negligible)"
   }
 }
