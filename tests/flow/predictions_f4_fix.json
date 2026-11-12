@@ -344,5 +344,6 @@
     "if_wrong": "no refusal means the table does not reach this point",
     "cannot_discriminate_if": "n/a"
   },
+  "amendment_5": "2026-11-12, committed before gate 2 at N = 6 ran: its step is 6e-5 s, not the 7.5e-5 s named in gate_2_at_n6 above (left as committed): the edge measured at N = 6 for a density ratio of 0.3 is x_T 0.119 (the third edge probe, run 43137909114), and the refusal admits 0.8 of it, so 7.5e-5 s (x_T 0.103) is refused; 6e-5 s (x_T 0.082, x_R 0.085) is inside. The prediction stands at the new step. Also: feature_cells written beside a coarser written spacing is refused (drag.penalty-spacing; tests/flow/test_resolved_bodies.py::test_feature_cells_written_beside_a_coarser_written_spacing_is_refused, predicted refused, the review's m4)",
   "outcomes": null
 }
