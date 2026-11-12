@@ -104,9 +104,12 @@ def open_node(cells: int, *, length: float = 2.0, laws: tuple[str, str] = ("infl
                             **extra, **settings)
 
 
-def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, **settings: Any) -> OpenFlowNode:
+def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, pressure_inlet: bool = False,
+               **settings: Any) -> OpenFlowNode:
     """The drawn point's node, its start a Poiseuille profile at U with the swirl, projected on the open grid; with
-    ``dt_scale`` its step that times the drawn one, every law's parameter as drawn (an order check's refinement)."""
+    ``dt_scale`` its step that times the drawn one, every law's parameter as drawn (an order check's refinement). With
+    ``pressure_inlet`` the start holds a given pressure in place of the inflow (its waveform the inflow's times the
+    tube's and the Windkessel's resistances), so the outlet takes a unit field (FB4's superposition; unmetered)."""
     speed = point.reynolds
     flux = speed * math.pi / 4.0
     probe = open_node(point.cells, narrowing=point.narrowing)
@@ -130,6 +133,11 @@ def point_node(point: Point, *, ledger: bool = True, dt_scale: float = 1.0, **se
     period = 40.0 * dt
     parameters = [[flux, 0.3 * flux, 1.0 / period, 0.0],
                   [point.proximal * resistance, dt / (point.capacitor * distal), distal, 0.0]]
+    if pressure_inlet:
+        drop = resistance + point.proximal * resistance + distal
+        parameters[0] = [flux * drop, 0.3 * flux * drop, 1.0 / period, 0.0]
+        return open_node(point.cells, laws=("pressure", "windkessel"), narrowing=point.narrowing, dt=dt * dt_scale,
+                         parameters=parameters, **{"convection": True, **settings}, **start)
     return open_node(point.cells, narrowing=point.narrowing, dt=dt * dt_scale, parameters=parameters,
                      **{"convection": True, **settings}, **({"ledger": METERED} if ledger else {}), **start)
 

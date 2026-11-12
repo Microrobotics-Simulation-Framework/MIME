@@ -68,10 +68,12 @@ def test_the_windkessels_books_close(dtype, monkeypatch, plant):
 def test_the_superposed_field_is_the_monolithic_solve(dtype, monkeypatch, plant):
     """FB4: the step's solution, the solve's plus each unit field times its pressure's correction, has the monolithic
     projected residual at the openings' solved pressures, within ten times the solve's own; the controls, the unit
-    field scaled by 1.1 or negated (its response with it, so the rows still close), are past it in pulsatile flow."""
+    field scaled by 1.1 or negated (its response with it, so the rows still close), are past it in pulsatile flow. The
+    rig's start holds a given pressure: an Inflow's opening is prescribed (decision (A)), and with one outlet no unit
+    field is left to superpose (the region's two-outlet gate judges the prescribed rig's)."""
     planted(monkeypatch, plant)
     for seed in SEEDS:
-        node = point_node(draw(seed))
+        node = point_node(draw(seed), pressure_inlet=True)
         final, readings = scan(node, STEPS, superposed_reading(node))
         stopped = int(final["stopped_at"])
         assert stopped < 0 or plant is not None  # a clean draw stays inside the CFL line

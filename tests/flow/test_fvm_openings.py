@@ -95,13 +95,10 @@ def test_a_law_at_a_surface_that_is_no_opening_is_refused(float64):
     assert "flow.opening-unknown" in refused(exp)
 
 
-def test_inflows_at_every_opening_must_cancel(float64):
-    """Two inflows that cancel (one giving what the other takes) are well posed through the gauge's row; two that do
-    not are refused."""
-    exp = vessel(inflows=("start", "end"))
-    built = exp.build()
-    final = built.run(ms(4.0)).final["water.flow"]
-    np.testing.assert_allclose(np.asarray(final["opening_flux"]), [-FLUX, FLUX], rtol=1e-12)
+def test_inflows_at_every_opening_must_cancel_and_one_is_prescribed(float64):
+    """Two inflows that do not cancel are refused as ill posed; two that cancel are refused too, since an Inflow's
+    opening is prescribed (decision (A)) and an open vessel prescribes one."""
+    assert refused(vessel(inflows=("start", "end"))) == ["flow.inflow-count"]
     unbalanced = vessel(laws=("start",), inflows=("start",))
     unbalanced.attach(Inflow(steady=m3_per_s(FLUX)), medium="water", surface="tube.end")
     assert "flow.openings-ill-posed" in refused(unbalanced)

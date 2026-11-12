@@ -1071,7 +1071,6 @@ tests/flow/test_fvm_open_ledger.py::test_n_wk_has_its_order # kept: N_WK's order
 tests/flow/test_fvm_open_ledger.py::test_control_a_loss_written_into_n_wk_fails_its_order # kept: N_WK's order check's control, the same ensemble with the loss planted
 tests/flow/test_fvm_openings.py::test_an_open_vessel_runs_with_its_laws_and_its_books_close # kept: the open vessel built, run and metered through the experiment
 tests/flow/test_fvm_openings.py::test_a_saved_open_vessel_loads_and_runs_bit_for_bit # kept: the open vessel saved, loaded and both run
-tests/flow/test_fvm_openings.py::test_inflows_at_every_opening_must_cancel # kept: two cancelling inflows built and run through the gauge's row
 tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float32-unit_scaled] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
 tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float32-unit_negated] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted
 tests/flow/test_field_suite.py::test_control_the_affine_case_fails_on_a_wrong_unit_field[float64-unit_scaled] # kept: SF-12's affine case's control, the periodic rig's runs and a drawn open run with the unit field planted

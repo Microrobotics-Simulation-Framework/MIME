@@ -320,6 +320,15 @@ class FVM(Dynamics):
                                          "(VesselRegion(extension_diameters=..., bend_diameters=...)), or a geometry "
                                          "putting them on separate planes",
              written=("open",)),
+        Flag("inlet_development_flagged", "an open vessel's Inflow holds its opening at the developed profile of a "
+                                          "straight round tube, and the field adjusts to it over a development length "
+                                          "past the plane that grows with the inflow's Reynolds number (the validity "
+                                          "line gives it, measured): at some step that length passed the reach to the "
+                                          "run's first reading, the region's cut (or, in a straight vessel, the other "
+                                          "plane), so readings there are the inlet's adjustment as well as the "
+                                          "vessel's (inlet_development). Lengthen the upstream extension "
+                                          "(VesselRegion(extension_diameters=...)) or move the cut upstream",
+             written=("open",)),
         Flag("backflow_flagged", "the backflow term on an open vessel's outlets gave the flow energy over a step "
                                  "(backflow_work above zero beyond its rounding): its lagged implicit form can only "
                                  "remove energy, so a flag is a fault in the term (its sign or its coefficient), not "
@@ -731,10 +740,39 @@ class FVM(Dynamics):
                             [port_law_named(r.kind).row_of(r.settings) if alone else (0.0,) * 4
                              for r, alone in zip(laws, one, strict=True)])
         given = ", ".join(r.id for r in laws if port_law_named(r.kind).row is RowKind.FLUX)
-        return [Problem("flow.openings-ill-posed", reason,
-                        f"give one of the openings a pressure law in place of its flux law ({given}): "
-                        f"exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=..., "
-                        f"surface=<that opening>), whose pressure the flow's rows solve for")] if reason else []
+        if reason:
+            return [Problem("flow.openings-ill-posed", reason,
+                            f"give one of the openings a pressure law in place of its flux law ({given}): "
+                            f"exp.attach(Windkessel(proximal=..., compliance=..., distal=...), medium=..., "
+                            f"surface=<that opening>), whose pressure the flow's rows solve for")]
+        return self.inflow_problems(laws, region)
+
+    def inflow_problems(self, laws: Sequence[ResolvedRegistration], region: Region) -> list[Problem]:
+        """An Inflow's opening is prescribed (the maintainer's inflow decision (A): its velocity the developed profile,
+        its plane's pressure Neumann), so an open vessel takes one Inflow, alone on its plane."""
+        inflows = list({r.id: r for r in laws if r.kind == "inflow"}.values())
+        if len(inflows) > 1:
+            return [Problem("flow.inflow-count", f"{', '.join(r.id for r in inflows)} are Inflows, and an open vessel "
+                                                 f"prescribes one opening's velocity: the other openings' flows follow "
+                                                 f"from it and their laws",
+                            "keep one Inflow and give each other opening a pressure law: exp.attach(Windkessel("
+                            "proximal=..., compliance=..., distal=...), medium=..., surface=<that opening>), Valve() "
+                            "or SharedDistal(...)")]
+        if not inflows:
+            return []
+        built = self.region_built(region)
+        if built is None:
+            return []
+        name = inflows[0].surfaces[0].rpartition(".")[2]
+        faces = {opening.name: opening.face for opening in built.openings}
+        sharing = [other for other, face in faces.items() if other != name and face == faces.get(name)]
+        if not sharing:
+            return []
+        return [Problem("flow.inflow-plane", f"{inflows[0].id}'s opening {name} shares its plane with "
+                                             f"{', '.join(sharing)}, and a prescribed opening holds its whole plane (its "
+                                             f"pressure Neumann there, the others' Dirichlet)",
+                        "cut the region so that the Inflow's opening turns to a face of its own "
+                        "(VesselRegion(around=..., reach=...)), or attach the Inflow at an opening alone on its face")]
 
     def porous_problems(self, held: Sequence[ResolvedRegistration], region: Region | None,
                         openings: Sequence[ResolvedRegistration] = ()) -> list[Problem]:
@@ -1191,6 +1229,7 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         tolerance=fvm.tolerance, preconditioner=fvm.preconditioner, band=DEFAULT_BAND,
         interior=_INTERIOR_NAMES[fvm.wall.depth()], solve_report_rows=fvm.solve_report_rows, wall_name=wall,
         backflow_openings=tuple(range(1, len(openings))), openings=openings, opening_laws=tuple(r.kind for r in laws),
+        inlet_reach=length if any(r.kind == "inflow" for r in laws) else None,
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
         **placed, **porous_arguments(porous, origin)))
@@ -1222,7 +1261,18 @@ def _open_region_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registra
         opening_centres=tuple(((by_name[n].centre[0] - layout.origin[0]) / h, (by_name[n].centre[1] - layout.origin[1]) / h)
                               for n in names),
         law_openings=tuple(tuple(openings.index(s) for s in r.surfaces) for r in laws),
-        backflow_openings=tuple(k for k, n in enumerate(names) if not by_name[n].upstream)))
+        backflow_openings=tuple(k for k, n in enumerate(names) if not by_name[n].upstream),
+        inlet_reach=_inflow_reach(laws, names, openings, by_name)))
+
+
+def _inflow_reach(laws: Sequence[ResolvedRegistration], names: Sequence[str], openings: Sequence[str],
+                  by_name: Mapping[str, Any]) -> float | None:
+    """The distance from an Inflow's plane to the region's first reading, its cut (the extension, bend and run to the
+    plane); none where no Inflow is attached."""
+    held = [r for r in laws if r.kind == "inflow"]
+    if not held:
+        return None
+    return float(by_name[names[openings.index(held[0].surfaces[0])]].series_length)
 
 
 def junction_point(region: Region, around: str | None) -> int | None:

@@ -211,6 +211,8 @@ flow.box-axis                 user
 flow.box-margin               user
 flow.cfl-exceeded             user
 flow.cfl-predicted            user
+flow.inflow-count             user
+flow.inflow-plane             user
 flow.interior                 user
 flow.memory                   user
 flow.no-openings              user
