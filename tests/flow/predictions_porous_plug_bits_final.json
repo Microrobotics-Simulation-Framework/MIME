@@ -28,5 +28,14 @@
       "expected_rate": "repeat 4/4 equal, one ulp 4/4 differ"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43161915116",
+    "head": "f6eb1fe (the probe's 664d920 adds only probe/), base ff9624c (the release tip)",
+    "gate_1_bits": {
+      "value": "96 of 96 programs equal, every recorded array (48 cases in float64 and float32; twisted_toy is refused at its build in both trees, vocabulary.reserved); repeat 4/4 equal; one ulp up 4/4 differ (11 to 18 arrays each)",
+      "verdict": "held"
+    },
+    "memory": "six arms read over the FVM proxy's bound: bit-compare processes the proxy does not size, the proxy's miss (as run 43124616730), no calibration row",
+    "after": "the only later commit fills this outcome (a JSON file no program reads)"
+  }
 }
