@@ -1,0 +1,33 @@
+{
+  "written": "2026-11-12, committed before any gate of the CG stagnation fix ran (the commit that adds this file is the timestamp): a stagnation that restarts only where another whole window fits before the cap",
+  "phase": "record item 63, item 3: the FVM CG's stagnation stop could not fire before its iteration cap",
+  "labels": "the fix's builder (Sonnet), from the F2b 4a report (a float32 tube tree, 73 by 49 by 109, the default 1e-5: every solve ran to its 5000 cap) and three exploratory draws on this laptop (below)",
+  "seen_before": [
+    "exploration on this laptop (float32, CPU, a 48-point periodic Laplacian with a 1e-3 shift, a random right-hand side, tolerance 1e-12 so the true residual plateaus at float32's rounding, window 66 checks as stagnation_window((73, 49, 109), 20) gives it, cap 5000): all 3 draws ran to the cap (5000 iterations, at_cap flagged, stagnated not); the same draws under a window cut to 62 checks (the 4 windows in the cap): 2 of 3 at the cap; at (8, 8, 8), window 5: stopped stagnated at 440 to 480 iterations",
+    "the same 3 draws with the restart taken only where another whole window fits before the cap: stopped stagnated at 4020, 4040 and 4040 iterations"
+  ],
+  "operating_point": {
+    "dtype": ["float32"],
+    "platform": "CPU (this laptop for single runs; GitHub runners for rates and bits)",
+    "sizes_and_parameters": "the plateau problem above (a periodic Laplacian of 48 points a component, three components, preconditioner the identity); the window from stagnation_window at (73, 49, 109) and at (8, 8, 8), check every 20, 3 restarts, cap 5000; and a cap of 1000 at (73, 49, 109)",
+    "seeds_and_draws": "right-hand sides of unit-normal draws seeded by DETECTION_SEED, 12 draws in the test, 30 runs in the control's rate"
+  },
+  "gate_1_plateau_stops_stagnated_before_the_cap": {
+    "claim": "a float32 solve whose true residual plateaus above its tolerance is stopped as stagnated before the cap and flagged, at the size of the tube tree and at a small size",
+    "kind": "equality",
+    "case": "tests/flow/test_fvm_stagnation_reach.py::test_a_plateau_stops_stagnated_before_the_cap",
+    "prediction": {"value": 1.0, "unit": "share of draws stopped stagnated with at_cap clear and the count under the cap", "basis": "measured-before (the exploration above, 3 of 3 at the tree size and at the small size)"},
+    "control": {"plant": "the restart always taken, as before the fix (the restart_fits seam patched to true), switched by MIME_PLANT_STAGNATION=old_window", "environment_variable": "MIME_PLANT_STAGNATION", "expected_rate": "30/30 at the tree size (every run ends at the cap), clean 0/30", "runs": 30, "clean_expected": "0/30"},
+    "if_wrong": "a control that misses a run means the plateau set in late enough that the old window also stopped there; the draw's onset is the first thing to read",
+    "cannot_discriminate_if": "the plateau never sets in before the cap (a non-converging operator), or the window is so short that the old rule also stops: the small size, which stops the same under the old rule, is there to show the fix changes nothing where the stop was already reachable, not to discriminate"
+  },
+  "gate_2_a_converging_solve_is_unchanged": {
+    "claim": "a solve that converges is bit for bit unchanged, so the rule never stops or restarts a converging solve early",
+    "kind": "equality",
+    "case": "released programs that use the CG (periodic_tube_flow, steady_tube_flow, rk3_tube_flow, tree_flow, open_tube_flow, point_body_flow, resolved_body_flow of tests/saved/cases.py), float32 and float64, base release/v0.3.0 against head, one CPU, one thread, .github/probe/bit_compare.py",
+    "prediction": {"value": "every array np.array_equal", "basis": "derived: the rule changes a solve only at a stagnation found with less than one window before the cap; these boxes (8 to 12 cells across) have windows of 5 to 14 checks, so a stagnation with no such room can only come in the last 100 to 280 of 5000 iterations"},
+    "control": {"plant": "the same program with one parameter one ulp up: the arrays differ; and the head recorded twice: identical", "expected_rate": "differ on every program; identical on the repeat"},
+    "cannot_discriminate_if": "no program of the set stalls: then the set shows no bit moved where nothing could, and the unit-level test of a stalled-then-converged solve (test_a_solve_that_restarts_and_converges_is_unchanged) carries the claim there"
+  },
+  "outcomes": null
+}
