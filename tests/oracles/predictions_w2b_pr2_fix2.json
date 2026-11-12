@@ -45,5 +45,10 @@
     "cannot_discriminate_if": "rolling resistance inside its limit on every draw"
   },
   "costs": {"prediction": "", "measured_at": ""},
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the gates ran (run 43182794064, probe/w2b-fix-261d at e95a0b0d; the derivation's test locally)",
+    "gate_agreement_line": "held: the worst |ln(control / least)| over 4,001 truths 0.99994 of d^2/2 on the register's range and 0.99992 on (0.01, 2.5); the line nine tenths as wide crossed on both",
+    "gate_b1_fit_verdict_fresh": "held: at seeds 200 to 219 the sliding draws read identified 20/20 (three started again from the control; the worst |estimate - control| 0.994 of the line before the standard error; the estimate at the truth to 2.4e-10), the never-sliding draws bounded below only 20/20, none identified",
+    "gate_m2_rolling_passivity_fresh": "held: at Hypothesis seeds 1000 to 1019 the flipped rolling bound caught 20/20 in float64 and 20/20 in float32 (95 % lower bound 0.86), the clean suite flagged 0/20 in both"
+  }
 }
