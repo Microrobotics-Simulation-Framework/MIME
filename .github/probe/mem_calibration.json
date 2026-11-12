@@ -1,5 +1,5 @@
 {
-  "scope": "TWO FAMILIES OF NODES, EACH ON A HANDFUL OF CASES ON A CPU, AND THE RAW-PROGRAM ROUTE ON ONE. The raw_program family (the estimate of a jitted function that is not an experiment, from XLA's compiled memory analysis, mem_estimate.py --raw) rests on one case, a dense solve at one size on one runner: its factor is the rule applied to that one ratio (1.07, so the minimum 1.10), which says nothing about a program with a different mix of temporaries, a callback or a host-side table, and the next raw arm's peak is a row for this table. The two families of nodes:  The MRS drag with its near field: 12 forward cases (10 of them the near field's, measured when the node's own memory estimate was fitted to the same peaks, so they agree by construction in part) and reverse cases of one sphere near a plane (peaks measured on the plain chunk by a CI probe, on the checkpointed run locally), plus two reverse cases that were killed, which give lower bounds only. The FVM: periodic tubes at 32 to 192 cells across, steady and IMEX, float64 and float32, forward and reverse, all measured locally and all below 2.2 GiB: whether the ratio holds at 10 GiB is unknown (it fell with size over the sizes seen: the miss is mostly additive, compile and runtime memory the estimate does not see). No other family (a point body coupled to the FVM, the Stokeslet and lubrication nodes, the surrogates, a GPU) was measured: a graph with one takes the uncalibrated factor. A family's factor is the largest measured/estimated ratio among its completed cases of the mode, up to 0.05, never under 1.10 (`min_factor`); the estimate times it lies over the measured peak on these cases only, by construction. A peak marked as a lower bound belongs to a run that was killed: its ratio shows an underestimate only when over 1 and it does not enter a factor. The table grows from probe runs: a run whose peak exceeds its bound is flagged and its row is printed.",
+  "scope": "TWO FAMILIES OF NODES, EACH ON A HANDFUL OF CASES ON A CPU, AND THE RAW-PROGRAM ROUTE ON ONE. The raw_program family (the estimate of a jitted function that is not an experiment, from XLA's compiled memory analysis, mem_estimate.py --raw) rests on one case, a dense solve at one size on one runner: its factor is the rule applied to that one ratio (1.07, so the minimum 1.10), which says nothing about a program with a different mix of temporaries, a callback or a host-side table, and the next raw arm's peak is a row for this table. The two families of nodes:  The MRS drag with its near field: 12 forward cases (10 of them the near field's, measured when the node's own memory estimate was fitted to the same peaks, so they agree by construction in part) and reverse cases of one sphere near a plane (peaks measured on the plain chunk by a CI probe, on the checkpointed run locally), plus two reverse cases that were killed, which give lower bounds only. The FVM: periodic tubes at 32 to 192 cells across, steady and IMEX, float64 and float32, forward and reverse, measured locally but for two CI probes (a porous plug's box, several builds in one process against one plug-free build's estimate: the forward factor's cases), all below 2.2 GiB: whether the ratio holds at 10 GiB is unknown (it fell with size over the sizes seen: the miss is mostly additive, compile and runtime memory the estimate does not see). No other family (a point body coupled to the FVM, the Stokeslet and lubrication nodes, the surrogates, a GPU) was measured: a graph with one takes the uncalibrated factor. A family's factor is the largest measured/estimated ratio among its completed cases of the mode, up to 0.05, never under 1.10 (`min_factor`); the estimate times it lies over the measured peak on these cases only, by construction. A peak marked as a lower bound belongs to a run that was killed: its ratio shows an underestimate only when over 1 and it does not enter a factor. The table grows from probe runs: a run whose peak exceeds its bound is flagged and its row is printed.",
   "estimate": "mem_estimate.py: the largest of the build's peak, the resident set after the build plus the compiled program's bytes (in reverse mode the larger of the checkpointed run and the plain chunk) and the nodes' own estimates",
   "min_factor": 1.1,
   "uncalibrated": {
@@ -23,7 +23,7 @@
       "node_modules": [
         "mime.nodes.flow.fvm"
       ],
-      "forward": 1.6,
+      "forward": 1.8,
       "reverse": 1.8
     },
     "raw_program": {
@@ -391,6 +391,30 @@
       "ratio": 1.76,
       "where": "a local run (CPU): process peak (VmHWM) of node_measure.py, compile included",
       "measured_mib": 871.5
+    },
+    {
+      "name": "fvm_porous_s64_probe",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "steady (Stokes) periodic tube, 64 cells across and 256 along, float64, forward: six builds in one process (the open tube and a porous plug at five permeabilities), estimated as the plug-free box of the same size",
+      "estimate_gib": 1.16,
+      "measured_gib": 1.991,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.717,
+      "where": "a CI runner probe (run 43084858227, arm finite-parallel-64-0.01h, 2026-11-11): the largest process's peak (ru_maxrss), compile included; it was over its bound of 1.86 GiB, so flagged an underestimate"
+    },
+    {
+      "name": "fvm_porous_s64_floor",
+      "family": "fvm",
+      "mode": "forward",
+      "what": "steady (Stokes) periodic tube, 64 cells across and 256 along, float64, forward: three builds in one process (the open tube and a porous plug at two tolerances, CG solves of 36000 and 42000 iterations), estimated as the plug-free box of the same size",
+      "estimate_gib": 1.122,
+      "measured_gib": 2.01,
+      "measured_is_lower_bound": false,
+      "against_a_fit": false,
+      "ratio": 1.792,
+      "where": "a CI runner probe (run 43123280055, arm parallel-64-0.1h-b, 2026-11-12): the largest process's peak (ru_maxrss), compile included; it was over its bound of 1.96 GiB, so flagged an underestimate"
     },
     {
       "name": "raw_dense_solve_n8000",

@@ -60,6 +60,9 @@ geometry screw 0.3.0 starts                              # physical: a fact abou
 geometry sphere 0.1.0 radius                             # physical: a fact about the setup, which MIME does not assume
 geometry sphere 0.2.0 radius                             # physical: a fact about the setup, which MIME does not assume
 geometry plane 0.1.0 normal                              # physical: a fact about the setup, which MIME does not assume
+geometry plug 0.1.0 axis                                 # physical: a fact about the setup, which MIME does not assume
+geometry plug 0.1.0 radius                               # physical: a fact about the setup, which MIME does not assume
+geometry plug 0.1.0 length                               # physical: a fact about the setup, which MIME does not assume
 geometry tube_tree 0.1.0 points                             # physical: a fact about the setup, which MIME does not assume
 geometry tube_tree 0.1.0 segments                           # physical: a fact about the setup, which MIME does not assume
 geometry tube_tree 0.1.0 radii                              # physical: a fact about the setup, which MIME does not assume
