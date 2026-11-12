@@ -947,6 +947,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A study's reverse-mode derivative in float32 through a body resolved on the FVM's grid (`Drag.Penalty`) is
+  refused outside the envelope where it was measured right** (`drag.penalty-float32-reverse`, before the derivative
+  compiles), routed to float64 or to forward mode. The envelope, allowed: a sphere in the default 0.1h interior at up
+  to 6 cells a radius, where float32 read within 3.6e-4 of float64 (solved to 1e-12) through the steady step in the
+  body's position, the viscosity and the drive, and within 2.1e-3 on the study's own path (R3's sphere free at Re 76,
+  IMEX Euler, 40 steps), as the rung's validity line now states. Refused: the 0.01h interior (measured 3.2 % off in
+  position at 6 cells a radius, 0.16 % in the viscosity and the drive, every transpose solve reporting convergence),
+  more than 6 cells a radius and a capsule (unmeasured; the gap grew 4.5 times from 3 cells to 6). The cause is
+  float32's stop on the transpose's right-hand side, not a derivative defect: float64 at float32's 1e-5 reproduces each
+  gap, the solves run in float64 inside the float32 program close it (a guard not built), and float64 at 1e-12 holds
+  reverse against forward mode to 1e-11. Forward mode, whose tangent solve was flagged wherever its derivative was off
+  by more than 0.1 %, and float64 are not refused. Predictions and outcomes: `tests/flow/predictions_f4_float32.json`.
+
 - **`Drag.MRS`'s 0.5.0 settings grouped by concern** (design #326 as the names sitting, #336, decided it, the names approved by the maintainer, #353; drag 0.5.0 is
   unreleased, so no saved-form step). The core stays flat (`spacing`, `blob`, `patches`, `wall_kind`, and 0.4.0's
   others); the force points' grading is `sampling=ForceSampling(grading=..., contact=..., contact_gap=...)` and the

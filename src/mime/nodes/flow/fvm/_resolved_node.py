@@ -80,6 +80,30 @@ MOTION_LINE = 1.0
 #: MRS's rate at 4 cells, 8.3 % at 3, 23 % at 2 (its first step's probe): within 3 cells the body is the near-wall
 #: resolved-body phase's.
 NEAR_WALL_CELLS = 3.0
+#: Where a gradient study's reverse-mode derivative in float32 through a resolved body was measured right, and is
+#: allowed: a sphere, the default interior (0.1h), at most :data:`FLOAT32_REVERSE_CELLS` cells across its radius; past
+#: them it is refused (``drag.penalty-float32-reverse``, :meth:`ResolvedFlowNode.derivative_problem`), measured off or
+#: unmeasured. :data:`FLOAT32_REVERSE_MEASURED` says what measured them.
+FLOAT32_REVERSE_SHAPES = ("sphere",)
+FLOAT32_REVERSE_INTERIOR = "0.1h"
+FLOAT32_REVERSE_CELLS = 6.0
+#: The box rounds its count along the period up, so a body at the default N reads a little above it (2 % finer for a
+#: period of 4 diameters at 6 cells a radius): the line's allowance for it (declared).
+FLOAT32_REVERSE_ROUNDING = 1.05
+FLOAT32_REVERSE_MEASURED = (
+    "measured through the node's steady step on the rung's position-derivative case (a sphere of a/R 0.375 held 0.2 R "
+    "off a periodic tube's axis: its axial resistance in its lateral position and in the viscosity, its load at rest in "
+    "the drive), float32 against float64 solved to 1e-12 (runs 43200714550 and 43202597797): at the default interior "
+    "(0.1h) reverse mode within 8.0e-5 at 3 cells a radius and 3.6e-4 at 6 (forward mode 5.5e-5 and 1.6e-4), the gap "
+    "growing 4.5 times from 3 cells to 6; with the 0.01h interior reverse mode 4.1e-3 off in position at 3 cells and, "
+    "at 6, 3.2e-2 in position and 1.6e-3 in the viscosity and the drive, every transpose solve reporting convergence "
+    "(forward mode 1.7e-2 in position, its tangent solve flagged stagnated). float64 at float32's tolerance (1e-5) "
+    "reproduces each gap, and the solves run in float64 inside the float32 program (primal, tangent and transpose) "
+    "close it to under 1e-5 at the default interior: float32's stop on the transpose's right-hand side (the penalty's "
+    "load on the stiff body), not a derivative defect (float64 at 1e-12: reverse against forward mode 1e-11). On the "
+    "study's own path (R3's sphere free at Re 76, IMEX Euler, 40 steps, the chunked run; run 43207448153) the body's "
+    "velocity's derivative in the viscosity read within 2.1e-3 at 3 cells and 4.7e-4 at 6 in reverse mode (7.5e-4 and "
+    "2.5e-4 forward), in its mass 7e-6, no solve flagged")
 #: The per-body inputs, ``body_<i>_<name>``: the body's pose, twist and mass matrix at the step's start.
 BODY_INPUTS = ("pose", "twist", "mass")
 #: A body's books in the step (the module's docstring states them): the penalty's load, its interior's momentum, its
@@ -449,6 +473,52 @@ class ResolvedFlowNode(ImplicitFlowNode):
             "(drag.penalty-lagged) at the values it was given, and a body driven past them moves faster than the grid "
             "resolves; or the one-pass affine coupling, which pairs the exchange at one twist, the route this rung "
             "comes with next")
+
+    def float32_reverse_unmeasured(self) -> list[str]:
+        """Each resolved body outside the envelope where float32's reverse mode was measured right (a sphere, the
+        default interior, at most :data:`FLOAT32_REVERSE_CELLS` cells across its radius), with why: empty inside it."""
+        c = self.constants()
+        found: list[str] = []
+        for index in range(self.count):
+            prefix = f"body_{index}_"
+            name, shape = c[f"{prefix}name"], str(c[f"{prefix}shape"])
+            if shape not in FLOAT32_REVERSE_SHAPES:
+                found.append(f"{name} is a {shape}, unmeasured")
+                continue
+            cells = float(c[f"{prefix}radius"]) / float(c["spacing"])
+            if str(c["interior"]) != FLOAT32_REVERSE_INTERIOR:
+                found.append(f"{name} sits in the {c['interior']} interior, measured off (with it reverse mode read "
+                             f"4.1e-3 in position at 3 cells a radius and 3.2e-2 at 6, no solve flagged)")
+            elif cells > FLOAT32_REVERSE_CELLS * FLOAT32_REVERSE_ROUNDING:
+                found.append(f"{name} has {cells:.3g} cells across its radius, above the {FLOAT32_REVERSE_CELLS:g} "
+                             f"measured (unmeasured: the gap grew 4.5 times from 3 cells to 6)")
+        return found
+
+    def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
+        """A gradient study's derivative in reverse mode in a float32 run through a resolved body outside the
+        envelope where it was measured right (:meth:`float32_reverse_unmeasured`), refused before the study compiles it
+        (``drag.penalty-float32-reverse``): its transpose solves stop at float32's tolerance on a right-hand side the
+        stiff body dominates and report convergence where the derivative is off (:data:`FLOAT32_REVERSE_MEASURED`).
+        Inside the envelope, in forward mode (its tangent solve was flagged stagnated wherever its derivative was off by
+        more than 1e-3) and in float64 it is not refused."""
+        del directions, members, steps
+        if mode != "reverse" or not self.count or jnp.dtype(run_dtype()) != jnp.dtype(jnp.float32):
+            return None
+        outside = self.float32_reverse_unmeasured()
+        if not outside:
+            return None
+        return Problem(
+            "drag.penalty-float32-reverse",
+            f"the derivative in reverse mode in float32 passes through bodies resolved on the medium's grid outside "
+            f"where it was measured right (a sphere in the default {FLOAT32_REVERSE_INTERIOR} interior at up to "
+            f"{FLOAT32_REVERSE_CELLS:g} cells a radius, within 2.1e-3 of float64): {'; '.join(outside)}. There its "
+            f"transpose solves stop at float32's tolerance on a right-hand side the stiff body dominates and report "
+            f"convergence where the derivative is off, so it would be off with no flag",
+            "run the study in float64, `Study(exp).sweep(grid({PRECISION: ['float64'], ...}), ...)` or "
+            "JAX_ENABLE_X64=1; or take the derivative in forward mode, `study.gradient(..., mode='forward')`, whose "
+            "tangent solve was flagged stagnated wherever its derivative was off by more than 0.1 %. The solves run in "
+            "float64 inside the float32 program close the gap (measured at the default interior); that guard is not "
+            "built yet")
 
     @override
     def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
