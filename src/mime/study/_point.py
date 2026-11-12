@@ -25,7 +25,7 @@ from mime.build._plan import Section
 from mime.control import law_and_models
 from mime.registry import ControlLaw
 from mime.drives import Ramp
-from mime.study._axes import Axis, Declared, declared
+from mime.study._axes import Axis, Declared, built_values, declared
 from mime.study._protocol import Protocol, declared_with
 
 type Arrays = dict[str, dict[str, np.ndarray]]
@@ -53,9 +53,11 @@ def _bytes(values: Mapping[str, Any]) -> str:
 @dataclass
 class Point:
     """A point as built: its index and values, its experiment as data, its plan, the controller's law made from it,
-    every refusal judged for it, and, where nothing refused it, its structure key and physics hash, its parameter tree
-    and initial state on the host (``tree``, ``state``), and what its nodes' own checks were judged at (``checked``:
-    by node, a digest of the node's leaves and starting inputs) with the lines they computed (``computed``)."""
+    every refusal judged for it, and, where nothing refused it, its key and physics hash, its parameter tree and
+    initial state on the host (``tree``, ``state``), and what its nodes' own checks were judged at (``checked``: by
+    node, a digest of the node's leaves and starting inputs) with the lines they computed (``computed``). Its ``key``
+    is the program's structure key (``structure``), with the values of the kinds' settings it writes that are built
+    per value (``mime.study._axes.built_values``) where it writes any: each such value is a build of its own."""
 
     index: int
     values: Mapping[Axis, object]
@@ -65,6 +67,7 @@ class Point:
     models: tuple[str, ...] = ()
     refusals: tuple[Refusal, ...] = ()
     key: str | None = None
+    structure: str | None = None
     physics_hash: str | None = None
     tree: Arrays = field(default_factory=dict[str, dict[str, np.ndarray]])
     state: Arrays = field(default_factory=dict[str, dict[str, np.ndarray]])
@@ -140,8 +143,10 @@ def build_point(index: int, settings: RunSettings, declarations: Sequence[Declar
         graph = assembled.graph
         observing = [n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()]
         found = structure_key(graph, observing)
-        point.key, point.physics_hash, point.tree = found.key, found.physics_hash, \
+        built = built_values(list(values), held.declarations)
+        point.structure, point.physics_hash, point.tree = found.key, found.physics_hash, \
             {name: dict(leaves) for name, leaves in found.tree.items()}
+        point.key = f"{found.key}:{built}" if built else found.key
         point.state = {name: {key: np.asarray(value) for key, value in initial_fields(graph.get_node(name)).items()}
                        for name in graph.node_names}
         point.checked = checked_digests(graph, point.tree)
@@ -204,4 +209,25 @@ def same_run(a: Point, b: Point) -> bool:
         _arrays_equal(a.state, b.state) and _laws_equal(a, b)
 
 
-__all__ = ["Point", "build_point", "checked_digests", "precision", "same_run"]
+def same_build(a: Point, b: Point, programs: dict[int, Any] | None = None) -> bool:
+    """Whether two points that differ in a value built per value run one computation: one structure key, equal leaves,
+    initial states and host laws, and one traced step, its constants included (each is built for its own value, so a
+    value its nodes hold as built shows only in the program: both points are assembled again and traced, which only
+    points the rest leaves equal need, each once where ``programs`` holds them by point index)."""
+    from mime.study._ranges import assembled_program, programs_differ
+
+    if a.structure is None or a.structure != b.structure or not _arrays_equal(a.tree, b.tree) or \
+            not _arrays_equal(a.state, b.state) or not _laws_equal(a, b):
+        return False
+    held = programs if programs is not None else {}
+
+    def traced(point: Point) -> Any:
+        if point.index not in held or point.index < 0:
+            with precision(point.declared.x64):
+                held[point.index] = assembled_program(point.declared.settings, point.declared.declarations)
+        return held[point.index]
+
+    return not programs_differ(traced(a), traced(b))
+
+
+__all__ = ["Point", "build_point", "checked_digests", "precision", "same_build", "same_run"]
