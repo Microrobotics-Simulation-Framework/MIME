@@ -120,5 +120,12 @@
     "if_wrong": "a moved array names a path the merge touched after all",
     "cannot_discriminate_if": "a control equal (it could not fail)"
   },
-  "outcomes": {}
+  "outcomes": {
+    "gate_bits": "bit_compare.py against 92f698f, locally, base and head in one job on CPU 0 and one thread (a laptop, not a runner): periodic_tube_flow (f32, f64), open_tube_flow (f32, f64), open_tube_loop (f32, f64), porous_plug (f32, f64), resolved_body_flow (f32, f64), tree_flow (f64) and point_body_flow lagged (f64): 0 arrays differ of 19, 19, 23, 23, 26, 26, 21, 21, 35, 35, 23 and 57; the float64-ulp control on periodic_tube_flow-f64 differs in 9 of 19 arrays, the float32-ulp control on open_tube_flow-f32 in 15 of 23; periodic_tube_flow-f64 recorded twice identical; steady_tube_flow named no function of the cases module on either side (a lambda case), so it ran on neither: as predicted for the 13 that ran",
+    "gate_plug_one_pass": "local, seeds 0 to 7 (4 periodic and 4 open draws a dtype), both dtypes: 0 over; gate 1's quantities at most 0.097 of their lines, the faces at most 0.028 of theirs; the porousrhs control 8/8 a dtype, the faces 45 to 7.6e3 times their line (float32) and 2.4e10 to 4.1e12 (float64); CI draws fresh on every run",
+    "gate_plug_books": "local: PASS in both dtypes, one pass and lagged; the Darcy row's work negative with no gift step, the drag's gift steps 0 on both its rows",
+    "gate_resolved_point": "local: flow.resolved-exchange in the three couplings with the point body after the resolved one (the only code) and before it; each experiment alone plans",
+    "gate_scheme": "local: with no scheme written the plug attached before and after the drag builds, the flow and the drag both imex_euler, and runs; without the plug the plan is refused drag.stokes-scheme"
+  },
+  "committed_at": "with the merge's outcomes commit; the predictions were written before the bits ran and before CI ran the gates (their local runs while writing them are under seen_before)"
 }
