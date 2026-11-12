@@ -1,0 +1,114 @@
+{
+  "written": "2026-11-12, committed before the merged head's probe (the release branch merged into camera/in-loop: #251's fix round and #254); the in-loop camera's evidence at the merge: the straddling-medium test's control, the bits controls and the merged head's bits and step costs",
+  "phase": "camera lane PR 2 (#266), after the merge of release/v0.3.0 at 7c762f4",
+  "labels": "the builder's predictions; the costs' basis is this PR's own earlier measurement (Actions run 43119066763 on the pre-merge head); guesses say so",
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64"
+    ],
+    "platform": "CPU (Actions probe runners, 4 vCPU)",
+    "sizes_and_parameters": "the ballistic sphere beside a 60 um tube, 320x240 and 640x480 for the costs; a 5 cm tinted ball with the pinhole 3 cm inside it, 80x60 pixels, for the straddling test",
+    "seeds_and_draws": "the test is deterministic (no draw); 30 runs of the planted and of the clean arm"
+  },
+  "gate_ahead": {
+    "claim": "a medium the camera is inside transmits exp(-mu t_far) at every pixel, t_far the far root of the ray from the pinhole, in both dtypes (forms.ahead's clip to t >= 0, which no other test needs)",
+    "kind": "bounds",
+    "case": "tests/sensing/test_ahead.py: a tinted ball of 5 cm radius, mu 20 per metre, the pinhole inside it",
+    "prediction": {
+      "band": [
+        0.0,
+        1.5e-05
+      ],
+      "unit": "largest relative error of the transmission against the closed form; the line is 64 eps (1 + mu t_far max), 1.5e-5 in float32 and 4e-14 in float64",
+      "basis": "derived",
+      "why": "the exponent is rounded to a few eps of itself"
+    },
+    "metric": "max |found / expected - 1| over the frame",
+    "control": {
+      "plant": "ahead returns the line's whole interval (CAMERA_PLANT=ahead-unclipped)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "the transmission is too small by exp(-mu |t_near|), a relative error of 0.65 here, 40000 times the float32 line"
+    },
+    "if_wrong": "the clip is not what the chord reads, or the pinhole is not inside the ball",
+    "cannot_discriminate_if": "the pinhole is outside the body: the line's near root is then positive and the clip changes nothing"
+  },
+  "gate_bits_controls": {
+    "claim": "the bit comparison can tell: the head compared with itself is equal in every array, and the same program with the ball's speed one ulp up differs",
+    "kind": "equality",
+    "case": "bit_compare.py on the ballistic scene (float64) and script A (float64), base = HEAD for the repeat; base = HEAD with the one-ulp variant of the ballistic scene",
+    "prediction": {
+      "value": 0,
+      "unit": "largest absolute difference in the repeat; the one-ulp variant differs in at least one array",
+      "basis": "derived",
+      "why": "the same program on the same inputs on one machine, one thread; a changed input differs"
+    },
+    "metric": "all_equal and each array's max_abs_difference",
+    "control": {
+      "plant": "the one-ulp variant is the control of the repeat",
+      "environment_variable": "none",
+      "expected_rate": "N/N",
+      "runs": 1,
+      "clean_expected": "repeat equal",
+      "resolution": "one ulp of the speed, 4e-19 m/s, moves the position by a few ulps after 40 steps"
+    },
+    "if_wrong": "the comparison cannot discriminate and the bits claim is not evidence",
+    "cannot_discriminate_if": "the one-ulp change does not reach the final state (rounded away); then it is not a control, and the result says so"
+  },
+  "gate_merged_bits": {
+    "claim": "every released program with no camera is bit for bit the release branch's at 7c762f4: script A (float64, float32), the gantry, the ballistic scene (float64, float32)",
+    "kind": "equality",
+    "case": "bit_compare.py, base origin/release/v0.3.0 against this head, one job, one thread",
+    "prediction": {
+      "value": 0,
+      "unit": "largest absolute difference in counts (every array equal)",
+      "basis": "derived",
+      "why": "the merge adds defaults and reads nothing when no camera is attached; the study's EntryDeclaration changes how axes are found, not a run"
+    },
+    "metric": "all_equal",
+    "control": {
+      "plant": "the one-ulp variant of gate_bits_controls",
+      "environment_variable": "none",
+      "expected_rate": "1/1",
+      "runs": 1,
+      "clean_expected": "equal",
+      "resolution": "as gate_bits_controls"
+    },
+    "if_wrong": "the merge changed a run",
+    "cannot_discriminate_if": "a program's final state is insensitive to the change"
+  },
+  "gate_resolution": {
+    "claim": "the replay gate's comparison (the frame's counts before noise against the offline render's, to 64 eps of the full scale) catches an error of one part in 100 of its floor on every draw: its resolution is its floor",
+    "kind": "bounds",
+    "case": "tests/sensing/resolution_oracles.py: the replay test's comparison on the frames of a built camera, an error of the stated size added to one pixel",
+    "prediction": {
+      "band": [
+        1.4e-11,
+        0.0077
+      ],
+      "unit": "counts: float64's floor 64 eps 1000 = 1.4e-11, float32's 7.6e-3",
+      "basis": "derived",
+      "why": "the comparison is a threshold at the floor on the largest difference, and the frames agree to far under it"
+    },
+    "metric": "discriminating_range.py: the smallest size from which every larger size is caught on 200 draws",
+    "control": {
+      "plant": "none beyond the sized error itself",
+      "environment_variable": "none",
+      "expected_rate": "N/N above the resolution",
+      "runs": 200,
+      "clean_expected": "0/N",
+      "resolution": "by construction"
+    },
+    "if_wrong": "the replay comparison has a looser floor than its text states",
+    "cannot_discriminate_if": "the draws do not move the frame (they pick the frame of three and the pixel)"
+  },
+  "costs": {
+    "how": "through the built graph (node_measure.py), as the earlier probe, on the merged head",
+    "prediction": "each cell within 1.5x of the pre-merge measurement (run 43119066763): the fix round changed the renderer's pieces (B1 composed edges, B2 windows, 12+1 Newton steps) and the in-loop window's sizing moved to the silhouette box; a guess, 'frame step' most likely above, the held step unchanged",
+    "measured_at": "the pre-merge head on the same runner type"
+  },
+  "outcomes": null
+}
