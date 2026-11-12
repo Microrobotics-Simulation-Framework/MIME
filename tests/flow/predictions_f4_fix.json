@@ -179,5 +179,33 @@
     "if_wrong": "a flag on the axis means the gap is not measured from the axis",
     "cannot_discriminate_if": "both cases raise it, or neither"
   },
+  "amendment_2": "2026-11-12, committed before the gate below ran: the interior's momentum change telescopes over a run (the review's m8)",
+  "gate_F5_telescoping": {
+    "claim": "The interior's momentum change summed over a run is its momentum at the end less at the start: each step's change taken from the value the step before held, so it telescopes",
+    "kind": "equality",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_interiors_momentum_change_telescopes_over_a_run",
+    "operating_point": "both dtypes; gate 3's free 24^3 box, a neutral sphere of 3 cells a radius, g = 50 m/s^2 (the body moves about 1.7 cells in 80 steps), IMEX Euler without convection",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-08
+      ],
+      "unit": "|sum dt (load - penalty) - Q_end| / |Q_end|, the largest component",
+      "basis": "measured-before (scratch, this builder: 2.5e-24 in float64, 1.1e-9 in float32)",
+      "why": "the sum telescopes exactly; float32's rounding of each step's difference sums to about 1e-9 of the end's momentum"
+    },
+    "metric": "the largest component's mismatch over the largest of Q_end",
+    "control": {
+      "plant": "the change taken on the step's own indicator (MIME_PLANT_OWN_INDICATOR): measured 1.0e-4 in both dtypes, the indicator's change times the field as the body crosses cells",
+      "environment_variable": "MIME_PLANT_OWN_INDICATOR",
+      "expected_rate": "N/N",
+      "runs": 5,
+      "clean_expected": "0/N",
+      "resolution": "the line, 1e-6"
+    },
+    "if_wrong": "a mismatch means a step's change is not taken from the held value",
+    "cannot_discriminate_if": "the body does not move across cells (the plant's error is the indicator's change)"
+  },
   "outcomes": null
 }
