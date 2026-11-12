@@ -1,0 +1,106 @@
+{
+  "written": "2026-11-11, committed before any gate of tests/study/test_vector_axes.py ran (the commit that adds this file is the timestamp): vector-valued study axes, layer 1, a kind's setting that is not one number varied whole or by a component, one build per value",
+  "phase": "vector axes, layer 1 (PR 1): a study varies any vector setting, one build per value",
+  "labels": "the builder's, from reading the code (mime.study._axes, _point, _study) and two trial plans; no gate case ran before this file",
+  "seen_before": [
+    "a trial plan (laptop, float32, loaded machine) of the MRS egg over egg.parts.shell.semi_axes[2] at 1.1, 1.2, 1.1 mm: 3 points, 2 groups, group 1 split by 'its value of egg.parts.shell.semi_axes[2] ...' and the drag node's counts and sampling; 27 s to plan. No member was run and nothing was compared",
+    "a trial study (laptop, float64, load about 20) of the FVM tree over vessel.radii[3] at 0.4 and 0.42 mm for 10 ms: 2 groups, group 1 split by the axis's reason alone (the structure records equal: the FVM holds the radii as leaves), planned in 172 s and run in 286 s with its plan again; nothing compared"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 (the egg's gate 1 only)"],
+    "platform": "CPU, a GitHub runner (4 vCPU) for the gates and the controls' rates; the laptop for trial runs only",
+    "sizes_and_parameters": "the egg: tests/mrs_cases.py free_space with Ellipsoid(semi_axes=(0.5, 0.7, 1.1) mm), drag 0.4.0's mrs rung (uncoupled) at a written spacing of 0.35 mm, blob 0.5, quadrature refinement 4, water 1 mPa s, dt 1 ms, 2 ms; points of the whole semi-axes (0.5, 0.7, 1.1) and (0.55, 0.65, 1.2) mm, and of semi_axes[2] at 1.1 and 1.25 mm by the water's viscosity at 1.0 and 1.2 mPa s (two members a group). The tree: tests/flow/test_fvm_tree_declaration.py's periodic tree (radii 0.5 to 0.4 mm, a 1 mm period), the FVM's steady Stokes solve, 8 cells across, dt 5 ms, one step (5 ms); points of vessel.radii[3] at 0.4 and 0.42 mm. The tree's whole radii are held to resolve and to refuse a point of another length; their gate case is the egg's whole semi-axes (a tree build and compile took about 80 s on the loaded laptop in the trial, so one tree case is run)",
+    "seeds_and_draws": "no draw: every gate is deterministic, so a control fails on every run or never"
+  },
+  "gate_1_equals_by_hand": {
+    "claim": "a study over a kind's vector setting, whole or by a component, equals the same points written by hand as experiments of their own, bit for bit per point: each point's program (its structure key without the axis's value), parameter leaves and initial state are the hand-written experiment's, and each member's final state and recorded series are the hand-written experiment's member run the same way (a study of it over a scalar axis at the same values, the same batched scan at the same batch size)",
+    "kind": "equality",
+    "case": "tests/study/test_vector_axes.py::test_a_study_over_a_vector_setting_equals_the_points_written_by_hand[egg-whole, egg-component, tree-component], and test_the_egg_component_in_float32_equals_the_points_written_by_hand",
+    "prediction": {
+      "value": 0,
+      "unit": "arrays differing (structure keys, leaves, initial states, final states, series)",
+      "basis": "derived",
+      "why": "a point's declarations are the base's with the thing's declaration replaced by one whose kind holds the value, which is what the hand-written script declares; each point is planned and built in full, and a group holds one value of the setting, so its program is built from that value; a member of a batch of one (or two) runs the batched scan the hand-written study runs at that batch size, on the same leaves and state"
+    },
+    "metric": "np.array_equal of every array, and equality of the structure keys",
+    "control": {
+      "plant": "keep-base: the point's write of the setting returns the experiment's own value (a rebuilt point that silently keeps the base); next-index: a component written at the next index along (a wrong component index)",
+      "environment_variable": "MIME_VECTOR_PLANT (keep-base, next-index)",
+      "expected_rate": "N/N for both, on the egg's and the tree's component cases (and the whole cases for keep-base): each moves the built kind by 0.05 to 0.15 mm, which changes the drag node's force points or the tree's cell mask, far above a bit",
+      "runs": 10,
+      "clean_expected": "0/N",
+      "resolution": "one bit: the comparison is array equality"
+    },
+    "if_wrong": "a difference names the array and the point; a structure key that differs means the point did not declare what the script declares (the write), and a member that differs with an equal program means the batched run differs, which gate 1 of tests/study (a batch of one is its own scan bit for bit) says it does not",
+    "cannot_discriminate_if": "the moved values gave the same program and leaves as the base (then keep-base would pass): the cases move each value enough to change the drag's sampling or the tree's mask, and the test asserts that the hand-written builds of two values differ"
+  },
+  "gate_2_split_per_value": {
+    "claim": "each value of a built axis is a group of its own, its split reason naming the axis; the same value twice is one group; the plan states the declared cut (no derivative along the axis)",
+    "kind": "equality",
+    "case": "the plans of gate 1's cases, and the egg over semi_axes[2] at 1.1, 1.25, 1.1 mm",
+    "prediction": {"value": "groups = the distinct values (2 in each of gate 1's cases; and 2 for 1.1, 1.25, 1.1 with members 0 and 2 together); each later group's first reason 'its value of <path>, a kind's setting the build holds as built (one build a value)'", "basis": "derived", "why": "the point's key is its structure key with a digest of the setting's whole value, and the reasons are computed from the axes before the records"}
+  },
+  "gate_3_refusals": {
+    "claim": "what stays refused is refused with its code and route: a component path on a value that is not a vector of numbers (study.component-path), a component past the end (study.component-index), a whole point of another length or dimension and a component of another dimension (study.vector-value), a kind's setting that is a structure, names or a reference (study.held-geometry), a setting named whole and by a component (study.axis-twice), a derivative or a fit along a built axis (gradient.built-value), an override of one (override.structural), a range of one (range.units)",
+    "kind": "acceptance",
+    "prediction": {"value": "each code as listed, the message naming the path", "basis": "derived"}
+  },
+  "gate_4_inert": {
+    "claim": "a built axis whose values change no structure, leaf, initial state or traced step is refused (study.axis-inert); one whose values a node holds as built in its traced step alone is not",
+    "kind": "acceptance",
+    "case": "the periodic tree as a structure no medium fills (vessel.radii[3]): refused; a box-hulled body with no law (its size held by the rigid body as floats it derives at build, if the trace shows them): judged by the trace",
+    "prediction": {"value": "the tree refused; the box either not refused (its trace differs) or refused (then nothing reads it), said by the test from the trace itself", "basis": "guess for the box: the rigid body's hull-derived Python floats are named as an anomaly in the release notes, and whether they reach the step is not read here"}
+  },
+  "gate_5_saved": {
+    "claim": "a study over built axes saves and reads back: its spec file names the axes with their component paths and values (a component one number with its unit, a whole vector its numbers), and a study made from it is the same study (the same id, the same points and group keys); a folder written by run_to is read back equal to the result in memory and a second run_to resumes every member",
+    "kind": "equality",
+    "prediction": {"value": "equal ids, keys, coordinates and members; every member reused on resume", "basis": "derived"}
+  },
+  "bits": {
+    "cases": "the released programs as #245's bits arm compares them (script A, A0, the settling sphere, drag 0.3.0 and 0.4.0 near a plane and in a tube), and script A's study over the field's frequency, its members' final states; base the release tip, head this branch, one job, one CPU, one BLAS thread (.github/probe/bit_compare.py)",
+    "prediction": "every array np.array_equal: no node, no build and no run changes, and a study whose axes are not built keeps its keys",
+    "controls": {
+      "repeat": "the head recorded twice: equal",
+      "one_ulp": "script A with its frequency one ulp up: differs"
+    }
+  },
+  "outcomes": {
+    "written": "2026-11-11, after the gates ran; the predictions above are unchanged",
+    "gate_1_equals_by_hand": {
+      "measured": "0 arrays differ in every case: the egg's whole semi-axes and its third semi-axis by the viscosity (float64 and float32) through the study's whole path; the tree's radii[3] through the study's path on CI at 93fd480 (run 43039777747, 335.6 s on a runner) and, from 3106d94, at its points (the structure key, leaves, initial state and the traced step, text and constants)",
+      "runs": [
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331 (arm gates, 43 passed)",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43039777747",
+        "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43044725087"
+      ],
+      "controls": {
+        "keep-base, egg-component": "10/10 caught, clean 0/10 (lower bound 0.74)",
+        "next-index, egg-component": "10/10 caught, clean 0/10",
+        "keep-base, egg-whole": "10/10 caught, clean 0/10",
+        "keep-base, tree at its points": "10/10 caught, clean 0/10",
+        "next-index, tree at its points": "10/10 caught, clean 0/10",
+        "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+      },
+      "changed_after_measurement": "the tree's case of gate 1 moved from the study's whole path to its points: the study and its hand-written studies took 5.6 min on a runner (tracing and lowering 74 %), past what a test run on every push may take; at its points it took 1.1 min (run 43044725087). Its claim there is the same program on the same inputs (the traced step compared, which the structure key alone does not hold), not a run compared; the egg's cases keep the run. Not predicted: the prediction did not say what the tree would cost"
+    },
+    "gate_2_split_per_value": {
+      "measured": "as predicted: [[0, 2], [1]], the reason and the plan's line as written",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+    },
+    "gate_3_refusals": {
+      "measured": "every code as predicted; one case not listed in the prediction: a component of a tree's segments (vessel.segments[0]) is refused study.held-geometry, the whole setting's refusal, not study.component-path",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+    },
+    "gate_4_inert": {
+      "measured": "the tree no medium fills is refused (study.axis-inert, its text for a built axis); the planted trace (each point's step traced with its radii written into it) is not: two groups",
+      "missed": "the first form of the case (the tree beside water alone) built no node and was refused run.nothing-to-step at every point, so it judged nothing: a ball that moves was added; the box case was not run, and the planted trace stands for a value a node holds as built in its step alone",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43047483331"
+    },
+    "gate_5_saved": {
+      "measured": "as predicted: the folder equal to the result in memory, the spec file's component paths and values, the same id and group keys from the spec, no member run again",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43039777747 (23.6 s on a runner)"
+    },
+    "bits": "as predicted: 20 programs (script A, A0, the MRS free space, near field, plane, tube and solids cases, the tree's flow, and script A's and the egg's studies over a scalar axis, their group keys and members), float32 and float64, 602 arrays np.array_equal, base the release tip against the head in one job on one CPU (run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43050840810, arm bits; the first run, 43047483331, compared 18 of them, the probe's dump unable to import the tree's case on either side); controls: the head twice equal, script A with its frequency one ulp up differs",
+    "memory": "every arm's peak above its one-program estimate but the two tree arms' (0.77 to 1.92 GiB against bounds of 0.58 to 1.02 GiB): a test run builds several programs, which the one-program case does not estimate; said, not a calibration row (the decision of 2026-11-11 on probe arms)"
+  }
+}
