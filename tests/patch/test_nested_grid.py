@@ -170,3 +170,43 @@ def test_the_own_response_is_the_brinkman_stokeslet_far_from_the_blob(float64, s
     exact = exact[np.arange(at.shape[0]), comp]
     scale = np.max(np.abs(exact))
     assert np.max(np.abs(found[used] - exact)) <= 1e-5 * scale
+
+
+def test_the_own_field_on_every_solid_face_and_not_a_shell_four_cells_deep(float64):
+    """Every face where the band or the solid is takes the own field: a shell 4 cells deep into a plane's solid, on a patch
+    9 cells deep in it, moves the reads by tens of per cent (the pressure carries the solid's constraint to the fluid; the
+    penalty screens only the velocity). A capacity that holds every such face reads what every interior face does, and a
+    capacity below them is counted, not silent."""
+    h = 5e-5
+
+    class Plane:
+        region = "wall"
+
+        def signed_distance(self, points):
+            return 9.0 * h - points[..., 2]
+
+    rng = np.random.default_rng(5)
+    sources = jnp.asarray(np.array([7.0, 7.2, 11.5]) * h + rng.uniform(-1.5, 1.5, size=(12, 3)) * h)
+    forces = jnp.asarray(rng.normal(size=(12, 3)) * 1e-9)
+
+    def reads(capacity, deep=None):
+        patch = RefinementPatch((14, 14, 18), h, shell_capacity=capacity)
+        placement = placed(patch, [Plane()], jnp.zeros(3, jnp.int32), 0, sources, (0.3 * h) ** 2, 1e-3)
+        if deep is not None:
+            kept = placement.shell_points[:, 2] >= (9.0 - deep) * h
+            placement = placement._replace(shell_weight=jnp.where(kept, placement.shell_weight, 0.0))
+        grid = patch.grid()
+        zero = tuple(jnp.zeros(grid.given_count(c)) for c in range(3))
+        found = patch_reflection(patch, placement, zero, forces, None,
+                                 patch_stopping(patch, jnp.float64, tolerance=1e-12), jnp.zeros(REPORT_SIZE))
+        return np.asarray(found.values), int(placement.shell_needed)
+
+    every, needed = reads(0)
+    planned, _ = reads(needed)
+    shallow, _ = reads(0, deep=4.0)
+    scale = np.max(np.abs(every))
+    assert np.max(np.abs(planned - every)) <= 1e-10 * scale
+    assert np.max(np.abs(shallow - every)) > 0.05 * scale
+    short = RefinementPatch((14, 14, 18), h, shell_capacity=needed // 2)
+    assert int(placed(short, [Plane()], jnp.zeros(3, jnp.int32), 0, sources, (0.3 * h) ** 2, 1e-3).shell_needed) > \
+        short.capacity()

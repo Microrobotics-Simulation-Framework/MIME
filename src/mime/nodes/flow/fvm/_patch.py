@@ -24,10 +24,12 @@ its uncovered slab filled from the coarse grid's previous reflection, and the ow
 **Snapped, never recompiling** (C4 decided 2): the box's shape is the kind's; its corner (``origin``) is whole fine
 cells on the fine lattice from the flow grid's corner, state, so a move changes values and never a shape.
 
-**The own field on a shell.** ``u_own`` enters through ``(mu/K) u_own``, nonzero in the band and the solid. It is evaluated
-on the faces from the band's fluid edge to :data:`SHELL_DEPTH` cells into the solid, at a capacity the kind holds (its
-overflow counted, never dropped silently): deeper, the stiff interior screens a face's source over about ``delta_in h``
-(0.1 cell), so its effect on the band is about e^-10 of it [arithmetic]. A capacity of zero takes every interior face.
+**The own field where the walls are.** ``u_own`` enters through ``(mu/K) u_own``, nonzero in the band and the solid, and
+is evaluated on every such face (the shell), at a capacity the kind holds: its overflow counted, never dropped silently;
+a capacity of zero takes every interior face. Nothing deeper in the solid may be left out: the penalty screens a face's
+velocity over about ``delta_in h``, but not the pressure, which carries the solid's divergence-free constraint to the
+fluid. The own field taken only 4 cells into a plane's solid moved the reflection at the force points by 17 % of its
+size [measured: ``tests/patch/test_nested_grid.py``'s shell test].
 
 **One uniform dilation per patch** (decided 4 (5)), by whole fine cells (decided 4 (4)): the walls' signed distance is
 moved into the solid by ``l`` cells; :func:`blended_reflection` blends the two neighbouring whole-cell evaluations
@@ -50,8 +52,8 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
-from mime.nodes.flow.fvm._band import DEFAULT_BAND, DEFAULT_INTERIOR, INTERIOR_RAMP_END, FacedSolid, band_named, \
-    interior_depth, wall_fields
+from mime.nodes.flow.fvm._band import DEFAULT_BAND, DEFAULT_INTERIOR, FacedSolid, band_named, interior_depth, \
+    wall_fields
 from mime.nodes.flow.fvm._grid import Velocity
 from mime.nodes.flow.fvm._nested import NestedMACGrid
 from mime.nodes.flow.fvm._patch_transfers import Given, Quadrature, cell_read, cell_read_transpose, patch_read, \
@@ -64,8 +66,6 @@ _linear_transpose: Any = cast(Any, jax).linear_transpose
 
 #: How the near field reads the patch's field: at its force points, or each force point's cell average.
 READS = ("point", "cell")
-#: How far into the solid, in fine cells, the own field is evaluated: the stiff interior's ramp end and one cell beyond.
-SHELL_DEPTH = INTERIOR_RAMP_END + 1.0
 #: The bytes one chunk of the own response's pairs (faces against force points) may hold.
 CHUNK_BYTES = 1 << 26
 #: The state the host node stores for the patch (the kind owns it; MADDENING 0.4 keeps state only in nodes): the
@@ -83,8 +83,7 @@ SERIES_TERMS = 20
 @dataclass(frozen=True)
 class RefinementPatch:
     """The kind: a box of ``cells`` fine cells of side ``spacing`` (m), the coarse grid's band and interior by name, the
-    near field's read (:data:`READS`), the own field's capacity in faces (zero: every face) and depth into the solid in
-    cells (``None``: every face where the band or the solid is)."""
+    near field's read (:data:`READS`) and the own field's capacity in faces (zero: every interior face)."""
 
     cells: tuple[int, int, int]
     spacing: float
@@ -92,7 +91,6 @@ class RefinementPatch:
     interior: str = DEFAULT_INTERIOR
     read: str = "point"
     shell_capacity: int = 0
-    shell_depth: float | None = SHELL_DEPTH
 
     def __post_init__(self) -> None:
         if self.read not in READS:
@@ -239,15 +237,11 @@ def placed(patch: RefinementPatch, solids: Sequence[Any], origin: Array, dilatio
     if opened:
         fields = wall_fields(grid, cast(Any, opened), band_named(patch.band), interior_depth(patch.interior), dtype,
                              offset=lambda at: at + corner)
-        resistivity, distances = fields.inverse_permeability, fields.signed_distance
+        resistivity = fields.inverse_permeability
     else:
         resistivity = grid.zeros(dtype)
-        distances = tuple(jnp.full(grid.interior_shape(c), -jnp.inf, dtype=dtype) for c in range(3))
     flat_k = jnp.concatenate([k.reshape(-1) for k in resistivity])
-    flat_phi = jnp.concatenate([phi.reshape(-1) for phi in distances])
     wanted = flat_k > 0.0
-    if patch.shell_depth is not None:
-        wanted = wanted & (flat_phi <= patch.shell_depth * h)
     total = flat_k.shape[0]
     (index,) = jnp.nonzero(wanted, size=patch.capacity(), fill_value=total)
     used = index < total
@@ -548,7 +542,7 @@ def patch_numbers(patch: RefinementPatch, coarse_spacing: float, body_reach: flo
 
 
 __all__ = ["CHUNK_BYTES", "COARSE_FLOOR_MEASURED", "FLUX_SHARE_LINE", "READS", "WINDOW_HANDOVER_CELLS",
-           "WINDOW_HANDOVER_SHARE", "WINDOW_RADIUS_CELLS", "PatchNumbers", "patch_numbers", "rule_two_cell", "SERIES_EDGE", "SERIES_TERMS", "SHELL_DEPTH", "STATE_FIELDS",
+           "WINDOW_HANDOVER_SHARE", "WINDOW_RADIUS_CELLS", "PatchNumbers", "patch_numbers", "rule_two_cell", "SERIES_EDGE", "SERIES_TERMS", "STATE_FIELDS",
            "PatchHistory", "PatchPlacement", "PatchSolve", "RefinementPatch", "blended_reflection",
            "brinkman_difference", "lifted_and_drive", "moved", "operators", "own_response", "patch_reflection",
            "patch_reflection_transpose", "patch_stopping", "placed", "screening", "snapped_origin", "source",

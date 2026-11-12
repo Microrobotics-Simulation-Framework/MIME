@@ -146,7 +146,6 @@ class Case:
     gap: float
     margin: int = 8
     read: str = "point"
-    shell_depth: float | None = 4.0
     tolerance: float = 1e-8
     lateral: tuple[float, float] = (0.37, 0.21)
     dilation: int = 0
@@ -158,7 +157,7 @@ def built_patch(case: Case) -> tuple[RefinementPatch, Any, np.ndarray, MRSSphere
     h = RADIUS / case.cells
     centre = np.array([case.lateral[0] * h, case.lateral[1] * h, RADIUS * (1.0 + case.gap)])
     n = int(math.ceil(2.0 * (case.cells + case.margin)))
-    patch = RefinementPatch((n, n, n), h, read=case.read, shell_depth=case.shell_depth)
+    patch = RefinementPatch((n, n, n), h, read=case.read)
     origin = snapped_origin(patch, jnp.asarray(centre))
     quadrature = Quadrature(jnp.asarray(sphere.points + centre), jnp.asarray(sphere.weights),
                             jnp.asarray(sphere.owners, dtype=jnp.int32), jnp.asarray(sphere.area))
