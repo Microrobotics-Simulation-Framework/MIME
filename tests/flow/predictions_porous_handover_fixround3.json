@@ -1,0 +1,79 @@
+{
+  "written": "2026-11-12, committed before its probe ran (the commit that adds this file is the timestamp): the fix round of #277's review: plugs in series refused (flow.porous-series), lumen_flux below the line counting the plug at its reading, the forced-flow topology with every held closing plug cut at once and a closed valve no way out, the not-finite refusal only where the step's own start, drive and resistivity were finite, the beside-a-body arm converged, and a physics line on the mid-section flux",
+  "phase": "lane F, dev2: the porous plug's hand-over, its fix round (controls)",
+  "labels": "the fix round's builder; each test run once on the laptop (float64) before this file, clean and planted, as seen_before says",
+  "seen_before": [
+    "laptop, float64, this branch's working tree: the topology unit test, the series test, the valve and parallel twin tests (seed 0) and gate 1 passed clean; SECTION_HIGH failed gate 1 at both interiors, SERIES_SILENT the series test, FORCED_OFF the valve and parallel tests (seed 0)",
+    "laptop: the not-finite tests passed clean (twin seed 0, the experiment's drive and solve causes); NOT_FINITE_ANY failed the drive case (refused flow.porous-solve-not-finite, its count 2)",
+    "laptop: the beside-a-body arm below the line (D/h 20, two diameters, 0.1h) converged at the new line, 1,064 and 1,154 iterations with and without the bead"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "GitHub runner 4 vCPU",
+    "sizes_and_parameters": "tests/flow/test_porous_handover.py's cases at their own points (porous_handover_cases.py); the CG at its default cap",
+    "seeds_and_draws": "DETECTION_SEED 0..N-1 per detection_rate.py (the drawn cases: forced_draw, quiet_draw, not_finite_draw; the others draw nothing and are run N times)"
+  },
+  "gate_controls": {
+    "claim": "every control fails its test on every run and its clean arm is quiet on every run",
+    "kind": "acceptance (detection rates)",
+    "case": "probe/run.sh arms (detection_rate.py)",
+    "prediction": {
+      "value": "caught N/N, clean 0/N on every arm: section_g1_0p1h, section_g1_0p01h, section_g3 (10 each), series_silent (10), forced_off_valve, forced_off_parallel, forced_off_inflow (30 each), everywhere_periodic, everywhere_pressure, everywhere_gap, everywhere_twin (30 each), silent_twin (30), silent_solve, any_drive (5 each), body_twice_below (3)",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "runs",
+      "basis": "measured-before for one run of each (seen_before); the drawn arms' other draws inferred from the mechanism",
+      "why": "SECTION_HIGH moves porous_flux 5 % from lumen_flux above the line (gate 1's line 1e-6) and lumen_flux by 5 % of the held flux below it (gate 3's 1e-4); the others remove exactly what their tests assert"
+    },
+    "metric": "caught/N and flagged/N (clean)",
+    "control": {
+      "plant": "each arm's plant",
+      "environment_variable": "MIME_PLANT_<NAME>",
+      "expected_rate": "N/N",
+      "runs": 30,
+      "clean_expected": "0/N",
+      "resolution": "a 5 % section error against lines of 1e-6 and 1e-4: some 5e4 and 500 times their resolution"
+    },
+    "if_wrong": "a clean arm that fires is a quiet case not quiet (a topology or a solve that stops): read its draw first; a planted arm that passes is a control that cannot discriminate there",
+    "cannot_discriminate_if": "a drawn case's solve stops (each test asserts its solve converged, so such a run fails clean too, not passes)"
+  },
+  "bits": {
+    "cases": "every saved program but the porous plug (51 cases less one, float64 and float32), and the porous plug at a permeability above its line (sqrt(K)/h 0.016 at D/h 8, probe/dump.py's porous_plug_above), base the release tip against the head, one job, one CPU, one thread (bit_compare.py); the fields this PR adds left out of the head's dump",
+    "prediction": "every array np.array_equal; the saved porous plug (sqrt(K)/h 0.008 at D/h 8) now lies below the line there (0.01) and its program changes, so it is left out of the equality arms and its goldens are remade",
+    "controls": {
+      "repeat": "the head recorded twice: every array identical",
+      "one_ulp": "the same program with every leaf one ulp up: arrays differ"
+    }
+  },
+  "gate_goldens": {
+    "claim": "the saved porous plug's goldens (plug, darcy), remade with its new route and fields, are byte-equal on three runners",
+    "kind": "equality",
+    "case": "probe/run.sh golden_1..3 (tests/saved/test_golden_outputs.py -k 'darcy or plug' with MIME_REGENERATE_GOLDEN=1)",
+    "prediction": {
+      "value": "three equal sha256 per file",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "measured-before (run 43187867295 at the earlier route)",
+      "why": "one program on one CPU model; #264's review saw the stop's path bit-equal on 14 more runners"
+    },
+    "metric": "sha256 of each file",
+    "control": {
+      "plant": "none",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "a byte"
+    },
+    "if_wrong": "runners that disagree: the golden is per CPU model; say so and keep the one CI's runner makes",
+    "cannot_discriminate_if": "the three jobs land on one host"
+  },
+  "outcomes": null
+}
