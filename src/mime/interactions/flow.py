@@ -289,7 +289,9 @@ _DARCY_GRADIENT = GradientRecord(
     where="in the structure's geometry (its centre, axis, radius and length), through the flow's step that holds it",
     reason="a geometry derivative through the band carries the band's ripple within a cell (the flow's own geometry "
            "line), and the region's exact distance and its share of the fluid have kinks (its medial set, its axis, "
-           "where its band meets the wall's fluid); in the permeability the gate checks it exact",
+           "where its band meets the wall's fluid); in the permeability the gates check it exact on each side of the "
+           "hand-over's line, where it has a kink (above it the solve resolves the throughflow two-way, below it the "
+           "reading holds the solved drop fixed)",
     route="the flow's geometry derivative through a traced spacing or an offset indicator (the wall's own route)")
 
 

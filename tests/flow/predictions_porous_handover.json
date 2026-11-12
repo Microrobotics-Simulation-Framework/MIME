@@ -1,0 +1,239 @@
+{
+  "written": "2026-11-12, committed before any gate of the porous plug's hand-over ran (the commit that adds this file is the timestamp): below the line the solve holds a plug at the line's permeability and its throughflow is read one way from its face pressures; the forced-flow test is structural",
+  "phase": "lane F, dev2: the porous plug's hand-over below the resolved line (a follow-up to #264)",
+  "labels": "the builder's, from #264's measurements (its PR body and validity line), arithmetic on the series closed form, and exploration runs on the laptop (float64, one process each, not evidence: listed below)",
+  "seen_before": [
+    "#264: the line rule's inputs (intercept floor under 3.5e-10 / 3.8e-11 of Q_open at D/h 16 / 32 with 0.1h, under 7.3e-8 / 9.9e-9 with 0.01h; lumen_flux -1.21 / -1.66 / -1.83 % at sqrt(K)/h 0.03 / 0.01 / 0.003, D/h 16, 0.1h; face drop within 3.5 % of Darcy, the open vessel's within 3.9 %): runs 43123280055, 43159332258, 43084858227",
+    "laptop exploration at this branch's first code (float64, D/h 16, a plug half a diameter long in a period of two, 0.1h): resolved lumen_flux / series 0.977 at sqrt(K)/h 0.03 and 0.973 at 0.01; the hand-over's reading with its line at 0.1, 0.980 at both; at 0.001 the held solve's reading 0.983 of the series, its steady cold solve stagnated at 1600 iterations (residual 0.88) on this short box, while one diameter in a period of four reached the cap of 5000 at residual 6.6e-6 and IMEX Euler converged (2847 iterations on its fifth step)",
+    "laptop exploration, the open vessel (D/h 16, an inflow, a plug closing it at K = 0.5 and 0.01 of the line's): forced_flagged raised, the reading 0.497 and 0.0099 of the inflow; at 1e4 times the line's K (resolved) not raised",
+    "laptop exploration, gate 4's case (the open vessel, D/h 8, 0.01h, K 0.3 of the line's, tolerance 1e-12): forward in K within 3e-12 of the central difference, in the inflow within 1.4e-8 on a face pressure, the dot product within 4e-14",
+    "laptop exploration, the plug beside a bead (D/h 20 both arms, one steady step): the plug's throughflow -0.98 % with the bead at K 1e-10 and -1.2 % at 1e-15 (the held solve flagged in both arms, the cold steady solve at the line); books closed in all four; at the bead's own refined spacing against D/h 8 without it the two differed by +6.4 %, the resolution's, so both arms are held at one spacing",
+    "laptop exploration, the quiet cases once each: the gap, the twin rig's draw 0 and the periodic tube at 0.01h not flagged; a given pressure and a resistance with no inflow"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32 in gate 5 only"
+    ],
+    "platform": "CPU; GitHub runner 4 vCPU for the probes, the laptop for the CI tests' own lines",
+    "sizes_and_parameters": "D = 1, nu = rho = 1, the periodic tube driven by g = 8 (porous_cases), steady Stokes unless named; the band smooth_2h_0.3h; interiors 0.1h (line sqrt(K)/h 0.003) and 0.01h (line 0.01); tolerance 1e-8 (1e-12 in gate 4)",
+    "seeds_and_draws": "gate 2 draws: K over the line's log-uniform 1e-4 to 0.5, the plug 0.3 to 0.8 diameters long at 0.7 to 1.3 along a vessel two long, the inflow's mean speed log-uniform 0.01 to 10 (porous_handover_cases.forced_draw); the twin rig's draw (twin_cases.draw) with K as above"
+  },
+  "gate_1_overlap": {
+    "claim": "where both routes are valid, the hand-over route's reading (the solve holding the plug at nine times its permeability, its line moved to three times its sqrt(K)/h) agrees with the resolved route's lumen_flux",
+    "kind": "equality within a line: each route is checked against the series closed form by its own gate; this one checks the reading against the two-way solve",
+    "case": "porous_handover_cases.overlap(dh, root, interior): CI at D/h 16, half a diameter in a period of two, sqrt(K)/h 0.03 at 0.1h and 0.01h; the probe at one diameter in a period of four, D/h 16 and 32, sqrt(K)/h 0.003 (0.1h only), 0.01, 0.03, 0.1, both interiors",
+    "prediction": {
+      "value": "ratio - 1 = -f + e, f = 1024 (sqrt(K)/h)^2 / (D/h)^2 the held plug's feedback (the flux nine K passes over the open tube's, less K's), e the reading's face error against the solve's",
+      "band": [
+        "|ratio - 1| <= f + 0.02 at D/h 16",
+        "|ratio - 1| <= f + 0.01 at D/h 32"
+      ],
+      "unit": "1",
+      "basis": "derived (f, from the series of the held plug's resistance and the open tube's) and measured-before (e: +0.3 / +0.7 % in exploration; #264's face drop within 3.5 %)",
+      "why": "the reading takes the solved drop, which the held plug sets as R_held / (R_held + R_open) of the drive; below 8 K_held / R^2 = 0.01 the drop is the plug's within f"
+    },
+    "metric": "the reading over the resolved lumen_flux, both from the real node's steady step",
+    "control": {
+      "plant": "the reading's permeability doubled (READING_K2; ratio near 2, f under 0.04); the face pressures' signs flipped (FACE_SIGN; the drop's sign and size change)",
+      "environment_variable": "MIME_PLANT_READING_K2, MIME_PLANT_FACE_SIGN",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a reading off by f + the line, some 2 to 6 %: the K x2 plant is about 25 times it"
+    },
+    "if_wrong": "a ratio outside the line at f under 0.01 would mean the face pressures do not carry the plug's drop (the planes' placement, the drive's term over L + W): the face reading is re-measured against the series before anything is tuned",
+    "cannot_discriminate_if": "both arms' solves flagged (stagnated or capped): the row is then reported unmeasured"
+  },
+  "gate_2_forced": {
+    "claim": "flow forced through a plug below the line (a fixed inflow, a plug closing the single tube) raises forced_flagged on every draw; a pressure-driven tube, a plug leaving a gap, and two parallel tubes from one inlet with one closed by the plug and a fixed inflow upstream do not",
+    "kind": "acceptance (a flag), structural: the topology says where a law fixes the flux through the plug, the comparison says the reading fell short of it",
+    "case": "porous_handover_cases.vessel (forced: inflow, plug closing; gap: radius 0.25; pressure: a resistance at both ends), occluded_twin, tube_reading (periodic, a body force)",
+    "prediction": {
+      "value": "forced 50/50 flagged; the periodic tube, the gap and the twin rig 0/50 each",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "draws",
+      "basis": "derived: in the forced case the reading is K / K_line of the forced flux, under (1 - FORCED_LINE) = 0.9 of it for every draw (K under 0.5 K_line); in the quiet cases the topology answers no",
+      "why": "a held plug obeys its own Darcy relation whatever drives it, so only the vessel's topology tells a fixed flux from a driven one"
+    },
+    "metric": "forced_flagged at the run's last step",
+    "control": {
+      "plant": "the comparison disabled (FORCED_OFF: the forced case missed on every draw); the topology answering forced for every region (FORCED_EVERYWHERE: every quiet case flagged, the reading K / K_line of the held plug's flux)",
+      "environment_variable": "MIME_PLANT_FORCED_OFF, MIME_PLANT_FORCED_EVERYWHERE",
+      "expected_rate": "50/50 each, on the drawn cases",
+      "runs": 50,
+      "clean_expected": "0/50",
+      "resolution": "a yes/no flag; the comparison's own margin is FORCED_LINE (0.1) against a deficit of 1 - K / K_line, at least 0.5 on the draws"
+    },
+    "if_wrong": "a quiet case flagged means the topology test or the gap test is wrong for it; a forced draw missed means the drop was read as unresolved (DROP_RESOLVED) or the section flux missed the plug",
+    "cannot_discriminate_if": "every quiet case is quiet only because the topology answered no: the FORCED_EVERYWHERE control is what shows the comparison would have flagged them"
+  },
+  "gate_3_carried_depth": {
+    "claim": "for a plug far below the interior's permeability, the reading's error against the series closed form is the held plug's feedback and the face error, constant in K, and not a fixed fraction set by the carried region's area",
+    "kind": "bounds (against the closed form) and equality (its spread across K)",
+    "case": "porous_handover_cases.tube_reading at sqrt(K)/h 1e-3, 3e-4, 1e-4; CI at D/h 16, 0.01h, half a diameter in a period of two; the probe at one diameter in a period of four, D/h 16 and 32, both interiors",
+    "prediction": {
+      "value": "reading / series - 1 within -4 to +1 % at D/h 16 and -2 to +1 % at 32, its spread across the three rows under 1e-3",
+      "band": [
+        -0.04,
+        0.01
+      ],
+      "unit": "1",
+      "basis": "measured-before (exploration: -1.7 % at 0.001, D/h 16, 0.1h) and derived (the held plug's feedback at the line, about 4.3e-6 / 1.1e-6 of the open tube's flux at D/h 16 / 32 with 0.1h, is the same at every K below it)",
+      "why": "below the line the solve does not see K, so the drop and the reading's relative error do not move with K; a carried region of area 4 h / R of the lumen's (0.5 at D/h 16, 0.25 at 32) would read that much off"
+    },
+    "metric": "the reading over the series closed form, and its spread over K",
+    "control": {
+      "plant": "the reading's permeability doubled (READING_K2): +100 %",
+      "environment_variable": "MIME_PLANT_READING_K2",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "the line's 4 %: the plant is 25 times it"
+    },
+    "if_wrong": "an error growing as K falls would be a leak in the reading's drop (the floor) entering at a fixed size; one near 4 h / R would be the carried region's",
+    "cannot_discriminate_if": "the held solve flagged on every row"
+  },
+  "gate_4_gradients": {
+    "claim": "the reading below the line is differentiable in K and in the inflow, forward and reverse, against central differences of one discretisation, and its reverse mode passes the dot-product check through the open vessel's solve",
+    "kind": "equality within a line",
+    "case": "the open vessel (open_cases.open_node, D/h 8, 0.01h, steady, tolerance 1e-12), an inflow, a plug closing it at 0.3 of the line's K; outputs porous_flux and the face pressures",
+    "prediction": {
+      "value": "K: forward and reverse within 1e-6 of the central difference (the reading is linear in K times Brinkman's factor; the held solve holds no K); inflow: within 1e-5; the dot product <J v, w> = <v, J^T w> within 1e-10 relative",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "relative",
+      "basis": "derived (#264's gate 7 lines, 1e-6 in K); the inflow's line one decade looser for the solve's tolerance",
+      "why": "below the line the drop does not depend on K; the inflow reaches the reading only through the face pressures, so a stop_gradient there leaves its derivative zero"
+    },
+    "metric": "forward and reverse against central differences",
+    "control": {
+      "plant": "a stop_gradient on the face pressures (FACE_STOP: the inflow's derivative zero) and on the permeability in the reading (K_STOP: the K derivative zero; the face pressures carry no K below the line, so FACE_STOP cannot test it)",
+      "environment_variable": "MIME_PLANT_FACE_STOP, MIME_PLANT_K_STOP",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a dropped term (no size)"
+    },
+    "if_wrong": "a reverse mode off the forward one is the open grid's transpose (#269's weighted product) or the face pressures' recovery",
+    "cannot_discriminate_if": "the K derivative is checked with FACE_STOP: it cannot fail, and is not used"
+  },
+  "gate_5_float32": {
+    "claim": "float32 gives the reading below the line within its rounding of float64 where float32's solve resolves the held plug; its range is stated where it does not",
+    "kind": "equality within a line, and a measured range",
+    "case": "tube_reading at sqrt(K)/h 1e-3, D/h 16, 0.01h (CI); the probe: both interiors, D/h 16 and 32, steady and IMEX Euler, iterations and flags",
+    "prediction": {
+      "value": "within 1e-3 at 0.01h, D/h 16; at 0.1h float32's steady solve at the line reaches its cap or stagnates (flagged), its reading still within 1e-2",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "relative",
+      "basis": "guess (float32's CG floor about 1e-5 against the held plug's condition)",
+      "why": "the reading takes the outer flow's drop, which float32 resolves before the plug's own velocity"
+    },
+    "metric": "the float32 reading over the float64 one",
+    "control": {
+      "plant": "none (a comparison of dtypes)",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a",
+      "environment_variable": "",
+      "if_none": "stated"
+    },
+    "if_wrong": "float32 is stated unmeasured below the line where it misses",
+    "cannot_discriminate_if": "both dtypes flagged"
+  },
+  "gate_resolved_body": {
+    "claim": "a flow holding a porous plug and a resolved body (Drag.Penalty) builds, its books close, and the plug's throughflow with the body far from it is the throughflow without the body; below the line porous_flagged is raised (the forced-flow test does not see a body's displacement)",
+    "kind": "acceptance and equality within a line",
+    "case": "porous_handover_cases.beside_a_body: a periodic tube 2 mm long at a spacing of 50 um (D/h 20) in both arms, steady Stokes, one step, a bead of 150 um at rest at the first step a millimetre from a plug 0.5 mm long, K 1e-10 m^2 (above the line) and 1e-15 (below), EnergyLedger",
+    "prediction": {
+      "value": "porous_flux within 2 % of the run without the bead (seen before: -0.98 % and -1.2 %); books close; porous_flagged 0 above the line, 1 below with the bead and 0 without",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "relative",
+      "basis": "measured-before (the exploration listed), the line set after it: a fit, stated",
+      "why": "with porous regions the base books the walls' penalty alone, so the resolved node must not subtract each body's own loss again (found in writing this gate)"
+    },
+    "metric": "the ledger's identity; the flux ratio",
+    "control": {
+      "plant": "the body's own loss subtracted from the walls' penalty again (the code before this PR): the books do not close",
+      "environment_variable": "MIME_PLANT_BODY_TWICE",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a term booked twice (no size)"
+    },
+    "if_wrong": "books not closing would mean another term of the two kinds' losses overlaps",
+    "cannot_discriminate_if": "the bead's work is zero (at rest exactly): it is free, so it moves"
+  },
+  "bits": {
+    "cases": "every saved program (float64 and float32), the saved porous plug's included (above the line), base 3f0c571 against the head, first eight steps, one job, one CPU, one thread (bit_compare.py); arrays present in both",
+    "prediction": "every array np.array_equal",
+    "controls": {
+      "repeat": "the head recorded twice: every array identical",
+      "one_ulp": "every leaf one ulp up: arrays differ"
+    }
+  },
+  "costs": {
+    "prediction": "no time or memory claim is made; the held plug's solve is the resolved route's at the line (7k to 17k iterations cold and steady at D/h 16 to 32, #264), stated, not claimed",
+    "measured_at": "n/a"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after the gates ran; the predictions above are unchanged",
+    "gate_1_overlap": {
+      "result": "within the line at every row",
+      "measured": "ratio - 1, 0.1h: D/h 16 +0.36 / +0.16 / -0.53 / -4.31 % at sqrt(K)/h 0.003 / 0.01 / 0.03 / 0.1 (f 3.6e-5 / 4e-4 / 3.6e-3 / 0.04), D/h 32 +0.03 / -0.06 / -0.36 / -1.77 % (f up to 0.01); 0.01h: D/h 16 +0.16 / -0.47 / -3.83 %, D/h 32 -0.06 / -0.31 / -1.46 % at 0.01 / 0.03 / 0.1",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186172705",
+      "controls": "READING_K2 30/30 on [0.1h] and [0.01h], FACE_SIGN 30/30, clean 0/30 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633)",
+      "resolution": "K read 2.1 % high (discriminating_range.py, refined), the plant 49 times it"
+    },
+    "gate_2_forced": {
+      "result": "as predicted",
+      "measured": "forced flagged on 50 of 50 draws; the periodic tube, the pressure-driven vessel and the gap quiet on 50 of 50 draws each; the twin rig's clean arm passed 50/50 but 32 of them were draws whose solve went not finite at the 0.1h line, read as quiet (a defect of the test, fixed in its fix round: predictions_porous_handover_fixround.json)",
+      "controls": "FORCED_OFF missed the forced case 50/50; FORCED_EVERYWHERE flagged periodic 50/50, pressure 50/50, gap 50/50, twin 18/50 (its misses the non-finite draws); clean 0 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633"
+    },
+    "gate_3_carried_depth": {
+      "result": "within the band, the spread under 1e-6 (predicted 1e-3)",
+      "measured": "reading / series - 1: D/h 16 -1.48 % (0.1h) and -1.19 % (0.01h), D/h 32 -0.36 % and -0.31 %, the same to 1e-6 at sqrt(K)/h 1e-3, 3e-4 and 1e-4",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186172705",
+      "controls": "READING_K2 30/30, clean 0/30",
+      "resolution": "K read 2.7 % high (refined), the plant 37 times it"
+    },
+    "gate_4_gradients": {
+      "result": "within the lines (CI)",
+      "measured": "laptop: K forward within 3e-12 of the central difference, inflow within 1.4e-8, the dot product within 4e-14",
+      "controls": "FACE_STOP 30/30 on [inflow], K_STOP 30/30 on [permeability], clean 0/30 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633)"
+    },
+    "gate_5_float32": {
+      "result": "within 2e-4 of float64 at every point measured (predicted 1e-3 at 0.01h, 1e-2 at 0.1h)",
+      "measured": "D/h 16 0.01h: steady converged (9e-6), equal to 1e-6; IMEX converged, 3e-6. D/h 32 0.01h: steady stagnated at 4.6e-5 (flagged), 1e-6; IMEX 4.9e-5 (flagged), 9e-6. D/h 16 0.1h: steady stagnated at 2.6e-3 (flagged), 1.6e-4; IMEX 1.6e-3 (flagged), 7e-5. D/h 32 0.1h: steady 2.1e-3 (flagged), 7e-5; IMEX 1.2e-3 (flagged), 1.1e-4",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186172705",
+      "also": "on a box two diameters long (laptop) the cold steady solve at the 0.1h line stopped stagnated at 1600 iterations: float64 residual 0.82 (reading within 1.7 %), float32 residual 1.0 (reading 0.31 of the series), flagged"
+    },
+    "gate_resolved_body": {
+      "result": "as predicted",
+      "measured": "books close in all four arms; with the bead -0.98 % (K 1e-10) and -1.2 % (1e-15) against without; porous_flagged 1 below the line with the bead, 0 without",
+      "controls": "BODY_TWICE 30/30 on [above] and [below], clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633)"
+    },
+    "bits": {
+      "result": "every array equal",
+      "measured": "100 programs (50 cases, both dtypes; twisted_toy refused at its build in both trees), base 92f698f against head d1da349; repeat 4/4 equal; one ulp 4/4 differ (11 to 23 arrays)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43187810420"
+    },
+    "goldens": {
+      "result": "byte-equal on three runners",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43187867295"
+    }
+  }
+}

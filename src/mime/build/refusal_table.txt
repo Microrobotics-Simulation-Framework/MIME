@@ -227,6 +227,9 @@ flow.porous-kind              user
 flow.porous-outside           user
 flow.porous-period            user
 flow.porous-scheme            user
+flow.porous-series            user
+flow.porous-solve-not-finite  user
+flow.porous-tree              user
 flow.preconditioner           user
 flow.prescribed-alpha         user
 flow.prescribed-region        user

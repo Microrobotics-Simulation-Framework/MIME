@@ -1,0 +1,32 @@
+{
+  "written": "2026-11-12, committed before its probe ran (the commit that adds this file is the timestamp): the line probe at the default cap (run 43247885625) converged at D/h 64 at sqrt(K)/h 0.03 on 5 of 5 draws, against the prediction of none, but its five draws' periods reached only 3.05 diameters of the 2 to 4 drawn, and its count rose with the period to 4,632 of the cap's 5,000; this supplement draws the long periods",
+  "phase": "lane F, dev2: the porous plug's hand-over, its fix round (the line at D/h 64 over the long periods)",
+  "labels": "the fix round's builder, from run 43247885625's D/h 64 rows",
+  "seen_before": [
+    "run 43247885625: at D/h 64, 0.1h, 0.03: 3,818 / 3,973 / 4,286 / 4,470 / 4,632 iterations at periods 2.03 / 2.14 / 2.88 / 2.95 / 3.05 diameters (0.01h: 3,663 to 4,511), all converged; at 0.1: 1,138 to 1,405 (0.01h 1,554 to 2,026)"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner 4 vCPU",
+    "sizes_and_parameters": "as predictions_porous_handover_capline.json's periodic arms at D/h 64, the period drawn 3.5 to 4 diameters (probe/line_cap.py's seventh argument), one cold steady step at the default cap",
+    "seeds_and_draws": "5 draws an arm, numpy default_rng(93000 + i)"
+  },
+  "gate_line_64_long": {
+    "claim": "whether the D/h 64 row's line is 0.03 (converged on every draw over periods 2 to 4) or 0.1",
+    "kind": "measurement (a count per arm)",
+    "case": "probe/line_cap.py periodic <interior> 64 <line> 5 <out> 3.5:4.0",
+    "prediction": {
+      "value": "0.03: at most 2 of 5 converged at either interior (the rest at the cap); 0.1: 5 of 5 at each; so the D/h 64 row's line 0.1",
+      "band": [null, null],
+      "unit": "draws",
+      "basis": "extrapolated from the seen counts' rise with the period, about 800 iterations a diameter, to 5,000 near a period of 3.5",
+      "why": "the box's axial modes lower the operator's least eigenvalue as the period grows"
+    },
+    "metric": "converged draws and the most iterations",
+    "control": {"plant": "none: the 0.1 arms are the comparison", "environment_variable": "", "expected_rate": "n/a", "runs": 0,
+                "clean_expected": "n/a", "resolution": "5 draws"},
+    "if_wrong": "0.03 converging on every long draw keeps the D/h 64 row at 0.03",
+    "cannot_discriminate_if": "both lines converge on every draw or neither does"
+  },
+  "outcomes": null
+}

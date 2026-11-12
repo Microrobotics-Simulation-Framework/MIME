@@ -30,6 +30,7 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Mapping, Sequence
+from functools import cached_property
 from types import MappingProxyType
 from typing import Any, ClassVar, NamedTuple, override
 
@@ -47,7 +48,7 @@ from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, negativ
 from mime.nodes.flow.fvm._flags import OPEN_FLAGS, STALL_PER_TOLERANCE
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, StepParts, \
-    FlowFields, FlowRecords, check_deliveries, porous_role
+    FlowFields, FlowRecords, PorousStep, check_deliveries, porous_leaf, porous_role
 from mime.nodes.flow.fvm._open import OpeningLayout, OpenMACGrid
 from mime.nodes.flow.fvm._ports import PARAMETERS, STATES, PortLaw, PortSolution, RowKind, port_law_named, \
     port_system, reference_of, well_posed
@@ -189,6 +190,7 @@ class OpenFlowNode(ImplicitFlowNode):
                "product, so the projection's term does not fall with the tolerance (C13); the open_face_projection "
                "flag bounds it")})
     LEDGER_FLAGS = OPEN_FLAGS
+    HANDOVER_BOX: ClassVar[str] = "open"
 
     def __init__(self, name: str, timestep: float, *, openings: Sequence[str], opening_laws: Sequence[str],
                  opening_parameters: Any, opening_law_ids: Sequence[str] = (), initial_opening_state: Any = None,
@@ -259,6 +261,71 @@ class OpenFlowNode(ImplicitFlowNode):
     def solids(self, p: Mapping[str, Any], grid: MACGrid) -> list[TubeSolid]:
         return [TubeSolid(as_run_array(p["tube_centre"]), as_run_array(p["tube_axis"]), as_run_array(p["tube_radius"]),
                           ((0.0, 0.0, 0.0),))]
+
+    @override
+    def through_plug(self, closing: Sequence[Array]) -> list[Array]:
+        """Whether a law fixes the flux through each region, from the vessel's topology at the build's geometry for
+        the set of regions the program finds below the line closing the lumen (``closing``): every such region's
+        branch cut at once (``_porous.forced_table``, :meth:`porous_topology`)."""
+        table = jnp.asarray(self.porous_topology_held[1])
+        index = sum((jnp.asarray(c).astype(jnp.int32) << k for k, c in enumerate(closing)), jnp.asarray(0, jnp.int32))
+        row = table[index]
+        return [row[k] for k in range(len(closing))]
+
+    @override
+    def series_pairs(self) -> np.ndarray:
+        """Which regions share a flow path in the vessel, pairwise (``_porous.series_pairs``, :meth:`porous_topology`)."""
+        return self.porous_topology_held[0]
+
+    @cached_property
+    def porous_topology_held(self) -> tuple[np.ndarray, np.ndarray]:
+        """:meth:`porous_topology`, made once (the build's geometry does not change)."""
+        return self.porous_topology()
+
+    def porous_topology(self) -> tuple[np.ndarray, np.ndarray]:
+        """At the build's geometry, each porous region's branch cut (the lumen's part across the box's axis at the cell
+        layer of its centre that its disc meets, ``_porous.branch_cut``; the lumen, the cells inside every solid,
+        joined through their faces) read against the openings (each opening's lumen cells on its patch, its law's row:
+        a flux or a pressure): which regions share a flow path (``_porous.series_pairs``) and, for each set of them
+        that may lie below the line closing the lumen, which a law forces flow through (``_porous.forced_table``)."""
+        import jax
+
+        from mime.nodes.flow.fvm._open import LOW
+        from mime.nodes.flow.fvm._porous import branch_cut, forced_table, series_pairs
+
+        count = len(self.porous_laws)
+        c = self.constants()
+        with jax.ensure_compile_time_eval():
+            grid = self.open_grid(c)
+            points = grid.cell_points(run_dtype())
+            phi: Array | None = None
+            for solid in self.solids(c, grid):
+                found = solid.signed_distance(points)
+                phi = found if phi is None else jnp.minimum(phi, found)
+            assert phi is not None
+            lumen = np.asarray(phi) < 0.0
+            held = np.asarray(points)
+        h = float(c["spacing"])
+        patches = grid.layout.masks(grid.cells) > 0.0
+        touches: list[np.ndarray] = []
+        for k, plane in enumerate(grid.layout.planes):
+            touch = np.zeros_like(lumen)
+            layer = 0 if plane == LOW else lumen.shape[2] - 1
+            touch[:, :, layer] = lumen[:, :, layer] & patches[k]
+            touches.append(touch)
+        cuts: list[np.ndarray] = []
+        for index in range(count):
+            centre = np.asarray(c[porous_leaf(index, "centre")], dtype=float)
+            axis = np.asarray(c[porous_leaf(index, "axis")], dtype=float)
+            axis = axis / np.linalg.norm(axis)
+            radius = float(c[porous_leaf(index, "radius")])
+            layer = int(np.clip(np.floor(centre[2] / h), 0, lumen.shape[2] - 1))
+            offset = held[:, :, layer] - centre
+            along = offset @ axis
+            across = np.sum(offset * offset, axis=-1) - along * along
+            cuts.append(branch_cut(lumen, across <= max(radius, 0.5 * h) ** 2, layer))
+        fixes = [row is RowKind.FLUX for row in self.rows()]
+        return series_pairs(lumen, touches, cuts), forced_table(lumen, touches, fixes, cuts)
 
     def laws(self) -> list[PortLaw]:
         return [port_law_named(law) for law in self.constants()["opening_laws"]]
@@ -450,8 +517,10 @@ class OpenFlowNode(ImplicitFlowNode):
             **{f"unit_{x}": (jnp.stack([unit[k] for unit in ports.units]) if ports.units else
                              jnp.asarray(state[f"unit_{x}"])) for k, x in enumerate("xyz")})
         if self.porous_laws:
-            ended.update(self.porous_report(p, grid, operator(stage.shift)(stage.solved), _add(stage.rhs, ports.force),
-                                            dtype))
+            delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
+            ended.update(self.porous_report(p, grid, fields, state, PorousStep(
+                operator(stage.shift)(stage.solved), _add(stage.rhs, ports.force), stage.rhs, sigma, ended_velocity,
+                delivered, reported), dtype))
         held = node_fields(ended)
         energy: dict[str, Array] = {}
         if self.metered:
@@ -489,11 +558,11 @@ class OpenFlowNode(ImplicitFlowNode):
 
     @override
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
-        """The periodic node's, its routes the open vessel's: no ``dt='auto'`` and no steady drive, the step taken from
-        the inflow's peak."""
+        """The periodic node's, its CFL stop's routes the open vessel's: no ``dt='auto'`` and no steady drive, the step
+        taken from the inflow's peak."""
         problem = super().stop_problem(state)
-        if problem is None:
-            return None
+        if problem is None or problem.code != "flow.cfl-exceeded":
+            return problem
         cfl = float(np.asarray(state["stopped_cfl"]))
         line = float(self.scheme.cfl_limit(self.constants()["tube_axis"]))
         safe = f"dt <= {self.delta_t * line / cfl:.4g} s, " if math.isfinite(cfl) and cfl > 0.0 else "a smaller dt, "

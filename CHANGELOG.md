@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The porous plug's hand-over below the resolved line** (lane F, dev2; a follow-up to the plug). A plug whose
+  `sqrt(K)/h` lies under the line is held by the solve at the line's permeability, a wall for the outer flow to within
+  the flux that held plug passes, and its throughflow is read one way from its face pressures, Darcy's law in
+  Brinkman's form with the body force on its own fluid: `porous_flux` (each region's throughflow by its route: the
+  solve's flux through its mid-section at or above the line, the reading below it) and `porous_seepage` (over its
+  section), differentiable in `K` and the solved pressures; `lumen_flux` counts a plug below the line at its reading in
+  place of the held flux through it, so it stays the throughflow. **The line** is the least `sqrt(K)/h` at which the held
+  cold solve converged on every draw at the CG's default cap (which an experiment cannot raise), the wall's leak at most
+  1 % of the throughflow, keyed by box type, interior and D/h (`HANDOVER_LINE`, a node kind's `HANDOVER_BOX`): 0.01 up
+  to D/h 16, 0.03 at 32, 0.1 at 64 in a periodic tube, 0.01 up to 16 and 0.03 at 32 in an open vessel, with either
+  interior; the count rises with D/h at a fixed line, so the line does. Below the line at a D/h outside the measured
+  range the run raises `porous_flagged`. Where a law fixes the flux (an inflow, a valve) out of a part of the lumen
+  whose every other way out is through plugs below the line closing it (every such plug cut at once, a closed valve no
+  way out), and a plug's reading falls short of the solve's flux through it, the run raises `forced_flagged` with a
+  warning: the drop is then the held plugs', not the plugs'. The test is the vessel's topology, since a held plug obeys
+  its own Darcy relation whatever drives it. `porous_flagged` keeps its gap rule and fires for a plug below the line
+  beside a resolved body; below the line a closing plug is the hand-over's, no longer flagged. The build report states
+  each plug's route and the line with its range and source. **Fixed:** a flow holding a porous plug and a resolved
+  body (`Drag.Penalty`) took each body's own loss off a walls' penalty that, with a porous region, never held it, so
+  its books did not close. **Corrected:** the plug's validity line said a closing plug was resolved down to
+  `sqrt(K)/h` 0.003 with the default 0.1h interior; that held only with the CG's cap raised past its default (the cold
+  solve took 7,129 / 16,736 iterations at D/h 16 / 32). At the default cap the two-way solve converges only down to the
+  line above, and below it the plug is held. **New refusals:** a step whose velocity goes not finite from a finite
+  start, drive and resistivity in a flow holding a porous region (`flow.porous-solve-not-finite`, naming its regions
+  and their route; a NaN given to the step stays the run's own `run.non-finite`); a plug below the line closing the
+  lumen in one flow path with another porous region (`flow.porous-series`: the held plug passes the line's flux, which
+  the other carries, so two plugs in series read 88 and 0.88 times the closed form); a plug in a tube tree
+  (`flow.porous-tree`: no line was measured there). New state fields `porous_series` and `porous_not_finite` hold what
+  the two run refusals read.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,

@@ -254,10 +254,13 @@ def closed_tube() -> Experiment:
 
 def porous_plug() -> Experiment:
     """A porous plug filling a periodic water-filled tube, a quarter of its period long, ``Darcy`` attached; steady
-    Stokes, at a clot's permeability, 1e-12 m^2 (sqrt(K)/h 0.008: its Brinkman layer under a cell), the CG 727
-    iterations on its first step. Its golden outputs (plug, darcy) are made on CI's runners and are byte-equal on three
-    (two CPU models; the stop's path was bit-equal on 14 more, by default and on one thread, in #264's review): off the
-    runners the path moves (a laptop takes 732 iterations), so these two goldens fail there and pass on CI."""
+    Stokes, at a clot's permeability, 1e-12 m^2 (sqrt(K)/h 0.008: its Brinkman layer under a cell, and under the
+    hand-over's line at D/h 8, 0.01, so the solve holds it at the line's permeability and reads its throughflow one
+    way, the CG 595 iterations on its first step; before the line was measured at the CG's default cap it was resolved
+    two-way, 727 iterations). Its golden outputs (plug, darcy) are made on CI's runners and are byte-equal on three
+    (three CPU models, the hand-over's fix round; the resolved route's stop path was bit-equal on 14 more, by default
+    and on one thread, in #264's review): off the runners the path may move (a laptop took 732 iterations on the
+    resolved route), so these two goldens may fail there and pass on CI."""
     from mime.dynamics import FVM, Scheme
     from mime.interactions import BodyForce, Darcy
     from mime.scene import PeriodicBox, Plug, Scene, Tube, Z

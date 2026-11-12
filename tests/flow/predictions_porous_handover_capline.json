@@ -1,0 +1,69 @@
+{
+  "written": "2026-11-12, committed before its probe ran (the commit that adds this file is the timestamp): the review of #277 (M2) found the periodic box's 0.1h line (sqrt(K)/h 0.003) converging only at a raised cap, never at the default of 5,000 that an experiment cannot raise; the line is re-measured by its rule at the default cap, per box type, interior and D/h",
+  "phase": "lane F, dev2: the porous plug's hand-over, its fix round (the line at the default cap)",
+  "labels": "the fix round's builder, from the review's periodic_line arm (run 43241909199), the gates probe's iteration counts (run 43186172705) and two laptop smoke draws of the probe script",
+  "seen_before": [
+    "run 43241909199 (the review's periodic_line arm, float64, default cap): at 0.1h, 0.003 at the cap (residual 1.2e-5, one diameter in four) or stagnated (0.82, half in two) at D/h 16, at the cap (0.10) or stagnated (0.54) at D/h 32; 0.01 converged at D/h 16 (3,151 and 2,672 iterations) and reached the cap at D/h 32 (5.3e-6, 5.0e-7)",
+    "run 43186172705 (gates, cap 20,000 to 250,000, one diameter in four): the held cold steady solve took 7,129 / 16,736 iterations at D/h 16 / 32 at the 0.1h line 0.003, and 2,964 / 6,703 at the 0.01h line 0.01",
+    "laptop smoke of probe/line_cap.py (float64, this branch): periodic, 0.1h, D/h 8, line 0.003, draw 0 (period 2.125): stagnated at 960 iterations, residual 0.93; the gap case at D/h 8, 0.1h, line 0.03, draw 0: converged"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner 4 vCPU",
+    "sizes_and_parameters": "the CG at its default cap (5,000) and tolerance, the release's stopping rule as it stands (a separate PR changes the stagnation stop, which may change these counts); periodic: a plug closing a periodic tube of D = 1, its period drawn 2 to 4 diameters, its length 0.3 to 1, its centre 0.3 to 0.7 of the period, its K a log-uniform 1e-4 to 0.5 of the line's (the held solve sees the line's K only), one cold steady Stokes step; open: gate 2's vessel two diameters long (porous_handover_cases.vessel: a fixed inflow, a given pressure, a coaxial plug of half the lumen's radius), two steady steps, at D/h 32 (D/h 8 to 16 measured before, runs 43213789033, 43201390806, 43207166164)",
+    "seeds_and_draws": "10 draws an arm, 5 at D/h 64 (periodic: numpy default_rng(92000 + i); open: forced_draw(i))"
+  },
+  "gate_line_periodic": {
+    "claim": "the periodic box's line at the default cap, per interior and D/h: the least of 0.003, 0.01, 0.03, 0.1 at which the held cold solve converged on every draw",
+    "kind": "measurement (a count per arm)",
+    "case": "probe/line_cap.py periodic <interior> <D/h> <line> <draws>",
+    "prediction": {
+      "value": "converged draws (of 10; of 5 at D/h 64): 0.1h: D/h 8: 0.003 not all (at most 7), 0.01 all; D/h 16: 0.003 at most 3, 0.01 all, 0.03 all; D/h 32: 0.01 at most 2, 0.03 all, 0.1 all; D/h 64: 0.03 none, 0.1 all. 0.01h: D/h 8: 0.003 not all, 0.01 all; D/h 16: 0.003 at most 3, 0.01 all, 0.03 all; D/h 32: 0.01 at most 2, 0.03 all, 0.1 all; D/h 64: 0.03 none, 0.1 all. So the line: 0.01 at D/h 8 and 16, 0.03 at 32, 0.1 at 64, at both interiors",
+      "band": [null, null],
+      "unit": "draws",
+      "basis": "derived from the seen counts: iterations about A (D/h)^1.2 line^-0.68 (7,129 to 16,736 for D/h 16 to 32; 7,129 to 3,151 for 0.003 to 0.01), so 0.03 at D/h 32 near 3,500 and 0.1 at D/h 64 near 3,600; the short boxes' spurious stagnation (seen at 0.003) assumed gone at 0.01 and above, as the review saw at D/h 16",
+      "why": "the held region's resistivity mu / (line h)^2 over the viscous term's mu / h^2 is 1 / line^2 at every D/h, while the Laplacian's least eigenvalue falls as (h / D)^2: the CG's count rises with D/h at a fixed line"
+    },
+    "metric": "converged draws (no cap, no stagnation, finite) and the most iterations an arm took",
+    "control": {
+      "plant": "none: the arms at the next lower line are the comparison (each line's claim is that it, and not the one below it, converged on every draw)",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "a count of 10 draws (5 at D/h 64) bounds the share that would stop at about a quarter (half) with 95 % confidence when none do"
+    },
+    "if_wrong": "a line that does not converge on every draw at the D/h measured moves to the next; one predicted to stop that converges keeps the lower line",
+    "cannot_discriminate_if": "every arm converges or none does (then the counts say nothing of where the line lies between the lines tried)"
+  },
+  "gate_line_open_32": {
+    "claim": "the open vessel's line at D/h 32 at the default cap, per interior: the least of 0.01, 0.03, 0.1 at which the held solve converged at every step of every draw in each of the three single-tube cases",
+    "kind": "measurement (a count per arm)",
+    "case": "probe/line_cap.py <inflow|pressure|gap> <interior> 32 <line> 10",
+    "prediction": {
+      "value": "0.01: the inflow case at most 3 of 10 at either interior; 0.03 and 0.1: 10 of 10 in each case at each interior; so the open line 0.03 at D/h 32",
+      "band": [null, null],
+      "unit": "draws",
+      "basis": "inference from the periodic box's scaling and the open vessel's 0.01 converging at D/h 16 (runs 43213789033, 43207166164)",
+      "why": "as the periodic box: the held term's stiffness against the Laplacian's least eigenvalue rises with D/h"
+    },
+    "metric": "converged draws (every step, finite)",
+    "control": {"plant": "none: the lower line's arm is the comparison", "environment_variable": "", "expected_rate": "n/a", "runs": 0,
+                "clean_expected": "n/a", "resolution": "as gate_line_periodic"},
+    "if_wrong": "as gate_line_periodic",
+    "cannot_discriminate_if": "every arm converges"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after run 43247885625 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43247885625); the predictions above are unchanged",
+    "gate_line_periodic": {
+      "result": "as predicted at D/h 8, 16 and 32; missed at D/h 64 (0.03 converged on 5 of 5, predicted none)",
+      "measured": "converged draws (most iterations): 0.1h: D/h 8: 0.003 5/10 (the rest stagnated, residual 0.68 to 1), 0.01 10/10 (1,488); D/h 16: 0.003 0/10, 0.01 10/10 (3,368), 0.03 10/10 (1,156); D/h 32: 0.01 0/10 (at the cap, residual 1.1e-6 to 8.9e-6), 0.03 10/10 (2,287), 0.1 10/10 (710); D/h 64: 0.03 5/5 (4,632), 0.1 5/5 (1,405). 0.01h: D/h 8: 0.003 0/10, 0.01 10/10 (1,379); D/h 16: 0.003 0/10, 0.01 10/10 (3,031), 0.03 10/10 (1,092); D/h 32: 0.01 0/10 (at the cap), 0.03 10/10 (2,249), 0.1 10/10 (1,015); D/h 64: 0.03 5/5 (4,511), 0.1 5/5 (2,026). The reading against the series closed form at the line (converged): 0.1h -4.3 to -6.8 % (D/h 8), -1.5 to -1.9 % (16), -0.4 to -0.5 % (32), -0.1 to -0.2 % (64 at 0.1); 0.01h -3.9 to -5.3 %, -1.3 to -1.6 %, -0.3 to -0.5 %, -0.1 to -0.2 %",
+      "what_it_means": "the line at the default cap: 0.01 at D/h 8 and 16, 0.03 at 32, at both interiors. At D/h 64 the five draws' periods reached only 3.05 of the drawn 2 to 4 diameters and the count rose with the period to within 8 % of the cap, so 0.03's 'every draw' does not cover the drawn range: a supplement over periods 3.5 to 4 (predictions_porous_handover_capline64.json) decides the D/h 64 row; until it does the row is 0.1, which converged with the count a third of the cap"
+    },
+    "gate_line_open_32": {
+      "result": "as predicted",
+      "measured": "0.01: the fixed inflow converged on 2 of 10 (0.1h) and 5 of 10 (0.01h), the rest at the cap; 0.03 and 0.1: 10 of 10 in each of the fixed inflow, the given pressure and the gap at both interiors (at most 2,040 iterations at 0.03)",
+      "what_it_means": "the open vessel's line at D/h 32 is 0.03 at either interior; with D/h 8 to 16's 0.01, measured at D/h 8 to 32"
+    }
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "written": "2026-11-12, committed before its probe ran (the commit that adds this file is the timestamp): the 0.1h line (sqrt(K)/h 0.003), measured on periodic tubes, stagnated in the open vessel between a given pressure and a resistance (49 of 50 draws) and went not finite in the twin rig (32 of 50) (run 43201390806); the line is keyed by box type, and the open vessel's 0.1h line measured on its own by the line rule",
+  "phase": "lane F, dev2: the porous plug's hand-over, the open vessel's line",
+  "labels": "the builder's, from runs 43201390806 and 43207166164 and the fix round's laptop draws",
+  "seen_before": [
+    "run 43201390806 (twin_line): the twin rig at the 0.1h line 0.003 not finite on 32 of 50 draws (all 30 at D/h 12, 2 of 20 at D/h 8), 4 more stopped flagged",
+    "run 43201390806 (g2_everywhere_pressure's clean arm): the pressure-driven vessel at 0.003 stopped stagnated near 3e-5 on 49 of 50 draws",
+    "runs 43201390806 and 43207166164: at the 0.01h interior's line (0.01) the twin rig and the pressure-driven vessel converged on 50 of 50 each",
+    "the fix round, laptop: the twin rig's draw 3 (D/h 12) at ten times the 0.1h line's K (sqrt(K)/h about 0.0095) converged",
+    "the periodic tube's intercept floor at 0.1h under 3.5e-10 of the open flux at D/h 16 against a throughflow of 4.3e-6 at 0.003 (runs 43123280055, 43159332258): under 1e-4 of the throughflow",
+    "the leak's laptop smoke at D/h 8 (before the probe; amended in a commit of its own before the launch): G / (K F_B) rises 4 % from sqrt(K)/h 0.01 to 0.12, about linearly in sqrt(K)/h, so the linear fit first written put a curvature of -2.6 % of G at 0.01 into its intercept, residual 1.8 % (it could not discriminate by its own line); with a term in K F_B sqrt(K)/h the intercept read -2.7e-3 of G at 0.01, residuals under 1.2e-3"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "GitHub runner 4 vCPU",
+    "sizes_and_parameters": "gate 2's open cases (tests/flow/porous_handover_cases.py): the open vessel two diameters long at D/h 16 with a fixed inflow (vessel), between a given pressure and a resistance (vessel, laws pressure and windkessel), a coaxial plug of half the lumen's radius with a fixed inflow (vessel, radius 0.25), the twin rig at D/h 8 or 12 (occluded_twin); steady Stokes, two steps, the default tolerance and cap; the line moved with line_at; the leak's arms the pressure-driven vessel at D/h 8 and 16, a plug half a diameter long at mid-length, resolved (the line moved to 1e-4), sqrt(K)/h 0.01, 0.02, 0.03, 0.06, 0.12",
+    "seeds_and_draws": "50 draws a case (forced_draw 0 to 49; the twin rig's quiet_draw 0 to 49)"
+  },
+  "gate_line_0p01": {
+    "claim": "with the 0.1h interior and the line at sqrt(K)/h 0.01, the held solve converges at every step of every draw in each of the four open cases",
+    "kind": "measurement (a count)",
+    "case": "probe/line.py <case> 0.01 0.1h, cases inflow, pressure, gap, twin",
+    "prediction": {
+      "value": "50/50 converged and finite in each case",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "draws",
+      "basis": "measured-before (one twin draw at about this K) and inference (an eleventh of the stiffness at 0.003, where the forced and gap cases converged)",
+      "why": "the twin rig's worst draw converged at ten times the 0.003 line's K, and the 0.01h interior's line converged in every box measured"
+    },
+    "metric": "per draw: the run's sum of the solve report's at-cap, stagnated and not-finite counts zero, the velocity finite",
+    "if_wrong": "a draw that stops: reported with its case, draw and stop; the line then 0.03 if that converges",
+    "cannot_discriminate_if": "every draw converges in zero or one iteration (the solve not run)"
+  },
+  "gate_line_0p03": {
+    "claim": "with the 0.1h interior and the line at sqrt(K)/h 0.03, the held solve converges at every step of every draw in each of the four open cases",
+    "kind": "measurement (a count)",
+    "case": "probe/line.py <case> 0.03 0.1h, cases inflow, pressure, gap, twin",
+    "prediction": {
+      "value": "50/50 converged and finite in each case",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "draws",
+      "basis": "inference",
+      "why": "a hundredth of the stiffness at 0.003; #264's gates converged there in periodic tubes"
+    },
+    "metric": "as gate_line_0p01",
+    "if_wrong": "neither 0.01 nor 0.03 converging on every draw: the open vessel's sub-line route at 0.1h refused by name, routed to the 0.01h interior",
+    "cannot_discriminate_if": "as gate_line_0p01"
+  },
+  "gate_line_0p01h": {
+    "claim": "with the 0.01h interior at its line (0.01), the forced and gap cases converge on every draw, as the pressure-driven vessel and the twin rig did (runs 43207166164, 43201390806)",
+    "kind": "measurement (a count)",
+    "case": "probe/line.py <case> 0.01 0.01h, cases inflow, gap",
+    "prediction": {
+      "value": "50/50 converged and finite in each case",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "draws",
+      "basis": "measured-before (the other two open cases at this line)",
+      "why": "the 0.01h interior's line converged in every box measured"
+    },
+    "metric": "as gate_line_0p01",
+    "if_wrong": "reported with its case and draws; the open box's 0.01h line then measured higher",
+    "cannot_discriminate_if": "as gate_line_0p01"
+  },
+  "gate_leak": {
+    "claim": "the open vessel's leak (the intercept of its conductance, the throughflow over the face drop, against K F_B(K)) is at most 1 % of the throughflow at the 0.1h line chosen, at D/h 8 and 16",
+    "kind": "measurement (a bound)",
+    "case": "probe/leak.py <cells>, cells 8 and 16",
+    "prediction": {
+      "value": "the intercept within 5e-3 of the conductance at sqrt(K)/h 0.01 (and so of a larger one at 0.03), each D/h, by the fit with the root term; the fit's relative residuals under 2e-3",
+      "band": [
+        -0.005,
+        0.005
+      ],
+      "unit": "the conductance at the line",
+      "basis": "measured-before (the laptop smoke at D/h 8; the periodic tube's floor) and inference (D/h 16 the same band)",
+      "why": "the periodic floor was under 1e-4 of the throughflow at 0.003 (D/h 16), and a higher line's throughflow is larger"
+    },
+    "metric": "the intercept c of G = Q / dp_faces = a K F_B + b K F_B sqrt(K)/h + c over the five points, each weighted by 1 / G, over G at the line; the fit's largest relative residual beside it; the linear fit (no root term), first written, reported too",
+    "if_wrong": "an intercept over 1 % at 0.01: the line moved to the least measured row where it is under 1 %",
+    "cannot_discriminate_if": "the fit's largest relative residual over 1e-2 (the intercept not resolved at the rule's line)"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after run 43213789033; the predictions above are unchanged (the leak's amended once before the launch, its own commit)",
+    "gate_line_0p01": {
+      "result": "as predicted",
+      "measured": "converged at every step and finite on 50 of 50 draws in each case: inflow (forced_flagged on 50), pressure, gap, twin (D/h 8 and 12); the two steps' iterations at most 2633 / 2628 / 332 / 7452",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "gate_line_0p03": {
+      "result": "as predicted",
+      "measured": "converged at every step and finite on 50 of 50 draws in each case; iterations at most 995 / 998 / 136 / 2504",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "gate_line_0p01h": {
+      "result": "as predicted",
+      "measured": "inflow and gap converged at every step and finite on 50 of 50 each (iterations at most 2479 / 426)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "gate_leak": {
+      "result": "as predicted",
+      "measured": "the fit with the root term: intercept -2.73e-3 / -1.37e-3 of G at sqrt(K)/h 0.01 (D/h 8 / 16), -3.0e-4 / -1.5e-4 of G at 0.03, its largest relative residual 1.21e-3 / 6.1e-4; the same for the outlet's flux, lumen_flux and porous_flux; every point's solve converged. The linear fit first written: -2.6e-2 / -1.3e-2, residual 1.8e-2 / 9.3e-3 (at D/h 8 over its own line, as the smoke showed). Both intercepts negative, the fit's own form error: no leak above about 3e-3 of the throughflow at the line, under the rule's 1 %",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "memory": "every arm but the leak's peaked over the proxy's bound (0.85 to 0.98 GiB against 0.82 to 0.84; a plug-free periodic tube's box standing in for the open boxes and the twin rig), so the workflow marked them failed after their scripts finished and uploaded: the proxy's miss, as the rates probes' before, so no calibration row",
+    "line": "the open vessel's 0.1h line is sqrt(K)/h 0.01, the least measured row at which every case converged on every draw with the leak under 1 % (0.003 did not: run 43201390806); its 0.01h line stays 0.01 (all four cases converged here and in runs 43201390806, 43207166164). Unmeasured between 0.003 and 0.01"
+  }
+}

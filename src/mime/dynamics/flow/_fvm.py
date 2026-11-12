@@ -33,7 +33,8 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
 from mime.nodes.flow.fvm._box import TreeLayout, TubeLayout, period_mismatch, periodic_tree_layout
 from mime.nodes.flow.fvm._band import FLUID_FLOOR
 from mime.nodes.flow.fvm._open_node import FLOAT32_PORTS, OPEN_STEP
-from mime.nodes.flow.fvm._porous import FLUX_MEASURED_DOWN_TO, GAP_MEASURED_DOWN_TO, POROUS_MEASURED, RESOLVED_CELLS
+from mime.nodes.flow.fvm._porous import GAP_MEASURED_DOWN_TO, HANDOVER_MEASURED, POROUS_MEASURED, RESOLVED_CELLS, \
+    lines_stated
 from mime.nodes.flow.fvm._resolved_node import ResolvedFlowNode
 from mime.nodes.flow.fvm._ports import Inflow as InflowLaw
 from mime.nodes.flow.fvm._ports import SharedDistal as SharedDistalLaw
@@ -370,12 +371,16 @@ class FVM(Dynamics):
         f"on IMEX Euler or its steady limit in a box along z; in the wall's band its share of the fluid over the face's "
         f"fluid fraction (at least {FLUID_FLOOR:g}, declared) and carried into the wall's solid behind it. {POROUS_MEASURED}. "
         f"No OpenMaterica record gives a permeability yet: it is declared. The build reports the run's sqrt(K) in cells "
-        f"where it is under {RESOLVED_CELLS:g}, and says where it is below the range measured (sqrt(K)/h "
-        f"{FLUX_MEASURED_DOWN_TO['0.1h']:g} with the 0.1h interior, {FLUX_MEASURED_DOWN_TO['0.01h']:g} with 0.01h) or "
-        f"leaves a gap to the wall under sqrt(K)/h {GAP_MEASURED_DOWN_TO:g}: unmeasured, and the run raises "
-        f"porous_flagged at each such step, with a warning; a plug whose extent along the axis is not under a periodic "
-        f"box's period is refused (flow.porous-period), as is one outside an open vessel's span (flow.porous-outside), "
-        f"and a periodic box reads a plug anywhere along the tube at its image in the period",
+        f"where it is under {RESOLVED_CELLS:g}, and the route its throughflow takes: resolved two-way at or above the "
+        f"hand-over's line, by box type, interior and D/h ({lines_stated()}), below it held as a wall at the line's "
+        f"permeability and read one way from its face pressures (porous_flux, porous_seepage, and lumen_flux counting it "
+        f"at its reading). {HANDOVER_MEASURED}. A region leaving a gap to the wall under sqrt(K)/h "
+        f"{GAP_MEASURED_DOWN_TO:g}, or below the line in a box holding a resolved body or at a D/h outside its line's "
+        f"range, is unmeasured, and the run raises porous_flagged at each such step, with a warning; where a law fixes "
+        f"the flux out of a part of the lumen whose other ways out are all through plugs below the line the run raises "
+        f"forced_flagged, with a warning; a plug whose extent along the axis is not under a periodic box's period is "
+        f"refused (flow.porous-period), as is one outside an open vessel's span (flow.porous-outside) and one in a tube "
+        f"tree (flow.porous-tree), and a periodic box reads a plug anywhere along the tube at its image in the period",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_PER_TOLERANCE['float64']:g} solve tolerances in "
         f"float64 and {STALL_PER_TOLERANCE['float32']:g} in float32 (stall_flagged), is written with the energy ledger "
         f"attached (exp.observe(EnergyLedger())); a run without it has no stall report. The reading scales with the "
@@ -624,10 +629,20 @@ class FVM(Dynamics):
             if cylinder is None:
                 named = f"a {type(kind).name} geometry" if kind is not None else "no geometry"
                 found.append(Problem("flow.porous-kind", f"{registration.id} binds {registration.subject!r}, which has "
-                                                         f"{named}: the flow holds a porous region of a Plug's solid",
+                                                         f"{named}: the flow holds a porous region of a Plug's solid "
+                                                         f"(a region of another shape below the hand-over's line needs "
+                                                         f"a small Darcy solve inside it, not built)",
                                      f"give {registration.subject!r} a Plug geometry, Structure("
                                      f"{registration.subject!r}, geometry=Plug(axis=..., radius=..., length=..., "
                                      f"centre=...))"))
+        if region is not None and region.shape == TREE:
+            found.append(Problem("flow.porous-tree", f"{', '.join(r.id for r in held)} holds a porous region in a tube "
+                                                     f"tree's lumen, where neither the hand-over's line (measured per "
+                                                     f"box type: a periodic straight tube, an open vessel) nor a gap's "
+                                                     f"flux was measured, so no line says where the solve holds a "
+                                                     f"region and reads its throughflow one way",
+                                 "hold the plug in a straight tube's box: a Tube's lumen in FVM(domain=PeriodicBox(...)) "
+                                 "or an open vessel"))
         if isinstance(self.scheme, RK3Scheme):
             found.append(Problem("flow.porous-scheme", "RK3's stages split the penalty from the projection, which for a "
                                                        "porous region's resistivity leaves its Darcy flux to the "
