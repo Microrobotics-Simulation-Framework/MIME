@@ -46,6 +46,13 @@ def _joint_node():
                                           **{f"m{i}_{key}": value for i in range(2) for key, value in member.items()})
 
 
+def frictional_node():
+    """A sphere held by its hull on a half-space with Coulomb friction, the frictional hold's typed state."""
+    from mime.testing._friction import held_node
+
+    return held_node("sphere")
+
+
 PLANAR = read_urdf(Path(__file__).parents[1] / "descriptions" / "three_link_planar.urdf").tree.articulation
 IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
@@ -59,6 +66,7 @@ TYPED = [
     (body.RigidInertialTensorNode("b", DT, mass=1e-4, inertia=(1e-10, 0.0, 0.0, 0.0, 1e-10, 0.0, 0.0, 0.0, 1e-10),
                                   initial_pose=(0, 0, 0, 1, 0, 0, 0), initial_twist=(0.0,) * 6, **TUBE),
      body.RigidInertialState, body.RigidInertialInputs, set()),
+    (frictional_node(), body.RigidFrictionState, body.RigidInertialInputs, set()),
     (body.GravityNode("g", DT, mass=1e-4, buoyant_volume=6e-8, fluid_density=1e3, gravity=(0, 0, -9.81),
                       centre_of_buoyancy=(0, 0, 1e-4)), body.Wrench, body.GravityInputs, set()),
     (body.SwimSpeedNode("s", DT, along=(1, 0, 0)), body.SwimSpeedState, body.SwimSpeedInputs, set()),

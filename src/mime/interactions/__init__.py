@@ -1,5 +1,6 @@
 """Interactions: one physical law among named things, one module per family. Here now: ``Magnetic.Torque`` and
-``Magnetic.Force``, ``Gravity``, ``Contact`` (by projection of the body's hull) and ``Drag`` (its surrogate rung, with
+``Magnetic.Force``, ``Gravity``, ``Contact`` (by projection of the body's hull, with friction at its points:
+``Coulomb``, the ``FrictionLaw`` and ``NormalLaw`` seams, ``Hold``) and ``Drag`` (its surrogate rung, with
 ``Lubrication``, and its MRS rung, with ``ForceSampling`` and ``NearField``, its settings' groups, and
 ``roughness_cutoff``, where its lubrication hands a gap to contact), the flow's ``BodyForce`` and the laws at its
 openings, ``Inflow``, ``Windkessel``, ``Valve`` and ``SharedDistal``, and ``Darcy``, a porous structure's drag in
@@ -12,6 +13,7 @@ from types import MappingProxyType
 from mime.interactions._previous import CentreContact, CentreMagneticForce, CentreMagneticTorque, UnrolledContact
 from mime.interactions.contact import Contact
 from mime.interactions.flow import BodyForce, Darcy, Inflow, SharedDistal, Valve, Windkessel
+from mime.interactions.friction import Coulomb, FrictionLaw, Hold, NormalLaw
 from mime.interactions.gravity import Gravity
 from mime.interactions.hydrodynamic import Drag, ForceSampling, Lubrication, NearField, PointForceDrag, UncoupledDrag
 from mime.interactions.magnetic import Magnetic, MagneticForce, MagneticTorque
@@ -31,5 +33,6 @@ KEPT: Mapping[tuple[str, str], tuple[type[Interaction], str]] = MappingProxyType
     ("magnetic.force", "0.1.0"): (CentreMagneticForce, MagneticForce.version),
 })
 
-__all__ = ["KEPT", "BodyForce", "Contact", "Darcy", "Drag", "ForceSampling", "Gravity", "Inflow", "Lubrication", "Magnetic",
-           "MagneticForce", "MagneticTorque", "NearField", "SharedDistal", "Valve", "Windkessel", "roughness_cutoff"]
+__all__ = ["KEPT", "BodyForce", "Contact", "Coulomb", "Darcy", "Drag", "ForceSampling", "FrictionLaw", "Gravity",
+           "Hold", "Inflow", "Lubrication", "Magnetic", "MagneticForce", "MagneticTorque", "NearField", "NormalLaw",
+           "SharedDistal", "Valve", "Windkessel", "roughness_cutoff"]

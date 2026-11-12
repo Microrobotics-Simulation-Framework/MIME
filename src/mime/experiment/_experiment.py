@@ -986,11 +986,14 @@ TOUCHING, UNCONVERGED, HELD_BY_SAMPLES, SUPPORT_SHORT_FLAG = ("touching", "uncon
 def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
     """The flags of each confinement a body's dynamics holds by the hull, each read from a field its node holds for
     its own sake, so they add nothing to the graph: ``touching``, raised at a step where a point takes a force;
-    ``unconverged``, where the solve's residual passes ``CONVERGED``; ``held_by_samples``, where a point of a hull
+    ``unconverged``, where the solve's residual passes ``CONVERGED`` (with friction, where the frictional solve's passes
+    ``FRICTION_CONVERGED``, read so that a held twist off its solution by ``FRICTION_LINE`` of the hold's change raises
+    it, or its power guard trips); ``held_by_samples``, where a point of a hull
     held by its samples (a kind with no support query) takes a force; and, for a kind with one, ``support_short``,
     where the body may reach past a held point by more than ``SUPPORT_SHORT`` of the margin (of a thousandth of the
     hull's size at a margin of zero; ``_contact.shallower``). None for a dynamics that holds no hull."""
     from mime.nodes.body._contact import CONVERGED, SUPPORT_SHORT
+    from mime.nodes.body._friction import FRICTION_CONVERGED, FRICTION_LINE
     from mime.registry import implements
 
     found: list[FlagLayout] = []
@@ -1004,12 +1007,24 @@ def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
                                 f"a point of {confinement.subject}'s hull was held at {confinement.surface}, less the "
                                 f"margin, by a force: the contact held the body where it touches (the points and "
                                 f"forces are its state's contact_points and contact_forces)", TOUCHING))
-        found.append(FlagLayout(confinement.id, label, node, "contact_residual",
-                                f"the contact's solve left more than {CONVERGED:g} of the free step's speed at "
-                                f"{confinement.subject}'s held points unmet (contact_residual): the projection after "
-                                f"the step kept the margin, and the speeds at those points are off by up to that share "
-                                f"(each point's own force is not fixed where rows share a rim)",
-                                UNCONVERGED, (CONVERGED,)))
+        if confinement.friction is None:
+            found.append(FlagLayout(confinement.id, label, node, "contact_residual",
+                                    f"the contact's solve left more than {CONVERGED:g} of the free step's speed at "
+                                    f"{confinement.subject}'s held points unmet (contact_residual): the projection "
+                                    f"after the step kept the margin, and the speeds at those points are off by up to "
+                                    f"that share (each point's own force is not fixed where rows share a rim)",
+                                    UNCONVERGED, (CONVERGED,)))
+        else:
+            found.append(FlagLayout(confinement.id, label, node, "contact_residual",
+                                    f"the contact's frictional solve may have left {confinement.subject}'s held twist "
+                                    f"more than {FRICTION_LINE:g} of the hold's change from its solution: its friction "
+                                    f"cone's residual (each sliding pair's natural map, each normal row's "
+                                    f"complementarity) passed {FRICTION_CONVERGED:g} of the hold's change at the held "
+                                    f"points (contact_residual), or its friction pushed the motion it left (the power "
+                                    f"guard, contact_friction_power_ratio). The step was taken as solved, its friction "
+                                    f"booked with its sign; the measured share of such steps at the declared sweeps "
+                                    f"is the contact's validity line",
+                                    UNCONVERGED, (FRICTION_CONVERGED,)))
         if implements(confinement.hull.kind, "support"):
             size = float(cast(Any, confinement.hull.kind).enclosing_radius(confinement.hull.settings))
             bound = confinement.margin if confinement.margin > 0.0 else 1e-3 * size

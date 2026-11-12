@@ -145,7 +145,8 @@ class Confinement:
     With ``spacing`` (m) it holds the body's hull instead, orientation read: its hull kind's own samples at that
     spacing on every patch (``mime.scene.body_reach``'s points), each kept ``margin`` from the surface, and no extent
     is read (``extent`` is ``None``); with ``loops`` too, the dynamics runs the hold's sweeps and its search's Newton
-    steps as XLA loops (the contact 0.5.0), not unrolled (0.4.0)."""
+    steps as XLA loops (the contact 0.5.0), not unrolled (0.4.0); with ``friction``, the hold's points carry friction
+    (:class:`Friction`), which only a hull's hold takes."""
 
     role: str
     target: str
@@ -155,6 +156,17 @@ class Confinement:
     extent: str | None = "extent"
     spacing: float | None = None
     loops: bool = False
+    friction: Friction | None = None
+
+
+@dataclass(frozen=True)
+class Friction:
+    """A hull contact's friction at its held points, handed to the body's dynamics with its confinement and solved in
+    the hold's own sweeps: the law by the name the body's node takes (``"coulomb"``) and its coefficients in SI by name
+    (``{"mu": 0.15}``)."""
+
+    law: str
+    coefficients: Mapping[str, float]
 
 
 @dataclass(frozen=True)

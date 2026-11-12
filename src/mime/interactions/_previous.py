@@ -10,8 +10,9 @@ that names a kept version gets it from here, and so does an experiment whose com
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import ClassVar, override
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Annotated, ClassVar, override
 
 from mime.gradients import GradientStatus
 from mime.interactions.contact import CENTRE_SWITCHES, Contact
@@ -32,7 +33,23 @@ from mime.registry import (
     register_interaction,
     requires,
 )
+from mime.units import Length, Magnitude, Quantity
 from mime.vocabulary import APPLIED_WRENCH, CONFINEMENT, FLUX_DENSITY, GRADIENT, POSE, Capability
+
+
+#: The roles of the settings a kept contact holds from its successor, which it never reads: it is frictionless.
+_FRICTIONLESS = convention(PHYSICAL, "none: a kept contact is frictionless; friction= and normal= are the contact "
+                                     "0.5.0's")
+
+
+def _kept_problems(contact: Contact) -> list[str]:
+    """What a kept contact refuses of its successor's settings: friction or a normal law (it is frictionless). Its
+    margin it requires, as it always did (its successor's default, the roughness cutoff, is 0.5.0's)."""
+    found: list[str] = []
+    if contact.friction is not None or contact.normal is not None:
+        found.append(f"the contact {contact.version} is frictionless: friction= and normal= are the contact 0.5.0's, "
+                     f"Contact.Projection(..., friction=Coulomb(mu=...))")
+    return found
 
 
 @register_interaction
@@ -45,12 +62,14 @@ class CentreContact(Contact):
     the wall, unseen (0.2.0 holds its hull's points). It reads no ``spacing``."""
 
     version = "0.1.0"
+    margin: Annotated[Quantity, Length] = field()
     setting_roles = {
         "rung": DESIGN, "margin": NUMERICAL,
         "rule": convention(PHYSICAL, "a frictionless contact that does not bounce: the projection removes the "
                                      "velocity into the surface, a physical model of the contact, not a solver's "
                                      "choice"),
         "spacing": convention(NUMERICAL, "0.1.0 holds the body's centre and samples no hull, so it reads no spacing"),
+        "friction": _FRICTIONLESS, "normal": _FRICTIONLESS,
     }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=CENTRE_SWITCHES)
@@ -60,6 +79,10 @@ class CentreContact(Contact):
         "exact for a sphere, and for a body whose axis stays along a tube's; a body turned across the tube is held "
         "as if it were not",
     )
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        return [*super().setting_problems(settings), *_kept_problems(self)]
 
     @override
     def plan(self, ctx: PlanContext) -> Plan:
@@ -80,6 +103,13 @@ class UnrolledContact(Contact):
 
     version = "0.4.0"
     loops: ClassVar[bool] = False
+    margin: Annotated[Quantity, Length] = field()
+    setting_roles = {**Contact.setting_roles, "margin": NUMERICAL, "friction": _FRICTIONLESS,
+                     "normal": _FRICTIONLESS}
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        return [*super().setting_problems(settings), *_kept_problems(self)]
 
 
 #: What a rigid body must offer a magnetic law: it publishes its pose and takes an applied wrench.

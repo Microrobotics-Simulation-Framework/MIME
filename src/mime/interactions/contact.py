@@ -7,14 +7,16 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, override
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
 from mime.core import switch
 from mime.gradients import GradientStatus
-from mime.registry import DESIGN, NUMERICAL, PHYSICAL, convention, numerical_default
+from mime.interactions.friction import ROW_KINDS, FrictionLaw, NormalLaw, unheld
+from mime.registry import DESIGN, NUMERICAL, PHYSICAL, convention, determined, numerical_default
 from mime.registry import (
     BuildContext,
     Confinement,
+    Friction,
     GradientRecord,
     Interaction,
     Plan,
@@ -149,6 +151,29 @@ HULL_SWITCHES = (
 )
 
 
+#: The switches of a hull's hold with friction at its points (``Contact(friction=...)``), beside the hull's own.
+FRICTION_SWITCHES = (
+    switch.Declaration(
+        owner="contact.friction",
+        indicator="a held point's friction pair: the squared force of its free minimiser, the force that would leave "
+                  "its slip zero with the others held, less the square of its bound, mu times the point's normal "
+                  "force, in newtons squared (positive where it slides)",
+        orders={"twist": 0, "pose": 0},
+        route="none: Coulomb friction is a kink at stick-slip, the sticking and the sliding force meeting on the "
+              "disk's boundary; a smoothed friction law would be another model of the contact (proposed for fitting, "
+              "not needed: the derivative through the kink is the branch taken's, measured against central "
+              "differences)"),
+    switch.Declaration(
+        owner="contact.slip",
+        indicator="a held point's slip speed at the solved twist, the length of its sliding rows' rates, m/s (zero "
+                  "where it sticks)",
+        orders={"contact_slip_speed": 0},
+        route="none: a speed is a length, with a kink where the slip is zero and the sticking side's derivative, "
+              "zero, there; it is a report of the state (contact_slip_speed), which nothing of the step's motion "
+              "reads"),
+)
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class Contact(Interaction):
@@ -186,12 +211,20 @@ class Contact(Interaction):
     ``penalty`` (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
     ``Contact(rung="projection", ...)`` and saves identically.
 
-    **Admissibility only.** The contact says where the body may be, and the force that keeps it there: it never adds
-    near-wall lubrication, which a drag that includes it declares (``Interaction.includes_lubrication``), and the plan
-    refuses two laws on a body that include it. **Frictionless in 0.5.0**: friction at the contact (a traction law,
-    Coulomb's with static friction among it) is to be decided with the near-contact physics; its seam is the sweeps'
-    rows, to which a traction law adds two along the surface at each point, bounded by its friction times the
-    point's normal force.
+    **Admissibility, and friction at its points.** The contact says where the body may be, and the force that keeps
+    it there: it never adds near-wall lubrication, which a drag that includes it declares
+    (``Interaction.includes_lubrication``), and the plan refuses two laws on a body that include it. Its ``margin`` is
+    where it engages: written, a numerical choice; unwritten, the roughness cutoff of the body's and the wall's surfaces
+    (:meth:`engagement`, the near-contact law's, where its film hands the gap over), so that a body that rides a film
+    above it is held by the film alone. **Friction** (``friction=Coulomb(mu=...)``, ``mime.interactions.friction``) is
+    solved in the contact's own sweeps: each held point carries a sliding pair ``[t; r x t]`` beside its normal row,
+    which measures the slip of the body's own point, bounded on the elliptic cone by ``mu`` times the point's normal
+    force (exact sticking: a body rolls without slipping where its sliding rows stick); the forces scaled to where the
+    normal block does no work, each point's friction power at the solved twist checked never positive, and the step
+    flagged unconverged where it is; friction booked under its own name (``<contact>.friction``) as its traction on the
+    slip it acts on, the sweeps' remainder its own numerical column. Friction acts on the contact's own normal force
+    alone, never on a film's pressure; the film's coupling of rotation and translation is in the resistance the rows
+    are solved through. Unwritten, the contact is frictionless and compiles the program it always did.
 
     Version 0.5.0 runs the hold's sweeps and its search's Newton steps as XLA loops' iterations, the same updates in
     the same order, where 0.4.0 unrolled them, a call each: the step's program is smaller and compiles faster, and its
@@ -222,7 +255,16 @@ class Contact(Interaction):
     loops: ClassVar[bool] = True
     holds_off = "margin"
     setting_roles = {
-        "rung": DESIGN, "margin": NUMERICAL,
+        "rung": DESIGN,
+        "margin": determined(
+            NUMERICAL, "the contact's engagement at the surfaces' roughness: the roughness cutoff of the body's and the "
+                       "wall's declared roughness (near_contact.roughness_cutoff, DEFAULT_ROUGHNESS for each where "
+                       "none is declared), where the near-contact law hands the gap over to contact",
+            by="default_margin"),
+        "friction": convention(PHYSICAL, "none: frictionless, the program a contact without friction always compiled; "
+                                         "written, a FrictionLaw (Coulomb(mu=...)) solved in the contact's own sweeps "
+                                         "on its own normal force"),
+        "normal": convention(PHYSICAL, "Hold(): no penetration, no rebound, the normal force never pulling"),
         "rule": convention(PHYSICAL, "a frictionless contact that does not bounce: the projection removes the "
                                      "velocity into the surface, a physical model of the contact, not a solver's "
                                      "choice"),
@@ -235,7 +277,7 @@ class Contact(Interaction):
             by="default_spacing", measured=f"{SPACING_MEASURED}; {FLOOR_MEASURED}"),
     }
     differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord(switches=(*CENTRE_SWITCHES, *HULL_SWITCHES))
+    gradient = GradientRecord(switches=(*CENTRE_SWITCHES, *HULL_SWITCHES, *FRICTION_SWITCHES))
     references = ("StewartTrinkle1996",)
     family = "contact"
     builds = {"projection": ()}
@@ -274,8 +316,36 @@ class Contact(Interaction):
         "and a step that leaves more than CONVERGED of the free step's speed at the held points unmet raises unconverged: "
         "it reads the motion at those points, and a harder drive reads smaller for the same speed left unmet, not how "
         "far each point's force is, which rows sharing a rim do not fix",
-        "projection: inelastic and frictionless (no traction along the surface, no static friction, no adhesion): "
-        "friction at the contact is to be decided with the near-contact physics, and its seam is left in the sweeps",
+        "projection: inelastic (no rebound: restitution is a NormalLaw in place of Hold); frictionless unless "
+        "friction= is written, and then Coulomb's with one coefficient, static and kinetic alike (a static coefficient "
+        "above the kinetic, or one that varies with the slip speed, is a FrictionLaw of its own); no adhesion (its seam "
+        "is Hold(adhesion=...), reserved)",
+        "projection: with friction, the sweeps' count is declared per hull kind (FRICTION_SWEEPS, from the measured "
+        "count each kind's solve converges in; a kind held by its samples, the box, and the screw take the bound, "
+        "FRICTION_SWEEPS_DEFAULT), and a step whose held twist may stand more than FRICTION_LINE of the hold's change "
+        "from its solution, in the step's own norm, raises unconverged: its cone's residual over the hold's change at "
+        "the held points passes FRICTION_CONVERGED, a line measured to raise it on every such step of the drawn steps "
+        "it was validated on (none silent; it rises on some steps within the line too), or its power guard trips. At "
+        "the declared counts such steps are a share of the held steps, flagged, measured on a tube's floor over ten "
+        "seeds: 7.0 to 7.3 % of the screw's and 1.8 to 2.1 % of the box's at 80 sweeps, at most 0.2 % of the smooth "
+        "kinds' at 20 (FRICTION_SWEEPS records them); the step's norm weights rotation by the body's inertia, so on those steps a "
+        "millimetre body's spin, which friction often brings near rest within the step, may be off by more than its "
+        "own size; the reference solution is a finite count of sweeps, itself short of the solution on the slowest "
+        "box draws; each held point is a point contact, so a "
+        "line contact's friction moment about its normal is under-resolved (its seam: POINT_SETS['line']), and spin "
+        "friction and rolling resistance are not held (spin declared for soft contact; rolling resistance comes as a "
+        "row kind of its own)",
+        "projection: with friction, rigid Coulomb may have no exact solution at a point (a Painleve-type "
+        "configuration: a box at a high coefficient under a load far off the normal), where the solve's forces "
+        "stand far from the hold's own scaling and its residual raises unconverged",
+        "projection: with friction, a friction law that pushes is seen by the power guard or unconverged only where "
+        "friction carries more than the flip's measured resolution of the load (mime.testing's FLIP_SEEN): a load "
+        "within rounding of the normal on a body at rest leaves the solve's friction at its own rounding, where a law "
+        "pushing is seen by no check (the friction law suite counts those draws apart from those it judges)",
+        "projection: with friction, float32 resolves a body's motion only where a step moves its position by more than "
+        "its coordinates' rounding (dt |v| above about ulp(|x|)); the contact's allowance takes the gap less its "
+        "rounding band, so a point frozen a part of an ulp above the wall is held, not left an approach speed the "
+        "position never takes",
         "projection: admissibility only: it adds no near-wall lubrication, which a drag that includes it declares, "
         "and the plan refuses a second law on the body that includes it",
         "projection: a rigid surface and a rigid body: no compliance of the wall or the body",
@@ -290,16 +360,32 @@ class Contact(Interaction):
         "projection: a body with no hull is held as a sphere of its declared extent about its centre",
     )
     rung: str | None = None
-    margin: Annotated[Quantity, Length]
+    margin: Annotated[Quantity | None, Length] = None
     rule: str = "remove_outward"
     spacing: Annotated[Quantity | None, Length] = None
+    friction: FrictionLaw | None = None
+    normal: NormalLaw | None = None
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         found: list[str] = []
-        margin = settings["margin"]
-        if not (isinstance(margin, float) and margin >= 0.0):
+        margin = settings.get("margin")
+        if margin is not None and not (isinstance(margin, float) and margin >= 0.0):
             found.append(f"margin is {margin!r} m, not a length from 0 on")
+        friction = cast(object, self.friction)
+        if friction is not None and not isinstance(friction, FrictionLaw):
+            found.append(f"friction={friction!r} is not a friction law: write friction=Coulomb(mu=0.15)")
+        elif friction is not None:
+            found += friction.problems()
+            unbuilt = [ROW_KINDS[kind].reason for kind in friction.rows if not ROW_KINDS[kind].built]
+            found += unbuilt
+        normal = cast(object, self.normal)
+        if normal is not None and not isinstance(normal, NormalLaw):
+            found.append(f"normal={normal!r} is not a normal law: write normal=Hold()")
+        elif normal is not None:
+            found += normal.problems()
+        if isinstance(friction, FrictionLaw | None) and isinstance(normal, NormalLaw | None):
+            found += unheld(friction, normal)
         spacing = settings.get("spacing")
         if spacing is not None and not (isinstance(spacing, float) and math.isfinite(spacing) and spacing > 0.0):
             found.append(f"spacing is {spacing!r} m, not a length above zero: the hull's points lie about spacing "
@@ -310,30 +396,60 @@ class Contact(Interaction):
     def Projection(cls, **settings: Any) -> Contact:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="projection", **settings)
 
+    @staticmethod
+    def engagement(body: Magnitude | None, wall: Magnitude | None) -> float:
+        """Where the contact engages (m): the roughness cutoff of the body's and the wall's surfaces
+        (``near_contact.roughness_cutoff``), each its declared roughness (``body``, ``wall``, SI) or
+        ``DEFAULT_ROUGHNESS`` where none is declared: the gap below which the near-contact law's film is floored and
+        the contact carries the load (decided Fr4)."""
+        from mime.nodes.hydro.mrs._handover import DEFAULT_ROUGHNESS
+        from mime.nodes.hydro.near_contact import roughness_cutoff
+
+        return float(roughness_cutoff(DEFAULT_ROUGHNESS if body is None else float(cast(float, body)),
+                                      DEFAULT_ROUGHNESS if wall is None else float(cast(float, wall))))
+
+    def default_margin(self, ctx: PlanContext) -> Quantity:
+        """The margin when none is written: the contact's :meth:`engagement`, from the roughness declared for the body
+        and for the structure whose surface it is held against."""
+        return m(self.engagement(ctx.value("body", "roughness"), ctx.value("surface", "roughness")))
+
+    def margin_of(self, ctx: PlanContext) -> float:
+        """The margin in SI: the written one, or the contact's :meth:`engagement` (its default, which a rule for
+        another setting computed beside it reads here)."""
+        if self.margin is None:
+            return self.engagement(ctx.value("body", "roughness"), ctx.value("surface", "roughness"))
+        return ctx.scalar("margin")
+
     def default_spacing(self, ctx: PlanContext) -> Quantity | None:
         """The spacing of the hull's points when none is written, for a body with a hull: the margin, no finer than
         ``SPACING_FLOOR`` of the hull's size."""
         hull = ctx.geometry(of="body")
         if hull is None:
             return None
-        return m(max(ctx.scalar("margin"), SPACING_FLOOR * float(hull.kind.enclosing_radius(hull.settings))))
+        return m(max(self.margin_of(ctx), SPACING_FLOOR * float(hull.kind.enclosing_radius(hull.settings))))
 
     @override
     def plan(self, ctx: PlanContext) -> Plan:
         if ctx.geometry(of="body") is None:
-            unread = () if self.spacing is None else (Problem(
-                "confinement.no-hull", f"spacing= is the spacing of a hull's points, and {ctx.bindings['body']} has no "
-                                       f"hull: it is held as a sphere of its extent", "remove spacing=, or give the "
-                                       "body a part outside every other: parts={\"shell\": Part(Sphere(...))}"),)
+            # one code for every setting read at a hull's points: the spacing of its points, the friction acting at them
+            written = [f"{name}=" for name, value in (("spacing", self.spacing), ("friction", self.friction))
+                       if value is not None]
+            unread = () if not written else (Problem(
+                "confinement.no-hull", f"{' and '.join(written)} {'are' if len(written) > 1 else 'is'} read at a "
+                                       f"hull's points, and {ctx.bindings['body']} has no hull: it is held as a sphere "
+                                       f"of its extent about its centre, with no point on its surface",
+                f"give the body a part outside every other: parts={{\"shell\": Part(Sphere(...))}}, or remove "
+                f"{' and '.join(written)}"),)
             return Plan(nodes=(), values={"extent": Value("body", "extent")}, problems=unread,
                         confines=(Confinement("body", CONFINEMENT.name, "surface", ctx.scalar("margin"), self.rule),))
-        return Plan(nodes=(), confines=(Confinement("body", CONFINEMENT.name, "surface", ctx.scalar("margin"),
-                                                    self.rule, extent=None, spacing=ctx.scalar("spacing"),
-                                                    loops=self.loops),))
+        friction = None if self.friction is None else Friction(self.friction.law, self.friction.coefficients())
+        return Plan(nodes=(), confines=(Confinement(
+            "body", CONFINEMENT.name, "surface", ctx.scalar("margin"), self.rule, extent=None,
+            spacing=ctx.scalar("spacing"), loops=self.loops, friction=friction),))
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         return None
 
 
-__all__ = ["CENTRE_SWITCHES", "HULL_SWITCHES", "Contact"]
+__all__ = ["CENTRE_SWITCHES", "FRICTION_SWITCHES", "HULL_SWITCHES", "Contact"]

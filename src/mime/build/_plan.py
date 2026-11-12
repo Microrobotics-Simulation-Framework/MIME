@@ -67,6 +67,7 @@ from mime.registry import (
     Commanded,
     CommandedRate,
     Confinement,
+    Friction,
     Controller,
     DefaultKind,
     Delivery,
@@ -212,7 +213,8 @@ class ResolvedConfinement:
     the margin and the body's extent in metres, and the velocity rule. A confinement that holds the body's hull
     carries the hull (its kind, settings and placement in the body) and the counts of its samples on each of its
     kind's patches at the confinement's spacing, an extent of zero, which it does not read, and whether its sweeps and
-    search run as XLA loops (``Confinement.loops``)."""
+    search run as XLA loops (``Confinement.loops``), and its friction at the held points where it has one
+    (``Confinement.friction``)."""
 
     id: str
     subject: str
@@ -225,6 +227,7 @@ class ResolvedConfinement:
     hull: Hull | None = None
     counts: tuple[tuple[int, ...], ...] = ()
     loops: bool = False
+    friction: Friction | None = None
 
 
 @dataclass(frozen=True)
@@ -833,8 +836,16 @@ class _Planner:
             surfaces = [bound.get(role) for role, kind in roles.items() if kind is RoleKind.SURFACE]
             if body not in held or not any(str(surface).partition(".")[0] == structure for surface in surfaces):
                 continue
+            written = getattr(law, setting, None)
+            engaged = getattr(type(law), "engagement", None)
+            if written is None and callable(engaged):
+                # unwritten, where the law's rule computes it (a contact's margin, its roughness cutoff)
+                surface = str(next(s for s in surfaces if str(s).partition(".")[0] == structure)).partition(".")[0]
+                found.append(float(cast(Any, engaged)(self.declared_of(body).get(f"{body}.roughness"),
+                                                      self.declared_of(surface).get(f"{surface}.roughness"))))
+                continue
             try:
-                margin = si(getattr(law, setting, None), LENGTH, what=f"{setting}=")
+                margin = si(written, LENGTH, what=f"{setting}=")
             except (UnitError, TypeError):
                 continue  # refused where the law itself is planned
             if isinstance(margin, float) and margin >= 0.0:
@@ -3003,11 +3014,7 @@ class _Planner:
             return
         divider = self.divider(getattr(entry, "rate", None), where) if section is Section.OBSERVATION else 1
         up, gravity = (self.frame.up, self.frame.gravity) if self.frame else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
-        declared = {(role, path.partition(".")[2]): value for role, name in bindings.items()
-                    if cls.roles[role].binds_a_thing for path, value in self.declared_of(name).items()}
-        declared |= {(role, f"wall.{path.partition('.')[2]}"): value for role, name in bindings.items()
-                     if cls.roles[role] is RoleKind.MEDIUM and name in self.fills
-                     for path, value in self.declared_of(self.fills[name].partition(".")[0]).items()}
+        declared = self.declared_reads(cls.roles, bindings)
         regions = {role: region for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
                    for region in (self.region_of(name),) if region is not None}
         hulls = {role: hull for role, name in bindings.items() if cls.roles[role] is RoleKind.BODY
@@ -3065,6 +3072,21 @@ class _Planner:
         self.readers.append(entry_plan)
         self.declared.append(entry_plan)
 
+    def declared_reads(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[tuple[str, str],
+                                                                                                  Magnitude]:
+        """What a plan reads through ``PlanContext.value``, by role and name: each bound thing's values; for a medium
+        that fills a region, its wall's as ``wall.<name>``; for a surface, the values of the structure it is a surface
+        of (its roughness)."""
+        declared = {(role, path.partition(".")[2]): value for role, name in bindings.items()
+                    if roles[role].binds_a_thing for path, value in self.declared_of(name).items()}
+        declared |= {(role, f"wall.{path.partition('.')[2]}"): value for role, name in bindings.items()
+                     if roles[role] is RoleKind.MEDIUM and name in self.fills
+                     for path, value in self.declared_of(self.fills[name].partition(".")[0]).items()}
+        declared |= {(role, path.partition(".")[2]): value for role, name in bindings.items()
+                     if roles[role] is RoleKind.SURFACE
+                     for path, value in self.declared_of(name.partition(".")[0]).items()}
+        return declared
+
     def with_defaults[E: Interaction | Observation](self, entry: E, record: Registered, owner: str, where: str,
                                                    bindings: Mapping[str, str], settings: dict[str, Magnitude]) -> E:
         """``entry`` with each setting it does not give, whose default its rule computes (a determined or numerical
@@ -3074,7 +3096,8 @@ class _Planner:
         given = {role: name for role, name in bindings.items()}
         roles = cast(type[Interaction] | type[Observation], record.cls).roles
         context = PlanContext(self.dt, self.frame.up if self.frame else (0.0, 0.0, 0.0),
-                              self.frame.gravity if self.frame else (0.0, 0.0, 0.0), dict(given), {}, dict(settings), {},
+                              self.frame.gravity if self.frame else (0.0, 0.0, 0.0), dict(given), {}, dict(settings),
+                              self.declared_reads(roles, given),
                               {role: region for role, name in given.items() if roles[role] is RoleKind.MEDIUM
                                for region in (self.region_of(name),) if region is not None},
                               {role: hull for role, name in given.items() if roles[role] is RoleKind.BODY
@@ -3849,8 +3872,9 @@ class _Planner:
         counts = quadrature_counts(hull.kind, hull.settings, spacing, patches)
         dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
                                                          confinement.margin, 0.0, confinement.rule, hull, counts,
-                                                         confinement.loops))
+                                                         confinement.loops, confinement.friction))
         from mime.nodes.body._contact import CONVERGED
+        from mime.nodes.body._friction import FRICTION_CONVERGED, FRICTION_LINE
 
         held = len(quadrature_arrays(hull.kind, hull.settings, patches, counts)[0])
         convex = getattr(shape_named(shape), "convex", False)
@@ -3869,13 +3893,25 @@ class _Planner:
                    f"holds {seeds} (its kind has no support query, so the body is held by its samples: a turning "
                    f"body's samples arrive at the wall off its line of contact, and the inelastic hold acts as a "
                    f"friction and a shaking set by the spacing; the flag {body}.held_by_samples)")
+        rubbing = confinement.friction
+        held_as = ("inelastic, frictionless and adding no lubrication" if rubbing is None else
+                   f"inelastic, with {rubbing.law.title()} friction at its points ("
+                   + ", ".join(f"{key} {value:g}" for key, value in sorted(rubbing.coefficients.items()))
+                   + f") solved in its sweeps on its own normal force alone, never a film's, booked under "
+                     f"{plan.owner}.friction, each point's friction power at the solved twist checked never positive "
+                     f"(contact_friction_forces, contact_slip_speed, contact_friction_power_ratio), and adding no "
+                     f"lubrication")
         line = (f"{holding}, keeping {hull.label()} {confinement.margin * 1e3:.4g} mm from {surface}, its orientation "
-                f"read; the samples fall up to {short * 1e6:.3g} um short of the body; inelastic, frictionless and "
-                f"adding no lubrication; the points it holds, their forces and the solve's residual are {body}'s "
+                f"read; the samples fall up to {short * 1e6:.3g} um short of the body; {held_as}; the points it holds, "
+                f"their forces and the solve's residual are {body}'s "
                 f"state (contact_points, contact_forces, contact_short, contact_residual), a step that holds one "
                 f"raises the flag "
-                f"{body}.touching, and one whose solve is left above {CONVERGED:g} of the free step's speed at the held "
-                f"points raises {body}.unconverged")
+                f"{body}.touching, and "
+                + (f"one whose solve is left above {CONVERGED:g} of the free step's speed at the held points raises "
+                   f"{body}.unconverged" if rubbing is None else
+                   f"one whose frictional solve's cone residual is left above {FRICTION_CONVERGED:g} of the hold's "
+                   f"change at the held points (its held twist possibly more than {FRICTION_LINE:g} of that change "
+                   f"from its solution), or whose friction pushes at the solved twist, raises {body}.unconverged"))
         self.checked = {**self.checked, plan.owner: (*self.checked.get(plan.owner, ()), line)}
 
     def spacing_short(self, owner: str, hull: Hull, spacing: float, margin: float) -> float | None:

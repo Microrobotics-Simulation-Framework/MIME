@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Friction at the wall (`Contact(friction=Coulomb(mu=...))`, `mime.interactions.friction`).** Exact Coulomb in the
+  contact's own sweeps: each held point carries a sliding pair `[t; r x t]` beside its normal row, which measures the
+  slip of the body's own point, so a body rolls without slipping where its sliding rows stick; one coefficient, static
+  and kinetic alike, on the elliptic cone. Each point's pair is solved by a scaled 2 x 2 trust region (no product
+  leaves float32's range, every untaken branch fed values it cannot overflow on), three inner repeats a visit, the
+  forces then scaled along their ray to where the normal block does no work; the guard is each point's friction power
+  at the solved twist, never positive, which raises `unconverged` where it trips. Friction is booked under its own name
+  (`<contact>.friction`) as its traction on the slip it acts on (`mu N` times the slip distance sliding, zero sticking),
+  the sweeps' remainder its own numerical column; the contact takes the rest. Friction acts on the contact's own normal
+  force alone, never on a film's pressure; the contact's `margin` now defaults to the roughness cutoff of the body's
+  and the wall's surfaces (`Contact.engagement`, the near-contact law's), so a body riding a film above it feels none.
+  The frictional hold's allowance takes the gap less its rounding band: in float32 a coordinate frozen a part of an ulp
+  above the wall was otherwise left an approach speed that a squeeze film turned into a load the contact lost (71 % of
+  a sphere's at 0.36 us; with the band float32's error is float64's). The seams for what is left out, each a declared
+  protocol with a default and a conformance suite in `mime.testing` (`friction_law_suite`, `normal_law_suite`,
+  `row_kind_suite`): `FrictionLaw` (default `Coulomb`), `NormalLaw` (default `Hold()`, its `adhesion` reserved),
+  `ROW_KINDS` (sliding built; rolling resistance next; spin declared), `POINT_SETS` (point contacts; line and patch
+  reserved). The state of a frictional body adds `contact_friction_forces`, `contact_slip_speed` and
+  `contact_friction_power_ratio`. A contact without friction compiles the program it always did; the contact 0.4.0 and
+  0.1.0, kept, are frictionless and keep their margin required. Refused under `confinement.no-hull`, now one code for
+  every setting read at a hull's points (`spacing=`, `friction=`) on a body held as a sphere of its extent, its message
+  naming both routes (give the body a hull, or remove the setting). Registered: MIME-ANO-157, the frictionless hold's float32 allowance at sub-microsecond steps.
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,

@@ -3889,3 +3889,40 @@ anomalies:
       spacings and the far field are not measured, and whether the drag 0.4.0 mrs rung shares it is not measured.
     workaround: "Take a derivative in a shape leaf near a wall from two builds' difference (the study's own finite-difference route) rather than through the node, or check the node's derivative against one before relying on it."
     planned_resolution: "Open, before a fit or a descent in a shape leaf relies on the MRS rung near a wall: find the held value that depends on the radius (the two builds' force points and quadratures compared first), and make it a leaf or make the two-builds check run the step. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-157
+    title: "In float32 below a step of about sqrt(ulp(z) / a), the frictionless hull hold leaves a resting body's twist an approach speed into the wall that its frozen position never takes; on the friction spike's prototype a resistance near the wall turned it into a load"
+    description: >
+      A body held by its hull (the contact 0.5.0 and 0.4.0, rigid_inertial's hold) resting on the wall under a load
+      that accelerates it into the wall at a, in float32: once a step moves its normal coordinate z by less than half an
+      ulp (dt |v_n| < ulp(z) / 2), the position stops moving a part of an ulp, delta, above the shrunk wall (the wall's
+      place is not on the coordinate's grid), and the hold's allowance max(g, 0) / dt lets the twist approach the wall at
+      delta / dt each step, which the position never realises. Below dt* = sqrt(ulp(z) / a) that speed is not removed
+      within a step. Measured [W2b's first step, probe run 43000792276]: through the released node (no friction, no
+      resistance), a 1 mm sphere on a 3.175 mm tube's floor lands after 1189 steps of 0.1 us where float64 lands after
+      142, and carries up to ulp / (2 dt) of normal speed in its twist (1.2 mm/s at 0.1 us; 0.39 mm/s at 0.3 us); in a
+      50 mm tube (ulps 16 times as large) it had not landed in 3000 steps at 0.1 us. On the friction spike's prototype of
+      the same step with a resistance near the wall (the done case's sphere in glycerol, its squeeze film's R_zz 0.663 N
+      s/m), the unrealised approach speed (2.95e-5 m/s, delta / dt) drew R_zz delta / dt from the film, so the contact
+      carried 0.29 of the load at 0.36 us and 0.93 at 3.6 us (dt* 3.1 us), and none with the plane 10 mm from the origin.
+      The released node's load split under a near-wall resistance, and how far a frictionless trajectory moves with
+      it, are not measured (the split above is the prototype's). With friction its bound mu lambda_n would fall with
+      it: W2b's frictional hold takes the gap less its rounding band, and at the one operating point measured (the
+      spun sphere at 0.36 us, its gate G7) its error is float64's (2.52e-5 against 2.58e-5 of a omega0, the contact
+      carrying the whole load). float64's dt* is below 1 ns.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A float32 run at sub-microsecond steps, or one whose body sits far from the world's origin (the threshold grows
+      as the square root of the coordinates' size: about 20 us at 5 cm), with a resistance near the wall, reports a
+      contact force below the load and a film force above it, and a twist with a normal speed the body does not have.
+      Nothing is flagged. float64 runs, and float32 runs at steps above the threshold, are not affected.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "node: RigidInertialNode; its frictionless hull hold (hull_held), the contact 0.4.0 and 0.5.0, in float32"
+    residual_risk: >
+      Measured on a sphere through the node and on the spike's prototype with a constant resistance; other kinds, a
+      resistance delivered by the MRS rung, and the projection's own pass at such steps are not measured.
+    workaround: "Run in float64 at sub-microsecond steps or far from the origin, or keep dt above sqrt(ulp(|x|) / a); the frictional hold takes the gap's rounding band (measured at one operating point, gate G7 of W2b)."
+    planned_resolution: "Open: the frictionless hold's allowance less the gap's rounding band, as the frictional hold takes it, moves the released programs' bits, so it waits for a release that may move them (the next minor release's bits review); this entry changes no code."
