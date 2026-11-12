@@ -26,6 +26,7 @@ from mime.vocabulary._mime import (
     FLOW_FACES,
     FLOW_MOMENTUM,
     FLOW_PARTNERS,
+    FLOW_RESOLVED,
     FLOW_OPENING,
     FLOW_OPENING_FLUX,
     FLOW_OPENING_IMPEDANCE,
@@ -45,6 +46,7 @@ from mime.vocabulary._mime import (
     MASS_MATRIX,
     POSE,
     RESISTANCE,
+    RESOLVED_PARTNER,
     TWIST,
 )
 from mime.vocabulary._ports import (
@@ -78,6 +80,7 @@ __all__ = [
     "FLOW_FACES",
     "FLOW_MOMENTUM",
     "FLOW_PARTNERS",
+    "FLOW_RESOLVED",
     "FLOW_OPENING",
     "FLOW_OPENING_FLUX",
     "FLOW_OPENING_IMPEDANCE",
@@ -105,6 +108,7 @@ __all__ = [
     "POSE",
     "POWER",
     "RESISTANCE",
+    "RESOLVED_PARTNER",
     "RIGID_BODY",
     "SPINNER",
     "TWIST",

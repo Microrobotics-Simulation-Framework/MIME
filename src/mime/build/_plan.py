@@ -147,7 +147,7 @@ from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnit
 from mime.registry._ranges import RangeChoice, planned_over, recording
 from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
-    Capability, ReadKind, TargetKind
+    RESOLVED_PARTNER, Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
@@ -387,6 +387,8 @@ class ResolvedRegistration:
     #: The values the registering interaction reads, by label, as phase 1 resolves them (filled once they are, before
     #: any entry builds): what a dynamics holding the law builds it from (a porous region's permeability).
     values: Mapping[str, materials.ResolvedValue] = field(default_factory=dict[str, "materials.ResolvedValue"])
+    #: Where the subject is a body: its hull (a resolved body's solid, which a flow holding it on its grid lifts).
+    hull: Hull | None = None
 
     @property
     def surfaces(self) -> tuple[str, ...]:
@@ -1059,6 +1061,13 @@ class _Planner:
             density = self.resolver.known(f"{medium}.density") if self.resolver is not None else None
             viscosity = plan.values.get("viscosity")
             range_ = next((r for r in cls.reynolds if r.rung in (rung, None)), None)
+            upper = range_.upper if range_ is not None else None
+            # An entry whose line moves with what it resolves on a grid (Drag.Penalty's, with the cells across the
+            # body's radius) gives it at the run's values.
+            at_run = getattr(plan.entry, "watched_upper", None)
+            if upper is not None and callable(at_run):
+                frame = self.exchange_frame_of(medium)
+                upper = cast(Callable[[float, Hull | None, Any], float], at_run)(upper, hull, frame)
             missing = tuple(clause for clause, absent in (
                 (f"{body}'s hull gives a radial reach (its hull is not one part of a kind that does)", diameter is None),
                 (f"{medium}.density is declared or read: exp.declare('{medium}.density', ..., reason=...)",
@@ -1069,7 +1078,7 @@ class _Planner:
                 hull.kind.name if hull is not None else None, diameter,
                 float(density.value) if density is not None and isinstance(density.value, float) else None,
                 float(viscosity.value) if viscosity is not None and isinstance(viscosity.value, float) else None,
-                range_.upper if range_ is not None else None, range_.basis if range_ is not None else None, missing,
+                upper, range_.basis if range_ is not None else None, missing,
                 turning[0] if turning is not None else None, turning[1] if turning is not None else ""))
         return (*found, *self.containment_plans())
 
@@ -1221,7 +1230,8 @@ class _Planner:
             values = {label: float(value.value) for label, value in plan.values.items()
                       if isinstance(value.value, (int, float))}
             try:
-                rule = dynamics.time_step(StepQuery(plan.regions.get("medium"), values, dict(plan.settings), drives))
+                rule = dynamics.time_step(StepQuery(plan.regions.get("medium"), values, dict(plan.settings), drives,
+                                                    tuple(plan.registrations)))
             except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
                 self.defect(type(dynamics), f"time_step() raised {error!r}", error)
                 continue
@@ -1913,7 +1923,8 @@ class _Planner:
         frame_of = getattr(plan.entry, "exchange_frame", None) if plan is not None else None
         if plan is None or frame_of is None:
             return None
-        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings))
+        return cast(ExchangeFrame | None, frame_of(plan.node_name(), plan.regions.get("medium"), plan.settings,
+                                                   tuple(plan.registrations)))
 
     def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
         """The fields carried in the region medium ``medium`` fills, by their ids (``water.flow``): its own and those of
@@ -3379,11 +3390,12 @@ class _Planner:
                     self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
                     return
         geometry = self.geometries.get(subject) if cls.roles.get(registration.subject) is RoleKind.STRUCTURE else None
+        hull = self.hull_of(subject) if cls.roles.get(registration.subject) is RoleKind.BODY else None
         dynamics.registrations.append(
             ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns,
                                  _plain_settings(plan.entry, plan.settings), each[0] if each else {},
                                  subjects if len(subjects) > 1 else (), tuple(each) if len(subjects) > 1 else (),
-                                 geometry, plan.values))
+                                 geometry, plan.values, hull))
 
     def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
         cls = plan.reader_cls()
@@ -3618,9 +3630,14 @@ class _Planner:
         if plan.section is not Section.INTERACTION or not isinstance(entry, Interaction) or \
                 set(plan.values) != set(plan.plan.values) or plan.context is None:
             return
+        # The exchange frames as they stand now, every registration made: a resolved body's asks its medium's grid for
+        # the spacing it needs, so a frame taken while the entries were planned may be coarser than the one built.
+        exchanges = {role: frame for role, frame in plan.context.exchanges.items()
+                     for fresh in (self.exchange_frame_of(plan.bindings[role]),) if fresh is not None
+                     for frame in (fresh,)}
+        context = dataclasses.replace(plan.context, exchanges=exchanges) if exchanges else plan.context
         try:
-            problems = entry.value_problems({label: value.value for label, value in plan.values.items()},
-                                            plan.context)
+            problems = entry.value_problems({label: value.value for label, value in plan.values.items()}, context)
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
             self.defect(type(entry), f"value_problems() raised {error!r}", error)
             return
@@ -3987,7 +4004,31 @@ class _Planner:
                                         f"reads {interface} from the uniform field {path!r} where {owner} reads it, "
                                         f"{held.node}.{held.field}, adding no slot to the provider")
 
+    def refuse_added_mass_on_resolved(self) -> None:
+        """A law delivering an added mass to a body a medium's field resolves on its grid is refused: the grid carries
+        the fluid's inertia on that body (its interior and the flow round it), so it would be counted twice (A6, item
+        9)."""
+        for dynamics in self.dynamics.values():
+            for registration in dynamics.registrations:
+                if registration.kind != RESOLVED_PARTNER:
+                    continue
+                for plan in self.declared:
+                    entry = plan.entry
+                    if plan.owner == registration.id or not isinstance(entry, Interaction) or \
+                            registration.subject not in plan.bindings.values() or not entry.delivers_added_mass():
+                        continue
+                    self.refuse("drag.penalty-added-mass", RefusalClass.USER,
+                                f"{plan.owner} delivers an added mass to {registration.subject!r}, which "
+                                f"{registration.id} resolves on the medium's grid: the grid carries the fluid's "
+                                f"inertia on a resolved body (its interior and the flow round it), so the added mass "
+                                f"would be counted twice",
+                                f"leave out the exp.attach(...) of {plan.owner}: a resolved body takes its drag, its "
+                                f"added mass included, from its one drag; a delivered added mass belongs on a body in a "
+                                f"medium whose solver carries no inertia (the Stokes rungs), through the "
+                                f"delivered-inertia port of the added-mass phase (I2)")
+
     def collect_registrations_and_slots(self) -> None:
+        self.refuse_added_mass_on_resolved()
         for dynamics in self.dynamics.values():
             dynamics.registrations.sort(key=lambda r: r.id)
             entry = dynamics.entry
