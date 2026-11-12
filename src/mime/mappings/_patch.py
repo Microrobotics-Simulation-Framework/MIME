@@ -42,6 +42,8 @@ class PatchBoundary:
     ``corner``) read at a ``cells`` patch's given values (fine cell ``fine``) of the same component."""
 
     kind = BOUNDARY_KIND
+    #: A read of values (preCICE's term): the given values interpolate the coarse field.
+    mode = "consistent"
     needs_geometry = True
     geometry_shape = (1, 3)
 
@@ -90,6 +92,7 @@ class PatchRead:
     frame (m from its corner)."""
 
     kind = READ_KIND
+    mode = "consistent"
     needs_geometry = True
 
     def __init__(self, *, px: int, py: int, pz: int, fine: float, component: int, count: int) -> None:
