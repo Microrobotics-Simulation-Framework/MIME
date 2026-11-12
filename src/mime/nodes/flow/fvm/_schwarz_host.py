@@ -13,7 +13,10 @@ every input of the preparation is known at the end of this one: exact, not lagge
 
 **What it holds as state**: the prepared base field, the seven columns, the pose they were made at, the response and
 load handed, the free box's field and image term after the step, the preparation's report blocks, the composed
-residual and its flag, and the handed response's definiteness margin. The run's first step reads a preparation made in
+residual and its flag, the handed response's definiteness margin, the body's gap to the wall in cells and its
+near-contact window's flag; lagged, the last step's tractions; in an open vessel, the base's unit fields and its
+openings' solution (``mime.nodes.flow.fvm._open_node.SCHWARZ_PORTS``), which each product's and the composition's walled
+solve eliminate the openings with. The run's first step reads a preparation made in
 the flow's initial state at the body's starting pose and the drive at the first step's end, as the build gives them,
 from the build's leaves; a differentiated run makes it again from its own (``MimeNode.started``). A restart from saved state carries the preparation; a parameter the preparation read, changed at a fork, makes it again.
 
@@ -40,10 +43,14 @@ from mime.nodes.hydro.near_field._node import JointDragNode
 PREFIX = "schwarz_"
 #: The flow's own constants for its Schwarz partner (the rest under :data:`PREFIX` are the hosted near field's): the
 #: bodies, the laws' ids, the grid's origin in the world, the bodies' starting poses and the drive at the first step's
-#: end (the initial preparation's), the GMRES's tolerance, the body's extent, the report leaf, and the free box's side
-#: in cells where it is written (a structural setting; else ``mime.nodes.flow.fvm._schwarz.box_side`` of the extent).
+#: end (the initial preparation's), the GMRES's tolerance, the body's extent, the report leaf, the scheme
+#: (:data:`SCHEMES`), and the free box's side in cells where it is written (a structural setting; else
+#: ``mime.nodes.flow.fvm._schwarz.box_side`` of the extent).
 OWN = ("schwarz_members", "schwarz_ids", "schwarz_origin", "schwarz_starts", "schwarz_drive", "schwarz_tolerance",
-       "schwarz_extent", "schwarz_report", "schwarz_box")
+       "schwarz_extent", "schwarz_report", "schwarz_box", "schwarz_scheme")
+#: The schemes a Schwarz body is coupled by (``Drag.schwarz_scheme``): exact, one pass a step from the last step's
+#: tractions, and the body reading the flow with nothing delivered.
+SCHEMES = ("one_pass", "lagged", "one_way")
 #: The hosted near field's constants the flow does not hold under the prefix: its viscosity is the flow's, and its report
 #: leaf the flow's own (two blocks, :data:`REPORT_BLOCKS`).
 NOT_HOSTED = ("viscosity", "solve_report", "solve_report_rows")
@@ -51,6 +58,13 @@ NOT_HOSTED = ("viscosity", "solve_report", "solve_report_rows")
 WIDTH = 1.0
 #: The report blocks of the preparation's GMRES: its own, then its products' walled solves'.
 REPORT_BLOCKS = 2 * REPORT_SIZE
+#: The near-contact window's line (the window spike's, decided): the contact's local radius at least this many cells
+#: of the grid that resolves it (the patch's fine cells; the coarse grid's without the patch) ...
+WINDOW_RADIUS_CELLS = 20.0
+#: ... and the hand-over gap at least this many of them and at most :data:`NEAR_SHARE` of the local radius. A body
+#: nearer the wall than the larger of the two is near contact; near contact below the line is flagged, never refused.
+WINDOW_GAP_CELLS = 2.0
+NEAR_SHARE = 0.1
 #: Each Schwarz body's inputs (``schwarz_<b>_<name>``): its pose and twist, read after its own step.
 INPUTS = {"pose": ((7,), "m; 1"), "twist": ((6,), "m/s; rad/s")}
 #: What the flow hands each body (``schwarz_<b>_<name>``): its response and its load at zero twist.
@@ -70,6 +84,7 @@ class SchwarzHost:
                                   viscosity=float(constants["viscosity"]), solve="gmres",
                                   **({"tolerance": float(tolerance)} if tolerance is not None else {}), **hosted)
         self.spacing = float(spacing)
+        self.scheme = str(constants.get("schwarz_scheme", "one_pass"))  # one of SCHEMES, as Drag.schwarz_scheme gives
         given = constants.get("schwarz_box")
         self.side = int(given) if given is not None else box_side(float(constants["schwarz_extent"]), self.spacing,
                                                                   int(-(-TRUNCATION * WIDTH // 1)))
@@ -123,12 +138,24 @@ class SchwarzHost:
             held[f"{PREFIX}{b}_resistance"] = jnp.zeros((6, 6), dtype=dtype)
             held[f"{PREFIX}{b}_load"] = jnp.zeros(6, dtype=dtype)
             held[f"{PREFIX}{b}_margin"] = as_run_array(0.0)
+            held[f"{PREFIX}{b}_wall_gap_cells"] = as_run_array(0.0)
+            held[f"{PREFIX}{b}_near_contact_window"] = as_run_array(0.0)
+            if self.scheme == "lagged":
+                held[f"{PREFIX}{b}_tractions"] = jnp.zeros(3 * points, dtype=dtype)
         held[f"{PREFIX}image"] = jnp.zeros(3, dtype=dtype)
         held[f"{PREFIX}report"] = jnp.zeros(REPORT_BLOCKS, dtype=dtype)
         held[f"{PREFIX}residual"] = as_run_array(0.0)
         held[f"{PREFIX}flagged"] = as_run_array(0.0)
         held[f"{PREFIX}indefinite"] = as_run_array(0.0)
         return held
+
+
+def window(gap_cells: Any, radius_cells: float) -> Any:
+    """Whether a body ``gap_cells`` from the wall with a local radius of ``radius_cells`` (both in the resolving grid's
+    cells) is near contact below the window's line: nearer than :data:`WINDOW_GAP_CELLS` (the grid does not resolve
+    the gap), or within :data:`NEAR_SHARE` of its radius with a radius under :data:`WINDOW_RADIUS_CELLS`."""
+    near = gap_cells <= NEAR_SHARE * radius_cells
+    return (gap_cells < WINDOW_GAP_CELLS) | (near & (radius_cells < WINDOW_RADIUS_CELLS))
 
 
 def starts(constants: Mapping[str, Any], count: int) -> list[Array]:
@@ -145,5 +172,5 @@ def handed_fields(count: int) -> Sequence[str]:
     return tuple(f"{PREFIX}{b}_{name}" for b in range(count) for name in HANDED)
 
 
-__all__ = ["HANDED", "INPUTS", "NOT_HOSTED", "OWN", "PREFIX", "REPORT_BLOCKS", "WIDTH", "SchwarzHost", "handed_fields",
-           "inputs_of", "starts"]
+__all__ = ["HANDED", "INPUTS", "NEAR_SHARE", "NOT_HOSTED", "OWN", "PREFIX", "REPORT_BLOCKS", "SCHEMES", "WIDTH",
+           "WINDOW_GAP_CELLS", "WINDOW_RADIUS_CELLS", "SchwarzHost", "handed_fields", "inputs_of", "starts", "window"]

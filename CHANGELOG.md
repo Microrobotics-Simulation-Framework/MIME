@@ -28,10 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dissipation less the free box's, with the rung's quadrature and the composed residual's work booked beside it
   (`schwarz_0_books`). The first step's preparation is made in the flow's initial state from the build's leaves, and
   again from the run's in a derivative's program (`MimeNode.started`), so a derivative in the viscosity passes through
-  the first step. Refused by name: a wall kind written on the near field (`drag.schwarz-wall-kind`), a second body in
-  the flow (`flow.schwarz-bodies`), an open vessel (`flow.schwarz-open`), a drive that is not a declared schedule
-  (`flow.schwarz-drive`) and the one-way and lagged opt-ins on the mrs rung (`drag.schwarz-scheme`), each until its
-  part is built.
+  the first step. In an open vessel the openings are eliminated inside each product and in the composition by the
+  base's unit fields. The declared routes `one_way=True` (nothing delivered to the flow, judged at one velocity) and
+  `coupling='lagged'` (one Schwarz pass a step from the last step's tractions, its residual reported and booked) are
+  built on the mrs rung, refused where the medium has no flow on a grid (`drag.schwarz-scheme`). Each step reports the
+  body's gap to the wall in cells and flags near contact below the window's line (`schwarz_0_near_contact_window`), and
+  the run's flags carry it and `schwarz_flagged`. The prepared response is stored state: a continued run carries it, and
+  an override of a value it read sets the flow's initial state on a run from the start and is refused after it
+  (`override.initial-after-start`). Refused by name: a wall kind written on the near field
+  (`drag.schwarz-wall-kind`), a second body in the flow (`flow.schwarz-bodies`) and a drive that is not a declared
+  schedule (`flow.schwarz-drive`), each until its part is built.
 - **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
   ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
   (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector

@@ -33,6 +33,14 @@ image term advance by the same forces. The near field's equations are then read 
 point (:func:`composed`'s residual): every unknown of the step, never a subset of them (the 0.2 line's Schwarz stopped
 on an interface norm over a subset and sat 2.6e-4 off its fixed point while reporting arrival).
 
+**The declared schemes** (``Drag.MRS(coupling='lagged')``, ``Drag.MRS(one_way=True)``): lagged makes one Schwarz
+pass a step from the last step's tractions, ``K t = M V' - u_b - W t_prev`` (one walled solve for ``W t_prev``, the
+columns then the near field's own), so the composed residual is the reflection of the step's change of tractions,
+``W (t - t_prev)``: reported each step and booked in the law's books, never hidden; its error in the tractions is that
+residual through the coupled operator, about ``gain / (1 - gain)`` times the step's change, ``gain`` the reflection's
+size against the near field. One way solves ``K t = M V' - u_b`` and delivers nothing: the flow steps as if the body
+were not there, and the body reads it.
+
 **What is frozen within a step** (one function of the tractions for GMRES and its transpose): the body's pose and force
 points, the stencils on the grid and the box, the step's shift and viscosity, the base field, the box's carried field
 and the near field's matrix. The tractions, the twist and (in an open vessel) the openings' pressures float."""
@@ -58,7 +66,7 @@ from mime.nodes.hydro.near_field._gmres import REPORT_SIZE, Operator, Stopping, 
 #: The free box's transforms: the body's own field under the step operator, and its carried field's decay (a transform
 #: that inverts an operator diagonal in it).
 FREE_BOX_SITE = register(SolveSite("schwarz_free_box", "transform", "mime.nodes.flow.fvm._schwarz.own_response",
-                                   nodes=("ImplicitFlowNode",)))
+                                   nodes=("ImplicitFlowNode", "OpenFlowNode")))
 
 #: The columns a step solves: the body's six rigid motions, then its load at zero twist.
 COLUMNS = 7
@@ -68,13 +76,16 @@ LEAST_SIDE = 32
 SIDE_EXTENTS = 2
 #: The inner solves' tolerance as a share of the outer GMRES's: the walled CG within each product (C1 point 2), so that
 #: the inexactness it puts in the operator, about ``tau_in |W| |t|``, stays two decades under the outer tolerance.
-#: Provisional: the solve-mask spike's arm B sets it.
+#: The solve-mask spike's arm B measured this share with the CG's own floor (100 eps of its field's scale): 37 to 40
+#: inner iterations a call in float64; the stop is formed inside each inner solve from its own right-hand side, so the
+#: outer matvec closes over nothing that depends on its input and reverse mode transposes it (the dot-product gate).
 INNER_SHARE = 1e-2
 #: The composed residual's line, in the outer tolerance: above it a step is flagged (``schwarz_flagged``).
 RESIDUAL_LINE = 10.0
 #: The columns' GMRES tolerance by the run's dtype where none is written: float64's the coupling spike's (its
-#: products two decades below at the inner share); float32's above ten times the CG's reachable floor (about 1e-5).
-#: Provisional with :data:`INNER_SHARE`.
+#: products two decades below at the inner share); float32's above ten times the CG's reachable floor (about 1e-5),
+#: where the inner floor (1.2e-5) sits above the inner share, and the books are shown closing in float32 without
+#: float64 inner solves (gate 5's float32 ledger, the lagged books).
 SCHWARZ_TOLERANCE = {"float64": 1e-8, "float32": 1e-4}
 
 
@@ -227,48 +238,78 @@ def _reduced_all(reports: Array) -> Array:
     return total
 
 
-def prepared(grid: MACGrid, box: OwnBox, held: Stencils, body: SchwarzBody,
-             walled: Callable[[Velocity], tuple[Velocity, Array]], base: Velocity, carried: Velocity, image: Array,
-             shift: Any, nu: Any, rho: Any, image_now: Any, stopping: Stopping, tap: Array,
-             magnitude: Operator | None = None) -> Prepared:
-    """The step's seven columns by GMRES (the module states the system), and what the body is handed. ``walled`` is
-    one walled solve of the step from rest (its inner tolerance the caller's), ``carried`` the box's field and ``image``
-    its image history at the step's start (each decayed a step), ``tap`` the report blocks' input (``2 x``
-    :data:`REPORT_SIZE` zeros)."""
+def product_of(grid: MACGrid, box: OwnBox, held: Stencils, body: SchwarzBody,
+               walled: Callable[[Velocity], tuple[Velocity, Array]], shift: Any, nu: Any, rho: Any, image_now: Any,
+               scheme: str = "one_pass") -> Callable[[Array], tuple[Array, Array]]:
+    """The columns' operator, ``t -> (K t + W t, report)`` over columns of tractions ``(3N, c)`` (one pass; the near
+    field's own ``K t`` for the declared schemes), the products' walled solves' reports reduced: the matvec GMRES
+    solves with and reverse mode transposes, the walled solves inside it included."""
     placed = body.placed
+    reflects = scheme == "one_pass"
 
     def product(t: Array) -> tuple[Array, Array]:
+        near = jnp.matmul(body.matrix, t, precision=PRECISION)
+        if not reflects:
+            return near, jnp.zeros(REPORT_SIZE, dtype=t.dtype)
+
         def column(forces: Array) -> tuple[Array, Array]:
             found, report = reflection(grid, box, held, walled, forces, shift, nu, rho, image_now)
             return found.reshape(-1), report
 
         reflected, reports = jax.vmap(column, in_axes=2, out_axes=(1, 0))(_forces(placed, t))
-        return jnp.matmul(body.matrix, t, precision=PRECISION) + reflected, _reduced_all(reports)
+        return near + reflected, _reduced_all(reports)
 
-    right = jnp.concatenate([placed.motions(), -background(grid, box, held, base, carried, image)[:, None]], axis=1)
+    return product
+
+
+def prepared(grid: MACGrid, box: OwnBox, held: Stencils, body: SchwarzBody,
+             walled: Callable[[Velocity], tuple[Velocity, Array]], base: Velocity, carried: Velocity, image: Array,
+             shift: Any, nu: Any, rho: Any, image_now: Any, stopping: Stopping, tap: Array,
+             magnitude: Operator | None = None, scheme: str = "one_pass", previous: Array | None = None) -> Prepared:
+    """The step's seven columns by GMRES (the module states the system), and what the body is handed. ``walled`` is
+    one walled solve of the step from rest (its inner tolerance the caller's), ``carried`` the box's field and ``image``
+    its image history at the step's start (each decayed a step), ``tap`` the report blocks' input (``2 x``
+    :data:`REPORT_SIZE` zeros). The ``lagged`` scheme makes one Schwarz pass from the ``previous`` step's tractions,
+    their reflection on the right (one walled solve, reported in the second block), and the ``one_way`` scheme none:
+    each solves the near field's own matrix, ``K t = M V' - u_b - W t_prev`` and ``K t = M V' - u_b``."""
+    placed = body.placed
+    product = product_of(grid, box, held, body, walled, shift, nu, rho, image_now, scheme)
+    load = background(grid, box, held, base, carried, image)
+    lag_report = None
+    if scheme == "lagged":
+        assert previous is not None
+        lagged, lag_report = reflection(grid, box, held, walled, _forces(placed, previous), shift, nu, rho, image_now)
+        load = load + lagged.reshape(-1)
+    right = jnp.concatenate([placed.motions(), -load[:, None]], axis=1)
     columns, report = reported_operator_solve(product, right, tap, body.precondition, body.transposed, stopping,
                                               magnitude)
+    if lag_report is not None:
+        report = report.at[REPORT_SIZE:].set(reduced(report[REPORT_SIZE:], lag_report))
     sums = force_sums(placed.wrench(), columns)
     return Prepared(columns, sums[:, :COLUMNS - 1], -sums[:, COLUMNS - 1], report)
 
 
 def composed(grid: MACGrid, box: OwnBox, held: Stencils, body: SchwarzBody, step: Prepared, twist: Array,
              walled: Callable[[Velocity], tuple[Velocity, Array]], base: Velocity, carried: Velocity, image: Array,
-             shift: Any, nu: Any, rho: Any, image_now: Any) -> Composed:
+             shift: Any, nu: Any, rho: Any, image_now: Any, delivers: bool = True) -> Composed:
     """The step closed by the body's ``twist``: its tractions ``t0 + T V'``, the walled field ``u_base + u_w(S F)`` (one
     walled solve, ``walled`` at the flow's own tolerance), the box's field and image term after the step, and the
     near field's equations read at the composed field, ``K t + G u - G u_o - c - M V'``, over the larger of ``|K t|``
-    and ``|M V'|`` (every force point, every component)."""
+    and ``|M V'|`` (every force point, every component). A body that ``delivers`` nothing (one way) leaves the field
+    at its base, the box and its images at rest, and no force on the grid."""
     placed = body.placed
     tractions = step.columns[:, COLUMNS - 1] + jnp.matmul(step.columns[:, :COLUMNS - 1], twist, precision=PRECISION)
     forces = _forces(placed, tractions)
     density = _scattered(grid, held.grid, forces)
-    response, report = walled(tuple(d / rho for d in density))
-    field = (base[0] + response[0], base[1] + response[1], base[2] + response[2])
-    boxed = own_response(box, _scattered(_box_grid(box), held.box, forces), shift, nu, rho)
-    own = (carried[0] + boxed[0], carried[1] + boxed[1], carried[2] + boxed[2])
-    total = jnp.sum(forces, axis=0)
-    after = image + image_now * total
+    if delivers:
+        response, report = walled(tuple(d / rho for d in density))
+        field = (base[0] + response[0], base[1] + response[1], base[2] + response[2])
+        boxed = own_response(box, _scattered(_box_grid(box), held.box, forces), shift, nu, rho)
+        own = (carried[0] + boxed[0], carried[1] + boxed[1], carried[2] + boxed[2])
+        after = image + image_now * jnp.sum(forces, axis=0)
+    else:
+        density = (jnp.zeros_like(density[0]), jnp.zeros_like(density[1]), jnp.zeros_like(density[2]))
+        field, own, after, report = base, carried, image, jnp.zeros(REPORT_SIZE, dtype=tractions.dtype)
     near = jnp.matmul(body.matrix, tractions, precision=PRECISION)
     motion = jnp.matmul(placed.motions(), twist, precision=PRECISION)
     walls = _gathered(grid, held.grid, field).reshape(-1)
@@ -312,4 +353,4 @@ def free_box(extent: float, spacing: float, reach_cells: int, dtype: Any) -> Own
 __all__ = ["BOOKS", "COLUMNS", "FREE_BOX_SITE", "INNER_SHARE", "LEAST_SIDE", "REPORT_SIZE", "RESIDUAL_LINE", "SCHWARZ_TOLERANCE",
            "SIDE_EXTENTS",
            "Composed", "Prepared", "SchwarzBody", "Stencils", "background", "box_side", "composed", "free_box",
-           "image_terms", "law_books", "own_decayed", "own_response", "prepared", "reflection", "stencils"]
+           "image_terms", "law_books", "own_decayed", "own_response", "prepared", "product_of", "reflection", "stencils"]

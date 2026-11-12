@@ -9,7 +9,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, cast, override
@@ -1781,6 +1781,23 @@ class Drag(UncoupledDrag):
         """None: 0.5.0 records every setting (the class's docstring says why)."""
         return frozenset()
 
+    def _scheme_problems(self, couplings: Sequence[str]) -> list[str]:
+        """The exchange's opt-ins as written: ``one_way`` a switch, ``coupling`` one of ``couplings``, not both."""
+        found: list[str] = []
+        written_way = cast(object, self.one_way)
+        if written_way is not None and not isinstance(written_way, bool):
+            found.append(f"one_way={written_way!r} is a switch: write one_way=True for the declared one-way "
+                         f"approximation, or leave it out for the two-way exchange")
+        scheme = cast(object, self.coupling)
+        if scheme is not None and scheme not in couplings:
+            found.append(f"coupling={scheme!r} is one of {list(couplings)}: leave it out for one pass where the "
+                         f"body's step is linear (lagged, with its reason, where it is not), or write "
+                         f"coupling='lagged' for the cheaper route")
+        if scheme is not None and self.one_way:
+            found.append(f"coupling={scheme!r} is the two-way exchange's scheme, and one_way=True delivers nothing to "
+                         f"the flow: leave one of them out")
+        return found
+
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         found = [] if self.rung == "stokes" else [problem for problem in super().setting_problems(settings)
@@ -1795,7 +1812,11 @@ class Drag(UncoupledDrag):
             found.append("near_field= is a setting of the mrs rung's near field, and the rft rung reads none")
         if self.rung != "mrs" and self.sampling is not None:
             found.append(f"sampling= is a setting of the mrs rung's force points, and the {self.rung} rung reads none")
-        if self.rung != "stokes":
+        if self.rung == "mrs":
+            found += [f"{name}= is a setting of the stokes rung's exchange with a grid, and the mrs rung reads none"
+                      for name in ("kernel_width", "self_history") if getattr(self, name) is not None]
+            found += self._scheme_problems(("one_pass", "lagged"))
+        elif self.rung != "stokes":
             found += [f"{name}= is a setting of the stokes rung's exchange with a grid, and the {self.rung} rung "
                       f"reads none" for name in ("one_way", "coupling", "kernel_width", "self_history")
                       if getattr(self, name) is not None]
@@ -1805,24 +1826,13 @@ class Drag(UncoupledDrag):
                                    "coefficients", "quadrature_refinement", "wall_refinement", "near_field",
                                    "near_contact")
                       if getattr(self, name) is not None]
-            written_way = cast(object, self.one_way)
-            if written_way is not None and not isinstance(written_way, bool):
-                found.append(f"one_way={written_way!r} is a switch: write one_way=True for the declared one-way "
-                             f"approximation, or leave it out for the two-way exchange")
             width = cast(object, self.kernel_width)
             if width is not None and (isinstance(width, bool) or not isinstance(width, int | float)
                                       or not 1.0 <= float(width) <= self.WIDTHS[-1]):
                 found.append(f"kernel_width={width!r} is the exchange kernel's width in the grid's cells, a number from "
                              f"1 to {self.WIDTHS[-1]:g}: write kernel_width=1.5, or leave it out for the narrowest that "
                              f"clears the floor")
-            scheme = cast(object, self.coupling)
-            if scheme is not None and scheme not in self.COUPLINGS:
-                found.append(f"coupling={scheme!r} is one of {list(self.COUPLINGS)}: leave it out for one pass where "
-                             f"the body's step is linear (lagged, with its reason, where it is not), or write "
-                             f"coupling='lagged' for the cheaper route")
-            if scheme is not None and self.one_way:
-                found.append(f"coupling={scheme!r} is the two-way exchange's scheme, and one_way=True delivers "
-                             f"nothing to the flow: leave one of them out")
+            found += self._scheme_problems(self.COUPLINGS)
             route = cast(object, self.self_history)
             if route is not None and route not in HISTORY_ROUTES:
                 found.append(f"self_history={route!r} is one of {list(HISTORY_ROUTES)}: leave it out for the exact "
@@ -1844,6 +1854,13 @@ class Drag(UncoupledDrag):
         that takes exchange partners (the FVM). The user never writes it: the drag law and the medium choose it."""
         return self.rung == "mrs" and ctx.exchanges.get("medium") is not None
 
+    def schwarz_scheme(self) -> str:
+        """The scheme a flow couples this drag's body by Schwarz with: ``one_pass`` (exact, the default), ``lagged``
+        (``coupling='lagged'``: one Schwarz pass a step from the last step's tractions, its error the reflection of the
+        step's change of them, reported and booked) or ``one_way`` (``one_way=True``: the body reads the flow and
+        delivers nothing to it)."""
+        return "one_way" if self.one_way else "lagged" if self.coupling == "lagged" else "one_pass"
+
     @override
     def default_wall_kind(self, ctx: PlanContext) -> str | None:
         """Free space where the mrs rung couples by Schwarz (the grid carries the walls, C4); else 0.4.0's choice."""
@@ -1855,8 +1872,9 @@ class Drag(UncoupledDrag):
         """The mrs rung in a medium whose flow the FVM solves: the body registered with the flow as its Schwarz partner
         (``SCHWARZ_PARTNER``: the flow reads the body's pose and twist after its own step and hands it its response and
         load, ``mime.nodes.flow.fvm._schwarz_host``), the drag's own node none. The medium's flow is read, so the
-        at-rest refusal does not apply; a near field with a wall of its own is refused (the grid carries the walls);
-        the declared opt-ins of the exchange, one-way and lagged, are not built on this rung yet."""
+        at-rest refusal does not apply; a near field with a wall of its own is refused (the grid carries the walls).
+        The exchange's declared opt-ins, ``one_way=True`` and ``coupling='lagged'``, choose the flow's scheme for the
+        body (:meth:`schwarz_scheme`)."""
         body = ctx.bindings["body"]
         # The near field is free space by construction: the region's wall kind is the grid's, never the near field's.
         problems = [problem for problem in self._mrs_problems(ctx)
@@ -1868,13 +1886,6 @@ class Drag(UncoupledDrag):
                 f"wall_kind={written!r} is written, and {body}'s mrs drag couples to its medium's flow, whose grid "
                 f"carries the walls: a wall kind in the near field as well would count the wall twice",
                 "leave wall_kind= out (the near field is then free space, the walls the grid's)"))
-        for name in ("one_way", "coupling"):
-            if getattr(self, name) is not None:
-                problems.append(Problem(
-                    "drag.schwarz-scheme",
-                    f"{name}= is written on {body}'s mrs drag, which couples to its medium's flow one pass (exact): its "
-                    f"declared opt-ins, one-way and lagged, are not built on the mrs rung yet",
-                    f"leave {name}= out for the exact one-pass coupling"))
         hull = ctx.geometry(of="body")
         extent = 2.0 * float(hull.kind.enclosing_radius(hull.settings)) if hull is not None else 0.0
         if not problems and hull is not None and "spacing" in ctx.settings:
@@ -2518,6 +2529,15 @@ class Drag(UncoupledDrag):
         if self.schwarz(ctx):
             return self._schwarz_plan(ctx)
         found = super().plan(ctx)
+        written = [name for name in ("one_way", "coupling") if getattr(self, name) is not None]
+        if self.rung == "mrs" and written:
+            found = dataclasses.replace(found, problems=(*found.problems, Problem(
+                "drag.schwarz-scheme",
+                f"{' and '.join(f'{name}=' for name in written)} written on {ctx.bindings['body']}'s mrs drag, the "
+                f"opt-ins of its exchange with a flow solved on a grid, and medium {ctx.bindings['medium']!r} has none: "
+                f"the near field is the whole drag here, with nothing to exchange",
+                f"leave {' and '.join(f'{name}=' for name in written)} out, or fill the medium with a flow on a grid, "
+                f"fields={{'flow': FVM(...)}}")))
         if self.lubrication is not None:
             found = dataclasses.replace(found, problems=(*found.problems, self._retired()))
         if not self.lubricated(ctx):

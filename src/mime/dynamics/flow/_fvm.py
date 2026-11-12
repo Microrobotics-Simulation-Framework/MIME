@@ -496,11 +496,6 @@ class FVM(Dynamics):
                             f"body-set host steps several bodies' joint step",
                             "give the other bodies a medium of their own, exp.add_medium(Medium(...)), with the "
                             "flow's own FVM(...) or none")]
-        if coupled and self.open:
-            return [Problem("flow.schwarz-open",
-                            f"{coupled[0].id} couples its MRS body to the flow by Schwarz, and the flow is an open "
-                            f"vessel's: the openings inside each Schwarz product are not built yet",
-                            "run the flow on a periodic box, FVM(domain=PeriodicBox(length=...))")]
         lagged = [r for r in partners if r.kind == EXCHANGE_PARTNER]
         if self.open and lagged:
             return [Problem("flow.open-exchange", f"{', '.join(r.id for r in lagged)} exchanges with the flow lagged, "
@@ -753,7 +748,8 @@ class FVM(Dynamics):
         """The flow node's arguments for the MRS body it couples by Schwarz (``SCHWARZ_PARTNER``; one, the plan's
         refusal holds): its near field's, from the drag's own context (``Drag.schwarz_member``), under ``schwarz_``;
         the body and the law's id; the grid's origin in the world; the body's starting pose and the drive at the first
-        step's end (the initial preparation's); the body's extent, which sizes its free box."""
+        step's end (the initial preparation's); the scheme its drag declares; the body's extent, which sizes its free
+        box."""
         coupled = [r for r in registrations if r.kind == SCHWARZ_PARTNER]
         if not coupled:
             return {}
@@ -766,7 +762,7 @@ class FVM(Dynamics):
         return {**{f"schwarz_{key}": value for key, value in arguments.items()},
                 "schwarz_members": (registration.reads["pose"].node,), "schwarz_ids": (registration.id,),
                 "schwarz_origin": tuple(float(c) for c in origin), "schwarz_starts": (*position, *orientation),
-                "schwarz_drive": tuple(ctx.drive_start),
+                "schwarz_drive": tuple(ctx.drive_start), "schwarz_scheme": member.entry.schwarz_scheme(),
                 "schwarz_extent": float(cast(float, registration.parameters["extent"]))}
 
     @staticmethod
@@ -893,6 +889,7 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
     assert point is not None
     origin = (float(point[0]) - layout.centre[0], float(point[1]) - layout.centre[1], float(cast(float, low["offset"])))
     held = fvm.held_partners(ctx, registrations, layout.spacing, scheme, origin)
+    coupled = fvm.schwarz_partner(ctx, registrations, origin)
     node = b.add_node(OpenFlowNode(
         ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
         spacing=layout.spacing, viscosity=viscosity, density=density, tube_centre=layout.centre,
@@ -902,7 +899,7 @@ def _open_build(fvm: FVM, ctx: BuildContext, b: DynamicsBuilder, registrations: 
         openings=openings, opening_laws=tuple(r.kind for r in laws),
         opening_parameters=[port_law_named(r.kind).row_of(r.settings) for r in laws],
         opening_law_ids=tuple(r.id for r in laws),
-        **placed, **held))
+        **placed, **held, **coupled))
     fvm.connect_partners(b, node, registrations)
 
 

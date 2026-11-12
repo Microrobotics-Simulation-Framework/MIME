@@ -330,9 +330,17 @@ removed by a free box at the grid's spacing. The body is handed its response and
 through with its other loads (a contact and a friction among them); the flow then composes the body's step into its
 field, so the field it stores is the solved one. The near field's equations are checked at the composed field every
 step (`schwarz_residual`, flagged above ten times the solve's tolerance), and an indefinite response stops the run
-(`flow.schwarz-indefinite`). One body a flow, on a periodic box, for now: a second body (`flow.schwarz-bodies`), an
-open vessel (`flow.schwarz-open`) and the declared one-way and lagged routes (`drag.schwarz-scheme`) are refused until
-they are built. With the energy ledger the drag is held in the flow's step: its row on the flow is its tractions' work
+(`flow.schwarz-indefinite`). One body a flow for now: a second body is refused until the body-set host
+(`flow.schwarz-bodies`). In an open vessel the openings are eliminated inside each product and in the composition, by
+the unit fields of the step's base, so the composed step meets each opening's law. Two declared routes:
+`Drag.MRS(one_way=True)`, the body reading the flow and delivering nothing to it (valid where the body's own field on
+the flow and the walls' reflection of it are negligible), and `Drag.MRS(coupling='lagged')`, one Schwarz pass a step
+from the last step's tractions, whose error (the walls' reflection of the step's change of tractions) is reported each
+step as `schwarz_residual` and booked in the law's books; written where the medium has no flow on a grid, they are
+refused (`drag.schwarz-scheme`). Each step reports the body's gap to the wall in the grid's cells
+(`schwarz_0_wall_gap_cells`) and flags near contact below the near-contact window's line
+(`schwarz_0_near_contact_window`: nearer than two cells, or within a tenth of a local radius under twenty cells), never a
+refusal. With the energy ledger the drag is held in the flow's step: its row on the flow is its tractions' work
 on the composed field, its row on the body the handed response's, and their sum (the near field's own dissipation less
 the free box's) is judged by the flow each step. The body's own unsteady terms (Basset's history, its added
 mass) are not in the near field, which is Stokes: under the flow's inertial step the walls' share of the drag arrives

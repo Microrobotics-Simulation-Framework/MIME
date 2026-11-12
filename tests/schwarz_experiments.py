@@ -18,16 +18,18 @@ from mime.units import Pa_s, Pa_s_per_m3, kg, kg_m2, kg_per_m3, m3_per_Pa, m_per
 
 
 def schwarz_sphere(*, second: str = "", wall_kind: str | None = None, opened: bool = False,
-                   settings: dict | None = None, viscosity: float = 1e-3) -> Experiment:
+                   settings: dict | None = None, viscosity: float = 1e-3, flowing: bool = True,
+                   offset: float = 0.05) -> Experiment:
     """A neutral MRS sphere, ``ball``, 0.05 mm off a 1 mm tube's axis in water the FVM solves (8 cells across);
     ``second`` another body (``pebble`` a point body, else an MRS one), ``wall_kind`` written on the drag, ``opened``
-    the vessel open at its ends, ``settings`` the drag's others, ``viscosity`` the water's (Pa s)."""
+    the vessel open at its ends, ``settings`` the drag's others, ``viscosity`` the water's (Pa s); ``flowing=False``
+    the water at rest, no flow solved (no Schwarz coupling); ``offset`` the sphere's distance from the axis (mm)."""
     exp = Experiment("schwarz_sphere", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(1e-3))
     exp.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(0.5), wall=mm(0.1),
                                                       length=mm(4.0))))
     domain = VesselRegion(margin=4) if opened else PeriodicBox(length=mm(1.0))
-    exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": FVM(domain=domain, stokes=True, cells_across=8,
-                                                                          scheme=Scheme.IMEXEuler())}))
+    fields = {"flow": FVM(domain=domain, stokes=True, cells_across=8, scheme=Scheme.IMEXEuler())} if flowing else {}
+    exp.add_medium(Medium("water", fills="tube.lumen", fields=fields))
     exp.declare("water.viscosity", Pa_s(viscosity), reason="water")
     exp.declare("water.density", kg_per_m3(1e3), reason="water")
     radius = 150e-6
@@ -35,7 +37,7 @@ def schwarz_sphere(*, second: str = "", wall_kind: str | None = None, opened: bo
     bodies = ["ball", *([second] if second else [])]
     for k, name in enumerate(bodies):
         exp.add_body(Body(name, dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=um(radius * 1e6)))},
-                          initial=State(position=mm((0.05, 0.0, 0.4 * k)), orientation=(1.0, 0.0, 0.0, 0.0),
+                          initial=State(position=mm((offset, 0.0, 0.4 * k)), orientation=(1.0, 0.0, 0.0, 0.0),
                                         velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
         exp.declare(f"{name}.mass", kg(mass), reason="neutral")
         exp.declare(f"{name}.inertia", kg_m2((0.4 * mass * radius ** 2,) * 3), reason="uniform")
@@ -49,7 +51,7 @@ def schwarz_sphere(*, second: str = "", wall_kind: str | None = None, opened: bo
         exp.attach(Inflow(steady=mL_per_s(1e-3)), medium="water", surface="tube.start")
         exp.attach(Windkessel(proximal=Pa_s_per_m3(1e8), compliance=m3_per_Pa(1e-13), distal=Pa_s_per_m3(1e9)),
                    medium="water", surface="tube.end")
-    else:
+    elif flowing:
         exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
     return exp
 

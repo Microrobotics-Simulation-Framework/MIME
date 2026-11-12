@@ -72,7 +72,7 @@ type InnerOperator = Callable[[Array], tuple[Array, Array]]
 
 #: The solve site of :func:`reported_solve`: every GMRES solve of the near field runs inside it.
 GMRES_SITE = register(SolveSite("near_field_gmres", "gmres", "mime.nodes.hydro.near_field._gmres.reported_solve",
-                                nodes=("ImplicitFlowNode", "JointDragNode")))
+                                nodes=("ImplicitFlowNode", "JointDragNode", "OpenFlowNode")))
 
 #: How a column ended, as the loop carries it.
 _RUNNING, _CONVERGED, _STAGNATED, _AT_CAP, _NOT_FINITE, _AT_ZERO = 0, 1, 2, 3, 4, 5

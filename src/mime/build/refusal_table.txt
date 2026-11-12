@@ -217,7 +217,6 @@ flow.resolution               user
 flow.schwarz-bodies           user
 flow.schwarz-drive            user
 flow.schwarz-indefinite       user
-flow.schwarz-open             user
 flow.solve-report-rows        user
 flow.steady-convection        user
 flow.tree-exchange            user

@@ -16,8 +16,8 @@
   viscosity (control: the preparation held as the initial state's).
 - **The build**: ``Drag.MRS`` in a medium the FVM fills is a Schwarz partner (no drag node; the body added before its
   medium's flow; the response a prepared delivery, read the step before and planned), and the refusals with their
-  routes: a near field with a wall kind of its own, a second body in the flow, an open vessel, and the opt-ins not
-  built on the mrs rung."""
+  routes: a near field with a wall kind of its own, a second body in the flow, and the exchange's opt-ins written where
+  the medium has no flow on a grid."""
 
 from __future__ import annotations
 
@@ -150,9 +150,8 @@ def test_an_mrs_drag_in_a_flowing_medium_is_a_schwarz_partner_its_body_before_th
     ({"wall_kind": "tube"}, "drag.schwarz-wall-kind"),
     ({"second": "bob"}, "flow.schwarz-bodies"),
     ({"second": "pebble"}, "flow.schwarz-bodies"),
-    ({"opened": True}, "flow.schwarz-open"),
-    ({"settings": {"one_way": True}}, "drag.schwarz-scheme"),
-    ({"settings": {"coupling": "lagged"}}, "drag.schwarz-scheme"),
+    ({"settings": {"one_way": True}, "flowing": False}, "drag.schwarz-scheme"),
+    ({"settings": {"coupling": "lagged"}, "flowing": False}, "drag.schwarz-scheme"),
 ])
 def test_what_the_schwarz_coupling_does_not_take_is_refused_by_name(case, code):
     assert code in refusals(experiment(**case))

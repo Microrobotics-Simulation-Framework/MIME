@@ -909,6 +909,7 @@ def run_layout(plans: PlanSet) -> Layout:
         if speed is not None:
             flags.append(speed)
         flags += contact_flags(plans, plan)
+        flags += schwarz_flags(plans, plan)
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
@@ -953,6 +954,32 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
 #: sample, or its search did not converge and held the sample (by up to the samples' shortfall).
 TOUCHING, UNCONVERGED, HELD_BY_SAMPLES, SUPPORT_SHORT_FLAG = ("touching", "unconverged", "held_by_samples",
                                                               "support_short")
+
+
+def schwarz_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
+    """The flags of an MRS body a flow couples by Schwarz, read from fields the flow's node holds for its own sake:
+    ``schwarz_flagged``, where a step's columns or the walled solves in their products stopped short, or the composed
+    residual passed its line; and ``schwarz_0_near_contact_window``, where the body is near contact below the window's
+    line. None for a flow that couples none."""
+    from mime.nodes.flow.fvm._schwarz import RESIDUAL_LINE
+    from mime.vocabulary import SCHWARZ_PARTNER
+
+    coupled = [r for r in plan.registrations if r.kind == SCHWARZ_PARTNER]
+    if not coupled:
+        return []
+    owner = next((p for p in plans.entries if p.owner == coupled[0].id), None)
+    label = owner.registered.cls.label() if owner is not None else coupled[0].id
+    node = plan.node_name("")
+    return [FlagLayout(coupled[0].id, label, node, "schwarz_flagged",
+                       f"the Schwarz step's columns or a walled solve inside their products stopped short of its "
+                       f"tolerance, or the near field's equations read at the composed field missed by more than "
+                       f"{RESIDUAL_LINE:g} times the columns' tolerance (schwarz_residual; a lagged pass's residual is "
+                       f"its declared error, reported and booked, and not flagged): the step's values hold to the "
+                       f"residual reached"),
+            FlagLayout(coupled[0].id, label, node, "schwarz_0_near_contact_window",
+                       "the body was near contact below the near-contact window's line (schwarz_0_wall_gap_cells): "
+                       "the grid does not resolve its gap to the wall, so the wall's share of its drag there is "
+                       "unmeasured; the run went on")]
 
 
 def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
