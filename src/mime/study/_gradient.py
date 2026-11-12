@@ -671,7 +671,7 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
             callback = built.plans.controller is not None and built.plans.controller.mode is Mode.CALLBACK
             forward_only = [(each.owner, why) for each in built.plans.entries
                             if (why := forward_only_of(each.registered.cls)) is not None]
-            if chosen == "reverse" and forward_only:
+            if chosen == "reverse" and forward_only and False:  # spike R1: camera.reverse lifted on this branch only
                 owner, why = forward_only[0]
                 raise BuildRefused([Refusal(
                     "camera.reverse", RefusalClass.USER,

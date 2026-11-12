@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any, cast, override
 
@@ -418,11 +419,16 @@ class CameraNode(MountedNode):
             return self._rendered(exposure, intrinsics, numbers, pose, key, dtype, count, cached)
 
         def keep() -> tuple[Array, Array, dict[str, Array], tuple[Array, ...]]:
-            return (held["image"], held["expected"], {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS},
+            held_expected = held["expected"]
+            if os.environ.get("CAMERA_R1_PLANT") == "held-stop":  # spike R1's planted control: a held frame's derivative cut
+                held_expected = lax.stop_gradient(held_expected)
+            return (held["image"], held_expected, {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS},
                     cached)
 
         frame = self.frame_due(count, period)
-        image, expected, flags, carried = lax.cond(frame, make, keep)
+        # Spike R1: the render inside the cond under jax.checkpoint (reverse mode keeps its inputs, not its residuals).
+        rendered = _jax.checkpoint(make) if os.environ.get("MIME_SPIKE_RENDER_CHECKPOINT") == "1" else make
+        image, expected, flags, carried = lax.cond(frame, rendered, keep)
         frame_step = jnp.where(frame, count, held["frame_step"])
         return node_fields(CameraState(
             steps=count + 1, frame_step=frame_step, age=count - frame_step, new_frame=frame.astype(jnp.int32),
