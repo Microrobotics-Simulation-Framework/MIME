@@ -31,6 +31,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.1.0, kept, are frictionless and keep their margin required. Refused under `confinement.no-hull`, now one code for
   every setting read at a hull's points (`spacing=`, `friction=`) on a body held as a sphere of its extent, its message
   naming both routes (give the body a hull, or remove the setting). Registered: MIME-ANO-157, the frictionless hold's float32 allowance at sub-microsecond steps.
+- **A body resolved on the FVM's grid: `Drag.Penalty()`** (drag 0.5.0's penalty rung, F4, its first part). The body's
+  solid is lifted onto the grid's faces by the wall's own band from its solid region's exact signed distance (a
+  sphere's, a capsule's; another kind is refused, `drag.penalty-kind`) at its pose each step, on a window of faces
+  about it, the solid the union of the wall's and the bodies'; its penalty drives its interior to its rigid twist in
+  the field's own solve, and its load is the penalty's force and torque plus the interior fluid's momentum change
+  taken from the field (the field formulation, B8 point 5). The coupling is lagged, a declared form: its loop is stable
+  up to an edge in the step against the body's relaxation times (dt/tau_t and dt/tau_r), measured at rest against N,
+  the scheme and the density ratio; the build refuses a step past it (`drag.penalty-lagged`, naming the largest step
+  admitted) and a body lighter than the least ratio measured, and a run past it is stopped by its body's motion, more
+  than a cell a step (`drag.penalty-motion`); the one-pass affine coupling is its next part. A body within three cells
+  of the wall, and one whose density ratio lies outside the measured range, are flagged each step
+  (`body_<i>_near_wall`, `body_<i>_ratio_unmeasured`), and the rung declares a Reynolds line for the post-run watch
+  (150 at the default N, falling as N squared below it). The FVM's spacing with no spacing written is the finer of
+  the lumen's and N cells across the body's smallest feature's radius (`feature_cells`, 6 by default); a grid under the
+  thinnest-feature line is
+  refused (`drag.penalty-thin`), as are a `feature_cells` a written spacing does not give (`drag.penalty-spacing`), RK3
+  (`drag.penalty-scheme`), an open vessel (`flow.open-resolved`), a tube tree's flow (`flow.tree-resolved`) and an
+  added mass delivered to a resolved body (`drag.penalty-added-mass`). The body takes the displaced share of the
+  medium's drive (the drive acts on the fluid alone) under its drag's part `<id>.displaced`. The flow node holds the
+  penalty in its step under the drag's id and judges its sign at one velocity (`body_<i>_gift_steps`, read onto the
+  drag's rows); a law held in its receiver's step and judged in its sum is judged by its host. `ResolvedFlowNode`
+  (MIME-NODE-131); the registration `flow.resolved` (kind `flow.resolved_partner`).
 - **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
   ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
   (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector

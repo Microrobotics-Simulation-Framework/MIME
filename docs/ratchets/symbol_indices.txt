@@ -62,6 +62,7 @@ PhaseLagNode h  # the step's own timestep, which MADDENING hands the step and no
 RampNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 BodyForceNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 ImplicitFlowNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+ResolvedFlowNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 ExplicitFlowNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 ExplicitFlowNode k  # RK3's stage index in the stages' superscripts (the stage before is k-1), an index, which the check reads as one only in a braced subscript; route: the check reading a superscript's stage index as it reads a subscript's
 PrescribedFlowNode e  # Euler's number, a constant of the formula, held by no field; route: a row kind for mathematical constants

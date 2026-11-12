@@ -909,6 +909,7 @@ def run_layout(plans: PlanSet) -> Layout:
         if speed is not None:
             flags.append(speed)
         flags += contact_flags(plans, plan)
+        flags += registration_flags(plans, plan)
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
@@ -944,6 +945,19 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
                       f"joint{unlimited}), which the dynamic chain does not apply: the run went where the real "
                       f"mechanism would not. A backstop read after the run, never a refusal; a build check names a "
                       f"spinner that would drive a joint there, and its fix", SPEED_LIMIT, limits)
+
+
+def registration_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
+    """The flags a dynamics' node raises for the partners registered with it (``registration_flags(registrations)``
+    where the dynamics has one: the FVM's for the bodies it resolves on its grid), each owned by the entry that
+    registered the partner and read from a field the node holds, so they add nothing to the graph."""
+    held = getattr(plan.entry, "registration_flags", None)
+    if plan.section is not Section.DYNAMICS or not callable(held):
+        return []
+    labels = {entry.owner: entry.registered.cls.label() for entry in plans.entries}
+    named = cast(Callable[[Sequence[object]], Sequence[tuple[str, str, str]]], held)(plan.registrations)
+    return [FlagLayout(owner, labels.get(owner, owner), plan.node_name(""), field, meaning)
+            for owner, field, meaning in named]
 
 
 #: The names of the flags a body held by its hull raises: where a point is held; where the solve's sweeps left more

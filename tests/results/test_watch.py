@@ -134,9 +134,14 @@ def test_a_malformed_reynolds_declaration_is_refused_at_registration_naming_what
 
 
 def test_the_drag_declares_a_bound_with_its_basis_for_each_rung_and_the_declaration_is_well_formed():
+    """Each Stokes rung's bound is the neglected inertia's (Oseen's correction); the penalty rung, which carries the
+    fluid's inertia on its grid, declares the line its resolution was measured to (the default N's drag past Stokes
+    flow), its basis naming that measurement."""
     assert _reynolds_problems(Drag) == []
-    assert sorted(r.rung for r in Drag.reynolds if r.rung) == ["mrs", "rft", "stokes", "surrogate"]
-    assert all(r.upper > 0.0 and "Oseen" in r.basis for r in Drag.reynolds)
+    assert sorted(r.rung for r in Drag.reynolds if r.rung) == ["mrs", "penalty", "rft", "stokes", "surrogate"]
+    assert all(r.upper > 0.0 and "Oseen" in r.basis for r in Drag.reynolds if r.rung != "penalty")
+    (penalty,) = [r for r in Drag.reynolds if r.rung == "penalty"]
+    assert penalty.upper > 0.0 and "N = 6" in penalty.basis and "[measured through the node]" in penalty.basis
 
 
 # -- end to end, on the rig of a bead falling through water under the MRS drag -----------------------
