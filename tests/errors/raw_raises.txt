@@ -26,7 +26,7 @@ core/_node.py::MimeNode.energy NotImplementedError 1  # the hook a potential law
 core/_node.py::MimeNode.identity_terms NotImplementedError 1  # the hook a metered receiver overrides; reached on another node, it is error.uncoded, keeping its class
 core/_node.py::MimeNode.storage NotImplementedError 1  # the hook a metered receiver overrides; reached on another node, it is error.uncoded, keeping its class
 core/elimination.py::closed ValueError 1  # invariant: closing free unknowns no partner left free, which the flow's step never asks; reached, it is error.uncoded, keeping its class
-core/elimination.py::exchange_system ValueError 1  # invariant: an elimination over no partner, which the flow's step never asks (it eliminates only where it holds one); reached, it is error.uncoded, keeping its class
+core/elimination.py::exchange_system ValueError 2  # invariants: an elimination over no partner, which the flow's step never asks (it eliminates only where it holds one), and partners' rows that do not stack square (each partner's rows its deliveries, over every partner's), which no partner the flow builds gives; reached, each is error.uncoded, keeping its class
 core/ledger.py::LedgerDelivery.__post_init__ ValueError 4  # invariant: a delivery the build encodes into a receiver's ledger, with a kind, class and check the ledger knows; reached, it is error.uncoded, keeping its class
 core/ledger.py::paired_work ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/ledger.py::with_law_inputs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class

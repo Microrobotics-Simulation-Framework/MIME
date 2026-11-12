@@ -221,7 +221,6 @@ class PartnerFields(TypedDict):
     #: What the step solved for each body (``mime.vocabulary.FLOW_PARTNER_SOLUTION``, its units).
     partner_solution: ReadOnly[Annotated[Float[Array, "bodies 21"],  # noqa: F722 - a jaxtyping shape
                                          Units("N; N m; m/s; rad/s; m/s; 1/(m s); rad/s")]]
-    partner_reach: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
 class PartneredFlowState(FlowFields, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
@@ -776,8 +775,7 @@ class ImplicitFlowNode(MimeNode):
         """The held point bodies' fields at the run's start (none without them): each body's six unit fields a face
         set (``partner_units_<x|y|z>``, the last step's, which warm-start this one's), the solution a row a body
         (``partner_solution``: its force and couple, its twist as the field closed it, its reading, ``SOLUTION``), the
-        load and response each is handed (``partner_<b>_load``, ``partner_<b>_resistance``) and whether a body's kernel
-        reached an open plane in the step (``partner_reach``)."""
+        load and response each is handed (``partner_<b>_load``, ``partner_<b>_resistance``)."""
         count = self.body_count
         if not count:
             return {}
@@ -789,7 +787,6 @@ class ImplicitFlowNode(MimeNode):
         for b in range(count):
             held[f"partner_{b}_resistance"] = jnp.zeros((DELIVERIES, DELIVERIES), dtype=dtype)
             held[f"partner_{b}_load"] = jnp.zeros(DELIVERIES, dtype=dtype)
-        held["partner_reach"] = jnp.zeros((), dtype=dtype)
         return held
 
     def held_partner_units(self, state: Mapping[str, Array]) -> list[Velocity]:
@@ -800,8 +797,7 @@ class ImplicitFlowNode(MimeNode):
     def partner_ended(self, grid: MACGrid, bodies: Sequence[BodyPartner], partnered: Partnered,
                       held_units: int) -> dict[str, Array]:
         """The held bodies' fields at the step's end from its one elimination: the last ``DELIVERIES`` times the
-        bodies' unit fields (the openings' come first), the solution, what each body is handed and the reach flag."""
-        dtype = partnered.deliveries.dtype
+        bodies' unit fields (the openings' come first), the solution and what each body is handed."""
         units = partnered.units[held_units:]
         count = len(bodies)
         first = int(partnered.deliveries.shape[0]) - DELIVERIES * count
@@ -812,10 +808,6 @@ class ImplicitFlowNode(MimeNode):
         for b in range(count):
             ended[f"partner_{b}_resistance"] = partnered.handed_resistance[b]
             ended[f"partner_{b}_load"] = partnered.handed_load[b]
-        reach = getattr(grid, "stencil_reaches_plane", None)
-        reached = jnp.zeros((), dtype=bool) if reach is None else jnp.any(jnp.stack(
-            [jnp.any(reach(body.point[None, :], body.width)) for body in bodies]))
-        ended["partner_reach"] = reached.astype(dtype)
         return ended
 
     def initial_fields(self) -> dict[str, Array]:

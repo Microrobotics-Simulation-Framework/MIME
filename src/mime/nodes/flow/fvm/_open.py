@@ -35,7 +35,6 @@ after the projector."""
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, override
@@ -46,7 +45,7 @@ from jax import Array
 
 from mime.core import jnp
 from mime.core.solves import solving
-from mime.nodes.flow.fvm._grid import POISSON_SITE, TRUNCATION, MACGrid, Velocity
+from mime.nodes.flow.fvm._grid import POISSON_SITE, MACGrid, Velocity
 
 #: The weight the ends' half cells carry in the inner product.
 HALF = 0.5
@@ -160,13 +159,6 @@ class OpenMACGrid(MACGrid):
         if axis != 2:
             return super().stencil_indices(axis, component, lattice)
         return jnp.clip(lattice, 0, self.shape(component)[2] - 1)
-
-    def stencil_reaches_plane(self, points: Array, width_cells: float) -> Array:
-        """Whether an exchange kernel of ``width_cells`` at each of ``points`` (``(n, 3)``, m) reaches a plane's faces
-        (within its truncated reach and the Laplacian's cell of one): a boolean each."""
-        reach = (math.ceil(TRUNCATION * float(width_cells)) + 2) * self.spacing
-        z = points[:, 2]
-        return (z - reach <= 0.0) | (z + reach >= self.cells[2] * self.spacing)
 
     @override
     def face_points(self, component: int, dtype: Any) -> Array:

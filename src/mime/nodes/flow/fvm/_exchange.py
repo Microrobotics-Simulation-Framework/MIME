@@ -94,7 +94,8 @@ def scatter(grid: MACGrid, component: int, values: Array, stencil: ExchangeStenc
     the grid's inner product where the grid weighs its faces (an open box's planes carry half a cell, ``weights``); a
     force (N) becomes a force density (N/m^3). The transpose of :func:`gather` in :meth:`MACGrid.inner`, the planes
     included: a plane's face holds half a cell's fluid, so the density there is twice the whole cell's for the same
-    momentum (#270's review, M4: without it the pair missed by 4.5e-4 at 3.2 cells from a plane and 7e-2 at 1.6)."""
+    momentum (without it the pair missed by 4.5e-4 at 3.2 cells from a plane and 7e-2 at 1.6, and the exchange did
+    work the energy books did not pair)."""
     index = stencil.lattice
     density = jnp.zeros(grid.shape(component), dtype=values.dtype)
     for coefficient, column, (wx, wy, wz) in _terms(stencil, mode, component):

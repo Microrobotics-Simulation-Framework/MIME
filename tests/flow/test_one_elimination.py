@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import math
 import os
-import warnings
 from typing import Any
 
 import jax.numpy as jnp
@@ -346,11 +345,13 @@ def test_an_open_vessels_flow_holds_a_body_one_pass_and_refuses_a_lagged_one_by_
         assert _refused(exp) == {"flow.open-exchange"}
 
 
-def test_a_derivative_through_the_one_elimination_matches_a_central_difference(float64, monkeypatch):
-    """Gate 3: one pass, the body's axial position after 10 steps in the fluid's viscosity, forward mode by
-    ``Study.gradient``, against a central difference of two runs (gate 9's case, lagged there): the derivative passes
-    through the unit fields' solves and the elimination's LU. The plant (``MIME_PLANT_ELIMINATION=held``) holds the
-    elimination's solution out of the derivative, which must fail it."""
+@pytest.mark.parametrize("mode", ["forward", "reverse"])
+def test_a_derivative_through_the_one_elimination_matches_a_central_difference(float64, monkeypatch, mode):
+    """Gate 3: one pass, the body's axial position after 10 steps in the fluid's viscosity, forward and reverse mode by
+    ``Study.gradient`` (reverse is what its auto mode takes past two numbers), against a central difference of two runs
+    (gate 9's case, lagged there): the derivative passes through the unit fields' solves and the elimination's LUs. The
+    plant (``MIME_PLANT_ELIMINATION=held``) holds the elimination's solution out of the derivative, which must fail
+    it."""
     import jax
 
     from mime.study import Study, along
@@ -370,7 +371,7 @@ def test_a_derivative_through_the_one_elimination_matches_a_central_difference(f
 
     exp = point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0)
     result = Study(exp).sweep(along({"water.viscosity": [Pa_s(1e-3)]}), duration=ms(2.0)).gradient(
-        position, wrt=["water.viscosity"], mode="forward",
+        position, wrt=["water.viscosity"], mode=mode,
         acknowledged={"water.flow": "the derivative is in the viscosity, which the FVM's gradient gate checks exact; "
                                     "its unverified geometry leaves are not moved"})
     derivative = float(np.asarray(result.member(0).gradient["water.viscosity"]))
@@ -378,7 +379,7 @@ def test_a_derivative_through_the_one_elimination_matches_a_central_difference(f
     ends = [float(point_experiment(radius=40e-6, dt=2e-4, mass_ratio=2.0, viscosity=mu).build().run(ms(2.0))
                   .final["ball"]["pose"][2]) for mu in (WATER_MU + step, WATER_MU - step)]
     difference = (ends[0] - ends[1]) / (2.0 * step)
-    print(f"F3 PR 2 gate 3: derivative {derivative:.10g}, central difference {difference:.10g}, relative "
+    print(f"F3 PR 2 gate 3 [{mode}]: derivative {derivative:.10g}, central difference {difference:.10g}, relative "
           f"{abs(derivative - difference) / abs(difference):.3g}")
     assert abs(derivative - difference) <= 1e-5 * abs(difference), (derivative, difference)
 
@@ -402,37 +403,6 @@ def test_the_body_steps_with_the_row_the_flow_closed_and_the_flag_sees_a_load_th
     print(f"F3 PR 2 gate 4 [{dtype}] a={radius:.3g} ratio {ratio:.2f}: worst row mismatch {mismatch.max():.3g}, "
           f"flagged in {int(flagged.sum())} of {flagged.size} steps")
     assert flagged.sum() == 0.0, mismatch.max()
-
-
-def test_a_body_within_its_kernels_reach_of_an_open_plane_raises_partner_reach(float64):
-    """An open vessel's flow holding a body one pass raises ``partner_reach`` (declared, with a warning after the run)
-    at every step its kernel's truncated reach meets an opening's plane, where the exchange is no transpose pair in the
-    open grid's product and does work the books do not pair (the refuting review's M4: 4e-5 of the drag's dissipation
-    at 4.8 cells from the plane, 1e-2 at 1.6); a body beyond the reach raises nothing. The draw is fresh each run: the
-    near body from half a cell to a cell inside the reach, the far one from a cell beyond it to 30 cells, each from the
-    high plane (2 mm from the 4 mm tube's middle); the far run is the near run's control."""
-    from mime.nodes.flow.fvm._grid import TRUNCATION
-    from mime.nodes.hydro._point_drag import kernel_width
-
-    drawn = fresh_seed()
-    rng = np.random.default_rng(drawn)
-    h = 2.0 * 0.5e-3 / 16.0
-    width, _, _ = kernel_width(40e-6, WATER_MU, WATER_RHO, h, 2e-4, False)
-    assert width is not None
-    reach = math.ceil(TRUNCATION * width) + 2
-    near, far = float(rng.uniform(0.5, reach - 1.0)), float(rng.uniform(reach + 1.0, 30.0))
-
-    def raised(cells: float) -> tuple[bool, bool]:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            result = point_experiment(opened=True, along=2e-3 - cells * h).build().run(ms(1.0))
-        flagged = any(flag.path == "water.flow.partner_reach" and flag.was_raised for flag in result.flags)
-        return flagged, any("partner_reach" in str(warning.message) for warning in caught)
-
-    found = {"near": raised(near), "far": raised(far)}
-    print(f"F3 PR 2 the plane's reach [seed {drawn}]: kernel {width:g} cells wide, reach {reach} cells; near body "
-          f"{near:.3g} cells from the plane {found['near']}, far {far:.3g} cells {found['far']}")
-    assert found == {"near": (True, True), "far": (False, False)}, (drawn, found)
 
 
 #: The pair's line, relative to its products' magnitudes: a few units of rounding (the periodic box's own gate,

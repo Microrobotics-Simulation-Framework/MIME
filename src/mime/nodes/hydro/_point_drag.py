@@ -93,10 +93,10 @@ BASSET_LINE = 0.3
 RINGING_STEPS = 3
 #: Held one pass, the share of the drag's own scale ``R0 (|V| + |u_d|)`` (the load the body's step balances) above which
 #: the rate terms' load counts towards ``rate_feedback``: one pass reads the field as its solve left it, to the solve's
-#: tolerance, and a settled body's rate load rings at that noise, its reading's error over the step (#270's review, M3:
-#: the flag raised from step 115 on a body at rest in its flow), where a runaway's grows past any share of it. Declared;
-#: measured on the review's cases (RATE_SHARE_MEASURED). The lagged reading's noise is its rounding, which the rate
-#: load's own floor holds.
+#: tolerance, and a settled body's rate load rings at that noise, its reading's error over the step (a refuting
+#: review found the flag raised from step 115 on a body at rest in its flow), where a runaway's grows past any share of
+#: it. Declared; measured on the review's cases (RATE_SHARE_MEASURED). The lagged reading's noise is its rounding, which
+#: the rate load's own floor holds.
 RATE_SHARE = 1e-2
 RATE_SHARE_MEASURED = (
     "gate 14's settled arm (a 40 um body of 0.05 of water's density under the steady limit, one pass, 1500 steps): the "

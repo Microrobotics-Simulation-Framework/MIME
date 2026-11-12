@@ -62,7 +62,7 @@ def equilibrated_solve(matrix: Array, right: Array) -> Array:
     residual at its own terms' rounding (Skeel's componentwise backward stability). A partner's rows and deliveries
     carry their own units (a body's force against its couple, some ten decades apart in SI on a micrometre body): an
     LU of the matrix as it stands rounds every entry against the largest, which in float32 moved two bodies' forces by
-    up to 1e-3 of themselves (#270's review, B1; the same step with these solves in float64 agreed with the monolithic
+    up to 1e-3 of themselves (a refuting review's draws; the same step with these solves in float64 agreed with the monolithic
     step to 1.5e-6), and scaled without the refinement a body's spin was still 4e-4 of itself off at some draws, about
     40 times gate 1's line, where its own row mixes its spin with the other body's terms."""
     columns = _powers_of_two(jnp.max(jnp.abs(matrix), axis=0))

@@ -65,7 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lagged's at 1, 2 and 5 bodies). An open vessel's flow holds its bodies one pass and refuses a lagged one
   (`flow.open-exchange`). New refusals: `drag.stokes-one-pass` (one pass written for a body whose step is not linear),
   `flow.tree-exchange` (a tube tree's flow takes no exchange partner yet; it raised `entry.defect` before). Readings
-  `row_mismatch`, `row_mismatch_flagged` on a one-pass drag's node.
+  `row_mismatch`, `row_mismatch_flagged` on a one-pass drag's node; `row_mismatch_flagged` is a flag a run reports.
+  The elimination's dense solves are equilibrated (each column and row scaled by a power of two) and refined once
+  (`equilibrated_solve`): a body's force and couple are some ten decades apart in SI, and in float32 the unscaled LU
+  had moved two bodies' forces by up to 1e-3 of themselves. The open grid's delivery takes each face's weight (the
+  planes' faces carry half a cell), so a body's exchange near an opening is a transpose pair and does no work the
+  books do not pair. Held one pass, `rate_feedback` counts the rate terms' load only above a hundredth of the drag's
+  own scale, `R0 (|V| + |u_d|)`: a settled body's reading rings at its solve's tolerance far below it, where it had
+  raised the flag. `Flag(kinds=...)`: an entry's flag raised only where its plan makes or takes a registration of
+  those kinds (a scheme the plan chose).
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
   patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the
