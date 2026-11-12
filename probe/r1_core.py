@@ -238,3 +238,28 @@ def start_of(built: Any) -> tuple[Any, Any, Any]:
 #: are fractions of it. The speed's is a pixel at the end of a 12-step run; the focal length's at the ball's distance from
 #: the centre row and the tube's walls (11 to 50 px); k1's at the tube's walls (a pixel at k1 of about 0.7).
 PIXEL_SCALE = {"v0x": 1.333e-6 / 12e-3, "z0": 1.333e-6, "fy": 30.0, "cy": 1.0, "k1": 1.0}
+
+
+def raw_grad(width: int = 160, steps: int = 12, kind: str = "jacrev", render_checkpoint: int = 0, period_steps: int = 3
+             ) -> tuple[Any, tuple[Any, ...]]:
+    """``mem_estimate.py --raw``'s factory: the gradient scripts' largest program at a size, ``(function, (theta,))``:
+    the per-step centroids' Jacobian by reverse mode (``jacrev``), the run-level scalar's gradient (``vjp``) or its value
+    (``forward``), through the chunked, checkpointed run as ``r1_grad.py`` compiles it."""
+    if render_checkpoint:
+        os.environ["MIME_SPIKE_RENDER_CHECKPOINT"] = "1"
+    plant()
+    built = case(width=width, period_steps=period_steps).build()
+    graph = built.graph
+    state0, params0, theta0 = start_of(built)
+    run = scalar_run(graph, steps, per_step_objective(graph), checkpoint=True)
+
+    def objective(theta: Any) -> Any:
+        return run(*inserted(theta, state0, params0))
+
+    if kind == "jacrev":
+        function = jax.jit(jax.jacrev(lambda theta: objective(theta)[1]["c"]))
+    elif kind == "vjp":
+        function = jax.jit(jax.grad(lambda theta: objective(theta)[0]))
+    else:
+        function = jax.jit(lambda theta: objective(theta)[0])
+    return function, (theta0,)
