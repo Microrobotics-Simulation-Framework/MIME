@@ -128,7 +128,13 @@ def _converged_at_float64s_answer(shape) -> None:
     with in_dtype("float32"):
         solved, report = stenosis("float32")(shape)
         assert not _flagged(report), report
-        assert report[RESIDUAL] <= max(default_tolerance("float32"), stenosis("float32").floor(shape, solved))
+        # The stop judged the true residual b - A x in the loop; the report reads it again after the loop, a separate
+        # fusion of the same arithmetic, so the two readings of one iterate differ by the residual's own rounding,
+        # which ``floor`` bounds (``rounding_floor``). A solve that stopped at the line can therefore report it plus
+        # that floor: CI's maddening-main lane drew a shape whose report read 1.0000191e-05 against 1e-05 (floor
+        # 1.58e-06, so the excess was 1.2e-4 of it); the bound had no room for the second reading.
+        floor = stenosis("float32").floor(shape, solved)
+        assert report[RESIDUAL] <= max(default_tolerance("float32"), floor) + floor
     with in_dtype("float64"):
         reference, _ = stenosis("float64")(shape)
     assert _relative(solved, reference, stenosis("float32").grid) <= ANSWER_LINE
