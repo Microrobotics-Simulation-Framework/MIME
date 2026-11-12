@@ -30,10 +30,33 @@
   points the blob gives stays the same, and splits where it changes (`reference_quadrature_counts`, a static; measured
   on the settling sphere: a small spread of blob values is one group, a spread wide enough to change the count is two).
   A geometry's number is an axis,
-  named as `exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`); a kind's setting that is not one
-  number (an ellipsoid's semi-axes, a box's size, a direction, a count) is refused as one (`study.held-geometry`). Without
+  named as `exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`). Without
   a declared range a geometry sweep splits as its key says (the MRS rung re-picks its force points from each radius);
-  inside one it is a declared parameter, its counts fixed by the range. A value held in a node's program as a constant
+  inside one it is a declared parameter, its counts fixed by the range.
+- **A kind's setting that is not one number** (an ellipsoid's semi-axes, a box's size, a tube tree's radii, a
+  direction, a count) is an axis **built per value** (`Axis.built`): whole, each point the whole vector
+  (`"egg.parts.shell.semi_axes"`), or one component by its index into the numbers the kind holds
+  (`"vessel.radii[3]"`, `Axis.component`), the other components the experiment's own. The index reads into the flat
+  numbers the kind holds: a tree's points are three a point, so `"vessel.points[4]"` is point 1's y, and its radii two a
+  segment, so `"vessel.radii[3]"` is segment 1's end. A direction's component writes that number into the direction as
+  the experiment declares it; a kind that normalises its direction (a plane's normal) builds the normalised vector, so
+  the axis's value is a coordinate of what is declared, not of what is built, and a whole direction point is normalised
+  alike. The nodes built from the kind
+  hold it as built, so each point rebuilds the kind with the value written (what `Experiment.based_on(...)` with the
+  kind written again would do) and each value is a group of its own: the point's key is its structure key with the
+  setting's value, and the split reason names the axis. An axis built per value is judged inert on its points' traced
+  steps as well, since a value a node holds as built shows only there. No derivative is taken along one, a declared
+  cut (the value is built, not a leaf), stated in the plan and refused where a study or a fit asks for one
+  (`gradient.built-value`); an override of one is refused (`override.structural`), and so is a range
+  (`range.units`). Refused with their codes: a component path on a value that is not a vector of numbers, or a
+  second index on a component, which is one number (`study.component-path`; a vector a node holds as a leaf, a body's
+  initial position, is varied whole), an index written in another spelling than one whole number from 0 (a sign, a
+  space, a leading zero: `study.component-spelling`, so that one component has one path), a component past the end
+  (`study.component-index`), a point of another length or dimension (`study.vector-value`), one setting named twice
+  or whole and by a component (`study.axis-twice`, judged on what each axis writes), and a kind's setting that is a
+  structure, names or a reference (a tree's segments, its ends; `study.held-geometry`), whose change no build of the
+  experiment takes alone. The study folder and the spec file hold each path in its one spelling, and a tuple of bare
+  numbers (a direction, a body's initial orientation) as the list of its numbers, read back as the tuple. A value held in a node's program as a constant
   of its own, not as a leaf, is a silent bake: every member would run the first point's. The two-builds check
   (`mime.testing.two_builds`) is how an entry shows it holds none.
 - **Declared ranges** (`exp.declare_range(path, low, high, reason=...)`, saved with the experiment): on any axis but `dt`,

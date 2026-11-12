@@ -1,0 +1,167 @@
+{
+  "written": "2026-11-12, committed before the re-run of what F3 PR 2 fixed after its physics probe (the commit that adds this file is the timestamp): #239's gate 3 under the one-pass default, and the ringing flag and gate 14 held lagged",
+  "phase": "F3 PR 2: the one elimination over exchange partners; the re-run after the physics probe (run 43129621820)",
+  "labels": "made by the PR's finishing builder (Opus) from the previous builder's local runs and the physics probe listed under seen_before; every number marked guess is one",
+  "seen_before": [
+    "gate 3 under one pass, before the fix (the law replayed on the reading recorded in the same step): failed at 0.0250 of V in both dtypes on the physics probe, run 43129621820 (probe/f3-pr2-physics at 16a8769)",
+    "gate 3 under one pass after the fix (the reading the step solved, recorded the step after), the previous builder's laptop, seed 0: 3.3e-16 float64, 1.8e-7 float32",
+    "the ringing flag test under one pass (gate 14's plant, offset 0, 30 steps, float64): the flag not raised, run 43129621820",
+    "gate 14 under one pass, seed 0, both dtypes: passed (clean), run 43129621820"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-pr2-rerun)",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 3: point_experiment, a neutral sphere of radius 30 to 50 um at 0 to 0.2 mm off the axis of the 1 mm periodic tube driven at 1 m/s^2, D/h 16, IMEX Euler, dt 0.2 ms, 40 steps, the drag one pass (the default) or lagged (declared). Gate 14 and the ringing flag: a 40 um sphere of 0.05 of water's density, Maxey and Riley on, dt 50 us, under the field's steady limit (100 steps; the flag test 30 steps) and IMEX Euler (100 steps), offset 0 to 0.1 mm (the flag test 0)",
+    "seeds_and_draws": "DETECTION_SEED 0 to 9 per dtype and scheme for gate 3 (radius and offset from seed 3000 + DETECTION_SEED), 0 to 9 for gate 14 (offset from seed 14000 + DETECTION_SEED); gate 3's control seeds 0 to 9 planted and 0 to 2 clean, gate 14's 0 to 19 planted and 0 to 4 clean"
+  },
+  "gate_3_one_pass": {
+    "claim": "a neutral point body two-way, the drag one pass, moves as Maxey and Riley's law replayed on the run's own readings (the reading of the field the step solved, which the drag's node records the step after), within the replay's line",
+    "kind": "equality",
+    "case": "tests/flow/test_point_bodies.py::test_a_neutral_body_in_a_uniformly_driven_flow_moves_with_the_fluid[<dtype>-None]",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-17,
+        1e-12
+      ],
+      "unit": "|V - V_law| / |V|, float64; float32 [1e-8, 1e-6]; the test's line 1e-9 (float64), 1e-5 (float32)",
+      "basis": "measured-before (the previous builder's laptop, seed 0) and derived: the replay is the law's own recurrence on the readings the body stepped with",
+      "why": "one pass, the body's twist is the row's to its 6 x 6 solve's rounding, and the replay reads the same reading and rate terms"
+    },
+    "metric": "the largest |V - V_law| over the run, relative to the largest |V|",
+    "control": {
+      "plant": "MAXEY_RILEY: the Maxey and Riley terms (added mass and the fluid's acceleration) switched off in the drag's node, while the replay keeps them",
+      "environment_variable": "MIME_PLANT_MAXEY_RILEY",
+      "expected_rate": "10/10 per dtype",
+      "runs": 10,
+      "clean_expected": "0/3",
+      "resolution": "derived: a neutral body's added mass and the fluid-acceleration term are of order one of its stepping mass, so the planted body's velocity differs from the replay's by a share of order one, many orders above either dtype's line; structural (on or off), not measured with discriminating_range.py"
+    },
+    "if_wrong": "a clean miss above the line means the replay still reads the wrong step's reading or rate under one pass: print the per-step difference",
+    "cannot_discriminate_if": "a body at rest relative to the fluid at every step (no drag, no rate term): the driven fluid accelerates the body from rest"
+  },
+  "gate_3_lagged": {
+    "claim": "the same gate with coupling='lagged' declared: the law replayed on the reading recorded in the same step, as #239 measured",
+    "kind": "equality",
+    "case": "tests/flow/test_point_bodies.py::test_a_neutral_body_in_a_uniformly_driven_flow_moves_with_the_fluid[<dtype>-lagged]",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-17,
+        1e-12
+      ],
+      "unit": "|V - V_law| / |V|, float64; float32 [1e-8, 1e-6]",
+      "basis": "measured-before: #239's gate 3 passed on the lagged route at these lines [guess: the values themselves not recorded in this branch]",
+      "why": "the lagged drag node's step is #239's, unchanged by the elimination"
+    },
+    "metric": "as gate_3_one_pass",
+    "control": {
+      "plant": "MAXEY_RILEY, as above",
+      "environment_variable": "MIME_PLANT_MAXEY_RILEY",
+      "expected_rate": "not re-measured here: #239's rate on the lagged route stands (its node unchanged)",
+      "runs": 0,
+      "clean_expected": "pass"
+    },
+    "if_wrong": "a lagged miss means the elimination's branch moved the lagged drag node: compare its bits (the bits probe)",
+    "cannot_discriminate_if": "as gate_3_one_pass"
+  },
+  "gate_14_lagged": {
+    "claim": "lagged (declared), at the review's diverging arm: under the field's steady limit the light body settles with the flow (slip under 0.05), the ringing flag never raised; under IMEX Euler it stays finite, the flag silent",
+    "kind": "acceptance",
+    "case": "tests/flow/test_point_history.py::test_a_light_body_stays_bounded_under_each_scheme[<dtype>]",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        0.05
+      ],
+      "unit": "the steady limit's slip, relative to the flow; the flag silent",
+      "basis": "measured-before: #239's gate 14 passed on the lagged route, its node unchanged here",
+      "why": "the steady limit's own self-history removes the body's own field from the rate terms' reading, so the loop's gain is that of what remains (the wall's reflection), below one at this arm"
+    },
+    "metric": "the slip, and the flag raised or not",
+    "control": {
+      "plant": "OWN_FIELD: the body's own field left in the steady limit's reading (the reading the review found diverging)",
+      "environment_variable": "MIME_PLANT_OWN_FIELD",
+      "expected_rate": "20/20 per dtype",
+      "runs": 20,
+      "clean_expected": "0/5",
+      "resolution": "derived: the planted loop diverges (the review's arm), so the slip grows without bound or the flag is raised; structural, not measured with discriminating_range.py"
+    },
+    "if_wrong": "a planted run caught by neither slip nor flag means the lagged loop does not diverge at this arm on this head: the gate then has no control and moves to an arm where it does",
+    "cannot_discriminate_if": "the planted loop bounded: then neither assertion can fail. The rate measured here is the check that it is not"
+  },
+  "ringing_flag_lagged": {
+    "claim": "lagged (declared), the ringing flag is raised within 30 steps in the run that diverges (gate 14's plant, offset 0, float64)",
+    "kind": "acceptance",
+    "case": "tests/flow/test_point_history.py::test_the_ringing_flag_names_a_diverging_rate_loop",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "raised or not",
+      "basis": "measured-before: #239's test passed on the lagged route",
+      "why": "the lagged node is #239's"
+    },
+    "metric": "rate_feedback raised in the first 30 steps",
+    "control": {
+      "plant": "the clean runs of gate 14 (the flag never raised there), the clean arm of gate_14_lagged's control",
+      "environment_variable": "MIME_PLANT_OWN_FIELD (off)",
+      "expected_rate": "0/5 clean runs flagged",
+      "runs": 5,
+      "clean_expected": "0/5"
+    },
+    "if_wrong": "not raised: the lagged loop no longer rings at this arm on this head, and the flag test has no divergent run",
+    "cannot_discriminate_if": "the flag raised on clean runs too: gate 14's clean arm says it is not"
+  },
+  "one_pass_under_the_plant": {
+    "claim": "a measurement, not a gate: what gate 14's plant (the body's own field left in the steady limit's reading) does under one pass at the review's arm, so that the PR can say why the ringing flag test and gate 14 run lagged",
+    "kind": "estimates",
+    "case": "probe/one_pass_ring.py: tests/flow/test_point_history.py's _light_run under one pass (the default) with the plant on (300 steps under the steady limit) and off (100 steps), offsets from seeds 14000 to 14009, both dtypes",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "the flag raised (count of draws), the run finite, the steady limit's slip",
+      "basis": "guess, from one draw (offset 0, 30 steps, float64) on the physics probe",
+      "why": "guess: the flag not raised and the run bounded at every draw, 0/20 planted and 0/20 clean, the slip under 0.05; the mechanism not checked (one pass changes the loop's delay: the field the reading is taken from holds the step's own force), so a later divergence past 30 steps is not ruled out"
+    },
+    "metric": "the flag raised; the run finite; the slip",
+    "if_wrong": "the plant rings under one pass past 30 steps: the flag test can run one pass at that length, and the PR says so in place of 'the plant does not diverge'",
+    "cannot_discriminate_if": "every run NaN or every run raising the flag for another cause: the slip and the finiteness are recorded beside the flag"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after the run below",
+    "gate_3_one_pass": {
+      "result": "10/10 per dtype; worst 6.7e-16 (float64), 4.2e-7 (float32): inside both bands",
+      "control": "MAXEY_RILEY 10/10 per dtype, clean 0/3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "gate_3_lagged": {
+      "result": "10/10 per dtype; worst 5.6e-16 (float64), 3.0e-7 (float32)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "gate_14_lagged": {
+      "result": "10/10 per dtype; slip at most 3.9e-9 (float64), 8.0e-7 (float32); the flag never raised",
+      "control": "OWN_FIELD 20/20 per dtype, clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "ringing_flag_lagged": {
+      "result": "raised within 30 steps (passed)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    },
+    "one_pass_under_the_plant": {
+      "result": "the guess was wrong: under one pass the plant diverges, the body at -990 to -1580 m/s after 100 steps at 20 of 20 draws, without the reversals the flag counts (raised at 0 of 20 within 100 steps, 7 of 20 within 300); clean, the run settles (slip 1e-9 to 5e-9 float64, 9e-7 to 3e-6 float32), the flag silent at 20 of 20; the plant moved the velocity at 20 of 20. Gate 14 now runs under both schemes (predictions_f3_pr2_gate14.json); the ringing flag test stays lagged",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43133588177"
+    }
+  }
+
+}

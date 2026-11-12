@@ -162,5 +162,40 @@
     "prediction": "one pass with one body and two openings 1.3 to 2 times the lagged step's time (guess, the first step's estimate); with B bodies 1 + 6B projected solves a step against one, each warm-started: 2 bodies 2 to 3 times, 5 bodies 4 to 7 times, 10 bodies 6 to 12 times (guess); memory 6B unit fields a body held",
     "measured_at": "node_measure.py on a GitHub runner, point_experiment with 1, 2, 5 and 10 bodies, one pass against coupling='lagged', float64, 20 steps"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the runs below",
+    "gate_1_return_path": {
+      "result": "30/30 per dtype; worst 7.2e-10 (float64, field), 1.05e-3 (float32, a twist): inside both bands",
+      "control": "drop 30/30 in both dtypes; cross 30/30 in float64, 28/30 in float32 (missed seeds 12 and 22: bodies 4.8 and 6.2 cells apart, the plant moving a force by 1.7e-3 and 1.9e-3, under the float32 line 2e-3); clean 0/10 each. The cross control did not fail every run: the gate was redrawn (predictions_f3_pr2_redraw.json)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43130158330"
+    },
+    "gate_2_ledger_one_pass": {
+      "result": "float64 3.0e-14, float32 3.5e-5 of the dissipation (one pass), inside both bands; lagged beside it 1.08 (its first-order residual)",
+      "control": "handed 10/10 per dtype, clean 0/3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43130158330"
+    },
+    "gate_3_gradient_one_pass": {
+      "result": "1.06e-7, inside [0, 1e-5]",
+      "control": "held 10/10, clean 0/3",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43130158330"
+    },
+    "gate_4_mirror": {
+      "result": "worst 2.2e-16 (float64) and 9.9e-8 (float32), the flag raised in 0 of 20 steps at each of 20 draws per dtype",
+      "control": "mirror 20/20 per dtype, clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43130158330"
+    },
+    "gate_5_239s_gates_one_pass": {
+      "result": "couple 7 passed; bodies 35 passed, 2 failed (gate 3 under one pass: the replay read the reading of the wrong step; fixed and re-run, predictions_f3_pr2_rerun.json); history 4 passed, 1 failed (the ringing flag under one pass, not raised: held lagged; the re-run measured why)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43129621820"
+    },
+    "bits": {
+      "result": "not measured on this run: the bits arm failed before comparing (a short base hash git could not fetch, and an import path); re-run against 72e9dd8 (predictions_f3_pr2_redraw.json)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43130158330"
+    },
+    "costs": {
+      "result": "one pass over lagged, float64, per step 4.9x (1 body), 6.8x (2), 9.5x (5); compile 3.5x, 5.4x, 9.7x; peak 1.30, 1.82, 3.54 GiB against 1.04, 1.12, 1.44. The prediction (1.3 to 2x at one body, 4 to 7x at five) was wrong. Ten bodies not measured: the memory estimate of its build was killed at 4 and 8 GiB",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43130158330"
+    }
+  }
+
 }

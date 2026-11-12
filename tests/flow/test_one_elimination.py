@@ -5,10 +5,15 @@ openings (one pass, the default wherever a body's own step is linear).
 reference (``elimination_cases.monolithic_step``: the whole step, every face, each opening's pressure, each body's
 force, couple and twist, as one dense system solved by one LU in float64, independent of the unit fields, their warm
 starts, the elimination's small system and the conjugate gradient). Each draw has two partners or more, so that the
-cross terms carry: a periodic box with two bodies, or an open vessel with its two openings and a body. Its controls
+cross terms carry: a periodic box with two bodies 1 to 2.5 cells apart, or an open vessel with its two openings and a
+body. (The box's bodies were first drawn anywhere in it: at 4.8 and 6.2 cells apart the cross terms moved a body's
+force by 1.7e-3 and 1.9e-3, under float32's line, and the cross control missed 2 of 30 float32 draws.) Its controls
 (``MIME_PLANT_ELIMINATION``): ``drop``, the last partner dropped from the elimination (its deliveries held at zero);
 ``cross``, every partner's rows read only its own deliveries (the cross terms zeroed). The line is the field's solve's:
-the conjugate gradient stops at its tolerance on the field, which the elimination carries into every partner.
+the conjugate gradient stops at its tolerance on the field, which the elimination carries into every partner. A
+body's twist is judged on the scale it came from, the larger of its own and the twist it started the step with: a
+small body's spin decays several times over in one step, the remainder of a cancellation (a draw's float32 spin missed
+by 3e-3 of its solved value and 8e-4 of its starting one).
 
 **The ledger** (gate 2): a body coupled one pass, metered, closes its books at every step with the drag's two rows
 summing to the law's own dissipation, ``-dt f . (M0 - M_inf) f``, as the drag's node books it: no lagged residual."""
@@ -17,6 +22,7 @@ from __future__ import annotations
 
 import math
 import os
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -69,17 +75,21 @@ def _planted(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _periodic_draw(rng: np.random.Generator) -> tuple[ImplicitFlowNode, list[Body], float]:
-    """A periodic box of 8 cells a side with two bodies drawn in it: radius 0.8 to 1.5 cells, kernel one or 1.5 cells
-    wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel holds as any), density 0.5 to 3
-    times the water's, a twist of the body's own scales and a load on each."""
+    """A periodic box of 8 cells a side with two bodies drawn in it, the second 1 to 2.5 cells from the first in a drawn
+    direction (so that each reads the other's field above float32's line): radius 0.8 to 1.5 cells, kernel one or 1.5
+    cells wide (its reach wraps the box: the gate is the algebra's, which a wrapped kernel holds as any), density 0.5 to
+    3 times the water's, a twist of the body's own scales and a load on each."""
     cells, h = 8, 1e-5
     side = cells * h
     dt = float(rng.uniform(0.05, 1.0)) * h * h * WATER_RHO / WATER_MU
     bodies = []
-    for _ in range(2):
+    first = rng.uniform(0.0, side, 3)
+    direction = rng.normal(0.0, 1.0, 3)
+    second = np.mod(first + float(rng.uniform(1.0, 2.5)) * h * direction / np.linalg.norm(direction), side)
+    for at in (first, second):
         a = float(rng.uniform(0.8, 1.5)) * h
         mass, moment = sphere_mass(a, float(rng.uniform(0.5, 3.0)))
-        point = tuple(float(c) for c in rng.uniform(0.0, side, 3))
+        point = tuple(float(c) for c in at)
         twist = (*(rng.normal(0.0, 1e-3, 3)), *(rng.normal(0.0, 1e-3 / a, 3)))
         loads = (*(rng.normal(0.0, 6 * math.pi * WATER_MU * a * 1e-3, 3)),
                  *(rng.normal(0.0, 8 * math.pi * WATER_MU * a ** 3 * 1e-3 / a, 3)))
@@ -123,8 +133,10 @@ def _open_draw(rng: np.random.Generator) -> tuple[OpenFlowNode, list[Body], floa
     return node, [body], dt
 
 
-def _relative(found: np.ndarray, reference: np.ndarray) -> float:
-    scale = float(np.max(np.abs(reference)))
+def _relative(found: np.ndarray, reference: np.ndarray, came_from: Any = 0.0) -> float:
+    """The largest difference over the larger of the reference's largest magnitude and ``came_from``, the scale of the
+    terms the result came from where they cancel."""
+    scale = max(float(np.max(np.abs(reference))), float(np.max(np.abs(came_from))))
     return float(np.max(np.abs(np.asarray(found) - reference))) / scale if scale > 0.0 else 0.0
 
 
@@ -151,7 +163,8 @@ def test_the_coupled_step_is_the_monolithic_step_within_the_solves_line(dtype, m
     found = {"field": max(_relative(np.asarray(ended[f"velocity_{x}"]), reference.velocity[k])
                           for k, x in enumerate("xyz")),
              "force": max(_relative(solution[b, :6], reference.forces[b]) for b in range(len(bodies))),
-             "twist": max(_relative(solution[b, 6:12], reference.twists[b]) for b in range(len(bodies)))}
+             "twist": max(_relative(solution[b, 6:12], reference.twists[b], np.asarray(bodies[b].twist))
+                          for b in range(len(bodies)))}
     if isinstance(node, OpenFlowNode):
         found["pressure"] = _relative(np.asarray(ended["opening_pressure"]), reference.pressures)
         found["flux"] = _relative(np.asarray(ended["opening_flux"]), reference.fluxes)
@@ -262,6 +275,27 @@ def test_the_plan_holds_a_free_body_one_pass_and_lags_one_whose_step_is_not_line
     built = _contact(point_experiment(dt=1e-4)).build()
     line = next(line for line in built.report.checked["drag:ball"] if line.startswith("lagged"))
     assert "not one the flow's one elimination can hold" in line, line
+
+
+def test_the_build_report_names_lagged_the_cheaper_route_from_the_measured_body_count(float64):
+    """The build report's line for the bodies a flow holds one pass names coupling='lagged' as the cheaper route from
+    HELD_SUGGESTS_LAGGED bodies on (the maintainer's item 2 (a)), the count set from the cost measured through the node.
+    The control: one body fewer, the line states the cost and suggests nothing."""
+    from mime.nodes.flow.fvm._node import HELD_SUGGESTS_LAGGED
+
+    def line(count: int) -> str:
+        h = 1e-5
+        node = ImplicitFlowNode("flow", 1e-4, cells_x=8, cells_y=8, cells_z=8, spacing=h, viscosity=WATER_MU,
+                                density=WATER_RHO, tube_centre=(4 * h, 4 * h, 0.0), tube_axis=(0.0, 0.0, 1.0),
+                                tube_radius=2.8 * h, scheme="imex_euler", convection=False,
+                                partner_radius=[h] * count, partner_widths=[1.0] * count,
+                                partner_ids=[f"drag:b{i}" for i in range(count)])
+        (held,) = node.held_lines()
+        return held
+
+    assert "coupling='lagged'" in line(HELD_SUGGESTS_LAGGED)
+    fewer = line(HELD_SUGGESTS_LAGGED - 1)
+    assert f"{6 * (HELD_SUGGESTS_LAGGED - 1)} unit fields" in fewer and "lagged" not in fewer, fewer
 
 
 def test_an_open_vessels_flow_holds_a_body_one_pass_and_refuses_a_lagged_one_by_name(float64):

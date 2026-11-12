@@ -1,0 +1,54 @@
+{
+  "written": "2026-11-12, committed before gate 14 ran under one pass (the commit that adds this file is the timestamp): gate 14 parametrized over the scheme, after the re-run probe measured that its plant diverges under one pass without ringing",
+  "phase": "F3 PR 2: the one elimination over exchange partners; gate 14 under one pass",
+  "labels": "made by the PR's finishing builder (Opus) from the re-run probe (run 43133588177), listed under seen_before",
+  "seen_before": [
+    "probe/one_pass_ring.py on the re-run probe, run 43133588177, under one pass at gate 14's ten offsets: clean, 100 steps, slip 1.0e-9 to 4.7e-9 (float64) and 8.6e-7 to 2.7e-6 (float32), the flag never raised; planted (OWN_FIELD), 100 steps, slip 18 to 23, the body at -990 to -1580 m/s, the flag raised at 0 of 10 per dtype; planted, 300 steps, the flag raised at 1 of 10 (float64) and 6 of 10 (float32)",
+    "gate 14 lagged on the same probe: 10/10 per dtype, slip at most 3.9e-9 (float64) and 8.0e-7 (float32); OWN_FIELD caught 20/20 per dtype, clean 0/5"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-pr2-gate14)",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 14: a 40 um sphere of 0.05 of water's density, Maxey and Riley on, dt 50 us, in the 1 mm periodic tube driven at 1 m/s^2, D/h 16, under the field's steady limit (100 steps) and IMEX Euler (100 steps), the drag one pass (the default)",
+    "seeds_and_draws": "DETECTION_SEED 0 to 9 per dtype for the gate (offset 0 to 0.1 mm from seed 14000 + DETECTION_SEED); the control 0 to 19 planted, 0 to 4 clean"
+  },
+  "gate_14_one_pass": {
+    "claim": "one pass, at the review's diverging arm: under the field's steady limit the light body settles with the flow (slip under 0.05), the ringing flag never raised; under IMEX Euler it stays finite, the flag silent",
+    "kind": "acceptance",
+    "case": "tests/flow/test_point_history.py::test_a_light_body_stays_bounded_under_each_scheme[<dtype>-None]",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.0,
+        1e-5
+      ],
+      "unit": "the steady limit's slip relative to the flow, float32's; float64 [0, 1e-8]; the flag silent",
+      "basis": "measured-before (the clean runs listed)",
+      "why": "the steady limit's own self-history removes the body's own field from the rate terms' reading under either scheme"
+    },
+    "metric": "the slip, and the flag raised or not",
+    "control": {
+      "plant": "OWN_FIELD: the body's own field left in the steady limit's reading",
+      "environment_variable": "MIME_PLANT_OWN_FIELD",
+      "expected_rate": "20/20 per dtype, caught by the slip (the flag is not raised under one pass within 100 steps)",
+      "runs": 20,
+      "clean_expected": "0/5",
+      "resolution": "measured-before: the planted slip 18 to 23 at all 20 draws, three hundred times the line; structural, not measured with discriminating_range.py"
+    },
+    "if_wrong": "a planted run that settles under one pass: the loop's divergence there depends on the draw, and the gate needs an arm where it does not",
+    "cannot_discriminate_if": "the plant bounded: measured above at 20 of 20 draws, it is not"
+  },
+  "outcomes": {
+    "written": "2026-11-12, after the run below",
+    "gate_14_one_pass": {
+      "result": "10/10 per dtype; slip at most 5.1e-9 (float64) and 3.3e-6 (float32), inside both bands; the flag never raised",
+      "control": "OWN_FIELD 20/20 per dtype (caught by the slip), clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43144461084"
+    }
+  }
+
+}

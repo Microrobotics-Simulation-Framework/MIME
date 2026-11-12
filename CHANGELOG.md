@@ -32,6 +32,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the flow (`flow.schwarz-bodies`), an open vessel (`flow.schwarz-open`), a drive that is not a declared schedule
   (`flow.schwarz-drive`) and the one-way and lagged opt-ins on the mrs rung (`drag.schwarz-scheme`), each until its
   part is built.
+- **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
+  ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
+  (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector
+  (`"egg.parts.shell.semi_axes"`), or one component by its index (`"vessel.radii[3]"`, `Axis.component`). Each point
+  rebuilds the kind with the value written, and each value is a group of its own, split by it (the point's key is its
+  structure key with the setting's value), the split reason naming the axis; its inertness is judged on the points'
+  traced steps as well. No derivative is taken along one, a declared cut stated in the plan and refused where a study
+  or a fit asks for one (`gradient.built-value`); an override of one is refused (`override.structural`), and so is a
+  range (`range.units`). New refusals: `study.component-path` (a component of what is not a vector of numbers, or a
+  second index, `vessel.radii[3][0]`), `study.component-spelling` (an index in another spelling than one whole number
+  from 0, `vessel.radii[03]`, so that one component has one path), `study.component-index`, `study.vector-value`;
+  `study.held-geometry` now refuses only a kind's structure, names or reference (a tree's segments); `study.axis-twice`
+  judges what each axis writes, not its spelling. The study folder and the spec file hold a tuple of bare numbers (a
+  direction, a body's initial orientation, refused at save until now) as the list of its numbers, read back as the
+  tuple. Gated (`tests/study/test_vector_axes.py`): a study over the MRS egg's semi-axes (whole, and one component by
+  the water's viscosity) and over a plane's normal (whole, and one component: two groups of one structure key, split
+  by the value alone) equals the same points written by hand, bit for bit per point; the FVM tree's fourth radius
+  equals them at its points (structure, leaves, initial state and traced step; no run).
+
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
   scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's
@@ -54,6 +73,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`<id>.maxey_riley`). Point bodies in one medium interact through its flow, lagged a step; the build reports it on
   each one's drag, with their nearest starting separation in radii and their volume fraction in the grid's box.
   Flags `below_floor`, `history_flagged`, `rate_feedback`, `near_wall`, `reynolds_flagged` (stokes).
+- **One elimination over a flow's exchange partners; point bodies held one pass** (F3's second PR,
+  `mime.core.elimination`). The flow solves a unit field for each delivery of every partner (an opening's pressure, a
+  point body's force and couple), reads each unit field for every partner, and solves all their rows in one dense LU
+  (`exchange_system`, through `dense_solve`). It replaces the open flow's port system: openings alone take its
+  single-partner branch, with the port system's operations. A point body whose own step is linear is now held one pass
+  by default: the flow holds its drag law and its step's row (`body.step_row`) with the body's other loads and
+  resistances delivered into it, closes the body's twist with the field within the step, and hands the body its load
+  and 6x6 response. The exchange is then workless, and the drag's two ledger rows sum to its own dissipation with no
+  lagged residual. The lagged exchange stays where one pass cannot apply (one-way, a contact confining the body, a
+  dynamics that publishes no step row), with the drag's build line saying why, and as the declared cheaper route,
+  `Drag.Stokes(coupling="lagged")`; what an experiment observes never chooses the scheme. From five bodies held one
+  pass, the build report names lagged as the cheaper route (one pass's step measured at 4.9, 6.8 and 9.5 times
+  lagged's at 1, 2 and 5 bodies). An open vessel's flow holds its bodies one pass and refuses a lagged one
+  (`flow.open-exchange`). New refusals: `drag.stokes-one-pass` (one pass written for a body whose step is not linear),
+  `flow.tree-exchange` (a tube tree's flow takes no exchange partner yet; it raised `entry.defect` before). Readings
+  `row_mismatch`, `row_mismatch_flagged` on a one-pass drag's node.
 - **Two openings at one plane, laws over several openings (`surface=` a tuple or a region's openings), `Valve` and
   `SharedDistal`, the kinetic-energy flux split by plane.** The open flow's node takes any number of openings, each a
   patch of one of the box's two planes (a plane holding several is split between their centres, each of its faces, the
@@ -1195,6 +1230,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
+  projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse
+  mode transposes in, so the transpose solve was the wrong one: through two steps the viscosity's derivative of the
+  openings' pressures read 5.27 in reverse mode against forward mode's 7.24, and the inflow's amplitude's 6.69
+  against 6.13 (the laws' resistances and compliance right); forward mode was right. The transpose solve is now the
+  weighted one, `V (P A P)^-1 V^-1` (`mime.nodes.flow.fvm._solve.projected_solve`); the periodic box's grid has no
+  weights and is unchanged. Found by F2b's gradient gate with ports.
 - **A body force on the open vessel's fluid booked its work over the planes' half cells counted whole**: its pairing,
   the fluid's momentum, now weighs each face as the open box's inner product does, so a driven open vessel's books close
   (they failed at 5e12 of their floor; the open box was admitted with a body force and not gated with one).

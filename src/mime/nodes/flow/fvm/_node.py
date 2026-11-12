@@ -153,8 +153,11 @@ PARTNER = "partner_"
 #: The fields a flow holding point bodies returns to each (``partner_<b>_<name>``): the load and response it is handed.
 PARTNER_HANDED = ("resistance", "load")
 #: The count of held point bodies from which the build report names the lagged exchange as the cheaper route: six unit
-#: solves a body a step against the lagged exchange's none (the cost measured in F3's second PR).
-HELD_SUGGESTS_LAGGED = 3
+#: solves a body a step against the lagged exchange's none. Measured through the node (F3's second PR, float64, 40 um
+#: spheres in the 1 mm periodic tube at D/h 16, a 4 vCPU runner), one pass's step took 4.9, 6.8 and 9.5 times the
+#: lagged one's at 1, 2 and 5 bodies, and its compile 3.5, 5.4 and 9.7 times: the line is where both reach about ten
+#: times (a declared line on those ratios; ten bodies unmeasured).
+HELD_SUGGESTS_LAGGED = 5
 
 
 class FlowFields(TypedDict):
@@ -212,6 +215,32 @@ class MeteredFlowState(FlowFields, FlowRecords, closed=True):
 class MeteredTreeFlowState(FlowFields, _WallCounts, FlowRecords, closed=True):
     """A metered flow walled by a tube tree: the flow's fields, the wall's report, the stall detector and the ledger's
     records."""
+
+
+class PartnerFields(TypedDict):
+    """A flow holding point bodies in its one elimination (:meth:`ImplicitFlowNode.partner_fields`): beside these, the
+    load and response each body is handed, ``partner_<b>_load`` and ``partner_<b>_resistance``, a state's extra items,
+    their units the edges' that deliver them."""
+
+    #: Each body's six unit fields a face set, the velocity a unit force (the first three of each six, m/(s N)) or a
+    #: unit couple (the last three, 1/(s N)) drives over a step: one block, as verify judges it.
+    partner_units_x: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    partner_units_y: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    partner_units_z: ReadOnly[Annotated[Float[Array, "units nx ny nz"], Units("m/(s N), 1/(s N)")]]  # noqa: F722
+    #: What the step solved for each body (``mime.vocabulary.FLOW_PARTNER_SOLUTION``, its units).
+    partner_solution: ReadOnly[Annotated[Float[Array, "bodies 21"],  # noqa: F722 - a jaxtyping shape
+                                         Units("N; N m; m/s; rad/s; m/s; 1/(m s); rad/s")]]
+    partner_reach: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+
+
+class PartneredFlowState(FlowFields, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
+    """A flow holding point bodies: the flow's fields, the bodies' and their handed loads and responses (whatever else
+    it holds, the ledger's records or an open vessel's fields, another of its states names)."""
+
+
+class MeteredPartneredFlowState(FlowFields, FlowRecords, PartnerFields, extra_items=ReadOnly[Float[Array, "..."]]):
+    """A metered flow holding point bodies: the flow's fields, the stall detector, the ledger's records and the bodies'
+    fields."""
 
 
 class FlowInputs(TypedDict, closed=True):
@@ -1548,5 +1577,5 @@ def check_deliveries(held: Sequence[books.LedgerDelivery]) -> None:
 
 
 __all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "DRIVE_FIELDS", "EXCHANGE_FIELDS", "GEOMETRY", "HOSTED_FIELDS", "STALL_SECTION", "STOKES_REYNOLDS",
-           "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
+           "STOP_FIELD", "TREE_LEAVES", "TREE_WALL", "TREE_WALL_COUNTS", "WALL_COUNTS", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "MeteredPartneredFlowState", "PartnerFields", "PartneredFlowState",
            "MeteredTreeFlowState", "StepParts", "TreeFlowState", "check_deliveries"]

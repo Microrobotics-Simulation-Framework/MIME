@@ -92,8 +92,8 @@ def wrong_order(term: str, argument: str, power: int | None):
     formula, of order zero in the tolerance)."""
     real = ImplicitFlowNode.energy_terms
 
-    def planted(self, p, grid, before, stage, sigma, fields, dt):
-        terms = dict(real(self, p, grid, before, stage, sigma, fields, dt))
+    def planted(self, p, grid, before, stage, sigma, fields, dt, *partnered):
+        terms = dict(real(self, p, grid, before, stage, sigma, fields, dt, *partnered))
         if power is None:
             terms[term] = terms[term] + terms["viscous"]
             terms["viscous"] = 0.0 * terms["viscous"]
