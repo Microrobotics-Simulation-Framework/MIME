@@ -67,5 +67,18 @@
     "if_wrong": "a clean twin draw failing on the premise (its solve finite): the draw named, and the premise's count reported",
     "cannot_discriminate_if": "the premise fails on every draw (no solve went not finite)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after run 43217993771; the predictions above are unchanged",
+    "gate_2_open_line": {
+      "result": "as predicted",
+      "measured": "forced: FORCED_OFF caught 50/50, clean 0/50 failing (flagged on every draw); pressure, gap, twin: FORCED_EVERYWHERE caught 50/50 each, clean 0/50 failing each (quiet with every step's solve converged on every draw); no inconclusive run",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43217993771"
+    },
+    "gate_7_not_finite": {
+      "result": "as predicted",
+      "measured": "twin: NOT_FINITE_SILENT caught 30/30, clean 0/30 failing (refused by name, the premise holding on every draw); experiment: caught 10/10, clean 0/10 failing",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43217993771"
+    },
+    "memory": "every arm within its bound on the larger proxy (peaks 0.78 to 0.91 GiB against 0.95 to 0.98)"
+  }
 }
