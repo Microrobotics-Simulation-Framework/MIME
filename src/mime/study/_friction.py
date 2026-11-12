@@ -203,7 +203,7 @@ def fit_friction(experiment: Experiment, residual: Callable[[Any], Any], *, axis
 
     history = experiment.build().run(duration, override={axis: estimate}, history=True).history
     data: Mapping[str, Any] = {} if history is None else cast(Mapping[str, Any], history[body])
-    x64 = np.asarray(data["contact_forces"]).dtype == np.float64
+    x64 = bool(np.asarray(data["contact_forces"]).dtype == np.float64)
     forces = np.asarray(data["contact_forces"], dtype=np.float64)
     slips = np.asarray(data["contact_slip_speed"], dtype=np.float64)
     traction = np.asarray(data["contact_friction_forces"], dtype=np.float64)

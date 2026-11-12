@@ -49,5 +49,11 @@
     "controls": {"one_ulp": "FL-9 one ulp of angle further in the probe's tree: arrays differ"}
   },
   "costs": {"prediction": "", "measured_at": ""},
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the gates ran (runs 43166927233, 43175511053, 43175699142)",
+    "gate_b1_fit_verdict": "never-sliding data: 20/20 bounded below only at round 1 (seeds 0 to 19) and at round 3 (100 to 119), none identified (held). Sliding data: 18/20 identified at round 1, the line then 1e-4 (missed: the other two confounded with the estimate at the truth to 2e-10 and the control 6.0e-4 and 6.7e-4 of it away, the line reading the control's grid as the estimate's error); 20/20 at round 3, the line then 2e-3. The second fix round derives the line (d^2/2 in ln mu, 7.35e-4 on this search; predictions_w2b_pr2_fix2.json): rounds 1 and 3 re-judged at it, 20/20 and 20/20 identified, the worst gap 0.9987 and 0.9991 of the line before the standard error",
+    "gate_m2_rolling_passivity": "round 1: float32 20/20, clean 0/20; float64 19/20, clean 2/20 (missed: the deeper re-solves' cap, a rocking cylinder needing them on 11 of 200 draws; ROLLING_DEEPER_SHARE raised to 0.25). Round 2 at the same seeds (0 to 19): 20/20 both dtypes, clean 0/20. Fresh seeds are the second fix round's",
+    "gate_m3_r_controls": "R1 (held) 30/30 a dtype, clean 0/30, range 5.1e-10 (float64) and 2.6e-3 (float32); R2 (flat) 28/30 a dtype at round 1 with its old oracle (range 0.51: missed), 30/30 a dtype at round 2 with the sharpened oracle, clean 0/30, range 1.155e-10 (float64); R3 (spun) 30/30 a dtype, clean 0/30, range 2.9e-2 of mu both dtypes; R4 (slope) 30/30 a dtype, clean 0/30, range 1.0e-9",
+    "bits": "held: 16 programs equal at rounds 1 and 2 against ff9624cb, both dtypes; the one-ulp control differs in float64 (float32 rounds it away); round 2's bits job red only on the memory route's check (1.82 GiB against a 1.34 GiB bound, a calibration row)"
+  }
 }
