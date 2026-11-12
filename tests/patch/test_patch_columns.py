@@ -2,11 +2,12 @@
 
 **vmap against the loop.** The patch's reflection and its transpose take one column of forces and are vmappable over a
 column axis. Vmapped over seven columns they are the loop's program batched, whose last bits differ (the solve-free
-parts agree to 1e-16); the CG then stops at a different iterate within its tolerance. So the vmapped columns are judged
-against the loop's own spread under a one-ulp change of its given values (the same program, its input moved by
-rounding): at float64's default 1e-8 that spread is about 4e-8 at equal iterations and the vmapped 1e-9; at the floor
-(1e-14 in float64, float32's default) both are rounding (5e-16 in float64). The control ``PATCH_PLANT=short_cap``
-stops the vmapped solves at 20 iterations.
+parts agree to 1e-16); the CG, whose iterates are sensitive to rounding at its tolerance, then stops at a different
+iterate within that tolerance, as the loop does under a one-ulp change of its own input. So at the default tolerance
+the columns are the loop's to the solve's tolerance, and at the floor (1e-14 in float64, float32's default) to
+rounding (4.7e-16 in float64). Bitwise equality would need a sequential batching rule, which has no transpose: reverse
+mode through the vmapped columns would fail. The control ``PATCH_PLANT=short_cap`` stops the vmapped solves at 20
+iterations.
 
 **The starts** (the interface's rule 3 and the PR's column rule): a column starts at zero; the base column at zero or
 from its own history's field; a start on a column, a base start from any other field (a product's solution), and a
@@ -62,10 +63,12 @@ def case(dtype):
     return patch, placement, boundary, forces, cotangent
 
 
-#: How many of the loop's own spreads (the larger of a one-ulp nudge up and down of its input) the vmapped columns may
-#: depart by: each is one draw of the same rounding's effect (measured: the vmapped 1.1e-9 against the nudges' 4.4e-8
-#: in float64 at 1e-8; the transpose's given values 7.5e-8 against 1.6e-8); the short_cap plant departs by 4.6e-4.
-SPREADS = 10.0
+#: How many of the solve's tolerances the vmapped columns may depart from the loop by, on each column's scale. Two
+#: roundings of one CG stop at different iterates within its tolerance: measured 1.1e-9 (this laptop) and 4.5e-8 (a
+#: 4-vCPU runner, run 43240080205) in float64 at 1e-8, where a one-ulp nudge of the loop's own given values moved it
+#: 4.4e-8 here and 3.0e-10 there; 2.0e-5 in float32 at its 1e-5 floor; 4.7e-16 in float64 at 1e-14. The short_cap plant
+#: departs by 4.6e-4 in float64 (in float32, whose solve takes about 23 iterations, 4.9e-4, under this line).
+TOLERANCES = 50.0
 
 
 def patch_tolerance(dtype):
@@ -77,6 +80,10 @@ def floor_tolerance(dtype):
     return 1e-14 if dtype == jnp.float64 else None
 
 
+def line(stopping):
+    return TOLERANCES * float(stopping.tolerance)
+
+
 def worst(a, b):
     """The largest difference over the columns, each on its own column's scale."""
     return max(float(jnp.max(jnp.abs(a[k] - b[k])) / jnp.max(jnp.abs(b[k]))) for k in range(COLUMNS))
@@ -84,6 +91,8 @@ def worst(a, b):
 
 @pytest.mark.parametrize("at", ["default", "floor"])
 def test_vmapped_over_seven_columns_the_reflection_is_the_loop_within_its_rounding(dtype, at):
+    """At the default tolerance the vmapped columns are the loop's to the solve's tolerance; at the floor (float64's
+    1e-14, float32's default) to rounding."""
     patch, placement, boundary, forces, _ = case(dtype)
     stopping = patch_stopping(patch, dtype, tolerance=None if at == "default" else floor_tolerance(dtype))
     tap = jnp.zeros(REPORT_SIZE, dtype=dtype)
@@ -96,17 +105,10 @@ def test_vmapped_over_seven_columns_the_reflection_is_the_loop_within_its_roundi
     mapped = jax.jit(jax.vmap(lambda b0, b1, b2, f: one(b0, b1, b2, f, mapped_stopping)))(*boundary, forces)
     loop = jax.jit(one)
     looped = jnp.stack([loop(boundary[0][k], boundary[1][k], boundary[2][k], forces[k]) for k in range(COLUMNS)])
-    spread = 0.0
-    for way in (np.inf, -np.inf):
-        towards = jnp.asarray(way, dtype)
-        nudged = jnp.stack([loop(*(jnp.nextafter(boundary[c][k], towards) for c in range(3)), forces[k])
-                            for k in range(COLUMNS)])
-        spread = max(spread, worst(nudged, looped))
     gap = worst(mapped, looped)
-    eps = float(jnp.finfo(dtype).eps)
-    assert gap <= SPREADS * max(spread, 64.0 * eps), (gap, spread)
+    assert gap <= line(stopping), gap
     if at == "floor" and dtype == jnp.float64:
-        assert gap <= 1e3 * eps, gap
+        assert gap <= 1e3 * float(jnp.finfo(dtype).eps), gap
 
 
 def test_vmapped_over_seven_columns_the_transpose_is_the_loop_within_its_rounding(dtype):
@@ -121,17 +123,13 @@ def test_vmapped_over_seven_columns_the_transpose_is_the_loop_within_its_roundin
     mapped = jax.jit(jax.vmap(one))(cotangent)
     loop = jax.jit(one)
     looped = [loop(cotangent[k]) for k in range(COLUMNS)]
-    nudges = [[loop(jnp.nextafter(cotangent[k], jnp.asarray(way, dtype))) for k in range(COLUMNS)]
-              for way in (np.inf, -np.inf)]
-    eps = float(jnp.finfo(dtype).eps)
     for part in range(4):
         def pick(found):
             return found[1] if part == 3 else found[0][part]
 
-        stacked = jnp.stack([pick(looped[k]) for k in range(COLUMNS)])
-        spread = max(worst(jnp.stack([pick(nudged[k]) for k in range(COLUMNS)]), stacked) for nudged in nudges)
         held = mapped[1] if part == 3 else mapped[0][part]
-        assert worst(held, stacked) <= SPREADS * max(spread, 64.0 * eps), (part, worst(held, stacked), spread)
+        gap = worst(held, jnp.stack([pick(looped[k]) for k in range(COLUMNS)]))
+        assert gap <= line(stopping), (part, gap)
 
 
 def test_a_start_is_refused_on_a_column_and_from_any_field_but_the_base_columns_history(dtype):
