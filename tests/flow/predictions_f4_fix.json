@@ -345,6 +345,34 @@
     "cannot_discriminate_if": "n/a"
   },
   "amendment_5": "2026-11-12, committed before gate 2 at N = 6 ran: its step is 6e-5 s, not the 7.5e-5 s named in gate_2_at_n6 above (left as committed): the edge measured at N = 6 for a density ratio of 0.3 is x_T 0.119 (the third edge probe, run 43137909114), and the refusal admits 0.8 of it, so 7.5e-5 s (x_T 0.103) is refused; 6e-5 s (x_T 0.082, x_R 0.085) is inside. The prediction stands at the new step. Also: feature_cells written beside a coarser written spacing is refused (drag.penalty-spacing; tests/flow/test_resolved_bodies.py::test_feature_cells_written_beside_a_coarser_written_spacing_is_refused, predicted refused, the review's m4)",
+  "amendment_6": "2026-11-12, committed before the gate below ran (the coordinator's question from the near-wall spike: a float32 steady drive solve of a held sphere stagnated at 1.7e-3 against 1e-5, read by hand)",
+  "gate_S_solve_flag": {
+    "claim": "A resolved body's flow whose solve stops above its tolerance (stagnated or capped) raises solve_flagged in its step's state and, in a run, the FVM's warned flag with its count; the same run at the default tolerance raises neither",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_resolved_bodys_solve_that_stops_short_is_flagged_and_warned_of",
+    "operating_point": "both dtypes; R3's tube at N = 3, the steady scheme (stokes=True), Re 0.1's drive, three steps of 1.5e-4 s; the tolerance planted at 1e-30, below either dtype's rounding",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "flag raised at 3 of 3 steps and one warning; none at the default",
+      "basis": "derived",
+      "why": "ResolvedFlowNode takes its parent's step, whose report sets solve_flagged where the CG stops other than converging, and the FVM declares the flag warns=True (tests/flow/test_fvm_experiment.py holds it for the plain node)"
+    },
+    "metric": "result.flags' water.flow.solve_flagged (raised, steps), the UserWarning naming it, the last report's stop counts",
+    "control": {
+      "plant": "the planted tolerance itself; the default tolerance is the quiet case beside it",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "a quiet flag at 1e-30 means the resolved node's step drops its parent's report",
+    "cannot_discriminate_if": "both cases raise it (the default would then stagnate too)"
+  },
   "outcomes": {
     "written": "2026-11-12, after the gates and the probes ran; the predictions above are as committed (9fd3b1d and its amendments 0543e65, e0c23b6, 43bf4b9, f1a5212, e70dae3), each before its gate ran",
     "runs": {
