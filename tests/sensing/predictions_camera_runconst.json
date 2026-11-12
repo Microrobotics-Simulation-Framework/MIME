@@ -1,0 +1,101 @@
+{
+ "written": "2026-11-13, committed before any gate of the camera run-constant PR ran on a runner (the commit that adds this file is the timestamp): the in-loop camera's static structure made once per run as a run-constant leaf, not carried in the state",
+ "phase": "camera lane: the static structure as a run constant (after camera spike R1)",
+ "labels": "the builder's predictions; basis: camera spike R1's report (its continued-state case, its costs), #266's held-step probe (run 43283574940 and the interleaved probe), and the local runs listed in seen_before",
+ "seen_before": [
+  "local, this branch, i7-12850HX shared laptop, not a timing claim: tests/sensing/test_in_loop_cache.py 10 passed (both routes, both dtypes; the remade frame equals the clean one bit for bit); CAMERA_PLANT=numbers-not-compared and cache-every-frame each failed 8 of its 10 cases once",
+  "local, this branch: the continued-state forward derivative of the wall window (rows 9-12) after 6 steps, 12 more: float64 AD fy -770.885, cy 11744.33, k1 -4686.84; relative CD errors fy 1.0e-4 at h=1, cy 1.8e-4 at h=0.1, k1 9.2e-5 at h=0.1 (float32: 1.4e-4, 1.8e-4, 6.6e-5); the float64 ladders give the truncation coefficients the test's tolerances are ten times (a fit of C, as the forward gate's was, and said so)",
+  "local, da8d1679's src under the same script: the same derivative is exactly 0.0 in fy, cy and k1 (float64), and the new test fails there in both dtypes (one run each); the objective J was 550356.1293243476 at both commits (float64)",
+  "local: the two-builds walk is quiet on camera_scene's detector leaves and fires on the same held set as before; both planted bakes fire on fy and k1 (one run each)",
+  "local: a continued run with fy overridden to 800 equals a fresh build at 800 bit for bit (float64, tube and ball)"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; gates and controls on GitHub runners (4 vCPU), the costs in one job pinned to one CPU with one thread, the sides interleaved; local numbers above are a shared laptop's",
+  "sizes_and_parameters": "gates: the in-loop cases at 160x120 (fx = fy = 750, a 20 um steel ball in a 60 um bore tube with a 10 um wall absorbing 3000/m (3e5/m in the cache tests), 1 mm away, base step 1 ms); the continued case is camera spike R1's (ball from (-30, 0, 15) um at 2 mm/s, a frame every 3 steps, continued after 6 steps and differentiated over 12); costs: in_loop_cases.cost_case at 320x240 and 640x480, held (a frame every 100000 steps, chunks of 300) and frame (every step, chunks of 20) steps",
+  "seeds_and_draws": "none: every gate here is a deterministic program; a control's runs repeat it in fresh processes"
+ },
+ "gate_1_continued_derivative": {
+  "claim": "forward mode from a continued state (R1's, after 6 steps) equals central differences in fy, cy and k1, in both dtypes, within the interior tolerance (C h^2, C read from float64 times ten, plus the objective's rounding)",
+  "kind": "equality",
+  "case": "tests/sensing/test_in_loop_forward.py::test_the_forward_derivative_from_a_continued_state_agrees_with_central_differences",
+  "prediction": {
+   "band": [
+    0.0,
+    0.2
+   ],
+   "unit": "relative error over its tolerance, the largest of the three leaves, per dtype",
+   "basis": "measured-before",
+   "why": "seen locally (above): float64 0.1, float32 under 0.1 of its tolerance; a runner's CPU moves float32's rounding term only"
+  },
+  "metric": "the relative error of the AD derivative against the central difference, over the tolerance",
+  "control": {
+   "plant": "the code at da8d1679 (the cache held in the state, its derivative dropped from a continued state)",
+   "environment_variable": "CAMERA_OLD_CODE (probe/old_code.py runs the test against da8d1679's src when set)",
+   "expected_rate": "10/10",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "a dropped share s of the structure's derivative is caught where s / (1 - s) exceeds the tolerance: about 2e-3 to 5e-3 relative (derived from the tolerances; stated with discriminating_range.py over a scaled derivative)"
+  },
+  "if_wrong": "a pass on da8d1679 means the window reads something besides the structure (the ball), so the test cannot see the defect; a fail on head means the run-constant's tangent is not the make's",
+  "cannot_discriminate_if": "the objective's derivative were not the structure's alone (the ball in the window): then a dropped structure part would be a share, not all"
+ },
+ "gate_2_served_and_remade": {
+  "claim": "the structure is read while its numbers hold and made again when any of its 49 numbers differs, on the run-constant route and on MADDENING's history scan",
+  "kind": "equality",
+  "case": "tests/sensing/test_in_loop_cache.py::test_the_structure_is_served_while_its_numbers_hold_and_made_again_when_any_differs",
+  "prediction": {
+   "value": "served: the frame equals the marker's 250 counts everywhere; remade: equal to the clean frame bit for bit for each of the 49 numbers",
+   "basis": "measured-before",
+   "why": "the remake is the same compiled maker on the same leaves as the build's"
+  },
+  "metric": "the frame's counts against the marker and against the clean frame",
+  "control": {
+   "plant": "numbers-not-compared (the held structure read whatever its numbers) and cache-every-frame (rendered in every frame, nothing held read)",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "20/20 each",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "exact: a frame one unit in the last place off the clean one fails the remade check; the served check's marker is 0.25 against a transmission of about 0.9"
+  },
+  "if_wrong": "a remade frame not bit for bit equal to the clean one says the in-chunk make and the build's compile differently: then state the difference's size and judge on it",
+  "cannot_discriminate_if": "the marker equalled the transmission (it does not: 0.25 against the tube's 0.9 and the lumen's 1)"
+ },
+ "gate_3_two_builds": {
+  "claim": "no leaf or the numbers beside the structure is a constant of the program: the walk stays quiet on the camera's detector leaves, and a structure or numbers planted back as constants fires on fy and k1",
+  "kind": "equality",
+  "case": "tests/two_builds/test_two_builds_walk.py (camera_scene, camera_on_gantry, the new control); probe/two_builds_plant.py",
+  "prediction": {
+   "value": "quiet on the leaves; each plant fires on fy and k1 every run",
+   "basis": "measured-before",
+   "why": "the structure and its numbers are arguments of the step; planted as constants they are consts of the program, which differ between the two builds"
+  },
+  "metric": "programs_differ on the trace form",
+  "control": {
+   "plant": "structure-as-built, numbers-as-built",
+   "environment_variable": "CAMERA_TWO_BUILDS_PLANT",
+   "expected_rate": "10/10 each",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "the trace form in float64 sees any bit of a constant"
+  },
+  "if_wrong": "a quiet plant means the trace form does not see the camera's chunk (the run-constant made outside it)",
+  "cannot_discriminate_if": "the walk's move did not change the leaf (it moves each float by 1e-6 relative)"
+ },
+ "bits": {
+  "cases": "bit_compare.py, base da8d1679 against head, one job, one CPU, one thread: script A (f64, f32) and the lab gantry (f64), no camera, the final state after 40 ms; camera_scene and camera_on_gantry (f64, f32): the camera's frames and fields from step 0 over 8 steps by the history scan and the final state of a plain 8-step run, the fields both commits hold",
+  "prediction": "every array np.array_equal; the camera's frames too (the structure is the same function of the same numbers, compiled on its own at the build rather than inside the frame's branch: a guess that XLA gives the same bits)",
+  "controls": {
+   "repeat": "head against head: every array identical",
+   "one_ulp": "camera_scene with fy one ulp up on one side: the frames differ"
+  }
+ },
+ "costs": {
+  "prediction": "the held step at head within 0.8 to 1.25 of the pre-e2e81c32 commit (45e77ad9) at 320x240 and 640x480 in both dtypes, and 0.08 to 0.35 of da8d1679's (R1: the carried cache made it 3 to 13 times dearer); the frame step within 0.8 to 1.25 of da8d1679's; a first frame from the initial state at head costs a frame step, at da8d1679 a frame step and one static render; one static render where a chunk's numbers differ: 20 to 60 ms at 320x240 and 80 to 250 ms at 640x480 (R1's uncached tube, 36 ms and 130 to 200 ms, a guess at the band); a chunk at the held numbers pays no render",
+  "measured_at": "R1 at 320x240 and 640x480 on mixed runner CPUs; #266's interleaved probe; the gate sizes are the same sizes (no law fitted)"
+ },
+ "outcomes": null
+}
