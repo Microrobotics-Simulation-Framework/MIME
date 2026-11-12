@@ -62,7 +62,9 @@ def test_a_continued_run_with_another_leaf_draws_the_frame_at_it(dtype, hide):
     fresh = case(800.0, hide).build()
     fresh.run(ms(12))
     assert np.abs(expected(built) - before).max() > 100.0  # the leaf moved the image (the tube's edge), so this can tell
-    assert np.abs(expected(built) - expected(fresh)).max() < 1e-2
+    # exactly equal: the same compiled step on the same inputs, the cache made from the same numbers by the same operations
+    # (measured 0.0 in both dtypes, tube only and with the ball), so any difference is a stale part, not rounding
+    assert np.abs(expected(built) - expected(fresh)).max() == 0.0
 
 
 def test_the_cache_is_served_while_its_numbers_hold_and_made_again_when_any_differs(dtype):
