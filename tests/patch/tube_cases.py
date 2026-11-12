@@ -168,7 +168,7 @@ def coupled(case: TubeCase, form: str) -> dict[str, Any]:
             return y + reflection(traction * area[:, None]).reshape(-1)
 
         y, info = spla.gmres(spla.LinearOperator((3 * n, 3 * n), matvec=operator, dtype=np.float64), target,
-                             rtol=1e-9 if dtype == jnp.float64 else 1e-6, restart=60, maxiter=6)
+                             rtol=1e-7 if dtype == jnp.float64 else 1e-5, restart=60, maxiter=6)
         force = float((sla.lu_solve(factor, y).reshape(n, 3) * area[:, None]).sum(0)[axis])
         out[name] = force / free_force[name]
         out[f"{name}_products"] = products[0]

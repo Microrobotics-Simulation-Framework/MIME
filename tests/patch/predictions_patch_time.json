@@ -39,5 +39,16 @@
     "prediction": "at 0.15 a and lambda 4.9: within 3 % of the reference's force at every step after the first (band 0.5 to 6 %); at lambda 0.78 within 1 %",
     "basis": "guess: the history is smoothed over a / lambda, at 4.9 under two coarse cells at ratio 2"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after probe run 43151596075 (32 arms, the impulse along the wall's normal; the along-wall arms of the first launch were dropped with its cancellation)",
+    "runs_not_outcomes": "three launches before it were cancelled and none of their numbers is an outcome: the own box kept its periodic mean mode (forces grew without bound), the own field ran on a 4-cell shell (17 % off, the product's bug, fixed), and the GMRES at 1e-9 under 1e-8 inner solves ran past three hours; the harness's walled CG went to 1e-8 and its GMRES to 1e-7 for the measured run",
+    "gate_10_in_time": {
+      "be_patch": "against the fine monolithic BE reference, its final error -1.9 to +3.2 % and its transient excess max |e(t) - e(final)| 0.15 to 1.80 % over the eight corner-gap arms (lambda 0.79 to 4.97): within the predicted 5 %",
+      "quasi_steady": "final +3.7 to +7.8 %, first step +5.5 to +11.3 %, excess 1.7 to 4.5 %: outside the BE patch's own error at every corner, so not offered as an opt-in (the signed interface's condition); its first-step excess is 0.1 to 0.2 of the wall's share at lambda 2.5 and 5 (held), and at lambda 0.79 it is +5.5 % first and +3.7 % final, not within 0.02 (missed: under the step operator a steady patch over-states the reflection even when settled)",
+      "coarse": "final -3.8 to -7.6 %",
+      "controls": "the slab left unfilled and the held field left unmoved: 3/3 each, clean 0/3, at a line of 1e-6 of the force (run 43139574942); their effects are 3.3e-5 and 1.0e-4 of the force, so the first round's 1 % line missed both (0/3, run 43136621960)",
+      "cost": "the BE patch's CG iterations a step (8 to 10 column products, the base and the composition) 393 to 1569 at 36^3, more at small lambda (a weaker shift)"
+    },
+    "item_3_history_error": "the BE patch with the own box's history at the shell, against the reference: -1.9 % (lambda 4.97, 0.15 a) to +3.2 % (lambda 0.79, 0.15 a) at the end, within 1.8 % of that over the transient; the prediction (within 3 % after the first step at 4.9, 1 % at 0.78) held at 4.97 and missed at 0.79 (+2.5 % first, +3.2 % final at 0.15 a), where the steady patch's own error at 10 fine cells across the radius is a part of it"
+  }
 }
