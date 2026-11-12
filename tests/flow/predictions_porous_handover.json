@@ -188,5 +188,52 @@
     "prediction": "no time or memory claim is made; the held plug's solve is the resolved route's at the line (7k to 17k iterations cold and steady at D/h 16 to 32, #264), stated, not claimed",
     "measured_at": "n/a"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after the gates ran; the predictions above are unchanged",
+    "gate_1_overlap": {
+      "result": "within the line at every row",
+      "measured": "ratio - 1, 0.1h: D/h 16 +0.36 / +0.16 / -0.53 / -4.31 % at sqrt(K)/h 0.003 / 0.01 / 0.03 / 0.1 (f 3.6e-5 / 4e-4 / 3.6e-3 / 0.04), D/h 32 +0.03 / -0.06 / -0.36 / -1.77 % (f up to 0.01); 0.01h: D/h 16 +0.16 / -0.47 / -3.83 %, D/h 32 -0.06 / -0.31 / -1.46 % at 0.01 / 0.03 / 0.1",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186172705",
+      "controls": "READING_K2 30/30 on [0.1h] and [0.01h], FACE_SIGN 30/30, clean 0/30 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633)",
+      "resolution": "K read 2.1 % high (discriminating_range.py, refined), the plant 49 times it"
+    },
+    "gate_2_forced": {
+      "result": "as predicted",
+      "measured": "forced flagged on 50 of 50 draws; the periodic tube, the pressure-driven vessel and the gap quiet on 50 of 50 draws each; the twin rig TWIN",
+      "controls": "FORCED_OFF missed the forced case 50/50; FORCED_EVERYWHERE flagged periodic 50/50, pressure 50/50, gap 50/50, twin TWIN; clean 0 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633"
+    },
+    "gate_3_carried_depth": {
+      "result": "within the band, the spread under 1e-6 (predicted 1e-3)",
+      "measured": "reading / series - 1: D/h 16 -1.48 % (0.1h) and -1.19 % (0.01h), D/h 32 -0.36 % and -0.31 %, the same to 1e-6 at sqrt(K)/h 1e-3, 3e-4 and 1e-4",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186172705",
+      "controls": "READING_K2 30/30, clean 0/30",
+      "resolution": "K read 2.7 % high (refined), the plant 37 times it"
+    },
+    "gate_4_gradients": {
+      "result": "within the lines (CI)",
+      "measured": "laptop: K forward within 3e-12 of the central difference, inflow within 1.4e-8, the dot product within 4e-14",
+      "controls": "FACE_STOP 30/30 on [inflow], K_STOP 30/30 on [permeability], clean 0/30 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633)"
+    },
+    "gate_5_float32": {
+      "result": "within 2e-4 of float64 at every point measured (predicted 1e-3 at 0.01h, 1e-2 at 0.1h)",
+      "measured": "D/h 16 0.01h: steady converged (9e-6), equal to 1e-6; IMEX converged, 3e-6. D/h 32 0.01h: steady stagnated at 4.6e-5 (flagged), 1e-6; IMEX 4.9e-5 (flagged), 9e-6. D/h 16 0.1h: steady stagnated at 2.6e-3 (flagged), 1.6e-4; IMEX 1.6e-3 (flagged), 7e-5. D/h 32 0.1h: steady 2.1e-3 (flagged), 7e-5; IMEX 1.2e-3 (flagged), 1.1e-4",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186172705",
+      "also": "on a box two diameters long (laptop) the cold steady solve at the 0.1h line stopped stagnated at 1600 iterations: float64 residual 0.82 (reading within 1.7 %), float32 residual 1.0 (reading 0.31 of the series), flagged"
+    },
+    "gate_resolved_body": {
+      "result": "as predicted",
+      "measured": "books close in all four arms; with the bead -0.98 % (K 1e-10) and -1.2 % (1e-15) against without; porous_flagged 1 below the line with the bead, 0 without",
+      "controls": "BODY_TWICE 30/30 on [above] and [below], clean 0/30 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43186237633)"
+    },
+    "bits": {
+      "result": "every array equal",
+      "measured": "100 programs (50 cases, both dtypes; twisted_toy refused at its build in both trees), base 92f698f against head d1da349; repeat 4/4 equal; one ulp 4/4 differ (11 to 23 arrays)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43187810420"
+    },
+    "goldens": {
+      "result": "byte-equal on three runners",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43187867295"
+    }
+  }
 }

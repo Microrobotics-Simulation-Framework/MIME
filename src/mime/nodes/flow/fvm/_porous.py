@@ -178,11 +178,12 @@ def darcy_reading(permeability: Any, area: Any, length: Any, drop: Any, viscosit
 
 def forced_through(through: Any, handed: Any, flux: Any, reading: Any, drop: Any, scale: Any, tolerance: Any) -> Any:
     """Whether flow was forced through a region below the line: the vessel's topology says a law fixes the flux through
-    it (``through``, ``OpenFlowNode.through_plug``), it lies below the line (``handed``), its drop is resolved (over
-    :data:`DROP_RESOLVED` solve tolerances of the pressures' magnitude ``scale``), and its reading falls short of the
-    solve's flux through its mid-section by more than :data:`FORCED_LINE`."""
-    resolved = jnp.abs(drop) > DROP_RESOLVED * tolerance * scale
-    short = jnp.abs(reading) < (1.0 - FORCED_LINE) * jnp.abs(flux)
+    it (``through``, ``OpenFlowNode.through_plug``), it lies below the line (``handed``), its drop is not provably
+    unresolved (at most :data:`DROP_RESOLVED` solve tolerances of the pressures' magnitude ``scale``), and its reading
+    is not provably within :data:`FORCED_LINE` of the solve's flux through its mid-section: a value not finite there
+    is flagged, never read as agreement."""
+    resolved = ~(jnp.abs(drop) <= DROP_RESOLVED * tolerance * scale)
+    short = ~(jnp.abs(reading) >= (1.0 - FORCED_LINE) * jnp.abs(flux))
     return through & handed & resolved & short
 
 

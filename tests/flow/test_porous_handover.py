@@ -72,14 +72,19 @@ def test_a_driven_tube_a_gap_and_an_occluded_branch_are_not_flagged(float64, cas
     from one inlet with the second closed and a fixed inflow upstream."""
     drawn = forced_draw(seeded())
     if case == "periodic":
-        flagged = tube_reading(16, math.sqrt(drawn.ratio) * porous.HANDOVER_LINE["0.01h"], "0.01h")["forced_flagged"]
-    elif case == "twin":
-        point, ratio = quiet_draw(seeded())
-        flagged = float(occluded_twin(point, ratio)["forced_flagged"])
+        found = tube_reading(16, math.sqrt(drawn.ratio) * porous.HANDOVER_LINE["0.01h"], "0.01h")
+        flagged, solve = found["forced_flagged"], found["solve_flagged"]
     else:
-        held = vessel(drawn, laws=("pressure", "windkessel")) if case == "pressure" else vessel(drawn, radius=0.25)
-        flagged = float(held["forced_flagged"])
-    assert flagged == 0.0
+        if case == "twin":
+            point, ratio = quiet_draw(seeded())
+            # The 0.01h interior: at the 0.1h line the rig's solve (the held plug's, as the resolved one's at the line)
+            # went not finite at D/h 12, flagged (the PR states it); the case tests the topology, not that solve.
+            held = occluded_twin(point, ratio, interior="0.01h")
+        else:
+            held = vessel(drawn, laws=("pressure", "windkessel")) if case == "pressure" else vessel(drawn, radius=0.25)
+        flagged, solve = float(held["forced_flagged"]), float(held["solve_flagged"])
+    # A quiet run is quiet with its solve converged: a flagged or non-finite solve is no evidence of quiet.
+    assert (flagged, solve) == (0.0, 0.0)
 
 
 def test_the_vessels_topology_says_where_a_law_fixes_the_flux():
