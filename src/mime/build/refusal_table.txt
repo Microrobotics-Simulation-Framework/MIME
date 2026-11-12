@@ -58,6 +58,11 @@ call.tube_tree                user
 call.units                    user
 call.unknown-name             user
 call.wrong-type               user
+camera.cache-stale            user
+camera.cache-traced           user
+camera.no-closed-form         user
+camera.route                  user
+camera.subject                user
 chain.armature                user
 chain.articulated-payload     user
 chain.closed-loop             user
