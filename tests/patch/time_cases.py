@@ -65,6 +65,7 @@ class TimeCase:
     margin: int = 8
     steps: int = 40
     moving: bool = False
+    warm: bool = True
 
     @property
     def fine(self) -> float:
@@ -224,6 +225,8 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
     forces_out: list[float] = []
     products_out: list[int] = []
     residuals: list[float] = []
+    iterations_out: list[float] = []
+    base_out: list[float] = []
     if form in ("be_patch", "quasi_steady"):
         size = int(math.ceil(2.0 * (case.cells + case.margin)))
         patch = RefinementPatch((size, size, size), case.fine)
@@ -236,6 +239,8 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
                       points)
         history_walled = box.walled(tuple(shift * w for w in walled_old), walled_old)
         history_own = box.own(tuple(shift * w for w in own_old))
+        step_iterations = [0.0]
+        base_iterations = [0.0]
         if patch is None:
             def column(forces: np.ndarray) -> np.ndarray:
                 density = box.scatter(jnp.asarray(forces))
@@ -256,6 +261,7 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
             if plant() == "slab_unfilled":
                 fill = grid.zeros(jnp.float64)
             held = patch.held_field(state, origin, fill) if stepped else grid.zeros(jnp.float64)
+            start = held if case.warm and stepped else None
             history = PatchHistory(held, shell_sample(placement.shell_points, placement.shell_components, box.grid,
                                                       history_own, jnp.zeros(3))) if stepped else None
 
@@ -265,15 +271,18 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
             def column(forces: np.ndarray) -> np.ndarray:
                 density = box.scatter(jnp.asarray(forces))
                 solved = _reflect(patch, stopping, placement, given(box.walled(density), box.own(density)),
-                                  jnp.asarray(forces), held, None)
+                                  jnp.asarray(forces), start, None)
+                step_iterations[0] += float(solved.report[0])
                 return np.asarray(solved.values)
 
             base_solve = _reflect(patch, stopping, placement, given(history_walled, history_own),
-                                  jnp.zeros((n, 3)), held, history)
+                                  jnp.zeros((n, 3)), start, history)
+            step_iterations[0] += float(base_solve.report[0])
+            base_iterations[0] = float(base_solve.report[0])
             base = np.asarray(base_solve.values)
 
             def compose(forces: np.ndarray, walled: Any, own: Any) -> Any:
-                return _reflect(patch, stopping, placement, given(walled, own), jnp.asarray(forces), held, history)
+                return _reflect(patch, stopping, placement, given(walled, own), jnp.asarray(forces), start, history)
 
             if not stepped:
                 compose = None
@@ -300,5 +309,8 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
         walled_old, own_old = walled_new, own_new
         forces_out.append(float(forces.sum(0)[case.direction]))
         products_out.append(count[0])
+        iterations_out.append(step_iterations[0])
+        base_out.append(base_iterations[0])
     return {"form": form, "force": forces_out, "products": products_out, "lambda": case.lam,
-            "gmres_true_residual": residuals}
+            "gmres_true_residual": residuals, "patch_iterations": iterations_out,
+            "base_iterations": base_out}
