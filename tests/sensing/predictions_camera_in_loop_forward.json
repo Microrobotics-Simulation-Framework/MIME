@@ -39,5 +39,25 @@
     "if_wrong": "a derivative through the loop's cond, the ring or the leaves is wrong or missing: find the path before the camera is called forward verified",
     "cannot_discriminate_if": "the objective is invariant under the parameter (a total of the darkness is invariant under the ball's motion, which is why the silhouette objectives are first moments), or the step spans none of the box edge's pieces"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12",
+    "probe": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43305069195 (probe branch at c4dadb5b1, code c8f4739f; deleted after download)",
+    "gate_forward_derivative": {
+      "errors_at_the_chosen_steps (jvp against central difference, relative)": {
+        "float64": {
+          "density (h 0.25)": 3.5e-06,
+          "cx (h 0.05)": 7.3e-05,
+          "fy (h 1)": 0.0001
+        },
+        "float32": {
+          "density": 0.00014,
+          "cx": 0.0002,
+          "fy": 0.00014
+        }
+      },
+      "tolerances (before the rounding term was set to its sqrt(2400) units)": "float64 2.5e-3, 5e-4, 1e-3; float32 3.2e-3, 5.3e-4, 1.2e-3 with 4 units; the test as committed uses 50 units (float32 about 1.1e-2, 1.0e-3, 3.0e-3)",
+      "control": "edge-stopped on the float32 silhouette cases: density 10/10 caught, cx 10/10 caught (lower 95 % bound 0.741 for 10 runs), clean 0/10 flagged for each; the interior case is not planted-sensitive by design; the 10 runs of a deterministic test are its rate",
+      "status": "as predicted; the rounding term was raised from 4 to 50 units after the float32 cx excess over float64 (15 units) showed 4 was not the sum's rounding; the tolerance was not tightened or loosened to a result otherwise"
+    }
+  }
 }
