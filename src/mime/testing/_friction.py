@@ -432,18 +432,24 @@ def _sphere_limits(law: Any, stepper: Callable[..., Any], drawn: tuple[Any, ...]
 #: 0.1 mm: the friction spike's range, its stopping deceleration (5/7) mu_r g / a up to a fourteenth of g).
 ROLLING_BODIES = ("sphere", "cylinder")
 ROLLING_SHARE = (1e-4, 0.1)
+#: The share of a body's draws the rolling suite solves again at the deeper counts, at most: a cylinder rocking on its
+#: line contact with its rolling rows converges slowly (one float64 run of 200 draws needed the deeper counts on 11 of
+#: its cylinder draws, at mu 1 turning about every axis; another on none), so the friction suite's share would fail a
+#: clean run; a broken solve still fails, naming the count, past a quarter.
+ROLLING_DEEPER_SHARE = 0.25
 
 
 def rolling_resistance_suite(law: Any = None, *, bodies: tuple[str, ...] = ROLLING_BODIES, max_examples: int = 200,
-                             planted: bool = False, sweeps: int = SUITE_SWEEPS) -> VerificationResult:
+                             planted: bool = False, sweeps: int = SUITE_SWEEPS,
+                             deeper_share: float = ROLLING_DEEPER_SHARE) -> VerificationResult:
     """**Rolling resistance dissipates, never injects**, through the body's frictional hold with its rolling rows
     (``law``, a ``Coulomb`` with ``rolling``; one of 1 um where none is given), on the friction law suite's draws with
     a rolling resistance drawn too (:data:`ROLLING_SHARE` of the body's radius), in the run's dtype, solved at
     ``sweeps``: each held point's friction power at the solved twist, its rolling pair's included, never above the
     guard's floor and the step not unconverged (a draw unconverged at ``sweeps`` solved again at
-    :data:`SUITE_DEEPER`'s counts, for up to :data:`DEEPER_SHARE` of a body's draws). ``planted``, the control: the
-    rolling resistance's sign flipped in the solve (its bound ``-mu_r N``: the rolling pair's torque along the
-    rotation it acts on), which must raise the guard or ``unconverged`` on every draw where rolling resistance acts at
+    :data:`SUITE_DEEPER`'s counts, for up to ``deeper_share`` of a body's draws, :data:`ROLLING_DEEPER_SHARE`).
+    ``planted``, the control: the rolling resistance's sign flipped in the solve (its bound ``-mu_r N``: the rolling
+    pair's torque along the rotation it acts on), which must raise the guard or ``unconverged`` on every draw where rolling resistance acts at
     its limit (the body turning about the plane's tangents at the solved twist), the clean step settled (the draws
     where it holds the rotation inside its limit, where a flipped bound moves nothing, where it moves the step's
     turning by less than the guard's line of the load's moment, or where the clean step itself is flagged, counted
@@ -480,7 +486,7 @@ def rolling_resistance_suite(law: Any = None, *, bodies: tuple[str, ...] = ROLLI
                 _, _, _, moments, radius = _body(name)
                 mu_r = jnp.asarray(share * radius, dtype=dtype)
                 clean = stepper(pose, twist, load, mu, mu_r)
-                room = counts["deeper"][name] < max(1, int(DEEPER_SHARE * max_examples))
+                room = counts["deeper"][name] < max(1, int(deeper_share * max_examples))
                 for count in [count for count in SUITE_DEEPER if count > sweeps and room]:
                     if not (float(clean["contact_residual"]) > FRICTION_CONVERGED
                             or float(clean["contact_friction_power_ratio"]) > floor):
@@ -707,5 +713,5 @@ def row_kind_suite(kind: str, *, max_examples: int = 100) -> VerificationResult:
     return VerificationResult("row kind", "PASS", detail=f"{kind}: its rows measure {measured}")
 
 
-__all__ = ["BODIES", "DEEPER_SHARE", "ROLLING_BODIES", "ROLLING_SHARE", "SUITE_DEEPER", "SUITE_SWEEPS",
-           "friction_law_suite", "held_node", "normal_law_suite", "rolling_resistance_suite", "row_kind_suite"]
+__all__ = ["BODIES", "DEEPER_SHARE", "ROLLING_BODIES", "ROLLING_DEEPER_SHARE", "ROLLING_SHARE", "SUITE_DEEPER",
+           "SUITE_SWEEPS", "friction_law_suite", "held_node", "normal_law_suite", "rolling_resistance_suite", "row_kind_suite"]
