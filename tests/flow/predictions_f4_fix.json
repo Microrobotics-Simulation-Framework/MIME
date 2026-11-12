@@ -207,5 +207,60 @@
     "if_wrong": "a mismatch means a step's change is not taken from the held value",
     "cannot_discriminate_if": "the body does not move across cells (the plant's error is the indicator's change)"
   },
+  "amendment_3": "2026-11-12, committed before the gates below ran: the penalty rung's Reynolds watch (M6) and the density-ratio flag (M6)",
+  "gate_R_reynolds_watch": {
+    "claim": "The penalty rung declares a Reynolds line (150 at the default N, the highest particle Re N = 6 was measured at, falling as N squared below it); the post-run watch is computed (the viscosity read, M2) and raised past the line at the run's N, quiet under it",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_the_penalty_rungs_reynolds_watch_flags_a_body_past_its_line_at_the_runs_n",
+    "operating_point": "float64; R3's tube at N = 3 (the line 150 x (3/6)^2 = 37.5), stokes=True at Re 0.1's drive, two steps of 1.5e-4 s; the body started at 0.2 m/s (Re 75 by its diameter) and at rest",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "the watch's status",
+      "basis": "derived",
+      "why": "the body keeps most of 0.2 m/s over two steps (tau_t 2.4 ms), its Re about 70 past 37.5; at rest about 0.002 under it"
+    },
+    "metric": "WatchRead.status ('above' / 'within') and its upper (37.5)",
+    "control": {
+      "plant": "none: the quiet case beside it is the control",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "'not_computed' means the viscosity is still not read; an upper of 150 at N = 3 means the line does not move with N",
+    "cannot_discriminate_if": "both read the same status"
+  },
+  "gate_D_ratio_flag": {
+    "claim": "A body whose density ratio lies outside the range the lagged coupling's edge was measured over raises its drag's flag (body_<i>_ratio_unmeasured) every step; one inside raises none",
+    "kind": "acceptance",
+    "case": "tests/flow/test_resolved_bodies.py::test_a_density_ratio_outside_the_measured_range_is_flagged_each_step",
+    "operating_point": "float64; R3's tube at N = 3, stokes=True at Re 0.1's drive, three steps of 1.5e-5 s; ratios 25 (past the measured 20) and 1",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "flags raised",
+      "basis": "derived",
+      "why": "the node reads the body's mass from its mass matrix and the hull's volume"
+    },
+    "metric": "the flag water.flow.body_0_ratio_unmeasured raised or not; body_0_ratio",
+    "control": {
+      "plant": "none: the quiet case beside it is the control",
+      "environment_variable": "",
+      "expected_rate": "n/a",
+      "runs": 0,
+      "clean_expected": "n/a",
+      "resolution": "n/a"
+    },
+    "if_wrong": "a flag at ratio 1 means the ratio is not the mass over rho V",
+    "cannot_discriminate_if": "both raise it, or neither"
+  },
   "outcomes": null
 }
