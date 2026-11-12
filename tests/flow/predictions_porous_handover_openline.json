@@ -90,5 +90,29 @@
     "if_wrong": "an intercept over 1 % at 0.01: the line moved to the least measured row where it is under 1 %",
     "cannot_discriminate_if": "the fit's largest relative residual over 1e-2 (the intercept not resolved at the rule's line)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12, after run 43213789033; the predictions above are unchanged (the leak's amended once before the launch, its own commit)",
+    "gate_line_0p01": {
+      "result": "as predicted",
+      "measured": "converged at every step and finite on 50 of 50 draws in each case: inflow (forced_flagged on 50), pressure, gap, twin (D/h 8 and 12); the two steps' iterations at most 2633 / 2628 / 332 / 7452",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "gate_line_0p03": {
+      "result": "as predicted",
+      "measured": "converged at every step and finite on 50 of 50 draws in each case; iterations at most 995 / 998 / 136 / 2504",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "gate_line_0p01h": {
+      "result": "as predicted",
+      "measured": "inflow and gap converged at every step and finite on 50 of 50 each (iterations at most 2479 / 426)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "gate_leak": {
+      "result": "as predicted",
+      "measured": "the fit with the root term: intercept -2.73e-3 / -1.37e-3 of G at sqrt(K)/h 0.01 (D/h 8 / 16), -3.0e-4 / -1.5e-4 of G at 0.03, its largest relative residual 1.21e-3 / 6.1e-4; the same for the outlet's flux, lumen_flux and porous_flux; every point's solve converged. The linear fit first written: -2.6e-2 / -1.3e-2, residual 1.8e-2 / 9.3e-3 (at D/h 8 over its own line, as the smoke showed). Both intercepts negative, the fit's own form error: no leak above about 3e-3 of the throughflow at the line, under the rule's 1 %",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43213789033"
+    },
+    "memory": "every arm but the leak's peaked over the proxy's bound (0.85 to 0.98 GiB against 0.82 to 0.84; a plug-free periodic tube's box standing in for the open boxes and the twin rig), so the workflow marked them failed after their scripts finished and uploaded: the proxy's miss, as the rates probes' before, so no calibration row",
+    "line": "the open vessel's 0.1h line is sqrt(K)/h 0.01, the least measured row at which every case converged on every draw with the leak under 1 % (0.003 did not: run 43201390806); its 0.01h line stays 0.01 (all four cases converged here and in runs 43201390806, 43207166164). Unmeasured between 0.003 and 0.01"
+  }
 }
