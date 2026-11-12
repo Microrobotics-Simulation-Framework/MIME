@@ -261,5 +261,12 @@
     },
     "if_wrong": "a reading the product misses by more than 0.03 means a factor is missing under (A): stated, and the validity text's FB9 sentence changed to what was measured"
   },
+  "amendments": [
+    {
+      "written": "2026-11-12, after the first probe (run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43252920973) and before any re-run of the arms below; the predictions above unchanged",
+      "what": "every FB7 and damping arm (both forms, the off arm, both dtypes) stopped at the CFL check, none at a divergence: the case's stenotic jet reached 10.5 U_m by 0.14 of a period at mean Re_R 300 and 11.3 U_m by 0.23 at 100 and was still rising (the throat's mean speed at the inflow's peak is 10 U_m), past the spike's 7.45 and 8.1 the step was sized from; the near-inlet speed stayed at 3.2 and 4.0 U_m (no inlet growth). The development length's arms at Re 150 and above stopped at the same check from the start's transient past 2U, unsettled. Neither stop is a gate's verdict: the probe's step, as the earlier chunk bug was the probe's",
+      "changed": "probe/fb7node.py sizes its step from a largest speed of 25 U_m at both points (43,200 steps a period at mean Re_R 300, 14,400 at 100); probe/devlen.py at 0.9 of the line at 4U; every other arm, setting and prediction as written"
+    }
+  ],
   "outcomes": null
 }
