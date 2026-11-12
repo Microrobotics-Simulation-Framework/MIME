@@ -1,0 +1,4 @@
+# the gate 2 arms' open boxes (the vessel at D/h 16, the twin rig at D/h 12) and the experiment's, each in a pytest
+# process per run, bounded by a periodic tube box without a plug at D/h 40 and a period of two (probe/estimate_case.py):
+# the line probe's arms peaked at 0.85 to 0.98 GiB against a D/h 20 proxy's 0.82 to 0.84, so the proxy is the larger
+*: --case estimate_case:tube --path probe --arg cells_across=40 --arg length_cells=80 --steps 1
