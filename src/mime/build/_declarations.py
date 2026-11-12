@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, override
 
 from mime.registry import Controller, Interaction, Observation
 from mime.things import Thing, TypedPath
@@ -40,15 +40,60 @@ class ThingDeclaration:
     thing: Thing
 
 
+class EntryDeclaration:
+    """A declaration that holds one registered entry whose settings a study can name: ``entry`` is the entry,
+    ``entry_bindings`` the roles it is bound to (which, with its class, make its id) and ``with_entry`` the declaration
+    holding another entry in its place."""
+
+    @property
+    def entry(self) -> Any:
+        raise NotImplementedError
+
+    @property
+    def entry_bindings(self) -> Mapping[str, Any]:
+        raise NotImplementedError
+
+    def with_entry(self, entry: Any) -> EntryDeclaration:
+        raise NotImplementedError
+
+
 @dataclass(frozen=True)
-class Attachment:
+class Attachment(EntryDeclaration):
     law: Interaction
     bindings: Mapping[str, Any]
 
+    @property
+    @override
+    def entry(self) -> Interaction:
+        return self.law
+
+    @property
+    @override
+    def entry_bindings(self) -> Mapping[str, Any]:
+        return self.bindings
+
+    @override
+    def with_entry(self, entry: Any) -> Attachment:
+        return Attachment(entry, self.bindings)
+
 
 @dataclass(frozen=True)
-class ObservationDeclaration:
+class ObservationDeclaration(EntryDeclaration):
     observation: Observation
+
+    @property
+    @override
+    def entry(self) -> Observation:
+        return self.observation
+
+    @property
+    @override
+    def entry_bindings(self) -> Mapping[str, Any]:
+        return self.observation.bindings()
+
+    @override
+    def with_entry(self, entry: Any) -> ObservationDeclaration:
+        return ObservationDeclaration(entry)
 
 
 @dataclass(frozen=True)
