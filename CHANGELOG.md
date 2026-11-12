@@ -21,6 +21,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`patch_reflection`, `patch_reflection_transpose`); the backward-Euler form carries the last step's field as state.
   Its two transfers are registered mapping kinds, `mime.patch_boundary` and `mime.patch_read`, with MADDENING 0.4's
   workarounds in `mime.mappings`.
+- **A study over a kind's vector setting, one build per value.** A kind's setting that is not one number (an
+  ellipsoid's semi-axes, a box's size, a tube tree's radii, a direction, a count), refused as an axis until now
+  (`study.held-geometry`), is an axis built per value (`Axis.built`): whole, each point the whole vector
+  (`"egg.parts.shell.semi_axes"`), or one component by its index (`"vessel.radii[3]"`, `Axis.component`). Each point
+  rebuilds the kind with the value written, and each value is a group of its own, split by it (the point's key is its
+  structure key with the setting's value), the split reason naming the axis; its inertness is judged on the points'
+  traced steps as well. No derivative is taken along one, a declared cut stated in the plan and refused where a study
+  or a fit asks for one (`gradient.built-value`); an override of one is refused (`override.structural`), and so is a
+  range (`range.units`). New refusals: `study.component-path` (a component of what is not a vector of numbers, or a
+  second index, `vessel.radii[3][0]`), `study.component-spelling` (an index in another spelling than one whole number
+  from 0, `vessel.radii[03]`, so that one component has one path), `study.component-index`, `study.vector-value`;
+  `study.held-geometry` now refuses only a kind's structure, names or reference (a tree's segments); `study.axis-twice`
+  judges what each axis writes, not its spelling. The study folder and the spec file hold a tuple of bare numbers (a
+  direction, a body's initial orientation, refused at save until now) as the list of its numbers, read back as the
+  tuple. Gated (`tests/study/test_vector_axes.py`): a study over the MRS egg's semi-axes (whole, and one component by
+  the water's viscosity) and over a plane's normal (whole, and one component: two groups of one structure key, split
+  by the value alone) equals the same points written by hand, bit for bit per point; the FVM tree's fourth radius
+  equals them at its points (structure, leaves, initial state and traced step; no run).
+
 - **A point body coupled two-way to the FVM: `Drag.Stokes()`** (drag 0.5.0's stokes rung, F3). A sphere's Stokes drag
   and couple on the flow read through the exchange law (a Gaussian kernel on the MAC grid's face sets, gather and
   scatter a transpose pair on MADDENING's geometry edges, the mapping kind `mime.gaussian_mac`, its modes the kernel's
