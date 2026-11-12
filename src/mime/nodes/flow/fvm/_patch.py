@@ -47,13 +47,13 @@ float64, to rounding at the floor).
 cells on the fine lattice from the flow grid's corner, state, so a move changes values and never a shape.
 
 **The own field where the walls are.** ``u_own`` enters through ``(mu/K) u_own``, nonzero in the band and the solid, and
-is evaluated on every such face (the shell), at a capacity the host plans (:func:`planned_capacity`): an overflow is
-flagged (:func:`patch_flags`). The penalty and the drive are kept together to :data:`SOLID_DEPTH_CELLS` into the solid
-and the solid deeper is left unpenalised: its given values are consistent with it, so ``v -> -u_own`` there as the
-penalty would make it (within 0.05 % of the normal entry at 8 cells, :data:`SOLID_DEPTH_MEASURED`). The drive alone may
-not be cut short with the penalty kept deeper: the penalty screens a face's velocity over about ``delta_in h``, but not
-the pressure, which carries the solid's divergence-free constraint to the fluid (17 % of the reflection at 4 cells
-[measured: ``tests/patch/test_nested_grid.py``'s shell test]).
+is evaluated on every such face (the shell), at a capacity the host plans (:func:`planned_capacity`: the same values as
+every interior face at about 2.4 times fewer pairs), an overflow flagged (:func:`patch_flags`). The penalty and the drive
+cover the whole solid by default. They may be cut together at a depth (an opt-in, ``solid_depth``), the solid deeper then
+left to its given values, which hold it at ``v = -u_own`` only where they are consistent with the own field
+(:data:`SOLID_DEPTH_MEASURED`). The drive alone may not be cut short with the penalty kept deeper: the penalty screens a
+face's velocity over about ``delta_in h``, but not the pressure, which carries the solid's divergence-free constraint to
+the fluid (17 % of the reflection at 4 cells [measured: ``tests/patch/test_nested_grid.py``'s shell test]).
 
 **One uniform dilation per patch** (decided 4 (5)), by whole fine cells (decided 4 (4)): the walls' signed distance is
 moved into the solid by ``l`` cells; :func:`blended_reflection` blends the two neighbouring whole-cell evaluations
@@ -102,16 +102,23 @@ CHUNK_BYTES = 1 << 26
 STATE_FIELDS = ("patch_origin", "patch_field_x", "patch_field_y", "patch_field_z", "patch_report")
 #: The given values' net flux over their absolute flux above which a solve is flagged.
 FLUX_SHARE_LINE = 1e-2
-#: How deep into the solid (fine cells past the walls' dilated surface) the penalty and the own field's drive are kept;
-#: deeper, the solid is left unpenalised, between given values consistent with it (``v = -u_own`` there), and the own
-#: field is evaluated on none of its faces.
-SOLID_DEPTH_CELLS = 8.0
+#: How deep into the solid (fine cells past the walls' dilated surface) the penalty and the own field's drive are kept,
+#: by default: the whole solid. A finite depth is an opt-in (``RefinementPatch.solid_depth``): deeper, the solid is left
+#: unpenalised and its velocity set by its given values, which must then be consistent with ``v = -u_own``; it saves
+#: the own field's faces but costs the CG iterations, and was slower overall at stage 1's size
+#: (:data:`SOLID_DEPTH_MEASURED`).
+SOLID_DEPTH_CELLS = math.inf
 SOLID_DEPTH_MEASURED = (
-    "measured on the plane oracle (10 fine cells across the radius, a gap of 0.2 radii, 14 cells of solid in a 52^3 "
-    "box, the cell read; the coupled resistance against the penalty and the drive on every solid face): within 4 "
-    "cells -0.335 % normal and -0.037 % along the wall (40,040 faces of 117,416), within 8 cells -0.051 % and -0.010 % "
-    "(72,072); the drive alone kept within d cells, the penalty deeper, is wrong (-53.3 and -32.5 % normal at 4 and "
-    "8): the penalty screens a face's velocity, not the pressure that carries the deep solid's constraint")
+    "measured against the penalty and the drive on the whole solid: on the plane oracle (10 fine cells across the "
+    "radius, a gap of 0.2 radii, 14 cells of solid in a 52^3 box, the cell read, steady) a depth of 4 cells reads "
+    "-0.335 % normal and -0.037 % along the wall, 8 cells -0.051 % and -0.010 %; in the 5 mm tube at stage 1's box "
+    "(Landers' sphere 0.1 a from the wall, h = a / 20, 107^3 and 120^3) a depth of 8 with given values consistent in "
+    "the solid moves the reflection's metric -0.006 to -0.16 % (steady to lambda 4.97), but with the steady "
+    "Stokeslets' negative as given values under a shift (inconsistent there) -10.5 %: the deep solid then follows its "
+    "given values, where the whole solid's penalty pins it; and it takes 17 to 28 % more CG iterations (126 to 149 at "
+    "lambda 4.97, 283 to 360 at 0.79), so a product took 0.97 to 1.15 times as long as the whole solid's at a planned "
+    "capacity. The drive alone cut at d cells with the penalty kept deeper is wrong: -53.3 and -32.5 % normal at 4 and "
+    "8 on the plane")
 #: The margin a planned capacity holds over the most faces counted at the poses planned for.
 PLAN_MARGIN = 1.1
 #: Below ``alpha r`` of this the Brinkman difference is summed as its series (the closed form cancels there).
@@ -124,10 +131,11 @@ SERIES_TERMS = 20
 class RefinementPatch:
     """The kind: a box of ``cells`` fine cells of side ``spacing`` (m), the coarse grid's band and interior by name, the
     near field's read (:data:`READS`; the cell read takes the body's quadrature in its placement), how deep into the
-    solid the penalty and the drive are kept (:data:`SOLID_DEPTH_CELLS`; ``math.inf``: the whole solid) and the own
-    field's capacity in faces: planned by the host at its build (:func:`planned_capacity`), an overflow flagged
-    (:func:`patch_flags`); zero takes every interior face, fluid ones included (exact, about three times the pairs).
-    A box side with a large prime factor makes the cosine transform slow (107 against 120: about twice per cell)."""
+    solid the penalty and the drive are kept (:data:`SOLID_DEPTH_CELLS`, the whole solid; a finite depth an opt-in) and
+    the own field's capacity in faces: planned by the host at its build (:func:`planned_capacity`), an overflow flagged
+    (:func:`patch_flags`); zero takes every interior face, fluid ones included (the same values, 2.4 times the pairs at
+    stage 1's box). A box side with a large prime factor makes the cosine transform slow: 107 against 120, about twice
+    the time a cell and iteration (two runners)."""
 
     cells: tuple[int, int, int]
     spacing: float

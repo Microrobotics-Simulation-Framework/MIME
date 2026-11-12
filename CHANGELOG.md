@@ -23,9 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backward-Euler form carries the last step's field as state, the signed default (gate 10 measures an agreement with a
   fine monolithic reference, which at a runner's size cannot separate the time forms). A column starts at zero and the
   base column at zero or from its history's field: any other start is refused. The penalty and the own field's drive
-  are kept 8 fine cells into the solid (`solid_depth`, within 0.05 % of the whole solid's on the plane), the own
-  field's capacity planned by the host (`planned_capacity`), and an overflow, a large net flux or a read outside the box
-  flagged (`patch_flags`). Its two transfers are registered mapping kinds, `mime.patch_boundary` and `mime.patch_read`,
+  cover the whole solid (a depth, `solid_depth`, is an opt-in: within 0.16 % where the given values are consistent in
+  the solid, -10.5 % where not, and slower at stage 1's box), the own field's capacity is planned by the host
+  (`planned_capacity`: the same values at 2.4 times fewer pairs), and an overflow, a large net flux or a read outside the
+  box is flagged (`patch_flags`). Its two transfers are registered mapping kinds, `mime.patch_boundary` and `mime.patch_read`,
   with MADDENING 0.4's workarounds in `mime.mappings`.
 
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
