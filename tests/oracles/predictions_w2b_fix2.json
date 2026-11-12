@@ -1,0 +1,44 @@
+{
+  "written": "2026-11-12, committed before the second fix round's gates ran (the commit that adds this file is the timestamp): the flip control's line from its measured resolution (m1), the diagonal slide (m8), bits at the final head",
+  "phase": "W2b PR 1 (#253), second fix round (CI's reds at d62dc34, the review's minors m1, m6, m8)",
+  "labels": "predictions by the second fix round's builder (Opus) from the review's measurements; numbers seen before are marked measured-before",
+  "seen_before": [
+    "review (item 4, m1): the planted flip raised down to friction / load 3e-11 (sphere, float64; 1e-17 on the cylinder and the box) and 3e-6 (sphere, float32), a body at rest under a load drawn off the normal",
+    "round 5 (run 43168041349): the suite's flip control 20/20 a dtype at seeds 0 to 19, clean 0/20, at the guard's line (1e-4, float32 3.5e-4); bits all equal against ff9624cb, the one-ulp control differing in float64",
+    "local, this round: the diagonal slide decelerates at mu g to 1e-12 of g (float64) and 2.5e-7 m/s^2 off it (float32), the square cone at 4.162 m/s^2 against 2.943"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runners (4 vCPU) for probes, the laptop for touched tests",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "the friction law suite's draws (the module's: three bodies on the plane, loads 0.3 to 3 weights up to 1.4 rad off the normal, mu 0.01 to 1.2, 400 sweeps, 200 draws a run); the diagonal slide: the rod on its rims, mu 0.3, 0.05 m/s along its axis at 45 degrees to the plane's frame, 10 steps of 1 ms",
+    "seeds_and_draws": "detection_rate.py --hypothesis-seed, seed base 3000 (fresh: rounds 1 to 5 used 0 to 19), 20 runs a dtype"
+  },
+  "gate_m1_flip_line": {
+    "claim": "the planted sign flip is raised on every draw where the clean solve's friction is above FLIP_SEEN of the load (1e-10 float64, 1e-5 float32), and the clean suite raises nothing",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction_suites.py::test_coulomb_passes_the_friction_law_suite (W2B_PLANT=flip)",
+    "prediction": {"value": null, "band": [20, 20], "unit": "planted runs caught of 20 a dtype; clean 0 of 20", "basis": "measured-before (the resolution, the review's) and derived (the line three times it)", "why": "the review measured the flip raised down to 3e-11 / 3e-6 of the load at rest, and a moving body's friction is at least mu of its normal force, far above either line"},
+    "metric": "detection_rate.py caught/N on the suite's node, both arms",
+    "control": {"plant": "the pair's force negated (W2B_PLANT=flip)", "environment_variable": "W2B_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "FLIP_SEEN of the load"},
+    "if_wrong": "a planted run with a quiet draw above the line: the line sits under the flip's resolution for that draw's state (a motion the review did not measure), and it is raised to that draw's share",
+    "cannot_discriminate_if": "every draw's friction under the line (none: the suite draws moving bodies)"
+  },
+  "gate_m8_diagonal": {
+    "claim": "a rod sliding along its axis at 45 degrees to the friction frame decelerates at mu g, slips nowhere across its axis and does not turn; a square cone is caught",
+    "kind": "acceptance",
+    "case": "tests/oracles/test_friction.py::test_a_rod_sliding_at_45_degrees_to_the_friction_frame_decelerates_at_mu_g_along_its_slip and its control",
+    "prediction": {"value": null, "band": [null, null], "unit": "the deceleration's error over g: under 1e-12 (float64), 2e-5 (float32); the square cone's deceleration sqrt(2) mu g", "basis": "derived", "why": "two rims, equal normal forces, Coulomb's force mu n anti-parallel to the slip along the axis; the square cone's corner is sqrt(2) times the disk's radius on the diagonal"},
+    "metric": "the oracle's deceleration, across speed and spin; the control's deceleration",
+    "control": {"plant": "each frame component of the pair's force clipped to the bound alone", "environment_variable": "none (the control test patches disk_update)", "expected_rate": "1/1 (deterministic)", "runs": 1, "clean_expected": "the oracle passes", "resolution": "EXACT[dtype] of g"},
+    "if_wrong": "the oracle misses: the rod's rims share the load unequally or the frame is not the plane's; the control passes: the slip is along a frame axis",
+    "cannot_discriminate_if": "a cone shape that agrees with the disk on the diagonal (an octagon), which this case does not see"
+  },
+  "bits": {
+    "cases": "script A, A0, the sphere settling, hull_contact (0.5.0 and 0.4.0), the rod, the near contact on a plane and in a tube, float64 and float32; base the release tip e1072449, head this branch's final head",
+    "prediction": "every array np.array_equal",
+    "controls": {"one_ulp": "FL-9 one ulp of angle further in the probe's tree: arrays differ in float64 (float32 rounds the ulp away)"}
+  },
+  "costs": {"prediction": "", "measured_at": ""},
+  "outcomes": null
+}

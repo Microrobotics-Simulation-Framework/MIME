@@ -102,6 +102,69 @@ def test_control_mu_doubled_moves_breakaway_as_predicted(dtype):
     assert abs(found[2 * mu]) <= EXACT[dtype] * G
 
 
+#: The rod laid along the plane's diagonal, at 45 degrees to its friction frame (a quarter turn about z halved), and
+#: its sliding start: stopped by friction after v0 / (mu g), 17 ms, past the steps it is judged over.
+DIAGONAL, DIAGONAL_SPEED, DIAGONAL_STEPS = math.pi / 4, 0.05, 10
+
+
+def slid_along_the_diagonal(dtype, mu: float = 0.3) -> tuple[float, float, float]:
+    """The rod on its rims sliding along its own axis, laid at :data:`DIAGONAL` to the plane's friction frame, on the
+    level plane: its deceleration along its axis, its speed across it and its largest spin after the steps."""
+    node = plane_node(ROD, mu=mu, mass=ROD_MASS, inertia=ROD_MOMENTS)
+    along = np.asarray((math.cos(DIAGONAL), math.sin(DIAGONAL), 0.0))
+    held = node.initial_state()
+    turned = jnp.asarray((math.cos(DIAGONAL / 2), 0.0, 0.0, math.sin(DIAGONAL / 2)), held["pose"].dtype)
+    start = {**held, "pose": held["pose"].at[3:].set(turned),
+             "twist": jnp.asarray((*(DIAGONAL_SPEED * along), 0.0, 0.0, 0.0), held["twist"].dtype)}
+    inputs = slope_inputs(ROD_MASS, 0.0, dtype)
+
+    def run(state):
+        return jax.lax.scan(lambda carried, _: (node.update(carried, inputs, DT), None), state, None,
+                            length=DIAGONAL_STEPS)[0]
+
+    twist = np.asarray(jax.jit(run)(start)["twist"], dtype=np.float64)
+    across = np.asarray((-along[1], along[0], 0.0))
+    return ((float(twist[:3] @ along) - DIAGONAL_SPEED) / (DIAGONAL_STEPS * DT), float(twist[:3] @ across),
+            float(np.max(np.abs(twist[3:]))))
+
+
+def test_a_rod_sliding_at_45_degrees_to_the_friction_frame_decelerates_at_mu_g_along_its_slip(dtype):
+    """The cone's shape and the slip's direction (the review's m8): the closed forms above slide along a frame axis,
+    where a square cone and a round one agree. The rod on its two rims slides along its own axis at 45 degrees to the
+    frame, on the level plane: friction ``mu m g`` against its slip, so it decelerates at ``mu g``, never slips across
+    its axis and never turns. The control below: a square cone (each frame component clipped to the bound alone)."""
+    mu = 0.3
+    deceleration, across, spin = slid_along_the_diagonal(dtype, mu)
+    print(f"\nalong {deceleration:.12g} m/s^2 against {-mu * G:.12g}; across {across:.3g} m/s; spin {spin:.3g} rad/s")
+    assert abs(deceleration + mu * G) <= EXACT[dtype] * G
+    assert abs(across) <= EXACT[dtype] * G * DIAGONAL_STEPS * DT
+    assert spin <= EXACT[dtype] * G * DIAGONAL_STEPS * DT / 1e-3
+
+
+def test_control_a_square_cone_decelerates_the_diagonal_slide_by_its_corner():
+    """The control: each frame component of the pair's force clipped to the bound alone (a square cone, the shape
+    the frame-axis cases cannot see) lets the rod's friction reach ``sqrt(2) mu m g`` along the diagonal: the gate
+    above reads 41 % too much deceleration."""
+    import mime.nodes.body._friction as friction_module
+
+    original = friction_module.disk_update
+
+    def square(block, load, bound):
+        free = -jnp.linalg.solve(block, load)
+        return jnp.clip(free, -bound, bound)
+
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    friction_module.disk_update = square
+    try:
+        deceleration, _, _ = slid_along_the_diagonal(jnp.float64)
+    finally:
+        friction_module.disk_update = original
+        jax.config.update("jax_enable_x64", held)
+    print(f"\nthe square cone: {deceleration:.9g} m/s^2 against {-0.3 * G:.9g}")
+    assert abs(deceleration + 0.3 * G) > 0.3 * 0.3 * G
+
+
 @pytest.mark.parametrize("ratio", [0.5, 0.9995, 1.0005, 2.0])
 def test_a_sphere_on_an_incline_rolls_without_slip_below_its_threshold_and_slips_past_it(dtype, ratio):
     mu = 0.2

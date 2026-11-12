@@ -6,9 +6,10 @@ on every draw where friction acts (decided Fr6: every implementation of a seam p
   cylinder held at its rims and a box held by its samples, both dtypes: by the power guard, or by ``unconverged``
   where the flip lifts the body off and leaves no friction to read (the spike's control, which the kinetic energy
   missed in most draws); the clean suite raises neither on any draw; ``W2B_PLANT=flip`` plants it for
-  ``.github/probe/detection_rate.py``. Friction acts where the clean solve's friction is above the guard's line of the
-  load; the draws under it (a load within about 1e-8 rad of the normal and no motion, where the solve's friction is
-  1e-8 of the load and a flip of it moves the step below any check's resolution) are counted apart, never dropped;
+  ``.github/probe/detection_rate.py``. Friction acts where the clean solve's friction is above the flip's measured
+  resolution of the load (``FLIP_SEEN``: 1e-10 in float64, 1e-5 in float32); the draws under it (a load within
+  rounding of the normal on a body at rest, where a flip moves the step below any check's resolution) are counted
+  apart, never dropped;
 - the reserved row kinds (rolling resistance, spin) are refused by the contact with their reasons, and an adhesion
   written into ``Hold`` is refused as reserved;
 - a law the contact's solve does not hold (a lab's restitution, a hold that pulls, a friction limit of its own) is
@@ -57,7 +58,7 @@ def test_coulomb_passes_the_friction_law_suite(dtype):
 
 def test_control_a_sign_flip_of_friction_is_flagged_in_every_draw_of_every_body_where_friction_acts(dtype):
     """The planted sign flip raises the guard, or ``unconverged`` where it lifts the body off, in every draw of every
-    body where friction acts (the clean solve's friction above the guard's line of the load); the clean suite (above)
+    body where friction acts (the clean solve's friction above ``FLIP_SEEN`` of the load); the clean suite (above)
     raises neither on any draw."""
     result = friction_law_suite(Coulomb(mu=0.3), plant=flipped, max_examples=100)
     print(f"\n{result.detail}")

@@ -27,7 +27,11 @@ Draws (a sphere of 1 mm, a cylinder 1 mm by 3 mm and a box 1 by 1 by 0.5 mm held
 load of 0.3 to 3 weights at up to 1.4 rad from the normal in any azimuth, linear speeds along the plane of 1e-6 to 5e-2
 m/s or none, angular speeds of 1e-3 to 50 rad/s or none, any orientation, and a coefficient log-uniform on [0.01, 1.2]
 (the register's range). Nothing below a body's scale is drawn: the numerical extremes (a bound at rounding, a normal
-force of zero) are tested on purpose in ``tests/oracles/test_friction_suites.py``."""
+force of zero) are tested on purpose in ``tests/oracles/test_friction_suites.py``. Two regions are not drawn, so these
+suites are no evidence there: a load past 1.4 rad from the normal (near the tangent), and the sphere's limits within
+1e-3 of its stick threshold (judged on neither side). W2b's review ran the first apart, 540 cases a dtype (polar 1.4
+to 1.5707 rad, the three bodies at rest and moving, mu 0.01 to 1.2): no guard trip, no residual past its line and the
+sphere's limits held, in float64 and float32."""
 
 from __future__ import annotations
 
@@ -192,6 +196,12 @@ SUITE_DEEPER = (1600, 6400, 25600, 102400, 409600)
 #: line a clean run needs them on 0 to 5 of a body's 200 draws (four runs, both dtypes: the box the most), so a share of
 #: 0.15, 30 draws, leaves a clean run room.
 DEEPER_SHARE = 0.15
+#: The share of the load above which a planted sign flip of friction is seen, a control's "friction acts", by dtype:
+#: the flip measured raised down to 3e-11 of the load on the sphere in float64 (1e-17 on the cylinder and the box) and
+#: 3e-6 in float32 (W2b's review: a body at rest under a load drawn off the normal, three bodies), each line three times
+#: that. Under it the flip moves the body by 5.6e-15 m/s a step in float64 and 5.6e-9 m/s in float32, under any
+#: check's resolution; the guard's own line (``_friction.power_floor``) is a power's share, not this.
+FLIP_SEEN = {"float64": 1e-10, "float32": 1e-5}
 
 
 def _converged(names: tuple[str, ...], sweeps: int) -> dict[str, int | None]:
@@ -223,8 +233,8 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     and the derivative on the sphere. Every draw is judged, none stops the run: the detail counts the draws that
     failed, a control's rate. ``plant``, for a control, replaces ``_friction.disk_update`` while the suite runs (the
     sign flip: ``lambda x: -x`` on its force); the clean solve beside it says where friction acts, its friction above
-    the guard's line of the load (below it a plant moves the step by less than any check resolves: a load within
-    1e-8 rad of the normal, the solve's friction 1e-8 of it), and the detail counts those draws apart, as it counts
+    :data:`FLIP_SEEN` of the load (below it a plant moves the step by less than any check resolves: a load within
+    rounding of the normal on a body at rest), and the detail counts those draws apart, as it counts
     apart the draws whose clean solve is itself unconverged at ``sweeps`` (where the clean step raises the flag the
     plant is judged by). Unplanted, a draw left unconverged at ``sweeps`` is solved again at :data:`SUITE_DEEPER`'s
     counts and judged at its solution, for up to :data:`DEEPER_SHARE` of a body's draws (the detail counts them)."""
@@ -243,6 +253,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                                                                  f"it: {refused[0]}")
     dtype = jnp.zeros(()).dtype
     floor = power_floor(dtype)
+    seen = FLIP_SEEN[jnp.dtype(dtype).name]
     eps = float(jnp.finfo(dtype).eps)
     original = friction_module.disk_update
     failures: list[str] = []
@@ -301,7 +312,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
                 settled = name not in clean or not (float(reference["contact_residual"]) > FRICTION_CONVERGED
                                                     or float(reference["contact_friction_power_ratio"]) > floor)
                 unsettled[name] += int(not settled)
-                acts = pulled > floor * loaded and settled
+                acts = pulled > seen * loaded and settled
                 any_friction = any_friction or acts
                 # the step is never silent: the guard reads friction pushing, or unconverged rises (the residual,
                 # where a planted flip lifts the body off and leaves no friction to read)
@@ -331,7 +342,7 @@ def friction_law_suite(law: Any = None, *, bodies: tuple[str, ...] = BODIES, max
     failed = judged.count(False)
     counts = (f"flagged/with friction by body: "
               f"{', '.join(f'{name} {flagged[name]}/{acted[name]}' for name in bodies)}; "
-              f"friction under the guard's line of the load, by body: "
+              f"friction under the flip's resolution of the load ({seen:g}), by body: "
               f"{', '.join(f'{name} {under[name]}' for name in bodies)}; solved past {sweeps} sweeps to converge, by "
               f"body: {', '.join(f'{name} {solved_deeper[name]}' for name in bodies)} (at most "
               f"{max(1, int(DEEPER_SHARE * max_examples))} a body, past which a draw is judged at {sweeps})"

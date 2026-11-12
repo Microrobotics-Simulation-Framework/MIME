@@ -7,6 +7,7 @@
 # copy of a listed line (an unlisted #2). `mime docs check` fails on a line not listed here or in readme_numbers.txt,
 # and on a listed key that matches no line (delete its line). It records a cut, so a line added needs its reason
 # logged; a number a page needs is a claim record's, named by its id (see MIME-ANO-nnn).
+generated/entries/interaction/contact.md  7.0 7.3 1.8 2.1 80 0.2 20  #1  # a declared validity line, free text printed as the code states it: the measured share of frictional held steps left past FRICTION_LINE at the declared sweep counts (W2b's fix round, ten seeds of 1,000 draws a kind on a tube's floor, both dtypes; the maintainer's count of 80 kept), stated as measured so a reader sees the rate the unconverged flag carries; it moves to a claim record when a1 structures validity lines
 generated/entries/interaction/drag.md  0.95  #1  # the indicator of the switch drag.room, declared free text: the clamp's fraction of the room between the body and the wall as the code states it (present at D1b; it moves to a claim record when a1 structures it)
 generated/entries/interaction/drag.md  1e-10  #1  # the indicator of the switch drag.clamp_divisor, declared free text: the floor the clamp's divisor is held to, as the code states it (present at D1b; it moves to a claim record when a1 structures it)
 generated/entries/interaction/drag.md  1  #1  # the indicator of the switch drag.gap_floor, declared free text: the lubrication's gap floor, 1 nm, as the code states it (present at D1b; it moves to a claim record when a1 structures it)
