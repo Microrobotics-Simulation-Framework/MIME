@@ -1266,9 +1266,9 @@ class ImplicitFlowNode(MimeNode):
         interior = str(self.constants()["interior"])
         line = HANDOVER_LINE[self.HANDOVER_BOX][interior]
         return Problem("flow.porous-solve-not-finite",
-                       f"the flow holds the porous regions {', '.join(self.porous_laws)}, and its solve went not finite "
-                       f"on {int(stops)} of the run's steps (its residual no longer a number, that step's velocity "
-                       f"NaN): below the hand-over's line, sqrt(K)/h {line:g} with the {interior} interior in "
+                       f"the flow holds the porous regions {', '.join(self.porous_laws)}, and its solves went not "
+                       f"finite {int(stops)} time(s) in the run, each of a step's solves counted (its residual no "
+                       f"longer a number, that step's velocity NaN): below the hand-over's line, sqrt(K)/h {line:g} with the {interior} interior in "
                        f"{BOX_NAMES[self.HANDOVER_BOX]}, the solve holds a region at the line's permeability, its "
                        f"stiffest term, and here that held solve did not stay finite (a box unlike those the line was "
                        f"measured converging in), or a value in the step's drive was not a number",
