@@ -175,6 +175,7 @@ drag.outside-training         user
 drag.patches                  user
 drag.penalty-added-mass       user
 drag.penalty-box              user
+drag.penalty-float32-reverse  user
 drag.penalty-kind             user
 drag.penalty-lagged           user
 drag.penalty-motion           user
