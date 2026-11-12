@@ -1,0 +1,36 @@
+{
+  "written": "2026-11-12, committed before round 4 ran (the commit that adds this file is the timestamp): gate 1's control against the re-measured pins, gate 8 on two contacts at blob 0.25, A0's bits",
+  "phase": "W2a PR 1b-ii-a, round 4",
+  "labels": "the builder's, from round 3 (Actions run 43129930010) and round 2's control records",
+  "seen_before": [
+    "round 3: gate 1's spheroids in the reference's frame, lying (0.2246, 0.2854), at 30 degrees (0.1701, 0.1792), the same at seeds 1 to 5; pinned within 0.02",
+    "round 2: increment_x2 (the near-contact increment doubled) moved gate 1's lying spheroid to a rate of 0.50 and an entry of 1.02 at seed 1 (world frame), caught 5/5",
+    "round 3: gate 8 on two contacts passed at blob 0.05 and peaked at 9.73 GiB alone; gate 8's lubrication and near-contact cases agree to about 1e-9 of their scale",
+    "round 3: every released program but A0 bit for bit against d6220d2f in both dtypes; A0 not run (the probe's dump left out its controller)"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32 (bits only)"],
+    "platform": "GitHub runner, 4 vCPU, 16 GB (the probe workflow); the bits base and head in one job, one thread",
+    "sizes_and_parameters": "gate 1 as round 3 (aspect-2 spheroid, s 0.2 b, blob 0.05, lying, gaps 0.1 to 0.02 b, three turns a seed); gate 8: the ellipsoid (0.95, 0.65, 0.65) mm across a 1 mm tube at a force spacing of 0.088 mm, blob 0.25, gaps (0.07, 0.06, 0.04) of the radius at one end, the derivative in the wall's radius and the position; A0 (tutorial A0 with its controller) 5 ms",
+    "seeds_and_draws": "gate 1's turns by DETECTION_SEED, seeds 0 to 4"
+  },
+  "gate_1_control_increment_x2": {
+    "claim": "the near-contact increment doubled is caught by gate 1's lying spheroid at every seed, and the clean run passes its pin at every seed",
+    "kind": "acceptance (a control's rate)",
+    "case": "tests/oracles/test_elliptic_gates.py::test_gate1_a_spheroids_rolling_and_entries_against_the_mfs_at_every_gap_below_the_handover[0.0], W2A_PLANT=increment_x2, detection_rate.py, 5 runs",
+    "prediction": {"band": [5, 5], "unit": "caught of 5 (clean 0 of 5)", "basis": "measured-before", "why": "doubling the increment moved the rate from 0.22 to 0.50 in round 2, fourteen times the pin's 0.02; the clean worst is the same at every seed in the reference's frame"}
+  },
+  "gate_8_two_contacts_coarse_blob": {
+    "claim": "at blob 0.25 the reverse and forward derivatives in the wall's radius and the position equal Richardson's difference within 1e-5 of the scale at each gap, and the test peaks under 4 GiB alone",
+    "kind": "equality (the derivative's identity), acceptance (memory)",
+    "case": "tests/oracles/test_elliptic_gates.py::test_gate8_two_contacts_forward_and_reverse_equal_the_difference",
+    "prediction": {"band": [0.0, 1e-5], "unit": "the worst |AD - difference| over the scale; memory under 4 GiB", "basis": "measured-before", "why": "the identity holds at about 1e-9 at blob 0.05; a coarser quadrature changes the resistance's values, not the program's derivative; the memory falls with the near field's quadrature"}
+  },
+  "gate_10_bits_a0": {
+    "claim": "A0 (with its controller) bit for bit against the release tip, both dtypes",
+    "kind": "equality",
+    "case": "probe/dump.py a0@64 and a0@32 through .github/probe/bit_compare.py, base d6220d2f69385fd73acffab962562daa300221cc",
+    "prediction": "np.array_equal in both dtypes (A0 has no drag 0.5.0 near-contact hand-over)"
+  },
+  "outcomes": null
+}
