@@ -4,12 +4,14 @@ the program). The metric is the sphere's first reflection, ``m = sum F . v(x)`` 
 normal-translation forces ``F``: one patch solve a pose.
 
 - gate 3: 50 poses with 18 snaps trace the step once; control ``larger``, a patch two cells larger, retraces;
-- gate 5: a snap moves ``m`` by a small share of it, and between snaps its derivative carries no period-one wobble;
-  control ``continuous``, the wall moved with the body by a fraction of a cell (the lattice moving through the band);
+- gate 5: a snap moves ``m`` by a small share of it (read across the corner's flip, not over the sweep's interval),
+  and between snaps its derivative carries no period-one wobble; controls ``continuous``, the wall moved with the body
+  by a fraction of a cell (the lattice moving through the band), and ``stale_given``, the given values read at the
+  corner of 0.04 cells before (a snap that moves the box without re-reading its faces);
 - gate 6: the blend of the two whole-cell dilations is continuous across a whole cell and its derivative in the
   dilation agrees with differences; control ``dilation_stopped``;
-- gate 11: ``m``'s derivative in the body's position between snaps agrees with central differences; control
-  ``read_stopped``, the points' derivative stopped."""
+- gate 11: ``m``'s derivative in the body's position between snaps agrees with central differences, with the point
+  read and the cell read (the default, the review's M3); control ``read_stopped``, the points' derivative stopped."""
 
 import math
 import os
@@ -28,14 +30,18 @@ from patch_cases import mrs_sphere  # noqa: E402
 
 from mime.nodes.flow.fvm._patch import RefinementPatch, blended_reflection, patch_reflection, patch_stopping, \
     placed, snapped_origin, whole_cell_dilations  # noqa: E402
+from mime.nodes.flow.fvm._patch_transfers import Quadrature  # noqa: E402
 from mime.nodes.flow.fvm._solve import REPORT_SIZE  # noqa: E402
 from mime.nodes.hydro.mrs._plane import plane_image  # noqa: E402
 
 CELLS = 6.0
 #: Gate 5's lines at this size, regression lines set between the clean sweep's and the plant's (the operating point's
-#: are the probes'): the wobble metric, and a snap's jump over the metric.
+#: are the probes'): the wobble metric, and a snap's jump over the metric, read across the flip of the snapped corner
+#: (``SNAP_STRADDLE`` fine cells either side, where the slope's share is under 1e-7 of the metric): clean 1.7e-4, the
+#: stale_given plant 1.7e-2.
 WOBBLE_LINE = 1e-2
 SNAP_LINE = 2e-3
+SNAP_STRADDLE = 1e-6
 MARGIN = 4
 VISCOSITY = 1e-3
 
@@ -62,11 +68,11 @@ class Plane:
         return self.at - points[..., 2]
 
 
-def setting(extra=0):
+def setting(extra=0, read="point"):
     sphere = mrs_sphere(0.25)
     h = RADIUS / CELLS
     n = int(math.ceil(2 * (CELLS + MARGIN))) + extra
-    patch = RefinementPatch((n, n, n), h, read="point")
+    patch = RefinementPatch((n, n, n), h, read=read)
     free = sla.lu_solve(sla.lu_factor(sphere.matrix / VISCOSITY), np.tile([0.0, 0.0, 1e-3], sphere.count))
     forces = jnp.asarray(free.reshape(-1, 3) * sphere.area[:, None])
     return patch, sphere, forces
@@ -98,6 +104,7 @@ def metric_function(patch, sphere, forces, wall_offset=0.0):
     """``m(centre, dilation)``: the first reflection at a pose, the wall at ``z = wall_offset`` (m) dilated by the
     seam's continuous ``dilation`` (m) through the whole-cell blend."""
     body = jnp.asarray(sphere.force)
+    cells = jnp.asarray(sphere.points)
     eps2 = jnp.asarray(sphere.eps_squared)
     stopping = patch_stopping(patch, jnp.float64, tolerance=1e-11)
 
@@ -105,15 +112,25 @@ def metric_function(patch, sphere, forces, wall_offset=0.0):
         TRACES["count"] += 1
         origin = snapped_origin(patch, centre)
         points = body + centre
+        quadrature = None
+        at_cells = cells + centre
         if plant() == "read_stopped":
             points = jax.lax.stop_gradient(points)
+            at_cells = jax.lax.stop_gradient(at_cells)
+        if patch.read == "cell":
+            quadrature = Quadrature(at_cells, jnp.asarray(sphere.weights), jnp.asarray(sphere.owners, dtype=jnp.int32),
+                                    jnp.asarray(sphere.area))
         if plant() == "dilation_stopped":
             dilation = jax.lax.stop_gradient(dilation)
         lower, weight = whole_cell_dilations(patch, dilation)
-        placements = tuple(placed(patch, [Plane(wall_offset)], origin, lower + k, points, eps2, VISCOSITY)
-                           for k in (0, 1))
+        placements = tuple(placed(patch, [Plane(wall_offset)], origin, lower + k, points, eps2, VISCOSITY,
+                                  quadrature=quadrature) for k in (0, 1))
         # The given values are the undilated wall's, as the coarse grid hands them (its solve is untouched).
-        given = exact_given(patch, origin, points, eps2, forces, wall_offset)
+        # The stale_given plant reads the given values at the corner the patch had 0.04 cells of motion before: a snap
+        # that moves the box without re-reading its faces (its second flip inside the sweep's snap interval).
+        at = snapped_origin(patch, centre - jnp.asarray([0.0, 0.0, 0.04 * patch.spacing])) \
+            if plant() == "stale_given" else origin
+        given = exact_given(patch, at, points, eps2, forces, wall_offset)
         values, _, _ = blended_reflection(patch, placements, weight, given, forces, None, stopping,
                                           jnp.zeros(REPORT_SIZE))
         return jnp.sum(forces * values)
@@ -157,6 +174,18 @@ def period_one_amplitude(values, step, keep=None):
     return float(np.hypot(coefficients[3], coefficients[4]) / np.mean(np.abs(derivative)))
 
 
+def snap_point(patch, low, high):
+    """The offset (fine cells) between ``low`` and ``high`` where the snapped corner flips, by bisection to 1e-12."""
+    start = np.asarray(snapped_origin(patch, pose(low)))
+    for _ in range(60):
+        middle = 0.5 * (low + high)
+        if np.array_equal(np.asarray(snapped_origin(patch, pose(middle))), start):
+            low = middle
+        else:
+            high = middle
+    return 0.5 * (low + high)
+
+
 def test_gate5_a_snap_moves_m_a_little_and_between_snaps_its_derivative_is_smooth():
     patch, sphere, forces = setting()
     m = jax.jit(metric_function(patch, sphere, forces))
@@ -173,12 +202,12 @@ def test_gate5_a_snap_moves_m_a_little_and_between_snaps_its_derivative_is_smoot
     amplitude = period_one_amplitude(np.asarray(values), step, keep)
     print("gate 5 wobble", amplitude, "snaps", snaps)
     assert amplitude <= WOBBLE_LINE, amplitude
-    if plant() is None:
+    if plant() in (None, "stale_given"):
         assert snaps, "the sweep crosses no snap"
-        centre = pose(offsets[snaps[0]] - 0.5 * step)
-        below = float(m(centre - jnp.asarray([0.0, 0.0, 1e-3 * h]), jnp.asarray(0.0)))
-        above = float(m(centre + jnp.asarray([0.0, 0.0, 1e-3 * h]), jnp.asarray(0.0)))
-        print("gate 5 snap", abs(above - below) / abs(below))
+        flip = snap_point(patch, offsets[snaps[0] - 1], offsets[snaps[0]])
+        below = float(m(pose(flip - SNAP_STRADDLE), jnp.asarray(0.0)))
+        above = float(m(pose(flip + SNAP_STRADDLE), jnp.asarray(0.0)))
+        print("gate 5 snap", abs(above - below) / abs(below), "at", flip)
         assert abs(above - below) <= SNAP_LINE * abs(below), (above, below)
 
 
@@ -197,8 +226,9 @@ def test_gate6_the_blend_is_continuous_across_a_whole_cell_and_its_derivative_ag
     assert abs(float(tangent) - difference) <= 1e-3 * abs(difference), (float(tangent), difference)
 
 
-def test_gate11_the_reflections_derivative_in_the_bodys_position_agrees_with_differences():
-    patch, sphere, forces = setting()
+@pytest.mark.parametrize("read", ["point", "cell"])
+def test_gate11_the_reflections_derivative_in_the_bodys_position_agrees_with_differences(read):
+    patch, sphere, forces = setting(read=read)
     m = metric_function(patch, sphere, forces)
     h = RADIUS / CELLS
     centre = pose(0.3)

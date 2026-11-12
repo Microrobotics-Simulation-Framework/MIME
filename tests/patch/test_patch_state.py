@@ -62,3 +62,7 @@ def test_the_numbers_flag_a_contact_below_the_window_and_never_refuse_it():
     assert abs(inside.ratio - 156.25e-6 / cell) <= 1e-12
     below = patch_numbers(patch, 156.25e-6, a, 0.5 * a, 2.0 * cell, 0.25 * a)
     assert not below.radius_holds and not below.handover_holds
+    assert inside.read_holds
+    pointed = RefinementPatch((110, 110, 110), cell, read="point")
+    assert not patch_numbers(pointed, 156.25e-6, a, a, 2.0 * cell, 0.25 * a).read_holds
+    assert patch_numbers(pointed, 156.25e-6, a, a, 2.0 * cell, 0.1 * a).read_holds

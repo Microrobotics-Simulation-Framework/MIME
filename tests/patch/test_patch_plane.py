@@ -1,9 +1,11 @@
 """The patch on the plane oracle at a CI size (8 fine cells across the radius, the sphere plus 4 a side; the probes
 take the operating point, 20 cells): gate 1 (the patch's share of the normal entry, against the same MRS with the exact
-image read at its points; control ``PATCH_PLANT=no_source``, the forces' own field left out), gate 9 (a warm start
-gives the cold answer and iterates; control ``accept_start``, a start within the tolerance accepted with no
-iteration), gate 12 (float32's solve reaches its floor unflagged and within a line of float64's; control
-``below_floor``, a tolerance under the floor, which must stop flagged)."""
+image read the same way, at its points or over each force point's cell, the default; controls
+``PATCH_PLANT=no_source``, the forces' own field left out, and ``cell_scale``, the patch's cell read and its transpose
+5 % up), gate 9 (the base column's warm start from its history gives the cold answer and iterates; control
+``accept_start``, a start within the tolerance accepted with no iteration), gate 12 (float32's solve reaches its floor
+unflagged and within a line of float64's; control ``below_floor``, a tolerance under the floor, which must stop
+flagged)."""
 
 import dataclasses
 import os
@@ -20,12 +22,13 @@ from patch_cases import Case, built_patch, image_reader, normal_k, patch_reader,
     resistance  # noqa: E402
 from plane_oracles import brenner  # noqa: E402
 
-from mime.nodes.flow.fvm._patch import patch_reflection, patch_stopping  # noqa: E402
+from mime.nodes.flow.fvm._patch import PatchHistory, patch_reflection, patch_stopping  # noqa: E402
 from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE  # noqa: E402
 
 CASE = Case(spacing=0.25, cells=8.0, gap=0.3, margin=4)
-#: Gate 1's band at this size (2.4 fine cells): the window spike's -4.2 % at 2 cells and -1.2 % at 3, widened.
-SHARE_BAND = (-6.0, -1.0)
+#: Gate 1's bands at this size (2.4 fine cells), by read: the point read's, the window spike's -4.2 % at 2 cells and
+#: -1.2 % at 3, widened (clean here -2.69 %); the cell read's the same (clean -2.61 %; the cell_scale plant +26.9 %).
+SHARE_BAND = {"point": (-6.0, -1.0), "cell": (-6.0, -1.0)}
 
 
 @pytest.fixture(scope="module")
@@ -36,12 +39,17 @@ def float64_module():
     jax.config.update("jax_enable_x64", held)
 
 
-def test_gate1_the_patchs_share_of_the_normal_entry_is_the_bands(float64_module):
-    image = normal_k(resistance(CASE, image_reader(CASE, "point"), ("Uz",)))
-    reader, record = patch_reader(CASE)
-    patch = normal_k(resistance(CASE, reader, ("Uz",)))
-    share = 100.0 * (patch - image) / brenner(CASE.gap)
-    assert SHARE_BAND[0] <= share <= SHARE_BAND[1], (share, image, patch)
+@pytest.mark.parametrize("read", ["point", "cell"])
+def test_gate1_the_patchs_share_of_the_normal_entry_is_the_bands(float64_module, read):
+    """The patch's share against the same MRS with the exact image read the same way (at the points, or over each
+    force point's cell: the default read, the review's M3); control ``cell_scale`` for the cell read."""
+    case = dataclasses.replace(CASE, read=read)
+    image = normal_k(resistance(case, image_reader(case, read), ("Uz",)))
+    reader, record = patch_reader(case)
+    patch = normal_k(resistance(case, reader, ("Uz",)))
+    share = 100.0 * (patch - image) / brenner(case.gap)
+    low, high = SHARE_BAND[read]
+    assert low <= share <= high, (share, image, patch)
     assert min(record["iterations"]) >= 1
 
 
@@ -74,12 +82,17 @@ def test_gate9_a_warm_start_gives_the_cold_answer_and_iterates(float64_module):
     stopping = patch_stopping(patch, jnp.float64)
     if os.environ.get("PATCH_PLANT") == "accept_start":
         stopping = dataclasses.replace(stopping, least_iterations=0)
-    solve = jax.jit(lambda b, f, s: patch_reflection(patch, placement, b, f, s, stopping, jnp.zeros(REPORT_SIZE)))
-    first = solve(given, forces, None)
+    tap = jnp.zeros(REPORT_SIZE)
+    first = jax.jit(lambda b, f: patch_reflection(patch, placement, b, f, None, stopping, tap))(given, forces)
+    # The base column warms from its history's field (the signed interface's frozen step-start field): here the last
+    # solve's, at the steady limit, where the history adds nothing else (its shift zero, its own part zero).
+    history = PatchHistory(first.field, jnp.zeros(patch.capacity()))
+    cold_base = jax.jit(lambda b, f: patch_reflection(patch, placement, b, f, None, stopping, tap, history))
+    warm_base = jax.jit(lambda b, f: patch_reflection(patch, placement, b, f, history.field, stopping, tap, history))
     # The next problem a hundredth of the tolerance away: the warm start is within the tolerance of its answer.
     nudged = tuple(g * (1.0 + 1e-10) for g in given)
-    cold = solve(nudged, forces, None)
-    warm = solve(nudged, forces, first.field)
+    cold = cold_base(nudged, forces)
+    warm = warm_base(nudged, forces)
     held = report(warm)
     scale = float(jnp.max(jnp.abs(cold.values)))
     assert float(jnp.max(jnp.abs(warm.values - cold.values))) <= 10.0 * stopping.tolerance * scale

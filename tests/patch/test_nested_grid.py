@@ -14,8 +14,8 @@ import numpy as np
 import pytest
 
 from mime.nodes.flow.fvm._nested import NestedMACGrid
-from mime.nodes.flow.fvm._patch import RefinementPatch, brinkman_difference, own_response, patch_reflection, \
-    patch_stopping, placed
+from mime.nodes.flow.fvm._patch import RefinementPatch, brinkman_difference, own_response, patch_flags, \
+    patch_reflection, patch_stopping, placed, planned_capacity
 from mime.nodes.flow.fvm._solve import REPORT_SIZE
 
 
@@ -173,10 +173,11 @@ def test_the_own_response_is_the_brinkman_stokeslet_far_from_the_blob(float64, s
 
 
 def test_the_own_field_on_every_solid_face_and_not_a_shell_four_cells_deep(float64):
-    """Every face where the band or the solid is takes the own field: a shell 4 cells deep into a plane's solid, on a patch
-    9 cells deep in it, moves the reads by tens of per cent (the pressure carries the solid's constraint to the fluid; the
-    penalty screens only the velocity). A capacity that holds every such face reads what every interior face does, and a
-    capacity below them is counted, not silent."""
+    """With the penalty on the whole solid (``solid_depth`` infinite), every face where the band or the solid is takes
+    the own field: a shell 4 cells deep into a plane's solid, on a patch 9 cells deep in it, moves the reads by tens of
+    per cent (the pressure carries the solid's constraint to the fluid; the penalty screens only the velocity). A
+    capacity that holds every such face reads what every interior face does, and a capacity below them is counted and
+    flagged, not silent."""
     h = 5e-5
 
     class Plane:
@@ -190,7 +191,7 @@ def test_the_own_field_on_every_solid_face_and_not_a_shell_four_cells_deep(float
     forces = jnp.asarray(rng.normal(size=(12, 3)) * 1e-9)
 
     def reads(capacity, deep=None):
-        patch = RefinementPatch((14, 14, 18), h, read="point", shell_capacity=capacity)
+        patch = RefinementPatch((14, 14, 18), h, read="point", shell_capacity=capacity, solid_depth=math.inf)
         placement = placed(patch, [Plane()], jnp.zeros(3, jnp.int32), 0, sources, (0.3 * h) ** 2, 1e-3)
         if deep is not None:
             kept = placement.shell_points[:, 2] >= (9.0 - deep) * h
@@ -207,6 +208,11 @@ def test_the_own_field_on_every_solid_face_and_not_a_shell_four_cells_deep(float
     scale = np.max(np.abs(every))
     assert np.max(np.abs(planned - every)) <= 1e-10 * scale
     assert np.max(np.abs(shallow - every)) > 0.05 * scale
-    short = RefinementPatch((14, 14, 18), h, read="point", shell_capacity=needed // 2)
-    assert int(placed(short, [Plane()], jnp.zeros(3, jnp.int32), 0, sources, (0.3 * h) ** 2, 1e-3).shell_needed) > \
-        short.capacity()
+    short = RefinementPatch((14, 14, 18), h, read="point", shell_capacity=needed // 2, solid_depth=math.inf)
+    at = placed(short, [Plane()], jnp.zeros(3, jnp.int32), 0, sources, (0.3 * h) ** 2, 1e-3)
+    assert int(at.shell_needed) > short.capacity()
+    grid = short.grid()
+    zero = tuple(jnp.zeros(grid.given_count(c)) for c in range(3))
+    solved = patch_reflection(short, at, zero, forces, None, patch_stopping(short, jnp.float64), jnp.zeros(REPORT_SIZE))
+    assert bool(patch_flags(short, at, solved).overflow)
+    assert planned_capacity(short, [Plane()], [jnp.zeros(3, jnp.int32)]) >= needed

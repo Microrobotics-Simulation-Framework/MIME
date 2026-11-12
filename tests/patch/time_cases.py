@@ -15,7 +15,13 @@ its LU), each product a column (the forces' reflection, no history), the base co
 The box is periodic with a solid slab (the plane below the sphere, a far wall above it). The own box is a periodic box
 of the same cells, solved by its transform: the step operator is diagonal there. Plants (``PATCH_PLANT``), for a sphere
 moved one fine cell a step along the wall: ``slab_unfilled`` leaves the slab a snap uncovers zero; ``history_unmoved``
-keeps the last step's field where it was, one cell off the moved patch."""
+keeps the last step's field where it was, one cell off the moved patch (each moves the force by 1e-4 of it or less, so
+each is judged at 1e-6 against the clean run, not at gate 10's per-cent scale). At gate 10's own scale:
+``history_dropped`` drops the base column's history (the last step's field and the own box's history at the shell),
+the shift kept.
+
+**Starts:** the columns start at zero; the base column and the composition start from the history's field, as the
+patch's functions require."""
 
 from __future__ import annotations
 
@@ -149,9 +155,11 @@ def _gather(grid: MACGrid, stencils: Any, field: Any) -> Any:
     return jnp.stack([gather(grid, c, field[c], stencils[c]) for c in range(3)], axis=1)
 
 
-@functools.partial(jax.jit, static_argnums=(0, 1))
-def _reflect(patch: RefinementPatch, stopping: Stopping, placement: Any, boundary: Any, forces: Any, start: Any,
+@functools.partial(jax.jit, static_argnums=(0, 1, 5))
+def _reflect(patch: RefinementPatch, stopping: Stopping, placement: Any, boundary: Any, forces: Any, warm: bool,
              history: Any) -> Any:
+    """One patch solve; ``warm``: the base column started from its history's field."""
+    start = history.field if warm and history is not None else None
     return patch_reflection(patch, placement, boundary, forces, start, stopping, jnp.zeros(REPORT_SIZE), history)
 
 
@@ -269,9 +277,13 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
                 held = (state["patch_field_x"], state["patch_field_y"], state["patch_field_z"])
             else:
                 held = patch.held_field(state, origin, fill) if stepped else grid.zeros(jnp.float64)
-            start = held if case.warm and stepped else None
             history = PatchHistory(held, shell_sample(placement.shell_points, placement.shell_components, box.grid,
                                                       history_own, jnp.zeros(3))) if stepped else None
+            if plant() == "history_dropped":
+                history = None
+            # The columns start at zero; only the base column (and the composition, the next step's start) warms, from
+            # its history's own field (the signed interface's rule 3, held by the patch's functions).
+            warm = case.warm and history is not None
 
             def given(walled: Any, own: Any) -> Any:
                 return _given(grid, origin, box.grid, walled, own)
@@ -279,18 +291,18 @@ def run(case: TimeCase, form: str) -> dict[str, Any]:
             def column(forces: np.ndarray) -> np.ndarray:
                 density = box.scatter(jnp.asarray(forces))
                 solved = _reflect(patch, stopping, placement, given(box.walled(density), box.own(density)),
-                                  jnp.asarray(forces), start, None)
+                                  jnp.asarray(forces), False, None)
                 step_iterations[0] += float(solved.report[0])
                 return np.asarray(solved.values)
 
             base_solve = _reflect(patch, stopping, placement, given(history_walled, history_own),
-                                  jnp.zeros((n, 3)), start, history)
+                                  jnp.zeros((n, 3)), warm, history)
             step_iterations[0] += float(base_solve.report[0])
             base_iterations[0] = float(base_solve.report[0])
             base = np.asarray(base_solve.values)
 
             def compose(forces: np.ndarray, walled: Any, own: Any) -> Any:
-                return _reflect(patch, stopping, placement, given(walled, own), jnp.asarray(forces), start, history)
+                return _reflect(patch, stopping, placement, given(walled, own), jnp.asarray(forces), warm, history)
 
             if not stepped:
                 compose = None

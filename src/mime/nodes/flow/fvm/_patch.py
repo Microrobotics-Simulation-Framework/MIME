@@ -19,27 +19,41 @@ the steady limit's is the regularised Stokeslet alone). The history's: the free 
 which has no closed form; the flow's own box hands it as a lattice field, sampled at the shell's faces
 (:func:`shell_sample`).
 
-**In time: backward Euler with state** (the signed interface's default, measured). Under a time-stepped flow the patch
-takes the step's shift and carries its last reflection field. In F5's structure at stage 1's corners (``lambda = a /
-sqrt(nu dt)`` 0.79 to 4.97, 50 and 200 mPa s, 0.5 and 5 ms) it followed a fine monolithic backward-Euler reference
-within -1.9 to +3.2 % of the force after an impulsive start; a quasi-steady patch (zero shift, no history) inside the
-same steps read +3.7 to +7.8 % settled and up to +11 % at the first step, outside that at every corner, so it is not
-offered. The steady limit is the zero shift.
+**In time: backward Euler with state** (the signed interface's default, under "exact by default": the form consistent
+with the grid's own time scheme, not a measured preference). Under a time-stepped flow the patch takes the step's shift
+and carries its last reflection field. What gate 10 measured in F5's structure (stage 1's corners, ``lambda = a /
+sqrt(nu dt)`` 0.79 to 4.97, the patch at 10 fine cells across the radius in a periodic box of 24 coarse cells): an
+agreement with a fine monolithic backward-Euler reference at the same box and coarse cell, not an accuracy. Where the
+forms settle (lambda 0.79; 1.57 to 1e-4 a step), the BE patch reads +0.04 to +3.2 % and the quasi-steady patch (zero
+shift, no history) +3.7 to +6.1 %; but settled, the two differ only by the own field's history (its periodic own box
+against the free-space closed form), and at lambda 0.79 that gap falls with the box (2.09 points at 36 coarse cells,
+1.67 at 48), while a reference at 15 fine cells across the radius moves +2.76 %, against which the quasi-steady patch
+reads +0.71 %, inside the BE patch's -0.94 %. At lambda 2.48 and 4.97 no form had settled by its last step (the
+reference still moving 1.6e-3 to 2.9e-3 a step), so those readings are transients. So the quasi-steady opt-in is
+undecided by this evidence, not refuted: at a runner's size the time form cannot be separated from the box and the
+reference's own cell. Dropping the history (the shift kept) moves the BE patch's force by -4.1 % at lambda 0.79 and
+-12.9 % at 4.97: the history is load-bearing. The steady limit is the zero shift.
 
-**Columns and the base.** The patch's functions take one column of forces and are vmappable over a column axis (no
-branch on a value, no shape from data). A column takes no history: it is linear in its given values and its forces. The
-base column carries the history (:class:`PatchHistory`): the previous step's reflection field, moved with the patch and
-its uncovered slab filled from the coarse grid's previous reflection, and the own field's history at the shell.
+**Columns and the base** (the signed interface's rules, held by the functions). The patch's functions take one column of
+forces and are vmappable over a column axis (no branch on a value, no shape from data). A column takes no history and
+starts at zero: it is linear in its given values and its forces. The base column carries the history
+(:class:`PatchHistory`): the previous step's reflection field, moved with the patch and its uncovered slab filled from
+the coarse grid's previous reflection, and the own field's history at the shell; it starts at zero or from that field.
+Any other start (a product's solution among them) is refused. Vmapped, the columns are the loop's program batched: they
+agree with the loop as the loop agrees with itself under a one-ulp change of its input (to its tolerance at 1e-8 in
+float64, to rounding at the floor).
 
 **Snapped, never recompiling** (C4 decided 2): the box's shape is the kind's; its corner (``origin``) is whole fine
 cells on the fine lattice from the flow grid's corner, state, so a move changes values and never a shape.
 
 **The own field where the walls are.** ``u_own`` enters through ``(mu/K) u_own``, nonzero in the band and the solid, and
-is evaluated on every such face (the shell), at a capacity the kind holds: its overflow counted, never dropped silently;
-a capacity of zero takes every interior face. Nothing deeper in the solid may be left out: the penalty screens a face's
-velocity over about ``delta_in h``, but not the pressure, which carries the solid's divergence-free constraint to the
-fluid. The own field taken only 4 cells into a plane's solid moved the reflection at the force points by 17 % of its
-size [measured: ``tests/patch/test_nested_grid.py``'s shell test].
+is evaluated on every such face (the shell), at a capacity the host plans (:func:`planned_capacity`): an overflow is
+flagged (:func:`patch_flags`). The penalty and the drive are kept together to :data:`SOLID_DEPTH_CELLS` into the solid
+and the solid deeper is left unpenalised: its given values are consistent with it, so ``v -> -u_own`` there as the
+penalty would make it (within 0.05 % of the normal entry at 8 cells, :data:`SOLID_DEPTH_MEASURED`). The drive alone may
+not be cut short with the penalty kept deeper: the penalty screens a face's velocity over about ``delta_in h``, but not
+the pressure, which carries the solid's divergence-free constraint to the fluid (17 % of the reflection at 4 cells
+[measured: ``tests/patch/test_nested_grid.py``'s shell test]).
 
 **One uniform dilation per patch** (decided 4 (5)), by whole fine cells (decided 4 (4)): the walls' signed distance is
 moved into the solid by ``l`` cells; :func:`blended_reflection` blends the two neighbouring whole-cell evaluations
@@ -47,8 +61,11 @@ linearly in the seam's continuous dilation, the second solve taken only where it
 
 **The transpose.** The patch's CG is its own transpose solve (the operator is symmetric, its start linear in its
 right-hand side): :func:`patch_reflection_transpose` reads back through the read's transpose, solves once, and
-transposes the solve-free remainder (the lift and the column's source) by JAX; it is the transpose to the CG's
-tolerance."""
+transposes the solve-free remainder (the lift and the column's source); it is the transpose to the CG's tolerance. The
+own response's transpose is written by hand (:func:`own_response_transpose`, the same kernel summed over the faces into
+the forces, chunk by chunk), and both that and JAX's reverse mode take it: transposing the chunked map would hold every
+face-point pair's kernel, 83 GiB at stage 1's 107^3 box. A derivative in the placement (the force points, the
+viscosity, the shift) goes through the map by forward mode, its chunk checkpointed, so reverse mode recomputes it."""
 
 from __future__ import annotations
 
@@ -73,6 +90,7 @@ from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, REPORT_SIZE, Jacobi,
 
 _lax: Any = jax.lax
 _linear_transpose: Any = cast(Any, jax).linear_transpose
+_jvp: Any = cast(Any, jax).jvp
 
 #: How the near field reads the patch's field: at its force points, or each force point's cell average.
 READS = ("point", "cell")
@@ -84,6 +102,18 @@ CHUNK_BYTES = 1 << 26
 STATE_FIELDS = ("patch_origin", "patch_field_x", "patch_field_y", "patch_field_z", "patch_report")
 #: The given values' net flux over their absolute flux above which a solve is flagged.
 FLUX_SHARE_LINE = 1e-2
+#: How deep into the solid (fine cells past the walls' dilated surface) the penalty and the own field's drive are kept;
+#: deeper, the solid is left unpenalised, between given values consistent with it (``v = -u_own`` there), and the own
+#: field is evaluated on none of its faces.
+SOLID_DEPTH_CELLS = 8.0
+SOLID_DEPTH_MEASURED = (
+    "measured on the plane oracle (10 fine cells across the radius, a gap of 0.2 radii, 14 cells of solid in a 52^3 "
+    "box, the cell read; the coupled resistance against the penalty and the drive on every solid face): within 4 "
+    "cells -0.335 % normal and -0.037 % along the wall (40,040 faces of 117,416), within 8 cells -0.051 % and -0.010 % "
+    "(72,072); the drive alone kept within d cells, the penalty deeper, is wrong (-53.3 and -32.5 % normal at 4 and "
+    "8): the penalty screens a face's velocity, not the pressure that carries the deep solid's constraint")
+#: The margin a planned capacity holds over the most faces counted at the poses planned for.
+PLAN_MARGIN = 1.1
 #: Below ``alpha r`` of this the Brinkman difference is summed as its series (the closed form cancels there).
 SERIES_EDGE = 1.0
 #: The series' terms: the last is under ``1 / 20!`` of the first at the edge.
@@ -93,8 +123,11 @@ SERIES_TERMS = 20
 @dataclass(frozen=True)
 class RefinementPatch:
     """The kind: a box of ``cells`` fine cells of side ``spacing`` (m), the coarse grid's band and interior by name, the
-    near field's read (:data:`READS`; the cell read takes the body's quadrature in its placement) and the own field's
-    capacity in faces (zero: every interior face)."""
+    near field's read (:data:`READS`; the cell read takes the body's quadrature in its placement), how deep into the
+    solid the penalty and the drive are kept (:data:`SOLID_DEPTH_CELLS`; ``math.inf``: the whole solid) and the own
+    field's capacity in faces: planned by the host at its build (:func:`planned_capacity`), an overflow flagged
+    (:func:`patch_flags`); zero takes every interior face, fluid ones included (exact, about three times the pairs).
+    A box side with a large prime factor makes the cosine transform slow (107 against 120: about twice per cell)."""
 
     cells: tuple[int, int, int]
     spacing: float
@@ -102,6 +135,7 @@ class RefinementPatch:
     interior: str = DEFAULT_INTERIOR
     read: str = "cell"
     shell_capacity: int = 0
+    solid_depth: float = SOLID_DEPTH_CELLS
 
     def __post_init__(self) -> None:
         if self.read not in READS:
@@ -110,6 +144,8 @@ class RefinementPatch:
             raise ValueError(f"the patch is a box of at least 4 cells a side, not {self.cells}")
         if not self.spacing > 0.0:
             raise ValueError(f"the patch's fine cell is positive, not {self.spacing}")
+        if not self.solid_depth > 0.5 * band_named(self.band).width:
+            raise ValueError(f"the patch keeps its penalty past the band's inner edge, not {self.solid_depth} cells")
         band_named(self.band)
         interior_depth(self.interior)
 
@@ -248,7 +284,11 @@ def placed(patch: RefinementPatch, solids: Sequence[Any], origin: Array, dilatio
     if opened:
         fields = wall_fields(grid, cast(Any, opened), band_named(patch.band), interior_depth(patch.interior), dtype,
                              offset=lambda at: at + corner)
-        resistivity = fields.inverse_permeability
+        depth = patch.solid_depth * h
+        k = fields.inverse_permeability
+        phi = fields.signed_distance
+        resistivity = (jnp.where(phi[0] <= depth, k[0], 0.0), jnp.where(phi[1] <= depth, k[1], 0.0),
+                       jnp.where(phi[2] <= depth, k[2], 0.0))
     else:
         resistivity = grid.zeros(dtype)
     flat_k = jnp.concatenate([k.reshape(-1) for k in resistivity])
@@ -263,6 +303,19 @@ def placed(patch: RefinementPatch, solids: Sequence[Any], origin: Array, dilatio
                           jnp.asarray(components)[safe], jnp.where(used, flat_k[safe], 0.0),
                           jnp.sum(wanted.astype(jnp.int32)), points, quadrature, jnp.asarray(blob, dtype=dtype),
                           jnp.asarray(viscosity, dtype=dtype), jnp.asarray(shift, dtype=dtype))
+
+
+def planned_capacity(patch: RefinementPatch, solids: Sequence[Any], origins: Sequence[Array], dilation: int = 0,
+                     margin: float = PLAN_MARGIN) -> int:
+    """The own field's capacity a host plans at its build: the most faces that want it (``1/K > 0`` to the patch's
+    solid depth) over the corners ``origins`` it plans for, times ``margin``; a pose that needs more is flagged
+    (:func:`patch_flags`), never silently short."""
+    unplanned = RefinementPatch(patch.cells, patch.spacing, patch.band, patch.interior, patch.read, 0,
+                                patch.solid_depth)
+    points = jnp.zeros((1, 3))
+    most = max(int(placed(unplanned, solids, origin, jnp.asarray(dilation), points, 0.0, 1.0).shell_needed)
+               for origin in origins)
+    return max(1, min(unplanned.face_count(), int(math.ceil(margin * most))))
 
 
 # -- the own field ----------------------------------------------------------------------------------------------------
@@ -298,47 +351,164 @@ def brinkman_difference(big_r: Array) -> tuple[Array, Array]:
     return jnp.where(below, series_a, closed_a), jnp.where(below, series_b, closed_b)
 
 
+def _screening(shift: Array, viscosity: Array) -> Array:
+    positive = shift > 0.0
+    return jnp.where(positive, jnp.sqrt(jnp.where(positive, shift, 1.0) / viscosity), 0.0)
+
+
 def screening(placement: PatchPlacement) -> Array:
     """``alpha = sqrt(shift / mu)`` (1/m), zero in the steady limit (its derivative held finite there)."""
-    shift = placement.shift
-    positive = shift > 0.0
-    return jnp.where(positive, jnp.sqrt(jnp.where(positive, shift, 1.0) / placement.viscosity), 0.0)
+    return _screening(placement.shift, placement.viscosity)
+
+
+class _OwnPlace(NamedTuple):
+    """What the own response reads of a placement: the shell's points and components, the force points, the blob,
+    the viscosity and the shift."""
+
+    at: Array
+    components: Array
+    sources: Array
+    blob: Array
+    viscosity: Array
+    shift: Array
+
+
+def _own_place(placement: PatchPlacement) -> _OwnPlace:
+    at = placement.shell_points
+    return _OwnPlace(at, placement.shell_components, placement.points.astype(at.dtype), placement.blob.astype(at.dtype),
+                     placement.viscosity.astype(at.dtype), placement.shift.astype(at.dtype))
+
+
+def _chunked(place: _OwnPlace) -> tuple[Array, Array, int]:
+    """The shell's points and components in chunks of faces (padded with the first face), and the chunk count."""
+    at = place.at
+    count = at.shape[0]
+    size = max(1, min(count, CHUNK_BYTES // (max(1, place.sources.shape[0]) * 12 * at.dtype.itemsize)))
+    chunks = -(-count // size)
+    pad = chunks * size - count
+    held_at = jnp.concatenate([at, jnp.broadcast_to(at[:1], (pad, 3))]).reshape(chunks, size, 3)
+    held_c = jnp.concatenate([place.components, jnp.zeros(pad, jnp.int32)]).reshape(chunks, size)
+    return held_at, held_c, chunks
+
+
+def _kernel(place: _OwnPlace, x: Array) -> tuple[Array, Array, Array]:
+    """A chunk's kernel against every force point: ``r`` ``(size, n, 3)`` and the coefficients of ``F_c`` and of
+    ``r_c (r . F)``, ``(size, n)``: the regularised Stokeslet's and the Brinkman difference's together."""
+    dtype = x.dtype
+    tiny = jnp.finfo(dtype).tiny
+    eps2 = jnp.broadcast_to(place.blob, (place.sources.shape[0],))[None, :]
+    scale = 1.0 / (8.0 * math.pi * place.viscosity)
+    alpha = _screening(place.shift, place.viscosity)
+    r = x[:, None, :] - place.sources[None, :, :]
+    r2 = jnp.sum(r * r, axis=-1)
+    s = scale / (r2 + eps2) ** 1.5
+    part_a, part_b = brinkman_difference(alpha * jnp.sqrt(jnp.maximum(r2, tiny)))
+    return r, s * (r2 + 2.0 * eps2) + alpha * scale * part_a, s + alpha * scale * part_b / jnp.maximum(r2, tiny)
+
+
+def _own_values(place: _OwnPlace, forces: Array) -> Array:
+    """The own response computed: the kernel summed over the force points, chunk by chunk of faces. The chunk is
+    checkpointed, so that a derivative in the placement taken in reverse recomputes each chunk's kernel rather than
+    holding every face-point pair's."""
+    held_at, held_c, _ = _chunked(place)
+
+    @cast(Any, jax).checkpoint
+    def chunk(pair: tuple[Array, Array]) -> Array:
+        x, component = pair
+        r, diagonal, outer = _kernel(place, x)
+        r_c = jnp.take_along_axis(r, component[:, None, None], axis=2)[..., 0]
+        along = jnp.sum(r * forces[None, :, :], axis=-1)
+        return jnp.sum(diagonal * forces.T[component] + outer * r_c * along, axis=1)
+
+    return _lax.map(chunk, (held_at, held_c)).reshape(-1)[:place.at.shape[0]]
+
+
+def _own_transposed(place: _OwnPlace, cotangent: Array) -> Array:
+    """The own response's transpose, by hand: each chunk's kernel against the force points, weighted by the chunk's
+    cotangent and summed over its faces into the forces' cotangent ``(n, 3)``, carried from chunk to chunk (the
+    kernel is symmetric in its two components, so it is the same kernel)."""
+    held_at, held_c, chunks = _chunked(place)
+    count = place.at.shape[0]
+    held_t = jnp.concatenate([cotangent, jnp.zeros(chunks * held_at.shape[1] - count, cotangent.dtype)]
+                             ).reshape(chunks, -1)
+
+    def chunk(total: Array, triple: tuple[Array, Array, Array]) -> tuple[Array, None]:
+        x, component, weight = triple
+        r, diagonal, outer = _kernel(place, x)
+        r_c = jnp.take_along_axis(r, component[:, None, None], axis=2)[..., 0]
+        picked = (component[:, None] == jnp.arange(3)[None, :]).astype(x.dtype)
+        part = (diagonal * weight[:, None]).T @ picked + jnp.einsum("fp,fpj->pj", outer * r_c * weight[:, None], r)
+        return total + part, None
+
+    total, _ = _lax.scan(chunk, jnp.zeros(place.sources.shape, cotangent.dtype), (held_at, held_c, held_t))
+    return total
+
+
+def _own_linear(place: _OwnPlace, forces: Array) -> Array:
+    """The own response as a linear map of ``forces`` whose transpose is :func:`_own_transposed`: a linear solve whose
+    operator is the identity on ``(forces, values)`` pairs and whose solve is the response, so that JAX transposes it
+    by the hand-written transpose and never transposes the chunked map."""
+    # The pair's second part is the forces' too (an exact zero times one of them): a transposed solve's whole
+    # right-hand side is linear in what is transposed.
+    pair = (forces, jnp.zeros(place.at.shape[0], forces.dtype) + 0.0 * forces[0, 0])
+
+    def solve(_: Any, held: tuple[Array, Array]) -> tuple[Array, Array]:
+        return jnp.zeros_like(held[0]), _own_values(place, held[0])
+
+    def transpose_solve(_: Any, held: tuple[Array, Array]) -> tuple[Array, Array]:
+        return _own_transposed(place, held[1]), jnp.zeros_like(held[1])
+
+    def identity(held: tuple[Array, Array]) -> tuple[Array, Array]:
+        return held
+
+    return _lax.custom_linear_solve(identity, pair, solve, transpose_solve)[1]
+
+
+@cast(Any, jax).custom_jvp
+def _own(place: _OwnPlace, forces: Array) -> Array:
+    return _own_linear(place, forces)
+
+
+def _own_jvp(primals: tuple[_OwnPlace, Array], tangents: tuple[Any, Any]) -> tuple[Array, Array]:
+    """The forces' tangent through the linear map (so reverse mode takes the hand-written transpose); the placement's
+    by forward mode through the checkpointed map."""
+    place, forces = primals
+    d_place, d_forces = tangents
+    values = _own_linear(place, forces)
+    zero = cast(Any, jax).custom_derivatives.SymbolicZero
+    tangent = jnp.zeros_like(values) if isinstance(d_forces, zero) else _own_linear(place, d_forces)
+    moved = [k for k, t in enumerate(d_place)
+             if not isinstance(t, zero) and jnp.issubdtype(place[k].dtype, jnp.floating)]
+    if moved:
+        def of(*held: Array) -> Array:
+            parts = list(place)
+            for k, value in zip(moved, held, strict=True):
+                parts[k] = value
+            return _own_values(_OwnPlace(*parts), forces)
+
+        _, by_place = _jvp(of, tuple(place[k] for k in moved), tuple(d_place[k] for k in moved))
+        tangent = tangent + by_place
+    return values, tangent
+
+
+_own.defjvp(_own_jvp, symbolic_zeros=True)
 
 
 def own_response(placement: PatchPlacement, forces: Array) -> Array:
     """The current step's own field of ``forces`` ``(n, 3)`` at the shell's faces, each its component, ``(capacity,)``:
     MIME's regularised Stokeslet ``((r^2 + 2 eps^2) F + (r . F) r) / (8 pi mu (r^2 + eps^2)^(3/2))`` plus the Brinkman
     difference ``alpha [f_A F + f_B rhat (rhat . F)] / (8 pi mu)`` (:func:`brinkman_difference`), summed over the force
-    points in chunks of faces. Linear in ``forces``."""
-    at = placement.shell_points
-    count = at.shape[0]
-    sources = placement.points.astype(at.dtype)
-    forces = forces.astype(at.dtype)
-    size = max(1, min(count, CHUNK_BYTES // (max(1, sources.shape[0]) * 12 * at.dtype.itemsize)))
-    chunks = -(-count // size)
-    pad = chunks * size - count
-    held_at = jnp.concatenate([at, jnp.broadcast_to(at[:1], (pad, 3))]).reshape(chunks, size, 3)
-    held_c = jnp.concatenate([placement.shell_components, jnp.zeros(pad, jnp.int32)]).reshape(chunks, size)
-    eps2 = jnp.broadcast_to(placement.blob, (sources.shape[0],))[None, :]
-    scale = 1.0 / (8.0 * math.pi * placement.viscosity)
-    alpha = screening(placement)
+    points in chunks of faces. Linear in ``forces``, its transpose by hand (:func:`own_response_transpose`), which
+    reverse mode and :func:`patch_reflection_transpose` take: transposing the chunked map would hold every
+    face-point pair's kernel (83 GiB at 107^3 cells)."""
+    place = _own_place(placement)
+    return cast(Array, _own(place, forces.astype(place.at.dtype)))
 
-    def chunk(pair: tuple[Array, Array]) -> Array:
-        x, component = pair
-        r = x[:, None, :] - sources[None, :, :]
-        r2 = jnp.sum(r * r, axis=-1)
-        s = scale / (r2 + eps2) ** 1.5
-        along = jnp.sum(r * forces[None, :, :], axis=-1)
-        force_c = forces.T[component]
-        r_c = jnp.take_along_axis(r, component[:, None, None], axis=2)[..., 0]
-        steady = s * ((r2 + 2.0 * eps2) * force_c + r_c * along)
-        distance = jnp.sqrt(jnp.maximum(r2, jnp.finfo(at.dtype).tiny))
-        part_a, part_b = brinkman_difference(alpha * distance)
-        screened = alpha * scale * (part_a * force_c
-                                    + part_b * r_c * along / jnp.maximum(r2, jnp.finfo(at.dtype).tiny))
-        return jnp.sum(steady + screened, axis=1)
 
-    return _lax.map(chunk, (held_at, held_c)).reshape(-1)[:count]
+def own_response_transpose(placement: PatchPlacement, cotangent: Array) -> Array:
+    """:func:`own_response`'s transpose: a cotangent at the shell's faces ``(capacity,)`` to the forces' ``(n, 3)``."""
+    place = _own_place(placement)
+    return _own_transposed(place, cotangent.astype(place.at.dtype))
 
 
 def source(patch: RefinementPatch, placement: PatchPlacement, forces: Array, history: PatchHistory | None = None
@@ -421,14 +591,29 @@ def _read_transpose(patch: RefinementPatch, placement: PatchPlacement, cotangent
     return patch_read_transpose(grid, placement.origin, placement.points, cotangent)
 
 
+def _start(start: Velocity | None, history: PatchHistory | None) -> Velocity | None:
+    """The F5-patch interface's starts, held by the function: a column starts at zero; the base column at zero or from
+    its own history's field (the frozen step-start field, moved with the patch), passed as ``history.field``; any other
+    start, a product's solution among them, is refused."""
+    if start is None:
+        return None
+    if history is None:
+        raise ValueError("a column of the patch starts at zero: only the base column, with its history, takes a start")
+    if start is not history.field:
+        raise ValueError("the base column starts only from its history's own field (history.field, the frozen "
+                         "step-start field), never from another field such as a product's solution")
+    return history.field
+
+
 def patch_reflection(patch: RefinementPatch, placement: PatchPlacement, boundary: Given, forces: Array,
                      start: Velocity | None, stopping: Stopping, tap: Array, history: PatchHistory | None = None
                      ) -> PatchSolve:
     """One column's reflection at the read points: ``forces`` ``(n, 3)`` (N, at the placement's points), its given
-    values ``boundary`` (the coarse grid's reflection there, :func:`patch_boundary`), the CG started from ``start``
-    (the step's frozen field, or ``None``: zero) through the FVM's projected CG (``tap``: its report block's input).
-    A column (``history`` ``None``) is linear in ``(boundary, forces)`` to the CG's tolerance; the base column takes the
-    step's ``history``."""
+    values ``boundary`` (the coarse grid's reflection there, :func:`patch_boundary`), through the FVM's projected CG
+    (``tap``: its report block's input). A column (``history`` ``None``) starts at zero (``start`` ``None``; any other
+    is refused) and is linear in ``(boundary, forces)`` to the CG's tolerance. The base column takes the step's
+    ``history``, and starts at zero or from ``history.field`` (``start=history.field``; :func:`_start`)."""
+    start = _start(start, history)
     grid = patch.grid()
     lift, rhs = lifted_and_drive(patch, placement, boundary, forces, history)
     apply, magnitude, diagonal = operators(grid, placement)
@@ -443,12 +628,15 @@ def patch_reflection_transpose(patch: RefinementPatch, placement: PatchPlacement
                                start: Velocity | None, stopping: Stopping, tap: Array
                                ) -> tuple[Given, Array, Array]:
     """A column's :func:`patch_reflection` transposed: a cotangent ``(n, 3)`` at the read points to the given values'
-    and the forces' cotangents, and the transpose solve's report. One CG solve (the operator's own transpose)."""
+    and the forces' cotangents, and the transpose solve's report. One CG solve (the operator's own transpose), started
+    at zero as a column is (``start`` ``None``; any other is refused); the own response's transpose is the hand-written
+    one (:func:`own_response_transpose`)."""
+    _start(start, None)
     grid = patch.grid()
     dtype = cotangent.dtype
     back = _read_transpose(patch, placement, cotangent)
     apply, magnitude, diagonal = operators(grid, placement)
-    solved, report = projected_solve(grid, apply, diagonal, grid.interior_of(back), start, stopping, tap, Jacobi(),
+    solved, report = projected_solve(grid, apply, diagonal, grid.interior_of(back), None, stopping, tap, Jacobi(),
                                      magnitude)
     shapes = [jax.ShapeDtypeStruct((grid.given_count(c),), dtype) for c in range(3)]
     forces = jax.ShapeDtypeStruct(placement.points.shape, dtype)
@@ -466,22 +654,42 @@ def blended_reflection(patch: RefinementPatch, placements: tuple[PatchPlacement,
                        history: tuple[PatchHistory, PatchHistory] | None = None
                        ) -> tuple[Array, PatchSolve, PatchSolve]:
     """The two neighbouring whole-cell dilations' reflections blended by ``weight`` (the upper's, decided 4 (4)): the
-    second solve only where the weight is nonzero (a step's value, the same for every column)."""
+    second solve only where the weight is nonzero (a step's value, the same for every column); where it is skipped,
+    the upper hands back the lower's values, so the blend's derivative in the weight is zero there, not ``-R(l)``.
+    Starts as :func:`patch_reflection`'s: ``start`` ``None``, or the base column's ``history[0].field`` (each
+    dilation then starts from its own history's field)."""
     lower = patch_reflection(patch, placements[0], boundary, forces, start, stopping, tap,
                              None if history is None else history[0])
     dtype = lower.values.dtype
 
     def upper(_: Any) -> PatchSolve:
-        return patch_reflection(patch, placements[1], boundary, forces, start, stopping, tap,
-                                None if history is None else history[1])
+        held = None if history is None else history[1]
+        return patch_reflection(patch, placements[1], boundary, forces, None if start is None or held is None
+                                else held.field, stopping, tap, held)
 
     def skipped(_: Any) -> PatchSolve:
-        return PatchSolve(jnp.zeros_like(lower.values), lower.field, jnp.zeros(REPORT_SIZE, dtype=dtype),
-                          jnp.zeros((), dtype=dtype), jnp.zeros((), dtype=lower.outside.dtype))
+        return PatchSolve(lower.values, lower.field, jnp.zeros(REPORT_SIZE, dtype=dtype), jnp.zeros((), dtype=dtype),
+                          jnp.zeros((), dtype=lower.outside.dtype))
 
     higher = _lax.cond(weight > 0.0, upper, skipped, None)
     w = jnp.asarray(weight, dtype=dtype)
     return (1.0 - w) * lower.values + w * higher.values, lower, higher
+
+
+class PatchFlags(NamedTuple):
+    """What a step flags of a patch solve (never a refusal): the own field's faces past the capacity (dropped, the
+    reflection then wrong by up to tens of per cent), the given values' net flux over their absolute flux above
+    :data:`FLUX_SHARE_LINE`, and read points outside the box."""
+
+    overflow: Array
+    flux: Array
+    outside: Array
+
+
+def patch_flags(patch: RefinementPatch, placement: PatchPlacement, solve: PatchSolve) -> PatchFlags:
+    """The three flags of a solve at a placement."""
+    return PatchFlags(placement.shell_needed > patch.capacity(), jnp.abs(solve.flux_share) > FLUX_SHARE_LINE,
+                      solve.outside > 0)
 
 
 def moved(field: Velocity, by: Array, fill: Velocity) -> Velocity:
@@ -519,7 +727,8 @@ class PatchNumbers(NamedTuple):
     """The patch's numbers at a build (scope 7): its fine cell (m) and the coarse-to-fine ratio; how far its box reaches
     beyond the body, in coarse cells (the least over the axes); the near-contact window's numbers (the contact's local
     radius in fine cells, the hand-over gap in fine cells, in local radii and in force spacings); and whether each of the
-    window's lines holds (a flag, never a refusal: item 59's Q2)."""
+    window's lines holds (a flag, never a refusal: item 59's Q2), the read's among them: the point read needs a
+    hand-over gap of a force spacing or more (:data:`POINT_READ_SPACINGS`), the cell read holds to under half of one."""
 
     fine_cell: float
     ratio: float
@@ -530,6 +739,12 @@ class PatchNumbers(NamedTuple):
     handover_spacings: float
     radius_holds: bool
     handover_holds: bool
+    read_holds: bool
+
+
+#: The hand-over gap, in force spacings, below which the point read is flagged: at 0.4 spacings (0.1 radii at MIME's
+#: default spacing) it overshoots the normal entry by 47 %, at 0.6 by 7 %; the cell read, +2.25 % at 0.4.
+POINT_READ_SPACINGS = 1.0
 
 
 def rule_two_cell(local_radius: float) -> float:
@@ -549,12 +764,16 @@ def patch_numbers(patch: RefinementPatch, coarse_spacing: float, body_reach: flo
     low, high = WINDOW_HANDOVER_CELLS
     return PatchNumbers(h, coarse_spacing / h, beyond, radius_cells, handover_cells, handover / local_radius,
                         handover / force_spacing, radius_cells >= WINDOW_RADIUS_CELLS,
-                        low <= handover_cells <= high and handover <= WINDOW_HANDOVER_SHARE * local_radius * (1 + 1e-12))
+                        low <= handover_cells <= high
+                        and handover <= WINDOW_HANDOVER_SHARE * local_radius * (1 + 1e-12),
+                        patch.read != "point" or handover / force_spacing >= POINT_READ_SPACINGS)
 
 
-__all__ = ["CHUNK_BYTES", "COARSE_FLOOR_MEASURED", "FLUX_SHARE_LINE", "READS", "WINDOW_HANDOVER_CELLS",
-           "WINDOW_HANDOVER_SHARE", "WINDOW_RADIUS_CELLS", "PatchNumbers", "patch_numbers", "rule_two_cell", "SERIES_EDGE", "SERIES_TERMS", "STATE_FIELDS",
-           "PatchHistory", "PatchPlacement", "PatchSolve", "RefinementPatch", "blended_reflection",
-           "brinkman_difference", "lifted_and_drive", "moved", "operators", "own_response", "patch_reflection",
-           "patch_reflection_transpose", "patch_stopping", "placed", "screening", "snapped_origin", "source",
+__all__ = ["CHUNK_BYTES", "COARSE_FLOOR_MEASURED", "FLUX_SHARE_LINE", "PLAN_MARGIN", "POINT_READ_SPACINGS", "READS",
+           "SERIES_EDGE", "SERIES_TERMS", "SOLID_DEPTH_CELLS", "SOLID_DEPTH_MEASURED", "STATE_FIELDS",
+           "WINDOW_HANDOVER_CELLS", "WINDOW_HANDOVER_SHARE", "WINDOW_RADIUS_CELLS", "PatchFlags", "PatchHistory",
+           "PatchNumbers", "PatchPlacement", "PatchSolve", "RefinementPatch", "blended_reflection",
+           "brinkman_difference", "lifted_and_drive", "moved", "operators", "own_response", "own_response_transpose",
+           "patch_flags", "patch_numbers", "patch_reflection", "patch_reflection_transpose", "patch_stopping",
+           "placed", "planned_capacity", "rule_two_cell", "screening", "snapped_origin", "source",
            "whole_cell_dilations"]

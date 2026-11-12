@@ -19,6 +19,7 @@ import scipy.linalg as sla
 import scipy.sparse.linalg as spla
 
 from lubrication_cases import RADIUS, VISCOSITY, above_plane, drag_node
+from mime.nodes.flow.fvm import _patch
 from mime.nodes.flow.fvm._patch import RefinementPatch, patch_reflection, patch_stopping, placed, snapped_origin
 from mime.nodes.flow.fvm._patch_transfers import Quadrature
 from mime.nodes.flow.fvm._solve import REPORT_SIZE
@@ -29,8 +30,10 @@ PLANE = {"normal": np.array([0.0, 0.0, 1.0]), "offset": 0.0}
 #: The columns a case solves: translation along the wall's normal and along the wall, rotation about the wall's y.
 COLUMNS = ("Uz", "Ux", "Oy")
 #: The plants: the forces' own Stokeslets left out of the patch (its near-wall reflection then only what its faces
-#: carry), and the boundary values halved.
-PLANTS = ("no_source", "half_boundary")
+#: carry), the boundary values halved, and the patch's cell read and its transpose scaled by 5 % (consistently, so
+#: the transpose identity holds: the review's mutant).
+PLANTS = ("no_source", "half_boundary", "cell_scale")
+CELL_SCALE = 1.05
 
 
 def plant() -> str | None:
@@ -173,6 +176,8 @@ def patch_reader(case: Case) -> tuple[Callable[[np.ndarray], np.ndarray], dict[s
     patch, placement, centre, sphere = built_patch(case)
     grid = patch.grid()
     held = plant()
+    if held == "cell_scale":
+        _scale_cell_read()
     origin = np.asarray(placement.origin) * patch.spacing
     sources = sphere.force + centre
     given_points = [np.asarray(grid.given_points(c, jnp.float64)) + origin for c in range(3)]
@@ -202,6 +207,23 @@ def patch_reader(case: Case) -> tuple[Callable[[np.ndarray], np.ndarray], dict[s
         return np.asarray(out.values)
 
     return reflection, record
+
+
+def _scale_cell_read() -> None:
+    """The ``cell_scale`` plant, for this process: the patch's cell read and its transpose by :data:`CELL_SCALE`."""
+    read, back = _patch.cell_read, _patch.cell_read_transpose
+    if getattr(read, "planted", False):
+        return
+
+    def scaled_read(*args: Any) -> Any:
+        values, outside = read(*args)
+        return CELL_SCALE * values, outside
+
+    def scaled_back(*args: Any) -> Any:
+        return tuple(CELL_SCALE * part for part in back(*args))
+
+    scaled_read.planted = True  # type: ignore[attr-defined]
+    _patch.cell_read, _patch.cell_read_transpose = scaled_read, scaled_back
 
 
 def image_reader(case: Case, read: str) -> Callable[[np.ndarray], np.ndarray]:
