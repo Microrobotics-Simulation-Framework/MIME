@@ -24,10 +24,10 @@ judged; the three lenses are examples here.)
 **The controls:** ``CAMERA_PLANT=undistort-truncated`` stops the solve after one radial step and no tangential one;
 drawn lenses then miss by up to the square of their distortion. (As first written it truncated the radial solve alone,
 which the tangential steps then finished: caught 4 of 30, the four the clean arm also failed.)
-``CAMERA_PLANT=step-after-check`` takes one more step's value after the check: the third of the review's lenses
-fails in float32, every run (it is an example; with eight steps judged, the first two failed too, and float64's
-rounding does not reach the fold's band at them). The undistortion takes nine steps, judged after the last: judged
-after eight, a stress run's float64 lens (an example here) kept a ray 3.7 times this gate's line off."""
+``CAMERA_PLANT=step-after-check`` takes one more step's value after the check: the first of the review's lenses (an
+example here) fails in float32, every run (float64's rounding does not reach the fold's band at it). The undistortion's step count
+was raised to twelve after two float64 draws (examples here, ``SLOW``) kept a ray up to 3.7 times this gate's line off
+with the point judged after eight or nine: from the radial root a pixel near the fold took ten steps to converge."""
 
 from __future__ import annotations
 
@@ -177,8 +177,10 @@ def rays_against_oracle(lens: tuple[float, ...], focal: float) -> tuple[float, f
 REVIEWED = [((-0.3700219549351325, 0.0, 0.002954171859948173, 0.0, 0.0), 0.8),
             ((-0.3984375, -0.18532702511409785, 0.0, 0.002557456254940388, 0.0), 0.96484375),
             ((-0.375, 0.015625, 0.0029999999999999996, 0.0, 0.001953125), 0.8125)]
-#: A stress run's float64 draw (the fix round's CI, stress 19 of 20) with the point judged after eight steps.
-STRESSED = ((-0.34765625, -0.09375, 0.0008000246296658098, 0.0, 0.0), 0.875)
+#: Two float64 draws whose rays near the fold converged only after nine and after ten steps (the fix round's CI, stress
+#: 19 of 20, and its probe, seed 122).
+SLOW = [((-0.34765625, -0.09375, 0.0008000246296658098, 0.0, 0.0), 0.875),
+        ((-0.28697896535758216, -0.14833635426816824, 0.0004523831568567214, 0.0, 0.0), 0.8660469190672981)]
 
 
 @settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
@@ -186,7 +188,8 @@ STRESSED = ((-0.34765625, -0.09375, 0.0008000246296658098, 0.0, 0.0), 0.875)
 @example(lens=REVIEWED[0][0], field=REVIEWED[0][1])
 @example(lens=REVIEWED[1][0], field=REVIEWED[1][1])
 @example(lens=REVIEWED[2][0], field=REVIEWED[2][1])
-@example(lens=STRESSED[0], field=STRESSED[1])
+@example(lens=SLOW[0][0], field=SLOW[0][1])
+@example(lens=SLOW[1][0], field=SLOW[1][1])
 def test_each_ray_is_the_distortions_inverse(dtype, lens, field):
     worst, tolerance, flagged_well_conditioned, unflagged_unsolved = rays_against_oracle(lens, field * WIDTH)
     assert worst <= tolerance, f"{worst:.3g} rad against {tolerance:.3g}"

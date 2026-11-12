@@ -28,12 +28,13 @@ from mime.scene import CameraPrim
 #: Bracketed Newton steps of the undistortion's radial solve, their derivative held (a step leaving the bracket bisects
 #: it, so a hard lens converges at worst as bisection); the distortion's inverse gate measures what they reach.
 UNDISTORT_STEPS = 16
-#: Newton steps of the whole map after the radial solve, for the tangential terms (|p| about 1e-3), the point judged
-#: after the last: nine. Four left a pixel near the validity radius unconverged on about one drawn lens in eight (the
-#: gate's clean arm, 4 of 30); the first build took a ninth step's value after judging the eighth's point, which near
-#: the fold could move a ray a pixel unflagged; judged after eight, a drawn float64 lens kept a ray 3.7 times the gate's
-#: line off (a stress run), within it after nine.
-TANGENTIAL_STEPS = 9
+#: Newton steps of the whole map after the radial solve, for the tangential terms (|p| about 1e-3), then one more, and
+#: of the last two points the one with the smaller residual is kept and judged (a step near the fold, where the
+#: Jacobian is nearly singular, can leave the root by a pixel: the review's B3). Twelve: from the radial root a pixel
+#: near the fold can take ten steps to converge (the first overshoots, then the error falls about fourfold a step until
+#: the quadratic phase), and eight plus one left a float64 ray on 1 of 155 drawn lenses at 1.9 times the inverse gate's
+#: line (and one draw in each of the fix round's CI and probe); ten and more, 0 of 155, the worst at 0.018 of the line.
+TANGENTIAL_STEPS = 12
 
 lax: Any = jax.lax
 #: JAX's transforms, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
@@ -120,8 +121,9 @@ class BrownConrady:
         """The undistorted normalised point on the first monotone branch whose distortion is ``(xd, yd)``, and whether
         it was found there. The radius by a bracketed Newton solve of the radial map on ``[0, validity radius]``
         (a step leaving the bracket bisects it), ``steps`` (``UNDISTORT_STEPS``) of them, then ``TANGENTIAL_STEPS`` Newton steps of
-        the whole map for the tangential terms, all with their derivative held. ``found`` judges the point returned;
-        one more Newton step adds its derivative to it, the implicit function's, and not its value."""
+        the whole map for the tangential terms and one more, all with their derivative held, the last two points' nearer
+        (by residual) kept. ``found`` judges the point returned; one more Newton step adds its derivative to it, the
+        implicit function's, and not its value."""
         held = lax.stop_gradient(self)
         hx, hy = lax.stop_gradient(xd), lax.stop_gradient(yd)
         distorted = jnp.sqrt(hx * hx + hy * hy)
@@ -148,8 +150,15 @@ class BrownConrady:
         scale = jnp.where(distorted > 0.0, r / jnp.where(distorted > 0.0, distorted, 1.0), 1.0)
         x, y = lax.fori_loop(0, TANGENTIAL_STEPS, tangential_step, (hx * scale, hy * scale))
         x, y = lax.stop_gradient(x), lax.stop_gradient(y)
-        fx, fy = held.distort(x, y)
-        residual = jnp.sqrt((fx - hx) ** 2 + (fy - hy) ** 2)
+
+        def off(px: Any, py: Any) -> Any:
+            fx, fy = held.distort(px, py)
+            return jnp.sqrt((fx - hx) ** 2 + (fy - hy) ** 2)
+
+        nx, ny = held._newton(x, y, hx, hy)
+        before, after = off(x, y), off(nx, ny)
+        nearer = after < before
+        x, y, residual = jnp.where(nearer, nx, x), jnp.where(nearer, ny, y), jnp.where(nearer, after, before)
         eps = float(jnp.finfo(residual.dtype).eps)
         found = (residual <= 1024.0 * eps * (1.0 + distorted)) & (x * x + y * y < turn * turn)
         # A step taken after the check could move the point it judged: near the fold, where the Jacobian is nearly
