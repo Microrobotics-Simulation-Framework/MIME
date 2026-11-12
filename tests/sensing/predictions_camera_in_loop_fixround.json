@@ -85,5 +85,54 @@
     "prediction": "frame step, moving mount unchanged within noise of the earlier merged-head measurement (run 43169707692); the held step up by the comparison of 20 to 60 numbers and the cond's predicate, under 0.05 ms; a guess",
     "measured_at": "the merged head 910becb5f on the same runner type (run 43169707692); the runner's CPU model is not controlled"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-12",
+    "probe": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43283574940 (probe branch at 9ba5869, code 8cd1176d; deleted after download)",
+    "gate_cache_numbers": {
+      "planted_caught": "30/30",
+      "lower_bound_95": 0.905,
+      "clean_flagged": "0/30",
+      "every_run": true,
+      "status": "as predicted"
+    },
+    "gate_cache_served": {
+      "planted_caught": "30/30",
+      "lower_bound_95": 0.905,
+      "clean_flagged": "0/30",
+      "every_run": true,
+      "status": "as predicted (the review's cache-every-frame mutant, 0 of 8 against the six in_loop files, is caught by the new test on every run)"
+    },
+    "gate_fix_round_bits": {
+      "result": "all_equal against origin/release/v0.3.0 (fee7aa56): script_a_f64, script_a_f32, gantry_f64, ballistic_f64, ballistic_f32",
+      "one_ulp": "differs (ball.pose 1.4e-20, ball.twist 4.3e-19)",
+      "camera_frames": "a camera run from step 0 gives the same frames bit for bit as before the fix (a fixed mount, one and three sub-frames, a hidden ball with an absorbing tube, float32, compared locally before and after)",
+      "status": "as predicted"
+    },
+    "costs": {
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43283574940",
+      "rows_ms_per_step_held_frame_moving": {
+        "float32 320x240": [
+          0.139,
+          1.91,
+          5.68
+        ],
+        "float32 640x480": [
+          0.78,
+          9.11,
+          32.1
+        ],
+        "float64 320x240": [
+          0.224,
+          4.3,
+          16.1
+        ],
+        "float64 640x480": [
+          0.946,
+          16.2,
+          65.9
+        ]
+      },
+      "status": "MISSED for the held step at 640x480: 4.6 to 7.6 times the merged head's (0.17 / 0.124), predicted under 0.05 ms more. Not explained: a local A/B of the node before and after the change (one shared laptop, float32 640x480 held step, not a timing claim) gave 0.91 ms before and 0.93 and 1.21 ms after, so the Actions difference is read as the runner; not isolated. The 320x240 held cells agree within 6 %."
+    }
+  }
 }
