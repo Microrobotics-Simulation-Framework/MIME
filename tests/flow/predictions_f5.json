@@ -219,5 +219,32 @@
     },
     "if_wrong": "a continued run that differs would be state the flow does not carry (a field outside its state) or a chunk-dependent program; an override off the declared run past the line would be a leaf the point's assembly does not re-make (a held near-field constant made at the build's viscosity)",
     "cannot_discriminate_if": "the viscosity does not move the body (no drive), which the test asserts against (moved > 0)"
+  },
+  "gate_lagged_and_one_way": {
+    "written": "2026-11-12, by F5's fourth builder, before any of these tests ran",
+    "claim": "the declared schemes on the mrs rung: lagged (coupling='lagged') makes one Schwarz pass a step from the last step's tractions; its composed residual (the reflection of the step's change of tractions) is reported and booked in the law's books, every receiver's books close and the law's identity holds with it, and its position after three steps is near the exact one-pass run's; one way (one_way=True) leaves the flow as the flow without the body, delivers nothing (the law's row on the flow zero) and is never a gift",
+    "kind": "equality (the books, the one-way flow) and estimate (lagged against exact)",
+    "case": "tests/flow/test_schwarz_schemes.py (the driven sphere of tests/schwarz_experiments.py, metered, three steps; the lagged books in both dtypes, its control in float64)",
+    "prediction": {
+      "value": null,
+      "band": [
+        1e-05,
+        0.03
+      ],
+      "unit": "lagged: |position - one-pass position| / |one-pass displacement| after three steps; the books' identity and the one-way flow within the gate-5 lines (float64 1e-9, float32 1e-3) and 1e-8 relative",
+      "basis": "guess from the first step's smoke (probe/f5-cost, D/h 8): under IMEX each product's reflection is about two decades under the near field (GMRES gains two decades a product), so the gain is about 1e-2; the first step starts from zero tractions (an error of about the gain), later steps from the last step's (the gain times the change)",
+      "why": "here sqrt(nu dt) = 32 um against a 150 um sphere: the step operator screens the walls' reflection, so one pass from the last tractions is close; the one-way flow is the scheme's step with no body force, the same solves as the bodiless flow's"
+    },
+    "metric": "lagged: the position's miss on the scale of its displacement; the residual book's work against the identity's line",
+    "control": {
+      "plant": "hidden: the lagged run's residual book zeroed (MIME_PLANT_SCHWARZ=hidden), which breaks the law's identity by the residual's work; delivered: the one-way body's composition kept (MIME_PLANT_SCHWARZ=delivered), which moves the flow off the bodiless one",
+      "environment_variable": "MIME_PLANT_SCHWARZ: hidden, delivered",
+      "expected_rate": "every run",
+      "runs": 20,
+      "clean_expected": "0/20",
+      "resolution": "hidden: the residual's work is about the gain times the near field's dissipation, about 1e-2 of it, seven decades over float64's 1e-9 line (float32's 1e-3 line would not resolve it, so the control runs in float64); delivered: the body's force on the flow is the drag's whole size, many decades over 1e-8"
+    },
+    "if_wrong": "lagged off the exact run past 3e-2 would be a gain near one (the steady limit, or a body near the wall at a step that does not screen it), which the gain/(1-gain) line says diverges; a one-way flow off the bodiless one would be a force left in the grid",
+    "cannot_discriminate_if": "the body does not move (no drive) or the lagged residual is zero (no change of tractions between steps)"
   }
 }
