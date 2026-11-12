@@ -15,7 +15,10 @@ right-hand side from a zero start among them).
 **Restarts from the true residual.** The CG restarts from the true residual (``r`` set to it, ``z`` made from it, the
 direction ``z``: :func:`restarted`, through which its start is made too) where its recursive residual falls under the
 tolerance before the true one, and **where it would stop stagnated**: up to ``stall_restarts`` times
-(:data:`STALL_RESTARTS`) a stagnation restarts it, its window begun again, before one stops it, flagged. On stiff solves
+(:data:`STALL_RESTARTS`) a stagnation restarts it, its window begun again, before one stops it, flagged, **and only where
+another whole window fits before the cap**: a restart that could not be judged stagnated before the cap would only run
+on to it, flagged at the cap and not stagnated, so a stagnation with no such room stops there. (A window and its restarts
+that alone fit the cap are not enough: the plateau sets in after the start, and the stop needs every window after it.) On stiff solves
 in float32 the recurrence stalls far above the solve's rounding floor, and a restart at the stall breaks it
 (:data:`STALL_RESTART_MEASURED`); a restart every hundred iterations broke the small stalls too but crippled the large
 stiff solves it did not need to touch, and replacing the residual alone, the direction kept, was unreliable. A solve
@@ -262,6 +265,13 @@ def preconditioner_named(name: str) -> Preconditioner:
     return PRECONDITIONERS[name]
 
 
+def restart_fits(count: Array, stopping: Stopping) -> Array:
+    """Whether a stagnation found after ``count`` iterations may restart the CG: another whole window of checks fits
+    before the cap. Otherwise this stagnation is the last stop the solve can reach, and a restart would only carry it on
+    to the cap, flagged there and not stagnated."""
+    return count + stopping.window * stopping.check_every <= stopping.cap
+
+
 def guarded_cg(operator: Operator, b: Velocity, precondition: Operator, start: Velocity, stopping: Stopping,
                inner: Callable[[Velocity, Velocity], Array], magnitude: Operator | None = None
                ) -> tuple[Velocity, Array]:
@@ -339,7 +349,7 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
             before = jnp.minimum(best, recent[0])
             full = checks + 1 >= stopping.window
             stalled = (~converged) & at_check & full & (jnp.min(held) > stopping.stagnation * before)
-            retry = stalled & (left > 0)
+            retry = stalled & (left > 0) & restart_fits(count, stopping)
             stagnated = stalled & (~retry)
             restart = (recursive_small & (~converged)) | retry
             new_r, new_z, new_rz = restarted(true_r, precondition, inner)
