@@ -140,7 +140,55 @@
     "cases": "every released program and every merged program with no MRS body in a flowing medium, base (f3/one-elimination's head) against this head, one CPU, one thread (bit_compare.py)",
     "prediction": "every array np.array_equal: the shared GMRES traces as before unless an operator reports its own solves; the canonical order's ranks move no existing node; the defaults' plan context gains the exchange frames, which no existing default reads"
   },
-  "outcomes": null,
+  "outcomes": {
+    "written": "2026-11-12, after the gates probe (probe/f5-gates at 559e8e68, run 43146910170; the controls' rates by .github/probe/detection_rate.py, each a fresh process a seed, float64)",
+    "gate_1_free_box": {
+      "result": "the coupled body equals the uncoupled one under IMEX and in the steady limit on every clean run",
+      "control": "the free box omitted 30/30 (IMEX) and 30/30 (steady), clean 0/30 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_3_monolithic": {
+      "result": "the step's functions and the node's step equal the dense monolithic step on every clean run",
+      "control": "GMRES capped at one product 30/30; the composition dropped 30/30; clean 0/30 each",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_6_frozen": {
+      "result": "the step composed at the pose its columns were prepared at",
+      "control": "a position read from the live pose 30/30, clean 0/30",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_9_definiteness": {
+      "result": "the handed response definite, its margin reported",
+      "control": "a planted indefinite response stopped by name 30/30, clean 0/30",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_5_return_path_and_ledger": {
+      "result": "three node steps' field and kinetic energy equal the monolithic step's; the books close in both dtypes with the drag held in the flow's step",
+      "control": "the return path dropped 30/30, clean 0/30; a hand-over gift 5/5, clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "gate_11_early_first_step_derivative": {
+      "result": "Study.gradient's forward derivative through the first preparation matches the central difference on every clean run (locally 4.958871861e-4 against 4.958872065e-4, 4.1e-8)",
+      "control": "the first preparation held as the initial state's 5/5, clean 0/5",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "build_and_refusals": {
+      "result": "the cases arm: 32 passed in 19 min; the arm is red on its memory check only (one pytest process's peak 6.93 GiB against a 2.93 GiB bound from the estimate of one case: a calibration row, the process holding every case's compiled programs)",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "bits": {
+      "result": "every array equal for 92 programs (46 saved cases, float32 and float64) against f3/one-elimination at 3c55862b, one CPU, one thread: as predicted",
+      "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43146910170"
+    },
+    "seen_locally_before_probe_2": {
+      "gate_restart_and_fork": "the continued run's prediction (bit for bit) was wrong: at a split of 3 of 4 steps, float64, the last bits differ (at most 1.4e-16 of a field's scale): another compiled scan; the test's line is now the field's rounding (1e-12 float64, 1e-3 float32), set after this run. The override from the start and its refusal after the start passed locally.",
+      "gate_transpose_dot": "open float32: clean miss 1.55e-8, the plain transpose 1.55e-5, inside the predicted 1e-3 line, so float32's line was set to 1e-6 (the inner solves' tolerance) after the run; float64's plain transpose 1.55e-5 is caught at 1e-8. No NotImplementedError: the inner stop is formed inside each inner solve.",
+      "gate_3_open_vessel": "float64: the inflow's flux off its law by 4.1e-16, the composed residual 7.2e-9 (line 1e-7), not flagged",
+      "gate_lagged_and_one_way": "local, float64 and float32: the lagged books close with the residual booked, the hidden control breaks the identity, the lagged position is within 3e-2 of the exact run's displacement, the one-way flow is the bodiless flow to 1e-8 (numbers in the probe's cases arm)",
+      "gate_window_flag": "107 of 200 draws below the line (the prediction's 'about a fifth' was the resolution note, wrong: about half), each flagged, none above; the run test's far case read a flag no step raised as a key (result.flags lists raised flags only): fixed before the probe",
+      "probe_2": "probe/f5-gates2 at 842eeb0e (launched 2026-11-12): arms cases hidden delivered restart stale window cross plain plainf32 walk bits"
+    }
+  },
   "gate_5_return_path_and_ledger": {
     "claim": "the flow's stored field and its kinetic energy are the monolithic step's each step; the hand-over is workless (the drag's row on the body is the flow's exchange with its sign turned); the flow's row is the composed field's work at the force points; every receiver's books close each step; the law's sum (its two rows) is the near field's own dissipation less the free box's, judged by the flow, never a gift",
     "kind": "equality and acceptance",
