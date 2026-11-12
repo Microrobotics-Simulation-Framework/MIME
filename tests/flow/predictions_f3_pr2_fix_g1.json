@@ -1,0 +1,53 @@
+{
+  "written": "2026-11-12, committed before gate 1 ran on its final line on Actions: the flux's line taken from its plane's face lines after float64's open draws failed it on the laptop (seeds 1 and 3: 39 and 65 of the line on the flux alone)",
+  "phase": "F3 PR 2 (#270) fix round: gate 1 on its final line (B1, M1, M6)",
+  "labels": "made by the fix round's builder (Opus) from the derivation in tests/flow/elimination_cases.float_lines and local diagnostics on the laptop (listed under seen_before, so the gate-1 ratio bands are informed by them, not blind)",
+  "seen_before": [
+    "laptop, float32, the old elimination: seed 102 of the review's draw with the two small solves in float64 agreed with the monolithic step to 1.5e-6 (force) against 1.4e-3 with them in float32; the same step in float64 at the CG's float32 tolerance 1e-5: 1.5e-6",
+    "laptop, float32, equilibrated and refined, gate 1's new draw, seeds 0, 2, 8, 126 (periodic): the largest ratio to the derived line 0.064 (field), each body's vectors 0.009 to 0.041; before the refinement seeds 2 and 126 were at 41 and 35 on the couple and spin",
+    "laptop, float64, seed 0: clean 5e-4 of the line; cross 1.6e5, drop 9.4e8, twistsign 3.2e7, crossx0.98 3.2e3 times the line",
+    "laptop, the held pair after the fix: largest relative miss 4.2e-8 (float32) and 1.1e-16 (float64) over 40 open and 20 periodic draws; the old scatter 4.5e-2 and 1.9e-2",
+    "run 43172335100 (probe/f3-fix-runaway): gate 14's settled arm one pass, the rate load at most 6.1e-8 (float64) and 8.6e-5 (float32) of the drag's scale after step 100, the old flag raised at 152 and 146",
+    "the review's run 43165251892: the drag's paired work against its own dissipation near the open plane, before the fix: 1.3e-7 at 32 and 8 cells, 4.3e-5 at 4.8, 3.8e-3 at 3.2, 1.3e-2 at 1.6 (neutral); 3.7e-4 at 32 and 8 cells, 8.1e-4, 3.9e-2, 1.2e-1 (density 3)",
+    "laptop, float64, gate 1's open draws under the earlier flux line (the dual norm of the flux's row): seeds 1 and 3 at 38.6 and 64.9 of the line on the flux alone, every other block under 3e-3; with the flux's line from its plane's faces: seeds 1, 3, 5 at 3.1e-4 at most on the flux, 2.8e-3 on the field",
+    "laptop, float32, seeds 1, 3, 5, 10: clean at most 0.067 of the line; cross 224 to 1.7e4, drop 1.7e4 to 2.1e5, twistsign 2.9e4 to 7.3e4, crossx0.98 4.5 to 358 times the line",
+    "probe/f3-fix-gates (run 43177302208), the same gate 1 under the earlier flux line, seeds 5000-8029: its results are not this file's evidence"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-fix-g1), an arm each",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "gate 1: a periodic box of 8 cells (h 10 um) with two bodies anywhere two spheres can be (radii 0.8 to 1.5 cells, kernels 1 or 1.5 cells, densities 0.5 to 3), dt 0.05 to 1 h^2/nu, IMEX Euler, the CG at 1e-12 (float64) or 1e-5 (float32); or an open vessel 8 x 8 x 16 (nondimensional) with an inflow, a Windkessel and a body in its middle third. The held pair: that open grid, a point 0.8 to 4.8 cells from a plane (the first within 1.6), and a periodic 8^3 box. Gate 14: a 40 um body of 0.05 of water's density, the steady limit, dt 50 us, 1500 steps. The plane: the review's plane.py (a 40 um body on the open vessel's axis, metered, 50 steps of 0.2 ms, at 0, 1.5, 1.7, 1.8, 1.9 mm)",
+    "seeds_and_draws": "gate 1: seeds 5100-5129 (twistsign, and clean), 6100-6129 (cross, 5 clean), 7100-7129 (drop, 5 clean), 8100-8129 (crossx0.98, 5 clean), none seen before; the range: seeds 9100-9119 at 5 sizes (float32 1e-5 to 1e-1, float64 1e-9 to 1e-5)"
+  },
+  "gate_1_fresh_seeds": {
+    "claim": "the coupled step agrees with the monolithic step within its derived line at every fresh draw, each quantity on its own scale, in both dtypes",
+    "kind": "bounds",
+    "case": "tests/flow/test_one_elimination.py::test_the_coupled_step_is_the_monolithic_step_within_its_derived_line, 45 clean draws a dtype",
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "clean draws over the line of 45 a dtype (the largest ratio: float32 under 0.3, float64 under 0.01)",
+      "basis": "derived (float_lines) and measured-before (8 draws)",
+      "why": "the line bounds the step's error at first order from its solves' achieved residual and the small solves' componentwise rounding, which the refinement holds"
+    },
+    "metric": "each quantity's largest difference over its derived line",
+    "control": {
+      "plant": "twistsign (the review's mutant), cross, drop: each O(1) of the quantity or more; crossx0.98: 2 % of the cross terms",
+      "environment_variable": "MIME_PLANT_ELIMINATION",
+      "expected_rate": "30/30 for twistsign, cross and drop in both dtypes; crossx0.98 30/30 in float64 and 25 to 30 of 30 in float32",
+      "runs": 30,
+      "clean_expected": "0/45 a dtype",
+      "resolution": "the range arms: a cross-term scaling of 1 - s caught at every draw from s about 1e-3 in float32 and 1e-7 in float64 [guess]"
+    },
+    "if_wrong": "a clean draw over the line names a rounding the derivation misses: its row and stage are found by the residual's decomposition (as for seeds 2 and 126) before anything changes",
+    "cannot_discriminate_if": "a plant's ratio near one at clean ratios near one (none seen)"
+  },
+  "outcomes": null
+}

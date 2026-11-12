@@ -1,0 +1,57 @@
+{
+  "written": "2026-11-12, committed before the fix round's runaway series ran: each step's rate load, twist and readings of the review's three one-pass runaways, gate 14's settled arm to 1500 steps and two physical controls, to set the runaway flag's criterion (#270's review, M2 and M3)",
+  "phase": "F3 PR 2 (#270) fix round: the runaway flag",
+  "labels": "made by the fix round's builder (Opus) from the review's numbers (listed under seen_before) and the step's arithmetic; guesses say so",
+  "seen_before": [
+    "the review's run 43166582137 (float64, 5-step samples): light150_steady one pass non-finite after step 35 (3.42 m/s at 30), rate_feedback first at 25; light40_steady_near_wall one pass 0.023 m/s to step 50, then 0.0756 at 55 and 1e4 m/s at 95, ringing counted from 30; pair2.5_along_steady one pass 6.3 m/s, rate_feedback at 20; lagged bounded in all three",
+    "the review's run 43168486845 (float64): gate 14's settled arm one pass at 0.0626743 m/s from step 100 to 1500 with its rate load at 7e-16 to 4e-15 N and the ringing count up to 16; lagged at 1e-22 N",
+    "#270's probe 43133588177: gate 14's OWN_FIELD plant one pass reaches about -1e3 m/s by step 100 without the sign reversals"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, GitHub runner 4 vCPU (probe/f3-fix-runaway), an arm a case and dtype",
+    "matmul_precision": "not applicable (CPU)",
+    "sizes_and_parameters": "point_experiment: a 40 um sphere (150 um in light150) of 0.05 of water's density in the 1 mm periodic tube at D/h 16 driven at 1 m/s^2, the field's steady limit, dt 50 us; settled: offset 0.05 mm, 1500 steps; near_wall: offset 0.4 mm; pair: two 40 um bodies 2.5 radii apart along the axis; ownfield: gate 14's OWN_FIELD plant; neutral_imex: density 1, IMEX Euler, dt 0.2 ms; light_imex: density 0.05, IMEX Euler, dt 50 us; one pass unless the arm says lagged",
+    "seeds_and_draws": "deterministic, one run an arm, every step sampled"
+  },
+  "gate_runaway_series": {
+    "claim": "the rate load's size against the body's drag scale R0 (|V| + |u_d|) separates a runaway from a settled run: the settled arm's stays far below it in both dtypes, a runaway's passes it before the body's speed reaches ten times its settled value",
+    "kind": "estimates",
+    "case": "probe/series.py, an arm a case and dtype",
+    "prediction": {
+      "value": null,
+      "band": [
+        null,
+        null
+      ],
+      "unit": "[guess] settled one pass: the share under 1e-6 in float64 at every step after 100 and under 1e-2 in float32; light150, near_wall and pair one pass in both dtypes: the share passes 1 within 70 steps (near_wall latest, about step 55); ownfield: the share passes 1 within 60 steps with no sign reversal at most steps; neutral_imex and light_imex: the share under 1 at every step and the reversing-and-growing count never 3",
+      "basis": "guess",
+      "why": "a settled body's rate load is the reading's noise (the solve's tolerance over dt); a runaway's grows geometrically from it until it drives the body"
+    },
+    "metric": "per step: |rate_load| / (R0 (|V| + |u_d|)), the reversing-and-growing count, the body's speed",
+    "control": {
+      "plant": "the physical arms neutral_imex and light_imex (no runaway): a criterion must stay quiet there",
+      "environment_variable": "none",
+      "expected_rate": "n/a",
+      "runs": 12,
+      "clean_expected": "n/a",
+      "resolution": "one step"
+    },
+    "if_wrong": "a settled share near a runaway's at onset means the drag scale is not the drive to judge against: the criterion is then set on the body's energy against the work of its other loads",
+    "cannot_discriminate_if": "a runaway arm goes non-finite before it is sampled, or the settled arm runs away"
+  },
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43172335100",
+    "gate_runaway_series": {
+      "settled": "one pass, 1500 steps: the share at most 6.1e-8 (float64) and 8.6e-5 (float32) after step 100, inside the predicted bands; the old flag raised at step 152 and 146 (the review's M3 reproduced)",
+      "runaways": "light150 non-finite at 39 (float64) and 32 (float32), the old flag at 24 and 16; near_wall non-finite at 111 and 123, flag at 28; pair bounded at about 7 m/s, flag at 18 and 19; the share passed 1 from step 2 in every arm (wrong: predicted at the onset, near step 55 for near_wall: the startup's rate load is already above the drag's scale), so the share alone cannot tell; the ringing above a share of 1e-2 fired at the old flag's steps in every runaway",
+      "ownfield": "the monotone runaway: ringing at most 1, the share above 1 throughout; no reversal-based criterion names it (as the PR said); gate 14's slip catches its plant",
+      "physical arms": "neutral_imex and light_imex never ring (as predicted) but their rate load grows above the drag's scale at startup (step 4, share up to 2.4): growth without the reversal false-alarms there, so the criterion keeps the reversal and adds the share",
+      "verdict": "the criterion chosen: the rate load reversing and growing for 3 steps, each above 1e-2 of R0 (|V| + |u_d|), one pass only (RATE_SHARE)"
+    }
+  },
+  "committed_at": "ca35f12f on its probe branch, before the run (the predictions unchanged here; outcomes added after it)"
+}
