@@ -1,0 +1,25 @@
+{
+  "written": "2026-11-12, committed before round 5 ran (the commit that adds this file is the timestamp): gate 5's separating test as pinned, through pytest on a runner, its memory alone, and what each control does to it",
+  "phase": "W2a PR 1b-ii-a, round 5",
+  "labels": "the builder's, from the laptop's separating run and its diagnostic (predictions_w2a_1b2_gate5.json, _g5b.json)",
+  "seen_before": [
+    "the separating run and its diagnostic (laptop heavy slot): the lift's additivity 0.3121 and 0.3310 with the no-contact error added back; per-body lift 0.192 and 0.228; one at a time NaN at (0.05, 0.05) and 0.707 at (0.05, 0.045); subtraction NaN at both"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner, 4 vCPU, 16 GB (the probe workflow)",
+    "sizes_and_parameters": "as predictions_w2a_1b2_gate5.json: the floor body at a coarse spacing of 0.13 mm against the committed blob-0.1 references (five rows)",
+    "seeds_and_draws": "none: deterministic"
+  },
+  "gate_5_separating_as_pinned": {
+    "claim": "the separating test passes clean at its pins on a runner (the laptop's numbers reproduced to the pin's 0.02), and its peak alone in a fresh process is under the runner's 16 GB",
+    "kind": "acceptance (the pin reproduced; the miss itself is the stated result)",
+    "prediction": {"band": [0.2921, 0.3510], "unit": "additivity, each row within its pin +- 0.02", "basis": "measured-before", "why": "deterministic; a different CPU moves the last bits only"},
+    "memory": {"band": [1.0, 8.0], "unit": "GiB alone", "basis": "guess", "why": "two coarse builds of about 950 force points, stepped at five poses and the controls' moved walls"}
+  },
+  "gate_5_controls_as_pinned": {
+    "claim": "what each control does to the pinned test, one run each (deterministic: one run is every run); no control rate is claimed while the clean form misses its committed line",
+    "prediction": "one_at_a_time and subtraction fail it (unformable or indefinite at (0.05, 0.05)); per_body_lift passes it (0.19 and 0.23 under the pins: no control at this case)"
+  },
+  "outcomes": null
+}
