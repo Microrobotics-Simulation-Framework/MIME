@@ -10,7 +10,14 @@ lock's assets count as well as the folder's files**: an asset the experiment rea
 (a wall's table, a lab's record; ``FolderTerms.assets``) is never carried by a bundle, whatever its licence, so the
 NOTICE lists it under its own heading with its licence, verdict and where it is available from, its licence is among
 the licences named, and the availability statement says "from this bundle alone" only where the bundle needs none. An
-asset MIME's own data holds says what a reuser needs besides the bytes: that MIME, at the version that saved the folder.
+asset MIME's own data holds says what a reuser needs besides the bytes: that MIME, at the version that saved the folder
+(whether MIME's own data holds an asset is read from the MIME installed where the NOTICE is written: the lock does not
+record it, so one folder can read differently under another install; a pip line is given for a released version only).
+The meshes the stage draws (the lock's ``visuals`` manifests) count the same way, fetched by ``mime visuals fetch``; where
+every asset the bundle lacks is declared of role presentation and every file is carried, the statement says the results
+reproduce from the bundle alone as far as the records declare, and that showing the experiment needs the assets.
+An id no SPDX list the installed packaging holds names, and no licence the folder or its lock defines, is named with no
+link and as unknown, never given an invented SPDX page.
 
 **The card** is Markdown, offline (``mime card <folder>``): what the experiment is, what it bounds and estimates (no
 evidence record until a1), what ``mime verify <folder>`` would check (the card runs no check), its validity lines, its
@@ -30,6 +37,7 @@ says where credit lives where it does not; each third-party file's credit is und
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,10 +60,13 @@ from mime.terms import (
     SHARE_ALIKE,
     NO_ASSERTION,
     CustomLicence,
+    canonical,
     ids_of,
 )
 
 SPDX_PAGE = "https://spdx.org/licenses/{}.html"
+#: A released version's spelling (``0.3.0``): what ``pip install mime-engine==`` can name.
+_RELEASED = re.compile(r"\d+(\.\d+)*")
 
 _MIT = """Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -125,6 +136,9 @@ def _licence_link(identifier: str, custom: Mapping[str, CustomLicence]) -> str:
     if held is not None:
         return f"{identifier}: {held.title}, {held.url}; its redistribution, as declared: " \
                f"{held.redistribution.replace('_', ' ')}"
+    if identifier.startswith(CUSTOM_PREFIX) or canonical(identifier) != identifier:
+        return (f"{identifier}: no link: it is no id the SPDX list of the installed packaging holds, and neither the "
+                f"folder nor its lock defines it; its terms are unknown")
     return f"{identifier}: {SPDX_PAGE.format(identifier)}"
 
 
@@ -202,6 +216,15 @@ def _mime_needed(saved_by: str) -> str:
     return f"MIME {plain(saved_by)}, the version that saved the folder" if saved_by else "the MIME that saved the folder"
 
 
+def _install_line(saved_by: str) -> str:
+    """The pip line for a released version only: a development version is named, with no line that would not find it."""
+    return f" (`pip install mime-engine=={plain(saved_by)}`)" if _RELEASED.fullmatch(saved_by) else ""
+
+
+def _fetched_by(held: LockAsset) -> str:
+    return "mime visuals fetch <folder>" if held.visual else "mime assets fetch <folder>"
+
+
 def asset_lines(held: LockAsset, saved_by: str) -> list[str]:
     """One asset of the lock that no file of the folder stands for, as the NOTICE says it: its facts, indented, and
     where its bytes are available from; for one MIME's own data holds, the MIME a reuser needs."""
@@ -209,14 +232,14 @@ def asset_lines(held: LockAsset, saved_by: str) -> list[str]:
     whose = "MIME's own record" if held.mime_own else "an asset record the lock holds"
     lines = [plain(ref.name),
              f"  sha256 {ref.sha256}, {size_text(ref.size)}; {whose}; licence {plain(ref.licence)}",
-             f"  verdict: {held.verdict.words()}, by {held.verdict.by}; not carried in a bundle: the lock names it, and "
-             f"`mime assets fetch <folder>` fetches it",
+             f"  verdict: {held.verdict.words()}, by {held.verdict.by}; not carried in a bundle: the lock names it"
+             + (" among the meshes the stage draws" if held.visual else "") + f", and `{_fetched_by(held)}` fetches it",
              f"  role: {_asset_role(held)}", f"  available from: {_asset_origin(held)}"]
     if ref.credit:
         lines.append(f"  credit: {plain(ref.credit)}")
     if held.mime_own:
-        install = f" (`pip install mime-engine=={plain(saved_by)}`)" if saved_by else ""
-        lines.append(f"  needs: {_mime_needed(saved_by)}{install}, besides the bytes: MIME's own data holds this record")
+        lines.append(f"  needs: {_mime_needed(saved_by)}{_install_line(saved_by)}, besides the bytes: MIME's own data holds "
+                     f"this record")
     if ref.notice:
         lines.append(f"  notice: {plain(ref.notice)}")
     return lines
@@ -241,15 +264,24 @@ def availability(judged: FolderTerms) -> str:
                  for file in held]
         clauses.append(f"{len(held)} file{'s' if len(held) != 1 else ''} the bundle does not carry, which `mime "
                        f"assets fetch <folder>` fetches and places: " + "; ".join(parts))
-    if judged.assets:
+    for visual in (False, True):
+        group = [each for each in judged.assets if each.visual == visual]
+        if not group:
+            continue
         parts = [f"{plain(each.ref.name)} (not carried in a bundle; licence {plain(each.ref.licence)}; "
                  f"{_asset_role(each)}; available from {_asset_origin(each)}"
                  + (f"; MIME's own record, which needs {_mime_needed(judged.saved_by)}" if each.mime_own else "") + ")"
-                 for each in judged.assets]
-        clauses.append(f"{len(judged.assets)} asset{'s' if len(judged.assets) != 1 else ''} the lock names that the "
-                       f"bundle does not carry, which `mime assets fetch <folder>` fetches: " + "; ".join(parts))
-    return ("Reproducible exactly, given " + "; and ".join(clauses)
-            + ". Not checked since the folder was saved: the availability check comes later.")
+                 for each in group]
+        what = "the stage draws (named in the lock's visuals)" if visual else "the lock names"
+        clauses.append(f"{len(group)} asset{'s' if len(group) != 1 else ''} {what} that the bundle does not carry, "
+                       f"which `{_fetched_by(group[0])}` fetches" + (" and bakes" if visual else "") + ": "
+                       + "; ".join(parts))
+    closing = ". Not checked since the folder was saved: the availability check comes later."
+    if not held and all(each.ref.role == "presentation" for each in judged.assets):
+        return ("Reproducible exactly from this bundle alone as far as the results go: what the bundle does not carry "
+                "is declared of the display only (role presentation: no result depends on it), and showing the "
+                "experiment needs " + "; and ".join(clauses) + closing)
+    return "Reproducible exactly, given " + "; and ".join(clauses) + closing
 
 
 def _licences_named(judged: FolderTerms) -> list[str]:

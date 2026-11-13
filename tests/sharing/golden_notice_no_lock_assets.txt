@@ -36,7 +36,7 @@ None declared.
 Licences
 --------
 CC-BY-4.0: https://spdx.org/licenses/CC-BY-4.0.html
-LicenseRef-x: https://spdx.org/licenses/LicenseRef-x.html
+LicenseRef-x: A maker licence, https://example.org/maker-licence; its redistribution, as declared: not permitted
 MIT: https://spdx.org/licenses/MIT.html
 
 MIT, as its text asks, for scene/layers/arm.usda:

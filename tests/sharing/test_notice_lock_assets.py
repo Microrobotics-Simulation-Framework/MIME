@@ -110,8 +110,7 @@ def mime_own_record(folder: Path) -> None:
     text = notice(folder)
     version = saved_by(folder)
     assert "MIME's own record; licence CC0-1.0" in text
-    assert f"needs: MIME {version}, the version that saved the folder (`pip install mime-engine=={version}`), " \
-           f"besides the bytes" in text
+    assert f"needs: MIME {version}, the version that saved the folder" in text and "besides the bytes" in text
     assert f"MIME's own record, which needs MIME {version}, the version that saved the folder" in text
 
 
@@ -141,16 +140,13 @@ def test_a_lab_assets_bundle_says_so_in_its_own_notice_and_carries_none_of_its_b
     assert not any(member.endswith(LAB.name) for member in names), "no bytes travel that did not before"
 
 
-def test_the_card_names_a_lab_assets_licence_with_its_conditions_and_link(plain: Path, tmp_path: Path):
-    from mime.saved import _card
-
-    folder = with_lock_asset(plain, tmp_path / "held", CONDITIONAL)
-    judged, document, lock = _card.judged_folder(folder)
-    assert [held.ref.name for held in judged.assets] == ["lab_scan"]
-    row = _card._asset_row(judged.assets[0])
-    assert row == "| `lab_scan` | an asset the lock names | CC-BY-NC-4.0 | permitted, **non-commercial** | referenced | the lab |"
-    assert availability(judged).startswith("Reproducible exactly, given 1 asset the lock names")
-    assert document["experiment"] == "plain" and lock["assets"] == [CONDITIONAL.to_record()]
+def test_the_card_names_a_conditional_assets_licence_flag_row_and_availability(plain: Path, tmp_path: Path):
+    text = card_text(with_lock_asset(plain, tmp_path / "held", CONDITIONAL))
+    assert "| `lab_scan` | an asset the lock names | CC-BY-NC-4.0 | permitted, **non-commercial** | referenced | the lab |" \
+        in text
+    assert "**Non-commercial terms** hold for the asset `lab_scan`." in text
+    assert "- **Licences of its files and assets:** CC-BY-4.0, CC-BY-NC-4.0" in text
+    assert HERE not in text.split("## Availability")[1].split("## How to reproduce")[0]
 
 
 def test_an_asset_a_referenced_file_stands_for_is_the_files_and_not_counted_twice():
@@ -162,7 +158,90 @@ def test_an_asset_a_referenced_file_stands_for_is_the_files_and_not_counted_twic
     assert [held.ref.name for held in found] == [CONDITIONAL.name]
 
 
+# --- the stage's meshes (the lock's visuals), the links, the install ----------------------------------------------------
+
+ANNIN = CustomLicence("LicenseRef-Annin-nc", "A maker's non-commercial licence", "https://example.org/maker-licence",
+                      "not_permitted")
+MESH = AssetRef("ar4_visual.usda", "ef" * 32, 6000, ANNIN.id, ("https://example.org/ar4/ar4_visual.usda",),
+                credit="the maker", role="presentation", kind="authored", licences=(ANNIN,))
+
+
+def with_visuals(plain: Path, target: Path, *refs: AssetRef) -> Path:
+    """A copy of the folder whose lock holds a manifest of the stage's meshes (``SavedRecord.lock``'s ``visuals``)."""
+    shutil.copytree(plain, target)
+    lock = json.loads((target / LOCK_FILE).read_text(encoding="utf-8"))
+    lock["visuals"] = {"arm": {"format": "mime.asset_manifest/1", "name": "arm", "title": "the arm's meshes",
+                               "credit": "the maker", "notice": "", "archives": [],
+                               "assets": [each.to_record() for each in refs],
+                               "files": {each.name: {"asset": each.name} for each in refs}}}
+    (target / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return target
+
+
+def visual_mesh(folder: Path) -> None:
+    text = notice(folder)
+    assert "Assets the lock names" in text, "the NOTICE has no heading for the stage's meshes"
+    block = text.split("Assets the lock names\n---------------------\n")[1].split("\n\nPermissions")[0]
+    assert f"\n{MESH.name}\n  sha256 {MESH.sha256}," in block and f"licence {ANNIN.id}" in block
+    assert "verdict: not permitted, referenced, by its licence; not carried in a bundle: the lock names it among " \
+           "the meshes the stage draws, and `mime visuals fetch <folder>` fetches it" in block
+    assert "role: presentation (results do not depend on it)" in block
+    assert f"available from: {MESH.locations[0]}" in block
+    named = licences_section(text)
+    assert f"{ANNIN.id}: {ANNIN.title}, {ANNIN.url}; its redistribution, as declared: not permitted" in named
+    said = text.split("Availability\n------------\n")[1]
+    assert said.startswith("Reproducible exactly from this bundle alone as far as the results go: "), said
+    assert "role presentation: no result depends on it" in said and "showing the experiment needs 1 asset the stage " \
+        "draws (named in the lock's visuals) that the bundle does not carry, which `mime visuals fetch <folder>` " \
+        "fetches and bakes: ar4_visual.usda (" in said
+    assert f"licence {ANNIN.id}; presentation (results do not depend on it); available from {MESH.locations[0]}" in said
+
+
+def test_a_mesh_the_stage_draws_is_named_with_its_licence_and_the_results_claim_is_exactly_what_holds(plain: Path,
+                                                                                                    tmp_path: Path):
+    visual_mesh(with_visuals(plain, tmp_path / "held", MESH))
+
+
+def test_a_visuals_mesh_of_role_results_makes_the_statement_the_full_given_form(plain: Path, tmp_path: Path):
+    """Only a declared presentation asset earns "as far as the results go": one a result may depend on is a need."""
+    ref = AssetRef("needed.usda", "12" * 32, 600, ANNIN.id, ("https://example.org/needed.usda",), role="results",
+                   licences=(ANNIN,))
+    said = notice(with_visuals(plain, tmp_path / "held", ref)).split("Availability\n------------\n")[1]
+    assert said.startswith("Reproducible exactly, given 1 asset the stage draws (named in the lock's visuals)"), said
+    assert "as far as the results go" not in said
+
+
+def test_control_the_visuals_scenario_fails_under_the_planted_defect(plain: Path, tmp_path: Path):
+    folder = with_visuals(plain, tmp_path / "held", MESH)
+    with lock_assets_left_out(), pytest.raises(AssertionError):
+        visual_mesh(folder)
+
+
+def test_an_id_nothing_defines_is_named_with_no_invented_link(plain: Path, tmp_path: Path):
+    stray = AssetRef("stray", "34" * 32, 90, "LicenseRef-zzz", ("https://example.org/stray",), role="results")
+    text = notice(with_lock_asset(plain, tmp_path / "held", stray))
+    named = licences_section(text)
+    assert "spdx.org/licenses/LicenseRef-zzz" not in text
+    assert "LicenseRef-zzz: no link: it is no id the SPDX list of the installed packaging holds, and neither the " \
+           "folder nor its lock defines it; its terms are unknown" in named
+    assert "CC-BY-4.0: https://spdx.org/licenses/CC-BY-4.0.html" in named, "a listed id keeps its SPDX page"
+
+
+@pytest.mark.parametrize("saved_by, line", [("0.3.0", True), ("0.3.0.dev1", False), ("1.0.0rc1", False)])
+def test_a_pip_line_is_given_for_a_released_version_only(plain: Path, tmp_path: Path, saved_by: str, line: bool):
+    folder = with_lock_asset(plain, tmp_path / "held", TUBE)
+    lock = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
+    lock["environment"]["mime"] = saved_by
+    (folder / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    text = notice(folder)
+    assert f"needs: MIME {saved_by}, the version that saved the folder" in text
+    assert (f"`pip install mime-engine=={saved_by}`" in text) is line
+
+
 # --- what is held unchanged ----------------------------------------------------------------------------------------
+
+
+MAKER = CustomLicence("LicenseRef-x", "A maker licence", "https://example.org/maker-licence", "not_permitted")
 
 
 def hand_built() -> tuple[FolderTerms, ExperimentDocument, Lock]:
@@ -175,7 +254,7 @@ def hand_built() -> tuple[FolderTerms, ExperimentDocument, Lock]:
              FileTerms("scene/layers/big.usda", "ef" * 32, 3_000_000, "third party", "LicenseRef-x",
                        Verdict("unknown", "referenced", (), "its licence"), "A maker", "presentation",
                        ("https://example.org/big.usda",), (), "big.usda"))
-    return (FolderTerms(files, "CC-BY-4.0", {}, (), 4), cast(ExperimentDocument, {"experiment": "golden"}),
+    return (FolderTerms(files, "CC-BY-4.0", {MAKER.id: MAKER}, (), 4), cast(ExperimentDocument, {"experiment": "golden"}),
             cast(Lock, {"environment": {"mime": "0.3.0"}}))
 
 

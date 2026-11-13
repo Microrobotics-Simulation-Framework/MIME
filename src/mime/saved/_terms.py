@@ -487,12 +487,17 @@ def sha256_and_size(path: Path) -> tuple[str, int]:
 class LockAsset:
     """An asset the lock names that the folder holds no file of: one the experiment's entries read (a wall's table, a
     lab's record), whose bytes a bundle never carries, whatever its tier (a bundle carries this record, and
-    ``mime assets fetch <folder>`` fetches the bytes). Its ``verdict`` is what every exit judges the record by
-    (``mime.assets.record_terms``); ``mime_own`` says MIME's own data holds the record."""
+    ``mime assets fetch <folder>`` fetches the bytes; a mesh the stage draws is named in the lock's ``visuals``
+    manifests instead, ``visual``, and ``mime visuals fetch <folder>`` fetches it). Its ``verdict`` is what every exit
+    judges the record by (``mime.assets.record_terms``). ``mime_own`` says MIME's own data holds the record: the lock
+    does not record that, so it is read where the NOTICE or the card is written, from the MIME installed then (one
+    folder can therefore read differently under another install; the lock's own record, its licence, locations and
+    role, never does)."""
 
     ref: AssetRef
     verdict: Verdict
     mime_own: bool
+    visual: bool = False
 
 
 @dataclass(frozen=True)
@@ -554,20 +559,25 @@ def lock_records(lock: Lock | Mapping[str, object]) -> list[AssetRef]:
 
 
 def _lock_assets(lock: Lock, derived: Mapping[str, Verdict]) -> tuple[LockAsset, ...]:
-    """The lock's ``assets`` that no file of the folder stands for, each once by its bytes, in the lock's order."""
+    """The lock's ``assets`` that no file of the folder stands for, then the assets of its ``visuals`` manifests (the
+    meshes the stage draws), each once by its bytes, in the lock's order."""
     from mime.assets._adapters import MIME_SOURCE
     from mime.assets._sources import shared
 
     covered = set(lock.get("referenced_files", {}).values())
     own = {each.ref.sha256 for sourced in shared().records.values() for each in sourced if each.source == MIME_SOURCE}
     found: dict[str, LockAsset] = {}
-    for record in lock.get("assets", []):
+    manifests = cast(Mapping[str, Mapping[str, object]], lock.get("visuals", {})).values()
+    listed = [(record, False) for record in lock.get("assets", [])]
+    listed += [(record, True) for manifest in manifests for record in cast(list[object], manifest.get("assets", []))]
+    for record, visual in listed:
         try:
             ref = AssetRef.from_record(cast(Mapping[str, object], record))
         except Exception:  # noqa: BLE001 - a malformed record is the load's to refuse, with its reason
             continue
         if ref.name not in covered:
-            found.setdefault(ref.sha256, LockAsset(ref, derived.get(ref.sha256, ref.verdict), ref.sha256 in own))
+            found.setdefault(ref.sha256, LockAsset(ref, derived.get(ref.sha256, ref.verdict), ref.sha256 in own,
+                                                   visual))
     return tuple(found.values())
 
 

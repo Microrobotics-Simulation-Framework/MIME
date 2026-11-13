@@ -216,7 +216,7 @@ well:** an asset the experiment reads that no file of the folder stands for (a w
 carried by a bundle, whatever its licence, so it has its own heading in the NOTICE (sha256, size, licence, verdict,
 role, where it is available from), its licence is among the licences named, the card lists it in its table, and the
 availability statement says what it needs; for an asset MIME's own data holds, that includes MIME at the version that
-saved the folder. `mime card <folder>`
+saved the folder. The meshes the stage draws (the lock's `visuals`) count the same way; a presentation-only need is said as such. `mime card <folder>`
 (`mime.saved.card_text`) writes the card, as `mime push` writes a record's description, naming the record the lock's
 `publication` names (its version, its DOI, how to pull and cite it) and, above it, the experiment it was based on
 (`Based on <name> (<its DOI, or its input hash>)`), a line push's description leaves out until push states that relation

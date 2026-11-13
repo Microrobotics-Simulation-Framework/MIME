@@ -1262,8 +1262,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   licence among the licences (a lab's own licence with its link, a conditional one with its conditions), and the
   availability statement says "from this bundle alone" only where the bundle needs no file or asset more. The card's
   table lists each asset. A folder whose lock names no such asset has the NOTICE and card it had, byte for byte; no bytes
-  travel that did not before, and nothing in a saved form changes. A licence id the installed packaging does not list on
-  an asset is read as unknown, as before, and is not refused here.
+  travel that did not before, and nothing in a saved form changes. The meshes the stage draws (the lock's `visuals`
+  manifests) count the same way, fetched by `mime visuals fetch`; where every file is carried and every asset the bundle
+  lacks is declared of role presentation, the statement says the results reproduce from the bundle alone as far as the
+  records declare, and that showing the experiment needs those assets. An id nothing defines (no SPDX id the installed
+  packaging lists, no licence the folder or its lock declares) is named with no link and as unknown, where it was given an
+  invented `spdx.org` page; a pip line is given for a released MIME version only. Whether MIME's own data holds an asset is
+  read from the installed MIME where the NOTICE is written (the lock does not record it). A licence id the installed
+  packaging does not list on an asset is read as unknown, as before, and is not refused here.
 
 - **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
   projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse

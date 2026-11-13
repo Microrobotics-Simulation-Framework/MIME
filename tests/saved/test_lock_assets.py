@@ -72,7 +72,7 @@ def test_the_tube_experiments_bundle_says_what_a_reuser_needs_of_mimes_own_table
     assert held == notice(saved)
     version = lock_of(saved)["environment"]["mime"]  # type: ignore[index]
     assert "unit_tube_R0.997\n  sha256 " + TABLE.sha256 in held and "MIME's own record; licence CC0-1.0" in held
-    assert f"needs: MIME {version}, the version that saved the folder (`pip install mime-engine=={version}`)" in held
+    assert f"needs: MIME {version}, the version that saved the folder" in held
     assert "Licences\n--------\nCC0-1.0: https://spdx.org/licenses/CC0-1.0.html\n" in held
     assert "None named." not in held and "from this bundle alone" not in held
     assert f"given 1 asset the lock names that the bundle does not carry, which `mime assets fetch <folder>` fetches: " \
