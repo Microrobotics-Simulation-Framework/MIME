@@ -52,5 +52,12 @@
     "_how": "no program changes: test infrastructure, and one function of src/mime/docs/_switches.py that traces for the scan only",
     "prediction": "the node walk, the scan and every step trace are untouched outside the scan's own traces; a one-line check: git diff --stat shows no file under src/mime other than docs/_switches.py"
   },
-  "outcomes": null
+  "outcomes": {
+    "_note": "written after the probes; the predictions above are unchanged. Probe runs 43324893132 (round 1: the caches emptied before every step), 43329825714 (round 2), 43332671265 and 43335602100 (rounds 3 and 4: shard 16 repeated, with the build timed and the clearing switched off in two arms), all on probe/scan-fixture-order, which is deleted.",
+    "gate_1_order": "base: the scan's control failed, the harness control passed in the same process (it found the scan already built); head: both passed. NOT as predicted in one respect: the round-1 arms passed at the base too, because the suite's marked-first order put the scan's marked control ahead of tests/scene/test_tube_tree.py; the arms of round 2 switch that order off (-p no:mime-fixture-first), which is the order a steal produces, and reproduce it. Run 43329825714.",
+    "gate_2_pin_test": "20/20 caught with MIME_PLANT_STALE_FRAMES, 0/20 flagged clean (95 % lower bound 0.861), run 43329825714; the test is deterministic",
+    "gate_3_builds": "traced_steps built per job, base to head: shard 21 3 to 1, shard 25 4 to 1 (3 scans to 1), shard 16 1 to 1 (the race did not fire in any of its 5 base arms, so shard 16 does not discriminate); runs 43324893132 and 43329825714",
+    "gate_4_control_time": "NOT as predicted (band 60 to 120 s): the control took 26 to 56 s at the head in shard 16 and 13 to 23 s at the base, where it found the scan built by the memory-heavy test before it; in the failing pushes it paid the scan because a thief ran it first. Runs 43332671265 and 43335602100.",
+    "unpredicted": "the first test to pay the build, test_every_guard_the_scan_lists_is_reached_false_and_every_nonzero_norm_away_from_zero in shard 16, took 418 to 700 s at the head against 265 to 404 s at the base, on the same CPU model; the arms with the cache clearing switched off took as long (526 and 700 s), so it is not the clearing; make_jaxpr itself took 40 to 54 s at the base and 45 to 90 s at the head. The cause was not isolated (a hypothesis, not tested: the test is memory_heavy and takes the cross-worker lock, and which worker takes it first is a race); the shard's wall time did not get worse (698 to 1133 s base, 621 to 1097 s head)."
+  }
 }
