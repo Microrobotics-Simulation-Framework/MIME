@@ -41,5 +41,9 @@
   "if_wrong": "a pass on da8d1679 would mean the chunk boundaries carried the cache's tangent from a start where it was made, which the continued start rules out",
   "cannot_discriminate_if": "the run started at step 0 (measured: the old code is right there)"
  },
- "outcomes": null
+ "outcomes": {
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43336983029",
+  "gate_chunked_derivative": "as predicted: the chunked arm passed in both dtypes on every runner run of the control's clean arm (10/10, the test against the head, OLD_CODE_K=chunked); da8d1679's code failed it 10/10 (95 % lower bound 0.74). Discriminating range (a dropped share of the structure's derivative): 8.3e-4 in float64, 2.9e-3 in float32, the continued arm's.",
+  "memory": "both arms finished, then failed the workflow's memory check: an UNDERESTIMATE of the probe's own (the estimate line named the 640x480 forward step of the camera, while the arms' largest processes were the 160x120 forward derivatives over 12 steps): 2.27 GiB against a bound of 2.03 (raw 0.81, uncalibrated factor 2.5) for detect-old-chunked, 2.09 against 2.06 for range-chunked; the rows are in each arm's mem_check.json. The results are unaffected (the scripts ran to their end on the runner)."
+ }
 }

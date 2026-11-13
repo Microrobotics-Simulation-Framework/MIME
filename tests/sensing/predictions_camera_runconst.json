@@ -97,5 +97,123 @@
   "prediction": "the held step at head within 0.8 to 1.25 of the pre-e2e81c32 commit (45e77ad9) at 320x240 and 640x480 in both dtypes, and 0.08 to 0.35 of da8d1679's (R1: the carried cache made it 3 to 13 times dearer); the frame step within 0.8 to 1.25 of da8d1679's; a first frame from the initial state at head costs a frame step, at da8d1679 a frame step and one static render; one static render where a chunk's numbers differ: 20 to 60 ms at 320x240 and 80 to 250 ms at 640x480 (R1's uncached tube, 36 ms and 130 to 200 ms, a guess at the band); a chunk at the held numbers pays no render",
   "measured_at": "R1 at 320x240 and 640x480 on mixed runner CPUs; #266's interleaved probe; the gate sizes are the same sizes (no law fitted)"
  },
- "outcomes": null
+ "outcomes": {
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43331659720",
+  "design_change_after_the_predictions": "the predictions assumed the structure chosen once a chunk (held_or_made in run_constants); measured locally before the probe, that cond copied the 27 MB structure about three times a chunk (12 to 17 ms a chunk at 640x480 float64), so the head chooses per frame step (the frame rendered in each branch) and the run-constant is the leaf itself carrying the make's derivative. The probe measured that head (0c6f7c52's code, 66c05fb2).",
+  "gate_1_continued_derivative": "as predicted: passed in both dtypes on every runner run of the control's clean arm (10/10, the test against the head); da8d1679's code failed it 10/10 (95 % lower bound 0.74), the structure's derivative exactly zero. Discriminating range (discriminating_range.py, a dropped share of the structure's derivative, deterministic): 8.3e-4 in float64, 2.9e-3 in float32 (k1 binds in float64). The error over its tolerance was measured locally (0.1 in float64, under 0.1 in float32), not on the runner.",
+  "gate_2_served_and_remade": "as predicted: numbers-not-compared 20/20 caught, cache-every-frame 20/20 caught (each 95 % lower bound 0.86), clean 0/20 each.",
+  "gate_3_two_builds": "as predicted: structure-as-built 10/10 and numbers-as-built 10/10 fire on fy and k1 (lower bound 0.74 each), clean 0/10; the walk itself (tests/two_builds) quiet on the detector's leaves locally.",
+  "bits": "as predicted: every array equal, base da8d1679 against the head on one CPU (Intel Xeon 8573C), script A f64 and f32, the lab gantry f64, camera_scene and camera_on_gantry f64 and f32 (12 steps of the history scan from step 0 and the state 12 steps later, the cache_* fields left out), and the save of camera_scene (its 8 reference steps and the resolution its lock records) in both dtypes. The controls: head against head equal; fy one ulp up differs in expected (both arrays).",
+  "costs": {
+   "cpu": "Intel Xeon Platinum 8573C, one CPU, one thread, three rounds interleaved; medians of each process's min ms per step (spreads within 5 % but make640_f64 and mismatched640_f64, 12 %)",
+   "held_step_ms": {
+    "320_f32": {
+     "head": 0.0673,
+     "da8d1679": 0.12,
+     "pre_e2e81c32": 0.063
+    },
+    "320_f64": {
+     "head": 0.0879,
+     "da8d1679": 0.193,
+     "pre_e2e81c32": 0.0849
+    },
+    "640_f32": {
+     "head": 0.105,
+     "da8d1679": 0.297,
+     "pre_e2e81c32": 0.103
+    },
+    "640_f64": {
+     "head": 0.142,
+     "da8d1679": 0.542,
+     "pre_e2e81c32": 0.138
+    }
+   },
+   "held_step_verdict": "head / pre-e2e81c32 1.02 to 1.07: as predicted (0.8 to 1.25). head / da8d1679 0.26 to 0.56: the band 0.08 to 0.35 MISSED at three of four (the merged code's held step was 1.8 to 3.8 times dearer on this CPU, not R1's 3 to 13: those were automatic chunks on mixed CPUs, these are 300-step chunks)",
+   "frame_step_ms": {
+    "320_f32": {
+     "head": 2.93,
+     "da8d1679": 3.08,
+     "pre_e2e81c32": 3.16
+    },
+    "320_f64": {
+     "head": 6.94,
+     "da8d1679": 7.25,
+     "pre_e2e81c32": 7.73
+    },
+    "640_f32": {
+     "head": 14.45,
+     "da8d1679": 15.03,
+     "pre_e2e81c32": 16.17
+    },
+    "640_f64": {
+     "head": 27.9,
+     "da8d1679": 29.8,
+     "pre_e2e81c32": 31.1
+    }
+   },
+   "frame_step_verdict": "head / da8d1679 0.94 to 0.96: as predicted (0.8 to 1.25)",
+   "one_step_chunk_ms": {
+    "320_f32": {
+     "head": 0.885,
+     "da8d1679": 1.31,
+     "pre_e2e81c32": 0.874
+    },
+    "320_f64": {
+     "head": 1.01,
+     "da8d1679": 1.74,
+     "pre_e2e81c32": 0.969
+    },
+    "640_f32": {
+     "head": 1.18,
+     "da8d1679": 2.65,
+     "pre_e2e81c32": 1.12
+    },
+    "640_f64": {
+     "head": 1.44,
+     "da8d1679": 4.45,
+     "pre_e2e81c32": 1.38
+    }
+   },
+   "chunk_verdict": "a chunk at the held numbers renders nothing: a one-step chunk costs what pre-e2e81c32's did (1.01 to 1.05 times). The prediction of one render per chunk where the numbers differ is moot: the head renders per frame there (below)",
+   "first_frame_ms": {
+    "320_f32": {
+     "head": 3.77,
+     "da8d1679": 11.6,
+     "pre_e2e81c32": 5.36
+    },
+    "320_f64": {
+     "head": 8.73,
+     "da8d1679": 33.3,
+     "pre_e2e81c32": 9.84
+    },
+    "640_f32": {
+     "head": 17.1,
+     "da8d1679": 67.9,
+     "pre_e2e81c32": 19.6
+    },
+    "640_f64": {
+     "head": 33.0,
+     "da8d1679": 155.9,
+     "pre_e2e81c32": 37.7
+    }
+   },
+   "first_frame_verdict": "as predicted: da8d1679's first frame of a run pays one static render (7.8, 24.6, 51 and 123 ms over the head's), the head's none",
+   "static_render_ms": {
+    "build_make": {
+     "320_f32": 8.4,
+     "320_f64": 28.7,
+     "640_f32": 55.9,
+     "640_f64": 133.5
+    },
+    "frame_step_whose_numbers_differ_total": {
+     "320_f32": 9.69,
+     "320_f64": 27.4,
+     "640_f32": 57.5,
+     "640_f64": 126.3
+    }
+   },
+   "static_render_verdict": "the build's render 28.7 and 133.5 ms in float64 inside the bands (20 to 60, 80 to 250); float32's 8.4 and 55.9 ms below them: MISSED (the bands were R1's float64 numbers)"
+  },
+  "two_builds_walk_local_only": "the walk's quiet arm over camera_scene and camera_on_gantry was run locally (passed), and runs in CI"
+ }
 }
