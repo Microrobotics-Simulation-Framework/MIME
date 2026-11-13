@@ -19,7 +19,7 @@ from mime.build import ControllerPlan, Mode, PlanSet
 from mime.build._in_graph import step_place
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass, RunFailed, standing_for
 from mime.build._maddening import FlagTally, FlagTest, Fed, NodeFields, fed_inputs, inputs, node_state, ready, \
-    scan_chunk, scan_chunk_tallied, scan_chunk_with_history
+    scan_chunk, scan_chunk_tallied, scan_chunk_with_history, with_held_made_again
 from mime.core import jnp
 from mime.registry import BuildContext, ControlLaw
 
@@ -341,8 +341,10 @@ class ChunkedRun:
 
         ``params`` is a parameter tree every scan takes in place of the graph's own: an overridden run's, or a study's
         member's. An argument of the compiled scans, it recompiles nothing; without it the run is the one it always was.
+        Either tree, its nodes' held parameters (the camera's static structure) are made again once, on the host, before
+        the run's steps, where they were made at other leaves than the tree's (``with_held_made_again``).
         """
-        self._params = params
+        self._params = with_held_made_again(self.graph, params)
         self._tests = tuple(tests) if not history else ()
         self._one_step = one_step
         self.tally = FlagTally.none(len(self._tests)) if self._tests else None

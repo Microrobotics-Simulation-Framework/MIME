@@ -223,6 +223,25 @@ def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[s
     return {**params, "nodes": nodes, "mappings": mappings}
 
 
+def with_held_made_again(graph: GraphManager, params: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    """The tree a forward run gives its steps: ``params`` (the graph's own where ``None``) with each node's held
+    parameters made again where they were not made at its leaves (``mime.core.MimeNode.held_made_again``), judged once,
+    on the host, before the run; ``params`` itself where none was, so that such a run makes the calls it always made."""
+    tree = graph_params(graph) if params is None else params
+    nodes = cast(Mapping[str, Mapping[str, Any]], tree.get("nodes", {}))
+    remade: dict[str, dict[str, Any]] = {}
+    for name in graph.node_names:
+        node = graph.get_node(name)
+        if isinstance(node, MimeNode) and name in nodes \
+                and type(node).held_made_again is not MimeNode.held_made_again:
+            made = node.held_made_again(nodes[name])
+            if made:
+                remade[name] = {**nodes[name], **made}
+    if not remade:
+        return params
+    return {**tree, "nodes": {**nodes, **remade}}
+
+
 def chunk_function(graph: GraphManager, steps: int, fed: Fed | None = None) -> Callable[[Any, Any], Any]:
     """``steps`` steps of the compiled graph as one scan, a pure function of the state (every node's fields and
     ``_meta``, as the graph holds it) and the parameter tree, with ``fed`` held through them: each node's run-constants

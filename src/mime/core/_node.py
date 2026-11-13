@@ -306,6 +306,14 @@ class MimeNode(SimulationNode):
         step. None by default."""
         return {}
 
+    def held_made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """The parameters the node holds made from its others and its forward step reads as they are (no forward chunk
+        makes them), made again from ``params`` where they were not made at its leaves, with the numbers they were made
+        at; none where they were. Judged on the host from ``params``' own values, once before a forward run's steps
+        (``mime.build._maddening.with_held_made_again``), so that no forward run reads one made at other leaves. None by
+        default: a node that makes its held values in the program from its leaves needs none."""
+        return {}
+
     def recheck_route(self, cause: str, dtype: str) -> str:
         """What takes the node's solve past a stop short a recheck named ``cause`` (:data:`FLOOR_LIMITED`,
         :data:`STAGNATED`, ...) in a run in ``dtype``; empty where the node names none."""

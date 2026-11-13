@@ -1,28 +1,32 @@
-"""The static structure, a leaf: read as the tree holds it, never made in a frame step, and never drawn over at other
-numbers than its own.
+"""The static structure, a leaf: read as the tree holds it, never made in a frame step, and never read at other numbers
+than the run's.
 
 The node holds the structure (``static_structure``) beside every number it was made at (``static_structure_from``: the
-nine intrinsics, the scene's numbers, the camera's pose). A frame step reads it; it is made when the node's parameters are
-made (the build, an override's point, a study's point, the save's rerun) and, where a derivative may be taken, once a run
-from the run's leaves, outside its steps (``run_constants``). Four claims:
+nine intrinsics, the scene's numbers, the camera's pose). A frame step reads it. It is made when the node's parameters are
+made (the build, an override's point, a study's point, the save's rerun); once a forward run, on the host, before its
+steps, where the tree's was made at other numbers than its leaves (``held_made_again``); and, where a derivative may be
+taken, once a run from the run's leaves, outside its steps (``run_constants``). Five claims:
 
 * a run continued with another leaf draws the whole frame at it (the review of #266 found the tube drawn at the old
-  ``fy`` and the ball at the new one);
+  ``fy`` and the ball at the new one), whether the leaf comes by an override (its tree is a point's, made at its own
+  leaves), written into the graph's tree leaf by leaf, or in a tree given to the run with the leaf written leaf by leaf;
 * the structure a tree holds is read, on both routes (a run whose chunks make the run-constants, and MADDENING's own scan
   steps, a recorded run): it is *served* (a camera that renders the static structure in every frame is correct and
-  dearer, and no image-level test of a served value can tell it);
+  dearer, and no image-level test of a served value can tell it), and made again once a run where any of its numbers
+  differs;
+* a step that meets a structure made at other numbers, outside MIME's runs, draws a frame that is not a number;
 * no frame step makes it: the step's program, as a chunk runs it, as MADDENING's scan runs it and inside a differentiated
   run's loop, reaches none of the functions that make it (a camera on a moving mount, which renders it in every frame,
   is the test's own control that the inspection sees them), and a differentiated run makes it once, outside its loop.
   The served case cannot see a make in a branch the step does not take (#284's review: a remake in every frame off the
   build point); this one can;
-* a frame over a structure whose numbers are not the step's, any of them, is not a number, never a frame drawn at
-  other leaves; and the state carries nothing of it, so a held step holds the image alone.
+* the state carries nothing of it, so a held step holds the image alone.
 
-**The controls.** ``CAMERA_PLANT=numbers-not-compared`` reads the held structure whatever its numbers;
-``CAMERA_PLANT=cache-every-frame`` makes it in every frame and reads nothing held; ``CAMERA_PLANT=made-branch`` puts the
-make back in the frame step as #284 first had it (a branch taken where the numbers differ). Each fails the cases of its
-claim on every run."""
+**The controls** (``CAMERA_PLANT``): ``read-as-is`` turns the run's remake and the step's guard off, so a forward run reads
+the tree's structure as it is; ``remake-off`` the remake alone; ``guard-off`` the guard alone; ``cache-every-frame`` makes
+the structure in every frame and reads nothing held; ``made-branch`` puts the make back in the frame step as #284 first
+had it (a branch taken where the numbers differ). Each fails the cases of its claim on every run; an override's tree is
+built at its own leaves, so ``read-as-is`` does not reach the override cases, only the leaf-by-leaf ones."""
 
 from __future__ import annotations
 
@@ -46,8 +50,12 @@ from mime.units import ms
 
 lax: Any = jax.lax
 
-if planted("numbers-not-compared"):
-    CameraNode.holds_at = lambda self, p, numbers: jnp.asarray(True)  # type: ignore[method-assign]
+if planted("read-as-is") or planted("remake-off"):
+    CameraNode.held_made_again = lambda self, params: {}  # type: ignore[method-assign]
+
+if planted("read-as-is") or planted("guard-off"):
+    # still reading the numbers (a step that read none would have its leaves' writes refused, a failure of another kind)
+    CameraNode.holds_at = lambda self, p, numbers: jnp.all(numbers == p[STRUCTURE_FROM]) | True  # type: ignore[method-assign]
 
 if planted("cache-every-frame"):
     CameraNode.structure_of = lambda self, p, numbers: self._make(numbers)  # type: ignore[method-assign]  # noqa: SLF001
@@ -86,17 +94,34 @@ def camera_leaves(built, **leaves: Any) -> Iterator[None]:
         held.params = tree
 
 
+#: How a continued run is given another fy: the override (its tree is a point's, built at its own leaves), fy written into
+#: the graph's tree leaf by leaf, and a tree given to the run with fy written leaf by leaf (as a study's member's is given).
+LEAF_ROUTES = ("override", "written", "given")
+
+
+@pytest.mark.parametrize("route", LEAF_ROUTES)
 @pytest.mark.parametrize("hide", [("ball",), ()], ids=["tube-only", "ball-and-tube"])
-def test_a_continued_run_with_another_leaf_draws_the_frame_at_it(dtype, hide):
+def test_a_continued_run_with_another_leaf_draws_the_frame_at_it(dtype, hide, route):
     built = case(hide=hide).build()
     built.run(ms(6))
     before = expected(built)
-    built.run(ms(6), override={"camera:.detector.fy": 800.0})
+    if route == "override":
+        built.run(ms(6), override={"camera:.detector.fy": 800.0})
+    else:
+        tree = _maddening.graph_params(built.graph)
+        fy = jnp.asarray(800.0, dtype=jnp.asarray(tree["nodes"][CAMERA]["fy"]).dtype)
+        if route == "written":
+            with camera_leaves(built, fy=fy):
+                built.run(ms(6))
+        else:
+            given = {**tree, "nodes": {**tree["nodes"], CAMERA: {**tree["nodes"][CAMERA], "fy": fy}}}
+            built._runs.run(6, history=False, params=given)  # noqa: SLF001 - a tree given to a forward run
     fresh = case(800.0, hide).build()
     fresh.run(ms(12))
     assert np.abs(expected(built) - before).max() > 100.0  # the leaf moved the image (the tube's edge), so this can tell
-    # exactly equal: the override's tree holds the structure made at its leaves by the same compiled maker as the fresh
-    # build's (measured 0.0 in both dtypes, tube only and with the ball), so any difference is a stale part, not rounding
+    # exactly equal: the tree's structure is made at its leaves by the same compiled maker as the fresh build's (the
+    # override's point's at its build, a tree written leaf by leaf's once before the run), so any difference is a stale
+    # part, not rounding (measured 0.0 in both dtypes, tube only and with the ball)
     assert np.abs(expected(built) - expected(fresh)).max() == 0.0
 
 
@@ -104,7 +129,7 @@ ROUTES = {"run-constants": {}, "history-scan": {"record": ["camera:.frame_step"]
 
 
 @pytest.mark.parametrize("route", list(ROUTES))
-def test_the_structure_is_served_and_a_frame_over_one_made_at_other_numbers_is_not_a_number(dtype, route):
+def test_the_structure_is_served_while_its_numbers_hold_and_made_again_once_a_run_when_any_differs(dtype, route):
     built = case(period=ms(1), hide=("ball",)).build()
     run = ROUTES[route]
     built.run(ms(2), **run)
@@ -119,15 +144,21 @@ def test_the_structure_is_served_and_a_frame_over_one_made_at_other_numbers_is_n
         built.run(ms(1), **run)
     assert np.allclose(expected(built), 1000.0 * MARKER), "a structure whose numbers hold is read, not rendered again"
 
-    # each number moved alone, and a leaf written without the structure (a tree written leaf by leaf, run forward): the
-    # frame is not a number, which the run refuses (run.non-finite), never one drawn at the other leaves
-    moved = [{STRUCTURE: marked, STRUCTURE_FROM: numbers.at[index].add(1.0)} for index in range(numbers.shape[0])]
-    for index, leaves in enumerate([*moved, {"fy": jnp.asarray(own["fy"]) * 1.01}]):
-        with camera_leaves(built, **leaves), pytest.raises(RunFailed, match="run.non-finite"):
+    for index in range(numbers.shape[0]):
+        with camera_leaves(built, **{STRUCTURE: marked, STRUCTURE_FROM: numbers.at[index].add(1.0)}):
             built.run(ms(1), **run)
-        assert np.all(np.isnan(expected(built))), f"case {index} of {len(moved) + 1} is drawn"
-    built.run(ms(1), **run)
-    assert np.abs(expected(built) - clean).max() == 0.0, "the tree put back draws the frame again"
+        assert np.abs(expected(built) - clean).max() == 0.0, f"number {index} of {numbers.shape[0]} is not compared"
+
+
+def test_a_step_given_a_structure_made_at_other_numbers_draws_no_frame(dtype):
+    """The guard behind the forward run's remake: MADDENING's own scan called on the graph (no run of MIME's, so nothing
+    makes the structure again first) with a tree whose structure was made at other numbers draws a frame that is not a
+    number, never the frame at other leaves."""
+    built = case(period=ms(1), hide=("ball",)).build()
+    numbers = jnp.asarray(_maddening.graph_params(built.graph)["nodes"][CAMERA][STRUCTURE_FROM])
+    with camera_leaves(built, **{STRUCTURE_FROM: numbers.at[1].add(1.0)}):
+        _maddening.run_scan(built.graph, 1)
+    assert np.all(np.isnan(np.asarray(_maddening.node_state(built.graph, CAMERA)["expected"])))
 
 
 #: The functions that make the static structure: the ray table, the standing subjects' image (``static_part``, defined as

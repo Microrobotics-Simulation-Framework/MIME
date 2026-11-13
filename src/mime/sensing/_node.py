@@ -24,9 +24,11 @@ carried, so the state holds no cache, a held step costs what holding the image c
 frame over it costs, at the build's leaves or any other. Where a derivative may be taken (MIME's differentiated run, a
 chunk a caller differentiates) the run makes it from its own leaves once, before its steps (``MimeNode.run_constants``, by
 JAX's own rules, no custom one), so the derivative in the leaves passes through it from a continued state as from the
-first step, and a tree whose leaves were written without it is drawn at its leaves. A frame step whose numbers are not the
-ones its structure was made at (a tree written leaf by leaf and run forward, which no route of MIME's gives) draws a frame
-that is not a number, never one at other leaves. Nothing of the structure is a constant of the program.
+first step, and a tree whose leaves were written without it is drawn at its leaves. A forward run whose tree holds a
+structure made at other numbers than its leaves (written leaf by leaf) makes it again once, on the host, before its steps
+(``held_made_again``, a compare of the numbers). A frame step that still meets one (a step called outside MIME's runs)
+draws a frame that is not a number, which the run refuses, never one at other leaves. Nothing of the structure is a
+constant of the program.
 ``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
 **Forward mode only.** A derivative passes in forward mode (the ring's poses and the leaves); reverse mode and a batched
@@ -387,6 +389,19 @@ class CameraNode(MountedNode):
         if STRUCTURE not in params or not for_derivative():
             return {}
         return self._made_at(params)
+
+    @override
+    def held_made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """The static structure made again at ``params``' intrinsics where the numbers it was made at are not theirs
+        (a tree whose leaves were written without it), compared on the host in the leaf's dtype; none where they are."""
+        if STRUCTURE not in params:
+            return {}
+        made_from = np.asarray(params[STRUCTURE_FROM])
+        intrinsics = np.asarray([np.asarray(params[name]) for name in INTRINSICS], dtype=made_from.dtype)
+        numbers = np.concatenate([intrinsics, np.asarray(self.constants()["scene_numbers"], dtype=np.float64)
+                                  .reshape(-1).astype(made_from.dtype),
+                                  np.asarray(self._fixed_pose(), dtype=np.float64).astype(made_from.dtype)])
+        return {} if np.array_equal(numbers, made_from) else dict(self._made_at(params))
 
     @override
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
