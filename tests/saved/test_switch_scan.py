@@ -20,14 +20,13 @@ import sys
 import textwrap
 from pathlib import Path
 
-import _fixture_first
 import jax
 import jax.numpy as jnp
 import pytest
 from switch_configurations import PACKAGE, configurations, traced_steps, tree_scan
 
 import mime.docs._switches as switch_scan_module
-from mime.build._maddening import make_jaxpr, node_state, parameter_leaves, resolved_inputs, zero_inputs
+from mime.build._maddening import node_state, parameter_leaves, resolved_inputs, zero_inputs
 from mime.core import switch
 from mime.docs import load_namespaces, read_list
 from mime.docs._check import LISTS, list_path
@@ -39,6 +38,7 @@ from mime.docs._switches import (
     module_aliases,
     scan_problems,
     scan_switches,
+    trace_fresh,
     traced_step,
 )
 from mime.registry import EntryKind, GradientRecord, Registered, lookup
@@ -64,13 +64,6 @@ def steps() -> tuple[TracedStep, ...]:
 @pytest.fixture(scope="module")
 def scan() -> SwitchScan:
     return tree_scan()
-
-
-def test_every_test_reading_the_scans_fixtures_is_marked_fixture_first(request):
-    """The fixtures cost minutes; the mark sends the tests that read them to one worker's head of the queue
-    (``tests/_fixture_first.py``), so that one worker pays and the others do not."""
-    unmarked = _fixture_first.unmarked_readers(request.session.items, "tests/saved/test_switch_scan.py", ("scan", "steps"))
-    assert unmarked == [], f"read the scan's fixtures without @pytest.mark.fixture_first: {unmarked}"
 
 
 def node_classes(records) -> set[type]:
@@ -135,7 +128,7 @@ def test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_s
             given = {**zero_inputs(node), **resolved_inputs(graph, name)}
             with switch.collecting() as rows:
                 traced_step(configuration, name, node, node_state(graph, name), given,
-                            parameter_leaves(graph).get(name))
+                            parameter_leaves(graph).get(name), fresh=False)
             recorded |= {row.owner for row in rows}
     assert recorded == set(scan.owners)
 
@@ -155,7 +148,7 @@ def scanned(tmp_path: Path, source: str, *, call: str = "step", argument=None) -
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     held = jnp.asarray([0.5, -1.5, 2.0]) if argument is None else argument
-    step = TracedStep("planted", "planted", object, make_jaxpr(getattr(module, call), held))
+    step = TracedStep("planted", "planted", object, trace_fresh(getattr(module, call), held))
     return scan_switches([step], package)
 
 

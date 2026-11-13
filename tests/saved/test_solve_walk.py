@@ -25,6 +25,9 @@ from pathlib import Path
 import pytest
 from switch_configurations import traced_steps
 
+#: Every test reads ``by_class``, which is ``traced_steps``: minutes the first time in a process (tests/_fixture_first.py).
+pytestmark = pytest.mark.fixture_first
+
 sys.path.append(str(Path(__file__).resolve().parents[1] / "solve_sites"))
 
 # Every module that registers a site is imported, as the build imports them.

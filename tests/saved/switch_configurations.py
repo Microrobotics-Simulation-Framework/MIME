@@ -86,22 +86,23 @@ def metered(make: Callable[[], Experiment]) -> Experiment:
 
 @cache
 def traced_steps() -> tuple["TracedStep", ...]:
-    """Every node's step in every configuration, traced in float64 with no switch context open."""
+    """Every node's step in every configuration, traced in float64 with no switch context open, on caches emptied once
+    (``mime.docs._switches.traced_steps``): what the process traced before does not change the scan's answer."""
     from mime.build._maddening import node_state, parameter_leaves, resolved_inputs, zero_inputs
-    from mime.docs._switches import traced_step
+    from mime.docs._switches import traced_steps as trace
 
-    held = jax.config.jax_enable_x64
-    jax.config.update("jax_enable_x64", True)
-    try:
-        traced: list[TracedStep] = []
+    def cases():
         for configuration, make in configurations().items():
             graph = make().build().graph
             for name in graph.schedule:
                 node = graph.get_node(name)
                 given = {**zero_inputs(node), **resolved_inputs(graph, name)}
-                traced.append(traced_step(configuration, name, node, node_state(graph, name), given,
-                                          parameter_leaves(graph).get(name)))
-        return tuple(traced)
+                yield configuration, name, node, node_state(graph, name), given, parameter_leaves(graph).get(name)
+
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        return trace(cases())
     finally:
         jax.config.update("jax_enable_x64", held)
 

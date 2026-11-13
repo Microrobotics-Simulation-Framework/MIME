@@ -1389,6 +1389,7 @@ def coverage_problems(listed, reached: list[switch.Reached]) -> list[str]:
     return problems
 
 
+@pytest.mark.fixture_first
 @pytest.mark.memory_heavy
 def test_every_guard_the_scan_lists_is_reached_false_and_every_nonzero_norm_away_from_zero(graph):
     """The scan lists every ``domain_guard`` and ``nonzero_norm`` call in scope; the guard points reach each guard with
@@ -1400,6 +1401,7 @@ def test_every_guard_the_scan_lists_is_reached_false_and_every_nonzero_norm_away
     assert coverage_problems(listed, reached) == []
 
 
+@pytest.mark.fixture_first
 def test_control_a_guard_no_point_reaches_false_or_a_nonzero_norm_at_zero_fails(graph):
     listed = tree_scan().guards
     reached = [reached_at(evaluate) for evaluate, _ in guard_points(graph).values()]
