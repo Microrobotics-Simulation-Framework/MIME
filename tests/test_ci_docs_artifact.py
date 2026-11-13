@@ -75,15 +75,17 @@ def is_scan(step: Workflow) -> bool:
 
 
 #: What a lane's upload of its test report takes, which is not an upload of the pages: the directory of the JUnit XML
-#: its durations report read, and the directory the default lane's JUnit reports are gathered in (the evidence counts
-#: page reads them, ``test_evidence_counts.py``). Any other path an upload takes counts as one of the pages.
+#: its durations report read, the directory the default lane's JUnit reports are gathered in (the evidence counts
+#: page reads them, ``test_evidence_counts.py``), and the one its timings are gathered in for the weekly triage (each
+#: kept shard's report and cache mode). Any other path an upload takes counts as one of the pages.
 TEST_REPORT = "${{ runner.temp }}/report"
 LANE_JUNIT = "${{ runner.temp }}/junit"
+LANE_TIMINGS = "${{ runner.temp }}/timings"
 
 
 def is_upload(step: Workflow) -> bool:
     return (str(step.get("uses", "")).startswith("actions/upload-artifact@")
-            and str((step.get("with") or {}).get("path", "")).strip() not in (TEST_REPORT, LANE_JUNIT))
+            and str((step.get("with") or {}).get("path", "")).strip() not in (TEST_REPORT, LANE_JUNIT, LANE_TIMINGS))
 
 
 def is_build(step: Workflow) -> bool:
