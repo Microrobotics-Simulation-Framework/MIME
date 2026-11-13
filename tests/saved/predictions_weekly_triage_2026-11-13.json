@@ -1,0 +1,72 @@
+{
+ "written": "2026-11-13, committed before any probe of the weekly duration triage of 2026-11-13 ran: where the longest tests' time goes, the switch scan's first payer alone at three commits, and (later gates, added in their own commits before they run) what each shortening changes",
+ "phase": "triage/shorten-2026-11-13: the weekly triage's shortening of the longest tests, without losing what they check",
+ "labels": "predictions by the triage agent from the cold JUnit reports of the newest 20 push runs (43075508190 to 43373533052) and of five 3.12 lanes between 9 and 11 November, and from the code; the Actions arms are the measurement",
+ "seen_before": [
+  "the 20 runs' cold reports: test_the_tree_passes_the_scan_with_its_list_and_its_owners (the scan's first payer in its shard), median 379.9 s over 40 reports; its compile was 1.6 to 12 s in the four runs before #263 (469304c, which pinned the scan's readers first on one worker) and 110 to 183 s in every run from #263 on, its tracing 50 to 227 s throughout, the 3.12 lane's tracing about twice the 3.14 lane's",
+  "the push at 3cb468c (run 43373533052, 3.12 shard 25): the payer took 9.4 min in the shard and 4.7 min on the gate's re-run alone, against a 4.5 min ceiling",
+  "#283's follow-up (tests/saved/predictions_scan_fixture_followup.json, outcomes): the scan's other first payer, test_every_guard, alone on one CPU took 352.5 and 351.2 s (EPYC 7763) and 261.2 and 259.0 s (EPYC 9V45) at da8d1679 and b1de6f7c: equal; its in-shard time 1.5 to 1.7 times that, from the early start beside the other workers' first compiles",
+  "the scan's configurations: 39 at fe7c73f (the last commit of the previous triage's window) and 64 at 3cb468c; round-trip cases not refused 30 and 52 (counted by importing tests/saved/switch_configurations.py at each commit)",
+  "the closed-loop case of the magnetic pair 0.2.0 (test_closed_loop's pair test and the family walk's two magnetic 0.2.0 cases): medians 352, 402 and 417 s, of which 333, 381 and 392 s are outside JAX's tracing, lowering and compiling; mime.testing._families.loop_works and pair_loop_works (the latter added by #205, 81d1427, 8 November) evaluate every node through jax.vmap without jax.jit, for each of the case's 200 draws"
+ ],
+ "operating_point": {
+  "dtype": ["float64"],
+  "platform": "GitHub runner (probe workflow), 4 vCPU, Python 3.12, CPU; the CPU model of each arm is logged and comparisons are paired within an arm",
+  "sizes_and_parameters": "a test 'alone and cold' is one test node in a fresh pytest with an empty JAX compilation cache directory, as the duration gate's re-run runs it (scripts/report_test_durations.py, run_pytest_again), with MIME_TEST_JAX_TIMING=1 for the split; an older commit runs from a worktree of it with its src first on PYTHONPATH and the same locked environment (uv.lock and lab_fixture are unchanged from da8d1679 to 3cb468c4)",
+  "seeds_and_draws": "Hypothesis as each test sets it (unchanged); three alone arms, each running the three commits once in a rotated order"
+ },
+ "gate_1_payer_alone": {
+  "claim": "the switch scan's first payer, alone and cold, at da8d1679 (before #283 and #284), b1de6f7c (#283) and 3cb468c4 (#284): #283 leaves it as it was, and #284's run-constant traces add a little",
+  "kind": "estimates",
+  "case": "tests/saved/test_switch_scan.py::test_the_tree_passes_the_scan_with_its_list_and_its_owners, alone and cold, three arms, each the three commits once in a rotated order",
+  "prediction": {
+   "value": "b1de6f7c within 15 % of da8d1679 in each arm; 3cb468c4 between 1.0 and 1.3 times da8d1679 in each arm; 3cb468c4 alone 240 to 330 s",
+   "basis": "measured-before (gate 3 of #283's follow-up for b1de6f7c, the gate's own re-run at 3cb468c4 for the band) and guess (the size of #284's addition: one trace of each run-constant node's make per configuration, few nodes)",
+   "why": "#283 empties JAX's caches once before the traces, which a test run alone starts with anyway; #284 traces each run-constant node's run_constants once more per configuration"
+  },
+  "metric": "the junit time of the test, and its tracing, lowering and compiling seconds",
+  "control": {
+   "plant": "none: a comparison, paired by runner",
+   "expected_rate": "n/a"
+  },
+  "if_wrong": "3cb468c4 over 1.3 times da8d1679: #284's addition is larger than one trace per node (look at the phases arm's run-constant phase); b1de6f7c off da8d1679 by over 15 %: #283 changed the test's own work",
+  "cannot_discriminate_if": "the three commits' times in one arm differ among the arms by more than they differ from each other within an arm"
+ },
+ "gate_2_payer_phases": {
+  "claim": "where the payer's time goes at 3cb468c4: the configurations' builds, their steps' traces, the run-constants' traces, and the scan of the traces and the source",
+  "kind": "estimates",
+  "case": "probe/phases.py: the work of traced_steps() and tree_scan() replicated step for step (the same order, the caches emptied once after the first build) with a timer and JAX's tracing, lowering and compiling seconds per phase; then the same under cProfile for the functions",
+  "prediction": {
+   "value": "builds 25 to 50 % (most of the compile), the steps' traces 30 to 55 %, the run-constants' traces under 10 %, the scan (equations and source) 10 to 30 %",
+   "basis": "guess, from the reports' split (tracing 126 s and compiling 132 s of a 380 s median) and the code",
+   "why": "the builds compile what the nodes' parameters need; the traces are 64 configurations' steps; the scan walks each equation's frames and parses the source of every function in scope"
+  },
+  "if_wrong": "a phase outside these bands is where to look first for a change that keeps what the scan checks",
+  "cannot_discriminate_if": "the replication's scan differs from the fixture's (its counts of raw sites and functions in scope are printed beside the fixture's)"
+ },
+ "gate_3_closed_loop_profile": {
+  "claim": "where the magnetic pair 0.2.0's closed-loop case spends its time: the eager (un-jitted) vmapped evaluation of loop_works and pair_loop_works, not the rig's builds",
+  "kind": "estimates",
+  "case": "tests/oracles/test_closed_loop.py::test_the_pair_0_2_0_passes_the_closed_loop_case alone and cold (its junit split), then under cProfile",
+  "prediction": {
+   "value": "loop_works and pair_loop_works over 70 % of the cumulative time, the rig's builds under 15 %",
+   "basis": "derived: the reports' split puts 333 of 352 s outside JAX's compile phases; the code evaluates every node under jax.vmap without jax.jit, 200 draws",
+   "why": "un-jitted, every primitive of the batched evaluation is dispatched one by one"
+  },
+  "if_wrong": "the builds dominate: the change to look at is the rig, not the evaluation",
+  "cannot_discriminate_if": "cProfile's overhead on Python-heavy dispatch inflates one side: the arm's plain alone run gives the unprofiled total beside it"
+ },
+ "gate_4_other_profiles": {
+  "claim": "where three other long tests spend their time, alone and cold, then under cProfile: the shape suite's share of non-discriminating probes, the two-builds walk's trace form on hull_contact, and the family walk's magnetic.torque 0.2.0",
+  "kind": "estimates",
+  "case": "tests/saved/test_shape_suite.py::test_the_share_of_probes_whose_difference_cannot_discriminate_is_bounded_over_the_suites_draws; tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[hull_contact]; tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.torque 0.2.0]",
+  "prediction": {
+   "value": "the shape suite: most of it compiling and tracing the tube tree's programs for its draws on that shape; the two-builds walk: tracing the case twice; the family walk's case: its closed-loop case over half",
+   "basis": "guess, from the reports' splits",
+   "why": "as stated"
+  },
+  "if_wrong": "the profile says where instead",
+  "cannot_discriminate_if": "n/a: a profile, not a comparison"
+ },
+ "outcomes": null
+}
