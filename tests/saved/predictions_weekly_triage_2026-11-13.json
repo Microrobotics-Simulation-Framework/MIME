@@ -10,7 +10,9 @@
   "the closed-loop case of the magnetic pair 0.2.0 (test_closed_loop's pair test and the family walk's two magnetic 0.2.0 cases): medians 352, 402 and 417 s, of which 333, 381 and 392 s are outside JAX's tracing, lowering and compiling; mime.testing._families.loop_works and pair_loop_works (the latter added by #205, 81d1427, 8 November) evaluate every node through jax.vmap without jax.jit, for each of the case's 200 draws"
  ],
  "operating_point": {
-  "dtype": ["float64"],
+  "dtype": [
+   "float64"
+  ],
   "platform": "GitHub runner (probe workflow), 4 vCPU, Python 3.12, CPU; the CPU model of each arm is logged and comparisons are paired within an arm",
   "sizes_and_parameters": "a test 'alone and cold' is one test node in a fresh pytest with an empty JAX compilation cache directory, as the duration gate's re-run runs it (scripts/report_test_durations.py, run_pytest_again), with MIME_TEST_JAX_TIMING=1 for the split; an older commit runs from a worktree of it with its src first on PYTHONPATH and the same locked environment (uv.lock and lab_fixture are unchanged from da8d1679 to 3cb468c4)",
   "seeds_and_draws": "Hypothesis as each test sets it (unchanged); three alone arms, each running the three commits once in a rotated order"
@@ -67,6 +69,33 @@
   },
   "if_wrong": "the profile says where instead",
   "cannot_discriminate_if": "n/a: a profile, not a comparison"
+ },
+ "gate_5_alone_two_commits": {
+  "claim": "for each listed test whose ceiling rose more than 1.5 times, the test alone and cold at the previous triage's last commit (fe7c73f8; uv.lock is the same from b0e017c onwards) and at 3cb468c4, paired on one runner: where the ratio alone matches the ratio in the shards, the test's own work grew; where it is near 1, the rise was who paid or the shard's contention",
+  "kind": "estimates",
+  "case": "each node alone and cold (probe/alone.sh), the two commits interleaved, three repeats (two for the battery's eight cases); the closed-loop pair test at 92a589b4 (before #205), 81d14272 (#205) and 3cb468c4",
+  "prediction": {
+   "value": {
+    "docs (build_wiring x2, none_declared, rendered_numbers)": "new/old 1.3 to 1.7 (entry pages 27 to 40)",
+    "examples notebooks settling balls": "guess: 1.0 to 2.0",
+    "examples screw_in_tube, live defaults, live session, round trip mrs_solids, sampling cylinder-2000 and ellipsoid-2000, near-wall integrated image": "1.0 to 1.3 each (no change to the test or its subject found)",
+    "near-wall reported at build, fallback harness's body-at-origin case": "0.8 to 1.2 (who pays, in the shard)",
+    "registry walk's sampling kinds harness": "1.3 to 1.8 (#226's graded sampling and more cases' kinds)",
+    "shape suite's share of probes": "over 10 (the tube tree joined the suite's shapes, #242)",
+    "guard harness's every_guard, the scan's owner pass, the scan's payer": "1.4 to 2.0 each (64 configurations against 39)",
+    "arm battery, eight cases in one process": "the sum new/old 1.1 to 1.4, params_gradient_finite's compile higher at 3cb468c4 by 60 to 120 s",
+    "closed-loop pair 0.2.0": "81d14272 over 92a589b4 3 to 6 (the pair's loops with the source's reactions); 3cb468c4 over 81d14272 0.8 to 1.3"
+   },
+   "basis": "derived from the counts and commits named, and guess where said",
+   "why": "a test alone pays all its own work and nothing of a neighbour's, at either commit"
+  },
+  "metric": "the junit time alone, its split, new over old per runner",
+  "control": {
+   "plant": "none: a comparison paired on one runner",
+   "expected_rate": "n/a"
+  },
+  "if_wrong": "a test whose alone ratio is near 1 while its shard ratio is over 1.5 rose by its place in the shard; one whose alone ratio is high with no new work named is a regression to bisect",
+  "cannot_discriminate_if": "the repeats of one commit on one runner differ by more than the two commits do"
  },
  "outcomes": null
 }
