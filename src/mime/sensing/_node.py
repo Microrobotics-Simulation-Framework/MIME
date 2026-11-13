@@ -26,9 +26,10 @@ chunk a caller differentiates) the run makes it from its own leaves once, before
 JAX's own rules, no custom one), so the derivative in the leaves passes through it from a continued state as from the
 first step, and a tree whose leaves were written without it is drawn at its leaves. A forward run whose tree holds a
 structure made at other numbers than its leaves (written leaf by leaf) makes it again once, on the host, before its steps
-(``held_made_again``, a compare of the numbers). A frame step that still meets one (a step called outside MIME's runs)
-draws a frame that is not a number, which the run refuses, never one at other leaves. Nothing of the structure is a
-constant of the program.
+(``refreshed_held``, a compare of the numbers). A frame step that still meets one (a step called outside MIME's runs:
+MADDENING's own scan, ``graph.step``) draws a frame that is not a number, never one at other leaves; no flag names the
+cause, since MIME's flags and refusals are read by its own runs alone, which make the structure again first. Nothing of the
+structure is a constant of the program.
 ``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
 **Forward mode only.** A derivative passes in forward mode (the ring's poses and the leaves); reverse mode and a batched
@@ -391,7 +392,7 @@ class CameraNode(MountedNode):
         return self._made_at(params)
 
     @override
-    def held_made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+    def refreshed_held(self, params: Mapping[str, Any]) -> dict[str, Any]:
         """The static structure made again at ``params``' intrinsics where the numbers it was made at are not theirs
         (a tree whose leaves were written without it), compared on the host in the leaf's dtype; none where they are."""
         if STRUCTURE not in params:

@@ -4,7 +4,7 @@ than the run's.
 The node holds the structure (``static_structure``) beside every number it was made at (``static_structure_from``: the
 nine intrinsics, the scene's numbers, the camera's pose). A frame step reads it. It is made when the node's parameters are
 made (the build, an override's point, a study's point, the save's rerun); once a forward run, on the host, before its
-steps, where the tree's was made at other numbers than its leaves (``held_made_again``); and, where a derivative may be
+steps, where the tree's was made at other numbers than its leaves (``refreshed_held``); and, where a derivative may be
 taken, once a run from the run's leaves, outside its steps (``run_constants``). Five claims:
 
 * a run continued with another leaf draws the whole frame at it (the review of #266 found the tube drawn at the old
@@ -51,7 +51,7 @@ from mime.units import ms
 lax: Any = jax.lax
 
 if planted("read-as-is") or planted("remake-off"):
-    CameraNode.held_made_again = lambda self, params: {}  # type: ignore[method-assign]
+    CameraNode.refreshed_held = lambda self, params: {}  # type: ignore[method-assign]
 
 if planted("read-as-is") or planted("guard-off"):
     # still reading the numbers (a step that read none would have its leaves' writes refused, a failure of another kind)

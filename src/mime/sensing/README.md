@@ -93,11 +93,12 @@ build's: the disc windows are sized for them), so a study can fit them, and `exp
   rerun is given it at its nudged ones (`made_again`). A frame step reads it and never makes it: read, never carried, so
   the state holds no cache, a step between frames costs what holding the image costs and a frame step what drawing over
   it costs, at the build's leaves or any other. A forward run whose tree holds one made at other numbers than its leaves
-  (a leaf written into the tree without it) makes it again once, on the host, before its steps (`held_made_again`, a
+  (a leaf written into the tree without it) makes it again once, on the host, before its steps (`refreshed_held`, a
   compare of the numbers); a run a derivative is taken through makes it once from the run's own leaves, before its steps
   (`run_constants`, for a derivative), by JAX's own rules, so the derivative is right from a continued state as from the
-  first step, wherever the leaves are. A step outside MIME's runs that meets one made at other numbers draws a frame that
-  is not a number, never one at other leaves. A camera mounted on a frame of a chain (`Mounted`) is taken to move: it
+  first step, wherever the leaves are. A step outside MIME's runs (MADDENING's own scan, `graph.step`) that meets one made
+  at other numbers draws a frame that is not a number, never one at other leaves; no flag names the cause, since MIME's
+  flags and refusals are read by its own runs alone, which make it again first. A camera mounted on a frame of a chain (`Mounted`) is taken to move: it
   holds none, and the structure is rendered in every frame, which the build report states. What it costs, measured
   through the built graph on one CPU with the commits interleaved (`tests/sensing/predictions_camera_runconst.json` and
   `tests/sensing/predictions_camera_runconst_fix.json`): the build renders it once; a forward run's chunks never, a
