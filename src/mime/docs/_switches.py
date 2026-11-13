@@ -267,10 +267,12 @@ def _traced(configuration: str, name: str, node: SimulationNode, state: object, 
 
 
 def traced_step(configuration: str, name: str, node: SimulationNode, state: object, given: object,
-                leaves: object) -> TracedStep:
+                leaves: object, fresh: bool = True) -> TracedStep:
     """One node's step traced with no switch context open, from the state, inputs and ``params`` leaves the graph
-    gives it, on fresh caches (:func:`trace_fresh`)."""
-    cast(Any, jax).clear_caches()
+    gives it, on fresh caches (:func:`trace_fresh`) unless ``fresh`` is false: a caller that traces the steps one after the other
+    and does not read the frames (the owner pass, which records the switches evaluated) leaves the caches as they are."""
+    if fresh:
+        cast(Any, jax).clear_caches()
     return _traced(configuration, name, node, state, given, leaves)
 
 

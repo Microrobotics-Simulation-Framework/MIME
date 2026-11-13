@@ -16,7 +16,7 @@ work stealing with the marked tests dealt to one worker (the first) and never of
 dealt and stolen as before, and the pinned worker steals like the rest once its marked tests are done.
 
 The controller process does not collect, so it cannot read a marker: each worker writes the node ids it found marked to a
-file named by the run's unique id (:func:`marked_record`), and the scheduler reads it when the collection is complete.
+file named by the run's unique id and its own (:func:`marked_record`), and the scheduler reads it when the collection is complete.
 Every worker sorts the one collection the one way, as xdist requires.
 """
 
@@ -82,15 +82,13 @@ def pytest_collection_finish(session: pytest.Session) -> None:
     if worker is None:
         return
     marked = sorted(item.nodeid for item in session.items if item.get_closest_marker(MARKER) is not None)
-    path = marked_record(worker["testrunuid"])
-    scratch = path.with_name(f"{path.name}.{os.getpid()}")
-    scratch.write_text(json.dumps(marked), encoding="utf-8")
-    scratch.replace(path)
+    marked_record(worker["testrunuid"], worker["workerid"]).write_text(json.dumps(marked), encoding="utf-8")
 
 
-def marked_record(run: str) -> Path:
-    """The file in which the workers of the xdist run ``run`` record the marked node ids, for the controller."""
-    return Path(tempfile.gettempdir()) / f"mime-fixture-first-{run}.json"
+def marked_record(run: str, worker: str) -> Path:
+    """The file in which ``worker`` of the xdist run ``run`` records the marked node ids, for the controller (one file for each
+    worker: none is ever replaced while another process reads it, which Windows refuses)."""
+    return Path(tempfile.gettempdir()) / f"mime-fixture-first-{run}-{worker}.json"
 
 
 class PinnedWorkStealing(WorkStealingScheduling):
@@ -109,14 +107,15 @@ class PinnedWorkStealing(WorkStealingScheduling):
         self.placed = False
 
     def marked_names(self) -> set[str]:
-        node = next(iter(self.node2pending))
-        record = marked_record(node.workerinput["testrunuid"])
-        try:
-            return set(json.loads(record.read_text(encoding="utf-8")))
-        except FileNotFoundError:
-            return set()
-        finally:
+        names: set[str] = set()
+        for node in self.node2pending:
+            record = marked_record(node.workerinput["testrunuid"], node.workerinput["workerid"])
+            try:
+                names |= set(json.loads(record.read_text(encoding="utf-8")))
+            except FileNotFoundError:
+                pass
             record.unlink(missing_ok=True)
+        return names
 
     def place(self) -> None:
         """Deal the marked tests to the home worker, once, as the first act of the first scheduling."""

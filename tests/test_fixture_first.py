@@ -84,7 +84,7 @@ class Worker:
 
     def __init__(self, name: str, run: str) -> None:
         self.shutting_down = False
-        self.workerinput = {"testrunuid": run}
+        self.workerinput = {"testrunuid": run, "workerid": name}
         self.gateway = SimpleNamespace(id=name)
         self.name = name
         self.asked: list[int] = []
@@ -110,8 +110,9 @@ def deal(scheduler_class: type[WorkStealingScheduling], marked: set[int], costs:
     :data:`BUILD` more."""
     run = uuid.uuid4().hex
     names = [f"t{i}" for i in range(len(costs))]
-    order.marked_record(run).write_text(json.dumps([names[i] for i in sorted(marked)]), encoding="utf-8")
     nodes = [Worker(f"gw{i}", run) for i in range(workers)]
+    for node in nodes:
+        order.marked_record(run, node.name).write_text(json.dumps([names[i] for i in sorted(marked)]), encoding="utf-8")
     scheduler = scheduler_class(SimpleNamespace(getvalue=lambda name: [f"{workers}*popen"]))  # type: ignore[arg-type]
     for node in nodes:
         scheduler.add_node(node)  # type: ignore[arg-type]
@@ -201,9 +202,21 @@ _PROJECT = """
 import os, time
 import pytest
 
+DONE = os.environ["DONE"]
+
 @pytest.fixture(scope="module")
 def build():
-    time.sleep(2)
+    # The build starts once 90 of the 120 other tests are done: the three workers that are not dealt the marked tests
+    # have then finished their own quarters (90 tests) and are idle, so a scheduler that lets them steal does, during
+    # the one second the build takes. Nothing here depends on how fast a worker starts.
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        if os.path.exists(DONE) and len(open(DONE).read().split()) >= 90:
+            break
+        time.sleep(0.02)
+    else:
+        raise TimeoutError("the other tests did not get to 90")
+    time.sleep(1)
     with open(os.environ["BUILDS"], "a") as log:
         log.write(os.environ["PYTEST_XDIST_WORKER"] + "\\n")
 
@@ -214,7 +227,8 @@ def test_reader(build, n):
 
 @pytest.mark.parametrize("n", range(120))
 def test_other(n):
-    time.sleep(0.05)
+    with open(DONE, "a") as log:
+        log.write("x\\n")
 """
 
 _CONFTEST = """
@@ -239,7 +253,7 @@ def builds_under(tmp_path: Path, pinned: bool, repo: Path) -> int:
     (project / "test_project.py").write_text(_PROJECT)
     builds = project / "builds.log"
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS"}
-    env.update(BUILDS=str(builds), PINNED="1" if pinned else "0")
+    env.update(BUILDS=str(builds), DONE=str(project / "done.log"), PINNED="1" if pinned else "0")
     proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "4", "--dist", "worksteal"],
                           cwd=project, env=env, capture_output=True, text=True, timeout=300)
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -247,9 +261,10 @@ def builds_under(tmp_path: Path, pinned: bool, repo: Path) -> int:
 
 
 def test_a_real_xdist_run_builds_the_fixture_on_one_worker_where_the_stock_scheduler_builds_it_on_several(tmp_path):
-    """Four workers, six tests behind a two-second fixture at the head and 120 of 0.05 s after them. Run on this
-    repository's pytest-xdist: the fixture's builds are counted in a file, one line a build. The stock scheduler's count is
-    the control, and it is not 1 in this arrangement (the module's measured: 3 or 4 of 4 workers, three runs of three)."""
+    """Four workers, six tests behind a fixture at the head and 120 others after them; the fixture starts when 90 of the others
+    are done (the three workers that have no marked test have finished their quarters). Run on this repository's pytest-xdist:
+    the fixture's builds are counted in a file, one line a build. The stock scheduler's count is the control: the idle workers
+    steal the marked tests while the first is in its build."""
     repo = Path(__file__).resolve().parents[1]
     assert builds_under(tmp_path, True, repo) == 1
     assert builds_under(tmp_path, False, repo) > 1

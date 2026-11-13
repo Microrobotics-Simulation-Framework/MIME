@@ -128,7 +128,7 @@ def test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_s
             given = {**zero_inputs(node), **resolved_inputs(graph, name)}
             with switch.collecting() as rows:
                 traced_step(configuration, name, node, node_state(graph, name), given,
-                            parameter_leaves(graph).get(name))
+                            parameter_leaves(graph).get(name), fresh=False)
             recorded |= {row.owner for row in rows}
     assert recorded == set(scan.owners)
 
