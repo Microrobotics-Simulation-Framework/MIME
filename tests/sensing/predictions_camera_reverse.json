@@ -1,0 +1,70 @@
+{
+  "written": "2026-11-13, committed before any gate of the camera's reverse mode ran (the commit that adds this file is the timestamp): the corner sub-sample and the remake checkpointed, a memory refusal through the node's derivative_problem, camera.reverse lifted, the gradient gates as tests in four arms and both dtypes",
+  "phase": "camera reverse (dev2, stacked on the run-constant PR #284): camera spike R1's recommendation items 1, 3 and 4",
+  "labels": "predictions by the builder (Opus) from camera spike R1's measurements (spike/camera-r1 4b33cae6, runs 43302162837 and 43304313029), its derivations, and the two compile-only measurements below; 'guess' where neither holds",
+  "seen_before": [
+    "R1, as built (the cache in the state, no checkpoint): XLA's compile-only estimate of the chunked reverse program 18.2 GB at 320x240 x 10 steps, float64; s (each sub-sample checkpointed) 1.71, c (the remake) 3.65, s+c 0.41; s+c at 640x480 x 1000 steps 4.60 GB",
+    "R1 measured (node_measure, runners): s+c chunked reverse peak 3.52 / 2.71 / 4.29 GiB at 320x240 x 10 / 100 / 1000 steps, rev/fwd 9.7 / 4.4 / 4.9; at 640x480 s+c 4.65 / 4.46 GiB at 10 / 100 steps; r+s+c 5.88 GiB at 640 x 1000, rev/fwd 4.3; float32 r+s+c at 320 x 1000 3.47 GiB, rev/fwd 5.2",
+    "R1 gates at 160x120 (fixed point): T1 1.48 / 0.93 eps S (f64 / f32), T2 0.42 / 0.29 of its bound, f32 T2 relative bounds 0.16 to 3.4 %; 12 draws pass, largest 0.44 of the bound; H2 flagged one clean draw in f32 fy at 1.19 of a bound on the wrong scale; controls 30/30 each",
+    "this branch's head before the checkpoints (4ce71c6e, the run-constant): compile-only chunked reverse at 160x120 x 10 steps float64 4.89 GB; with each sub-sample checkpointed 0.47, with the make's branch checkpointed 0.98, both 0.116 GB (laptop, explore script, not evidence)"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; gates and controls on GitHub runners (4 vCPU, 16 GB), costs on runners with node_measure.py (one process an arm, fwd and rev in one process on one CPU); compile-only estimates on the laptop",
+    "sizes_and_parameters": "gates: camera spike R1's ballistic case at 160x120 (fx = fy = 750 px, a 20 um steel ball moving along a 60 um bore tube, wall 10 um absorbing 3000/m, seen across from 1 mm, base step 1 ms), J = sum over 12 steps of |soft centroid - projected centre|^2, in v0x, z0, fy, cy, k1; arms reset (step 0), continued (after 6 steps), overridden (after 6 steps, fy written 3 px over the structure's numbers), chunked (after 6 steps, three chunks of 4 as a CALLBACK controller's run); reverse through MIME's differentiated_run (checkpointed chunks), forward mode through its one chunk. Costs: the same scene at 320x240 and 640x480, a frame every step, the ball crossing about 60 um over the run, reverse in fy of the sum of the final state",
+    "seeds_and_draws": "the gates' test runs R1's fixed point (seed 0): deterministic per CPU; the controls' rates (detection_rate.py) draw a point per run (DETECTION_SEED: x0 in [-45, 0] um, |z0| in [8, 30] um, speed 0.5 to 3 mm/s, period 2 to 4 steps), each run judging both dtypes"
+  },
+  "gate_1_checkpoints": {
+    "claim": "each corner sub-sample and the branch that makes the static structure checkpointed take the in-loop camera's reverse tape from thousands of frames a step to tens, and change no program that takes no reverse derivative",
+    "kind": "estimates (XLA's compile-only memory analysis) and equality (forward programs bit for bit)",
+    "case": "explore-style compile of differentiated_run(checkpoint=True) in fy at 320x240 x 10 steps, float64, head without and with the checkpoints",
+    "prediction": {"value": 0.45, "band": [0.3, 0.7], "unit": "GB at 320x240 x 10 steps (from about 18 without)", "basis": "measured-before", "why": "R1's s+c 0.41 GB; this branch's 160x120 0.116 GB times four frames' size"},
+    "metric": "XLA's compiled bytes of the reverse program; then the process's measured peak (gate 4)",
+    "control": {"plant": "none: the base head (4ce71c6e) is the other arm, about 18 GB predicted", "expected_rate": "n/a"},
+    "if_wrong": "a residual R1 did not see (the run-constant's read branch); print_saved_residuals at 64 px",
+    "cannot_discriminate_if": "both programs compile to the same bytes (the checkpoint not reached by reverse mode)"
+  },
+  "gate_2_refusal": {
+    "claim": "a reverse derivative through the camera that would not fit the memory a run can have is refused by name (camera.reverse-memory), naming the offline renderer, before it compiles; one that fits is not",
+    "kind": "bounds (the estimate is at least every measured peak) and acceptance (the refusal fires)",
+    "case": "CameraNode.derivative_problem's formula: frames of the run's dtype, a constant, a chunk start's state per chunk and a tape per step of a chunk, fitted to the measured peaks of gate 4 and checked on the sizes left out of the fit",
+    "prediction": {"value": null, "band": [1.0, 1.6], "unit": "estimate over measured peak, every arm (never under 1: an underestimate fails)", "basis": "guess", "why": "a least-squares fit with its margin set at the largest miss, as the near field's MEMORY_MARGIN"},
+    "metric": "measured process peak against the estimate",
+    "control": {"plant": "a run of 10^6 steps at 4096x3072 (refused anywhere) and the done case's 160x120 x 12 steps (passes anywhere); the threshold itself with device_memory planted just under and just over the estimate", "expected_rate": "refused / passes on every run (deterministic)"},
+    "if_wrong": "an underestimate on a held-out size: the tape grows with something the formula does not count (subjects, sub-frames)",
+    "cannot_discriminate_if": "the planted memory is not what the check reads"
+  },
+  "gate_3_reverse_gates": {
+    "claim": "reverse mode through the camera equals forward mode (T1, H2) and central differences (T2; in float32 only where they discriminate, else T3: float32 against float64), and a held step's derivative is its frame's (H1), from the run's start, from a continued state with the tree's structure or a leaf written over, and over a CALLBACK controller's chunks, in both dtypes",
+    "kind": "equality to rounding (T1, H1, H2, T3) and bounds (T2)",
+    "case": "tests/sensing/test_in_loop_reverse.py (reverse_gates.py), four arms",
+    "prediction": {"value": null, "band": [0.0, 0.5], "unit": "largest error over its tolerance, every check, every arm, both dtypes", "basis": "measured-before", "why": "R1's largest T2 0.44 of its bound, T1 1.48 eps S against 128; H2 on its terms' scale clears R1's one flagged draw; the continued and chunked arms read the same structure the run-constant PR made right in forward mode"},
+    "float32_where_central_differences_cannot_discriminate": "predicted: nowhere at the fixed point (R1's float32 relative bounds 0.16 to 3.9 %, under DISCRIMINATES = 10 %); on the controls' drawn points at most one parameter in ten (guess), judged by T3, which runs on every float32 parameter anyway",
+    "T3_tolerance": "128 eps32 S + 1.5 sqrt(160 eps32) S = 6.5e-3 S (the chain's rounding and the disc's d^(3/2) rise over float32's forward rounding of an edge, about 160 eps32 px); predicted gap at most 0.3 of it",
+    "metric": "each check's error over its tolerance",
+    "control": {
+      "plant": "edge-stop (stop_gradient on the ball's exact disc coverage), structure-stop (on the tree's structure, the run-constant's derivative), made-stop (on the structure a frame step makes: the overridden arm's path), held-stop (on the held frame)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "edge-stop and held-stop 30/30 in each arm; structure-stop 30/30 in reset, continued and chunked; made-stop 30/30 in overridden",
+      "runs": 30,
+      "clean_expected": "0/30 each arm",
+      "resolution": "discriminating_range.py over the structure's share scaled by (1 - s): predicted caught every draw down to s of about 0.1 of the share in f64"
+    },
+    "if_wrong": "a clean flag: classify by CLAUDE.md's five causes before any tolerance moves; a missed plant: the check that should have caught it cannot discriminate there",
+    "cannot_discriminate_if": "a plant's path is not taken in the arm (structure-stop in the overridden arm, made-stop elsewhere): those pairs are not counted"
+  },
+  "gate_4_costs": {
+    "claim": "reverse mode's peak memory and time a step against forward at 320x240 and 640x480 over 10, 100 and 1000 steps",
+    "kind": "estimates",
+    "case": "node_measure.py --reverse camera:.fy (MIME's differentiated run, checkpointed), one arm a process on a runner",
+    "prediction": {"value": null, "band": [3.0, 7.0], "unit": "rev/fwd time a step at 1000 steps (float64); peaks 2 to 6 GiB at 320, 3 to 7 GiB at 640, 1000 steps", "basis": "measured-before", "why": "R1's s+c and r+s+c rows; the run-constant removes the carried cache from the tape (about a third of s+c's per-step tape at 640, R1), so peaks at or under R1's"},
+    "metric": "node_measure's reverse_peak_mib and reverse steady time over forward steady time, same process",
+    "if_wrong": "a size over 12 GiB: the refusal's threshold is then what a runner can take, and the docs say so"
+  },
+  "bits": {
+    "cases": "every forward program bit for bit, base (camera/run-constant 4ce71c6e) against head: the camera's saved cases (camera_scene, camera_on_gantry) from step 0 and continued, f64 and f32; script A f64 and f32; and the forward-mode derivative of the continued gate (jvp); the reverse program changes (checkpoints)",
+    "prediction": "every forward array np.array_equal; the reverse program's gradient within T1's bound of the base's, not bit for bit",
+    "controls": {"repeat": "head twice: identical", "one_ulp": "fy one ulp up: differs"}
+  },
+  "outcomes": null
+}
