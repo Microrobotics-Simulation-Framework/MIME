@@ -1,5 +1,5 @@
 {
- "written": "2026-11-13, committed before the fix round's gates ran on a runner or locally (the commit that adds this file is the timestamp): #284's review fixed, the camera's static structure never made in a frame step, made once a run from the run's leaves where a derivative may be taken",
+ "written": "2026-11-13, committed before the fix round's gates ran on a runner (the commit that adds this file is the timestamp; amended before any gate ran, after the coordinator asked that no forward run read a structure made at other numbers): #284's review fixed, the camera's static structure never made in a frame step, made once a run from the run's leaves where a derivative may be taken, and made again once a forward run on the host where the tree's was made at other leaves",
  "phase": "camera lane: the fix round of #284 (the static structure made once per run)",
  "labels": "the fix round's predictions; basis: #284's review (its measured costs and memory, laptop, one core), the PR's own outcomes (tests/sensing/predictions_camera_runconst.json) and the local runs in seen_before",
  "seen_before": [
@@ -7,7 +7,8 @@
   "#284's review: reverse temp memory of the continued objective (12 steps, 160x120, float64, checkpointed) 4888 MB at 4ce71c6e, 4884 MB at da8d1679; forward 10 to 12 MB",
   "#284's outcomes: the make 57 ms (float32) and 134 ms (float64) at 640x480, a frame 14 / 28 ms (runner, one CPU)",
   "local, this head, laptop: a study's point off the build point (fy 757.5 against 750) holds the structure made at its own leaves (static_structure_from equal to its intrinsics), so Study.gradient and Study.fit, which take their derivative at each point's own values, read the held structure at 4ce71c6e too; the per-frame remake is reached by a tree written leaf by leaf (the review's direct differentiated_run, a central difference's +-h, the study's _replaced away from theta0)",
-  "local, this head: tests/sensing/test_in_loop_cache.py 12 passed (both dtypes); one run each of CAMERA_PLANT numbers-not-compared (the served case failed, both routes), cache-every-frame (the served case and the inspection failed) and made-branch (the inspection failed, the served case passed, as designed: it cannot see an untaken branch)"
+  "local, this head: tests/sensing/test_in_loop_cache.py 12 passed (both dtypes); one run each of CAMERA_PLANT numbers-not-compared (the served case failed, both routes), cache-every-frame (the served case and the inspection failed) and made-branch (the inspection failed, the served case passed, as designed: it cannot see an untaken branch)",
+  "local, this head: the B1 test over its three routes (override, written, given), the served test (made again once a run) and the guard test, both dtypes, passed once; the plants not yet run"
  ],
  "operating_point": {
   "dtype": [
@@ -36,7 +37,8 @@
    "da8d1679_off_over_at": "0.95 to 1.05 (its cache was made at the first step and carried)",
    "head_at_over_4ce71c6e_at_forward": "1.0 to 1.4: one make per run more than 4ce71c6e's forward at the build's leaves, which read the held structure (about the make over 20 steps: 0.2 ms of 0.7 at 160x120 float64, 3 to 7 ms of 14 to 28 at 640x480)",
    "head_at_over_4ce71c6e_at_jvp": "0.85 to 1.15: both make the structure's tangent once a run (4ce71c6e through its custom rule, the head by JAX's own)",
-   "head_over_da8d1679_at": "0.7 to 1.15, forward and jvp: both make it once a run; da8d1679 carried it in every step"
+   "head_over_da8d1679_at": "0.7 to 1.15, forward and jvp: both make it once a run; da8d1679 carried it in every step",
+   "head_chunk1_over_4ce71c6e_chunk1": "1.0 to 1.2: the host compare of the 49 numbers once a run (a few small transfers) on a one-step chunk"
   },
   "metric": "steady ms per step, the min of each process's repeats, the median over three rounds",
   "control": {
@@ -71,26 +73,26 @@
   "if_wrong": "a clean failure means the inspection reads another node's step or a frame JAX cut differently on the runner: read its message first",
   "cannot_discriminate_if": "JAX's source information were lost (no frames): the moving-mount control would then fail too"
  },
- "gate_3_served_and_never_drawn_at_other_numbers": {
-  "claim": "the structure a tree holds is read on both routes, and a frame over one whose numbers are not the step's (any of the 49, or a leaf written without it) is not a number, refused by the run, never drawn at other leaves",
+ "gate_3_never_read_at_other_numbers": {
+  "claim": "no forward run reads a structure made at other numbers than its leaves: a continued run given fy=800 by an override, by the graph's tree written leaf by leaf, or by a tree given to the run with fy written, equals a fresh build at 800 (tube only, ball and tube, both dtypes); a structure whose numbers hold is read and one whose numbers differ (any of the 49) is made again once a run, on both routes; a step outside MIME's runs (MADDENING's own scan) that meets one draws a frame that is not a number",
   "kind": "acceptance",
-  "case": "tests/sensing/test_in_loop_cache.py::test_the_structure_is_served_and_a_frame_over_one_made_at_other_numbers_is_not_a_number",
+  "case": "tests/sensing/test_in_loop_cache.py: test_a_continued_run_with_another_leaf_draws_the_frame_at_it, test_the_structure_is_served_while_its_numbers_hold_and_made_again_once_a_run_when_any_differs, test_a_step_given_a_structure_made_at_other_numbers_draws_no_frame",
   "prediction": {
-   "value": "pass in both dtypes and routes",
+   "value": "pass in both dtypes, every route",
    "basis": "measured-before",
-   "why": "local run above"
+   "why": "local runs above; the remake is the build's own compiled maker, so equal bit for bit"
   },
-  "metric": "the marked structure's frame (1000 x 0.25) where the numbers hold; NaN where any differs",
+  "metric": "the frame against a fresh build's (exact), the marked structure's frame, NaN",
   "control": {
-   "plant": "numbers-not-compared (the guard off: the marked structure read whatever its numbers); cache-every-frame (made in every frame: the marked one never read)",
+   "plant": "read-as-is (the run's remake and the step's guard off: the tree read as it is); remake-off; guard-off; cache-every-frame",
    "environment_variable": "CAMERA_PLANT",
-   "expected_rate": "10/10 each",
+   "expected_rate": "10/10 each on its test; read-as-is fails the written and given routes and not the override's, whose tree is its point's (built at its own leaves)",
    "runs": 10,
    "clean_expected": "0/10",
-   "resolution": "exact: a marked transmission of 0.25 against the tube's"
+   "resolution": "exact: a stale tube's edge moves the frame by over 100 counts"
   },
-  "if_wrong": "a clean failure on the history-scan route would mean MADDENING's scan reads the tree differently from the chunk",
-  "cannot_discriminate_if": "the marker equalled the clean frame (it is 250 counts everywhere; the clean frame holds the tube's edges)"
+  "if_wrong": "a clean failure on the given route would mean ChunkedRun's params skip the remake",
+  "cannot_discriminate_if": "the moved leaf did not move the frame (asserted: over 100 counts)"
  },
  "gate_4_two_builds": {
   "claim": "the two-builds walk stays quiet on the camera's detector leaves, and both plants (the build's structure given to every chunk as a constant; the guard's numbers held as constants) fire on fy and k1",
