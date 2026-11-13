@@ -23,7 +23,7 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import pytest
-from switch_configurations import PACKAGE, configurations, traced_steps, tree_scan
+from switch_configurations import PACKAGE, built_graphs, traced_steps, tree_scan
 
 import mime.docs._switches as switch_scan_module
 from mime.build._maddening import node_state, parameter_leaves, resolved_inputs, zero_inputs
@@ -121,8 +121,7 @@ def test_a_dotted_origin_naming_a_modules_object_has_no_aliases_and_a_module_has
 @pytest.mark.fixture_first
 def test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_steps(scan, steps):
     recorded: set[str] = set()
-    for configuration, make in configurations().items():
-        graph = make().build().graph
+    for configuration, graph in built_graphs().items():
         for name in graph.schedule:
             node = graph.get_node(name)
             given = {**zero_inputs(node), **resolved_inputs(graph, name)}
