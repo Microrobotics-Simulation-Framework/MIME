@@ -10,8 +10,7 @@ and the motor's step identities, and the impulses split by the friction's share)
 sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
 no round-trip case's body is fine enough for (where the package has the hand-over); the point body with its fitted
 self-history (``self_history="modes"``), which no round-trip case writes; and those steps, with each node's
-run-constants as a derivative's run makes them, traced and scanned, once per process, for the tests that read the scan,
-with each configuration's graph kept for the tests that trace the steps again.
+run-constants as a derivative's run makes them, traced and scanned, once per process, for the tests that read the scan.
 ``step_jaxprs.py`` also runs these configurations on a merge base, whose package has no switch scan, so the scan is
 imported only where it is used."""
 
@@ -86,10 +85,6 @@ def metered(make: Callable[[], Experiment]) -> Experiment:
     return experiment
 
 
-#: Each configuration's graph as :func:`traced_steps` built it, in the configurations' order (:func:`built_graphs`).
-_BUILT: dict[str, Any] = {}
-
-
 @cache
 def traced_steps() -> tuple["TracedStep", ...]:
     """Every node's step in every configuration, traced in float64 with no switch context open, on caches emptied once
@@ -107,7 +102,7 @@ def traced_steps() -> tuple["TracedStep", ...]:
 
     def cases():
         for configuration, make in configurations().items():
-            graph = _BUILT[configuration] = make().build().graph
+            graph = make().build().graph
             leaves = parameter_leaves(graph)
             making.extend((configuration, name, graph.get_node(name), leaves.get(name))
                           for name in run_constant_nodes(graph))
@@ -131,14 +126,6 @@ def traced_steps() -> tuple["TracedStep", ...]:
                              for configuration, name, node, own in making)
     finally:
         jax.config.update("jax_enable_x64", held)
-
-
-
-def built_graphs() -> dict[str, Any]:
-    """Each configuration's graph as :func:`traced_steps` built it, once per process: the owner pass traces their steps
-    again on these and builds nothing a second time."""
-    traced_steps()
-    return dict(_BUILT)
 
 
 @cache

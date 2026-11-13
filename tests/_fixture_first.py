@@ -45,10 +45,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     marked_first(items)
 
 
-#: The cached builds that cost minutes (``tests/saved/switch_configurations.py``): every configuration's step traced, the
-#: graphs it built, and the scan of the traces. A test that calls one, or reads a fixture that does, is marked
-#: ``fixture_first``.
-BUILDS = ("tree_scan", "traced_steps", "built_graphs")
+#: The cached builds that cost minutes (``tests/saved/switch_configurations.py``): every configuration's step traced, and the scan
+#: of the traces. A test that calls one, or reads a fixture that does, is marked ``fixture_first``.
+BUILDS = ("tree_scan", "traced_steps")
 
 
 def calls_a_build(function: Any, builds: Iterable[str]) -> bool:
