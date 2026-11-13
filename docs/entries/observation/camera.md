@@ -31,7 +31,9 @@ A frame reads it and never renders it: it is read, never carried in the state, s
 image costs. A run whose leaves differ from the numbers its structure was made at (a leaf written into the tree without it)
 renders it again once, before its steps, so no stale image is read; a run's chunks, a CALLBACK controller's included, render it
 never; and a derivative's run renders it once, from its own leaves (measured on one CPU,
-`tests/sensing/predictions_camera_runconst_fix.json`). Where the camera may move it is rendered in every frame, and the build
+`tests/sensing/predictions_camera_runconst_fix.json`). A step called on its own, outside a run of MIME's (MADDENING's own
+scan or `graph.step`), takes whatever parameters it is given, so it renders the structure again in any frame whose numbers
+differ from the ones it was made at. Where the camera may move it is rendered in every frame, and the build
 report says which holds. One camera to
 an experiment: a second is refused (`id.duplicate`), and a second view is a second experiment.
 

@@ -19,17 +19,23 @@ the world: the ray table, the standing subjects' transmission and their flags, p
 ``static_structure``, beside the numbers it was made at, ``static_structure_from`` (the nine intrinsics, the scene's numbers
 as built, the camera's pose): both made when the node's parameters are made, by one compiled maker, so the build's tree, a
 study's point's and an override's hold the structure at their own leaves, and the save's rerun is given it at its nudged
-ones (``made_again``). A frame step reads it as its tree (or its run-constants) holds it and never makes it: read, never
-carried, so the state holds no cache, a held step costs what holding the image costs, and a frame step what drawing the
+ones (``made_again``). A frame step reads it as its tree (or its run-constants) holds it, made at the run's leaves: read,
+never carried, so the state holds no cache, a held step costs what holding the image costs, and a frame step what drawing the
 frame over it costs, at the build's leaves or any other. Where a derivative may be taken (MIME's differentiated run, a
 chunk a caller differentiates) the run makes it from its own leaves once, before its steps (``MimeNode.run_constants``, by
 JAX's own rules, no custom one), so the derivative in the leaves passes through it from a continued state as from the
 first step, and a tree whose leaves were written without it is drawn at its leaves. A forward run whose tree holds a
 structure made at other numbers than its leaves (written leaf by leaf) makes it again once, on the host, before its steps
-(``refreshed_held``, a compare of the numbers). A frame step that still meets one (a step called outside MIME's runs:
-MADDENING's own scan, ``graph.step``) draws a frame that is not a number, never one at other leaves; no flag names the
-cause, since MIME's flags and refusals are read by its own runs alone, which make the structure again first. Nothing of the
-structure is a constant of the program.
+(``refreshed_held``, a compare of the numbers). A step given its run-constants (a differentiated run, a chunk that
+tallies the run's flags) holds no branch that makes it, and one that still meets a structure made at other numbers draws
+a frame that is not a number, never one at other leaves (no flag names the cause: MIME's runs make the structure again
+first, so only a tree given past them could reach it). A step not given them (MADDENING's own scan, which MIME's
+recorded runs use, ``graph.step``, MADDENING's verification, which injects a moved leaf and asks for the frame a node
+built with it draws) takes whatever tree it is given, so it chooses per frame: the held structure where its numbers are
+the step's, one made from them where any differs (never taken in a run of MIME's, which made it again first). A
+derivative taken through such a step carries no part of the structure where its numbers hold: MIME's derivatives are
+taken through its differentiated run, which makes it from the leaves. Nothing of the structure is a constant of the
+program.
 ``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
 **Forward mode only.** A derivative passes in forward mode (the ring's poses and the leaves); reverse mode and a batched
@@ -55,7 +61,7 @@ from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, node_input, \
-    run_dtype, typed_view
+    run_constants_given, run_dtype, typed_view
 from mime.core._node import for_derivative
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode
@@ -446,9 +452,15 @@ class CameraNode(MountedNode):
 
     def _rendered(self, p: Mapping[str, Any], ring: Array, intrinsics: Array, pose: CameraPose, key: Any,
                   dtype: Any) -> tuple[Array, Array, dict[str, Array]]:
-        """The frame over the static structure: for a camera fixed in the world the one its tree or its run-constants
-        hold (:meth:`structure_of`), never made here but where the step was given none (the node's constants alone),
-        and not a number where its numbers are not the step's; a camera on a frame that may move renders it."""
+        """The frame over the static structure, for a camera fixed in the world. A step given its run-constants (a
+        differentiated run, a chunk a caller differentiates, a chunk that tallies the run's flags) reads the one the
+        run holds (:meth:`structure_of`, made at the run's leaves), never makes it, and draws a frame that is not a
+        number where its numbers are not the step's. A step not given them (MADDENING's own scan, which MIME's recorded
+        runs use, ``graph.step``, MADDENING's verification) takes whatever tree it is given, so it chooses per frame:
+        the one the tree holds where its numbers are the step's, one made from the step's numbers where any differs
+        (the frame rendered in each branch, so that no branch gives the structure out; a run of MIME's never takes the
+        second, having made the tree's again first). Made where the step was given none (the node's constants alone).
+        A camera on a frame that may move renders it."""
         _, subjects = self._held
         held = self.constants()
         spec = self._spec()
@@ -479,10 +491,19 @@ class CameraNode(MountedNode):
         numbers = self._structure_numbers(intrinsics)
         if STRUCTURE not in p:
             return framed(*unpacked(self._make(numbers), rows, columns, names))
-        image, expected, totals = framed(*unpacked(self.structure_of(p, numbers), rows, columns, names))
         held = self.holds_at(p, numbers)
-        missing = jnp.asarray(jnp.nan, dtype=dtype)
-        return jnp.where(held, image, missing), jnp.where(held, expected, missing), totals
+        if run_constants_given(p):
+            image, expected, totals = framed(*unpacked(self.structure_of(p, numbers), rows, columns, names))
+            missing = jnp.asarray(jnp.nan, dtype=dtype)
+            return jnp.where(held, image, missing), jnp.where(held, expected, missing), totals
+
+        def read() -> tuple[Array, Array, dict[str, Array]]:
+            return framed(*unpacked(self.structure_of(p, numbers), rows, columns, names))
+
+        def made() -> tuple[Array, Array, dict[str, Array]]:
+            return framed(*unpacked(self._make(numbers), rows, columns, names))
+
+        return lax.cond(held, read, made)
 
     def structure_of(self, p: Mapping[str, Any], numbers: Array) -> Array:
         """The static structure a frame step draws over: the one its tree holds, or its run's run-constant (made from
