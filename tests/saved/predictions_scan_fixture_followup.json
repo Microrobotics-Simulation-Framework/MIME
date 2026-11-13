@@ -1,0 +1,60 @@
+{
+  "written": "2026-11-13, committed before any Actions probe of this follow-up ran: why the harness case 'A0's controller on its target's orientation' took 31.1 s on the release push at b1de6f7c (run 43345746689, 3.12 shard 16), and whether #283 made it, and the first payer of the scan's build, slower",
+  "phase": "fix/scan-fixture-followup",
+  "labels": "predictions by the author from the junit files of the push run and of the four probe runs of #283 (read, not re-run); the Actions arms are the measurement",
+  "seen_before": [
+    "run 43345746689 (b1de6f7c), shard 16: the case took 31.1 s on Python 3.12, 6.0 s on 3.13 and 3.7 s on 3.14; its two siblings took 5.2 and 1.2 s on 3.12; the three cases share a compiled A0 controller, so the first of them to run on a worker pays it",
+    "the probes of #283 at the base (da8d1679), shard 16: the case took 5.2 to 9.7 s in 5 arms, and a sibling ('A0's controller, the body's z along the home pose's x') took 49.3 and 71.9 s in 2 arms: the payer is whichever case a worker reaches first",
+    "the same probes' junit: test_every_guard (the scan's first payer in shard 16): wall 265 to 404 s and CPU 284 to 428 s at the base, wall 418 to 700 s and CPU 362 to 641 s at the head, jax_compile_s 118 to 157 s at the base and 196 to 384 s at the head; the head's arms with jax.clear_caches switched off: 526 and 700 s wall, compile 235 and 308 s"
+  ],
+  "operating_point": {
+    "dtype": ["float64"],
+    "platform": "GitHub runner, 4 vCPU, Python 3.12, CPU; 'alone' arms pinned to one CPU with taskset",
+    "sizes_and_parameters": "as CI runs shard 16: pytest -m 'not slow' -n auto --dist worksteal --mime-shard 16/30; base is da8d1679 (src and tests checked out over the probe branch), head is b1de6f7c",
+    "seeds_and_draws": "alone arms: 3 interleaved pairs for the A0 cases, 2 for the scan's first payer; in-shard arms: 4 of each"
+  },
+  "gate_1_a0_case_alone": {
+    "claim": "the three A0 cases of the harness, run alone in one process on one CPU, cost the same at da8d1679 and b1de6f7c, and the first of them takes over 30 s",
+    "kind": "equality",
+    "case": "tests/saved/test_switch_harness.py::test_replacing_every_fallback_changes_nothing_where_its_condition_is_false with -k \"A0's controller\", the three cases in file order",
+    "prediction": {"band": [28, 60], "unit": "s", "basis": "measured-before", "why": "37.4 s alone on the push run's re-run; the sibling at the base took 49 and 72 s in-shard"},
+    "metric": "the first case's time, and the three cases' sum, base against head",
+    "control": {"plant": "none: the base arm of the same pair is the control", "expected_rate": "head within 15 % of base in 3 of 3 pairs"},
+    "if_wrong": "head slower than base by over 15 % in the pairs: #283 cost the case, and the next arm (compiled programs dropped) says how",
+    "cannot_discriminate_if": "the first case is under 10 s alone (the compile was cached on the runner), or the pairs differ by more among themselves than head from base"
+  },
+  "gate_2_cache_clear_cost": {
+    "claim": "building the scan's traced steps first in the process (which empties JAX's caches once) does not slow the A0 cases that run after it on the same worker",
+    "kind": "equality",
+    "case": "head only: the same three cases in a process that first calls switch_configurations.traced_steps() in collection_finish (not timed), on one CPU, against the head's cases alone",
+    "prediction": {"value": "within 15 %", "basis": "derived", "why": "the emptying happens once, before the first trace, at the start of the worker's life; nothing the A0 cases need has been compiled by then, and the traces the build makes compile nothing"},
+    "control": {"plant": "none; the arm is a comparison", "expected_rate": "within 15 % in 2 of 2"},
+    "if_wrong": "slower after the build: the emptying (or the build's own churn) costs later tests, and the fix is to restore or avoid it",
+    "cannot_discriminate_if": "the case is under 10 s in both"
+  },
+  "gate_3_first_payer_alone": {
+    "claim": "the scan's first payer in shard 16 (test_every_guard_...) alone on one CPU takes the same at the base and the head",
+    "kind": "equality",
+    "case": "tests/saved/test_switch_harness.py::test_every_guard_the_scan_lists_is_reached_false_and_every_nonzero_norm_away_from_zero, 2 interleaved pairs",
+    "prediction": {"value": "head within 15 % of base", "basis": "guess", "why": "the emptied caches change no work the test needs (the scan build was 206 s with and without it locally); the in-shard 1.5 to 1.7 times is then contention (XLA's compile threads spin, so CPU seconds inflate with the wall time), not code"},
+    "control": {"plant": "none", "expected_rate": "within 15 % in 2 of 2"},
+    "if_wrong": "slower alone at the head: the cause is in the code of #283 and not in the shard's schedule",
+    "cannot_discriminate_if": "the two base runs differ by over 15 % between themselves"
+  },
+  "gate_4_in_shard": {
+    "claim": "in shard 16 as CI runs it, the sum of the three A0 cases and the first payer's time and CPU seconds, base against head",
+    "kind": "estimates",
+    "case": "four arms each, -n auto --dist worksteal --mime-shard 16/30",
+    "prediction": {"value": "the A0 sum is the same distribution at both (one case pays, 5 to 70 s); the first payer is 1.4 to 1.8 times slower at the head, as in #283's probes", "basis": "measured-before", "why": "seen_before"},
+    "if_wrong": "the A0 sum differs: the schedule changes who compiles what",
+    "cannot_discriminate_if": "the arms' CPU models differ between base and head: they are paired by the CPU model in the report"
+  },
+  "bits": {"_how": "no program changes: a test-suite allowlist row and, if a measurement asks for it, test infrastructure"},
+  "outcomes": {
+    "_note": "written after the probes; the predictions above are unchanged. Runs 43349096705, 43351872173, 43354131525 on probe/scan-followup (deleted).",
+    "gate_1_a0_case_alone": "as predicted: the first of the three cases alone on one CPU took 57.5, 57.1, 56.9 s at da8d1679 and 57.0, 57.3, 57.2 s at b1de6f7c (Xeon 8370C), 43.6, 42.9, 42.9 and 43.1, 42.9, 43.4 s (EPYC 9V74); over 30 s at both, equal within 1 %. The band 28 to 60 s held. The first run of this arm (43349096705) selected nothing (-k with a space is a syntax error in pytest) and measured nothing.",
+    "gate_2_cache_clear_cost": "as predicted, and then some: with the scan's traced steps built first in the process the first case took 25.4 and 19.7 s, less than the 57.0 and 43.1 s without (the build warms what the case compiles); no slowdown from the emptied caches.",
+    "gate_3_first_payer_alone": "as predicted: test_every_guard alone on one CPU 352.5 s (base) and 351.2 s (head) on EPYC 7763, 261.2 and 259.0 s on EPYC 9V45. The shard's 1.5 to 1.7 times is not in the code.",
+    "gate_4_in_shard": "partly: the first payer took 255 to 367 s at the base (4 arms) and 602 to 700 s at the head (4 arms), as before; the A0 cases: one paid at the base in one arm (86.7 s, a sibling), none over 11 s at the head in 8 arms. Unpredicted and measured: the head with xdist's own scheduler (pinning off) took 500 to 738 s (4 arms), and the BASE with only the first payer marked fixture_first (so stock xdist sorts it to the head of the collection) took 595 to 731 s (3 arms): the early start, concurrent with the other workers' first compiles, is what makes it slower in the shard, not the pinning, the emptied caches (arms with the clearing off: 526 and 700 s) or the scan's tracing. The mechanism of the slowdown (contention for the 4 vCPUs) is a hypothesis."
+  }
+}
