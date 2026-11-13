@@ -97,5 +97,53 @@
   "if_wrong": "a test whose alone ratio is near 1 while its shard ratio is over 1.5 rose by its place in the shard; one whose alone ratio is high with no new work named is a regression to bisect",
   "cannot_discriminate_if": "the repeats of one commit on one runner differ by more than the two commits do"
  },
+ "gate_6_pair_loops_batched": {
+  "claim": "pair_loop_works evaluating a draw's pair loops in one vmap (e2946da1) checks exactly what it did, faster: the same numbers on the same draws, the same examples, the case's controls still caught every run",
+  "kind": "equality",
+  "case": "bits: probe/loopworks_dump.py, the magnetic family's loop rig at 40 draws of its own strategy (Hypothesis derandomized in the probe script, never in a test), loop_works and pair_loop_works for the pair 0.2.0 and the kept pair 0.1.0, every LoopWork's work, coarse, summed and floor, base 3cb468c4 against head through .github/probe/bit_compare.py (one CPU, one thread); time: tests/oracles/test_closed_loop.py::test_the_pair_0_2_0_passes_the_closed_loop_case and the family walk's magnetic.force and magnetic.torque 0.2.0 cases alone and cold, base and head interleaved, 3 repeats; control: detection_rate.py on the pair 0.2.0 test with MIME_PLANT_PAIR_REACTION=1e-6 (a probe plugin scaling the source reaction's wrench by 1 + 1e-6), 10 runs at base and at head, clean arms beside",
+  "prediction": {
+   "value": {
+    "bits": "every array equal, both pairs",
+    "time": "the pair 0.2.0 test 0.3 to 0.6 of base; each family walk case 0.5 to 0.8 of base (its energy case is unchanged)",
+    "control": "10/10 caught at base and at head, 0/10 flagged clean",
+    "examples": "200 at base and at head (the case's VerificationResult)"
+   },
+   "basis": "derived: per element the eager kernels do the same arithmetic on a batch of 320 rows as on 64; the profile puts 246 of 318 s in the five batches; a reaction off by 1e-6 leaves work of that order of the source's share, far above the quadrature's estimate and the rounding floor",
+   "why": "eager vmap costs per primitive dispatched, not per row"
+  },
+  "control": {
+   "plant": "MIME_PLANT_PAIR_REACTION: the source reaction's link wrench times 1 + 1e-6",
+   "environment_variable": "MIME_PLANT_PAIR_REACTION",
+   "expected_rate": "10/10",
+   "runs": 10,
+   "clean_expected": "0/10"
+  },
+  "if_wrong": "bits differ: report the largest difference against the case's tolerance (quadrature estimate plus floor) and its cause; time not down: the eager cost is not per batch",
+  "cannot_discriminate_if": "the clean arm flags (the plant's run fails for another reason) or the planted runs are inconclusive"
+ },
+ "gate_7_owner_pass_shares_the_builds": {
+  "claim": "the switch scan's owner pass tracing the graphs traced_steps built (a2bb509f) checks what it did: the same owners recorded, the scan's answer unchanged, its plant still caught, without a second build of 64 configurations",
+  "kind": "equality",
+  "case": "tests/saved/test_switch_scan.py::test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_steps alone and cold, base and head interleaved, 3 repeats; probe/scan_dump.py: the scan's raw sites, functions in scope and owners passed, and the owner pass's recorded owners, base and head; control: detection_rate.py on the owner test with MIME_PLANT_DROP_OWNER (a probe plugin: the collector drops the rows of one owner, the first in sorted order), 10 runs at base and at head, clean arms beside",
+  "prediction": {
+   "value": {
+    "sets": "the scan's hits, scope and owners and the recorded owners equal, base and head",
+    "time": "the owner test alone: head 0.45 to 0.75 of base (base pays the fixture and a second build; head the fixture and the traces)",
+    "memory": "the owner test's process peak at head within 1.3 times base's",
+    "control": "10/10 caught at base and at head, 0/10 flagged clean"
+   },
+   "basis": "derived from the phases (builds 164 s, step traces 33 s, of a 237 s fixture) and the code; memory a guess",
+   "why": "the builds are the owner pass's largest part and a trace reads a built graph"
+  },
+  "control": {
+   "plant": "MIME_PLANT_DROP_OWNER: the collector drops one owner's rows",
+   "environment_variable": "MIME_PLANT_DROP_OWNER",
+   "expected_rate": "10/10",
+   "runs": 10,
+   "clean_expected": "0/10"
+  },
+  "if_wrong": "the recorded owners differ: a trace of a shared node skipped a switch (a cache keyed on the node), and the change is withdrawn",
+  "cannot_discriminate_if": "the clean arm flags, or the planted runs are inconclusive"
+ },
  "outcomes": null
 }
