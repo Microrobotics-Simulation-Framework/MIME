@@ -145,5 +145,26 @@
   "if_wrong": "the recorded owners differ: a trace of a shared node skipped a switch (a cache keyed on the node), and the change is withdrawn",
   "cannot_discriminate_if": "the clean arm flags, or the planted runs are inconclusive"
  },
+ "gate_8_own_work_steps": {
+  "claim": "for the four risen tests whose own work grew alone between fe7c73f8 and 3cb468c4 with no cause named (gate 5), the commit at which it grew: each test alone and cold at each of the 66 commits from fe7c73f8 to 3cb468c4 (one lockfile throughout), one run a commit",
+  "kind": "estimates",
+  "case": "tests/examples/test_notebooks.py::test_the_settling_balls_experiment_builds; tests/examples/test_screw_in_tube.py::test_the_screw_swims_forward_in_step_with_the_field_at_a_turning_reynolds_number_inside_the_range; tests/saved/test_sampling_walk.py::test_every_kind_that_samples_spreads_its_samples_evenly[cylinder-2000]; tests/saved/test_switch_harness.py::test_replacing_every_fallback_changes_nothing_where_its_condition_is_false[the body at the origin, on the axis, free]; six arms of consecutive commits",
+  "prediction": {
+   "value": {
+    "settling balls (6 to 14 s alone)": "one step, at 1a819149 (the near-contact law, which changed the example) or 8df010c7 (lubrication's hand-over); guess",
+    "screw in tube (11 to 15 s)": "at beeae2e2 (drag 0.5.0's joint near-field node) or 1ea44eaa (graded sampling); guess",
+    "sampling cylinder-2000 (27 to 43 s)": "at 1ea44eaa (graded sampling); guess",
+    "fallback harness, body at the origin (13 to 42 s)": "at 8df010c7 or 1a819149 (the harness gained the lubricated configurations); guess"
+   },
+   "basis": "guess, from the commits that touched each test's subject in the range",
+   "why": "a step of 1.4 to 3 times alone is new work at one commit, or a regression there"
+  },
+  "control": {
+   "plant": "none: a scan over commits; a step must hold at the commits after it",
+   "expected_rate": "n/a"
+  },
+  "if_wrong": "no single step: the growth is spread over several commits, each named with its share",
+  "cannot_discriminate_if": "a commit's run fails or the test is not collected there (recorded per commit)"
+ },
  "outcomes": null
 }
