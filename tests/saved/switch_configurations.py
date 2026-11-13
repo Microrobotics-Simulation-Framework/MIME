@@ -9,14 +9,15 @@ apparatus with its masses mounted and that friction arm, each with the energy le
 and the motor's step identities, and the impulses split by the friction's share) no other configuration takes; a
 sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
 no round-trip case's body is fine enough for (where the package has the hand-over); the point body with its fitted
-self-history (``self_history="modes"``), which no round-trip case writes; and those steps traced and
-scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
-configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
+self-history (``self_history="modes"``), which no round-trip case writes; and those steps, with each node's
+run-constants as a derivative's run makes them, traced and scanned, once per process, for the tests that read the scan.
+``step_jaxprs.py`` also runs these configurations on a merge base, whose package has no switch scan, so the scan is
+imported only where it is used."""
 
 from collections.abc import Callable
 from functools import cache, partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import jax
 from cases import CASES
@@ -87,22 +88,42 @@ def metered(make: Callable[[], Experiment]) -> Experiment:
 @cache
 def traced_steps() -> tuple["TracedStep", ...]:
     """Every node's step in every configuration, traced in float64 with no switch context open, on caches emptied once
-    (``mime.docs._switches.traced_steps``): what the process traced before does not change the scan's answer."""
-    from mime.build._maddening import node_state, parameter_leaves, resolved_inputs, zero_inputs
+    (``mime.docs._switches.traced_steps``): what the process traced before does not change the scan's answer. Then each
+    node's run-constants as a run a derivative is taken through makes them, once, before its steps
+    (``mime.core._node.run_constants_for_derivative``): code a chunk runs that its step may only read (the camera's static
+    structure, made there, is read by its step and never made in it)."""
+    from mime.build._maddening import make_jaxpr, node_state, parameter_leaves, resolved_inputs, run_constant_nodes, \
+        zero_inputs
+    from mime.core._node import run_constants_for_derivative
+    from mime.docs._switches import TracedStep
     from mime.docs._switches import traced_steps as trace
+
+    making: list[tuple[str, str, Any, object]] = []
 
     def cases():
         for configuration, make in configurations().items():
             graph = make().build().graph
+            leaves = parameter_leaves(graph)
+            making.extend((configuration, name, graph.get_node(name), leaves.get(name))
+                          for name in run_constant_nodes(graph))
             for name in graph.schedule:
                 node = graph.get_node(name)
                 given = {**zero_inputs(node), **resolved_inputs(graph, name)}
-                yield configuration, name, node, node_state(graph, name), given, parameter_leaves(graph).get(name)
+                yield configuration, name, node, node_state(graph, name), given, leaves.get(name)
+
+    def made(node: Any) -> Callable[[object], object]:
+        def run_constants(own: object) -> object:
+            with run_constants_for_derivative():
+                return node.run_constants(own)
+
+        return run_constants
 
     held = jax.config.jax_enable_x64
     jax.config.update("jax_enable_x64", True)
     try:
-        return trace(cases())
+        steps = trace(cases())
+        return steps + tuple(TracedStep(configuration, name, type(node), make_jaxpr(made(node), own))
+                             for configuration, name, node, own in making)
     finally:
         jax.config.update("jax_enable_x64", held)
 

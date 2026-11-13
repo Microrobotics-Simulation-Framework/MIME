@@ -19,11 +19,14 @@ the world: the ray table, the standing subjects' transmission and their flags, p
 ``static_structure``, beside the numbers it was made at, ``static_structure_from`` (the nine intrinsics, the scene's numbers
 as built, the camera's pose): both made when the node's parameters are made, by one compiled maker, so the build's tree, a
 study's point's and an override's hold the structure at their own leaves, and the save's rerun is given it at its nudged
-ones (``made_again``). A frame step reads it where its numbers are the step's and makes it where any differs (a tree whose
-leaves were written without it): read, never carried, so the state holds no cache and a held step costs what holding the
-image costs. A run makes it a run-constant (``MimeNode.run_constants``, once per chunk, before its steps) that carries the
-make's derivative in the leaves (:func:`carrying`), so a derivative is right from a continued state as from the first
-step, and its tangent is made once a chunk, not in every frame. Nothing of the structure is a constant of the program.
+ones (``made_again``). A frame step reads it as its tree (or its run-constants) holds it and never makes it: read, never
+carried, so the state holds no cache, a held step costs what holding the image costs, and a frame step what drawing the
+frame over it costs, at the build's leaves or any other. Where a derivative may be taken (MIME's differentiated run, a
+chunk a caller differentiates) the run makes it from its own leaves once, before its steps (``MimeNode.run_constants``, by
+JAX's own rules, no custom one), so the derivative in the leaves passes through it from a continued state as from the
+first step, and a tree whose leaves were written without it is drawn at its leaves. A frame step whose numbers are not the
+ones its structure was made at (a tree written leaf by leaf and run forward, which no route of MIME's gives) draws a frame
+that is not a number, never one at other leaves. Nothing of the structure is a constant of the program.
 ``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
 **Forward mode only.** A derivative passes in forward mode (the ring's poses and the leaves); reverse mode and a batched
@@ -49,7 +52,8 @@ from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, node_input, \
-    run_constants_given, run_dtype, typed_view
+    run_dtype, typed_view
+from mime.core._node import for_derivative
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode
 from mime.sensing import _scene as scene
@@ -59,9 +63,6 @@ from mime.sensing._render import Exposure, Response, exposed, frame_key, prepare
 from mime.sensing._subjects import Subject
 
 lax: Any = jax.lax
-_custom_jvp: Any = cast(Any, jax).custom_jvp
-_jvp: Any = cast(Any, jax).jvp
-_checkpoint: Any = cast(Any, jax).checkpoint
 
 #: The detector's nine numbers, the node's leaves, in the order a Pinhole and OpenCV give them.
 INTRINSICS = ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3")
@@ -190,33 +191,12 @@ def structure_maker(spec: str, placement: tuple[float, ...]) -> tuple[Callable[[
     return cast(Callable[[Array], Array], jit(made)), names
 
 
-def carrying(make: Callable[[Array], Array]) -> Callable[[Array, Array], Array]:
-    """``held``, the static structure a tree holds, carrying ``make``'s derivative at ``numbers``: its value is ``held``
-    itself (no copy of it is made), and its tangent is ``make``'s forward derivative at ``numbers`` (checkpointed, so
-    that reverse mode makes it again rather than keeping what ``make`` holds inside), whatever ``held`` was made from.
-    The step reads it only where ``held``'s numbers are ``numbers`` (it makes the structure otherwise), so the
-    derivative is the structure's at the run's leaves wherever the run starts: from its first step or a continued
-    state."""
-
-    @_custom_jvp
-    def value(held: Array, numbers: Array) -> Array:
-        del numbers
-        return held
-
-    def tangent(primals: tuple[Array, Array], tangents: tuple[Array, Array]) -> tuple[Array, Array]:
-        held, numbers = primals
-        _, moved = _jvp(_checkpoint(make), (numbers,), (tangents[1],))
-        return held, moved.astype(held.dtype)
-
-    value.defjvp(tangent)
-    return cast(Callable[[Array, Array], Array], value)
-
-
 SCENE_HELD = ("held as built: the scene's numbers (the subjects' settings and appearances, the response) are consumed when "
               "the node is built, into its subjects and the static structure's image, so that a new value takes a "
               "rebuild (a study refuses to vary it)")
 STRUCTURE_HELD = ("the static structure, made when the node's parameters are made, from the leaves beside it: no quantity "
-                  "of its own, made again once a run from the run's leaves where they differ (run_constants)")
+                  "of its own, made again once a run from the run's leaves where a derivative may be taken "
+                  "(run_constants)")
 
 
 class CameraNode(MountedNode):
@@ -224,9 +204,9 @@ class CameraNode(MountedNode):
     subjects, the response and the key's seed), rendered every ``period`` steps from the ring of the last ``sub_frames``
     poses of every body in ``bodies`` (the inputs ``pose_<body>``), seen from the camera's pose: its ``placement`` in the
     world, or on the frame ``mount_index`` of the ``mount_poses`` it is mounted on. Where the camera is fixed in the world
-    the static structure is a leaf (:data:`STRUCTURE`), made with the node's parameters and once a run where the run's
-    leaves differ, and read; where it is mounted on a frame that may move it is rendered in every frame, and none is held
-    (a stale one would be a wrong image)."""
+    the static structure is a leaf (:data:`STRUCTURE`), made with the node's parameters, and once a run from the run's
+    leaves where a derivative may be taken, and read; where it is mounted on a frame that may move it is rendered in every
+    frame, and none is held (a stale one would be a wrong image)."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-133",
@@ -391,26 +371,30 @@ class CameraNode(MountedNode):
     def _intrinsics(self, p: Mapping[str, Any], dtype: Any) -> Array:
         return jnp.stack([jnp.asarray(p[name], dtype=dtype) for name in INTRINSICS])
 
+    def _made_at(self, params: Mapping[str, Any]) -> dict[str, Array]:
+        """The static structure made at ``params``' intrinsics, in its leaf's dtype, and the numbers it was made at."""
+        dtype = jnp.asarray(params[STRUCTURE]).dtype
+        intrinsics = self._intrinsics(params, dtype)
+        return {STRUCTURE: self._maker()[0](intrinsics).astype(dtype), STRUCTURE_FROM: self._structure_numbers(intrinsics)}
+
     @override
     def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
-        """The held static structure with its derivative in the run's leaves, the make's (:func:`carrying`), made once
-        per chunk, outside its steps: a forward run reads the leaf as it is, and a derivative computes the make's
-        tangent once, not in every frame and never from the state."""
-        if STRUCTURE not in params:
+        """For a run a derivative may be taken through (``for_derivative``): the static structure made from the run's
+        leaves, once for the run (a differentiated run makes its run-constants before its chunks), with the numbers it
+        was made at, so that the derivative in the leaves passes through it by JAX's own rules wherever the run starts
+        and whatever the tree held. Otherwise none: a forward chunk's steps read the structure its tree holds, made at
+        its leaves, with no make and no copy."""
+        if STRUCTURE not in params or not for_derivative():
             return {}
-        held = jnp.asarray(params[STRUCTURE])
-        numbers = self._structure_numbers(self._intrinsics(params, held.dtype))
-        return {STRUCTURE: carrying(self._make)(held, numbers)}
+        return self._made_at(params)
 
     @override
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
         """The static structure made from ``params``' intrinsics, with the numbers it was made at: what the save's
-        resolution rerun gives the step (its nudged leaves), which then reads it rather than making it in every frame."""
+        resolution rerun gives the step (its nudged leaves), which then reads it."""
         if STRUCTURE not in params:
             return {}
-        dtype = jnp.asarray(params[STRUCTURE]).dtype
-        intrinsics = self._intrinsics(params, dtype)
-        return {STRUCTURE: self._maker()[0](intrinsics), STRUCTURE_FROM: self._structure_numbers(intrinsics)}
+        return dict(self._made_at(params))
 
     # -- the step ---------------------------------------------------------------------------------------------------
 
@@ -446,10 +430,9 @@ class CameraNode(MountedNode):
 
     def _rendered(self, p: Mapping[str, Any], ring: Array, intrinsics: Array, pose: CameraPose, key: Any,
                   dtype: Any) -> tuple[Array, Array, dict[str, Array]]:
-        """The frame over the static structure: for a camera fixed in the world the one the tree holds where its numbers
-        are the step's (with its derivative in the leaves, the make's: :meth:`run_constants`, or here where no chunk made
-        it), and one made from the step's numbers where any differs (a tree whose leaves were written without it) or
-        where the step was given none (the node's constants alone); a camera on a frame that may move renders it."""
+        """The frame over the static structure: for a camera fixed in the world the one its tree or its run-constants
+        hold (:meth:`structure_of`), never made here but where the step was given none (the node's constants alone),
+        and not a number where its numbers are not the step's; a camera on a frame that may move renders it."""
         _, subjects = self._held
         held = self.constants()
         spec = self._spec()
@@ -478,20 +461,19 @@ class CameraNode(MountedNode):
         rows, columns = self.image_shape()
         names = self._maker()[1]
         numbers = self._structure_numbers(intrinsics)
-
-        def made() -> tuple[Array, Array, dict[str, Array]]:
-            return framed(*unpacked(self._make(numbers), rows, columns, names))
-
         if STRUCTURE not in p:
-            return made()
-        given = p[STRUCTURE] if run_constants_given(p) else carrying(self._make)(p[STRUCTURE], numbers)
+            return framed(*unpacked(self._make(numbers), rows, columns, names))
+        image, expected, totals = framed(*unpacked(self.structure_of(p, numbers), rows, columns, names))
+        held = self.holds_at(p, numbers)
+        missing = jnp.asarray(jnp.nan, dtype=dtype)
+        return jnp.where(held, image, missing), jnp.where(held, expected, missing), totals
 
-        def read() -> tuple[Array, Array, dict[str, Array]]:
-            return framed(*unpacked(given, rows, columns, names))
-
-        # The choice renders the frame in each branch rather than choosing the structure: a branch that gave the
-        # structure out would copy it (measured: about 12 ms a copy chain at 640x480 in float64).
-        return lax.cond(self.holds_at(p, numbers), read, made)
+    def structure_of(self, p: Mapping[str, Any], numbers: Array) -> Array:
+        """The static structure a frame step draws over: the one its tree holds, or its run's run-constant (made from
+        the run's leaves for a derivative). ``numbers`` are the step's, which a frame drawn over it is judged against
+        (:meth:`holds_at`), never made from here."""
+        del numbers
+        return p[STRUCTURE]
 
     def holds_at(self, p: Mapping[str, Any], numbers: Array) -> Array:
         """Whether the structure ``p`` holds was made at ``numbers``: every one of them equal to its own."""

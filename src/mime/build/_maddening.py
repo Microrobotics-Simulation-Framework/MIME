@@ -26,6 +26,7 @@ from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
 from mime.core import MimeNode, differentiated_nodes, one_ulp_up_leaf, run_constants_made
+from mime.core._node import run_constants_for_derivative
 
 type NodeFields = dict[str, dict[str, Array]]
 
@@ -225,9 +226,9 @@ def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[s
 def chunk_function(graph: GraphManager, steps: int, fed: Fed | None = None) -> Callable[[Any, Any], Any]:
     """``steps`` steps of the compiled graph as one scan, a pure function of the state (every node's fields and
     ``_meta``, as the graph holds it) and the parameter tree, with ``fed`` held through them: each node's run-constants
-    made once, before the loop (:func:`with_run_constants`), and the loop's steps reading them as given. What a
-    derivative of a chunk is taken through (``jax.grad``, ``jax.jvp``, ``jax.vmap`` and ``jax.jit`` of it); nothing is
-    stored on the graph."""
+    made once, before the loop (:func:`with_run_constants`), for a derivative (``mime.core._node.for_derivative``), and
+    the loop's steps reading them as given. What a derivative of a chunk is taken through (``jax.grad``, ``jax.jvp``,
+    ``jax.vmap`` and ``jax.jit`` of it); nothing is stored on the graph."""
     held = _held(graph)
     held._recover_from_escaped_tracers()  # noqa: SLF001
     held._check_static_data_dirty()  # noqa: SLF001
@@ -239,7 +240,8 @@ def chunk_function(graph: GraphManager, steps: int, fed: Fed | None = None) -> C
     names = run_constant_nodes(graph)
 
     def run(state: Any, params: Any) -> Any:
-        made = with_run_constants(graph, params)
+        with run_constants_for_derivative():
+            made = with_run_constants(graph, params)
         with run_constants_made(names):
             def body(carry: Any, _: Any) -> tuple[Any, None]:
                 return step_fn(carry, external, made), None
@@ -504,8 +506,9 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
     temporary memory on the periodic tube falls from 4.6 to 1.5 MB at 80 steps (2.5 to 1.3 MB at 40, so the saving grows
     with the steps), for about 1.3 to 1.4 times the unchecked call's time on the runners; on the MRS sphere it saves nothing at 80 or 320 steps
     (69 MB either way: what the program holds there is not the step states, and forward mode's is 22 MB).
-    The nodes' run-constants (:func:`with_run_constants`) are made once for the run, before its chunks and outside
-    their checkpoints, so that reverse mode derives each once (made in each chunk, a checkpoint made each again in its
+    The nodes' run-constants (:func:`with_run_constants`) are made once for the run, for a derivative
+    (``mime.core._node.for_derivative``), before its chunks and outside their checkpoints, so that reverse mode derives
+    each once (made in each chunk, a checkpoint made each again in its
     recomputation, which cost the sphere's reverse call 2 to 19 times, measured). The chunks are an outer
     scan, so the program's size does not grow with their number. Every node's step is traced as a differentiated run's
     (``mime.core.differentiated``): a guard that stops a forward run by writing NaN writes its flag form. ``fed`` holds
@@ -566,7 +569,8 @@ def differentiated_run(graph: GraphManager, steps: int, tests: Sequence[FlagTest
         parts: list[Any] = []
         # The run-constants made once for the whole run, outside every chunk's checkpoint: reverse mode keeps them
         # and derives each once, where made in each chunk it made them again in each chunk's recomputation.
-        made = with_run_constants(graph, params)
+        with run_constants_for_derivative():
+            made = with_run_constants(graph, params)
         with run_constants_made(names), differentiated_nodes(every):
             if stretches is not None:
                 for length, external in stretches:
