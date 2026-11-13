@@ -67,11 +67,12 @@ HELD: dict[str, set[str]] = {
     "point_body_flow": {"things/water/fields/flow/settings/domain/settings/length/value"},
     # The in-loop camera's scene: the subjects' settings (the tube's and the ball's sizes) and the absorbers' coefficients,
     # which it consumes when it is built, into its subjects and its response (``scene_numbers``, unread by the step); the
-    # world-mounted camera's placement, held as built with the cache it is made at. A camera on a frame that moves holds its
+    # world-mounted camera's placement, held as built with the static structure it is made at. A camera on a frame that moves holds its
     # placement too (``camera_pose`` reads it from the node's constants and composes it onto the frame), but the walk
     # skips zeros and ``camera_on_gantry`` mounts at zero, so its ``mount/settings/position`` is not walked: a nonzero one
     # fires (measured, with ``position=(1e-4, 0, 0)``), so this set is the case's as written, not the kind's. The
-    # detector's nine numbers are leaves the step reads, and are quiet.
+    # detector's nine numbers are leaves the step reads, and the static structure made from them a leaf beside them: quiet
+    # (the control below plants either back as a constant and the pair fires).
     "camera_scene": {"things/ball/parts/steel/solid/settings/radius/value",
                      "things/tube/geometry/settings/inner_radius/value", "things/tube/geometry/settings/wall/value",
                      "things/tube/geometry/settings/length/value", "observations/0/settings/absorbers/0/1",
@@ -267,3 +268,36 @@ def test_control_the_rft_family_decided_at_build_fires_on_rft_tubes_helix_turns(
     rows = walk(case, tmp_path)
     assert {"/".join(map(str, row["path"])) for row in rows if row.get("how")} == {
         "things/helix/parts/shell/solid/settings/turns"}
+
+
+#: The camera's leaves the control moves: a focal length and the first radial coefficient.
+CAMERA_LEAVES = ("observations/0/settings/detector/settings/fy", "observations/0/settings/detector/settings/k1")
+
+
+@pytest.mark.parametrize("plant", ["structure-as-built", "numbers-as-built"])
+def test_control_the_cameras_structure_made_at_build_fires_on_its_leaves(plant: str, monkeypatch: pytest.MonkeyPatch,
+                                                                        tmp_path: Path):
+    """The camera's static structure, a leaf beside the numbers it was made at: planted back as a constant of the step
+    (the build's structure given to every chunk), or its guard comparing the step's numbers with the build's held as
+    constants (as e2e81c32's cache guard did), each fires on the detector's leaves, while the step as written is quiet on
+    them (the walk above). So the camera's quiet leaves are the structure and its numbers being arguments, not a form
+    that cannot see them."""
+    from mime.sensing._node import STRUCTURE, CameraNode
+
+    if plant == "structure-as-built":
+        def made(self: CameraNode, params: Any) -> dict[str, Any]:
+            return {STRUCTURE: np.asarray(self._structure[0])} if STRUCTURE in params else {}  # noqa: SLF001
+
+        monkeypatch.setattr(CameraNode, "run_constants", made)
+    else:
+        def compared(self: CameraNode, p: Any, numbers: Any) -> Any:
+            return jax.numpy.all(numbers == np.asarray(self._structure[1]))  # noqa: SLF001
+
+        monkeypatch.setattr(CameraNode, "holds_at", compared)
+    case = next(case for case in CASES if case.name == "camera_scene")
+    document, load = loader(case, tmp_path)
+    paths = {"/".join(map(str, path)): path for path in numbers(document)}
+    base = graph_program(load(document, "base"))
+    for leaf in CAMERA_LEAVES:
+        found = graph_program(load(moved(document, paths[leaf]), "moved"))
+        assert programs_differ(base, found), f"{plant} is quiet on {leaf}"

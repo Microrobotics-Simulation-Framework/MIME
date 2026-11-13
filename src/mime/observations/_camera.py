@@ -294,7 +294,8 @@ class Camera(Observation):
         lines.append("bodies are taken to move and structures to stand; apparatus parts are not imaged")
         if mounted is None:
             lines.append("static cache: the camera and the static structure share the world's frame, so the structure is "
-                         "rendered once, at the build, and held")
+                         "rendered once, at the build, and held as a leaf beside the numbers it was made at; a run whose "
+                         "detector numbers differ renders it once, before its steps")
         else:
             statics = [s.name for s in found.subjects if not s.moving]
             lines.append(f"static cache: the camera is mounted on {mounted}, taken to move, so the static structure "

@@ -78,6 +78,31 @@ def run_constants_given(p: Mapping[str, Any]) -> bool:
     return RUN_CONSTANTS_GIVEN in p
 
 
+#: Whether the run-constants being made are for a run a derivative may be taken through
+#: (:func:`run_constants_for_derivative`).
+_FOR_DERIVATIVE: ContextVar[bool] = ContextVar("mime_run_constants_for_derivative", default=False)
+
+
+@contextmanager
+def run_constants_for_derivative() -> Generator[None]:
+    """For the block, run-constants made for a run a derivative may be taken through (MIME's differentiated run, a chunk
+    its caller differentiates: ``mime.build._maddening.differentiated_run``, ``chunk_function``): a node whose step reads
+    a value its tree holds made at its leaves, as it is, makes that value here from the run's own leaves, so that their
+    derivative passes through it and a tree whose leaves were written without it is not read (:func:`for_derivative`).
+    Read where run-constants are made, never inside a compiled step."""
+    token = _FOR_DERIVATIVE.set(True)
+    try:
+        yield
+    finally:
+        _FOR_DERIVATIVE.reset(token)
+
+
+def for_derivative() -> bool:
+    """Whether the run-constants being made are for a run a derivative may be taken through
+    (:func:`run_constants_for_derivative`)."""
+    return _FOR_DERIVATIVE.get()
+
+
 #: The key a differentiated run (``mime.build._maddening.differentiated_run``) adds to every node's step constants: an
 #: empty tuple, as :data:`RUN_CONSTANTS_GIVEN` is, so that the node's compiled step traced inside a derivative is kept
 #: apart from a forward run's, which never holds it. A guard that stops a forward run by writing NaN writes a finite
@@ -182,7 +207,13 @@ class MimeNode(SimulationNode):
     :meth:`storage` and :meth:`identity_terms`; a potential law gives its family's :meth:`energy`. Any node takes
     ``ledger``, the deliveries it is metered for, which only the build gives it, only where the ledger is attached:
     it is then a constant of the node, read while its step is traced, and without it the node is the node it always
-    was, its parameters included."""
+    was, its parameters included.
+
+    **Values made from the leaves** (each hook's default does nothing). :meth:`run_constants` makes them once per chunk,
+    and once per run for a derivative (:func:`for_derivative`), in the program; :meth:`made_again` makes the held ones
+    again at the save's nudged leaves; :meth:`refreshed_held` makes a held one again on the host, once before a forward
+    run's steps, where the tree holds it made at other leaves than its own (a node whose forward step reads it as it is,
+    the camera's static structure)."""
 
     symbols: ClassVar[tuple[Symbol, ...]] = ()
     #: Whether a guard of the node stops a forward run by writing NaN: such a node's step constants hold
@@ -268,8 +299,10 @@ class MimeNode(SimulationNode):
         is given) that are constant over a run, each by the ``params`` key it replaces, with that leaf's shape and
         dtype. MIME's chunked runs make them once per chunk inside the compiled program, before its step loop, and give
         them to the loop's steps in place of those leaves (:func:`run_constants_given` is then true of the step's
-        constants), so that reverse mode derives each once per chunk rather than at every step. A step called
-        otherwise (MADDENING's own scan, ``graph.step``) makes them itself. None by default."""
+        constants), so that reverse mode derives each once per chunk rather than at every step; a differentiated run
+        makes them once for the run. A step called otherwise (MADDENING's own scan, ``graph.step``) makes them itself,
+        or reads a value its tree holds made at its leaves; a node whose step reads such a value as it is gives it only
+        for a derivative (:func:`for_derivative`), made from the run's leaves. None by default."""
         return {}
 
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
@@ -277,6 +310,15 @@ class MimeNode(SimulationNode):
         as the graph would hold them) where those are not the build's: what the save's resolution rerun gives the
         step (``mime.build._maddening.params_one_ulp_up``), so that the step reads each rather than making it at every
         step. None by default."""
+        return {}
+
+    def refreshed_held(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """The held parameters in ``params`` (the node's entry of a forward run's tree) made again, by key, with the
+        numbers they were made at, where they were not made at ``params``' own leaves; empty where they were. Called on
+        the host with concrete values, once before a forward run's steps (``mime.control.ChunkedRun.run``, through
+        ``mime.build._maddening.with_refreshed_held``), for a node whose forward step reads a held value as it is, so
+        that no forward run reads one made at other leaves. The default does nothing: a node that makes its held values
+        in the program from its leaves (``held_or_made``) needs none."""
         return {}
 
     def recheck_route(self, cause: str, dtype: str) -> str:

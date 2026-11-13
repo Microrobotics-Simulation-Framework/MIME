@@ -24,16 +24,22 @@ build report states the latency range, and a controller called between chunks re
 a chunk later.
 
 **Mounts.** `World(position, orientation)` fixes the camera in the world, and `Mounted(frame="<apparatus>.<segment>.<frame>")`
-fixes it to a frame of an apparatus's chain. The structure's image is rendered once, at the first step, where the camera and
-the structure share the world's frame, and held in the node's state with the numbers it was made from (the detector's nine
-numbers, the scene's numbers, the camera's pose); it is rendered again at any step where one of them differs, as when a run
-is continued with another detector number, so no stale image is read. Where the camera may move it is rendered in every
-frame, and the build report says which holds. One camera to an experiment: a second is refused (`id.duplicate`), and a
-second view is a second experiment.
+fixes it to a frame of an apparatus's chain. Where the camera and the structure share the world's frame, the structure's image
+is rendered once, when the build makes the node's parameters, and held as a parameter beside the numbers it was made from (the
+detector's nine numbers, the scene's numbers, the camera's pose): a study's point and an override hold it at their own numbers.
+A frame reads it and never renders it: it is read, never carried in the state, so a step between frames costs what holding the
+image costs. A run whose leaves differ from the numbers its structure was made at (a leaf written into the tree without it)
+renders it again once, before its steps, so no stale image is read; a run's chunks, a CALLBACK controller's included, render it
+never; and a derivative's run renders it once, from its own leaves (measured on one CPU,
+`tests/sensing/predictions_camera_runconst_fix.json`). A step called on its own, outside a run of MIME's (MADDENING's own
+scan or `graph.step`), takes whatever parameters it is given, so it renders the structure again in any frame whose numbers
+differ from the ones it was made at. Where the camera may move it is rendered in every frame, and the build
+report says which holds. One camera to
+an experiment: a second is refused (`id.duplicate`), and a second view is a second experiment.
 
 **Recording and re-rendering.** In-loop frames are not recorded: `record=` of `image` or `expected` is refused
-(`camera.recorded-frames`); `history=True` keeps every field of every node at every step, a camera's frames and its cache too (the cache is ten arrays of
-the image's size, so megabytes a step at a useful size: gigabytes over a long run), and is the verification and debugging path, not for a long run. The poses are recorded, and a frame is reproduced by rendering them again with
+(`camera.recorded-frames`); `history=True` keeps every field of every node at every step, a camera's two frames too (megabytes a
+step at a useful size: gigabytes over a long run), and is the verification and debugging path, not for a long run. The poses are recorded, and a frame is reproduced by rendering them again with
 `mime.sensing.render` and the frame's noise key, `mime.sensing.frame_key(seed, frame_step)`. The re-render is two compiled
 programs, not one, so it is not bit for bit: it is exact where it was measured exact (float64), and in float32 it agrees
 to within one count, the few pixels whose value before rounding lies within the last bits of a rounding boundary rounding
@@ -52,7 +58,11 @@ a warning, and the frame no longer equals the offline render, whose window is de
 
 **Its derivative** is forward mode only (reverse mode is refused by name, `camera.reverse`), checked through the built graph
 against central differences in both dtypes (a ball's settling and the principal point across a silhouette, and the focal
-length in the tube wall's interior, with a planted `stop_gradient` on the edge measure as the control) and still declared
+length in the tube wall's interior, with a planted `stop_gradient` on the edge measure as the control), and from a continued
+state as from the first step: a run continued, or a chunk of a longer one, makes the structure once from the run's detector
+numbers, before its steps, and its derivative follows by JAX's own rules, never from the state (checked in the wall's interior in the focal length, the
+principal point and the first radial coefficient against central differences, where a structure held in the state gave
+exactly zero) and still declared
 unverified: the renderer's switches are listed raw and not declared, so no exact or piecewise status follows from them, and
 the status has no value that says forward verified and reverse refused: `expected` carries the derivative in the poses and the detector's nine numbers (which are its leaves, so a study can
 fit them), `image` and the counters carry none. The entry's gradient record states where, why and the route.
