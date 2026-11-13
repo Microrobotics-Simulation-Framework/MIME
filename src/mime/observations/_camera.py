@@ -167,10 +167,9 @@ class Camera(Observation):
         route="declare the renderer's switches (a pixel corner is a kink, a tangent to a pixel's side a square-root "
               "rise), which gives the status the check supports; reverse mode stays refused (the cond over frame steps "
               "would keep every frame's render): differentiate mime.sensing.render offline")
-    forward_only: ClassVar[str] = ("the frame is rendered under a cond on frame steps (a select under vmap, so a batched "
-                                   "study would render at every step) and reverse mode would keep every frame step's "
-                                   "render: differentiate the offline renderer, mime.sensing.render, in the recorded "
-                                   "poses, or fit in forward mode")
+    unbatched: ClassVar[str] = ("the frame is rendered under a cond on frame steps, a select under vmap, so a batched "
+                                "study would render a frame, and the frame's choice of its static structure, at every "
+                                "step: measured, 8 to 29 times a member's forward run and 25 to 230 times its reverse")
     references = ()
     builds = {"": (CameraNode,)}
     roles = {}

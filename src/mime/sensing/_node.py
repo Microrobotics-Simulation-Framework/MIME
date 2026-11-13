@@ -52,6 +52,7 @@ from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, 
     run_constants_given, run_dtype, typed_view
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode
+from mime.registry import Problem
 from mime.sensing import _scene as scene
 from mime.sensing._coverage import CORNER_SAMPLES
 from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays, ray_table
@@ -83,6 +84,18 @@ STRUCTURE = "static_structure"
 STRUCTURE_FROM = "static_structure_from"
 #: The image-sized planes of the packed structure: the ray table's ten and the transmission.
 PLANES = 11
+#: Reverse mode's peak through the camera past what the process holds before the derivative is compiled, in frames of the
+#: run's dtype (a frame: rows x columns values), for MIME's differentiated run of ``n`` steps in checkpointed chunks of
+#: ``L = ceil(sqrt(n))`` steps (``n // L`` chunks): ``fixed + start (n // L) + L (step + moving m)``, ``m`` the moving
+#: subjects times the exposure's sub-frames. ``start`` is a chunk start's state kept for the backward pass, ``step`` and
+#: ``moving`` one step's tape within the chunk being differentiated, ``fixed`` the static structure, its derivative and
+#: one step's backward pass. :data:`REVERSE_MEASURED` says how they were measured.
+REVERSE_FRAMES = {"fixed": 0.0, "start": 0.0, "step": 0.0, "moving": 0.0}
+#: The refusal's margin on the estimate, the largest measured peak over its estimate, rounded up; and its headroom, the
+#: share of the memory a run can have that it keeps free (the near field's rule, ``MEMORY_HEADROOM``).
+REVERSE_MARGIN = 1.0
+REVERSE_HEADROOM = 0.1
+REVERSE_MEASURED = "not yet measured"
 
 EQUATIONS = (r"n_{f} = P \, \mathrm{floor}(n / P), \quad a = n - n_{f}, \quad "
              r"I = \mathrm{render}\left(\mathbf{c}, s, n_{f}\right)")
@@ -402,6 +415,38 @@ class CameraNode(MountedNode):
         numbers = self._structure_numbers(self._intrinsics(params, held.dtype))
         return {STRUCTURE: carrying(self._make)(held, numbers)}
 
+    def reverse_estimate(self, steps: int) -> float:
+        """The bytes reverse mode through the camera holds at its peak over a run of ``steps`` steps, past what the
+        process holds before the derivative is compiled (:data:`REVERSE_FRAMES`), in the run's dtype."""
+        spec = self._spec()
+        length = max(1, math.ceil(math.sqrt(steps)))
+        moving = sum(1 for each in self._held[1] if each.moving) * cast(int, self.constants()["sub_frames"])
+        frames = (REVERSE_FRAMES["fixed"] + REVERSE_FRAMES["start"] * (steps // length)
+                  + length * (REVERSE_FRAMES["step"] + REVERSE_FRAMES["moving"] * moving))
+        return frames * int(spec["width"]) * int(spec["height"]) * int(jnp.zeros((), dtype=run_dtype()).dtype.itemsize)
+
+    def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
+        """A study's derivative in reverse mode through the camera over ``steps`` steps whose tape would not fit the
+        memory a run can have, refused before the study compiles it (``camera.reverse-memory``): the estimate
+        (:meth:`reverse_estimate`, ``members`` times) times :data:`REVERSE_MARGIN` against that memory less
+        :data:`REVERSE_HEADROOM` of it. Forward mode keeps no tape and is not refused."""
+        del directions
+        if mode != "reverse":
+            return None
+        needed = REVERSE_MARGIN * members * self.reverse_estimate(steps)
+        where, available = device_memory()
+        if available is None or needed <= (1.0 - REVERSE_HEADROOM) * available:
+            return None
+        rows, columns = self.image_shape()
+        return Problem(
+            "camera.reverse-memory",
+            f"reverse mode through the in-loop camera's {columns} x {rows} frames over {steps} steps needs about "
+            f"{needed / 2 ** 30:.3g} GiB (its tape, as measured runs held, times {REVERSE_MARGIN:g}), more than {where}, "
+            f"{available / 2 ** 30:.3g} GiB, less the {REVERSE_HEADROOM:.0%} of it the check keeps free",
+            "differentiate the offline renderer, mime.sensing.render (differentiable, and it vmaps), in the poses "
+            "recorded from the run; or take forward mode along a few axes, study.gradient(..., mode='forward'), which "
+            "keeps no tape; or fewer steps, a smaller detector, or a machine with more memory")
+
     @override
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
         """The static structure made from ``params``' intrinsics, with the numbers it was made at: what the save's
@@ -490,8 +535,11 @@ class CameraNode(MountedNode):
             return framed(*unpacked(given, rows, columns, names))
 
         # The choice renders the frame in each branch rather than choosing the structure: a branch that gave the
-        # structure out would copy it (measured: about 12 ms a copy chain at 640x480 in float64).
-        return lax.cond(self.holds_at(p, numbers), read, made)
+        # structure out would copy it (measured: about 12 ms a copy chain at 640x480 in float64). The branch that makes
+        # it is checkpointed: reverse mode keeps a cond's residuals as large as its largest branch at every frame step,
+        # and the make's would otherwise ride every step of a run that reads the tree's structure. A program with no
+        # reverse derivative is unchanged (a checkpoint lowers to its body; prevent_cse=False adds no barrier).
+        return lax.cond(self.holds_at(p, numbers), read, _checkpoint(made, prevent_cse=False))
 
     def holds_at(self, p: Mapping[str, Any], numbers: Array) -> Array:
         """Whether the structure ``p`` holds was made at ``numbers``: every one of them equal to its own."""
@@ -542,6 +590,13 @@ class CameraNode(MountedNode):
         return node_fields(CameraState(
             steps=count + 1, frame_step=frame_step, age=count - frame_step, new_frame=frame.astype(jnp.int32),
             image=image, expected=expected, ring=ring, **flags))
+
+
+def device_memory() -> tuple[str, int | None]:
+    """The memory a run's arrays can have and its size (``mime.build._maddening.device_memory``)."""
+    from mime.build._maddening import device_memory as held
+
+    return held()
 
 
 def period_steps(period: float, dt: float) -> int | None:

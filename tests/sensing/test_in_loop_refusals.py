@@ -4,7 +4,7 @@ case is not refused for another reason).
 frame_period not a whole number of base steps (naming the nearest two), more sub-frames than the period, ``rate=``, a
 body or structure without a closed form (until the sampled route), a ``hide`` or an absorber that names nothing (in
 ``test_in_loop_scene.py``), a mount naming no frame, recording frames (``record=``; ``history=True`` is the all-fields verification path and is not refused), reverse mode
-through the camera and a batched study.
+through the camera past the memory a run can have, and a batched study.
 
 **The controls** plant the three refusals a user meets first: ``CAMERA_PLANT=frame-period`` rounds any period,
 ``CAMERA_PLANT=recordable`` makes the image recordable, and ``CAMERA_PLANT=box-form`` registers a closed form for the box;
@@ -87,16 +87,41 @@ def test_frames_are_not_recorded_in_the_loop(dtype):
     assert "camera.recorded-frames" in refused(lambda: built.run(ms(2), record=["camera:.expected"]))
 
 
-def test_reverse_mode_through_the_camera_is_refused_naming_the_offline_renderer(dtype):
+def test_reverse_mode_past_the_memory_a_run_can_have_is_refused_naming_the_offline_renderer(dtype, monkeypatch):
+    """With a planted memory a byte under the line (the estimate times its margin, against the memory less its
+    headroom) from the study's derivative check on, reverse mode is refused (``camera.reverse-memory``) before anything is
+    compiled; a few bytes over it, the node admits it (the control). Past any machine (a million million steps) it is
+    refused on the memory this process has, and forward mode, which keeps no tape, never is."""
+    from mime.sensing import _node
+    from mime.study import _gradient
+
+    built = ballistic(ms(3)).build()
+    node = built.graph.get_node("camera:")
+    needed = _node.REVERSE_MARGIN * node.reverse_estimate(2)
+    line = int(needed / (1.0 - _node.REVERSE_HEADROOM))
+    assert node.derivative_problem("reverse", 1, 1, 10 ** 12) is not None
+    assert node.derivative_problem("forward", 1, 1, 10 ** 12) is None
+    room = {"held": 2 ** 50}
+    monkeypatch.setattr(_node, "device_memory", lambda: ("a planted memory", room["held"]))
+    checks = _gradient.derivative_refusals
+
+    def checked(*arguments: object) -> object:
+        room["held"] = line - 1
+        return checks(*arguments)  # type: ignore[arg-type]
+
+    def compiled(*_: object, **__: object) -> None:
+        raise AssertionError("the derivative was compiled")
+
+    monkeypatch.setattr(_gradient, "derivative_refusals", checked)
+    monkeypatch.setattr(_gradient, "prepare", compiled)
     density = kg_per_m3(7800.0)
     study = Study(ballistic(ms(3))).sweep(along({"ball.parts.steel.density": [density]}), duration=ms(2))
-
-    def of(final):
-        return final["camera:"]["expected"].sum()
-
-    text = refused(lambda: study.gradient(of, wrt=["ball.parts.steel.density"], mode="reverse",
+    text = refused(lambda: study.gradient(lambda final: final["camera:"]["expected"].sum(),
+                                          wrt=["ball.parts.steel.density"], mode="reverse",
                                           acknowledged={"camera:": "a test"}))
-    assert "camera.reverse" in text and "mime.sensing.render" in text
+    assert "camera.reverse-memory" in text and "mime.sensing.render" in text and "a planted memory" in text
+    room["held"] = line + 2
+    assert node.derivative_problem("reverse", 1, 1, 2) is None
 
 
 def test_a_batched_study_is_refused_naming_the_offline_renderer(dtype):

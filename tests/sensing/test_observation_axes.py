@@ -52,7 +52,7 @@ def test_an_unknown_observation_setting_is_refused_with_the_settings_there_are(d
     assert "study.unknown-path" in str(refused.value) and "swim_speed:ball.after" in refused.value.refusals[0].action
 
 
-def test_the_derivative_along_a_cameras_setting_is_the_forward_modes_and_reverse_mode_is_refused(float64):
+def test_the_derivative_along_a_cameras_setting_agrees_with_central_differences_in_both_modes(float64):
     def of(final):
         return final["camera:"]["expected"].sum()
 
@@ -71,9 +71,10 @@ def test_the_derivative_along_a_cameras_setting_is_the_forward_modes_and_reverse
         return float(np.asarray(built.current_state()["camera:"]["expected"]).sum())
 
     assert derivative == pytest.approx((level(750.0 + h) - level(750.0 - h)) / (2 * h), rel=1e-3), derivative
-    with pytest.raises(Exception) as refused:
-        study().gradient(of, wrt=["camera:.detector.fx"], mode="reverse", acknowledged={"camera:": "a test"})
-    assert "camera.reverse" in str(refused.value)
+    # Reverse mode sums the same terms in another order: within T1's 128 eps of their scale (test_in_loop_reverse.py).
+    reverse = study().gradient(of, wrt=["camera:.detector.fx"], mode="reverse", acknowledged={"camera:": "a test"})
+    assert float(np.asarray(reverse.members[0].gradient["camera:.detector.fx"]).reshape(-1)[0]) == pytest.approx(
+        derivative, rel=1e-9)
 
 
 def _detector(fx: float):

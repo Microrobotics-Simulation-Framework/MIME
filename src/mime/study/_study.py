@@ -34,7 +34,7 @@ from mime.build._control import Mode
 from mime.build._refusals import ArgumentRefused
 from mime.control._run import automatic_chunks
 from mime.errors import public
-from mime.registry import forward_only_of
+from mime.registry import unbatched_of
 from mime.study._axes import BUILT_CUT, STUDY_REASON, Axis, differ, resolve, value_text
 from mime.study._point import Point, build_point, precision, same_build, same_run
 from mime.study._protocol import FromRest, Protocol, protocol_of
@@ -801,13 +801,14 @@ def _settle(group: Group, points: Sequence[Point], axes: Sequence[Axis], duratio
     built.spacing(every)
     controller = built.plans.controller
     group.batched = controller is None or controller.mode is not Mode.CALLBACK
-    forward_only = [(each.owner, why) for each in built.plans.entries
-                    if (why := forward_only_of(each.registered.cls)) is not None]
-    if group.batched and forward_only and len(group.members) > 1:
-        owner, why = forward_only[0]
+    unbatched = [(each.owner, why) for each in built.plans.entries
+                 if (why := unbatched_of(each.registered.cls)) is not None]
+    if group.batched and unbatched and len(group.members) > 1:
+        owner, why = unbatched[0]
         raise BuildRefused([Refusal(
             "camera.batched", RefusalClass.USER,
-            f"{len(group.members)} points of a study run together, vmapped, through {owner}, which is forward only: {why}",
+            f"{len(group.members)} points of a study run together, vmapped, through {owner}, which refuses a batched "
+            f"study: {why}",
             "render the frames offline with `mime.sensing.render` (it vmaps), from the poses of each point's run; or "
             "run the points one at a time, each in a `Study` of its own (a sweep over any of the camera's leaves, "
             "`camera:.detector.fx` or `camera:.mount.position`, is exactly this case: one `Study` per value)",

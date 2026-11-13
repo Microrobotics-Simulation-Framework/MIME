@@ -1220,9 +1220,10 @@ class Observation(Entry):
     #: Whether the observation sees the whole scene: it binds no role, and its plan is given the experiment's
     #: :class:`Roster` (every body and structure) and names the bodies it reads (``Read(of=)``).
     sees_scene: ClassVar[bool] = False
-    #: Why a run through the observation is forward only, or ``None``: reverse mode (``Study.gradient``) and a batched
-    #: study are refused, naming it.
-    forward_only: ClassVar[str | None] = None
+    #: Why a batched study through the observation (its points run together, under ``vmap``) is refused, or ``None``:
+    #: the study refuses it naming the observation and this reason. A derivative the observation's node cannot take is
+    #: that node's to refuse, by name, through its ``derivative_problem``.
+    unbatched: ClassVar[str | None] = None
     #: The roles ``(body, field)`` whose laws an observation is net of: the laws bound to that body and field read the
     #: body's pose and the field a number of steps behind the observation's own read, as the build's lag accounting
     #: declares (the build report's edges), and the build hands the difference to :meth:`net_of`. ``None`` for an
@@ -1254,9 +1255,9 @@ class Observation(Entry):
         raise NotImplementedError
 
 
-def forward_only_of(cls: type[Entry]) -> str | None:
-    """Why a run through an entry of class ``cls`` is forward only (:attr:`Observation.forward_only`), or ``None``."""
-    return cls.forward_only if issubclass(cls, Observation) else None
+def unbatched_of(cls: type[Entry]) -> str | None:
+    """Why a batched study through an entry of class ``cls`` is refused (:attr:`Observation.unbatched`), or ``None``."""
+    return cls.unbatched if issubclass(cls, Observation) else None
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -170,7 +170,7 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
 
     def sub_sampled() -> Any:
         offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
-        total, _ = lax.scan(one, jnp.zeros_like(single), offsets)
+        total, _ = lax.scan(_jax.checkpoint(one, prevent_cse=False), jnp.zeros_like(single), offsets)
         return total / corner_samples ** 2
 
     # Sub-sampled where some pixel holds a corner (two pieces cross it) or a piece whose own outline turns within a
@@ -178,6 +178,11 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
     # sub-samples, which cost the same once computed, and which no piece's line can steer from (inside a cap's thin
     # ellipse its first-order distance is inflated, past the corner reach); a tube whose ends are out of view pays
     # nothing for them.
+    # Each sub-sample is checkpointed: reverse mode keeps a cond's residuals as large as its largest branch at every
+    # step whichever branch runs, and a scene whose corners never come into view would otherwise keep 16 sub-samples'
+    # (camera spike R1: 96 % of the in-loop camera's tape). A program that takes no reverse derivative is unchanged: a
+    # checkpoint lowers to its body, and prevent_cse=False (inside a scan, which keeps the recomputation apart) adds no
+    # barrier.
     return lax.cond(jnp.any(corner), sub_sampled, lambda: single)
 
 
