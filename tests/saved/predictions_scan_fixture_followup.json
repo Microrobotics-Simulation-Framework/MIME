@@ -50,5 +50,11 @@
     "cannot_discriminate_if": "the arms' CPU models differ between base and head: they are paired by the CPU model in the report"
   },
   "bits": {"_how": "no program changes: a test-suite allowlist row and, if a measurement asks for it, test infrastructure"},
-  "outcomes": null
+  "outcomes": {
+    "_note": "written after the probes; the predictions above are unchanged. Runs 43349096705, 43351872173, 43354131525 on probe/scan-followup (deleted).",
+    "gate_1_a0_case_alone": "as predicted: the first of the three cases alone on one CPU took 57.5, 57.1, 56.9 s at da8d1679 and 57.0, 57.3, 57.2 s at b1de6f7c (Xeon 8370C), 43.6, 42.9, 42.9 and 43.1, 42.9, 43.4 s (EPYC 9V74); over 30 s at both, equal within 1 %. The band 28 to 60 s held. The first run of this arm (43349096705) selected nothing (-k with a space is a syntax error in pytest) and measured nothing.",
+    "gate_2_cache_clear_cost": "as predicted, and then some: with the scan's traced steps built first in the process the first case took 25.4 and 19.7 s, less than the 57.0 and 43.1 s without (the build warms what the case compiles); no slowdown from the emptied caches.",
+    "gate_3_first_payer_alone": "as predicted: test_every_guard alone on one CPU 352.5 s (base) and 351.2 s (head) on EPYC 7763, 261.2 and 259.0 s on EPYC 9V45. The shard's 1.5 to 1.7 times is not in the code.",
+    "gate_4_in_shard": "partly: the first payer took 255 to 367 s at the base (4 arms) and 602 to 700 s at the head (4 arms), as before; the A0 cases: one paid at the base in one arm (86.7 s, a sibling), none over 11 s at the head in 8 arms. Unpredicted and measured: the head with xdist's own scheduler (pinning off) took 500 to 738 s (4 arms), and the BASE with only the first payer marked fixture_first (so stock xdist sorts it to the head of the collection) took 595 to 731 s (3 arms): the early start, concurrent with the other workers' first compiles, is what makes it slower in the shard, not the pinning, the emptied caches (arms with the clearing off: 526 and 700 s) or the scan's tracing. The mechanism of the slowdown (contention for the 4 vCPUs) is a hypothesis."
+  }
 }
