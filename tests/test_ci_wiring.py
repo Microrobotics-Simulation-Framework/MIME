@@ -24,6 +24,9 @@
   no step runs ``mime docs build`` with any ``--skip-*`` flag (the published pages are built with their evidence
   resolved). Each is read from the step's text and from its commands when it is run, so a flag built from a
   variable shows too;
+- the default lane's job uploads what the weekly duration triage reads as one artifact a lane and attempt
+  (``timings-default-python-<version>-attempt-<k>``): each kept shard's report and cache mode, gathered after the shards'
+  newest attempts are kept, and no shard record; both steps run after a red shard, at the shard artifacts' retention;
 - the ``confidential`` job runs ``scripts/check_confidential.py`` with the key's secret in its environment, and
   ``--messages``, ``--diffs`` and ``--ref-name``, with its exit status intact.
 
@@ -35,6 +38,7 @@ which must fail naming it."""
 
 import fnmatch
 import itertools
+import os
 import re
 import shutil
 import subprocess
@@ -947,3 +951,84 @@ def test_a_second_job_making_a_required_check_fails(tmp_path):
                                       "    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n", encoding="utf-8")
     assert "'no private name or path': 2 jobs make this required check; one does" in wiring_problems(
         copy, tmp_path / "scratch")
+
+
+# -- the lane's timings, one artifact for the weekly triage --------------------------------------------------------------
+
+#: The default lane's job's two steps that make what ``scripts/duration_triage.py`` downloads, one artifact a lane and
+#: attempt, and that artifact's name: a re-run of the lane job is an attempt of its own, and no shard pattern matches it.
+KEEP, GATHER, UPLOAD = "Keep each shard's newest attempt", "Gather the lane's timings for the weekly triage", \
+    "Upload the lane's timings"
+TIMINGS = "timings-default-python-${{ matrix.python-version }}-attempt-${{ github.run_attempt }}"
+#: What a shard's artifact holds; the gathered timings are the reports and cache modes alone.
+SHARD_FILES = {"test-results-shard3.xml": "<testsuites/>", "cache-mode-shard3.txt": "cold\n", "shard.json": "{}",
+               "outcome.txt": "success\n"}
+
+
+def timings_problems(directory: Path, scratch: Path) -> list[str]:
+    """The default lane's job gathers each kept shard's report and cache mode after its newest attempts are kept, and
+    uploads them as one artifact a lane and attempt, both steps after a red shard too, at the shard artifacts' retention;
+    the gather's script is run in bash over a shard artifact's files."""
+    ci = dict(workflows(directory))["ci.yml"]
+    steps = steps_of(ci["jobs"]["default"])
+    names = [step.get("name") for step in steps]
+    missing = [name for name in (KEEP, GATHER, UPLOAD) if name not in names]
+    if missing:
+        return [f"the default lane's job has no step {name}" for name in missing]
+    keep, gather, upload = (steps[names.index(name)] for name in (KEEP, GATHER, UPLOAD))
+    found = []
+    if not names.index(KEEP) < names.index(GATHER) < names.index(UPLOAD):
+        found.append("the timings are gathered before the shards' newest attempts are kept, or uploaded before gathered")
+    found += [f"{step['name']}: does not run after a red shard ({step.get('if')})" for step in (gather, upload)
+              if step.get("if") != LANE_RAN]
+    given = upload.get("with") or {}
+    if not str(upload.get("uses", "")).startswith("actions/upload-artifact@"):
+        found.append(f"{UPLOAD}: uploads nothing")
+    if given.get("name") != TIMINGS:
+        found.append(f"{UPLOAD}: names its artifact {given.get('name')}, not {TIMINGS}")
+    if given.get("path") != "${{ runner.temp }}/timings":
+        found.append(f"{UPLOAD}: uploads {given.get('path')}, not what the gather wrote")
+    shard_upload = [step for step in steps_of(ci["jobs"]["default-tests"])
+                    if str(step.get("uses", "")).startswith("actions/upload-artifact@")]
+    retention = {(step.get("with") or {}).get("retention-days") for step in shard_upload}
+    if retention != {given.get("retention-days")}:
+        found.append(f"{UPLOAD}: keeps its artifact {given.get('retention-days')} days, the shards' {retention}")
+    shard = scratch / "shards" / "durations-default-python-3.12-shard-3-attempt-1"
+    shard.mkdir(parents=True)
+    for name, text in SHARD_FILES.items():
+        (shard / name).write_text(text, encoding="utf-8")
+    subprocess.run(["bash", "-e", "-c", str(gather.get("run", ""))], env={**os.environ, "RUNNER_TEMP": str(scratch)},
+                   check=False, capture_output=True)
+    gathered = sorted(p.name for p in (scratch / "timings").iterdir()) if (scratch / "timings").is_dir() else []
+    if gathered != ["cache-mode-shard3.txt", "test-results-shard3.xml"]:
+        found.append(f"{GATHER}: gathers {gathered} from a shard's artifact, not its report and cache mode alone")
+    return found
+
+
+def steps_of(job: object) -> list[dict[str, object]]:
+    return list((job or {}).get("steps") or []) if isinstance(job, dict) else []
+
+
+def test_the_default_lane_uploads_its_timings_once_a_lane_and_attempt_after_a_red_shard_too(tmp_path):
+    assert timings_problems(WORKFLOWS, tmp_path) == []
+
+
+@pytest.mark.parametrize("old, new, problem", [
+    (f"name: {TIMINGS}", "name: timings-default-python-${{ matrix.python-version }}",
+     "Upload the lane's timings: names its artifact"),
+    ("      - name: Upload the lane's timings\n        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}",
+     "      - name: Upload the lane's timings\n        if: ${{ success() && env.MIME_CI_RUNS == 'true' }}",
+     "Upload the lane's timings: does not run after a red shard"),
+    ("-o -name 'cache-mode-shard*.txt' \\)", "-o -name 'cache-mode-shard*.txt' -o -name '*.json' \\)",
+     "Gather the lane's timings for the weekly triage: gathers ['cache-mode-shard3.txt', 'shard.json'"),
+    ("          path: ${{ runner.temp }}/timings\n", "          path: ${{ runner.temp }}/timings\n          retention-days: 1\n",
+     "Upload the lane's timings: keeps its artifact 1 days"),
+], ids=["no attempt in the name", "not after a red shard", "the shard record gathered", "a retention of its own"])
+def test_control_each_break_of_the_lanes_timings_fails_naming_it(tmp_path, old, new, problem):
+    copy = tmp_path / "workflows"
+    shutil.copytree(WORKFLOWS, copy)
+    text = (copy / "ci.yml").read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    (copy / "ci.yml").write_text(text.replace(old, new), encoding="utf-8")
+    found = timings_problems(copy, tmp_path / "scratch")
+    assert any(line.startswith(problem) for line in found), found
