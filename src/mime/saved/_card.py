@@ -5,7 +5,12 @@
 whose it is, its licence, its verdict and where its bytes live, and for a third party's file its credit, role, origin
 and the permissions that name its bytes, in #198's words; the custom licences with their links, and the text of each
 licence that asks for it to travel with every copy (MIT and the BSD licences) under each such file's credit; and the
-availability statement. A bundle carries it (format 2), and ``mime push`` will upload it beside the bundle.
+availability statement. A bundle carries it (format 2), and ``mime push`` will upload it beside the bundle. **The
+lock's assets count as well as the folder's files**: an asset the experiment reads whose bytes the folder does not hold
+(a wall's table, a lab's record; ``FolderTerms.assets``) is never carried by a bundle, whatever its licence, so the
+NOTICE lists it under its own heading with its licence, verdict and where it is available from, its licence is among
+the licences named, and the availability statement says "from this bundle alone" only where the bundle needs none. An
+asset MIME's own data holds says what a reuser needs besides the bytes: that MIME, at the version that saved the folder.
 
 **The card** is Markdown, offline (``mime card <folder>``): what the experiment is, what it bounds and estimates (no
 evidence record until a1), what ``mime verify <folder>`` would check (the card runs no check), its validity lines, its
@@ -37,7 +42,7 @@ from mime.saved._based_on import based_on_words
 from mime.saved._folder import named_files, nondeterministic_gpu, read_folder
 from mime.saved._scales import RESOLUTION_FACTOR, SCALED_FROM
 from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc, PublicationRecord
-from mime.saved._terms import FileTerms, FolderTerms, folder_terms
+from mime.saved._terms import FileTerms, FolderTerms, LockAsset, folder_terms
 from mime.saved._versions import DOCUMENT_SCHEMAS, TERMS_ADDED
 from mime.terms import (
     CUSTOM_PREFIX,
@@ -45,6 +50,7 @@ from mime.terms import (
     NON_COMMERCIAL,
     NOTICE_TEXT_REQUIRED,
     SHARE_ALIKE,
+    NO_ASSERTION,
     CustomLicence,
     ids_of,
 )
@@ -182,22 +188,74 @@ def permission_words(index: int, held: PermissionDoc, paths: Sequence[str]) -> l
             "check that it is true."]
 
 
+def _asset_role(held: LockAsset) -> str:
+    role = held.ref.role
+    return "role not stated" if role is None else ("presentation (results do not depend on it)"
+                                                    if role == "presentation" else "results (results depend on it)")
+
+
+def _asset_origin(held: LockAsset) -> str:
+    return ", ".join(plain(each) for each in held.ref.locations)
+
+
+def _mime_needed(saved_by: str) -> str:
+    return f"MIME {plain(saved_by)}, the version that saved the folder" if saved_by else "the MIME that saved the folder"
+
+
+def asset_lines(held: LockAsset, saved_by: str) -> list[str]:
+    """One asset of the lock that no file of the folder stands for, as the NOTICE says it: its facts, indented, and
+    where its bytes are available from; for one MIME's own data holds, the MIME a reuser needs."""
+    ref = held.ref
+    whose = "MIME's own record" if held.mime_own else "an asset record the lock holds"
+    lines = [plain(ref.name),
+             f"  sha256 {ref.sha256}, {size_text(ref.size)}; {whose}; licence {plain(ref.licence)}",
+             f"  verdict: {held.verdict.words()}, by {held.verdict.by}; not carried in a bundle: the lock names it, and "
+             f"`mime assets fetch <folder>` fetches it",
+             f"  role: {_asset_role(held)}", f"  available from: {_asset_origin(held)}"]
+    if ref.credit:
+        lines.append(f"  credit: {plain(ref.credit)}")
+    if held.mime_own:
+        install = f" (`pip install mime-engine=={plain(saved_by)}`)" if saved_by else ""
+        lines.append(f"  needs: {_mime_needed(saved_by)}{install}, besides the bytes: MIME's own data holds this record")
+    if ref.notice:
+        lines.append(f"  notice: {plain(ref.notice)}")
+    return lines
+
+
 def _why_referenced(file: FileTerms) -> str:
     return "may not be redistributed" if not file.verdict.carried else "over the size a bundle carries"
 
 
 def availability(judged: FolderTerms) -> str:
-    """#198's availability statement: reproducible exactly from the bundle alone only where the bundle carries every
-    file; otherwise given each file it does not carry (one its terms do not let it carry, and one over the size it
-    carries), with why, its licence, its role and where it is available from."""
+    """#198's availability statement: reproducible exactly from the bundle alone only where the bundle needs nothing
+    else; otherwise given each file it does not carry (one its terms do not let it carry, and one over the size it
+    carries) and each asset the lock names that no file stands for (a bundle never carries those), with why, its
+    licence, its role and where it is available from."""
     held = [file for file in judged.files if file.referenced is not None or not file.verdict.carried]
-    if not held:
+    if not held and not judged.assets:
         return "Reproducible exactly from this bundle alone."
-    parts = [f"{plain(file.path)} ({_why_referenced(file)}; licence {plain(file.licence or 'none')}; {_role(file)}; "
-             f"available from {plain(file.origin[0]) if file.origin else 'nowhere declared'})" for file in held]
-    return (f"Reproducible exactly, given {len(held)} file{'s' if len(held) != 1 else ''} the bundle does not carry, "
-            f"which `mime assets fetch <folder>` fetches and places: " + "; ".join(parts)
+    clauses: list[str] = []
+    if held:
+        parts = [f"{plain(file.path)} ({_why_referenced(file)}; licence {plain(file.licence or 'none')}; "
+                 f"{_role(file)}; available from {plain(file.origin[0]) if file.origin else 'nowhere declared'})"
+                 for file in held]
+        clauses.append(f"{len(held)} file{'s' if len(held) != 1 else ''} the bundle does not carry, which `mime "
+                       f"assets fetch <folder>` fetches and places: " + "; ".join(parts))
+    if judged.assets:
+        parts = [f"{plain(each.ref.name)} (not carried in a bundle; licence {plain(each.ref.licence)}; "
+                 f"{_asset_role(each)}; available from {_asset_origin(each)}"
+                 + (f"; MIME's own record, which needs {_mime_needed(judged.saved_by)}" if each.mime_own else "") + ")"
+                 for each in judged.assets]
+        clauses.append(f"{len(judged.assets)} asset{'s' if len(judged.assets) != 1 else ''} the lock names that the "
+                       f"bundle does not carry, which `mime assets fetch <folder>` fetches: " + "; ".join(parts))
+    return ("Reproducible exactly, given " + "; and ".join(clauses)
             + ". Not checked since the folder was saved: the availability check comes later.")
+
+
+def _licences_named(judged: FolderTerms) -> list[str]:
+    """Every licence the folder's files and the lock's assets state."""
+    return [*(file.licence for file in judged.files if file.licence is not None),
+            *(held.ref.licence for held in judged.assets if held.ref.licence != NO_ASSERTION)]
 
 
 def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -> str:
@@ -217,6 +275,13 @@ def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -
              "that grants only what it states, or none; referenced: never carried, whatever its size).", ""]
     for file in judged.files:
         lines += file_lines(file)
+    if judged.assets:
+        lines += ["", "Assets the lock names", "---------------------",
+                  "Each asset the experiment reads whose bytes the folder does not hold: a bundle carries this record of "
+                  "it, never its bytes, whatever its licence; the same facts as for a file, and where it is available "
+                  "from.", ""]
+        for held in judged.assets:
+            lines += asset_lines(held, judged.saved_by)
     lines += ["", "Permissions", "-----------"]
     if not judged.permissions:
         lines.append("None declared.")
@@ -224,9 +289,9 @@ def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -
         paths = [file.path for file in judged.files if file.sha256 in held["files"]]
         lines += permission_words(index, held, paths)
     lines += ["", "Licences", "--------"]
-    used = sorted({identifier for file in judged.files if file.licence is not None
-                   for identifier in ids_of(file.licence)})
-    lines += [plain(_licence_link(identifier, judged.custom)) for identifier in used] or ["None named."]
+    used = sorted({identifier for licence in _licences_named(judged) for identifier in ids_of(licence)})
+    definitions = judged.licence_definitions()
+    lines += [plain(_licence_link(identifier, definitions)) for identifier in used] or ["None named."]
     for identifier in sorted(NOTICE_TEXT_REQUIRED & set(used)):
         for file in judged.files:
             if file.licence is not None and identifier in ids_of(file.licence) and file.owner != "yours":
@@ -260,6 +325,13 @@ def _table_row(file: FileTerms) -> str:
     credit = plain(file.credit) if file.credit else ""
     return (f"| `{plain(file.path)}` | {_OWNER_WORDS[file.owner]} | {plain(licence)} | "
             f"{file.verdict.status.replace('_', ' ')}{flag} | {where} | {credit} |")
+
+
+def _asset_row(held: LockAsset) -> str:
+    flag = "".join(f", **{condition}**" for condition in held.verdict.conditions)
+    whose = "MIME's own record" if held.mime_own else "an asset the lock names"
+    return (f"| `{plain(held.ref.name)}` | {whose} | {plain(held.ref.licence)} | "
+            f"{held.verdict.status.replace('_', ' ')}{flag} | referenced | {plain(held.ref.credit or '')} |")
 
 
 def _credit_lines(root: Path) -> list[str]:
@@ -339,13 +411,14 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     push sends, rehearsed on the sandbox first)."""
     root, report, judged, document, lock = facts.root, facts.report, facts.judged, facts.document, facts.lock
     name = plain(document["experiment"])
-    licences = sorted({file.licence for file in judged.files if file.licence is not None})
+    licences = sorted(set(_licences_named(judged)))
     parent = document.get("based_on") if based_on else None
     lines = [f"# {name}", "", *([f"- **{based_on_words(parent)}**"] if parent is not None else []),
              *_publication_lines(publication),
              "- **Licence:** " + (plain(judged.licence) if judged.licence
                                   else "none declared (mime push will ask for one)"),
-             f"- **Licences of its files:** {', '.join(plain(each) for each in licences) or 'none declared'}",
+             f"- **Licences of its files{' and assets' if judged.assets else ''}:** "
+             f"{', '.join(plain(each) for each in licences) or 'none declared'}",
              *_credit_lines(root), "",
              "## What it is", "",
              f"Saved by MIME {plain(lock['environment']['mime'])} as {DOCUMENT_SCHEMAS[judged.version]}, built under "
@@ -391,15 +464,16 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     lines += validity or ["None declared."]
     lines += ["", "## Licences and credit", "", f"The experiment's licence: {own_licence_text(judged)}", "",
               "| File | Whose | Licence | Verdict | Where | Credit |", "|---|---|---|---|---|---|",
-              *(_table_row(file) for file in judged.files), ""]
+              *(_table_row(file) for file in judged.files), *(_asset_row(held) for held in judged.assets), ""]
     for condition, words in CONDITION_WORDS.items():
         held = [file for file in judged.files if condition in file.verdict.conditions]
         own = [file for file in held if file.owner == "yours"]
         named = [f"`{plain(file.path)}`" for file in held if file.owner != "yours"]
+        named += [f"the asset `{plain(each.ref.name)}`" for each in judged.assets if condition in each.verdict.conditions]
         named += [f"the experiment's own files ({len(own)}, under its licence)"] if own else []
         if named:
             lines += [f"**{words}** hold for {', '.join(named)}.", ""]
-    lines += [plain(_licence_link(identifier, judged.custom)) for identifier in
+    lines += [plain(_licence_link(identifier, judged.licence_definitions())) for identifier in
               sorted({each for licence in licences for each in ids_of(licence) if each.startswith(CUSTOM_PREFIX)})]
     for index, held in enumerate(judged.permissions, start=1):
         paths = [file.path for file in judged.files if file.sha256 in held["files"]]

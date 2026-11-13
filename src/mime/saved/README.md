@@ -210,8 +210,13 @@ does not hold, for other bytes, or without credit or role (`terms.file`), an ori
 licence, every file the folder names with its sha256, size, owner, licence, verdict and where its bytes live, a third
 party's credit, role, origin and permissions in the words of the terms module, each custom licence with its link, the text of each
 licence that asks to travel with every copy (MIT and the BSD licences) under its file's credit, and the availability
-statement: "reproducible exactly from this bundle alone" only where the bundle carries every file, and otherwise each
-file it does not carry, with why, its licence, its role and where it is available from. `mime card <folder>`
+statement: "reproducible exactly from this bundle alone" only where the bundle needs nothing else, and otherwise each
+file it does not carry, with why, its licence, its role and where it is available from. **The lock's `assets` count as
+well:** an asset the experiment reads that no file of the folder stands for (a wall's table, a lab's record) is never
+carried by a bundle, whatever its licence, so it has its own heading in the NOTICE (sha256, size, licence, verdict,
+role, where it is available from), its licence is among the licences named, the card lists it in its table, and the
+availability statement says what it needs; for an asset MIME's own data holds, that includes MIME at the version that
+saved the folder. `mime card <folder>`
 (`mime.saved.card_text`) writes the card, as `mime push` writes a record's description, naming the record the lock's
 `publication` names (its version, its DOI, how to pull and cite it) and, above it, the experiment it was based on
 (`Based on <name> (<its DOI, or its input hash>)`), a line push's description leaves out until push states that relation

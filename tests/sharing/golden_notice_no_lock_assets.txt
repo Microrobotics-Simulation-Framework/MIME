@@ -1,0 +1,66 @@
+NOTICE: golden
+==============
+
+Generated from the folder MIME 0.3.0 saved (mime.document/4); a bundle carries it, and mime push will upload it beside the bundle. Naming a rights holder here implies no endorsement by them.
+
+The experiment's licence
+------------------------
+CC-BY-4.0. It covers the experiment's own files: those MIME wrote, and those its author brought without declaring their terms.
+
+Files
+-----
+Each file of the folder: the sha256 and size of its bytes, whose it is, its licence, and its verdict: permitted, not permitted or unknown (OpenMaterica's words for a source's redistribution status), and its tier, where its bytes live (open and conditional: carried in the bundle, a conditional file's conditions with it; carried: the author's own, carried because the author packs it, under a licence that grants only what it states, or none; referenced: never carried, whatever its size).
+
+mime.lock
+  sha256 abababababababababababababababababababababababababababababababab, 7 kB; the author's own; licence CC-BY-4.0
+  verdict: permitted, open, by the author's own; carried in the bundle
+scene/layers/arm.usda
+  sha256 cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd, 6 kB; a third party's; licence MIT
+  verdict: permitted, open, by its licence; carried in the bundle
+  credit: Copyright (c) 2021 A. Driver
+  role: results (results depend on it)
+  origin: none given
+  permissions: none declared
+scene/layers/big.usda
+  sha256 efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef, 3 MB; a third party's; licence LicenseRef-x
+  verdict: unknown, referenced, by its licence; referenced: not carried in a bundle; the asset big.usda, fetched by `mime assets fetch <folder>`
+  credit: A maker
+  role: presentation (results do not depend on it)
+  origin: https://example.org/big.usda
+  permissions: none declared
+
+Permissions
+-----------
+None declared.
+
+Licences
+--------
+CC-BY-4.0: https://spdx.org/licenses/CC-BY-4.0.html
+LicenseRef-x: https://spdx.org/licenses/LicenseRef-x.html
+MIT: https://spdx.org/licenses/MIT.html
+
+MIT, as its text asks, for scene/layers/arm.usda:
+
+Copyright (c) 2021 A. Driver
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Availability
+------------
+Reproducible exactly, given 1 file the bundle does not carry, which `mime assets fetch <folder>` fetches and places: scene/layers/big.usda (may not be redistributed; licence LicenseRef-x; presentation (results do not depend on it); available from https://example.org/big.usda). Not checked since the folder was saved: the availability check comes later.

@@ -1253,6 +1253,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A bundle's NOTICE and availability statement ignored the lock's assets**. A folder
+  whose result reads an asset it holds no file of (a lab's licensed record, MIME's own tube table) said "Licences: None
+  named" and "Reproducible exactly from this bundle alone", and both were false: a bundle never carries such an asset's
+  bytes. `mime.saved.notice`, `mime card` and the record `mime push` writes now count the lock's `assets` that no file
+  stands for: the NOTICE lists each under "Assets the lock names" (sha256, size, licence, verdict, role, where it is
+  available from; for one MIME's own data holds, the MIME a reuser needs, at the version that saved the folder), names its
+  licence among the licences (a lab's own licence with its link, a conditional one with its conditions), and the
+  availability statement says "from this bundle alone" only where the bundle needs no file or asset more. The card's
+  table lists each asset. A folder whose lock names no such asset has the NOTICE and card it had, byte for byte; no bytes
+  travel that did not before, and nothing in a saved form changes. A licence id the installed packaging does not list on
+  an asset is read as unknown, as before, and is not refused here.
+
 - **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
   projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse
   mode transposes in, so the transpose solve was the wrong one: through two steps the viscosity's derivative of the
