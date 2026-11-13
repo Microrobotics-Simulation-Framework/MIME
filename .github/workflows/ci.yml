@@ -359,6 +359,23 @@ jobs:
       - name: Keep each shard's newest attempt
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         run: python3 scripts/latest_attempt.py "$RUNNER_TEMP"/shards
+      # What the weekly duration triage reads (scripts/duration_triage.py), one artifact a lane and attempt: each kept
+      # shard's JUnit report and cache mode, and no shard record. A run's download is then two artifacts, not one a shard
+      # and lane: its time is the count of artifacts, about half a second each. It runs after a red shard too, and an empty
+      # one only warns: whether the shards ran the lane is check_shards.py's to say.
+      - name: Gather the lane's timings for the weekly triage
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/timings"
+          find "$RUNNER_TEMP/shards" -mindepth 2 -maxdepth 2 -type f \
+            \( -name 'test-results-shard*.xml' -o -name 'cache-mode-shard*.txt' \) -exec cp -t "$RUNNER_TEMP/timings/" {} +
+      - name: Upload the lane's timings
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: timings-default-python-${{ matrix.python-version }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/timings
+          if-no-files-found: warn
       - name: Gather the default lane's JUnit reports
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         run: |

@@ -7,7 +7,8 @@ unless the pull request owns the test. Every failure is re-run alone first.
 
 Each branch is a test with a control beside it that must fail the other way: a rule that passes everything, or fails
 everything, would pass half of every pair. Everything runs in-process on hand-written XML, except the one test that asks
-git and pytest what a base collects.
+git and pytest what a base collects, and the lane job's timings artifact, made by running its own steps
+(``scripts/latest_attempt.py`` and the gather step's script in bash) over hand-written shard artifacts.
 """
 
 import datetime
@@ -15,6 +16,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -531,6 +533,103 @@ def test_a_downloaded_run_gives_its_cold_passing_tests_from_each_shards_newest_a
     observed = triage.read_run(run, 555, gate)
     assert observed == {f"{FILE}::test_a": [triage.Observation(555, "3.12", 44.0)],
                         f"{FILE}::test_b": [triage.Observation(555, "3.14", 12.0)]}
+
+
+#: The step of the default lane's job that gathers what the triage reads, and the shards one run's lanes hold: shard 1 of 3.12
+#: re-run (its second attempt's report replaces the first), a warm shard, and each lane's shards with their own tests.
+GATHER = "Gather the lane's timings for the weekly triage"
+SHARDS = [("3.12", 1, 1, "cold", [("test_a", 40.0), ("test_b", 3.0)]), ("3.12", 1, 2, "cold", [("test_a", 44.0), ("test_b", 3.5)]),
+          ("3.12", 2, 1, "cold", [("test_c", 31.0)]), ("3.12", 3, 1, "warm", [("test_d", 1.0)]),
+          ("3.14", 1, 1, "cold", [("test_a", 41.0), ("test_b", 2.0)]), ("3.14", 2, 1, "cold", [("test_c", 29.5)]),
+          ("3.14", 3, 1, "cold", [("test_d", 9.0)])]
+
+
+def _shards_of_a_run(run: Path, lanes=("3.12", "3.14")) -> None:
+    for python, shard, attempt, mode, cases in SHARDS:
+        if python in lanes:
+            _artifact(run, python, shard, attempt, mode, [_case(FILE, name, seconds) for name, seconds in cases])
+
+
+def _timings_made_as_ci_makes_them(tmp_path: Path, run: Path, python: str, attempt: int = 1) -> Path:
+    """The lane job's timings artifact for ``python``, made as ``ci.yml`` makes it: the lane's shard artifacts downloaded
+    (each with its shard record and outcome), their newest attempts kept by ``scripts/latest_attempt.py``, then the gather
+    step's own script run in bash."""
+    runner = tmp_path / f"runner-{python}"
+    for artifact in run.glob(f"durations-default-python-{python}-shard-*"):
+        shutil.copytree(artifact, runner / "shards" / artifact.name)
+        (runner / "shards" / artifact.name / "shard.json").write_text("{}")
+        (runner / "shards" / artifact.name / "outcome.txt").write_text("success\n")
+    subprocess.run([sys.executable, str(SCRIPTS / "latest_attempt.py"), str(runner / "shards")], check=True,
+                   capture_output=True)
+    (step,) = [s for s in _ci()["jobs"]["default"]["steps"] if s.get("name") == GATHER]
+    subprocess.run(["bash", "-e", "-c", step["run"]], env={**os.environ, "RUNNER_TEMP": str(runner)}, check=True)
+    merged = tmp_path / "merged" / run.name / f"timings-default-python-{python}-attempt-{attempt}"
+    shutil.copytree(runner / "timings", merged)
+    return merged
+
+
+def test_a_runs_merged_timings_give_the_triage_what_its_shards_give(triage, gate, tmp_path):
+    """The same tests, times and cache modes from the lane jobs' merged artifacts as from the run's shard artifacts, and
+    each merged artifact holds every kept shard's report and cache mode and nothing else. ``MIME_PLANT_TIMINGS_MISMATCH``
+    leaves one report out of a merged artifact: the control, rated by ``.github/probe/detection_rate.py``."""
+    run = tmp_path / "shards" / "555"
+    _shards_of_a_run(run)
+    merged = [_timings_made_as_ci_makes_them(tmp_path, run, python) for python in ("3.12", "3.14")]
+    assert sorted(p.name for p in merged[0].iterdir()) == [
+        "cache-mode-shard1.txt", "cache-mode-shard2.txt", "cache-mode-shard3.txt",
+        "test-results-shard1.xml", "test-results-shard2.xml", "test-results-shard3.xml"]
+    if os.environ.get("MIME_PLANT_TIMINGS_MISMATCH"):
+        (merged[1] / "test-results-shard2.xml").unlink()
+    from_shards = triage.read_run(run, 555, gate)
+    assert from_shards[f"{FILE}::test_a"] == [triage.Observation(555, "3.12", 44.0), triage.Observation(555, "3.14", 41.0)]
+    assert from_shards[f"{FILE}::test_d"] == [triage.Observation(555, "3.14", 9.0)]      # 3.12's shard 3 is warm
+    assert triage.read_run(merged[0].parent, 555, gate) == from_shards
+
+
+def test_control_a_report_left_out_of_the_merged_timings_is_seen(triage, gate, tmp_path):
+    run = tmp_path / "shards" / "555"
+    _shards_of_a_run(run)
+    merged = [_timings_made_as_ci_makes_them(tmp_path, run, python) for python in ("3.12", "3.14")]
+    assert triage.read_run(merged[0].parent, 555, gate) == triage.read_run(run, 555, gate)
+    (merged[1] / "test-results-shard2.xml").unlink()
+    assert triage.read_run(merged[0].parent, 555, gate) != triage.read_run(run, 555, gate)
+
+
+def test_a_lane_without_merged_timings_is_read_from_its_shards_and_the_newest_merged_attempt_wins(triage, gate, tmp_path):
+    """A lane whose run has no merged artifact (a run from before the lane job uploaded it) is read from its shard
+    artifacts; a lane whose job ran twice is read from its second attempt's artifact, and not from its shards again."""
+    run = tmp_path / "shards" / "555"
+    _shards_of_a_run(run)
+    expected = triage.read_run(run, 555, gate)
+    merged = _timings_made_as_ci_makes_them(tmp_path, run, "3.12", attempt=2)
+    stale = merged.parent / "timings-default-python-3.12-attempt-1"
+    stale.mkdir()
+    (stale / "cache-mode-shard9.txt").write_text("cold\n")
+    _report(stale, _case(FILE, "test_gone", 99.0), name="test-results-shard9.xml")
+    _shards_of_a_run(merged.parent)
+    assert triage.read_run(merged.parent, 555, gate) == expected
+
+
+def test_a_runs_download_asks_for_the_merged_timings_first_and_the_shards_only_for_a_lane_without(triage, tmp_path,
+                                                                                                     monkeypatch):
+    calls = []
+
+    def gh(argv, **_):
+        patterns = [argv[i + 1] for i, a in enumerate(argv) if a == "--pattern"]
+        calls.append(patterns)
+        if patterns[0].startswith("timings-") and argv[3] == "555":                   # 3.14's lane job uploaded none
+            (Path(argv[argv.index("--dir") + 1]) / "timings-default-python-3.12-attempt-1").mkdir(parents=True)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(triage.subprocess, "run", gh)
+    triage.download_run("o/r", 555, tmp_path / "555")
+    assert calls == [["timings-default-python-3.12-attempt-*", "timings-default-python-3.14-attempt-*"],
+                     ["durations-default-python-3.14-shard-*"]]
+    calls.clear()
+    triage.download_run("o/r", 556, tmp_path / "556")                                   # a run from before: no merged one
+    assert calls == [["timings-default-python-3.12-attempt-*", "timings-default-python-3.14-attempt-*"],
+                     ["durations-default-python-3.12-shard-*", "durations-default-python-3.14-shard-*"]]
+    assert (tmp_path / "556").is_dir()
 
 
 def test_main_writes_the_two_files_and_prints_the_body_and_a_dry_run_writes_nothing(triage, tmp_path, monkeypatch, capsys):
