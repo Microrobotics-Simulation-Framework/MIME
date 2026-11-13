@@ -96,7 +96,11 @@ build's: the disc windows are sized for them), so a study can fit them, and `exp
   A chunk makes it a run-constant (`run_constants`) that is the parameter itself, carrying the make's derivative in the
   leaves, so a derivative is right from a continued state (a run continued, a chunk of a longer run) as from the first
   step. A camera mounted on a frame of a chain (`Mounted`) is taken to move: it holds none, and the structure is rendered
-  in every frame, which the build report states. COSTS_TO_FILL
+  in every frame, which the build report states. What it costs, measured through the built graph on one CPU with
+  the commits interleaved (the outcomes of `tests/sensing/predictions_camera_runconst.json`): the build renders it once; a
+  chunk of a run renders it never, a CALLBACK controller's chunks included, and a one-step chunk costs what it did before
+  the cache was carried; a step between frames costs what it did then too; and a frame step whose tree's numbers differ
+  pays one render on top of the frame.
 - **Recording and re-rendering.** In-loop frames are not recorded (`record=` of `image` or `expected` is refused,
   `camera.recorded-frames`; `history=True`, the all-fields verification path, is not refused). The poses are, and a frame is
   reproduced by rendering them again with `render` and `frame_key(seed, frame_step)`. The re-render is a second compiled

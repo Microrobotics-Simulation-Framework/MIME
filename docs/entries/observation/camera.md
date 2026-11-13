@@ -28,9 +28,10 @@ fixes it to a frame of an apparatus's chain. Where the camera and the structure 
 is rendered once, when the build makes the node's parameters, and held as a parameter beside the numbers it was made from (the
 detector's nine numbers, the scene's numbers, the camera's pose): a study's point and an override hold it at their own numbers.
 A frame reads it where those numbers are the frame's and renders it again where one differs, so no stale image is read; it is
-read, never carried in the state, so a step between frames costs what holding the image costs. COSTS_TO_FILL Where the camera
-may move it is rendered in every frame, and the build report says which holds. One camera to an experiment: a second is refused (`id.duplicate`), and a
-second view is a second experiment.
+read, never carried in the state, so a step between frames costs what holding the image costs. A run's chunks, a CALLBACK controller's
+included, render it never: the build renders it once, and a frame whose numbers differ pays one render more than a frame
+(measured on one CPU, `tests/sensing/predictions_camera_runconst.json`). Where the camera may move it is rendered in every frame, and the build report says which holds. One camera to
+an experiment: a second is refused (`id.duplicate`), and a second view is a second experiment.
 
 **Recording and re-rendering.** In-loop frames are not recorded: `record=` of `image` or `expected` is refused
 (`camera.recorded-frames`); `history=True` keeps every field of every node at every step, a camera's two frames too (megabytes a
