@@ -41,7 +41,11 @@ exactly zero in all three (measured on #266's merge, float64; R1 found the same 
 wall's edges stay outside the window over the step), so the tolerance is the interior one: ``C h^2`` with ``C`` read from
 float64 and times ten (measured relative errors, h in the leaf's unit: fy 2.5e-5, 1.0e-4, 4.0e-4 at h = 0.5, 1, 2; cy
 4.5e-5, 1.8e-4, 1.1e-3 at h = 0.05, 0.1, 0.25; k1 2.3e-5, 9.2e-5, 3.7e-4 at h = 0.05, 0.1, 0.2), plus the rounding of the
-objective's 640 pixels (``SPACING`` bounds their square root)."""
+objective's 640 pixels (``SPACING`` bounds their square root). Two arms: the 12 steps as one chunk, and as the three
+chunks of 4 steps a CALLBACK controller's run is differentiated in (each stretch its own chunk, the run-constants made
+once for the whole run), so that a chunk boundary between frames carries the derivative too. From the run's start the
+merged code passed a chunked run (its cache rode in the state through the boundaries, its tangent with it): R1's defect is
+a start that is not the first step, which both arms take."""
 
 from __future__ import annotations
 
@@ -152,6 +156,9 @@ def test_the_forward_derivative_of_expected_agrees_with_central_differences(dtyp
 #: float64, times ten.
 CONTINUED = {"fy": (1.0, 1.0e-4 * 10), "cy": (0.1, 1.8e-2 * 10), "k1": (0.1, 9.2e-3 * 10)}
 CONTINUED_FROM, CONTINUED_STEPS = ms(6), 12
+#: How the 12 steps after the continued state are differentiated: one chunk, or the chunks a CALLBACK controller's run is
+#: differentiated in (MIME's differentiated run with the controller's stretches, each its own chunk), here three of 4 steps.
+ARMS = {"continued": None, "chunked": [(4, {})] * 3}
 
 
 def continued_scene() -> Experiment:
@@ -168,13 +175,14 @@ def continued_scene() -> Experiment:
     return exp
 
 
-def test_the_forward_derivative_from_a_continued_state_agrees_with_central_differences(dtype):
+@pytest.mark.parametrize("arm", list(ARMS))
+def test_the_forward_derivative_from_a_continued_state_agrees_with_central_differences(dtype, arm):
     built = continued_scene().build()
     built.run(CONTINUED_FROM)
     graph = built.graph
     state, params = full_state(graph), graph_params(graph)
     names = list(CONTINUED)
-    run = differentiated_run(graph, CONTINUED_STEPS, (), (), checkpoint=False)
+    run = differentiated_run(graph, CONTINUED_STEPS, (), (), checkpoint=False, fed=ARMS[arm])
     theta = jnp.asarray([params["nodes"]["camera:"][name] for name in names], dtype=dtype)
 
     def wall(at: Any) -> Any:
@@ -187,10 +195,10 @@ def test_the_forward_derivative_from_a_continued_state_agrees_with_central_diffe
     for i, name in enumerate(names):
         h, truncation = CONTINUED[name]
         d = float(derivative[i])
-        assert abs(d) > 0.0, (name, dtype, "the static structure's derivative is missing")
+        assert abs(d) > 0.0, (name, dtype, arm, "the static structure's derivative is missing")
         up, down = float(value(theta.at[i].add(h))), float(value(theta.at[i].add(-h)))
         central = (up - down) / (2 * h)
         size = max(abs(up), abs(down))
         tolerance = truncation * h ** 2 + SPACING * float(np.spacing(np.asarray(size, dtype=dtype))) / (2 * h * abs(d))
         error = abs(d - central) / abs(d)
-        assert error <= tolerance, (name, dtype, d, central, error, tolerance)
+        assert error <= tolerance, (name, dtype, arm, d, central, error, tolerance)

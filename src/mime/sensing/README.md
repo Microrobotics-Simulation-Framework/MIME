@@ -86,12 +86,17 @@ base steps (the node's own count; `rate=` is refused) over the last `sub_frames`
 `frame_step`, `age` and `new_frame` are the clock's. The detector's nine numbers are the node's leaves (bounded about the
 build's: the disc windows are sized for them), so a study can fit them, and `expected` is the differentiable output.
 
-- **The static cache.** Where the camera is fixed in the world the structure's image is made at the first step and held in
-  the node's state with every number it was made from (the nine leaves, the scene's numbers, the camera's pose). At any
-  step where one of them differs from the step's own (a run continued with another leaf, a state carried into a run with
-  other numbers) it is made again, so a stale image is never read; otherwise it is read from the state. A camera mounted
-  on a frame of a chain (`Mounted`) is taken to move: it has no cache, and the structure is rendered in every frame, which
-  the build report states.
+- **The static structure.** Where the camera is fixed in the world the structure's image and the ray table (with the
+  static flags) are one parameter of the node, `static_structure`, made once when the node's parameters are made, beside
+  every number it was made from (`static_structure_from`: the nine leaves, the scene's numbers, the camera's pose). So the
+  build's parameter tree, a study's point's and an override's each hold it at their own leaves, and the save's
+  resolution rerun is given it at its nudged ones (`made_again`). A frame step reads it where those numbers are the step's
+  and renders it again where any differs (a tree written number by number without it), so a stale image is never read;
+  it is read, never carried, so the state holds no cache and a step between frames costs what holding the image costs.
+  A chunk makes it a run-constant (`run_constants`) that is the parameter itself, carrying the make's derivative in the
+  leaves, so a derivative is right from a continued state (a run continued, a chunk of a longer run) as from the first
+  step. A camera mounted on a frame of a chain (`Mounted`) is taken to move: it holds none, and the structure is rendered
+  in every frame, which the build report states. COSTS_TO_FILL
 - **Recording and re-rendering.** In-loop frames are not recorded (`record=` of `image` or `expected` is refused,
   `camera.recorded-frames`; `history=True`, the all-fields verification path, is not refused). The poses are, and a frame is
   reproduced by rendering them again with `render` and `frame_key(seed, frame_step)`. The re-render is a second compiled
