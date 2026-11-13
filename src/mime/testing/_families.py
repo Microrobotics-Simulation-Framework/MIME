@@ -1020,12 +1020,18 @@ def pair_loop_works(built: BuiltExperiment, laws: Sequence[Interaction], body: s
 
     t = 2.0 * np.pi * np.arange(points) / points
     step = 2.0 * np.pi / points
+    sampled = [(body_loop.poses_and_rates(t), source_loop.poses_and_rates(t)) for body_loop, source_loop in pairs]
+    if not sampled:
+        return []
+    # Every pair's points in one batch, as loop_works takes its loops: evaluated eagerly, the batch costs per primitive,
+    # not per point, so five pairs batched one by one cost five times one.
+    values = jax.vmap(both)(jnp.asarray(np.concatenate([body for (body, _), _ in sampled]), dtype=dtype),
+                            jnp.asarray(np.concatenate([source for _, (source, _) in sampled]), dtype=dtype))
+    every = [np.asarray(v, dtype=np.float64) for v in values]
     found: list[LoopWork] = []
-    for body_loop, source_loop in pairs:
-        body_poses, body_rates = body_loop.poses_and_rates(t)
-        source_poses, source_rates = source_loop.poses_and_rates(t)
-        values = jax.vmap(both)(jnp.asarray(body_poses, dtype=dtype), jnp.asarray(source_poses, dtype=dtype))
-        on_body, on_source, nudged_body, nudged_source = (np.asarray(v, dtype=np.float64) for v in values)
+    for index, ((_, body_rates), (_, source_rates)) in enumerate(sampled):
+        rows = slice(index * points, (index + 1) * points)
+        on_body, on_source, nudged_body, nudged_source = (v[rows] for v in every)
         terms = np.sum(on_body * body_rates, axis=1) + np.sum(on_source * source_rates, axis=1)
         moved = np.sum(np.abs(nudged_body - on_body) * np.abs(body_rates), axis=1) \
             + np.sum(np.abs(nudged_source - on_source) * np.abs(source_rates), axis=1)
