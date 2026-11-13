@@ -194,5 +194,128 @@
    "one_ulp": "camera_scene with fy one ulp up on one side: the frames differ"
   }
  },
- "outcomes": null
+ "outcomes": {
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001",
+  "gate_1_off_the_build_point": {
+   "result": "as predicted: the head's ms per step 1 % off over at the build's leaves 0.97, 0.95, 0.96, 0.99 forward and 1.03, 1.01, 1.00, 1.00 jvp (160x120 float32, float64; 640x480 float32, float64)",
+   "4ce71c6e_off_over_at": "forward 2.57, 2.91, 3.87, 3.76; jvp 3.92, 3.78, 4.72, 4.58: MISSED below the predicted 3 at 160x120 forward (2.6, 2.9): on the runner a 160x120 make is a smaller share of a frame than on the review's laptop core (6.3 there)",
+   "da8d1679_off_over_at": "0.99 to 1.01, as predicted",
+   "head_at_over_4ce71c6e_at_forward": "1.08, 1.13, 1.32, 1.30, as predicted (the make once a run: 58.6 / 123.8 ms over 20 steps at 640x480)",
+   "head_at_over_4ce71c6e_at_jvp": "1.00, 1.02, 1.02, 1.06, as predicted",
+   "head_over_da8d1679_at": "forward 1.02, 1.02, 1.05, 1.04; jvp 0.97, 0.97, 1.00, 1.02, as predicted",
+   "head_chunk1_over_4ce71c6e_chunk1": "1.08, 1.04, 0.97, 1.04 (one-step forward chunks; the host compare once a run), inside the predicted 1.0 to 1.2 but for 640x480 float32's 0.97, within the rounds' spread; against da8d1679 0.94, 0.86, 0.33, 0.23",
+   "ms_per_step_head": {
+    "dfwd_at": [
+     0.614,
+     1.309,
+     12.727,
+     28.509
+    ],
+    "dfwd_off": [
+     0.593,
+     1.246,
+     12.179,
+     28.222
+    ],
+    "djvp_at": [
+     0.758,
+     1.697,
+     17.875,
+     40.34
+    ],
+    "djvp_off": [
+     0.782,
+     1.722,
+     17.964,
+     40.2
+    ],
+    "chunk1": [
+     0.552,
+     0.554,
+     0.852,
+     1.085
+    ],
+    "make_ms": [
+     1.565,
+     2.971,
+     58.56,
+     123.813
+    ]
+   },
+   "ms_per_step_4ce71c6e": {
+    "dfwd_at": [
+     0.57,
+     1.162,
+     9.663,
+     21.899
+    ],
+    "dfwd_off": [
+     1.467,
+     3.383,
+     37.408,
+     82.424
+    ],
+    "djvp_at": [
+     0.756,
+     1.657,
+     17.452,
+     38.086
+    ],
+    "djvp_off": [
+     2.964,
+     6.261,
+     82.316,
+     174.433
+    ],
+    "chunk1": [
+     0.512,
+     0.531,
+     0.874,
+     1.042
+    ]
+   },
+   "ms_per_step_da8d1679": {
+    "dfwd_at": [
+     0.601,
+     1.282,
+     12.171,
+     27.327
+    ],
+    "dfwd_off": [
+     0.594,
+     1.241,
+     12.276,
+     27.142
+    ],
+    "djvp_at": [
+     0.783,
+     1.757,
+     17.897,
+     39.399
+    ],
+    "djvp_off": [
+     0.768,
+     1.739,
+     17.993,
+     39.117
+    ],
+    "chunk1": [
+     0.589,
+     0.641,
+     2.618,
+     4.704
+    ]
+   },
+   "how": "medians over three interleaved rounds of each process's min, one CPU, one thread; order 160x120 float32, float64, 640x480 float32, float64; cost160 on an AMD EPYC 9V45, the 640 arms on an EPYC 9V74 (each arm's three commits on one CPU)",
+   "memory": "the 640 arms failed the workflow's memory check: peaks 1.56 and 1.80 GiB against the raw program's estimates 0.80 and 0.99 GiB (bounds 1.49 and 1.50 from the * line): an underestimate of the raw route for node_measure processes; rows in the arms' mem_check.json, results unaffected"
+  },
+  "gate_2_no_frame_step_makes_it": "as predicted: cache-every-frame 10/10, made-branch 10/10, clean 0/10 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "gate_3_never_read_at_other_numbers": "as predicted: read-as-is 10/10 on the leaf test (its written and given routes; the override's route is not reached, its tree being its point's: measured locally) and 10/10 on the served test; remake-off 10/10 and cache-every-frame 10/10 on the served test; guard-off 10/10 on the guard test; clean 0/10 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "gate_4_two_builds": "as predicted: structure-as-built 10/10, numbers-as-built 10/10, clean 0/10 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "gate_5_reverse_memory": "as predicted (laptop, compile only, XLA's analysis): the head's reverse temp 968 MB at 160x120 float64 against 4884 (da8d1679) and 4888 (4ce71c6e), 490 against 2472 and 2474 in float32, 3849 against 19514 and 19530 at 320x240 float64; jacfwd 42 MB at 160x120 float64 at all three (169 MB at 320x240), the primal 12 MB",
+  "gate_6_vjp_against_jvp": "as predicted (laptop, the review's rev.py at the head): float64 jvp [-629.3125, 9508.968, -3858.744] (the review's), vjp equal to 1.9e-16 relative; float32 within 2.1e-7; 1 % off in fy equal likewise; the reverse program's temp 968 MB (float64), 490 MB (float32)",
+  "gate_7_chunked_memory": "the control as predicted (da8d1679's code 10/10, clean 0/10, https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001); the memory check FAILED again, now on evidence: the arm's peak 1.77 GiB against its own program's raw estimate 1.29 GiB (its factory ran the test's two cases in process, 1.26 GiB at its peak on the laptop; bound 1.42 by the raw-program family's factor of 1.10, 1.50 by the * line). The raw route misses what the arm's pytest process holds beside the program on the runner; the row is in its mem_check.json",
+  "bits": "as predicted: every array equal, da8d1679 against the head on one CPU (EPYC 9V74), one thread: script A float64 and float32, the lab gantry float64, camera_scene and camera_on_gantry float64 and float32 (12 steps of the history scan from step 0 and the state 12 steps later, the cache_* fields left out), camera_scene's save in both dtypes; and the programs of script A and of the lab gantry (float64: the chunk step's and a differentiated run's text and constants) equal. Script A's float32 programs were not compared: the trace form refuses float32 by design (two-builds.float32). Controls (EPYC 9V45): head against head equal, fy one ulp up differs (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "m1_switch_scan": "the custom rule is removed (the derivative is JAX's own through the make), and the switch scan traces each node's run-constants as a derivative's run makes them (tests/saved/switch_configurations.py), so the make is in its scope: a raw jnp.maximum planted in structure_maker's made (which no step runs) failed test_the_tree_passes_the_scan_with_its_list_and_its_owners with that one site named, 1/1 (laptop; the scan is one deterministic trace), and the unplanted tree passed it"
+ }
 }
