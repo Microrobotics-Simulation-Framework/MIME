@@ -99,11 +99,11 @@ build's: the disc windows are sized for them), so a study can fit them, and `exp
   first step, wherever the leaves are. A step outside MIME's runs (MADDENING's own scan, `graph.step`) that meets one made
   at other numbers draws a frame that is not a number, never one at other leaves; no flag names the cause, since MIME's
   flags and refusals are read by its own runs alone, which make it again first. A camera mounted on a frame of a chain (`Mounted`) is taken to move: it
-  holds none, and the structure is rendered in every frame, which the build report states. What it costs, measured
-  through the built graph on one CPU with the commits interleaved (`tests/sensing/predictions_camera_runconst.json` and
-  `tests/sensing/predictions_camera_runconst_fix.json`): the build renders it once; a forward run's chunks never, a
-  CALLBACK controller's included; a run whose leaves differ from its tree's structure, once (COSTS_MAKE); a
-  differentiated run once, at its leaves or 1 % off them alike (COSTS_OFF).
+  holds none, and the structure is rendered in every frame, which the build report states. What it costs is measured
+  through the built graph on one CPU with the commits interleaved (the outcomes of
+  `tests/sensing/predictions_camera_runconst.json` and `tests/sensing/predictions_camera_runconst_fix.json`): the build
+  renders it once; a forward run's chunks never, a CALLBACK controller's included; a forward run whose leaves differ
+  from its tree's structure, once; a differentiated run once, at the build's leaves or off them alike.
 - **Recording and re-rendering.** In-loop frames are not recorded (`record=` of `image` or `expected` is refused,
   `camera.recorded-frames`; `history=True`, the all-fields verification path, is not refused). The poses are, and a frame is
   reproduced by rendering them again with `render` and `frame_key(seed, frame_step)`. The re-render is a second compiled
