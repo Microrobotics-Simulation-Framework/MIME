@@ -6,21 +6,23 @@ import warnings
 from types import MappingProxyType
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast, override
 
 import jax
 import numpy as np
 
-from mime.core import jnp, switch
+from mime.core import as_run_array, jnp, switch
 from mime.core.multibody import ROOT, ClosedChainRefused, DescriptionReading, DescriptionRefused, \
-    DescriptionWarning, InvalidDescription, JointKind, MultibodyTree, Payload, Transmission, articulate, \
-    forward_kinematics, frame_motions, graft, mass_matrix, read_urdf, with_armatures
+    DescriptionWarning, InvalidDescription, JointKind, MultibodyTree, Payload, Transmission, articulate, compose, \
+    forward_kinematics, frame_motions, graft, mass_matrix, read_urdf, read_urdf_bytes, with_armatures
 from mime.dynamics.apparatus._actuators import actuator
 from mime.gradients import GradientStatus
-from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode
+from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode, kinematic_articulation
 from mime.registry import DESIGN, PHYSICAL, convention
-from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, GradientRecord, Port, Problem, \
-    RungGradient, Segment, SegmentVisual, register_dynamics
+from mime.registry import BuildContext, CalibrationInstance, CalibrationType, CapabilityRecord, ChainSegment, \
+    Command, ForwardModel, GradientRecord, Port, Problem, RungGradient, Segment, SegmentVisual, Signal, \
+    register_calibration_type, register_dynamics
 from mime.scene import Asset
 from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, FORCE, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, \
     Quantity, unit_symbol
@@ -33,6 +35,17 @@ if TYPE_CHECKING:
 
 #: Where to ask for what MIME does not do.
 ISSUES = "https://github.com/Microrobotics-Simulation-Framework/MIME/issues"
+#: The calibration type an arm reads its description by: a URDF file, authored, not fitted.
+URDF = register_calibration_type(CalibrationType(
+    "urdf", 1, "a kinematic tree of rigid links and joints, each joint's origin and axis, with links' inertials and "
+               "joints' limits where it gives them",
+    lambda data: read_urdf_bytes(data, "the description"), fitted=(),
+    declared=("joint origins", "joint axes", "joint limits", "link inertials"),
+    unit=lambda held: cast(DescriptionReading, held).tree.name or None))
+#: What the kinematic rung's structure is (its node's constants), beside the arrays its forward model takes as theta.
+_STRUCTURE = ("dof_names", "parents", "revolute", "frame_names", "frame_bodies")
+_THETA_UNITS = {"axes": "1", "origin_translations": "m", "origin_rotations": "1", "frame_translations": "m",
+                "frame_rotations": "1", "placement": "m; 1"}
 _IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
 KINEMATIC_SWITCHES = (
@@ -387,6 +400,51 @@ class Arm(ChainSegment):
                        visuals=segment_visuals(reading, frames), description_file=self.description.path,
                        responds={} if dynamic else dict.fromkeys(commands, LAG))
 
+    @override
+    def forward_model(self, ctx: BuildContext) -> ForwardModel | None:
+        """The kinematic rung's: every frame's world pose (``frame_poses``) from the joint positions it is commanded
+        (``joint_positions`` in radians, ``joint_displacements`` in metres, each in its kind's joints' order, within its
+        joints' limits, which its node clips a command into), placed on the frame it mounts on at ``x.mount_pose``
+        where it mounts on one: forward kinematics of the node's arrays, which are its parameters. It is affine in no
+        command. ``None`` on the dynamic rung, whose commands are torques and whose frames follow its state (its
+        model is AP4's, through ``ctx.models``)."""
+        if self.rung == "dynamic":
+            return None
+        reading = self.quietly_read()
+        if isinstance(reading, Problem):
+            raise ValueError("phase 1 refuses an arm whose description it cannot read")
+        described = KinematicArmNode.described(reading.tree.articulation)
+        structure = {name: described[name] for name in _STRUCTURE}
+        theta = {name: np.asarray(described[name], dtype=np.float64) for name in _THETA_UNITS if name != "placement"}
+        theta["placement"] = np.asarray(self.placement(ctx.settings), dtype=np.float64)
+        revolute = tuple(i for i, turns in enumerate(structure["revolute"]) if turns)
+        prismatic = tuple(i for i, turns in enumerate(structure["revolute"]) if not turns)
+        commands = {**({"joint_positions": Signal("1", (len(revolute),))} if revolute else {}),
+                    **({"joint_displacements": Signal("m", (len(prismatic),))} if prismatic else {})}
+        mounted = ctx.mount is not None
+        frames = len(structure["frame_names"])
+        return ForwardModel(ctx.id, commands, {"mount_pose": Signal("m; 1", (7,))} if mounted else {},
+                            {"frame_poses": Signal("m; 1", (frames, 7))}, theta, _THETA_UNITS,
+                            partial(_arm_model, structure=structure, kinds=(revolute, prismatic), mounted=mounted))
+
+    @override
+    def calibration_instance(self) -> CalibrationInstance | None:
+        held = self.description
+        reading = self.quietly_read()
+        if isinstance(reading, Problem):
+            return None
+        sha256 = reading.classification.source.sha256
+        terms = held.terms
+        if terms is None:
+            licence, tier = "none declared: the experiment's own file", "own"
+        else:
+            from mime.terms import expression_of, licence_verdict
+
+            licence = expression_of(terms.licence)
+            tier = licence_verdict(licence).tier
+        return CalibrationInstance(URDF.label, held.path.name, sha256, licence, tier, URDF.unit(reading), URDF.fitted,
+                                   URDF.declared)
+
     def armed(self, tree: MultibodyTree) -> MultibodyTree:
         """``tree`` with each joint's armature on it, as phase 1 resolved it (its problems refused there)."""
         return with_armatures(tree, _armature(tree, self.declared_armature(), self.given_actuators()).values)
@@ -460,6 +518,24 @@ class Arm(ChainSegment):
             b.mount(into=node["mount_poses"])
             if ctx.rates_read:
                 b.mount_rates(into=node["mount_rates"])
+
+
+def _arm_model(u: Any, x: Any, theta: Any, *, structure: Mapping[str, Any], kinds: tuple[tuple[int, ...], ...],
+               mounted: bool) -> dict[str, Any]:
+    """The kinematic arm's forward model: its node's forward kinematics of its arrays, in the run's dtype."""
+    dtype = as_run_array(0.0).dtype
+    revolute, prismatic = kinds
+    if not prismatic:
+        q = jnp.asarray(u["joint_positions"], dtype=dtype)
+    else:
+        q = jnp.zeros((len(revolute) + len(prismatic),), dtype=dtype)
+        for indices, name in ((revolute, "joint_positions"), (prismatic, "joint_displacements")):
+            if indices:
+                q = q.at[np.asarray(indices)].set(jnp.asarray(u[name], dtype=dtype))
+    placement = jnp.asarray(theta["placement"], dtype=dtype)
+    base = compose(jnp.asarray(x["mount_pose"], dtype=dtype), placement) if mounted else placement
+    local = forward_kinematics(kinematic_articulation(structure, theta, dtype), q)
+    return {"frame_poses": jax.vmap(compose, in_axes=(None, 0))(base, local)}
 
 
 def _servo_moved(rung: str) -> NoReturn:

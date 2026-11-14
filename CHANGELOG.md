@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The forward-model contract, calibration types and instances, and a controller's believed models and allocator**
+  (apparatus lane, AP3a, dev2).
+  - **`forward_model(ctx)`**, an optional capability of a field provider and a chain segment
+    (`mime.registry.ForwardModel`): the entry's node arithmetic as a pure JAX function `fn(u, x, theta) -> {quantity:
+    value}`, `u` its commands, `x` its inputs, `theta` its parameters by its node's leaf names, and `affine_in`, the
+    commands it is affine in. Its build context gives structure alone; every number it reads is in `u`, `x` or `theta`.
+    The calibrated multipole's: `flux_density`, `gradient` and, on a moment stated at the point, `force` and `torque`,
+    affine in `currents` (the force and torque too, for a fixed moment); the point dipole's (no command; its mount pose
+    an input); the kinematic arm's, every frame's world pose by forward kinematics. **What each bounds, and what it does
+    not**: the calibrated multipole's agrees with mag_manip's reference within ten times float64's rounding over the
+    field's cancellation (coefficients, and field, gradient, force and torque at drawn currents and moments) and with the
+    host's `actuation` in both dtypes at a drawn placement; the point dipole's with its closed form and central
+    differences of it; the arm's with `frame_pose` of its own description; each with its node to the rounding of its
+    terms; their derivatives in `u` and `theta` with central differences. A software oracle's agreement grounds no sign
+    and no frame against hardware.
+  - **Calibration types and instances** (`CalibrationType`, `register_calibration_type`, `CalibrationInstance`): a type is
+    a registered reader, `mpem/1` (the calibrated multipole's: fitted `Source_Position`, `Source_Direction`, `B_Coeff`;
+    declared `Workspace_Dimensions`) and `urdf/1` (an arm's description: authored, every field declared); an instance is
+    one asset, its sha256, licence, tier and the unit its file names. The build report's new `calibrations` lists each.
+  - **A lab's own MPEM file**: `CalibratedMultipole(calibration=Asset("<record>", "<sha256>"))` names a record the
+    lab's package ships through the `mime.assets` entry point, read from the asset cache through its licence gate,
+    recorded in the lock (`assets_read`), held to the packaged files' checks and float32 guard. The lab fixture ships two
+    small synthetic ones, open and non-commercial.
+  - **Believed models**: `set_controller(..., believed={key: entry})` declares the controller's own model of an
+    apparatus's provider or chain segment (`<apparatus>.<field>`, `<apparatus>.<segment>`, the apparatus's name alone
+    where it holds one part) or of a camera (its id), an entry of the same kind taking the same commands. The saved form
+    holds it in form 15's `controller.believed` slot under its full key, which a load now reads (no saved-form step);
+    an older MIME refuses it by name. `ctx.believed(key)` gives the forward model or, for a camera, its projection
+    (`mime.control.CameraModel`, `Camera.project` with the controller's numbers). Inside the compiled step each number
+    the step reads is a leaf of the controller's node (`believed_<apparatus>__<part>__<parameter>`); a belief equal to
+    the truth gives the run of none bit for bit, and with none declared the report says `believed = true`.
+  - **`ctx.allocator(apparatus, commands=..., objective=..., owner=..., effort=None, toward="zero")`**: the exact
+    allocation through the believed model, its bounds the ports' (else the receiver's stated ones), narrowed where a
+    port declares a slew to the box `mime.control.slew_steps` gives, what the stage delivers before the next write
+    arrives. One function inside the compiled step and as a callback. On camera spike R2's sphere it writes the currents
+    the hand-written law writes, bit for bit in float64.
+  - **Refusal codes**: `allocation.bounds`, `allocation.model`, `allocation.objective` and `controller.believed`; the
+    allocator refuses more than `EXACT_COMMANDS` commands as `allocation.exact-size`, citing the constant.
+
 - **Blocks: a part of an experiment shared as data** (lane P, P4a, dev2). A block is a published, versioned part of an
   experiment another lab reuses: its things, laws, observations and values with their reasons, written in the saved
   document's own vocabulary, never code. Its folder holds `mime.toml`, `block.mime.yaml` (the fragment,
@@ -1252,6 +1291,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **A MIME refusal raised inside a controller's `law(ctx)` keeps its own code** (AP3a): `ctx.allocator`'s and
+  `ctx.believed`'s refusals, and any other MIME refusal a law raises, are refused under their codes; until now every
+  error a law raised was its entry's defect (`entry.defect`), as any other error still is. Likewise a MIME refusal an
+  entry's settings meet below it (an asset gate's, reading a lab's calibration) keeps its code in phase 1.
 
 - **`mime.toml` replaces `sharing.yaml`** (lane P, P6), one manifest for every kind of shared folder: `format`
   (`mime.toml/1`), one kind table (`[bundle] licence` at a saved folder, `[study] licence` at a study folder, a block's

@@ -11,6 +11,7 @@ from mime.nodes.actuation._chain import (
     MountedNode,
     MountInputs,
     SegmentNode,
+    kinematic_articulation,
 )
 from mime.nodes.actuation._drive import Command, ConstantNode, RampNode, RampState
 from mime.nodes.actuation._dynamic import (
@@ -87,6 +88,7 @@ __all__ = [
     "UniformRotatingNode",
     "UniformRotatingState",
     "placed_unit_fields",
+    "kinematic_articulation",
     "point_dipole",
     "read_calibration",
 ]

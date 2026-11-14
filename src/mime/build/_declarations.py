@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, override
 
 from mime.registry import Controller, Interaction, Observation
@@ -146,6 +146,9 @@ class ControllerDeclaration:
     #: The settings a study's axis names (``controller.<setting>``), each held as a leaf of the controller's node
     #: inside the compiled step where its step reads it: set by the axis, never by a script, and not saved.
     leaves: tuple[str, ...] = ()
+    #: The controller's beliefs (``set_controller(believed=...)``): a declaration of an apparatus's provider or chain
+    #: segment, or of a camera, by key, as written.
+    believed: Mapping[str, Any] = field(default_factory=dict[str, Any])
 
 
 @dataclass(frozen=True)

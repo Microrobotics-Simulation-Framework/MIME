@@ -31,6 +31,19 @@ differentiably. Its switch's owner is the caller's, declared with `allocation_sw
 registered sites `allocation_exact` and `allocation_least_norm`. `mime.fields.allocate()` runs it on the host in float64.
 [The allocation note](../../../docs/allocation.md) is the user's page.
 
+**Believed models and the allocator through them** (`_models.py`). `set_controller(..., believed={key: entry})` gives
+the controller its own declaration of an apparatus's provider or chain segment (`<apparatus>.<field>`,
+`<apparatus>.<segment>`, the apparatus's name alone where it holds one part, saved and reported in full) or of a camera
+(its id): an entry of the same kind taking the same commands, its settings checked in phase 1. Where none is declared
+the belief is the truth, and the build report says `believed = true`. The law reads one as `ctx.believed(key)`: a
+provider's or segment's forward model (`mime.registry.ForwardModel`) or a camera's projection (`CameraModel`, the
+camera's own `project`). Inside the compiled step each of its numbers the step reads is a leaf of the controller's node,
+`believed_<apparatus>__<part>__<parameter>`, so a derivative reaches the belief, and a fit moves the belief, never the
+truth; no node is built for a belief. `ctx.allocator(apparatus, commands=..., objective=..., owner=...)` is the exact
+allocation through the believed model, its bounds the ports', with the slew box of `slew_steps`
+([the allocation note](../../../docs/allocation.md)). A refusal either raises inside `law(ctx)` keeps its own code;
+any other error a law raises is its entry's defect.
+
 ## What exists
 
 - **The declaration.** `Experiment.set_controller(controller, reads={...}, writes={...}, mode=..., rate=...,

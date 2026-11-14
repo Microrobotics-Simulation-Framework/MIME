@@ -5,6 +5,7 @@ wanted field and gradient within declared limits (``allocate``)."""
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -15,21 +16,28 @@ import jax
 import numpy as np
 from numpy.typing import NDArray
 
-from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.core import run_dtype
+from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
+from mime.core import as_run_array, run_dtype
 from mime.data import Asset, asset_bytes, asset_problem
+from mime.fields._magnetic_model import INPUTS, MOMENT, QUANTITIES, ROWS, magnetic_outputs
 from mime.gradients import GradientStatus
-from mime.nodes.actuation import CalibratedMultipoleNode, Calibration, CalibrationError, read_calibration
+from mime.nodes.actuation import CalibratedMultipoleNode, Calibration, CalibrationError, placed_unit_fields, \
+    read_calibration
 from mime.registry import (
     DESIGN,
     NUMERICAL,
     PHYSICAL,
     BuildContext,
+    CalibrationInstance,
+    CalibrationType,
     Command,
     FieldProvider,
     Flag,
+    ForwardModel,
     SettingRole,
+    Signal,
     convention,
+    register_calibration_type,
     register_field_provider,
 )
 from mime.units import (
@@ -61,8 +69,16 @@ def _host_allocation(rows: int, coils: int) -> Any:
 
     return cast(Any, jax).jit(partial(exact_allocation, owner="allocation.active_set"))
 
-#: The calibrations the calibrated multipole reads, by their packaged asset's name (``asset("navion_2")``).
+#: The calibrations MIME packages for the calibrated multipole, by their packaged asset's name (``asset("navion_2")``),
+#: each ETH MSRL's, under Apache-2.0. A lab's own calibration is a record its package ships (``mime.assets``).
 CALIBRATIONS = ("cardiomag", "navion_2", "octomag")
+PACKAGED_LICENCE = "Apache-2.0"
+#: The calibration type the calibrated multipole reads: the upstream MPEM schema, order one.
+MPEM = register_calibration_type(CalibrationType(
+    "mpem", 1, "a calibrated multipole model of order one (Petruska et al. 2017): fitted point sources per coil, the "
+               "field linear in the currents", read_calibration,
+    fitted=("Source_Position", "Source_Direction", "B_Coeff"), declared=("Workspace_Dimensions",),
+    unit=lambda held: cast(Calibration, held).system or None))
 #: The declared guard on precision: the largest share of the field that rounding in float32 may cost, ``eps32 / c``
 #: over the declared region (``c`` the field cancellation). The 0.2 line's number: it admits Navion_2 (1.5e-5
 #: predicted) and CardioMag (4.8e-7) and refuses OctoMag (1.7e-3, 1.2e-3 measured on its gradient, which would land on
@@ -74,8 +90,33 @@ _MAXWELL = 1e-9
 
 
 @cache
+def _parsed(data: bytes) -> Calibration:
+    return read_calibration(data)
+
+
+def _record_bytes(name: str, sha256: str) -> bytes:
+    """The bytes of the record ``name`` an installed package ships (``mime.assets``), from the asset cache through
+    its gate: ``locate`` refuses a file not stored (``asset.missing``) and one whose licence has conditions nothing has
+    accepted (``asset.licence-not-accepted``), and is called at every read, so no read passes the gate by a cache."""
+    from mime import assets
+
+    ref = assets.reference(name)
+    if ref.sha256 != sha256:
+        raise CalibrationError(f"the record {name!r} names the bytes {ref.sha256}, and the experiment asks for "
+                               f"{sha256}: write the record's sha256, or the record the experiment was written against")
+    data = assets.locate(ref).read_bytes()
+    found = hashlib.sha256(data).hexdigest()
+    if found != sha256:
+        raise CalibrationError(f"the stored file of the record {name!r} has sha256 {found}, not the record's {sha256}: "
+                               f"fetch it again, `mime assets fetch {name}`")
+    return data
+
+
 def _read(name: str, sha256: str) -> Calibration:
-    return read_calibration(asset_bytes(Asset(name, sha256)))
+    """The calibration a packaged asset holds, or the record of an installed package, read by ``mpem/1``."""
+    if name in CALIBRATIONS:
+        return _parsed(asset_bytes(Asset(name, sha256)))
+    return _parsed(_record_bytes(name, sha256))
 
 
 @cache
@@ -84,7 +125,7 @@ def _gradient_limit(name: str, sha256: str) -> tuple[float, ...]:
 
 
 def calibration_of(held: Asset) -> Calibration:
-    """The calibration a packaged asset holds, read once."""
+    """The calibration an asset holds (a packaged one, or a record an installed package ships), read once."""
     return _read(held.name, held.sha256)
 
 
@@ -271,6 +312,42 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
         int(np.linalg.matrix_rank(matrix)), int(matrix.shape[0]))
 
 
+def _a_record(name: str) -> bool:
+    """Whether a record of an installed package (or the experiment's pin) is named ``name``."""
+    from mime import assets
+
+    try:
+        assets.reference(name)
+    except BuildRefused as refused:
+        if any(r.code == "asset.unknown" for r in refused.refusals):
+            return False
+        raise
+    return True
+
+
+def licence_tier(licence: str) -> str:
+    """The tier of a licence, the verdict of its expression (``mime.terms``)."""
+    from mime.terms import licence_verdict
+
+    return licence_verdict(licence).tier
+
+
+def _multipole_model(u: Any, x: Any, theta: Any, *, shape: tuple[int, int, int]) -> dict[str, Any]:
+    """The calibrated multipole's forward model: the node's arithmetic, in the run's dtype, every number from
+    ``theta``, ``x`` or ``u``."""
+    jnp: Any = jax.numpy
+    dtype = as_run_array(0.0).dtype
+    positions = jnp.reshape(jnp.asarray(theta["source_positions"], dtype=dtype), shape)
+    directions = jnp.reshape(jnp.asarray(theta["source_directions"], dtype=dtype), shape)
+    coefficients = jnp.reshape(jnp.asarray(theta["coefficients"], dtype=dtype), shape[:2])
+    fields, gradients = placed_unit_fields(jnp.asarray(x["point"], dtype=dtype), jnp.asarray(theta["at"], dtype=dtype),
+                                           jnp.asarray(theta["orientation"], dtype=dtype), positions,
+                                           coefficients[..., None] * directions)
+    currents = jnp.asarray(u["currents"], dtype=dtype)
+    return magnetic_outputs(fields @ currents + jnp.asarray(theta["background"], dtype=dtype), gradients @ currents,
+                            x, dtype)
+
+
 #: The background's text, which every array's validity says.
 _BACKGROUND = ("background, a uniform field (T, world frame) added to the coil field, is zero unless declared: the "
                "calibrations are fitted to the coil field alone, so a nonzero default would break parity with them; "
@@ -333,9 +410,12 @@ class CoilArray(FieldProvider):
 class CalibratedMultipole(CoilArray):
     """An array whose coils are a calibrated multipole model of order one (MPEM): each coil's field per unit current is
     the sum of a few fitted point sources, ``b = sum_j beta_j (3 (d_j . r) r / r^5 - d_j / r^3)``, from
-    ``calibration``, one of the calibrations MIME packages (ETH MSRL's published calibrations of Navion_2, OctoMag and
-    CardioMag, evaluated by MIME: ``asset("navion_2")``, ``asset("octomag")``, ``asset("cardiomag")``), its coefficients and sources the node's leaves, read from the file. The calibration's own
-    frame is placed by ``at`` and ``orientation``.
+    ``calibration``, read by the calibration type ``mpem/1``: one of the calibrations MIME packages (ETH MSRL's
+    published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME: ``asset("navion_2")``,
+    ``asset("octomag")``, ``asset("cardiomag")``), or a lab's own file, a record its package ships through the
+    ``mime.assets`` entry point and named by the record's name and sha256 (``Asset("labx_emns.yaml", "<sha256>")``),
+    read from the asset cache through its licence gate, which the lock records. Its coefficients and sources are the
+    node's leaves, read from the file. The calibration's own frame is placed by ``at`` and ``orientation``.
 
     Each step it raises ``outside_region`` where a reader is outside the calibration's ``Workspace_Dimensions``, a
     declared region, not a fit domain, and ``near_source`` where a coil's gradient per unit current at a reader is more
@@ -396,11 +476,12 @@ class CalibratedMultipole(CoilArray):
         "upstream loads the block only when Coil_List names it, and this file's does not (a Coil_List that names it is "
         "refused here); background is not it, the sources being position dependent; Navion_2's and OctoMag's files "
         "carry no Offset block",
+        "a lab's own calibration file is read by the same reader and held to the same checks and float32 guard as the "
+        "packaged ones; nothing here judges its fit: its accuracy is the lab's to state",
         "not in this release: saturation of the cores (no shipped calibration has fitted it, all were fitted below "
         "core saturation, and it makes the field nonlinear in current: it waits for a calibration "
         "that fits it, or for the response and circuit stage); a calibration of order above one (none ships; the reader refuses "
-        "one); a lab's own calibration file (the three packaged ones only); a coil's circuit (the currents delivered "
-        "are ideal)",
+        "one); a coil's circuit (the currents delivered are ideal)",
     )
     raises = (Flag("outside_region", "a reader lay outside the calibration's declared region (Workspace_Dimensions), "
                                      "which is not a fit domain: outside the declared region, not extrapolation"),
@@ -413,24 +494,63 @@ class CalibratedMultipole(CoilArray):
         return calibration_of(cast(Asset, self.calibration))
 
     def calibration_problem(self) -> str | None:
-        """Why the calibration cannot be read, or ``None``."""
+        """Why the calibration cannot be read, or ``None``. A lab's record that is not stored, or whose licence has
+        conditions nothing has accepted, is refused by the asset gate with its own code (``asset.missing``,
+        ``asset.licence-not-accepted``)."""
         held = cast(object, self.calibration)  # a script is not type-checked
         if held is None:
             return ("the calibrated multipole reads its calibration: write calibration=asset('navion_2') (or "
                     "'octomag', 'cardiomag'), with asset from mime.data")
         if not isinstance(held, Asset):
-            return (f"calibration={held!r} is not a packaged asset: a calibration is named by asset(...) from "
-                    f"mime.data, one of {list(CALIBRATIONS)}")
-        if held.name not in CALIBRATIONS:
-            return f"calibration={held.name!r} is no calibration's; those packaged are {list(CALIBRATIONS)}"
-        problem = asset_problem(held)
-        if problem is not None:
-            return f"calibration: {problem}"
+            return (f"calibration={held!r} is not an asset: a calibration is named by asset(...) from mime.data, one "
+                    f"of {list(CALIBRATIONS)}, or by a record's name and sha256, Asset(name, sha256)")
+        if held.name in CALIBRATIONS:
+            problem = asset_problem(held)
+            if problem is not None:
+                return f"calibration: {problem}"
+        elif not _a_record(held.name):
+            return (f"calibration={held.name!r} is no calibration's: those packaged are {list(CALIBRATIONS)}, and no "
+                    f"installed package ships a record of that name (mime.assets)")
         try:
             self._held()
         except CalibrationError as error:
             return f"calibration {held.name!r}: {error}"
         return None
+
+    @override
+    def assets_read(self) -> tuple[str, ...]:
+        held = cast(object, self.calibration)
+        return (held.name,) if isinstance(held, Asset) and held.name not in CALIBRATIONS else ()
+
+    @override
+    def calibration_instance(self) -> CalibrationInstance | None:
+        held = cast(Asset, self.calibration)
+        if held.name in CALIBRATIONS:
+            licence, tier = PACKAGED_LICENCE, licence_tier(PACKAGED_LICENCE)
+        else:
+            from mime import assets
+
+            ref = assets.reference(held.name)
+            licence, tier = ref.licence, ref.verdict.tier
+        return CalibrationInstance(MPEM.label, held.name, held.sha256, licence, tier, MPEM.unit(self._held()),
+                                   MPEM.fitted, MPEM.declared)
+
+    @override
+    def forward_model(self, ctx: BuildContext) -> ForwardModel:
+        """The field, its gradient, and the force and torque on a moment stated at the point, at a world point
+        (``x.point``, and ``x.moment``), affine in ``currents``: the node's closed form, its parameters the node's
+        leaves under their names and in their shapes (each coil's sources padded to one count, which is structure)."""
+        held = self._held()
+        shape = (held.coils, int(held.positions.shape[1]), 3)
+        theta = {"source_positions": held.positions.ravel(), "source_directions": held.directions.ravel(),
+                 "coefficients": held.coefficients.ravel(), "at": np.asarray(ctx.vector("at")),
+                 "orientation": np.asarray(_unit(self.orientation)), "background": np.asarray(ctx.vector("background"))}
+        units = {"source_positions": "m", "source_directions": "1", "coefficients": "T m^3/A", "at": "m",
+                 "orientation": "1", "background": "T"}
+        return ForwardModel(ctx.id, {"currents": Signal("A", (held.coils,))}, INPUTS, QUANTITIES,
+                            {k: np.asarray(v, dtype=np.float64) for k, v in theta.items()}, units,
+                            partial(_multipole_model, shape=shape), affine_in=frozenset({"currents"}),
+                            optional=frozenset({MOMENT}), rows=ROWS)
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:

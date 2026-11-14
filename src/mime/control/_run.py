@@ -17,11 +17,12 @@ from maddening import GraphManager
 
 from mime.build import ControllerPlan, Mode, PlanSet
 from mime.build._in_graph import step_place
-from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass, RunFailed, standing_for
+from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass, RunFailed, entry_defect, \
+    standing_for
 from mime.build._maddening import FlagTally, FlagTest, Fed, NodeFields, fed_inputs, inputs, node_state, ready, \
     scan_chunk, scan_chunk_tallied, scan_chunk_with_history, with_refreshed_held
 from mime.core import jnp
-from mime.registry import BuildContext, ControlLaw
+from mime.registry import BuildContext, ControlLaw, Controller
 
 type History = dict[str, dict[str, np.ndarray]]
 type Arrays = Mapping[str, Any]
@@ -156,25 +157,43 @@ def numeric_settings(entry: object) -> dict[str, float]:
 
 def control_context(plans: PlanSet, given: Mapping[str, Any] | None = None) -> BuildContext:
     """What a controller's law is made from: its settings in SI and its bare numbers (:func:`numeric_settings`), the
-    base step, its control period as ``timestep``, and the built tree of each segment that carries mass, what is
-    mounted on it grafted on (a :class:`ReadModels`, which records the trees the law reads). ``given`` replaces
-    settings by name: a setting held as a leaf of the controller's node, read inside its traced step."""
+    base step, its control period as ``timestep``, the built tree of each segment that carries mass, what is mounted
+    on it grafted on (a :class:`ReadModels`, which records the trees the law reads), and its models of what it drives
+    and observes (``ctx.believed``, ``ctx.allocator``: ``mime.control._models.ControlModels``, which records the
+    models the law reads). ``given`` replaces settings by name, and believed numbers by ``believed:<key>:<parameter>``:
+    each held as a leaf of the controller's node, read inside its traced step."""
+    from mime.control._models import BELIEVED, ControlModels
+
     plan = cast(ControllerPlan, plans.controller)
-    settings = {**numeric_settings(plan.entry), **dict(plan.settings), **dict(given or {})}
+    held = dict(given or {})
+    believed = {name: value for name, value in held.items() if name.startswith(BELIEVED)}
+    settings = {**numeric_settings(plan.entry), **dict(plan.settings),
+                **{name: value for name, value in held.items() if not name.startswith(BELIEVED)}}
     return BuildContext(plan.owner, plans.dt, plans.dt * plan.period, plan.owner, settings=settings,
-                        up=plans.frame.up, gravity=plans.frame.gravity, models=ReadModels(plans.models))
+                        up=plans.frame.up, gravity=plans.frame.gravity, models=ReadModels(plans.models),
+                        control=ControlModels(plans, believed))
 
 
-def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str]]:
+@dataclass(frozen=True)
+class MadeLaw(ControlLaw):
+    """A controller's law as :func:`law_and_models` made it, with the keys of the believed models it read while it
+    was made (``ctx.believed``), whose numbers the build holds as leaves of the controller's node."""
+
+    believed: tuple[str, ...] = ()
+
+
+def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal]]:
     """The controller's law made from its settings, and every problem with it: a law that cannot be made, or whose
     held writes are not its writes at their shapes. ``None`` and no problem when there is no controller."""
     law, problems, _ = law_and_models(plans)
     return law, problems
 
 
-def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str], tuple[str, ...]]:
+def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal], tuple[str, ...]]:
     """:func:`make_law`, and the segments whose built trees (``ctx.models``) the law read while it was made, in
-    order."""
+    order. A refusal the law meets while it is made (``ctx.allocator``'s, ``ctx.believed``'s, or any MIME refusal it
+    raises) is a problem with its own code; any other error it raises is the entry's defect. A law that read believed
+    models is a :class:`MadeLaw` naming them."""
     plan = plans.controller
     if plan is None:
         return None, [], ()
@@ -182,12 +201,23 @@ def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str], tuple[
     models = cast(ReadModels, context.models)
     try:
         law = plan.entry.law(context)
+    except MimeError as refused:
+        return None, list(refused.refusals), tuple(sorted(models.read))
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
         return None, [f"law() raised {error!r}"], tuple(sorted(models.read))
     if not isinstance(cast(object, law), ControlLaw):
         return None, [f"law() returned {law!r}, not a mime.registry.ControlLaw"], tuple(sorted(models.read))
-    problems = _write_problems(plan, law.held, "its held writes")
+    problems: list[str | Refusal] = list(_write_problems(plan, law.held, "its held writes"))
+    read = tuple(context.control.read)
+    if read:
+        law = MadeLaw(law.state, law.held, law.step, believed=read)
     return (law if not problems else None), problems, tuple(sorted(models.read))
+
+
+def law_refusals(cls: type[Controller], problems: Sequence[str | Refusal]) -> list[Refusal]:
+    """The refusals of a law's problems (:func:`law_and_models`): each its own where it is a refusal, else the
+    entry's defect."""
+    return [problem if isinstance(problem, Refusal) else entry_defect(cls, problem) for problem in problems]
 
 
 def _write_problems(plan: ControllerPlan, writes: object, what: str) -> list[str]:
@@ -431,5 +461,6 @@ def _stacked(parts: list[History]) -> History:
 
 
 __all__ = ["HISTORY_BLOCK_BYTES", "MIN_CHUNK", "TARGET_CHUNKS", "Callback", "Chunk", "ChunkHook", "ChunkedRun",
-           "ControllerError", "Progress", "ReadModels", "StopRequest", "automatic_chunks", "control_context", "law_and_models",
+           "ControllerError", "MadeLaw", "Progress", "ReadModels", "StopRequest", "automatic_chunks", "control_context",
+           "law_and_models", "law_refusals",
            "make_law", "numeric_settings"]

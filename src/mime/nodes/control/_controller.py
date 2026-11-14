@@ -19,6 +19,18 @@ type Step = Callable[[Mapping[str, Any], Mapping[str, Any]], tuple[Mapping[str, 
 type ReadSpec = tuple[str, tuple[int, ...]]
 #: The prefix of a controller node's leaf holding one of its law's settings (``setting_gain``).
 SETTING = "setting_"
+#: The prefix of a controller node's leaf holding a number of a believed model (``ctx.believed``), its key's dots
+#: and its parameter joined by double underscores (``believed_coils__magnetic__coefficients``).
+BELIEVED = "believed_"
+
+
+def leaf_param(name: str) -> str:
+    """The controller node's leaf a name its law is made again from is held as: ``setting_<name>`` for a setting,
+    ``believed_<apparatus>__<part>__<parameter>`` for a believed number (``believed:<key>:<parameter>``)."""
+    if name.startswith("believed:"):
+        _, key, parameter = name.split(":")
+        return f"{BELIEVED}{key.replace('.', '__')}__{parameter}"
+    return f"{SETTING}{name}"
 
 
 class ControllerState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
@@ -53,7 +65,7 @@ class ControllerNode(MimeNode):
                  initial_state: Mapping[str, Any], initial_writes: Mapping[str, Any],
                  settings: Mapping[str, Any] | None = None,
                  remake: Callable[[Mapping[str, Any]], Step] | None = None) -> None:
-        held = {f"{SETTING}{name_}": jnp.asarray(value) for name_, value in sorted((settings or {}).items())}
+        held = {leaf_param(name_): jnp.asarray(value) for name_, value in sorted((settings or {}).items())}
         super().__init__(name, timestep, controller=controller,
                          reads={label: (units, tuple(shape)) for label, (units, shape) in sorted(reads.items())},
                          initial_state={key: jnp.asarray(value) for key, value in sorted(initial_state.items())},
@@ -69,7 +81,7 @@ class ControllerNode(MimeNode):
         """The law's step at the step constants ``p``: made again from the leaves it holds, or the built one."""
         if self.remake is None:
             return self.law_step
-        return self.remake({name: p[f"{SETTING}{name}"] for name in self.leaf_settings})
+        return self.remake({name: p[leaf_param(name)] for name in self.leaf_settings})
 
     @override
     def to_dict(self) -> dict[str, Any]:
@@ -146,5 +158,5 @@ class DelayNode(MimeNode):
         return node_fields(out)
 
 
-__all__ = ["SETTING", "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode",
-           "DelayState", "ReadSpec", "Step"]
+__all__ = ["BELIEVED", "SETTING", "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode",
+           "DelayState", "ReadSpec", "Step", "leaf_param"]

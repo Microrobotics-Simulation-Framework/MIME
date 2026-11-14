@@ -50,10 +50,9 @@ from mime.build._refusals import (
     Refusal,
     RefusalClass,
     RunFailed,
-    entry_defect,
 )
 from mime.build import StageBinding, stage_binding
-from mime.control import Chunk, ChunkedRun, ChunkHook, Progress, StopRequest, law_and_models
+from mime.control import Chunk, ChunkedRun, ChunkHook, Progress, StopRequest, law_and_models, law_refusals
 from mime.build._maddening import (
     FlagTally,
     FlagTest,
@@ -71,7 +70,7 @@ from mime.experiment._removed import remove as remove_declaration
 from mime.experiment._tree import Tree, tree_of
 from mime._lineage import Change, Origin, remember_folder
 from mime._notebook import in_notebook, where_called
-from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
+from mime.registry import ControlLaw, Controller, Entry, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
 from mime.results import (
     REPORT_FORMAT,
@@ -605,7 +604,7 @@ class Experiment:
     @public
     def set_controller(self, controller: Controller, *, reads: Mapping[str, TypedPath | str],
                        writes: Mapping[str, TypedPath | str], mode: str | int, rate: Quantity | None = None,
-                       latency: Quantity | None = None) -> None:
+                       latency: Quantity | None = None, believed: Mapping[str, Entry] | None = None) -> None:
         """Declare the experiment's controller: ``reads`` binds each label it reads to a thing's state
         (``"umr.pose"``, ``"rpm.arm.joint_positions"``) or an observation's output (``"swim_speed:umr.speed"``), and
         ``writes`` each label it writes to an apparatus's command (``"rpm.arm.joint_positions"``), whose drive it
@@ -614,13 +613,22 @@ class Experiment:
         called on the host once every control period, between compiled chunks); ``rate`` its control period, a whole
         multiple of ``dt`` (every step when not given); ``latency`` how long its writes take to act, a whole number of
         base steps (none when not given). As a callback, the build derives every external input of the graph from
-        ``writes``, and the run feeds each one; inside the compiled step, its node's edges feed its commands."""
+        ``writes``, and the run feeds each one; inside the compiled step, its node's edges feed its commands.
+
+        ``believed`` gives the controller its own declaration of what it drives or observes, by key: an apparatus's
+        provider (``"emns.magnetic"``) or chain segment (``"rpm.arm"``), the apparatus's name alone where it holds one
+        of them, or a camera's id; each a declaration of the same kind taking the same commands, with its own settings
+        (``{"emns.magnetic": CalibratedMultipole(calibration=..., at=m((1e-3, 0.0, 0.0)))}``). Its law reads each as
+        ``ctx.believed(key)``. Where none is given for a part the law reads, the belief is the true declaration, and
+        the build report says so. The saved form holds each under its full key."""
         if not isinstance(cast(object, controller), Controller):  # a script is not type-checked
             raise ArgumentTypeRefused([Refusal(
                 "call.wrong-type", RefusalClass.USER,
                 f"set_controller takes a Controller, not {type(controller).__name__}",
                 "pass a registered controller: exp.set_controller(ArmTracking(...), reads=..., writes=..., mode=...)")])
-        self._declare(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
+        self._declare(ControllerDeclaration(controller, reads, writes, mode, rate, latency,
+                                            believed=dict(believed) if isinstance(believed, Mapping) else
+                                            cast(Any, believed) or {}))
 
     @public
     def use(self, block: str | PathLike[str], /, *, name: str | None = None, accept_licences: Collection[str] = (),
@@ -707,8 +715,7 @@ class Experiment:
             judged_over_ranges(self._settings, self._declarations, plans)
             law, problems, models = law_and_models(plans)
             if problems and plans.controller is not None:
-                cls = plans.controller.registered.cls
-                refusals = [entry_defect(cls, problem) for problem in problems]
+                refusals = law_refusals(cast(type[Controller], plans.controller.registered.cls), problems)
                 raise BuildRefused(refusals, report_of(plans, plans.order, refusals))
             graph, report, derived = construct(plans, law, models)
             stage = stage_text(stage_spec(plans))

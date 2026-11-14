@@ -105,6 +105,14 @@ from mime.registry._entries import (
     unbatched_of,
     uniform,
 )
+from mime.registry._calibration import (
+    CalibrationInstance,
+    CalibrationType,
+    calibration_type,
+    calibration_types,
+    register_calibration_type,
+)
+from mime.registry._forward import ForwardModel
 from mime.registry._ranges import ChoiceRule, RangeChoice, choose_over
 from mime.registry._registry import (
     WHY_REQUIRED,
@@ -135,6 +143,12 @@ from mime.registry._registry import (
 )
 
 __all__ = [
+    "CalibrationInstance",
+    "CalibrationType",
+    "ForwardModel",
+    "calibration_type",
+    "calibration_types",
+    "register_calibration_type",
     "Centreline",
     "CentrelineFrame",
     "CentrelinePoints",

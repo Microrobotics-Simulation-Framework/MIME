@@ -58,8 +58,10 @@ UNREACHED = {
        for head in (*(("things", "*", "ports", "*", name) for name in ("rest", "slew", "rate", "latency", "quantum")),
                     *(("things", "*", "ports", "*", "bounds", end) for end in ("low", "high")),
                     ("things", "*", "ports", "*", "noise", "sigma"))},
-    ("controller", "believed", "*", "settings", "*"): "no script writes a controller's believed slot: the saved form "
-                                                      "holds it (form 15) and nothing yet fills it",
+    ("controller", "believed", "*", "settings", "*"): "no saved case declares a belief: tests/control/test_believed.py "
+                                                      "writes one and reads it back, and a saved case waits for a "
+                                                      "controller a load resolves (one MIME registers) that reads a "
+                                                      "model",
 }
 #: The slots a case reaches and no profile judges, each refused as ``source.no-site`` in every profile: a port's numbers
 #: (``reason=`` on a port's quantity), whose source is the port's own ``reason``, one text for the port, saved beside
