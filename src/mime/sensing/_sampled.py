@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import jax
 
@@ -41,6 +41,8 @@ from mime.sensing import _forms as forms
 from mime.sensing._forms import Form, Vec
 
 lax: Any = jax.lax
+#: JAX's jit, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
+_jit: Any = cast(Any, jax).jit
 
 #: Samples a ray by default: camera truth 1's count, within 1 % of the physical silhouette in motion off the crease.
 SAMPLES = 32
@@ -245,8 +247,10 @@ def evaluation_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any)
     point = jax.ShapeDtypeStruct((), dtype)
     held = {name: (value if isinstance(value, int) else jnp.asarray(value, dtype=dtype))
             for name, value in parameters.items()}
-    lowered = jax.jit(lambda x, y, z: evaluate(sampled, held, x, y, z)).lower(point, point, point)
-    cost = lowered.cost_analysis() or {}
+    def one(x: Any, y: Any, z: Any) -> Any:
+        return evaluate(sampled, held, x, y, z)
+
+    cost: Mapping[str, float] = _jit(one).lower(point, point, point).cost_analysis() or {}
     return float(cost.get("flops", 0.0)) + TRANSCENDENTAL_WEIGHT * float(cost.get("transcendentals", 0.0))
 
 
@@ -267,9 +271,9 @@ def made_kind(kind: type[Geometry], settings: Mapping[str, Any]) -> Geometry:
 
     record = registration_of(kind)
     made: dict[str, Any] = {}
-    for item in dataclasses.fields(kind):  # type: ignore[arg-type]
-        value = settings[item.name]
-        value = tuple(value) if isinstance(value, list) else value
+    for item in dataclasses.fields(cast(Any, kind)):
+        value: Any = settings[item.name]
+        value = tuple(cast(list[Any], value)) if isinstance(value, list) else value
         declared = record.settings.get(item.name) if record is not None else None
         made[item.name] = Quantity(value, declared.dimension) if declared is not None and declared.dimension is not None \
             else value
@@ -288,8 +292,9 @@ def smallest_length(kind: type[Geometry], settings: Mapping[str, Any]) -> float:
     for name, declared in (record.settings.items() if record is not None else ()):
         if declared.dimension != Length:
             continue
-        value = settings[name]
-        lengths += [abs(float(v)) for v in (value if isinstance(value, (list, tuple)) else (value,))]
+        value: Any = settings[name]
+        held: Sequence[Any] = cast(Sequence[Any], value) if isinstance(value, (list, tuple)) else (value,)
+        lengths += [abs(float(v)) for v in held]
     positive = [v for v in lengths if v > 0.0]
     return min(positive) if positive else math.inf
 

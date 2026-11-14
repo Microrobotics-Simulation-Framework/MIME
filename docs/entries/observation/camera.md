@@ -54,8 +54,8 @@ a warning, and the frame no longer equals the offline render, whose window is de
 - For a creased body without its crease measure (the screw, the box): it is refused with its reason
   (`camera.crease-unmeasured`) until the screw's crease measure comes; `hide` it. A body with neither a closed form nor a
   sign function is refused too (`camera.no-route`). The helix and the ellipsoid take the sampled route, whose frame costs
-  its samples a ray times its window's rays: the build report gives its structural estimate and warns above about 50 to
-  70 ms a frame on a four-core CPU, naming the offline renderer.
+  its samples a ray times its window's rays: the build report gives its structural estimate and warns above a declared
+  line (`mime.sensing._sampled.COST_LINE`), naming the offline renderer.
 - For a batched study: it is refused (`camera.batched`), naming the offline renderer, which is differentiable and vmaps:
   under `vmap` the frame's `cond` is a `select`, so every step would render.
 - For reverse mode past the memory a run can have: it is refused before it compiles (`camera.reverse-memory`), naming the

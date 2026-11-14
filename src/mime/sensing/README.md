@@ -24,31 +24,31 @@ stages:
   by its cone from the pinhole, bounded by its ball), whose zero set is the outline exactly. Everything is taken on the ray, never its whole line: a body behind the camera covers
   nothing, and one straddling the camera's plane only what its part in front shows.
 - **The route is chosen by capability**: a kind with a closed form registered (`register_closed_form`) takes the closed-form
-  route (route 1); one whose geometry kind declares a cheap sign function (`Geometry.sign_function`) takes the sampled route
-  (route 2, below); a creased kind (a solid whose body is the intersection of two or more regions: the cylinder, the box, the
-  screw) takes route 2 only with its crease measure (`Geometry.crease_measure`), and is refused without it
+  route; one whose geometry kind declares a cheap sign function (`Geometry.sign_function`) takes the sampled route (below);
+  a creased kind (a solid whose body is the intersection of two or more regions: the cylinder, the box, the screw) takes
+  the sampled route only with its crease measure (`Geometry.crease_measure`), and is refused without it
   (`camera.crease-unmeasured`: the box and the screw, until the screw's measure comes); one with neither is refused
   (`camera.no-route`). The choice never reads a measured time. `route=` is an override only: `"closed form"` on a kind
-  without one is refused (`camera.no-closed-form`), and `"sampled"` takes route 2 where a closed form exists (the swap test's
-  use).
-- **The sampled route** (`_sampled.py`, route 2), for a body with no closed form. Each ray's line through the body's
-  enclosing ball (widened by `MARGIN_PX` footprints) is sampled at a declared count in one reduction: `SAMPLES`, 32, camera
-  truth 1's count, raised for a slender body so that neighbouring samples lie at most `SPACING` (half) of its smallest length
-  setting apart (the coil of the tests takes 48). The marched function is the first-order distance `value / slope` itself.
-  The least sample and the least of the other local minima are held, each refined by the parabola through its neighbours,
-  and each is a piece in route 1's sense: the first-order distance at its held point (its derivative is the least distance's
-  along the ray but for the parabola's error, second order in the spacing), its line by `jvp` along the ray table. **Where
-  both branches' lines cross a pixel**, two parts of the outline meet there (a body occluding itself: FL-9's lobes in concave
-  notches of about 80 degrees, a coil's turns crossing), and route 1's corner sub-samples take the pixel: one straight edge
-  there misses up to a quarter of the pixel (camera PR 5's first step located the 0.09 to 0.25 error off the screw's crease
-  there, 15 of 15 pixels, and the sub-samples took it to 0.010 to 0.020). An attenuating body's chord is its samples' sign
-  changes, linearly interpolated: a body thinner than the spacing along a ray can be missed in the chord, never in the
-  coverage. Its march's choices are switches (`camera.sampled.*`); its search is held.
+  without one is refused (`camera.no-closed-form`), and `"sampled"` takes the sampled route where a closed form exists
+  (the swap test's use).
+- **The sampled route** (`_sampled.py`), for a body with no closed form. Each ray's line through the body's enclosing ball
+  (widened by `MARGIN_PX` footprints) is sampled in one reduction at a declared count: `SAMPLES`, the count camera
+  truth's measurement set, raised for a slender body so that neighbouring samples lie at most `SPACING` of its smallest length setting
+  apart. The marched function is the first-order distance `value / slope` itself. The least sample and the least of the
+  other local minima are held, each refined by the parabola through its neighbours, and each is a piece as the closed
+  forms' are: the first-order distance at its held point (its derivative is the least distance's along the ray but for
+  the parabola's error, second order in the spacing), its line by `jvp` along the ray table. **Where both branches' lines
+  cross a pixel**, two parts of the outline meet there (a body occluding itself: de Jongh's screw's lobes in concave notches, a
+  coil's turns crossing), and the corner sub-samples take the pixel: one straight edge there misses up to about a quarter
+  of the pixel, the per-pixel error camera PR five's first step located off the screw's crease (the numbers are in
+  `tests/sensing/predictions_camera_pr5a.json`). An attenuating body's chord is its samples' sign changes, linearly
+  interpolated: a body thinner than the spacing along a ray can be missed in the chord, never in the coverage. The
+  march's choices are switches (`camera.sampled.*`); its search is held.
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
-  span) and slab their exact signed distances; the ellipsoid `q - 1` with its gradient's length; the screw's thread
-  `r - R (1 + m sin(n theta))` with its gradient's length in closed form; the helix the distance from its centreline's arc less
-  the filament's radius, its nearest angle found by three Newton steps and held (`helix.end.*` at the arc's ends). Each is
-  held by `mime.testing.sign_function_problems` (its region's sign at drawn points, its gradient's length).
+  span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
+  the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's
+  arc less the filament's radius, its nearest angle found by Newton's steps and held (`helix.end.*` at the arc's ends).
+  Each is held by `mime.testing.sign_function_problems` (its region's sign at drawn points, its gradient's length).
 - **Pixel integration** (`_coverage.py`), its own stage. **The box edge**: each piece's straight line within the pixel
   comes through `jvp` along the ray table's derivatives (at `g / |grad g|` px, normal `grad g / |grad g|`); the lines
   are composed by the form's rule on that one scale, the distance in pixels (raw values do not share a scale: a cap
@@ -122,7 +122,7 @@ about a sub-pixel's area).
 ## What it does not do yet
 
 The tracker and the controller that reads the in-loop camera, the crease measures (and so the screw, the cylinder and the box
-on route 2), meshes and the display view's lighting and colour, X-ray detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
+on the sampled route), meshes and the display view's lighting and colour, X-ray detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
 intersections) go through `mime.core.switch` where a switch has a branch a derivative can take, under the owners
 `camera.*` (`_switches.py`, declared on the `camera` entry, each a row of the switch harness); the sites that stay raw are
 listed with their reasons in `docs/ratchets/raw_switches.txt`. A switch collector keeps what a loop's or a cond's body
@@ -202,10 +202,10 @@ docstring (`tests/sensing/`), the predictions and outcomes in `predictions_camer
 - **A capsule**, per pixel against the hull of its end balls' silhouettes (`test_capsule.py`): within the straight
   line's error on its outline's least curvature radius; its chord against a bisection of the ray's distance from its
   segment.
-- **Route 2** against route 1 on the sphere and the capsule, whose sign functions are their exact distances: per pixel and
-  in the silhouette's motion within 2e-3, both dtypes; an attenuating sphere's absorbed light within 1e-3; on a coil's
-  crossing turns, every two-branch pixel within 0.04 of the sign-only truth (`test_sampled.py`; the outcomes in
-  `predictions_camera_pr5a.json`).
+- **The sampled route** against the closed form on the sphere and the capsule, whose sign functions are their exact
+  distances, per pixel and in the silhouette's motion, both dtypes; an attenuating sphere's absorbed light; on a coil's
+  crossing turns, every two-branch pixel against the sign-only truth (`test_sampled.py`, its lines `SWAP_PIXEL_LINE`,
+  `SWAP_MOTION_LINE`, `CHORD_LINE` and `CORNER_LINE`; the outcomes in `predictions_camera_pr5a.json`).
 - **Not shown:** a translucent silhouette's per-pixel coverage (its aggregates' derivatives are, in float64,
   `test_camera_gradients.py`), exact disc coverage through a distorted lens, and the capsule's and the cylinder's
   per-pixel derivatives.

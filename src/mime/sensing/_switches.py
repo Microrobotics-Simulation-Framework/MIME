@@ -259,7 +259,7 @@ SAMPLED_SWITCHES = (
         orders={"expected": -1},
         route="none: the held point is refined by the parabola through the least sample and its neighbours, so where "
               "the least moves to the next sample the held point moves by the parabola's error, and the first-order "
-              "distance read there by the second order of that (camera truth 1: within 1 % in motion at 32 samples)"),
+              "distance read there by the second order of that"),
     switch.Declaration(
         owner="camera.sampled.basin",
         indicator="how far a sample of a ray's first-order distance lies below the lower of its neighbours, in metres "

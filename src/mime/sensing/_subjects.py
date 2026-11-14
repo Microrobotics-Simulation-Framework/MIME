@@ -21,7 +21,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -227,9 +227,10 @@ def _sampled(kind: str, settings: Mapping[str, Any], region: str) -> Placed:
     and its march's numbers."""
     found = sampled_route.kind_named(kind)
     assert found is not None
-    settings = {name: tuple(value) if isinstance(value, list) else value for name, value in settings.items()}
+    settings = {name: tuple(cast(list[Any], value)) if isinstance(value, list) else value
+                for name, value in settings.items()}
     made = sampled_route.made_kind(found, settings)
-    names = {item.name for item in dataclasses.fields(found)}  # type: ignore[arg-type]
+    names = {item.name for item in dataclasses.fields(cast(Any, found))}
     parameters = {name: settings[name] for name in names}
     enclosing = float(made.enclosing_radius(settings)) if isinstance(made, Solid) else math.inf
     feature = sampled_route.smallest_length(found, settings)
@@ -300,7 +301,7 @@ class Subject:
         if self.window is not None and self.window < 1:
             problems.append("a window is at least one pixel")
         found = sampled_route.kind_named(self.kind)
-        missing = [] if found is None else [item.name for item in dataclasses.fields(found)  # type: ignore[arg-type]
+        missing = [] if found is None else [item.name for item in dataclasses.fields(cast(Any, found))
                                             if item.name not in self.settings]
         if missing:
             problems.append(f"its settings lack {', '.join(missing)}, which the {self.kind} takes")

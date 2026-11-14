@@ -118,7 +118,7 @@ may overstate its body's (an envelope's; zero for a closed form); and **`WallKin
 `WallDistance` (the signed distance, above zero in the medium, and the normal into it), by default minus the matched
 region's shape's, and `None` for free space.
 
-The camera's sampled route reads two more (camera PR 5): **`sign_function(parameters, region, point)`**, a region's cheap
+The camera's sampled route reads two more: **`sign_function(parameters, region, point)`**, a region's cheap
 sign function at points given as three coordinate arrays, a `SignValue` (its value, of the right sign everywhere farther than
 the class's `sign_zone` from the boundary, and its gradient's length), whose first-order distance the camera marches; and
 **`crease_measure(parameters, o, d)`**, a creased body's exact edge functions on rays and how they compose with the marched

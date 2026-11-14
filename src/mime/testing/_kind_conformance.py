@@ -72,6 +72,7 @@ _EPSILON = float(np.finfo(np.float64).eps)
 _vmap: Any = cast(Any, jax).vmap
 _jit: Any = cast(Any, jax).jit
 _jacfwd: Any = cast(Any, jax).jacfwd
+_grad: Any = cast(Any, jax).grad
 
 
 def _at_samples(shape: Any, parameters: Mapping[str, Any], points: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -499,7 +500,7 @@ def sign_function_problems(kind: Geometry, settings: Mapping[str, Magnitude], po
             return sign.value, sign.slope
 
         values, slopes = (np.asarray(x, dtype=np.float64) for x in _jit(_vmap(both))(held))
-        gradients = np.asarray(_jit(_vmap(jax.grad(value)))(held), dtype=np.float64)
+        gradients = np.asarray(_jit(_vmap(_grad(value)))(held), dtype=np.float64)
         exact = _distances(shape, kind.region_parameters(region, settings), held)
         decided = np.abs(exact) > floor
         wrong = decided & (np.sign(values) != np.sign(exact))
