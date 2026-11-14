@@ -18,7 +18,10 @@ each must fail this test on every run, its rate measured, not assumed: a swap th
 would be no evidence. The lag's swap was first missed on 10 runs of 200: a trip latched at the wave's first value,
 before the slew or the lag saw it move; a slew drawn up to 4 bounds a step moved past every jump the stage delivered;
 and on one run Hypothesis drew no example holding both a slew and a lag. The draws now hold each premise (the docstring
-of :func:`links`), and the explicit case below catches the swap on its own."""
+of :func:`links`), and the explicit case below catches the swap on its own. Widening the slews' range (so that a slew
+that binds at no jump is drawn too) drew the lag with a binding slew in 8 examples of 100 at one seed, none telling the
+lag's swap from the design's (the fourth probe's one miss in 200, seed 49): the choices are now parameters of the test,
+each with its own 100 examples."""
 
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ from contextlib import contextmanager
 
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from port_cases import Link, command_flags, command_oracle, planted, stage_of, stepped
@@ -50,19 +54,16 @@ SLEW_BOUNDS = {"binding": (0.05, 0.4), "partial": (0.7, 1.5), "loose": (3.0, 6.0
 
 
 @st.composite
-def links(draw: st.DrawFn) -> tuple[Link, np.ndarray]:
-    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew or none (one of the
-    ``SLEW_BOUNDS``: 0.05 to 0.4 bounds a step, which binds at every jump of the waves, 0.7 to 1.5, which binds at the
-    larger ones, 3 to 6, which binds at almost none), a lag of 1 to 20 ms or none, a period of 1 to 4 steps and a latency
+def links(draw: st.DrawFn, slew: str, lagged: bool) -> tuple[Link, np.ndarray]:
+    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew of ``slew`` (``none``, or one of
+    the ``SLEW_BOUNDS``: 0.05 to 0.4 bounds a step, which binds at every jump of the waves, 0.7 to 1.5, which binds at the
+    larger ones, 3 to 6, which binds at almost none), a lag of 1 to 20 ms if ``lagged``, a period of 1 to 4 steps and a latency
     of 0 to 5, and a sequence of square waves from inside the bound (-0.9 to 0.5 of it) to past it (1.1 to 2 times) and
     back, with a one-step spike past it at a drawn step (which falls between samples wherever the period is above one
     and the step is not a multiple of it); each wave starts inside, so a trip latches after the stage has delivered the
     wave, not at its first value."""
     bound = draw(st.floats(1.0, 30.0))
     bounded = draw(st.sampled_from(["", "clip", "trip"]))
-    # the amplifier's two rungs drawn together, so that Hypothesis's generation, which does not draw independent
-    # choices independently, cannot leave a run with no example holding both
-    slew, lagged = draw(st.sampled_from([(mode, lag) for mode in ("none", *SLEW_BOUNDS) for lag in (True, False)]))
     link = Link(period=draw(st.integers(1, 4)), latency=draw(st.integers(0, 5)),
                 low=-bound if bounded else None, high=bound if bounded else None, trip=bounded == "trip",
                 rest=draw(st.floats(-0.5, 0.5)) * bound,
@@ -109,10 +110,16 @@ def planted_stage() -> Iterator[None]:
         CommandStageNode.RUNGS, CommandStageNode._bound = held  # noqa: SLF001
 
 
+@pytest.mark.parametrize("lagged", [True, False], ids=["lagged", "unlagged"])
+@pytest.mark.parametrize("slew", ["none", *SLEW_BOUNDS])
 @settings(deadline=None)
-@given(links())
-def test_the_command_stage_delivers_the_design_order_of_its_rungs(drawn):
-    link, written = drawn
+@given(data=st.data())
+def test_the_command_stage_delivers_the_design_order_of_its_rungs(data, slew: str, lagged: bool):
+    """Each of the amplifier's and the receiver's choices (a slew none, binding, partial or loose; a lag or none) is its
+    own test with its own examples, not drawn: Hypothesis's generation does not mix independent choices evenly (at one
+    seed, 8 examples of 100 held a slew and a lag, and none told the lag's swap from the design's), and a control that
+    needs one of them must not depend on it."""
+    link, written = data.draw(links(slew, lagged))
     flag = None if link.low is None else ("tripped_currents" if link.trip else "clipped_currents")
     with planted_stage():
         held = stepped(stage_of(link, SHAPE, DT), written, DT, flag=flag)
