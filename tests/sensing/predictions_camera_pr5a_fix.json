@@ -440,6 +440,162 @@
       ],
       "reading": "the typical clean draw is 0.003 to 0.01 (0.1 to 0.3 of the line), but about one draw in 100 to 200 has a clean error of 0.02 to 0.046 on the same seeds in both dtypes (2052 and 2129 at 128, 2049 at 256, 2152 at 512 on coil2), so a pose feature, not rounding; the truth re-measured at four times its samples moves by under 0.001 on each, so the error is the scheme's. One single-edge plant (seed 2022, coil, 256) is under the line (0.017): the plant's own resolution at that draw",
       "memory_check": "every arm's memory check is red (peak 0.72 GiB against an estimate of 0.56): the estimate names a raw program, the arm runs pytest; not a finding on the corner"
+    },
+    "second_probe": {
+      "run": "43643369175 (probe/cam-pr5a-fix-gates @58da4912, head = the merge of bc96aa78 plus b283b1b3), 15 arms; every arm's memory check red (an estimator underestimate for a raw program the arms do not run), not a finding",
+      "gate_g20": {
+        "truth_motion_error": {
+          "straight": {
+            "motion_x": 0.00126,
+            "motion_z": 0.00119
+          },
+          "tilted": {
+            "motion_x": 0.00575,
+            "motion_z": 0.00061
+          }
+        },
+        "n_to_2n_motion": {
+          "straight": {
+            "motion_x": 0.00014,
+            "motion_z": 0.00029
+          },
+          "tilted": {
+            "motion_x": 0.00022,
+            "motion_z": 0.00102
+          }
+        },
+        "n_to_2n_largest_pixel": {
+          "straight": 0.00052,
+          "tilted": 0.02644
+        },
+        "own_finite_difference": {
+          "straight": {
+            "motion_x": 0.00072,
+            "motion_z": 0.00091
+          },
+          "tilted": {
+            "motion_x": 0.00413,
+            "motion_z": 0.00119
+          }
+        },
+        "controls": {
+          "straight": {
+            "offset_plant_image_largest_pixel": 0.1943,
+            "offset_plant_motion_x": 0.00082,
+            "eight_samples_motion_x": 0.0197,
+            "eight_samples_motion_z": 0.1575
+          },
+          "tilted": {
+            "offset_plant_image_largest_pixel": 0.1557,
+            "offset_plant_motion_x": 0.00616,
+            "eight_samples_motion_x": 0.0183,
+            "eight_samples_motion_z": 0.048
+          }
+        },
+        "reading": "all four entries under 1 % (largest 0.575 % at the tilted pose in x; the straight pose in x is 0.13 %, from 1.6 %); N to 2N motion under 0.11 %; but the N to 2N image moves 0.026 of a pixel's share at the tilted pose (the claim's 0.02 is exceeded); the offset plant is caught in the image (0.16 to 0.19 against 0.002 to 0.035), NOT in the motion (its motion error 0.08 % and 0.62 % lies at the clean level); eight samples caught in the N to 2N line (motion 1.8 to 16 %, image 0.59 to 1.0)"
+      },
+      "gate_derivative_cause": {
+        "fix_largest_deviation_from_central_difference_over_a_pixel": {
+          "straight": {
+            "x": 0.00194,
+            "z": 0.00581
+          },
+          "tilted": {
+            "x": 0.00664,
+            "z": 0.00983
+          }
+        },
+        "by_variant": {
+          "straight": {
+            "x": {
+              "first": 0.03656,
+              "union": 0.00742,
+              "least": 0.0316,
+              "fix": 0.00194
+            },
+            "z": {
+              "first": 0.01114,
+              "union": 0.01142,
+              "least": 0.00566,
+              "fix": 0.00581
+            }
+          },
+          "tilted": {
+            "x": {
+              "first": 0.01294,
+              "union": 0.01251,
+              "least": 0.00788,
+              "fix": 0.00664
+            },
+            "z": {
+              "first": 0.01676,
+              "union": 0.01684,
+              "least": 0.0094,
+              "fix": 0.00983
+            }
+          }
+        },
+        "fix_jvp_against_truth_motion_centroid": {
+          "straight": {
+            "x": 0.00107,
+            "z": 0.00112
+          },
+          "tilted": {
+            "x": 0.00575,
+            "z": 0.00039
+          }
+        },
+        "reading": "the PR's scheme 1.3 to 3.7 % off (straight x 3.7 %), the fix 0.19 % (straight x), 0.58 % (straight z), 0.66 % (tilted x), 0.98 % (tilted z): the prediction 'within 0.003 at every position and both poses' holds at one of four entries only; all are under the ripple line of 1 %; the jvp against the truth's motion 0.11, 0.11, 0.58 (over the predicted 0.5) and 0.04 %. The straight pose's x ripple, the cause found, is removed; what remains at the other entries is not explained by this probe (the union alone and the least alone read as the fix does there)"
+      },
+      "gate_g19_cost": {
+        "160-float32": {
+          "estimate_M": 1438,
+          "frame_ms": 82.8,
+          "rate_G_per_s": 17.37
+        },
+        "160-float64": {
+          "estimate_M": 1438,
+          "frame_ms": 153.3,
+          "rate_G_per_s": 9.38
+        },
+        "320-float32": {
+          "estimate_M": 5525,
+          "frame_ms": 406.4,
+          "rate_G_per_s": 13.6
+        },
+        "320-float64": {
+          "estimate_M": 5525,
+          "frame_ms": 602.9,
+          "rate_G_per_s": 9.16
+        },
+        "640-float32": {
+          "estimate_M": 21290,
+          "frame_ms": 1462.5,
+          "rate_G_per_s": 14.56
+        },
+        "640-float64": {
+          "estimate_M": 21290,
+          "frame_ms": 2387.0,
+          "rate_G_per_s": 8.92
+        }
+      },
+      "g19_reading": "effective rates 13.6 to 17.4 (float32) and 8.9 to 9.4 (float64) G flops-equivalents a second: inside the gate's band (5 to 40) and below the predicted per-dtype band (23 to 31 and 12 to 14); a frame at COST_LINE (1e9) is therefore 57 to 74 ms in float32 and 106 to 112 ms in float64, so the COST_LINE notes committed at 0b9282ee (35 to 45 and 70 to 90 ms) are stale",
+      "bits": {
+        "base": "bc96aa78",
+        "head": "58da4912",
+        "all_equal": true,
+        "programs": "step, run, jvp and render in float32 and float64: every compiled text equal",
+        "controls": "repeat equal and one ulp differs, in all eight programs (float32 and float64)"
+      },
+      "durations": "98 passed in 579 s on the runner; over 30 s: the screw's G16 55.6 s (float32) and 54.3 s (float64); the helix's 28.7 and 27.4 s; the cylinder's 12.4 and 12.2 s; the corner gate's 512 px cases 17 to 21.5 s; the ripple test 18.7 s. The allowlist's G16 rows are keyed [screw] and [helix], the ids are now [screw-float32] etc.",
+      "control_rates": {
+        "RRIPPLE": "planted 30/30, clean 0/30",
+        "RSWAP": "planted 30/30, clean 0/30",
+        "RWINDOW": "planted 30/30, clean 0/30",
+        "RSIGN32": "planted 30/30, clean 0/30",
+        "RSLOPE32": "planted 30/30, clean 0/30"
+      },
+      "verdict": "controls 30/30 with clean 0/30 in all five arms; bits clean; G20 within 1 % at every entry; but derivative_cause's 0.003 prediction missed at three of four entries and the N to 2N image at the tilted pose is over its 0.02"
     }
   }
 }
