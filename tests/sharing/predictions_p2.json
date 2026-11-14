@@ -1,0 +1,51 @@
+{
+  "written": "2026-11-14, committed before any gate of P2 ran (the commit that adds this file is the timestamp): the container refactor (a kind, a format id, a layout check), the study container .mimestudy, publishing folders, and pull, verify and card of a record of several studies",
+  "phase": "lane P, P2: containers, studies and publishing folders",
+  "labels": "the builder's predictions, from the checks' construction (sha256 over every member and every group file; a closed layout; the study's own records read on the folder written) and from local runs of the touched tests while building (seen_before)",
+  "seen_before": [
+    "local runs while building (this laptop, CPU, Python 3.12): tests/sharing/test_study_container.py::test_each_planted_defect_is_refused_with_its_code refused each of the 10 plants with its code on each of seeds 0 to 3 (40 of 40); the control node failed under stray, forged-group and renamed at seed 7 (3 of 3). These are why the predictions below are N/N and 0/N: they are fits to what was seen, and the probe is their measurement",
+    "the refactor's first commit (6dae6dab): tests/sharing 964 passed and the ratchet set passed with no test changed; the one test data change is the refusal scan's golden count of files that construct refusals, 120 to 121"
+  ],
+  "operating_point": {
+    "dtype": ["not applicable to the checks: no simulation output is compared; the toy study runs in the process's default precision, float32"],
+    "platform": "GitHub runner 4 vCPU (probe workflow), CPU, Python 3.12",
+    "sizes_and_parameters": "the toy study of tests/sharing/study_rigs.py: full_toy over two spring stiffnesses and two steps (4 members, 2 groups, group 1 keeping its own build), 0.2 s each, one recorded series, one figure recipe and its plotly JSON; 16 carried files, about 460 kB packed",
+    "seeds_and_draws": "each plant places its defect from DETECTION_SEED (run i: seed i): a place among the study's folders, a name, a byte and a bit, a group, a JSON writing, a hash; 200 runs a plant, each a fresh process"
+  },
+  "gate_1_study_controls": {
+    "claim": "a study packed and pulled back is the folder it was, file for file, and each planted defect makes the round trip refuse: a stray file, a hidden file or folder, a changed group file, changed figure data, a base input hash the study or its spec does not record, a machine path, a container rewritten by hand with its manifest made to agree (a changed group file, a changed input hash, a reference in no saved folder), and a study container named as a bundle",
+    "kind": "acceptance",
+    "case": "tests/sharing/test_study_container.py::test_a_clean_study_round_trips (mime.saved.pack, then mime.saved.pull of the container into a new folder, then StudyResult.read), with MIME_P2_PLANT naming the plant",
+    "operating_point": "as above",
+    "prediction": {
+      "value": 200,
+      "band": [200, 200],
+      "unit": "planted runs caught, of 200, for each of the 10 plants; 0 of 200 clean runs flagged",
+      "basis": "derived",
+      "why": "every carried byte is held to a sha256 in the manifest, every group file to one in study.json and every figure's data to one in its recipe, and the layout is closed both at pack and at unpack: a defect of one bit or one name changes a hash or a name the checks compare exactly, wherever the seed puts it"
+    },
+    "metric": "the round trip's exit (a refusal fails the test); the in-suite test names the code each plant is refused with",
+    "control": {
+      "plant": "stray | env | group | figure | input-hash | machine-path | forged-group | forged-input-hash | reference-outside | renamed (tests/sharing/study_plants.py)",
+      "environment_variable": "MIME_P2_PLANT (the plant's name); DETECTION_SEED places it",
+      "expected_rate": "200/200 for each plant",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "one flipped bit of a group file (sha256), one stray name (a closed layout), one byte of a JSON file's writing (sha256 in the figure's recipe): the smallest defect each check sees, planted at that size"
+    },
+    "if_wrong": "a missed plant is a place or a form a check does not reach: name it, close it, and plant it again; a clean failure is a round trip that does not reproduce a study folder, a defect of pack or unpack",
+    "cannot_discriminate_if": "the plant left the folder unchanged (a stray written over an existing name, a reindented JSON file whose bytes came out equal): the in-suite test's seeds and the rates say whether that happened; a plant whose catch comes from an exception rather than a refusal would pass the rate and fail the in-suite code check"
+  },
+  "bits": {
+    "cases": "a probe packs the full toy, the terms demo (an MIT layer, a layer a declared permission lets travel, a layer that may not be redistributed and travels as a reference) and the toy saved with fewer reference steps, each saved once by this branch's head, with lanep/p6-manifests (the base) and with this branch's head, in one job; then this head unpacks each bundle the base packed",
+    "prediction": "every bundle byte-equal between base and head (sha256), and every base bundle unpacked by the head to a folder that reads; no simulation output is produced or compared by P2",
+    "controls": {
+      "repeat": "the head packs each folder twice: equal bytes, so a difference between base and head is the code's",
+      "one_ulp": "the probe compares the full toy's bundle with the bundle of the toy saved with fewer reference steps (one input changed): they must differ, so the comparison can fail"
+    }
+  },
+  "costs": {
+    "prediction": "no time or memory claim is made"
+  },
+  "outcomes": null
+}
