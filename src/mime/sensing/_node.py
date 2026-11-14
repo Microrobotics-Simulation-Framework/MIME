@@ -102,20 +102,28 @@ STRUCTURE_FROM = "static_structure_from"
 #: The image-sized planes of the packed structure: the ray table's ten and the transmission.
 PLANES = 11
 #: Reverse mode's peak through the camera past what the process holds once the experiment is built, for MIME's
-#: differentiated run of ``n`` steps in checkpointed chunks of ``L = ceil(sqrt(n))`` steps: :data:`REVERSE_COMPILE` bytes
-#: (the derivative's compile, whose transient dominates a small detector's, and its code) and, in frames of the run's
-#: dtype (rows x columns values), ``fixed + render max(1, m) + start (n // L) + step L``, ``m`` the moving subjects times
-#: the exposure's sub-frames. ``fixed`` is the static structure's make (its residuals, kept for the derivative in the
-#: leaves), ``render`` one frame's backward pass a moving subject (each frame's render is checkpointed, so its residuals
-#: live one step at a time), ``start`` a chunk start's state kept for the backward pass, ``step`` one step's tape within
-#: the chunk being differentiated. :data:`REVERSE_MEASURED` says how they were measured.
-REVERSE_COMPILE = 1.5 * 2 ** 30
-REVERSE_FRAMES = {"fixed": 470.0, "render": 50.0, "start": 3.0, "step": 2.0}
-#: The refusal's margin on the estimate, the largest measured peak over its estimate, rounded up; and its headroom, the
-#: share of the memory a run can have that it keeps free (the near field's rule, ``MEMORY_HEADROOM``).
-REVERSE_MARGIN = 1.0
+#: differentiated run of ``n`` steps in checkpointed chunks of ``L = ceil(sqrt(n))`` steps: the larger of its two phases.
+#: The derivative's compile, :data:`REVERSE_COMPILE` bytes and :data:`REVERSE_POSE` more for each pose a frame renders past
+#: one (``m``, the moving subjects times the exposure's sub-frames, each traced into the program). Its run,
+#: :data:`REVERSE_HELD` bytes (the compiled program and what the runtime keeps) and the tape, in frames of the run's dtype
+#: (rows x columns values), ``fixed + start (n // L)``: ``fixed`` the static structure's make (its residuals, kept for the
+#: derivative in the leaves) and one step's backward pass (each corner sub-sample and each frame's render are
+#: checkpointed, so a step keeps their inputs, not their residuals), ``start`` a chunk start's held image and counts.
+#: :data:`REVERSE_MEASURED` says how they were measured.
+REVERSE_COMPILE = 1.45 * 2 ** 30
+REVERSE_POSE = 0.08 * 2 ** 30
+REVERSE_HELD = 1.06 * 2 ** 30
+REVERSE_FRAMES = {"fixed": 464.0, "start": 2.0}
+#: The refusal's margin on the estimate, the largest measured peak over its estimate rounded up, and never under 1.1 (the
+#: memory route's floor); and its headroom, the share of the memory a run can have that it keeps free (the near field's
+#: rule, ``MEMORY_HEADROOM``).
+REVERSE_MARGIN = 1.1
 REVERSE_HEADROOM = 0.1
-REVERSE_MEASURED = "not yet measured"
+REVERSE_MEASURED = ("fitted to the reverse phases' peak resident memory, less the resident memory after the build, that "
+                    "node_measure.py measured through the built graph on GitHub's runners (4 vCPU, AMD EPYC and Intel "
+                    "Xeon), at 160x120 to 640x480, 10 to 1000 steps, float64 and float32, one to three poses a frame: "
+                    "0.87 to 1.00 of the estimate. fixed is XLA's compiled memory analysis of the reverse program, "
+                    "464 frames at every size, dtype and step count measured; start is derived")
 
 EQUATIONS = (r"n_{f} = P \, \mathrm{floor}(n / P), \quad a = n - n_{f}, \quad "
              r"I = \mathrm{render}\left(\mathbf{c}, s, n_{f}\right)")
@@ -436,15 +444,14 @@ class CameraNode(MountedNode):
 
     def reverse_estimate(self, steps: int, members: int = 1) -> float:
         """The bytes reverse mode through the camera holds at its peak over a run of ``steps`` steps of ``members``
-        members, past what the process holds once the experiment is built (:data:`REVERSE_COMPILE`,
-        :data:`REVERSE_FRAMES`), in the run's dtype."""
+        members, past what the process holds once the experiment is built, in the run's dtype: the larger of the
+        derivative's compile and its run (:data:`REVERSE_COMPILE`, :data:`REVERSE_HELD`, :data:`REVERSE_FRAMES`)."""
         rows, columns = self.image_shape()
         length = max(1, math.ceil(math.sqrt(steps)))
-        moving = sum(1 for each in self._held[1] if each.moving) * cast(int, self.constants()["sub_frames"])
-        frames = (REVERSE_FRAMES["fixed"] + REVERSE_FRAMES["render"] * max(1, moving)
-                  + REVERSE_FRAMES["start"] * (steps // length) + REVERSE_FRAMES["step"] * length)
+        poses = max(1, sum(1 for each in self._held[1] if each.moving) * cast(int, self.constants()["sub_frames"]))
         frame = rows * columns * int(jnp.zeros((), dtype=run_dtype()).dtype.itemsize)
-        return REVERSE_COMPILE + members * frames * frame
+        tape = frame * (REVERSE_FRAMES["fixed"] + REVERSE_FRAMES["start"] * (steps // length))
+        return max(REVERSE_COMPILE + REVERSE_POSE * (poses - 1), REVERSE_HELD + members * tape)
 
     def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
         """A study's derivative in reverse mode through the camera over ``steps`` steps whose tape would not fit the
@@ -462,7 +469,8 @@ class CameraNode(MountedNode):
         return Problem(
             "camera.reverse-memory",
             f"reverse mode through the in-loop camera's {columns} x {rows} frames over {steps} steps needs about "
-            f"{needed / 2 ** 30:.3g} GiB (its tape, as measured runs held, times {REVERSE_MARGIN:g}), more than {where}, "
+            f"{needed / 2 ** 30:.3g} GiB (its compile or its run with its tape, as measured runs held, times "
+            f"{REVERSE_MARGIN:g}), more than {where}, "
             f"{available / 2 ** 30:.3g} GiB, less the {REVERSE_HEADROOM:.0%} of it the check keeps free",
             "differentiate the offline renderer, mime.sensing.render (differentiable, and it vmaps), in the poses "
             "recorded from the run; or take forward mode along a few axes, study.gradient(..., mode='forward'), which "
