@@ -3,7 +3,7 @@
  "phase": "camera item 6 (dev2), stacked on the camera reverse PR (#297): the renderer's switches declared, the camera's gradient status derived",
  "labels": "predictions by the builder (Sonnet) from a local run of the same comparison (below), the compiled programs' text read with their source-location tables stripped",
  "seen_before": [
-  "a local comparison on the laptop, one CPU (taskset) and one thread, this branch's working tree against a worktree of #297's head (79c1276e), probe/hlo.py as improved here (the stack-frame and file-location tables a compiled module's text starts with, which move with the source's line numbers, are dropped as well as the metadata): the step, a 6-step run and its forward-mode derivative equal, float64 and float32; the control (one ulp on the camera's mount along y) differs in all three. Seen before this file: the prediction below is a repeat of it on the runners, not a blind one"
+  "a local comparison on the laptop, one CPU (taskset) and one thread, this branch's working tree against a worktree of #297's head (79c1276e, then c381b8d2), probe/hlo.py as improved here (the stack-frame and file-location tables a compiled module's text starts with, which move with the source's line numbers, are dropped as well as the metadata): the step, a 6-step run and its forward-mode derivative equal, float64 and float32; the control (one ulp on the camera's mount along y) differs in all three. Re-run on 2026-11-14 against #297's head after its fix round and release merge (c381b8d2, this branch's merge 24280ebc): the same, step, run and jvp equal in both dtypes, the control differs in all three, so the base below is c381b8d2, moved from 79c1276e before any probe ran. Seen before this file: the prediction below is a repeat of it on the runners, not a blind one"
  ],
  "operating_point": {
   "dtype": ["float64", "float32"],
@@ -14,7 +14,7 @@
  "gate_1_no_program_changed": {
   "claim": "routing the renderer's raw operations through mime.core.switch (no context open) changes no program a step, a run or its forward-mode derivative compiles: the compiled text, source locations removed, is the same as #297's head's",
   "kind": "equality",
-  "case": "probe/hlo.py through .github/probe/bit_compare.py, base 79c1276e627dae02d88144dbeaf57e1abfc87a20 against this head; programs hlo_f64 and hlo_f32, each writing three arrays (step, run, jvp) of the compiled text",
+  "case": "probe/hlo.py through .github/probe/bit_compare.py, base c381b8d2f529500e877263f9f2d05bb64433ac48 against this head; programs hlo_f64 and hlo_f32, each writing three arrays (step, run, jvp) of the compiled text",
   "prediction": {
    "value": "every array np.array_equal, six of six",
    "band": [null, null],
