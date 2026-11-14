@@ -1,0 +1,6 @@
+# The share arms' largest program is the CardioMag case with the law (8 coils, 3^8 sets); every other arm runs pytest
+# processes, scripts or saved programs one at a time, bounded as the camera and clot rate probes bounded theirs, by a
+# periodic tube box at D/h 40 and a period of two (probe/estimate_case.py)
+*: --case estimate_case:tube --path probe --arg cells_across=40 --arg length_cells=80 --steps 1
+share_a: --case share_case:cardiomag --path probe --arg allocating=true --steps 10
+share_b: --case share_case:cardiomag --path probe --arg allocating=true --steps 10

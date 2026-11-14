@@ -1,0 +1,14 @@
+det_limits
+det_free_tangent_a
+det_free_tangent_b
+det_stop_branch_a
+det_stop_branch_b
+det_single_where
+float32
+moves
+share_a
+share_b
+scan
+walk
+bits
+bits_controls
