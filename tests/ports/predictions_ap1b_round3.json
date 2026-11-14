@@ -1,0 +1,52 @@
+{
+  "written": "2026-11-14, committed before AP1b's third probe ran (the commit that adds this file is the timestamp)",
+  "phase": "apparatus lane, AP1b, the third probe: the command stage's drawn property after the causes of its 10 misses were fixed",
+  "labels": "predictions by the builder (Opus); measured locally before this file, on the oracles alone and through the stage",
+  "seen_before": [
+    "the first probe: respond_before_slew 190/200 through the property (predictions_ap1b.json)",
+    "the causes, measured on the oracles at the missed seeds: a trip latched at the wave's first value, before the slew or the lag saw it move (every slew-and-lag draw of seeds 2 and 31 was a trip); slews drawn up to 4 bounds a step moved past every jump the stage delivered; and at seed 173 Hypothesis drew no example holding both a slew and a lag",
+    "after the fix (slews 0.05 to 0.4 bounds a step, below every jump of at least 0.6; the wave starting inside; the two rungs drawn together), on the oracles over Hypothesis seeds 0 to 399: the lag's swap detectable on every seed, at least 6 examples of 100 on each; the slew's swap on every seed",
+    "through the stage, locally: the clean file passed in float32 and float64; each of the four plants failed it"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float32 as the tests run by default"
+    ],
+    "platform": "CPU, GitHub runners, the probe workflow",
+    "sizes_and_parameters": "the links strategy as its docstring says, 24 steps, 100 examples a run, never shrunk",
+    "seeds_and_draws": "200 runs, planted and clean at the same seeds, --hypothesis-seed the run's seed"
+  },
+  "gate_1c_property_alone": {
+    "claim": "the drawn property alone catches the lag before the slew",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py::test_the_command_stage_delivers_the_design_order_of_its_rungs",
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "measured on the oracles at 400 seeds, derived through the stage"
+    },
+    "control": {
+      "plant": "the lag before the slew",
+      "environment_variable": "PORT_PLANT=respond_before_slew",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "gate_1d_file_with_new_draws": {
+    "claim": "the command stage's file, with the new draws, catches each of its plants",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py",
+    "prediction": {
+      "value": "200/200 caught for each of respond_before_slew, slew_before_bound, bound_before_delay and trip_unlatched, 0/200 flagged",
+      "basis": "derived"
+    },
+    "control": {
+      "plant": "each of the four",
+      "environment_variable": "PORT_PLANT",
+      "expected_rate": "200/200 each",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "outcomes": null
+}

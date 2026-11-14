@@ -13,10 +13,12 @@ The bound's flag is compared too, step by step: whether the clip acted, or wheth
 a plausible ordering of an amplifier chain (``slew_before_bound``: the slew acts on what arrives, then the bound;
 ``bound_before_delay``: the bound acts on what was written, before the link samples and delays it, which differs only
 where a value beyond the bounds falls between samples; ``respond_before_slew``: the lag before the slew, as though the
-amplifier's output stage slewed what the coil let through, which the drawn examples missed on 10 runs of 200 and the
-explicit case below catches on every run), and a trip that does not latch (``trip_unlatched``):
+amplifier's output stage slewed what the coil let through), and a trip that does not latch (``trip_unlatched``):
 each must fail this test on every run, its rate measured, not assumed: a swap the drawn examples could not tell apart
-would be no evidence."""
+would be no evidence. The lag's swap was first missed on 10 runs of 200: a trip latched at the wave's first value,
+before the slew or the lag saw it move; a slew drawn up to 4 bounds a step moved past every jump the stage delivered;
+and on one run Hypothesis drew no example holding both a slew and a lag. The draws now hold each premise (the docstring
+of :func:`links`), and the explicit case below catches the swap on its own."""
 
 from __future__ import annotations
 
@@ -43,26 +45,28 @@ PLANTED_RUNGS = {"slew_before_bound": ("delay", "slew", "bound", "respond"),
 
 @st.composite
 def links(draw: st.DrawFn) -> tuple[Link, np.ndarray]:
-    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew moving 0.2 to 4 bounds' worth a
-    step or none, a lag of 1 to 20 ms or none, a period of 1 to 4 steps and a latency of 0 to 5, and a sequence of
-    square waves reaching past the
-    bound and back, with a one-step spike past it at a drawn step (which falls between samples wherever the period is
-    above one and the step is not a multiple of it)."""
+    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew moving 0.05 to 0.4 bounds' worth
+    a step or none, a lag of 1 to 20 ms or none, a period of 1 to 4 steps and a latency of 0 to 5, and a sequence of
+    square waves from inside the bound (-0.9 to 0.5 of it) to past it (1.1 to 2 times) and back, with a one-step spike
+    past it at a drawn step (which falls between samples wherever the period is above one and the step is not a
+    multiple of it). Each wave's jump is at least 0.6 bounds, beyond any slew drawn, so a slew binds at every jump; each
+    wave starts inside, so a trip latches after the stage has delivered the wave, not at its first value."""
     bound = draw(st.floats(1.0, 30.0))
     bounded = draw(st.sampled_from(["", "clip", "trip"]))
-    slewed = draw(st.booleans())
-    lagged = draw(st.booleans())
+    # the amplifier's two rungs drawn together, so that Hypothesis's generation, which does not draw independent
+    # booleans independently, cannot leave a run with no example holding both
+    slewed, lagged = draw(st.sampled_from([(True, True), (True, False), (False, True), (False, False)]))
     link = Link(period=draw(st.integers(1, 4)), latency=draw(st.integers(0, 5)),
                 low=-bound if bounded else None, high=bound if bounded else None, trip=bounded == "trip",
                 rest=draw(st.floats(-0.5, 0.5)) * bound,
-                slew=draw(st.floats(0.2, 4.0)) * bound / DT if slewed else None,
+                slew=draw(st.floats(0.05, 0.4)) * bound / DT if slewed else None,
                 tau=draw(st.floats(1e-3, 2e-2)) if lagged else None)
     seed = draw(st.integers(0, 2**31 - 1))
     rng = np.random.default_rng(seed)
     written = np.empty((STEPS, *SHAPE))
     for j in range(SHAPE[0]):
         half = int(rng.integers(2, 6))
-        levels = (bound * rng.uniform(1.1, 2.0), bound * rng.uniform(-0.9, 0.9))
+        levels = (bound * rng.uniform(-0.9, 0.5), bound * rng.uniform(1.1, 2.0))
         written[:, j] = [levels[(n // half) % 2] for n in range(STEPS)]
     spike = int(rng.integers(1, STEPS))
     written[spike] = bound * rng.uniform(2.5, 3.0) * rng.choice([-1.0, 1.0], size=SHAPE)
