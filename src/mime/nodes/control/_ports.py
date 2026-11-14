@@ -169,6 +169,17 @@ class CommandStageNode(MimeNode):
         held = p if p is not None else self.constants()
         return jnp.broadcast_to(as_run_array(held[f"rest_{key}"]), self._shape(key))
 
+    def port_fields(self, key: str) -> tuple[str, ...]:
+        """The state fields and inputs the port ``key`` holds in the stage: its delivered value (its input's name too),
+        what was written, and where its rungs need them its buffer, its bound's flag, its amplifier's last value and its
+        response's state."""
+        bounded = cast(Mapping[str, str], self._held("bounded"))[key]
+        carried = cast(Mapping[str, tuple[str, ...]], self._held("carries"))[key]
+        return (key, f"written_{key}", *((f"buffer_{key}",) if self._buffered(key) else ()),
+                *((f"{'clipped' if bounded == CLIPPED else 'tripped'}_{key}",) if bounded else ()),
+                *((f"amplified_{key}",) if cast(Mapping[str, bool], self._held("slewed"))[key] else ()),
+                *(f"response_{key}_{c}" for c in carried))
+
     @override
     def initial_state(self) -> NodeFields:
         fields: dict[str, Array] = {"steps": jnp.asarray(0, dtype=jnp.int32)}
@@ -332,6 +343,12 @@ class MeasureStageNode(MimeNode):
     def _initial_age(self, key: str) -> int:
         return int(self.constants().get(f"initial_age_{key}", 0))
 
+    def port_fields(self, key: str) -> tuple[str, ...]:
+        """The state fields and inputs the port ``key`` holds in the stage: its value (its input's name too), its age,
+        and where its rungs need them its buffer and stamps, and its source's own age."""
+        return (key, f"{key}_age", *((f"buffer_{key}", f"stamps_{key}") if self._buffered(key) else ()),
+                *((f"age_{key}",) if cast(Mapping[str, bool], self._held("aged"))[key] else ()))
+
     @override
     def initial_state(self) -> NodeFields:
         fields: dict[str, Array] = {"steps": jnp.asarray(0, dtype=jnp.int32)}
@@ -386,6 +403,18 @@ class MeasureStageNode(MimeNode):
         return node_fields(out)
 
 
+def clashes(node: CommandStageNode | MeasureStageNode) -> dict[str, list[str]]:
+    """Each field of ``node`` that more than one of its ports would hold (or a port and the stage's own count,
+    ``steps``), with those ports: a port named ``tr_age`` beside a port ``tr`` would write ``tr``'s age, and the later
+    write would win in silence."""
+    holders: dict[str, list[str]] = {"steps": ["the stage's own count"]}
+    keys = cast(tuple[str, ...], node.constants()["commands" if isinstance(node, CommandStageNode) else "ports"])
+    for key in keys:
+        for name in node.port_fields(key):
+            holders.setdefault(name, []).append(key)
+    return {name: held for name, held in holders.items() if len(held) > 1}
+
+
 def _leaf(value: Any) -> Any:
     """A port's number as the stage's leaf: a float, or a tuple of floats."""
     if isinstance(value, (tuple, list)):
@@ -394,4 +423,4 @@ def _leaf(value: Any) -> Any:
 
 
 __all__ = ["CLIPPED", "COMMAND_STAGE", "MEASURE_STAGE", "STAGE_SWITCHES", "TRIPPED", "UNBOUNDED", "CommandStageNode",
-           "MeasureStageNode", "StageInputs", "StageState", "depth", "held_sample"]
+           "MeasureStageNode", "StageInputs", "StageState", "clashes", "depth", "held_sample"]

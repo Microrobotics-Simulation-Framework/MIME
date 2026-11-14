@@ -225,13 +225,23 @@ coupling's order only). A coupling group's verdict at each run's end is the run'
   declare no noise or quantum (`port.modelled-noise`), and on one before that model (the camera's expected image) the
   report says the model is bypassed; on an observation with a clock of its own (`Observation.clock`, a camera's frame
   period) its rate is a whole multiple of that period. A controller reads it as `<apparatus>.<port>`, and its age in
-  base steps as `<apparatus>.<port>.age`, classed `measurement`.
+  base steps as `<apparatus>.<port>.age`, classed `measurement`. An ideal measurement port (every value its source
+  makes, at once, with no noise or quantum) builds nothing: a controller reading it reads its source, unless it reads
+  its age, which only the stage counts. A rest is refused where nothing delivers it (no latency, slew or trip) and
+  outside its port's bounds. Each port's noise is drawn from a seed of its own, the experiment's seed hashed with
+  `measure:<apparatus>` and the port's name (as an entry's streams are), listed under the stage in the report's seeds.
+  No two ports of a stage may hold one field (a port named as another's age, `tr_age` beside `tr`): refused.
 - **Phase 2** builds at most two nodes per apparatus, after every entry's in the canonical order:
   `ports:<apparatus>` (`mime.nodes.control.CommandStageNode`), between each staged command's writer and its receiver,
   and `measure:<apparatus>` (`MeasureStageNode`), after each source. The schedule follows their edges, so the command
   stage runs after its writer and before its receiver, and a stage the order put after its receiver inside a loop
   would read its command a step late: the lag accounting refuses that edge (`lag.unplanned`). No port, no node, no edge:
   every program is the program it was, its derived hash too.
+- **What a port costs.** An undeclared port, or one at every default, costs nothing: nothing is built. A declared port
+  adds up to two nodes to its apparatus and their fixed cost every step, mostly a node's own overhead in the step rather
+  than its rungs' arithmetic. Measured on a GitHub runner in float32, with a command port and a measurement port on each:
+  A0's chunk 1.15 times as long (about 90 us a step more), the coil-array sphere's 1.68 times (about 19 us a step more);
+  the smaller a model's step, the larger the share.
 - **Naming the port.** The stage's switches have one owner for every port (`port.bound.low`, `port.bound.high`,
   `port.slew.low`, `port.slew.high`, `port.trip`, declared by the port stage itself, `STAGE_SWITCHES`); what names the
   port is the field: each port's fields carry its command's name, its dots as underscores (`clipped_arm_joint_positions`,

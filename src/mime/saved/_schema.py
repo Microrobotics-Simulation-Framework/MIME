@@ -432,7 +432,7 @@ class ExperimentDocument(TypedDict, closed=True):
     13 names the FVM's setting ``solve_report_rows``, where earlier versions named it ``report_rows``. Version 14 adds
     ``blocks``, each block the experiment uses, by the use's name, absent where it uses none."""
 
-    schema: ReadOnly[Literal["mime.document/14"]]
+    schema: ReadOnly[Literal["mime.document/15"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -912,7 +912,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/14"]]
+    schema: ReadOnly[Literal["mime.lock/15"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]

@@ -1,9 +1,12 @@
 """Ports through the build: what a declared port builds, where, and what it leaves alone.
 
 - **No port, no change** (design section 9, control 1): an apparatus with no port, with ``ports={}``, and with an
-  all-default ``CommandPort()`` on a command builds the same program, its derived hash and canonical text the same, on
-  the coil-array sphere and on A0's apparatus. The control (``stage_for_ideal``): a stage built for an ideal port must
-  change both.
+  all-default ``CommandPort()`` on a command and an ideal ``Measurement`` (every value its source makes, at once, no
+  noise or quantum, its age not read) builds the same program, its derived hash and canonical text the same, on the
+  coil-array sphere and on A0's apparatus. The controls: a stage built for an ideal command port (``stage_for_ideal``),
+  and one built for an ideal measurement (``measure_for_ideal``), must each change both.
+- **No two ports hold one field**: a port named as another's age (``tr`` and ``tr_age``) is refused; the control
+  (``clash_unchecked``, the check removed) builds, and the second overwrites the first's age in silence.
 - **A response is refused by name** until it is built, so none is ignored; a kinematic arm's port takes its joints'
   stated limits as its bounds, before its slew.
 - **Controllers through ports**: a controller called on the host and one inside the compiled step, each reading a
@@ -39,17 +42,62 @@ def ideal_stages(monkeypatch: pytest.MonkeyPatch) -> None:
     """The control's plant: every command port staged, an ideal one included."""
     if planted("stage_for_ideal"):
         monkeypatch.setattr(_ports.CommandPortPlan, "staged", property(lambda self: True))
+    if planted("measure_for_ideal"):
+        monkeypatch.setattr(_ports.MeasurementPlan, "ideal", property(lambda self: False))
 
 
-@pytest.mark.parametrize(("make", "command"), [
-    (lambda ports: sphere(ports=ports), "currents"),
-    (lambda ports: kinematic_rpm("ported_rpm", ports=ports), "arm.joint_positions"),
+@pytest.mark.parametrize(("make", "command", "source"), [
+    (lambda ports: sphere(ports=ports), "currents", "sphere.pose"),
+    (lambda ports: kinematic_rpm("ported_rpm", ports=ports), "arm.joint_positions", "umr.pose"),
 ], ids=["sphere", "a0_apparatus"])
-def test_no_port_an_empty_one_and_an_all_default_one_build_the_program_of_none(make, command, ideal_stages):
-    none, empty, default = (make(ports).build() for ports in (None, {}, {command: CommandPort()}))
+def test_no_port_an_empty_one_and_an_all_default_one_build_the_program_of_none(make, command, source, ideal_stages):
+    ideal = {command: CommandPort(), "tracker": Measurement(of=source)}
+    none, empty, default = (make(ports).build() for ports in (None, {}, ideal))
     assert none.report.derived_hash == empty.report.derived_hash == default.report.derived_hash
     assert graph_snapshot(none) == graph_snapshot(empty) == graph_snapshot(default)
     assert not [name for name in default.graph.node_names if name.startswith(("ports:", "measure:"))]
+
+
+@pytest.fixture
+def unchecked(monkeypatch: pytest.MonkeyPatch) -> None:
+    if planted("clash_unchecked"):
+        monkeypatch.setattr("mime.build._stages.clashes", lambda node: {})
+
+
+def test_a_port_named_as_another_ports_age_is_refused(unchecked):
+    clashing = {"tr": Measurement(of="sphere.pose", latency=ms(1), reason="a tracker"),
+                "tr_age": Measurement(of="sphere.pose", latency=ms(2), reason="another tracker")}
+    with pytest.raises(BuildRefused) as refused:
+        sphere(ports=clashing).build()
+    assert codes(refused.value) == ["port.declaration"] and "'tr_age'" in str(refused.value)
+    sphere(ports={"tr": clashing["tr"], "second": clashing["tr_age"]}).build()
+
+
+def test_a_rest_nothing_delivers_or_outside_its_bounds_is_refused():
+    with pytest.raises(BuildRefused) as refused:
+        sphere(CommandPort(rest=A(1.0), reason="r")).build()
+    assert codes(refused.value) == ["port.declaration"] and "which nothing it declares delivers" in str(refused.value)
+    with pytest.raises(BuildRefused) as refused:
+        sphere(CommandPort(bounds=A(1.0), on_bound="trip", rest=A(5.0), reason="r")).build()
+    assert codes(refused.value) == ["port.declaration"] and "outside its bounds" in str(refused.value)
+    sphere(CommandPort(bounds=A(5.0), on_bound="trip", rest=A(1.0), reason="r")).build()
+    sphere(CommandPort(latency=ms(1), rest=A(1.0), reason="r")).build()
+
+
+def test_a_measurement_ports_noise_seed_is_in_the_reports_seeds():
+    built = sphere(ports={"tracker": Measurement(of="sphere.pose", latency=ms(1), reason="r"),
+                          }).build()
+    assert "measure:coils" not in built.report.seeds
+    from mime.observations import SwimSpeed
+    from mime.scene import X
+    from mime.things import Gaussian as Noise
+    from mime.units import m_per_s
+
+    exp = sphere(ports={"speed": Measurement(of="swim_speed:sphere.speed", noise=Noise(sigma=m_per_s(1e-6)),
+                                             reason="r")})
+    exp.observe(SwimSpeed("sphere", along=X))
+    seeds = exp.build().report.seeds
+    assert set(seeds["measure:coils"]) == {"speed"} and seeds["measure:coils"]["speed"] > 0
 
 
 def test_a_response_is_refused_by_name_until_it_is_built():

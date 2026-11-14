@@ -159,10 +159,20 @@ class MeasurementPlan:
     seed: int = 0
     stands_in_for: str = ""
     reason: str | None = None
+    #: The period of its source's own clock in base steps (a camera's frame period), ``None`` for a state.
+    clock: int | None = None
 
     @property
     def stage(self) -> str:
         return stage_id(MEASURE_STAGE, self.apparatus)
+
+    @property
+    def ideal(self) -> bool:
+        """Whether it delivers its source as it is: every value its source makes, at once, with no noise or quantum.
+        An ideal port builds nothing, and a controller reading it reads its source, unless it reads its age, which
+        the stage counts."""
+        return (self.period == (self.clock or 1) and self.latency == 0 and self.sigma is None
+                and self.quantum is None)
 
     @property
     def key(self) -> str:
@@ -175,7 +185,7 @@ class MeasurementPlan:
                  if self.latency else "",
                  f"Gaussian noise of sigma {numbers(self.sigma)}{unit}" if self.sigma is not None else "",
                  f"quantum {numbers(self.quantum)}{unit}" if self.quantum is not None else ""]
-        held = "; ".join(part for part in parts if part) or "ideal"
+        held = "; ".join(part for part in parts if part) or "ideal (read from its source unless its age is read)"
         note = f" (in place of {self.stands_in_for}, which this read bypasses)" if self.stands_in_for else ""
         return f"{self.apparatus}.{self.port} <- {self.of} ({self.described}): {held}{note}"
 
@@ -387,6 +397,20 @@ def command_port(planner: Planning, apparatus: str, command: str, port: CommandP
     if record is None or rest is None or period is None or latency is None or not held or \
             (port.slew is not None and slew is None):
         return None
+    if port.rest is not None and not (bounded == TRIPPED or latency > 0 or slew is not None or record.name != IDEAL):
+        planner.refuse("port.declaration", RefusalClass.USER,
+                       f"{where} declares rest={port.rest}, which nothing it declares delivers: a rest acts before a "
+                       f"delayed write arrives (latency=), where a slew or a response starts from (slew=, "
+                       f"response=), and after a trip (on_bound=\"trip\")", "leave rest= out, or declare what "
+                                                                             "delivers it")
+        return None
+    if port.rest is not None and low is not None and high is not None and any(
+            not (a <= r <= b) for r, a, b in zip(*np.broadcast_arrays(
+                np.asarray(_elements(rest)), np.asarray(_elements(low)), np.asarray(_elements(high))), strict=True)):
+        planner.refuse("port.declaration", RefusalClass.USER,
+                       f"{where} declares rest={port.rest}, outside its bounds {numbers(low)} to {numbers(high)}: the "
+                       f"port would deliver a value its bounds refuse", "give rest= a value within bounds=(low, high)")
+        return None
     responds: Mapping[str, str] = segment.segment.responds if segment is not None and segment.segment is not None \
         else {}
     local = command.partition(".")[2] if segment is not None else command
@@ -545,7 +569,7 @@ def measurement_port(planner: Planning, apparatus: Apparatus, name: str, port: M
         return None
     return MeasurementPlan(apparatus.name, name, source, of, described, units, dimension, shape, port.shape, age,
                            period, latency, sigma, quantum, seed,
-                           stands_in_for if (sigma is not None or quantum is not None) else "", port.reason)
+                           stands_in_for if (sigma is not None or quantum is not None) else "", port.reason, clock)
 
 
 __all__ = ["IDEAL", "RESERVED", "CommandPortPlan", "MeasurementPlan", "Planning", "StagePlan", "command_port",

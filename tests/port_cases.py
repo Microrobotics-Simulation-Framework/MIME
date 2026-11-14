@@ -98,6 +98,17 @@ def command_oracle(written: np.ndarray, link: Link, dt: float, *, order: tuple[s
     return held
 
 
+def command_flags(written: np.ndarray, link: Link) -> np.ndarray:
+    """The bound's flag at each step of ``written``, in the design's order: whether the clip acted on what the link
+    delivered (any element), or whether the trip has latched by then; zeros for a port with no bounds."""
+    if link.low is None or link.high is None:
+        return np.zeros(len(written))
+    delivered = sampled_and_delayed(np.asarray(written, dtype=np.float64), link.period, link.latency,
+                                    np.full(np.shape(written)[1:], link.rest))
+    beyond = np.any((delivered < link.low) | (delivered > link.high), axis=tuple(range(1, delivered.ndim)))
+    return (np.maximum.accumulate(beyond) if link.trip else beyond).astype(np.float64)
+
+
 def stage_of(link: Link, shape: tuple[int, ...], dt: float) -> Any:
     """A command stage holding one port, ``currents``, of ``link``'s numbers."""
     from mime.nodes.control import CommandStageNode
@@ -114,14 +125,18 @@ def stage_of(link: Link, shape: tuple[int, ...], dt: float) -> Any:
         slewed={"currents": link.slew is not None}, **leaves)
 
 
-def stepped(node: Any, written: np.ndarray, dt: float, field: str = "currents") -> np.ndarray:
-    """``node``'s delivered ``field`` at each step of ``written``, stepped through its own update."""
+def stepped(node: Any, written: np.ndarray, dt: float, field: str = "currents", *,
+            flag: str | None = None) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """``node``'s delivered ``field`` at each step of ``written``, stepped through its own update; with ``flag``, the
+    state field of that name at each step beside it."""
     state = node.initial_state()
-    out = []
+    out, flags = [], []
     for value in written:
         state = node.fresh_update(state, {field: jnp.asarray(value)}, dt)
         out.append(np.asarray(state[field], dtype=np.float64))
-    return np.stack(out)
+        if flag is not None:
+            flags.append(float(state[flag]))
+    return (np.stack(out), np.asarray(flags)) if flag is not None else np.stack(out)
 
 
 @register_controller

@@ -132,16 +132,16 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 14
+CURRENT = 15
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
                                        7: "mime.document/7", 8: "mime.document/8", 9: "mime.document/9",
                                        10: "mime.document/10", 11: "mime.document/11", 12: "mime.document/12",
-                                       13: "mime.document/13", CURRENT: DOCUMENT_SCHEMA}
+                                       13: "mime.document/13", 14: "mime.document/14", CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
                                    5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", 8: "mime.lock/8",
                                    9: "mime.lock/9", 10: "mime.lock/10", 11: "mime.lock/11", 12: "mime.lock/12",
-                                   13: "mime.lock/13", CURRENT: LOCK_SCHEMA}
+                                   13: "mime.lock/13", 14: "mime.lock/14", CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
 #: experiment an experiment was made from, the version whose lock names the program the reference outputs were

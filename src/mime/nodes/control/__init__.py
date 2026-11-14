@@ -23,10 +23,11 @@ from mime.nodes.control._ports import (
     MeasureStageNode,
     StageInputs,
     StageState,
+    clashes,
     depth,
     held_sample,
 )
 
 __all__ = ["CLIPPED", "COMMAND_STAGE", "MEASURE_STAGE", "SETTING", "STAGE_SWITCHES", "TRIPPED", "UNBOUNDED", "CommandStageNode",
            "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode", "DelayState",
-           "MeasureStageNode", "ReadSpec", "StageInputs", "StageState", "Step", "depth", "held_sample"]
+           "MeasureStageNode", "ReadSpec", "StageInputs", "StageState", "Step", "clashes", "depth", "held_sample"]
