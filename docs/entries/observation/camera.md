@@ -18,8 +18,8 @@ bounding volume hierarchy: a frame costs no more with one in view. Each sub-ray 
 its facing, so a closed mesh named in `absorbers` attenuates along its chord, one with a display opacity on the stage passes
 that share at each crossing, and any other is opaque; a pixel is the mean of a few sub-rays each way
 (`mime.sensing.MESH_SAMPLES`, a declared default, not a setting). The structure is made once a run, and again at each study
-point that varies the detector's numbers: a few seconds for a mesh of about a hundred thousand triangles filling a quarter-VGA
-view, about a quarter of a minute at VGA, on a four-core runner (the outcomes of `tests/sensing/predictions_camera_mesh.json`).
+point that varies the detector's numbers: under ten seconds for a mesh of about a hundred thousand triangles filling a quarter-VGA
+view, under half a minute at VGA, on a four-core runner (the outcomes of `tests/sensing/predictions_camera_mesh.json`).
 The build report names each mesh with its triangles and look, a drawing's sagitta and a recorded decimation in pixels at this
 camera, and a body that starts inside a closed attenuating mesh, which it takes as its medium. Any other unowned gprim (a cube,
 curves) is refused by name (`camera.mesh-untraced`). The meshes' chords along each pixel's rays are had offline from

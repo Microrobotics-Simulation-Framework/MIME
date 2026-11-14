@@ -142,7 +142,27 @@
     "expected_rate": "10/10 each on the test each aims at in tests/sensing/test_mesh_scene.py",
     "clean_expected": "0/10"
   },
-  "outcomes": null,
+  "outcomes": {
+    "written": "2026-11-14, after the runs; the predictions above are unchanged",
+    "round_1": {
+      "run": "probe/camera6a-gates, GitHub run 43612706627 on f3b15f65 (4-vCPU runners; branch deleted after the download)",
+      "gate_22": "held: dropped-leaf 30/30 float32, 30/30 float64; flipped-winding 30/30 float32, 30/30 float64; clean 0/10 each (every_run true)",
+      "gate_23": "held: shifted-mesh 10/10 on the tube (float32, S = 4) and 10/10 on the sphere (float64, opaque); clean 0/5 each",
+      "gate_24": "held: no-mesh-refusal 10/10; clean 0/5",
+      "scene_controls": "held: no-medium 10/10, chords-unsigned 10/10; clean 0/5 each",
+      "gates_once": "63 passed in 165 s on a runner (tests/sensing/test_mesh_bvh.py, test_mesh_swap.py, test_mesh_refusals.py, test_mesh_scene.py, test_scenery.py)",
+      "discriminating_range": "local, the gate kit's discriminating_range.py on tests/sensing/mesh_oracles.py: G22's chord comparison resolves a chord error of 9.4e-6 m (100 draws, 0 false alarms; the dropped leaf moves a chord by a whole crossing's t, a millimetre); G23's bracket resolves a mesh shifted 0.018 px (20 draws, 0 false alarms) against the control's half pixel",
+      "gate_25_bits": "NOT as predicted, and not the program: every program's text differed by 37 to 41 bytes of about 2 MB base to head. Its cause, found by diffing the text on the laptop: the file-name, function-name and call-site tables that open the compiled text (paths and line numbers, which move with any edit of a source file); the stripping the gate wrote removed only the inline metadata. The one-ulp control could not be read against a base that already differed",
+      "costs": "MISSED on a run's second 30 steps (10 frames): mesh over none 1.9 to 3.1 (320 float32 0.062 s against 0.020; 640 float64 0.195 against 0.105) against the predicted 0.85 to 1.15. Held: step compile mesh over none 1.08 to 1.10 (predicted 0.9 to 1.15), the make 5.2 to 5.8 s at 320x240 and 21 to 23 s at 640x480 (predicted 3 to 13 and 13 to 40)",
+      "the_miss_found": "profiled on the laptop: a run with no frame in it cost 0.25 s against 0.006 s without the mesh, and 0.25 of 0.28 s was MADDENING's sync of node writes comparing the bytes of the node's two mesh constructor ndarrays (7.9 MB) at every chunk (244 tobytes calls). Fixed in ba39dbb5 by holding them as a registered pytree (Frozen); a test pins it. The first step's probe had missed it because its prototype did not go through the run's chunks"
+    },
+    "round_2": {
+      "run": "probe/camera6a-cost2, GitHub run 43617815091 on 64a4d0e5 (the merged head with the fix; branch deleted after the download)",
+      "bits": "held for the program, with one control failing: base (origin/release/v0.3.0 at 8de87c9d) against head, the tables dropped, the graph's step, the forward run's value and its forward-mode derivative are equal in float64 and float32 (6 of 6 programs, 1 596 920 to 2 021 943 bytes each). The one-ulp control differed in float64 (1/1) and did NOT in float32: the plant (3000.0's next float64) rounds to 3000.0 in float32, a plant below the dtype's resolution. Re-run locally with the next float32 (hlo_dump with the dtype's own ulp): the step and the value differ, 12 bytes each, so the control catches in both dtypes; this second float32 control is a laptop result, not a runner's",
+      "cost": "held (the fix): second run of 30 steps with 10 frames, mesh over none 1.01 (320 float32, 0.032 s against 0.032), 0.96 (320 float64), 1.03 (640 float32), 0.99 (640 float64); the no-frame runs 0.005 to 0.007 s in both variants; step compile mesh over none 1.05 to 1.09; step executable +0.5 MB; the make 8.3 to 9.9 s at 320x240 and 25.5 to 29.6 s at 640x480 (a slower runner than round 1's 5.2 to 5.8 and 21 to 23 s), the build 15.7 to 36.6 s against 3.2 to 4.2 s without",
+      "prediction_wrong": "second_round.cost predicted mesh over none 1.2 to 2.5 for the run with frames, from the laptop's 1.8 after the fix. The runner measured 0.96 to 1.03: the 2.7 ms a frame seen on the laptop with 6 MB of leaves is not on the runner, and its cause was not isolated (not reproduced, not explained)"
+    }
+  },
   "second_round": {
     "written": "2026-11-14, committed before the second probe (cost and bits after the fix below); the first round's outcomes are written beside the first predictions",
     "why": "the first round's cost arm missed its frame prediction (a run's second 30 steps 1.9 to 3.1 times the no-mesh scene's against 0.85 to 1.15) and its bits arm reported a difference in every program. Profiled on the laptop, the miss was MADDENING comparing the bytes of the node's two mesh constructor ndarrays (7.9 MB) at each chunk of a run (244 tobytes calls, 0.25 s of 0.28 s, with no frame in the run); the bits difference is the file-name and line-number tables that open the compiled text (every other line of the text is equal base to head on the laptop). The fix: the arrays held as a registered pytree (Frozen); the comparison drops those tables.",

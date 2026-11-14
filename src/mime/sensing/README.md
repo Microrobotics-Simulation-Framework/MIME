@@ -104,12 +104,15 @@ about a sub-pixel's area).
 ## Static meshes (`_mesh.py`)
 
 A static mesh (a scenery `Mesh` of the stage, or a structure's drawing) is traced in the in-loop camera **once a run, in
-the static structure**, by a bounding volume hierarchy, so a frame costs no more with a mesh in view.
+the static structure**, by a bounding volume hierarchy, so a frame costs no more with a mesh in view (measured: a run's frames within a few per cent of the same scene's without).
 
 - **The tree** is built on the host when the node is made: a complete binary tree in heap order, balanced splits along each
   group's longest centroid axis, leaves of a few triangles, its boxes fixed (the mesh stands). Its arrays are the node's
   parameter leaves (`mime.sensing._mesh.KEYS`), never constants of the program, so the step's program holds no copy of the
-  mesh and compiles in the time it did; the triangles reach the node as arrays the derived graph records by their sha256.
+  mesh and compiles in the time it did; the triangles reach the node as arrays the derived graph records by their sha256,
+  held as `Frozen` (a registered one-leaf pytree) because MADDENING compares the bytes of an `ndarray` among a node's constants
+  at every chunk of a run, which for a hundred thousand triangles was forty times the steps' own time
+  (`test_a_meshs_constants_are_not_arrays_the_graph_compares_byte_for_byte_at_every_chunk`).
   Rays are traced in tiles of a few dozen, each ray with its own stack, in one while loop a tile.
 - **Every crossing, not the nearest** (one bin): each adds its `t` signed by its facing (leaving the solid `+t`, entering
   `-t`), so the sum is the chord inside a closed, consistently wound mesh, wherever the camera is, and each adds one to the
@@ -132,7 +135,7 @@ the static structure**, by a bounding volume hierarchy, so a frame costs no more
 - **Once a run**: made when the build makes the node's parameters, again once a run where a derivative may be taken or the
   tree's detector numbers differ from the run's (`refreshed_held`), and so again at each study point that varies the
   detector's numbers. Measured through the built graph on GitHub's four-core runners for a closed tube-wall mesh of about a
-  hundred thousand triangles filling the view: a few seconds at quarter VGA and about a quarter of a minute at VGA, the
+  hundred thousand triangles filling the view: under ten seconds at quarter VGA and under half a minute at VGA, the
   step's compile time unchanged and a frame's time unchanged (the outcomes of `tests/sensing/predictions_camera_mesh.json`).
 - **Derivatives.** The rays and the tree are taken under `stop_gradient`: no derivative reaches the traversal's while loop
   (which has none in reverse mode), so a derivative in a pose, a gain or a limit passes with a mesh in view, and one in any
