@@ -31,17 +31,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import re
 import zipfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import IO, Any, cast
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
 
+from mime._npz import check_entries, stored_entry
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.units import Quantity, parse_unit, si, unit_symbol
 
@@ -211,40 +211,6 @@ def stage_entries(path: Path, new: Mapping[str, NDArray[Any]], drop_prefixes: Se
     return temporary
 
 
-def _declared(file: IO[bytes], info: zipfile.ZipInfo, archive_size: int) -> int:
-    """The bytes the array of the NPZ entry ``info``, open as ``file`` at its start, declares, once they are checked to be
-    those the entry holds (``ValueError`` otherwise): see :func:`stored_array`."""
-    if info.compress_type != zipfile.ZIP_STORED:
-        raise ValueError(f"the entry {info.filename} is compressed, and a study's NPZ is written uncompressed")
-    if info.file_size > archive_size:
-        raise ValueError(f"the entry {info.filename} says it holds {info.file_size} bytes, more than the whole file")
-    version = np.lib.format.read_magic(file)
-    if version == (1, 0):
-        shape, _, dtype = np.lib.format.read_array_header_1_0(file)
-    elif version == (2, 0):
-        shape, _, dtype = np.lib.format.read_array_header_2_0(file)
-    else:
-        raise ValueError(f"the entry {info.filename} is an array of NumPy format {version[0]}.{version[1]}")
-    count = math.prod(shape)
-    if dtype.hasobject or any(extent < 0 for extent in shape) or (dtype.itemsize == 0 and count > 0):
-        raise ValueError(f"the entry {info.filename} is not an array of plain numbers or text")
-    declared, held = count * dtype.itemsize, info.file_size - file.tell()
-    if declared != held:
-        raise ValueError(f"the entry {info.filename} declares an array of {declared} bytes and holds {held}")
-    return declared
-
-
-def stored_array(file: IO[bytes], info: zipfile.ZipInfo, archive_size: int) -> NDArray[Any]:
-    """The array of the NPZ entry ``info``, open as ``file``, read only as far as the file itself vouches for it. A study's
-    NPZ is written uncompressed (:func:`_entry`), so an entry that is compressed, or that says it holds more bytes than
-    the whole NPZ does, or whose array header declares a size other than the bytes the entry holds, is not what a run wrote
-    and is refused (``ValueError``) before an array is allocated: a deflated entry of a few kilobytes can name gigabytes,
-    and NumPy allocates what the header names. Pickled (object) arrays are refused too."""
-    _declared(file, info, archive_size)
-    file.seek(0)
-    return np.asarray(np.lib.format.read_array(file, allow_pickle=False))
-
-
 class GroupArchive:
     """A group's ``outputs.npz``, opened once and read entry by entry: the keys it holds (indexed by member), and a
     member's view of it as the archive a :class:`~mime.results.RunResult` reads from."""
@@ -271,20 +237,13 @@ class GroupArchive:
         return self._by_member.get(point, [])
 
     def __getitem__(self, key: str) -> NDArray[Any]:
-        archive = self._file()
-        info = archive.getinfo(key + ".npy")
-        with archive.open(info) as file:
-            return stored_array(file, info, self.path.stat().st_size)
+        return stored_entry(self._file(), key, self.path.stat().st_size)
 
     def check_entries(self) -> None:
         """Every entry's header checked against the bytes it holds (``ValueError`` for one that is not what a run wrote,
-        :func:`stored_array`), reading no array: what a later read of any entry then allocates is the entry's own size."""
-        archive, size = self._file(), self.path.stat().st_size
-        for info in archive.infolist():
-            if not info.filename.endswith(".npy"):
-                raise ValueError(f"the entry {info.filename} is not an array")
-            with archive.open(info) as file:
-                _declared(file, info, size)
+        :func:`mime._npz.check_entries`), reading no array: what a later read of any entry then allocates is the entry's
+        own size."""
+        check_entries(self._file(), self.path.stat().st_size)
 
     def member(self, point: int) -> MemberArchive:
         return MemberArchive(self, point)
@@ -542,5 +501,5 @@ def iter_groups(root: Path) -> Iterator[tuple[int, Path]]:
 
 __all__ = ["BASE_DIR", "COMPARE_FILE", "CONTENT_KEY", "DONE", "FIGURES_DIR", "GROUPS_DIR", "GROUP_OUTPUTS", "GROUP_REPORT", "PENDING", "READING",
            "SPEC_FILE", "STUDY_FILE", "STUDY_FORMAT", "STUDY_VERSION", "TEMPORARY", "GroupArchive", "MemberArchive",
-           "check_document", "check_layout", "decode_value", "encode_value", "file_sha256", "iter_groups", "stored_array",
+           "check_document", "check_layout", "decode_value", "encode_value", "file_sha256", "iter_groups",
            "layout_problems", "refused", "stage_entries", "temporaries", "temporary_of", "write_json", "write_text"]

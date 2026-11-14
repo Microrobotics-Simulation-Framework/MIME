@@ -29,6 +29,7 @@ import yaml
 from packaging.version import InvalidVersion, Version
 
 from mime._lock_json import read_lock
+from mime._npz import StoredNpz
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
 from mime.build._refusals import MIME_DEFECT
@@ -385,7 +386,7 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
     reference: dict[str, np.ndarray] = {}
     if lock is not None:
         try:
-            with np.load(folder / lock["reference"]["file"], allow_pickle=False) as held:
+            with StoredNpz(folder / lock["reference"]["file"]) as held:
                 reference = {key: np.asarray(held[key]) for key in held.files}
         except (OSError, ValueError, EOFError, zipfile.BadZipFile) as error:  # a missing, truncated or corrupt file
             refusals.append(_refuse("load.reference", RefusalClass.USER,

@@ -1444,6 +1444,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SECURITY: a hostile folder could make MIME allocate gigabytes from an NPZ of a few kilobytes** (`mime verify`, any
+  load of a saved folder, `RunResult.read`). NumPy allocates the array an entry's header names before it reads a byte of
+  it, and `reference.npz` of a saved folder and `outputs.npz` of a run (or the NPZ `to_npz` writes) were opened with
+  `np.load`: a deflated entry of a few kilobytes naming gigabytes was taken whole (measured: a 2.5 MB container took
+  2.3 GB; the study container's group files had the same defect and were fixed before that container was released). Both are now read through `mime._npz`, which refuses an entry that is compressed, larger than the file, a
+  pickled object, or whose array header names other bytes than it holds, before anything is allocated (`load.reference`
+  for a saved folder, `result.not-a-run-folder` for a run). A saved folder's lock records its arrays' hash, not the
+  file's, so a hash cannot be checked first there: the bound is the defence. MIME writes every NPZ with `np.savez`
+  (entries stored, never compressed; a test reads every writer's output and scans the package for `savez_compressed`), so
+  nothing MIME wrote is refused; every saved folder of every frozen form and every current case loads as before. A run
+  manifest of the wrong shapes (or an NPZ of a study's member that holds one) is refused as `result.format` where it was
+  an uncoded failure, and the manifest that is not JSON as `result.not-a-run-folder`. Folders handed to you from outside
+  were the exposure; one you wrote yourself was never affected.
 - **A lock of a later saved form read by `mime assets fetch <folder>` or `mime assets sources <folder>` was refused by
   its records' shape** (`asset.reference`, measured with MIME at 316937a8 on a form-14 folder), since they read the
   lock's records without its form. They now refuse it as `load.newer-form` first (`mime.assets.folder_assets`).
