@@ -133,10 +133,13 @@ def _deterministic(on: bool) -> None:
 
 
 def _verify(folder: Path, run: bool = False) -> int:
-    from mime.saved._studies import is_publishing_folder, is_study_folder
+    from mime.blocks import is_block_folder
+    from mime.saved._studies import BLOCK_SUFFIX, is_publishing_folder, is_study_folder
 
     with Interrupt():
         try:
+            if not run and (is_block_folder(folder) or (folder.is_file() and folder.name.endswith(BLOCK_SUFFIX))):
+                return _verified_block(folder)
             if not run and (is_study_folder(folder) or is_publishing_folder(folder)):
                 return _verified_studies(folder)
             return _verified_run(folder) if run else _verified(folder)
@@ -190,6 +193,23 @@ def _verified_studies(folder: Path) -> int:
     if refusals:
         raise BuildRefused(refusals)
     return worst
+
+
+def _verified_block(folder: Path) -> int:
+    """``mime verify`` of a block folder or its ``.mimeblock`` (unpacked, checked, into a folder of its own that is then
+    removed): a line per case, MIME's closing words and the author's; 0 when every case reproduces, 1 when one did not,
+    2 when the block cannot be checked (nothing ran)."""
+    import tempfile
+
+    from mime.blocks._card import verify_block
+    from mime.blocks._container import unpack_block
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = folder if folder.is_dir() else unpack_block(folder, Path(scratch) / "block").folder
+        checked = verify_block(root)
+        for line in checked.lines():
+            print(for_terminal(line))
+    return 0 if checked.reproduced else 1
 
 
 def _verified_run(folder: Path) -> int:
@@ -263,7 +283,9 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
     from mime.blocks import is_block_folder
     from mime.env import apply_lock_precision
 
-    if folder.is_dir() and is_block_folder(folder):
+    from mime.saved._studies import BLOCK_SUFFIX
+
+    if (folder.is_dir() and is_block_folder(folder)) or (folder.is_file() and folder.name.endswith(BLOCK_SUFFIX)):
         return _show_block(folder, as_json)
     if out is not None and out is not DEFAULT_PAGE:
         from mime.experiment._mermaid import written_outside
@@ -308,8 +330,14 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
 
 def _show_block(folder: Path, as_json: bool) -> int:
     """``mime show`` of a block folder: what the block is and needs, offline (:mod:`mime.blocks._show`)."""
+    import tempfile
+
+    from mime.blocks._container import unpack_block
     from mime.blocks._show import data, shown
 
+    if folder.is_file():  # a block's file: unpacked, every member checked, into a folder of its own that is removed
+        with tempfile.TemporaryDirectory() as scratch:
+            return _show_block(unpack_block(folder, Path(scratch) / "block").folder, as_json)
     if as_json:
         print(for_terminal(json.dumps(data(folder), indent=1, sort_keys=True)))
         return 0
@@ -820,10 +848,13 @@ def _place(folder: Path, accept_licences: Sequence[str] = ()) -> list[Refusal]:
 
 def _pack(folder: Path, out: Path | None) -> int:
     from mime import assets, saved
+    from mime.blocks import is_block_folder
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
     if is_study_folder(folder) or is_publishing_folder(folder):
         return _pack_studies(folder, out)
+    if is_block_folder(folder):
+        return _pack_block(folder, out)
     from mime.saved._bundle import read_manifest, referenced_of
     from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER
     from mime.saved._folder import named_files
@@ -859,6 +890,27 @@ def _pack(folder: Path, out: Path | None) -> int:
     return 0
 
 
+def _pack_block(folder: Path, out: Path | None) -> int:
+    """``mime pack`` of a block folder: its ``.mimeblock``, its sha256, and what it carries."""
+    from mime import assets
+    from mime.blocks._container import pack_block
+    from mime.saved._container import MANIFEST_MEMBER
+
+    path = pack_block(folder, out=out)
+    with path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    with zipfile.ZipFile(path) as archive:
+        manifest = json.loads(archive.read(MANIFEST_MEMBER))
+    print(for_terminal(f"packed the block {manifest['id']} {manifest['version']} into {path} "
+                       f"({assets.size_text(path.stat().st_size)})"))
+    print(f"sha256 {digest}")
+    print(f"content {manifest['content']}")
+    print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
+                       f"{len(manifest['referenced'])}; [record] stays out of it (a metadata edit is never a new "
+                       f"version)"))
+    return 0
+
+
 def _pack_studies(folder: Path, out: Path | None) -> int:
     """``mime pack`` of a study folder (its ``.mimestudy``) or a publishing folder (one per study, in ``--out`` or beside
     the folder), and what a publishing folder holds that no container carries."""
@@ -888,7 +940,18 @@ def _card(folder: Path, out: Path | None, notice: bool) -> int:
     from mime.saved._study_card import study_card_text, study_notice
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
-    if is_study_folder(folder) or is_publishing_folder(folder):
+    from mime.blocks import is_block_folder
+
+    if is_block_folder(folder):
+        from mime.blocks._card import block_card_text
+        from mime.blocks._container import block_notice
+        from mime.blocks._definition import definition_of
+
+        definition = definition_of(folder)
+        cases = sorted(f"cases/{each.name}" for each in (folder / "cases").iterdir() if each.is_dir()) \
+            if (folder / "cases").is_dir() else []
+        text = block_notice(definition, definition.content_hash(), cases) if notice else block_card_text(folder)
+    elif is_study_folder(folder) or is_publishing_folder(folder):
         text = study_notice(folder) if notice else study_card_text(folder)
     else:
         text = saved.notice(folder) if notice else saved.card_text(folder)

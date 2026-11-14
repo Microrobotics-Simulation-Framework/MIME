@@ -78,7 +78,8 @@ DOI_FIELDS = ("publisher", "publication_date", "creators", "title", "resource_ty
 KEYWORD = "mime-experiment"
 #: The keyword a record of studies carries in place of :data:`KEYWORD`.
 STUDY_KEYWORD = "mime-study"
-BUNDLE_KIND, STUDY_KIND = "bundle", "study"
+BUNDLE_KIND, STUDY_KIND, BLOCK_KIND = "bundle", "study", "block"
+BLOCK_KEYWORD = "mime-block"
 #: The record file that holds the bundle's ``NOTICE``, byte for byte. Zenodo chooses a previewer by a file's extension
 #: (its plain text one takes ``.txt``, its Markdown one ``.md``), and a ``NOTICE`` with none was shown no preview (the
 #: sandbox session, 2026-11-02). The NOTICE is plain text, indented lines a Markdown renderer would run together, so
@@ -243,7 +244,7 @@ class Plan:
 
     @property
     def keyword(self) -> str:
-        return STUDY_KEYWORD if self.kind == STUDY_KIND else KEYWORD
+        return STUDY_KEYWORD if self.kind == STUDY_KIND else BLOCK_KEYWORD if self.kind == BLOCK_KIND else KEYWORD
 
     @property
     def size(self) -> int:
@@ -259,7 +260,7 @@ class Plan:
     def lines(self, state: DraftState | None) -> list[str]:
         """The plan as push prints it, before any request."""
         whose, files = (("The studies' experiments'", "their files") if self.kind == STUDY_KIND else
-                        ("The experiment's", "its files"))
+                        ("The block's", "its content") if self.kind == BLOCK_KIND else ("The experiment's", "its files"))
         lines: list[str] = [
             Said(f"Plan for {plain(self.experiment)!r} on {self.service.words}: {self.target(state)}", PLAN_HEAD),
             Said(f"  Record files ({len(self.files)}, {size_text(self.size)}):", PLAN_SECTION)]
@@ -267,7 +268,7 @@ class Plan:
         lines += [Said(f"    {plain(file.key):<{width}}  {size_text(file.size):>8}  {plain(file.licence or 'generated'):<14}"
                        f"  {file.what}", PLAN_UP) for file in self.files]
         inside = [file for file in self.judged.files if file.verdict.carried and file.referenced is None]
-        lines.append(Said(f"  Inside the {'study containers' if self.kind == STUDY_KIND else 'bundle'} "
+        lines.append(Said(f"  Inside the {'study containers' if self.kind == STUDY_KIND else 'block' if self.kind == BLOCK_KIND else 'bundle'} "
                           f"({len(inside)} files):", PLAN_SECTION))
         lines += [Said(f"    {plain(file.path)}  {size_text(file.size)}  {plain(file.licence or 'no licence')}  "
                        f"{_whose(file)}; {file.verdict.words()}", PLAN_UP) for file in inside]
@@ -748,6 +749,62 @@ def merged_terms(parts: Sequence[tuple[str, FolderTerms]]) -> FolderTerms:
                        first.saved_by)
 
 
+def make_block_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing, staged: Path, *,
+                    publication: PublicationRecord | None = None, version: int = 1,
+                    today: datetime.date | None = None) -> Plan:
+    """Pack the block folder into ``staged`` and work out what push will send: its ``.mimeblock`` and its ``NOTICE.txt``;
+    no asset is uploaded (each stays at its record's locations; an open one the block carries is in its container).
+    ``[block] licence`` is the record's licence, and ``[record]`` its metadata; keywords ``mime-block`` and
+    ``mime-block:<id>``. The cases' saved folders are judged as a bundle's are. Refused with every reason found."""
+    from mime.blocks._container import pack_block
+    from mime.blocks._definition import definition_of
+    from mime.credentials import held_tokens
+    from mime.saved._bundle import scan_text
+    from mime.saved._folder import named_files, read_folder
+    from mime.saved._terms import folder_terms
+
+    root = Path(os.path.abspath(folder))
+    definition = definition_of(root)
+    staged.mkdir(parents=True, exist_ok=True)
+    container = pack_block(root, out=staged / f"{definition.id}-{definition.version}.mimeblock")
+    with zipfile.ZipFile(container) as archive:
+        notice = archive.read(NOTICE_MEMBER)
+    notice_path = staged / NOTICE_KEY
+    notice_path.write_bytes(notice)
+    files = [_record_file(container.name, container, definition.licence,
+                          f"the block {plain(definition.id)} {plain(definition.version)}, packed from its folder"),
+             _record_file(NOTICE_KEY, notice_path, None, "the block's NOTICE (its content's licence, each asset's tier, "
+                                                         "its cases), under a name Zenodo previews")]
+    parts: list[tuple[str, FolderTerms]] = []
+    locks: list[Lock] = []
+    cases = root / "cases"
+    for case in sorted(each for each in cases.iterdir() if each.is_dir()) if cases.is_dir() else []:
+        form = read_folder(case, absent_referenced=True)
+        parts.append((f"cases/{case.name}", folder_terms(case, form.document, form.lock, named_files(form),
+                                                         form.version)))
+        locks.append(form.lock)
+    judged = merged_terms(parts)
+    refs = list({ref.sha256: ref for ref in (*definition.assets, *(held.ref for _, terms in parts
+                                                                   for held in terms.assets))}.values())
+    choices = tuple(AssetChoice(ref, licence_verdict(ref.licence, {**ref.custom, **judged.custom}), False,
+                                "the block's asset: the record references it at its locations, never uploaded")
+                    for ref in refs)
+    refusals = [refusal for lock in locks for refusal in upload_problems(files, lock)]
+    if judged.permissions:
+        refusals += grantee_problems(judged.permissions, sharing.uploader, root)
+    keyworded = replace(sharing, keywords=tuple(dict.fromkeys((f"{BLOCK_KEYWORD}:{definition.id}",
+                                                               *sharing.keywords))))
+    plan = Plan(service, f"block:{definition.id}", root, tuple(files), judged, choices, definition.licence, keyworded,
+                {}, locks[0]["environment"]["mime"], b"", publication, None, "", version,
+                staged, None, BLOCK_KIND)
+    plan = with_sharing(plan, keyworded, today)
+    refusals += scan_text("the record's metadata", json.dumps(plan.payload, sort_keys=True).encode("utf-8"),
+                          held_tokens())
+    if refusals:
+        raise BuildRefused(refusals)
+    return plan
+
+
 def make_studies_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing, staged: Path, *,
                       publication: PublicationRecord | None = None, version: int = 1,
                       today: datetime.date | None = None) -> Plan:
@@ -860,7 +917,11 @@ def upload_problems(files: Sequence[RecordFile], lock: Lock) -> list[Refusal]:
 def with_sharing(plan: Plan, sharing: Sharing, today: datetime.date | None = None) -> Plan:
     """``plan`` with ``[record]`` read again (an edit made on the site kept, written into it): its card, which
     names the creators and the record the plan is packed as, and its metadata payload made again from it."""
-    if plan.kind == STUDY_KIND:
+    if plan.kind == BLOCK_KIND:
+        from mime.blocks._card import block_card_text
+
+        plan = replace(plan, card=card_html(block_card_text(plan.folder, plan.publication)))
+    elif plan.kind == STUDY_KIND:
         from mime.saved._study_card import study_card_text
 
         plan = replace(plan, card=card_html(study_card_text(plan.folder, plan.publication)))
@@ -913,7 +974,7 @@ def restaged(plan: Plan, publication: PublicationRecord) -> Plan:
     """``plan`` with its bundle packed again with the staged lock naming ``publication`` (a draft's DOI reserved once
     its plan was shown): its bundle, its NOTICE and its card, which names the record, made again; the rest as it was.
     Study containers carry no staged lock: only their card, which names the record, is made again."""
-    if plan.kind == STUDY_KIND:
+    if plan.kind in (STUDY_KIND, BLOCK_KIND):
         return with_sharing(replace(plan, publication=publication), plan.sharing)
     assert plan.staging is not None, "a plan of files alone is not packed"
     assets = [file for file in plan.files if file.asset is not None]
@@ -945,8 +1006,8 @@ def grantee_problems(permissions: Sequence[PermissionDoc], uploader: Uploader | 
             for index, held in enumerate(permissions, start=1) if held["grantee"] not in allowed]
 
 
-__all__ = ["BUNDLE_KIND", "DOI_FIELDS", "FIELD_OWNERS", "KEYWORD", "STUDY_KEYWORD", "STUDY_KIND", "MOST_BYTES", "MOST_FILES", "NOTICE_KEY", "OWN_RELATED",
+__all__ = ["BLOCK_KEYWORD", "BLOCK_KIND", "BUNDLE_KIND", "DOI_FIELDS", "FIELD_OWNERS", "KEYWORD", "STUDY_KEYWORD", "STUDY_KIND", "MOST_BYTES", "MOST_FILES", "NOTICE_KEY", "OWN_RELATED",
            "PUBLISHER", "AssetChoice", "field_owner", "Plan", "RecordFile", "declaring", "asset_choices", "card_html",
-           "file_hashes", "grantee_problems", "make_plan", "make_studies_plan", "merged_terms", "on_zenodo",
+           "file_hashes", "grantee_problems", "make_block_plan", "make_plan", "make_studies_plan", "merged_terms", "on_zenodo",
            "payload_of", "record_key", "record_licences", "restaged",
            "rights_entries", "upload_problems", "with_sharing"]

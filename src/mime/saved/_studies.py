@@ -83,8 +83,7 @@ from mime.saved._terms import INLINE_LIMIT_BYTES, FolderTerms, folder_terms, loc
 STUDY_SUFFIX = ".mimestudy"
 STUDY_CONTAINER = "mime.study/1"
 STUDY_PREFIX = "study/"
-#: The block's container (P4's), reserved: its suffix and format are known, and a block is refused by name until this
-#: MIME reads one.
+#: The block's container: its suffix and format (its layout and its reading are :mod:`mime.blocks._container`'s).
 BLOCK_SUFFIX = ".mimeblock"
 BLOCK_CONTAINER = "mime.block/1"
 _GROUP = re.compile(r"0|[1-9][0-9]*")
@@ -143,8 +142,14 @@ def study_layout_problem(name: str) -> str | None:
 
 STUDY = ContainerKind("study", STUDY_SUFFIX, "study", (STUDY_CONTAINER,), STUDY_PREFIX, "container_hash",
                       study_layout_problem, "a study container", "the study container")
+def _block_layout_problem(name: str) -> str | None:
+    from mime.blocks._container import block_layout_problem
+
+    return block_layout_problem(name)
+
+
 BLOCK = ContainerKind("block", BLOCK_SUFFIX, "block", (BLOCK_CONTAINER,), "block/", "container_hash",
-                      lambda name: "is a block's, which this MIME does not read yet", "a block", "the block")
+                      _block_layout_problem, "a block", "the block")
 #: Every kind of container this MIME knows, by suffix and format family.
 KINDS = (BUNDLE, STUDY, BLOCK)
 
@@ -163,8 +168,7 @@ def kind_of_name(name: str) -> ContainerKind | None:
 def container_kind(path: str | os.PathLike[str], *, named: str | None = None) -> ContainerKind:
     """The kind of the container at ``path``, as its manifest's format says; ``named`` is the name it came by (the
     file's own by default, or a record's file name for a download). A name whose suffix is another kind's is refused
-    (``container.kind``), so that neither kind is ever taken for the other, and so is a block, which this MIME does not
-    read yet. A manifest that cannot be read here is judged by the kind its name says (a bundle's where it says none),
+    (``container.kind``), so that neither kind is ever taken for the other. A manifest that cannot be read here is judged by the kind its name says (a bundle's where it says none),
     whose checks refuse it with their reasons."""
     file = Path(path)
     name = named if named is not None else file.name
@@ -185,11 +189,6 @@ def container_kind(path: str | os.PathLike[str], *, named: str | None = None) ->
             f"rename it and pull it again, `mime pull {quoted(plain(stem) + by_format.suffix)}`, or fetch it again from its "
             f"source: MIME reads a container by what its manifest says it is, and refuses one whose name says "
             f"otherwise")])
-    if kind is BLOCK:
-        raise BuildRefused([refuse(
-            "container.kind", RefusalClass.USER,
-            f"{plain(name)} is a block ({plain(str(stated or BLOCK_CONTAINER))}), which this MIME does not read yet",
-            "read it with a MIME release that reads blocks (`pip install -U mime-engine`)")])
     return kind
 
 
@@ -555,11 +554,17 @@ def pack_studies(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] 
 
 def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None = None,
          own_locations: frozenset[str] = frozenset()) -> Path:
-    """Write the container of ``folder``: a study folder's ``.mimestudy`` (:func:`pack_study`), or a saved folder's
-    bundle (:func:`mime.saved._bundle.pack`), by default beside the folder; its path. ``own_locations`` is the bundle's,
-    for ``mime push``."""
+    """Write the container of ``folder``: a study folder's ``.mimestudy`` (:func:`pack_study`), a block folder's
+    ``.mimeblock`` (:func:`mime.blocks.pack_block`), or a saved folder's bundle (:func:`mime.saved._bundle.pack`), by
+    default beside the folder; its path. ``own_locations`` is the bundle's, for ``mime push``."""
+    from mime.blocks._definition import is_block_folder
+
     if is_study_folder(Path(os.path.abspath(folder))):
         return pack_study(folder, out=out)
+    if is_block_folder(Path(os.path.abspath(folder))):
+        from mime.blocks._container import pack_block
+
+        return pack_block(folder, out=out)
     return _bundle.pack(folder, out=out, own_locations=own_locations)
 
 

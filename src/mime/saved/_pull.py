@@ -180,22 +180,26 @@ def _record_file(doi: str, wanted: str | None) -> tuple[list[tuple[str, str, int
         failed = None
     if failed is not None:  # a DOI that carries a key: raised here, chained to no error that quotes it
         raise failed from None
-    from mime.saved._studies import STUDY_SUFFIX, kind_of_name
+    from mime.saved._studies import BLOCK_SUFFIX, STUDY_SUFFIX, kind_of_name
 
     bundles = sorted(name for name in registry if name.endswith(BUNDLE_SUFFIX))
     studies = sorted(name for name in registry if name.endswith(STUDY_SUFFIX))
+    blocks = sorted(name for name in registry if name.endswith(BLOCK_SUFFIX))
     if wanted is not None and wanted in registry and kind_of_name(wanted) is not None:
         chosen = [wanted]
-    elif len(bundles) == 1 and not studies:
+    elif len(bundles) == 1 and not studies and not blocks:
         chosen = bundles
-    elif studies and not bundles:
+    elif studies and not bundles and not blocks:
         chosen = studies
+    elif len(blocks) == 1 and not bundles and not studies:
+        chosen = blocks
     else:
         held = ", ".join(plain(name) for name in sorted(registry)) or "none"
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
-                      f"the record doi:{doi} lists {len(bundles)} bundle files and {len(studies)} study containers "
-                      f"(its files: {held}), and MIME pulls one bundle, or one or more studies",
-                      f"name the one to pull: `mime pull doi:{quoted(plain(doi))}/<file>{BUNDLE_SUFFIX}` (or <file>{STUDY_SUFFIX})")
+                      f"the record doi:{doi} lists {len(bundles)} bundle files, {len(studies)} study containers and "
+                      f"{len(blocks)} blocks (its files: {held}), and MIME pulls one bundle, one or more studies, or "
+                      f"one block", f"name the one to pull: `mime pull doi:{quoted(plain(doi))}/<file>{BUNDLE_SUFFIX}` "
+                                    f"(or <file>{STUDY_SUFFIX}, <file>{BLOCK_SUFFIX})")
     return ([(file, checksum if ":" in (checksum := registry[file]) else f"md5:{checksum}",
               _stated_size(repository, file)) for file in chosen], named, resolved)
 
@@ -249,10 +253,17 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     for file, checksum, stated in files:
         limit = _limit(stated, max_bundle_bytes)
         fetched.append(Fetched(locate_bundle_container(assets.retrieve(
-            f"doi:{source.value}/{file}", name="bundle" if file.endswith(BUNDLE_SUFFIX) else "study",
+            f"doi:{source.value}/{file}", name=_kind_word(file),
             known_hash=checksum, max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated, yes=yes,
             force=force)), file))
     return fetched, resolved
+
+
+def _kind_word(file: str) -> str:
+    """The word a container's download is named by: ``bundle``, ``study`` or ``block``."""
+    from mime.saved._studies import BLOCK_SUFFIX
+
+    return "bundle" if file.endswith(BUNDLE_SUFFIX) else "block" if file.endswith(BLOCK_SUFFIX) else "study"
 
 
 def _from_service(service_name: str, record: str, say: Callable[[str], None] | None, max_bundle_bytes: int,
@@ -281,7 +292,7 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
     if len(held) > 1 and not into_given:
         raise _several_refused(len(held), f"the record {found.record} on {service.name}")
     return [Fetched(locate_bundle_container(assets.retrieve(
-        each.url, name="bundle" if each.key.endswith(BUNDLE_SUFFIX) else "study", known_hash=f"md5:{each.md5}",
+        each.url, name=_kind_word(each.key), known_hash=f"md5:{each.md5}",
         max_bytes=_limit(each.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT, report=say, size=each.size,
         yes=yes, force=force, fetcher=downloader(service, found.record, access) if access is not None else None)),
         each.key) for each in held]
@@ -500,18 +511,21 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
     --link`` reads it, with no echo), so that no frame holds it as text; a text that carries a key is held so from the
     moment pull takes it. An address elsewhere that carries a ``token`` parameter is pulled as it was, the parameter's
     value hidden wherever the address is said."""
-    from mime.saved._studies import STUDY, container_kind
+    from mime.saved._studies import BLOCK, STUDY, container_kind
 
     source = _kept_secret(source)
     if into is not None:
         refused = destination_problem(into)
         if refused is not None:
             raise refused
-    fetched, _ = _bundle_from(source, say, max_bundle_bytes, from_service, signed_in, yes, force, into is not None)
+    fetched, doi = _bundle_from(source, say, max_bundle_bytes, from_service, signed_in, yes, force, into is not None)
     kinds = [container_kind(each.path, named=each.named) for each in fetched]
     if kinds and all(kind is STUDY for kind in kinds):
         return _pull_studies(fetched, into, fetch_assets=fetch_assets, yes=yes, confirm=confirm, say=say,
                              accept_licences=accept_licences, force=force)
+    if len(fetched) == 1 and kinds[0] is BLOCK:
+        return _pull_block(fetched[0], doi, into, fetch_assets=fetch_assets, yes=yes, confirm=confirm, say=say,
+                           accept_licences=accept_licences, force=force)
     if len(fetched) != 1 or kinds[0] is not BUNDLE:
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
                       f"the source holds {len(fetched)} containers of more than one kind "
@@ -546,6 +560,73 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
     if outcome.stopped is not None:
         raise outcome.stopped
     return destination
+
+
+def _pull_block(fetched: Fetched, doi: str | None, into: str | os.PathLike[str] | None, *, fetch_assets: bool,
+                yes: bool, confirm: Callable[[str], bool] | None, say: Callable[[str], None] | None,
+                accept_licences: Collection[str], force: bool) -> Path:
+    """``pull`` of a block's container: its licence gated where it has conditions (once, before it is unpacked), then
+    unpacked into ``into`` (by default ``./<id>-<version>/``) and kept in the asset cache by its sha256; its assets (the
+    block's and its cases' locks') fetched, gated once over all of them; each case's referenced files placed; and what
+    its ``[requires]`` needs that is not installed listed with the line that installs it. Installs nothing."""
+    from mime.blocks._container import container_record, stored, unpack_block
+    from mime.blocks._definition import definition_of
+    from mime.blocks._use import requirement_rows, requires_install_line
+
+    container = fetched.path
+    assets.downloads_doing("unpacking the block, and checking each file in it")
+    with tempfile.TemporaryDirectory() as scratch:
+        held = unpack_block(container, Path(scratch) / "block")
+        definition = definition_of(held.folder)
+        record = container_record(definition, container, [f"doi:{doi}/{fetched.named}"] if doi else [])
+        assets.require_accepted([record], accept_licences=accept_licences,
+                                accept_with=f"mime pull {quoted(fetched.named)} --accept-licence <id>")
+        destination = Path(into) if into is not None else Path(f"{definition.id}-{definition.version}")
+        refused = destination_problem(destination)
+        if refused is not None:
+            raise refused
+        shutil.move(str(held.folder), str(destination))
+    stored(record, container)
+    cases = sorted(each for each in (destination / "cases").iterdir() if each.is_dir()) \
+        if (destination / "cases").is_dir() else []
+    outcome = _fetch_assets(cases, wanted=fetch_assets, yes=yes, force=force, accept_licences=accept_licences,
+                            confirm=confirm, say=say)
+    for case in cases:
+        place_referenced(case, accept_licences=accept_licences)
+    unmet = [row for row in requirement_rows(definition) if not row.agrees]
+    folder = folder_argument(destination)
+    words = f"Block {definition.id} {definition.version}"
+    if outcome.stopped is None:
+        head, tail = f"\N{CHECK MARK} {words} unpacked to {folder}", f"Next: mime verify {folder}"
+    else:
+        head = (f"{words} unpacked to {folder}, but not complete: {outcome.not_downloaded} "
+                f"asset{'s' if outcome.not_downloaded != 1 else ''} could not be downloaded (the refusal says why)")
+        tail = f"Next: once that is dealt with, mime verify {folder}"
+    packages = ("Packages: every one its [requires] names is installed in its range" if not unmet else
+                f"Packages: {', '.join(f'{row.name} {row.wanted} ({row.found or 'not installed'})' for row in unmet)}: "
+                f"{requires_install_line(unmet)} (the block's author chose these: check them first)")
+    lines = [head, f"  - Manifest, definition, fragment and content hash {held.manifest['content']}: OK",
+             f"  - Cases: {len(cases)}", f"  - {packages}", tail]
+    if say is not None:
+        say(Said("\n".join(lines), DONE if outcome.stopped is None else STOPPED))
+    if outcome.stopped is not None:
+        raise outcome.stopped
+    return destination
+
+
+def pulled_block(source: str, *, accept_licences: Collection[str] = (), yes: bool = False,
+                 force: bool = False) -> tuple[Path, str | None, str]:
+    """The block container ``source`` names (a DOI, an address or a file), fetched into the asset cache as ``mime pull``
+    fetches one, for ``exp.use``: its path, the DOI of the record it was read from, and its file name there. Another
+    kind of container is refused (``container.kind``)."""
+    from mime.saved._studies import BLOCK, container_kind
+
+    fetched, doi = _bundle_file(parse_source(source), None, assets.RETRIEVE_LIMIT_BYTES, yes, force)
+    if len(fetched) != 1 or container_kind(fetched[0].path, named=fetched[0].named) is not BLOCK:
+        raise _refuse("container.kind", RefusalClass.USER,
+                      f"{plain(source)} holds {'more than one container' if len(fetched) != 1 else 'another kind of container'}, "
+                      f"and exp.use takes a block", "use a block's folder, its .mimeblock, or the DOI of a block's record")
+    return fetched[0].path, doi, fetched[0].named
 
 
 def _pull_studies(fetched: Sequence[Fetched], into: str | os.PathLike[str] | None, *, fetch_assets: bool, yes: bool,
@@ -689,4 +770,4 @@ def pulled_parent(source: str | os.PathLike[str], *, accept_licences: Collection
     return destination, doi
 
 
-__all__ = ["Source", "adapters_needed", "packages_needed", "parse_source", "pull", "pulled_parent"]
+__all__ = ["pulled_block", "Source", "adapters_needed", "packages_needed", "parse_source", "pull", "pulled_parent"]

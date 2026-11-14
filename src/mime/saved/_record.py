@@ -438,6 +438,12 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
                                  "keep the file where the experiment names it until it is saved: built.save(folder)"))
         files = ()
     remote = remote_assets(plans)
+    if settings.blocks:
+        from mime.blocks._referenced import container_records
+
+        held = {ref.sha256 for ref in remote}
+        remote = (*remote, *(ref for ref in container_records(settings.blocks, settings.assets or ())
+                             if ref.sha256 not in held))
     referenced: tuple[tuple[str, AssetRef], ...] = ()
     if document is not None and "terms" in document:
         sizes = {f"{SCENE_FOLDER}/{layer.file}": (layer.sha256, len(layer.content)) for layer in plans.scene.layers}

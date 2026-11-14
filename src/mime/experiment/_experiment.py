@@ -623,7 +623,8 @@ class Experiment:
         self._declare(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
 
     @public
-    def use(self, block: str | PathLike[str], /, *, name: str | None = None, **sockets: Handle | str) -> BlockHandle:
+    def use(self, block: str | PathLike[str], /, *, name: str | None = None, accept_licences: Collection[str] = (),
+            yes: bool = False, force: bool = False, **sockets: Handle | str) -> BlockHandle:
         """Use a block: a published, versioned part of an experiment (things, laws, observations, values with their
         reasons, at most one controller) that another lab made, with the sockets its user binds (``medium=water``,
         ``subject=umr``: a handle ``add_*`` returned, or the thing's name). ``block`` is a block folder: one ``mime pull``
@@ -643,14 +644,18 @@ class Experiment:
         version and content hash, its tier and licence, how its sockets were bound, what it provides and what was
         declared over it. A block whose licence is open or conditional is **copied**: its declarations are in the
         document, so a load never needs the block, and its licence joins the document's own (a non-commercial block
-        makes the document's own files non-commercial). Any other is used **by reference**, which a later release
-        reads (``load.referenced-block``).
+        makes the document's own files non-commercial). Any other is used **by reference**: the document records the
+        use and what was declared over it, the lock the record of the block's container, and a load reads the
+        container through the asset gate (``block.changed`` where its content is not the one recorded). ``block`` may
+        also be a block's file (``.mimeblock``) or the DOI of its record, which is pulled through ``mime pull``'s gates
+        into the asset cache: ``accept_licences``, ``yes`` and ``force`` are as :meth:`based_on` takes them.
 
         Returns the use's handle: an attribute is a thing the block provides, by the block's name for it
         (``probe.transducer``), and ``probe.handle(<id>)`` gives a law or an observation by its id in the block."""
         from mime.blocks._use import used
 
-        held = used(block, name=name, sockets=sockets, held=self._declarations, blocks=self._settings.blocks or {})
+        held = used(block, name=name, sockets=sockets, held=self._declarations, blocks=self._settings.blocks or {},
+                    accept_licences=accept_licences, yes=yes, force=force)
         if not held.again:
             for declaration in held.declarations:
                 self._declare(declaration)
@@ -743,7 +748,8 @@ class Experiment:
         document, refusals = read_document(Path(path))
         if refusals or document is None:
             raise LoadRefused(refusals)
-        return cls._declared(*declarations_from(document, folder=Path(path).parent))
+        return cls._declared(*declarations_from(document, folder=Path(path).parent,
+                                                assets=_lock_assets_beside(Path(path))))
 
     @classmethod
     @public
@@ -766,7 +772,8 @@ class Experiment:
         other_release = _folder.other_release_refusal(form)
         if other_release is not None:
             raise _folder.LoadRefused([other_release])
-        experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder)))
+        experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder),
+                                                      cast(Any, form.lock.get("assets", []))))
         experiment._saved = form
         try:
             experiment.load_report = experiment.build().load_report
@@ -825,6 +832,22 @@ class Experiment:
                      f"taken from {parent.name!r}, the saved experiment this one is based on")
         experiment._taken = {**{id(each): (each, held) for each in experiment._declarations}, **experiment._taken}
         return experiment
+
+
+def _lock_assets_beside(document: Path) -> list[Any]:
+    """The asset records of the lock beside a document, where one is: what a block used by reference is found by. None
+    where there is no lock, or one that does not read as JSON (a document is read alone)."""
+    from mime.saved import LOCK_FILE
+
+    lock = document.parent / LOCK_FILE
+    if not lock.is_file():
+        return []
+    try:
+        held = json.loads(lock.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    found = held.get("assets", []) if isinstance(held, dict) else []
+    return list(cast(list[Any], found)) if isinstance(found, list) else []
 
 
 def _handle_of(thing: Any) -> Any:

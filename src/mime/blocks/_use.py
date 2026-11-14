@@ -7,7 +7,7 @@ read into declarations by the load's own reader, which resolves each entry among
 nothing; each entry's distribution is held to ``[requires]`` (``block.entry``, the block author's to fix); what it
 provides is held to what the experiment already declares (``block.name``). Its tier decides what the saved document
 holds: a copied block's declarations themselves, so that a load never needs the block; a referenced block's container
-is read by a later MIME, and refused here as ``load.referenced-block``.
+is recorded in the lock, and its declarations stay out of the document (:mod:`mime.blocks._referenced`).
 
 The use is recorded in the experiment's ``blocks`` (:class:`~mime.saved._schema.BlockUseDoc`): the block's id, version,
 content hash, tier and licence, how its sockets were bound, the names it provides, and the keys the experiment declared
@@ -214,6 +214,16 @@ def _section_of(key: tuple[str, str]) -> tuple[str, str] | None:
     return section, CONTROLLER if section == "controller" else key[1]
 
 
+def key_of(declaration: Declaration) -> tuple[str, str] | None:
+    """The section of ``names`` and the name a declaration is held under, or ``None`` for one no section holds."""
+    known = known_as(declaration)
+    if known is not None and known.key is not None:
+        return _section_of(known.key)
+    from mime.build import TermsDeclaration
+
+    return ("terms", declaration.path) if isinstance(declaration, TermsDeclaration) else None
+
+
 def provided_keys(names: BlockNamesDoc) -> set[tuple[str, str]]:
     return {(section, name) for section, held in cast(Mapping[str, list[str]], names).items() for name in held}
 
@@ -324,24 +334,46 @@ class BlockHandle:
         return self.lookup(self.ids.get(local, local))
 
 
-def _folder(block: str | os.PathLike[str]) -> Path:
-    """The block folder ``block`` names. This release reads a block from its folder; a block's file and a DOI are
-    refused, naming the route."""
-    from mime.saved._studies import BLOCK_SUFFIX
+@dataclass(frozen=True)
+class Source:
+    """Where a use reads a block from: its folder (an author's, one ``mime pull`` unpacked, or a container's unpacked
+    into the asset cache), the container it came in (``None`` for a folder), the DOI of the record it was pulled from,
+    and the container's file name in that record."""
 
-    path = Path(os.fspath(block))
-    if path.is_dir() and is_block_folder(path):
-        return path
+    folder: Path
+    container: Path | None = None
+    doi: str | None = None
+    named: str | None = None
+
+
+def source_of(block: str | os.PathLike[str], *, accept_licences: Collection[str] = (), yes: bool = False,
+              force: bool = False) -> Source:
+    """The block ``block`` names: a block folder, a ``.mimeblock`` file (unpacked once into the asset cache, every
+    member and its content hash checked), or a DOI or address, pulled through pull's gates into the cache as
+    :meth:`Experiment.based_on` pulls a parent."""
+    from mime.blocks._container import cached_folder
+    from mime.saved._studies import BLOCK, BLOCK_SUFFIX, container_kind
+
+    text = os.fspath(block)
+    path = Path(text)
     if path.is_dir():
+        if is_block_folder(path):
+            return Source(path)
         raise BuildRefused([Refusal("block.format", RefusalClass.USER,
                                     f"{path} is a folder, and not a block's: a block folder holds mime.toml and "
-                                    f"block.mime.yaml", "use a block folder, `exp.use(<block folder>, ...)`: your own, "
-                                                        "or one its author shared")])
-    what = "a block's file" if os.fspath(block).endswith(BLOCK_SUFFIX) else "not a block folder"
-    raise BuildRefused([Refusal("block.format", RefusalClass.USER,
-                                f"exp.use reads a block from its folder, and {plain(os.fspath(block))!r} is {what}",
-                                "use the block's folder, `exp.use(<block folder>, ...)`; a block's file is unpacked by a "
-                                "later MIME release (`pip install -U mime-engine`)")])
+                                    f"block.mime.yaml", "use a block folder, `exp.use(<block folder>, ...)`, a block's "
+                                                        "file, or its record's DOI")])
+    if path.is_file():
+        if container_kind(path) is not BLOCK:
+            raise BuildRefused([Refusal("block.format", RefusalClass.USER,
+                                        f"{plain(text)} is not a block's container ({BLOCK_SUFFIX})",
+                                        "use a block folder, its `.mimeblock`, or its record's DOI: "
+                                        "`exp.use(<block>, ...)`")])
+        return Source(cached_folder(path), path, None, path.name)
+    from mime.saved._pull import pulled_block
+
+    container, doi, named = pulled_block(text, accept_licences=accept_licences, yes=yes, force=force)
+    return Source(cached_folder(container), container, doi, named)
 
 
 @dataclass(frozen=True)
@@ -368,12 +400,13 @@ class Used:
 
 
 def used(block: str | os.PathLike[str], *, name: str | None, sockets: Mapping[str, object],
-         held: Sequence[Declaration], blocks: Mapping[str, BlockUseDoc]) -> Used:
+         held: Sequence[Declaration], blocks: Mapping[str, BlockUseDoc], accept_licences: Collection[str] = (),
+         yes: bool = False, force: bool = False) -> Used:
     """The use of ``block`` in an experiment that holds ``held`` and uses ``blocks``, worked out (every refusal at
-    once, :mod:`mime.blocks._use`); :meth:`mime.experiment.Experiment.use` makes it."""
-    from mime.saved._reconstruct import referenced_block_refusals
-
-    folder = _folder(block)
+    once, :mod:`mime.blocks._use`); :meth:`mime.experiment.Experiment.use` makes it. A block used by reference brings
+    its container's record with its asset records: the save's lock holds it, and a load finds the container by it."""
+    source = source_of(block, accept_licences=accept_licences, yes=yes, force=force)
+    folder = source.folder
     definition = definition_of(folder)
     refusals: list[Refusal] = []
     try:
@@ -414,14 +447,38 @@ def used(block: str | os.PathLike[str], *, name: str | None, sockets: Mapping[st
     refusals += name_refusals(definition, expanded, held, key, name is not None)
     if refusals:
         raise BlockRefused(refusals)
-    doc = use_doc(definition, content, bound, expanded.names)
+    doc = use_doc(definition, content, bound, expanded.names, source.doi)
+    brought = definition.assets
     if definition.tier == "referenced":
-        raise BuildRefused(referenced_block_refusals(cast(Any, {"mime": "", "blocks": {key: doc}}), using=True))
-    return Used(key, doc, expanded.declarations, definition.assets, from_block, False, prefix, expanded.ids)
+        from mime.blocks._referenced import kept_container, own_file_refusals
+
+        refusals = own_file_refusals(definition, expanded)
+        if refusals:
+            raise BlockRefused(refusals)
+        brought = (*brought, kept_container(definition, source, accept_licences))
+    adopt_assets(definition)
+    return Used(key, doc, expanded.declarations, brought, from_block, False, prefix, expanded.ids)
+
+
+def adopt_assets(definition: Definition) -> None:
+    """Each file of the block folder's ``assets/`` that an ``[[assets]]`` record names by its sha256, put into the asset
+    cache under it (a copy a person placed, taken only by its sha256): what a ``.mimeblock`` carries of open and
+    conditional asset files, which a use's build then finds as a fetched one."""
+    from mime.blocks._container import stored
+    from mime.blocks._definition import ASSETS
+
+    folder = definition.folder / ASSETS
+    if not folder.is_dir():
+        return
+    by_size = {ref.size: [each for each in definition.assets if each.size == ref.size] for ref in definition.assets}
+    for path in sorted(folder.iterdir()):
+        for ref in by_size.get(path.stat().st_size, []) if path.is_file() else []:
+            if stored(ref, path):
+                break
 
 
 __all__ = ["MET", "NOT_INSTALLED", "OUTSIDE", "SECTIONS", "requires_install_line", "BlockHandle", "BlockRefused", "RequirementRow", "Used",
            "bound_sockets",
-           "entry_refusals", "expanded_for_check", "held_keys", "name_refusals", "provided_keys",
+           "entry_refusals", "expanded_for_check", "held_keys", "key_of", "name_refusals", "provided_keys",
            "requirement_rows", "requires_refusal", "requires_refused", "taken", "taken_from", "use_doc", "used",
            "with_override"]
