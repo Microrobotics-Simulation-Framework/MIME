@@ -48,9 +48,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cost measured on any platform, and beyond those platforms and sizes it is an extrapolation. A batched study stays refused
   (`camera.batched`); `Observation.forward_only` becomes `Observation.unbatched` (`mime.registry.unbatched_of`), a
   batched study's refusal alone, and a derivative an observation's node cannot take is its node's to refuse by name
-  through `derivative_problem`. The entry stays `unverified` (its renderer's switches are not yet declared). No forward
+  through `derivative_problem`. The entry's status stays `unverified` in this entry; the next one declares the renderer's switches. No forward
   program changes: the step, a run and its forward-mode derivative compile to the same text, and every forward array is
   the same bit for bit.
+
+- **The in-loop camera's switches are declared, and its gradient status is derived** (`mime.observations.Camera`, dev2). The
+  renderer's non-smooth operations that have a branch a derivative can take go through `mime.core.switch` (the box edge's
+  pieces, the exact disc's chain, the pieces' composition, the closed forms' intervals and caps, the corner choice), under 29
+  owners `camera.*` declared on the entry, each with a row of the switch harness at the renderer's own function on one pixel
+  or one ray; the entry's status is `piecewise_jump`, the one they give, in place of `unverified`. Measured there: a jump
+  where two pieces of an outline meet inside a pixel, where the pinhole crosses a cap's plane and at the exact disc's series
+  threshold (6.1e-12 in the unit circle's units squared, so a pixel's share jumps by that times the square of the ball's radius in pixels; the series is a term short), a kink or smoother at the others, and the corner choice
+  continuous at its threshold. The undistortion's seven `stop_gradient`s are cleared by a standing test of its derivative
+  (`tests/sensing/test_undistortion.py`): the ray's point's derivative in the five coefficients and the pixel, forward and
+  reverse, both dtypes, against the implicit function's and (float64) central differences, near the validity radius and away
+  from it, with three planted wrong derivatives failing every case. What stays raw is listed with its reason, among it the closed form of a capsule (scanned, neither routed nor declared: the status does not cover its own kinks and jumps, a follow-up). Bounded, not
+  estimated: the harness measures a switch's order at one placed point, and the derivative across a kink is the branch
+  taken's by construction, not by that row. No program changes: the step, a run and its forward-mode derivative compile to
+  the same text, f64 and f32 (the control, one ulp, differs).
 
 - **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,

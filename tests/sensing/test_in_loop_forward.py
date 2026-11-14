@@ -1,5 +1,6 @@
 """Forward-mode derivatives of the in-loop camera's ``expected`` against central differences of the same run, through the
-built graph (``Study.gradient(mode="forward")``, the camera's path acknowledged as the unverified entry it is declared).
+built graph (``Study.gradient(mode="forward")``, the camera's path acknowledged, as it was while the entry was declared
+unverified: its status is now the piecewise one its switches give, which needs no acknowledgement).
 
 A ball settles in the tube's water under gravity (a bead 1.1 times water's density), seen by a camera that sees the whole
 scene, a frame every base step, for 5 ms. Three objectives, each a scalar of the last frame's ``expected``:
