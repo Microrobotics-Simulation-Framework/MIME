@@ -31,12 +31,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import zipfile
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import IO, Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -210,6 +211,40 @@ def stage_entries(path: Path, new: Mapping[str, NDArray[Any]], drop_prefixes: Se
     return temporary
 
 
+def _declared(file: IO[bytes], info: zipfile.ZipInfo, archive_size: int) -> int:
+    """The bytes the array of the NPZ entry ``info``, open as ``file`` at its start, declares, once they are checked to be
+    those the entry holds (``ValueError`` otherwise): see :func:`stored_array`."""
+    if info.compress_type != zipfile.ZIP_STORED:
+        raise ValueError(f"the entry {info.filename} is compressed, and a study's NPZ is written uncompressed")
+    if info.file_size > archive_size:
+        raise ValueError(f"the entry {info.filename} says it holds {info.file_size} bytes, more than the whole file")
+    version = np.lib.format.read_magic(file)
+    if version == (1, 0):
+        shape, _, dtype = np.lib.format.read_array_header_1_0(file)
+    elif version == (2, 0):
+        shape, _, dtype = np.lib.format.read_array_header_2_0(file)
+    else:
+        raise ValueError(f"the entry {info.filename} is an array of NumPy format {version[0]}.{version[1]}")
+    count = math.prod(shape)
+    if dtype.hasobject or any(extent < 0 for extent in shape) or (dtype.itemsize == 0 and count > 0):
+        raise ValueError(f"the entry {info.filename} is not an array of plain numbers or text")
+    declared, held = count * dtype.itemsize, info.file_size - file.tell()
+    if declared != held:
+        raise ValueError(f"the entry {info.filename} declares an array of {declared} bytes and holds {held}")
+    return declared
+
+
+def stored_array(file: IO[bytes], info: zipfile.ZipInfo, archive_size: int) -> NDArray[Any]:
+    """The array of the NPZ entry ``info``, open as ``file``, read only as far as the file itself vouches for it. A study's
+    NPZ is written uncompressed (:func:`_entry`), so an entry that is compressed, or that says it holds more bytes than
+    the whole NPZ does, or whose array header declares a size other than the bytes the entry holds, is not what a run wrote
+    and is refused (``ValueError``) before an array is allocated: a deflated entry of a few kilobytes can name gigabytes,
+    and NumPy allocates what the header names. Pickled (object) arrays are refused too."""
+    _declared(file, info, archive_size)
+    file.seek(0)
+    return np.asarray(np.lib.format.read_array(file, allow_pickle=False))
+
+
 class GroupArchive:
     """A group's ``outputs.npz``, opened once and read entry by entry: the keys it holds (indexed by member), and a
     member's view of it as the archive a :class:`~mime.results.RunResult` reads from."""
@@ -236,8 +271,20 @@ class GroupArchive:
         return self._by_member.get(point, [])
 
     def __getitem__(self, key: str) -> NDArray[Any]:
-        with self._file().open(key + ".npy") as file:
-            return np.asarray(np.lib.format.read_array(file, allow_pickle=False))
+        archive = self._file()
+        info = archive.getinfo(key + ".npy")
+        with archive.open(info) as file:
+            return stored_array(file, info, self.path.stat().st_size)
+
+    def check_entries(self) -> None:
+        """Every entry's header checked against the bytes it holds (``ValueError`` for one that is not what a run wrote,
+        :func:`stored_array`), reading no array: what a later read of any entry then allocates is the entry's own size."""
+        archive, size = self._file(), self.path.stat().st_size
+        for info in archive.infolist():
+            if not info.filename.endswith(".npy"):
+                raise ValueError(f"the entry {info.filename} is not an array")
+            with archive.open(info) as file:
+                _declared(file, info, size)
 
     def member(self, point: int) -> MemberArchive:
         return MemberArchive(self, point)
@@ -284,6 +331,104 @@ def _closed(where: str, held: Mapping[str, Any], keys: frozenset[str]) -> None:
                       f"that wrote it if it came from another")
 
 
+_KINDS: dict[str, Callable[[object], bool]] = {
+    "int": lambda value: type(value) is int, "num": lambda value: type(value) in (int, float),
+    "str": lambda value: isinstance(value, str), "bool": lambda value: isinstance(value, bool),
+    "list": lambda value: isinstance(value, list), "dict": lambda value: isinstance(value, dict),
+    "none": lambda value: value is None}
+
+#: The kind of each entry the manifest's rows hold, by where; a kind is one of :data:`_KINDS`' names, ``|`` joining the
+#: alternatives (the ``<kinds>[]`` form: a list whose every item is of that kind).
+_TOP_KINDS = {"id": "str", "experiment": "dict", "axes": "list", "points": "list", "run": "dict", "drop_refused": "bool",
+              "dropped": "list", "seed": "dict", "groups": "list", "members": "list", "lineage": "dict", "reading": "str"}
+_ROW_KINDS: dict[str, dict[str, str]] = {
+    "experiment": {"name": "str", "input_hash": "str|none", "profile": "str|none"},
+    "lineage": {"base": "str", "spec": "str", "mime": "str"},
+    "axes": {"path": "str", "kind": "str", "unit": "str|none", "reason": "str|none"},
+    "points": {"index": "int", "values": "list"},
+    "dropped": {"index": "int", "coordinates": "str", "refusals": "str[]"},
+    "groups": {"index": "int", "key": "str|none", "reasons": "str[]", "members": "int[]", "batches": "int[]",
+               "batched": "bool", "compiles": "int", "seconds": "num|none", "experiment": "str|none", "sha256": "str|none"},
+    "members": {"member": "int", "point": "int", "group": "int", "status": "str", "content_key": "str|none",
+                "overrides": "list"},
+    "overrides": {"path": "str", "value": "dict", "reason": "str|none"}}
+
+
+def _shape_refused(where: str, wanted: str, value: object) -> ArgumentRefused:
+    return refused("study.manifest", RefusalClass.USER,
+                   f"{STUDY_FILE}'s {where} is a {type(value).__name__}, and this format holds {wanted} there",
+                   "a study folder's manifest is the one `Study.run_to(folder)` wrote: write the folder again with it, "
+                   "and read it with the MIME that wrote it if it came from another")
+
+
+def _expect(where: str, value: object, kinds: str) -> None:
+    """Refused (``study.manifest``) unless ``value`` is of one of the ``|``-joined ``kinds``; ``kind[]`` is a list of them."""
+    if kinds.endswith("[]"):
+        _expect(where, value, "list")
+        for item in cast(list[object], value):
+            _expect(f"{where} item", item, kinds[:-2])
+        return
+    if not any(_KINDS[kind](value) for kind in kinds.split("|")):
+        raise _shape_refused(where, " or ".join(kinds.split("|")), value)
+
+
+def _value_record(where: str, record: object) -> None:
+    """Refused (``study.manifest``) unless ``record`` is a ``{value, unit}`` that :func:`decode_value` reads: a number, a
+    boolean or a string, or a list of numbers, and a unit that is ``None`` or a unit MIME writes."""
+    _expect(where, record, "dict")
+    held = cast(dict[str, Any], record)
+    if set(held) != {"value", "unit"}:
+        raise refused("study.manifest", RefusalClass.USER, f"{STUDY_FILE}'s {where} holds {sorted(held)}, not a value and a unit",
+                      "write the folder with `Study.run_to(folder)`")
+    unit, value = held["unit"], held["value"]
+    _expect(f"{where} unit", unit, "str|none")
+    if isinstance(value, list):
+        for item in cast(list[object], value):
+            _expect(f"{where} value", item, "num")
+    else:
+        _expect(f"{where} value", value, "num" if unit is not None else "num|str|bool")
+    if unit is not None:
+        try:
+            parse_unit(cast(str, unit))
+        except ValueError as error:
+            raise refused("study.manifest", RefusalClass.USER, f"{STUDY_FILE}'s {where} names the unit {unit!r} ({error})",
+                          "write the folder with `Study.run_to(folder)`") from error
+
+
+def _check_shapes(held: dict[str, Any]) -> None:
+    """The manifest's entries each of the kind this format holds there, and its points, members and groups naming one
+    another, before anything reads them (``study.manifest``)."""
+    for where in ("experiment", "lineage"):
+        for key, kinds in _ROW_KINDS[where].items():
+            _expect(f"{where}'s {key}", held[where][key], kinds)
+    for where in ("axes", "points", "dropped", "groups", "members"):
+        for row in cast(list[object], held[where]):
+            _expect(f"{where} entry", row, "dict")
+            for key, kinds in _ROW_KINDS[where].items():
+                _expect(f"{where} entry's {key}", cast(dict[str, Any], row)[key], kinds)
+    for row in cast(list[dict[str, Any]], held["points"]):
+        for value in cast(list[object], row["values"]):
+            _value_record("a point's value", value)
+    for row in cast(list[dict[str, Any]], held["members"]):
+        for override in cast(list[object], row["overrides"]):
+            _expect("an override", override, "dict")
+            for key, kinds in _ROW_KINDS["overrides"].items():
+                _expect(f"an override's {key}", cast(dict[str, Any], override)[key], kinds)
+            _value_record("an override's value", cast(dict[str, Any], override)["value"])
+    wide = len(cast(list[object], held["axes"]))
+    indices = [row["index"] for row in cast(list[dict[str, Any]], held["points"])]
+    if len(set(indices)) != len(indices) or any(len(row["values"]) != wide for row in held["points"]):
+        raise refused("study.manifest", RefusalClass.USER,
+                      f"{STUDY_FILE}'s points name an index twice, or hold a value for other than each of its axes",
+                      "write the folder with `Study.run_to(folder)`: each point has one value for each axis")
+    if any(row["point"] not in indices for row in held["members"]):
+        raise refused("study.manifest", RefusalClass.USER, f"{STUDY_FILE} names a member at a point it does not list",
+                      "write the folder with `Study.run_to(folder)`: each member is one of its points")
+    if any(row["status"] == DONE and row["content_key"] is None for row in held["members"]):
+        raise refused("study.manifest", RefusalClass.USER, f"{STUDY_FILE} marks a member done that has no content key",
+                      "write the folder with `Study.run_to(folder)`: a member done has the key it ran under")
+
+
 def check_document(document: object) -> dict[str, Any]:
     """The manifest ``document`` if it is a study's, in a version this MIME reads and with exactly its keys; refused
     otherwise (``study.format`` for another format or a newer version, ``study.manifest`` for a key it does not know)."""
@@ -299,6 +444,8 @@ def check_document(document: object) -> dict[str, Any]:
                       "read it with the MIME that wrote it (`pip install mime-engine==<version>`), or run the study "
                       "again with this one: `mime study run <spec> --out <folder>`")
     _closed("top level", held, TOP)
+    for key, kinds in _TOP_KINDS.items():
+        _expect(key, held[key], kinds)
     _closed("experiment", held["experiment"], EXPERIMENT_KEYS)
     _closed("run", held["run"], RUN_KEYS)
     _closed("seed", held["seed"], SEED_KEYS)
@@ -306,11 +453,16 @@ def check_document(document: object) -> dict[str, Any]:
     for where, keys, rows in (("axes", AXIS_KEYS, held["axes"]), ("points", POINT_KEYS, held["points"]),
                               ("dropped", DROPPED_KEYS, held["dropped"]), ("groups", GROUP_KEYS, held["groups"]),
                               ("members", MEMBER_KEYS, held["members"])):
-        for row in cast(list[dict[str, Any]], rows):
-            _closed(f"{where} entry", row, keys)
+        for row in cast(list[object], rows):
+            _expect(f"{where} entry", row, "dict")
+            _closed(f"{where} entry", cast(dict[str, Any], row), keys)
     for row in cast(list[dict[str, Any]], held["members"]):
-        for override in cast(list[dict[str, Any]], row["overrides"]):
-            _closed("override", override, OVERRIDE_KEYS)
+        _expect("a member's overrides", row["overrides"], "list")
+        for override in cast(list[object], row["overrides"]):
+            _expect("an override", override, "dict")
+            _closed("override", cast(dict[str, Any], override), OVERRIDE_KEYS)
+    _check_shapes(held)
+    for row in cast(list[dict[str, Any]], held["members"]):
         if row["status"] not in (PENDING, DONE):
             raise refused("study.manifest", RefusalClass.USER,
                           f"a member's status is {row['status']!r}, and a status is {PENDING!r} or {DONE!r}",
@@ -390,5 +542,5 @@ def iter_groups(root: Path) -> Iterator[tuple[int, Path]]:
 
 __all__ = ["BASE_DIR", "COMPARE_FILE", "CONTENT_KEY", "DONE", "FIGURES_DIR", "GROUPS_DIR", "GROUP_OUTPUTS", "GROUP_REPORT", "PENDING", "READING",
            "SPEC_FILE", "STUDY_FILE", "STUDY_FORMAT", "STUDY_VERSION", "TEMPORARY", "GroupArchive", "MemberArchive",
-           "check_document", "check_layout", "decode_value", "encode_value", "file_sha256", "iter_groups",
+           "check_document", "check_layout", "decode_value", "encode_value", "file_sha256", "iter_groups", "stored_array",
            "layout_problems", "refused", "stage_entries", "temporaries", "temporary_of", "write_json", "write_text"]

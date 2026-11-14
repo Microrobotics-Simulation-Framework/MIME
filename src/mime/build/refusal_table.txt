@@ -117,6 +117,7 @@ confinement.no-hull           user
 confinement.rule              user
 confinement.spacing-short     user
 confinement.surface-shape     user
+container.kind                user
 control.law-raised            user
 control.law-traced-branch     user
 control.law-writes            user
@@ -589,6 +590,8 @@ study.folder-not-empty        user
 study.format                  user
 study.group-file              user
 study.held-geometry           user
+study.incomplete              user
+study.input-hash              user
 study.leaf-unread             user
 study.manifest                user
 study.no-base                 user

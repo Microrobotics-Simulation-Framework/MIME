@@ -193,7 +193,7 @@ def _shifted(held):
      lambda two: lambda path: shutil.copy(two / "B" / "groups" / "0" / "outputs.npz", path), "another study"),
     ("the review's deletion: member 1's entries removed",
      lambda two: lambda path: rewritten(path, lambda held: {n: d for n, d in held.items() if not n.startswith("m1/")}),
-     "1 member (point 1) marked done"),
+     "is not the file study.json records for group 0"),  # hashed before it is opened: the sha256 says it first
     ("a value changed, the keys intact",
      lambda two: lambda path: rewritten(path, _shifted), "changed after the run")])
 def test_a_group_file_that_is_not_the_manifests_is_refused_by_name(two, tmp_path, case, damage, words):
