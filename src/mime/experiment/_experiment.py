@@ -836,14 +836,15 @@ class Experiment:
 
 def _lock_assets_beside(document: Path) -> list[Any]:
     """The asset records of the lock beside a document, where one is: what a block used by reference is found by. None
-    where there is no lock, or one that does not read as JSON (a document is read alone)."""
+    where there is no lock, or one that does not read through the one reader of locks (a document is read alone)."""
+    from mime._lock_json import read_lock
     from mime.saved import LOCK_FILE
 
     lock = document.parent / LOCK_FILE
     if not lock.is_file():
         return []
     try:
-        held = json.loads(lock.read_text(encoding="utf-8"))
+        held = read_lock(lock)
     except (OSError, ValueError):
         return []
     found: object = cast(dict[str, object], held).get("assets", []) if isinstance(held, dict) else []
