@@ -70,7 +70,7 @@ camera.mount                  user
 camera.no-closed-form         user
 camera.rate                   user
 camera.recorded-frames        user
-camera.reverse                user
+camera.reverse-memory         user
 camera.route                  user
 camera.subject                user
 chain.armature                user

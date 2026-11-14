@@ -26,9 +26,14 @@ make's derivative in the leaves (:func:`carrying`), so a derivative is right fro
 step, and its tangent is made once a chunk, not in every frame. Nothing of the structure is a constant of the program.
 ``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
-**Forward mode only.** A derivative passes in forward mode (the ring's poses and the leaves); reverse mode and a batched
-study are refused by the study (``Observation.forward_only``), naming the offline renderer, because the frame's cond is a
-``select`` under ``vmap`` and reverse mode would keep every frame step's render.
+**Both modes; a batched study refused.** A derivative passes in forward and in reverse mode (the ring's poses and the
+leaves). Reverse mode keeps, at every step of the chunk it differentiates, the residuals of the frame's cond as large as
+its largest branch, whichever runs: each corner sub-sample and the branch that makes the static structure are
+checkpointed, so a step keeps neither (a step's tape is a few tens of frames, not thousands), and a program that takes
+no reverse derivative is unchanged. A study's reverse derivative whose tape would not fit the memory a run can have is
+refused before it compiles (:meth:`CameraNode.derivative_problem`, ``camera.reverse-memory``), naming the offline
+renderer. A batched study is refused by the study (``Observation.unbatched``): under ``vmap`` the frame's cond is a
+``select``, so every step would render.
 """
 
 from __future__ import annotations
@@ -90,7 +95,7 @@ PLANES = 11
 #: subjects times the exposure's sub-frames. ``start`` is a chunk start's state kept for the backward pass, ``step`` and
 #: ``moving`` one step's tape within the chunk being differentiated, ``fixed`` the static structure, its derivative and
 #: one step's backward pass. :data:`REVERSE_MEASURED` says how they were measured.
-REVERSE_FRAMES = {"fixed": 0.0, "start": 0.0, "step": 0.0, "moving": 0.0}
+REVERSE_FRAMES = {"fixed": 300.0, "start": 3.0, "step": 30.0, "moving": 5.0}
 #: The refusal's margin on the estimate, the largest measured peak over its estimate, rounded up; and its headroom, the
 #: share of the memory a run can have that it keeps free (the near field's rule, ``MEMORY_HEADROOM``).
 REVERSE_MARGIN = 1.0
@@ -250,7 +255,8 @@ class CameraNode(MountedNode):
                      "is a multiple of it, exposed over the sub-frames' base steps ending at that step",
                      "The scene is the experiment's bodies (their outermost parts) and structures, imaged by the "
                      "closed form of their kinds; a body is taken to move, a structure to stand"),
-        limitations=("Forward mode only: reverse mode and a batched study through it are refused",
+        limitations=("A batched study through it is refused (under vmap every step would render), and reverse mode where "
+                     "its tape would not fit the memory a run can have",
                      "A camera on a frame that moves is exposed at the frame step's pose throughout the exposure",
                      "A declared camera model: backlit, one bin, no optics beyond the pinhole and its distortion"),
     )
