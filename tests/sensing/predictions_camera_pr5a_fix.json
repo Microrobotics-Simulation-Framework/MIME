@@ -9,7 +9,10 @@
     "geometry (scripts/camera_route2/corner_line.py): the coil's notches over the drawn poses (|beta| <= 10.6 deg): outside wedges 24.1 to 120.9 deg, the least branch radius 24.2 um (at the broad apex, beta 10.6 deg), the arm at least 27.5 deg from the line of sight at a notch; the second coil (pitch 0.52 mm, 3 turns): wedges 21.8 to 94.8 deg, least branch radius 62.2 um, 30.0 deg"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); every gate below on a probe through probe_launch.sh; timings only from G19's arms",
     "sizes_and_parameters": "the coil (radius 0.4 mm, pitch 0.6 mm, 2.5 turns, filament 80 um; 48 samples a ray) and the second coil (pitch 0.52 mm, 3 turns, the rest the same; 49 samples), seen from 0.1 m across a 3 mm field at 128 x 96, 256 x 192 and 512 x 384 (23.4, 11.7 and 5.86 um a pixel); corner sub-samples 4 x 4; the sign-only truth at 64 x 64 jittered samples a pixel and 512 signs, always in float64",
     "seeds_and_draws": "corner: test_sampled.drawn_pose at DETECTION_SEED 2000 to 2199 (never run; the PR's draws were 0 to 59 and the review's 1000 to 1059), 200 a width, coil and dtype, clean and planted; the ripple: DETECTION_SEED 0 to 29; G16: Hypothesis's default 100 examples a kind"
@@ -20,7 +23,10 @@
     "case": "tests/sensing/test_sampled.py::test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth[<dtype>-<coil>-<width>], through detection_rate.py (plant CAMERA_PLANT=single-edge, DETECTION_SEED 2000 to 2199, two arms of 100 a case), each draw's clean largest error and planted largest error recorded (CORNER_RECORD)",
     "prediction": {
       "value": "the line, per case: the coil 0.0469 / 0.0297 / 0.0211 in float64 (128 / 256 / 512 px) and 0.0505 / 0.0369 / 0.0355 in float32; the second coil 0.0259 / 0.0192 / 0.0158 and 0.0295 / 0.0264 / 0.0302 (corner_line.py's terms: 0.035525 / rho_px + 1e-4 + 0.0123 + 1e-4 + float32's 2 sqrt(2) 5 u D / p)",
-      "band": [0.0, 1.0],
+      "band": [
+        0.0,
+        1.0
+      ],
       "unit": "the line's share of a pixel; the clean largest error is predicted at about 0.005 to 0.012 (the truth's own scatter, about 0.0017 a pixel, over 1e4 pixels, and the cell term's realistic part, a quarter of its bound)",
       "basis": "derived",
       "why": "the exact union removes the vertex and sliver term that dominated (one straight edge in a cell both branches cross misses up to half the cell, along a sharp notch's sliver: s^2 / (4 tan(w / 2)), 0.065 at w = 24 deg, the PR's clean worst); the parabola step removes the held point's error on the sub-rays (delta^2 cos^2 gamma / 2 b, up to 0.03 px at 128); what is left is each branch's curvature in a sub-cell and the truth's floor"
@@ -43,7 +49,10 @@
     "case": "probe arm DERIV (scripts/camera_route2/derivative.py): the coil at G20's straight and tilted poses, 128 px, float64; (a) the central difference's step swept from 1/256 to 2 px; (b) the jvp at 32 positions over one pixel of motion against the central difference over that pixel, with the PR's scheme (CAMERA_PLANT=lesser, the plant that restores it), the union alone, the parabola step alone, and the fix; (c) the truth's motion (64 x 64 samples, central difference at a quarter pixel) at each pose",
     "prediction": {
       "value": "(a) the central difference holds from 1/2 px on within 2e-4 of the centroid's motion; (b) the PR's scheme 0.96 to 1.02, the union alone within 0.007, the step alone 0.97 to 1.02, the fix within 0.003 of the central difference at every position, at both poses; (c) the fix's jvp within 0.5 % of the truth's motion",
-      "band": [0.0, 0.003],
+      "band": [
+        0.0,
+        0.003
+      ],
       "unit": "the fix's largest relative deviation of the jvp's centroid motion from the central difference over a pixel",
       "basis": "measured-before",
       "why": "local diagnostics (seen_before); the one-sided jumps of the least's composition give a small boundary term (the jvp's mean 0.17 % low on a 16 x 16 grid of it), which the union, continuous, has none of"
@@ -61,7 +70,10 @@
     "case": "probe arm G20 (scripts/camera_route2/g20.py, the PR's probe script with the truth at 64 x 64): 128 px, float64",
     "prediction": {
       "value": "against the truth 0.2 to 0.6 % at every entry (the PR's scheme read 1.6 % at the straight pose in x); N to 2N under 0.4 %",
-      "band": [0.0, 0.01],
+      "band": [
+        0.0,
+        0.01
+      ],
       "unit": "relative motion error",
       "basis": "measured-before",
       "why": "the ripple removed (gate_derivative_cause); the truth's own floor in motion is about 0.1 % at a quarter-pixel step"
@@ -78,7 +90,10 @@
     "case": "tests/sensing/test_sampled.py::test_the_coils_motion_derivative_holds_across_a_pixel_of_motion (float64, 128 px), DETECTION_SEED 0 to 29",
     "prediction": {
       "value": 0.003,
-      "band": [0.0, 0.01],
+      "band": [
+        0.0,
+        0.01
+      ],
       "unit": "largest relative deviation",
       "basis": "measured-before",
       "why": "as gate_derivative_cause (b)"
@@ -99,7 +114,10 @@
     "case": "probe arms G19S160, G19S320, G19S640 (scripts/camera_route2/g19.py, the PR's probe: node_measure.py through built.run on an in-loop coil, a frame every step), float32 and float64",
     "prediction": {
       "value": "effective rates within the PR's band (float32 23 to 31, float64 12 to 14 G flops-equivalents a second), a frame 1.3 to 1.6 times the PR's",
-      "band": [5000000000.0, 40000000000.0],
+      "band": [
+        5000000000.0,
+        40000000000.0
+      ],
       "unit": "flops-equivalents a second",
       "basis": "measured-before",
       "why": "the refinement adds evaluations the estimate counts; the union adds arithmetic it does not (about 150 flops a cell, a few per cent of a cell's two pieces)"
@@ -110,33 +128,84 @@
     "claim": "a kind declaring a crease measure is refused route 2 (camera.crease-unmeasured: the sampled route does not read one until camera PR 5b), creased or not",
     "kind": "acceptance",
     "case": "tests/sensing/test_camera_refusals.py::test_a_kind_declaring_a_crease_measure_is_refused_the_sampled_route",
-    "prediction": {"value": "refused, both lab kinds", "band": [null, null], "unit": "", "basis": "derived",
-                   "why": "route_of checks the declaration before the sign function"},
-    "control": {"plant": "the PR's head (13c80033): the creased lab kind with a measure passes through", "expected_rate": "fails on the base"}
+    "prediction": {
+      "value": "refused, both lab kinds",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "derived",
+      "why": "route_of checks the declaration before the sign function"
+    },
+    "control": {
+      "plant": "the PR's head (13c80033): the creased lab kind with a measure passes through",
+      "expected_rate": "fails on the base"
+    }
   },
   "gate_g16_float32": {
     "claim": "each kind's sign function passes G16's conformance in float32 as in float64 (Hypothesis's default 100 examples a kind, drawn in the dtype the check computes in)",
     "kind": "acceptance",
     "case": "tests/scene/test_sign_functions.py, float32 and float64 arms",
-    "prediction": {"value": "no problem in either dtype", "band": [null, null], "unit": "problems", "basis": "derived",
-                   "why": "the floor and the comparison's rounding are by dtype (FLOOR, the slope's ulps)"},
-    "control": {"plant": "SIGN_PLANT=sign and SIGN_PLANT=slope in float32", "expected_rate": "caught for every kind (the deterministic controls)"}
+    "prediction": {
+      "value": "no problem in either dtype",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "problems",
+      "basis": "derived",
+      "why": "the floor and the comparison's rounding are by dtype (FLOOR, the slope's ulps)"
+    },
+    "control": {
+      "plant": "SIGN_PLANT=sign and SIGN_PLANT=slope in float32",
+      "expected_rate": "caught for every kind (the deterministic controls)"
+    }
   },
   "gate_ellipsoid": {
     "claim": "route 2 images an ellipsoid (no closed form) with its area within the box edge's curvature error of the exact projected ellipse's",
     "kind": "bounds",
     "case": "tests/sensing/test_sampled.py::test_route_two_images_an_ellipsoid_with_its_projected_area (three semi-axis sets, both dtypes)",
-    "prediction": {"value": 0.0005, "band": [0.0, 0.002], "unit": "relative area difference", "basis": "measured-before",
-                   "why": "the review's hand check: right to 2e-4; an ellipse's box-edge area error is second order in its curvature across a pixel"},
-    "control": {"plant": "the ellipsoid's first semi-axis 1 % long (planted in the test's own control, every run)", "expected_rate": "deterministic"}
+    "prediction": {
+      "value": 0.0005,
+      "band": [
+        0.0,
+        0.002
+      ],
+      "unit": "relative area difference",
+      "basis": "measured-before",
+      "why": "the review's hand check: right to 2e-4; an ellipse's box-edge area error is second order in its curvature across a pixel"
+    },
+    "control": {
+      "plant": "the ellipsoid's first semi-axis 1 % long (planted in the test's own control, every run)",
+      "expected_rate": "deterministic"
+    }
   },
   "bits": {
     "cases": "route 1's programs, base origin/release/v0.3.0 (ca96a132) against this branch's head, one CPU and one thread: the in-loop camera's step, run and forward-mode derivative (a sphere in a tube) and the offline render of a capped cylinder at its corner, float32 and float64, source locations stripped (scripts/camera_route2/hlo.py)",
     "prediction": "every compiled program's text equal",
-    "controls": {"repeat": "the head compiled twice: equal", "one_ulp": "the camera's mount one ulp of the program's dtype along y: every program's text differs"}
+    "controls": {
+      "repeat": "the head compiled twice: equal",
+      "one_ulp": "the camera's mount one ulp of the program's dtype along y: every program's text differs"
+    }
   },
   "durations": {
     "prediction": "the corner test's cases each under 30 s on a runner at 128 and 256 px; the 512 px cases and the cylinder's G16 measured, an allowlist row each where a runner report is over 30 s"
   },
+  "amendments": [
+    {
+      "when": "2026-11-14, after this file's commit (74d20f17) and before any of its probes ran; what was seen is local development (sub-minute runs while writing the probes, not evidence)",
+      "seen_before_amendment": [
+        "the ripple test at DETECTION_SEED 0's start (x 0.0137 mm, z -0.0230 mm, identity): with the parabola step alone the jvp's largest deviation in z 1.18 % (its mean 0.65 %, the darkness's derivative -0.078 px^2/px against the central difference's -0.0003), in x 0.23 %; with 95 samples 0.67 %; so in z a held point's error at the march's spacing reaches the derivative at the first order where the coil's turns are seen nearly end-on (its apexes); a second parabola step at a quarter spacing, a cubic step, and the quartic through five values half a spacing apart each take z to 0.55 to 0.62 % (seeds 0 to 2), x to 0.20 to 0.23 %; the PR's first scheme (the plant) 1.96 % at seed 0",
+        "the corner gate on seen draws (seeds 0 to 5, float64; 0 to 2, float32), after the line's commit, the scheme as built (the union and the quartic least): clean largest 0.0015 to 0.0026 at every width and coil (0.03 to 0.14 of the line), the single edge's least 0.164 to 0.333 (6.4 to 19 times the line)"
+      ],
+      "changes": {
+        "the scheme": "a branch's least on a ray is now the quartic's through five held values half a march spacing apart about the held point (two Newton steps from the parabola through the outer three, each at most half a spacing), not the parabola's alone: the parabola left the derivative 1.2 % off in z at the apexes. corner_line.py's residual term is recomputed for it (under 4e-8 px; the term stays 1e-4): every line is unchanged",
+        "gate_ripple": "prediction 0.006 (band 0 to 0.01): the largest over 16 positions and both axes is in z, about 0.6 %",
+        "gate_derivative_cause": "the fix's predicted ripple: within 0.003 in x and 0.007 in z of the central difference over a pixel; the variant 'the parabola step alone' is now 'each branch at its sub-ray's own least' (the quartic), within 0.005 of the PR's first scheme's in x",
+        "gate_g19_cost": "a ray's evaluations: its 48 samples, its two pieces' five held values, value and line's two derivatives (16), and 16 corner sub-samples of them: 320, from 150; the frame predicted 1.8 to 2.4 times the PR's"
+      }
+    }
+  ],
   "outcomes": null
 }

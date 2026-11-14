@@ -10,7 +10,8 @@ last place of the points' size).
 
 **The controls**, each failing on every draw: a sign function whose sign is flipped within a band a tenth of the
 smallest length wide about the boundary, and one whose gradient's length is 10 % long. ``SIGN_PLANT`` switches them
-on for ``.github/probe/detection_rate.py``; here each is its own test.
+on for ``.github/probe/detection_rate.py``; here each is its own test. Both run in float32 and in float64, each kind's
+sign function computed in the dtype, at points drawn in it.
 
 **The helix's held angle** (its nearest centreline angle found under ``stop_gradient``): the derivative of its sign
 function in the point and in its settings equals the central difference of the converged distance, which the switch
@@ -114,22 +115,30 @@ def planted(kind):
     return Flipped(kind, PLANT) if PLANT in ("sign", "slope") else kind
 
 
+#: The dtypes the check runs in: each kind's sign function computed in it, at points drawn in it.
+DTYPES = {"float32": jnp.float32, "float64": jnp.float64}
+
+
+@pytest.mark.parametrize("dtype", sorted(DTYPES))
 @pytest.mark.parametrize("name", sorted(KINDS))
 @settings(deadline=None)
 @given(seed=st.integers(0, 2 ** 31 - 1))
-def test_each_kinds_sign_function_has_its_regions_sign_and_its_gradients_length(name, seed):
+def test_each_kinds_sign_function_has_its_regions_sign_and_its_gradients_length(name, dtype, seed):
     kind = KINDS[name]
     assert implements(kind, "sign_function")
-    problems = sign_function_problems(planted(kind), settings_of(kind), drawn_points(kind, seed), band(kind))
+    problems = sign_function_problems(planted(kind), settings_of(kind), drawn_points(kind, seed), band(kind),
+                                      DTYPES[dtype])
     assert problems == [], "\n".join(problems)
 
 
+@pytest.mark.parametrize("dtype", sorted(DTYPES))
 @pytest.mark.parametrize("how", ["sign", "slope"])
 @pytest.mark.parametrize("name", sorted(KINDS))
-def test_control_a_flipped_sign_or_a_long_gradient_fails_the_check(name, how):
+def test_control_a_flipped_sign_or_a_long_gradient_fails_the_check(name, how, dtype):
     kind = KINDS[name]
-    problems = sign_function_problems(Flipped(kind, how), settings_of(kind), drawn_points(kind, 7), band(kind))
-    assert problems, f"{name}: the planted {how} passed"
+    problems = sign_function_problems(Flipped(kind, how), settings_of(kind), drawn_points(kind, 7), band(kind),
+                                      DTYPES[dtype])
+    assert problems, f"{name}: the planted {how} passed in {dtype}"
 
 
 def test_the_helixs_held_angle_gives_the_converged_distances_derivative():

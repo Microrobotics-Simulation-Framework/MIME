@@ -105,6 +105,86 @@ def box(g: Any, gu: Any, gv: Any, size: float = 1.0) -> Any:
     return covered(line(g, gu, gv), size)
 
 
+#: A line's distance from a cell's centre, in cells, beyond which its share of the cell is zero or one (the square's
+#: half-diagonal is 0.71): the union's lines are read with their distances clamped here.
+UNION_REACH = 2.0
+#: The least the union's divisors are taken as, each keeping its sign (a slope along a side or a chord, a direction's
+#: component): below it a segment runs within it of parallel to a line, and its share is its middle's side alone.
+UNION_FLOOR = 2.0 ** -20
+#: The cell's sides, each its middle and its direction, counterclockwise.
+_SIDES = (((0.0, -0.5), (1.0, 0.0)), ((0.5, 0.0), (0.0, 1.0)), ((0.0, 0.5), (-1.0, 0.0)), ((-0.5, 0.0), (0.0, -1.0)))
+
+
+def _outside(edge: Line, size: float) -> tuple[Any, Any, Any]:
+    """The half-plane outside a line's body in a cell's own units, ``nu y_u + nv y_v >= c`` (``y`` from the cell's
+    centre in cells, the normal unit), its distance clamped at ``UNION_REACH``. A line with no direction (an edge
+    function flat to the floor, its distance then beyond the reach) is given the cell's ``u`` axis."""
+    squared = edge.nu * edge.nu + edge.nv * edge.nv
+    directed = squared > UNION_FLOOR * UNION_FLOOR
+    length = jnp.sqrt(switch.domain_guard(directed, squared, 1.0))
+    distance = jnp.clip(-edge.distance / (size * length), -UNION_REACH, UNION_REACH)
+    return (switch.domain_guard(directed, edge.nu / length, 1.0), switch.domain_guard(directed, edge.nv / length, 0.0),
+            distance)
+
+
+def _share(middle: Any, slope: Any) -> Any:
+    """The share of a segment on which a linear function is at least zero: its value at the segment's middle and its
+    change along the segment."""
+    ratio = middle / jnp.maximum(jnp.abs(slope), UNION_FLOOR) + 0.5
+    return switch.clip(ratio, 0.0, 1.0, owner="camera.union.share", resolution=lambda: switch.rounding(1.0),
+                       indicator=ratio)
+
+
+def _both(first: tuple[Any, Any], second: tuple[Any, Any]) -> Any:
+    """The share of a segment on which two linear functions (each its middle's value and its change) are both at
+    least zero: each keeps one end of it, so where they keep the same end the lesser share, and where opposite ends
+    what their shares overlap by."""
+    a, b = _share(*first), _share(*second)
+    together = first[1] * second[1]
+    nested = switch.minimum(a, b, owner="camera.union.nested", resolution=lambda: switch.rounding(1.0),
+                            indicator=lambda: b - a)
+    apart = switch.maximum(a + b - 1.0, 0.0, owner="camera.union.apart", resolution=lambda: switch.rounding(1.0),
+                           indicator=a + b - 1.0)
+    return switch.where(together > 0.0, nested, apart, owner="camera.union.ends",
+                        resolution=lambda: switch.rounding(1.0), indicator=together)
+
+
+def _chord(nu: Any, nv: Any, c: Any) -> tuple[Any, Any, Any]:
+    """A line's chord through the cell (``nu y_u + nv y_v = c``, the normal unit): its length and its middle."""
+
+    def slab(along: Any, foot: Any) -> tuple[Any, Any]:
+        held = jnp.copysign(jnp.maximum(jnp.abs(along), UNION_FLOOR), along)
+        return -foot / held, 0.5 / jnp.abs(held)
+
+    (cu, wu), (cv, wv) = slab(-nv, c * nu), slab(nu, c * nv)
+    start = switch.maximum(cu - wu, cv - wv, owner="camera.union.chord_start",
+                           resolution=lambda: switch.rounding(1.0), indicator=lambda: (cu - wu) - (cv - wv))
+    end = switch.minimum(cu + wu, cv + wv, owner="camera.union.chord_end", resolution=lambda: switch.rounding(1.0),
+                         indicator=lambda: (cv + wv) - (cu + wu))
+    length = switch.maximum(end - start, 0.0, owner="camera.union.chord_empty",
+                            resolution=lambda: switch.rounding(1.0), indicator=end - start)
+    middle = 0.5 * (start + end)
+    return length, c * nu - middle * nv, c * nv + middle * nu
+
+
+def union_covered(a: Line, b: Line, size: float = 1.0) -> Any:
+    """The exact share of a square ``size`` pixels a side, centred where the lines were read, inside the union of the
+    two lines' bodies: one less the area of the convex polygon outside both, by its boundary integral (half the sum
+    over its sides of each side's distance from the centre times its length). Its sides are the square's, each the share
+    of it outside both bodies, and each line's chord through the square, the share of it outside the other's. Exact
+    for two straight lines, continuous in both; with one line beyond the square, the other's ``covered``."""
+    planes = (_outside(a, size), _outside(b, size))
+    outside = jnp.zeros_like(planes[0][2])
+    for (mu, mv), (eu, ev) in _SIDES:
+        sides = [(nu * mu + nv * mv - c, nu * eu + nv * ev) for nu, nv, c in planes]
+        outside = outside + 0.25 * _both(sides[0], sides[1])
+    for (nu, nv, c), (ou, ov, oc) in (planes, planes[::-1]):
+        length, mu, mv = _chord(nu, nv, c)
+        kept = _share(ou * mu + ov * mv - oc, length * (ov * nu - ou * nv))
+        outside = outside - 0.5 * c * length * kept
+    return 1.0 - outside
+
+
 def near(edge: Line) -> Any:
     """Whether the edge's line crosses the pixel."""
     return jnp.abs(edge.distance) < CORNER_REACH

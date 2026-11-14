@@ -37,6 +37,7 @@ import jax
 from mime.core import switch
 from mime.core._node import jnp
 from mime.registry import EntryKind, Geometry, Solid, implements, lookup, registered
+from mime.sensing import _coverage as coverage
 from mime.sensing import _forms as forms
 from mime.sensing._forms import Form, Vec
 
@@ -55,8 +56,11 @@ MARGIN_PX = 2.0
 #: Flops-equivalents a transcendental counts as in the structural cost estimate: the count that predicted the
 #: renderer's time (camera optimisation 1).
 TRANSCENDENTAL_WEIGHT = 20.0
-#: Evaluations a ray costs besides its samples: each of the two pieces' value and its line's two derivatives.
-PIECE_EVALUATIONS = 6
+#: Newton's steps on the quartic through a ray's five held values, from the parabola's least to the quartic's.
+LEAST_STEPS = 2
+#: Evaluations a ray costs besides its samples: each of the two pieces' five held values (its least's search) and its
+#: value and its line's two derivatives.
+PIECE_EVALUATIONS = 16
 #: Evaluations a ray costs on a frame whose corner sub-samples run: every pixel's sub-pixels (``CORNER_SAMPLES``
 #: squared, 16), each the two pieces' value and line.
 CORNER_EVALUATIONS = 16 * PIECE_EVALUATIONS
@@ -203,21 +207,53 @@ def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -
 
 
 def pieces(sampled: Sampled, held: March) -> Any:
-    """The two branches' pieces on rays: each the first-order distance at its held point; the second, where there is
-    no second minimum, the first moved out by the enclosing radius."""
+    """The two branches' pieces on rays: each the first-order distance at its ray's own least near its held point
+    (``least``); the second, where there is no second minimum, the first moved out by the enclosing radius."""
 
     def made(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
         def at(t: Any) -> Any:
             return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
 
-        first = at(held.ta)
-        return first, jnp.where(held.has2, at(held.tb), first + sampled.enclosing)
+        def least(t: Any) -> Any:
+            """The held point moved to its ray's least nearby (a corner sub-sample's, whose least is not its pixel's):
+            the least of the quartic through the distance at five points half a march spacing apart about it, by
+            Newton's steps (``LEAST_STEPS``, each at most half a spacing) from the least of the parabola through the
+            outer three (at most a spacing away). The quartic takes out the parabola's error from the profile's
+            asymmetry, whose effect on the derivative a held point leaves first order. Held, as the march is: no
+            derivative passes through it, and at the least the distance does not move with it."""
+            values = [lax.stop_gradient(at(t + 0.5 * k * held.dt)) for k in (-2.0, -1.0, 0.0, 1.0, 2.0)]
+            far_low, low, middle, high, far_high = values
+            curvature = far_low - 2.0 * middle + far_high
+            rising = curvature > 0.0
+            # In half spacings from t: the parabola's least, then the quartic's coefficients and Newton's steps.
+            at_least = jnp.where(rising, jnp.clip((far_low - far_high) / jnp.where(rising, curvature, 1.0), -2.0, 2.0),
+                                 0.0)
+            c1 = (far_low - 8.0 * low + 8.0 * high - far_high) / 12.0
+            c2 = (-far_low + 16.0 * low - 30.0 * middle + 16.0 * high - far_high) / 24.0
+            c3 = (-far_low + 2.0 * low - 2.0 * high + far_high) / 12.0
+            c4 = (far_low - 4.0 * low + 6.0 * middle - 4.0 * high + far_high) / 24.0
+            for _ in range(LEAST_STEPS):
+                slope = c1 + at_least * (2.0 * c2 + at_least * (3.0 * c3 + at_least * 4.0 * c4))
+                turn = 2.0 * c2 + at_least * (6.0 * c3 + at_least * 12.0 * c4)
+                convex = turn > 0.0
+                at_least = jnp.clip(at_least + jnp.where(convex, jnp.clip(-slope / jnp.where(convex, turn, 1.0),
+                                                                          -1.0, 1.0), 0.0), -2.0, 2.0)
+            return lax.stop_gradient(t + 0.5 * at_least * held.dt)
+
+        first = at(least(held.ta))
+        return first, jnp.where(held.has2, at(least(held.tb)), first + sampled.enclosing)
 
     return made
 
 
 def _union(parts: Sequence[Any], lesser: Any, greater: Any) -> Any:
     return lesser(parts[0], parts[1])
+
+
+def _covered_union(lines: Sequence[Any], size: float) -> Any:
+    """A cell's share of the two branches: the exact share of the union of their lines' half-planes, so that a cell
+    both cross (a concave notch, its sliver) is right, and continuous where one branch's line overtakes the other's."""
+    return coverage.union_covered(lines[0], lines[1], size)
 
 
 def form(sampled: Sampled, held: March | None = None) -> Form:
@@ -236,8 +272,8 @@ def form(sampled: Sampled, held: March | None = None) -> Form:
         def unmarched(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
             raise TypeError("a sampled form's pieces are made from its march (form(sampled, held))")
 
-        return Form(interval, unmarched, enclosing, _union, corners=True)
-    return Form(interval, pieces(sampled, held), enclosing, _union, corners=True)
+        return Form(interval, unmarched, enclosing, _union, corners=True, cover=_covered_union)
+    return Form(interval, pieces(sampled, held), enclosing, _union, corners=True, cover=_covered_union)
 
 
 def evaluation_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any) -> float:

@@ -1,5 +1,6 @@
-"""G11, refusals: a creased kind without its crease measure (the box, the screw) and a lab's kind with neither a closed
-form nor a sign function are refused for the camera with their reasons; a route override naming no route, and the
+"""G11, refusals: a creased kind without its crease measure (the box, the screw), a kind that declares one (the sampled
+route reads none yet) and a lab's kind with neither a closed form nor a sign function are refused for the camera with
+their reasons; a route override naming no route, and the
 closed form forced on a kind without one; a subject written against its kind; subjects named
 twice, a parent no subject is, a cycle of parents, a moving subject with no pose, a stage's display opacity outside 0
 to 1; a stale static cache and one given while its numbers are traced.
@@ -35,6 +36,26 @@ def test_a_kind_with_no_route_is_refused_with_its_reason(kind, refused, monkeypa
     assert code(error) == {refused}
     message = str(error.value)
     assert kind in message and ("crease" in message or "sign function" in message)
+
+
+def test_a_kind_declaring_a_crease_measure_is_refused_the_sampled_route(monkeypatch):
+    """The sampled route marches a kind's first region and reads no crease measure yet, so a lab's kind that declares
+    one, creased (a cylinder's two regions) or not (a sphere's one), would be imaged as if smooth: each is refused by
+    name, before the march sees it."""
+    from mime.registry import CreaseMeasure
+    from mime.scene import Cylinder, Sphere
+
+    def crease_measure(self, parameters, o, d):
+        return CreaseMeasure((), lambda marched, creases, lesser, greater: marched[0])
+
+    kinds = {"labx.rimmed": type("Rimmed", (Cylinder,), {"crease_measure": crease_measure}),
+             "labx.seamed": type("Seamed", (Sphere,), {"crease_measure": crease_measure})}
+    monkeypatch.setattr(subjects_module.sampled_route, "kind_named", lambda name: kinds.get(name))
+    for kind in kinds:
+        with pytest.raises(ArgumentRefused) as error:
+            subjects_module.route_of(kind)
+        assert code(error) == {"camera.crease-unmeasured"}
+        assert kind in str(error.value) and "crease measure" in str(error.value)
 
 
 def test_a_route_that_is_no_route_is_refused():

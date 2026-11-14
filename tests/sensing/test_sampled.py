@@ -8,12 +8,21 @@
   were scaled; 0 of 30 runs caught it, so it said nothing.)
 - **The chord**: an attenuating sphere's transmission by route 2's chord (its samples' sign changes, interpolated)
   against route 1's closed-form chord.
-- **The located error's fix** (camera PR 5's first step): on a helix, whose turns cross in its image, the pixels where
-  two branches of its outline meet (two near-zero minima along the ray) take route 1's corner sub-samples of the two
-  branches' union; against the sign-only truth (``sampled_truth``), every such pixel is within ``CORNER_LINE`` and the
-  single edge (the second branch dropped) is not. **Control** (``CAMERA_PLANT=single-edge``, a pose drawn from
-  ``DETECTION_SEED``): the single edge fails it, every run; the line is derived before the rate run
-  (``predictions_camera_pr5a.json``).
+- **The located error's fix** (camera PR 5's first step and its fix round): on a coil, whose turns meet in concave
+  notches in its image, the pixels where two branches of its outline cross (two near-zero minima along the ray) take
+  route 1's corner sub-samples, each the exact share of the union of the two branches' half-planes, each branch read at
+  its sub-ray's own least; against the sign-only truth (``sampled_truth``, 64 x 64 samples a pixel, in float64), every
+  such pixel is within ``corner_line`` and the single edge (the second branch dropped) is not. The line is derived from
+  the scheme's own error terms (``scripts/camera_route2/corner_line.py``), before its confirmation's draws ran
+  (``predictions_camera_pr5a_fix.json``): each branch's curvature in a sub-cell, the truth's floor, float32's rounding.
+  Two coils, three widths, both dtypes. **Control** (``CAMERA_PLANT=single-edge``, a pose drawn from
+  ``DETECTION_SEED``): the single edge fails it, every run. ``CORNER_RECORD`` names a file each run appends its numbers
+  to.
+- **The motion's derivative across a pixel**: a coil's darkness centroid's forward-mode derivative, at 16 positions over
+  one pixel of motion, is within ``RIPPLE_LINE`` of the central difference over that pixel. **Control**
+  (``CAMERA_PLANT=lesser``): the PR's first composition (one straight edge a cell, the least of the two branches'
+  lines, each read at its pixel's held point), whose image ripples with the sub-samples' period, fails it, every run.
+- **An ellipsoid** (no closed form) by route 2: its image's area against the projected ellipse's, in both dtypes.
 - **G21, the window**: a moving helix rendered in a window equals its whole-frame render where nothing overflows, and
   its overflow flag stays down over poses within the declared motion; **control** (``CAMERA_PLANT=small-window``): the
   window at 0.3 of its size raises the flag and its image differs, every run.
@@ -22,7 +31,9 @@
 
 from __future__ import annotations
 
+import json
 import math
+import os
 
 import jax
 import jax.numpy as jnp
@@ -44,18 +55,38 @@ SWAP_MOTION_LINE = 2e-3
 #: The chord: the relative difference of an attenuating sphere's absorbed light (the darkness summed over the frame)
 #: against route 1's. A grazing ray's chord is off by up to a sample's spacing, a share of the frame's darkness.
 CHORD_LINE = 1e-3
-#: The located error's line: one corner sub-sample's share of a pixel, 1/16 of the 4 x 4 the corner choice takes, the
-#: finest a pixel's share is resolved by there. The first line, 0.04 (twice the worst the corner sub-samples left on the
-#: screw's located pixels, run 43607018230), was falsified by the first rate run on the coil: 7 of 30 clean draws over it,
-#: to 0.0547 (the truth converged: 0.004 against four times its samples). This one is derived from the sub-samples'
-#: resolution, not fitted between the arms, though chosen after draws 0 to 59 were seen at 128 pixels (the clean worst
-#: 0.0547, the single edge's least 0.0853); it is judged by the rate run that follows, at 128 and at 256 pixels, the second
-#: seen at no draw (the record is in ``predictions_camera_pr5a.json``).
-CORNER_LINE = 1.0 / 16.0
+#: The located error's line (``corner_line``): the bound ``scripts/camera_route2/corner_line.py`` derives for the fixed
+#: scheme, written before its confirmation's draws ran, never fitted between the arms (the first lines, 0.04 and 1/16,
+#: are withdrawn: the first was fitted on the screw, the second a sub-sample's area placed after its draws were seen).
+#: Each coil's least notch branch radius over the drawn poses (m), from that script's geometry.
+NOTCH_RADIUS = {"coil": 24.21e-6, "coil2": 62.17e-6}
+#: The cell term's coefficient: two branches, each over at most 9 of a pixel's 4 x 4 sub-cells, each off its tangent by
+#: at most 0.1263 s^3 / rho (s a quarter of a pixel), in a pixel's share times the radius in pixels.
+CELL_COEFFICIENT = 0.035525
+#: The refinement's residual and the truth's sign samples' (each under 1e-4), and the truth's floor at 64 x 64 samples a
+#: pixel (Hoeffding, at 4e-8 a pixel).
+REFINED, TRUTH_SIGNS, TRUTH_FLOOR = 1e-4, 1e-4, 0.0123
+TRUTH_SIDE = 64
+#: The camera's distance from the coil (m), which float32's rounding of a sub-ray's point scales with.
+DISTANCE = 0.1
+
+
+def corner_line(coil: str, width: int, dtype: str) -> float:
+    """The derived line on a two-branch pixel's share, for ``coil`` seen ``width`` pixels across a 3 mm field."""
+    pixel = 3e-3 / width
+    rounding = 2.0 * math.sqrt(2.0) * 5.0 * 2.0 ** -24 * DISTANCE / pixel if dtype == "float32" else 0.0
+    return CELL_COEFFICIENT * pixel / NOTCH_RADIUS[coil] + REFINED + TRUTH_SIGNS + TRUTH_FLOOR + rounding
+
+
+#: The motion's derivative across a pixel: the design's G20 line, 1 % of the motion.
+RIPPLE_LINE = 0.01
+
 
 LENS, POSE = across(128, field=3e-3)
 IDENTITY = (1.0, 0.0, 0.0, 0.0)
 COIL = {"radius": 0.4e-3, "pitch": 0.6e-3, "turns": 2.5, "filament_radius": 0.08e-3}
+#: The confirmation's second coil: a shorter pitch and another number of turns, its notches sharper (to 21.8 degrees).
+COILS = {"coil": COIL, "coil2": {**COIL, "pitch": 0.52e-3, "turns": 3.0}}
 
 
 def subject(kind: str, settings: dict, route: str | None = None, **written) -> Subject:
@@ -167,24 +198,127 @@ def single_edge(monkeypatch) -> None:
     monkeypatch.setattr(sampled_route, "pieces", pieces)
 
 
-def corner_errors(seed: int, monkeypatch, width: int = 128) -> tuple[np.ndarray, int]:
+class enabled_x64:
+    """Float64 within, the run's dtype restored after: the gate's oracle and its located pixels, whatever the run's."""
+
+    def __enter__(self):
+        self.held = jax.config.jax_enable_x64
+        jax.config.update("jax_enable_x64", True)
+
+    def __exit__(self, *exc):
+        jax.config.update("jax_enable_x64", self.held)
+
+
+def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil",
+                  side: int = TRUTH_SIDE, signs: int = 512) -> tuple[np.ndarray, int]:
+    """Each two-branch pixel's error against the sign-only truth, at the pose drawn from ``seed``: the pixels and the
+    truth in float64, the frame in the run's dtype."""
     view = across(width, field=3e-3)
     position, orientation = drawn_pose(seed)
-    body = subject("helix", COIL)
-    pixels = two_branch_pixels(body, position, orientation, view)
+    with enabled_x64():
+        body = subject("helix", COILS[coil])
+        pixels = two_branch_pixels(body, position, orientation, view)
+        truth = sampled_truth.truth(body, view[0], view[1], position, orientation, pixels, side=side, signs=signs)
     if planted("single-edge"):
         single_edge(monkeypatch)
-    found = 1.0 - frame(body, position, orientation, view).reshape(-1)[pixels]
-    truth = sampled_truth.truth(body, view[0], view[1], position, orientation, pixels, side=32, signs=512)
+    found = 1.0 - frame(subject("helix", COILS[coil]), position, orientation, view).reshape(-1)[pixels]
     return np.abs(found - truth), len(pixels)
 
 
-@pytest.mark.parametrize("width", [128, 256])
-def test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth(width, monkeypatch, float64):
-    errors, count = corner_errors(SEED, monkeypatch, width)
-    print(f"\nwidth {width}, seed {SEED}: {count} two-branch pixels, largest error {errors.max():.4f}, mean {errors.mean():.4f}")
+@pytest.mark.parametrize("coil", sorted(COILS))
+@pytest.mark.parametrize("width", [128, 256, 512])
+def test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth(width, coil, monkeypatch, dtype):
+    errors, count = corner_errors(SEED, monkeypatch, width, coil)
+    line = corner_line(coil, width, dtype)
+    largest = float(errors.max()) if count else float("nan")
+    print(f"\n{coil}, width {width}, {dtype}, seed {SEED}: {count} two-branch pixels, largest error {largest:.4f} "
+          f"(line {line:.4f}), mean {float(errors.mean()) if count else float('nan'):.4f}")
+    record = os.environ.get("CORNER_RECORD")
+    if record:
+        with open(record, "a") as handle:
+            handle.write(json.dumps({"seed": SEED, "coil": coil, "width": width, "dtype": dtype,
+                                     "plant": os.environ.get("CAMERA_PLANT", ""), "pixels": count,
+                                     "largest": largest, "line": line}) + "\n")
     assert count > 0, "the drawn pose shows no crossing of the coil's turns: the gate is silent"
-    assert float(errors.max()) <= CORNER_LINE
+    assert largest <= line
+
+
+# -- the motion's derivative across a pixel -----------------------------------------------------------------------------
+
+def held_and_least(monkeypatch) -> None:
+    """The plant: the PR's first composition, one straight edge a cell (the least of the two branches' lines), each
+    branch read at its pixel's held point."""
+    def cover(lines, size):
+        return coverage.covered(coverage.lesser(lines[0], lines[1]), size)
+
+    def pieces(sampled, held):
+        def made(p, o, d):
+            def at(t):
+                return sampled_route.evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
+            first = at(held.ta)
+            return first, jnp.where(held.has2, at(held.tb), first + sampled.enclosing)
+        return made
+
+    monkeypatch.setattr(sampled_route, "_covered_union", cover)
+    monkeypatch.setattr(sampled_route, "pieces", pieces)
+
+
+def test_the_coils_motion_derivative_holds_across_a_pixel_of_motion(float64, monkeypatch):
+    """At 16 positions over one pixel of motion along each image axis from a pose drawn near G20's straight one, the
+    jvp of the coil's darkness centroid is within ``RIPPLE_LINE`` of the central difference over that pixel (relative
+    to the motion's norm): the derivative of the image, not of a ripple in it."""
+    if planted("lesser"):
+        held_and_least(monkeypatch)
+    rng = np.random.default_rng(SEED)
+    start = np.array([rng.uniform(-0.05e-3, 0.05e-3), 0.0, rng.uniform(-0.05e-3, 0.05e-3)])
+    pixel = float(-POSE.position[1]) / LENS.fx
+    body = subject("helix", COIL)
+    v, u = np.indices((LENS.height, LENS.width))
+
+    def centroid(at):
+        dark = 1.0 - render([body], LENS, POSE, {"body": (at, jnp.asarray(IDENTITY))}).transmission
+        total = jnp.sum(dark)
+        return jnp.stack([jnp.sum(dark * u) / total, jnp.sum(dark * v) / total])
+
+    found = jax.jit(centroid)
+    tangent = jax.jit(lambda at, e: jax.jvp(centroid, (at,), (e,))[1])
+    worst = 0.0
+    for axis in (0, 2):
+        e = np.zeros(3)
+        e[axis] = 1.0
+        reference = (np.asarray(found(jnp.asarray(start + pixel * e))) - np.asarray(found(jnp.asarray(start)))) / pixel
+        for k in range(16):
+            at = jnp.asarray(start + (k / 16.0) * pixel * e)
+            derivative = np.asarray(tangent(at, jnp.asarray(e)))
+            worst = max(worst, float(np.linalg.norm(derivative - reference) / np.linalg.norm(reference)))
+    print(f"\nseed {SEED}: the jvp's largest relative deviation from the central difference over a pixel {worst:.4g}")
+    assert worst <= RIPPLE_LINE
+
+
+# -- an ellipsoid -----------------------------------------------------------------------------------------------------
+
+#: The ellipsoid's area against the projected ellipse's: the box edge's curvature error over its outline, relative.
+ELLIPSE_LINE = 2e-3
+
+
+@pytest.mark.parametrize("axes", [(0.9e-3, 0.4e-3, 0.3e-3), (0.5e-3, 0.5e-3, 0.5e-3), (0.9e-3, 0.3e-3, 0.4e-3)])
+def test_route_two_images_an_ellipsoid_with_its_projected_area(axes, dtype):
+    """An ellipsoid (no closed form: route 2) seen along its second axis from 0.1 m covers, summed over the frame,
+    the projected ellipse's area pi a c (the depth 0.1 m, the field 3 mm, its perspective under 1e-4), within
+    ``ELLIPSE_LINE``; its first axis 1 % long is not (the control, every run)."""
+    def area(semi_axes):
+        body = Subject("body", "ellipsoid", {"semi_axes": list(semi_axes)}, appearance=Appearance.opaque(), moving=True)
+        assert body.placed.sampled is not None
+        found = render([body], LENS, POSE, {"body": (jnp.zeros(3), jnp.asarray(IDENTITY))})
+        return float((1.0 - np.asarray(found.transmission, dtype=np.float64)).sum())
+
+    pixel = 3e-3 / 128
+    exact = math.pi * axes[0] * axes[2] / pixel ** 2
+    found = area(axes) / exact - 1.0
+    planted_found = area((1.01 * axes[0], axes[1], axes[2])) / exact - 1.0
+    print(f"\n{axes} {dtype}: relative area {found:.3g}, the long axis's {planted_found:.3g}")
+    assert abs(found) <= ELLIPSE_LINE
+    assert abs(planted_found) > ELLIPSE_LINE
 
 
 # -- the window ----------------------------------------------------------------------------------------------------------

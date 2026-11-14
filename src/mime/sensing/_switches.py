@@ -69,7 +69,8 @@ PIECES_SWITCHES = (
                   "where the first is nearer-inside and taken)",
         orders={"expected": -1},
         route="the corner sub-samples take the pieces' lines at the sub-pixels' centres and so narrow the jump to a "
-              "sub-pixel's share (camera.corner); a smooth union of the pieces (a softened least) would remove it"),
+              "sub-pixel's share (camera.corner); the exact union of the pieces' half-planes removes it, as route 2's "
+              "two branches take it (camera.union.*)"),
     switch.Declaration(
         owner="camera.pieces.greatest",
         indicator="the first piece's line's distance from the pixel's centre less the second's, in pixels (positive "
@@ -285,7 +286,66 @@ SAMPLED_SWITCHES = (
               "within the corner reach: where a minimum forms there, the pixel's share jumps"),
 )
 
-SWITCHES = (*EDGE_SWITCHES, *PIECES_SWITCHES, *CORNER_SWITCHES, *DISC_SWITCHES, *FORM_SWITCHES, *SAMPLED_SWITCHES)
+#: Route 2's exact union of its two branches in a cell (``_coverage.union_covered``): the area of the polygon outside
+#: both, by its boundary integral, each side's share outside a line's body or both, each line's chord through the cell.
+UNION_SWITCHES = (
+    switch.Declaration(
+        owner="camera.union.share.low",
+        indicator="the share of a segment on which a linear function is at least zero, before it is clipped: its "
+                  "middle's value over its change along the segment, plus one half (positive where some of the "
+                  "segment is kept)",
+        orders={"expected": 0},
+        route="none: the share is the clipped ratio, zero where the function is negative along the whole segment, and "
+              "its slope changes there (the polygon's area it feeds is continuous)"),
+    switch.Declaration(
+        owner="camera.union.share.high",
+        indicator="one less that share before it is clipped (positive where some of the segment is not kept)",
+        orders={"expected": 0},
+        route="none: as camera.union.share.low, at the share of one"),
+    switch.Declaration(
+        owner="camera.union.nested",
+        indicator="the second function's share of a segment less the first's, where both keep the same end of it "
+                  "(positive where the first's is the smaller, the shares both keep)",
+        orders={"expected": 0},
+        route="none: where both keep the same end, what both keep is the smaller share, whose slope is the other's "
+              "past their tie"),
+    switch.Declaration(
+        owner="camera.union.apart",
+        indicator="the two shares' sum less one, where they keep opposite ends of the segment (positive where they "
+                  "overlap)",
+        orders={"expected": 0},
+        route="none: what two shares at opposite ends both keep is their overlap, zero where they do not meet"),
+    switch.Declaration(
+        owner="camera.union.ends",
+        indicator="the product of the two functions' changes along the segment (positive where both keep the same end)",
+        orders={"expected": 0},
+        route="none needed: where one change passes zero that function is flat along the segment, its share zero or one, "
+              "and both branches give the other's share",
+        unmeasured="where one change passes zero that function is flat along the segment and its share is zero or one, "
+                   "so the smaller share and the overlap are both the other's: the branches agree wherever the "
+                   "selection changes"),
+    switch.Declaration(
+        owner="camera.union.chord_start",
+        indicator="where a line's chord starts along it, through the cell's u-slab less through its v-slab, in cells "
+                  "(positive where the u-slab's is the later)",
+        orders={"expected": 0},
+        route="none: a chord starts where the line enters the second slab, and the slab changes where the line passes "
+              "a corner of the cell"),
+    switch.Declaration(
+        owner="camera.union.chord_end",
+        indicator="where the chord ends along the line, through the v-slab less through the u-slab, in cells (positive "
+                  "where the u-slab's is the earlier)",
+        orders={"expected": 0},
+        route="none: as camera.union.chord_start, at the chord's end"),
+    switch.Declaration(
+        owner="camera.union.chord_empty",
+        indicator="the chord's end less its start along the line, in cells (positive where the line crosses the cell)",
+        orders={"expected": 0},
+        route="none: a line that misses the cell has no chord, its length zero"),
+)
+
+SWITCHES = (*EDGE_SWITCHES, *PIECES_SWITCHES, *CORNER_SWITCHES, *DISC_SWITCHES, *FORM_SWITCHES, *SAMPLED_SWITCHES,
+            *UNION_SWITCHES)
 
 __all__ = ["CORNER_SWITCHES", "DISC_SWITCHES", "EDGE_SWITCHES", "FORM_SWITCHES", "PIECES_SWITCHES", "SAMPLED_SWITCHES",
-           "SWITCHES"]
+           "SWITCHES", "UNION_SWITCHES"]

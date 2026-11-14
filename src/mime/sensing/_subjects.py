@@ -190,7 +190,16 @@ def _sampled_refusal(kind: str) -> Refusal | None:
             "image a kind with a closed form (a sphere, a capsule, a cylinder, a straight tube) or one that declares a "
             "cheap sign function (Geometry.sign_function: the ellipsoid, the helix), or register the kind's closed form: "
             "register_closed_form(kind, closed_form)")
-    if sampled_route.creased(found) and not implements(found, "crease_measure"):
+    if implements(found, "crease_measure"):
+        return Refusal(
+            "camera.crease-unmeasured", RefusalClass.USER,
+            f"a {kind} cannot be imaged by the sampled route yet: it declares a crease measure, which the route does "
+            f"not read until the next piece of the camera, and its march takes only its first region "
+            f"({found.regions[0]!r}), so its creases would be imaged wrongly",
+            "image it once the sampled route reads crease measures, give it a closed form "
+            "(register_closed_form(kind, closed_form)), or hide it: hide=(...)",
+            why="the sampled route marches one region and does not yet read a crease measure")
+    if sampled_route.creased(found):
         reason = NO_CLOSED_FORM.get(kind, f"the {kind}'s body is the intersection of its regions "
                                           f"{', '.join(found.regions)}, creased where they meet")
         return Refusal(

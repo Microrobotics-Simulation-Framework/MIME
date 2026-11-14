@@ -301,8 +301,16 @@ def guard_points() -> dict:
         first, second = sampled_route.pieces(sampled, held)({}, o, d)
         return {"first": first, "second": second, "chord": sampled_route.chord(sampled, {}, o, d, held)}
 
+    def directionless(distance):
+        # A line of no direction (an edge function flat to the floor) beside a line across the cell.
+        return {"share": coverage.union_covered(coverage.Line(jnp.asarray(1e15), jnp.asarray(0.0), jnp.asarray(0.0)),
+                                                coverage.Line(distance, jnp.asarray(0.6), jnp.asarray(0.8)))}
+
     slope = jnp.asarray(_Profile.SLOPE)
-    return {"the camera's sampled march along a ray whose distance only rises": (
+    at_distance = jnp.asarray(0.2)
+    return {"the camera's union of two branches, one of no direction": (
+                lambda: directionless(at_distance), lambda: jax.jacfwd(directionless)(at_distance)),
+            "the camera's sampled march along a ray whose distance only rises": (
                 lambda: sampled_ray(slope), lambda: jax.jacfwd(sampled_ray)(slope)),
             "the camera's exact disc over pixels some of which the ball does not touch": (
                 lambda: window(centre), lambda: jax.jacfwd(window)(centre)),
@@ -392,9 +400,49 @@ def sign_rows(declared) -> list[SwitchRow]:
     return [SwitchRow(declared[f"helix.end.{end}"], lambda o, end=end: value(o, end), 1e-3) for end in ("low", "high")]
 
 
+# -- route 2's exact union of two branches ----------------------------------------------------------------------------
+
+#: A line at 30 degrees to the cell's u axis, the slabs' coefficients of its distance along it (in cells).
+UNION_ANGLE = math.radians(30.0)
+
+
+def union_rows(declared) -> list[SwitchRow]:
+    """The union's owners, each on the helper that evaluates it, its indicator placed: ``share``'s ratio at the offset
+    from zero (``low``) or one (``high``); ``nested`` two shares keeping the same end, the second the offset larger;
+    ``apart`` two at opposite ends overlapping by the offset; ``ends`` the second change the offset (its share then
+    one, so the branches agree: it measures nothing); the chord's ends and its emptiness on a line at 30 degrees, its
+    distance placing each (the indicator linear in it)."""
+    one = jnp.asarray(1.0)
+
+    def share(ratio):
+        return shared(coverage._share(jnp.asarray(ratio - 0.5), one))
+
+    def both(first, second):
+        return shared(coverage._both(*(tuple(jnp.asarray(v) for v in part) for part in (first, second))))
+
+    nu, nv = math.cos(UNION_ANGLE), math.sin(UNION_ANGLE)
+    across = nu / nv + nv / nu
+
+    def chord(c):
+        return shared(jnp.stack(coverage._chord(jnp.asarray(nu), jnp.asarray(nv), jnp.asarray(c))))
+
+    start_at = (0.5 / nv - 0.5 / nu) / across
+    empty_at = (0.5 / nu + 0.5 / nv) / across
+    return [
+        SwitchRow(declared["camera.union.share.low"], share, 1e-3),
+        SwitchRow(declared["camera.union.share.high"], lambda o: share(1.0 - o), 1e-3),
+        SwitchRow(declared["camera.union.nested"], lambda o: both((-0.1, 1.0), (-0.1 + o, 1.0)), 1e-3),
+        SwitchRow(declared["camera.union.apart"], lambda o: both((0.0, 1.0), (o, -1.0)), 1e-3),
+        SwitchRow(declared["camera.union.ends"], lambda o: both((-0.1, 1.0), (0.3, o)), 1e-3),
+        SwitchRow(declared["camera.union.chord_start"], lambda o: chord(start_at + o / across), 1e-3),
+        SwitchRow(declared["camera.union.chord_end"], lambda o: chord(-start_at - o / across), 1e-3),
+        SwitchRow(declared["camera.union.chord_empty"], lambda o: chord(empty_at - o / across), 1e-3),
+    ]
+
+
 def camera_rows(declared) -> list[SwitchRow]:
     return [*edge_rows(declared), *pieces_rows(declared), corner_row(declared), *disc_rows(declared),
-            *form_rows(declared), *sampled_rows(declared)]
+            *form_rows(declared), *sampled_rows(declared), *union_rows(declared)]
 
 
 __all__ = ["camera_rows"]

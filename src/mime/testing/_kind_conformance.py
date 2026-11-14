@@ -468,23 +468,28 @@ SIGN_SLOPE_ULPS = 64.0
 
 
 def sign_function_problems(kind: Geometry, settings: Mapping[str, Magnitude], points: np.ndarray,
-                           slope_band: float) -> list[str]:
+                           slope_band: float, dtype: Any = None) -> list[str]:
     """Every way ``kind``'s cheap sign function (``Geometry.sign_function``), with its ``settings`` in SI, fails at
     ``points`` (``(n, 3)``, the frame its samples are in), region by region: its sign differs from the region's own
     (its registered shape's signed distance, or the harness's level set) at a point farther from the boundary than the
     kind's ``sign_zone`` of its enclosing size and the comparison's rounding; or, at a point within ``slope_band`` (m)
     of the boundary (off the region's medial set, where the gradient has no length to give), its gradient's length
-    differs from the length of its value's gradient by autodiff beyond rounding. None for a kind that declares none."""
+    differs from the length of its value's gradient by autodiff beyond rounding. The sign function is evaluated in
+    ``dtype`` (float64 by default), at the points and settings rounded to it, against the region's own in float64 at
+    those points, and the rounding is that dtype's. None for a kind that declares none."""
     if not implements(kind, "sign_function"):
         return []
     label = kind.label()
     found: list[str] = []
-    parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
+    dtype = jnp.float64 if dtype is None else dtype
+    parameters = {name: (jnp.asarray(value, dtype=dtype) if isinstance(value, (float, tuple)) else value)
                   for name, value in settings.items()}
-    held = jnp.asarray(points, dtype=jnp.float64)
+    held = jnp.asarray(points, dtype=dtype)
+    points = np.asarray(held, dtype=np.float64)
+    epsilon = float(jnp.finfo(dtype).eps)
     size = float(np.max(np.linalg.norm(points, axis=1)))
     enclosing = float(kind.enclosing_radius(settings)) if isinstance(kind, Solid) else size
-    floor = KIND_ROUNDING_ULPS * _EPSILON * size + kind.sign_zone * enclosing
+    floor = KIND_ROUNDING_ULPS * epsilon * size + kind.sign_zone * enclosing
     for region in kind.regions:
         shape = _region_shape(kind, region)
         if shape is None:
@@ -501,7 +506,7 @@ def sign_function_problems(kind: Geometry, settings: Mapping[str, Magnitude], po
 
         values, slopes = (np.asarray(x, dtype=np.float64) for x in _jit(_vmap(both))(held))
         gradients = np.asarray(_jit(_vmap(_grad(value)))(held), dtype=np.float64)
-        exact = _distances(shape, kind.region_parameters(region, settings), held)
+        exact = _distances(shape, kind.region_parameters(region, settings), points)
         decided = np.abs(exact) > floor
         wrong = decided & (np.sign(values) != np.sign(exact))
         if np.any(wrong):
@@ -511,7 +516,7 @@ def sign_function_problems(kind: Geometry, settings: Mapping[str, Magnitude], po
                          f"(value {float(values[worst]):.3g})")
         length = np.linalg.norm(gradients, axis=1)
         apart = np.where(np.abs(exact) <= slope_band, np.abs(slopes - length), 0.0)
-        allowed = SIGN_SLOPE_ULPS * _EPSILON * (slopes + length)
+        allowed = SIGN_SLOPE_ULPS * epsilon * (slopes + length)
         if not np.all(apart <= allowed):
             worst = int(np.argmax(apart / allowed))
             found.append(f"{label}: region {region!r}'s sign function gives its gradient's length as "

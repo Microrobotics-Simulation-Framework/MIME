@@ -6,7 +6,7 @@ same formula (``corner_line``) with this script's geometric inputs.
 **The scheme the line bounds** (camera PR 5a's fix round): at a pixel where two branches of the outline cross (both
 pieces' lines within the corner reach), the 4 x 4 corner sub-samples, each the exact share of its square inside the
 union of the two branches' half-planes (``coverage.union_covered``), each branch's line read at the sub-ray's own least
-(the held point moved by one parabola step on the sub-ray, ``_sampled.pieces``).
+(the held point moved to it on the sub-ray, ``_sampled.pieces``).
 
 **Its terms**, each a bound on one two-branch pixel's error in a pixel's share, against the exact coverage:
 
@@ -19,10 +19,13 @@ union of the two branches' half-planes (``coverage.union_covered``), each branch
   of a pixel's sub-cells; two branches: ``2.2736 s^3 / rho = 0.035525 / rho_px`` at ``s = 1/4``. **Assumption:** every
   branch at a two-branch pixel has a radius of curvature of at least the coil's least notch branch's, ``rho_min``
   (below); a notch's hidden continuation lies inside the other lobe and its half-plane.
-- *the refinement's residual*: one parabola step through the piece's values a march spacing either side of the held
-  point, on a straight filament at the angle ``gamma`` its arm makes with the line of sight at the notch (``gamma`` from
-  the geometry, the sub-ray at most 0.53 px from its pixel's centre): its largest value error, ``refined_residual``,
-  times ``2 sqrt(2)`` (two branches, each at most a diagonal long in the pixel); under 1e-4, taken as 1e-4.
+- *the refinement's residual*: the sub-ray's least found from the held point (the parabola's least through the
+  piece's values a march spacing either side, then the quartic's through five values half a spacing apart, by two
+  Newton steps), on a straight filament at the angle ``gamma`` its arm makes with the line of sight at the notch
+  (``gamma`` from the geometry, the sub-ray at most 0.53 px from its pixel's centre): its largest value error,
+  ``refined_residual``, times ``2 sqrt(2)`` (two branches, each at most a diagonal long in the pixel); under 1e-4, taken
+  as 1e-4. (Written first for the parabola's step alone; the quartic was added for the derivative before any draw of
+  the confirmation, its residual smaller, and the term, 1e-4, unchanged.)
 - *the truth's floor*: the sign-only truth at ``side^2`` jittered samples a pixel is a sum of independent terms, one a
   cell its outline crosses, each of range ``1 / side^2``; at most ``2 (sqrt(2) side pi/2 + 1)`` cells (two branches,
   each at most a quarter circle long); Hoeffding's bound at a probability of ``4e-8`` a pixel (a union bound over about
@@ -104,9 +107,10 @@ def notches(radius: float, pitch: float, filament: float, betas=BETA_DEGREES) ->
 
 
 def refined_residual(gamma_degrees: float, filament: float, pixel: float, spacing: float) -> float:
-    """The largest value error (m) after one parabola step at a march spacing, the shift clipped to one spacing, on a
-    straight filament at ``gamma`` to the ray: the sub-ray's least at most ``SUB_RAY_OFFSET`` px from the pixel's
-    centre's along the image, the edge within a sub-cell's reach."""
+    """The largest value error (m) at a sub-ray's refined point, on a straight filament at ``gamma`` to the ray: the
+    sub-ray's least at most ``SUB_RAY_OFFSET`` px from the pixel's centre's along the image, the edge within a
+    sub-cell's reach; the refinement as ``_sampled.pieces`` takes it (the parabola's least through the outer three of
+    five values half a spacing apart, then two Newton steps on their quartic, each at most half a spacing)."""
     gamma = math.radians(gamma_degrees)
     sine = math.sin(gamma)
     reach = SUB_RAY_OFFSET * pixel * math.cos(gamma) / max(sine, 1e-12)
@@ -115,10 +119,19 @@ def refined_residual(gamma_degrees: float, filament: float, pixel: float, spacin
         def f(t: float) -> float:
             return math.sqrt(b * b + (sine * t) ** 2) - filament
         for held in np.linspace(-reach, reach, 401):
-            before, at, after = f(held - spacing), f(held), f(held + spacing)
-            curvature = before - 2.0 * at + after
-            shift = min(max(0.5 * (before - after) / curvature, -1.0), 1.0) if curvature > 0.0 else 0.0
-            worst = max(worst, f(held + shift * spacing) - f(0.0))
+            fl2, fl1, f0, fh1, fh2 = (f(held + 0.5 * k * spacing) for k in (-2, -1, 0, 1, 2))
+            curvature = fl2 - 2.0 * f0 + fh2
+            y = min(max((fl2 - fh2) / curvature, -2.0), 2.0) if curvature > 0.0 else 0.0
+            c1 = (fl2 - 8 * fl1 + 8 * fh1 - fh2) / 12.0
+            c2 = (-fl2 + 16 * fl1 - 30 * f0 + 16 * fh1 - fh2) / 24.0
+            c3 = (-fl2 + 2 * fl1 - 2 * fh1 + fh2) / 12.0
+            c4 = (fl2 - 4 * fl1 + 6 * f0 - 4 * fh1 + fh2) / 24.0
+            for _ in range(2):
+                slope = c1 + y * (2 * c2 + y * (3 * c3 + y * 4 * c4))
+                turn = 2 * c2 + y * (6 * c3 + y * 12 * c4)
+                if turn > 0.0:
+                    y = min(max(y + min(max(-slope / turn, -1.0), 1.0), -2.0), 2.0)
+            worst = max(worst, f(held + 0.5 * y * spacing) - f(0.0))
     return worst
 
 

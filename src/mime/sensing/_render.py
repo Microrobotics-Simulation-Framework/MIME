@@ -156,12 +156,19 @@ def _composed(form: forms.Form, lines: Sequence[coverage.Line]) -> coverage.Line
     return form.compose(lines, coverage.lesser, coverage.greater)
 
 
+def _cell_share(form: forms.Form, lines: Sequence[coverage.Line], size: float = 1.0) -> Any:
+    """A cell's share from the pieces' lines: the form's own cover, or one straight edge, the composed line's."""
+    if form.cover is not None:
+        return form.cover(lines, size)
+    return coverage.covered(_composed(form, lines), size)
+
+
 def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any,
                   corner_samples: int, form: forms.Form | None = None) -> Any:
     """The box edge's share of each pixel: the subject's form's, or ``form``'s (a sampled body's, its march done)."""
     form = subject.placed.form if form is None else form
     lines = _lines(subject, p, o, d, du, dv, form)
-    single = coverage.covered(_composed(form, lines))
+    single = _cell_share(form, lines)
     if not form.corners or corner_samples <= 1:
         return single
     crossing = sum((coverage.near(line).astype(single.dtype) for line in lines), start=jnp.zeros_like(single))
@@ -181,8 +188,8 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
         moved: tuple[Any, Any, Any] = (d[0] + su * du[0] + sv * dv[0], d[1] + su * du[1] + sv * dv[1],
                                        d[2] + su * du[2] + sv * dv[2])
         scale = 1.0 / jnp.sqrt(forms.dot(moved, moved))
-        sub = _composed(form, _lines(subject, p, o, tuple(c * scale for c in moved), du, dv, form))
-        return total + coverage.covered(sub, 1.0 / corner_samples), None
+        sub = _lines(subject, p, o, tuple(c * scale for c in moved), du, dv, form)
+        return total + _cell_share(form, sub, 1.0 / corner_samples), None
 
     def sub_sampled() -> Any:
         offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
