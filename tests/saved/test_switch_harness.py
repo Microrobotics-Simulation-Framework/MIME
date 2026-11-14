@@ -1405,7 +1405,8 @@ def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(g
 
 
 @pytest.mark.parametrize("where", ["the camera's exact disc over pixels some of which the ball does not touch",
-                                   "the camera's crossing test on a side of no length"])
+                                   "the camera's crossing test on a side of no length",
+                                   "the camera's sampled march along a ray whose distance only rises"])
 def test_replacing_every_fallback_changes_nothing_at_the_cameras_points(where):
     """The camera's guard points as the test above judges the others, without the graph those build (``guard_points``
     builds every other point's graph and its warm-up, about forty-seven seconds a run of the first test in a file's

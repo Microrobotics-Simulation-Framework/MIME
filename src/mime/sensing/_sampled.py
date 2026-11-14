@@ -175,7 +175,7 @@ def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> Ma
         curvature = before - 2.0 * least + after
         inner = (at > 0) & (at < n - 1) & (curvature > 0.0)
         shift = 0.5 * (before - after) / switch.domain_guard(inner, curvature, 1.0)
-        return t0 + (at.astype(t0.dtype) + switch.domain_guard(inner, shift, 0.0)) * dt
+        return t0 + (at.astype(t0.dtype) + jnp.where(inner, shift, 0.0)) * dt
 
     ta = refined(first)
     tb = refined(second)
@@ -211,7 +211,7 @@ def pieces(sampled: Sampled, held: March) -> Any:
             return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
 
         first = at(held.ta)
-        return first, switch.domain_guard(held.has2, at(held.tb), first + sampled.enclosing)
+        return first, jnp.where(held.has2, at(held.tb), first + sampled.enclosing)
 
     return made
 

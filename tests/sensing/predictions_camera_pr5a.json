@@ -8,7 +8,10 @@
     "camera truth 1 and optimisation 1: 32 samples within 1 % of the physical silhouette in motion off the crease on FL-9; the renderer's measured rate 15 to 20 G flops-equivalents a second on a 4-vCPU runner (fo32: 0.385 Gflop + 20 x 0.029 Gtrans in 49 to 64 ms)"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); timings only through node_measure.py on probes, never from CI",
     "sizes_and_parameters": "the coil: helix radius 0.4 mm, pitch 0.6 mm, 2.5 turns, filament 80 um, seen from 0.1 m across a 3 mm field at 128 x 96 (23.4 um a pixel, the filament 3.4 px in radius); samples_for gives 48 a ray (enclosing 0.93 mm, smallest feature 80 um, spacing at most half of it); the sphere 0.5 mm and the capsule 0.25 x 0.8 mm in the same view; corner sub-samples 4 x 4",
     "seeds_and_draws": "drawn coil poses (tests/sensing/test_sampled.py drawn_pose): within +-0.1 mm across the image, rolled uniformly about the coil's axis, turned within +-20 degrees in the image and +-10 in depth; DETECTION_SEED 0..29 for the rates; Hypothesis's own draws for G16 (its default 100 examples a kind: the design sets no count, and CLAUDE.md forbids fewer)"
@@ -17,8 +20,24 @@
     "claim": "each kind's cheap sign function has its region's sign at drawn points beyond the comparison's rounding, and its stated gradient's length is its value's within 64 units in the last place, within half its smallest length of the boundary",
     "kind": "acceptance",
     "case": "tests/scene/test_sign_functions.py (six kinds: sphere, capsule, cylinder, ellipsoid, screw, helix)",
-    "prediction": {"value": "no problem on any draw", "band": [null, null], "unit": "problems", "basis": "derived", "why": "each is its region's exact signed distance (or, the ellipsoid's and the screw's thread, the region's defining inequality with its analytic gradient); the helix's held angle converges from the right turn in 3 Newton steps inside the filament and any angle gives the right sign outside it"},
-    "control": {"plant": "SIGN_PLANT=sign (the sign flipped within a tenth of the smallest length of the boundary) and SIGN_PLANT=slope (the gradient's length 10 % long)", "environment_variable": "SIGN_PLANT", "expected_rate": "30/30 each", "runs": 30, "clean_expected": "0/30", "resolution": "a flip of a band 0.1 x the smallest length wide is caught at every drawn set of 288 points or more; the slope at 10 % against 64 ulps"},
+    "prediction": {
+      "value": "no problem on any draw",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "problems",
+      "basis": "derived",
+      "why": "each is its region's exact signed distance (or, the ellipsoid's and the screw's thread, the region's defining inequality with its analytic gradient); the helix's held angle converges from the right turn in 3 Newton steps inside the filament and any angle gives the right sign outside it"
+    },
+    "control": {
+      "plant": "SIGN_PLANT=sign (the sign flipped within a tenth of the smallest length of the boundary) and SIGN_PLANT=slope (the gradient's length 10 % long)",
+      "environment_variable": "SIGN_PLANT",
+      "expected_rate": "30/30 each",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a flip of a band 0.1 x the smallest length wide is caught at every drawn set of 288 points or more; the slope at 10 % against 64 ulps"
+    },
     "if_wrong": "a sign mismatch names the kind and point; the kind's sign function is fixed before route 2 images it",
     "cannot_discriminate_if": "no drawn point lies within the flipped band (the near-surface draws make this impossible by construction)"
   },
@@ -26,9 +45,25 @@
     "claim": "route 2 images the sphere and the capsule as route 1 does: per pixel within 2e-3 of a pixel's share and the silhouette's motion within 2e-3 relative, in float64 and float32",
     "kind": "equality",
     "case": "tests/sensing/test_sampled.py::test_g18_route_two_matches_route_one_on_the_sphere_and_the_capsule",
-    "prediction": {"value": 1e-4, "band": [0.0, 2e-3], "unit": "largest per-pixel difference (share of a pixel)", "basis": "measured-before", "why": "their sign functions are their exact distances; the held point is the parabola's vertex, read at the second order (seen locally below 1e-4)"},
+    "prediction": {
+      "value": 0.0001,
+      "band": [
+        0.0,
+        0.002
+      ],
+      "unit": "largest per-pixel difference (share of a pixel)",
+      "basis": "measured-before",
+      "why": "their sign functions are their exact distances; the held point is the parabola's vertex, read at the second order (seen locally below 1e-4)"
+    },
     "metric": "largest per-pixel difference, and the relative difference of the darkness's and its centroid's derivatives in x and z",
-    "control": {"plant": "CAMERA_PLANT=sampled-slope: the march's first-order distance 10 % short", "environment_variable": "CAMERA_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30", "resolution": "a 10 % distance error moves a silhouette pixel by up to 0.05 of its share at these radii (21 and 11 px), 25 times the line"},
+    "control": {
+      "plant": "CAMERA_PLANT=sampled-slope: the march's first-order distance 10 % short",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a 10 % distance error moves a silhouette pixel by up to 0.05 of its share at these radii (21 and 11 px), 25 times the line"
+    },
     "if_wrong": "route 2 departs from route 1 where both are exact: a defect in the march or the pieces",
     "cannot_discriminate_if": "both routes NaN (the test reads finite numbers)"
   },
@@ -36,8 +71,24 @@
     "claim": "an attenuating sphere's absorbed light by route 2's chord is within 1e-3 relative of route 1's",
     "kind": "estimates",
     "case": "tests/sensing/test_sampled.py::test_the_chord_of_an_attenuating_sphere_matches_route_one",
-    "prediction": {"value": 2e-4, "band": [0.0, 1e-3], "unit": "relative difference of the summed darkness", "basis": "measured-before", "why": "linear interpolation of the crossings; a grazing ray's chord is off by up to a spacing, a small share of the frame's darkness"},
-    "control": {"plant": "CAMERA_PLANT=long-chord: the chord 10 % long", "environment_variable": "CAMERA_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30", "resolution": "10 % of the chord moves the absorbed light by several per cent at an attenuation of 2000 per metre"},
+    "prediction": {
+      "value": 0.0002,
+      "band": [
+        0.0,
+        0.001
+      ],
+      "unit": "relative difference of the summed darkness",
+      "basis": "measured-before",
+      "why": "linear interpolation of the crossings; a grazing ray's chord is off by up to a spacing, a small share of the frame's darkness"
+    },
+    "control": {
+      "plant": "CAMERA_PLANT=long-chord: the chord 10 % long",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "10 % of the chord moves the absorbed light by several per cent at an attenuation of 2000 per metre"
+    },
     "if_wrong": "the chord's interpolation or masks are wrong; per-pixel figures name where"
   },
   "gate_corner": {
@@ -45,8 +96,24 @@
     "kind": "bounds",
     "case": "tests/sensing/test_sampled.py::test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth, DETECTION_SEED drawn poses",
     "operating_point": "float64; the truth at 32 x 32 jittered samples a pixel and 512 signs (its floor under 0.02 a pixel, camera truth 1)",
-    "prediction": {"value": 0.02, "band": [0.0, 0.04], "unit": "largest error on the two-branch pixels (the fix)", "basis": "measured-before", "why": "the line is twice the corner sub-samples' worst on the screw's located pixels and every off-cap pixel (0.0197, run 43607018230), declared before the rate run, never refitted; the coil's crossings are X-shaped, four concave corners each, about 4 to 8 crossings in view, so a single edge misses a share near a quarter at the worst of them"},
-    "control": {"plant": "CAMERA_PLANT=single-edge: the second branch dropped", "environment_variable": "CAMERA_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30 (the fix within the line at every draw)", "resolution": "the plant is judged on the two-branch pixels of each draw, where its miss reaches about a quarter of a pixel; if it dips under the line on a draw the oracle is sharpened (more poses a draw), never the line lowered"},
+    "prediction": {
+      "value": 0.02,
+      "band": [
+        0.0,
+        0.04
+      ],
+      "unit": "largest error on the two-branch pixels (the fix)",
+      "basis": "measured-before",
+      "why": "the line is twice the corner sub-samples' worst on the screw's located pixels and every off-cap pixel (0.0197, run 43607018230), declared before the rate run, never refitted; the coil's crossings are X-shaped, four concave corners each, about 4 to 8 crossings in view, so a single edge misses a share near a quarter at the worst of them"
+    },
+    "control": {
+      "plant": "CAMERA_PLANT=single-edge: the second branch dropped",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30 (the fix within the line at every draw)",
+      "resolution": "the plant is judged on the two-branch pixels of each draw, where its miss reaches about a quarter of a pixel; if it dips under the line on a draw the oracle is sharpened (more poses a draw), never the line lowered"
+    },
     "if_wrong": "a clean flag is a pixel the fix leaves over 0.04 on the coil, a finding against the line's basis; a missed plant names the draw",
     "cannot_discriminate_if": "a draw with no two-branch pixel (the test asserts some)"
   },
@@ -54,35 +121,102 @@
     "claim": "a held branch's derivative converges on the least first-order distance's along the ray, at the second order in the samples' spacing",
     "kind": "estimates",
     "case": "tests/sensing/test_sampled.py::test_a_held_branchs_derivative_converges_on_the_least_distances_along_the_ray",
-    "prediction": {"value": "99th percentile 0.020 at 48 samples, 0.0042 at 95", "band": [null, null], "unit": "of a unit derivative", "basis": "measured-before", "why": "the parabola's vertex error is second order in the spacing; the envelope's rule then holds to that"},
+    "prediction": {
+      "value": "99th percentile 0.020 at 48 samples, 0.0042 at 95",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "of a unit derivative",
+      "basis": "measured-before",
+      "why": "the parabola's vertex error is second order in the spacing; the envelope's rule then holds to that"
+    },
     "if_wrong": "the stop_gradient on the march is not cleared, and the camera's status would be capped"
   },
   "gate_g19_cost": {
     "claim": "the structural cost estimate (rays x sub-frames x evaluations a ray x one evaluation's flops-equivalents from XLA's cost analysis) predicts the in-loop camera's measured frame time within a factor of 3 over three detector sizes, read as an effective rate",
     "kind": "estimates",
     "case": "probe: node_measure.py through built.run on an in-loop coil with frame_period one step, at 160 x 120, 320 x 240 and 640 x 480, float32 and float64",
-    "prediction": {"value": "an effective rate of 5 to 30 G flops-equivalents a second, its spread over the sizes within 3 x", "band": [5e9, 3e10], "unit": "flops-equivalents a second", "basis": "measured-before", "why": "camera optimisation 1 measured the same structure at 15 to 20 G a second; the corner sub-samples, counted as running on every ray, may not run on a frame without a corner, so the estimate is an upper bound on the work"},
+    "prediction": {
+      "value": "an effective rate of 5 to 30 G flops-equivalents a second, its spread over the sizes within 3 x",
+      "band": [
+        5000000000.0,
+        30000000000.0
+      ],
+      "unit": "flops-equivalents a second",
+      "basis": "measured-before",
+      "why": "camera optimisation 1 measured the same structure at 15 to 20 G a second; the corner sub-samples, counted as running on every ray, may not run on a frame without a corner, so the estimate is an upper bound on the work"
+    },
     "if_wrong": "the warning's line (1e9 a frame, about 50 to 70 ms) is restated from the measured rate in a later commit, said so"
   },
   "gate_g20_helix": {
     "claim": "the march converges on the coil at its declared count: from N to 2N the image moves by under 0.02 of a pixel's share at any pixel and the silhouette's motion by under 1 %; against the sign-only truth, the motion is within 1 % at a straight and a tilted pose, judged on the darkness and both centroid components",
     "kind": "bounds",
     "case": "probe: the coil at 128 x 96, poses identity and tilted (25 and 15 degrees), its count (48) and twice it, the truth at 32 x 32 samples a pixel and 512 signs, its motion by central differences at a quarter pixel",
-    "prediction": {"value": "0.5 %", "band": [0.0, 0.01], "unit": "relative motion error against the truth", "basis": "derived", "why": "the coil has no crease; camera truth 1 found the first-order march within 1 % off the crease at 32 samples on FL-9, whose features are fatter in samples than the coil's at its count"},
-    "control": {"plant": "the gradient's length 10 % long (a stand-in kind) fails the truth in z or focal motion; the count planted at 8 samples fails the N to 2N line", "expected_rate": "deterministic poses: fails at both poses"},
+    "prediction": {
+      "value": "0.5 %",
+      "band": [
+        0.0,
+        0.01
+      ],
+      "unit": "relative motion error against the truth",
+      "basis": "derived",
+      "why": "the coil has no crease; camera truth 1 found the first-order march within 1 % off the crease at 32 samples on FL-9, whose features are fatter in samples than the coil's at its count"
+    },
+    "control": {
+      "plant": "the gradient's length 10 % long (a stand-in kind) fails the truth in z or focal motion; the count planted at 8 samples fails the N to 2N line",
+      "expected_rate": "deterministic poses: fails at both poses"
+    },
     "if_wrong": "the count rule (SPACING, half the smallest feature) is raised and said so"
   },
   "gate_g21_window": {
     "claim": "a windowed coil equals its whole-frame render bit for bit and its overflow flag stays down over drawn poses within its motion",
     "kind": "equality",
     "case": "tests/sensing/test_sampled.py::test_g21_a_windowed_coil_equals_its_whole_frame_and_does_not_overflow",
-    "prediction": {"value": "equal arrays, no flag", "band": [null, null], "unit": "", "basis": "derived", "why": "the window holds the enclosing ball's silhouette with a margin; each pixel's march is its own"},
-    "control": {"plant": "CAMERA_PLANT=small-window: the window at 0.3 of its size", "environment_variable": "CAMERA_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30"}
+    "prediction": {
+      "value": "equal arrays, no flag",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "derived",
+      "why": "the window holds the enclosing ball's silhouette with a margin; each pixel's march is its own"
+    },
+    "control": {
+      "plant": "CAMERA_PLANT=small-window: the window at 0.3 of its size",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30"
+    }
   },
   "bits": {
     "cases": "route 1's programs, base origin/release/v0.3.0 375ce8cd against this branch's head, on one CPU with one thread: the in-loop camera's step, its run and its forward-mode derivative (a sphere in a tube; source locations stripped) and the offline render of a capped cylinder seen at its corner",
     "prediction": "every compiled program's text equal",
-    "controls": {"repeat": "the head compiled twice: equal", "one_ulp": "the camera's mount one ulp along y: every program's text differs"}
+    "controls": {
+      "repeat": "the head compiled twice: equal",
+      "one_ulp": "the camera's mount one ulp along y: every program's text differs"
+    }
   },
-  "outcomes": null
+  "outcomes": null,
+  "amendments": [
+    {
+      "when": "2026-11-14, after the first probe run (43614234358) and the control rerun (43616060342); every one is a finding against a prediction or a control above, made before the run that judges it, and the record of what was seen is in seen_before_amendment",
+      "seen_before_amendment": [
+        "run 43616060342, RCORNER (single-edge, DETECTION_SEED 0..29, coil at 128 x 96, CORNER_LINE 0.04): clean 7 of 30 draws over the line (seeds 6, 9, 12, 18, 22, 24, 25; to 0.0547), planted 30 of 30 caught. The line's basis (twice the screw's worst) did not transfer to the coil. The truth is not the cause: seed 9's worst pixel reads 0.9385 at both 32 x 32 / 512 and 64 x 64 / 1024 samples, the fix 0.8838; the truth moves 0.004 between them.",
+        "local, not evidence: the fix on draws 30..59: worst 0.0520, 5 of 30 over 0.04; the single edge on draws 0..29: least 0.0853, largest 0.4217.",
+        "run 43616060342, RSWAP (CAMERA_PLANT=sampled-slope): 0 of 30 caught: the plant cannot discriminate. The march's first-order distance is a line's distance over its gradient and the plant scaled both; the ratio is unchanged (a scalar cannot move a line). Replaced below.",
+        "run 43614234358, G20: the probe's motion norm took the darkness in px^2 beside the centroid in px, weighting the area 2 R_eq (about 100) times camera truth 1's equivalent radius, so its 54 % / 17 % straight and 41 % / 26 % tilted was route 2's own derivative's 0.4 pixel-equivalents of area against a centroid at 4e4; its N to 2N and eight-sample arms read exactly 0 because the subject's count is fixed when it is made (the probe changed it after), so neither control ran; its slope plant cancelled as above. The G20 numbers of that run are void.",
+        "run 43614234358, BITS: bit_compare could not fetch a base by its short hash (fatal), and the one-ulp control moved the camera one float64 ulp, which the float32 programs do not see (it differed in 4 of 8 programs only): void.",
+        "run 43614234358, G19 (three sizes, two dtypes, 40 samples a ray): effective rates 23.6, 22.8 and 30.6 G flops-equivalents a second in float32, 11.6, 12.3 and 13.9 in float64: spread 2.6 x within a factor of 3; the top is 2 % over the predicted 30 (reported as measured, not a failure of the factor-of-3 claim)."
+      ],
+      "changes": {
+        "gate_corner": "CORNER_LINE 0.04 -> 1/16 = 0.0625, one of the corner choice's 4 x 4 sub-samples' share of a pixel, the finest share it resolves: derived from the fix's resolution, not fitted between the arms, but chosen after draws 0..59 were seen at 128 pixels; the gate now runs at 128 and at 256 pixels (arms RCORNER128, RCORNER256, DETECTION_SEED 0..29), the 256 seen at no draw. Prediction: the fix at most 0.0625 at every draw at both widths (clean 0/30) and the single edge over it at every draw (30/30). If the fix exceeds it at 256, that is a finding about the fix, reported, and the line is not moved again.",
+        "gate_g18_swap": "the control CAMERA_PLANT=sampled-offset: the march's first-order distance offset by 0.1 of a pixel's footprint at the bodies (2.3 um), its gradient unchanged, so the line moves by a tenth of a pixel; seen locally at 0.124 (sphere) and 0.134 (capsule) per pixel against the line 2e-3 (4 of 4 cases), 30/30 expected.",
+        "gate_g20_helix": "motion as camera truth 1 measures it: the vector (equivalent radius of the area, centroid u, centroid v), relative error the norm of the difference over the norm of the truth's; the count is set when the subject is made (SAMPLES, SPACING patched around its construction); the controls are the offset plant (image against the truth) and eight samples (against the N to 2N line).",
+        "bits": "the base is origin/release/v0.3.0's full hash 8de87c9d (this branch's merge base now); the one-ulp control is one ulp of the program's own dtype."
+      }
+    }
+  ]
 }

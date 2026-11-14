@@ -183,7 +183,7 @@ ROUTES = ("closed form", "sampled")
 def _sampled_refusal(kind: str) -> Refusal | None:
     """Why ``kind`` cannot take route 2, or ``None``."""
     found = sampled_route.kind_named(kind)
-    if found is None or not sampled_route.has_sign(found):
+    if found is None or (not sampled_route.has_sign(found) and not sampled_route.creased(found)):
         reason = f"no closed form is registered for the kind {kind!r} and it declares no cheap sign function"
         return Refusal(
             "camera.no-route", RefusalClass.USER, f"a {kind} cannot be imaged: {reason}",

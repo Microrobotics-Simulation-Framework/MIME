@@ -289,7 +289,22 @@ def guard_points() -> dict:
         return {"crosses": jnp.where(coverage._crosses(point[0], point[1], point[0], point[1]), 1.0, 0.0)}
 
     at = jnp.asarray([0.4, 0.3])
-    return {"the camera's exact disc over pixels some of which the ball does not touch": (
+
+    def sampled_ray(slope):
+        # The march along a ray whose first-order distance only rises (the stand-in's slope, no dips): its least
+        # sample is the first, where the parabola's vertex is not taken; no spacing crosses the surface; and there is
+        # no second minimum, so the second piece is the first moved out.
+        sampled = sampled_route.Sampled(_Profile({}, slope), "solid", 1.0, 1.0, _Profile.SAMPLES)  # type: ignore[arg-type]
+        o = (jnp.asarray(0.0), jnp.asarray(-1e3), jnp.asarray(0.0))
+        d = (jnp.asarray([0.0]), jnp.asarray([1.0]), jnp.asarray([0.0]))
+        held = sampled_route.march(sampled, {}, o, d, (jnp.asarray([0.0]),) * 3)
+        first, second = sampled_route.pieces(sampled, held)({}, o, d)
+        return {"first": first, "second": second, "chord": sampled_route.chord(sampled, {}, o, d, held)}
+
+    slope = jnp.asarray(_Profile.SLOPE)
+    return {"the camera's sampled march along a ray whose distance only rises": (
+                lambda: sampled_ray(slope), lambda: jax.jacfwd(sampled_ray)(slope)),
+            "the camera's exact disc over pixels some of which the ball does not touch": (
                 lambda: window(centre), lambda: jax.jacfwd(window)(centre)),
             "the camera's crossing test on a side of no length": (lambda: degenerate(at),
                                                                   lambda: jax.jacfwd(degenerate)(at))}
