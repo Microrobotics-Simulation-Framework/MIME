@@ -44,7 +44,7 @@ from mime.core import MimeNode
 from mime.core._node import CAP_LIMITED, FLOOR_LIMITED, NOT_FINITE, STAGNATED, rechecked_nodes
 from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, STALL_RESTARTS
 from mime.nodes.control import ControllerNode, DelayNode
-from mime.registry import Role, forward_only_of, placed_gradient, rung_gradient
+from mime.registry import Role, placed_gradient, rung_gradient
 from mime.results._gradient import GradientResult, MemberGradient, RaisedFlag, Recheck, SolveReport
 from mime.saved._pins import keeping_pins
 from mime.study._axes import BUILT_CUT, STUDY_REASON, Axis, AxisKind, base_value, outside_range, value_text
@@ -672,16 +672,6 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
                                                                             declarations))))) for write in writes)
             chosen = mode if mode != "auto" else ("forward" if scalars <= FORWARD_UP_TO else "reverse")
             callback = built.plans.controller is not None and built.plans.controller.mode is Mode.CALLBACK
-            forward_only = [(each.owner, why) for each in built.plans.entries
-                            if (why := forward_only_of(each.registered.cls)) is not None]
-            if chosen == "reverse" and forward_only:
-                owner, why = forward_only[0]
-                raise BuildRefused([Refusal(
-                    "camera.reverse", RefusalClass.USER,
-                    f"reverse mode is asked of a run through {owner}, which is forward only: {why}",
-                    "take forward mode (mode='forward', with a few axes), or differentiate the offline renderer, "
-                    "mime.sensing.render, in the poses recorded from the run",
-                    why="the in-loop camera renders under a cond on frame steps")])
             with precision(leader.declared.x64):
                 refused = derivative_refusals(built.graph, chosen, scalars,
                                               len(indices) if group.batched and not callback else 1, group.steps)

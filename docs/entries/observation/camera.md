@@ -53,18 +53,28 @@ a warning, and the frame no longer equals the offline render, whose window is de
   and nothing it says is a statement about a physical camera that was not calibrated against it.
 - For a body or structure without a closed form (the screw, the helix, the box, the ellipsoid): it is refused with its
   reason until the sampled route lands; `hide` it, or image it offline.
-- For a batched study or reverse mode: both are refused, naming the offline renderer, which is differentiable and vmaps.
+- For a batched study: it is refused (`camera.batched`), naming the offline renderer, which is differentiable and vmaps:
+  under `vmap` the frame's `cond` is a `select`, so every step would render.
+- For reverse mode past the memory a run can have: it is refused before it compiles (`camera.reverse-memory`), naming the
+  offline renderer; forward mode along a few axes keeps no tape.
 - For frames at every step in a long run: the images are not recorded; record the poses.
 
-**Its derivative** is forward mode only (reverse mode is refused by name, `camera.reverse`), checked through the built graph
-against central differences in both dtypes (a ball's settling and the principal point across a silhouette, and the focal
-length in the tube wall's interior, with a planted `stop_gradient` on the edge measure as the control), and from a continued
-state as from the first step: a run continued, or a chunk of a longer one, makes the structure once from the run's detector
-numbers, before its steps, and its derivative follows by JAX's own rules, never from the state (checked in the wall's interior in the focal length, the
-principal point and the first radial coefficient against central differences, where a structure held in the state gave
-exactly zero) and still declared
-unverified: the renderer's switches are listed raw and not declared, so no exact or piecewise status follows from them, and
-the status has no value that says forward verified and reverse refused: `expected` carries the derivative in the poses and the detector's nine numbers (which are its leaves, so a study can
-fit them), `image` and the counters carry none. The entry's gradient record states where, why and the route.
+**Its derivative** passes in forward and in reverse mode, checked through MIME's differentiated run (what `Study.gradient`
+compiles) in both dtypes. Forward mode is checked against central differences (a ball's settling and the principal point
+across a silhouette, the focal length in the tube wall's interior), with a planted `stop_gradient` on the edge measure as the
+control. Reverse mode is checked against forward mode, against central differences (float32 against float64 where they cannot
+discriminate) and a held step's derivative against its frame's, with a planted `stop_gradient` on the edge measure, on the
+structure the run makes and on the held frame as the controls. Both are checked from the run's start and from a continued
+state (the structure the tree holds, or a leaf written over it), and reverse mode over a CALLBACK controller's chunks too: a run
+a derivative is taken through makes the structure once from the run's detector numbers, before its steps, and its derivative
+follows by JAX's own rules, never from the state. Reverse mode's tape is a few hundred frames whatever the run's steps (each
+corner sub-sample and each frame's render are checkpointed; what it costs is in `src/mime/sensing/README.md`), and a study
+whose estimate would not fit the memory a run can have is refused before it compiles (`camera.reverse-memory`); the estimate
+is fitted to runs on GitHub's four-core runners (the sizes in `predictions_camera_reverse_moving.json`, both dtypes, up to six poses a
+frame) and is an extrapolation beyond those platforms and sizes. The entry
+stays declared unverified: the renderer's switches are listed raw and not declared, so no exact or piecewise status follows
+from them, and the undistortion's seven `stop_gradient`s cap it there. `expected` carries the derivative in the poses and the
+detector's nine numbers (which are its leaves, so a study can fit them); `image` and the counters carry none. The entry's
+gradient record states where, why and the route.
 
 **Versions.** `camera` 0.1.0 is its first.
