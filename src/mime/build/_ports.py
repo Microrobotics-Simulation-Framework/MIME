@@ -404,9 +404,20 @@ def _ideal() -> Registered:
     return record
 
 
-def handed_problems(planner: Planning, apparatus: str, segment: str, handed: Sequence[CommandPortPlan]) -> bool:
-    """Whether the responses ports hand one segment's node agree: one set of settings for all its commands, since a
-    kinematic arm's node lags every joint with one time constant."""
+def handed_problems(planner: Planning, apparatus: str, segment: str, handed: Sequence[CommandPortPlan],
+                    responds: Sequence[str]) -> bool:
+    """Whether the responses ports hand one segment's node agree with it: the same settings on every command of the
+    segment that takes one (``responds``), since a kinematic arm's node lags every joint with one time constant, so a
+    lag on its revolute joints alone would lag its slide too."""
+    missing = sorted(set(responds) - {p.command.partition(".")[2] for p in handed})
+    if missing:
+        planner.refuse("port.declaration", RefusalClass.USER,
+                       f"apparatus {apparatus!r}'s segment {segment!r}: its ports hand it a response on "
+                       f"{', '.join(p.command for p in handed)} and none on {', '.join(missing)}, and its node lags "
+                       f"every joint with one",
+                       f"give each of its commands the same response: CommandPort(response=FirstOrderLag(tau=...)) on "
+                       f"{', '.join(f'{segment}.{c}' for c in missing)} too")
+        return False
     if len({tuple(sorted(p.response_settings.items())) for p in handed}) > 1:
         planner.refuse("port.declaration", RefusalClass.USER,
                        f"apparatus {apparatus!r}'s segment {segment!r}: its ports declare different responses on "
