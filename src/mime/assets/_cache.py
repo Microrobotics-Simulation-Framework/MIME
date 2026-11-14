@@ -281,9 +281,16 @@ def locate_bundle_container(ref: AssetRef, *, folder: str | os.PathLike[str] | N
     """:func:`locate` for the container file of a bundle a pull has just downloaded
     (:class:`~mime.assets._reference.BundleContainer`, which only that download makes), whose own terms are judged when
     it is unpacked. **Any other reference is gated as :func:`locate` gates it**: a gated asset's record is refused here
-    as there, whatever it is named."""
+    as there, whatever it is named. So is a container whose bytes are those of a gated record the shared sources
+    (installed manifests, the locations file) name: the file is the record's first, and a pull's reading it as a
+    bundle does not make it any less so. A record declared only in an experiment's script is not known here."""
     if not isinstance(ref, BundleContainer):
         return locate(ref, folder=folder, checksum=checksum)
+    from mime.assets._gates import require_accepted
+    from mime.assets._sources import shared_records
+
+    require_accepted([known for known in shared_records().values() if known.sha256 == ref.sha256],
+                     accept_with=fetch_command(ref.name, folder=folder))
     return _found(ref, folder, checksum)
 
 

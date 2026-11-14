@@ -24,7 +24,7 @@ import pytest
 from assets_rig import Rig
 
 from mime import assets
-from mime.assets import AssetRef
+from mime.assets import AssetRef, _sources
 from mime.assets._acceptances import remember
 from mime.assets._cache import locate_bundle_container
 from mime.assets._reference import BundleContainer
@@ -192,4 +192,22 @@ def test_the_bundle_containers_function_gates_any_other_record(rig: Rig):
             with pytest.raises(BuildRefused) as refused:
                 locate_bundle_container(ref)
             assert refused.value.codes() == ["asset.licence-not-accepted"]
+        assert locate_bundle_container(container).is_file()
+
+
+def test_a_container_whose_bytes_are_a_known_gated_record_is_gated_as_that_record(rig: Rig, monkeypatch: pytest.MonkeyPatch):
+    """A pulled URL whose bytes are a gated file already in the cache: the pull's container ref is a
+    ``BundleContainer``, but the shared sources name a gated record with those bytes, so it is asked about as that
+    record. Without such a record (and with the acceptance on record) it passes."""
+    record = placed(rig, gated())
+    container = BundleContainer("bundle", record.sha256, record.size, NO_ASSERTION, ("https://example.org/b",))
+    real = _sources.shared()
+    planted = _sources.Shared({**real.records, record.name: (_sources.Sourced(record, "labz"),)}, real.manifests)
+    with assets.asking(None):
+        assert locate_bundle_container(container).is_file()  # no known record with these bytes: the container's own
+        monkeypatch.setattr(_sources, "shared", lambda: planted)
+        with pytest.raises(BuildRefused) as refused:
+            locate_bundle_container(container)
+        assert refused.value.codes() == ["asset.licence-not-accepted"]
+        remember(list(assets.licences_of(record)))
         assert locate_bundle_container(container).is_file()

@@ -51,6 +51,40 @@ except BuildRefused as refused:
     print(json.dumps({"located": False, "codes": refused.codes(), "action": refused.refusals[0].action}))
 '''
 
+# The script's own functions, as Modal calls them, with the ``mime`` command replaced by one that reads the gated file
+# (as a build does: ``locate``) for the commands that read bytes. A command that reads none (``env check``) does not
+# read it, so a wrap missing from ``_mime`` is not hidden by the check ``verify_experiment`` makes first.
+WIRING = '''
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("modal_app", sys.argv[1])
+script = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(script)
+import mime.cli
+from mime import assets
+from mime.build import BuildRefused
+ref = assets.AssetRef.from_record(json.loads(sys.argv[2]))
+
+
+def reading(arguments):
+    if arguments[0] != "env":
+        assets.locate(ref)
+    return 0
+
+
+mime.cli.main = reading
+found = {}
+with assets.asking(None):
+    for name, call in {"_mime": lambda: script._mime("run", "/experiment", "--duration", "1"),
+                       "fetch_assets": lambda: script.fetch_assets(),
+                       "verify_experiment": lambda: script.verify_experiment("", {}, {})}.items():
+        try:
+            call()
+            found[name] = "read"
+        except BuildRefused as refused:
+            found[name] = refused.codes()[0]
+print(json.dumps(found))
+'''
+
 
 def gated(licence: CustomLicence, name: str) -> AssetRef:
     return AssetRef(name, hashlib.sha256(DATA + name.encode()).hexdigest(), len(DATA) + len(name), licence.id,
@@ -89,6 +123,25 @@ def in_the_container(script: Path, ref: AssetRef, tmp: Path) -> dict[str, object
                           capture_output=True, text=True, env=environment, cwd=tmp, timeout=300, check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout.splitlines()[-1])
+
+
+def through_the_scripts_functions(script: Path, ref: AssetRef, tmp: Path) -> dict[str, str]:
+    environment = {**os.environ, "PYTHONPATH": str(tmp / "stub"), "MIME_LICENCE_ACCEPTANCES": str(tmp / "container.json")}
+    done = subprocess.run([sys.executable, "-c", WIRING, str(script), json.dumps(ref.to_record())],
+                          capture_output=True, text=True, env=environment, cwd=tmp, timeout=300, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout.splitlines()[-1])
+
+
+def test_the_scripts_own_functions_run_mime_inside_the_acceptance(written):
+    """``_mime`` (``mime run``, ``assets fetch``, the study) and ``verify_experiment`` each call the command inside
+    ``_accepting()``: a file accepted here is read by all three, and one not accepted here is refused by all three. Each
+    wrap is what a planted removal of it fails, on every run."""
+    script, accepted, refused, tmp = written
+    assert through_the_scripts_functions(script, accepted, tmp) == {
+        "_mime": "read", "fetch_assets": "read", "verify_experiment": "read"}
+    assert through_the_scripts_functions(script, refused, tmp) == {
+        name: "asset.licence-not-accepted" for name in ("_mime", "fetch_assets", "verify_experiment")}
 
 
 def test_the_script_carries_the_ids_accepted_here_and_only_those(written):
