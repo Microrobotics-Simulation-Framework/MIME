@@ -11,7 +11,7 @@
     "dtype": ["float64", "float32"],
     "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); timings only through node_measure.py on probes, never from CI",
     "sizes_and_parameters": "the coil: helix radius 0.4 mm, pitch 0.6 mm, 2.5 turns, filament 80 um, seen from 0.1 m across a 3 mm field at 128 x 96 (23.4 um a pixel, the filament 3.4 px in radius); samples_for gives 48 a ray (enclosing 0.93 mm, smallest feature 80 um, spacing at most half of it); the sphere 0.5 mm and the capsule 0.25 x 0.8 mm in the same view; corner sub-samples 4 x 4",
-    "seeds_and_draws": "drawn coil poses (tests/sensing/test_sampled.py drawn_pose): within +-0.1 mm across the image, rolled uniformly about the coil's axis, turned within +-20 degrees in the image and +-10 in depth; DETECTION_SEED 0..29 for the rates; Hypothesis's own draws for G16 (30 examples a kind, as the camera's other property tests)"
+    "seeds_and_draws": "drawn coil poses (tests/sensing/test_sampled.py drawn_pose): within +-0.1 mm across the image, rolled uniformly about the coil's axis, turned within +-20 degrees in the image and +-10 in depth; DETECTION_SEED 0..29 for the rates; Hypothesis's own draws for G16 (its default 100 examples a kind: the design sets no count, and CLAUDE.md forbids fewer)"
   },
   "gate_g16_sign_functions": {
     "claim": "each kind's cheap sign function has its region's sign at drawn points beyond the comparison's rounding, and its stated gradient's length is its value's within 64 units in the last place, within half its smallest length of the boundary",
