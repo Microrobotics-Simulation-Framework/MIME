@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.results._result import RunResult, read_report
+from mime.results._result import RunResult, manifest_of_text, read_report, report_of_text
 from mime.results._stage import StageRecord
 from mime.results._study import Dropped, StudyResult
 from mime.results._study_folder import (
@@ -135,10 +135,10 @@ def read_study(root: Path) -> StudyResult:
             archives[group] = GroupArchive(files[group])
         archive = archives[group]
         member = archive.member(point)
-        run = RunResult.from_manifest(cast(dict[str, Any], json.loads(str(member["manifest"]))), member)
+        run = RunResult.from_manifest(manifest_of_text(str(member["manifest"]), f"member {point}'s manifest"), member)
         run.stage = StageRecord.read(member.files, member.__getitem__)
         if "report" in member.files:
-            run.report = cast(dict[str, Any], json.loads(str(member["report"])))
+            run.report, run.report_unreadable = report_of_text(str(member["report"]))
         else:
             run.report, run.report_unreadable = read_report(root / GROUPS_DIR / str(group) / GROUP_REPORT)
         return run
