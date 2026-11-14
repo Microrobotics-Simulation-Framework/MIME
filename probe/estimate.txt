@@ -1,0 +1,3 @@
+# pytest processes over the switch configurations, bounded as the gates probe's were, by a periodic tube box at D/h 40
+# and a period of two (probe/estimate_case.py)
+*: --case estimate_case:tube --path probe --arg cells_across=40 --arg length_cells=80 --steps 1
