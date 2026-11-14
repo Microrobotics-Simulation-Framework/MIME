@@ -42,7 +42,15 @@ from mime.build._maddening import (
 )
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Explained, Refusal, RefusalClass, entry_defect
+from mime.build._refusals import (
+    MIME_DEFECT,
+    BuildRefused,
+    Explained,
+    Refusal,
+    RefusalClass,
+    entry_defect,
+    passed_through,
+)
 from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
 from mime.registry import (
@@ -222,7 +230,7 @@ def _drive_frequencies(plan: EntryPlan, plans: PlanSet) -> dict[str, float]:
     return found
 
 
-def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder, list[str]]:
+def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder, list[str | Refusal]]:
     timestep = plans.dt * plan.divider
     builder = _BUILDERS[plan.section](plan, timestep)
     context = _context(plan, plans)
@@ -245,8 +253,11 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
         from mime.errors import raised_at
 
+        passed = passed_through(error, plan.registered.cls, "building", plan.owner)
+        if passed is not None:  # the user's or the environment's refusal, raised by MIME's API inside the entry
+            return builder, [*passed]
         return builder, [Explained(f"build() raised {error!r}", where=raised_at(error))]
-    return builder, builder.finish()
+    return builder, [*builder.finish()]
 
 
 def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal], list[str]]:
@@ -360,7 +371,8 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     for plan in building:
         builder, problems = _construct_entry(plan, plans)
         builders[plan.owner] = builder
-        refusals += [_entry_defect(plan, problem) for problem in problems]
+        refusals += [_entry_defect(plan, problem) if isinstance(problem, str) else problem
+                     for problem in problems]
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
 
