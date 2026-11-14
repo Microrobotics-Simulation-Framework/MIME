@@ -323,12 +323,14 @@ def test_a_reference_round_trips_through_its_lock_record():
 
 @pytest.mark.parametrize("change", [
     {"sha256": "ABC"}, {"sha256": "0" * 63}, {"size": 0}, {"size": True}, {"name": "../escape"}, {"name": ""},
-    {"licence": ""}, {"locations": []}, {"locations": ["ftp://example.org/blob"]},
+    {"licence": ""}, {"locations": ["ftp://example.org/blob"]},
     {"locations": ["http://example.org/blob"]}, {"locations": ["doi:no-registrant/file"]},
     {"locations": ["doi:10.5281/zenodo.1"]}, {"locations": ["https:///blob"]}, {"locations": [3]},
-    {"extra": 1},
+    {"extra": 1}, {"request": "ask the lab"}, {"request": 3},
 ])
 def test_a_malformed_reference_is_refused_whole(change: dict[str, object]):
+    """Malformed, each: no location at all is not (saved form 14: a file had by request, ``tests/assets/
+    test_asset_by_request.py``), and nor is a route to request it, where it is one a record may name."""
     record = dict(reference(PAYLOAD, "https://example.org/blob").to_record())
     record.update(change)
     assert codes_of(lambda: assets.AssetRef.from_record(record)) == ["asset.reference"]

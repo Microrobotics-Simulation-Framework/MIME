@@ -167,7 +167,10 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/sharing/test_push_publish.py::test_a_lock_changed_between_staging_and_publish_is_left_alone`.
 - **[lock.referenced]** A file the lock says travels as a reference, and that is not in the folder, is refused as
   `asset.missing`, with the command that fetches and places it; one that is there is held to its pin as every file is.
-  *Cases:* `tests/sharing/test_referenced.py::test_a_folder_missing_a_referenced_file_is_refused_with_the_command_that_fetches_and_places_it`.
+  One whose asset names no location (the fourteenth form's) and is not in the cache is refused as
+  `asset.by-request`, which says where to request it and where to put it once held.
+  *Cases:* `tests/sharing/test_referenced.py::test_a_folder_missing_a_referenced_file_is_refused_with_the_command_that_fetches_and_places_it`,
+  `tests/sharing/test_by_request_exits.py::test_the_folder_loads_with_the_file_placed_and_is_refused_by_request_without_it`.
 
 - **[lock.records]** Each asset record of the lock (`assets`) is whole: beside the five keys every record has, each
   key the record states (its credit, role, kind and derivation, notice, custom licences, version, citation, and the
@@ -180,6 +183,18 @@ refusal table's (`mime/build/refusal_table.txt`).
 - **[lock.visuals]** The lock's `visuals` holds the manifest of each set of meshes the stage draws, by its name: their
   records, never their bytes, outside the input hash.
   *Cases:* `tests/viz/test_visual_pins.py::test_the_lock_holds_the_manifest_and_the_folder_holds_none`.
+- **[lock.by-request]** From the fourteenth form an asset record, in the lock's `assets` and in its `visuals`
+  manifests, may name no location (`locations: []`, the key kept: its file is had by request alone) and a route to
+  request its file by (`request`: one printable line of at most `REQUEST_LIMIT` characters, an `https://` link, a
+  `doi:` name, or a contact holding an e-mail address), both outside every hash; a lock of an earlier form is read as it is, nothing
+  written back, and one of them that holds either is refused as `load.lock-shape`, never read as declaring it. A reader
+  of the thirteenth form refuses a folder of the fourteenth as `load.newer-form`. The bundle's format and a manifest
+  file's step with it, so that a reader before them refuses either by its format.
+  *Cases:* `tests/saved/test_form14.py::test_version_fourteen_writes_a_record_with_no_location_and_reads_it_back`,
+  `tests/saved/test_form14.py::test_the_form_thirteen_folder_loads_rebuilds_and_verifies`,
+  `tests/saved/test_form14.py::test_a_form_thirteen_lock_holding_what_form_fourteen_added_is_refused`,
+  `tests/saved/test_form14.py::test_version_thirteens_reader_refuses_a_folder_of_version_fourteen_as_newer_each_file_once`,
+  `tests/sharing/test_by_request_exits.py::test_a_bundle_of_format_three_holding_a_record_with_no_location_is_refused`.
 - **[lock.previous-records]** A lock of a form before the one that added them that holds `visuals` or a key of an asset record
   beyond the five is refused as `load.lock-shape`, never read as stating it.
   *Cases:* `tests/saved/test_form6.py::test_an_earlier_lock_holding_a_key_version_six_added_is_refused`,

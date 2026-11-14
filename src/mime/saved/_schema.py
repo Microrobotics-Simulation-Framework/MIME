@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/13"
-LOCK_SCHEMA = "mime.lock/13"
+DOCUMENT_SCHEMA = "mime.document/14"
+LOCK_SCHEMA = "mime.lock/14"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -356,7 +356,7 @@ class ExperimentDocument(TypedDict, closed=True):
     ``ranges``, each range declared in the experiment (``exp.declare_range``) by its path, absent where none is. Version
     13 names the FVM's setting ``solve_report_rows``, where earlier versions named it ``report_rows``."""
 
-    schema: ReadOnly[Literal["mime.document/13"]]
+    schema: ReadOnly[Literal["mime.document/14"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -574,7 +574,8 @@ class RemoteAssetRecord(TypedDict, closed=True):
     together): the five keys every record has, and from version 6 each one the record states (its credit, role, kind
     and derivation, notice, custom licences, version, citation, and the packages that provide the adapters its
     locations need). Locations are tried in order; the lock holds only the record's own, never a machine's locations
-    file's."""
+    file's. From version 14 the locations may be none (``[]``: the file is had by request alone), and ``request`` names
+    where it may be asked for."""
 
     name: ReadOnly[str]
     sha256: ReadOnly[str]
@@ -590,6 +591,7 @@ class RemoteAssetRecord(TypedDict, closed=True):
     version: NotRequired[ReadOnly[str]]
     citation: NotRequired[ReadOnly[str]]
     adapters: NotRequired[ReadOnly[dict[str, str]]]
+    request: NotRequired[ReadOnly[str]]
 
 
 class MagnetRecord(TypedDict, closed=True):
@@ -818,7 +820,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/13"]]
+    schema: ReadOnly[Literal["mime.lock/14"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]

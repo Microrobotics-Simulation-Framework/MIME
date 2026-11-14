@@ -1,7 +1,7 @@
 """``mime assets sources``: for each asset, its terms, its tier and where it can be fetched from now: availability made
 visible. Each location is looked at without downloading the file (a ranged request for its
 first byte, or the adapter's open and close), in the order a fetch tries them, and said reachable or not, and why;
-offline, each says it was not looked at."""
+offline, each says it was not looked at. A record with no location says it is had by request, and where to ask."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import cast
 
 from mime._lock_json import read_lock
-from mime.assets._cache import is_cached, size_text
+from mime.assets._cache import is_cached, request_words, size_text
 from mime.assets._fetch import probe
 from mime.assets._known import reference
 from mime.assets._locations import read_locations
@@ -36,7 +36,7 @@ def assets_of(target: str | os.PathLike[str]) -> list[AssetRef]:
             held = {}
         visuals: object = cast(dict[str, object], held).get(_VISUALS, {}) if isinstance(held, dict) else {}
         for name, value in sorted(cast(dict[str, object], visuals).items()) if isinstance(visuals, dict) else []:
-            found += read_manifest_data(value, f"{path} ({_VISUALS}: {name})").assets
+            found += read_manifest_data(value, f"{path} ({_VISUALS}: {name})", lock=True).assets
         return found
     if path.is_dir() and (path / BESIDE_NAME).is_file():
         return list(read_manifest(path / BESIDE_NAME).assets)
@@ -87,6 +87,8 @@ class SourceView:
     def reachable(self) -> str:
         """The locations that answered, as a table cell: ``2 of 3``, or ``not looked at`` where none was."""
         looked = [each for each in self.locations if each.reachable is not None]
+        if not self.locations:
+            return "by request"
         if not looked:
             return "not looked at"
         return f"{sum(1 for each in looked if each.reachable)} of {len(looked)}"
@@ -102,8 +104,15 @@ class SourceView:
         lines = [f"  terms: {_terms_line(ref)}"]
         if ref.tier == "referenced":
             lines.append("  its bytes never travel inside a bundle, a push or a package: only this record does")
-        lines.append("  locations, in the order a fetch tries them:")
-        lines += [each.line() for each in self.locations]
+        if ref.by_request:
+            lines.append(f"  no download location (by request): request it from {request_words(ref)}; a copy placed in "
+                         f"the asset cache is taken only if its sha256 is the record's")
+        elif ref.request is not None:
+            lines.append(f"  request it from {request_words(ref)}")
+        if self.locations:
+            lines.append("  locations, in the order a fetch tries them" + (", from this machine's locations file "
+                                                                           "alone:" if ref.by_request else ":"))
+            lines += [each.line() for each in self.locations]
         for scheme, package in ref.adapters:
             lines.append(f"  the scheme {scheme} is read by an adapter from {package or 'a script'}")
         return lines

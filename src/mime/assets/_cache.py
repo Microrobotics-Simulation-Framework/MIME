@@ -11,6 +11,10 @@ not its bytes.
 
 The record also says who wrote the file. A file MIME downloaded may be replaced by a new download; a file a person
 placed in the directory is never deleted or overwritten, whatever its bytes.
+
+A record with no location to fetch it from (its own, or this machine's locations file's) is had by request alone: a
+build that needs it and does not find it is refused as ``asset.by-request`` (:func:`by_request`), which says where to
+ask for it and where to put it, never as a file to download.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from typing import Literal
 
 from mime.assets._commands import fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
+from mime._terminal import plain
 from mime.assets._reference import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.terms import NO_ASSERTION
@@ -246,12 +251,48 @@ def is_cached(ref: AssetRef) -> bool:
     return cheap_problem(ref) is None
 
 
+#: What a message says of a record that names no route to request its file by.
+NO_ROUTE = "no route given"
+
+
+def request_words(ref: AssetRef) -> str:
+    """Where ``ref``'s file may be asked for, as a message, a NOTICE and a plan say it: its ``request``, or that it names
+    none."""
+    return plain(ref.request) if ref.request else NO_ROUTE
+
+
+def no_location(ref: AssetRef) -> bool:
+    """Whether nothing names a location to fetch ``ref`` from: the record names none and this machine's locations file
+    adds none (its mirrors included)."""
+    if ref.locations:
+        return False
+    from mime.assets._fetch import tried_locations
+
+    return not tried_locations(ref)
+
+
+def by_request(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None) -> BuildRefused:
+    """``asset.by-request``: ``ref``'s file is not on this machine and no location names where to fetch it, so it is had
+    by request alone. Says where to ask for it, and where a copy goes once held: MIME takes it only if its sha256 is the
+    record's."""
+    return BuildRefused([Refusal(
+        "asset.by-request", RefusalClass.ENVIRONMENT,
+        f"MIME cannot fetch {ref.name!r} ({size_text(ref.size)}): its publisher gives no download location (licence "
+        f"{plain(ref.licence)}). Request it from: {request_words(ref)}",
+        f"once you hold the file, copy it to {cache_dir() / ref.name} (or into a mirror folder your locations file "
+        f"names), then run `{fetch_command(ref.name, folder=folder)}`: MIME takes it only if its sha256 is the "
+        f"record's")])
+
+
 def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
     """The cached file of ``ref``, checked cheaply (size, and the record of the full verification made when it was
     stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that
-    is not there, or that fails the check, is refused as ``asset.missing``. The action is the exact command that stores
-    it: for everything the experiment ``folder`` needs when the folder is known, else for this asset by name."""
+    is not there, or that fails the check, is refused as ``asset.missing``, and one not there that no location names
+    as ``asset.by-request`` (:func:`by_request`). The action is the exact command that stores it: for everything the
+    experiment ``folder`` needs when the folder is known, else for this asset by name."""
     problem = cheap_problem(ref, checksum)
+    if problem is not None and not file_path(ref).is_file() and no_location(ref):
+        raise by_request(ref, folder=folder)
     if problem is not None:
         raise BuildRefused([Refusal(
             "asset.missing", RefusalClass.ENVIRONMENT,

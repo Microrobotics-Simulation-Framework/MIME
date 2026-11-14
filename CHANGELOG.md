@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A file had by request alone: an asset record with no location, saved form 14** (lane P's option 4; the
+  maintainer's answers 2, 3 and 12). A record may name no location (`AssetRef(..., locations=())`, written
+  `"locations": []`) and a route to request its file by (`request=`: one printable line of at most 200 characters, an
+  `https://` link, a `doi:` name, or a contact holding an e-mail address; no part of the file's identity, hash or
+  verdict). MIME does not recommend it and never refuses it. A build that needs the bytes and does not find them is
+  refused as `asset.by-request` (`locate`, `mime assets fetch`, and the load of a folder that lacks such a file), which
+  says where to request it and where to put it: a copy placed in the cache is taken only if its sha256 is the record's.
+  `mime assets sources` says "no download location (by request)". `mime pack` carries the record, never the bytes, and
+  warns (`mime.saved.ByRequestWarning`); `mime push` never uploads it, whatever its licence, lists it in its plan with
+  its route, and warns; neither refuses it or asks `--yes`. The NOTICE, the availability statement and the card open
+  "Not reproducible from public sources" where results depend on such a file, with its route; one of role
+  `presentation` gets a softer line. The saved form is version 14: the lock's records, in its `assets` and in its
+  `visuals` manifests, may hold either addition, both outside every hash, so a folder of an earlier form loads as it
+  was and one whose lock holds either is refused (`load.lock-shape`); a reader of form 13 refuses form 14 as
+  `load.newer-form`. The bundle's format is `mime.bundle/4` and a manifest file's `mime.asset_manifest/3`, since a
+  reader of the format before each, given a record with no location, refused its shape (`bundle.manifest`,
+  `asset.manifest`), measured with MIME at 316937a8; it now refuses by the format, naming a later MIME. The document's
+  `blocks` key waits for the block design.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
@@ -926,6 +945,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`bundle.no-location` is retired: `mime pack` no longer refuses a file that may not be redistributed whose terms
+  give no origin** (saved form 14). Save writes it into the lock as a reference with no location, the bundle carries
+  that record, and pack warns (`ByRequestWarning`). A lock of an earlier form that does not name such a file as a
+  reference is refused as `bundle.lock-terms` (save the experiment again).
+
 - **A study's reverse-mode derivative in float32 through a body resolved on the FVM's grid (`Drag.Penalty`) is
   refused outside the envelope where it was measured right** (`drag.penalty-float32-reverse`, before the derivative
   compiles), routed to float64 or to forward mode. The envelope, allowed: a sphere in the default 0.1h interior at up
@@ -1252,6 +1276,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **A lock of a later saved form read by `mime assets fetch <folder>` or `mime assets sources <folder>` was refused by
+  its records' shape** (`asset.reference`, measured with MIME at 316937a8 on a form-14 folder), since they read the
+  lock's records without its form. They now refuse it as `load.newer-form` first (`mime.assets.folder_assets`).
+- **Push's plan had a filter that dropped an asset with no location from its list without a word.** It was unreachable
+  until saved form 14, since every record had a location, so no release showed it; the plan now lists such an asset
+  with where to request it.
 
 - **A bundle's NOTICE and availability statement ignored the lock's assets**. A folder
   whose result reads an asset it holds no file of (a lab's licensed record, MIME's own tube table) said "Licences: None

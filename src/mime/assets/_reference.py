@@ -7,6 +7,12 @@ for a derived file), where it may be fetched from (its locations, primary first)
 of a scheme MIME does not provide needs. Its tier is a verdict :mod:`mime.terms` computes from the licence, never a
 value written by hand. A record also has room for what a shared part will need (its own version and citation), so a
 part can be built of records without changing their shape.
+
+**A record may have no location** (saved form 14): its publisher does not make the file available for download, and a
+person who holds it copies it into the asset cache, where MIME takes it only if its sha256 is the record's. MIME does
+not recommend it, since it undercuts reproducing the results, and never refuses it. Its optional ``request`` names
+where the file may be asked for (a contact, or a link to a paper's data-availability statement): strongly recommended,
+never required, and no part of the file's identity or its verdict.
 """
 
 from __future__ import annotations
@@ -77,19 +83,29 @@ class AssetRecord(TypedDict, closed=True):
     version: NotRequired[ReadOnly[str]]
     citation: NotRequired[ReadOnly[str]]
     adapters: NotRequired[ReadOnly[dict[str, str]]]
+    request: NotRequired[ReadOnly[str]]
 
 
 #: Every record's keys, and the keys a record writes only where it states them.
 REQUIRED_KEYS = ("name", "sha256", "size", "licence", "locations")
-OPTIONAL_KEYS = ("credit", "role", "kind", "derivation", "notice", "licences", "version", "citation", "adapters")
+OPTIONAL_KEYS = ("credit", "role", "kind", "derivation", "notice", "licences", "version", "citation", "adapters",
+                 "request")
+#: The longest ``request`` a record holds, in characters: one line a message and a NOTICE show whole.
+REQUEST_LIMIT = 200
+REQUEST_FORMS = (f"its request is one printable line of at most {REQUEST_LIMIT} characters: an https:// link, a doi: "
+                 f"name (doi:10.<registrant>/<suffix>), or a contact holding an e-mail address")
+#: A contact's e-mail address, anywhere in the line (``imaging@hospital.example.org``, ``mailto:...``, a name and one).
+_EMAIL = re.compile(r"[^@\s<>()\[\],;:\"]+@[^@\s<>()\[\],;:\"]+\.[A-Za-z]{2,}")
+_DOI_NAME = re.compile(r"doi:10\.[0-9]+(\.[0-9]+)*/\S+")
 
 
 def _invalid(name: str, problem: str) -> BuildRefused:
     return BuildRefused([Refusal(
         "asset.reference", RefusalClass.USER, f"asset reference {name!r}: {problem}",
         "write the reference as name, sha256 (64 lowercase hex digits), size in bytes, licence (an SPDX licence "
-        "expression: licence=\"CC0-1.0\"), and locations that are https:// URLs or doi: URLs: AssetRef(name=..., "
-        "sha256=..., size=..., licence=..., locations=(...))")])
+        "expression: licence=\"CC0-1.0\"), and locations that are https:// URLs or doi: URLs (none for a file had by "
+        "request alone, with request=\"<a contact or a link>\"): AssetRef(name=..., sha256=..., size=..., licence=..., "
+        "locations=(...))")])
 
 
 #: An access key an address carries as its ``token`` parameter (a record's share link's, or a service's own form): never
@@ -193,6 +209,20 @@ def _web_problem(location: str) -> str | None:
     return _FORMS
 
 
+def request_problem(request: str) -> str | None:
+    """Why ``request`` is not a route a record may name for asking for its file, or ``None``: one printable line of at
+    most :data:`REQUEST_LIMIT` characters, with no space at either end, that is an ``https://`` link (no access key in
+    it), a ``doi:`` name, or a contact holding an e-mail address."""
+    if (not request or request != request.strip() or not request.isprintable() or len(request) > REQUEST_LIMIT
+            or carries_key(request)):
+        return REQUEST_FORMS
+    if request.startswith("https://"):
+        return None if _web_problem(request) is None else REQUEST_FORMS
+    if request.startswith("doi:"):
+        return None if _DOI_NAME.fullmatch(request) else REQUEST_FORMS
+    return None if _EMAIL.search(request) and "://" not in request else REQUEST_FORMS
+
+
 def _text_problem(value: object, what: str) -> str | None:
     if value is None:
         return None
@@ -212,10 +242,11 @@ class AssetRef:
     The rest is stated where it is known, and written only then: ``credit`` (whom the licence asks to be credited),
     ``role`` (``results``, or ``presentation``: no result depends on it), ``kind`` (``authored``, ``measured`` or
     ``derived``, with ``derivation`` the sha256 of its derivation record), ``notice`` (terms to show with it),
-    ``version`` and ``citation`` (its own identity, as a shared part's), and ``adapters``, each scheme of a location MIME
-    does not read itself with the package that provides its adapter, so ``mime pull`` can name it. ``unlisted`` reads
-    a licence id the installed packaging does not list as written, as a reference read from a record is
-    (:meth:`from_record`): the packaging that wrote it listed it."""
+    ``version`` and ``citation`` (its own identity, as a shared part's), ``adapters``, each scheme of a location MIME
+    does not read itself with the package that provides its adapter, so ``mime pull`` can name it, and ``request``,
+    where the file may be asked for (:func:`request_problem`). ``locations`` may be empty: the file is then had by
+    request alone (:attr:`by_request`). ``unlisted`` reads a licence id the installed packaging does not list as
+    written, as a reference read from a record is (:meth:`from_record`): the packaging that wrote it listed it."""
 
     name: str
     sha256: str
@@ -231,6 +262,7 @@ class AssetRef:
     version: str | None = None
     citation: str | None = None
     adapters: tuple[tuple[str, str], ...] = ()
+    request: str | None = None
     unlisted: InitVar[bool] = False
 
     def __post_init__(self, unlisted: bool) -> None:
@@ -245,8 +277,6 @@ class AssetRef:
             raise _invalid(self.name, licence)
         for problem in self._stated_problems():
             raise _invalid(self.name, problem)
-        if not self.locations:
-            raise _invalid(self.name, "no location")
         schemes = [scheme for scheme, _ in self.adapters]
         for location in self.locations:
             problem = location_problem(location, schemes)
@@ -257,6 +287,9 @@ class AssetRef:
         found = [problem for value, what in ((self.credit, "credit"), (self.notice, "notice"),
                                              (self.version, "version"), (self.citation, "citation"))
                  if (problem := _text_problem(value, what)) is not None]
+        if self.request is not None and (not isinstance(cast(object, self.request), str)
+                                         or request_problem(self.request) is not None):
+            found.append(REQUEST_FORMS)
         if self.role is not None and self.role not in ROLES:
             found.append(f"its role is {' or '.join(ROLES)}, not {self.role!r}")
         if self.kind is not None and self.kind not in KINDS:
@@ -278,6 +311,11 @@ class AssetRef:
                 found.append(f"its adapters name the package {package!r} for {scheme}, which is not a distribution's "
                              f"name")
         return found
+
+    @property
+    def by_request(self) -> bool:
+        """Whether the record names no location: its publisher makes the file available by request alone."""
+        return not self.locations
 
     @property
     def custom(self) -> Mapping[str, CustomLicence]:
@@ -316,6 +354,8 @@ class AssetRef:
                 held[key] = value
         if self.adapters:
             held["adapters"] = dict(sorted(self.adapters))
+        if self.request is not None:
+            held["request"] = self.request
         return cast(AssetRecord, held)
 
     @staticmethod
@@ -333,7 +373,7 @@ class AssetRef:
                 or locations is None or not all(isinstance(each, str) for each in locations)):
             raise _invalid(name, "the record's values are not str, str, int, str and a list of str")
         stated: dict[str, str] = {}
-        for key in ("credit", "role", "kind", "derivation", "notice", "version", "citation"):
+        for key in ("credit", "role", "kind", "derivation", "notice", "version", "citation", "request"):
             if key in record:
                 value = record[key]
                 if not isinstance(value, str):
@@ -344,7 +384,8 @@ class AssetRef:
         return AssetRef(str(texts[0]), str(texts[1]), size, str(texts[2]), tuple(str(each) for each in locations),
                         stated.get("credit"), cast("Role | None", stated.get("role")),
                         cast("Kind | None", stated.get("kind")), stated.get("derivation"), stated.get("notice"),
-                        licences, stated.get("version"), stated.get("citation"), adapters, unlisted=True)
+                        licences, stated.get("version"), stated.get("citation"), adapters, stated.get("request"),
+                        unlisted=True)
 
 
 def _licences_of(name: str, held: object) -> tuple[CustomLicence, ...]:
@@ -376,5 +417,5 @@ def _adapters_of(name: str, held: object) -> tuple[tuple[str, str], ...]:
 
 
 __all__ = ["BUILT_IN_SCHEMES", "KEY_HIDDEN", "KINDS", "MIRROR_PREFIX", "OPTIONAL_KEYS", "PACKAGE_PREFIX",
-           "REQUIRED_KEYS", "AssetRecord", "AssetRef", "CustomLicenceRecord", "Kind", "carries_key",
-           "location_problem", "redacted", "scheme_of"]
+           "REQUEST_FORMS", "REQUEST_LIMIT", "REQUIRED_KEYS", "AssetRecord", "AssetRef", "CustomLicenceRecord", "Kind",
+           "carries_key", "location_problem", "redacted", "request_problem", "scheme_of"]

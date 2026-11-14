@@ -373,7 +373,7 @@ def _inside(name: str, data: bytes) -> list[Manifest | AssetRef]:
         visuals = record.get("visuals")
         for value in list(cast(dict[str, object], visuals).values()) if isinstance(visuals, dict) else []:
             try:
-                found.append(read_manifest_data(value, name))
+                found.append(read_manifest_data(value, name, lock=True))
             except BuildRefused:
                 continue
     return found

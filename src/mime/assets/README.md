@@ -20,7 +20,16 @@ it is known, and written only then:
 - `licences`, each custom licence its licence names (a `LicenseRef-` id with its title, link and what a person says it
   allows, `mime.terms.CustomLicence`);
 - `version` and `citation`, its own identity, as a shared part's will need;
-- `adapters`, each scheme of a location MIME does not read itself, with the package that provides its adapter.
+- `adapters`, each scheme of a location MIME does not read itself, with the package that provides its adapter;
+- `request`, where the file may be asked for, for a file had by request (below): one printable line, at most
+  `REQUEST_LIMIT` characters, that is an `https://` link (a paper's data-availability statement), a `doi:` name, or a contact holding an
+  e-mail address. It is no part of the file's identity, its hash or its verdict, and two sources that name different
+  routes for the same bytes under the same terms are one record, the first route kept.
+
+**A record may name no location** (the fourteenth saved form): `locations=()`, written `"locations": []`, the key kept. Its
+publisher does not make the file available for download; whoever holds it copies it into the cache, where it is taken
+only if its sha256 is the record's (below). MIME does not recommend it, since it undercuts reproducing what depends on
+the file, and never refuses it: see [Publishing an asset by request](#publishing-an-asset-by-request).
 
 A record of the five keys every record has writes exactly those five, as every lock of an earlier saved form holds them.
 **The tier is a verdict, never written by hand**: `ref.verdict` is `mime.terms.licence_verdict` of the licence and the
@@ -34,7 +43,7 @@ as `asset.reference`. In a lock, a manifest or a package it is the record `Asset
 `AssetRef.from_record()`. Because the hash names the file, a new home for it is one more location: no saved
 experiment changes, and none breaks.
 
-**A manifest** (`Manifest`, its format `mime.asset_manifest/2`) is a named group of ordinary records, with the credit and
+**A manifest** (`Manifest`, its format `mime.asset_manifest/3`) is a named group of ordinary records, with the credit and
 notice the group is shown with, and how a description names each of its files (a mesh's path, with its git blob). A
 robot's meshes are a manifest beside its description: the AR4's is `examples/descriptions/ar4/visuals.json`. A
 manifest's `credit` and `licences` fill each record that states none. The earlier visual-set form
@@ -48,6 +57,13 @@ folder's lock (saved form 6) has no key for the lines**, so it holds the manifes
 (`to_record()` leaves them out unless asked; `Manifest.to_json(lock=True)`): a download fed from a lock shows the
 licence's id, title and link, what its redistribution status says, and the notice. Holding the lines in the lock is a
 saved form 7, which moves the saved goldens; it is not done here.
+
+**The third form adds the record with no location** and its `request`: a manifest file of an earlier form that holds
+either is refused, and a MIME that reads only the second form refuses a manifest of the third by its format, naming a
+later MIME, where it would otherwise refuse a record's shape (measured with the MIME before this form: such a record in
+a manifest of the second form is refused as `asset.reference`, "no location"). A package's plain file of records
+(`{"assets": [...]}`) has no format to step, so a package that ships a record with no location ships it in a manifest
+of the third form. A saved folder's lock holds its manifests' records in the lock's own form.
 
 ## Where records come from, and the pin
 
@@ -191,6 +207,19 @@ Run: mime assets fetch ./fl9_water/
 It names the asset and its size, never its hash or the cache's path. Where the experiment's folder is known
 (`locate(ref, folder=...)`) the command is scoped to it; otherwise it is `mime assets fetch <name>`.
 
+A file that is not there and that **nothing names a location for** (the record names none, and this machine's
+locations file adds none) is refused as `asset.by-request` instead, here and by `fetch`, before any gate, since nothing
+is downloaded. It says where to request the file and where to put it once held, the cache's path included:
+
+```
+MIME cannot fetch 'vessel_scan.usda' (600 bytes): its publisher gives no download location (licence
+LicenseRef-Imaging-Lab-Restricted). Request it from: mailto:imaging@hospital.example.org
+do: once you hold the file, copy it to <the cache>/vessel_scan.usda (or into a mirror folder your locations file
+names), then run `mime assets fetch ./scanned/`: MIME takes it only if its sha256 is the record's
+```
+
+A folder whose file travels as such a record, and is not in it (an unpacked bundle), is refused so too, at load.
+
 ## The cache
 
 - It is **one directory**: `pooch.os_cache("mime")/assets` by default, and the directory in **`MIME_ASSETS_DIR`**
@@ -247,7 +276,8 @@ The words are in one place, `_commands.py`.
 - `mime assets licences [--revoke <id>]`: the licences accepted here (below).
 - `mime assets check`: re-hash every cached asset in full. Exits one when a file is corrupt, marks it (so `locate`
   refuses it) and leaves it where it is.
-- `mime assets sources <name-or-folder>...`: each asset's terms, tier and locations, each looked at now (above).
+- `mime assets sources <name-or-folder>...`: each asset's terms, tier and locations, each looked at now (above); a
+  record with no location says "no download location (by request)" and where to request it.
 - `mime assets audit <wheel|sdist|archive|directory>... [--manifest FILE]`: the guard (below). Exits one when it finds
   anything.
 
@@ -317,10 +347,39 @@ with their conditions in the NOTICE; referenced bytes never do, only their recor
 | Exit | How it holds |
 |---|---|
 | save | a file whose tier is referenced is listed in the lock's `referenced_files`, its record in `assets` (`mime.saved`); a derived file over a referenced input is referenced whatever licence its record declares |
-| `pack` | such a file never enters the bundle, whatever its size, nor its bytes at another path (`bundle.referenced-copy`); and every file it would carry is held to every record in reach, whatever the folder's own records say: bytes a shared source, the lock, a derived file's inputs or a mesh baked into the cache say may not travel are refused (`bundle.referenced-copy`). The manifest's `files` are what is inside, its `referenced` what is fetched, and its `assets` each record with its locations: from where |
-| `push` | a referenced asset is never uploaded (`asset_choices`, which takes the derived terms and every record in reach too), its record travels in the bundle's lock; one that may travel is uploaded where it has no Zenodo location yet; and whatever chose the uploads, each file the record would hold is held to every record in reach (`push.referenced-copy`) |
+| `pack` | such a file never enters the bundle, whatever its size, nor its bytes at another path (`bundle.referenced-copy`); one that also has no origin travels as a record with no location, and pack warns (`ByRequestWarning`), never refuses; and every file it would carry is held to every record in reach, whatever the folder's own records say: bytes a shared source, the lock, a derived file's inputs or a mesh baked into the cache say may not travel are refused (`bundle.referenced-copy`). The manifest's `files` are what is inside, its `referenced` what is fetched, and its `assets` each record with its locations: from where |
+| `push` | a referenced asset is never uploaded (`asset_choices`, which takes the derived terms and every record in reach too), its record travels in the bundle's lock; one with no location is never uploaded, whatever its licence, is listed with where to request it, and warned of; one that may travel is uploaded where it has no Zenodo location yet; and whatever chose the uploads, each file the record would hold is held to every record in reach (`push.referenced-copy`) |
 | recordings and scenes | a run folder's recording composes over its own folder's scene, written by save (above), every composed layer resolves inside its folder, and a mesh baked from a referenced source is composed at view time from the asset cache, never written into a saved or run folder |
 | the repository, a wheel, an sdist, a plugin's wheel | the guard, below, in MIME's CI and at each release |
+
+## Publishing an asset by request
+
+A record may have no download location: a company protecting its design, a scan under a hospital's data agreement.
+MIME does not recommend it, because whoever reads the results cannot reproduce them from public sources, and it never
+refuses it: a group with a legitimate reason can still share what it found. Name where the file may be requested; that
+route is strongly recommended, never required.
+
+```python
+scan = AssetRef("vessel_scan.usda", sha256="...", size=600, licence="LicenseRef-Imaging-Lab-Restricted",
+                locations=(), request="mailto:imaging@hospital.example.org", role="results",
+                licences=(CustomLicence(...),))
+scene.reference(asset(scan), at="/World/vessel_scan")  # the Scene the experiment was made with
+```
+
+- **Building it** needs the bytes: the author's cache holds them (copied in, then `mime assets fetch vessel_scan.usda`,
+  which takes them by their sha256); anyone else's build is refused as `asset.by-request` until they hold them too.
+- **Saving** writes the record whole in the lock, `"locations": []` and its `request` (the fourteenth saved form).
+  A third-party file whose terms may not be redistributed and give no origin is saved so too, with no route.
+- **`mime pack`** carries the record, never the bytes, and warns once a file (`ByRequestWarning`): what the bundle
+  lacks, and the route or that none is given. **`mime push`** never uploads it, whatever its licence, lists it with the
+  route in its plan, and warns. Neither refuses it, nor asks `--yes`.
+- **The NOTICE, the availability statement and the card** say it plainly: "Not reproducible from public sources: the
+  results depend on <n> file(s) ... not make available for download: ... (licence ...; request it from:
+  ...). With the file in place, `mime verify <folder>` checks it by its sha256." A file of role `presentation` gets the
+  softer line, that showing the experiment needs it.
+- **A reader** who obtains the file copies it into the cache under the asset's name (or names its folder as a mirror
+  in the locations file), runs `mime assets fetch <folder>`, and verifies: a copy with one byte changed is refused
+  (`asset.placed-file`), and never deleted.
 
 ## Derived files' terms
 

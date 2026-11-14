@@ -33,12 +33,14 @@ from mime.assets._cache import (
     PLACED,
     CHECKSUM_SUFFIX,
     RECORD_SUFFIX,
+    by_request,
     cache_dir,
     cheap_problem,
     file_path,
     hash_problem,
     lock_path,
     mime_wrote,
+    no_location,
     offline,
     remember_checksum,
     remembered_checksum,
@@ -648,7 +650,7 @@ def needs_download(ref: AssetRef) -> bool:
     hashes, and takes if its bytes are the reference's). A batch's disk check (:func:`~mime.assets.approve`) counts what this
     says is a download; a file that turns out to hold other bytes is a download after all, and the resolver gates it as one
     (``approve(..., downloading=True)``) when it comes to store it."""
-    if offline() or cheap_problem(ref) is None:
+    if offline() or cheap_problem(ref) is None or no_location(ref):
         return False
     candidates = [file_path(ref), *(cache_dir() / name for name, _ in _names_a_person_may_use(ref))]
     return not any(path.is_file() and path.stat().st_size == ref.size for path in candidates)
@@ -829,8 +831,9 @@ def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full:
        arrives; the file is hashed in full again before it is moved into place and recorded.
 
     Steps 2 and 3 hold a lock on the asset: a second process waits, then finds the file stored. With
-    ``MIME_OFFLINE`` set step 3 is refused (``asset.offline``). ``report`` is called with a line before each download,
-    naming the size and the location.
+    ``MIME_OFFLINE`` set step 3 is refused (``asset.offline``), and where no location names the file (the record's or
+    this machine's locations file's) it is refused as ``asset.by-request``, before any gate: nothing is downloaded.
+    ``report`` is called with a line before each download, naming the size and the location.
 
     **Step 3 is gated** (:mod:`mime.assets._gates`) unless a batch has cleared the file (:func:`approved`): a licence
     with conditions beyond credit must be accepted (``accept_licences`` names the ids accepted for this call; a person
@@ -854,6 +857,8 @@ def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full:
         if stored:
             require_accepted([ref], accept_licences=accept_licences)
             return file_path(ref)
+        if no_location(ref):
+            raise by_request(ref)
         if is_offline:
             raise _offline(ref, present=replace)
         if not is_cleared(ref):

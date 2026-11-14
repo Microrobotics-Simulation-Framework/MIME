@@ -107,12 +107,21 @@ no new key; its schema moves with the document's, as at every version.
 and earlier named ``report_rows``: in a medium's flow settings, in the flow's resolved entry and its default, and among
 the flow node's parameters in the derived graph. Nothing else changed. A document of an earlier version is read with
 the old name as the new, and the rebuilt document, resolved record and derived graph are written back with the old name
-for its lock's hashes. No key is added; the schemas move with the form."""
+for its lock's hashes. No key is added; the schemas move with the form.
+
+**Version 14** (``mime.document/14``, ``mime.lock/14``) changes the lock's asset records alone, in the lock's ``assets``
+and in the records of its ``visuals`` manifests: a record may name no location (``locations: []``, the key kept), its
+file had by request alone, and may name a route to request its file by (``request``: a contact, or a link to a paper's
+data-availability statement). Both are outside every hash, as the lock's asset records always were, so a lock of an
+earlier version is read as it is and nothing is written back. One of an earlier version that holds either is refused,
+never read as declaring it. What the version added is named in one place (:data:`STEP_14_DOCUMENT_KEYS`,
+:data:`STEP_14_LOCK_HELD`), which the refusal of an earlier form and the write-back read: the document holds no new key,
+and its schema moves with the lock's."""
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any, cast
 
@@ -120,16 +129,16 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 13
+CURRENT = 14
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
                                        7: "mime.document/7", 8: "mime.document/8", 9: "mime.document/9",
                                        10: "mime.document/10", 11: "mime.document/11", 12: "mime.document/12",
-                                       CURRENT: DOCUMENT_SCHEMA}
+                                       13: "mime.document/13", CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
                                    5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", 8: "mime.lock/8",
                                    9: "mime.lock/9", 10: "mime.lock/10", 11: "mime.lock/11", 12: "mime.lock/12",
-                                   CURRENT: LOCK_SCHEMA}
+                                   13: "mime.lock/13", CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
 #: experiment an experiment was made from, the version whose lock names the program the reference outputs were
@@ -152,6 +161,10 @@ RANGES_ADDED = 12
 #: The version that renamed the FVM's setting: a form before it names ``solve_report_rows`` ``report_rows``.
 ROWS_RENAMED = 13
 OLD_ROWS, NEW_ROWS = "report_rows", "solve_report_rows"
+#: The version whose lock's asset records may name no location and a route to request their file by.
+HASH_ONLY_ADDED = 14
+#: The record's key version 14 added, and the record's key it lets be empty.
+REQUEST_KEY, LOCATIONS_KEY = "request", "locations"
 _FVM = "fvm"
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
@@ -421,6 +434,47 @@ def _rows_written(medium: dict[str, object]) -> dict[str, object]:
     return _with_flow_setting(medium, NEW_ROWS, OLD_ROWS)
 
 
+def _hash_only_paths(records: object, where: str) -> list[str]:
+    """The paths, below ``where``, of each record's ``request`` and of each record's empty ``locations``."""
+    found: list[str] = []
+    for index, record in enumerate(cast("list[object]", records) if isinstance(records, list) else []):
+        if isinstance(record, dict):
+            held = cast("dict[str, object]", record)
+            found += [f"{where}[{index}].{REQUEST_KEY}"] if REQUEST_KEY in held else []
+            found += [f"{where}[{index}].{LOCATIONS_KEY} (empty)"] if held.get(LOCATIONS_KEY) == [] else []
+    return found
+
+
+def hash_only_held(data: object) -> list[str]:
+    """What version 14 added that a lock holds: a record's ``request``, or its empty ``locations``, in the lock's
+    ``assets`` (``assets[<i>].request``) and in each of its ``visuals`` manifests (``visuals.<name>.assets[<i>]...``)."""
+    if not isinstance(data, dict):
+        return []
+    held = cast("dict[str, object]", data)
+    found = _hash_only_paths(held.get("assets"), "assets")
+    visuals = held.get(LOCK_VISUALS_KEY)
+    for name, manifest in sorted(cast("dict[str, object]", visuals).items()) if isinstance(visuals, dict) else []:
+        if isinstance(manifest, dict):
+            found += _hash_only_paths(cast("dict[str, object]", manifest).get("assets"),
+                                      f"{LOCK_VISUALS_KEY}.{name}.assets")
+    return found
+
+
+#: What version 14 added, in one place: the document's keys, each written only where something is declared (none
+#: yet), and a check for each thing it added to the lock. A form before it that holds any is refused; a rebuilt
+#: document written back into such a form has the keys taken off.
+STEP_14_DOCUMENT_KEYS: tuple[str, ...] = ()
+STEP_14_LOCK_HELD: tuple[Callable[[object], list[str]], ...] = (hash_only_held,)
+
+
+def step_14_held(data: object, *, lock: bool) -> list[str]:
+    """What version 14 added that ``data`` holds: a lock's by :data:`STEP_14_LOCK_HELD`, a document's top-level keys
+    of :data:`STEP_14_DOCUMENT_KEYS`."""
+    if lock:
+        return [path for held in STEP_14_LOCK_HELD for path in held(data)]
+    return [key for key in STEP_14_DOCUMENT_KEYS if isinstance(data, dict) and key in cast("dict[str, object]", data)]
+
+
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
     terms keys in one of an earlier version, version 5's duration, version 7's ``based_on``, version 11's media's
@@ -429,6 +483,7 @@ def added_after(data: object, version: int) -> list[str]:
     found += duration_held(data) if version < DURATION_ADDED else []
     found += medium_fields_held(data) if version < MEDIUM_FIELDS_ADDED else []
     found += ranges_held(data) if version < RANGES_ADDED else []
+    found += step_14_held(data, lock=False) if version < HASH_ONLY_ADDED else []
     return found + (based_on_held(data) if version < BASED_ON_ADDED else [])
 
 
@@ -464,8 +519,8 @@ def upgraded_lock(data: object) -> tuple[object, int]:
     """``data`` as the current schema reads it, and the version it was written in. The lock's contents stay in the form
     it was written in: a load compares the rebuilt experiment written back into that form. A lock of an earlier
     version that holds a key a later one added (version 4's ``referenced_files``, version 6's ``visuals`` or a key of
-    an asset record beyond the five, version 8's program or count, version 10's resolution) is left as it is, for the
-    schema check to refuse."""
+    an asset record beyond the five, version 8's program or count, version 10's resolution, version 14's request or
+    empty locations) is left as it is, for the schema check to refuse."""
     if not isinstance(data, dict):
         return data, CURRENT
     held = dict(cast("dict[str, object]", data))
@@ -480,6 +535,8 @@ def upgraded_lock(data: object) -> tuple[object, int]:
         return held, version
     if version < SOURCE_SCALE_ADDED and resolution_held(held):
         return held, version
+    if version < HASH_ONLY_ADDED and step_14_held(held, lock=True):
+        return held, version
     resolved = held.get("resolved")
     if version == 1 and isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
         held["resolved"] = {**cast("dict[str, object]", resolved), _RESOLVED_ADDED: dict(_PREVIOUS_RESOLVED_PROFILE)}
@@ -492,6 +549,8 @@ def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any
     held = dict(document)
     if version == CURRENT:
         return held
+    if version < HASH_ONLY_ADDED:
+        held = {key: value for key, value in held.items() if key not in STEP_14_DOCUMENT_KEYS}
     if version < ROWS_RENAMED:
         held = _with_media(held, _rows_written)
     if version < MEDIUM_FIELDS_ADDED:
@@ -658,7 +717,9 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
 
 
 __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS",
-           "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY",
+           "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "HASH_ONLY_ADDED", "INERTIA_TENSOR_ADDED",
+           "LOCATIONS_KEY", "LOCK_VISUALS_KEY", "REQUEST_KEY", "STEP_14_DOCUMENT_KEYS", "STEP_14_LOCK_HELD",
+           "hash_only_held", "step_14_held",
            "MEDIUM_FIELDS_ADDED", "RECORDS_ADDED", "medium_fields_held",
            "PRODUCTS_REFUSAL", "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
            "NEW_ROWS", "OLD_ROWS", "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RANGES_ADDED",
