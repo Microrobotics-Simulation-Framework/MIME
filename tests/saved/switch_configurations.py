@@ -50,6 +50,7 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found.update({f"case/{case.name}": case.make for case in CASES if not case.refused})
     found["controller/tracked_rpm_in_graph"] = partial(tracked_rpm, "tracked_rpm_in_graph", mode="graph",
                                                        controller=tracking(orientation_feedback=True, iterations=1))
+    found["camera/capsule"] = capsule_camera
     found["chain/friction_arm"] = friction_arm
     found["contact/rod_hull"] = rod_contact
     found["ledger/massive_rpm"] = partial(metered, partial(massive_rpm, "massive_rpm_metered"))
@@ -74,6 +75,28 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
             found["drag/lubricated_ellipsoid"] = partial(above_plane, 0.16, blob=0.25, name="lubricated_ellipsoid",
                                                          kind=Ellipsoid(semi_axes=mm((1.1, 1.0, 0.95))))
     return found
+
+
+def capsule_camera() -> Experiment:
+    """The in-loop camera seeing a capsule: the one closed form no case above images, its raw sites scanned."""
+    from in_loop_cases import DETECTOR, LOOK_ACROSS, scene_without_camera
+
+    from mime import Body, State
+    from mime.dynamics import RigidInertial
+    from mime.observations import Camera, World
+    from mime.scene import Capsule
+    from mime.things import Part
+    from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
+
+    experiment = scene_without_camera(balls=0)
+    experiment.add_body(Body("pill", dynamics=RigidInertial(), initial=State(
+        position=um((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))),
+        parts={"steel": Part(Capsule(radius=um(10.0), height=um(30.0), axis=(1.0, 0.0, 0.0)))}))
+    experiment.declare("pill.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    experiment.observe(Camera(detector=DETECTOR, mount=World(position=m((0.0, -1e-3, 0.0)), orientation=LOOK_ACROSS),
+                              frame_period=ms(3), absorbers=(("tube", 3000.0),)))
+    return experiment
 
 
 def metered(make: Callable[[], Experiment]) -> Experiment:

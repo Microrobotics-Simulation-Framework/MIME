@@ -34,11 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   owners `camera.*` declared on the entry, each with a row of the switch harness at the renderer's own function on one pixel
   or one ray; the entry's status is `piecewise_jump`, the one they give, in place of `unverified`. Measured there: a jump
   where two pieces of an outline meet inside a pixel, where the pinhole crosses a cap's plane and at the exact disc's series
-  threshold (6e-12 of a pixel's area; the series is a term short), a kink or smoother at the others, and the corner choice
+  threshold (6.1e-12 in the unit circle's units squared, so a pixel's share jumps by that times the square of the ball's radius in pixels; the series is a term short), a kink or smoother at the others, and the corner choice
   continuous at its threshold. The undistortion's seven `stop_gradient`s are cleared by a standing test of its derivative
   (`tests/sensing/test_undistortion.py`): the ray's point's derivative in the five coefficients and the pixel, forward and
   reverse, both dtypes, against the implicit function's and (float64) central differences, near the validity radius and away
-  from it, with three planted wrong derivatives failing every case. What stays raw is listed with its reason. Bounded, not
+  from it, with three planted wrong derivatives failing every case. What stays raw is listed with its reason, among it the closed form of a capsule (scanned, neither routed nor declared: the status does not cover its own kinks and jumps, a follow-up). Bounded, not
   estimated: the harness measures a switch's order at one placed point, and the derivative across a kink is the branch
   taken's by construction, not by that row. No program changes: the step, a run and its forward-mode derivative compile to
   the same text, f64 and f32 (the control, one ulp, differs).

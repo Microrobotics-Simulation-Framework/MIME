@@ -103,8 +103,9 @@ DISC_SWITCHES = (
         indicator="the bound of the angle's series less the absolute angle a chord subtends, in radians (positive "
                   "where the segment's area is taken from the series)",
         orders={"expected": -1},
-        route="a longer series: it stops at its ninth power, a few trillionths of a pixel's area short of the closed "
-              "form at the threshold, and one more term closes that to rounding"),
+        route="a longer series: it stops at its ninth power, a few trillionths short of the closed form at the "
+              "threshold, in the unit circle's units squared (a pixel's share jumps by that times the square of the "
+              "ball's radius in pixels), and one more term closes that to rounding"),
     switch.Declaration(
         owner="camera.disc.start",
         indicator="one minus the squared distance of a side's first end from the disc's centre, in the disc's units "
@@ -177,8 +178,11 @@ DISC_SWITCHES = (
         route="none: a pixel clear of the circle that holds its centre holds the whole disc, and one that does not "
               "holds none of it; the choice is reached only where no side crosses the circle",
         unmeasured="reached only for a pixel clear of the circle (no side crossing it), which holds the origin "
-                   "or not as the whole disc lies in it or outside it, never near a side: no point the harness can "
-                   "place has the origin at a side and no crossing"),
+                   "or not as the whole disc lies in it or outside it, never near a side: a side through the origin "
+                   "must meet the unit circle (two ends outside it, the segment crosses it twice; an end inside, a "
+                   "corner is inside), so clear is false there, and no point the harness can place has the origin "
+                   "at a side and no crossing (tests/sensing/test_box_edge.py, "
+                   "test_a_pixel_with_the_discs_centre_on_a_side_is_never_clear_of_the_circle)"),
 )
 
 #: The closed forms: the chords and edge functions along a ray.

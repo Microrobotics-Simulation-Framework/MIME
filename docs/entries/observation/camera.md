@@ -88,8 +88,10 @@ where the lines that trigger it graze the pixel's corner. The harness does not s
 branch taken's; the derivative tests do, away from the switches. What stays raw is listed with its reason in
 `docs/ratchets/raw_switches.txt`: the undistortion's solve (iterations on held values, whose derivative is the implicit
 function's), the validity radius's construction, floors that engage only where the quantity they keep off zero is zero,
-roundings, counts and flags, and the closed form of a capsule, which no switch-scan configuration images yet (its raw sites
-are not scanned or declared). **The undistortion's derivative** is checked by a standing test
+roundings, counts and flags, and the closed form of a capsule, whose raw sites the scan reaches (the camera/capsule
+configuration) and lists but neither routes, declares nor measures: the interval's least entry and last exit and its selects
+of the pieces the ray meets, and the edge function's clamped foot, so **the status does not cover the capsule's own kinks and
+jumps** (routing them, with owners and harness rows, is a follow-up). **The undistortion's derivative** is checked by a standing test
 (`tests/sensing/test_undistortion.py`): the ray's point's derivative in `k1, k2, p1, p2, k3` and in the pixel, forward and
 reverse, in both dtypes, against the implicit function's (written afresh in float64) and, in float64, central differences, at
 half way and a hundredth short of the way to the validity radius, on five lenses, with three planted wrong derivatives (held, five per cent

@@ -1361,11 +1361,19 @@ def swim_at_twist(graph, twist):
                                    "the MRS samples on the screw",
                                    "A0's controller on its target's orientation",
                                    "A0's controller turning its end effector",
-                                   "A0's controller, the body's z along the home pose's x",
-                                   "the camera's exact disc over pixels some of which the ball does not touch",
-                                   "the camera's crossing test on a side of no length"])
+                                   "A0's controller, the body's z along the home pose's x"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
+    assert fallback_problems(evaluate, derivative, where).problems == []
+
+
+@pytest.mark.parametrize("where", ["the camera's exact disc over pixels some of which the ball does not touch",
+                                   "the camera's crossing test on a side of no length"])
+def test_replacing_every_fallback_changes_nothing_at_the_cameras_points(where):
+    """The camera's guard points as the test above judges the others, without the graph those build (``guard_points``
+    builds every other point's graph and its warm-up, about forty-seven seconds a run of the first test in a file's
+    worker; the camera's points read none of it). They are still among ``guard_points``, which the coverage test reaches."""
+    evaluate, derivative = camera_guard_points()[where]
     assert fallback_problems(evaluate, derivative, where).problems == []
 
 

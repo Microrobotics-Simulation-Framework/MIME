@@ -318,7 +318,7 @@ def worst_miss(got: np.ndarray, want: np.ndarray) -> np.ndarray:
 def test_the_undistortions_derivative_is_the_implicit_functions(dtype, lens, share, mode):
     """The ray's point's derivative in ``k1, k2, p1, p2, k3`` and in the pixel, forward and reverse, in both dtypes:
     against the implicit function's, ``-J^-1 dF/dtheta`` and ``J^-1`` at the root, written afresh here in float64, near
-    the validity radius (0.999 of the way to the fold) and away from it (half way); and in float64 against central
+    the validity radius (0.99 of the way to the fold) and away from it (half way); and in float64 against central
     differences of the same solve. The solve's derivative is its last Newton step's, its iterations held
     (``BrownConrady.undistort``'s stop_gradients), so this is what shows that holding them leaves the derivative
     the implicit function's. Tolerance: 1e-9 of a column's largest entry in float64, 1024 units in the last place in
