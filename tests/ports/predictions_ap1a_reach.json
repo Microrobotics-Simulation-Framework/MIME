@@ -1,0 +1,15 @@
+{
+  "written": "2026-11-14, committed before the probe that rates its control ran (the commit that adds this file is the timestamp): a port's rest as a leaf, and every stage leaf a study may change reaching the compiled step",
+  "phase": "apparatus lane, AP1a, found while AP1b added the ports' registry-walk cases",
+  "labels": "predictions by the builder (Opus) from the code's structure; the control run once locally before this file",
+  "seen_before": ["rest_trainable run once locally at ea314724: the test failed naming rest_currents; the clean run passed"],
+  "operating_point": {"dtype": ["float32 as the tests run by default"], "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow)", "sizes_and_parameters": "the coil sphere, a command port of rate 2 ms, latency 1 ms, bounds 2 A clipping both sides, rest 0.5 A, slew 1000 A/s; a measurement port on its swim speed with noise and a quantum; five steps a write (param_reach_failures)", "seeds_and_draws": "200 runs, planted and clean at the same seeds; the test draws nothing"},
+  "gate_9_leaves_reach": {
+    "claim": "every trainable leaf of both stages changes a five-step run when written; a rest is trainable only on a tripping port",
+    "kind": "acceptance",
+    "case": "tests/ports/test_ports_build.py::test_every_leaf_a_study_may_change_reaches_the_compiled_step",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "with the stage's own specs removed the rest is a trainable leaf the step never reads on a clipping port, which the walk names"},
+    "control": {"plant": "the stage's param_specs removed", "environment_variable": "PORT_PLANT=rest_trainable", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the walk's failure line"}
+  },
+  "outcomes": null
+}
