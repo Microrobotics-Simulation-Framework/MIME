@@ -21,6 +21,7 @@ from zenodo_records import FakeRecords
 
 from mime import assets, push
 from mime.assets import AssetRef
+from mime.assets._acceptances import remember
 from mime.build import BuildRefused
 from mime.push import _plan
 from mime.saved import LOCK_FILE, pack, read_folder
@@ -46,6 +47,7 @@ def placed(cache: Path, data: bytes) -> None:
     (cache / hashlib.sha256(data).hexdigest()).write_bytes(data)
     record = scan_record(data)
     assets.fetch(record, accept_licences={each.id for each in assets.licences_of(record)})
+    remember(assets.licences_of(record))  # the person who placed it accepted: a build's read of it is gated
 
 
 def saved_with(record: AssetRef, where: Path) -> Path:
@@ -62,6 +64,7 @@ def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     held = tmp_path / "cache"
     monkeypatch.setenv("MIME_ASSETS_DIR", str(held))
     monkeypatch.setenv("MIME_OFFLINE", "1")
+    monkeypatch.setenv("MIME_LICENCE_ACCEPTANCES", str(tmp_path / "licences.json"))
     locations = tmp_path / "locations.toml"
     locations.write_text(f'[assets]\n"vessel_scan.usda" = ["{LAB_MIRROR}"]\n', encoding="utf-8")
     monkeypatch.setenv("MIME_ASSET_LOCATIONS", str(locations))

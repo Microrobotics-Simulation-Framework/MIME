@@ -112,12 +112,22 @@ RUN = dict(image=image, gpu=GPU, cpu=CPU, memory=MEMORY, env=ENV, **LIMITS,
            volumes={"/assets": assets.with_mount_options(read_only=True), "/xla": xla, RUNS_DIR: runs})
 
 
+def _accepting():
+    """The licences accepted where this script was written, accepted for what runs inside this block: the first read of a
+    gated file is gated (`mime.assets.locate`), and nobody can be asked in a container. A licence not named in
+    ACCEPT_LICENCES is not accepted here, and the run's read of its file is refused, naming `--accept-licence <id>`."""
+    from mime import assets
+
+    return assets.approved([], accept_licences=ACCEPT_LICENCES)
+
+
 def _mime(*arguments):
     """`mime <arguments>` in this process, so that the precision the check applies holds for what follows it."""
     from mime.cli import main as mime
 
     print("$ mime " + " ".join(arguments), flush=True)
-    code = mime(list(arguments))
+    with _accepting():
+        code = mime(list(arguments))
     if code != 0:
         raise RuntimeError(f"mime {' '.join(arguments[:2])} exited {code}")
 
@@ -168,7 +178,8 @@ def verify_experiment(run_id: str, runner: dict, info: dict) -> int:
     _record_runner(runner, info)
     folder = f"{RUNS_DIR}/{NAME}/{run_id}/experiment" if run_id else EXPERIMENT_DIR
     _check(folder)
-    return mime(["verify", folder])
+    with _accepting():
+        return mime(["verify", folder])
 
 
 @app.function(image=image, env={"MIME_ASSETS_DIR": "/assets"}, volumes={"/assets": assets}, **LIMITS)

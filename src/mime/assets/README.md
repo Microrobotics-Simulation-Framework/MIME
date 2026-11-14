@@ -272,13 +272,23 @@ use) asks once for all its files and the resolver then asks nothing more of them
   index); where none does, the panel shows the notice, title and link and says the record does not describe the licence.
   **First use asks too**: a file already in the cache (a cache filled before the gates, or by a named acceptance) whose
   licence has conditions and no recorded acceptance asks once where its bytes are read: the resolver (`resolve`, `fetch`),
-  a batch (`approved`: a bake, `mime assets fetch`, `mime pull`), the overlay (`mime.viz.overlay`: a set whose licence is
+  **`locate`, which a build calls (the first use of a gated file is asked where a build reads it, `locate`, as well as
+  where it is fetched: bytes a person placed in the cache, or that `mime assets check` or a refused `resolve` recorded
+  as checked, are no acceptance)**, a batch (`approved`: a bake, `mime assets fetch`, `mime pull`), the overlay (`mime.viz.overlay`: a set whose licence is
   not accepted is left out and says how to accept it), and placing a referenced file from the cache (left unplaced as
   `NOT_ACCEPTED`; placing asks nothing, `fetch` and `pull` ask for the whole folder first). `require_accepted(refs)` is
   that gate alone. A file repaired because its bytes are not the record's (the right size, other bytes) is a download and
   is gated as one. Every word of a record shown at a prompt is written as plain characters (`mime._terminal.plain`): a
   manifest's or a lock's text is a stranger's. The Python asker is plain text (`PlainAsker`); the command line sets its
   own (`asking(asker)`).
+  **A build with nobody to ask** (CI, a cluster job, a container) that reads a gated file is refused
+  (`asset.licence-not-accepted`, whose action names these routes and no `--accept-licence`, which `mime run` does not have) until the acceptance is on record. Three remedies: accept once at a terminal
+  (`mime assets fetch <folder>` asks, and the yes is written to `licences.json`); point `MIME_LICENCE_ACCEPTANCES` at a
+  file holding the acceptance (a shared one, or one copied to the machine); or, in Python, wrap the build in
+  `with assets.approved([], accept_licences={"<id>"}):`. The script `mime modal` writes carries the ids accepted on the
+  machine that wrote it, for the experiment's own assets, as `ACCEPT_LICENCES` and accepts them for what it runs; a
+  licence not accepted there is not carried, so accept it and write the script again. No asset MIME ships is gated (the
+  tube table is CC0).
 - **The disk.** Before a download, its bytes (the files that would be downloaded, `extra_bytes` for what a bake writes,
   `BAKE_OUTPUT_FACTOR` of the meshes) against `shutil.disk_usage` of the cache's own folder: asked above `CONFIRM_ABOVE_BYTES`
   (1 GB) or `CONFIRM_ABOVE_FRACTION` (10 %) of the free space (`yes`; `asset.download-large` without a terminal), stopped when

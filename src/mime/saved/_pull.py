@@ -26,6 +26,7 @@ from mime._lock_json import lock_data
 from mime._said import DONE, PLAN_LINE, STOPPED, Said
 from mime._shell import quoted
 from mime._terminal import plain
+from mime.assets._cache import locate_bundle_container
 from mime.assets._commands import fetch_command, folder_argument
 from mime.assets._reference import carries_key, redacted
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -199,14 +200,14 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     if assets.offline():
         raise _offline_refusal(redacted(source.value))
     if source.kind == "url":
-        return assets.locate(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
+        return locate_bundle_container(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
                                              exceeded_action=_RAISE_LIMIT, report=say, yes=yes, force=force)), None
     assets.downloads_doing(f"reading the file list of the record doi:{source.value}")
     file, checksum, stated, named, resolved = _record_file(source.value, source.file)
     if named is not None and say is not None:
         say(f"the record: {named}")
     limit = _limit(stated, max_bundle_bytes)
-    return assets.locate(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum,
+    return locate_bundle_container(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum,
                                          max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated,
                                          yes=yes, force=force)), resolved
 
@@ -230,7 +231,7 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
             say(f"! it is not the latest version: `mime pull --from {service.name} {quoted(found.latest)}` pulls the latest"
                 if found.latest else f"! it is not the latest version: the record's page, {service.site}/records/"
                                      f"{found.record}, names the latest")
-    return assets.locate(assets.retrieve(found.url, name="bundle", known_hash=f"md5:{found.md5}",
+    return locate_bundle_container(assets.retrieve(found.url, name="bundle", known_hash=f"md5:{found.md5}",
                                          max_bytes=_limit(found.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT,
                                          report=say, size=found.size, yes=yes, force=force,
                                          fetcher=downloader(service, found.record, access) if access is not None
