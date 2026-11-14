@@ -326,7 +326,9 @@ def test_the_law_runs_inside_the_compiled_step(make, dtype):
 # -- allocate(), re-based ------------------------------------------------------------------------------------------
 
 def test_allocate_reaches_the_optimum_for_a_field_near_a_tenth_of_a_microtesla():
-    """BVLS's absolute tolerance stops it short on rows this small; the law's tests are relative."""
+    """A wanted field near a tenth of a microtesla, on rows in T/A: the law's tests are relative, so it meets the field
+    to rounding. (BVLS meets this one too: the base's allocate() missed it by 5e-23 T. Where BVLS stops short, on SI
+    force rows, is the next test's.)"""
     actuation = CalibratedMultipole(calibration=asset("navion_2")).actuation(m((0.01, -0.005, 0.0)))
     found = allocate(actuation, field=uT((0.1, -0.05, 0.08)), limits=A(25.0))
     assert found.field_miss is not None and found.field_miss < 1e-12 * 0.14e-6 * 1e3
@@ -334,8 +336,9 @@ def test_allocate_reaches_the_optimum_for_a_field_near_a_tenth_of_a_microtesla()
 
 def test_the_law_on_si_force_rows_reaches_the_optimum_where_bvls_unscaled_stops_short():
     """Force rows in N/A (about 1e-6), unscaled: SciPy's BVLS judges its KKT conditions to an absolute 1e-10 and
-    stops short on some (the control: one of these is found); the law, whose tests are relative, reaches the optimum
-    of every one, as BVLS does on the same rows scaled to order one."""
+    stops short on some (the control: one of these is found, its iterations capped at 3^K so that the stop is its
+    tolerance's); the law, whose tests are relative, reaches the optimum of every one, as BVLS does on the same rows
+    scaled to order one."""
     from scipy.optimize import lsq_linear
 
     stopped = 0
@@ -349,7 +352,7 @@ def test_the_law_on_si_force_rows_reaches_the_optimum_where_bvls_unscaled_stops_
                 mine = np.asarray(exact_allocation(a, b, lower=-problem.limit, upper=problem.limit, scales=np.ones(3),
                                                    owner=OWNER).commands)
             best = bvls(Problem(problem.system, problem.kind, a, b, np.ones(3), problem.limit))
-            short = lsq_linear(a, b, bounds=(-problem.limit, problem.limit), method="bvls").x
+            short = lsq_linear(a, b, bounds=(-problem.limit, problem.limit), method="bvls", max_iter=3 ** a.shape[1]).x
             floor = residual_line(Problem(problem.system, problem.kind, a, b, np.ones(3), problem.limit), "float64")
             stopped += np.linalg.norm(a @ short - b) > np.linalg.norm(a @ best - b) + floor
             assert np.linalg.norm(a @ mine - b) <= np.linalg.norm(a @ best - b) + floor
@@ -385,5 +388,6 @@ def test_allocate_on_eight_coils_asked_for_a_field_alone_takes_the_least_current
         least = np.linalg.pinv(actuation.field) @ np.asarray((4e-3, -2e-3, 3e-3))
         assert not any(found.at_limit) and found.field_miss is not None and found.field_miss < 1e-12
         assert np.max(np.abs(currents - least)) < 1e-9 * 35.0, (system, currents, least)
-        held = lsq_linear(actuation.field / 1e-3, np.asarray((4.0, -2.0, 3.0)), bounds=(-35.0, 35.0), method="bvls").x
+        held = lsq_linear(actuation.field / 1e-3, np.asarray((4.0, -2.0, 3.0)), bounds=(-35.0, 35.0), method="bvls",
+                          max_iter=3 ** 8).x
         assert np.sum(currents ** 2) <= np.sum(held ** 2) * (1 + 1e-9)

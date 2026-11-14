@@ -9,16 +9,23 @@ limit reaches (about half the problems hold a coil at its limit). The limit is d
 
 **The oracle** is SciPy's BVLS on the scaled rows, normalised to a largest entry of one: its tolerance is absolute (a
 KKT residual of 1e-10), so on rows of order one it reaches the optimum, where on SI force rows (N/A, about 1e-6) it
-stops short. In float32 it solves the float32 problem (the rows and target rounded to float32 as the law rounds them),
-in float64.
+stops short. Its iterations are capped at ``3^K``, the active sets there are: SciPy's default, as many iterations as
+commands, stops it short on eight coils asked for a field and a gradient (status 0, a residual above the optimum's, on
+about one draw in 300 of CardioMag's and OctoMag's), and an oracle that does not converge is refused. In float32 it
+solves the float32 problem (the rows and target rounded to float32 as the law rounds them), in float64.
 
 **The line** (camera spike R2's): the two are the exact least squares of one active set, so where the minimiser is
 unique they differ by rounding, which the least-squares perturbation bound puts at ``eps (2 kappa + kappa^2 |r| / (|A|
 |x|))`` of the free commands (``kappa`` the free columns' condition after unit scaling), plus the limit's own rounding;
 the test allows ``SLACK`` times that. **Uniqueness** is the full column rank of the scaled rows, read from their
 singular values: the least over the largest above ``UNIQUE``. Where it is not unique the two may return different
-minimisers, and their residual norms are compared at ``SLACK`` times the residual's rounding, and among tied minimisers
-the law's effort, ``|u|^2``, is no more than BVLS's."""
+minimisers. The law ties a candidate's residual to the best's within its window, ``TIE_ULPS`` eps times the target's norm
+and what the candidate makes (``mime.control._allocation``), the best's window and the candidate's added, and takes the
+least effort among those: its residual norm may exceed BVLS's by both windows (at its commands and at BVLS's) and
+``SLACK`` times the residual's rounding, and no more. Where BVLS's residual is no worse than the law's past that
+rounding, the law's effort, ``|u|^2``, is no more than BVLS's past the line's share of it: each command within the line
+of BVLS's, ``|u|^2`` within ``line (2 |u_BVLS|_1 + K line)`` (the line on the free columns, whose solve the rounding
+is of)."""
 
 from __future__ import annotations
 
@@ -29,6 +36,7 @@ import numpy as np
 from hypothesis import strategies as st
 from scipy.optimize import lsq_linear
 
+from mime.control._allocation import TIE_ULPS
 from mime.data import asset
 from mime.fields import CalibratedMultipole
 from mime.fields._coil_array import calibration_of
@@ -117,7 +125,10 @@ def bvls(problem: Problem, dtype: str = "float64") -> np.ndarray:
     a, b = problem.scaled(dtype)
     size = float(np.max(np.abs(a))) or 1.0
     limit = float(np.float32(problem.limit)) if dtype == "float32" else problem.limit
-    return np.asarray(lsq_linear(a / size, b / size, bounds=(-limit, limit), method="bvls").x, dtype=np.float64)
+    solved = lsq_linear(a / size, b / size, bounds=(-limit, limit), method="bvls", max_iter=3 ** a.shape[1])
+    if solved.status <= 0:
+        raise AssertionError(f"the oracle did not converge (BVLS status {solved.status}): {problem}")
+    return np.asarray(solved.x, dtype=np.float64)
 
 
 def unique(problem: Problem, dtype: str = "float64") -> bool:
@@ -153,14 +164,18 @@ def residual_line(problem: Problem, dtype: str) -> float:
     return SLACK * eps * (np.linalg.norm(a, 2) * problem.limit * np.sqrt(a.shape[1]) + np.linalg.norm(b))
 
 
-def effort_line(problem: Problem, dtype: str) -> float:
-    """The effort's rounding line among tied minimisers, in A^2: ``SLACK`` times twice eps times the scaled rows'
-    condition over their nonzero singular values, times the largest effort the limits allow (``K`` limits squared)."""
-    eps = float(np.finfo(dtype).eps)
-    a, _ = problem.scaled(dtype)
-    singular = np.linalg.svd(a / np.linalg.norm(a, axis=0), compute_uv=False)
-    kappa = singular[0] / singular[singular > UNIQUE * singular[0]][-1]
-    return SLACK * 2 * eps * kappa * a.shape[1] * problem.limit ** 2
+def effort_line(problem: Problem, reference: np.ndarray, dtype: str) -> float:
+    """The effort's line among tied minimisers, in A^2: each command within :func:`line` of ``reference``'s,
+    ``|u|^2`` within ``line (2 |reference|_1 + K line)``."""
+    held = line(problem, reference, dtype)
+    return held * (2 * float(np.sum(np.abs(reference))) + len(reference) * held)
+
+
+def tie_window(problem: Problem, commands: np.ndarray, dtype: str) -> float:
+    """The law's tie window at ``commands``: ``TIE_ULPS`` eps times the scaled target's norm and what the commands make
+    (``mime.control._allocation._selection``'s ``width``)."""
+    a, b = problem.scaled(dtype)
+    return TIE_ULPS * float(np.finfo(dtype).eps) * (float(np.linalg.norm(b)) + float(np.linalg.norm(a @ commands)))
 
 
 def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
@@ -182,10 +197,11 @@ def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
     else:
         mine, theirs = float(np.linalg.norm(a @ commands - b)), float(np.linalg.norm(a @ reference - b))
         held = residual_line(problem, dtype)
-        if mine - theirs > held:
-            found.append(f"not unique: the law's residual {mine:.6g} over BVLS's {theirs:.6g} past {held:.3g}")
+        tied = held + tie_window(problem, commands, dtype) + tie_window(problem, reference, dtype)
+        if mine - theirs > tied:
+            found.append(f"not unique: the law's residual {mine:.6g} over BVLS's {theirs:.6g} past {tied:.3g}")
         elif theirs - mine <= held and float(np.sum(commands ** 2)) - float(np.sum(reference ** 2)) > \
-                effort_line(problem, dtype):
+                effort_line(problem, reference, dtype):
             found.append(f"not unique: the law's effort {np.sum(commands ** 2):.6g} over BVLS's "
                          f"{np.sum(reference ** 2):.6g} among tied minimisers")
     return found
