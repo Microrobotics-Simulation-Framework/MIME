@@ -97,8 +97,13 @@ class BrownConrady:
         flat = jnp.abs(a) < 1e-30
         linear = jnp.where(jnp.abs(b) > 1e-30, -c / jnp.where(jnp.abs(b) > 1e-30, b, 1.0), cap)
         held_a = jnp.where(flat, 1.0, a)
-        first = jnp.where(flat, linear, (-b - root) / (2.0 * held_a))
-        second = jnp.where(flat, cap, (-b + root) / (2.0 * held_a))
+        # The two roots by the cancellation-free form: ``q`` takes the sign that adds ``b`` and the root, the roots are
+        # ``q / a`` and ``c / q``. The textbook ``(-b + root) / 2a`` loses every digit when ``a`` is tiny against
+        # ``b^2`` (a ``k3`` of 1e-24 beside a ``k2``), and with it the smaller root: the turn at ``cap``, a ray
+        # solved on a branch past the first turn, unflagged.
+        q = -0.5 * (b + jnp.where(b >= 0.0, root, -root))
+        first = jnp.where(flat, linear, q / held_a)
+        second = jnp.where(flat, cap, c / jnp.where(q == 0.0, 1.0, q))
         real = flat | (discriminant >= 0.0)
         ends = [jnp.where(real & (e > 0.0) & (e < cap), e, cap) for e in (first, second)]
         ends = [jnp.minimum(ends[0], ends[1]), jnp.maximum(ends[0], ends[1]), cap]
