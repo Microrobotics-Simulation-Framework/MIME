@@ -39,6 +39,7 @@ from mime.core._node import jnp
 from mime.sensing import _coverage as coverage
 from mime.sensing import _detector as detector
 from mime.sensing import _forms as forms
+from mime.sensing import _sampled as sampled_route
 from mime.sensing._detector import CameraPose, Pinhole, Rays, project, ray_table
 from mime.sensing._subjects import Appearance, Look, Subject, AppearanceSource, order, resolve
 
@@ -119,20 +120,26 @@ def _into(rotation: Any, vector: tuple[Any, Any, Any]) -> tuple[Any, Any, Any]:
 
 
 class Seen(NamedTuple):
-    """One subject on a set of rays: its coverage of each pixel and the interval each ray spends inside it."""
+    """One subject on a set of rays: its coverage of each pixel, the interval each ray spends inside it, and, for a
+    sampled body, the length of each ray inside it (its chord, which may be more than one interval's)."""
 
     coverage: Any
     interval: tuple[Any, Any]
+    length: Any = None
 
 
 def _parameters(subject: Subject, dtype: Any) -> dict[str, Any]:
-    return {name: jnp.asarray(value, dtype=dtype) for name, value in subject.placed.parameters.items()}
+    """The subject's parameters as JAX values of ``dtype``; a sampled body's integers (a screw's starts) kept."""
+    keep = subject.placed.sampled is not None
+    return {name: value if keep and isinstance(value, int) else jnp.asarray(value, dtype=dtype)
+            for name, value in subject.placed.parameters.items()}
 
 
-def _lines(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any) -> list[coverage.Line]:
+def _lines(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any,
+           form: forms.Form | None = None) -> list[coverage.Line]:
     """Each of the subject's pieces as its edge's line in the pixel, its gradient read along the ray table's
     derivatives by one ``jvp`` each way."""
-    form = subject.placed.form
+    form = subject.placed.form if form is None else form
 
     def pieces(dx: Any, dy: Any, dz: Any) -> tuple[Any, ...]:
         return form.pieces(p, o, (dx, dy, dz))
@@ -145,17 +152,18 @@ def _lines(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: 
     return lines
 
 
-def _composed(subject: Subject, lines: Sequence[coverage.Line]) -> coverage.Line:
-    return subject.placed.form.compose(lines, coverage.lesser, coverage.greater)
+def _composed(form: forms.Form, lines: Sequence[coverage.Line]) -> coverage.Line:
+    return form.compose(lines, coverage.lesser, coverage.greater)
 
 
 def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any,
-                  corner_samples: int) -> Any:
-    lines = _lines(subject, p, o, d, du, dv)
-    single = coverage.covered(_composed(subject, lines))
-    if not subject.placed.form.corners or corner_samples <= 1:
+                  corner_samples: int, form: forms.Form | None = None) -> Any:
+    """The box edge's share of each pixel: the subject's form's, or ``form``'s (a sampled body's, its march done)."""
+    form = subject.placed.form if form is None else form
+    lines = _lines(subject, p, o, d, du, dv, form)
+    single = coverage.covered(_composed(form, lines))
+    if not form.corners or corner_samples <= 1:
         return single
-    form = subject.placed.form
     crossing = sum((coverage.near(line).astype(single.dtype) for line in lines), start=jnp.zeros_like(single))
     turning = sum((coverage.near(lines[i]).astype(single.dtype) for i in form.turning), start=jnp.zeros_like(single))
     def margin() -> Any:
@@ -173,7 +181,7 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
         moved: tuple[Any, Any, Any] = (d[0] + su * du[0] + sv * dv[0], d[1] + su * du[1] + sv * dv[1],
                                        d[2] + su * du[2] + sv * dv[2])
         scale = 1.0 / jnp.sqrt(forms.dot(moved, moved))
-        sub = _composed(subject, _lines(subject, p, o, tuple(c * scale for c in moved), du, dv))
+        sub = _composed(form, _lines(subject, p, o, tuple(c * scale for c in moved), du, dv, form))
         return total + coverage.covered(sub, 1.0 / corner_samples), None
 
     def sub_sampled() -> Any:
@@ -227,6 +235,11 @@ def _seen(subject: Subject, rays: Rays, rotation: Any, origin: Any, dtype: Any, 
     o = _into(rotation, tuple(rays.origin[i] - origin[i] for i in range(3)))
     d, du, dv = _into(rotation, rays.direction), _into(rotation, rays.along_u), _into(rotation, rays.along_v)
     form = subject.placed.form
+    marched = subject.placed.sampled
+    if marched is not None:
+        held = sampled_route.march(marched, p, o, d, du)
+        found = _box_coverage(subject, p, o, d, du, dv, corner_samples, sampled_route.form(marched, held))
+        return Seen(found, held.interval, sampled_route.chord(marched, p, o, d, held))
     interval = forms.ahead(form.interval(p, o, d))
     if subject.coverage == "disc":
         camera_rotation = _rotation(pose.orientation, dtype)
@@ -311,7 +324,9 @@ def cache_key(subjects: Sequence[Subject], camera: Pinhole, pose: CameraPose, dt
             "dtype": str(np.dtype(dtype)),
             "constants": [forms.GRAZING, forms.PARALLEL, forms.FAR, coverage.CORNER_REACH, coverage.FLAT,
                           detector.UNDISTORT_STEPS, detector.TANGENTIAL_STEPS, SMALL_SILHOUETTE_PX, THIN_CAP_SUBPIXELS,
-                          SILHOUETTE_POINTS, list(SILHOUETTE_MARGIN)],
+                          SILHOUETTE_POINTS, list(SILHOUETTE_MARGIN)]
+            + ([sampled_route.SAMPLES, sampled_route.SPACING, sampled_route.MARGIN_PX]
+               if any(s.placed.sampled is not None for s in subjects if not s.moving) else []),
         }
     except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
         raise ArgumentRefused([Refusal(
@@ -365,7 +380,7 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
         size, start, seen_rays = None, None, rays
     seen = _seen(subject, seen_rays, rotation, origin, dtype, camera, pose, start, corner_samples)
     assert subject.appearance is not None
-    chord = forms.chord(seen.interval)
+    chord = forms.chord(seen.interval) if seen.length is None else seen.length
     factor = 1.0 - seen.coverage + seen.coverage * _transmits(
         subject.appearance, parent.appearance if parent is not None else None, chord, dtype)
     name = subject.name
@@ -385,7 +400,7 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
         small = camera.fx * subject.feature() / depth < SMALL_SILHOUETTE_PX
         flags[f"small_silhouette:{name}"] = flags.get(f"small_silhouette:{name}", False) | small
     flags[f"behind:{name}"] = flags.get(f"behind:{name}", False) | _behind(depth, subject)
-    if subject.placed.form.corners:
+    if subject.placed.form.turning:
         flags[f"thin_cap:{name}"] = flags.get(f"thin_cap:{name}", False) | _thin_cap(
             subject, rotation, origin, camera, pose, dtype, corner_samples)
     return factor, pixel

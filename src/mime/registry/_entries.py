@@ -1455,6 +1455,25 @@ class Sampling:
                        None if rounding is None else rounding[chosen])
 
 
+class SignValue(NamedTuple):
+    """A region's cheap sign function at points (:meth:`Geometry.sign_function`): its ``value``, below zero inside the
+    region, zero on its boundary and above zero outside it, and its gradient's length there (``slope``), so that
+    ``value / slope`` is its first-order distance from the boundary, in metres."""
+
+    value: Any
+    slope: Any
+
+
+class CreaseMeasure(NamedTuple):
+    """The exact edge functions of a body's creases on rays (:meth:`Geometry.crease_measure`): ``pieces``, each below
+    zero where the ray meets the crease's face and vanishing linearly on its outline, and ``compose(marched, creases,
+    lesser, greater)``, the body's edge from the marched surface's pieces and the creases', given the least and the
+    greatest of two pieces (a union's and an intersection's)."""
+
+    pieces: tuple[Any, ...]
+    compose: Callable[[Sequence[Any], Sequence[Any], Callable[[Any, Any], Any], Callable[[Any, Any], Any]], Any]
+
+
 class WallDistance(NamedTuple):
     """How far a point of the medium is from its wall, ``distance`` (m: above zero in the medium, zero on the wall and
     below zero past it), and the wall's unit ``normal`` at the nearest wall point, pointing into the medium."""
@@ -1514,6 +1533,9 @@ class Geometry(Entry):
     #: increment, ``mime.nodes.hydro.near_contact``), the plan's choice of the law's form, named in the build report;
     #: empty for a kind with none, whose contacts take the law's general form.
     near_contact: ClassVar[str] = ""
+    #: How far from its boundary a region's :meth:`sign_function` may take the wrong sign, as a share of the body's
+    #: enclosing size: zero for a function of the right sign everywhere.
+    sign_zone: ClassVar[float] = 0.0
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
@@ -1621,11 +1643,29 @@ class Geometry(Entry):
         its crests), and says so; ``mime.scene.sampled_reach`` gives any kind's from its samples."""
         raise NotImplementedError
 
+    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
+        """``region``'s cheap sign function at points of the frame its samples are in, given as three arrays of their
+        coordinates (no ``(n, 3)`` array): its value, below zero inside the region, zero on its boundary and of the
+        right sign everywhere farther than ``sign_zone`` from it, continuously differentiable off the region's medial
+        set; and its gradient's length (:class:`SignValue`). A JAX function of its ``parameters`` (its settings in SI,
+        numbers or traced arrays) and the points, cheap to evaluate: the camera's sampled route marches ``value /
+        slope`` along each ray, a solid's body being the greatest over its regions."""
+        raise NotImplementedError
+
+    def crease_measure(self, parameters: Mapping[str, Any], o: tuple[Any, Any, Any],
+                       d: tuple[Any, Any, Any]) -> CreaseMeasure:
+        """The exact edge functions of the body's creases (where two of a solid's regions' boundaries meet: a cap's
+        rim) on the rays ``o + t d`` (``t >= 0``, ``|d| = 1``, per-ray arrays in the frame its samples are in), and how
+        they compose with the marched surface's pieces (:class:`CreaseMeasure`). A solid whose body is the intersection
+        of two or more regions is creased, and the camera's sampled route refuses it without this."""
+        raise NotImplementedError
+
 
 #: The build-side capabilities a kind may implement, by method name; ``native`` is the class variable, and
 #: ``mass_properties`` a solid's ``volume`` and ``inertia_per_mass``.
 CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent", "mass_properties", "drawing",
-                "native", "region_primitive", "sampling", "reach", "support", "centreline", "features")
+                "native", "region_primitive", "sampling", "reach", "support", "centreline", "features", "sign_function",
+                "crease_measure")
 
 
 def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:

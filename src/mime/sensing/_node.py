@@ -298,7 +298,7 @@ class CameraNode(MountedNode):
     # -- what the node holds, made once from its constants ----------------------------------------------------------
 
     def _made(self) -> tuple[Pinhole, tuple[Subject, ...]]:
-        """The detector and the subjects, each disc-covered body's window sized from its initial pose."""
+        """The detector and the subjects, each disc-covered or sampled body's window sized from its initial pose."""
         held = self.constants()
         spec = json.loads(cast(str, held["spec"]))
         intrinsics = self.build_intrinsics()
@@ -315,7 +315,8 @@ class CameraNode(MountedNode):
         made: list[Subject] = []
         for each in spec["subjects"]:
             subject = scene.subject_of(each)
-            if subject.moving and subject.coverage == "disc" and subject.window is None:
+            if subject.moving and subject.window is None and (subject.coverage == "disc"
+                                                               or subject.placed.sampled is not None):
                 at = poses[bodies.index(owner[subject.name])]
                 origin = _composed(at, np.concatenate([np.asarray(subject.placed.centre), [1.0, 0.0, 0.0, 0.0]]))[:3]
                 reach = float(np.asarray(projected_reach(reach_camera, pose0, origin, subject.enclosing())))

@@ -6,6 +6,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
+import numpy as np
+
+from mime.core import jnp
 from mime.gradients import GradientStatus
 from mime.registry import (
     DESIGN,
@@ -24,11 +27,14 @@ from mime.registry import (
     register_observation,
     register_setting_group,
 )
+from mime.scene._kinds import rotate
 from mime.sensing import BrownConrady, Pinhole
+from mime.sensing import _sampled as sampled_route
 from mime.sensing import _scene as scene
 from mime.sensing._detector import CameraPose
 from mime.sensing._detector import project as projected
-from mime.sensing._node import FLAG_FIELDS, CameraNode, period_steps
+from mime.sensing._node import FLAG_FIELDS, FOCAL_SHARE, CameraNode, period_steps
+from mime.sensing._render import projected_reach
 from mime.sensing._switches import SWITCHES
 from mime.units import DIMENSIONLESS, LENGTH, Length, Quantity, Time, m, si
 from mime.vocabulary import POSE
@@ -315,22 +321,66 @@ class Camera(Observation):
                                         f"hide it with hide=({name!r},), or wait for the mesh tracer"))
                 continue
             problems.append(Problem(code, f"{name!r} cannot be imaged: {message.split(': ', 1)[-1]}",
-                                    f"hide it with hide=({name!r},) until the sampled route lands, or give its kind a "
-                                    f"closed form"))
+                                    f"hide it with hide=({name!r},), or give its kind a closed form, or a cheap sign "
+                                    f"function (and, if creased, its crease measure)"))
         reads = {f"pose_{body}": Read("", POSE.name, of=body) for body, names in found.bodies.items()
                  if names and ctx.roster.bodies[body].pose is not None}
         mounted = self.mount.frame if isinstance(self.mount, Mounted) else None
         return Plan(reads=reads, streams=("noise",), problems=tuple(problems), mounted_on=mounted,
                     notes=self._notes(ctx, found, period, mounted))
 
+    def _sampled_notes(self, ctx: PlanContext, sampled: list[Any], period: int) -> list[str]:
+        """Route 2's line for each sampled body, and its structural cost estimate (its window's rays at the start
+        pose times the sub-frames times its evaluations a ray and their count), warned above ``COST_LINE``."""
+        lines: list[str] = []
+        for subject in sampled:
+            marched = subject.placed.sampled
+            rays = self._window_rays(ctx, subject)
+            cost = sampled_route.frame_cost(marched, subject.placed.parameters, rays, self.sub_frames,
+                                             jnp.result_type(float))
+            lines.append(f"route 2 (sampled) for {subject.name} ({subject.kind}): {marched.samples} samples a ray, the "
+                         f"two least minima as pieces, corner sub-samples where both cross a pixel; structural cost "
+                         f"estimate {cost / 1e6:.4g} M flops-equivalents a frame ({rays} rays of its window, "
+                         f"{self.sub_frames} sub-frame{'s' * (self.sub_frames > 1)}), every {period} base steps: a count "
+                         f"of the program, not a time")
+            if cost > sampled_route.COST_LINE:
+                lines.append(f"warning: {subject.name}'s frames are estimated at {cost / 1e9:.3g} G flops-equivalents, "
+                             f"over the line of {sampled_route.COST_LINE / 1e9:.3g} G (about 50 to 70 ms on a "
+                             f"four-core CPU): render its frames offline from the recorded poses (mime.sensing.render), "
+                             f"or lengthen frame_period")
+        return lines
+
+    def _window_rays(self, ctx: PlanContext, subject: Any) -> int:
+        """The rays of a sampled body's window at its start pose, as the node sizes it; the frame's where the camera
+        is mounted (its pose is a frame's) or the body has no start pose."""
+        d = self._detector()
+        frame = d.width * d.height
+        body = subject.name.split(".", 1)[0]
+        start = ctx.roster.bodies[body].pose if body in ctx.roster.bodies else None
+        if not isinstance(self.mount, World) or start is None:
+            return frame
+        position = np.asarray(ctx.vector("mount.position"), dtype=np.float64)
+        pose = CameraPose(position, np.asarray(self.mount.orientation, dtype=np.float64))
+        at = np.asarray(start, dtype=np.float64)
+        turned = rotate((float(at[3]), float(at[4]), float(at[5]), float(at[6])),
+                        tuple(float(c) for c in subject.placed.centre))  # type: ignore[arg-type]
+        origin = at[:3] + np.asarray(turned, dtype=np.float64)
+        reach = (1.0 + FOCAL_SHARE) * float(np.asarray(projected_reach(d.pinhole(), pose, origin, subject.enclosing())))
+        window = scene.frame_window(reach, d.width, d.height)
+        return min(frame, (2 * window + 1) ** 2)
+
     def _notes(self, ctx: PlanContext, found: scene.Found, period: int, mounted: str | None) -> tuple[str, ...]:
         d = self._detector()
         route = ", ".join(sorted(f"{s.name} ({s.kind})" for s in found.subjects)) or "none"
         sub = self.sub_frames
         dt = ctx.dt
+        sampled = [s for s in found.subjects if s.placed.sampled is not None]
+        closed = ", ".join(sorted(f"{s.name} ({s.kind})" for s in found.subjects if s.placed.sampled is None))
         lines = [
             f"camera: a declared camera model, {d.width} x {d.height} pixels, {d.source}",
-            f"route 1 (closed form) for every subject: {route}",
+            *([f"route 1 (closed form) for every subject: {route}"] if not sampled else
+              [f"route 1 (closed form) for: {closed or 'none'}",
+               *self._sampled_notes(ctx, sampled, period)]),
             f"frame: {d.width * d.height} rays, {sub} sub-frame{'s' * (sub > 1)}, rendered every {period} base steps "
             f"({period * dt:.6g} s); exposure {sub} step{'s' * (sub > 1)} ending at the frame step",
             f"latency: a read sees a frame between 0 and {period - 1} steps ({(period - 1) * dt:.6g} s) old; a controller "

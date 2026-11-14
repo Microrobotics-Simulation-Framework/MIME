@@ -1,6 +1,6 @@
-"""G11, refusals: the kinds without a closed form (the ellipsoid and the box, which have no run-time shape yet; the screw
-and the helix, which need the sampled route) are refused for the camera with their reasons, as is a lab's kind with no
-closed form registered; a route override naming a route not built; a subject written against its kind; subjects named
+"""G11, refusals: a creased kind without its crease measure (the box, the screw) and a lab's kind with neither a closed
+form nor a sign function are refused for the camera with their reasons; a route override naming no route, and the
+closed form forced on a kind without one; a subject written against its kind; subjects named
 twice, a parent no subject is, a cycle of parents, a moving subject with no pose, a stage's display opacity outside 0
 to 1; a stale static cache and one given while its numbers are traced.
 
@@ -23,22 +23,31 @@ def code(error: pytest.ExceptionInfo[ArgumentRefused]) -> set[str]:
     return {refusal.code for refusal in error.value.refusals}
 
 
-@pytest.mark.parametrize("kind", ["ellipsoid", "box", "screw", "helix", "labx.bead"])
-def test_a_kind_without_a_closed_form_is_refused_with_its_reason(kind, monkeypatch):
+@pytest.mark.parametrize(("kind", "refused"), [("box", "camera.crease-unmeasured"),
+                                               ("screw", "camera.crease-unmeasured"), ("labx.bead", "camera.no-route")])
+def test_a_kind_with_no_route_is_refused_with_its_reason(kind, refused, monkeypatch):
+    """A creased kind with no crease measure (the box, the screw) and a kind with neither a closed form nor a sign
+    function (a lab's unregistered one) are refused by name, each with its reason."""
     if planted("screw-form"):
         monkeypatch.setitem(subjects_module._closed_forms, "screw", subjects_module._closed_forms["sphere"])
     with pytest.raises(ArgumentRefused) as error:
         Subject("thing", kind, {"radius": 1e-3})
-    assert code(error) == {"camera.no-closed-form"}
+    assert code(error) == {refused}
     message = str(error.value)
-    assert kind in message and ("sampled route" in message or "run-time shape" in message
-                                or "register the kind's closed form" in message)
+    assert kind in message and ("crease" in message or "sign function" in message)
 
 
-def test_a_route_not_built_is_refused():
+def test_a_route_that_is_no_route_is_refused():
     with pytest.raises(ArgumentRefused) as error:
-        Subject("ball", "sphere", {"radius": 1e-3}, route="sampled")
+        Subject("ball", "sphere", {"radius": 1e-3}, route="traced")
     assert code(error) == {"camera.route"}
+
+
+def test_the_closed_form_forced_on_a_kind_without_one_is_refused():
+    with pytest.raises(ArgumentRefused) as error:
+        Subject("coil", "helix", {"radius": 1e-3, "pitch": 1e-3, "turns": 2.0, "filament_radius": 1e-4},
+                route="closed form")
+    assert code(error) == {"camera.no-closed-form"}
 
 
 @pytest.mark.parametrize("written", [{"region": "lumen"}, {"coverage": "disc", "kind": "capsule"},
