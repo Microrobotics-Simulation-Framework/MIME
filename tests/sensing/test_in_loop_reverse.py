@@ -5,9 +5,8 @@ into. The case, the checks and each tolerance's mechanism are in ``reverse_gates
 
 Each arm runs float64 and float32 in one test (float32 is judged against float64 where central differences cannot
 discriminate). The operating point is camera spike R1's fixed point; ``DETECTION_SEED`` draws another (the controls'
-rates run over drawn points), and ``CAMERA_PLANT`` switches a planted error on: ``edge-stop`` (every arm), ``held-stop``
-(every arm), ``structure-stop`` (the arms that read the tree's structure) and ``made-stop`` (the overridden arm, which
-makes it)."""
+rates run over drawn points), and ``CAMERA_PLANT`` switches a planted error on: ``edge-stop``, ``held-stop`` and
+``structure-stop``, each in every arm."""
 
 from __future__ import annotations
 

@@ -12,9 +12,10 @@ one at physical scales (the ball in the lumen and in view over the run).
 
 **The arms.** ``reset``: from the build's state. ``continued``: from the state after 6 steps (frames made, the static
 structure the tree's). ``overridden``: the same, with ``fy`` written into the tree after the build (3 px above the
-structure's numbers), so that every frame step makes the structure from the step's leaves. ``chunked``: the continued
+structure's numbers), so that the tree holds a structure made at other numbers than its leaves. ``chunked``: the continued
 state, differentiated in the three chunks of 4 steps a CALLBACK controller's run is split into (each stretch its own
-chunk, the run-constants made once for the run).
+chunk, the run-constants made once for the run). In every arm the differentiated run makes the structure from the run's
+own leaves, once, before its steps (``CameraNode.run_constants``), and its steps read that.
 
 **The checks** (tolerances from mechanisms, never from the result's own size):
 
@@ -43,9 +44,9 @@ chunk, the run-constants made once for the run).
   ``S_t`` is the scale the terms came from.
 
 **The plants** (``CAMERA_PLANT``, before anything is traced; the camera's step is traced once per node): ``edge-stop``,
-``stop_gradient`` on the ball's exact disc coverage; ``structure-stop``, on the static structure the tree holds (the
-run-constant's derivative); ``made-stop``, on the structure a frame step makes (the overridden arm's path);
-``held-stop``, on the held frame (a step that is not a frame step)."""
+``stop_gradient`` on the ball's exact disc coverage; ``structure-stop``, on the static structure the run makes from its
+leaves (the run-constant's derivative, every arm's path); ``held-stop``, on the held frame (a step that is not a frame
+step)."""
 
 from __future__ import annotations
 
@@ -138,13 +139,13 @@ def plant() -> None:
         disc = _coverage.disc
         _coverage.disc = lambda *a, **k: jax.lax.stop_gradient(disc(*a, **k))  # type: ignore[assignment]
     elif PLANT == "structure-stop":
-        carrying = _node.carrying
-        _node.carrying = lambda make: (lambda held, numbers: jax.lax.stop_gradient(  # type: ignore[assignment]
-            carrying(make)(held, numbers)))
-    elif PLANT == "made-stop":
-        make = _node.CameraNode._make
-        _node.CameraNode._make = lambda self, numbers: jax.lax.stop_gradient(  # type: ignore[method-assign]
-            make(self, numbers))
+        made = _node.CameraNode.run_constants
+
+        def stopped(self: Any, params: Any) -> Any:
+            return {key: jax.lax.stop_gradient(value) if key == _node.STRUCTURE else value
+                    for key, value in made(self, params).items()}
+
+        _node.CameraNode.run_constants = stopped  # type: ignore[method-assign]
     elif PLANT == "held-stop":
         cond = _node.lax.cond
 

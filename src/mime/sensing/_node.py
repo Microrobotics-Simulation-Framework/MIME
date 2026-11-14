@@ -39,13 +39,14 @@ program.
 ``expected`` (the counts before noise and quantisation) is the differentiable output; ``image`` is the quantised frame.
 
 **Both modes; a batched study refused.** A derivative passes in forward and in reverse mode (the ring's poses and the
-leaves). Reverse mode keeps, at every step of the chunk it differentiates, the residuals of the frame's cond as large as
-its largest branch, whichever runs: each corner sub-sample and the branch that makes the static structure are
-checkpointed, so a step keeps neither (a step's tape is a few tens of frames, not thousands), and a program that takes
-no reverse derivative is unchanged. A study's reverse derivative whose tape would not fit the memory a run can have is
-refused before it compiles (:meth:`CameraNode.derivative_problem`, ``camera.reverse-memory``), naming the offline
-renderer. A batched study is refused by the study (``Observation.unbatched``): under ``vmap`` the frame's cond is a
-``select``, so every step would render.
+leaves). Reverse mode keeps a cond's residuals as large as its largest branch at every step, whichever branch runs, so
+two checkpoints hold its tape down: each corner sub-sample's (the static structure's make and every frame keep one
+sub-sample's residuals at a time, not sixteen) and each frame's render (a step keeps the render's inputs, and the
+backward pass draws the frame again), which leave the tape a few hundred frames, flat in the run's steps. A program that
+takes no reverse derivative is unchanged (a checkpoint lowers to its body). A study's reverse derivative whose estimate
+would not fit the memory a run can have is refused before it compiles (:meth:`CameraNode.derivative_problem`,
+``camera.reverse-memory``), naming the offline renderer. A batched study is refused by the study
+(``Observation.unbatched``): under ``vmap`` the frame's cond is a ``select``, so every step would render.
 """
 
 from __future__ import annotations
@@ -78,6 +79,7 @@ from mime.sensing._render import Exposure, Response, exposed, frame_key, prepare
 from mime.sensing._subjects import Subject
 
 lax: Any = jax.lax
+_checkpoint: Any = cast(Any, jax).checkpoint
 
 #: The detector's nine numbers, the node's leaves, in the order a Pinhole and OpenCV give them.
 INTRINSICS = ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3")
@@ -99,13 +101,16 @@ STRUCTURE = "static_structure"
 STRUCTURE_FROM = "static_structure_from"
 #: The image-sized planes of the packed structure: the ray table's ten and the transmission.
 PLANES = 11
-#: Reverse mode's peak through the camera past what the process holds before the derivative is compiled, in frames of the
-#: run's dtype (a frame: rows x columns values), for MIME's differentiated run of ``n`` steps in checkpointed chunks of
-#: ``L = ceil(sqrt(n))`` steps (``n // L`` chunks): ``fixed + start (n // L) + L (step + moving m)``, ``m`` the moving
-#: subjects times the exposure's sub-frames. ``start`` is a chunk start's state kept for the backward pass, ``step`` and
-#: ``moving`` one step's tape within the chunk being differentiated, ``fixed`` the static structure, its derivative and
-#: one step's backward pass. :data:`REVERSE_MEASURED` says how they were measured.
-REVERSE_FRAMES = {"fixed": 300.0, "start": 3.0, "step": 30.0, "moving": 5.0}
+#: Reverse mode's peak through the camera past what the process holds once the experiment is built, for MIME's
+#: differentiated run of ``n`` steps in checkpointed chunks of ``L = ceil(sqrt(n))`` steps: :data:`REVERSE_COMPILE` bytes
+#: (the derivative's compile, whose transient dominates a small detector's, and its code) and, in frames of the run's
+#: dtype (rows x columns values), ``fixed + render max(1, m) + start (n // L) + step L``, ``m`` the moving subjects times
+#: the exposure's sub-frames. ``fixed`` is the static structure's make (its residuals, kept for the derivative in the
+#: leaves), ``render`` one frame's backward pass a moving subject (each frame's render is checkpointed, so its residuals
+#: live one step at a time), ``start`` a chunk start's state kept for the backward pass, ``step`` one step's tape within
+#: the chunk being differentiated. :data:`REVERSE_MEASURED` says how they were measured.
+REVERSE_COMPILE = 1.5 * 2 ** 30
+REVERSE_FRAMES = {"fixed": 470.0, "render": 50.0, "start": 3.0, "step": 2.0}
 #: The refusal's margin on the estimate, the largest measured peak over its estimate, rounded up; and its headroom, the
 #: share of the memory a run can have that it keeps free (the near field's rule, ``MEMORY_HEADROOM``).
 REVERSE_MARGIN = 1.0
@@ -429,25 +434,27 @@ class CameraNode(MountedNode):
                                   np.asarray(self._fixed_pose(), dtype=np.float64).astype(made_from.dtype)])
         return {} if np.array_equal(numbers, made_from) else dict(self._made_at(params))
 
-    def reverse_estimate(self, steps: int) -> float:
-        """The bytes reverse mode through the camera holds at its peak over a run of ``steps`` steps, past what the
-        process holds before the derivative is compiled (:data:`REVERSE_FRAMES`), in the run's dtype."""
-        spec = self._spec()
+    def reverse_estimate(self, steps: int, members: int = 1) -> float:
+        """The bytes reverse mode through the camera holds at its peak over a run of ``steps`` steps of ``members``
+        members, past what the process holds once the experiment is built (:data:`REVERSE_COMPILE`,
+        :data:`REVERSE_FRAMES`), in the run's dtype."""
+        rows, columns = self.image_shape()
         length = max(1, math.ceil(math.sqrt(steps)))
         moving = sum(1 for each in self._held[1] if each.moving) * cast(int, self.constants()["sub_frames"])
-        frames = (REVERSE_FRAMES["fixed"] + REVERSE_FRAMES["start"] * (steps // length)
-                  + length * (REVERSE_FRAMES["step"] + REVERSE_FRAMES["moving"] * moving))
-        return frames * int(spec["width"]) * int(spec["height"]) * int(jnp.zeros((), dtype=run_dtype()).dtype.itemsize)
+        frames = (REVERSE_FRAMES["fixed"] + REVERSE_FRAMES["render"] * max(1, moving)
+                  + REVERSE_FRAMES["start"] * (steps // length) + REVERSE_FRAMES["step"] * length)
+        frame = rows * columns * int(jnp.zeros((), dtype=run_dtype()).dtype.itemsize)
+        return REVERSE_COMPILE + members * frames * frame
 
     def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
         """A study's derivative in reverse mode through the camera over ``steps`` steps whose tape would not fit the
         memory a run can have, refused before the study compiles it (``camera.reverse-memory``): the estimate
-        (:meth:`reverse_estimate`, ``members`` times) times :data:`REVERSE_MARGIN` against that memory less
-        :data:`REVERSE_HEADROOM` of it. Forward mode keeps no tape and is not refused."""
+        (:meth:`reverse_estimate`) times :data:`REVERSE_MARGIN` against that memory less :data:`REVERSE_HEADROOM` of it.
+        Forward mode keeps no tape and is not refused."""
         del directions
         if mode != "reverse":
             return None
-        needed = REVERSE_MARGIN * members * self.reverse_estimate(steps)
+        needed = REVERSE_MARGIN * self.reverse_estimate(steps, members)
         where, available = device_memory()
         if available is None or needed <= (1.0 - REVERSE_HEADROOM) * available:
             return None
@@ -606,8 +613,13 @@ class CameraNode(MountedNode):
         def keep() -> tuple[Array, Array, dict[str, Array]]:
             return held["image"], held["expected"], {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS}
 
+        # The frame's render is checkpointed: reverse mode keeps a cond's residuals as large as its largest branch at
+        # every step whichever branch runs, so a step's tape would hold a render's (tens of frames) at every step of the
+        # chunk it differentiates; checkpointed, it holds the render's inputs and draws the frame again in the backward
+        # pass. A program that takes no reverse derivative is unchanged: a checkpoint lowers to its body, and
+        # prevent_cse=False (inside the run's scan, which keeps the recomputation apart) adds no barrier.
         frame = self.frame_due(count, period)
-        image, expected, flags = lax.cond(frame, make, keep)
+        image, expected, flags = lax.cond(frame, _checkpoint(make, prevent_cse=False), keep)
         frame_step = jnp.where(frame, count, held["frame_step"])
         return node_fields(CameraState(
             steps=count + 1, frame_step=frame_step, age=count - frame_step, new_frame=frame.astype(jnp.int32),
