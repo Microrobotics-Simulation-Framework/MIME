@@ -232,6 +232,11 @@ coupling's order only). A coupling group's verdict at each run's end is the run'
   stage runs after its writer and before its receiver, and a stage the order put after its receiver inside a loop
   would read its command a step late: the lag accounting refuses that edge (`lag.unplanned`). No port, no node, no edge:
   every program is the program it was, its derived hash too.
+- **What a port costs.** An undeclared port, or one at every default, costs nothing: nothing is built. A declared port
+  adds up to two nodes to its apparatus and their fixed cost every step, mostly a node's own overhead in the step rather
+  than its rungs' arithmetic. Measured on a GitHub runner in float32, with a command port and a measurement port on each:
+  A0's chunk 1.15 times as long (about 90 us a step more), the coil-array sphere's 1.68 times (about 19 us a step more);
+  the smaller a model's step, the larger the share.
 - **Naming the port.** The stage's switches have one owner for every port (`port.bound.low`, `port.bound.high`,
   `port.slew.low`, `port.slew.high`, `port.trip`, declared by the port stage itself, `STAGE_SWITCHES`); what names the
   port is the field: each port's fields carry its command's name, its dots as underscores (`clipped_arm_joint_positions`,

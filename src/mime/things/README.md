@@ -67,7 +67,9 @@ base steps), its `bounds` (clipped, or tripped to its `rest` for the rest of the
 numbers come from. A **`Measurement`**, keyed by a name of its own, says what the link from a measured source (`of=`, a
 thing's state or an observation's output) to its reader does: its `rate`, `latency`, `noise` (`Gaussian`) and
 `quantum`. An apparatus holding only measurement ports is a sensing apparatus. A command or a read with no port is
-ideal, and a port with every field at its default is ideal too: nothing is built for either. `drift`, `fault`, `bias`
+ideal, and a port with every field at its default is ideal too: nothing is built for either, so neither costs
+anything. A declared port adds up to two nodes and their fixed cost a step (its numbers are in
+[`mime.build`](../build/README.md), "ports"). `drift`, `fault`, `bias`
 and `dropout` are named and refused (`port.seam`), seams for a later release, and so is a command port's `response`
 until it is built, so that no declared response is silently ignored. The build resolves and builds them
 ([`mime.build`](../build/README.md), "ports").
