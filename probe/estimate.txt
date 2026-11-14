@@ -1,0 +1,1 @@
+*: --case script_a0:a0 --path tests --steps 40
