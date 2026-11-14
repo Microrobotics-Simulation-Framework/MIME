@@ -66,6 +66,7 @@ camera.calibration-model      user
 camera.calibration-size       user
 camera.frame-period           user
 camera.hide                   user
+camera.mesh-untraced          user
 camera.mount                  user
 camera.no-closed-form         user
 camera.rate                   user

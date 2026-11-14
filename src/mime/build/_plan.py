@@ -117,6 +117,7 @@ from mime.scene import (
     ComposedLayer,
     Composition,
     Scene,
+    SceneryMesh,
     WorldFrame,
     compose,
     meters_per_unit,
@@ -3243,7 +3244,8 @@ class _Planner:
         for name, thing in sorted(self.things.items()):
             if not isinstance(thing, Body):
                 continue
-            parts = tuple(RosterPart(line.name, line.registered.cls.name, dict(line.settings), line.centre, line.rotation)
+            parts = tuple(RosterPart(line.name, line.registered.cls.name, dict(line.settings), line.centre, line.rotation,
+                                     self.part_display(name, line.name))
                           for line in self.parts.get(name, {}).values() if line.inside is None)
             held = self.dynamics.get(name)
             initial = held.initial if held is not None else {}
@@ -3254,7 +3256,21 @@ class _Planner:
             bodies[name] = RosterBody(parts, pose)
         structures = {name: RosterStructure(plan.registered.cls.name, dict(plan.settings))
                       for name, plan in sorted(self.geometries.items())}
-        return Roster(bodies, structures)
+        return Roster(bodies, structures, self.scenery())
+
+    def part_display(self, body: str, part: str) -> tuple[tuple[float, float, float] | None, float | None] | None:
+        """The stage's display colour and opacity for a bound body's part (its prim's, inherited as USD does); ``None``
+        for a part written Python-first, whose prim MIME writes."""
+        if body not in self.bound or self.composition is None:
+            return None
+        return self.composition.display(f"{self.prims[body]}/{part}")
+
+    def scenery(self) -> tuple[SceneryMesh, ...]:
+        """The meshes of the composed references that no thing owns: below no prim a thing is bound to."""
+        if self.composition is None:
+            return ()
+        owned = [path for path in self.prims.values() if self.composition.provided(path)]
+        return self.composition.scenery(owned, self.meters_per_unit)
 
     def mount_observation(self, plan: EntryPlan, spec: str, where: str) -> bool:
         """The frame ``<apparatus>.<segment>.<frame>`` an observation is mounted on, resolved into ``plan.mount``;

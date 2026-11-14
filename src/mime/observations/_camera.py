@@ -277,14 +277,18 @@ class Camera(Observation):
         found = self._found(ctx)
         for name in found.unknown_hidden:
             problems.append(Problem("camera.hide", f"hide names {name!r}, which is no body or structure of the experiment",
-                                    f"write `hide=(...)` with names the experiment declares: "
-                                    f"{', '.join(sorted({*ctx.roster.bodies, *ctx.roster.structures}))}"))
+                                    f"write `hide=(...)` with names the experiment declares, or a scenery mesh's prim "
+                                    f"path: {', '.join(sorted({*ctx.roster.bodies, *ctx.roster.structures, *(m.path for m in ctx.roster.scenery)}))}"))
         unknown = sorted({n for n, _ in self.absorbers} - {s.name for s in found.subjects})
         for name in unknown:
             problems.append(Problem("camera.hide", f"absorbers names {name!r}, which is no subject the camera images",
                                     f"write `absorbers=((name, per_metre),)` with one of "
                                     f"{', '.join(sorted(s.name for s in found.subjects))}"))
         for name, code, message in found.refused:
+            if code == scene.MESH_UNTRACED:
+                problems.append(Problem("camera.mesh-untraced", f"the scenery mesh {name!r} cannot be imaged yet: {message}",
+                                        f"hide it with hide=({name!r},), or wait for the mesh tracer"))
+                continue
             problems.append(Problem(code, f"{name!r} cannot be imaged: {message.split(': ', 1)[-1]}",
                                     f"hide it with hide=({name!r},) until the sampled route lands, or give its kind a "
                                     f"closed form"))
@@ -309,7 +313,10 @@ class Camera(Observation):
         ]
         if found.hidden:
             lines.append(f"hidden: {', '.join(found.hidden)}")
-        defaulted = [s.name for s in found.subjects if s.name not in dict(self.absorbers)]
+        staged = [s.name for s in found.subjects if s.name in found.display]
+        defaulted = [s.name for s in found.subjects if s.name not in dict(self.absorbers) and s.name not in found.display]
+        if staged:
+            lines.append(f"appearance from the stage's display primvars for: {', '.join(staged)}")
         if defaulted:
             lines.append(f"appearance defaulted for: {', '.join(defaulted)}")
         lines.append("bodies are taken to move and structures to stand; apparatus parts are not imaged")
@@ -334,7 +341,7 @@ class Camera(Observation):
         bodies = [name for name, names in found.bodies.items() if names and ctx.roster.bodies[name].pose is not None]
         spec = {
             "width": d.width, "height": d.height, "source": d.source,
-            "subjects": [scene.subject_spec(s, None) for s in found.subjects],
+            "subjects": [scene.subject_spec(s, None, found.display.get(s.name)) for s in found.subjects],
             "body_subjects": {name: list(found.bodies[name]) for name in bodies},
             "response": {"full_scale": sensor.full_scale, "gain": sensor.gain, "offset": sensor.offset,
                          "read_noise": sensor.read_noise, "shot_noise": sensor.shot_noise, "bits": sensor.bits,

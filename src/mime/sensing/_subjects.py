@@ -256,7 +256,7 @@ class Resolved:
     notes: tuple[str, ...]
 
 
-def _from_stage(display: Display) -> Appearance | None:
+def from_stage(display: Display) -> Appearance | None:
     if display.opacity is None and display.colour is None:
         return None
     opacity = 1.0 if display.opacity is None else float(display.opacity)
@@ -289,7 +289,7 @@ def resolve(subjects: Sequence[Subject], stage: Mapping[str, Display] | None = N
     for subject in subjects:
         appearance, source = subject.appearance, AppearanceSource.DECLARED
         if appearance is None:
-            appearance = _from_stage((stage or {}).get(subject.name, Display()))
+            appearance = from_stage((stage or {}).get(subject.name, Display()))
             source = AppearanceSource.STAGE
         if appearance is None:
             appearance, source = Appearance.opaque(), AppearanceSource.DEFAULT
