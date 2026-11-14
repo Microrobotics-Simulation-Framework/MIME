@@ -71,6 +71,8 @@ def covered(document: ExperimentDocument) -> tuple[set[tuple[str, str, str]], se
             entries.add(("geometry", thing["geometry"]["name"], thing["geometry"]["version"]))
         entries |= {("geometry", p["solid"]["name"], p["solid"]["version"]) for p in thing.get("parts", {}).values()}
         entries |= {("dynamics", s["name"], s["version"]) for s in thing.get("chain", [])}
+        entries |= {("response", p["response"]["name"], p["response"]["version"]) for p in thing.get("ports", {}).values()
+                    if "response" in p}
     return entries, kinds
 
 
