@@ -512,7 +512,7 @@ def lagged_coil_array() -> Experiment:
     from mime.units import A, s
 
     return coil_array(name="lagged_coil_array", ports={
-        "currents": CommandPort(rate=ms(2), latency=ms(1), bounds=A(4.0), slew=A(3000.0) / s(1.0),
+        "currents": CommandPort(rate=ms(2), latency=ms(1), bounds=A(2.5), slew=A(1000.0) / s(1.0),
                                 response=FirstOrderLag(tau=ms(4)), reason="the coils' amplifier and L/R, a datasheet"),
         "tracker": Measurement(of="umr.pose", latency=ms(2), reason="a tracker's datasheet")})
 

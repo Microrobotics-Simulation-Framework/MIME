@@ -35,6 +35,7 @@ from jax import Array
 from jaxtyping import Int
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
+from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Units, as_run_array, jnp, node_fields, node_input, switch
@@ -179,6 +180,19 @@ class CommandStageNode(MimeNode):
                 *((f"{'clipped' if bounded == CLIPPED else 'tripped'}_{key}",) if bounded else ()),
                 *((f"amplified_{key}",) if cast(Mapping[str, bool], self._held("slewed"))[key] else ()),
                 *(f"response_{key}_{c}" for c in carried))
+
+    @override
+    def param_specs(self) -> dict[str, ParamSpec]:
+        """A rest is read inside the step only by a trip, which delivers it; elsewhere it is where the link and the
+        amplifier start (the buffer's samples, the slew's last value), an initial condition a study cannot change by
+        a leaf, so it is no trainable leaf."""
+        bounded = cast(Mapping[str, str], self._held("bounded"))
+        units = cast(Mapping[str, str], self._held("units"))
+        return {**super().param_specs(),
+                **{f"rest_{key}": ParamSpec(trainable=bounded[key] == TRIPPED, units=units[key],
+                                            description=f"what the port on {key} delivers before a write arrives, "
+                                                        f"and after a trip")
+                   for key in self._keys()}}
 
     @override
     def initial_state(self) -> NodeFields:
