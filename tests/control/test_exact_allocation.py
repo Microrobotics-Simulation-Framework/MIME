@@ -30,7 +30,8 @@ from typing import Any
 import jax
 import numpy as np
 import pytest
-from allocation_cases import GUARD_POINTS, LIMIT, OWNER, allocating_sphere, guard_point_derivative, guard_point_value
+from allocation_cases import (GUARD_POINTS, LIMIT, OWNER, allocating_field, allocating_sphere, guard_point_derivative,
+                              guard_point_value)
 from allocation_draws import SLACK, Problem, bvls, line, problems, reach_of, residual_line, verdict
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -314,9 +315,10 @@ def test_every_solve_of_the_law_runs_in_its_registered_site(rows):
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-def test_the_law_runs_inside_the_compiled_step(dtype):
+@pytest.mark.parametrize("make", [allocating_sphere, allocating_field], ids=["force_3_coils", "field_8_coils"])
+def test_the_law_runs_inside_the_compiled_step(make, dtype):
     with in_dtype(dtype):
-        built = allocating_sphere().build()
+        built = make().build()
         currents = np.asarray(built.run(ms(60), history=True).history["controller"]["write_currents"])
     assert np.all(np.isfinite(currents)) and np.all(np.abs(currents) <= LIMIT) and np.any(np.abs(currents) > 0)
 
