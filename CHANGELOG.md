@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asset uploaded), to rehearse on zenodo-sandbox first (the sandbox lane's `--demo study`). A container named as
   another kind, and a block (`mime.block/1`, reserved), is refused (`container.kind`). No saved form changes, and no
   simulation output moves.
+  A group's NPZ is opened only once its sha256 is the one `study.json` records, and an entry in it that is compressed or
+  names more bytes than it holds is refused before an array is allocated (a nested bomb of a few kilobytes named
+  gigabytes); a manifest or a recipe of the wrong shapes is refused (`study.manifest`, `plot.recipe`), not raised; the
+  commands a refusal offers hold a name as one shell word; and a destination that is a link is refused for a bundle
+  and a study alike (`pull.destination`).
 - **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
   mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
   frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in

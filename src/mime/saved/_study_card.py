@@ -168,10 +168,10 @@ def _reproduce(names: Sequence[str], mime_versions: Sequence[str], publication: 
     several = len(names) > 1
     into = " --into ./studies/" if several else ""
     folders = [f"./studies/{name}/" if several else f"./{name}/" for name in names]
-    lines = ["```", *(f"pip install mime-engine=={plain(version)}" for version in sorted(set(mime_versions))),
-             pull + into, *(f"mime verify {folder}" for folder in folders),
-             *(f"mime study run {folder}study.mime.yaml --out ./{name}_again/" for folder, name in zip(folders, names,
-                                                                                                    strict=True)),
+    lines = ["```", *(f"pip install {quoted(f'mime-engine=={plain(version)}')}" for version in sorted(set(mime_versions))),
+             pull + into, *(f"mime verify {quoted(plain(folder))}" for folder in folders),
+             *(f"mime study run {quoted(plain(folder) + 'study.mime.yaml')} --out {quoted(f'./{plain(name)}_again/')}"
+               for folder, name in zip(folders, names, strict=True)),
              "```", ""]
     return lines
 

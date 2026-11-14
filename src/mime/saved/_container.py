@@ -381,12 +381,18 @@ def notice_of(archive: zipfile.ZipFile, expected: BundleFile, kind: ContainerKin
 
 
 def destination_problem(into: str | os.PathLike[str]) -> BuildRefused | None:
-    """Why a container cannot be unpacked to ``into`` (it must not exist, or be an empty folder), or ``None``: checked
-    before anything is downloaded, and again before anything is written."""
+    """Why a container cannot be unpacked to ``into`` (it must not exist, or be an empty folder, and not a link to one),
+    or ``None``: checked before anything is downloaded, and again before anything is written."""
     destination = Path(os.path.abspath(into))
     if not destination.name:
         return BuildRefused([refuse("pull.destination", RefusalClass.USER, f"{destination} is not a folder to create",
                                     "unpack into a new folder (--into)")])
+    if destination.is_symlink():
+        return BuildRefused([refuse(
+            "pull.destination", RefusalClass.USER,
+            f"{destination} is a symbolic link, and a container is not unpacked through one: the folder it unpacks to "
+            f"is made here, and a link is not renamed or replaced",
+            "unpack into a new folder (--into), not a link to one")])
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
         return BuildRefused([refuse(
             "pull.destination", RefusalClass.USER, f"{destination} exists and is not an empty folder",

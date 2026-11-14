@@ -147,14 +147,29 @@ def read_recipe(root: Path, name: str) -> dict[str, Any]:
     if frozenset(held) != RECIPE_KEYS:
         raise refuse("plot.recipe", RefusalClass.USER, f"{path} holds {sorted(set(held) ^ RECIPE_KEYS)}, which a recipe's closed keys do not",
                      "write the recipe with result.figure(...).write_recipe()")
-    for read in cast(list[dict[str, str | None]], held["reads"]):
+    reads = held["reads"]
+    if not (isinstance(reads, list) and all(
+            isinstance(each, dict) and set(cast(dict[str, object], each)) == {"path", "sha256"}
+            and isinstance(cast(dict[str, object], each)["path"], str)
+            and isinstance(cast(dict[str, object], each)["sha256"], (str, type(None)))
+            for each in cast(list[object], reads))
+            and isinstance(held["name"], str) and held["target"] in ("run", "study")
+            and isinstance(held["spec"], dict) and isinstance(held["options"], dict)):
+        raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not shaped as a recipe is: its name a string, its target "
+                     f"'run' or 'study', its spec and options mappings, and each file it reads a path and a sha256 (or "
+                     f"none)", "write the recipe with result.figure(...).write_recipe()")
+    for read in cast(list[dict[str, str | None]], reads):
         relative = PurePosixPath(str(read["path"]))
         if relative.is_absolute() or not relative.parts or any(part == ".." or ":" in part or "\\" in part
                                                                 for part in relative.parts):
             raise refuse("plot.recipe", RefusalClass.USER, f"{path} names {str(read['path'])!r}, which is not a file in "
                          f"its folder", "write the recipe with result.figure(...).write_recipe()")
         data = root / relative
-        now = file_digest(data) if data.is_file() else None
+        try:
+            now = file_digest(data) if data.is_file() else None
+        except OSError as error:
+            raise refuse("plot.recipe", RefusalClass.USER, f"{path} names {str(read['path'])!r}, which cannot be read "
+                         f"({error})", "write the recipe with result.figure(...).write_recipe()") from error
         if now != read["sha256"]:
             raise ArgumentRefused([Refusal(
                 "plot.data-changed", RefusalClass.USER,

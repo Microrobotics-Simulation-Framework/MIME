@@ -64,9 +64,19 @@ def _group_file(root: Path, group: Mapping[str, Any], done: Sequence[Mapping[str
         raise _group_file_refused(
             f"{where} is not there, and {_counted([int(row['point']) for row in done])} of group {number} "
             f"{'are' if len(done) != 1 else 'is'} marked done in {STUDY_FILE}", where)
+    # Hash before parse: the file is opened as an NPZ only once its bytes are the ones the manifest records.
+    held = file_sha256(path)
+    if held != recorded:
+        if not (staged.is_file() and file_sha256(staged) == recorded):
+            raise _group_file_refused(
+                f"{where} is not the file {STUDY_FILE} records for group {number} (its sha256 is {held}, and "
+                f"{STUDY_FILE} records {recorded}): its members' arrays were changed after the run, or it is a group "
+                f"file of another study or of another run of this one", where)
+        path = staged
     try:
         archive = GroupArchive(path)
         try:
+            archive.check_entries()
             absent = [int(row["point"]) for row in done
                       if f"m{row['point']}/{CONTENT_KEY}" not in archive.keys_of(int(row["point"]))
                       or "manifest" not in archive.member(int(row["point"])).files]
@@ -85,13 +95,6 @@ def _group_file(root: Path, group: Mapping[str, Any], done: Sequence[Mapping[str
         raise _group_file_refused(
             f"{_counted(absent)} marked done in {STUDY_FILE} {'have' if len(absent) != 1 else 'has'} no entries in "
             f"{where}", where)
-    held = file_sha256(path)
-    if held != recorded:
-        if staged.is_file() and file_sha256(staged) == recorded:
-            return staged
-        raise _group_file_refused(
-            f"{where} is not the file {STUDY_FILE} records for group {number} (its sha256 is {held}, and {STUDY_FILE} "
-            f"records {recorded}): its members' arrays were changed after the run", where)
     return path
 
 

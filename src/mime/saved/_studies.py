@@ -36,6 +36,7 @@ from typing import Any, Literal, cast
 
 from typing_extensions import ReadOnly, TypedDict
 
+from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets import folder_assets, known_bytes, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -181,7 +182,7 @@ def container_kind(path: str | os.PathLike[str], *, named: str | None = None) ->
             "container.kind", RefusalClass.USER,
             f"{plain(name)} is named as {by_name.article} ({by_name.suffix}) and holds {by_format.article} "
             f"({plain(str(stated))})",
-            f"rename it and pull it again, `mime pull {plain(stem)}{by_format.suffix}`, or fetch it again from its "
+            f"rename it and pull it again, `mime pull {quoted(plain(stem) + by_format.suffix)}`, or fetch it again from its "
             f"source: MIME reads a container by what its manifest says it is, and refuses one whose name says "
             f"otherwise")])
     if kind is BLOCK:
@@ -217,6 +218,7 @@ def saved_folders(document: Mapping[str, Any]) -> list[str]:
 def incomplete_problem(document: Mapping[str, Any], where: str) -> Refusal | None:
     """``study.incomplete`` for a study whose manifest holds members not done, naming them; ``None`` for a study whose
     every member is done."""
+    where = plain(where)
     rows = cast(list[dict[str, Any]], document["members"])
     pending = [int(row["point"]) for row in rows if row["status"] != DONE]
     if not pending:
@@ -226,8 +228,8 @@ def incomplete_problem(document: Mapping[str, Any], where: str) -> Refusal | Non
     return refuse("study.incomplete", RefusalClass.USER,
                   f"{where}: {len(pending)} of its {len(rows)} members {'are' if plural else 'is'} not run (point{plural} "
                   f"{shown}): a study that was stopped is shared only once it is whole",
-                  f"finish it: run it again into the same folder, which resumes it, `mime study run {where}/{SPEC_FILE} "
-                  f"--out {where}`; then pack it")
+                  f"finish it: run it again into the same folder, which resumes it, `mime study run "
+                  f"{quoted(f'{where}/{SPEC_FILE}')} --out {quoted(where)}`; then pack it")
 
 
 def input_hash_problems(root: Path, document: Mapping[str, Any], base_lock: Lock, where: str) -> list[Refusal]:
@@ -235,13 +237,14 @@ def input_hash_problems(root: Path, document: Mapping[str, Any], base_lock: Lock
     the study was not run on the base it holds."""
     from mime.study._spec import read_spec
 
+    where = plain(where)
     found = str(base_lock["hashes"]["input"])
     held = [(STUDY_FILE, document["experiment"]["input_hash"])]
     held.append((SPEC_FILE, read_spec(root / SPEC_FILE)["base"].get("input_hash")))
     return [refuse("study.input-hash", RefusalClass.USER,
                    f"{where}: {name} records the base experiment's input hash {plain(str(recorded))}, and the base's "
                    f"lock ({BASE_DIR}/mime.lock) records {plain(found)}: the study was not run on the base it holds",
-                   f"run the study again on its base, `mime study run {where}/{SPEC_FILE} --out <a new folder>`: a "
+                   f"run the study again on its base, `mime study run {quoted(f'{where}/{SPEC_FILE}')} --out <a new folder>`: a "
                    f"study folder holds the base it ran on, byte for byte")
             for name, recorded in held if recorded != found]
 

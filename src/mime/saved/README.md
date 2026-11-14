@@ -409,7 +409,12 @@ same folder makes the same bytes.
 written by MIME's own opens into a hidden folder), then **the same study checks on the folder written**: a container
 whose manifest was rewritten to agree with a changed group file, a changed input hash or a changed figure's data is
 refused by the study's own records, and a reference in no saved folder is refused before anything is written. Each
-saved folder's files must be exactly the ones its saved form names, its references its lock's.
+saved folder's files must be exactly the ones its saved form names, its references its lock's. A hash shows that a file is
+the one the manifest records, not that what it holds is small: a group's NPZ is opened only once its sha256 is the one
+`study.json` records, and only as MIME writes one (every entry stored, not compressed, and holding the bytes its array
+header names), so an entry of a few kilobytes cannot name gigabytes. The manifest and a recipe are checked for the kind of
+each entry (`study.manifest`, `plot.recipe`) before any is used, and a destination that is a link, not a folder, is
+refused before anything is staged (`pull.destination`).
 
 **What `mime verify <study>` shows.** The study's checks, then each of its saved folders (the base, each group's own
 build) loaded, rebuilt and rerun against its reference outputs in the precision its lock records, a line each, and the

@@ -195,7 +195,7 @@ def _record_file(doi: str, wanted: str | None) -> tuple[list[tuple[str, str, int
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
                       f"the record doi:{doi} lists {len(bundles)} bundle files and {len(studies)} study containers "
                       f"(its files: {held}), and MIME pulls one bundle, or one or more studies",
-                      f"name the one to pull: `mime pull doi:{doi}/<file>{BUNDLE_SUFFIX}` (or <file>{STUDY_SUFFIX})")
+                      f"name the one to pull: `mime pull doi:{quoted(plain(doi))}/<file>{BUNDLE_SUFFIX}` (or <file>{STUDY_SUFFIX})")
     return ([(file, checksum if ":" in (checksum := registry[file]) else f"md5:{checksum}",
               _stated_size(repository, file)) for file in chosen], named, resolved)
 
