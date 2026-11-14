@@ -162,7 +162,7 @@ def derivative_problems(problem: Problem, dtype: str, tangent: np.ndarray, cotan
         if not (np.all(np.isfinite(forward)) and np.all(np.isfinite(backward))):
             return [f"a derivative is not finite: {forward}, {backward}"]
         held = SLACK * eps * float(np.abs(np.asarray(w, np.float64)) @ np.abs(jacobian) @ np.abs(np.asarray(v, np.float64)))
-        if abs(float(np.asarray(w, np.float64) @ forward) - float(backward @ np.asarray(v, np.float64))) > held + 1e-300:
+        if abs(float(np.asarray(w, np.float64) @ forward) - float(backward @ np.asarray(v, np.float64))) > held:
             found.append(f"forward and reverse mode differ past {held:.3g}")
         here = active_of(problem, dtype, p)
     if dtype == "float64":
@@ -204,16 +204,17 @@ def derivative_problems(problem: Problem, dtype: str, tangent: np.ndarray, cotan
 
 
 def unit(direction: np.ndarray) -> np.ndarray:
-    """``direction`` at unit length; a direction near zero is the first axis (a tangent is never zero)."""
-    if np.linalg.norm(direction) < 1e-3:
-        direction = np.eye(len(direction))[0]
     return direction / np.linalg.norm(direction)
 
 
 def directions(rows: int) -> st.SearchStrategy[tuple[np.ndarray, np.ndarray]]:
-    unit = st.floats(-1.0, 1.0, allow_nan=False)
-    return st.tuples(st.lists(unit, min_size=rows + 1, max_size=rows + 1),
-                     st.lists(unit, min_size=8, max_size=8)).map(lambda t: (np.asarray(t[0]), np.asarray(t[1])))
+    """A tangent on the wanted values and the limit, and a cotangent on eight commands (cut to the problem's), each
+    component of magnitude 0.1 to 1 and either sign. No component is near zero: one drawn at float32's least normal
+    (1.2e-38) made reverse-mode products below the normal range, which XLA's CPU flushes to zero, so the two modes
+    differed by the flushed share, not by the law's rounding."""
+    component = st.builds(lambda sign, size: sign * size, st.sampled_from((-1.0, 1.0)), st.floats(0.1, 1.0))
+    return st.tuples(st.lists(component, min_size=rows + 1, max_size=rows + 1),
+                     st.lists(component, min_size=8, max_size=8)).map(lambda t: (np.asarray(t[0]), np.asarray(t[1])))
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
