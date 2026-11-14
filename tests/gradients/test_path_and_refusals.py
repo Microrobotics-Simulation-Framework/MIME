@@ -170,3 +170,38 @@ def test_an_objective_of_more_than_one_number_is_refused():
     with pytest.raises(BuildRefused) as raised:
         Study(exp).sweep(along({spring.k: [N(1.7) / m(1.0)]}), duration=s(0.2)).gradient(lambda final: final["probe"]["x"])
     assert codes(raised) == ["gradient.objective"]
+
+
+@pytest.mark.parametrize("mode", ["reverse", "forward"])
+def test_an_observation_whose_node_refuses_reverse_mode_is_refused_by_its_name_through_derivative_problem(mode,
+                                                                                                         monkeypatch):
+    """No blanket refusal stands for an observation: one whose node cannot take a derivative refuses it by name through
+    ``derivative_problem(mode, directions, members, steps)`` (the camera's memory refusal does), before the study
+    compiles anything. A toy recorder on the probe is planted to refuse reverse mode: reverse mode is refused naming
+    the recorder's node and its code, and forward mode (which the plant admits) is differentiated (the control)."""
+    from mime.registry import Problem
+    from mime.study import _gradient
+    from mime.testing.toys import ToyRecorder
+    from mime.testing.toys._nodes import ToyRecorderNode
+
+    def refusing(self, mode_, directions, members, steps):
+        del self, directions, members, steps
+        return Problem("toy.reverse-refused", "a planted refusal of reverse mode", "take forward mode") \
+            if mode_ == "reverse" else None
+
+    def compiled(*_: object, **__: object) -> None:
+        raise AssertionError("the derivative was compiled")
+
+    monkeypatch.setattr(ToyRecorderNode, "derivative_problem", refusing, raising=False)
+    exp, spring = planted("double")
+    exp.observe(ToyRecorder(body="probe"))
+    study = Study(exp).sweep(along({spring.k: [N(1.7) / m(1.0)]}), duration=s(STEPS * 1e-2))
+    if mode == "forward":
+        found = study.gradient(position, mode=mode)
+        assert found.member(0).gradient[found.wrt[0]] != 0.0
+        return
+    monkeypatch.setattr(_gradient, "prepare", compiled)
+    with pytest.raises(BuildRefused) as raised:
+        study.gradient(position, mode=mode)
+    assert codes(raised) == ["toy.reverse-refused"]
+    assert "toy.recorder:probe" in raised.value.refusals[0].message

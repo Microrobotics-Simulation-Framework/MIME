@@ -1,0 +1,72 @@
+{
+  "written": "2026-11-14, committed before the camera reverse estimate's second cost probe ran (the commit that adds this file is the timestamp): the estimate's form refitted from the first cost probe (run 43556977579) and written in CameraNode.reverse_estimate, the larger of the compile (REVERSE_COMPILE 1.45 GiB, REVERSE_POSE 0.08 GiB a pose past one) and the run (REVERSE_HELD 1.06 GiB and 464 + 2 (n // L) frames), margin 1.1",
+  "phase": "camera reverse (dev2), round 2 on the merged base: the refusal's estimate checked where the first fit had one width (320x240) for its poses' term, and on sizes it left out",
+  "labels": "predictions by the round-2 builder (Opus) from the first cost probe's arms and two laptop compile-only runs (below)",
+  "seen_before": [
+    "first cost probe, runners (43556977579): reverse peaks past the build 1.26 to 2.02 GiB at 160x120 to 640x480, 10 to 1000 steps, both dtypes, 0.87 to 1.00 of the estimate written; one ball 1.27, two balls 1.37, three sub-frames 1.58 GiB at 320x240 x 100 steps f64 (compile-dominated)",
+    "laptop compile-only at 160x120 x 100 steps f64: the reverse program's temp 453 frames for one ball, two balls and three sub-frames alike (the poses add compile, not tape); the compile process's peak 1725, 2020 and 2308 MiB: up to 0.29 GiB a pose on the laptop, against 0.05 to 0.16 GiB a pose on the runner at 320"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "GitHub runners (4 vCPU, 16 GB), one process an arm, node_measure.py through the built graph",
+    "sizes_and_parameters": "the cost case (probe/reverse_cost.py): two balls (m = 2) and three sub-frames (m = 3, period 3) at 160x120 and 640x480 x 100 steps f64, two balls with three sub-frames (m = 6) at 320x240 x 100; held out of the first fit: 480x360 x 300 steps f64 and f32, 160x120 x 1000 f32",
+    "seeds_and_draws": "deterministic programs; one run an arm (peaks move by about 0.1 GiB between runner CPUs, measured in the first probe)"
+  },
+  "gate_1_estimate_holds_out": {
+    "claim": "the refusal's estimate times its margin is at least the measured reverse peak past the build at every arm, held out of its fit",
+    "kind": "bounds",
+    "case": "node_measure.py --reverse camera:.fy, each arm a process; compile-moving: XLA's compiled temp of the same programs",
+    "prediction": {
+      "value": null,
+      "band": [
+        0.75,
+        1.1
+      ],
+      "unit": "measured over estimate at each node_measure arm (over the margin, 1.1, an underestimate the refusal's fit must take in: REVERSE_POSE refitted from these arms and the margin restated)",
+      "basis": "measured-before",
+      "why": "estimates 1.53 (160 b2), 1.61 (160 s3), 2.25 (640 b2 and s3, the run's tape), 1.85 (m = 6), 1.70 (480 f64), 1.45 (480 f32, 160 f32); the poses' compile term is the uncertain one: at 160x120 the compile dominates and the laptop saw 0.29 GiB a pose, which would put 160 s3 at about 1.2 of its estimate"
+    },
+    "compile_moving": "the reverse program's temp 453 to 467 frames for every pose count at 160 and 640 (the poses add no tape)",
+    "metric": "reverse_peak_mib less the build's rss_end_mib, over the estimate",
+    "if_wrong": "an arm over the estimate times 1.1: REVERSE_POSE (or REVERSE_COMPILE) refitted to cover every arm of both probes, the margin restated as the largest miss rounded up",
+    "cannot_discriminate_if": "every arm sits under the compile term, so the run's term is never tested (480 f64 and 640 are run-dominated by the estimate)"
+  },
+  "outcomes": {
+    "written": "2026-11-14, after run 43558991782 (11 jobs, all succeeded; https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43558991782)",
+    "gate_1_estimate_holds_out": {
+      "measured_over_estimate": {
+        "ck-64-160-100-b2": 0.969,
+        "ck-64-160-100-s3": 1.098,
+        "ck-64-640-100-b2": 0.943,
+        "ck-64-640-100-s3": 1.037,
+        "ck-32-160-1000": 0.972,
+        "ck-64-480-300": 0.963,
+        "ck-32-480-300": 0.962,
+        "ck-64-320-100-b2-s3": 1.06
+      },
+      "measured_gib_past_build": {
+        "ck-64-160-100-b2": 1.483,
+        "ck-64-160-100-s3": 1.768,
+        "ck-64-640-100-b2": 2.044,
+        "ck-64-640-100-s3": 2.247,
+        "ck-32-160-1000": 1.409,
+        "ck-64-480-300": 1.635,
+        "ck-32-480-300": 1.395,
+        "ck-64-320-100-b2-s3": 1.96
+      },
+      "result": "within the band and within the estimate times its margin (1.1) at every arm, so no underestimate; but the largest, three sub-frames at 160x120, sat at 1.098, the margin all but spent: the poses' term (0.08 GiB, fitted at 320x240 alone) is about half the compile's growth at 160x120 (0.16 GiB a pose), and at 640x480 the run phase grows with the poses too (the program's code), which the first form did not count",
+      "compile_moving": "the reverse program's temp 452.9 to 453.1 frames at 160x120 and 640x480 for one ball, two balls and three sub-frames: the poses add compile and code, not tape (as predicted)",
+      "refit": "REVERSE_POSE 0.16 GiB a pose past one, added to both phases (the estimate P (m - 1) + max(REVERSE_COMPILE, REVERSE_HELD + tape)); over the 22 arms of both probes 0.85 to 1.00 of the estimate; the margin stays at its floor, 1.1. The refit has no held-out runs of its own: it was fitted on every run there is"
+    },
+    "review_round": {
+      "written": "2026-11-14, after a refuting review of PR 297: the pose term had no real margin",
+      "finding": "REVERSE_POSE 0.16 GiB was set by one arm (ck-64-160-100-s3 at 0.999); leaving it out gave 0.102 and the held-out arm at 1.069 of the estimate against the margin 1.1; the first fit's held-out run reached 1.098; the per-pose cost is not linear in m on the runners (0.033 for two balls at 160, 0.159 for three sub-frames at 160, 0.102 for m = 6 at 320); the arms all ran on 4-vCPU runners while the laptop's compile showed 0.29 GiB a pose; m above 6 is untested",
+      "choice": "REVERSE_POSE set at the largest per-pose cost measured on any platform, the laptop's 0.29 GiB (the compile process's peak 1725, 2020 and 2308 MiB at one, two and three poses at 160x120 x 100 steps f64: 0.288 and 0.285 GiB a pose), not fitted to the runner arms. A constant rather than the compiled program's memory analysis at the platform at hand: the refusal runs before anything compiles, and a compile to read it would cost the memory it is there to protect. REVERSE_COMPILE 1.45 and REVERSE_HELD 1.06 unchanged",
+      "leave_one_out": "coord_work/camera_reverse/loo_fix.py: all 22 arms, each left out in turn and REVERSE_COMPILE and REVERSE_HELD refitted from the other 21 by the cover-all rule (smallest value no remaining arm exceeds, to 0.01 GiB), the phase of each arm taken from the full fit; the pose term fixed at 0.29. Worst held-out measured/estimate 1.037 (ck-32-640-10, the run term), margin 1.1; full-fit ratios 0.68 to 1.00; the pose arms 0.68 to 0.88 (0.85 to 1.00 with 0.16)",
+      "covers": "the platforms measured (GitHub 4-vCPU runners; the pose term the laptop's), 160x120 to 640x480, 10 to 1000 steps, both dtypes, m up to 6; beyond that an extrapolation, not a bound"
+    }
+  }
+}

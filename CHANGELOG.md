@@ -24,6 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asset uploaded), to rehearse on zenodo-sandbox first (the sandbox lane's `--demo study`). A container named as
   another kind, and a block (`mime.block/1`, reserved), is refused (`container.kind`). No saved form changes, and no
   simulation output moves.
+- **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
+  mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
+  frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in
+  both dtypes, over 10 steps as over 1000 (6300 to 7600 without them); the render's checkpoint cost no measurable
+  time (two pairs of runs, each pair's halves on different runner CPUs), and the sub-sample checkpoint's time at 640x480
+  was not measured; a step's reverse time is
+  4.5 to 4.7 times forward mode's at 1000 steps in float64 on GitHub's runners (5.1 to 6.1 in float32). Checked against
+  forward mode, central differences (float32 against float64 where they cannot discriminate) and a held step's against
+  its frame's, from the run's start, from a continued state (the tree's structure, or a leaf written over it) and over a
+  CALLBACK controller's chunks, in both dtypes. A study whose estimate would not fit the memory a run can have is
+  refused before it compiles (`camera.reverse-memory`), naming the offline renderer; the estimate is fitted to runs on
+  GitHub's four-core runners (160x120 to 640x480, up to six poses a frame, both dtypes), its per-pose term is the largest
+  cost measured on any platform, and beyond those platforms and sizes it is an extrapolation. A batched study stays refused
+  (`camera.batched`); `Observation.forward_only` becomes `Observation.unbatched` (`mime.registry.unbatched_of`), a
+  batched study's refusal alone, and a derivative an observation's node cannot take is its node's to refuse by name
+  through `derivative_problem`. The entry stays `unverified` (its renderer's switches are not yet declared). No forward
+  program changes: the step, a run and its forward-mode derivative compile to the same text, and every forward array is
+  the same bit for bit.
+
 - **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
   interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and

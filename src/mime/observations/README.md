@@ -40,7 +40,7 @@ sees the whole scene (`Observation.sees_scene`: the build gives its plan the ros
 plan names the bodies it reads, `Read(of=)`), renders a frame every `frame_period` on the base step's clock and holds it
 between, from a ring of the last `sub_frames` poses. Its outputs: `image` and `expected` (setting-shaped, not recordable:
 `Output.shape_from_settings`, `Output.recordable`), `frame_step`, `age`, `new_frame`. The detector's nine numbers are its
-node's leaves, so a study can fit them; it is forward mode only (`Observation.forward_only`). `mime.sensing` holds the
+node's leaves, so a study can fit them, in forward or reverse mode; a batched study through it is refused (`Observation.unbatched`). `mime.sensing` holds the
 renderer, and its README the model and the replay contract.
 
 `SwimSpeed` declares its outputs: `speed` each step, and at the end `mean_speed` (the mean of `speed`
