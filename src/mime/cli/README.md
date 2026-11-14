@@ -9,7 +9,11 @@
   `mime run` does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report
   and the verdict, bit for bit or within the lock's tolerance (block by block from the tenth form, each on its largest
   magnitude or its measured resolution; see [`mime.saved`](../saved/README.md)), and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the
-  load or the build is refused. A reference made on a GPU with XLA's deterministic mode off is judged within tolerance
+  load or the build is refused. Given a study folder, or a folder of them (a publishing folder, or what `mime pull
+  --into` wrote), it checks each study's files against its records (each group file, each figure's data, the base's
+  input hash, every member run) and verifies each of its saved experiments as above, a line each, ending with what that
+  is (an acceptance, which bounds nothing about physics and does not run the study again); it exits with the worst
+  result, refused where a study's checks refuse it. A reference made on a GPU with XLA's deterministic mode off is judged within tolerance
   everywhere, and the verdict ends with a line saying so. `--deterministic` turns XLA's deterministic GPU mode on before
   JAX starts (`mime.env.deterministic_mode()`); on the CPU it changes nothing, and says so in one line. Ctrl+C ends it
   (130), the second press at once.
@@ -115,12 +119,18 @@
   the file and its sha256, the files that travel as references, and the experiment's licence or that it declares
   none; for a folder of a form before terms that holds layers or descriptions, one line more (a third party's file in
   it is carried as the author's own). `mime pack .` packs the folder it is run in. Exits zero, or two when refused.
+  A **study folder** (`Study.run_to`'s) packs into one **study container**, `<folder>.mimestudy`, and a **publishing
+  folder** (study folders and the record's `mime.toml`) into one `.mimestudy` per study (beside it, or in `--out`, a
+  folder), all or none; see [the study container](../saved/README.md#the-study-container). A publishing folder's other
+  entries are listed on a `!` line and carried by no container.
 - `mime card <folder> [--out <file>] [--notice]`: the experiment's **card** (Markdown: what it is, what it bounds and
   estimates, what reproduces, its validity lines, its licences and credit, its availability, how to reproduce and cite
   it), or with `--notice` its NOTICE (each file's licence, credit, verdict and declared permission), offline and
   byte for byte as `mime push` will publish them, but for the card's line naming the experiment it was based on
   (`Experiment.based_on`), which push's description leaves out until push states that relation; printed, or written to
-  `--out`. It loads the folder as `pack` does.
+  `--out`. It loads the folder as `pack` does. Of a study folder or a publishing folder: each study's base, axes,
+  points, what its run kept, its groups, its files' licences, its packages, what it leaves out and the commands that
+  pull, verify and run it again (it reads the study and runs nothing); `--notice`, the NOTICE its container carries.
   Exits zero, or two when refused.
 - `mime pull <doi | address | file> [--into <folder>] [--no-assets] [--yes] [--force] [--accept-licence <id>]... [--max-bundle-bytes <n>]`: get a bundle,
   check its hashes, unpack it into a new folder, fetch its assets (unless `--no-assets`) and say what is still needed:
@@ -143,7 +153,10 @@
   `--link -` asks for the link with no echo and `--link env` reads it from `MIME_SHARE_LINK`, so that its key is in
   neither the shell's history nor the process's arguments, which other accounts on the machine can read (`ps`,
   `/proc/<pid>/cmdline`) unless `/proc` is mounted with `hidepid`. Exits zero, or two when refused.
-  Pulling a stranger's bundle: see [the saved form](../saved/README.md#the-bundle).
+  Pulling a stranger's bundle: see [the saved form](../saved/README.md#the-bundle). A record holds one kind of
+  container: one bundle, or one or more studies. One study unpacks into `./<its name>/` (or `--into`); a record of
+  several needs `--into <folder>`, refused before anything is downloaded (`pull.destination`), and each study is unpacked
+  into a folder of its own below it, all or none, their assets gated once. `doi:<doi>/<file>.mimestudy` pulls one.
 - `mime push <folder> --to zenodo|zenodo-sandbox [--init | --setup | --status | --discard | --publish [--confirm
   <DOI>[@<fingerprint>]]] [--yes] [--full-plan] [--keep-site-edits | --overwrite-site-edits]`, and `mime push
   --defaults`: the experiment as a record on Zenodo (see

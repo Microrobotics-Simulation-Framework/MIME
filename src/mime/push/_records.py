@@ -54,10 +54,21 @@ _RECORD_DOI = re.compile(r"(?:doi:|https?://(?:dx\.)?doi\.org/)?(10\.[0-9]{4,9}/
 
 
 @dataclass(frozen=True)
+class RecordContainer:
+    """A container a published record holds: the file's name, its address in the records API, its md5 and size."""
+
+    key: str
+    url: str
+    md5: str
+    size: int
+
+
+@dataclass(frozen=True)
 class PublicRecord:
     """A published record: its service and number, DOI, concept's DOI, version (its number, and whether it is the
-    latest), and its bundle: the file's name, its address in the records API, its md5 and size; and, where it is not
-    the latest version, the latest's number."""
+    latest), and its first container (a bundle, or a study): the file's name, its address in the records API, its md5
+    and size; where it is not the latest version, the latest's number; and every container it holds (one bundle, or one
+    or more studies)."""
 
     service: Service
     record: str
@@ -69,6 +80,7 @@ class PublicRecord:
     md5: str
     size: int
     latest: str | None = None
+    containers: tuple[RecordContainer, ...] = ()
 
     def words(self) -> str:
         version = f"version {self.version}, " if self.version is not None else ""
@@ -317,8 +329,9 @@ def record_number(service: Service, given: str) -> str:
 
 def public_record(service: Service, given: str, access: Access | None = None) -> PublicRecord:
     """The published record ``given`` names on ``service`` (:func:`record_number`), read with no token (or let in by
-    ``access``), and its one bundle."""
+    ``access``), and its containers: one bundle, or one or more studies."""
     from mime.saved._bundle import BUNDLE_SUFFIX
+    from mime.saved._studies import STUDY_SUFFIX
 
     record = record_number(service, given)
     page = f"{service.site}/records/{record}"
@@ -332,17 +345,22 @@ def public_record(service: Service, given: str, access: Access | None = None) ->
     entries = [_map(each) for each in cast(list[object], listing.get("entries", []))
                if isinstance(listing.get("entries"), list)]
     bundles = [each for each in entries if str(each.get("key", "")).endswith(BUNDLE_SUFFIX)]
-    if len(bundles) != 1:
+    studies = [each for each in entries if str(each.get("key", "")).endswith(STUDY_SUFFIX)]
+    if not ((len(bundles) == 1 and not studies) or (studies and not bundles)):
         names = ", ".join(plain(str(each.get("key"))) for each in entries) or "none"
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
-                      f"the record {record} on {service.name} holds {len(bundles)} bundle files (its files: {names})",
-                      "pull a record `mime push` made, which holds one bundle")
-    bundle = bundles[0]
-    key, checksum, size = str(bundle["key"]), str(bundle.get("checksum", "")), bundle.get("size")
-    if not checksum.startswith("md5:") or not isinstance(size, int):
-        raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
-                      f"the record {record} on {service.name} states no md5 and size for {plain(key)}",
-                      "run the same command again later, `mime pull --from <service> <record>`")
+                      f"the record {record} on {service.name} holds {len(bundles)} bundle files and {len(studies)} "
+                      f"study containers (its files: {names}), and a record holds one bundle, or one or more studies",
+                      "pull a record `mime push` made, which holds one bundle or one or more studies")
+    containers: list[RecordContainer] = []
+    for entry in bundles or studies:
+        key, checksum, size = str(entry["key"]), str(entry.get("checksum", "")), entry.get("size")
+        if not checksum.startswith("md5:") or not isinstance(size, int):
+            raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
+                          f"the record {record} on {service.name} states no md5 and size for {plain(key)}",
+                          "run the same command again later, `mime pull --from <service> <record>`")
+        containers.append(RecordContainer(key, f"{service.api}/records/{record}/files/{quote(key, safe='')}/content",
+                                          checksum.removeprefix("md5:"), size))
     versions = _map(held.get("versions"))
     index = versions.get("index")
     latest: str | None = None
@@ -351,10 +369,10 @@ def public_record(service: Service, given: str, access: Access | None = None) ->
         found = re.fullmatch(re.escape(service.api) + r"/records/(\d+)", headers.get("location", "")) \
             if status in (301, 302, 303) else None
         latest = found.group(1) if found is not None else ""
-    address = f"{service.api}/records/{record}/files/{quote(key, safe='')}/content"
+    first = containers[0]
     return PublicRecord(service, record, _doi(held), _doi(held.get("parent")),
-                        index if isinstance(index, int) else None, key, address, checksum.removeprefix("md5:"), size,
-                        latest)
+                        index if isinstance(index, int) else None, first.key, first.url, first.md5, first.size, latest,
+                        tuple(containers))
 
 
 def downloader(service: Service, record: str, access: Access) -> Callable[[str, Any, object], None]:

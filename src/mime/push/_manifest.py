@@ -43,7 +43,8 @@ KINDS = (BUNDLE, STUDY)
 BLOCK_TABLES = ("block", "requires", "sockets", "assets", "licences", "permissions", "validity", "cases")
 _TOP = ("format", *KINDS, "record")
 #: What each kind's folder is, said where a kind table does not match its folder.
-_FOLDER_WORDS = {BUNDLE: "a saved folder (Experiment.save writes one)", STUDY: "a study folder (Study.run_to writes one)"}
+_FOLDER_WORDS = {BUNDLE: "a saved folder (Experiment.save writes one)",
+                 STUDY: "a study folder (Study.run_to writes one), or a publishing folder of study folders"}
 
 
 @dataclass(frozen=True)
@@ -60,13 +61,17 @@ def manifest_path(folder: str | os.PathLike[str]) -> Path:
 
 
 def folder_kind(root: Path) -> str | None:
-    """``study`` for a study folder, ``bundle`` for a saved folder, ``None`` for another."""
+    """``study`` for a study folder or a publishing folder (one that holds study folders), ``bundle`` for a saved folder,
+    ``None`` for another."""
     from mime.results._study_folder import STUDY_FILE
     from mime.saved._folder import DOCUMENT_FILE
+    from mime.saved._studies import is_publishing_folder
 
     if (root / STUDY_FILE).is_file():
         return STUDY
-    return BUNDLE if (root / DOCUMENT_FILE).is_file() else None
+    if (root / DOCUMENT_FILE).is_file():
+        return BUNDLE
+    return STUDY if is_publishing_folder(root) else None
 
 
 def _refuse(code: str, category: RefusalClass, message: str, action: str) -> BuildRefused:
@@ -130,7 +135,8 @@ def kind_of(held: Mapping[str, object], path: Path, root: Path) -> str:
     if len(named) != 1:
         raise _refuse("manifest.kind", RefusalClass.USER,
                       f"{path} names {'no kind' if not named else 'more than one kind, ' + ', '.join(named)}: it "
-                      f"holds exactly one kind table, [bundle] for a saved folder or [study] for a study folder",
+                      f"holds exactly one kind table, [bundle] for a saved folder or [study] for a study folder or a "
+                      f"publishing folder of them",
                       f"keep the one table its folder is, `[{folder_kind(root) or BUNDLE}]`, and its licence")
     (kind,) = named
     found = folder_kind(root)
@@ -178,13 +184,9 @@ def read_manifest(folder: str | os.PathLike[str]) -> Manifest:
 
 
 def read_record(folder: str | os.PathLike[str]) -> Sharing:
-    """``[record]`` of a saved folder's ``mime.toml``, with ``[bundle] licence``: what push reads."""
-    manifest = read_manifest(folder)
-    if manifest.kind != BUNDLE:
-        raise _refuse("manifest.kind", RefusalClass.USER,
-                      f"{manifest.path} is a {manifest.kind}'s, and push takes a saved folder",
-                      f"push a saved folder; `mime check {quoted(str(manifest.path.parent))}` checks this one")
-    return manifest.record
+    """``[record]`` of a saved, study or publishing folder's ``mime.toml``, with its kind table's licence: what push
+    reads."""
+    return read_manifest(folder).record
 
 
 def toml_shaped(value: object) -> object:
