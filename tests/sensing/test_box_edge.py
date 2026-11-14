@@ -118,3 +118,39 @@ def test_the_silhouette_matches_its_conic(dtype, monkeypatch):
     step = np.sum(u * after) / after.sum() - found[0]
     expected = centre_after[0] - (centre[0] + shift)
     assert abs(step / expected - 1) <= 0.02, (step, expected)
+
+
+def quads_with_the_origin_on_a_side(count: int = 200) -> list[list[tuple[float, float]]]:
+    """Convex quadrilaterals (a pixel's corners in the disc's units) with the circle's centre on one of their sides,
+    the side's ends at drawn distances from it either side, from a tenth of the radius to ten times it."""
+    rng = np.random.default_rng(15)
+    found = []
+    for _ in range(count):
+        angle = rng.uniform(0.0, 2.0 * np.pi)
+        u, n = np.array([np.cos(angle), np.sin(angle)]), np.array([-np.sin(angle), np.cos(angle)])
+        a, b = 10.0 ** rng.uniform(-1.0, 1.0, size=2)
+        depth = 10.0 ** rng.uniform(-1.0, 1.0)
+        first, second = -a * u, b * u
+        found.append([tuple(first), tuple(second), tuple(second + depth * n), tuple(first + depth * n)])
+    return found
+
+
+def is_clear(quad: list[tuple[float, float]]) -> bool:
+    """``_box_coverage``'s ``clear``, as it forms it from a pixel's corners: none inside the circle and no side meeting it."""
+    corners = [coverage._crosses(*quad[i], *quad[(i + 1) % 4]) for i in range(4)]
+    inside = [x * x + y * y < 1.0 for x, y in quad]
+    return not any(inside) and not any(bool(c) for c in corners)
+
+
+def test_a_pixel_with_the_discs_centre_on_a_side_is_never_clear_of_the_circle(float64):
+    """Why ``camera.disc.holds`` is reached only where no side crosses the circle, and so is a jump no harness row can
+    place a point at: a side through the centre meets the circle (two ends outside it, the segment crosses it twice;
+    an end inside, a corner is inside), so ``clear`` is false there and ``held`` is not chosen."""
+    assert not any(is_clear(quad) for quad in quads_with_the_origin_on_a_side())
+
+
+def test_control_a_side_that_never_meets_the_circle_makes_the_pixel_clear(float64, monkeypatch):
+    """The control: a ``_crosses`` that says no side meets the circle makes the pixels whose ends are both outside it
+    clear, so the check above can fail (every draw with both ends beyond the radius, which the draws include)."""
+    monkeypatch.setattr(coverage, "_crosses", lambda ax, ay, bx, by: False)
+    assert sum(is_clear(quad) for quad in quads_with_the_origin_on_a_side()) > 20

@@ -215,3 +215,167 @@ def test_the_validity_radius_is_the_radial_maps_turning_point(float64):
     lens = BrownConrady(-0.9)
     assert bool(lens.monotone(jnp.asarray(turning * 0.999), jnp.asarray(0.0)))
     assert not bool(lens.monotone(jnp.asarray(turning * 1.001), jnp.asarray(0.0)))
+
+
+# -- the undistortion's derivative ---------------------------------------------------------------------------------
+
+#: The derivative's seven inputs, in the order the test differentiates in: the five coefficients (the order
+#: ``BrownConrady`` holds them) and the distorted pixel's two coordinates.
+INPUTS = ("k1", "k2", "p1", "p2", "k3", "xd", "yd")
+#: Lenses with a validity radius inside the field (a barrel, with tangential terms and a ``k3``) and one with none (a
+#: pincushion), each a physical calibration's size.
+DERIVATIVE_LENSES = [(-0.3, 0.05, 1e-3, -2e-3, 0.0), (-0.2, 0.0, 0.0, 0.0, 0.0), (-0.35, -0.09, 8e-4, 3e-4, 0.0),
+                     (-0.25, 0.02, -1.5e-3, 1e-3, -0.04), (0.2, -0.1, 3e-3, 2e-3, 0.05)]
+#: Where a point lies in its lens's distorted field: half way to the fold (away from the validity radius), and
+#: 0.99 of the way (near it, where the radial map's slope is a few tenths and its inverse's derivative several times
+#: the pixel's; nearer, a central difference's step cannot resolve the square-root rise).
+SHARES = {"away": 0.5, "near": 0.99}
+
+
+def distorted_reach(lens: tuple[float, ...]) -> float:
+    """The distorted radius at the lens's validity radius (the radial map's greatest value on its first branch), or 1.5
+    for a lens whose map does not turn."""
+    k1, k2, _, _, k3 = lens
+    turn = first_turn(lens, 25.0)
+    return 1.5 if turn >= 25.0 else math.sqrt(turn) * (1 + turn * (k1 + turn * (k2 + turn * k3)))
+
+
+def solved_with_derivative(lens: tuple[float, ...], xd: float, yd: float, x: float, y: float) -> tuple[np.ndarray,
+                                                                                                    np.ndarray]:
+    """Float64: the root of the distortion at ``(xd, yd)`` by Newton from ``(x, y)``, and the implicit function's
+    derivative there, ``-J^-1 dF/dtheta`` in the five coefficients and ``J^-1`` in the pixel, written afresh here
+    (rows x and y, columns ``INPUTS``)."""
+    k1, k2, p1, p2, k3 = lens
+    for _ in range(80):
+        r2 = x * x + y * y
+        radial = 1 + r2 * (k1 + r2 * (k2 + r2 * k3))
+        slope = k1 + r2 * (2 * k2 + 3 * k3 * r2)
+        cross = 2 * x * y * slope + 2 * p1 * x + 2 * p2 * y
+        a = radial + 2 * x * x * slope + 2 * p1 * y + 6 * p2 * x
+        d = radial + 2 * y * y * slope + 6 * p1 * y + 2 * p2 * x
+        fx = x * radial + 2 * p1 * x * y + p2 * (r2 + 2 * x * x) - xd
+        fy = y * radial + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y - yd
+        determinant = a * d - cross * cross
+        x, y = x - (d * fx - cross * fy) / determinant, y - (a * fy - cross * fx) / determinant
+    r2 = x * x + y * y
+    radial = 1 + r2 * (k1 + r2 * (k2 + r2 * k3))
+    slope = k1 + r2 * (2 * k2 + 3 * k3 * r2)
+    cross = 2 * x * y * slope + 2 * p1 * x + 2 * p2 * y
+    jacobian = np.array([[radial + 2 * x * x * slope + 2 * p1 * y + 6 * p2 * x, cross],
+                         [cross, radial + 2 * y * y * slope + 6 * p1 * y + 2 * p2 * x]])
+    in_coefficients = np.array([[x * r2, x * r2 ** 2, 2 * x * y, r2 + 2 * x * x, x * r2 ** 3],
+                                [y * r2, y * r2 ** 2, r2 + 2 * y * y, 2 * x * y, y * r2 ** 3]])
+    inverse = np.linalg.inv(jacobian)
+    return np.array([x, y]), np.concatenate([-inverse @ in_coefficients, inverse], axis=1)
+
+
+def ray_of(k1, k2, p1, p2, k3, xd, yd):
+    """The undistorted point the camera's solve gives, as a function of the seven inputs."""
+    x, y, _ = BrownConrady(k1, k2, p1, p2, k3).undistort(xd, yd)
+    return jnp.stack([x, y])
+
+
+def derivative_cases():
+    for lens in DERIVATIVE_LENSES:
+        for where, share in SHARES.items():
+            yield pytest.param(lens, share, id=f"lens{DERIVATIVE_LENSES.index(lens)}-{where}")
+
+
+def point_at(lens: tuple[float, ...], share: float) -> tuple[float, float]:
+    reach = share * distorted_reach(lens)
+    return reach * math.cos(0.6), reach * math.sin(0.6)
+
+
+def camera_derivative(lens: tuple[float, ...], share: float, mode: str, undistort=None) -> tuple[np.ndarray,
+                                                                                                np.ndarray,
+                                                                                                np.ndarray]:
+    """The camera's own derivative of its ray's point in the seven inputs (forward or reverse mode, in the run's
+    dtype), its point, and the implicit function's derivative at that point (float64)."""
+    xd, yd = point_at(lens, share)
+    arguments = tuple(jnp.asarray(v) for v in (*lens, xd, yd))
+    held = BrownConrady.undistort
+    if undistort is not None:
+        BrownConrady.undistort = undistort
+    try:
+        jacobian = jax.jacfwd if mode == "forward" else jax.jacrev
+        found = jacobian(ray_of, argnums=tuple(range(7)))(*arguments)
+        point = np.asarray(ray_of(*arguments), dtype=np.float64)
+    finally:
+        BrownConrady.undistort = held
+    got = np.stack([np.asarray(column, dtype=np.float64) for column in found], axis=1)
+    _, want = solved_with_derivative(lens, xd, yd, *point)
+    return got, point, want
+
+
+def worst_miss(got: np.ndarray, want: np.ndarray) -> np.ndarray:
+    """Each input's greatest miss over the two components, relative to that column's largest entry (at least 1e-3)."""
+    scale = np.maximum(np.max(np.abs(want), axis=0), 1e-3)
+    return np.max(np.abs(got - want), axis=0) / scale
+
+
+@pytest.mark.parametrize("mode", ["forward", "reverse"])
+@pytest.mark.parametrize(("lens", "share"), list(derivative_cases()))
+def test_the_undistortions_derivative_is_the_implicit_functions(dtype, lens, share, mode):
+    """The ray's point's derivative in ``k1, k2, p1, p2, k3`` and in the pixel, forward and reverse, in both dtypes:
+    against the implicit function's, ``-J^-1 dF/dtheta`` and ``J^-1`` at the root, written afresh here in float64, near
+    the validity radius (0.99 of the way to the fold) and away from it (half way); and in float64 against central
+    differences of the same solve. The solve's derivative is its last Newton step's, its iterations held
+    (``BrownConrady.undistort``'s stop_gradients), so this is what shows that holding them leaves the derivative
+    the implicit function's. Tolerance: 1e-9 of a column's largest entry in float64, 1024 units in the last place in
+    float32 (its rounding, measured at 2.5e-5 near the fold)."""
+    got, point, want = camera_derivative(lens, share, mode)
+    eps = float(jnp.finfo(jnp.zeros(()).dtype).eps)
+    tolerance = 1e-9 if dtype == "float64" else 1024 * eps
+    assert (worst_miss(got, want) <= tolerance).all(), dict(zip(INPUTS, worst_miss(got, want)))
+    if dtype == "float64":
+        xd, yd = point_at(lens, share)
+        base = [*lens, xd, yd]
+        for index, name in enumerate(INPUTS):
+            step = 1e-5 * max(abs(base[index]), 0.1)
+            up, down = (np.asarray(ray_of(*[jnp.asarray(v + sign * step * (i == index)) for i, v in enumerate(base)]))
+                        for sign in (1.0, -1.0))
+            difference = (up - down) / (2 * step)
+            assert np.max(np.abs(difference - got[:, index])) <= 1e-7 * max(np.max(np.abs(want[:, index])), 1e-3), name
+
+
+def planted_derivative(name: str):
+    """The undistortion with its derivative wrong in one way (the value unchanged): held (none), five per cent off, and
+    the tangential coefficients' dropped."""
+    original = BrownConrady.undistort
+
+    def planted(self, xd, yd, steps=None):
+        if name == "tangential-held":
+            self = BrownConrady(self.k1, self.k2, jax.lax.stop_gradient(self.p1), jax.lax.stop_gradient(self.p2),
+                                self.k3, source=self.source)
+        x, y, found = original(self, xd, yd, steps)
+        held_x, held_y = jax.lax.stop_gradient(x), jax.lax.stop_gradient(y)
+        if name == "held":
+            return held_x, held_y, found
+        if name == "five-per-cent":
+            return held_x + 1.05 * (x - held_x), held_y + 1.05 * (y - held_y), found
+        return x, y, found
+
+    return planted
+
+
+def planted_cases():
+    """Each planted derivative with the cases it can be seen in: the first two in all, the tangential coefficients'
+    dropped only on a lens that has some."""
+    for name in ("held", "five-per-cent", "tangential-held"):
+        for case in derivative_cases():
+            lens = case.values[0]
+            if name != "tangential-held" or lens[2] != 0.0 or lens[3] != 0.0:
+                yield pytest.param(name, *case.values, id=f"{name}-{case.id}")
+
+
+@pytest.mark.parametrize(("name", "lens", "share"), list(planted_cases()))
+def test_control_a_wrong_undistortion_derivative_fails_the_comparison_in_every_case(dtype, name, lens, share):
+    """The control: each planted derivative error leaves the point as it was and fails the comparison above, in every
+    case and both dtypes: the held derivative and the five per cent in every column, and the tangential coefficients'
+    dropped in the ``p1`` and ``p2`` columns, on a lens that has some."""
+    got, _, want = camera_derivative(lens, share, "forward", undistort=planted_derivative(name))
+    eps = float(jnp.finfo(jnp.zeros(()).dtype).eps)
+    tolerance = 1e-9 if dtype == "float64" else 1024 * eps
+    miss = worst_miss(got, want)
+    columns = [INPUTS.index("p1"), INPUTS.index("p2")] if name == "tangential-held" else list(range(7))
+    assert (miss[columns] > tolerance).all(), dict(zip(INPUTS, miss))

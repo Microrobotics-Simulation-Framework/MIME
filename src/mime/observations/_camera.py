@@ -27,6 +27,7 @@ from mime.registry import (
 from mime.sensing import BrownConrady, Pinhole
 from mime.sensing import _scene as scene
 from mime.sensing._node import FLAG_FIELDS, CameraNode, period_steps
+from mime.sensing._switches import SWITCHES
 from mime.units import DIMENSIONLESS, Length, Quantity, Time, m
 from mime.vocabulary import POSE
 
@@ -154,13 +155,29 @@ class Camera(Observation):
 
     name = "camera"
     version = "0.1.0"
-    differentiability = GradientStatus.UNVERIFIED
+    differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(
+        switches=SWITCHES,
         where="expected, the frame's counts before noise and quantisation, in forward and reverse mode: the poses and the "
               "detector's nine numbers; image, frame_step, age and new_frame carry none (a rounding and counts). Reverse "
               "mode whose memory estimate would not fit the memory a run can have is refused by name "
               "(camera.reverse-memory)",
-        reason="forward mode is checked through the built graph against central differences of the same run "
+        reason="the status is the one its declared switches give (mime.core.switch, mime.sensing._switches): the "
+               "renderer's switches are declared as camera.* and each is measured at the function that evaluates it "
+               "by the switch harness (tests/saved/test_switch_harness.py): a jump where two pieces of a body's outline "
+               "meet inside a pixel, where the pinhole crosses a cap's plane and at the exact disc's series threshold, a "
+               "kink or smoother at the others, the corner choice continuous at its threshold. The harness bounds each "
+               "order at one placed point, from above; it does not show the derivative across a kink is the branch "
+               "taken's. The closed form of a capsule is the exception: its sites (the interval's least entry and last "
+               "exit and its selects of the pieces the ray meets, the edge function's clamped foot) are listed raw and "
+               "neither routed nor declared nor measured, so the status does not cover the capsule's own kinks and "
+               "jumps; routing them is a follow-up. The undistortion's iterations run on held values, and the ray's "
+               "derivative is the implicit "
+               "function's, which tests/sensing/test_undistortion.py checks in the five coefficients and the pixel, "
+               "forward and reverse, in both dtypes, near the validity radius and away from it, against the implicit "
+               "function's and (float64) central differences, with planted wrong derivatives failing every case; a "
+               "pixel beyond the validity radius is flagged and its derivative is not checked. Forward mode is checked "
+               "through the built graph against central differences of the same run "
                "(tests/sensing/test_in_loop_forward.py): a ball's settling and the principal point across a silhouette "
                "(the box edge, whose central differences are piecewise, so judged with an allowance per unit of step) and "
                "the focal length in the tube wall's interior (quadratic), from the run's start and from a continued state, "
@@ -169,12 +186,10 @@ class Camera(Observation):
                "(float32 against float64 where they cannot discriminate) and a held step's against its frame's, from the "
                "run's start, from a continued state (the tree's structure, or a leaf written over it) and over a CALLBACK "
                "controller's chunks, in both dtypes, with three planted controls (the edge measure, the structure the "
-               "run makes from its leaves, the held frame). The status stays unverified: the "
-               "renderer's switches are listed raw and not declared (mime.core.switch), so no exact or piecewise status "
-               "follows from them, and the undistortion's seven stop_gradients cap it there",
-        route="declare the renderer's switches (a pixel corner is a kink, a tangent to a pixel's side a square-root "
-              "rise, the corner sub-samples' choice a jump) and clear the undistortion's stop_gradients by a standing "
-              "test of its derivative, which gives the piecewise status the gates support")
+               "run makes from its leaves, the held frame)",
+        route="a smooth union and intersection of a body's pieces within a pixel (a softened least and greatest, in place "
+              "of camera.pieces.*), a smooth facing term for a cap seen edge-on (camera.cap_side) and the exact disc's "
+              "series one term longer (camera.disc.series) would leave kinks or smoother: the status piecewise_kink")
     unbatched: ClassVar[str] = ("the frame is rendered under a cond on frame steps, a select under vmap, so a batched "
                                 "study would render every member's frame at every step, not once a frame period")
     references = ()

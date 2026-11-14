@@ -39,7 +39,7 @@ def _camera(focal: float) -> tuple[Pinhole, CameraPose]:
 
 def _whole_line(monkeypatch: pytest.MonkeyPatch) -> None:
     if planted("whole-line"):
-        monkeypatch.setattr(forms, "_on_ray", lambda ahead, on_line, at_start: on_line)
+        monkeypatch.setattr(forms, "_on_ray", lambda ahead, on_line, at_start, nearest: on_line)
         monkeypatch.setattr(forms, "ahead", lambda interval: interval)
 
 

@@ -71,10 +71,32 @@ follows by JAX's own rules, never from the state. Reverse mode's tape is a few h
 corner sub-sample and each frame's render are checkpointed; what it costs is in `src/mime/sensing/README.md`), and a study
 whose estimate would not fit the memory a run can have is refused before it compiles (`camera.reverse-memory`); the estimate
 is fitted to runs on GitHub's four-core runners (the sizes in `predictions_camera_reverse_moving.json`, both dtypes, up to six poses a
-frame) and is an extrapolation beyond those platforms and sizes. The entry
-stays declared unverified: the renderer's switches are listed raw and not declared, so no exact or piecewise status follows
-from them, and the undistortion's seven `stop_gradient`s cap it there. `expected` carries the derivative in the poses and the
-detector's nine numbers (which are its leaves, so a study can fit them); `image` and the counters carry none. The entry's
-gradient record states where, why and the route.
+frame) and is an extrapolation beyond those platforms and sizes. `expected`
+carries the derivative in the poses and the detector's nine numbers (which are its leaves, so a study can fit them); `image`
+and the counters carry none.
+
+**Its gradient status** is `piecewise_jump`, the one its declared switches give (`mime.gradients.status_problem` enforces that
+a declared status is the derived one). The renderer's switches are declared as owners `camera.*` (the pixel integration's box
+edge and its pieces' composition, the exact disc's chain, the corner choice, the closed forms' intervals and caps), each with
+its order in `expected` and a row of the switch harness (`tests/saved/test_switch_harness.py`) that places the renderer's own
+function a quarter of a step from the switch, on one pixel or one ray, forces each branch and measures the difference of the
+function's value. That bounds each switch's order at that point, from above: **a jump** where two pieces of a body's outline
+meet inside a pixel (`camera.pieces.least` and `.greatest`: the nearer piece's line, with its own normal), where the pinhole
+crosses a cap's plane (`camera.cap_side`), and at the exact disc's series threshold (`camera.disc.series`, where the series is a term short of the
+closed form), and a kink or smoother at the others; the corner choice (`camera.corner`) measures continuous at its threshold,
+where the lines that trigger it graze the pixel's corner. The harness does not show that the derivative across a kink is the
+branch taken's; the derivative tests do, away from the switches. What stays raw is listed with its reason in
+`docs/ratchets/raw_switches.txt`: the undistortion's solve (iterations on held values, whose derivative is the implicit
+function's), the validity radius's construction, floors that engage only where the quantity they keep off zero is zero,
+roundings, counts and flags, and the closed form of a capsule, whose raw sites the scan reaches (the camera/capsule
+configuration) and lists but neither routes, declares nor measures: the interval's least entry and last exit and its selects
+of the pieces the ray meets, and the edge function's clamped foot, so **the status does not cover the capsule's own kinks and
+jumps** (routing them, with owners and harness rows, is a follow-up). **The undistortion's derivative** is checked by a standing test
+(`tests/sensing/test_undistortion.py`): the ray's point's derivative in `k1, k2, p1, p2, k3` and in the pixel, forward and
+reverse, in both dtypes, against the implicit function's (written afresh in float64) and, in float64, central differences, at
+half way and a hundredth short of the way to the validity radius, on five lenses, with three planted wrong derivatives (held, five per cent
+off, the tangential coefficients dropped) failing every case; it clears the seven `stop_gradient`s the entry's status was held
+at `unverified` by. A pixel beyond the validity radius is flagged and no claim of the model, and the derivative there is not
+checked. The entry's gradient record states where, why and what is not established.
 
 **Versions.** `camera` 0.1.0 is its first.

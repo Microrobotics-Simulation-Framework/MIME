@@ -33,6 +33,7 @@ from typing import Any
 
 import jax
 
+from mime.core import switch
 from mime.core._node import jnp
 
 type Vec = tuple[Any, Any, Any]
@@ -76,10 +77,11 @@ def _safe_sqrt(q: Any, floor: Any) -> Any:
     return jnp.sqrt(jnp.maximum(q, floor))
 
 
-def _on_ray(ahead: Any, on_line: Any, at_start: Any) -> Any:
-    """A piece's value on the ray: its value on the ray's line where the line's nearest point to the piece is ahead
-    of the pinhole, else its value at the pinhole."""
-    return jnp.where(ahead, on_line, at_start)
+def _on_ray(ahead: Any, on_line: Any, at_start: Any, nearest: Any) -> Any:
+    """A piece's value on the ray: its value on the ray's line where the line's nearest point to the piece (at the ray
+    parameter ``nearest``, in metres) is ahead of the pinhole, else its value at the pinhole."""
+    return switch.where(ahead, on_line, at_start, owner="camera.ahead",
+                        resolution=lambda: switch.rounding(nearest), indicator=lambda: nearest)
 
 
 def _guard(x: Any) -> Any:
@@ -140,7 +142,7 @@ def _sphere_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
     """The distance from the centre to the ray less the radius: where the centre is behind the pinhole, the pinhole's
     distance from it."""
     mid, q, _ = _ball(0.0, p["radius"], o, d)
-    on_ray = _on_ray(mid >= 0.0, q, dot(o, o))
+    on_ray = _on_ray(mid >= 0.0, q, dot(o, o), mid)
     return (_safe_sqrt(on_ray, (GRAZING * p["radius"]) ** 2) - p["radius"],)
 
 
@@ -163,13 +165,19 @@ def _span(half_length: Any, o: Vec, d: Vec) -> Interval:
     """Where the ray lies between the planes ``z = -+ half_length``."""
     along = _guard(d[2])
     a, b = (-half_length - o[2]) / along, (half_length - o[2]) / along
-    return jnp.minimum(a, b), jnp.maximum(a, b)
+    return (switch.minimum(a, b, owner="camera.span.low", resolution=lambda: switch.rounding(jnp.abs(a) + jnp.abs(b)),
+                           indicator=lambda: b - a),
+            switch.maximum(a, b, owner="camera.span.high", resolution=lambda: switch.rounding(jnp.abs(a) + jnp.abs(b)),
+                           indicator=lambda: a - b))
 
 
 def _cylinder_interval(p: Mapping[str, Any], o: Vec, d: Vec) -> Interval:
     mid, _, half, _ = _side(p["radius"], o, d)
     low, high = _span(p["length"] / 2.0, o, d)
-    return jnp.maximum(mid - half, low), jnp.minimum(mid + half, high)
+    return (switch.maximum(mid - half, low, owner="camera.interval.enter",
+                           resolution=lambda: switch.rounding(jnp.abs(mid) + half), indicator=lambda: mid - half - low),
+            switch.minimum(mid + half, high, owner="camera.interval.leave",
+                           resolution=lambda: switch.rounding(jnp.abs(mid) + half), indicator=lambda: high - mid - half))
 
 
 def _cap(z: Any, radius: Any, o: Vec, d: Vec) -> Any:
@@ -180,7 +188,8 @@ def _cap(z: Any, radius: Any, o: Vec, d: Vec) -> Any:
     infinity, and the crossing's distance, read to first order, puts an outline at that line however far the cap is)."""
     height = z - o[2]
     vx, vy = height * d[0] + d[2] * o[0], height * d[1] + d[2] * o[1]
-    facing = jnp.where(height < 0.0, -d[2], d[2])
+    facing = switch.where(height < 0.0, -d[2], d[2], owner="camera.cap_side",
+                          resolution=lambda: switch.rounding(radius), indicator=lambda: -height)
     floor = (GRAZING * radius * d[2]) ** 2 + jnp.finfo(jnp.result_type(vx)).tiny
     return _safe_sqrt(vx * vx + vy * vy, floor) - radius * facing
 
@@ -192,13 +201,16 @@ def _cylinder_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
     radius, half_length = p["radius"], p["length"] / 2.0
     mid, q, _, axial = _side(radius, o, d)
     ahead = mid >= 0.0
-    side = _safe_sqrt(_on_ray(ahead, q, o[0] * o[0] + o[1] * o[1]), (GRAZING * radius) ** 2) - radius
-    span = jnp.abs(_on_ray(ahead, axial, o[2])) - half_length
+    side = _safe_sqrt(_on_ray(ahead, q, o[0] * o[0] + o[1] * o[1], mid), (GRAZING * radius) ** 2) - radius
+    along = _on_ray(ahead, axial, o[2], mid)
+    span = switch.absolute(along, owner="camera.span.axial", resolution=lambda: switch.rounding(half_length),
+                           indicator=lambda: along) - half_length
     balls: list[Any] = []
     for z in (-half_length, half_length):
         centre, q_ball, _ = _ball(z, radius, o, d)
         start = (o[0], o[1], o[2] - z)
-        balls.append(_safe_sqrt(_on_ray(centre >= 0.0, q_ball, dot(start, start)), (GRAZING * radius) ** 2) - radius)
+        balls.append(_safe_sqrt(_on_ray(centre >= 0.0, q_ball, dot(start, start), centre), (GRAZING * radius) ** 2)
+                     - radius)
     return _cap(-half_length, radius, o, d), _cap(half_length, radius, o, d), side, span, balls[0], balls[1]
 
 
@@ -247,7 +259,7 @@ def _capsule_pieces(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
     along = dot(v, d)
     px, py, pz = v[0] - along * d[0], v[1] - along * d[1], v[2] - along * d[2]
     start = o[2] - jnp.clip(o[2], -half_height, half_height)
-    on_ray = _on_ray(along >= 0.0, px * px + py * py + pz * pz, o[0] * o[0] + o[1] * o[1] + start * start)
+    on_ray = _on_ray(along >= 0.0, px * px + py * py + pz * pz, o[0] * o[0] + o[1] * o[1] + start * start, along)
     return (_safe_sqrt(on_ray, (GRAZING * radius) ** 2) - radius,)
 
 
@@ -256,12 +268,19 @@ CAPSULE = Form(_capsule_interval, _capsule_pieces, lambda s: float(s["radius"] +
 
 def ahead(interval: Interval) -> Interval:
     """The part of a line's interval on the ray (``t >= 0``): a ray starts at the pinhole."""
-    return jnp.maximum(interval[0], 0.0), jnp.maximum(interval[1], 0.0)
+    return (switch.maximum(interval[0], 0.0, owner="camera.interval.start",
+                           resolution=lambda: switch.rounding(jnp.abs(interval[0]) + jnp.abs(interval[1])),
+                           indicator=lambda: interval[0]),
+            switch.maximum(interval[1], 0.0, owner="camera.interval.stop",
+                           resolution=lambda: switch.rounding(jnp.abs(interval[0]) + jnp.abs(interval[1])),
+                           indicator=lambda: interval[1]))
 
 
 def chord(interval: Interval) -> Any:
     """The length of the ray inside an interval: zero where it is empty."""
-    return jnp.maximum(interval[1] - interval[0], 0.0)
+    return switch.maximum(interval[1] - interval[0], 0.0, owner="camera.interval.chord",
+                          resolution=lambda: switch.rounding(jnp.abs(interval[0]) + jnp.abs(interval[1])),
+                          indicator=lambda: interval[1] - interval[0])
 
 
 def overlap(a: Interval, b: Interval) -> Any:
