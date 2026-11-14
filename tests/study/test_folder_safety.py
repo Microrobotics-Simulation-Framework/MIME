@@ -204,3 +204,30 @@ def test_a_group_file_that_is_not_the_manifests_is_refused_by_name(two, tmp_path
     message = refused.value.refusals[0].message
     print(case, "->", message)
     assert refused.value.codes() == ["study.group-file"] and "groups/0/outputs.npz" in message and words in message
+
+
+def test_a_member_manifest_of_the_wrong_shapes_is_refused_when_the_member_is_read(two, tmp_path):
+    """The manifest inside a group's NPZ (its text, a member's ``outputs.json``) is the author's as much as ``study.json``
+    is: the file's hash agrees with a record the author wrote, so only the manifest's own shapes can show it. Refused with a
+    code when the member is read, as a run folder's own manifest is."""
+    from mime.results._study_folder import file_sha256
+
+    copy = tmp_path / "copy"
+    shutil.copytree(two / "A", copy)
+    path = copy / "groups" / "0" / "outputs.npz"
+
+    def change(held):
+        text = json.loads(str(np.load(io.BytesIO(held["m0/manifest.npy"]), allow_pickle=False)))
+        text["steps"] = "x"
+        buffer = io.BytesIO()
+        np.save(buffer, np.asarray(json.dumps(text)), allow_pickle=False)
+        return {**held, "m0/manifest.npy": buffer.getvalue()}
+
+    rewritten(path, change)
+    record = json.loads((copy / STUDY_FILE).read_text(encoding="utf-8"))
+    record["groups"][0]["sha256"] = file_sha256(path)
+    (copy / STUDY_FILE).write_text(json.dumps(record, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    result = StudyResult.read(copy)
+    with pytest.raises(ArgumentRefused) as refused:
+        result.member(0)
+    assert refused.value.codes() == ["result.format"]
