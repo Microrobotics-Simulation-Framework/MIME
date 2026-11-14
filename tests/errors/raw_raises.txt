@@ -5,6 +5,7 @@
 #
 # A public call that reaches a raw raise gives `error.uncoded` (MIME's, with no code yet: report it), of the raise's
 # own class; one from below gives `error.unrecognised`. Coding a listed raise removes its line.
+_npz.py::_layout ValueError 5  # caught by its callers (the group file's read, a saved folder's reference load, a run folder's open), which refuse the file with their own code (study.group-file, load.reference, result.not-a-run-folder) naming the entry: a ValueError is what NumPy's own reader raises for a bad array
 _npz.py::check_entries ValueError 1  # caught by its callers (the group file's read, a saved folder's reference load, a run folder's open), which refuse the file with their own code (study.group-file, load.reference, result.not-a-run-folder) naming the entry: a ValueError is what NumPy's own reader raises for a bad array
 _npz.py::_declared ValueError 5  # caught by its callers (the group file's read, a saved folder's reference load, a run folder's open), which refuse the file with their own code (study.group-file, load.reference, result.not-a-run-folder) naming the entry: a ValueError is what NumPy's own reader raises for a bad array
 assets/_adapters.py::register_adapter ValueError 1  # construction: a script registering an adapter for a scheme MIME reads itself, raised where the script calls it, outside every public call of an experiment

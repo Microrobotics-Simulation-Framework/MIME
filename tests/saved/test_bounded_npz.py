@@ -17,8 +17,11 @@ from __future__ import annotations
 import io
 import json
 import shutil
+import struct
 import tracemalloc
+import warnings
 import zipfile
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -26,7 +29,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from mime._npz import StoredNpz
+from mime import _npz
+from mime._npz import StoredNpz, check_entries
 from mime.build import MimeError
 from mime.cli import main
 from mime.experiment import RUN_OUTPUTS
@@ -76,6 +80,14 @@ def bombed(original: bytes, victim: str, *, compressed: bool) -> bytes:
                     entry.write(bytes(min(left, 1 << 22)))
                     left -= 1 << 22
     return out.getvalue()
+
+
+def refusal_of(action: Callable[[], object]) -> MimeError:
+    try:
+        action()
+    except MimeError as refused:
+        return refused
+    raise AssertionError("not refused")
 
 
 def refusal_codes(action: Callable[[], object]) -> list[str]:
@@ -181,6 +193,197 @@ def test_a_clean_run_reads_under_the_same_measurement(run: Path):
     finally:
         tracemalloc.stop()
     assert peak < BOUND and result.steps > 0
+
+
+# --- the other ways a file is not an NPZ MIME wrote ---------------------------------------------------------------------------
+
+
+def npy(array: np.ndarray, *, pickled: bool = False) -> bytes:
+    held = io.BytesIO()
+    np.lib.format.write_array(held, array, allow_pickle=pickled)
+    return held.getvalue()
+
+
+def stored_zip(entries: list[tuple[str, bytes]]) -> bytes:
+    """A zip of stored entries, a name written twice as the caller lists it (the standard library warns of one)."""
+    out = io.BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as archive:
+            for name, data in entries:
+                archive.writestr(zipfile.ZipInfo(name, EPOCH), data)
+    return out.getvalue()
+
+
+def declared_only(count: int) -> bytes:
+    """The array header of ``count`` bytes, and a few bytes after it: an entry that names what it does not hold."""
+    header = io.BytesIO()
+    np.lib.format.write_array_header_1_0(header, {"descr": "|u1", "fortran_order": False, "shape": (count,)})
+    return header.getvalue() + bytes(64)
+
+
+def overlapping_npz() -> bytes:
+    """Four entries whose local headers each sit inside the previous entry's data, every entry's data running to the end of
+    the file: each is a well-formed array of the bytes its header names, with the CRC its record gives it, and together they
+    overlap."""
+    segment, names = 4096, [f"e{i}.npy" for i in range(4)]
+    total = segment * len(names)
+    body = bytearray(total)
+
+    def array_header(count: int) -> bytes:
+        held = io.BytesIO()
+        np.lib.format.write_array_header_1_0(held, {"descr": "|u1", "fortran_order": False, "shape": (count,)})
+        return held.getvalue()
+
+    def local(name: str, size: int, crc: int) -> bytes:
+        text = name.encode()
+        return struct.pack("<IHHHHHIIIHH", 0x04034B50, 20, 0, 0, 0, 0x21, crc, size, size, len(text), 0) + text
+
+    layout = []
+    for index, name in enumerate(names):
+        offset = index * segment
+        start = offset + len(local(name, 0, 0))
+        size = total - start
+        count = size
+        for _ in range(5):
+            count = size - len(array_header(count))
+        assert len(array_header(count)) + count == size
+        body[start:start + len(array_header(count))] = array_header(count)
+        layout.append((name, offset, start, size))
+    crcs: dict[str, int] = {}
+    for name, offset, start, size in reversed(layout):  # an entry's data holds the later entries' headers, which hold their CRCs
+        crcs[name] = zlib.crc32(bytes(body[start:start + size]))
+        body[offset:start] = local(name, size, crcs[name])
+    directory = b"".join(
+        struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, 20, 20, 0, 0, 0, 0x21, crcs[name], size, size, len(name.encode()), 0,
+                    0, 0, 0, 0, offset) + name.encode() for name, offset, _, size in layout)
+    end = struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, len(layout), len(layout), len(directory), len(body), 0)
+    return bytes(body) + directory + end
+
+
+HOSTILE_FILES: dict[str, Callable[[], bytes]] = {
+    "pickled": lambda: stored_zip([("a.npy", npy(np.array([{"x": 1}, object()], dtype=object), pickled=True))]),
+    "a name twice, the bad entry first": lambda: stored_zip([("a.npy", declared_only(DECLARED)),
+                                                             ("a.npy", npy(np.arange(4.0)))]),
+    "a name twice, the bad entry last": lambda: stored_zip([("a.npy", npy(np.arange(4.0))),
+                                                            ("a.npy", declared_only(DECLARED))]),
+    "a name twice, both entries good": lambda: stored_zip([("a.npy", npy(np.arange(4.0))),
+                                                           ("a.npy", npy(np.arange(5.0)))]),
+    "overlapping entries": overlapping_npz,
+}
+
+
+@pytest.mark.parametrize("kind", sorted(HOSTILE_FILES))
+def test_a_reference_npz_that_is_not_one_mime_wrote_is_refused_with_its_code(saved: Path, tmp_path: Path, kind: str):
+    folder = Path(shutil.copytree(saved, tmp_path / "full_toy"))
+    (folder / "reference.npz").write_bytes(HOSTILE_FILES[kind]())
+    peak, found = peak_of(lambda: read_folder(folder))
+    assert found == ["load.reference"] and peak < BOUND
+
+
+@pytest.mark.parametrize("kind", sorted(HOSTILE_FILES))
+def test_a_run_whose_outputs_are_not_an_npz_mime_wrote_is_refused_with_its_code(run: Path, tmp_path: Path, kind: str):
+    folder = Path(shutil.copytree(run, tmp_path / "run"))
+    (folder / RUN_OUTPUTS).write_bytes(HOSTILE_FILES[kind]())
+    peak, found = peak_of(lambda: RunResult.read(folder))
+    assert found == ["result.not-a-run-folder"] and peak < BOUND
+
+
+def blind_to_the_standard_librarys_overlap_check(archive: zipfile.ZipFile) -> None:
+    """What Python 3.12.0 and 3.12.1 are: no refusal of overlapped entries (the later versions' check, CVE-2024-0450, lives in
+    each entry's ``_end_offset``, which a version without it has no slot for)."""
+    for info in archive.infolist():
+        if hasattr(info, "_end_offset"):
+            info._end_offset = None  # type: ignore[attr-defined]
+
+
+def test_overlapping_entries_are_refused_by_the_readers_own_check_whatever_the_standard_library_does(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    path = tmp_path / "overlap.npz"
+    path.write_bytes(overlapping_npz())
+    with zipfile.ZipFile(path) as archive:
+        blind_to_the_standard_librarys_overlap_check(archive)
+        with pytest.raises(ValueError, match="overlap"):
+            check_entries(archive, path.stat().st_size)
+    # The control: each entry is, alone, a well-formed array of the bytes its header names, so without the reader's own layout
+    # check nothing but the standard library's version-dependent one would refuse the file.
+    monkeypatch.setattr(_npz, "_layout", lambda archive, size: None)
+    with zipfile.ZipFile(path) as archive:
+        blind_to_the_standard_librarys_overlap_check(archive)
+        check_entries(archive, path.stat().st_size)
+
+
+def test_an_entry_that_runs_past_its_central_directory_is_refused(tmp_path: Path):
+    data = bytearray(stored_zip([("a.npy", npy(np.arange(4.0)))]))
+    (start,) = [i for i in range(len(data)) if data[i:i + 4] == b"PK\x01\x02"]
+    struct.pack_into("<I", data, start + 20, 10**6)  # the central directory's compressed size, past the file
+    path = tmp_path / "past.npz"
+    path.write_bytes(bytes(data))
+    with zipfile.ZipFile(path) as archive:
+        with pytest.raises(ValueError, match="runs past"):
+            check_entries(archive, path.stat().st_size)
+
+
+def test_a_clean_npz_passes_the_layout_check(saved: Path, run: Path):
+    for path in (saved / "reference.npz", run / RUN_OUTPUTS):
+        with zipfile.ZipFile(path) as archive:
+            check_entries(archive, path.stat().st_size)
+
+
+# --- the file the lock names for the reference outputs ------------------------------------------------------------------------
+
+
+def named_in_the_lock(folder: Path, name: str) -> None:
+    path = folder / "mime.lock"
+    lock = json.loads(path.read_text(encoding="utf-8"))
+    lock["reference"]["file"] = name
+    path.write_text(json.dumps(lock, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def test_a_reference_file_outside_the_folder_is_refused_by_name_before_it_is_read(saved: Path, tmp_path: Path):
+    """A name that climbs out of the folder, or is absolute, is refused by the lock's own shape check (``load.lock-shape``,
+    which leaves the lock unread, so no file it names is opened); what is outside holds a bomb, and nothing is allocated."""
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    for number, name in enumerate(("../elsewhere/reference.npz", str(outside / "reference.npz"))):
+        folder = Path(shutil.copytree(saved, tmp_path / "work" / f"full_toy{number}"))
+        (outside / "reference.npz").write_bytes(bombed((folder / "reference.npz").read_bytes(),
+                                                       first_array(folder / "reference.npz"), compressed=True))
+        named_in_the_lock(folder, name)
+        tracemalloc.start()
+        try:
+            found = refusal_of(lambda: read_folder(folder)).refusals
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        shape = [each for each in found if each.code == "load.lock-shape"]
+        assert len(shape) == 1 and name in shape[0].message and peak < BOUND
+        assert not [each for each in found if each.code in ("load.reference", "load.reference-changed")]
+
+
+def test_a_reference_file_that_is_a_link_leaving_the_folder_is_refused_by_name(saved: Path, tmp_path: Path):
+    """The file is the right one (its bytes are the folder's own): only that it is reached through a link out of the folder
+    refuses it."""
+    folder = Path(shutil.copytree(saved, tmp_path / "full_toy"))
+    elsewhere = tmp_path / "elsewhere.npz"
+    shutil.move(str(folder / "reference.npz"), elsewhere)
+    try:
+        (folder / "reference.npz").symlink_to(elsewhere)
+    except OSError:
+        pytest.skip("this platform does not let a test make a symbolic link")
+    found = [each for each in refusal_of(lambda: read_folder(folder)).refusals if each.code == "load.reference"]
+    assert len(found) == 1 and "outside the saved folder" in found[0].message
+
+
+def test_a_reference_file_that_is_a_link_inside_the_folder_still_loads(saved: Path, tmp_path: Path):
+    """The control on the refusal above: a link that stays in the folder is not refused."""
+    folder = Path(shutil.copytree(saved, tmp_path / "full_toy"))
+    shutil.move(str(folder / "reference.npz"), folder / "reference_held.npz")
+    try:
+        (folder / "reference.npz").symlink_to("reference_held.npz")
+    except OSError:
+        pytest.skip("this platform does not let a test make a symbolic link")
+    assert read_folder(folder).lock["reference"]["file"] == "reference.npz"
 
 
 # --- nothing MIME writes is refused ------------------------------------------------------------------------------------------

@@ -30,6 +30,7 @@ from packaging.version import InvalidVersion, Version
 
 from mime._lock_json import read_lock
 from mime._npz import StoredNpz
+from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
 from mime.build._refusals import MIME_DEFECT
@@ -328,6 +329,17 @@ def lock_text_problems(lock: Lock) -> list[str]:
     return problems
 
 
+def _outside_the_folder(folder: Path, name: str) -> str | None:
+    """Why the file the lock names for the reference outputs, a plain name inside the folder (the lock's own shape check
+    refuses a path that climbs out of it, or an absolute one: ``load.lock-shape``), is not read: it is reached through a link
+    that leaves the folder. ``None`` for a file that is inside; checked before anything is read, by name."""
+    resolved, root = (folder / name).resolve(), folder.resolve()
+    if not resolved.is_relative_to(root):
+        return (f"the lock names {plain(name)} for the reference outputs, which is a link to {plain(str(resolved))}, "
+                f"outside the saved folder")
+    return None
+
+
 def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
     """The saved form in ``folder``, every file checked; raises :class:`LoadRefused` with every reason. A file the
     lock says travels as a reference and that is not in the folder is refused as ``asset.missing``, with the command
@@ -384,7 +396,12 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
                                  "lock; this folder cannot be loaded to do it, its lock being the problem")
                          for problem in problems]
     reference: dict[str, np.ndarray] = {}
-    if lock is not None:
+    outside = _outside_the_folder(folder, lock["reference"]["file"]) if lock is not None else None
+    if outside is not None:
+        refusals.append(_refuse("load.reference", RefusalClass.USER, outside,
+                                "save the experiment again: Experiment.load(...) or your script, then built.save(folder); "
+                                "the reference outputs are a file of the saved folder, never one outside it"))
+    elif lock is not None:
         try:
             with StoredNpz(folder / lock["reference"]["file"]) as held:
                 reference = {key: np.asarray(held[key]) for key in held.files}

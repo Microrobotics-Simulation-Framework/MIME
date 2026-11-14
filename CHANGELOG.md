@@ -1449,9 +1449,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it, and `reference.npz` of a saved folder and `outputs.npz` of a run (or the NPZ `to_npz` writes) were opened with
   `np.load`: a deflated entry of a few kilobytes naming gigabytes was taken whole (measured: a 2.5 MB container took
   2.3 GB; the study container's group files had the same defect and were fixed before that container was released). Both are now read through `mime._npz`, which refuses an entry that is compressed, larger than the file, a
-  pickled object, or whose array header names other bytes than it holds, before anything is allocated (`load.reference`
+  pickled object, or whose array header names other bytes than it holds, and a zip whose entries overlap, run past
+  its data or repeat a name (the standard library's own refusal of overlapped entries is only in Python 3.12.2 and later, and
+  `requires-python` allows 3.12.0), before anything is allocated (`load.reference`
   for a saved folder, `result.not-a-run-folder` for a run). A saved folder's lock records its arrays' hash, not the
-  file's, so a hash cannot be checked first there: the bound is the defence. MIME writes every NPZ with `np.savez`
+  file's, so a hash cannot be checked first there: the bound is the defence. A reference file reached through a link
+  that leaves the saved folder is refused by name (`load.reference`; a name that climbs out or is absolute was already
+  `load.lock-shape`). MIME writes every NPZ with `np.savez`
   (entries stored, never compressed; a test reads every writer's output and scans the package for `savez_compressed`), so
   nothing MIME wrote is refused; every saved folder of every frozen form and every current case loads as before. A run
   manifest of the wrong shapes (or an NPZ of a study's member that holds one) is refused as `result.format` where it was

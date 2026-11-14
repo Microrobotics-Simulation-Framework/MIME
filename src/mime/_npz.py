@@ -7,12 +7,24 @@ once it is checked to be **stored**, no larger than the whole file, a plain arra
 exactly the bytes its header declares; anything else is a ``ValueError``, which callers refuse with a code of their own
 (an ``OSError``, ``zipfile.BadZipFile`` and ``EOFError`` are the other ways a file is not an NPZ MIME wrote). Where a record
 of the file's own hash exists it is checked first (a file that is not the one recorded is never opened); a hash cannot
-show that what a file holds is small, which is what the checks here are for."""
+show that what a file holds is small, which is what the checks here are for. A saved folder's lock records its arrays'
+hash, not its file's, so no file hash can be checked before the parse there: the bound is the defence.
+
+The layout of the zip is checked too, from its central directory and before any entry is opened: no entry's local header
+and data overlap another's, each lies within the file (before its central directory), and no name is used twice. The
+standard library refuses overlapped entries since Python 3.12.2 (CVE-2024-0450); 3.12.0 and 3.12.1, which this package's
+``requires-python`` allows, do not, and the check here does not rely on it.
+
+What this does not cover: ``_Npz`` in ``mime.results`` checks every entry once, when it opens a run's NPZ, and reads each
+later entry through :func:`stored_entry` (which checks that entry's header against its own size, so the allocation stays
+bounded), but it does not check the whole layout again. A file swapped for another after it was opened is read with only
+that per-entry check; swapping it needs write access to the folder, which is a local attacker's, and is not defended."""
 
 from __future__ import annotations
 
 import math
 import os
+import struct
 import zipfile
 from types import TracebackType
 from typing import IO, Any
@@ -44,9 +56,43 @@ def _declared(file: IO[bytes], info: zipfile.ZipInfo, archive_size: int) -> int:
     return declared
 
 
+_LOCAL_HEADER = struct.Struct("<4s5H3I2H")  # the fixed 30 bytes of a zip local file header (PK\x03\x04, ...)
+_LOCAL_SIGNATURE = b"PK\x03\x04"
+
+
+def _layout(archive: zipfile.ZipFile, archive_size: int) -> None:
+    """The zip's layout from its central directory, checked before any entry is opened (``ValueError``): no name twice,
+    each entry's local header where its record says, and each entry's span (its local header, then its data) within the file
+    and before the central directory, overlapping no other entry's."""
+    names = [info.filename for info in archive.infolist()]
+    if len(set(names)) != len(names):
+        raise ValueError(f"the entry {sorted(name for name in set(names) if names.count(name) > 1)[0]} is in the file twice")
+    file = archive.fp
+    if file is None:
+        raise ValueError("the file is closed")
+    limit = min(archive_size, getattr(archive, "start_dir", archive_size))
+    spans: list[tuple[int, int, str]] = []
+    for info in archive.infolist():
+        file.seek(info.header_offset)
+        fixed = file.read(_LOCAL_HEADER.size)
+        if len(fixed) != _LOCAL_HEADER.size or fixed[:4] != _LOCAL_SIGNATURE:
+            raise ValueError(f"the entry {info.filename} has no local header where the file's directory says it does")
+        name_length, extra_length = _LOCAL_HEADER.unpack(fixed)[-2:]
+        start = info.header_offset + _LOCAL_HEADER.size + name_length + extra_length
+        end = start + info.compress_size
+        if end > limit:
+            raise ValueError(f"the entry {info.filename} runs past the end of the file's data ({end} of {limit} bytes)")
+        spans.append((info.header_offset, end, info.filename))
+    spans.sort()
+    for (_, earlier_end, earlier), (later_start, _, later) in zip(spans, spans[1:], strict=False):
+        if earlier_end > later_start:
+            raise ValueError(f"the entries {earlier} and {later} overlap in the file")
+
+
 def check_entries(archive: zipfile.ZipFile, archive_size: int) -> None:
-    """Every entry of ``archive`` (a file of ``archive_size`` bytes) checked as :func:`stored_entry` checks the one it
-    reads, reading no array: ``ValueError`` for one that is not an array MIME wrote."""
+    """The zip's layout (:func:`_layout`), then every entry of ``archive`` (a file of ``archive_size`` bytes) checked as
+    :func:`stored_entry` checks the one it reads, reading no array: ``ValueError`` for one that is not an array MIME wrote."""
+    _layout(archive, archive_size)
     for info in archive.infolist():
         if not info.filename.endswith(".npy"):
             raise ValueError(f"the entry {info.filename} is not an array")
