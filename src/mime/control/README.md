@@ -21,6 +21,16 @@ Swapping modes never changes the physics. A swap test runs one controller in two
 The rigid-body maths a controller uses (forward and inverse kinematics, Jacobians, dynamics) is in
 [`mime.core.multibody`](../core/multibody/), below the nodes, since nodes import it too.
 
+**The exact allocation** (`_allocation.py`), a law a controller's step may call: `exact_allocation(rows, wanted, *,
+lower, upper, scales, owner, offset=None, reference=None, reference_scales=None)`, the commands within explicit bounds
+that minimise the caller-scaled residual of an affine model (and a regularisation towards a reference, if scaled), exact
+by its active sets: each free subset's QR, every set's candidate from its subset's, the feasible one of least residual
+selected with no derivative (ties to the least squared distance from the reference), then the selected set solved once more,
+differentiably. Its switch's owner is the caller's, declared with `allocation_switch(owner, orders)`. More than
+`EXACT_COMMANDS` commands is refused (`allocation.exact-size`), the iterative path its route. Its solves are the
+registered sites `allocation_exact` and `allocation_least_norm`. `mime.fields.allocate()` runs it on the host in float64.
+[The allocation note](../../../docs/allocation.md) is the user's page.
+
 ## What exists
 
 - **The declaration.** `Experiment.set_controller(controller, reads={...}, writes={...}, mode=..., rate=...,
