@@ -47,7 +47,9 @@ from mime.build._refusals import (
     Refusal,
     RefusalClass,
     catalogue_problem,
+    described,
     entry_defect,
+    passed_through,
 )
 from mime.build._ranges import PlannedRange, choice_refusals, planned_ranges, variant_refusal
 from mime.build._report import BuildReport, OrientationLine, RunStructure
@@ -272,6 +274,8 @@ class ResolvedPart:
     solid: str
     volume: float = 0.0
     inertia_per_mass: Tensor = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+    #: The asset references its solid reads as set (``Entry.assets_read``), which the lock records.
+    assets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -726,9 +730,17 @@ class _Planner:
         self.refusals.append(Refusal(code, category, message, action))
 
     def defect(self, cls: type[Entry], message: str, error: BaseException | None = None) -> None:
-        """Refuse an entry's defect, at the entry's own line that raised ``error`` where it raised one."""
+        """Refuse an entry's defect, at the entry's own line that raised ``error`` where it raised one. A refusal of
+        the user's or the environment's class that MIME's own API raised inside the entry is that refusal, not the
+        entry's defect (:func:`~mime.build._refusals.passed_through`)."""
         from mime.errors import raised_at
 
+        passed = passed_through(error, cls, "planning") if error is not None else None
+        if passed is not None:
+            self.refusals.extend(passed)
+            return
+        if error is not None:
+            message = message.replace(repr(error), described(error))
         self.refusals.append(entry_defect(cls, message, where=raised_at(error) if error is not None else None))
 
     def run(self) -> PlanSet:
@@ -2349,7 +2361,7 @@ class _Planner:
                     continue
                 mount = self.mount_on(plan, frame)
             resolved[key] = ResolvedPart(apparatus.name, key, mount, (*at, 1.0, 0.0, 0.0, 0.0), radius, label, volume,
-                                         per_mass)
+                                         per_mass, cast(Entry, held.geometry).assets_read())
 
     def apparatus_solid(self, geometry: object, where: str) -> tuple[str, float, float, Tensor] | None:
         """A part's solid, checked, as its label, the radius of the smallest sphere about its centroid that holds it,
@@ -3030,12 +3042,11 @@ class _Planner:
                               exchanges=exchanges, roster=roster)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
-        except BuildRefused as refused:
-            # an entry refusing in its own terms, with refusals of the table (an asset that is not in the cache)
-            self.refusals.extend(refused.refusals)
-            return
         except Exception as error:  # noqa: BLE001
-            if self.settings_complete(entry, settings):
+            passed = passed_through(error, cls, "planning")
+            if passed is not None:  # an entry refusing in MIME's terms (an asset that is not in the cache)
+                self.refusals.extend(passed)
+            elif self.settings_complete(entry, settings):
                 self.defect(cls, f"plan() raised {error!r}", error)
             return
         if not isinstance(plan, Plan):
@@ -3107,11 +3118,8 @@ class _Planner:
                 continue
             try:
                 value = cast(object, getattr(entry, declared.by)(context))
-            except BuildRefused as refused:  # a rule refusing in the table's terms (a choice over a range's cost)
-                self.refusals.extend(refused.refusals)
-                continue
             except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-                self.defect(record.cls, f"{declared.by}() raised {error!r}")
+                self.defect(record.cls, f"{declared.by}() raised {error!r}", error)  # a rule's refusal passes
                 continue
             if value is None:
                 continue

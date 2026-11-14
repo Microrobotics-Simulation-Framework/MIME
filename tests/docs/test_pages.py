@@ -122,7 +122,7 @@ def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, ex
                if f"`{name}`" not in text_of(built, page_of(entry)) and name not in {
                    "name", "version", "references", "validity", "gradient", "differentiability", "builds", "roles",
                    "reads", "delivers", "values", "publishes", "rungs", "reserved_rungs", "support", "family",
-                   "rung_gradients", "callback_gradient", "outputs", "raises", "reynolds"}]
+                   "rung_gradients", "callback_gradient", "outputs", "raises", "reynolds", "assets"}]
     assert missing == []
 
 

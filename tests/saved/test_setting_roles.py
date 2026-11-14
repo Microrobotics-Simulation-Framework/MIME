@@ -180,9 +180,10 @@ def numerical_default_targets(error: BuildRefused) -> set[str]:
 
 #: The cases whose minimal build is refused for what its defaults place, not for a default: each with the codes and
 #: why. A listed case that builds fails, naming its line to delete.
-PLACED = {"gantry_magnet": (("provider.reader-inside",), "the gantry's placement and travel at their conventions (the "
-                                                         "origin, unturned, along +x) put the magnet on the body, "
-                                                         "where the dipole's field is singular")}
+_GANTRY_PLACED = ("the gantry's placement and travel at their conventions (the origin, unturned, along +x) put the "
+                  "magnet on the body, where the dipole's field is singular")
+PLACED = {"gantry_magnet": (("provider.reader-inside",), _GANTRY_PLACED),
+          "entry_assets_rig": (("provider.reader-inside",), _GANTRY_PLACED)}
 
 
 @pytest.fixture

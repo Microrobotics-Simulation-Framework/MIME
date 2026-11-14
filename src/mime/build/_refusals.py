@@ -4,7 +4,7 @@ import functools
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from importlib.resources import files
 from types import FunctionType, MappingProxyType
@@ -317,6 +317,30 @@ def entry_defect(cls: type, problem: str, *, label: str | None = None, context: 
     return Refusal("entry.defect", RefusalClass.INTERNAL, f"{name} ({cls.__module__}){context}: {problem}",
                    f"a defect in {name}, defined in {cls.__module__}: report it to that package. If that package is "
                    f"MIME: {MIME_DEFECT}", where=where, owner=package)
+
+
+def described(error: BaseException) -> str:
+    """``error`` as an entry's defect shows it: its ``repr``, except a MIME error, whose refusals (code, words, docs
+    link) are shown as the plain lines they are, indented under the headline, never as an escaped ``repr``."""
+    if isinstance(error, MimeError) and error.refusals:
+        lines = "\n".join(str(r) for r in error.refusals).replace("\n", "\n    ")
+        return f"{type(error).__name__}, whose refusals are:\n    {lines}"
+    return repr(error)
+
+
+def passed_through(error: BaseException, cls: type, doing: str, label: str | None = None) -> list[Refusal] | None:
+    """The refusals of ``error`` as an entry ``cls`` met them, where they are not the entry's defect: ``error`` is a
+    MIME error whose every refusal is of the user's class or the environment's (a licence not accepted, a file not
+    in the cache), raised by MIME's own API inside the entry's code. Each keeps its code, class and words, with the
+    entry named as where it was met (``(while <doing> <entry>)``), never as the culprit. ``None`` for anything else:
+    a plain exception, a MIME error with no refusals, and one with any internal refusal (MIME's own defect, which the
+    entry is reported beside as ``entry.defect``)."""
+    if not isinstance(error, MimeError) or not error.refusals:
+        return None
+    if any(r.category not in (RefusalClass.USER, RefusalClass.ENVIRONMENT) for r in error.refusals):
+        return None
+    name = label or cast(Any, cls).label()
+    return [replace(r, message=f"{r.message} (while {doing} {name})") for r in error.refusals]
 
 
 #: The attributes a builtin exception keeps outside its ``args`` and ``__dict__``, copied to an error that stands for

@@ -268,6 +268,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "arm", "0.1.0"): ARM,
     ("dynamics", "motor", "0.2.0"): MOTOR,
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),
+    ("dynamics", "labx.finished_gantry", "0.1.0"): NodeCase(),
+    ("field provider", "labx.marked_rotating", "0.1.0"): NodeCase(),
     ("field provider", "point_dipole", "0.1.0"): DIPOLE,
     ("field provider", "calibrated_multipole", "0.1.0"): COILS,
     ("interaction", "magnetic.force", "0.1.0"): NodeCase(),

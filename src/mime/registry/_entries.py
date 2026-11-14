@@ -828,10 +828,20 @@ class Entry:
     #: contradicts itself (a default on a physical or design setting that is not a convention or determined, a
     #: numerical default without its rule and basis).
     setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({})
+    #: The shipped asset references the entry reads (``mime.assets``, by name: a lab's material file), which a saved
+    #: experiment's lock records, as it records an interaction plan's ``Plan.assets``. The default of
+    #: :meth:`assets_read`: an entry whose settings choose the file overrides that method, never this.
+    assets: ClassVar[tuple[str, ...]] = ()
 
     @classmethod
     def label(cls) -> str:
         return f"{cls.name} {cls.version}"
+
+    def assets_read(self) -> tuple[str, ...]:
+        """The asset references this entry, as set, reads: ``assets`` by default. An entry that reads one of several
+        files by a setting (a material, a table) overrides it to name only the one it reads, so a saved experiment's
+        lock, its NOTICE and what ``mime assets fetch`` takes hold what the run reads and no more."""
+        return self.assets
 
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         """What makes settings whose dimensions are right wrong all the same (a radius below zero, a direction along
