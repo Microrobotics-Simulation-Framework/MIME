@@ -3,6 +3,8 @@ jaxprs: script A's four arms (riding the floor, centred, falling onto the floor,
 every round-trip case whose build is not refused, which together build every registered entry's nodes, and A0's
 controller inside the compiled step, with its orientation feedback on and a latency, whose step is a node's only
 there (one inverse-kinematics iteration: each runs the same functions, so more trace more and scan nothing more); a
+test-only controller inside the compiled step that calls the exact allocation (``allocation_cases``), which no shipped
+entry calls, and a second whose eight commands against three rows reach its least-norm form; a
 dynamic arm with Coulomb friction (``chain_cases.friction_arm``), whose friction and sweeps' start A0's AR4 never
 reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's support no case reaches; A0's
 apparatus with its masses mounted and that friction arm, each with the energy ledger, whose metered steps (the arm's
@@ -56,6 +58,13 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
 
     if hasattr(camera_scene, "TracedMesh"):  # a merge base before camera 6a traces no static mesh
         found["camera/mesh"] = mesh_camera
+    import mime.control
+
+    if hasattr(mime.control, "exact_allocation"):  # a merge base before the exact allocation has no law to reach
+        from allocation_cases import allocating_field, allocating_sphere
+
+        found["controller/allocating_in_graph"] = allocating_sphere
+        found["controller/allocating_field_in_graph"] = allocating_field
     found["chain/friction_arm"] = friction_arm
     from mime.things import Apparatus
 

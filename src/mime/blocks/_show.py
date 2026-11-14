@@ -1,5 +1,10 @@
 """``mime show <block folder>``: what a block is and what it needs, offline. Nothing is installed, downloaded or run.
 
+**Not gated, by design.** ``show`` is the command that says the block's licence and its conditions, which a person needs
+in order to decide whether to accept them; asking first would hide what the question is about. It reads the definition
+and names what the fragment adds (its section names, counted), binds no socket, builds nothing and runs no case: the
+gates guard where the block's content is first used (a load, ``verify``, ``pull``), never where it is described.
+
 Its id, version, licence and tier; its record's title and creators where ``[record]`` reads; its content hash; each of
 its requirements against what is installed, with the line that installs what is missing; its sockets; its asset
 records with their tiers and whether each is cached; what it adds to an experiment, computed from its fragment and never
