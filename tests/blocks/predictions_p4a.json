@@ -6,7 +6,9 @@
     "each of the eleven plants run locally before this file, on the branch's working tree (laptop, CPU, the tests' own dtype): seeds 0 to 5 for nine, 0 to 7 for two; every planted run failed its test and every clean run passed, after two tests were made to name the check they control (the socket tests at the definition and in the fragment first missed seeds 0, 5 and 5: the frame socket's planted acceptance was caught by the fragment's unused-socket check, and the unused socket bound to a medium by the binding's kind check, so each now asserts its own check's words, and the unused socket is bound to a body)"
   ],
   "operating_point": {
-    "dtype": ["the tests' default (float32): no gate here reads a simulated number; the save runs 2 or 3 reference steps of the toy"],
+    "dtype": [
+      "the tests' default (float32): no gate here reads a simulated number; the save runs 2 or 3 reference steps of the toy"
+    ],
     "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow), one pytest process a run",
     "sizes_and_parameters": "the lab fixture's block (lab_fixture/blocks/nudged_probe: one body, four laws, one declared value, one medium socket) copied into each test's folder; the user's experiment the toy's scene and step with one medium",
     "seeds_and_draws": "200 runs a randomly drawn control, 40 a fixed one, seeds 0 to N-1 in MIME_SEED (detection_rate.py --seed-var MIME_SEED), planted and clean at the same seeds"
@@ -15,9 +17,20 @@
     "claim": "a saved experiment that uses a copied block loads with the block's folder deleted, its input hash reproduced exactly",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_copied_block_loads_without_the_block_and_reproduces_its_input_hash",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "with one provided declaration left out of the document, the load without the block either refuses the build (a law binding a missing thing) or rebuilds another experiment, whose resolved record and so input hash differ"},
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "with one provided declaration left out of the document, the load without the block either refuses the build (a law binding a missing thing) or rebuilds another experiment, whose resolved record and so input hash differ"
+    },
     "metric": "caught/N of the planted arm, flagged/N of the clean arm",
-    "control": {"plant": "the document's writer leaves out one declaration the block provides (a thing, a law or the declared value, drawn from the seed), as a writer that left the expansion to the load would", "environment_variable": "MIME_PLANT_P4A=dropped", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "structural: one declaration of six; any one changes the input hash"},
+    "control": {
+      "plant": "the document's writer leaves out one declaration the block provides (a thing, a law or the declared value, drawn from the seed), as a writer that left the expansion to the load would",
+      "environment_variable": "MIME_PLANT_P4A=dropped",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural: one declaration of six; any one changes the input hash"
+    },
     "if_wrong": "a miss is a document that loads the same without one of the block's declarations: the input hash does not cover it",
     "cannot_discriminate_if": "the load is refused for another reason in both arms (the clean arm's 0/200 shows it loads)"
   },
@@ -25,71 +38,181 @@
     "claim": "every file of the author's own in a saved folder using a copied block carries the block's conditions: the verdict is the AND of the experiment's licence and the block's",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_copied_blocks_licence_reaches_the_verdict_of_every_file_of_the_authors_own (the block's licence drawn from five conditional licences, the experiment's from four open ones)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "every drawn block licence is conditional; computed without the document's blocks the verdict is the experiment's open one"},
-    "control": {"plant": "the verdict computed without the document's blocks (copied_blocks answers none)", "environment_variable": "MIME_PLANT_P4A=unjoined", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "categorical: a tier and its conditions"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "every drawn block licence is conditional; computed without the document's blocks the verdict is the experiment's open one"
+    },
+    "control": {
+      "plant": "the verdict computed without the document's blocks (copied_blocks answers none)",
+      "environment_variable": "MIME_PLANT_P4A=unjoined",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "categorical: a tier and its conditions"
+    }
   },
   "gate_3_requires": {
     "claim": "a requirement a block names that is not met here is refused as block.requires, with its pin row and one install line, and adds nothing",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_requirement_not_met_here_is_refused_with_its_pin_row_and_one_install_line (the distribution, the part of its version raised and by how much drawn)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "every drawn floor is above the installed version; with every requirement read as met the use proceeds"},
-    "control": {"plant": "every requirement read as met", "environment_variable": "MIME_PLANT_P4A=unrequired", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "one version step above the installed one"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "every drawn floor is above the installed version; with every requirement read as met the use proceeds"
+    },
+    "control": {
+      "plant": "every requirement read as met",
+      "environment_variable": "MIME_PLANT_P4A=unrequired",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "one version step above the installed one"
+    }
   },
   "gate_4_entry": {
     "claim": "an entry of the fragment from a distribution [requires] does not name is refused as block.entry, naming the distribution",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_an_entry_from_a_distribution_requires_does_not_name_is_the_blocks_defect",
-    "prediction": {"value": "40/40 caught, 0/40 flagged", "basis": "derived", "why": "fixed: the lab's distribution removed from [requires]; with the check removed the use proceeds"},
-    "control": {"plant": "the entries' distributions not held to [requires]", "environment_variable": "MIME_PLANT_P4A=unlisted", "expected_rate": "40/40", "runs": 40, "clean_expected": "0/40", "resolution": "structural"}
+    "prediction": {
+      "value": "40/40 caught, 0/40 flagged",
+      "basis": "derived",
+      "why": "fixed: the lab's distribution removed from [requires]; with the check removed the use proceeds"
+    },
+    "control": {
+      "plant": "the entries' distributions not held to [requires]",
+      "environment_variable": "MIME_PLANT_P4A=unlisted",
+      "expected_rate": "40/40",
+      "runs": 40,
+      "clean_expected": "0/40",
+      "resolution": "structural"
+    }
   },
   "gate_5_socket_binding": {
     "claim": "a socket unbound, bound under a name the block has no socket for, bound to a thing of another kind or to one the experiment does not declare, is refused as block.socket",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_socket_bound_wrongly_is_refused_as_block_socket (the defect drawn of four)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "each drawn defect is the binding's own; with the binding check removed none is refused as block.socket (a wrong kind fails later as another code, or builds)"},
-    "control": {"plant": "the binding check removed (each socket bound to the name given)", "environment_variable": "MIME_PLANT_P4A=unbound", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "structural"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "each drawn defect is the binding's own; with the binding check removed none is refused as block.socket (a wrong kind fails later as another code, or builds)"
+    },
+    "control": {
+      "plant": "the binding check removed (each socket bound to the name given)",
+      "environment_variable": "MIME_PLANT_P4A=unbound",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural"
+    }
   },
   "gate_6_socket_definition": {
     "claim": "a socket the definition cannot declare (a frame socket, a reserved name, an unknown kind) is refused as block.socket by the definition's own check, and a frame socket names the route (the apparatus lane's AP6)",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_socket_the_definition_cannot_declare_is_refused_and_a_frame_names_its_route (the defect drawn of three)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "the test asserts the definition's words; with its check removed they are never said"},
-    "control": {"plant": "the definition's socket check accepts every socket", "environment_variable": "MIME_PLANT_P4A=undeclared", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "structural"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "the test asserts the definition's words; with its check removed they are never said"
+    },
+    "control": {
+      "plant": "the definition's socket check accepts every socket",
+      "environment_variable": "MIME_PLANT_P4A=undeclared",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural"
+    }
   },
   "gate_7_socket_fragment": {
     "claim": "a socket the fragment writes bare, names undeclared, or never uses, is refused as block.socket by the fragment's own check",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_socket_the_fragment_writes_wrongly_is_refused_as_block_socket (the defect drawn of three)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "the test asserts the fragment check's words; with it removed they are never said"},
-    "control": {"plant": "the fragment's socket checks removed (sockets substituted with no problem recorded, no unused socket found)", "environment_variable": "MIME_PLANT_P4A=unwritten", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "structural"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "the test asserts the fragment check's words; with it removed they are never said"
+    },
+    "control": {
+      "plant": "the fragment's socket checks removed (sockets substituted with no problem recorded, no unused socket found)",
+      "environment_variable": "MIME_PLANT_P4A=unwritten",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural"
+    }
   },
   "gate_8_fragment_shape": {
     "claim": "a fragment holding a host's key, an unknown key, a thing placed elsewhere than the world or a value of another type is refused as block.fragment",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_fragment_unlike_the_documents_shapes_is_refused_by_path (the defect drawn of four)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "every shape refusal is one function's; removed, none is block.fragment"},
-    "control": {"plant": "the shape check removed", "environment_variable": "MIME_PLANT_P4A=unshaped", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "structural"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "every shape refusal is one function's; removed, none is block.fragment"
+    },
+    "control": {
+      "plant": "the shape check removed",
+      "environment_variable": "MIME_PLANT_P4A=unshaped",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural"
+    }
   },
   "gate_9_fragment_form": {
     "claim": "a fragment of another form is refused as block.format, and a later one as load.newer-form",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_fragment_of_another_form_is_refused_as_block_format_and_a_later_one_as_newer (the schema drawn of four)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "removed, the form check passes every schema and the test's code list is not block.format"},
-    "control": {"plant": "the form check removed", "environment_variable": "MIME_PLANT_P4A=unformatted", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "structural"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "removed, the form check passes every schema and the test's code list is not block.format"
+    },
+    "control": {
+      "plant": "the form check removed",
+      "environment_variable": "MIME_PLANT_P4A=unformatted",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural"
+    }
   },
   "gate_10_name": {
     "claim": "a use providing a name the experiment already declares is refused as block.name, its action naming name=, and named it is used",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_name_the_experiment_already_declares_is_refused_naming_name (a thing, and a declared value half the draws)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "removed, the use proceeds and nothing is refused"},
-    "control": {"plant": "the names' check removed", "environment_variable": "MIME_PLANT_P4A=unnamed", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "structural"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "removed, the use proceeds and nothing is refused"
+    },
+    "control": {
+      "plant": "the names' check removed",
+      "environment_variable": "MIME_PLANT_P4A=unnamed",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural"
+    }
   },
   "gate_11_case_stale": {
     "claim": "a case saved before the block's fragment changed is found by mime check as block.case-stale",
     "kind": "acceptance",
     "case": "tests/blocks/test_block_use.py::test_a_case_saved_against_other_content_is_found_stale (the edit drawn of three)",
-    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "the content hash is a sha256 of the fragment's bytes, so every edit changes it; removed, the check finds nothing"},
-    "control": {"plant": "the staleness test removed", "environment_variable": "MIME_PLANT_P4A=unstale", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "one byte of the fragment (a sha256 comparison)"}
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "the content hash is a sha256 of the fragment's bytes, so every edit changes it; removed, the check finds nothing"
+    },
+    "control": {
+      "plant": "the staleness test removed",
+      "environment_variable": "MIME_PLANT_P4A=unstale",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "one byte of the fragment (a sha256 comparison)"
+    }
   },
   "bits": {
     "cases": "the coupled toy and script A's reproduction arm, each saved by the base (release/v0.3.0 at the branch point) and by the head, in one job, one CPU, one BLAS thread (bit_compare.py): their reference outputs, and their documents' and locks' bytes as arrays",
@@ -99,5 +222,19 @@
       "one_ulp": "the toy saved with its probe's mass one ulp up: its reference outputs and its document differ (the comparison can fail)"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "measured": "2026-11-14, the probe branch probe/lanep-p4a at 2700ecf1 (this branch at 0fad3596 plus probe/), run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43603637310, artifacts probe-lanep-p4a-<arm>, one GitHub runner a control",
+    "gate_1_copied_load_needs_no_block": "dropped: 200/200 caught, 0/200 flagged, 0 inconclusive: as predicted",
+    "gate_2_licence_reaches_verdict": "unjoined: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_3_requires": "unrequired: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_4_entry": "unlisted: 40/40 caught, 0/40 flagged: as predicted",
+    "gate_5_socket_binding": "unbound: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_6_socket_definition": "undeclared: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_7_socket_fragment": "unwritten: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_8_fragment_shape": "unshaped: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_9_fragment_form": "unformatted: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_10_name": "unnamed: 200/200 caught, 0/200 flagged: as predicted",
+    "gate_11_case_stale": "unstale: 200/200 caught, 0/200 flagged: as predicted",
+    "bits": "bit_compare.py, base f7806d3a against the head, one CPU, one thread: toy and script_a every array np.array_equal (all_equal true): as predicted. The repeat control: identical, as predicted. The one-ulp control: the document's and the lock's bytes differ, and the reference outputs do NOT (the toy's mass one ulp up moved no output bit over its 10 saved steps): the prediction said both would differ, so it was wrong for the outputs. What the comparison is shown able to fail on is the document and the lock; that it would see a moved output bit rests on bit_compare.py's array_equal, not on this control."
+  }
 }
