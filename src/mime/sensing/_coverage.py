@@ -23,6 +23,7 @@ from typing import Any, NamedTuple
 
 import jax
 
+from mime.core import switch
 from mime.core._node import jnp
 
 #: A pixel is a corner pixel where two of a body's pieces pass within this many pixels of its centre (half its
@@ -33,6 +34,8 @@ CORNER_SAMPLES = 4
 #: Below this gradient length (in the edge function's units per pixel) a pixel's edge is taken as hard: the edge
 #: function is flat there (a ray through a centre, where its edge is far).
 FLAT = 1e-30
+#: The scale a line's distance from a pixel's centre is read on, in pixels, for the resolution of a switch on it.
+PIXELS = 1.0
 
 
 def square_below(a: Any, b: Any, c: Any) -> Any:
@@ -42,11 +45,24 @@ def square_below(a: Any, b: Any, c: Any) -> Any:
     b = jnp.maximum(b, 1e-9)
     corner, flat = (a + b) / 2.0, (a - b) / 2.0
 
-    def lower(c: Any) -> Any:
+    def outside(c: Any) -> Any:
+        """The share on the body's side where the pixel's centre is outside it (``c`` at most zero)."""
         triangle = (c + corner) ** 2 / (2.0 * a * b)
-        return jnp.where(c <= -corner, 0.0, jnp.where(c <= -flat, triangle, 0.5 + c / a))
+        beyond = switch.where(c <= -flat, triangle, 0.5 + c / a, owner="camera.edge.out_near",
+                              resolution=lambda: switch.rounding(PIXELS), indicator=lambda: -flat - c)
+        return switch.where(c <= -corner, 0.0, beyond, owner="camera.edge.out_far",
+                            resolution=lambda: switch.rounding(PIXELS), indicator=lambda: -corner - c)
 
-    return jnp.where(c <= 0.0, lower(jnp.minimum(c, 0.0)), 1.0 - lower(jnp.minimum(-c, 0.0)))
+    def inside(c: Any) -> Any:
+        """The same, written for the mirrored line (``c`` at most zero), where the centre is inside the body."""
+        triangle = (c + corner) ** 2 / (2.0 * a * b)
+        beyond = switch.where(c <= -flat, triangle, 0.5 + c / a, owner="camera.edge.in_near",
+                              resolution=lambda: switch.rounding(PIXELS), indicator=lambda: -flat - c)
+        return switch.where(c <= -corner, 0.0, beyond, owner="camera.edge.in_far",
+                            resolution=lambda: switch.rounding(PIXELS), indicator=lambda: -corner - c)
+
+    return switch.where(c <= 0.0, outside(jnp.minimum(c, 0.0)), 1.0 - inside(jnp.minimum(-c, 0.0)),
+                        owner="camera.edge.centre", resolution=lambda: switch.rounding(PIXELS), indicator=lambda: -c)
 
 
 class Line(NamedTuple):
@@ -67,13 +83,15 @@ def line(g: Any, gu: Any, gv: Any) -> Line:
 def lesser(a: Line, b: Line) -> Line:
     """The nearer-inside of two pieces' lines (a union's): the one at the lesser distance, its normal with it."""
     first = a.distance <= b.distance
-    return Line(*(jnp.where(first, x, y) for x, y in zip(a, b, strict=True)))
+    return Line(*(switch.where(first, x, y, owner="camera.pieces.least", resolution=lambda: switch.rounding(PIXELS),
+                               indicator=lambda: b.distance - a.distance) for x, y in zip(a, b, strict=True)))
 
 
 def greater(a: Line, b: Line) -> Line:
     """The farther-out of two pieces' lines (an intersection's)."""
     first = a.distance >= b.distance
-    return Line(*(jnp.where(first, x, y) for x, y in zip(a, b, strict=True)))
+    return Line(*(switch.where(first, x, y, owner="camera.pieces.greatest", resolution=lambda: switch.rounding(PIXELS),
+                               indicator=lambda: a.distance - b.distance) for x, y in zip(a, b, strict=True)))
 
 
 def covered(edge: Line, size: float = 1.0) -> Any:
@@ -105,7 +123,8 @@ def _segment(px: Any, py: Any, qx: Any, qy: Any) -> Any:
     phi = jnp.arctan2(px * qy - py * qx, px * qx + py * qy)
     p2 = phi * phi
     series = phi * p2 * (1.0 / 6.0 - p2 * (1.0 / 120.0 - p2 * (1.0 / 5040.0 - p2 / 362880.0)))
-    return 0.5 * jnp.where(jnp.abs(phi) < 0.5, series, phi - jnp.sin(phi))
+    return 0.5 * switch.where(jnp.abs(phi) < 0.5, series, phi - jnp.sin(phi), owner="camera.disc.series",
+                              resolution=lambda: switch.rounding(1.0), indicator=lambda: 0.5 - jnp.abs(phi))
 
 
 def _on_circle(x: Any, y: Any) -> tuple[Any, Any]:
@@ -125,18 +144,39 @@ def _edge_in_disc(ax: Any, ay: Any, bx: Any, by: Any, cx: Any, cy: Any) -> Any:
     c = ax * ax + ay * ay - 1.0
     discriminant = b * b - a * c
     real = (discriminant > 0.0) & (a > 0.0)
-    root = jnp.sqrt(jnp.where(real, discriminant, 1.0))
-    held = jnp.where(real, a, 1.0)
+    root = jnp.sqrt(switch.domain_guard(real, discriminant, 1.0))
+    held = switch.domain_guard(real, a, 1.0)
     low, high = (-b - root) / held, (-b + root) / held
     crosses = real & (high > 0.0) & (low < 1.0)
-    first, second = jnp.clip(low, 0.0, 1.0), jnp.clip(high, 0.0, 1.0)
+    first = switch.clip(low, 0.0, 1.0, owner="camera.disc.enter", resolution=lambda: switch.rounding(1.0),
+                        indicator=lambda: low)
+    second = switch.clip(high, 0.0, 1.0, owner="camera.disc.exit", resolution=lambda: switch.rounding(1.0),
+                         indicator=lambda: high)
     a_in, b_in = c < 0.0, bx * bx + by * by < 1.0
     hax, hay = _on_circle(ax, ay)
     hbx, hby = _on_circle(bx, by)
-    sx, sy = jnp.where(a_in, ax, hax), jnp.where(a_in, ay, hay)
-    tx, ty = jnp.where(b_in, bx, hbx), jnp.where(b_in, by, hby)
-    p1x, p1y = jnp.where(crosses, ax + first * ex, sx), jnp.where(crosses, ay + first * ey, sy)
-    p2x, p2y = jnp.where(crosses, ax + second * ex, sx), jnp.where(crosses, ay + second * ey, sy)
+
+    sx, sy = (switch.where(a_in, ax, hax, owner="camera.disc.start", resolution=lambda: switch.rounding(1.0),
+                           indicator=lambda: -c),
+              switch.where(a_in, ay, hay, owner="camera.disc.start", resolution=lambda: switch.rounding(1.0),
+                           indicator=lambda: -c))
+    tx, ty = (switch.where(b_in, bx, hbx, owner="camera.disc.end", resolution=lambda: switch.rounding(1.0),
+                           indicator=lambda: 1.0 - bx * bx - by * by),
+              switch.where(b_in, by, hby, owner="camera.disc.end", resolution=lambda: switch.rounding(1.0),
+                           indicator=lambda: 1.0 - bx * bx - by * by))
+    # The chord's margin in the segment's own fraction: the half-chord in it where the line meets the circle, minus the
+    # square root of how far it misses it where it does not, the segment's end past the chord's start and its start
+    # before the chord's end; the least of them is positive where the segment crosses the circle.
+    def reach() -> Any:
+        margin = jnp.sign(discriminant) * jnp.sqrt(jnp.abs(discriminant)) / held
+        return jnp.minimum(jnp.minimum(margin, high), 1.0 - low)
+
+    def entered(inside: Any, outside: Any) -> Any:
+        return switch.where(crosses, inside, outside, owner="camera.disc.crossing",
+                            resolution=lambda: switch.rounding(1.0), indicator=reach)
+
+    p1x, p1y = entered(ax + first * ex, sx), entered(ay + first * ey, sy)
+    p2x, p2y = entered(ax + second * ex, sx), entered(ay + second * ey, sy)
 
     def triangle(ux: Any, uy: Any, vx: Any, vy: Any) -> Any:
         return 0.5 * ((ux - cx) * (vy - cy) - (uy - cy) * (vx - cx))
@@ -183,8 +223,21 @@ def disc(corners_x: Any, corners_y: Any, centre: Any, radius: Any) -> Any:
     crossed = sum((jnp.where(_crosses(*quad[i], *quad[(i + 1) % 4]), 1.0, 0.0) for i in range(4)), start=jnp.zeros(()))
     clear = ~(corners[0] | corners[1] | corners[2] | corners[3]) & (crossed == 0)
     holds = _holds_origin(quad)
-    share = jnp.where(full, 1.0, jnp.where(clear, jnp.where(holds, jnp.pi / jnp.where(holds, area, 1.0), 0.0),
-                                           inside / area))
+    def smallest(values: list[Any]) -> Any:
+        return jnp.minimum(jnp.minimum(values[0], values[1]), jnp.minimum(values[2], values[3]))
+
+    def margins() -> list[Any]:
+        """Each corner's distance outside the unit circle, in the circle's units squared (negative inside)."""
+        return [qx * qx + qy * qy - 1.0 for qx, qy in quad]
+
+    held = switch.where(holds, jnp.pi / switch.domain_guard(holds, area, 1.0), 0.0, owner="camera.disc.holds",
+                        resolution=lambda: switch.rounding(1.0), indicator=lambda: _origin_margin(quad))
+    shut = switch.where(clear, held, inside / area, owner="camera.disc.clear",
+                        resolution=lambda: switch.rounding(1.0),
+                        indicator=lambda: jnp.minimum(smallest(margins()), 1.0 - crossed))
+    share = switch.where(full, 1.0, shut, owner="camera.disc.full", resolution=lambda: switch.rounding(1.0),
+                         indicator=lambda: -jnp.maximum(jnp.maximum(margins()[0], margins()[1]),
+                                                        jnp.maximum(margins()[2], margins()[3])))
     return jnp.clip(share, 0.0, 1.0)
 
 
@@ -196,9 +249,16 @@ def _crosses(ax: Any, ay: Any, bx: Any, by: Any) -> Any:
     c = ax * ax + ay * ay - 1.0
     discriminant = b * b - a * c
     root = jnp.sqrt(jnp.maximum(discriminant, 0.0))
-    held = jnp.where(a > 0.0, a, 1.0)
+    held = switch.domain_guard(a > 0.0, a, 1.0)
     first, second = (-b - root) / held, (-b + root) / held
     return (discriminant > 0.0) & (((first >= 0.0) & (first <= 1.0)) | ((second >= 0.0) & (second <= 1.0)))
+
+
+def _origin_margin(quad: list[tuple[Any, Any]]) -> Any:
+    """How far inside the quadrilateral the origin lies, in the cross products of its sides (the least of them, or
+    its negative where they run the other way: the origin is held where it is positive)."""
+    sides = jnp.stack([quad[i][0] * quad[(i + 1) % 4][1] - quad[i][1] * quad[(i + 1) % 4][0] for i in range(4)])
+    return jnp.maximum(jnp.min(sides, axis=0), jnp.min(-sides, axis=0))
 
 
 def _holds_origin(quad: list[tuple[Any, Any]]) -> Any:
