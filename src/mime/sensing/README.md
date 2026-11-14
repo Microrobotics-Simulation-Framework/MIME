@@ -130,8 +130,8 @@ build's: the disc windows are sized for them), so a study can fit them, and `exp
   graph on GitHub's runners (the outcomes of `tests/sensing/predictions_camera_reverse_merged.json`). A study's reverse
   derivative whose estimate (`CameraNode.reverse_estimate`: the larger of the derivative's compile and its run with its
   tape, times a margin) would not fit the memory a run can have is refused before it compiles (`camera.reverse-memory`),
-  naming the offline renderer. The estimate is fitted to runs measured on GitHub's four-core runners, 160x120 to 640x480,
-  both dtypes, up to six poses a frame; its per-pose term is the largest cost measured on any platform (a laptop's),
+  naming the offline renderer. The estimate is fitted to runs measured on GitHub's four-core runners, at the sizes the
+  predictions file `predictions_camera_reverse_moving.json` lists (a small detector to a large one), both dtypes, up to six poses a frame; its per-pose term is the largest cost measured on any platform (a laptop's),
   not a fit to the runners. On those platforms and within those sizes it held every measured run; beyond them (another
   platform, more poses, other sizes) it is an extrapolation, not a bound. A batched (vmapped) study is refused (`camera.batched`): under
   `vmap` a `cond` is a `select`, so every step would render.
