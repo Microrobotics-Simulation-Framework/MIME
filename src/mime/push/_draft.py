@@ -11,7 +11,7 @@ since Zenodo states md5 only. A file in the draft that this plan does not hold i
 earlier, and refused where it did not (``push.draft-changed``): one added on the site is the author's to remove.
 
 **A private draft is made without a question** (design #199 (a)): the plan is shown before anything is written, and
-``--discard`` undoes it. **Nothing changed, one line**: a push whose folder and ``sharing.yaml`` are what push last sent
+``--discard`` undoes it. **Nothing changed, one line**: a push whose folder and ``mime.toml`` are what push last sent
 reads the draft and, finding it as push left it, says so in one line, writing nothing; anything to write is shown in
 the plan first. The plan is short by default (what goes up, what travels as a reference, warnings on lines of their
 own), and in full with ``full``.
@@ -29,7 +29,7 @@ line.
 Before it writes to a draft or deletes one, push checks the draft is the one it made: the draft carries the identifier
 push wrote into it, a UUID of the service, the experiment's name and push's mark (``push.draft-foreign`` otherwise).
 Each field of its metadata edited on the site since push last wrote it is shown against what push would write, and
-kept (written into ``sharing.yaml``) or written over, field by field (:mod:`mime.push._edits`). A new version's draft
+kept (written into ``mime.toml``'s ``[record]``) or written over, field by field (:mod:`mime.push._edits`). A new version's draft
 holds the service's copy of the published record: what was edited on the record's page is found against the published
 marks, and settled the same way, until it is settled, however often the same command runs; only the fields the service
 sets anew on a version (:data:`VERSION_RESETS`) are left out. An edit made while the files upload is not push's own: it
@@ -64,7 +64,7 @@ from mime.push._client import Client, Dropped, Errors, Gone, Json, Owner, Transp
 from mime.push._edits import (
     SHARING_KEYS,
     apart,
-    as_yaml,
+    as_toml,
     differs,
     field_value,
     kept,
@@ -76,7 +76,8 @@ from mime.push._fields import access_words
 from mime.push._owners import ACCESS_FIELD, FIELD_OWNERS, field_owner
 from mime.push._plan import NOTICE_KEY, Plan, RecordFile, make_plan, restaged, with_sharing
 from mime.push._service import TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
-from mime.push._sharing import read_sharing, scaffold, sharing_path
+from mime.push._manifest import OLD_FILE, manifest_path, manifest_text, old_values, present, read_record
+from mime.push._sharing import DEFAULT_LICENCE
 from mime.push._state import (
     ACCESS,
     CUSTOM,
@@ -100,7 +101,7 @@ from mime.saved._schema import PublicationRecord
 UPLOAD_ATTEMPTS = 3
 #: The flag that writes push's metadata over what was edited on the site.
 OVERWRITE_FLAG = "--overwrite-site-edits"
-#: The flag that keeps, without asking, each edit made on the site that sharing.yaml can hold.
+#: The flag that keeps, without asking, each edit made on the site that ``[record]`` can hold.
 KEEP_FLAG = "--keep-site-edits"
 #: The flag that shows the full plan.
 FULL_FLAG = "--full-plan"
@@ -140,7 +141,7 @@ class Drafted:
 @dataclass(frozen=True)
 class Choices:
     """How the edits made on the site are settled: asked, field by field, in a terminal (``ask``); or by a flag, every
-    edit written over (``overwrite``) or each that sharing.yaml can hold kept (``keep``). With none, an edit stops the
+    edit written over (``overwrite``) or each that ``[record]`` can hold kept (``keep``). With none, an edit stops the
     push (``push.metadata-edited``)."""
 
     ask: Ask | None = None
@@ -200,20 +201,29 @@ def unconfirmed(what: str, action: str = "read it, then run the same command aga
         f"{what} was shown and not confirmed, and there is no terminal to ask in: nothing was sent", action)])
 
 
-def init(folder: str | os.PathLike[str]) -> tuple[Path, bool, str | None]:
-    """Write ``sharing.yaml`` beside the saved form from what the folder knows and the person's sharing defaults
-    (:func:`mime.push._defaults.read_defaults`, each key filled where it stands): its path, whether it was written (an
-    existing one is never overwritten), and the licence the experiment declares."""
-    from mime.push._defaults import read_defaults
-    from mime.saved import read_folder
+def init(folder: str | os.PathLike[str], *, say: Say | None = None) -> tuple[Path, bool, str | None]:
+    """Write ``mime.toml`` beside the saved form (or in the study folder) from what the folder knows, and from the
+    values of ``sharing.yaml`` where the folder holds it, or else the person's defaults (:mod:`mime.push._defaults`, each
+    key filled where it stands; the licence from their ``[licences] content`` where the experiment declares none): its
+    path, whether it was written (an existing one is never overwritten), and the licence the experiment declares.
+    ``sharing.yaml`` is left in place, for the person to delete; ``say`` is told so, and of defaults moved."""
+    from mime.push._defaults import read_all
+    from mime.push._setup import folder_facts
 
     root = Path(os.path.abspath(folder))
-    document = read_folder(root, absent_referenced=True).document
-    path = sharing_path(root)
-    licence = document.get("licence")
+    kind, name, licence = folder_facts(root)
+    path = present(root, new=True)
     if path.exists():
         return path, False, licence
-    path.write_text(scaffold(document["experiment"], licence, read_defaults()), encoding="utf-8", newline="\n")
+    defaults = read_all(say)
+    old = root / OLD_FILE
+    values = old_values(root) if old.is_file() else dict(defaults.values)
+    path.write_text(manifest_text(kind, name, licence, values, fallback=defaults.licences.get("content",
+                                                                                              DEFAULT_LICENCE)),
+                    encoding="utf-8", newline="\n")
+    if old.is_file() and say is not None:
+        say(f"wrote it from {old}, which is no longer read: delete it once you have checked {path} (MIME never "
+            f"deletes your file)")
     return path, True, licence
 
 
@@ -226,7 +236,7 @@ def entry_verified(entry: Json | None, file: RecordFile) -> bool:
 def _errors_refusal(service: Service, record: str, what: str, errors: Errors | list[object],
                     owner: Owner = field_owner) -> BuildRefused:
     """A refusal for each field the service names in ``errors``, by who owns it (``owner``): the author's in
-    sharing.yaml or the experiment, to correct there; MIME's, its defect, said as one."""
+    mime.toml's [record] or the experiment, to correct there; MIME's, its defect, said as one."""
     listed = errors.errors if isinstance(errors, Errors) else errors
     return BuildRefused(owned_refusals(service, f"{service.name} kept the draft {record} and refused part of {what}",
                                        listed, owner, "its answer listed errors"))
@@ -269,8 +279,8 @@ def edited_fields(draft: Json, state: DraftState | Published) -> list[str]:
 
 
 def _source(name: str) -> str:
-    owner = FIELD_OWNERS.get(name, "sharing" if name.startswith(CUSTOM) or name == ACCESS_FIELD else "mime")
-    return "sharing.yaml" if owner == "sharing" else "the experiment" if owner == "experiment" else "MIME"
+    owner = FIELD_OWNERS.get(name, "record" if name.startswith(CUSTOM) or name == ACCESS_FIELD else "mime")
+    return "mime.toml's [record]" if owner == "record" else "the experiment" if owner == "experiment" else "MIME"
 
 
 def label(name: str) -> str:
@@ -285,15 +295,15 @@ def site_edits(service: Service, record: str, fields: list[str], site: Json, our
         message = (f"the draft {record} on {service.name} was edited on the site since push last wrote it, and push "
                    f"would write over it: {label(name)} on the site: {on_site}; from {_source(name)}: {from_ours}")
         if name in SHARING_KEYS:
-            action = (f"keep it, `mime push <folder> --to {service.name} {KEEP_FLAG}` (written into sharing.yaml's "
-                      f"`{SHARING_KEYS[name]}`), or run push in a terminal, which asks; to drop it, write over it, "
+            action = (f"keep it, `mime push <folder> --to {service.name} {KEEP_FLAG}` (written into [record] "
+                      f"`{SHARING_KEYS[name]}` in mime.toml), or run push in a terminal, which asks; to drop it, write over it, "
                       f"`mime push <folder> --to {service.name} {OVERWRITE_FLAG}`")
         elif name == "rights":
             action = (f"the licences are the files', declared where the experiment is built: to keep the site's, "
                       f"declare them there, exp.licence(...), and save again, built.save(folder); to drop the edit, "
                       f"write over it, `mime push <folder> --to {service.name} {OVERWRITE_FLAG}`")
         else:
-            action = (f"sharing.yaml has no key for {name}, so writing over it removes the site's from the draft, "
+            action = (f"[record] has no key for {name}, so writing over it removes the site's from the draft, "
                       f"`mime push <folder> --to {service.name} {OVERWRITE_FLAG}`; to keep it, leave the draft as it "
                       f"is and do not push it again")
         found.append(_refuse("push.metadata-edited", RefusalClass.USER, message, action))
@@ -342,7 +352,7 @@ def published_publication(service: Service, published: Published) -> Publication
 def planned(root: Path, service: Service, state: DraftState | None) -> Plan:
     """The plan of the folder as this push packs it: with the staged lock of the draft push made (its DOI reserved),
     or of the version last published (to tell whether the content changed since), or with the folder's own lock."""
-    sharing = read_sharing(root)
+    sharing = read_record(root)
     experiment = experiment_name(root)
     where = staging(service, experiment)
     if state is not None and state.record is not None:
@@ -411,7 +421,7 @@ class Drafting:
 
     def settle(self, found: Json, record: str) -> list[str]:
         """Each field of ``found`` edited on the site since push last wrote it that push would write over, settled:
-        kept (written into sharing.yaml, the plan made again from it), written over, or the push stopped. The fields
+        kept (written into mime.toml's [record], the plan made again from it), written over, or the push stopped. The fields
         written over. A new version's draft whose metadata push has not written yet is the service's copy of the
         published record, held to the published marks (:data:`VERSION_RESETS` aside), and its description to the
         published card."""
@@ -444,21 +454,21 @@ class Drafting:
             self.say(f"! {label(name)} was edited on the site since push last wrote it:")
             if updates is not None:
                 for key, value in updates.items():
-                    on_site, in_file = apart(as_yaml(value), as_yaml(written_value(self.plan, key)))
+                    on_site, in_file = apart(as_toml(value), as_toml(written_value(self.plan, key)))
                     self.say(Said(f"    on the site:  {key}: {on_site}", EDIT_SITE))
-                    self.say(Said(f"    sharing.yaml: {key}: {in_file}", EDIT_OURS))
+                    self.say(Said(f"    mime.toml:    {key}: {in_file}", EDIT_OURS))
             else:
                 on_site, ours_now = apart(words_of(field_value(found, name)), words_of(field_value(body, name)))
                 self.say(Said(f"    on the site:  {on_site}", EDIT_SITE))
                 self.say(Said(f"    {_source(name)} writes: {ours_now}", EDIT_OURS))
             if updates is not None:
-                if self.choices.ask(Said("Write sharing.yaml's over the site's? (no keeps the site's, written into "
-                                         f"sharing.yaml's `{SHARING_KEYS[name]}`)", QUESTION_EDIT)):
+                if self.choices.ask(Said("Write mime.toml's over the site's? (no keeps the site's, written into "
+                                         f"[record] `{SHARING_KEYS[name]}`)", QUESTION_EDIT)):
                     over.append(name)
                 else:
                     kept_names.append(name)
                     keep.update(updates)
-            elif self.choices.ask(Said(f"sharing.yaml cannot hold it ({_source(name)} writes it): write over it? (no "
+            elif self.choices.ask(Said(f"[record] cannot hold it ({_source(name)} writes it): write over it? (no "
                                        f"stops the push)", QUESTION_EDIT)):
                 over.append(name)
             else:
@@ -467,7 +477,7 @@ class Drafting:
             raise site_edits(self.service, record, stop, found, body)
         if keep:
             self.plan = write_back(self.plan, keep, kept_names, found, card)
-            self.say(f"kept what was edited on the site, written into {sharing_path(self.plan.folder)}: "
+            self.say(f"kept what was edited on the site, written into {manifest_path(self.plan.folder)}: "
                      f"{', '.join(label(name) for name in kept_names)}")
         return over
 
@@ -693,7 +703,7 @@ class Drafting:
             self.say(f"{NOTICE_KEY} is the record's preview, shown on its page (a preview chosen there is kept)")
         if over:
             self.say(f"! wrote over what was edited on the site: {', '.join(label(name) for name in over)}")
-        self.detail(f"wrote the metadata of the draft {record}, from sharing.yaml and the folder")
+        self.detail(f"wrote the metadata of the draft {record}, from mime.toml and the folder")
         if errors:
             raise _errors_refusal(self.service, record, "its metadata", errors, self.plan.owner)
         return draft
@@ -934,7 +944,7 @@ def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False,
         published = state.published
         if unchanged(plan, published):
             if published.sent and payload_identity(marked(plan.payload, service, state)) != published.sent:
-                say("! sharing.yaml differs from the published record's metadata, which a later MIME updates "
+                say("! mime.toml's [record] differs from the published record's metadata, which a later MIME updates "
                     "(`mime push --metadata`): until then, edit it on the record's page")
             if service.production and plan.staged is not None and plan.lock != plan.staged:
                 say(f"! the folder's lock does not name the record yet: `mime push <folder> --to {service.name} "

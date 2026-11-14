@@ -15,7 +15,7 @@ is never this script's).
 For each folder (a copy of one you name, so nothing is written into it, or a demo it saves: ``toy``, the toy
 experiment under CC-BY-4.0; ``terms``, the toy with an MIT layer, a layer under a licence of its own that a declared
 permission lets travel, and one whose licence forbids redistribution, which travels as a reference), it writes
-``sharing.yaml`` where the folder has none (``--creator`` the creator and uploader), then:
+``mime.toml`` where the folder has none (``--creator`` the creator and uploader), then:
 
 1. ``mime push <folder> --to zenodo-sandbox --yes``: the plan, the draft, its DOI, its files;
 2. ``--status``: the draft as the sandbox holds it;
@@ -190,19 +190,20 @@ def _terms_demo(root: Path, uploader: str) -> Path:
     return root / "mime_sandbox_terms"
 
 
-def write_sharing(folder: Path, creator: str, orcid: str | None, title: str) -> None:
-    path = folder / push.SHARING_FILE
+def write_manifest(folder: Path, creator: str, orcid: str | None, title: str) -> None:
+    from mime.push._toml import value_text
+
+    path = folder / push.MANIFEST_FILE
     if path.exists():
         return
     push.init(folder)
     family, _, given = (part.strip() for part in creator.partition(","))
-    person = f"{{family: {json.dumps(family)}" + (f", given: {json.dumps(given)}" if given else "") + \
-        (f", orcid: {orcid}" if orcid else "") + "}"
+    person = {"family": family, **({"given": given} if given else {}), **({"orcid": orcid} if orcid else {})}
     text = path.read_text(encoding="utf-8")
-    text = re.sub(r"(?m)^title: .*$", f"title: {json.dumps(title)}", text)
-    text = text.replace("creators: []", f"creators: [{person}]")
-    text = text.replace("# uploader: {name: \"<family name>, <given name>\", institution: <your institution>}",
-                        f"uploader: {{name: {json.dumps(creator)}}}")
+    text = re.sub(r"(?m)^title = .*$", lambda _: f"title = {value_text(title)}", text)
+    text = text.replace("creators = []", f"creators = [{value_text(person)}]")
+    text = text.replace('# uploader = { name = "<family name>, <given name>", institution = "<your institution>" }',
+                        f"uploader = {value_text({'name': creator})}")
     path.write_text(text, encoding="utf-8")
 
 
@@ -391,8 +392,8 @@ def compared(arguments: argparse.Namespace, folders: list[Path], token: Token, l
     found: list[str] = []
     try:
         for folder in folders:
-            write_sharing(folder, arguments.creator, arguments.orcid,
-                          f"{folder.name} (MIME push sandbox lane, {datetime.date.today().isoformat()})")
+            write_manifest(folder, arguments.creator, arguments.orcid,
+                           f"{folder.name} (MIME push sandbox lane, {datetime.date.today().isoformat()})")
             with sandbox_side(arguments.dry_run, token) as (service, transport):
                 stand_ins.append(service)
                 real = Recording(transport)

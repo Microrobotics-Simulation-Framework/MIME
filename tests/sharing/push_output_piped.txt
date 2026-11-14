@@ -16,7 +16,7 @@ Pushing 'full_toy' to the fake of zenodo-sandbox: the draft 629525, updated
   up: full_toy.mimebundle <size>, NOTICE.txt <size>
   title: full_toy
   licences CC-BY-4.0; creators Carberry, Josiah; contributors none
-kept what was edited on the site, written into <tmp>/mime_sandbox_toy/sharing.yaml: metadata.creators, metadata.title
+kept what was edited on the site, written into <tmp>/mime_sandbox_toy/mime.toml: metadata.creators, metadata.title
 no file sent; the draft holds the 2 record files, each md5 verified
 Nothing is published: look at the draft, then `mime push <folder> --to zenodo-sandbox --publish` (a script confirms this draft, as it is now, with `--confirm 10.5072/zenodo.629525@<fingerprint>`).
 <fake>/uploads/629525
@@ -60,7 +60,7 @@ Plan for 'mime_sandbox_terms' on the fake of zenodo-sandbox: the draft 629527, u
     scene/scene.usda  <size>  CC-BY-4.0  yours; permitted, open
   Referenced, not uploaded (1):
     scene/layers/arm_visual.usda  <size>  licence LicenseRef-Robot-Maker-NonCommercial, not permitted, referenced, role presentation, from https://example.org/robot-maker/6a3ebb1/arm_visual.usda, sha256 d4c9c986c3f42942f829a76e9fab438be418f78e454c450b8fde5ae133d924a9
-  The experiment's licence: CC-BY-4.0, bound to its files (sharing.yaml states the same)
+  The experiment's licence: CC-BY-4.0, bound to its files (mime.toml states the same)
   Licences on the record: CC-BY-4.0, LicenseRef-Example-Maker-1.0, MIT (the NOTICE maps each file to its licence; Zenodo has no licence per file)
   Creators: Carberry, Josiah (ORCID 0000-0002-1825-0097)
   Contributors: Copyright (c) 2021 A. Driver (synthetic) (RightsHolder, from a file's terms); Example Maker Ltd (synthetic) (RightsHolder, from a file's terms)
@@ -82,7 +82,7 @@ Plan for 'mime_sandbox_terms' on the fake of zenodo-sandbox: the draft 629527, u
   Availability: Reproducible exactly, given 1 file the bundle does not carry, which `mime assets fetch <folder>` fetches and places: scene/layers/arm_visual.usda (may not be redistributed; licence LicenseRef-Robot-Maker-NonCommercial; presentation (results do not depend on it); available from https://example.org/robot-maker/6a3ebb1/arm_visual.usda). Not checked since the folder was saved: the availability check comes later.
 Next: on zenodo-sandbox, the draft is made or updated, its DOI reserved, and each record file that differs from the draft's is uploaded and its md5 checked; nothing is published until `mime push <folder> --to zenodo-sandbox --publish` asks you.
 NOTICE.txt is the record's preview, shown on its page (a preview chosen there is kept)
-wrote the metadata of the draft 629527, from sharing.yaml and the folder
+wrote the metadata of the draft 629527, from mime.toml and the folder
 wrote the draft's metadata again, as the plan shows it: <fake>/uploads/629527
 Publishing 'mime_sandbox_terms' on zenodo-sandbox as 10.5072/zenodo.629527 (version 1 of a new concept).
 This is the sandbox, a test service: its DOI does not resolve, and the sandbox can be cleaned at any time. On Zenodo itself this step cannot be undone, and the same words are asked there.
@@ -129,31 +129,40 @@ bundle: from <fake>/api/records/629525/files/full_toy.mimebundle/content
 Next: mime verify <tmp>/pulled/
 [exit 0]
 $ mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox --init
-kept <tmp>/mime_sandbox_toy/sharing.yaml, which exists: edit it, or delete it and run --init again
+kept <tmp>/mime_sandbox_toy/mime.toml, which exists: edit it, or delete it and run --init again
 licence: CC-BY-4.0, which the experiment declares
 next: name the creators in it, then `mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox`
 [exit 0]
+$ mime check <tmp>/mime_sandbox_toy
+<tmp>/mime_sandbox_toy/mime.toml, a bundle's manifest, checked under the exploratory profile (the experiment's): 0 findings.
+nothing to do: push would take the manifest as it stands (the folder's own files are `mime pack`'s to check).
+[exit 0]
 $ mime push --defaults
-no sharing defaults are saved; they would be in <config>/sharing-defaults.yaml
-`mime push <folder> --setup` asks, at its end, whether to save what it set as them; or write that file by hand, with sharing.yaml's keys creators, contributors, keywords, uploader and funding
+no defaults are saved; they would be in <config>/defaults.toml
+`mime defaults edit` asks for them, and `mime push <folder> --setup` asks at its end whether to save what it set; or write that file by hand: creators at the top, [sharing] contributors, keywords, uploader and funding, [licences] code and content, [scaffold] namespace
 [exit 0]
 $ mime push <tmp>/mime_sandbox_toy --setup
 [stderr]
 mime push is refused:
-[user] push.setup: --setup asks for sharing.yaml's fields one at a time, and there is no terminal to ask in; nothing was written
-    do: write sharing.yaml from what the folder knows and your defaults, `mime push <tmp>/mime_sandbox_toy --to <service> --init`, then edit it by hand
+[user] push.setup: --setup asks for mime.toml's fields one at a time, and there is no terminal to ask in; nothing was written
+    do: write mime.toml from what the folder knows and your defaults, `mime push <tmp>/mime_sandbox_toy --to <service> --init`, then edit it by hand
     see: https://microrobotica.org/mime/<release>/pages/errors/push.setup
 The full traceback is in <file>; --traceback shows it here.
 [exit 2]
 $ mime push --defaults
-your sharing defaults, in <config>/sharing-defaults.yaml (`--init` fills a new sharing.yaml from them, and `--setup` offers each for a new one):
-  creators: [{family: Carberry, given: Josiah, orcid: 0000-0002-1825-0097}]
-  keywords: [helices]
+your defaults, in <config>/defaults.toml (`mime push <folder> --init` and `--setup` fill a new mime.toml from them; `mime defaults edit` changes them):
+  creators = [{ family = "Carberry", given = "Josiah", orcid = "0000-0002-1825-0097" }]
+  [sharing] keywords = ["helices"]
+[exit 0]
+$ mime defaults
+your defaults, in <config>/defaults.toml (`mime push <folder> --init` and `--setup` fill a new mime.toml from them; `mime defaults edit` changes them):
+  creators = [{ family = "Carberry", given = "Josiah", orcid = "0000-0002-1825-0097" }]
+  [sharing] keywords = ["helices"]
 [exit 0]
 $ mime push <tmp>/mime_sandbox_new --to zenodo-sandbox --init
-wrote <tmp>/mime_sandbox_new/sharing.yaml
+wrote <tmp>/mime_sandbox_new/mime.toml
 licence: CC-BY-4.0, which the experiment declares
-filled from your sharing defaults (<config>/sharing-defaults.yaml): creators, keywords
+filled from your defaults (<config>/defaults.toml): creators, keywords
 next: check what your defaults filled in it, then `mime push <tmp>/mime_sandbox_new --to zenodo-sandbox`
 [exit 0]
 $ mime pull --from zenodo-sandbox 629525 --into <tmp>/kept_back

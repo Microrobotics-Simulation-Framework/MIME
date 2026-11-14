@@ -19,8 +19,9 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
+import tomllib
+
 import pytest
-import yaml
 from _platform_support import needs_pty
 from _terminal_support import stripped
 from homes import isolate
@@ -28,7 +29,7 @@ from push_cases import copy_of, saved_toy
 
 ORCID = "0000-0002-1825-0097"
 MISTYPED = "0000-0002-1825-0098"
-#: What is waited for on the screen, and what is typed then: a new sharing.yaml, every field but the creators, the
+#: What is waited for on the screen, and what is typed then: a new mime.toml, every field but the creators, the
 #: keywords and the uploader skipped, an ORCID iD mistyped first, the defaults saved.
 STEPS = (('use "full_toy"? [Y/n]', ""), ("description: a paragraph", ""), ('use "CC-BY-4.0"? [Y/n]', ""),
          ("creator 1, family name", "Carberry"), ("creator 1, given name", "Josiah"),
@@ -36,7 +37,7 @@ STEPS = (('use "full_toy"? [Y/n]', ""), ("description: a paragraph", ""), ('use 
          ("creator 1, affiliation", "Brown University"), ("creator 1, the affiliation's ROR", ""),
          ("creator 2, family name", ""), ("contributor 1, family name", ""),
          ("keywords, separated by commas", "microrobots, helices"), ("related work 1", ""),
-         ("uploader, your name", "Carberry, Josiah"), ("uploader, your institution", "Brown University"),
+         ("work to cite 1", ""), ("uploader, your name", "Carberry, Josiah"), ("uploader, your institution", "Brown University"),
          ("funder 1, its name", ""), ("conference, its name", ""), ("the record, public or restricted", ""),
          ("its files, public or restricted", ""), ("Save these as your defaults", "y"))
 
@@ -119,13 +120,13 @@ def test_setup_on_a_terminal_asks_each_field_there_and_writes_the_file_and_the_d
                               cwd=tmp_path, steps=STEPS)
     screen = stripped(raw)
     assert code == 0 and typed == len(STEPS), screen
-    held = yaml.safe_load((folder / "sharing.yaml").read_text(encoding="utf-8"))
+    held = tomllib.loads((folder / "mime.toml").read_text(encoding="utf-8"))["record"]
     assert held["creators"] == [{"family": "Carberry", "given": "Josiah", "orcid": ORCID,
                                  "affiliation": "Brown University"}]
     assert held["keywords"] == ["microrobots", "helices"] and held["title"] == "full_toy"
-    defaults = home / ".config" / "mime" / "sharing-defaults.yaml"
+    defaults = home / ".config" / "mime" / "defaults.toml"
     assert defaults.is_file() and ORCID in defaults.read_text(encoding="utf-8")
-    assert "a digit is mistyped" in screen and f"wrote {folder / 'sharing.yaml'}" in screen.replace("\n", "")
+    assert "a digit is mistyped" in screen and f"wrote {folder / 'mime.toml'}" in screen.replace("\n", "")
 
 
 @needs_pty
@@ -135,7 +136,7 @@ def test_control_with_no_terminal_to_answer_at_setup_is_refused_and_writes_nothi
                           env=environment(tmp_path / "child-home"), cwd=tmp_path, stdin=subprocess.DEVNULL,
                           capture_output=True, text=True, timeout=180, check=False)
     assert done.returncode == 2 and "push.setup" in done.stderr and "--init" in done.stderr
-    assert not (folder / "sharing.yaml").exists()
+    assert not (folder / "mime.toml").exists()
 
 
 @needs_pty
@@ -150,6 +151,6 @@ def test_setup_with_both_outputs_in_a_file_asks_on_the_terminal_and_puts_no_ques
     assert code == 0 and typed == len(STEPS), f"{screen}\n--- the file:\n{written}"
     assert 'use "full_toy"? [Y/n]' in screen and "Save these as your defaults" in screen
     assert "[Y/n]" not in written and "family name" not in written and "[y/N]" not in written, written
-    assert f"wrote {folder / 'sharing.yaml'}" in written.replace("\n", "")
-    held = yaml.safe_load((folder / "sharing.yaml").read_text(encoding="utf-8"))
+    assert f"wrote {folder / 'mime.toml'}" in written.replace("\n", "")
+    held = tomllib.loads((folder / "mime.toml").read_text(encoding="utf-8"))["record"]
     assert held["creators"][0]["orcid"] == ORCID

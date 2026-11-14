@@ -129,7 +129,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`env/`](env/) | the environment a run is made in: each variant's hashed pins and the base images, `mime env check`, what the lock records of what no pin holds, XLA's cache directory, and the Modal script's generator | new | dev1, with the Modal template |
 | [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references; derived assets' derivation records | new | dev1 |
 | [`credentials/`](credentials/) | the token `mime push` uses, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
-| [`push/`](push/) | `mime push`: `sharing.yaml`, the plan shown first, a draft record on Zenodo with its DOI reserved and its files uploaded and checked, resumable; nothing published yet | new | dev1 |
+| [`push/`](push/) | `mime push`: `mime.toml` (every shared folder's manifest), your defaults and `mime check`, the plan shown first, a draft record on Zenodo with its DOI reserved and its files uploaded and checked, resumable; nothing published yet | new | dev1 |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1 |
 | [`control/`](control/) | the controller declaration and its modes: the callback and the chunked run, the mode inside the compiled step | rewritten | dev1 |

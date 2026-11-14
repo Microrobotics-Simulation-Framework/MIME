@@ -1195,7 +1195,7 @@ class SaidDisplay:
         self._permission = []
 
     def _edit(self, site: str, ours: str) -> None:
-        """The two values of an edited field side by side, one under what the site holds and one under what ``sharing.yaml``
+        """The two values of an edited field side by side, one under what the site holds and one under what ``mime.toml``
         (or the file that writes the field) would write, the differing stretches marked."""
         from rich import box
         from rich.table import Table

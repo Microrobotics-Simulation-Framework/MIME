@@ -1,0 +1,50 @@
+{
+  "written": "2026-11-14, committed before any gate of P6 ran (the commit that adds this file is the timestamp): mime.toml for every kind of shared folder, its in-place TOML editor, defaults.toml and mime check",
+  "phase": "lane P, P6: manifests",
+  "labels": "the builder's predictions, from the editor's construction (a statement's extent is what tomllib reads as that key alone; every other line is copied, never rewritten) and from local runs of the touched tests while building (seen_before)",
+  "seen_before": [
+    "local runs while building (this laptop, CPU, Python 3.12): the property test passed 3 of 3 runs of 300 draws; each plant failed it 3 of 3 runs (MIME_PLANT_TOML_WRITER=comment, =neighbour). These are why the predictions below are N/N and 0/N: they are fits to what was seen, and the probe is their measurement"
+  ],
+  "operating_point": {
+    "dtype": ["not applicable: no simulation runs; text in, text out"],
+    "platform": "GitHub runner 4 vCPU (probe workflow), CPU, Python 3.12",
+    "sizes_and_parameters": "drawn TOML documents of 3 to about 40 lines: comments (full lines, line ends, inside arrays), blank lines, LF, CRLF and mixed endings, multi-line basic and literal strings, arrays of tables, inline tables, quoted and dotted keys, sub-tables, a last line with no line feed; [record] written as a table, an inline table, or absent",
+    "seeds_and_draws": "300 Hypothesis examples a run (no example count changed, no draw filtered), a fresh seed a run (detection_rate.py --hypothesis-seed); CI's profile: no database"
+  },
+  "gate_1_toml_edit_property": {
+    "claim": "an edit of one key of [record] either leaves every other key equal and every other line byte for byte (comments and line endings included, the key's first-line comment kept on its new first line), or refuses with manifest.write leaving the file byte for byte; and it refuses exactly where the key or [record] is written in a form an edit does not replace",
+    "kind": "acceptance",
+    "case": "tests/sharing/test_toml_edits.py::test_an_edit_keeps_every_other_key_comment_and_line_ending_or_refuses_leaving_the_file, through mime.push._setup.edit_in_place (the write --setup uses)",
+    "operating_point": "as above",
+    "prediction": {
+      "value": 0,
+      "band": [0, 0],
+      "unit": "failing runs of the clean arm, of 200",
+      "basis": "derived",
+      "why": "lines outside the edited statement are copied, and the statement's extent is tomllib's own reading, so no draw the generator makes can move another line; a form it cannot replace is refused before writing"
+    },
+    "metric": "the property's own oracle: the drawing's spans and tomllib, never the editor's reading",
+    "control": {
+      "plant": "comment: a writer that drops the first comment line it writes; neighbour: a writer that also rewrites another key of [record]",
+      "environment_variable": "MIME_PLANT_TOML_WRITER (comment | neighbour)",
+      "expected_rate": "200/200 for each plant",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "one line of the file: a single dropped comment line, a single changed key"
+    },
+    "if_wrong": "a clean failure is a draw the editor mishandles: fix the editor, or refuse the form and document it, never filter the draw; a missed plant is a generator that too seldom draws a comment or a second key: widen the generator",
+    "cannot_discriminate_if": "every draw had no comment line (the comment plant would change nothing) or a single key in [record] (the neighbour plant would change nothing): the rates say whether that happened"
+  },
+  "bits": {
+    "cases": "tests/sharing/test_push_manifest.py::test_the_folder_loads_and_packs_to_the_same_bytes_whichever_sharing_files_it_holds: a saved toy packed with no sharing file, with mime.toml, with sharing.yaml and with both",
+    "prediction": "every bundle byte-equal to the one packed before any file was added",
+    "controls": {
+      "repeat": "not applicable: the comparison is of one pack against another in one process",
+      "one_ulp": "test_control_any_other_extra_file_is_still_refused_as_a_stray: any other extra file is refused by pack, so the comparison can fail"
+    }
+  },
+  "costs": {
+    "prediction": "no time or memory claim is made"
+  },
+  "outcomes": null
+}

@@ -7,7 +7,7 @@ push settles it.
 
 **What is published is what was seen on the draft.** The title and the contributors are on the plan always. A script
 (``--confirm``, or no terminal) publishes what the draft holds, the publication date aside, or nothing
-(``push.metadata-changed``); in a terminal, each field ``sharing.yaml`` changed since the draft was written is shown by
+(``push.metadata-changed``); in a terminal, each field ``[record]`` changed since the draft was written is shown by
 field, with its new value, before the number is asked, and written to the draft. **Immediately before the request**, the
 draft is read again (the prompt can wait for hours, and the plan's own advice is to look at its page): its DOI, its
 metadata and its files must be what was shown, or nothing is published (``push.draft-moved``).
@@ -306,7 +306,7 @@ def _named(names: list[str], found: Json, body: Json) -> list[str]:
 
 def changed_since_draft(found: Json, body: Json, state: DraftState) -> list[str]:
     """The fields a publish would write otherwise than the draft ``found`` holds them, ``body`` being what it would
-    write: ``sharing.yaml`` changed since the draft was written. The publication date aside, the one write a publish
+    write: ``[record]`` changed since the draft was written. The publication date aside, the one write a publish
     makes of itself, and a field the service alone added."""
     if payload_identity(body) == state.sent:
         return []
@@ -453,7 +453,7 @@ def publish(folder: str | os.PathLike[str], service: Service, *, confirm: str | 
     if (changes or over) and (confirm is not None or typed is None):
         raise _refuse_changes(service, state.record, sorted({*changes, *over}), read[0], drafting.payload(state))
     if unasked := [name for name in changes if name not in over]:
-        say("! changed in sharing.yaml since the draft was written, and written to it now:")
+        say("! changed in mime.toml since the draft was written, and written to it now:")
         for line in _named(unasked, read[0], drafting.payload(state)):
             say(line)
     drafting.written_where_needed(read[0], over, dated=True)
@@ -544,7 +544,7 @@ def listed(files: dict[str, Json], plan: Plan) -> dict[str, Uploaded]:
 def _read_otherwise(record: Json, plan: Plan, state: DraftState) -> list[str]:
     """The fields of the record, as it reads now, that are not what ``state`` last held of it (by the service's own
     answers, so what it adds as it stores a draft is no difference). Its publication date and push's mark aside. Where the
-    plan is what was sent, a field the service only filled in is no difference either; where it is not (``sharing.yaml``
+    plan is what was sent, a field the service only filled in is no difference either; where it is not (``[record]``
     changed since), the plan says nothing of what was sent."""
     now = metadata_marks(record)
     names = sorted(name for name in set(now) | set(state.written) if now.get(name) != state.written.get(name)

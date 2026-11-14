@@ -345,7 +345,7 @@ class Client:
     default); ``sleep`` and ``now`` are the
     clock's, which a test replaces; ``watch`` is shown each answer (method, address, status, headers, body), never
     the request's headers, which hold the token. ``owner`` says who owns a metadata field a refusal names
-    (:func:`mime.push._owners.field_owner`; a push gives the one of its ``sharing.yaml``)."""
+    (:func:`mime.push._owners.field_owner`; a push gives the one of its ``[record]``)."""
 
     def __init__(self, service: Service, token: Token, transport: Transport | None = None, *,
                  pause: float | None = None, sleep: Callable[[float], None] = time.sleep,
@@ -792,7 +792,7 @@ def files_pending(error: object) -> bool:
 
 def owned_refusals(service: Service, head: str, errors: list[object], owner: Owner, said: str) -> list[Refusal]:
     """A refusal for each field the service names in ``errors``, by who owns it (``owner``): the author's in
-    sharing.yaml or the experiment, to correct there; MIME's, its defect, said as one. Errors that name no field, or
+    mime.toml's [record] or the experiment, to correct there; MIME's, its defect, said as one. Errors that name no field, or
     none at all, are MIME's: what the service refused is what MIME built."""
     found: list[Refusal] = []
     for each in errors:
@@ -800,10 +800,10 @@ def owned_refusals(service: Service, head: str, errors: list[object], owner: Own
         field_name = str(held.get("field", ""))
         words = Errors([each]).words()
         who = owner(field_name) if field_name else "mime"
-        if who == "sharing":
+        if who == "record":
             found.append(_refuse(
                 "push.rejected", RefusalClass.USER, f"{head}: {words}",
-                f"correct it in sharing.yaml, then `mime push <folder> --to {service.name}`, which writes the draft's "
+                f"correct it under [record] in mime.toml, then `mime push <folder> --to {service.name}`, which writes the draft's "
                 f"metadata again"))
         elif who == "experiment":
             found.append(_refuse(

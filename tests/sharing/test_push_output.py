@@ -4,10 +4,10 @@ a site edit kept, a push of a toy with three layers, its status, a publish refus
 refused for a stale ``--confirm``, a publish by the confirmation the last push printed, a pull and ``--init``), written
 from the commit before the display existed (``push_output_piped.txt``) and extended since by what the pushes and pulls
 added that no display draws (the NOTICE as ``NOTICE.txt`` and the record's preview, the ``--confirm`` every push prints
-and the stale confirmation's refusal; then, from the review of #112, the sharing defaults shown, ``--setup`` with no
+and the stale confirmation's refusal; then, from the review of #112, the person's defaults shown, ``--setup`` with no
 terminal, ``--init`` from the defaults, and the record restricted and pulled with no token, signed in and by its share
-link read from the environment, seven commands more); the session is run again here against the offline fake, and
-compared as it stands.
+link read from the environment, seven commands more; then, with ``mime.toml``, ``mime check`` of the toy and ``mime
+defaults``, two more); the session is run again here against the offline fake, and compared as it stands.
 
 Controls, each caught on every run:
 
@@ -98,8 +98,8 @@ def test_the_oracle_holds_what_it_is_the_oracle_of():
     for words in ("Pushing 'full_toy' to the fake of zenodo-sandbox", "  by reference, never uploaded: scene/layers/arm_visual.usda",
                   "! 1 permission declared", "Publishing 'full_toy' on zenodo-sandbox as 10.5072/zenodo.629525",
                   "push.permission-unconfirmed", "kept what was edited on the site", "Bundle 'full_toy' unpacked",
-                  "[exit 0]", "[exit 2]", "<fake>/uploads/629525", "your sharing defaults", "push.setup",
-                  "filled from your sharing defaults", "pull.restricted", "--signed-in", "$ mime pull --link env"):
+                  "[exit 0]", "[exit 2]", "<fake>/uploads/629525", "your defaults", "push.setup",
+                  "filled from your defaults", "$ mime check", "$ mime defaults\n", "pull.restricted", "--signed-in", "$ mime pull --link env"):
         assert words in text, words
     assert LINK_KEY not in text, "a share link's key is in no line"
     assert "\x1b" not in text
@@ -267,10 +267,10 @@ def test_a_folder_named_with_a_space_a_semicolon_and_a_substitution_is_one_word_
     assert code == 2 and shlex.split(command)[:3] == ["mime", "push", str(odd)]
     plain = tmp_path / "plain"
     shutil.copytree(odd, plain)
-    (plain / "sharing.yaml").unlink()
+    (plain / "mime.toml").unlink()
     code, _, err = run(["push", str(plain), "--to", "zenodo-sandbox"])
     assert code == 2 and f"`mime push {plain} --to <service> --init`" in err, "a name that needs no quoting is not changed"
-    (odd / "sharing.yaml").unlink()
+    (odd / "mime.toml").unlink()
     code, _, err = run(["push", str(odd), "--to", "zenodo-sandbox"])
     command = next(line for line in err.splitlines() if "--init" in line).split("`")[1]
     assert code == 2 and shlex.split(command)[:3] == ["mime", "push", str(odd)]
@@ -332,7 +332,7 @@ def test_every_word_the_pipe_gets_is_on_the_terminal_too_in_the_whole_session(bu
     with on_terminals(monkeypatch) as run:
         shown = session(work, fake, run)
     expected = ORACLE.read_text(encoding="utf-8")
-    assert len(blocks(shown)) == len(blocks(expected)) == 17
+    assert len(blocks(shown)) == len(blocks(expected)) == 19
     for drawn, piped in zip(blocks(shown), blocks(expected), strict=True):
         text = words(stripped(drawn))
         for line in piped.split("[stderr]")[0].splitlines():
@@ -413,7 +413,7 @@ def test_a_site_edit_on_a_terminal_is_two_values_side_by_side_and_the_answers_se
         code, out, _ = run(["push", toy, "--to", "zenodo-sandbox"])
     plain = stripped(out)
     row = next(line for line in plain.splitlines() if "A title corrected on the site" in line)
-    assert code == 0 and "title: full_toy" in row
+    assert code == 0 and 'title: "full_toy"' in row
     assert "! metadata.creators was edited on the site" in plain and "! wrote over what was edited on the site: " in plain
     assert fake.records["629525"].body["metadata"]["title"] == "full_toy"  # type: ignore[index]
 
@@ -569,9 +569,10 @@ def test_a_creators_name_in_cjk_with_a_combining_mark_and_a_reordering_escape_is
     (here U+202E, which would reverse what follows), and a double-width name does not break the plan's frame."""
     work = Path(shutil.copytree(built, tmp_path / "work"))
     toy = work / "mime_sandbox_toy"
-    sharing = toy / "sharing.yaml"
+    sharing = toy / "mime.toml"
     sharing.write_text(sharing.read_text(encoding="utf-8").replace(
-        "{family: Carberry, given: Josiah", '{family: "\u5c71\u7530\u202edcba", given: "\u592a\u90ce e\u0301"'), encoding="utf-8")
+        '{ family = "Carberry", given = "Josiah"', '{ family = "\u5c71\u7530\u202edcba", given = "\u592a\u90ce e\u0301"'),
+        encoding="utf-8")
     with on_terminals(monkeypatch) as run:
         code, out, _ = run(["push", str(toy), "--to", "zenodo-sandbox", "--full-plan"])
     plain = stripped(out)

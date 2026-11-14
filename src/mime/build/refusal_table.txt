@@ -140,6 +140,8 @@ credentials.in-git-tree       user
 credentials.service           user
 credentials.store             environment
 credentials.token             user
+defaults.file                 user internal
+defaults.no-terminal          user
 description.changed           user
 description.invalid           user
 description.missing           user
@@ -353,6 +355,12 @@ magnet.role                   user
 magnet.schema-incomplete      user
 magnet.schema-not-applied     user
 magnet.several                user
+manifest.both                 user
+manifest.key                  user
+manifest.kind                 user
+manifest.missing              user
+manifest.read                 user
+manifest.write                user
 material.accept               user
 material.accept-pending       user
 material.extrapolation        user
@@ -463,8 +471,6 @@ push.sandbox-location         user
 push.second-concept           user
 push.service                  user environment
 push.setup                    user
-push.sharing                  user
-push.sharing-missing          user
 push.state                    environment
 push.token                    environment
 push.token-scope              environment

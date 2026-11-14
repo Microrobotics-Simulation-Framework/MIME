@@ -2,8 +2,8 @@
 licence of its own (a declared permission lets it travel, and one whose licence forbids redistribution travels as a
 reference), pushed to the offline fake, edited on its "site", published (refused first with the DOI alone, which the push that
 kept the site's edit made stale, then with the fingerprint that push printed beside it) and pulled, command after
-command; then the person's sharing defaults shown, none and some, ``--setup`` with no terminal, ``--init`` from the
-defaults, and the record restricted on its site and pulled with no token, signed in, and by its share link read from
+command; then ``mime check`` of the toy, the person's defaults shown, none and some (by ``mime push --defaults`` and by
+``mime defaults``), ``--setup`` with no terminal, ``--init`` from the defaults, and the record restricted on its site and pulled with no token, signed in, and by its share link read from
 ``MIME_SHARE_LINK`` (whose key no line holds).
 
 ``build`` makes the two folders; ``session`` runs the same commands wherever it is asked to: in a test against a captured
@@ -20,7 +20,7 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from push_cases import write_sharing
+from push_cases import write_manifest
 from terms_cases import NO_REDISTRIBUTION, layered, same_reference_run, write_mesh
 from zenodo_records import FakeRecords
 
@@ -36,7 +36,7 @@ type Run = Callable[[list[str]], tuple[int, str, str]]
 
 
 def build(work: Path) -> None:
-    """In ``work``, the toy and the toy with the three layers, each with its ``sharing.yaml``."""
+    """In ``work``, the toy and the toy with the three layers, each with its ``mime.toml``."""
     from mime.testing.toys import full_toy
 
     toy = full_toy()
@@ -58,8 +58,8 @@ def build(work: Path) -> None:
         layered("mime_sandbox_terms", layers, licence="CC-BY-4.0", permissions=[permission]).build().save(
             work / "mime_sandbox_terms")
     for name in ("mime_sandbox_toy", "mime_sandbox_terms"):
-        write_sharing(work / name, creators=f"{{family: Carberry, given: Josiah, orcid: {ORCID}}}",
-                      extra=f'uploader: {{name: "{CREATOR}"}}\n')
+        write_manifest(work / name, creators=f'{{ family = "Carberry", given = "Josiah", orcid = "{ORCID}" }}',
+                       extra=f'uploader = {{ name = "{CREATOR}" }}\n')
 
 
 #: The share link's key the session pulls the restricted record with: no line of the transcript holds it.
@@ -72,7 +72,7 @@ _SAVED: list[Path] = []
 
 
 def saved_defaults() -> None:
-    """The person's sharing defaults saved: their name and ORCID iD as a creator, and a keyword."""
+    """The person's defaults saved: their name and ORCID iD as a creator, and a keyword."""
     from mime.push._defaults import defaults_path, write_defaults
 
     if not defaults_path().exists():
@@ -80,9 +80,9 @@ def saved_defaults() -> None:
     write_defaults({"creators": [{"family": "Carberry", "given": "Josiah", "orcid": ORCID}], "keywords": ["helices"]})
 
 
-def without_sharing(folder: Path, copy: Path) -> Path:
-    """``folder`` copied to ``copy`` without its ``sharing.yaml``."""
-    shutil.copytree(folder, copy, ignore=shutil.ignore_patterns("sharing.yaml"))
+def without_manifest(folder: Path, copy: Path) -> Path:
+    """``folder`` copied to ``copy`` without its ``mime.toml``."""
+    shutil.copytree(folder, copy, ignore=shutil.ignore_patterns("mime.toml"))
     return copy
 
 
@@ -127,10 +127,12 @@ def session(work: Path, fake: FakeRecords, run: Run) -> str:
                  next(each for each in reversed(printed) if each.startswith("10.5072/zenodo.629525@"))],
         lambda: ["pull", "--from", "zenodo-sandbox", "629525", "--into", str(work / "pulled")],
         lambda: ["push", str(toy), *to, "--init"],
+        lambda: ["check", str(toy)],
         lambda: ["push", "--defaults"],
         lambda: ["push", str(toy), "--setup"],
         lambda: (saved_defaults(), ["push", "--defaults"])[1],
-        lambda: ["push", str(without_sharing(toy, work / "mime_sandbox_new")), *to, "--init"],
+        lambda: ["defaults"],
+        lambda: ["push", str(without_manifest(toy, work / "mime_sandbox_new")), *to, "--init"],
         lambda: (restricted_on_site(fake, "629525"),
                  ["pull", "--from", "zenodo-sandbox", "629525", "--into", str(work / "kept_back")])[1],
         lambda: (shared_with_the_token(fake),
@@ -166,7 +168,7 @@ _PLACEHOLDERS = [(re.compile(r"@[0-9a-f]{8}\b"), "@<fingerprint>"),
                  (re.compile(r"mime-engine \S+"), "mime-engine <release>"),
                  (re.compile(r"/mime/\d[^/]*/"), "/mime/<release>/"),
                  (re.compile(r"The full traceback is in \S+;"), "The full traceback is in <file>;"),
-                 (re.compile(r"[^\s()]+/sharing-defaults\.yaml"), "<config>/sharing-defaults.yaml")]
+                 (re.compile(r"[^\s()]+/defaults\.toml"), "<config>/defaults.toml")]
 
 
 def normalised(text: str, work: Path, site: str) -> str:

@@ -1,4 +1,4 @@
-"""Who owns each field of a record's metadata: the author in ``sharing.yaml``, the author in the experiment (its terms,
+"""Who owns each field of a record's metadata: the author in ``mime.toml``'s ``[record]``, the author in the experiment (its terms,
 saved with it), or MIME, which builds the rest. A field the service refuses, in any answer (a 2xx that lists
 ``errors`` or a 4xx), is the author's to correct where they own it and MIME's defect where MIME does; a refusal that
 names no field is MIME's."""
@@ -8,15 +8,15 @@ from __future__ import annotations
 #: Each field below ``metadata`` by its name (the start of the path the service names, ``metadata.creators.0`` for the
 #: first creator); a field not listed, or outside ``metadata`` and ``custom_fields``, is MIME's.
 FIELD_OWNERS: dict[str, str] = {
-    "title": "sharing", "creators": "sharing", "contributors": "sharing", "subjects": "sharing",
-    "related_identifiers": "sharing", "funding": "sharing", "dates": "sharing", "languages": "sharing",
-    "references": "sharing", "additional_titles": "sharing", "additional_descriptions": "sharing",
+    "title": "record", "creators": "record", "contributors": "record", "subjects": "record",
+    "related_identifiers": "record", "funding": "record", "dates": "record", "languages": "record",
+    "references": "record", "additional_titles": "record", "additional_descriptions": "record",
     "rights": "experiment", "resource_type": "mime", "publication_date": "mime", "publisher": "mime",
     "description": "mime", "identifiers": "mime", "version": "mime"}
 #: Where custom fields sit in a record (Zenodo's meeting, journal, imprint and thesis): each is the author's, from
-#: sharing.yaml's ``conference`` or ``fields``.
+#: ``[record]``'s ``conference`` or ``fields``.
 CUSTOM_FIELDS = "custom_fields"
-#: A record's access, the author's, from sharing.yaml's ``access``.
+#: A record's access, the author's, from ``[record]``'s ``access``.
 ACCESS_FIELD = "access"
 #: MIME's own related identifiers, first in every record: the release it requires and that compiled it.
 OWN_RELATED = 2
@@ -25,12 +25,12 @@ OWN_SUBJECTS = 1
 
 
 def field_owner(field: str, contributors: int = 0) -> str:
-    """``sharing``, ``experiment`` or ``mime``: who owns the metadata field at ``field`` (``metadata.creators.0``),
-    for a record whose ``sharing.yaml`` names ``contributors`` contributors. The contributors after those are the
+    """``record``, ``experiment`` or ``mime``: who owns the metadata field at ``field`` (``metadata.creators.0``),
+    for a record whose ``[record]`` names ``contributors`` contributors. The contributors after those are the
     rights holders MIME adds from the files' terms, and MIME's, as its own keyword and related identifiers are."""
     parts = field.split(".")
     if len(parts) >= 2 and parts[0] == CUSTOM_FIELDS or parts[0] == ACCESS_FIELD:
-        return "sharing"
+        return "record"
     if len(parts) < 2 or parts[0] != "metadata":
         return "mime"
     index = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
