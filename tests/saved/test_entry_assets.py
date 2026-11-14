@@ -14,6 +14,7 @@ Bits: no simulation output depends on the declaration, and an experiment whose e
 import json
 import shutil
 import zipfile
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -29,13 +30,15 @@ MARKER, NC = assets.reference("labx_marker.usda"), assets.reference("labx_finish
 
 
 def rig(*, gantry: object | None = None, field: object | None = None) -> Experiment:
-    """The case's rig, its gantry the lab's plain one unless given, so that the provider is the only entry declaring."""
-    return entry_assets_rig(gantry if gantry is not None else lab.Gantry(), field)
+    """The case's rig, its gantry the lab's plain one unless given (a class), so that the provider is the only entry
+    declaring."""
+    return entry_assets_rig(gantry if gantry is not None else lab.Gantry, field)
 
 
 def unmarked_field():
     from mime.fields import UniformRotating
-    return UniformRotating(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))
+    from mime.scene import X
+    return UniformRotating(rotation_axis=X, initial_direction=(0.0, 1.0, 0.0))
 
 
 def saved(tmp_path: Path, experiment: Experiment) -> Path:
@@ -53,7 +56,7 @@ def names(folder: Path) -> list[object]:
 
 
 def test_a_dynamics_entry_declaring_a_record_has_it_in_the_lock(tmp_path: Path):
-    folder = saved(tmp_path, rig(gantry=lab.FinishedGantry(), field=unmarked_field()))
+    folder = saved(tmp_path, rig(gantry=lab.FinishedGantry, field=unmarked_field()))
     assert lock_assets(folder) == [MARKER.to_record()]
 
 
@@ -63,7 +66,7 @@ def test_a_field_provider_declaring_a_record_has_it_in_the_lock(tmp_path: Path):
 
 
 def test_one_record_declared_by_two_entries_is_listed_once(tmp_path: Path):
-    folder = saved(tmp_path, rig(gantry=lab.FinishedGantry()))
+    folder = saved(tmp_path, rig(gantry=lab.FinishedGantry))
     assert names(folder) == ["labx_marker.usda"]
 
 
@@ -75,7 +78,7 @@ def test_an_experiment_whose_entries_declare_none_writes_no_key(tmp_path: Path):
 def test_the_bundles_notice_names_an_asset_only_an_entry_declares(tmp_path: Path):
     """#289's NOTICE reads the lock's assets: the record a dynamics declares is named, with its licence, and the bundle
     does not carry it."""
-    folder = saved(tmp_path, rig(gantry=lab.FinishedGantry(), field=unmarked_field()))
+    folder = saved(tmp_path, rig(gantry=lab.FinishedGantry, field=unmarked_field()))
     with zipfile.ZipFile(pack(folder, out=tmp_path / "rig.mimebundle")) as archive:
         held = archive.read("NOTICE").decode()
     assert held == notice(folder)
@@ -87,8 +90,9 @@ def test_an_entry_choosing_its_record_by_a_setting_puts_only_the_chosen_one_in_t
     """The control for ``assets_read``: the class variable names the open file, so a collection that read it would
     record the open file for the non-commercial finish too, and the non-commercial licence would be named by a run on
     the open one if both were declared."""
-    open_folder = saved(tmp_path / "open", rig(gantry=lab.FinishedGantry(finish="marker"), field=unmarked_field()))
-    nc_folder = saved(tmp_path / "nc", rig(gantry=lab.FinishedGantry(finish="nc"), field=unmarked_field()))
+    open_folder = saved(tmp_path / "open", rig(gantry=partial(lab.FinishedGantry, finish="marker"),
+                                                          field=unmarked_field()))
+    nc_folder = saved(tmp_path / "nc", rig(gantry=partial(lab.FinishedGantry, finish="nc"), field=unmarked_field()))
     assert names(open_folder) == ["labx_marker.usda"] and names(nc_folder) == ["labx_finish_nc.usda"]
     assert lab.FinishedGantry.assets == ("labx_marker.usda",), "the class variable is the default, not the choice"
     wanted = {open_folder: ("labx_marker.usda", "CC-BY-4.0", "labx_finish_nc.usda", "CC-BY-NC-4.0"),

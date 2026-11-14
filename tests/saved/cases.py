@@ -308,29 +308,17 @@ def nudged_toy() -> Experiment:
 
 
 def entry_assets_rig(gantry: Any = None, field: Any = None) -> Experiment:
-    """A stage with a gantry (a chain segment, a dynamics) and a rotating field turning a body (a provider is built when a
-    law reads its field), by default the lab fixture's ``labx.finished_gantry`` and ``labx.marked_rotating``: entries
-    that declare the records they read (``Entry.assets``, ``assets_read``), which its lock names."""
-    from mime.dynamics import RigidInertial
+    """The lab fixture's gantry carrying a magnet over a body (``gantry_magnet``), and a rotating field beside it turning
+    the body: by default the fixture's ``labx.finished_gantry`` and ``labx.marked_rotating``, entries that declare the
+    records they read (``Entry.assets``, ``assets_read``), which its lock names. ``gantry`` is the segment's class."""
     from mime.interactions import Magnetic
-    from mime.scene import Scene, Z
-    from mime.units import A_m2, kg, m_per_s2, mT
+    from mime.units import mT
 
     lab = importlib.import_module("mime_lab_fixture")
-    gantry = gantry if gantry is not None else lab.FinishedGantry()
-    field = field if field is not None else lab.MarkedRotating(rotation_axis=(0.0, 0.0, 1.0),
-                                                              initial_direction=(1.0, 0.0, 0.0))
-    exp = Experiment("entry_assets_rig", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
-    exp.add_body(Body("probe", dynamics=RigidInertial(), initial=State(
-        position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
-    exp.declare("probe.mass", kg(1e-4), reason="a body of the order of a millimetre robot")
-    exp.declare("probe.inertia", kg_m2((1e-10, 1e-10, 1e-10)), reason="a body of the order of a millimetre robot")
-    exp.declare("probe.magnetic_moment", A_m2((1e-3, 0.0, 0.0)), reason="a body of the order of a millimetre robot")
-    exp.add_apparatus(Apparatus("stage", chain={"gantry": gantry}, commands={"gantry.position": m(0.0)}))
-    exp.add_apparatus(Apparatus("field", fields={"magnetic": field},
-                                commands={"frequency": Hz(1.0), "amplitude": mT(1.0)}))
-    exp.attach(Magnetic.Torque(), body="probe", field="field.magnetic")
+    exp = gantry_magnet("entry_assets_rig", gantry=gantry if gantry is not None else lab.FinishedGantry)
+    exp.add_apparatus(Apparatus("field", fields={"magnetic": field if field is not None else lab.MarkedRotating(
+        rotation_axis=X, initial_direction=(0.0, 1.0, 0.0))}, commands={"frequency": Hz(1.0), "amplitude": mT(1.0)}))
+    exp.attach(Magnetic.Torque(), body="umr", field="field.magnetic")
     return exp
 
 

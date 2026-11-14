@@ -102,11 +102,12 @@ def kinematic_rpm(name: str = "kinematic_rpm", *, magnetic=(Magnetic.Torque, Mag
     return exp
 
 
-def gantry_magnet(name: str = "gantry_magnet", *, magnet_at=None) -> Experiment:
+def gantry_magnet(name: str = "gantry_magnet", *, magnet_at=None, gantry=None) -> Experiment:
     """The lab fixture's gantry, a segment with no URDF, 10 cm above the origin, its carriage at 2 cm along x with a
     magnet on it: the field's force on a body below, its magnet half a millimetre off its centre of mass, so the force
-    turns it too. The mount and everything downstream as on MIME's arm."""
-    gantry = importlib.import_module("mime_lab_fixture").Gantry
+    turns it too. The mount and everything downstream as on MIME's arm. ``gantry`` is the segment's class, the fixture's
+    ``Gantry`` unless given."""
+    gantry = gantry if gantry is not None else importlib.import_module("mime_lab_fixture").Gantry
     exp = experiment(name)
     exp.add_apparatus(Apparatus(
         "stage", chain={"gantry": gantry(travel=X, at=m((0.0, 0.0, 0.1)))},
