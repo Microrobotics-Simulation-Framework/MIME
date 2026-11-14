@@ -1,8 +1,10 @@
-"""A test-only controller that calls ``mime.control.exact_allocation`` inside the compiled step, and the experiment it
-runs in. Registered under the ``oracle`` namespace in this process only (the shipped registry holds no controller that
-calls the law), so that the switch scan and the solve walk reach the law's sites through one configuration.
+"""Two test-only controllers that call ``mime.control.exact_allocation`` inside the compiled step, and the experiments
+they run in. Registered under the ``oracle`` namespace in this process only (the shipped registry holds no controller
+that calls the law), so that the switch scan and the solve walk reach the law's sites: :class:`AllocatingPD` its QR
+form (as many rows as commands), :class:`AllocatingField` its least-norm form too (more commands than rows), each
+through one configuration.
 
-The experiment is camera spike R2's STATE arm without the camera: a 1 mm sphere of 4e-6 kg with a fixed moment of
+The first experiment is camera spike R2's STATE arm without the camera: a 1 mm sphere of 4e-6 kg with a fixed moment of
 2.8e-4 A m^2 at the centre of Navion_2's declared region, the force alone (no torque, so that the moment holds its
 direction), no gravity, no medium, dt = 1 ms. The controller reads the sphere's true pose every 5 ms, one step late,
 and pulls it towards a point 3 mm off its start by a PD force, allocated to the three coils within 25 A at the sphere's
@@ -35,17 +37,19 @@ from mime.vocabulary import register_namespace
 jnp: Any = jax.numpy
 register_namespace("oracle", "0.0.1")
 
-#: The owner the controller declares and passes to the law (a test module's owner carries its module's name).
+#: The owners the controllers declare and pass to the law (a test module's owner carries its module's name).
 OWNER = "allocation_cases.active_set"
+FIELD_OWNER = "allocation_cases.field_active_set"
 MOMENT = (0.0, 0.0, 2.8e-4)
 MASS = 4e-6
 LIMIT = 25.0
 FORCE_SCALE = 1e-3
 OFFSET = (3e-3, -1.5e-3, 0.0)
+FIELD, FIELD_SCALE, FREQUENCY = 1e-2, 1e-2, 2.0
 
 
-def _start() -> tuple[float, float, float]:
-    region = calibration_of(asset("navion_2")).region
+def _start(system: str = "navion_2") -> tuple[float, float, float]:
+    region = calibration_of(asset(system)).region
     centre = region.mean(axis=1)
     return (float(centre[0]), float(centre[1]), float(centre[2]))
 
@@ -106,6 +110,64 @@ def allocating_sphere(name: str = "allocating_sphere", *, rate=ms(5), latency=ms
     return exp
 
 
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class AllocatingField(Controller):
+    """A field of ``strength`` (T) turning at ``frequency`` (Hz) in the x-y plane at the body's point, allocated to
+    CardioMag's eight coils within ``limit`` (A) by the exact allocation: three rows against eight commands, so its
+    least-norm form and its tie to the least current run in the compiled step. Unregularised with more commands than
+    rows, the minimiser can jump between faces: its order is -1."""
+
+    name = "oracle.allocating_field"
+    version = "0.1.0"
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord(switches=(allocation_switch(FIELD_OWNER, {"currents": -1}),))
+    builds = {"": ()}
+    reads = {"pose": Signal("m; 1", (7,))}
+    writes = {"currents": Signal("A", (8,))}
+    strength: float = FIELD
+    frequency: float = FREQUENCY
+    limit: float = LIMIT
+
+    def law(self, ctx: Any) -> ControlLaw:
+        held = calibration_of(asset("cardiomag"))
+        dtype = jnp.zeros(()).dtype
+        positions = jnp.asarray(held.positions, dtype=dtype)
+        vectors = jnp.asarray(np.asarray(held.coefficients)[..., None] * np.asarray(held.directions), dtype=dtype)
+        strength, frequency, limit = ctx.scalar("strength"), ctx.scalar("frequency"), ctx.scalar("limit")
+        period = ctx.timestep
+
+        def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            t = state["t"]
+            fields, _ = placed_unit_fields(reads["pose"][:3], jnp.zeros(3, dtype=dtype),
+                                           jnp.asarray((1.0, 0.0, 0.0, 0.0), dtype=dtype), positions, vectors)
+            turn = 2 * np.pi * frequency * t
+            wanted = strength * jnp.stack([jnp.cos(turn), jnp.sin(turn), 0.0 * t])
+            found = exact_allocation(fields, wanted, lower=-limit, upper=limit,
+                                     scales=jnp.full((3,), FIELD_SCALE, dtype=dtype), owner=FIELD_OWNER)
+            return {"t": t + period}, {"currents": found.commands}
+
+        return ControlLaw(state={"t": jnp.zeros((), dtype=dtype)}, held={"currents": jnp.zeros((8,), dtype=dtype)},
+                          step=step)
+
+
+def allocating_field(name: str = "allocating_field", *, rate=ms(5), latency=ms(1)) -> Experiment:
+    """The sphere at the centre of CardioMag's declared region, turned by the field :class:`AllocatingField` writes
+    inside the compiled step."""
+    exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    exp.add_apparatus(Apparatus("coils", fields={"magnetic": CalibratedMultipole(calibration=asset("cardiomag"))}))
+    exp.add_body(Body("sphere", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=m(1e-3)))},
+                      initial=State(position=m(_start("cardiomag")), orientation=(1.0, 0.0, 0.0, 0.0),
+                                    velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    for path, value in (("sphere.mass", kg(MASS)), ("sphere.inertia", kg_m2((1.6e-12,) * 3)),
+                        ("sphere.magnetic_moment", A_m2(MOMENT)), ("sphere.magnet_centre", m((0.0, 0.0, 0.0)))):
+        exp.declare(path, value, reason="a millimetre sphere with a magnet at its centre")
+    exp.attach(Magnetic.Torque(), body="sphere", field="coils.magnetic")
+    exp.set_controller(AllocatingField(), reads={"pose": "sphere.pose"}, writes={"currents": "coils.currents"},
+                       mode="graph", rate=rate, latency=latency)
+    return exp
+
+
 @dataclass(frozen=True)
 class GuardPoint:
     """An allocation at which some of the law's domain guards have their conditions false: its rows, wanted values
@@ -150,5 +212,5 @@ def guard_point_derivative(point: GuardPoint) -> Any:
     return jax.jacfwd(lambda q: _law_at(rows, q))(p)
 
 
-__all__ = ["GUARD_POINTS", "LIMIT", "OWNER", "AllocatingPD", "GuardPoint", "allocating_sphere", "guard_point_derivative",
-           "guard_point_value"]
+__all__ = ["FIELD_OWNER", "GUARD_POINTS", "LIMIT", "OWNER", "AllocatingField", "AllocatingPD", "GuardPoint",
+           "allocating_field", "allocating_sphere", "guard_point_derivative", "guard_point_value"]

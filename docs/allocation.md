@@ -70,9 +70,14 @@ holds its result between its ticks), so the cost per base step is the one to rea
 
 Within an active set the commands are the selected set's linear solve, so the derivative is exact there. Where a command
 reaches a bound or leaves it the derivative jumps (the commands stay continuous where the minimiser is unique), and it
-is never NaN. The law takes its switch's owner from its caller, which declares it in its gradient record with
-`allocation_switch(owner, orders)`: a kink where the problem is regularised or its rows fix the commands, a jump where
-they do not (the least-effort minimiser can move between faces).
+is never NaN.
+
+**A caller declares its own owner.** `owner` is required and has no default: the law's switches belong to the entry
+that calls it, so a controller names an owner of its own (`"my_controller.active_set"`), passes that string to
+`exact_allocation`, and declares the same owner in its gradient record with `allocation_switch(owner, orders)`. The
+orders are a kink where the problem is regularised or its rows fix the commands, a jump where they do not (the
+least-effort minimiser can move between faces). MIME's switch scan counts an owner as declared only when an entry that
+MIME ships declares it; `allocate()` passes its own, `allocation.active_set`.
 
 ## Float32
 
