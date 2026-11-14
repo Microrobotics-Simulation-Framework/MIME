@@ -54,5 +54,22 @@
     },
     "cannot_discriminate_if": "no drawn problem of the plant's form (stop_q: tall or regularised; stop_inverse: wide) in a run of 60 examples over five shapes"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-14, after the runs below; the predictions above are unchanged",
+    "runs": {
+      "first": "43604894588 (probe/ap2-fix1 at a53fe463)",
+      "second": "43611909879 (probe/ap2-fix2 at 0bee490d, the repaired test)"
+    },
+    "gate_8_column_spread": {
+      "hit": true,
+      "note": "measured locally (8 seeds, one run each) and run in CI by the PR's default lane; the test holds the edge at 1e9 (float64) and 1e4 (float32) and one decade and a half past it the objective is far above"
+    },
+    "gate_9_derivative_in_every_input": {
+      "hit": "not at the first run; yes at the second",
+      "first_run": "43604894588: float64 stop_q 30/30 and stop_inverse 30/30, float32 stop_q 4/30 and stop_inverse 1/30; clean flagged in every arm (seeds 7, 17, 28, and 18 in float32). Three causes, none the law's: the float32 test's float64 reference ran under the plant too, so the two agreed (the control's own premise); the reverse-against-forward and central-difference tolerances were eps times the products' size, below the rounding of a pseudo-inverse's derivative, which carries the selected set's conditioning (CLAUDE.md cause 2, the wrong scale; seed 7, K=5 R=3 wide, the miss 1.2 times the line); a float32 draw whose active set differs from float64's has nothing to compare (cause 5, the test's premise; 1 of 900 draws)",
+      "second_run": "43611909879: stop_q 30/30 and stop_inverse 30/30 in float64 and in float32 (15/15 in each of eight arms, lower bound 0.905 per plant and dtype), clean 0/15 in all eight arms (0/60 per plant, 0/30 per plant and dtype)",
+      "local_after_repair": "900 draws a dtype: float64 0 failing at the line, 2 at an eighth of it; float32 only the near-tie draw, now rejected; clean seeds 7, 17, 18, 28 pass in both dtypes",
+      "memory": "the arms' memory checks are red (pytest workers against the 1.2 GiB single-case bound), as in the first probe: not calibration evidence"
+    }
+  }
 }
