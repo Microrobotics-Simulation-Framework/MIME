@@ -56,7 +56,7 @@ from mime.saved._based_on import based_on_words
 from mime.saved._folder import named_files, nondeterministic_gpu, read_folder
 from mime.saved._scales import RESOLUTION_FACTOR, SCALED_FROM
 from mime.saved._schema import BlockUseDoc, ExperimentDocument, Lock, PermissionDoc, PublicationRecord
-from mime.saved._terms import FileTerms, FolderTerms, LockAsset, folder_terms
+from mime.saved._terms import FileTerms, FolderTerms, LockAsset, custom_licences, folder_terms
 from mime.saved._versions import DOCUMENT_SCHEMAS, TERMS_ADDED
 from mime.terms import (
     CUSTOM_PREFIX,
@@ -68,6 +68,7 @@ from mime.terms import (
     CustomLicence,
     canonical,
     ids_of,
+    licence_verdict,
 )
 
 if TYPE_CHECKING:
@@ -386,6 +387,20 @@ def _block_words(name: str, use: BlockUseDoc) -> str:
     return f"the use {plain(name)!r}: block {plain(use['id'])} {plain(use['version'])} ({doi}), licensed {plain(use['licence'])}"
 
 
+def no_derivatives_words(name: str, use: BlockUseDoc, document: ExperimentDocument) -> str | None:
+    """What the NOTICE and the card say where an experiment overrides values of a block whose licence carries a
+    no-derivatives condition: the block, its condition and the names overridden, and that MIME judges nothing of it.
+    ``None`` where the block's licence has no such condition or nothing is overridden."""
+    overridden = use["overrides"]
+    held = licence_verdict(use["licence"], custom_licences(document))
+    if not overridden or NO_DERIVATIVES not in held.conditions:
+        return None
+    return (f"The block {plain(use['id'])} {plain(use['version'])} (the use {plain(name)!r}) is licensed "
+            f"{plain(use['licence'])}, which carries a no-derivatives condition, and this experiment declares over what "
+            f"it provides: {', '.join(plain(each) for each in overridden)}. MIME does not judge whether that makes "
+            f"this experiment a derivative of the block: that is for its author and for anyone who reuses it.")
+
+
 def block_lines(document: ExperimentDocument) -> list[str]:
     """The NOTICE's lines on the blocks the experiment uses: each use, its licence, and what its tier means for the
     files that hold its content; none where it uses none."""
@@ -404,16 +419,23 @@ def block_lines(document: ExperimentDocument) -> list[str]:
         else:
             lines.append(f"- {_block_words(name, use)}, used by reference: its content is in its container, never in "
                          f"this folder. Content {plain(use['content'])}.")
+        if (said := no_derivatives_words(name, use, document)) is not None:
+            lines.append(f"  {said}")
     return lines
 
 
 def block_card_lines(document: ExperimentDocument) -> list[str]:
-    """The card's line for each block the experiment uses."""
-    return [f"- **Uses block {plain(use['id'])} {plain(use['version'])}** ("
-            + (f"DOI {plain(use['doi'])}; " if "doi" in use else "")
-            + (f"copied in under {plain(use['licence'])}, which joins the experiment's own licence)" if use["tier"] == "copied"
-               else f"used by reference, under {plain(use['licence'])})")
-            for _, use in sorted(document.get("blocks", {}).items())]
+    """The card's line for each block the experiment uses, and its no-derivatives words where it overrides one whose
+    licence has that condition."""
+    lines: list[str] = []
+    for name, use in sorted(document.get("blocks", {}).items()):
+        lines.append(f"- **Uses block {plain(use['id'])} {plain(use['version'])}** ("
+                     + (f"DOI {plain(use['doi'])}; " if "doi" in use else "")
+                     + (f"copied in under {plain(use['licence'])}, which joins the experiment's own licence)"
+                        if use["tier"] == "copied" else f"used by reference, under {plain(use['licence'])})"))
+        if (said := no_derivatives_words(name, use, document)) is not None:
+            lines.append(f"  - {said}")
+    return lines
 
 
 def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -> str:
@@ -660,7 +682,7 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
 
 
 __all__ = ["CONDITION_WORDS", "CREDIT_HOME", "LICENCE_TEXTS", "NO_EVIDENCE", "NO_LICENCE", "CardFacts", "availability",
-           "block_card_lines", "block_lines",
+           "block_card_lines", "block_lines", "no_derivatives_words",
            "by_request_warnings", "card_facts", "card_of", "card_text",
            "file_lines",
            "judged_folder", "notice", "notice_text", "own_licence_text", "permission_words"]

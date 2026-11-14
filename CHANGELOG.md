@@ -39,14 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   writes a fragment from a saved experiment, the things named becoming its sockets. The lab fixture holds one,
   `lab_fixture/blocks/nudged_probe/`, and the user guide a page, "Sharing a part of an experiment: blocks". A socket on a
   frame of the user's is refused (`block.socket`) until one apparatus can be mounted on another's (the apparatus lane's
-  AP6). A document using no block is written, hashed and loaded as before, and no simulation output moves.
+  AP6). A socket never heads a key of `declared`, `ranges` or `sources` (`block.socket`), and a key that is not text is
+  `block.fragment`. Where the experiment overrides values of a block under a no-derivatives licence, the NOTICE and the
+  card name the block, the condition and the names, and judge nothing. A document using no block is written, hashed and loaded as before, and no simulation output moves.
 
-  Three codes change meaning:
+  Two codes change meaning:
   - `manifest.kind` no longer reserves a block's tables: a block folder's `mime.toml` holds them, and any other folder's
     is refused naming what it is.
   - `load.referenced-block` also refuses using a block its licence makes referenced: this release does not yet read a
     block's container.
-  - `container.kind` still refuses a `.mimeblock`.
 
 - **Ports as data on an apparatus, and the stages the build inserts for them** (the apparatus lane's AP1a, dev2).
   `Apparatus(ports={...})` declares an apparatus's links:

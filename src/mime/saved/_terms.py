@@ -391,9 +391,9 @@ def _record_licence(data: bytes) -> str:
 
 def copied_blocks(document: ExperimentDocument) -> list[tuple[str, str]]:
     """Each block the document uses as copied (its declarations are in the document), as a verdict names it (``block
-    labx.demo_probe 1.2.0``), with its licence."""
-    return [(f"block {use['id']} {use['version']}", use["licence"])
-            for use in document.get("blocks", {}).values() if use["tier"] == "copied"]
+    labx.demo_probe 1.2.0``), with its licence, each once however many uses of it there are."""
+    return list(dict.fromkeys((f"block {use['id']} {use['version']}", use["licence"])
+                              for use in document.get("blocks", {}).values() if use["tier"] == "copied"))
 
 
 def own_verdict(licence: str | None, custom: Mapping[str, CustomLicence],
