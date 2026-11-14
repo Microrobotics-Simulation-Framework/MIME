@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The camera's sampled route: any kind with a cheap sign function** (`mime.sensing`, route 2; `Geometry.sign_function`,
+  `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
+  cheap sign function is imaged without a closed form: each ray's line through its enclosing ball is sampled (32 samples by
+  default, more for a slender body so that they lie at most half its smallest length apart), the first-order distance
+  marched on itself in one reduction, and the least sample and the least other local minimum held, refined by a parabola,
+  as two pieces of route 1's pixel integration. Where both cross a pixel (two parts of the outline meeting, as FL-9's lobes
+  in concave notches and a coil's crossing turns), route 1's corner sub-samples take it: the first step located the 0.09 to
+  0.25 per-pixel error off the screw's crease there (15 of 15 pixels, the truth at four times its samples moving by at most
+  0.0066), and the sub-samples took it to 0.010 to 0.020. The helix and the ellipsoid now appear in the in-loop camera (its
+  window sized at the build, as a disc's is) and in `render`; the sphere, capsule, cylinder, screw and helix declare sign
+  functions (`mime.scene`). The route is chosen by capability: a creased kind (a solid whose body is the intersection of two
+  or more regions: the cylinder, the box, the screw) takes route 2 only with its crease measure, so the box and the screw are
+  refused (`camera.crease-unmeasured`) until the screw's measure comes; a kind with neither a closed form nor a sign function
+  is refused (`camera.no-route`); `camera.no-closed-form` now refuses only `route="closed form"` on a kind without one, and
+  `route="sampled"` is a route. The build report gives each sampled body's structural cost estimate (its window's rays,
+  sub-frames, evaluations a ray and one evaluation's flops-equivalents from XLA's cost analysis: a count, never a time) and
+  warns above 1e9 flops-equivalents a frame, naming the offline renderer. New switches: `camera.sampled.least`, `.basin`,
+  `.second`, `.branch`, and the helix's `helix.end.low`, `.high`. `mime.testing.sign_function_problems` holds a kind's sign
+  function to its regions' sign at drawn points and its gradient's length. The saved form gains nothing. No compiled
+  program changes for a scene route 1 already images.
+
 - **The camera reads the composed stage: scenery and inherited display primvars** (`mime.scene.Composition.scenery`,
   `SceneryMesh`, `SceneryGprim`, `read_display`, `Roster.scenery`; `mime.observations.Camera`, dev2, camera PR 4). Every
   `Gprim` of a referenced asset that no thing owns (below no bound prim, not a kind's derived prim) is scenery: a `Mesh` is

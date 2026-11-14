@@ -118,6 +118,14 @@ may overstate its body's (an envelope's; zero for a closed form); and **`WallKin
 `WallDistance` (the signed distance, above zero in the medium, and the normal into it), by default minus the matched
 region's shape's, and `None` for free space.
 
+The camera's sampled route reads two more (camera PR 5): **`sign_function(parameters, region, point)`**, a region's cheap
+sign function at points given as three coordinate arrays, a `SignValue` (its value, of the right sign everywhere farther than
+the class's `sign_zone` from the boundary, and its gradient's length), whose first-order distance the camera marches; and
+**`crease_measure(parameters, o, d)`**, a creased body's exact edge functions on rays and how they compose with the marched
+surface's (`CreaseMeasure`). A solid whose body is the intersection of two or more regions is creased, and the camera
+refuses it the sampled route without its crease measure. `mime.testing.sign_function_problems` holds a kind's sign function
+to its regions' own sign and its gradient's length.
+
 **roles and defaults**: every setting declares its role (`Role`: design,
 physical, numerical, standard) and its default's kind (`DefaultKind`: determined, convention, numerical, none; the build
 reports a written default whose setting declares nothing as `undeclared`, stamped in exploratory and refused in

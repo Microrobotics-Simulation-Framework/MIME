@@ -227,6 +227,7 @@ def _sampled(kind: str, settings: Mapping[str, Any], region: str) -> Placed:
     and its march's numbers."""
     found = sampled_route.kind_named(kind)
     assert found is not None
+    settings = {name: tuple(value) if isinstance(value, list) else value for name, value in settings.items()}
     made = sampled_route.made_kind(found, settings)
     names = {item.name for item in dataclasses.fields(found)}  # type: ignore[arg-type]
     parameters = {name: settings[name] for name in names}

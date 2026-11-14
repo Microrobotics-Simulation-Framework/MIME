@@ -64,11 +64,13 @@ camera.cache-traced           user
 camera.calibration-file       user
 camera.calibration-model      user
 camera.calibration-size       user
+camera.crease-unmeasured      user
 camera.frame-period           user
 camera.hide                   user
 camera.mesh-untraced          user
 camera.mount                  user
 camera.no-closed-form         user
+camera.no-route               user
 camera.rate                   user
 camera.recorded-frames        user
 camera.reverse-memory         user
