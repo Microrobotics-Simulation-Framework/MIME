@@ -125,6 +125,8 @@ registry/_registry.py::setting_group_named KeyError 1  # registration: an entry'
 results/_result.py::ObservationOutputs.__getattr__ AttributeError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 results/_result.py::_Fields.__getitem__ KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 results/_study.py::StudyOutputs.__getattr__ AttributeError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+results/_study_folder.py::GroupArchive.check_entries ValueError 1  # caught by its one caller, the group file's read, which refuses the file with study.group-file naming the entry (a ValueError is what NumPy's own reader raises for a bad array, caught there the same way)
+results/_study_folder.py::_declared ValueError 5  # caught by its one caller, the group file's read, which refuses the file with study.group-file naming the entry (a ValueError is what NumPy's own reader raises for a bad array, caught there the same way)
 saved/_record.py::SavedRecord.hashes ValueError 1  # invariant: save refuses an unsavable record (save.unsavable) before it hashes one
 saved/_schema.py::shape_problems TypeError 2  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_caps.py::_rings ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class

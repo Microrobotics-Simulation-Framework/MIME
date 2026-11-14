@@ -4,7 +4,7 @@ upload token, design #171 item 5). It is the check the offline fake cannot make 
 what the fake answers.
 
     uv run python scripts/zenodo_sandbox_lane.py --creator "<family>, <given>" [--orcid <iD>] [--log <dir>]
-        [--folder <saved folder> | --demo toy|terms ...] [--discard | --publish] [--dry-run]
+        [--folder <saved folder> | --demo toy|terms|study ...] [--discard | --publish] [--dry-run]
 
 It reads the token ``mime credentials set zenodo-sandbox`` stored (or ``ZENODO_SANDBOX_TOKEN``) through
 ``mime.credentials`` and nothing else, never prints it, and sends it only to ``https://sandbox.zenodo.org``, a
@@ -14,7 +14,9 @@ is never this script's).
 
 For each folder (a copy of one you name, so nothing is written into it, or a demo it saves: ``toy``, the toy
 experiment under CC-BY-4.0; ``terms``, the toy with an MIT layer, a layer under a licence of its own that a declared
-permission lets travel, and one whose licence forbids redistribution, which travels as a reference), it writes
+permission lets travel, and one whose licence forbids redistribution, which travels as a reference; ``study``, a
+publishing folder of two toy studies, one record of two ``.mimestudy`` files and a NOTICE, which rehearse on the sandbox
+first before any production push of studies), it writes
 ``mime.toml`` where the folder has none (``--creator`` the creator and uploader), then:
 
 1. ``mime push <folder> --to zenodo-sandbox --yes``: the plan, the draft, its DOI, its files;
@@ -190,6 +192,18 @@ def _terms_demo(root: Path, uploader: str) -> Path:
     return root / "mime_sandbox_terms"
 
 
+def _study_demo(root: Path) -> Path:
+    """A publishing folder of two toy studies (tests/sharing/study_rigs.py), with a note it leaves out."""
+    from study_rigs import write_study
+
+    folder = root / "mime_sandbox_studies"
+    folder.mkdir(parents=True)
+    first = write_study(folder / "stiffness_scan")
+    shutil.copytree(first, folder / "step_scan")
+    (folder / "README.md").write_text("a note the record leaves out\n", encoding="utf-8")
+    return folder
+
+
 def write_manifest(folder: Path, creator: str, orcid: str | None, title: str) -> None:
     from mime.push._toml import value_text
 
@@ -336,8 +350,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--creator", required=True, help='the creator and uploader, "<family>, <given>"')
     parser.add_argument("--orcid", help="the creator's ORCID iD")
     parser.add_argument("--folder", type=Path, action="append", default=[], help="a saved folder to push (repeat)")
-    parser.add_argument("--demo", choices=("toy", "terms"), action="append", default=[], help="a demo folder to save "
-                                                                                            "and push (repeat)")
+    parser.add_argument("--demo", choices=("toy", "terms", "study"), action="append", default=[],
+                        help="a demo folder to save and push (repeat); study: a publishing folder of two studies")
     parser.add_argument("--log", type=Path, help="the directory to write the log to (the current directory by "
                                                  "default; a dry run writes one only where this names)")
     ending = parser.add_mutually_exclusive_group()
@@ -365,7 +379,8 @@ def lane(arguments: argparse.Namespace) -> int:
         folders = [Path(shutil.copytree(folder, work / "given" / f"{index}" / folder.name))
                    for index, folder in enumerate(arguments.folder)]
         for kind in arguments.demo or ([] if folders else ["toy"]):
-            folders.append(_toy_demo(work) if kind == "toy" else _terms_demo(work, arguments.creator))
+            folders.append(_toy_demo(work) if kind == "toy" else _terms_demo(work, arguments.creator) if kind == "terms"
+                           else _study_demo(work))
         found = compared(arguments, folders, token, log, stand_ins)
     finally:
         shutil.rmtree(work, ignore_errors=True)

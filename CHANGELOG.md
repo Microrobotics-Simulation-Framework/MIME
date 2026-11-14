@@ -33,6 +33,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `port.source-unknown`. Saving an experiment that declares a port is refused (`save.unsavable`) until the saved form
   holds ports.
 
+- **One study per `.mimestudy`, publishing folders, and a record of several studies** (lane P, P2). The container
+  code is refactored into kinds (`mime.saved._container`: a suffix, a format id, a layout check), the bundle the first,
+  with no change in behaviour: every bundle packs to the same bytes and every earlier one unpacks as before. `mime pack
+  <study folder>` writes a **study container** (`mime.study/1`, its files under `study/`): the study is read and held to
+  its own records first (each group file's sha256, each figure's data, the base's input hash, every member run;
+  `study.incomplete`, `study.input-hash`), each saved folder in it is judged as a bundle's, and every file is scanned as
+  a bundle's are; unpacking checks the same records again on the folder it writes. A **publishing folder** (study
+  folders and the record's `mime.toml`) packs one `.mimestudy` per study (`mime.saved.pack_studies`), all or none,
+  listing what else it holds, which nothing carries. `mime pull` takes one kind per record, one bundle or one or more
+  studies, a record of several into a folder each with `--into` (refused before anything downloads without it), their
+  assets gated once; `mime verify`, `mime card` (and `--notice`) and `mime check` take a study or publishing folder;
+  `mime push` makes one record of a folder's studies (every `.mimestudy` and a `NOTICE.txt`, keyword `mime-study`, no
+  asset uploaded), to rehearse on zenodo-sandbox first (the sandbox lane's `--demo study`). A container named as
+  another kind, and a block (`mime.block/1`, reserved), is refused (`container.kind`). No saved form changes, and no
+  simulation output moves.
+  A group's NPZ is opened only once its sha256 is the one `study.json` records, and an entry in it that is compressed or
+  names more bytes than it holds is refused before an array is allocated (a nested bomb of a few kilobytes named
+  gigabytes); a manifest or a recipe of the wrong shapes is refused (`study.manifest`, `plot.recipe`), not raised; the
+  commands a refusal offers hold a name as one shell word; and a destination that is a link is refused for a bundle
+  and a study alike (`pull.destination`).
 - **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
   mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
   frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in

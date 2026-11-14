@@ -20,7 +20,7 @@ import html
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, cast, override
 
 from mime._lineage import Origin
@@ -129,6 +129,60 @@ def reads_of(result: Target) -> tuple[Path, list[str]]:
                                    for name in (GROUP_OUTPUTS, GROUP_REPORT)]
 
 
+def read_recipe(root: Path, name: str) -> dict[str, Any]:
+    """The recipe ``figures/<name>.json`` of the run or study folder ``root``, its closed keys checked and every file it
+    reads held to the sha256 it records (``plot.data-changed`` names a file that is not the one the figure was made
+    from): what a redraw reads, checked without drawing anything."""
+    path = root / FIGURES / f"{name}.json"
+    try:
+        document = cast(object, json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError) as error:
+        raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not a recipe that can be read ({error})",
+                     "write one with result.figure(...).write_recipe()") from error
+    if not isinstance(document, dict) or cast(dict[str, Any], document).get("format") != RECIPE_FORMAT \
+            or cast(dict[str, Any], document).get("version") != RECIPE_VERSION:
+        raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not a {RECIPE_FORMAT!r} version {RECIPE_VERSION} recipe: this MIME "
+                     f"reads that one", "read it with the MIME that wrote it, or write the figure again with `result.figure(...).write_recipe()`")
+    held = cast(dict[str, Any], document)
+    if frozenset(held) != RECIPE_KEYS:
+        raise refuse("plot.recipe", RefusalClass.USER, f"{path} holds {sorted(set(held) ^ RECIPE_KEYS)}, which a recipe's closed keys do not",
+                     "write the recipe with result.figure(...).write_recipe()")
+    reads = held["reads"]
+    if not (isinstance(reads, list) and all(
+            isinstance(each, dict) and set(cast(dict[str, object], each)) == {"path", "sha256"}
+            and isinstance(cast(dict[str, object], each)["path"], str)
+            and isinstance(cast(dict[str, object], each)["sha256"], (str, type(None)))
+            for each in cast(list[object], reads))
+            and isinstance(held["name"], str) and held["target"] in ("run", "study")
+            and isinstance(held["spec"], dict) and isinstance(held["options"], dict)):
+        raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not shaped as a recipe is: its name a string, its target "
+                     f"'run' or 'study', its spec and options mappings, and each file it reads a path and a sha256 (or "
+                     f"none)", "write the recipe with result.figure(...).write_recipe()")
+    for read in cast(list[dict[str, str | None]], reads):
+        relative = PurePosixPath(str(read["path"]))
+        if relative.is_absolute() or not relative.parts or any(part == ".." or ":" in part or "\\" in part
+                                                                for part in relative.parts):
+            raise refuse("plot.recipe", RefusalClass.USER, f"{path} names {str(read['path'])!r}, which is not a file in "
+                         f"its folder", "write the recipe with result.figure(...).write_recipe()")
+        data = root / relative
+        try:
+            now = file_digest(data) if data.is_file() else None
+        except OSError as error:
+            raise refuse("plot.recipe", RefusalClass.USER, f"{path} names {str(read['path'])!r}, which cannot be read "
+                         f"({error})", "write the recipe with result.figure(...).write_recipe()") from error
+        if now != read["sha256"]:
+            raise ArgumentRefused([Refusal(
+                "plot.data-changed", RefusalClass.USER,
+                f"{data} is not the file the figure {name!r} was made from"
+                + (" (it is not there)" if now is None else
+                   " (it is there, and the recipe records it as absent)" if read["sha256"] is None else
+                   f" (its sha256 is {now}, and the recipe records {read['sha256']})"),
+                "redraw from the folder the figure was made in, or make the figure again from this data: "
+                "result.figure(...).write_recipe()",
+                why="a figure is redrawn from the data it was made from, never from data that changed")])
+    return held
+
+
 class FigureRecipe:
     """A figure of a result: ``plot()`` draws it with matplotlib, ``plot_interactive()`` with plotly, ``display()`` and
     ``web()`` as a page; ``with_options(...)`` sets the title, labels, legend, size or style; ``write_recipe()`` saves it
@@ -199,33 +253,7 @@ class FigureRecipe:
         """Redraw the figure ``name`` of the run or study in ``folder`` from its data, which is checked against the
         recipe's sha256 first (``plot.data-changed`` names a file that is not the one the figure was made from)."""
         root = Path(folder)
-        path = root / FIGURES / f"{name}.json"
-        try:
-            document = cast(object, json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError) as error:
-            raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not a recipe that can be read ({error})",
-                         "write one with result.figure(...).write_recipe()") from error
-        if not isinstance(document, dict) or cast(dict[str, Any], document).get("format") != RECIPE_FORMAT \
-                or cast(dict[str, Any], document).get("version") != RECIPE_VERSION:
-            raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not a {RECIPE_FORMAT!r} version {RECIPE_VERSION} recipe: this MIME "
-                         f"reads that one", "read it with the MIME that wrote it, or write the figure again with `result.figure(...).write_recipe()`")
-        held = cast(dict[str, Any], document)
-        if frozenset(held) != RECIPE_KEYS:
-            raise refuse("plot.recipe", RefusalClass.USER, f"{path} holds {sorted(set(held) ^ RECIPE_KEYS)}, which a recipe's closed keys do not",
-                         "write the recipe with result.figure(...).write_recipe()")
-        for read in cast(list[dict[str, str | None]], held["reads"]):
-            data = root / str(read["path"])
-            now = file_digest(data) if data.is_file() else None
-            if now != read["sha256"]:
-                raise ArgumentRefused([Refusal(
-                    "plot.data-changed", RefusalClass.USER,
-                    f"{data} is not the file the figure {name!r} was made from"
-                    + (" (it is not there)" if now is None else
-                       " (it is there, and the recipe records it as absent)" if read["sha256"] is None else
-                       f" (its sha256 is {now}, and the recipe records {read['sha256']})"),
-                    "redraw from the folder the figure was made in, or make the figure again from this data: "
-                    "result.figure(...).write_recipe()",
-                    why="a figure is redrawn from the data it was made from, never from data that changed")])
+        held = read_recipe(root, name)
         from mime.results._result import RunResult
         from mime.results._study import StudyResult
 
@@ -382,5 +410,5 @@ def figure_of(result: Target, outputs: Sequence[object], *, kind: str | None, ag
 
 
 __all__ = ["FIGURES", "PLOTLY_CDN", "PLOTLY_JS_SHA256", "PLOTLY_JS_SRI", "PLOTLY_JS_VERSION", "RECIPE_FORMAT",
-           "RECIPE_VERSION", "FigurePage", "FigureRecipe", "FigureSpec", "describe", "figure", "figure_of", "figure_page",
+           "RECIPE_VERSION", "FigurePage", "FigureRecipe", "read_recipe", "FigureSpec", "describe", "figure", "figure_of", "figure_page",
            "library_tag"]

@@ -150,8 +150,13 @@ class Choices:
 
 
 def experiment_name(folder: Path) -> str:
+    """What push keeps a folder's record under: a saved folder's experiment's name; ``studies:<folder>`` for a study
+    folder or a publishing folder, a name no experiment has."""
     from mime.saved import read_folder
+    from mime.saved._studies import is_publishing_folder, is_study_folder
 
+    if is_study_folder(folder) or is_publishing_folder(folder):
+        return f"studies:{folder.name}"
     return read_folder(folder, absent_referenced=True).document["experiment"]
 
 
@@ -355,6 +360,17 @@ def planned(root: Path, service: Service, state: DraftState | None) -> Plan:
     sharing = read_record(root)
     experiment = experiment_name(root)
     where = staging(service, experiment)
+    if experiment.startswith("studies:"):
+        from mime.push._plan import make_studies_plan
+
+        if state is not None and state.record is not None:
+            return make_studies_plan(root, service, sharing, where, publication=publication(service, state),
+                                     version=state.version)
+        if state is not None and state.published is not None:
+            return make_studies_plan(root, service, sharing, where,
+                                     publication=published_publication(service, state.published),
+                                     version=state.published.version)
+        return make_studies_plan(root, service, sharing, where)
     if state is not None and state.record is not None:
         own: frozenset[str] = frozenset({state.published.doi}) if state.published is not None else frozenset()
         return make_plan(root, service, sharing, where, publication=publication(service, state),
@@ -953,10 +969,11 @@ def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False,
                 f"{service.name}), so no version is made: {published.page}")
             return Drafted(published.record, published.page, published.doi, published.concept, (), (), False,
                            published.version)
-        bundle = replace(plan.files[0], what="the bundle, packed again once the new version's DOI is reserved, its "
-                                             "lock naming that record")
-        plan = with_sharing(replace(plan, version=published.version + 1, files=(bundle, *plan.files[1:]),
-                                    publication=None), plan.sharing)
+        if plan.kind == "bundle":
+            bundle = replace(plan.files[0], what="the bundle, packed again once the new version's DOI is reserved, its "
+                                                 "lock naming that record")
+            plan = replace(plan, files=(bundle, *plan.files[1:]))
+        plan = with_sharing(replace(plan, version=published.version + 1, publication=None), plan.sharing)
     choices = Choices(confirm, overwrite_site_edits, keep_site_edits)
     holder = [plan]
     show = _show_plan(lambda: holder[0], state, say, full)
