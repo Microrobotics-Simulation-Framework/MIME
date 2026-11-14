@@ -96,12 +96,40 @@ def _count(number: int, verdict: str) -> str:
     return f"{number} {verdict}{'s' if verdict == FINDING and number != 1 else ''}"
 
 
+def _studies(root: Path) -> list[Path]:
+    from mime.saved._studies import study_folders
+
+    return study_folders(root)
+
+
 def _document(root: Path, kind: str) -> Mapping[str, object]:
+    """The experiment whose profile the check takes by default: a saved folder's own; a study's base experiment (a
+    publishing folder's first study's)."""
     from mime.results._study_folder import BASE_DIR
     from mime.saved import read_folder
 
     return cast(Mapping[str, object],
-                read_folder(root if kind == BUNDLE else root / BASE_DIR, absent_referenced=True).document)
+                read_folder(root if kind == BUNDLE else _studies(root)[0] / BASE_DIR, absent_referenced=True).document)
+
+
+def _documents(root: Path, kind: str) -> list[tuple[str, Mapping[str, object]]]:
+    """The experiments whose licence the manifest's kind table states, each with how an item names it: a saved folder's
+    own; a study's base experiment and each group's own build; those of every study a publishing folder holds."""
+    from mime.results._study_folder import BASE_DIR, GROUPS_DIR
+    from mime.saved import read_folder
+
+    if kind == BUNDLE:
+        return [("the experiment", _document(root, kind))]
+    found: list[tuple[str, Mapping[str, object]]] = []
+    for study in _studies(root):
+        prefix = f"{plain(study.name)}: " if study != root else ""
+        builds = sorted((each for each in (study / GROUPS_DIR).glob(f"*/{BASE_DIR}") if each.is_dir()),
+                        key=lambda each: each.parent.name)
+        for folder, whose in [(study / BASE_DIR, "the study's base experiment"),
+                              *((each, f"the study's group {plain(each.parent.name)} build") for each in builds)]:
+            found.append((f"{prefix}{whose}",
+                          cast(Mapping[str, object], read_folder(folder, absent_referenced=True).document)))
+    return found
 
 
 def _profile(value: object) -> Profile:
@@ -148,23 +176,23 @@ def check(folder: str | os.PathLike[str], profile: object | None = None) -> Chec
     _, problems = manifest_problems(root)
     kind = folder_kind(root) or BUNDLE
     path = root / MANIFEST_FILE
-    document = _document(root, kind)
-    chosen = _profile(profile if profile is not None else document.get("profile", Profile.EXPLORATORY.value))
+    documents = _documents(root, kind)
+    chosen = _profile(profile if profile is not None else _document(root, kind).get("profile", Profile.EXPLORATORY.value))
     items = [Item(NEEDED if each.needed else DEFECT, each.refusal.message, each.line,
                   f"in {MANIFEST_FILE}" + (f", under [{each.table}]" if each.table else ""))
              for each in problems]
     _, held = read_toml(path)
-    declared = document.get("licence")
     stated = _table(held.get(kind)).get("licence")
-    whose = "the experiment" if kind == BUNDLE else "the study's base experiment"
-    if declared is None:
-        licence = stated if isinstance(stated, str) else "CC-BY-4.0"
-        items.append(Item(NEEDED, f"{whose} declares no licence, and a record is never published without one",
-                          f"exp.licence({licence!r})", "where the experiment is built, then save it again"))
-    elif isinstance(stated, str) and stated != declared:
-        items.append(Item(DEFECT, f"{path.name}, [{kind}] licence: is {plain(stated)}, and {whose} declares "
-                                  f"{plain(str(declared))}, which its files carry",
-                          f'licence = "{plain(str(declared))}"', f"in {MANIFEST_FILE}, under [{kind}]"))
+    for whose, document in documents:
+        declared = document.get("licence")
+        if declared is None:
+            licence = stated if isinstance(stated, str) else "CC-BY-4.0"
+            items.append(Item(NEEDED, f"{whose} declares no licence, and a record is never published without one",
+                              f"exp.licence({licence!r})", "where the experiment is built, then save it again"))
+        elif isinstance(stated, str) and stated != declared:
+            items.append(Item(DEFECT, f"{path.name}, [{kind}] licence: is {plain(stated)}, and {whose} declares "
+                                      f"{plain(str(declared))}, which its files carry",
+                              f'licence = "{plain(str(declared))}"', f"in {MANIFEST_FILE}, under [{kind}]"))
     items += _asked(path, held)
     shown = tuple((verdict, item) for item in items if (verdict := RULES.get((chosen, item.cls))) is not None)
     return Checked(path, kind, chosen, profile is not None, shown)

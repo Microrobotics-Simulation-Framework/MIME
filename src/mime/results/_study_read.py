@@ -6,6 +6,7 @@ what it holds."""
 from __future__ import annotations
 
 import json
+import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from pathlib import Path
@@ -63,15 +64,19 @@ def _group_file(root: Path, group: Mapping[str, Any], done: Sequence[Mapping[str
         raise _group_file_refused(
             f"{where} is not there, and {_counted([int(row['point']) for row in done])} of group {number} "
             f"{'are' if len(done) != 1 else 'is'} marked done in {STUDY_FILE}", where)
-    archive = GroupArchive(path)
     try:
-        absent = [int(row["point"]) for row in done
-                  if f"m{row['point']}/{CONTENT_KEY}" not in archive.keys_of(int(row["point"]))
-                  or "manifest" not in archive.member(int(row["point"])).files]
-        other = [int(row["point"]) for row in done if int(row["point"]) not in absent
-                 and str(archive[f"m{row['point']}/{CONTENT_KEY}"]) != row["content_key"]]
-    finally:
-        archive.close()
+        archive = GroupArchive(path)
+        try:
+            absent = [int(row["point"]) for row in done
+                      if f"m{row['point']}/{CONTENT_KEY}" not in archive.keys_of(int(row["point"]))
+                      or "manifest" not in archive.member(int(row["point"])).files]
+            other = [int(row["point"]) for row in done if int(row["point"]) not in absent
+                     and str(archive[f"m{row['point']}/{CONTENT_KEY}"]) != row["content_key"]]
+        finally:
+            archive.close()
+    except (zipfile.BadZipFile, ValueError, OSError, EOFError) as error:
+        raise _group_file_refused(f"{where} cannot be read as the NPZ its run wrote ({error}): its bytes were changed "
+                                  f"after the run", where) from error
     if other:
         raise _group_file_refused(
             f"{where} holds {_counted(other)} under content keys that are not those {STUDY_FILE} gives them: a group "

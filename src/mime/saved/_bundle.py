@@ -303,6 +303,12 @@ def _scanned(member: str, path: Path, tokens: Sequence[Token], refusals: list[Re
     return None if found else data
 
 
+def scanned(member: str, path: Path, tokens: Sequence[Token], refusals: list[Refusal]) -> bytes | None:
+    """The bytes of ``path`` when no scan refuses them, the scans' reasons added to ``refusals`` otherwise: the bundle's
+    scans, for another kind of container's files."""
+    return _scanned(member, path, tokens, refusals)
+
+
 def _stray_files(files: Sequence[tuple[str, Path]], named: set[str]) -> list[Refusal]:
     """A refusal for each file the saved form does not name, or whose name some platform cannot hold, and for each pair
     of names one platform reads as one."""
@@ -678,9 +684,16 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
     as a reference is placed from the asset cache where it is cached (copied and hashed); the others are left for
     ``mime assets fetch <folder>``, and a load of the folder until then is refused as ``asset.missing`` with that
     command. Raises ``BuildRefused``."""
+    from mime.saved._studies import container_kind
+
     refused = destination_problem(into)
     if refused is not None:
         raise refused
+    if container_kind(bundle) is not BUNDLE:
+        raise BuildRefused([_refuse("container.kind", RefusalClass.USER,
+                                    f"{plain(Path(bundle).name)} is not a bundle: its manifest says it is another kind "
+                                    f"of container, and `mime.saved.unpack` reads a bundle",
+                                    "pull it, `mime pull <file>`, which reads a container of any kind MIME packs")])
     destination = Path(os.path.abspath(into))
     staging = staging_of(destination)
     try:

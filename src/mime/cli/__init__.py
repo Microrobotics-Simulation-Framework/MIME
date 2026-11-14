@@ -132,8 +132,12 @@ def _deterministic(on: bool) -> None:
 
 
 def _verify(folder: Path, run: bool = False) -> int:
+    from mime.saved._studies import is_publishing_folder, is_study_folder
+
     with Interrupt():
         try:
+            if not run and (is_study_folder(folder) or is_publishing_folder(folder)):
+                return _verified_studies(folder)
             return _verified_run(folder) if run else _verified(folder)
         except KeyboardInterrupt:
             _say("interrupted; nothing was verified")
@@ -158,6 +162,33 @@ def _verified(folder: Path) -> int:
             print(for_terminal(load))
         print(for_terminal(report.text()))
     return 0 if report.reproduced else 1
+
+
+def _verified_studies(folder: Path) -> int:
+    """``mime verify`` of a study folder, or of a folder of them (a publishing folder, or one ``mime pull --into``
+    wrote): a line per study and per saved folder, MIME's closing words, and the worst result: 0 when every study
+    reproduces, 1 when a saved folder did not, 2 (the refusals, each naming its study) when a study's checks refuse."""
+    from dataclasses import replace
+
+    from mime._terminal import plain
+    from mime.saved._studies import ACCEPTANCE, is_publishing_folder, publishing_entries, verify_study
+
+    studies = publishing_entries(folder)[0] if is_publishing_folder(folder) else [folder]
+    worst, refusals = 0, list[Refusal]()
+    for study in studies:
+        try:
+            checked = verify_study(study)
+        except MimeError as error:
+            refusals += [replace(each, message=f"{plain(study.name)}: {each.message}") for each in error.refusals]
+            print(for_terminal(f"\N{BALLOT X} study {plain(study.name)}: refused, nothing run (the refusal follows)"))
+            continue
+        for line in checked.lines():
+            print(for_terminal(line))
+        worst = max(worst, 0 if checked.reproduced else 1)
+    print(for_terminal(ACCEPTANCE))
+    if refusals:
+        raise BuildRefused(refusals)
+    return worst
 
 
 def _verified_run(folder: Path) -> int:
@@ -766,6 +797,10 @@ def _place(folder: Path, accept_licences: Sequence[str] = ()) -> list[Refusal]:
 
 def _pack(folder: Path, out: Path | None) -> int:
     from mime import assets, saved
+    from mime.saved._studies import is_publishing_folder, is_study_folder
+
+    if is_study_folder(folder) or is_publishing_folder(folder):
+        return _pack_studies(folder, out)
     from mime.saved._bundle import read_manifest, referenced_of
     from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER
     from mime.saved._folder import named_files
@@ -794,10 +829,39 @@ def _pack(folder: Path, out: Path | None) -> int:
     return 0
 
 
+def _pack_studies(folder: Path, out: Path | None) -> int:
+    """``mime pack`` of a study folder (its ``.mimestudy``) or a publishing folder (one per study, in ``--out`` or beside
+    the folder), and what a publishing folder holds that no container carries."""
+    from mime import assets, saved
+    from mime.saved._container import MANIFEST_MEMBER
+    from mime.saved._studies import is_study_folder, publishing_entries
+
+    paths = [saved.pack(folder, out=out)] if is_study_folder(folder) else list(saved.pack_studies(folder, out=out))
+    for path in paths:
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        with zipfile.ZipFile(path) as archive:
+            manifest = json.loads(archive.read(MANIFEST_MEMBER))
+        print(for_terminal(f"packed the study {manifest['name']} into {path} ({assets.size_text(path.stat().st_size)})"))
+        print(f"sha256 {digest}")
+        print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
+                           f"{len(manifest['referenced'])}"))
+    if not is_study_folder(folder):
+        left = publishing_entries(folder)[1]
+        if left:
+            print(for_terminal(f"! left out, carried by no container (not study folders): {', '.join(left)}"))
+    return 0
+
+
 def _card(folder: Path, out: Path | None, notice: bool) -> int:
     from mime import saved
+    from mime.saved._study_card import study_card_text, study_notice
+    from mime.saved._studies import is_publishing_folder, is_study_folder
 
-    text = saved.notice(folder) if notice else saved.card_text(folder)
+    if is_study_folder(folder) or is_publishing_folder(folder):
+        text = study_notice(folder) if notice else study_card_text(folder)
+    else:
+        text = saved.notice(folder) if notice else saved.card_text(folder)
     if out is None:
         print(for_terminal(text), end="" if text.endswith("\n") else "\n")
         return 0
@@ -1332,7 +1396,9 @@ def build_parser() -> _guide.MimeParser:
                             description="Load a saved experiment, rebuild it, check it against its lock and rerun "
                                         "its reference steps. It keeps no XLA compilation cache, whatever mime run "
                                         "does: a verification compiles as a fresh process would.")
-    verify.add_argument("folder", type=Path, help="a folder written by Experiment.save, or with --run a run folder")
+    verify.add_argument("folder", type=Path, help="a folder written by Experiment.save, a study folder or a folder of "
+                                                  "them (each study's files checked, each of its saved experiments "
+                                                  "verified), or with --run a run folder")
     verify.add_argument("--run", action="store_true",
                         help="the folder is a run folder (mime run's --out, or run_to's): make its run again from its "
                              "experiment/ with the overrides, duration and series its run.json records, and compare it "
@@ -1428,12 +1494,18 @@ def build_parser() -> _guide.MimeParser:
     audit.add_argument("--manifest", action="append", default=[], type=Path, metavar="FILE",
                        help="a manifest whose records count too (repeat it); the target's own manifests and locks, "
                             "the installed sources' and the local cache's baked meshes always count")
-    pack = commands.add_parser("pack", help="write a saved experiment folder as one bundle file")
-    pack.add_argument("folder", type=Path, help="a folder written by Experiment.save")
-    pack.add_argument("--out", type=Path, help="the bundle file (default: <folder>.mimebundle beside the folder)")
-    card = commands.add_parser("card", help="a saved experiment's card (Markdown), or its NOTICE, offline, as mime push "
-                                            "will publish them (the card also names the experiment it was based on)")
-    card.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    pack = commands.add_parser("pack", help="write a saved experiment folder as one bundle file, a study folder as one "
+                                            ".mimestudy, or a folder of study folders as one .mimestudy each")
+    pack.add_argument("folder", type=Path, help="a folder written by Experiment.save, a study folder (Study.run_to's), or "
+                                                "a publishing folder that holds study folders")
+    pack.add_argument("--out", type=Path, help="the file (default: <folder>.mimebundle or <folder>.mimestudy beside the "
+                                               "folder); for a publishing folder, the folder the .mimestudy files go "
+                                               "in (default: beside the publishing folder)")
+    card = commands.add_parser("card", help="a saved experiment's or a study's card (Markdown), or its NOTICE, offline, "
+                                            "as mime push will publish them (the card also names the experiment it "
+                                            "was based on)")
+    card.add_argument("folder", type=Path, help="a folder written by Experiment.save, a study folder, or a publishing "
+                                                "folder of study folders")
     card.add_argument("--out", type=Path, help="write it to this file (default: print it)")
     card.add_argument("--notice", action="store_true", help="the NOTICE (each file's licence, credit, verdict and "
                                                             "declared permission) in place of the card")

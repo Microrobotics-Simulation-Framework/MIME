@@ -386,14 +386,17 @@ def unwritable(path: Path, root: Path) -> BuildRefused | None:
 
 
 def folder_facts(root: Path) -> tuple[str, str, str | None]:
-    """The kind of the folder ``root`` (a saved folder's ``bundle``, a study folder's ``study``), the title a new
-    ``mime.toml`` takes (the experiment's name; a study folder's own name), and the licence its experiment declares (a
-    study's base experiment's). A folder of neither kind is refused as loading it refuses."""
+    """The kind of the folder ``root`` (a saved folder's ``bundle``, a study or publishing folder's ``study``), the title
+    a new ``mime.toml`` takes (the experiment's name; a study or publishing folder's own name), and the licence its
+    experiment declares (a study's base experiment's; a publishing folder's first study's). A folder of neither kind is
+    refused as loading it refuses."""
     from mime.results._study_folder import BASE_DIR
     from mime.saved import read_folder
+    from mime.saved._studies import study_folders
 
     kind = folder_kind(root)
-    document = read_folder(root / BASE_DIR if kind == "study" else root, absent_referenced=True).document
+    document = read_folder(study_folders(root)[0] / BASE_DIR if kind == "study" else root,
+                           absent_referenced=True).document
     return kind or BUNDLE, document["experiment"] if kind != "study" else root.name, document.get("licence")
 
 
