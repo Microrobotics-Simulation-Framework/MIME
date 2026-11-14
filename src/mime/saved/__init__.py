@@ -13,7 +13,7 @@ each declared permission. A file that may not be redistributed travels as a refe
 its card, offline, as ``mime push`` will publish them.
 """
 
-from mime.saved._bundle import BUNDLE_SUFFIX, EXPANSION_LIMIT_BYTES, INLINE_LIMIT_BYTES, unpack
+from mime.saved._bundle import BUNDLE_SUFFIX, EXPANSION_LIMIT_BYTES, INLINE_LIMIT_BYTES, ByRequestWarning, unpack
 from mime.saved._card import card_text, notice
 from mime.saved._document import (
     SCENE_FOLDER,
@@ -82,6 +82,7 @@ __all__ = [
     "REFERENCE_FILE",
     "SCENE_FOLDER",
     "BoundEntryDoc",
+    "ByRequestWarning",
     "EntryDoc",
     "EntryRecord",
     "EnvironmentRecord",

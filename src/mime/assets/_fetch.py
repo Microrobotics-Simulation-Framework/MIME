@@ -33,12 +33,14 @@ from mime.assets._cache import (
     PLACED,
     CHECKSUM_SUFFIX,
     RECORD_SUFFIX,
+    by_request,
     cache_dir,
     cheap_problem,
     file_path,
     hash_problem,
     lock_path,
     mime_wrote,
+    no_location,
     offline,
     remember_checksum,
     remembered_checksum,
@@ -643,16 +645,30 @@ def _names_a_person_may_use(ref: AssetRef) -> list[tuple[str, bool]]:
     return [(name, own_name) for name, own_name in names if name != ref.sha256]
 
 
+def _placed_candidates(ref: AssetRef) -> list[Path]:
+    """Where a file of ``ref``'s size would sit if the cache held it or a person copied it in."""
+    return [file_path(ref), *(cache_dir() / name for name, _ in _names_a_person_may_use(ref))]
+
+
+def awaits_a_copy(ref: AssetRef) -> bool:
+    """Whether ``ref`` is had by request and nothing is in place for it: the cache does not hold it and no file of its
+    size sits under its sha256 or a name a person may copy in (which ``mime assets fetch`` hashes and takes). Such a
+    record is refused as ``asset.by-request`` (:func:`~mime.assets._cache.by_request`) before any gate; no licence is asked
+    about, since no byte is read. A file that is in place is gated as any file is."""
+    if cheap_problem(ref) is None or not no_location(ref):
+        return False
+    return not any(path.is_file() and path.stat().st_size == ref.size for path in _placed_candidates(ref))
+
+
 def needs_download(ref: AssetRef) -> bool:
     """Whether resolving ``ref`` would go to a location: not with ``MIME_OFFLINE`` set, not when the cache holds it, and not
     when the cache directory holds a file of its size under its sha256 or a name a person may copy in (which the resolver
     hashes, and takes if its bytes are the reference's). A batch's disk check (:func:`~mime.assets.approve`) counts what this
     says is a download; a file that turns out to hold other bytes is a download after all, and the resolver gates it as one
     (``approve(..., downloading=True)``) when it comes to store it."""
-    if offline() or cheap_problem(ref) is None:
+    if offline() or cheap_problem(ref) is None or no_location(ref):
         return False
-    candidates = [file_path(ref), *(cache_dir() / name for name, _ in _names_a_person_may_use(ref))]
-    return not any(path.is_file() and path.stat().st_size == ref.size for path in candidates)
+    return not any(path.is_file() and path.stat().st_size == ref.size for path in _placed_candidates(ref))
 
 
 def _link_into_place(ref: AssetRef, placed: Path) -> None:
@@ -830,8 +846,9 @@ def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full:
        arrives; the file is hashed in full again before it is moved into place and recorded.
 
     Steps 2 and 3 hold a lock on the asset: a second process waits, then finds the file stored. With
-    ``MIME_OFFLINE`` set step 3 is refused (``asset.offline``). ``report`` is called with a line before each download,
-    naming the size and the location.
+    ``MIME_OFFLINE`` set step 3 is refused (``asset.offline``), and where no location names the file (the record's or
+    this machine's locations file's) it is refused as ``asset.by-request``, before any gate: nothing is downloaded.
+    ``report`` is called with a line before each download, naming the size and the location.
 
     **Step 3 is gated** (:mod:`mime.assets._gates`) unless a batch has cleared the file (:func:`approved`): a licence
     with conditions beyond credit must be accepted (``accept_licences`` names the ids accepted for this call; a person
@@ -855,6 +872,8 @@ def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full:
         if stored:
             require_accepted([ref], accept_licences=accept_licences)
             return file_path(ref)
+        if no_location(ref):
+            raise by_request(ref)
         if is_offline:
             raise _offline(ref, present=replace)
         if not is_cleared(ref):

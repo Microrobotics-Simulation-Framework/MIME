@@ -276,7 +276,8 @@ def test_a_sharing_yaml_value_toml_cannot_hold_is_refused_before_anything_is_wri
     with pytest.raises(BuildRefused) as refused:
         push.init(folder)
     assert refused.value.codes() == ["manifest.read"]
-    assert f"sharing.yaml, {key}: holds a value TOML cannot hold" in refused.value.refusals[0].message
+    message = refused.value.refusals[0].message
+    assert f"{key}" in message and " is a value TOML cannot hold" in message
     assert not (folder / "mime.toml").exists() and (folder / "sharing.yaml").read_text(encoding="utf-8") == old
     person = Person()
     with pytest.raises(BuildRefused) as asked:
@@ -284,6 +285,51 @@ def test_a_sharing_yaml_value_toml_cannot_hold_is_refused_before_anything_is_wri
     assert asked.value.codes() == ["manifest.read"] and person.asked == [] and not (folder / "mime.toml").exists()
     (folder / "sharing.yaml").write_text(OLD, encoding="utf-8")
     assert push.init(folder)[1], "the control: the same file in plain YAML writes mime.toml"
+
+
+@pytest.mark.parametrize(("old", "named"), [
+    (OLD + "unknownkey: 3\n", "unknownkey is not a key sharing.yaml held"),
+    (OLD.replace("keywords: [helices]", "keywords: [helices, null, other]"), "keywords[1] is null"),
+    (OLD.replace("fields: {", "fields: {1: a, '1': b, "), "fields holds the key 1, which YAML reads as int"),
+    (OLD.replace("fields: {languages: [{id: eng}]}", "fields: {x: [[1, null]]}"), "fields.x[0][1] is null"),
+    (OLD.replace("fields: {", "fields: {yes: a, "), "fields holds the key True, which YAML reads as bool"),
+])
+def test_what_toml_cannot_carry_over_from_sharing_yaml_is_refused_naming_it_never_dropped(saved: Path, tmp_path: Path,
+                                                                                         old: str, named: str):
+    """An unknown top-level key, a null inside a list and a key YAML reads as a number or a boolean (``1`` and ``'1'``
+    are one key in the move: one value would be lost) were dropped or merged without a word. Each is refused
+    (``manifest.read``) by ``--init`` and by ``--setup`` before a question, naming it, nothing written."""
+    folder = copy_of(saved, tmp_path)
+    (folder / "sharing.yaml").write_text(old, encoding="utf-8")
+    with pytest.raises(BuildRefused) as refused:
+        push.init(folder)
+    assert refused.value.codes() == ["manifest.read"] and named in refused.value.refusals[0].message
+    assert not (folder / "mime.toml").exists() and (folder / "sharing.yaml").read_text(encoding="utf-8") == old
+    person = Person()
+    with pytest.raises(BuildRefused) as asked:
+        walk(folder, person)
+    assert asked.value.codes() == ["manifest.read"] and person.asked == [] and not (folder / "mime.toml").exists()
+
+
+def test_a_key_left_empty_in_sharing_yaml_holds_nothing_and_is_not_a_loss(saved: Path, tmp_path: Path):
+    """The control: ``uploader: null`` (a key with no value) is a key not given, as it was, and the move writes."""
+    folder = copy_of(saved, tmp_path)
+    (folder / "sharing.yaml").write_text(OLD, encoding="utf-8")
+    assert "uploader: null" in OLD and push.init(folder)[1]
+
+
+@pytest.mark.parametrize(("line", "named"), [
+    ("title: not a default", "is not a key it holds"),
+    ("keywords: [helices, null]", "keywords[1] is null"),
+    ("creators: [{family: Carberry, 1: a, '1': b}]", "creators[0] holds the key 1")])
+def test_old_defaults_with_what_toml_cannot_carry_over_are_refused_naming_it_and_nothing_is_written(line: str,
+                                                                                                  named: str):
+    old_defaults(f"format: mime.sharing-defaults/1\n{line}\n")
+    with pytest.raises(BuildRefused) as refused:
+        _defaults.read_all()
+    message = refused.value.refusals[0].message
+    assert refused.value.codes() == ["defaults.file"] and not _defaults.defaults_path().exists()
+    assert named in message
 
 
 def test_setup_refuses_both_files_before_asking(saved: Path, tmp_path: Path):

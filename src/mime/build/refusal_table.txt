@@ -6,6 +6,7 @@
 allocation.wanted             user
 apparatus.reserved-field      user
 asset.audit                   user
+asset.by-request              environment
 asset.conflict                environment
 asset.derivation-check        user
 asset.disk-low                user
@@ -43,7 +44,6 @@ bundle.lock-terms             user
 bundle.machine-path           user
 bundle.manifest               user
 bundle.name-collision         user
-bundle.no-location            user
 bundle.output-inside          user
 bundle.referenced-copy        user
 bundle.special-file           user
@@ -329,6 +329,7 @@ load.other-release            user
 load.record-changed           user
 load.reference                user
 load.reference-changed        user
+load.referenced-block         environment
 load.setting                  user
 load.setting-unknown          user
 load.stage-changed            user

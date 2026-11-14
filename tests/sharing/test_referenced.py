@@ -392,15 +392,15 @@ def test_a_format_one_reader_refuses_a_format_two_manifest(referenced_bundle: Pa
     manifest = json.loads(zipfile.ZipFile(referenced_bundle).read(MANIFEST_MEMBER))
     held, problems = conforms(manifest, ManifestFormat1)
     assert held is None and any("format" in each for each in problems)
-    assert _bundle.FORMAT == "mime.bundle/3"
+    assert _bundle.FORMAT == "mime.bundle/4"
 
 
 def a_later_format(path: Path) -> Path:
-    """A bundle of format 4, as a later MIME might write one: a member this MIME does not know beside its manifest."""
+    """A bundle of format 5, as a later MIME might write one: a member this MIME does not know beside its manifest."""
     write_bundle(path, {"experiment.mime.yaml": b"schema: mime.document/9\n"})
     with zipfile.ZipFile(path) as archive:
         files = {info.filename: archive.read(info) for info in archive.infolist()}
-    manifest = {**json.loads(files[MANIFEST_MEMBER]), "format": "mime.bundle/4", "signature": {"by": "a later MIME"}}
+    manifest = {**json.loads(files[MANIFEST_MEMBER]), "format": "mime.bundle/5", "signature": {"by": "a later MIME"}}
     manifest["bundle_hash"] = bundle_hash(manifest)
     with zipfile.ZipFile(path, "w") as archive:
         member(archive, MANIFEST_MEMBER, json.dumps(manifest, sort_keys=True, indent=1).encode())
@@ -420,7 +420,7 @@ def test_a_bundle_of_a_later_format_is_refused_first_with_the_advice_to_install_
         with pytest.raises(BuildRefused) as refused:
             action()
         (refusal,) = refused.value.refusals
-        assert refusal.code == "load.newer-form" and "mime.bundle/4" in refusal.message, refusal
+        assert refusal.code == "load.newer-form" and "mime.bundle/5" in refusal.message, refusal
         assert "install the MIME that wrote it" in refusal.action and "do not unpack" not in refusal.action
     assert not (tmp_path / "a").exists() and not (tmp_path / "b").exists()
 

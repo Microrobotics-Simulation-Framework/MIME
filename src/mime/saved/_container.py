@@ -313,10 +313,11 @@ def unknown_format(archive: zipfile.ZipFile, kind: ContainerKind) -> BuildRefuse
                                                                       kind.the)) is not None else None
 
 
-def read_manifest(archive: zipfile.ZipFile, kind: ContainerKind,
-                  shape: Callable[[object], type[object]]) -> dict[str, object]:
+def read_manifest(archive: zipfile.ZipFile, kind: ContainerKind, shape: Callable[[object], type[object]],
+                  held: Callable[[dict[str, object]], list[Refusal]] | None = None) -> dict[str, object]:
     """The manifest of a container of ``kind``, checked for its format first (a later one is refused with the advice to
-    install the MIME that packed it), then for the shape ``shape`` gives for the format it states, and its own hash."""
+    install the MIME that packed it), then for the shape ``shape`` gives for the format it states, then by ``held`` (what
+    its format does not hold, though its shape reads), and its own hash."""
     later = unknown_format(archive, kind)
     if later is not None:
         raise later
@@ -335,6 +336,9 @@ def read_manifest(archive: zipfile.ZipFile, kind: ContainerKind,
                                        f"packed it (`pip install mime-engine==<version>`)") for problem in problems])
         manifest = cast(dict[str, object], data)
         changed = container_hash(manifest, kind.hash_key) != manifest[kind.hash_key]
+        refused = held(manifest) if held is not None else []
+        if refused:
+            raise BuildRefused(refused)
     except RecursionError:
         raise BuildRefused([_not_written(kind, f"{MANIFEST_MEMBER} is nested too deeply to be a manifest")]) from None
     except (ValueError, zipfile.BadZipFile) as error:

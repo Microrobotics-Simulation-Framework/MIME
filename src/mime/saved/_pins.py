@@ -34,7 +34,7 @@ def lock_manifests(form: SavedForm) -> dict[str, Manifest]:
     found: dict[str, Manifest] = {}
     for name, value in cast(dict[str, object], held).items():
         try:
-            found[name] = read_manifest_data(value, f"{form.folder} (the lock's {VISUALS_KEY}: {name})")
+            found[name] = read_manifest_data(value, f"{form.folder} (the lock's {VISUALS_KEY}: {name})", lock=True)
         except Exception:  # noqa: BLE001 - the load refuses a malformed lock with its reason
             continue
     return found

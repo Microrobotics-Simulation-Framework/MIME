@@ -27,6 +27,7 @@ import json
 import os
 import re
 import shutil
+import warnings
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -51,7 +52,7 @@ from mime.results._study_folder import (
     STUDY_FILE,
 )
 from mime.saved import _bundle
-from mime.saved._bundle import BUNDLE, SHARING_FILES, referenced_members, shipped_asset_problems
+from mime.saved._bundle import BUNDLE, SHARING_FILES, ByRequestWarning, referenced_members, shipped_asset_problems
 from mime.saved._container import (
     BundleFile,
     ContainerKind,
@@ -394,6 +395,7 @@ def pack_study(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     """Write the study container of the study folder ``folder`` (by default ``<folder>.mimestudy`` beside it) and return
     its path: refused, with every reason at once, as the module says. The same folder makes the same bytes."""
     from mime.experiment import Experiment
+    from mime.saved._card import by_request_warnings
     from mime.saved._study_card import study_notice_text
     from mime.results._study_read import read_study
 
@@ -459,7 +461,11 @@ def pack_study(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     refusals = _bundle.scan_text(f"the manifest ({IN_STUDY})", text, stored)
     if refusals:
         raise BuildRefused(refusals)
-    return write_container(target, text, notice, members, STUDY)
+    path = write_container(target, text, notice, members, STUDY)
+    for where, terms in judged.items():
+        for line in by_request_warnings(terms):
+            warnings.warn(f"{IN_STUDY}, {where}/: {line}", ByRequestWarning, stacklevel=2)
+    return path
 
 
 def _within_all(judged: Mapping[str, FolderTerms],

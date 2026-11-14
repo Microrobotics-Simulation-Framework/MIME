@@ -28,7 +28,7 @@ import yaml
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.push._sharing import DEFAULT_LICENCE, Problem, Reader, Sharing, licence_of, record_of
+from mime.push._sharing import DEFAULT_LICENCE, RECORD_KEYS, Problem, Reader, Sharing, licence_of, record_of
 from mime.push._toml import key_lines, value_text
 from mime.saved._versions import newer_form_refusal
 
@@ -201,9 +201,36 @@ def toml_shaped(value: object) -> object:
     return value
 
 
+def toml_problems(value: object, where: str = "") -> list[str]:
+    """What TOML cannot hold of ``value`` as YAML read it, each as ``<where> <what>``, so that nothing is dropped or
+    changed in the move: a null inside an array (a mapping's null is a key left out, which holds nothing), a key that is
+    not text (YAML reads ``1``, ``yes`` and a date as a number, a boolean and a date: TOML's keys are text, and the keys
+    ``1`` and ``'1'`` would be one key), and a value TOML has no form for (:func:`toml_holdable`)."""
+    found: list[str] = []
+    if isinstance(value, list):
+        for index, each in enumerate(cast(list[object], value)):
+            if each is None:
+                found.append(f"{where}[{index}] is null, which TOML cannot hold in an array")
+            else:
+                found += toml_problems(each, f"{where}[{index}]")
+    elif isinstance(value, dict):
+        for key, each in cast(dict[object, object], value).items():
+            if not isinstance(key, str):
+                found.append(f"{where or 'the top'} holds the key {plain(repr(key))}, which YAML reads as "
+                             f"{type(key).__name__} and TOML's keys cannot be (quote it, `'{plain(str(key))}'`)")
+            else:
+                found += toml_problems(each, f"{where}.{plain(key)}" if where else plain(key))
+    elif value is not None and not toml_holdable(value):
+        found.append(f"{where} is a value TOML cannot hold (a YAML tag's binary, set or pairs, or text UTF-8 cannot "
+                     f"write)")
+    return found
+
+
 def old_values(root: Path) -> dict[str, object]:
     """What ``sharing.yaml`` beside the folder holds, by key (``licence`` among them), as ``mime.toml`` holds it: the
-    values ``--setup`` and ``--init`` write ``mime.toml`` from. Its own checks are ``mime.toml``'s, after."""
+    values ``--setup`` and ``--init`` write ``mime.toml`` from. Its own checks are ``mime.toml``'s, after. **Nothing is
+    dropped silently**: a key outside ``[record]``'s and ``licence``, and what :func:`toml_problems` finds, refuse the
+    move (``manifest.read``) before anything is written, each named."""
     path = root / OLD_FILE
     try:
         loaded: object = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -214,15 +241,15 @@ def old_values(root: Path) -> dict[str, object]:
                       f"correct it by hand, or move it aside and write {MANIFEST_FILE} afresh, `mime push "
                       f"{quoted(str(root))} --setup`") from None
     held = cast(dict[object, object], loaded) if isinstance(loaded, dict) else {}
-    shaped = {str(key): toml_shaped(value) for key, value in held.items() if key != "format" and value is not None}
-    odd = [plain(key) for key, value in shaped.items() if not toml_holdable(value)]
+    odd = toml_problems(held)
+    odd += [f"{plain(str(key))} is not a key sharing.yaml held, and {MANIFEST_FILE} has no place for it"
+            for key in held if isinstance(key, str) and key not in ("format", "licence", *RECORD_KEYS)]
     if odd:
         raise _refuse("manifest.read", RefusalClass.USER,
-                      f"{path}, {', '.join(odd)}: holds a value TOML cannot hold (a YAML tag's binary, set or pairs, "
-                      f"or text UTF-8 cannot write), so {MANIFEST_FILE} cannot be written from it",
-                      f"correct it by hand, or move it aside and write {MANIFEST_FILE} afresh, `mime push "
-                      f"{quoted(str(root))} --setup`")
-    return shaped
+                      f"{path} holds what {MANIFEST_FILE} cannot carry over, so nothing is written: " + "; ".join(odd),
+                      f"correct it by hand (delete the key, quote the key, fill the null), or move it aside and write "
+                      f"{MANIFEST_FILE} afresh, `mime push {quoted(str(root))} --setup`")
+    return {str(key): toml_shaped(value) for key, value in held.items() if key != "format" and value is not None}
 
 
 def toml_holdable(value: object) -> bool:
@@ -308,4 +335,4 @@ def manifest_text(kind: str, name: str, licence: str | None, values: Mapping[str
 
 __all__ = ["BLOCK_TABLES", "BUNDLE", "KINDS", "MANIFEST_FILE", "MANIFEST_FORMAT", "OLD_FILE", "STUDY", "Manifest",
            "folder_kind", "kind_of", "manifest_path", "manifest_problems", "manifest_text", "old_values", "present",
-           "read_manifest", "read_record", "read_toml", "toml_holdable", "toml_shaped"]
+           "read_manifest", "read_record", "read_toml", "toml_holdable", "toml_problems", "toml_shaped"]

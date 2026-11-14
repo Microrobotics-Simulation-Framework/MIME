@@ -38,6 +38,7 @@ def target() -> np.ndarray:
     return np.asarray(built.current_state()["camera:"]["expected"], dtype=np.float64)
 
 
+@pytest.mark.memory_heavy
 def test_the_grid_recovers_the_cameras_numbers_from_a_wrong_start(dtype):
     held = target()
     lines = LINES[dtype]

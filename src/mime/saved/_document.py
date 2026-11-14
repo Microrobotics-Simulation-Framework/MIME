@@ -38,6 +38,7 @@ from mime.saved._schema import (
     AcceptanceDoc,
     AssetDoc,
     BasedOnDoc,
+    BlockUseDoc,
     FileDoc,
     BoundEntryDoc,
     ConditionDoc,
@@ -613,6 +614,9 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     if ranges:
         document = cast(ExperimentDocument, _after(cast(dict[str, Any], document), "declared",
                                                    {"ranges": dict(sorted(ranges.items()))}))
+    if settings.blocks:
+        blocks = {name: cast(BlockUseDoc, dict(use)) for name, use in sorted(settings.blocks.items())}
+        document = cast(ExperimentDocument, _after(cast(dict[str, Any], document), "experiment", {"blocks": blocks}))
     if settings.based_on is not None:
         # written beside the experiment's own name, where a reader of the file looks for what it is
         held = cast(dict[str, Any], document)

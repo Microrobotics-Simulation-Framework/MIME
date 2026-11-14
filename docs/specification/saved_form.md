@@ -126,6 +126,20 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_form13.py::test_a_folder_of_an_earlier_form_loads_rebuilds_and_verifies`,
   `tests/saved/test_form13.py::test_control_the_form_twelve_flow_folder_without_the_write_back_is_refused_by_its_input_hash`,
   `tests/saved/test_form13.py::test_version_twelves_reader_refuses_a_folder_of_version_thirteen_as_newer_each_file_once`.
+- **[document.blocks]** From the fourteenth form each block the experiment uses is saved as `blocks`, by the use's
+  name: its id, version and content hash, its tier (`copied` or `referenced`), its licence, the DOI it was used by
+  where it was, its sockets' bindings, the names it provides in each of the document's sections of declarations, and
+  the paths declared over it; written only where one is used, and part of the hashed input, so a use edited after its
+  lock was written is refused as `load.input-hash`. A `copied` use, whose declarations the document holds, loads; a
+  `referenced` one is refused as `load.referenced-block`, naming it, before anything else is read, since this MIME
+  does not yet read a block's container; reading the folder refuses neither. A document of an earlier form that holds
+  the key is refused as `load.document-shape`, never read as using a block. A reader of the thirteenth form refuses a
+  folder of the fourteenth as `load.newer-form`.
+  *Cases:* `tests/saved/test_form14_blocks.py::test_a_copied_block_is_written_into_the_document_and_loads_with_its_input_hash_reproduced`,
+  `tests/saved/test_form14_blocks.py::test_a_use_edited_after_its_lock_was_written_is_refused_by_the_input_hash`,
+  `tests/saved/test_form14_blocks.py::test_a_referenced_block_is_refused_by_its_own_code_naming_each_use_and_never_as_a_shape`,
+  `tests/saved/test_form14_blocks.py::test_a_form_thirteen_document_holding_blocks_is_refused_and_written_back_without_it`,
+  `tests/saved/test_form14_blocks.py::test_version_thirteens_reader_refuses_a_document_using_a_block_as_newer_each_file_once`.
 - **[document.terms]** The document's licence, custom licences, terms and permissions are read in the form `save`
   writes them; terms in any other form are refused by their own codes.
   *Cases:* `tests/saved/test_terms_saved.py::test_terms_edited_by_hand_are_refused_at_load_by_their_code`.
@@ -167,7 +181,10 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/sharing/test_push_publish.py::test_a_lock_changed_between_staging_and_publish_is_left_alone`.
 - **[lock.referenced]** A file the lock says travels as a reference, and that is not in the folder, is refused as
   `asset.missing`, with the command that fetches and places it; one that is there is held to its pin as every file is.
-  *Cases:* `tests/sharing/test_referenced.py::test_a_folder_missing_a_referenced_file_is_refused_with_the_command_that_fetches_and_places_it`.
+  One whose asset names no location (the fourteenth form's) and is not in the cache is refused as
+  `asset.by-request`, which says where to request it and where to put it once held.
+  *Cases:* `tests/sharing/test_referenced.py::test_a_folder_missing_a_referenced_file_is_refused_with_the_command_that_fetches_and_places_it`,
+  `tests/sharing/test_by_request_exits.py::test_the_folder_loads_with_the_file_placed_and_is_refused_by_request_without_it`.
 
 - **[lock.records]** Each asset record of the lock (`assets`) is whole: beside the five keys every record has, each
   key the record states (its credit, role, kind and derivation, notice, custom licences, version, citation, and the
@@ -180,6 +197,18 @@ refusal table's (`mime/build/refusal_table.txt`).
 - **[lock.visuals]** The lock's `visuals` holds the manifest of each set of meshes the stage draws, by its name: their
   records, never their bytes, outside the input hash.
   *Cases:* `tests/viz/test_visual_pins.py::test_the_lock_holds_the_manifest_and_the_folder_holds_none`.
+- **[lock.by-request]** From the fourteenth form an asset record, in the lock's `assets` and in its `visuals`
+  manifests, may name no location (`locations: []`, the key kept: its file is had by request alone) and a route to
+  request its file by (`request`: one printable line of at most `REQUEST_LIMIT` characters, an `https://` link, a
+  `doi:` name, or a contact holding an e-mail address), both outside every hash; a lock of an earlier form is read as it is, nothing
+  written back, and one of them that holds either is refused as `load.lock-shape`, never read as declaring it. A reader
+  of the thirteenth form refuses a folder of the fourteenth as `load.newer-form`. The bundle's format and a manifest
+  file's step with it, so that a reader before them refuses either by its format.
+  *Cases:* `tests/saved/test_form14.py::test_version_fourteen_writes_a_record_with_no_location_and_reads_it_back`,
+  `tests/saved/test_form14.py::test_the_form_thirteen_folder_loads_rebuilds_and_verifies`,
+  `tests/saved/test_form14.py::test_a_form_thirteen_lock_holding_what_form_fourteen_added_is_refused`,
+  `tests/saved/test_form14.py::test_version_thirteens_reader_refuses_a_folder_of_version_fourteen_as_newer_each_file_once`,
+  `tests/sharing/test_by_request_exits.py::test_a_bundle_of_format_three_holding_a_record_with_no_location_is_refused`.
 - **[lock.previous-records]** A lock of a form before the one that added them that holds `visuals` or a key of an asset record
   beyond the five is refused as `load.lock-shape`, never read as stating it.
   *Cases:* `tests/saved/test_form6.py::test_an_earlier_lock_holding_a_key_version_six_added_is_refused`,

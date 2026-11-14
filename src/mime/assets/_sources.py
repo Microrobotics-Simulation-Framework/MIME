@@ -123,12 +123,14 @@ def agree(held: Sequence[Sourced]) -> bool:
 
 def merged(held: Sequence[Sourced]) -> AssetRef | None:
     """One record from a name's records in several sources, where they hold the same bytes under the same terms
-    (:func:`agree`): the first's, with every source's locations in source order; ``None`` where two disagree, on the
-    bytes or on the terms, whichever source comes first."""
+    (:func:`agree`): the first's, with every source's locations in source order and the first route to request it that
+    any states (a route is no term: two sources may name different ones); ``None`` where two disagree, on the bytes or
+    on the terms, whichever source comes first."""
     if not agree(held):
         return None
     locations = tuple(dict.fromkeys(location for each in held for location in each.ref.locations))
-    return replace(held[0].ref, locations=locations)
+    request = next((each.ref.request for each in held if each.ref.request is not None), None)
+    return replace(held[0].ref, locations=locations, request=request)
 
 
 def shared_records() -> Mapping[str, AssetRef]:
