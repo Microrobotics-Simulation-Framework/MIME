@@ -272,6 +272,8 @@ class ResolvedPart:
     solid: str
     volume: float = 0.0
     inertia_per_mass: Tensor = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+    #: The asset references its solid reads as set (``Entry.assets_read``), which the lock records.
+    assets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2349,7 +2351,7 @@ class _Planner:
                     continue
                 mount = self.mount_on(plan, frame)
             resolved[key] = ResolvedPart(apparatus.name, key, mount, (*at, 1.0, 0.0, 0.0, 0.0), radius, label, volume,
-                                         per_mass)
+                                         per_mass, cast(Entry, held.geometry).assets_read())
 
     def apparatus_solid(self, geometry: object, where: str) -> tuple[str, float, float, Tensor] | None:
         """A part's solid, checked, as its label, the radius of the smallest sphere about its centroid that holds it,

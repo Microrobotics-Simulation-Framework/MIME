@@ -12,6 +12,18 @@
       "credit": "the lab fixture's authors",
       "role": "presentation",
       "kind": "authored"
+    },
+    {
+      "name": "labx_finish_nc.usda",
+      "sha256": "def1f2a29cb34b9d71e0b2fb4090ed0dae00ac0460ba29fc756b9a25d022fd13",
+      "size": 131,
+      "licence": "CC-BY-NC-4.0",
+      "locations": [
+        "package:labx/finish_nc.usda"
+      ],
+      "credit": "the lab fixture's authors",
+      "role": "presentation",
+      "kind": "authored"
     }
   ]
 }

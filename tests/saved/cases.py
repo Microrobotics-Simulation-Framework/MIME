@@ -307,6 +307,21 @@ def nudged_toy() -> Experiment:
     return experiment
 
 
+def entry_assets_rig(gantry: Any = None, field: Any = None) -> Experiment:
+    """The lab fixture's gantry carrying a magnet over a body (``gantry_magnet``), and a rotating field beside it turning
+    the body: by default the fixture's ``labx.finished_gantry`` and ``labx.marked_rotating``, entries that declare the
+    records they read (``Entry.assets``, ``assets_read``), which its lock names. ``gantry`` is the segment's class."""
+    from mime.interactions import Magnetic
+    from mime.units import mT
+
+    lab = importlib.import_module("mime_lab_fixture")
+    exp = gantry_magnet("entry_assets_rig", gantry=gantry if gantry is not None else lab.FinishedGantry)
+    exp.add_apparatus(Apparatus("field", fields={"magnetic": field if field is not None else lab.MarkedRotating(
+        rotation_axis=X, initial_direction=(0.0, 1.0, 0.0))}, commands={"frequency": Hz(1.0), "amplitude": mT(1.0)}))
+    exp.attach(Magnetic.Torque(), body="umr", field="field.magnetic")
+    return exp
+
+
 def lab_bead() -> Experiment:
     """The lab fixture's geometry kind as a body's hull under the drag's MRS rung, which samples it by the geometry
     protocol as it samples MIME's kinds, moving and turning from the start."""
@@ -587,6 +602,8 @@ CASES = (
     Case("kinematic_rpm", kinematic_rpm_kept),
     # The lab fixture's gantry, a chain segment with no URDF, carrying a magnet: mounts work on it unchanged.
     Case("gantry_magnet", gantry_magnet),
+    # The lab fixture's dynamics and field provider that declare the records they read: their lock names them.
+    Case("entry_assets_rig", entry_assets_rig, lab=True),
     # A0's apparatus closed by its controller, a callback every 2 ms, its writes 1 ms late: the arm's joint positions
     # are the graph's one external input, which the run feeds.
     Case("tracked_rpm", tracked_rpm),

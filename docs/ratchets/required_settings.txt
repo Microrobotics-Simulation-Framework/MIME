@@ -16,6 +16,7 @@ dynamics arm 0.1.0 mount                                 # physical: the frame a
 dynamics arm 0.1.0 rung                                  # design: the model is chosen explicitly, never picked
 dynamics arm 0.1.0 description                           # physical: the apparatus's own description file
 dynamics arm 0.1.0 initial_positions                     # design: the experimenter's choice
+dynamics labx.finished_gantry 0.1.0 mount                # physical: the frame a later segment of a chain mounts on (the first takes none, and is placed in the world)
 dynamics labx.gantry 0.1.0 mount                         # physical: the frame a later segment of a chain mounts on (the first takes none, and is placed in the world)
 dynamics motor 0.2.0 mount                               # physical: the frame a later segment of a chain mounts on (the first takes none, and is placed in the world)
 dynamics motor 0.2.0 rung                                # design: the model is chosen explicitly, never picked
@@ -27,6 +28,8 @@ dynamics motor 0.2.0 damping                             # physical: the dynamic
 dynamics motor 0.2.0 top_speed                           # design: the highest speed the experiment spins the rotor at, which judges its imbalance and tilt (none: a residue is refused, chain.spinner-speed)
 field_provider calibrated_multipole 0.1.0 calibration    # design: which of the packaged calibrations the experiment runs, which no default can pick for it
 field_provider point_dipole 0.1.0 part                   # physical: a fact about the setup, which MIME does not assume
+field_provider labx.marked_rotating 0.1.0 rotation_axis  # design: the experimenter's choice
+field_provider labx.marked_rotating 0.1.0 initial_direction # design: the experimenter's choice
 field_provider uniform_rotating 0.1.0 rotation_axis      # design: the experimenter's choice
 field_provider uniform_rotating 0.1.0 initial_direction  # design: the experimenter's choice
 field_provider uniform_rotating 0.2.0 rotation_axis      # design: the experimenter's choice

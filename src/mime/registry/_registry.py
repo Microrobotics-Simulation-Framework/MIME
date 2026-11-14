@@ -600,6 +600,9 @@ def _wall_kind_problems(held: Any) -> list[str]:
     found: list[str] = []
     if not isinstance(getattr(held, "form", None), WallForm):
         found.append("form: a mime.registry.WallForm, analytic or meshed")
+    if getattr(held, "assets", ()) or held.assets_read is not WallKind.assets_read:
+        found.append("assets: a wall kind is never an instance in a build, so what it declares there is never read; name "
+                     "the table in the interaction's Plan.assets (the drag's, from wall_correction_named(...).assets)")
     matches: object = getattr(held, "matches", ())
     reads: object = getattr(held, "reads", ())
     if not (isinstance(reads, tuple) and all(isinstance(r, str) for r in cast(tuple[object, ...], reads))):

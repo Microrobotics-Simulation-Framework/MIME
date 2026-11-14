@@ -37,7 +37,7 @@ from mime.docs._symbols import meta_of
 from mime.vocabulary import lookup, namespace_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
-SHOWN = frozenset({"builds", "callback_gradient", "delivers", "differentiability", "family", "gradient", "name",
+SHOWN = frozenset({"assets", "builds", "callback_gradient", "delivers", "differentiability", "family", "gradient", "name",
                    "native", "outputs", "placement", "publishes", "raises", "reads", "references", "reserved_rungs", "reynolds",
                    "roles", "rung_gradients", "rungs", "setting_roles", "support", "validity", "values", "version",
                    "writes"})
@@ -468,6 +468,18 @@ def _validity(w: Writer, record: Record) -> None:
     _reynolds(w, record)
 
 
+def _assets(w: Writer, record: Record) -> None:
+    """The asset references the class declares it reads (``Entry.assets``), printed only when there are some."""
+    names = strings(class_var(record, "assets", []))
+    if not names:
+        return
+    w.heading(2, "Assets it reads (by default)")
+    w.paragraph("The shipped asset references (`mime.assets`) the class declares it reads, which a saved experiment's lock "
+                "records. An entry may read fewer or others as its settings choose (`assets_read`): the lock holds "
+                "what the entry reads as set.")
+    w.bullets(code(name) for name in names)
+
+
 def _family(w: Writer, record: Record, path: str, context: Context) -> None:
     family = class_var(record, "family")
     if family is None:
@@ -580,6 +592,7 @@ def entry_page(record: Record, context: Context) -> Page:
     _gradient(w, record)
     _outputs(w, record)
     _validity(w, record)
+    _assets(w, record)
     _family(w, record, path, context)
     _references(w, record, context, namespace)
     _others(w, record)

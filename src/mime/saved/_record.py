@@ -8,7 +8,7 @@ import importlib.metadata
 import json
 import platform
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -453,13 +453,27 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
 
 
 def remote_assets(plans: PlanSet) -> tuple[AssetRef, ...]:
-    """Every remote asset an entry of the experiment reads (its plan's ``assets``: a wall's table), each once, in the
-    order the entries name them, as the shipped references hold them."""
+    """Every remote asset the experiment reads, each once, in the order the entries name them, as the shipped references
+    hold them: what each planned entry reads as set (``Entry.assets_read``: a lab's material file, chosen by a setting),
+    then what its plan adds (``Plan.assets``: a wall's table), then every geometry a build uses: a structure's, a
+    body's part's solid and an apparatus part's solid. A wall kind is never an instance in a plan, so it declares none
+    (registration refuses it)."""
     found: dict[str, AssetRef] = {}
-    for plan in plans.entries:
-        for name in plan.plan.assets if plan.plan is not None else ():
+
+    def add(names: Iterable[str]) -> None:
+        for name in names:
             ref = reference(name)
             found.setdefault(ref.sha256, ref)
+
+    for plan in plans.entries:
+        add((*plan.entry.assets_read(), *(plan.plan.assets if plan.plan is not None else ())))
+    for geometry in plans.geometries.values():
+        add(geometry.geometry.assets_read())
+    for line in plans.materials.parts:
+        add(line.solid.assets_read())
+    for parts in plans.apparatus_parts.values():
+        for part in parts.values():
+            add(part.assets)
     return tuple(found.values())
 
 
