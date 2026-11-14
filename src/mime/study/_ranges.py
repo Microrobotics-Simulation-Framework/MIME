@@ -342,7 +342,7 @@ def range_check(experiment: Experiment) -> RangeCheck:
         return replace(_CACHE[key], seconds=0.0, reused=True)
     settings, declarations, saved = experiment.declared_as()
     start = time.perf_counter()
-    with keeping_pins(saved), precision(True):
+    with keeping_pins(saved, settings), precision(True):
         differences, independent = independence(settings, declarations)
         verdicts, baked = traced(settings, declarations) if not independent else ({}, [])
     found = RangeCheck(tuple(differences), verdicts, tuple(independent + baked), time.perf_counter() - start)

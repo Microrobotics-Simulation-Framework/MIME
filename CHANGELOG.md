@@ -30,6 +30,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   function to its regions' sign at drawn points and its gradient's length. The saved form gains nothing. No compiled
   program changes for a scene route 1 already images.
 
+- **Blocks: a part of an experiment shared as data** (lane P, P4a, dev2). A block is a published, versioned part of an
+  experiment another lab reuses: its things, laws, observations and values with their reasons, written in the saved
+  document's own vocabulary, never code. Its folder holds `mime.toml`, `block.mime.yaml` (the fragment,
+  `mime.fragment/1`), its records and descriptions, and `cases/`. `mime.toml`'s tables are:
+  - `[block]` (id, version, licence);
+  - `[requires]`: the distributions its entries come from, with ranges;
+  - `[sockets]`: what its user binds, each a structure, medium, body or apparatus;
+  - `[[assets]]`, `[licences.<id>]`, `[[permissions]]`, `[[validity]]` and `[cases]`;
+  - `[record]`.
+
+  `exp.use(<block folder>, medium=water)` (`Experiment.use`) adds a block to an experiment, every refusal at once:
+  - a requirement not met here (`block.requires`, the environment's to fix, with the pins table and the line that installs
+    what is missing; MIME installs nothing);
+  - a socket unbound, unknown, of another kind or misdeclared (`block.socket`);
+  - an entry from a distribution `[requires]` does not name (`block.entry`);
+  - something it provides already declared (`block.name`; `name=` names the use and its things `<name>_<thing>`);
+  - a fragment unlike the document's shapes (`block.fragment`) or of another form (`block.format`).
+
+  A declaration made after the use on something the block provides replaces the block's, in a script too, and is
+  recorded among the use's overrides. The saved document records each use under `blocks` (saved form 14's slot): the
+  block's id, version and content hash, its tier and licence, its sockets' bindings, the names it provides, and the
+  overrides. **A block whose licence is open or conditional is copied**: its declarations are in the document, so a load
+  never needs it, and the verdict on the document's own files becomes the AND of the experiment's licence and each copied
+  block's. A non-commercial block makes them non-commercial; two different conditional licences leave them unknown, said
+  and not judged. The NOTICE and the card name each block. `mime check <block folder>` checks the block's keys, its
+  fragment, its sockets, `[requires]` against its entries and what is installed, and its cases (`block.case-stale`, and
+  `block.no-case` as a to do). `mime show <block folder>` says what it is and needs, offline. `mime.blocks.fragment_from`
+  writes a fragment from a saved experiment, the things named becoming its sockets. The lab fixture holds one,
+  `lab_fixture/blocks/nudged_probe/`, and the user guide a page, "Sharing a part of an experiment: blocks". A socket on a
+  frame of the user's is refused (`block.socket`) until one apparatus can be mounted on another's (the apparatus lane's
+  AP6). A socket never heads a key of `declared`, `ranges` or `sources` (`block.socket`), and a key that is not text is
+  `block.fragment`. Where the experiment overrides values of a block under a no-derivatives licence, the NOTICE and the
+  card name the block, the condition and the names, and judge nothing. A document using no block is written, hashed and loaded as before, and no simulation output moves.
+
+  Two codes change meaning:
+  - `manifest.kind` no longer reserves a block's tables: a block folder's `mime.toml` holds them, and any other folder's
+    is refused naming what it is.
+  - `load.referenced-block` also refuses using a block its licence makes referenced: this release does not yet read a
+    block's container.
+
 - **The camera reads the composed stage: scenery and inherited display primvars** (`mime.scene.Composition.scenery`,
   `SceneryMesh`, `SceneryGprim`, `read_display`, `Roster.scenery`; `mime.observations.Camera`, dev2, camera PR 4). Every
   `Gprim` of a referenced asset that no thing owns (below no bound prim, not a kind's derived prim) is scenery: a `Mesh` is

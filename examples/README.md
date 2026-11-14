@@ -39,3 +39,8 @@ MIME does.
   arms from `script_a.py` and runs each for a short time; the second is A0, the same screw driven by a magnet on an AR4
   arm in a closed loop, with the arm's description from `tests/descriptions/`. `tests/docs/test_tutorials.py` runs both and
   holds the guide's output blocks to what they print; the guide includes their regions, and those of `script_a.py`.
+- `blocks.py`: the run the user guide's page on blocks ([sharing a part of an experiment](../docs/guide/blocks.md))
+  prints the output of: the lab fixture's block (`lab_fixture/blocks/nudged_probe/`) used in an experiment of your own,
+  a value it provides declared over, the use as the saved document records it, the block's case saved and checked, and
+  the saved experiment loaded once the block's folder is gone. It works on a copy of the block in a folder of its own.
+  `tests/docs/test_tutorials.py` runs it.

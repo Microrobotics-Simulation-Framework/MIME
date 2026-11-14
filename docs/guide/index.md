@@ -27,6 +27,8 @@ the concept pages, which this guide links to where you meet each idea and does n
   kind, a custom geometry or a mesh, declares it.
 - [Assets in depth](assets.md): what a record says, where an experiment's records come from, where the bytes may go, and the
   audit for a package's CI.
+- [Sharing a part of an experiment: blocks](blocks.md): a block's folder, its sockets and requirements, using one in an
+  experiment, what its licence's tier means for your saved document, and making and checking one.
 
 ## The concepts the tutorials use
 

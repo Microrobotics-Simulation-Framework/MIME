@@ -161,7 +161,7 @@ class _Fit:
         self.like = dict(start)
         reference = {self.leader.key: self.leader} if self.leader.key is not None else {}
         self.reference = reference.get
-        with keeping_pins(self.saved), precision(self.leader.declared.x64):
+        with keeping_pins(self.saved, self.settings), precision(self.leader.declared.x64):
             self.writes = [written(axis, self.leader, self.settings, self.declarations, built, self.reference, None,
                                    None) for axis in self.axes]
         self.watches = tuple(plan_ for plan_ in built.plans.watches if isinstance(plan_, WatchPlan))
@@ -207,7 +207,7 @@ class _Fit:
 
     def point(self, values: Mapping[Axis, np.ndarray]) -> Point:
         declared = {axis: _quantity(self.like[axis], value) for axis, value in values.items()}
-        with keeping_pins(self.saved), precision(self.leader.declared.x64):
+        with keeping_pins(self.saved, self.settings), precision(self.leader.declared.x64):
             return build_point(-1, self.settings, self.declarations, declared, STUDY_REASON, self.reference)
 
     def evaluate(self, point: Point) -> tuple[np.ndarray, dict[str, np.ndarray], tuple[LineMargin, ...], Any]:

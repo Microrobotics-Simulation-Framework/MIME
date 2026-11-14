@@ -55,8 +55,8 @@ from mime.build import BuildRefused, BuildReport
 from mime.saved._based_on import based_on_words
 from mime.saved._folder import named_files, nondeterministic_gpu, read_folder
 from mime.saved._scales import RESOLUTION_FACTOR, SCALED_FROM
-from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc, PublicationRecord
-from mime.saved._terms import FileTerms, FolderTerms, LockAsset, folder_terms
+from mime.saved._schema import BlockUseDoc, ExperimentDocument, Lock, PermissionDoc, PublicationRecord
+from mime.saved._terms import FileTerms, FolderTerms, LockAsset, custom_licences, folder_terms
 from mime.saved._versions import DOCUMENT_SCHEMAS, TERMS_ADDED
 from mime.terms import (
     CUSTOM_PREFIX,
@@ -68,6 +68,7 @@ from mime.terms import (
     CustomLicence,
     canonical,
     ids_of,
+    licence_verdict,
 )
 
 if TYPE_CHECKING:
@@ -381,6 +382,62 @@ def _licences_named(judged: FolderTerms) -> list[str]:
             *(held.ref.licence for held in judged.assets if held.ref.licence != NO_ASSERTION)]
 
 
+def _block_words(name: str, use: BlockUseDoc) -> str:
+    doi = f"DOI {plain(use['doi'])}" if "doi" in use else "used from a block folder, no DOI"
+    return f"the use {plain(name)!r}: block {plain(use['id'])} {plain(use['version'])} ({doi}), licensed {plain(use['licence'])}"
+
+
+def no_derivatives_words(name: str, use: BlockUseDoc, document: ExperimentDocument) -> str | None:
+    """What the NOTICE and the card say where an experiment overrides values of a block whose licence carries a
+    no-derivatives condition: the block, its condition and the names overridden, and that MIME judges nothing of it.
+    ``None`` where the block's licence has no such condition or nothing is overridden."""
+    overridden = use["overrides"]
+    held = licence_verdict(use["licence"], custom_licences(document))
+    if not overridden or NO_DERIVATIVES not in held.conditions:
+        return None
+    return (f"The block {plain(use['id'])} {plain(use['version'])} (the use {plain(name)!r}) is licensed "
+            f"{plain(use['licence'])}, which carries a no-derivatives condition, and this experiment declares over what "
+            f"it provides: {', '.join(plain(each) for each in overridden)}. MIME does not judge whether that makes "
+            f"this experiment a derivative of the block: that is for its author and for anyone who reuses it.")
+
+
+def block_lines(document: ExperimentDocument) -> list[str]:
+    """The NOTICE's lines on the blocks the experiment uses: each use, its licence, and what its tier means for the
+    files that hold its content; none where it uses none."""
+    uses = document.get("blocks", {})
+    if not uses:
+        return []
+    lines = ["", "Blocks it uses", "--------------",
+             "Each block the experiment uses: published parts of an experiment by others, named by their content hash in "
+             "the document.", ""]
+    for name, use in sorted(uses.items()):
+        if use["tier"] == "copied":
+            lines.append(f"- {_block_words(name, use)}, copied: its declarations are in the document, so the "
+                         f"experiment's own files hold its content, under the AND of the experiment's licence and the "
+                         f"block's (a condition of either holds for them; see Files). Content "
+                         f"{plain(use['content'])}.")
+        else:
+            lines.append(f"- {_block_words(name, use)}, used by reference: its content is in its container, never in "
+                         f"this folder. Content {plain(use['content'])}.")
+        if (said := no_derivatives_words(name, use, document)) is not None:
+            lines.append(f"  {said}")
+    return lines
+
+
+def block_card_lines(document: ExperimentDocument) -> list[str]:
+    """The card's line for each block the experiment uses, and its no-derivatives words where it overrides one whose
+    licence has that condition."""
+    lines: list[str] = []
+    for name, use in sorted(document.get("blocks", {}).items()):
+        lines.append(f"- **Uses block {plain(use['id'])} {plain(use['version'])}** ("
+                     + (f"DOI {plain(use['doi'])}; " if "doi" in use else "")
+                     + (f"copied in under {plain(use['licence'])}, which joins the experiment's own licence)"
+                        if use["tier"] == "copied" else f"used by reference, under {plain(use['licence'])})"))
+        if (said := no_derivatives_words(name, use, document)) is not None:
+            lines.append(f"  - {said}")
+    return lines
+
+
 def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -> str:
     """The NOTICE of a saved folder, from its terms as judged now: deterministic, a line for every file it names."""
     name = plain(document["experiment"])
@@ -389,7 +446,8 @@ def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -
              f"Generated from the folder MIME {plain(lock['environment']['mime'])} saved "
              f"({DOCUMENT_SCHEMAS[judged.version]}); a bundle carries it, and mime push will upload it beside the "
              f"bundle. Naming a rights holder here implies no endorsement by them.", "",
-             "The experiment's licence", "------------------------", own_licence_text(judged), "",
+             "The experiment's licence", "------------------------", own_licence_text(judged),
+             *block_lines(document), "",
              "Files", "-----",
              "Each file of the folder: the sha256 and size of its bytes, whose it is, its licence, and its verdict: "
              "permitted, not permitted or unknown (OpenMaterica's words for a source's redistribution status), and "
@@ -412,7 +470,8 @@ def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -
         paths = [file.path for file in judged.files if file.sha256 in held["files"]]
         lines += permission_words(index, held, paths)
     lines += ["", "Licences", "--------"]
-    used = sorted({identifier for licence in _licences_named(judged) for identifier in ids_of(licence)})
+    named = [*_licences_named(judged), *(use["licence"] for use in document.get("blocks", {}).values())]
+    used = sorted({identifier for licence in named for identifier in ids_of(licence)})
     definitions = judged.licence_definitions()
     lines += [plain(_licence_link(identifier, definitions)) for identifier in used] or ["None named."]
     for identifier in sorted(NOTICE_TEXT_REQUIRED & set(used)):
@@ -546,7 +605,7 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     licences = sorted(set(_licences_named(judged)))
     parent = document.get("based_on") if based_on else None
     lines = [f"# {name}", "", *([f"- **{based_on_words(parent)}**"] if parent is not None else []),
-             *_publication_lines(publication),
+             *block_card_lines(document), *_publication_lines(publication),
              "- **Licence:** " + (plain(judged.licence) if judged.licence
                                   else "none declared (mime push will ask for one)"),
              f"- **Licences of its files{' and assets' if judged.assets else ''}:** "
@@ -623,6 +682,7 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
 
 
 __all__ = ["CONDITION_WORDS", "CREDIT_HOME", "LICENCE_TEXTS", "NO_EVIDENCE", "NO_LICENCE", "CardFacts", "availability",
+           "block_card_lines", "block_lines", "no_derivatives_words",
            "by_request_warnings", "card_facts", "card_of", "card_text",
            "file_lines",
            "judged_folder", "notice", "notice_text", "own_licence_text", "permission_words"]

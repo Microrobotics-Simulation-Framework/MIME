@@ -1,0 +1,30 @@
+# A lab's block in miniature: the labx lab's probe, pushed by its own nudge, with a drag and a spring, coupled to a
+# medium the user binds. `mime show` and `mime check` read this folder; `exp.use(<this folder>, medium=...)` uses it.
+format = "mime.toml/1"
+
+[block]
+id = "labx.nudged_probe"
+version = "0.1.0"
+licence = "CC-BY-4.0"
+
+[requires]
+mime-engine = ">=0.3.0.dev1,<0.4"
+mime-lab-fixture = ">=0.1,<0.2"
+
+[sockets]
+medium = { kind = "medium" }
+
+[[validity]]
+line = "a toy probe: its laws are MIME's toy entries and the lab's nudge, which model no device"
+reason = "the block exists to show how a block is made, used and checked"
+
+[cases]
+shows = "The probe builds and runs in a medium of the user's, its mass the lab's own unless the user declares another."
+
+[record]
+title = "A nudged probe (a lab's block in miniature)"
+description = "The labx lab's probe as a block: MIME's lab fixture, used by the user guide's page on blocks."
+creators = [
+  { family = "Lab", given = "Demo", affiliation = "Demo Lab" },
+]
+keywords = ["mime-example"]

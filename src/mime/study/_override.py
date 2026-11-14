@@ -135,7 +135,7 @@ def base_point(built: BuiltExperiment) -> Point:
         return held
     declarations, settings = built.declared
     plans = built.plans
-    with keeping_pins(built.saved_form):
+    with keeping_pins(built.saved_form, built.declared[1]):
         assembled = assemble(plans, built.law)
     observing = [n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()]
     found = structure_key(assembled.graph, observing)
@@ -172,7 +172,7 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
     if refusals:
         raise BuildRefused(refusals)
     base = base_point(built)
-    with keeping_pins(built.saved_form):
+    with keeping_pins(built.saved_form, built.declared[1]):
         # The base as the reference: a node with checks of its own (the MRS rung's) whose leaves or starting inputs the
         # overrides change is judged again on the run's own point, by the code that judges a study's.
         point = build_point(0, settings, declarations, axes, OVERRIDE_REASON,
@@ -217,7 +217,7 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
     records: list[dict[str, Any]] = []
     inert: list[Refusal] = []
     for axis, value in axes.items():
-        with keeping_pins(built.saved_form):
+        with keeping_pins(built.saved_form, built.declared[1]):
             alone = point if len(axes) == 1 else build_point(0, settings, declarations, {axis: value}, OVERRIDE_REASON)
         own = base_value(axis, settings, declarations)
         if not alone.refused and same_run(alone, base) and (own is None or differ(own, value)):

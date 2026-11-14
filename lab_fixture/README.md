@@ -16,6 +16,12 @@ package (`package:labx/marker.usda`); and a `mime.asset_adapters` entry point `l
 authenticated store that MIME's resolver hands the token of the location's own host, and which passes
 `mime.testing.verify_adapter`.
 
+**A block of the lab's** (`blocks/nudged_probe/`): the lab's probe as a block, data and no code, its `[requires]`
+naming this distribution (for `labx.nudge`) and MIME (for its toy entries), its one socket a medium the user binds. The
+user guide's page on blocks uses it (`examples/blocks.py`), and `tests/blocks/` copies it to edit. It holds no case: a
+case is a saved folder whose outputs belong to the environment that saved it, so the guide's example writes one into a
+copy.
+
 Install it next to MIME with `uv pip install --no-deps ./lab_fixture`.
 
 ## Status
