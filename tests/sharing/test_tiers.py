@@ -1,7 +1,8 @@
 """``mime pack``'s verdicts (designs #198, #199): **a file that may not be redistributed never travels inside a bundle,
 whatever its size**. It travels as a reference to its origin, which the lock names; a file that must and gives no
-origin is refused (``bundle.no-location``); a declared permission that grants redistribution lets it travel; a file
-over the size a bundle carries travels as a reference where its terms give an origin.
+origin travels as a record with no location (saved form 14: ``pack`` warns, ``ByRequestWarning``, and never refuses
+it, where it refused it before as ``bundle.no-location``); a declared permission that grants redistribution lets it
+travel; a file over the size a bundle carries travels as a reference where its terms give an origin.
 
 The property draws saved folders with files of every verdict, at real sizes (a few hundred bytes to two megabytes, the
 range of a robot's visual meshes) and with real SPDX ids, **some of them copies of an earlier file's bytes at another
@@ -49,7 +50,7 @@ from terms_cases import (
 
 from mime.assets import known
 from mime.build import BuildRefused
-from mime.saved import _bundle, _record, _terms, pack, unpack
+from mime.saved import LOCK_FILE, ByRequestWarning, _bundle, _record, _terms, pack, unpack
 from mime.terms import CustomLicence, Evidence, Permission, Scope, Terms
 
 ORIGIN = "https://example.org/upstream/6a3ebb1/{}"
@@ -111,10 +112,6 @@ def expected_refusals(files: list[Spec], paths: list[Path]) -> tuple[str, set[st
         if len({each for each in declared if each is not None}) > 1:
             return "save", {"terms.file"}
     codes: set[str] = set()
-    for index in range(len(files)):
-        terms = terms_of(files, index, paths)
-        if not travels(files, index) and terms is not None and not terms.origin:
-            codes.add("bundle.no-location")
     for members in groups.values():
         moving = [travels(files, each) for each in members]
         if any(moving) and not all(moving):
@@ -245,9 +242,13 @@ def test_a_permission_lets_a_file_travel_and_only_the_bytes_it_names(tmp_path: P
                                         Spec("not permitted", NO_REDISTRIBUTION, 5000, True, False)])
 
 
-def test_a_file_that_must_be_a_reference_and_has_no_origin_is_refused(tmp_path: Path):
-    with same_reference_run():
+def test_a_file_that_must_be_a_reference_and_has_no_origin_travels_as_a_record_with_no_location(tmp_path: Path):
+    with same_reference_run(), pytest.warns(ByRequestWarning, match="has no download location"):
         pack_holds_the_tiers(tmp_path, [Spec("unknown", "MPL-2.0", 4000, False, False)])
+    lock = json.loads((tmp_path / "folder" / LOCK_FILE).read_text(encoding="utf-8"))
+    (asset,) = lock["assets"]
+    assert asset["locations"] == [] and "request" not in asset
+    assert lock["referenced_files"] == {f"scene/layers/{asset['name']}": asset["name"]}
 
 
 def test_a_large_file_with_an_origin_travels_as_a_reference_and_one_without_is_refused(tmp_path: Path,
@@ -395,7 +396,7 @@ def test_the_lock_names_each_reference_and_its_asset_as_the_save_writes_them(tmp
         folder, (path,) = saved(tmp_path, [Spec("not permitted", NO_REDISTRIBUTION, 4000, True, False)])
     lock = json.loads((folder / "mime.lock").read_text())
     data = path.read_bytes()
-    assert lock["schema"] == "mime.lock/13"
+    assert lock["schema"] == "mime.lock/14"
     assert lock["referenced_files"] == {f"scene/layers/{path.name}": path.name}
     assert lock["assets"] == [{"name": path.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
                                "licence": NO_REDISTRIBUTION.id, "locations": [ORIGIN.format(path.name)]}]

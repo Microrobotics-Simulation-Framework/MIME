@@ -701,7 +701,7 @@ def test_a_second_form_manifest_states_conditions_which_reach_each_record_and_ro
     (found,) = assets.licences_of(held.assets[0])
     assert found.conditions == LINES
     written = held.to_json()
-    assert written["format"] == "mime.asset_manifest/2" and written["assets"][0]["licences"][CLOSED]["conditions"] == list(LINES)
+    assert written["format"] == "mime.asset_manifest/3" and written["assets"][0]["licences"][CLOSED]["conditions"] == list(LINES)
     assert assets.read_manifest_data(written, "again").to_json() == written
 
 

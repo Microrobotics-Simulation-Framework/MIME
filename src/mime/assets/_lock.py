@@ -29,7 +29,8 @@ def _unreadable(folder: Path, problem: str) -> BuildRefused:
 
 def folder_assets(folder: str | os.PathLike[str]) -> tuple[AssetRef, ...]:
     """The asset references the lock in ``folder`` names, in the lock's order and each once; none when the lock
-    records none."""
+    records none. A lock of a later saved form than this MIME reads is refused as ``load.newer-form``, before any of
+    its records is read."""
     where = Path(folder)
     try:
         lock: object = read_lock(where / LOCK_FILE)
@@ -37,6 +38,12 @@ def folder_assets(folder: str | os.PathLike[str]) -> tuple[AssetRef, ...]:
         raise _unreadable(where, f"cannot be read as JSON ({error})") from error
     if not isinstance(lock, dict):
         raise _unreadable(where, "is not a JSON object")
+    from mime.saved._versions import LOCK_SCHEMAS, newer_form_refusal
+
+    newer = newer_form_refusal(cast("dict[str, object]", lock).get("schema"), "lock", tuple(LOCK_SCHEMAS.values()),
+                               str(where / LOCK_FILE))
+    if newer is not None:  # a later form's records are that form's to read: its own words, never their shape's
+        raise BuildRefused([newer])
     listed = cast("dict[str, object]", lock).get(ASSETS_KEY, [])
     if not isinstance(listed, list):
         raise _unreadable(where, f"{ASSETS_KEY!r} is not a list")
