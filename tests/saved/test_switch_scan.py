@@ -130,10 +130,11 @@ def test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_s
                 traced_step(configuration, name, node, node_state(graph, name), given,
                             parameter_leaves(graph).get(name), fresh=False)
             recorded |= {row.owner for row in rows}
-    # An owner a test-only entry declares (allocation_cases's controller) reaches MIME's helpers as their parameter,
-    # passed on: no literal of MIME's names it, so it is set aside here.
+    # An owner a test-only entry declares (allocation_cases's controllers) reaches MIME's helpers as their parameter,
+    # passed on: no literal of MIME's names it, so it is set aside here. One that a literal of MIME's also passes stays
+    # (the lab fixture's bead declares its region's sphere.centre, which MIME's sphere passes).
     outside = {declared.owner for record in registered() if record.cls.__module__.split(".")[0] != "mime"
-               for declared in declared_switches(record.cls)}
+               for declared in declared_switches(record.cls)} - set(scan.owners)
     assert recorded - outside == set(scan.owners)
 
 
