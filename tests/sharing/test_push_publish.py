@@ -23,7 +23,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, saved_toy, with_token, write_sharing
+from push_cases import copy_of, saved_toy, with_token, write_manifest
 from terms_cases import layered, same_reference_run, sha256_of, write_mesh
 from zenodo_records import FakeRecords, FakeTransport
 
@@ -38,7 +38,7 @@ NUMBER = "629525"
 @pytest.fixture(scope="module")
 def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
     folder = saved_toy(tmp_path_factory.mktemp("toy"))
-    write_sharing(folder)
+    write_manifest(folder)
     return folder
 
 
@@ -65,7 +65,7 @@ def granted(tmp_path_factory: pytest.TempPathFactory) -> Path:
     with same_reference_run():
         layered("granted", [(shell, Terms(own, "Maker Ltd", "presentation"))], licence="CC-BY-4.0",
                 permissions=[permission]).build().save(root / "granted")
-    write_sharing(root / "granted", extra='uploader: {name: "Carberry, Josiah"}\n')
+    write_manifest(root / "granted", extra='uploader = { name = "Carberry, Josiah" }\n')
     return root / "granted"
 
 
@@ -295,9 +295,9 @@ def test_without_a_draft_there_is_nothing_to_publish(toy: Path, tmp_path: Path, 
 
 
 def _replace_content(folder: Path, source: Path) -> None:
-    """The folder's saved form replaced by ``source``'s, its sharing.yaml kept."""
+    """The folder's saved form replaced by ``source``'s, its mime.toml kept."""
     for path in folder.iterdir():
-        if path.name != "sharing.yaml":
+        if path.name != "mime.toml":
             shutil.rmtree(path) if path.is_dir() else path.unlink()
     for path in source.iterdir():
         target = folder / path.name

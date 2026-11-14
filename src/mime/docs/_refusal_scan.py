@@ -42,7 +42,8 @@ IMPLIED: Mapping[tuple[str, str], RefusalClass] = {
     ("build/_ranges.py", "refuse"): RefusalClass.USER,
     ("build/_profile.py", "pending"): RefusalClass.USER,
 }
-FILE_SUFFIXES = frozenset({"json", "npz", "npy", "yaml", "yml", "lock", "usda", "usd", "usdc", "txt", "md", "py"})
+FILE_SUFFIXES = frozenset({"json", "npz", "npy", "yaml", "yml", "toml", "lock", "usda", "usd", "usdc", "txt", "md",
+                           "py"})
 #: The start of a string built into a code: its first word and the dot after it.
 _CODE_HEAD = re.compile(r"[a-z][a-z0-9_-]*\.")
 

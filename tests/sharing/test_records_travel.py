@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, with_token, write_sharing
+from push_cases import copy_of, with_token, write_manifest
 from terms_cases import NO_REDISTRIBUTION, mesh_bytes, same_reference_run
 from zenodo_records import FakeRecords
 
@@ -127,10 +127,10 @@ def test_a_pushed_folder_never_uploads_a_referenced_asset_and_its_record_travels
     data = mesh_bytes("vessel_scan", 4000)
     placed(cache, data)
     folder = saved_with(scan_record(data), tmp_path / "scanned")
-    write_sharing(folder)
+    write_manifest(folder)
     token = with_token(monkeypatch)
     fake = FakeRecords(token)
-    plan = _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_sharing(folder),
+    plan = _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_manifest(folder).record,
                            tmp_path / "staged")
     uploaded = {file.sha256 for file in plan.files}
     assert hashlib.sha256(data).hexdigest() not in uploaded

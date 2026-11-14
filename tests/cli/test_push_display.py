@@ -189,11 +189,11 @@ def test_the_record_number_is_asked_as_a_question_and_typed_after_a_marker(monke
 
 def test_the_two_values_of_a_site_edit_stand_side_by_side_with_what_differs_marked():
     raw, plain = drawn([Said("    on the site:  title: A title corrected on the site", EDIT_SITE),
-                        Said("    sharing.yaml: title: mime_sandbox_toy (MIME push sample)", EDIT_OURS)])
+                        Said('    mime.toml:    title: "mime_sandbox_toy (MIME push sample)"', EDIT_OURS)])
     row = next(line for line in plain.splitlines() if "A title corrected" in line)
-    assert "title: mime_sandbox_toy" in row, "both values begin on one row"
+    assert 'title: "mime_sandbox_toy' in row, "both values begin on one row"
     header = next(line for line in plain.splitlines() if "on the site" in line)
-    assert "sharing.yaml" in header and header.index("on the site") < header.index("sharing.yaml")
+    assert "mime.toml" in header and header.index("on the site") < header.index("mime.toml")
     assert any("4" in code.split(";") for code in SGR.findall(raw)), "the differing stretches are underlined"
     assert "     on the site:  title:" not in plain, "not the two lines the pipe gets"
 

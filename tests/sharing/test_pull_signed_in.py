@@ -43,7 +43,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from push_cases import copy_of, saved_toy, with_token, write_sharing
+from push_cases import copy_of, saved_toy, with_token, write_manifest
 from test_push_client import captured_with_locals, interrupted_while_waiting, proxy, unix_signals
 from zenodo_records import FakeRecords, served
 
@@ -64,7 +64,7 @@ KEY = "eyJhbGciOiJIUzUxMiJ9.a-share-links-key." + "k" * 24
 @pytest.fixture(scope="module")
 def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
     folder = saved_toy(tmp_path_factory.mktemp("toy"))
-    write_sharing(folder)
+    write_manifest(folder)
     return folder
 
 

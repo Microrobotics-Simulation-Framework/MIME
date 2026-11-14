@@ -30,7 +30,7 @@ STEP_TRIAL: Final = "step-trial"
 STEP_LINE: Final = "step-line"
 #: A declared permission, as the public statement it becomes.
 PERMISSION: Final = "permission"
-#: The two values of a field edited on the site: what the site holds, and what ``sharing.yaml`` writes.
+#: The two values of a field edited on the site: what the site holds, and what ``mime.toml`` writes.
 EDIT_SITE: Final = "edit-site"
 EDIT_OURS: Final = "edit-ours"
 #: A question: a declaration (``question-permission``), a site edit (``question-edit``), the record number typed

@@ -69,9 +69,10 @@ MANIFEST_MEMBER = "manifest.json"
 NOTICE_MEMBER = "NOTICE"
 FOLDER_PREFIX = "experiment/"
 
-#: The record's credit and description beside the saved form (``mime push --init`` writes it): neither carried nor
-#: refused, the one file of a folder that is not the saved form's and is not a stray (design #199, section 8 item 7).
-SHARING_FILE = "sharing.yaml"
+#: The record's manifest beside the saved form (``mime push --init`` writes ``mime.toml``), and the file it replaced,
+#: which a person may keep until they delete it: neither carried nor refused, the files of a folder that are not the
+#: saved form's and are not strays (design #199, section 8 item 7; sharing design v4, section 3.1).
+SHARING_FILES = ("mime.toml", "sharing.yaml")
 _MANIFEST_LIMIT_BYTES = 16_000_000
 _CHUNK = 1 << 20
 _TIMESTAMP = (1980, 1, 1, 0, 0, 0)
@@ -570,7 +571,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     redistributed is never carried, whatever its size: it travels as a reference to its origin, as the lock names it,
     and a file over :data:`INLINE_LIMIT_BYTES` likewise. Refused, with every reason, when a file holds a path of this
     machine or a token MIME has stored, when a file is not one the saved form names (or its name is not one every
-    platform holds; ``sharing.yaml``, push's credit, is neither carried nor refused), when a file that may not be redistributed has no origin, when the lock's references are not the
+    platform holds; ``mime.toml``, push's manifest, and ``sharing.yaml`` are neither carried nor refused), when a file that may not be redistributed has no origin, when the lock's references are not the
     ones the terms make (or a reference's asset does not state its terms' licence and origin), when a file that would
     be carried holds the bytes of one that travels as a reference, when an asset MIME ships is stated under another
     licence, when a licence names an id the installed packaging does not list, when a file is over the size limit and
@@ -591,7 +592,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
             "write it beside the folder (--out)")])
     references = {ref.sha256: ref for ref in folder_assets(root)}
     stored = held_tokens()
-    files = [(member, path) for member, path in _files_of(root) if member != SHARING_FILE]
+    files = [(member, path) for member, path in _files_of(root) if member not in SHARING_FILES]
     named = named_files(form)
     refusals: list[Refusal] = _stray_files(files, named)
     if refusals:

@@ -29,9 +29,10 @@ lines) comes from the ``publication`` of the lock it is written for: ``mime card
 ``mime push`` gives it the staged lock's, so a published record's description says what the record is. A first version's
 concept DOI is minted when it is published, so its card names it from version 2 on. Both refuse a licence that names an id the installed packaging does not list
 (``terms.unlisted-licence``), whose verdict this packaging cannot give. **Credit** (the creators with
-their ORCIDs, the contributors and their roles) is kept in ``sharing.yaml`` beside the saved form, which ``mime push
-<folder> --to <service> --init`` writes: the card names its creators (and its contributors) where it holds one, and
-says where credit lives where it does not; each third-party file's credit is under its licences either way.
+their ORCIDs, the contributors and their roles) is kept in ``mime.toml``'s ``[record]`` beside the saved form, which ``mime
+push <folder> --to <service> --init`` writes: the card names its creators (and its contributors) where it holds one, and
+says where credit lives where it does not; each third-party file's credit is under its licences either way. The works
+``[record]`` asks a user to cite as well (``also_cite``) end the card.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mime._shell import quoted
 from mime._terminal import plain
@@ -63,6 +65,9 @@ from mime.terms import (
     canonical,
     ids_of,
 )
+
+if TYPE_CHECKING:
+    from mime.push._sharing import Sharing
 
 SPDX_PAGE = "https://spdx.org/licenses/{}.html"
 #: A released version's spelling (``0.3.0``): what ``pip install mime-engine==`` can name.
@@ -127,7 +132,7 @@ NO_EVIDENCE = ("No evidence record: MIME's validity layer arrives in a later rel
 CONDITION_WORDS = {NON_COMMERCIAL: "Non-commercial terms", SHARE_ALIKE: "Share-alike terms",
                    NO_DERIVATIVES: "No-derivatives terms"}
 CREDIT_HOME = ("Not stated here: credit (the creators with their ORCIDs, the contributors and their roles) is kept in "
-               "`sharing.yaml` beside the saved form, which `mime push <folder> --to <service> --init` writes; this "
+               "`mime.toml` beside the saved form, which `mime push <folder> --to <service> --init` writes; this "
                "folder has none yet. Each third-party file's credit is under Licences and credit.")
 
 
@@ -366,14 +371,20 @@ def _asset_row(held: LockAsset) -> str:
             f"{held.verdict.status.replace('_', ' ')}{flag} | referenced | {plain(held.ref.credit or '')} |")
 
 
-def _credit_lines(root: Path) -> list[str]:
-    """The creators and contributors ``sharing.yaml`` names, where the folder holds one (refused as push refuses it,
-    since the card is the record's description); where it holds none, where credit lives."""
-    from mime.push._sharing import SHARING_FILE, read_sharing
+def _record(root: Path) -> Sharing | None:
+    """``[record]`` of the folder's ``mime.toml``, where it holds one (refused as push refuses it, since the card is the
+    record's description; a folder holding ``sharing.yaml`` is refused with the route to ``mime.toml``)."""
+    from mime.push._manifest import MANIFEST_FILE, OLD_FILE, read_record
 
-    if not (root / SHARING_FILE).is_file():
+    if not (root / MANIFEST_FILE).is_file() and not (root / OLD_FILE).is_file():
+        return None
+    return read_record(root)
+
+
+def _credit_lines(sharing: Sharing | None) -> list[str]:
+    """The creators and contributors ``[record]`` names; where the folder holds none, where credit lives."""
+    if sharing is None:
         return [f"- **Creators:** {CREDIT_HOME}"]
-    sharing = read_sharing(root)
     lines = [f"- **Creators:** {'; '.join(person.words() for person in sharing.creators)}"]
     if sharing.contributors:
         lines.append(f"- **Contributors:** {'; '.join(person.words() for person in sharing.contributors)}")
@@ -443,6 +454,7 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     push sends, rehearsed on the sandbox first)."""
     root, report, judged, document, lock = facts.root, facts.report, facts.judged, facts.document, facts.lock
     name = plain(document["experiment"])
+    sharing = _record(root)
     licences = sorted(set(_licences_named(judged)))
     parent = document.get("based_on") if based_on else None
     lines = [f"# {name}", "", *([f"- **{based_on_words(parent)}**"] if parent is not None else []),
@@ -451,7 +463,7 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
                                   else "none declared (mime push will ask for one)"),
              f"- **Licences of its files{' and assets' if judged.assets else ''}:** "
              f"{', '.join(plain(each) for each in licences) or 'none declared'}",
-             *_credit_lines(root), "",
+             *_credit_lines(sharing), "",
              "## What it is", "",
              f"Saved by MIME {plain(lock['environment']['mime'])} as {DOCUMENT_SCHEMAS[judged.version]}, built under "
              f"the {document['profile']} profile.", ""]
@@ -517,6 +529,8 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     lines += [f"pip install {plain(each)}=={plain(version)}" for each, version in distributions]
     lines += [_pull_line(publication), f"mime verify ./{name}/", "```", "", "## How to cite", "",
               _cite_line(publication), ""]
+    if sharing is not None and sharing.also_cite:
+        lines += [f"If you use this, please also cite: {'; '.join(each.words() for each in sharing.also_cite)}.", ""]
     return "\n".join(lines)
 
 

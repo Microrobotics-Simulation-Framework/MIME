@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`mime check <folder>`: a shared folder's `mime.toml` checked offline, on the profile workflow** (lane P, P6). Every
+  key's check, and the kind table's licence against the experiment's; nothing built, packed or sent. A defect is a
+  finding in every profile, what push still needs (no creator, an experiment with no licence) a to-do in exploratory and
+  a finding in research, and what a reviewer would ask (a creator with no ORCID iD, no description, no keyword) is
+  listed by research and never a finding; `strict` is refused by name. The profile is the experiment's own unless
+  `--profile` gives one; each item comes with its line to write. Exits 0, 1 with a finding, 2 when the folder cannot be
+  checked.
+
+- **`mime defaults [show | edit]` and `defaults.toml`** (lane P, P6): a person's defaults in MIME's config directory,
+  `mime.defaults/1`: their creators, the contributors, keywords, uploader and funding they repeat, the licences a new
+  record's content (`[licences] content`, which `--init` takes where an experiment declares none) and a scaffolded
+  plugin's code take, and a scaffold's namespace. `edit` walks them a field at a time and writes them whole or not at
+  all; `mime push --defaults` is an alias of `show`. Moved once from `sharing-defaults.yaml`, said in a line; the old
+  file is kept and never read again (`defaults.file` for a problem, `defaults.no-terminal`).
+
+- **`also_cite` in `[record]`**: works whoever uses a record is asked to cite as well (a DOI or an `https://` address,
+  and how it is cited). The card ends "If you use this, please also cite: ...", and push states each as a related
+  identifier `IsSupplementTo` unless `related` names it. Being metadata, a paper's DOI added after publishing is a
+  metadata edit, never a new version.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
@@ -925,6 +945,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **`mime.toml` replaces `sharing.yaml`** (lane P, P6), one manifest for every kind of shared folder: `format`
+  (`mime.toml/1`), one kind table (`[bundle] licence` at a saved folder, `[study] licence` at a study folder, a block's
+  tables reserved and refused by name until a later release reads blocks) and `[record]`, the record's metadata with
+  `sharing.yaml`'s keys and checks. Everything outside `[record]` defines the thing; `[record]` is never in a container.
+  Push, the card, `--init` and `--setup` read and write `mime.toml` only: a folder holding `sharing.yaml` alone is refused
+  with the route (`mime push <folder> --setup` writes `mime.toml` from it, `--init` without questions; MIME never deletes
+  your file), and one holding both is refused naming the one to delete. `--setup`, `--init` and the write-back of a site
+  edit edit `[record]` in place, every other line, comment and line ending kept; a key written as dotted keys or as a
+  table of its own is refused, the file left byte for byte. `--init` and `--setup` work on a study folder too. New
+  refusal codes `manifest.missing`, `manifest.read`, `manifest.write`, `manifest.key`, `manifest.kind`, `manifest.both`;
+  `push.sharing` and `push.sharing-missing` are gone; `mime.push.field_owner` says `record` for the author's fields. The
+  study folder's layout holds `mime.toml`: an older MIME refuses such a folder as a stray (`study.stray-file`). No saved
+  form changes: every saved folder loads, and packs to the same bytes, as before. The CLI README now says that every
+  command exits 3 on a MIME defect, push's refusal of a field MIME builds among them.
 
 - **A study's reverse-mode derivative in float32 through a body resolved on the FVM's grid (`Drag.Penalty`) is
   refused outside the envelope where it was measured right** (`drag.penalty-float32-reverse`, before the derivative

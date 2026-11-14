@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, saved_toy, with_token, write_sharing
+from push_cases import copy_of, saved_toy, with_token, write_manifest
 from zenodo_records import FakeRecords, served
 
 from mime import push
@@ -47,7 +47,7 @@ def test_a_round_trip_through_the_real_transport(toy: Path, fake: FakeRecords, t
                                                  capsys: pytest.CaptureFixture[str]):
     folder = copy_of(toy, tmp_path)
     assert run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--init")[0] == 0
-    write_sharing(folder)
+    write_manifest(folder)
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox")
     assert code == 0 and "Pushing 'full_toy'" in out and "made the draft 629525" in out
     assert out.index("  up: ") < out.index("made the draft"), "the plan is shown before the draft is made"
@@ -71,7 +71,7 @@ def test_a_round_trip_through_the_real_transport(toy: Path, fake: FakeRecords, t
     assert code == 0 and record.body["metadata"]["title"] == "full_toy"  # type: ignore[index]
     record.body["metadata"]["title"] = "Kept from the site"  # type: ignore[index]
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--keep-site-edits")
-    assert code == 0 and 'title: Kept from the site' in (folder / "sharing.yaml").read_text(encoding="utf-8")
+    assert code == 0 and 'title = "Kept from the site"' in (folder / "mime.toml").read_text(encoding="utf-8")
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--discard", "--yes")
     assert code == 0 and "deleted the draft 629525" in out and fake.drafts() == []
     assert out.splitlines()[-1] == f"{fake.site}/me/uploads"
@@ -91,7 +91,7 @@ def test_an_upload_cut_part_way_through_the_real_transport_is_sent_again_whole(t
                                                                                tmp_path: Path,
                                                                                capsys: pytest.CaptureFixture[str]):
     folder = copy_of(toy, tmp_path)
-    write_sharing(folder)
+    write_manifest(folder)
     fake.plant("cut", lambda method, path: method == "PUT" and path.endswith(".mimebundle/content"))
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
     assert code == 0 and "its connection dropped" in out
@@ -108,9 +108,9 @@ def test_a_refusal_is_in_7l_bs_shape_and_exits_two(toy: Path, fake: FakeRecords,
     code, _, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
     lines = err.splitlines()
     assert code == 2 and lines[0] == "mime push is refused:"
-    assert lines[1].startswith("[user] push.sharing-missing: ")
+    assert lines[1].startswith("[user] manifest.missing: ")
     assert any(line.strip().startswith("do: write it from what the folder knows, `mime push") for line in lines)
-    assert any(line.strip().startswith("see: ") and line.rstrip().endswith("/errors/push.sharing-missing")
+    assert any(line.strip().startswith("see: ") and line.rstrip().endswith("/errors/manifest.missing")
                for line in lines)
     assert fake.requests == []
 
@@ -119,7 +119,7 @@ def test_without_a_terminal_a_draft_is_made_and_a_publish_is_not(toy: Path, fake
                                                                    capsys: pytest.CaptureFixture[str],
                                                                    monkeypatch: pytest.MonkeyPatch):
     folder = copy_of(toy, tmp_path)
-    write_sharing(folder)
+    write_manifest(folder)
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox")
     assert code == 0 and "made the draft 629525" in out

@@ -14,7 +14,7 @@ names. The new experiment's own lock names no record (pushing it makes a record 
 does (#198's tiers): the same files at the same paths, with the same licences, verdicts and tiers, a file that may not
 be redistributed still a reference; the parent's licence is the new experiment's until it declares another. What
 ``mime push`` sends is unchanged: its description is the card without the line naming the parent, and its related
-identifiers are MIME's own and ``sharing.yaml``'s, with no relation to the parent (that relation is a new kind of
+identifiers are MIME's own and ``[record]``'s, with no relation to the parent (that relation is a new kind of
 Zenodo action, rehearsed on the sandbox first)."""
 
 import builtins
@@ -32,7 +32,7 @@ from assets_rig import Rig, reference
 from bundles import lock_with_assets, write_bundle
 from fake_zenodo import DOI, RECORD, zenodo
 from folder_state import untouched
-from push_cases import copy_of, with_token, write_sharing
+from push_cases import copy_of, with_token, write_manifest
 from terms_cases import NO_REDISTRIBUTION, layered, write_mesh
 from zenodo_records import FakeRecords
 
@@ -476,10 +476,10 @@ def test_push_sends_what_it_sent_no_relation_and_no_line_naming_the_parent(arm_p
         Experiment.based_on(arm_parent, name="arm_variant").save(tmp_path / "arm_variant")
     plans = {}
     for folder in (copy_of(arm_parent, tmp_path / "parent"), tmp_path / "arm_variant"):
-        write_sharing(folder)
+        write_manifest(folder)
         fake = FakeRecords(with_token(monkeypatch))
         plans[folder.name] = _plan.make_plan(copy_of(folder, tmp_path / "push" / folder.name), fake.service(),
-                                             push.read_sharing(folder), tmp_path / "staged" / folder.name)
+                                             push.read_manifest(folder).record, tmp_path / "staged" / folder.name)
     parent, child = plans["arm_like"], plans["arm_variant"]
     metadata = child.payload["metadata"]
     assert metadata["related_identifiers"] == parent.payload["metadata"]["related_identifiers"]  # type: ignore[index]
