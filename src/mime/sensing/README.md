@@ -36,12 +36,18 @@ stages:
   truth's measurement set, raised for a slender body so that neighbouring samples lie at most `SPACING` of its smallest length setting
   apart. The marched function is the first-order distance `value / slope` itself. The least sample and the least of the
   other local minima are held, each refined by the parabola through its neighbours, and each is a piece as the closed
-  forms' are: the first-order distance at its held point (its derivative is the least distance's along the ray but for
-  the parabola's error, second order in the spacing), its line by `jvp` along the ray table. **Where both branches' lines
-  cross a pixel**, two parts of the outline meet there (a body occluding itself: de Jongh's screw's lobes in concave notches, a
-  coil's turns crossing), and the corner sub-samples take the pixel: one straight edge there misses up to about a quarter
-  of the pixel, the per-pixel error camera PR five's first step located off the screw's crease (the numbers are in
-  `tests/sensing/predictions_camera_pr5a.json`). An attenuating body's chord is its samples' sign changes, linearly
+  forms' are: the first-order distance at its ray's own least near the held point (the quartic's through five held
+  values half a spacing apart, by Newton's steps from the parabola's), its line by `jvp` along the ray table. Its
+  derivative is the least distance's along the ray but for the quartic's error, fourth order in the spacing; read at the
+  parabola's point alone, a branch seen nearly end-on (a coil's apex) left the motion's derivative about 1 % off. **Where
+  both branches' lines cross a pixel**, two parts of the outline meet there (a body occluding itself: de Jongh's screw's
+  lobes in concave notches, a coil's turns meeting), and the corner sub-samples take the pixel, each sub-ray reading
+  its own least. Every cell (a sub-sample, or a pixel where no corner is in view) takes the exact share of the union of
+  the two branches' half-planes (`union_covered`, the boundary integral of the polygon outside both), not one straight
+  edge: one edge misses up to half a cell along a sharp notch's sliver, the per-pixel error camera PR five's first step
+  located off the screw's crease, and its error, depending on where the notch sits on the sub-samples' lattice, made a
+  coil's image ripple as it moved (its motion's derivative 2 to 4 % off at some poses; the measurements are in
+  `tests/sensing/predictions_camera_pr5a_fix.json`). An attenuating body's chord is its samples' sign changes, linearly
   interpolated: a body thinner than the spacing along a ray can be missed in the chord, never in the coverage. The
   march's choices are switches (`camera.sampled.*`); its search is held.
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
@@ -204,8 +210,11 @@ docstring (`tests/sensing/`), the predictions and outcomes in `predictions_camer
   segment.
 - **The sampled route** against the closed form on the sphere and the capsule, whose sign functions are their exact
   distances, per pixel and in the silhouette's motion, both dtypes; an attenuating sphere's absorbed light; on a coil's
-  crossing turns, every two-branch pixel against the sign-only truth (`test_sampled.py`, its lines `SWAP_PIXEL_LINE`,
-  `SWAP_MOTION_LINE`, `CHORD_LINE` and `CORNER_LINE`; the outcomes in `predictions_camera_pr5a.json`).
+  notches, every two-branch pixel against the sign-only truth, at three widths, in both dtypes, on two coils, within a
+  line derived from the scheme's own error terms (`corner_line`, `scripts/camera_route2/corner_line.py`); the coil's
+  motion's derivative across a pixel of motion; an ellipsoid's area (`test_sampled.py`, its lines `SWAP_PIXEL_LINE`,
+  `SWAP_MOTION_LINE`, `CHORD_LINE`, `corner_line`, `RIPPLE_LINE` and `ELLIPSE_LINE`; the outcomes in
+  `predictions_camera_pr5a.json` and `predictions_camera_pr5a_fix.json`).
 - **Not shown:** a translucent silhouette's per-pixel coverage (its aggregates' derivatives are, in float64,
   `test_camera_gradients.py`), exact disc coverage through a distorted lens, and the capsule's and the cylinder's
   per-pixel derivatives.

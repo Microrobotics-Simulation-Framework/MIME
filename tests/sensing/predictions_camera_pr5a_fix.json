@@ -205,6 +205,15 @@
         "gate_derivative_cause": "the fix's predicted ripple: within 0.003 in x and 0.007 in z of the central difference over a pixel; the variant 'the parabola step alone' is now 'each branch at its sub-ray's own least' (the quartic), within 0.005 of the PR's first scheme's in x",
         "gate_g19_cost": "a ray's evaluations: its 48 samples, its two pieces' five held values, value and line's two derivatives (16), and 16 corner sub-samples of them: 320, from 150; the frame predicted 1.8 to 2.4 times the PR's"
       }
+    },
+    {
+      "when": "2026-11-14, before the second probe (the gates on the fix's head) ran; the confirmation probe (probe/cam-pr5a-fix-corner, its predictions gate_corner) was launched at 92652528 and has not been read",
+      "seen_before_amendment": [
+        "the corner gate on seen draws in float32 (seeds 0 to 2), the scheme as built: clean largest 0.0015 to 0.0022 (0.03 to 0.08 of the line), the single edge's least 0.237 to 0.333"
+      ],
+      "changes": {
+        "rerun_controls": "the PR's control rates measured again on the fix's head, the renderer having changed: RSWAP (G18's capsule, CAMERA_PLANT=sampled-offset) and RWINDOW (G21, CAMERA_PLANT=small-window): 30/30 caught, clean 0/30, as on the PR's head (runs 43619756315 and 43616060342); RSIGN32 (G16's helix in float32, SIGN_PLANT=sign) and RSLOPE32 (the screw in float32, SIGN_PLANT=slope), Hypothesis seeds 0 to 29 at its default 100 examples: 30/30 and clean 0/30; RRIPPLE (gate_ripple, CAMERA_PLANT=lesser): 30/30, clean 0/30"
+      }
     }
   ],
   "outcomes": null

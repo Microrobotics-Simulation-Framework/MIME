@@ -64,8 +64,9 @@ PIECE_EVALUATIONS = 16
 #: Evaluations a ray costs on a frame whose corner sub-samples run: every pixel's sub-pixels (``CORNER_SAMPLES``
 #: squared, 16), each the two pieces' value and line.
 CORNER_EVALUATIONS = 16 * PIECE_EVALUATIONS
-#: The structural cost estimate above which the build warns, in flops-equivalents a frame: a declaration, about 50 to
-#: 70 ms on a four-core runner at the rate camera optimisation 1 measured for this renderer (15 to 20 G a second).
+#: The structural cost estimate above which the build warns, in flops-equivalents a frame: a declaration, about 33 to
+#: 43 ms in float32 and 72 to 86 ms in float64 on a four-core runner at the rates G19 measured for route 2 through the
+#: in-loop camera (23 to 31 and 12 to 14 G a second; camera PR 5a's predictions file holds the runs).
 COST_LINE = 1.0e9
 
 
