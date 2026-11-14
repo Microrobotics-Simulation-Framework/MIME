@@ -329,9 +329,9 @@ def record_number(service: Service, given: str) -> str:
 
 def public_record(service: Service, given: str, access: Access | None = None) -> PublicRecord:
     """The published record ``given`` names on ``service`` (:func:`record_number`), read with no token (or let in by
-    ``access``), and its containers: one bundle, or one or more studies."""
+    ``access``), and its containers: one bundle, or one or more studies, or one block."""
     from mime.saved._bundle import BUNDLE_SUFFIX
-    from mime.saved._studies import STUDY_SUFFIX
+    from mime.saved._studies import BLOCK_SUFFIX, STUDY_SUFFIX
 
     record = record_number(service, given)
     page = f"{service.site}/records/{record}"
@@ -346,14 +346,16 @@ def public_record(service: Service, given: str, access: Access | None = None) ->
                if isinstance(listing.get("entries"), list)]
     bundles = [each for each in entries if str(each.get("key", "")).endswith(BUNDLE_SUFFIX)]
     studies = [each for each in entries if str(each.get("key", "")).endswith(STUDY_SUFFIX)]
-    if not ((len(bundles) == 1 and not studies) or (studies and not bundles)):
+    blocks = [each for each in entries if str(each.get("key", "")).endswith(BLOCK_SUFFIX)]
+    if [bool(bundles), bool(studies), bool(blocks)].count(True) != 1 or len(bundles) > 1 or len(blocks) > 1:
         names = ", ".join(plain(str(each.get("key"))) for each in entries) or "none"
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
-                      f"the record {record} on {service.name} holds {len(bundles)} bundle files and {len(studies)} "
-                      f"study containers (its files: {names}), and a record holds one bundle, or one or more studies",
-                      "pull a record `mime push` made, which holds one bundle or one or more studies")
+                      f"the record {record} on {service.name} holds {len(bundles)} bundle files, {len(studies)} study "
+                      f"containers and {len(blocks)} block containers (its files: {names}), and a record holds one "
+                      f"bundle, or one or more studies, or one block",
+                      "pull a record `mime push` made, which holds one bundle, one or more studies or one block")
     containers: list[RecordContainer] = []
-    for entry in bundles or studies:
+    for entry in bundles or studies or blocks:
         key, checksum, size = str(entry["key"]), str(entry.get("checksum", "")), entry.get("size")
         if not checksum.startswith("md5:") or not isinstance(size, int):
             raise _refuse("pull.record", RefusalClass.ENVIRONMENT,

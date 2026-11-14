@@ -548,10 +548,15 @@ def _range_doc(declaration: RangeDeclaration) -> tuple[str, RangeDoc]:
 
 def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> ExperimentDocument:
     """The document of a declared experiment. Things are keyed by name and interactions and observations sorted by
-    id, so the order a script declares them in changes nothing, as it changes nothing in the build."""
+    id, so the order a script declares them in changes nothing, as it changes nothing in the build. What a block used
+    by reference provides is left out (its container holds it), save what the experiment declared over it."""
     from mime import __version__
     from mime.build import entry_id
 
+    if settings.blocks and any(use["tier"] == "referenced" for use in settings.blocks.values()):
+        from mime.blocks._referenced import left_out
+
+        declarations = left_out(settings.blocks, declarations)
     things: dict[str, ThingDoc] = {}
     interactions: list[BoundEntryDoc] = []
     observations: list[BoundEntryDoc] = []

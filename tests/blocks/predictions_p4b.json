@@ -1,0 +1,68 @@
+{
+  "written": "2026-11-14, committed before the controls' detection-rate probe and the bit comparison ran (the commit that adds this file is the timestamp): lane P, P4b, the block's referenced tier and its container (.mimeblock pack, unpack and pull, use by file or DOI, verify, card, push, the sandbox lane's block)",
+  "phase": "lane P, P4b: the referenced tier and the block's container",
+  "labels": "predictions by the builder (Opus) from the code's structure: the control removes one comparison, so a planted run is caught on every draw or on none",
+  "seen_before": [
+    "the plant unheld run locally on seeds 0 to 9 before this file (laptop, CPU, the tests' own dtype): 10 of 10 planted runs failed and 10 of 10 clean runs passed; form 14's plant unchecked (now reading a referenced use's container as holding nothing) on seeds 0 to 2: 3 of 3 failed"
+  ],
+  "operating_point": {
+    "dtype": [
+      "the tests' default (float32): no gate reads a simulated number beyond the cases' reference steps"
+    ],
+    "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow), one pytest process a run",
+    "sizes_and_parameters": "the lab fixture's block copied, its licence NOASSERTION for the referenced tier (its container's first use accepted in a licences file of the test's own), one case of three reference steps",
+    "seeds_and_draws": "200 runs a control, seeds 0 to 199 in MIME_SEED, planted and clean at the same seeds"
+  },
+  "gate_1_referenced_changed_content": {
+    "claim": "a saved experiment using a block by reference whose container is replaced by one of other content (a value, a law's setting, an initial state, a comment of the fragment, or a key of the definition, drawn) is refused as block.changed",
+    "kind": "acceptance",
+    "case": "tests/blocks/test_block_container.py::test_a_referenced_blocks_changed_content_is_refused_as_block_changed",
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "every drawn edit changes a content file's bytes or the definition, so the content hash; with the comparison removed the load proceeds (and is refused as load.input-hash, or loads, where the edit is a comment): either way not block.changed"
+    },
+    "control": {
+      "plant": "the content hash not held to the document's",
+      "environment_variable": "MIME_PLANT_P4A=unheld",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "one byte of a content file (a sha256 comparison)"
+    },
+    "cannot_discriminate_if": "the load is refused for another reason in both arms (the clean arm's 0/200 shows it refuses as block.changed)"
+  },
+  "gate_2_form14_referenced": {
+    "claim": "a saved form-14 document using a block by reference whose lock holds no record of its container is refused as block.changed, naming each use, never read as copied",
+    "kind": "acceptance",
+    "case": "tests/saved/test_form14_blocks.py::test_a_referenced_block_is_read_from_its_container_and_refused_without_one_never_as_a_shape",
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "with the container read as holding nothing the use loads as copied"
+    },
+    "control": {
+      "plant": "a referenced use's container read as holding nothing",
+      "environment_variable": "MIME_PLANT_BLOCKS=unchecked",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200",
+      "resolution": "structural"
+    }
+  },
+  "bits": {
+    "cases": "the coupled toy and script A's reproduction arm saved by the base (release/v0.3.0's tip at this branch's merge) and the head, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal: a document using no block, or none by reference, takes none of the new branches",
+    "controls": {
+      "repeat": "the head recorded twice: identical",
+      "one_ulp": "the toy's mass one ulp up: the document and the lock differ (P4a's run showed its reference outputs do not move under it)"
+    }
+  },
+  "outcomes": {
+    "measured": "2026-11-14, the probe branch probe/lanep-p4b at 3332f83c (this branch at 9d0dfd6d plus probe/), run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43609491546, artifacts probe-lanep-p4b-<arm>, one GitHub runner a control",
+    "gate_1_referenced_changed_content": "unheld: 200/200 caught, 0/200 flagged, 0 inconclusive: as predicted",
+    "gate_2_form14_referenced": "unchecked: 200/200 caught, 0/200 flagged, 0 inconclusive: as predicted",
+    "bits": "bit_compare.py, base 375ce8cd (release/v0.3.0's tip, which this branch's head has merged) against the head, one CPU, one thread: toy and script_a every array np.array_equal (all_equal true): as predicted. The repeat control: identical, as predicted. The one-ulp control: the document's and the lock's bytes differ (experiment.mime.yaml, mime.lock) and the reference outputs do not, as in P4a's run: the prediction's wording ('the document and the lock differ') held. What the comparison is shown able to fail on is the document and the lock; that it would see a moved output bit rests on bit_compare.py's array_equal, not on this control.",
+    "memory": "the probe's mem_check: the raw estimate (0.535 GiB) was 0.594 GiB measured (ratio 1.11), inside the stated conservative bound (1.34 GiB); the estimate was of an unrelated case (script_a0), as the probe has no case of its own, so it says nothing of these tests' memory"
+  }
+}

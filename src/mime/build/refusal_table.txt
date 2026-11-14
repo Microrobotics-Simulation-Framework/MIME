@@ -39,6 +39,7 @@ binding.unknown               user
 binding.unknown-role          user
 binding.wrong-kind            user
 block.case-stale              user
+block.changed                 user
 block.entry                   user
 block.format                  user
 block.fragment                user
@@ -339,7 +340,6 @@ load.other-release            user
 load.record-changed           user
 load.reference                user
 load.reference-changed        user
-load.referenced-block         environment
 load.setting                  user
 load.setting-unknown          user
 load.stage-changed            user
