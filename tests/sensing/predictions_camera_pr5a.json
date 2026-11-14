@@ -339,6 +339,17 @@
         "gate_g20_helix": "motion as camera truth 1 measures it: the vector (equivalent radius of the area, centroid u, centroid v), relative error the norm of the difference over the norm of the truth's; the count is set when the subject is made (SAMPLES, SPACING patched around its construction); the controls are the offset plant (image against the truth) and eight samples (against the N to 2N line).",
         "bits": "the base is origin/release/v0.3.0's full hash 8de87c9d (this branch's merge base now); the one-ulp control is one ulp of the program's own dtype."
       }
+    },
+    {
+      "when": "2026-11-14, the fix round after the refuting review of PR #308, before any draw of the corner line's confirmation was run (its seeds, DETECTION_SEED 2000 to 2199, never run)",
+      "seen_before_amendment": [
+        "the review, the PR's own corner_errors (float64, 128 px) on seeds 1000 to 1059: the clean fix to 0.0652, over 1/16 on 1 of 60, 14 of 60 over 0.04; at 256 px the clean worst 0.0576, 0 of 60 over; the single edge caught 60 of 60 at both widths (its least 0.158 at 128, 0.108 at 256)",
+        "1/16 was one sub-sample cell's area, a scale and not a bound (it assumed only the vertex cell wrong, every other cell exact and a truth with no error), placed after draws 0 to 59 were seen; 0.04 before it was a fitted guess",
+        "local diagnostics (not evidence; the probe of predictions_camera_pr5a_fix.json is), on the coil at G20's straight pose, 128 px, float64: the jvp of the centroid's motion ripples between 0.964 and 1.021 of the central difference's over a pixel of motion, with the sub-samples' period (a quarter pixel); one straight edge a cell (the least of the two branches' lines) is its main cause and the pixel centre's held point read on the sub-rays the second (the exact union of the two half-planes alone: 0.993 to 1.006; with each sub-ray's own least as well: 0.9985 to 1.0019)"
+      ],
+      "changes": {
+        "gate_corner": "the line 1/16 is withdrawn, never moved but replaced by a bound derived from the fixed scheme's own error terms (scripts/camera_route2/corner_line.py, geometry and arithmetic only): the fix's two-branch cells now take the exact share of the union of the two branches' half-planes (exact for straight branches), each branch's line read at the sub-ray's own least (one parabola step); the line is cell term (each branch's curvature in a 4 x 4 sub-cell, 0.035525 / rho_px, rho the least notch branch's radius over the drawn poses: 24.2 um for the PR's coil, 62.2 um for the second) + the refinement's residual (1e-4) + the truth's floor (Hoeffding, 64 x 64 jittered samples a pixel: 0.0123) + its sign samples (1e-4) + float32's rounding (2 sqrt(2) 5 u D / p; zero in float64). Lines: the coil 0.0469 / 0.0297 / 0.0211 (float64, 128 / 256 / 512 px) and 0.0505 / 0.0369 / 0.0355 (float32); the second coil (pitch 0.52 mm, 3 turns) 0.0259 / 0.0192 / 0.0158 and 0.0295 / 0.0264 / 0.0302. Judged by the confirmation in predictions_camera_pr5a_fix.json; if it fails, the line is not moved and the claim is not loosened."
+      }
     }
   ]
 }
