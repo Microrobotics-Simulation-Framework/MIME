@@ -53,6 +53,7 @@ from maddening.core.node import SimulationNode
 
 from mime.build._control import Mode
 from mime.build._builders import COMMAND, DELIVERY, FIELD, REACTION, STATE, EdgeDecl
+from mime.build._stages import writers_through
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._refusals import Refusal, RefusalClass, entry_defect
 from mime.core import ledger
@@ -229,11 +230,15 @@ def _pairing(dynamics: Dynamics, interface: str) -> DeliveryKind | None:
     return next((kind.deliveries[interface] for kind in kinds if interface in kind.deliveries), None)
 
 
-def _law_of(edge: EdgeDecl, laws: Mapping[str, EntryPlan], owners: Mapping[str, EntryPlan]) -> str:
+def _law_of(edge: EdgeDecl, laws: Mapping[str, EntryPlan], owners: Mapping[str, EntryPlan],
+            through: Mapping[tuple[str, str], str] | None = None) -> str:
     """The law a delivery edge into a receiver is booked under: the delivering interaction's id; for what a chain
     segment hands the segment it is mounted on, the output that carries it (``rpm.motor.reaction``); for a command,
-    its writer's id; for a part of a law delivered from the receiver's own field (a resolved body's displaced share),
-    the part's own name (``drag:ball.displaced``)."""
+    its writer's id, looked for through a port's stage (``through``, by the stage's output: the writer of its input);
+    for a part of a law delivered from the receiver's own field (a resolved body's displaced share), the part's own name
+    (``drag:ball.displaced``)."""
+    if edge.carries == COMMAND and through is not None and edge.source in through:
+        return through[edge.source]
     if edge.by in laws or edge.carries == COMMAND or edge.by.rpartition(".")[0] in laws:
         return edge.by
     plan = owners.get(edge.source[0])
@@ -248,6 +253,7 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
     entry under research, a port kind a metered dynamics names that does not pair what it is delivered)."""
     owners = _owners(plans)
     laws = {plan.owner: plan for plan in plans.entries if plan.section is Section.INTERACTION}
+    through = writers_through(edges)
     outside, supplied_by = boundary(plans, edges)
     units = {name: unit for name, plan in owners.items() for unit in (_unit(plans, plan),) if unit is not None}
     profile = plans.profile.profile
@@ -263,7 +269,7 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
         for name in plan.node_names():
             node = built[name]
             commands = set(cast(tuple[str, ...], getattr(type(node), "PAIRED_COMMANDS", ())))
-            into = sorted({(e.target[1], _law_of(e, laws, owners), e.carries) for e in edges
+            into = sorted({(e.target[1], _law_of(e, laws, owners, through), e.carries) for e in edges
                            if e.target[0] == name and (e.carries in (DELIVERY, REACTION)
                                                        or (e.carries == COMMAND and e.target[1] in commands))})
             # Laws held in the step by registration (a flow's openings' laws) are metered as its deliveries are.
@@ -291,7 +297,7 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
                 if edge.target[0] == name and (edge.carries in (DELIVERY, REACTION)
                                                or (edge.carries == COMMAND and edge.target[1] in commands)):
                     moved[position] = (name, ledger.law_input(edge.target[1],
-                                                              index_of[edge.target[1], _law_of(edge, laws, owners)]))
+                                                              index_of[edge.target[1], _law_of(edge, laws, owners, through)]))
             built[name] = type(node)(node.name, float(node.delta_t), **dict(getattr(node, "params")),
                                      **{ledger.LEDGER: tuple(d.encoded() for d in held)})
             receivers[name] = held

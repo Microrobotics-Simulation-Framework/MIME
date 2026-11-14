@@ -249,7 +249,9 @@ def resolved_controller(plan: ControllerPlan | None) -> ResolvedController | Non
     if plan is None:
         return None
     return {"mode": plan.mode.value, "every": plan.period, "latency": plan.latency, "rule": LATENCY_RULE,
-            "reads": {r.label: {"path": r.path, "read_class": r.read_class.value, "meaning": r.read_class.meaning,
+            # A measurement port's read is never saved by this form: an experiment declaring a port is refused at save.
+            "reads": {r.label: {"path": r.path, "read_class": cast(Any, r.read_class.value),
+                                "meaning": r.read_class.meaning,
                                 "node": r.node, "field": r.field} for r in plan.reads},
             "writes": {w.label: {"path": w.path, "node": w.node, "field": w.field} for w in plan.writes}}
 

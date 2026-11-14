@@ -47,7 +47,7 @@ from mime.push._check import Checked, check
 from mime.push._defaults import DEFAULTS_FILE, defaults_lines, defaults_path, read_defaults, write_defaults
 from mime.push._manifest import MANIFEST_FILE, MANIFEST_FORMAT, Manifest, read_manifest
 from mime.push._publish import PRODUCTION_FACTS, SANDBOX_FACTS, publish
-from mime.push._records import PublicRecord, ShareLink, public_record, record_number, share_link
+from mime.push._records import PublicRecord, RecordContainer, ShareLink, public_record, record_number, share_link
 from mime.push._setup import edit_defaults, setup
 from mime.push._owners import FIELD_OWNERS, field_owner
 from mime.push._plan import KEYWORD, MOST_BYTES, MOST_FILES, AssetChoice, Plan, RecordFile, card_html, make_plan
@@ -117,6 +117,7 @@ __all__ = [
     "Person",
     "Plan",
     "PublicRecord",
+    "RecordContainer",
     "Published",
     "RecordFile",
     "Related",

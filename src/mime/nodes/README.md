@@ -8,6 +8,9 @@
 - **`control/`**: a controller inside the compiled step, its law's step at its own rate, and the delay line of its
   latency. Its step is the controller's law, made at the build from the experiment's declaration, so this node is
   the one not rebuilt from its `params` alone.
+  Beside them, an apparatus's port stages (`ports:<apparatus>`, `measure:<apparatus>`), which the build inserts
+  between a command's writer and its receiver, and between a measured signal and its reader, only where a declared
+  port is not ideal.
 - **`flow/fvm/`**, the finite-volume flow solver, rewritten for 0.3.
 
 ## How nodes arrive

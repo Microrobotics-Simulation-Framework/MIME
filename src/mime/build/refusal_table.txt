@@ -118,6 +118,7 @@ confinement.no-hull           user
 confinement.rule              user
 confinement.spacing-short     user
 confinement.surface-shape     user
+container.kind                user
 control.law-raised            user
 control.law-traced-branch     user
 control.law-writes            user
@@ -420,6 +421,12 @@ plot.recipe-folder            user
 plot.shape                    user
 plot.time-base                user
 plot.uncertainty              user
+port.clock                    user
+port.command-unknown          user
+port.declaration              user
+port.modelled-noise           user
+port.seam                     user
+port.source-unknown           user
 post-build.additive           internal
 post-build.base-step          internal
 post-build.command-writers    internal
@@ -584,6 +591,8 @@ study.folder-not-empty        user
 study.format                  user
 study.group-file              user
 study.held-geometry           user
+study.incomplete              user
+study.input-hash              user
 study.leaf-unread             user
 study.manifest                user
 study.no-base                 user

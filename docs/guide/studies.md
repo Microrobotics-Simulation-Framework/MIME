@@ -239,3 +239,25 @@ range is a study's point of its own, and a numerical setting, `dt`, the precisio
 - A multi-threaded run is judged on its own scale, not bit for bit: XLA's threads can move a small quantity's last bits
   between two runs of one program (a ratio that is many orders of magnitude below its inputs differed in its last bits between two runs of the same build), so the
   run is held to a tolerance set from the quantity's own scale.
+
+## Sharing a study
+
+A study folder is shared as one file, `<folder>.mimestudy`, and a paper's studies as one record of several:
+
+<!-- mime-fragment: commands shown on example folders and a placeholder DOI, not run by a check; tests/sharing/test_study_container.py runs each on a toy study -->
+```
+mime pack ./step_out/                 # step_out.mimestudy beside it
+mime pack ./paper/                    # a folder of study folders: one .mimestudy per study, beside it
+mime card ./paper/                    # each study's base, axes, points, kept series, licences, and the commands
+mime pull 10.5281/zenodo.7654321 --into ./paper/    # a record of several studies: a folder each
+mime verify ./paper/                  # each study's files against its records, then each saved experiment rerun
+```
+
+`pack` refuses a study that was stopped (its members not run are named), a group file or a figure's data that is not the
+one the study recorded, a base whose input hash is not the study's, and every file a bundle would refuse (a stray, a
+path of this machine, a token). Unpacking checks the same records again on the folder it writes, so a container edited
+by hand and re-hashed is refused. `mime verify` is an acceptance: the files are the run's and the experiments reproduce;
+it does not run the study again (`mime study run <folder>/study.mime.yaml --out <a new folder>` does) and bounds nothing
+about physics. `mime push ./paper/ --to zenodo-sandbox` makes one record of every `.mimestudy` and a `NOTICE.txt`;
+rehearse on the sandbox before production. The container and its checks are in the saved
+README's "The study container" (`src/mime/saved/README.md`).

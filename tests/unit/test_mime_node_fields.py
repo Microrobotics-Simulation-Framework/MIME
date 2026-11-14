@@ -134,6 +134,14 @@ TYPED = [
      control.ControllerState, control.ControllerInputs, {"state_filtered", "write_angle", "read_pose"}),
     (control.DelayNode("l", DT, latency=2, units={"angle": "1"}, initial_writes={"angle": jnp.zeros(())}),
      control.DelayState, control.DelayInputs, {"angle", "waiting_angle"}),
+    (control.CommandStageNode("ports:a", DT, commands=["c"], units={"c": "A"}, shapes={"c": (3,)}, periods={"c": 2},
+                              latencies={"c": 1}, bounded={"c": "trip"}, slewed={"c": True}, rest_c=0.0, low_c=-1.0,
+                              high_c=1.0, slew_c=10.0),
+     control.StageState, control.StageInputs, {"c", "written_c", "buffer_c", "tripped_c", "amplified_c"}),
+    (control.MeasureStageNode("measure:a", DT, ports=["p"], units={"p": "1"}, shapes={"p": (2,)}, periods={"p": 2},
+                              latencies={"p": 1}, aged={"p": True}, seeds={"p": 1}, noisy={"p": True},
+                              quantised={"p": True}, initial_p=0.0, initial_age_p=0, sigma_p=0.1, quantum_p=0.01),
+     control.StageState, control.StageInputs, {"p", "p_age", "buffer_p", "stamps_p", "age_p"}),
 ]
 
 

@@ -18,7 +18,8 @@ and no output shows it).
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
-the law's order there, not one a run meets. The arm's limits are placed on A0's apparatus, kinematic. ``contact.scale``'s row measures nothing, as its
+the law's order there, not one a run meets. The arm's limits are placed on A0's apparatus, kinematic. The port
+stage's bounds, trip and slew are placed on a command stage of one port stepped once (``port_cases.stage_of``). ``contact.scale``'s row measures nothing, as its
 declaration says.
 
 Each row's ``delta`` keeps its smooth part small beside the jump in question (the kink limit's resolution,
@@ -86,6 +87,8 @@ from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.nodes.actuation import RampNode
+from mime.nodes.control import STAGE_SWITCHES
+from port_cases import Link, stage_of
 from mime.nodes.flow.fvm._band import plug_depth
 from mime.nodes.body import PhaseLagNode
 from mime.scene import Cylinder, Ellipsoid, Screw, Sphere
@@ -129,6 +132,7 @@ def declarations() -> dict[str, switch.Declaration]:
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
+    found.update({d.owner: d for d in STAGE_SWITCHES})
     return found
 
 
@@ -400,6 +404,35 @@ def lag_and_ramp_rows(declared) -> list[SwitchRow]:
         SwitchRow(declared["phase_lag.mean"], lambda o: lag_at(observed=DT / 2 + o), 1e-7),
         SwitchRow(declared["ramp.start"], lambda o: ramp_at(hold=middle - o), 1e-5),
         SwitchRow(declared["ramp.end"], lambda o: ramp_at(duration=middle + o), 1e-5),
+    ]
+
+
+# -- the port stage: a command port's bounds, trip and slew -----------------------------------------------------
+
+#: The port's bounds and slew in a step, amperes, and where its amplifier drove the command the step before.
+PORT_BOUND, PORT_STEP, PORT_BEFORE = 3.0, 0.5, 0.25
+
+
+def port_at(written: float, *, trip: bool = False, slewed: bool = False) -> dict:
+    """What a command port of bounds ``+-PORT_BOUND`` A (clipped, or tripped to its rest of zero) or of slew
+    ``PORT_STEP`` A a step (from ``PORT_BEFORE``) delivers after one step written ``written`` A."""
+    link = Link(low=None if slewed else -PORT_BOUND, high=None if slewed else PORT_BOUND, trip=trip, rest=0.0,
+                slew=PORT_STEP / DT if slewed else None)
+    node = stage_of(link, (1,), DT)
+    state = node.initial_state()
+    if slewed:
+        state = {**state, "amplified_currents": jnp.asarray([PORT_BEFORE])}
+    out = node.fresh_update(state, {"currents": jnp.asarray([written])}, DT)
+    return {"delivered": out["currents"]}
+
+
+def port_rows(declared) -> list[SwitchRow]:
+    return [
+        SwitchRow(declared["port.bound.low"], lambda o: port_at(-PORT_BOUND + o), 1e-3),
+        SwitchRow(declared["port.bound.high"], lambda o: port_at(PORT_BOUND - o), 1e-3),
+        SwitchRow(declared["port.trip"], lambda o: port_at(PORT_BOUND + o, trip=True), 1e-3),
+        SwitchRow(declared["port.slew.low"], lambda o: port_at(PORT_BEFORE - PORT_STEP + o, slewed=True), 1e-3),
+        SwitchRow(declared["port.slew.high"], lambda o: port_at(PORT_BEFORE + PORT_STEP - o, slewed=True), 1e-3),
     ]
 
 
@@ -896,7 +929,7 @@ def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
             *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared),
-            *hull_rows(declared), *lag_and_ramp_rows(declared), *camera_rows(declared)]
+            *hull_rows(declared), *lag_and_ramp_rows(declared), *port_rows(declared), *camera_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
@@ -912,7 +945,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
                  "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
                  "tube.table", "tube.angle", "tube.axial", "tube.axis", "phase_lag.window", "phase_lag.mean",
-                 "ramp.start", "ramp.end",
+                 "ramp.start", "ramp.end", "port.bound.low", "port.bound.high", "port.trip", "port.slew.low",
+                 "port.slew.high",
                  "camera.edge.out_far", "camera.edge.out_near", "camera.edge.in_far", "camera.edge.in_near",
                  "camera.edge.centre", "camera.pieces.least", "camera.pieces.greatest", "camera.corner",
                  "camera.disc.series", "camera.disc.start", "camera.disc.end", "camera.disc.crossing",

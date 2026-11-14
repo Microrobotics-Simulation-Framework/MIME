@@ -26,8 +26,9 @@ The rigid-body maths a controller uses (forward and inverse kinematics, Jacobian
 - **The declaration.** `Experiment.set_controller(controller, reads={...}, writes={...}, mode=..., rate=...,
   latency=...)`. The controller is a registered entry (`mime.registry.Controller`): its fields are its settings, and
   it declares the labels it reads and writes. The experiment binds each read label to a thing's state
-  (`"umr.pose"`, `"rpm.arm.joint_positions"`) or an observation's output (`"swim_speed:umr.speed"`), and each write
-  label to an apparatus's command, which then takes no drive.
+  (`"umr.pose"`, `"rpm.arm.joint_positions"`), an observation's output (`"swim_speed:umr.speed"`) or an apparatus's
+  measurement port (`"imaging.tracker"`, and its age in base steps, `"imaging.tracker.age"`), and each write label to
+  an apparatus's command, which then takes no drive; where the command has a port, the write enters its stage.
 - **Its law.** `law(ctx)` makes the controller ready from its settings: its state at the start, the writes it holds
   before its first acts, and its step, `(state, reads) -> (state, writes)`. The step is the same in every mode.
 - **External inputs**, for a callback, come from the writes alone: one per write, fed by the run. A command has one
@@ -58,7 +59,8 @@ The rigid-body maths a controller uses (forward and inverse kinematics, Jacobian
   meaning). In the callback mode the session hands each one set to the step under its label beside its reads, from
   the next tick on; until one is set, the step sees its reads alone, so every other run is unchanged. `ArmTracking`
   declares `offset`, which moves the point it holds the magnet above along its axis.
-- **Classed reads.** Each read is the physics state ("ground truth, not deployable") or an observation's output. The
+- **Classed reads.** Each read is the physics state ("ground truth, not deployable": an implicit ideal port), an
+  observation's output, or a measurement port ("as deployable as its declaration"). The
   build report and the lock list each with its class. `mime.build.refused_reads` is where a profile will judge them.
 - **Settings as leaves.** A setting a study's axis names (`controller.<setting>`, `mime.study`) and the law reads
   through its context in its step is a leaf of the node inside the compiled step, the law made again from the leaves

@@ -53,7 +53,7 @@ def test_every_installed_entry_declares_the_status_its_switches_and_listed_sites
     report = Report()
     switch_problems(records, raw_switches(), report)
     assert report.problems == []
-    assert any(line.startswith("switches: 84 owners declared (mime 84)") for line in report.summary), report.summary
+    assert any(line.startswith("switches: 89 owners declared (mime 89)") for line in report.summary), report.summary
 
 
 def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):

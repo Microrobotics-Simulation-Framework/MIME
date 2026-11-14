@@ -118,6 +118,14 @@ The limits each record states of its model, printed as `limits of <entry> (state
 The controller, with the mode it is placed in, its period and its latency, what it reads, and what it writes in place of a
 drive. The line says when a tick reads the state and from which step its writes act.
 
+## `ports`
+
+Each declared port, one line: a command port as `<apparatus>.<command> -> <node>.<input>` with its rungs (its period
+and latency in base steps, its bounds clipped or tripped, its slew, its response, and where a response is computed by
+its receiver, `(computed by its receiver)`); a measurement port as `<apparatus>.<port> <- <source>` with its period,
+latency, noise and quantum, and the source's own model it bypasses where it adds noise before it. A command or a read no
+line names is ideal: nothing was built for it. Empty where no port is declared.
+
 ## `masses`
 
 Every mass mounted on a chain, with what carries it (a rigid body welded on a link, a spinner's rotor, nothing on a prescribed

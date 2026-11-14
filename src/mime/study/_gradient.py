@@ -366,15 +366,18 @@ def path_nodes(graph: Any, sources: Sequence[str], targets: Sequence[str],
 
 
 def path_statuses(built: BuiltExperiment, nodes: set[str], callback: bool) -> dict[str, GradientStatus]:
-    """The status of each entry whose nodes lie on the path (by entry id): its attached rung's, the law's for a
-    controller inside the compiled step, and the binding's ``cut`` for a controller called on the host, on the path
-    wherever it reads a node on it and writes one."""
+    """The status of each entry whose nodes lie on the path (by entry id): its attached rung's, each port stage's from
+    what its ports declare (``StagePlan.status``, by the stage's id), the law's for a controller inside the compiled
+    step, and the binding's ``cut`` for a controller called on the host, on the path wherever it reads a node on it and
+    writes one."""
     plans = built.plans
     found: dict[str, GradientStatus] = {}
     for entry in plans.entries:
         if any(node in nodes for node in entry.node_names()):
             cls = entry.registered.cls
             found[entry.owner] = rung_gradient(cls, getattr(entry.entry, "rung", None)).differentiability
+    for stage in plans.stages:
+        found.update({node: stage.status(node) for node in stage.node_names() if node in nodes})
     controller = plans.controller
     if controller is not None:
         cls = controller.registered.cls

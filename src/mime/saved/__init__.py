@@ -5,15 +5,15 @@ A build computes the document (what the experiment declares, by registered name 
 outputs; a load reads them back without running code, resolves every entry among installed packages, rebuilds, and
 makes three checks: the input hash exactly, the environment by report, and the derived values within tolerances.
 
-``pack`` writes a folder as one bundle file to share; ``pull`` gets a bundle, checks it and unpacks it into a new folder.
+``pack`` writes a folder as one file to share (a saved folder's bundle, a study folder's ``.mimestudy``; ``pack_studies``
+one per study of a publishing folder); ``pull`` gets either, checks it and unpacks it into a new folder.
 What may be shared is the document's to say (version 4): the experiment's licence, each third-party file's terms and
 each declared permission. A file that may not be redistributed travels as a reference, whatever its size, and
 ``place_referenced`` puts it in place from the asset cache. ``notice`` and ``card_text`` write the folder's NOTICE and
 its card, offline, as ``mime push`` will publish them.
 """
 
-from mime.saved._bundle import BUNDLE_SUFFIX, EXPANSION_LIMIT_BYTES, INLINE_LIMIT_BYTES, ByRequestWarning, pack, \
-    unpack
+from mime.saved._bundle import BUNDLE_SUFFIX, EXPANSION_LIMIT_BYTES, INLINE_LIMIT_BYTES, ByRequestWarning, unpack
 from mime.saved._card import card_text, notice
 from mime.saved._document import (
     SCENE_FOLDER,
@@ -47,6 +47,7 @@ from mime.saved._reconstruct import declarations_from
 from mime.saved._record import SavedRecord, environment, record_of
 from mime.saved._resolve import ENTRY_POINT_GROUP, namespace_providers
 from mime.saved._terms import FileTerms, FolderTerms, Placed, place_referenced
+from mime.saved._studies import STUDY_SUFFIX, pack, pack_studies
 from mime.saved._schema import (
     DOCUMENT_SCHEMA,
     LOCK_SCHEMA,
@@ -69,6 +70,7 @@ from mime.saved._schema import (
 
 __all__ = [
     "BUNDLE_SUFFIX",
+    "STUDY_SUFFIX",
     "DEFAULT_STEPS",
     "DOCUMENT_FILE",
     "DOCUMENT_SCHEMA",
@@ -115,6 +117,7 @@ __all__ = [
     "namespace_providers",
     "notice",
     "pack",
+    "pack_studies",
     "place_referenced",
     "parse_yaml",
     "pull",

@@ -28,6 +28,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compiled program changes for a scene without scenery or stage display: the step and the forward run compile to the same
   text before and after, in float32 and float64, with a one-ulp control that changes it.
 
+- **Ports as data on an apparatus, and the stages the build inserts for them** (the apparatus lane's AP1a, dev2).
+  `Apparatus(ports={...})` declares an apparatus's links:
+  - a `CommandPort` (`mime.CommandPort`) keyed by a command: its update `rate` and `latency` (whole base steps), its
+    `bounds` (clipped, or tripped to its `rest` for the rest of the run, flagged and warned), its `slew`, and the `reason`
+    its numbers come from;
+  - a `Measurement` (`mime.Measurement`) keyed by a name of its own: what it measures (`of=`: a thing's state or an
+    observation's output, `camera:.expected`), its `rate`, `latency`, seeded `noise` (`mime.things.Gaussian`) and
+    `quantum`. A controller reads it as `<apparatus>.<port>`, and its age in base steps as `<apparatus>.<port>.age`.
+
+  The build inserts at most two nodes per apparatus: `ports:<apparatus>` between a command's writer and its receiver
+  (sample, delay, bound, slew, in that order), and `measure:<apparatus>` after a measured source. **A command or a read
+  with no port, or with an ideal one, builds nothing:** every existing program, its derived hash and its bits are
+  unchanged. A declared port adds up to two nodes and their fixed cost a step (measured on a GitHub runner: A0's chunk
+  1.15 times as long, a coil-array sphere's 1.68 times). A staged port on a kinematic arm takes its joints' stated limits
+  as its bounds (`Command.bounds`) and their initial positions as its rest (`Command.rest`). Noise on a camera's image is
+  refused (`port.modelled-noise`: the image already carries its sensor's model); on its expected image it is allowed, and
+  the report says the sensor model is bypassed; a camera port's rate is a whole multiple of its frame period.
+  `Camera.project` is the camera's projection as a pure JAX function. The energy ledger books a command through a port
+  under its writer; a derivative through a stage takes its ports' status (a clip and a slew are kinks, a trip a jump, a
+  quantum cut). Six refusal codes: `port.clock`, `port.command-unknown`, `port.declaration`, `port.modelled-noise`,
+  `port.seam` (`drift`, `fault`, `bias`, `dropout` and, until it is built, a command port's `response`) and
+  `port.source-unknown`. Saving an experiment that declares a port is refused (`save.unsavable`) until the saved form
+  holds ports.
+
+- **One study per `.mimestudy`, publishing folders, and a record of several studies** (lane P, P2). The container
+  code is refactored into kinds (`mime.saved._container`: a suffix, a format id, a layout check), the bundle the first,
+  with no change in behaviour: every bundle packs to the same bytes and every earlier one unpacks as before. `mime pack
+  <study folder>` writes a **study container** (`mime.study/1`, its files under `study/`): the study is read and held to
+  its own records first (each group file's sha256, each figure's data, the base's input hash, every member run;
+  `study.incomplete`, `study.input-hash`), each saved folder in it is judged as a bundle's, and every file is scanned as
+  a bundle's are; unpacking checks the same records again on the folder it writes. A **publishing folder** (study
+  folders and the record's `mime.toml`) packs one `.mimestudy` per study (`mime.saved.pack_studies`), all or none,
+  listing what else it holds, which nothing carries. `mime pull` takes one kind per record, one bundle or one or more
+  studies, a record of several into a folder each with `--into` (refused before anything downloads without it), their
+  assets gated once; `mime verify`, `mime card` (and `--notice`) and `mime check` take a study or publishing folder;
+  `mime push` makes one record of a folder's studies (every `.mimestudy` and a `NOTICE.txt`, keyword `mime-study`, no
+  asset uploaded), to rehearse on zenodo-sandbox first (the sandbox lane's `--demo study`). A container named as
+  another kind, and a block (`mime.block/1`, reserved), is refused (`container.kind`). No saved form changes, and no
+  simulation output moves.
+  A group's NPZ is opened only once its sha256 is the one `study.json` records, and an entry in it that is compressed or
+  names more bytes than it holds is refused before an array is allocated (a nested bomb of a few kilobytes named
+  gigabytes); a manifest or a recipe of the wrong shapes is refused (`study.manifest`, `plot.recipe`), not raised; the
+  commands a refusal offers hold a name as one shell word; and a destination that is a link is refused for a bundle
+  and a study alike (`pull.destination`).
 - **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
   mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
   frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in
