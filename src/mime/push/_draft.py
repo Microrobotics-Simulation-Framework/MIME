@@ -155,8 +155,12 @@ def experiment_name(folder: Path) -> str:
     from mime.saved import read_folder
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
+    from mime.blocks._definition import definition_of, is_block_folder
+
     if is_study_folder(folder) or is_publishing_folder(folder):
         return f"studies:{folder.name}"
+    if is_block_folder(folder):
+        return f"block:{definition_of(folder).id}"
     return read_folder(folder, absent_referenced=True).document["experiment"]
 
 
@@ -360,6 +364,15 @@ def planned(root: Path, service: Service, state: DraftState | None) -> Plan:
     sharing = read_record(root)
     experiment = experiment_name(root)
     where = staging(service, experiment)
+    if experiment.startswith("block:"):
+        from mime.push._plan import make_block_plan
+
+        held = state.published if state is not None else None
+        return make_block_plan(root, service, sharing, where,
+                               publication=publication(service, state) if state is not None and state.record is not None
+                               else published_publication(service, held) if held is not None else None,
+                               version=state.version if state is not None and state.record is not None
+                               else held.version if held is not None else 1)
     if experiment.startswith("studies:"):
         from mime.push._plan import make_studies_plan
 

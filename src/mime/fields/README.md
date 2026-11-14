@@ -52,7 +52,11 @@ replaces it with a distance), and refuses float32 where
 the sources' cancellation puts float32's rounding above its declared guard (OctoMag). Outside a run,
 `provider.actuation(point)` is the field and gradient per unit current there (`Actuation`, its `matrix()` the actuation
 matrix), and
-`allocate(actuation, field=, gradient=, limits=)` the bounded least-squares currents for a wanted field and gradient
-within limits the user declares. Its sign convention is mag_manip's, which hardware has not grounded (MIME-ANO-153).
+`allocate(actuation, field=, gradient=, limits=, field_scale=, gradient_scale=)` the bounded least-squares currents for
+a wanted field and gradient within limits the user declares, by the exact allocation (`mime.control.exact_allocation`)
+run on the host in float64; among several minimisers, the least current. **Which path:** `allocate()` outside a run;
+`mime.control.exact_allocation` inside a controller's law, where a derivative passes through it; arrays of more coils
+than `mime.control.EXACT_COMMANDS` wait for the iterative path ([the allocation note](../../../docs/allocation.md)).
+Its sign convention is mag_manip's, which hardware has not grounded (MIME-ANO-153).
 
 Releases are explained in the [package manifest](../README.md#status).

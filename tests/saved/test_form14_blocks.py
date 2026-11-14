@@ -1,12 +1,13 @@
 """Saved form 14's ``blocks`` key: each block the experiment uses, by the use's name, written only where one is used and
 inside the input hash. Its writer (``exp.use``) and the reading of a block used by reference come later; until then a
 block used as ``copied`` (its declarations in the document) loads, and one used as ``referenced`` (its declarations in
-its container) is refused by its own code, ``load.referenced-block``, never as a shape. The uses here are written
+its container) is read from its container first, which these drawn uses have none of: refused as ``block.changed``,
+never as a shape. The uses here are written
 through the carrier ``exp.use`` will set, ``RunSettings.blocks``, and drawn from ``MIME_SEED``.
 
 **The controls**, each run by ``detection_rate.py`` on a probe (``MIME_PLANT_BLOCKS``): ``dropped`` loses the key on
-the way back in, so the load's rebuilt document holds none and its input hash is not the lock's; ``unchecked`` removes
-the refusal of a referenced use, which then loads as if copied; ``unstepped`` writes the folder as form 13, which
+the way back in, so the load's rebuilt document holds none and its input hash is not the lock's; ``unchecked`` reads a
+referenced use's container as holding nothing, so that the use loads as if copied; ``unstepped`` writes the folder as form 13, which
 version 13's reader then refuses as a shape, never as newer."""
 
 import hashlib
@@ -35,7 +36,7 @@ FORM13_READS = 13
 LICENCES = ("CC-BY-4.0", "CC-BY-NC-4.0", "CC-BY-SA-4.0", "CC0-1.0", "MIT", "Apache-2.0")
 USE_NAMES = ("probe_unit", "vessel", "coil_rig", "transducer")
 BLOCK_IDS = ("labx.demo_probe", "labx.tube_network", "laby.coil_rig")
-REFERENCED = "load.referenced-block"
+REFERENCED = "block.changed"
 
 
 def plant() -> str:
@@ -90,7 +91,8 @@ def saved_with(out: Path, tiers: tuple[str, ...]) -> tuple[Path, dict[str, dict[
 
 @contextmanager
 def planted(value: str) -> Iterator[None]:
-    """``dropped``: the load reads the document's uses back as none. ``unchecked``: a referenced use is not refused."""
+    """``dropped``: the load reads the document's uses back as none. ``unchecked``: a referenced use's container is
+    read as holding nothing."""
     read = _experiment.declarations_from
 
     def dropped(*args: Any) -> Any:
@@ -101,7 +103,9 @@ def planted(value: str) -> Iterator[None]:
         if plant() == value == "dropped":
             patch.setattr(_experiment, "declarations_from", dropped)
         if plant() == value == "unchecked":
-            patch.setattr(_reconstruct, "referenced_block_refusals", lambda document: [])
+            from mime.blocks import _referenced
+
+            patch.setattr(_referenced, "referenced_declarations", lambda document, assets, folder: [])
         yield
 
 
@@ -127,7 +131,7 @@ def test_a_use_edited_after_its_lock_was_written_is_refused_by_the_input_hash(tm
     assert refused.value.codes() == ["load.input-hash"]
 
 
-def test_a_referenced_block_is_refused_by_its_own_code_naming_each_use_and_never_as_a_shape(tmp_path: Path):
+def test_a_referenced_block_is_read_from_its_container_and_refused_without_one_never_as_a_shape(tmp_path: Path):
     tiers = random.Random(seed()).choice((("referenced",), ("referenced", "copied"), ("copied", "referenced"),
                                           ("referenced", "referenced")))
     folder, uses = saved_with(tmp_path / "referenced", tiers)
@@ -140,7 +144,7 @@ def test_a_referenced_block_is_refused_by_its_own_code_naming_each_use_and_never
         for name, message in zip(held, (each.message for each in refused.value.refusals), strict=True):
             use = uses[name]
             assert message.startswith(f"the document uses the block {name!r} ({use['id']} {use['version']}) by "
-                                      f"reference") and "does not yet read a referenced block" in message
+                                      f"reference") and "its lock holds no record of its container" in message
 
 
 def test_version_thirteens_reader_refuses_a_document_using_a_block_as_newer_each_file_once(tmp_path: Path):

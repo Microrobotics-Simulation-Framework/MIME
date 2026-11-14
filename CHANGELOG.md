@@ -43,11 +43,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `block.fragment`. Where the experiment overrides values of a block under a no-derivatives licence, the NOTICE and the
   card name the block, the condition and the names, and judge nothing. A document using no block is written, hashed and loaded as before, and no simulation output moves.
 
-  Two codes change meaning:
+  Codes whose meaning changes:
   - `manifest.kind` no longer reserves a block's tables: a block folder's `mime.toml` holds them, and any other folder's
     is refused naming what it is.
-  - `load.referenced-block` also refuses using a block its licence makes referenced: this release does not yet read a
-    block's container.
+  - `load.referenced-block` is retired (it refused saved form 14's referenced uses until a container was read).
+  - `container.kind` no longer refuses a `.mimeblock`.
+
+- **The referenced tier, and a block's container shared, pulled, verified and pushed** (lane P, P4b, dev2).
+  - **Referenced:** a block whose licence lets no copy of its content into its user's document is used by reference.
+    The document records the use and what was declared over it, never the block's own declarations. The lock's `assets`
+    records the block's container (`<id>-<version>.mimeblock`, with `doi:<DOI>/<file>` where it was used by DOI, and no
+    location where it was used from a folder, which the save packs into the asset cache).
+  - **Its load:** one function finds the container, by either route: the block that holds the saved folder as one of its
+    cases (matched by content hash), else the lock's record. A container whose content is not the document's, or whose
+    own licence is not the one the lock records (a lock edited to say another), is refused (`block.changed`). **The gate
+    then runs on the block's own licence**, read from the container once its content hash is verified (never the lock's
+    word), before anything is read from it: a licence with conditions is asked about once, or refused where nobody can be
+    asked (`asset.licence-not-accepted`). The NOTICE and the card say what the tier cannot hide: the lock and the reference
+    outputs hold values the block's fragment sets. A referenced block whose fragment names a description of its own is
+    refused (`block.fragment`), since a save would write it into its user's folder.
+  - **`mime pack <block folder>`** writes `mime.block/1`. It holds the definition written canonically (no `[record]`),
+    the fragment, records, descriptions, open and conditional asset files the block's `[[assets]]` names, and each case,
+    judged as a bundle's saved folder. It refuses a block with no case (`block.no-case`) or with a stale one
+    (`block.case-stale`). Unpacking checks every member and recomputes the content hash (`block.changed`).
+  - **`mime pull`** takes a block's file, its record's DOI or its record's number on a service (`--from`), into
+    `./<id>-<version>/`, or into an empty folder `--into` names, its files going into the folder itself. The container is
+    unpacked in scratch, its licence gated, and only then does anything leave scratch; it is kept in the asset cache. The cases' assets are fetched, and what `[requires]` needs is listed with its
+    install line. Nothing is installed.
+  - **`exp.use`** takes a `.mimeblock` or a DOI (`accept_licences=`, `yes=`, `force=` as `Experiment.based_on` takes
+    them). The asset files a block carries are taken into the cache by their sha256.
+  - **`mime verify <block folder or .mimeblock>`** gates the block's own licence first (it runs the cases on the block's
+    data), refuses a requirement not met before any case runs (exit 2), and a stale case. It reruns each case: an
+    acceptance, with MIME's words and then the author's.
+  - **`mime card` and `mime show`** take a block folder, and `mime show` a `.mimeblock`. `mime show` is not gated: it says
+    the licence and its conditions, which a person needs in order to decide, and expands nothing.
+  - **`mime push <block folder>`** is real, as for a bundle (it has no `--dry-run`): one record of the `.mimeblock` and its
+    `NOTICE.txt`, keywords `mime-block` and `mime-block:<id>`; a record of a block pulls back by its number. Its test
+    drives draft, upload, publish and pull against the offline fake of the records API, never Zenodo. The sandbox lane
+    (`scripts/zenodo_sandbox_lane.py`) gains `--demo block`, which is the lane's own `--dry-run` where one is wanted.
+  - **A container's manifest** is checked for the paths it lists among the cases' files that travel as references, as
+    its members' names are (`bundle.unsafe`): nothing reads them to write a file, but a path of `..` parts is not a
+    manifest `mime pack` wrote.
+  - **One refusal code:** `block.changed`.
 
 - **The camera reads the composed stage: scenery and inherited display primvars** (`mime.scene.Composition.scenery`,
   `SceneryMesh`, `SceneryGprim`, `read_display`, `Roster.scenery`; `mime.observations.Camera`, dev2, camera PR 4). Every
@@ -165,6 +202,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   taken's by construction, not by that row. No program changes: the step, a run and its forward-mode derivative compile to
   the same text, f64 and f32 (the control, one ulp, differs).
 
+- **The exact allocation** (AP2, the camera's PR 3a), `mime.control.exact_allocation(rows, wanted, *, lower, upper,
+  scales, owner, offset=None, reference=None, reference_scales=None)`: the commands within explicit bounds that minimise
+  an affine model's residual over caller-given scales (each row's unit; `scales` is required), with an optional
+  regularisation towards a reference; among several minimisers, the one nearest the reference (least effort for a
+  reference of zero). JAX, it runs inside a controller's compiled step and a derivative passes through it. Exact by its
+  active sets: each free subset's QR factor (`2^K`), every set's candidate (`3^K`) from its subset's, the feasible
+  candidate of least residual selected with no derivative, then the selected set solved once more, differentiably, so the
+  derivative is that set's (a jump, never NaN, where a command reaches or leaves a bound). Its guards: a rank test on
+  each free subset's triangle against `RCOND`, with a stand-in before the solve and the subset kept from the selection
+  after it; a command with no effect held at the reference within its bounds; the commands clipped into the bounds. Its
+  switch's owner is the caller's (`allocation_switch(owner, orders)` declares it); its solves are the registered sites
+  `allocation_exact` and `allocation_least_norm`. More than `EXACT_COMMANDS` (8) commands is refused,
+  `allocation.exact-size`, the iterative path its route. **The bound of 8 is a choice against the rule set before the
+  cost was measured** (the largest bound at which the allocation costs no more than three times its five-command cost,
+  which gives 6): every coil array MIME ships has at most 8 coils, and at 6 `allocate()` on CardioMag and OctoMag would
+  be refused or keep a second solver. The allocation's own cost per base step on GitHub's runners (one thread, float64,
+  CardioMag's rows, run 43569142070): 11, 22, 44, about 120, 320 to 350 and 810 to 1040 us at 3 to 8 commands; a slower
+  controller pays it every base step. Its share of a full base step (the law's step against the same step making the
+  same rows and allocating nothing; 200 steps, one thread, two runners' CPUs, run 43576671085): in the Navion_2
+  controller of the camera spike's STATE arm (3 coils, the force's 3 rows) 17 to 30 us of a 61 to 138 us step, 0.20 to
+  0.29 of it; in a CardioMag controller allocating its 8 coils to `allocate()`'s 8 rows 650 to 1250 us of a 690 to
+  1360 us step, 0.91 to 0.94. Float32 against float64 on the same rounded problem, over 3000 of the swap test's draws
+  an array: at most 4.2e-6 of the limit on Navion_2, 7.5e-6 on CardioMag and 4.8e-5 on OctoMag (2.1e-5 where the
+  minimiser is unique). That is the commands' difference as a share of the limit (the box's half-width, in amperes); the
+  coil array's float32 guard (1e-4) is a share of the field's size, a rounding of the field the provider computes, and
+  the two are not compared: the field the float32 commands make was not measured against float64's, and the law
+  declares no guard of its own (OctoMag stays refused in float32 by its provider). **A limit that is measured, not
+  refused:** where the commands outnumber the rows and there is no regularisation, one column whose norm exceeds the
+  others' by more than about `1 / RCOND` makes the law's rank test of the whole free set fail and its objective sit
+  above the optimum, silently: exact to rounding up to a ratio of 1e9 in float64 and 1e4 in float32 (0.4 of the
+  wanted values' squared size above one decade and a half past it; one column 1e-10.5 and another 1e10.5 times the
+  rest, 0.28 above), no limit found where the commands do not outnumber the rows or the problem is regularised (held to
+  1e12 and 1e6); the arrays MIME ships span about 1e2. Normalising the columns inside the law would remove it but
+  changes the least-effort tie-break (the least `|u|` becomes the least `|v|` of the rescaled commands), which is
+  defined in the commands' own units, so the limit is stated instead. Where two faces of an unregularised problem come within the
+  law's tie window in float32 it may take the one of less effort that float64 does not: the swap test found OctoMag's
+  force out of reach, its residual 1.7e-5 of it higher, its currents 3.2 A apart on a 5 A limit.
+  `docs/allocation.md` is its page.
+- **`allocate()` runs the exact allocation** on the host in float64 instead of SciPy's BVLS, and takes `field_scale=`
+  and `gradient_scale=` (both or neither; unweighted by default, as before). Against the release's `allocate()` on 3200
+  requests an array (a field, a gradient, both, and fields of 0.05 to 0.2 uT; run 43576671085), its currents move by at
+  most 1.7e-12 A within the swap line, at most half of it; past it on 8 of 2000 requests for a field and a gradient on
+  CardioMag (3) and OctoMag (5), by up to 13.8 and 19.3 A, each where SciPy's BVLS stopped at its iteration cap (as
+  many iterations as coils) above the optimum the law reaches, as BVLS does given more. Where several currents make
+  the wanted values (eight coils asked for a field alone) the law returns the least current, as BVLS did on those
+  requests to 1.5e-12 A; the law without that tie put five of CardioMag's coils at +-35 A for a field alone where
+  BVLS's currents were all inside. SciPy stays the swap test's oracle, its iterations capped at `3^K`.
 - **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
   interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and

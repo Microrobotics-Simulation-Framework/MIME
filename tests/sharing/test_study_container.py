@@ -154,7 +154,8 @@ def test_a_container_named_as_another_kind_or_a_block_is_refused_and_never_unpac
     block = rewritten(container, lambda members, manifest: manifest.update(format="mime.block/1"))
     named = block.with_name("probe.mimeblock")
     block.rename(named)
-    assert codes_of(lambda: pull(named, into=tmp_path / "c")) == ["container.kind"]
+    # read as the block its format says it is, whose members are no block's: refused, never unpacked
+    assert set(codes_of(lambda: pull(named, into=tmp_path / "c"))) == {"bundle.unsafe"}
     newer = rewritten(container, lambda members, manifest: manifest.update(format="mime.study/2"))
     assert codes_of(lambda: pull(newer, into=tmp_path / "d")) == ["load.newer-form"]
     assert not any((tmp_path / each).exists() for each in "abcd")

@@ -115,8 +115,8 @@ file had by request alone, and may name a route to request its file by (``reques
 data-availability statement). Both are outside every hash, as the lock's asset records always were, so a lock of an
 earlier version is read as it is and nothing is written back. It adds one key to the document, ``blocks``, each block
 the experiment uses by the use's name, written only where one is used and inside the input hash. A block used as
-``copied`` holds its declarations in the document and loads; one used as ``referenced`` holds them in its container,
-which this MIME does not yet read, and is refused by its own code (``load.referenced-block``). A document or lock of an
+``copied`` holds its declarations in the document; one used as ``referenced`` holds them in its container, which the
+lock's ``assets`` records and a load reads (:mod:`mime.blocks._referenced`). A document or lock of an
 earlier version declares none of these, and one that holds any is refused, never read as declaring it. What the
 version added is named in one place (:data:`STEP_14_DOCUMENT_KEYS`, :data:`STEP_14_LOCK_HELD`), which the refusal of an
 earlier form and the write-back read.

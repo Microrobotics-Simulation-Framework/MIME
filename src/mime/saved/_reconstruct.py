@@ -8,9 +8,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from mime._terminal import plain
 from mime.build import (
     CONVENTIONAL_GRAVITY,
+    BuildRefused,
     Attachment,
     ControllerDeclaration,
     Declaration,
@@ -264,39 +264,23 @@ def scene_from(document: ExperimentDocument, folder: Path) -> Scene:
     return scene
 
 
-def referenced_block_refusals(document: ExperimentDocument, *, using: bool = False) -> list[Refusal]:
-    """``load.referenced-block`` for each block ``document`` uses by reference: its declarations are in the block's
-    container, which this MIME does not yet read, not in the document. ``using``: refused as ``exp.use`` would use it
-    (its licence makes it referenced), before any document holds it."""
-    from mime import __version__
-
-    if using:
-        return [Refusal("load.referenced-block", RefusalClass.ENVIRONMENT,
-                        f"the block {plain(use['id'])} {plain(use['version'])} is licensed {plain(use['licence'])}, "
-                        f"which lets no copy of its content into your saved document, so it is used by reference, and "
-                        f"this MIME ({__version__}) does not yet use or load a referenced block",
-                        "use it with a later MIME (`pip install -U mime-engine`), which reads its container; this one "
-                        "uses a block whose licence is open or conditional (copied into the document)")
-                for use in document.get("blocks", {}).values()]
-    return [Refusal("load.referenced-block", RefusalClass.ENVIRONMENT,
-                    f"the document uses the block {plain(name)!r} ({plain(use['id'])} {plain(use['version'])}) by "
-                    f"reference: its declarations are in the block's container, not the document, and this MIME "
-                    f"({__version__}) does not yet read a referenced block",
-                    f"install the MIME that wrote it ({plain(document['mime'])}) or a later one (`pip install -U "
-                    f"mime-engine`), which reads a referenced block, then load it again; this one loads a block used as "
-                    f"copied, whose declarations the document holds")
-            for name, use in document.get("blocks", {}).items() if use["tier"] == "referenced"]
-
-
 def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord] = (),
-                      folder: Path | None = None) -> tuple[RunSettings, list[Declaration]]:
+                      folder: Path | None = None,
+                      assets: Sequence[Mapping[str, object]] = ()) -> tuple[RunSettings, list[Declaration]]:
     """The run settings and declarations ``document`` describes, its scene's layers read from below ``folder``
     (the working directory when none is given). Resolves its entries among installed packages and never installs
     anything; raises :class:`LoadRefused` with every reason, each with the line to install. A block used by reference
-    is refused alone, before anything else is read: the rest of the document leans on what it would expand to."""
-    referenced = referenced_block_refusals(document)
-    if referenced:
-        raise LoadRefused(referenced)
+    is read first from its container, which ``folder``'s enclosing block folder or the lock's record of it among
+    ``assets`` names (:func:`mime.blocks._referenced.referenced_declarations`); its declarations come before the
+    document's, which the rest of the document leans on."""
+    provided: list[Declaration] = []
+    if any(use["tier"] == "referenced" for use in document.get("blocks", {}).values()):
+        from mime.blocks._referenced import referenced_declarations
+
+        try:
+            provided = referenced_declarations(document, assets, folder)
+        except BuildRefused as refused:
+            raise LoadRefused(refused.refusals) from None
     held = folder if folder is not None else Path.cwd()
     try:
         materials, conditions = materials_from(document["materials"], held), conditions_from(document["conditions"])
@@ -307,7 +291,7 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
     if (problem := up_axis_problem(tuple(document["scene"]["up"]))) is not None:
         reader.refuse(*problem)
     reader.refusals += import_namespaces(entry_names(document), locked)
-    declarations: list[Declaration] = []
+    declarations: list[Declaration] = list(provided)
     for name, thing in document["things"].items():
         declarations.append(cast(Declaration, reader.thing(name, thing)))
     for doc in document["interactions"]:
