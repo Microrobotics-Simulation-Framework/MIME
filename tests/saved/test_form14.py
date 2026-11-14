@@ -214,11 +214,11 @@ def by_request_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def test_version_fourteen_writes_a_record_with_no_location_and_reads_it_back(by_request_folder: Path, tmp_path: Path):
-    assert HASH_ONLY_ADDED == CURRENT == 14
-    assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/14" and LOCK_SCHEMAS[CURRENT] == "mime.lock/14"
+    assert HASH_ONLY_ADDED == 14 < CURRENT
+    assert DOCUMENT_SCHEMAS[HASH_ONLY_ADDED] == "mime.document/14" and LOCK_SCHEMAS[HASH_ONLY_ADDED] == "mime.lock/14"
     lock = json.loads((by_request_folder / LOCK_FILE).read_text(encoding="utf-8"))
     (record,) = lock["assets"]
-    assert lock["schema"] == "mime.lock/14" and record["locations"] == [] and record["request"] == REQUEST
+    assert lock["schema"] == LOCK_SCHEMAS[CURRENT] and record["locations"] == [] and record["request"] == REQUEST
     assert lock["referenced_files"] == {SCAN_LAYER: "vessel_scan.usda"}
     folder = Path(shutil.copytree(by_request_folder, tmp_path / "scanned"))
     with own_cache(tmp_path) as cache:

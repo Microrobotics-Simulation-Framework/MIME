@@ -50,6 +50,8 @@ from mime.saved._terms import referenced_assets
 from mime.saved._versions import CURRENT, document_in_form, physics_in_form, resolved_in_form
 from mime.saved._schema import (
     LOCK_SCHEMA,
+    ResolvedPort,
+    ResponseRecord,
     ConditionDoc,
     CpuRecordDoc,
     DefaultRecord,
@@ -194,7 +196,7 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         name: {"name": g.registered.name, "version": g.registered.version,
                "settings": all_settings(g.geometry, f"structure {name!r}'s geometry")}
         for name, g in plans.geometries.items()}
-    return {
+    record: ResolvedRecord = {
         "vocabulary": {name: version for name, version in plans.vocabulary.items()
                        if name in _namespaces_used(plans)},
         "run": {"experiment": plans.settings.experiment, "dt": plans.dt, "seed": plans.settings.seed,
@@ -219,6 +221,34 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "controller": resolved_controller(plans.controller),
         "profile": resolved_profile(plans),
     }
+    if plans.command_ports:
+        record["ports"] = resolved_ports(plans)
+    return record
+
+
+def resolved_ports(plans: PlanSet) -> dict[str, ResolvedPort]:
+    """Each command port as the build resolved it, by ``<apparatus>.<command>``: its receiver, its period and latency in
+    base steps, its bound, whether it is staged, and its response with its settings in SI and whether its receiver
+    computes it."""
+    from mime.units import unit_symbol
+
+    found: dict[str, ResolvedPort] = {}
+    for plan in plans.command_ports:
+        record = plan.response
+        settings: dict[str, SettingValue] = {}
+        if record is not None:
+            for name, value in sorted(plan.response_settings.items()):
+                dimension = record.settings[name].dimension if name in record.settings else None
+                settings[name] = cast(SettingValue, {"value": list(value) if isinstance(value, tuple) else value,
+                                                     "unit": unit_symbol(dimension)} if dimension is not None
+                                      else value)
+        response: ResponseRecord = {"name": record.name if record is not None else "response.ideal",
+                                    "version": record.version if record is not None else "0.1.0",
+                                    "settings": settings}
+        found[f"{plan.apparatus}.{plan.command}"] = {
+            "receiver": f"{plan.receiver[0]}.{plan.receiver[1]}", "period": plan.period, "latency": plan.latency,
+            "bounded": plan.bounded, "staged": plan.staged, "response": response, "handed": plan.handed}
+    return found
 
 
 def resolved_profile(plans: PlanSet) -> ResolvedProfile:
@@ -249,8 +279,7 @@ def resolved_controller(plan: ControllerPlan | None) -> ResolvedController | Non
     if plan is None:
         return None
     return {"mode": plan.mode.value, "every": plan.period, "latency": plan.latency, "rule": LATENCY_RULE,
-            # A measurement port's read is never saved by this form: an experiment declaring a port is refused at save.
-            "reads": {r.label: {"path": r.path, "read_class": cast(Any, r.read_class.value),
+            "reads": {r.label: {"path": r.path, "read_class": r.read_class.value,
                                 "meaning": r.read_class.meaning,
                                 "node": r.node, "field": r.field} for r in plan.reads},
             "writes": {w.label: {"path": w.path, "node": w.node, "field": w.field} for w in plan.writes}}

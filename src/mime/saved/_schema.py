@@ -781,6 +781,14 @@ class ResolvedProfile(TypedDict, closed=True):
     changes: ReadOnly[dict[str, str]]
 
 
+class ResponseRecord(TypedDict, closed=True):
+    """A command port's response as the build resolved it: its entry's name and version, and its settings in SI."""
+
+    name: ReadOnly[str]
+    version: ReadOnly[str]
+    settings: ReadOnly[dict[str, SettingValue]]
+
+
 class ResolvedPort(TypedDict, closed=True):
     """A command port as the build resolved it: its receiver's node and input, its period and latency in base steps,
     its bound, whether it is staged, and its response (by name and version, its settings in SI) and whether its receiver
@@ -791,7 +799,7 @@ class ResolvedPort(TypedDict, closed=True):
     latency: ReadOnly[int]
     bounded: ReadOnly[str]
     staged: ReadOnly[bool]
-    response: ReadOnly[EntryDoc]
+    response: ReadOnly[ResponseRecord]
     handed: ReadOnly[bool]
 
 
@@ -816,7 +824,7 @@ class ResolvedRecord(TypedDict, closed=True):
     descriptions: ReadOnly[dict[str, DescriptionRecord]]
     controller: ReadOnly[ResolvedController | None]
     profile: ReadOnly[ResolvedProfile]
-    ports: NotRequired[dict[str, ResolvedPort]]
+    ports: ReadOnly[NotRequired[dict[str, ResolvedPort]]]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -1057,7 +1065,7 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 __all__ = [
     "BlockNamesDoc", "BlockUseDoc",
     "BasedOnDoc", "RangeDoc", "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
-    "ScopeDoc", "TermsDoc", "BoundsDoc", "NoiseDoc", "PortDoc", "ResolvedPort",
+    "ScopeDoc", "TermsDoc", "BoundsDoc", "NoiseDoc", "PortDoc", "ResolvedPort", "ResponseRecord",
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
     "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",

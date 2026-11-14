@@ -39,7 +39,7 @@ def saved(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 def test_the_lock_holds_the_manifest_and_the_folder_holds_none(saved: Path):
     lock = json.loads((saved / LOCK_FILE).read_text(encoding="utf-8"))
-    assert list(lock["visuals"]) == ["ar4_mk5"] and lock["schema"] == "mime.lock/14"
+    assert list(lock["visuals"]) == ["ar4_mk5"] and lock["schema"] == "mime.lock/15"
     held = lock["visuals"]["ar4_mk5"]
     assert len(held["assets"]) == 18 and {record["licence"] for record in held["assets"]} == {
         "LicenseRef-Annin-Robotics-NonCommercial"}

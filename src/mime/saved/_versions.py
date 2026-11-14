@@ -119,7 +119,17 @@ the experiment uses by the use's name, written only where one is used and inside
 which this MIME does not yet read, and is refused by its own code (``load.referenced-block``). A document or lock of an
 earlier version declares none of these, and one that holds any is refused, never read as declaring it. What the
 version added is named in one place (:data:`STEP_14_DOCUMENT_KEYS`, :data:`STEP_14_LOCK_HELD`), which the refusal of an
-earlier form and the write-back read."""
+earlier form and the write-back read.
+
+**Version 15** (``mime.document/15``, ``mime.lock/15``) adds an apparatus's ``ports`` to the document
+(``things.<apparatus>.ports``, each port's fields as given) and the controller's ``believed`` slot
+(``controller.believed``, which nothing writes yet), each only where declared and inside the input hash; the resolved
+record's ``ports`` (each command port as the build resolved it); and a controller read's class ``measurement``. It
+moves a kinematic arm's servo onto its apparatus's ports: a form-14 document's arm ``servo`` is read as a first-order
+lag (``response.first_order_lag``) on each of the arm's position commands, which the arm's own node computes as it did,
+so the derived graph is unchanged; the rebuilt document and resolved record are written back for the lock's hashes
+(the ports taken off, the arm's ``servo`` restored, null where it had none). A document or lock of an earlier version
+that holds what version 15 added is refused, never read as declaring it."""
 
 from __future__ import annotations
 
@@ -171,6 +181,15 @@ REQUEST_KEY, LOCATIONS_KEY = "request", "locations"
 #: The document's key version 14 added: each block the experiment uses, by the use's name.
 BLOCKS_KEY = "blocks"
 _FVM = "fvm"
+#: The version that holds an apparatus's ports and the controller's believed slot, and moves a servo onto its ports.
+PORTS_ADDED = 15
+PORTS_KEY, BELIEVED_KEY = "ports", "believed"
+#: A kinematic arm's setting before version 15, its name, the response it is read as and the commands it lags.
+SERVO, _ARM = "servo", "arm"
+SERVO_RESPONSE = {"name": "response.first_order_lag", "version": "0.1.0"}
+SERVO_COMMANDS = ("joint_positions", "joint_displacements")
+#: The reason the upgrade gives a port it made of a form-14 servo, by which the write-back finds it.
+SERVO_REASON = "the arm's servo, read from a saved form before 15"
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
@@ -480,6 +499,96 @@ def step_14_held(data: object, *, lock: bool) -> list[str]:
     return [key for key in STEP_14_DOCUMENT_KEYS if isinstance(data, dict) and key in cast("dict[str, object]", data)]
 
 
+def _apparatus(document: Mapping[str, object]) -> list[tuple[str, dict[str, object]]]:
+    things = document.get("things")
+    if not isinstance(things, dict):
+        return []
+    return [(str(name), cast("dict[str, object]", doc)) for name, doc in cast("dict[str, object]", things).items()
+            if isinstance(doc, dict) and cast("dict[str, object]", doc).get("kind") == "apparatus"]
+
+
+def step_15_held(data: object, *, lock: bool) -> list[str]:
+    """What version 15 added that ``data`` holds: a document's apparatus ``ports`` and the controller's ``believed``,
+    a lock's resolved ``ports``."""
+    if not isinstance(data, dict):
+        return []
+    held = cast("dict[str, object]", data)
+    if lock:
+        resolved = held.get("resolved")
+        return [f"resolved.{PORTS_KEY}"] if isinstance(resolved, dict) and PORTS_KEY in resolved else []
+    found = [f"things.{name}.{PORTS_KEY}" for name, doc in _apparatus(held) if PORTS_KEY in doc]
+    controller = held.get("controller")
+    return found + ([f"controller.{BELIEVED_KEY}"] if isinstance(controller, dict) and BELIEVED_KEY in controller
+                    else [])
+
+
+def _servo_read(apparatus: dict[str, object]) -> dict[str, object]:
+    """An apparatus's document of a form before 15 as 15 reads it: each arm's ``servo`` taken off its settings and
+    put on its position commands' ports as a first-order lag (the reconstruction drops the port of a command the arm
+    does not take)."""
+    chain = apparatus.get("chain")
+    if not isinstance(chain, list):
+        return apparatus
+    segments: list[object] = []
+    ports: dict[str, object] = {}
+    for item in cast("list[object]", chain):
+        if not isinstance(item, dict):
+            segments.append(item)
+            continue
+        segment = cast("dict[str, object]", item)
+        settings = segment.get("settings")
+        if segment.get("name") == _ARM and isinstance(settings, dict) and SERVO in settings:
+            held = dict(cast("dict[str, object]", settings))
+            servo = held.pop(SERVO)
+            segment = {**segment, "settings": held} if held else {k: v for k, v in segment.items()
+                                                                       if k != "settings"}
+            if servo is not None:
+                ports.update({f"{segment.get('segment')}.{command}": {
+                    "port": "command", "response": {**SERVO_RESPONSE, "settings": {"tau": servo}},
+                    "reason": SERVO_REASON} for command in SERVO_COMMANDS})
+        segments.append(segment)
+    return {**apparatus, "chain": segments, **({PORTS_KEY: ports} if ports else {})}
+
+
+def _servo_written(apparatus: dict[str, object]) -> dict[str, object]:
+    """An apparatus's document written back into a form before 15: each port the upgrade made of a servo taken off, and
+    the servo put back on its arm's settings."""
+    ports = apparatus.get(PORTS_KEY)
+    chain = apparatus.get("chain")
+    if not isinstance(ports, dict) or not isinstance(chain, list):
+        return apparatus
+    kept: dict[str, object] = {key: port for key, port in cast("dict[str, object]", ports).items()
+            if not (isinstance(port, dict) and cast("dict[str, object]", port).get("reason") == SERVO_REASON)}
+    servos: dict[str, object] = {}
+    for key, port in cast("dict[str, object]", ports).items():
+        if key not in kept:
+            response = cast("dict[str, object]", cast("dict[str, object]", port).get("response", {}))
+            servos[key.partition(".")[0]] = cast("dict[str, object]", response.get("settings", {})).get("tau")
+    segments: list[object] = []
+    for item in cast("list[object]", chain):
+        if not isinstance(item, dict):
+            segments.append(item)
+            continue
+        segment = cast("dict[str, object]", item)
+        if segment.get("segment") in servos:
+            settings = dict(cast("dict[str, object]", segment.get("settings", {})))
+            settings[SERVO] = servos[cast(str, segment.get("segment"))]
+            segment = {**segment, "settings": dict(sorted(settings.items()))}
+        segments.append(segment)
+    held = {k: v for k, v in apparatus.items() if k != PORTS_KEY}
+    return {**held, "chain": segments, **({PORTS_KEY: kept} if kept else {})}
+
+
+def _with_apparatus(document: dict[str, object], change: Any) -> dict[str, object]:
+    things = document.get("things")
+    if not isinstance(things, dict):
+        return document
+    held = dict(cast("dict[str, object]", things))
+    for name, doc in _apparatus(document):
+        held[name] = change(doc)
+    return {**document, "things": held}
+
+
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
     terms keys in one of an earlier version, version 5's duration, version 7's ``based_on``, version 11's media's
@@ -489,6 +598,7 @@ def added_after(data: object, version: int) -> list[str]:
     found += medium_fields_held(data) if version < MEDIUM_FIELDS_ADDED else []
     found += ranges_held(data) if version < RANGES_ADDED else []
     found += step_14_held(data, lock=False) if version < HASH_ONLY_ADDED else []
+    found += step_15_held(data, lock=False) if version < PORTS_ADDED else []
     return found + (based_on_held(data) if version < BASED_ON_ADDED else [])
 
 
@@ -517,6 +627,8 @@ def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
         held = _with_media(held, _fields_of_flow)
     if version < ROWS_RENAMED:
         held = _with_media(held, _rows_read)
+    if version < PORTS_ADDED:
+        held = _with_apparatus(held, _servo_read)
     return {**held, "schema": DOCUMENT_SCHEMA}, version, renamed
 
 
@@ -542,6 +654,8 @@ def upgraded_lock(data: object) -> tuple[object, int]:
         return held, version
     if version < HASH_ONLY_ADDED and step_14_held(held, lock=True):
         return held, version
+    if version < PORTS_ADDED and step_15_held(held, lock=True):
+        return held, version
     resolved = held.get("resolved")
     if version == 1 and isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
         held["resolved"] = {**cast("dict[str, object]", resolved), _RESOLVED_ADDED: dict(_PREVIOUS_RESOLVED_PROFILE)}
@@ -554,6 +668,11 @@ def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any
     held = dict(document)
     if version == CURRENT:
         return held
+    if version < PORTS_ADDED:
+        held = _with_apparatus(held, _servo_written)
+        controller = held.get("controller")
+        if isinstance(controller, dict) and BELIEVED_KEY in controller:
+            held["controller"] = {k: v for k, v in cast("dict[str, Any]", controller).items() if k != BELIEVED_KEY}
     if version < HASH_ONLY_ADDED:
         held = {key: value for key, value in held.items() if key not in STEP_14_DOCUMENT_KEYS}
     if version < ROWS_RENAMED:
@@ -669,11 +788,33 @@ def _rows_in_form(resolved: dict[str, Any]) -> dict[str, Any]:
     return held
 
 
+def _servo_in_form(resolved: dict[str, Any]) -> dict[str, Any]:
+    """A resolved record as a form before 15 wrote it: every arm's entry with its ``servo`` (the first-order lag a
+    port hands it, else null) where it holds none, and no ``ports``. A record of that form already holds them, and is
+    left as it is."""
+    ports = cast("dict[str, Any]", resolved.get(PORTS_KEY, {}))
+    servos = {key.rpartition(".")[0]: cast("dict[str, Any]", port["response"].get("settings", {})).get("tau")
+              for key, port in ports.items() if port.get("handed")}
+    entries = resolved.get("entries")
+    if isinstance(entries, dict):
+        held_entries: dict[str, Any] = {}
+        for owner, entry in cast("dict[str, Any]", entries).items():
+            if isinstance(entry, dict) and cast("dict[str, Any]", entry).get("name") == _ARM:
+                settings = dict(cast("dict[str, Any]", entry).get("settings", {}))
+                settings.setdefault(SERVO, servos.get(owner))
+                entry = {**cast("dict[str, Any]", entry), "settings": settings}
+            held_entries[owner] = entry
+        resolved = {**resolved, "entries": held_entries}
+    return {key: value for key, value in resolved.items() if key != PORTS_KEY}
+
+
 def resolved_in_form(resolved: Mapping[str, Any], version: int) -> dict[str, Any]:
     """A resolved record written back into the form of ``version``: before version 13, the FVM's setting as
     ``report_rows``; before version 9, a body's inertia from its parts as its diagonal; before version 3, the rung, the
     possessive and the profile as version 2 and 1 wrote them."""
     held = dict(resolved)
+    if version < PORTS_ADDED:
+        held = _servo_in_form(held)
     if version < ROWS_RENAMED:
         held = _rows_in_form(held)
     values = held.get("values")
@@ -725,7 +866,7 @@ __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "BLOCKS_KEY", "
            "DOCUMENT_SCHEMAS", "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "HASH_ONLY_ADDED",
            "INERTIA_TENSOR_ADDED",
            "LOCATIONS_KEY", "LOCK_VISUALS_KEY", "REQUEST_KEY", "STEP_14_DOCUMENT_KEYS", "STEP_14_LOCK_HELD",
-           "hash_only_held", "step_14_held",
+           "hash_only_held", "step_14_held", "step_15_held", "PORTS_ADDED", "PORTS_KEY", "BELIEVED_KEY", "SERVO_REASON",
            "MEDIUM_FIELDS_ADDED", "RECORDS_ADDED", "medium_fields_held",
            "PRODUCTS_REFUSAL", "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
            "NEW_ROWS", "OLD_ROWS", "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RANGES_ADDED",

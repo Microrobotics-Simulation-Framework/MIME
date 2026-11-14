@@ -48,6 +48,7 @@ from mime.saved._versions import (
     LOCK_SCHEMAS,
     NEW_RUNG,
     OLD_RUNG,
+    PORTS_ADDED,
     PREVIOUS_PROFILE,
     PROGRAM_ADDED,
     TERMS_ADDED,
@@ -59,6 +60,7 @@ from mime.saved._versions import (
     program_keys_held,
     resolved_in_form,
     step_14_held,
+    step_15_held,
     terms_keys_held,
     upgraded_document,
     upgraded_lock,
@@ -223,6 +225,11 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
     if step_14:
         problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds {', '.join(step_14)}, which version "
                     f"{HASH_ONLY_ADDED} of the saved form added", *problems]
+    step_15 = step_15_held(data, lock=False) if version < PORTS_ADDED else []
+    if step_15:
+        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds {', '.join(step_15)}, which version {PORTS_ADDED} "
+                    f"of the saved form added: a document of an earlier version declares no port and no believed "
+                    f"model", *problems]
     return document, [_refuse("load.document-shape", RefusalClass.USER, f"{path}: {problem}",
                               "write the document as experiment.save() writes it")
                       for problem in problems], version, renamed
@@ -375,6 +382,11 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
                 problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version "
                             f"{HASH_ONLY_ADDED} of the saved form added: a lock of an earlier version names a location "
                             f"for every asset and no route to request one", *problems]
+            added = step_15_held(data, lock=True) if lock_version < PORTS_ADDED else []
+            if added:
+                problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version "
+                            f"{PORTS_ADDED} of the saved form added: a lock of an earlier version resolves no port",
+                            *problems]
             if lock is not None:
                 problems = lock_text_problems(lock)
                 lock = lock if not problems else None

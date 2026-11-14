@@ -2684,7 +2684,7 @@ class _Planner:
         for segment in self.segments.get(apparatus.name, []):
             local = segment.owner.partition(".")[2]
             handed = [plan for key, plan in sorted(found.items()) if plan.handed and key.partition(".")[0] == local]
-            responds = segment.segment.responds if segment.segment is not None else {}
+            responds: Mapping[str, str] = segment.segment.responds if segment.segment is not None else {}
             if handed and _ports.handed_problems(self, apparatus.name, local, handed, tuple(responds)):
                 segment.responses = {plan.command.partition(".")[2]: dict(plan.response_settings) for plan in handed}
         keys = [plan.key for plan in found.values()]

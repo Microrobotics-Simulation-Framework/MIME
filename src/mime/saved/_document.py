@@ -53,6 +53,7 @@ from mime.saved._schema import (
     MagnetDoc,
     MaterialDoc,
     PartDoc,
+    PortDoc,
     QuantityDoc,
     ReasonDoc,
     ReferenceDoc,
@@ -68,6 +69,9 @@ from mime.scene import asset as file_asset
 from mime.things import (
     Apparatus,
     Body,
+    CommandPort,
+    Gaussian,
+    Measurement,
     Medium,
     Part,
     PermanentMagnet,
@@ -78,7 +82,7 @@ from mime.things import (
     TypedPath,
     prim_path_of,
 )
-from mime.units import Condition, Quantity, parse_unit, unit_symbol
+from mime.units import Condition, Quantity, Unit, parse_unit, unit_symbol
 from mime.validity import PENDING, Basis, Chosen, Pending, basis_problem
 
 #: Where the saved form writes the stage and the layers it references, below the document's folder.
@@ -339,10 +343,6 @@ def _thing_doc(thing: Thing) -> ThingDoc:
             doc["parts"] = {key: _part_doc(cast(object, part), f"{where}'s part {key!r}")
                             for key, part in sorted(thing.parts.items())}
     if isinstance(thing, Apparatus):
-        if thing.ports:
-            raise UnsavableError(f"{where} declares ports ({', '.join(sorted(thing.ports))}), which this MIME's saved "
-                                 f"form does not hold yet: saving it would drop them, and the folder would build "
-                                 f"another program", "run it unsaved, or leave out Apparatus(ports=...) to save it")
         doc["fields"] = {name: _entry_doc(provider, f"{where}'s field {name!r}")
                          for name, provider in sorted(thing.fields.items())}
         if thing.chain:
@@ -357,6 +357,9 @@ def _thing_doc(thing: Thing) -> ThingDoc:
         if thing.commands:
             doc["commands"] = {name: _entry_doc(cast(Entry, drive), f"{where}'s command {name!r}")
                                for name, drive in sorted(thing.commands.items())}
+        if thing.ports:
+            doc["ports"] = {name: _port_doc(port, f"{where}'s port {name!r}")
+                            for name, port in sorted(thing.ports.items())}
     if isinstance(thing, Structure) and thing.geometry is not None:
         doc["geometry"] = _entry_doc(thing.geometry, f"{where}'s geometry")
     if isinstance(thing, Medium) and thing.fills is not None:
@@ -367,6 +370,72 @@ def _thing_doc(thing: Thing) -> ThingDoc:
     if isinstance(thing, Medium) and thing.material is not None:
         doc["material"] = _material_name(cast(object, thing.material), f"{where}'s material")
     return doc
+
+
+def _port_doc(port: object, where: str) -> PortDoc:
+    """A port as the document holds it: which it is, and each field the experiment gave."""
+    if not isinstance(port, (CommandPort, Measurement)):
+        raise UnsavableError(f"{where} is {port!r}, neither a CommandPort nor a Measurement")
+    doc: dict[str, Any] = {"port": "command"} if isinstance(port, CommandPort) else {"port": "measurement",
+                                                                                      "of": port.of}
+    if port.unit is not None:
+        named = _named_units().get(port.unit.symbol)
+        doc["unit"] = port.unit.symbol if named is not None and named.dimension == port.unit.dimension else \
+            unit_symbol(port.unit.dimension)
+    if port.shape is not None:
+        doc["shape"] = [int(n) for n in port.shape]
+    if isinstance(port, CommandPort):
+        if port.bounds is not None:
+            low, high = port.bounds if isinstance(port.bounds, tuple) else (-port.bounds, port.bounds)
+            doc["bounds"] = {"low": encode_setting(low, f"{where}'s low bound"),
+                             "high": encode_setting(high, f"{where}'s high bound")}
+        if port.on_bound != "clip":
+            doc["on_bound"] = port.on_bound
+        for name in ("rest", "slew"):
+            if getattr(port, name) is not None:
+                doc[name] = encode_setting(getattr(port, name), f"{where}'s {name}")
+        if port.response is not None:
+            doc["response"] = _entry_doc(cast(Entry, port.response), f"{where}'s response")
+    else:
+        if port.noise is not None:
+            doc["noise"] = {"sigma": encode_setting(port.noise.sigma, f"{where}'s noise")}
+        if port.quantum is not None:
+            doc["quantum"] = encode_setting(port.quantum, f"{where}'s quantum")
+    for name in ("rate", "latency"):
+        if getattr(port, name) is not None:
+            doc[name] = encode_setting(getattr(port, name), f"{where}'s {name}")
+    if port.reason is not None:
+        doc["reason"] = port.reason
+    return cast(PortDoc, doc)
+
+
+def port_from(doc: PortDoc, response: Entry | None = None) -> CommandPort | Measurement:
+    """A port from its document entry, its response already constructed (``response``): a restated unit by its
+    symbol, one of :mod:`mime.units`'s, else the SI unit of the dimension written."""
+    unit = None
+    if "unit" in doc:
+        unit = _named_units().get(doc["unit"]) or Unit(doc["unit"], 1.0, parse_unit(doc["unit"]),
+                                                       "a port's restated unit, in SI")
+    shape = tuple(doc["shape"]) if "shape" in doc else None
+    rate = cast(Quantity, decode_setting(doc["rate"])) if "rate" in doc else None
+    latency = cast(Quantity, decode_setting(doc["latency"])) if "latency" in doc else None
+    if doc["port"] == "measurement":
+        noise = Gaussian(sigma=cast(Quantity, decode_setting(doc["noise"]["sigma"]))) if "noise" in doc else None
+        return Measurement(of=doc.get("of", ""), unit=unit, shape=shape, noise=noise,
+                           quantum=cast(Quantity, decode_setting(doc["quantum"])) if "quantum" in doc else None,
+                           reason=doc.get("reason"), rate=rate, latency=latency)
+    bounds = (cast(Quantity, decode_setting(doc["bounds"]["low"])),
+              cast(Quantity, decode_setting(doc["bounds"]["high"]))) if "bounds" in doc else None
+    return CommandPort(unit=unit, shape=shape, bounds=bounds, on_bound=doc.get("on_bound", "clip"),
+                       rest=cast(Quantity, decode_setting(doc["rest"])) if "rest" in doc else None,
+                       slew=cast(Quantity, decode_setting(doc["slew"])) if "slew" in doc else None,
+                       response=response, reason=doc.get("reason"), rate=rate, latency=latency)
+
+
+def _named_units() -> dict[str, Unit]:
+    import mime.units as units
+
+    return {held.symbol: held for held in vars(units).values() if isinstance(held, units.Unit)}
 
 
 def _segment_doc(name: str, segment: Entry, where: str) -> SegmentDoc:
@@ -866,6 +935,8 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
                                           mount=part.get("mount")) for key, part in doc.get("parts", {}).items()},
                          magnets={key: PermanentMagnet(cast(tuple[float, float, float], tuple(magnet["direction"]))
                                                        if "direction" in magnet else None)
-                                  for key, magnet in doc.get("magnets", {}).items()})
+                                  for key, magnet in doc.get("magnets", {}).items()},
+                         ports={key: port_from(port, entries.get((name, f"port:{key}")))
+                                for key, port in doc.get("ports", {}).items()})
     return Structure(name, geometry=cast(Geometry | None, entries.get((name, "geometry"))),
                      dynamics=cast(Dynamics | None, entries.get((name, "motion"))))
