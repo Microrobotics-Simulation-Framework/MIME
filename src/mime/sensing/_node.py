@@ -75,6 +75,8 @@ from mime.registry import Problem
 from mime.sensing import _scene as scene
 from mime.sensing._coverage import CORNER_SAMPLES
 from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays, ray_table
+from mime.sensing._mesh import KEYS as MESH_KEYS
+from mime.sensing._mesh import MESH_SAMPLES, Tree, mesh_part, tree
 from mime.sensing._render import Exposure, Response, exposed, frame_key, prepared, projected_reach, static_part
 from mime.sensing._subjects import Subject
 
@@ -221,20 +223,25 @@ def static_subjects(spec: Mapping[str, Any]) -> tuple[Subject, ...]:
 
 @functools.lru_cache(maxsize=16)
 def structure_maker(spec: str, placement: tuple[float, ...]) -> tuple[Callable[[Array], Array], list[str]]:
-    """The static structure of a camera fixed in the world at ``placement``, a function of its nine intrinsics compiled
-    once per scene and pose (a study's points, an override's build and the save's rerun share it), and the static flags'
-    names in their packed order, known once it has been traced."""
+    """The static structure of a camera fixed in the world at ``placement``, a function of its nine intrinsics (and,
+    where it traces meshes, of their tree's arrays, :data:`mime.sensing._mesh.KEYS`, the node's leaves) compiled once per
+    scene and pose (a study's points, an override's build and the save's rerun share it), and the static flags' names in
+    their packed order, known once it has been traced."""
     held = json.loads(spec)
     subjects = static_subjects(held)
+    looks = tuple(scene.mesh_look(each) for each in held.get("meshes", ()))
+    samples = int(held.get("mesh_samples", MESH_SAMPLES))
     pose = CameraPose(np.asarray(placement[:3], dtype=np.float64), np.asarray(placement[3:], dtype=np.float64))
     names: list[str] = []
 
-    def made(intrinsics: Array) -> Array:
+    def made(intrinsics: Array, *meshes: Array) -> Array:
         dtype = intrinsics.dtype
         moved = detector_of(held, intrinsics)
         rays = ray_table(moved, pose)
         flags: dict[str, Any] = {}
         static = static_part(subjects, rays, moved, pose, dtype, CORNER_SAMPLES, flags)
+        if looks:
+            static = static * mesh_part(looks, meshes, rays, samples).astype(dtype)
         names[:] = sorted(flags)
         return packed(rays, static, flags, names, dtype)
 
@@ -247,6 +254,8 @@ SCENE_HELD = ("held as built: the scene's numbers (the subjects' settings and ap
 STRUCTURE_HELD = ("the static structure, made when the node's parameters are made, from the leaves beside it: no quantity "
                   "of its own, made again once a run from the run's leaves where a derivative may be taken "
                   "(run_constants)")
+MESH_HELD = ("the static meshes' bounding volume hierarchy, built on the host from the meshes the node was built with: "
+             "no quantity of its own, read where the static structure is made; a new mesh takes a rebuild")
 
 
 class CameraNode(MountedNode):
@@ -285,13 +294,18 @@ class CameraNode(MountedNode):
     def __init__(self, name: str, timestep: float, *, spec: str, fx: float, fy: float, cx: float, cy: float, k1: float,
                  k2: float, p1: float, p2: float, k3: float, bodies: Sequence[str], initial_poses: Sequence[float],
                  period: int, sub_frames: int, seed: int, placement: Sequence[float], mount_index: int = -1,
-                 mount_count: int = 0, initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)) -> None:
+                 mount_count: int = 0, initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                 mesh_triangles: Any = None, mesh_owners: Any = None) -> None:
+        meshes = {} if mesh_triangles is None else {
+            "mesh_triangles": np.asarray(mesh_triangles, dtype=np.float64).reshape(-1, 3, 3),
+            "mesh_owners": np.asarray(mesh_owners, dtype=np.int64).reshape(-1)}
         super().__init__(name, timestep, spec=spec, scene_numbers=scene.numbers(json.loads(spec)), fx=float(fx), fy=float(fy), cx=float(cx), cy=float(cy), k1=float(k1),
                          k2=float(k2), p1=float(p1), p2=float(p2), k3=float(k3), bodies=tuple(bodies),
                          initial_poses=tuple(float(c) for c in initial_poses), period=int(period),
                          sub_frames=int(sub_frames), seed=int(seed), placement=tuple(float(c) for c in placement),
                          mount_index=int(mount_index), mount_count=int(mount_count),
-                         initial_mount_pose=tuple(float(c) for c in initial_mount_pose))
+                         initial_mount_pose=tuple(float(c) for c in initial_mount_pose), **meshes)
+        self._tree: Tree | None = tree(meshes["mesh_triangles"], meshes["mesh_owners"]) if meshes else None
         self._held = self._made()
         self._structure = self._built_structure() if self.holds_cache() else None
 
@@ -337,7 +351,21 @@ class CameraNode(MountedNode):
     def _built_structure(self) -> tuple[Array, Array]:
         """The static structure at the build's intrinsics in the run's dtype, and the numbers it was made at."""
         intrinsics = as_run_array(np.asarray(self.build_intrinsics()))
-        return self._maker()[0](intrinsics), self._structure_numbers(intrinsics)
+        return (self._maker()[0](intrinsics, *self._meshes(None, intrinsics.dtype)),
+                self._structure_numbers(intrinsics))
+
+    def _meshes(self, p: Mapping[str, Any] | None, dtype: Any) -> tuple[Array, ...]:
+        """The traced meshes' tree as the maker takes it: the leaves ``p`` holds, or the node's own where it holds none;
+        none where the node traces no mesh."""
+        if self._tree is None:
+            return ()
+        if p is not None and MESH_KEYS[0] in p:
+            return tuple(jnp.asarray(p[key], dtype=dtype) for key in MESH_KEYS)
+        return tuple(jnp.asarray(self._tree.arrays[key], dtype=dtype) for key in MESH_KEYS)
+
+    def traces_meshes(self) -> bool:
+        """Whether the node traces static meshes (the stage's scenery, or structures by their drawings)."""
+        return self._tree is not None
 
     def build_intrinsics(self) -> tuple[float, ...]:
         """The detector's nine numbers as the node was built with them."""
@@ -363,6 +391,8 @@ class CameraNode(MountedNode):
     def param_specs(self) -> dict[str, ParamSpec]:
         held = {key: ParamSpec(trainable=False, units="1", description=STRUCTURE_HELD)
                 for key in (STRUCTURE, STRUCTURE_FROM)} if self.holds_cache() else {}
+        if self._tree is not None:
+            held.update({key: ParamSpec(trainable=False, units="1", description=MESH_HELD) for key in MESH_KEYS})
         return {**super().param_specs(),
                 **self.intrinsic_specs(),
                 "scene_numbers": ParamSpec(trainable=False, units="1", description=SCENE_HELD),
@@ -396,6 +426,8 @@ class CameraNode(MountedNode):
     def params_pytree(self) -> dict[str, Any]:
         inherited: Any = super()
         leaves = cast(dict[str, Any], inherited.params_pytree())
+        if self._tree is not None:
+            leaves = {**leaves, **{key: as_run_array(self._tree.arrays[key]) for key in MESH_KEYS}}
         if self._structure is None:
             return leaves
         structure, numbers = self._structure
@@ -415,9 +447,9 @@ class CameraNode(MountedNode):
         return jnp.concatenate([intrinsics, jnp.asarray(scene_numbers, dtype=dtype).reshape(-1),
                                 jnp.stack([jnp.asarray(c, dtype=dtype) for c in placement])])
 
-    def _make(self, numbers: Array) -> Array:
-        """The static structure made at ``numbers`` (their first nine, the intrinsics)."""
-        return self._maker()[0](numbers[:len(INTRINSICS)])
+    def _make(self, numbers: Array, p: Mapping[str, Any]) -> Array:
+        """The static structure made at ``numbers`` (their first nine, the intrinsics), with the meshes ``p`` holds."""
+        return self._maker()[0](numbers[:len(INTRINSICS)], *self._meshes(p, numbers.dtype))
 
     def _intrinsics(self, p: Mapping[str, Any], dtype: Any) -> Array:
         return jnp.stack([jnp.asarray(p[name], dtype=dtype) for name in INTRINSICS])
@@ -426,7 +458,8 @@ class CameraNode(MountedNode):
         """The static structure made at ``params``' intrinsics, in its leaf's dtype, and the numbers it was made at."""
         dtype = jnp.asarray(params[STRUCTURE]).dtype
         intrinsics = self._intrinsics(params, dtype)
-        return {STRUCTURE: self._maker()[0](intrinsics).astype(dtype), STRUCTURE_FROM: self._structure_numbers(intrinsics)}
+        return {STRUCTURE: self._maker()[0](intrinsics, *self._meshes(params, dtype)).astype(dtype),
+                STRUCTURE_FROM: self._structure_numbers(intrinsics)}
 
     @override
     def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
@@ -487,6 +520,24 @@ class CameraNode(MountedNode):
             "differentiate the offline renderer, mime.sensing.render (differentiable, and it vmaps), in the poses "
             "recorded from the run; or take forward mode along a few axes, study.gradient(..., mode='forward'), which "
             "keeps no tape; or fewer steps, a smaller detector, or a machine with more memory")
+
+    def derivative_leaves_problem(self, leaves: frozenset[str]) -> Problem | None:
+        """A derivative in any of the detector's nine numbers while the camera traces a static mesh, in either mode,
+        refused (``camera.mesh-derivative``): the mesh's part is traced under ``stop_gradient`` (the traversal's while
+        loop has no reverse-mode rule), so the derivative would silently drop it. Every other leaf (a pose, a gain, a
+        limit) passes: the static structure does not depend on it."""
+        named = sorted(leaves & set(INTRINSICS))
+        if self._tree is None or not named:
+            return None
+        meshes = [each["name"] for each in self._spec().get("meshes", ())]
+        return Problem(
+            "camera.mesh-derivative",
+            f"a derivative in the detector's {', '.join(named)} while the camera traces static meshes "
+            f"({', '.join(meshes)}): their part of the image is traced once a run with no derivative in the rays, so the "
+            f"derivative would leave it out",
+            f"hide the meshes while calibrating, Camera(..., hide=({', '.join(repr(m) for m in meshes)},)), and fit or "
+            f"differentiate the detector's numbers on what remains; a derivative in a pose, a gain or a limit is taken "
+            f"with the meshes in view")
 
     @override
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
@@ -568,7 +619,7 @@ class CameraNode(MountedNode):
         names = self._maker()[1]
         numbers = self._structure_numbers(intrinsics)
         if STRUCTURE not in p:
-            return framed(*unpacked(self._make(numbers), rows, columns, names))
+            return framed(*unpacked(self._make(numbers, p), rows, columns, names))
         held = self.holds_at(p, numbers)
         if run_constants_given(p):
             image, expected, totals = framed(*unpacked(self.structure_of(p, numbers), rows, columns, names))
@@ -579,7 +630,7 @@ class CameraNode(MountedNode):
             return framed(*unpacked(self.structure_of(p, numbers), rows, columns, names))
 
         def made() -> tuple[Array, Array, dict[str, Array]]:
-            return framed(*unpacked(self._make(numbers), rows, columns, names))
+            return framed(*unpacked(self._make(numbers, p), rows, columns, names))
 
         return lax.cond(held, read, made)
 

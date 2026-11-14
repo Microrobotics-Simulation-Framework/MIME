@@ -668,6 +668,8 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
             leader = plan.points[indices[0]]
             writes = [written(axis, leader, settings, declarations, built, first.get, reasons, protocol)
                       for axis in axes]
+            if refused := leaf_refusals(built.graph, writes):
+                raise BuildRefused(refused)
             scalars = sum(int(np.size(cast(np.ndarray, magnitude(_value_of(write.axis, leader, settings,
                                                                             declarations))))) for write in writes)
             chosen = mode if mode != "auto" else ("forward" if scalars <= FORWARD_UP_TO else "reverse")
@@ -696,6 +698,25 @@ def built_refusals(axes: Sequence[Axis]) -> list[Refusal]:
         "take the derivative along a value a node holds as a leaf, `study.gradient(of, wrt=['<a kind's number, a "
         "thing's value or a law's setting>'])`, or compare the study's members, each value its own build",
         why="a derivative is taken through the parameters of one program") for axis in axes if axis.built]
+
+
+def leaf_refusals(graph: Any, writes: Sequence[Written]) -> list[Refusal]:
+    """Each node's refusal of a derivative in some of its own leaves (``derivative_leaves_problem(leaves)``, where a node
+    has one: the leaves of it the axes write), in either mode, before anything is compiled: a derivative a node would
+    give without a part it cannot differentiate (the in-loop camera's traced meshes, in its detector's numbers)."""
+    by_node: dict[str, set[str]] = {}
+    for write in writes:
+        for node, leaf in write.leaves:
+            by_node.setdefault(node, set()).add(leaf)
+    found: list[Refusal] = []
+    for name, leaves in sorted(by_node.items()):
+        check = getattr(graph.get_node(name), "derivative_leaves_problem", None)
+        if not callable(check):
+            continue
+        problem = cast("Callable[[frozenset[str]], Problem | None]", check)(frozenset(leaves))
+        if problem is not None:
+            found.append(Refusal(problem.code, RefusalClass.USER, f"node {name}: {problem.message}", problem.action))
+    return found
 
 
 def derivative_refusals(graph: Any, mode: str, directions: int, members: int, steps: int) -> list[Refusal]:
@@ -893,6 +914,6 @@ def _floor_how(nodes: Iterable[MimeNode]) -> str:
             "on to the lifted cap" if any(type(node).floor_stops for node in nodes) else "")
 
 
-__all__ = ["CAP_LIMITED", "FLOOR_LIMITED", "FORWARD_UP_TO", "NOT_FINITE", "STAGNATED", "cause", "derivative_refusals", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient",
+__all__ = ["CAP_LIMITED", "FLOOR_LIMITED", "FORWARD_UP_TO", "NOT_FINITE", "STAGNATED", "cause", "derivative_refusals", "leaf_refusals", "MODES", "PROBE_MOVE", "Written", "factor_of", "gradient",
            "key", "final_state", "magnitude", "member_factor", "prepare", "stacked_members", "objective_nodes",
            "path_nodes", "path_statuses", "solving_nodes", "written"]

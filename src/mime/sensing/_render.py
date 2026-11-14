@@ -247,13 +247,15 @@ def _seen(subject: Subject, rays: Rays, rotation: Any, origin: Any, dtype: Any, 
     return Seen(covered, interval)
 
 
-def _transmits(appearance: Appearance, parent: Appearance | None, chord: Any, dtype: Any) -> Any:
-    """What a subject transmits where it covers a pixel (``tau``), its parent medium's attenuation displaced."""
+def _transmits(appearance: Appearance, parent: Appearance | None, chord: Any, dtype: Any,
+               medium: float | None = None) -> Any:
+    """What a subject transmits where it covers a pixel (``tau``), its parent medium's attenuation displaced (or, with
+    no parent subject, the ``medium`` it lies in: a traced mesh's)."""
     if appearance.look is Look.OPAQUE:
         return jnp.zeros_like(chord)
     if appearance.look is Look.FLAT:
         return jnp.full_like(chord, 1.0) - jnp.asarray(appearance.blocks, dtype=dtype)
-    around = parent.attenuation if parent is not None and parent.look is Look.ATTENUATING else 0.0
+    around = parent.attenuation if parent is not None and parent.look is Look.ATTENUATING else (medium or 0.0)
     return jnp.exp(-(jnp.asarray(appearance.attenuation, dtype=dtype) - jnp.asarray(around, dtype=dtype)) * chord)
 
 
@@ -367,7 +369,7 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
     assert subject.appearance is not None
     chord = forms.chord(seen.interval)
     factor = 1.0 - seen.coverage + seen.coverage * _transmits(
-        subject.appearance, parent.appearance if parent is not None else None, chord, dtype)
+        subject.appearance, parent.appearance if parent is not None else None, chord, dtype, subject.around)
     name = subject.name
     if parent is not None and parent_pose is not None:
         parent_rotation, parent_origin = _local(parent, parent_pose[0], parent_pose[1], dtype)
