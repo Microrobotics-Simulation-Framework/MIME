@@ -361,6 +361,69 @@ files and recomputes the manifest makes a bundle that passes. Authenticity is th
 changed after publishing), the repository's checksum that pooch holds a DOI download to, or a hash you were given
 out of band. After a pull, `mime verify` reruns the experiment against its reference outputs.
 
+## Containers
+
+A bundle is the first **kind of container** (`mime.saved._container`): one file holding a folder MIME wrote, a zip
+with nothing compressed, `manifest.json` first and the `NOTICE` second, the folder's files under a prefix. A kind fixes
+its suffix, its format family and the format ids this MIME reads, its prefix, the manifest key holding its own hash and
+its **layout check**: why a name below the prefix is not a file of the kind's folder. Writing and reading the zip, the
+member, name and hash checks and the destination check are shared; what a kind judges before it carries anything is
+its own. The kinds:
+
+| kind | suffix | format family | prefix | layout |
+|---|---|---|---|---|
+| bundle | `.mimebundle` | `mime.bundle`, the current format and the three before it | `experiment/` | the saved form's |
+| study | `.mimestudy` | `mime.study`, its first format | `study/` | a study folder's, and the saved form's inside its saved folders |
+| block | `.mimeblock` | `mime.block`, reserved | `block/` | refused by name until MIME reads blocks |
+
+A container's kind is the one its manifest's format names. **A file named as another kind is refused**
+(`container.kind`: a study container renamed `.mimebundle`, a bundle renamed `.mimestudy`), so neither is ever unpacked
+as the other; so is a block. `mime.saved.unpack` reads a bundle and refuses a study container, naming `mime pull`, which
+reads either; `Experiment.based_on` refuses a study. The bundle's scans (a path of this machine, a token MIME holds, a
+file it cannot search, a link, a stray, two names one on a case-insensitive filesystem) are every kind's, under the same
+`bundle.*` codes, and a study container's refusals name it ("in the study container, ...").
+
+## The study container
+
+**One study per `.mimestudy`** (`mime pack <study folder>`, `mime.saved.pack`): the folder `Study.run_to` wrote, its
+files under `study/`. Its layout is the study folder's (`study.json`, `study.mime.yaml`, `compare.usda`,
+`figures/<name>.json`, `groups/<k>/outputs.npz` and `report.json`), and inside its saved folders (`experiment/`, the
+base, and `groups/<k>/experiment/` past the first group) the saved form's own. Its closed manifest names the study (its folder's
+name), every carried file's sha256 and size, each file that travels as a reference with its own saved folder's asset,
+the NOTICE's hash, the asset records of every lock it holds, and the container's own hash. It names no DOI of its own:
+a record's DOI is in the record's description (the card), never in the container. `mime.toml` beside the study is
+neither carried nor refused.
+
+**What `pack` judges first.** The study reads as `StudyResult.read` reads one (its layout, its closed manifest, each group
+file against the sha256 `study.json` records: `study.stray-file`, `study.manifest`, `study.group-file`), every member is
+done (`study.incomplete` names the rest: a stopped study is shared once it is whole), the base's input hash is the one
+`study.json` and the spec record (`study.input-hash`), and each figure's recipe reads and its data is the data it names
+by sha256 (`plot.data-changed`, checked without drawing). Each saved folder loads and is judged as a bundle's folder is
+(its strays, its terms, its references, the bytes a record in reach says may not travel), and a file carried in one
+saved folder with the bytes of a file that travels as a reference in another is refused (`bundle.referenced-copy`).
+Every file is then scanned as a bundle's. A study's own output over the size a container carries has no origin to
+travel as a reference from, so it is refused with the route: keep less (`record=`, `every=`). Every reason at once; the
+same folder makes the same bytes.
+
+**What unpacking checks.** Every member as a bundle's are (its name against the study layout, its kind, its hash,
+written by MIME's own opens into a hidden folder), then **the same study checks on the folder written**: a container
+whose manifest was rewritten to agree with a changed group file, a changed input hash or a changed figure's data is
+refused by the study's own records, and a reference in no saved folder is refused before anything is written. Each
+saved folder's files must be exactly the ones its saved form names, its references its lock's.
+
+**What `mime verify <study>` shows.** The study's checks, then each of its saved folders (the base, each group's own
+build) loaded, rebuilt and rerun against its reference outputs in the precision its lock records, a line each, and the
+worst result. It is an **acceptance**: the files are the ones the author's run wrote, and its experiments reproduce
+here. It bounds nothing about physics, and it does not run the study again: `mime study run <folder>/study.mime.yaml
+--out <a new folder>` does, and `StudyResult.compare` compares the two. A hash shows self-consistency, not authenticity:
+the DOI is the authenticity.
+
+**Publishing folders.** A folder of study folders, with the record's `mime.toml` (`[study]`) beside them, is one record
+of several studies: `mime pack <folder>` (`mime.saved.pack_studies`) writes one `.mimestudy` per study, all or none, and
+lists on a `!` line what else the folder holds (a script, a note), which no container carries. `mime pull <record>
+--into <folder>` unpacks a record of several studies into a folder each below it, gating their assets once; without
+`--into` it is refused before anything is downloaded. `mime verify <folder>` and `mime card <folder>` take either.
+
 ## Sharing an experiment
 
 ```
@@ -369,6 +432,10 @@ mime pack ./fl9_water/                    # fl9_water.mimebundle, and its sha256
 
 mime pull 10.5281/zenodo.1234567 --into ./fl9_water/   # or an address, or the file
 mime verify ./fl9_water/
+
+mime pack ./paper/                        # a publishing folder: one .mimestudy per study, beside it
+mime pull 10.5281/zenodo.7654321 --into ./paper/        # a record of several studies, a folder each
+mime verify ./paper/
 ```
 
 `pull` ends with a summary in names and sizes: whether the manifest, scene and records are right, which assets were

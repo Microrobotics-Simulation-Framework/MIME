@@ -44,7 +44,7 @@ paper's DOI added after publishing, is a metadata edit, never a new version.
 ```toml
 format = "mime.toml/1"
 
-[bundle]                 # a saved folder; [study] for a study folder
+[bundle]                 # a saved folder; [study] for a study folder or a publishing folder of them
 licence = "CC-BY-4.0"    # the experiment's own licence, which it declares and its files carry
 
 [record]
@@ -61,7 +61,7 @@ also_cite = [{ identifier = "10.1234/paper", text = "A. Author et al., 2027" }]
 |---|---|---|
 | top | `format` | its form, `mime.push.MANIFEST_FORMAT`; a later one is `load.newer-form` |
 | `[bundle]` | `licence` | a saved folder's: equal to the licence the experiment declares (`exp.licence(...)`, bound to its files); `--init` pre-fills it from your `[licences] content`, else the Creative Commons Attribution licence (`mime.push.DEFAULT_LICENCE`), where the experiment declares none, and push asks the experiment to declare it too |
-| `[study]` | `licence` | a study folder's: equal to the licence its base experiment declares. The study folder's layout holds `mime.toml` (an older MIME refuses such a folder as a stray, `study.stray-file`); pushing a study comes with a later release |
+| `[study]` | `licence` | a study folder's, or a publishing folder's (study folders beside it): equal to the licence every saved experiment of every study declares (each base, each group's own build). The study folder's layout holds `mime.toml` (an older MIME refuses such a folder as a stray, `study.stray-file`) |
 | `[record]` | `title`, `description` | the record's title, and a paragraph shown above the card |
 | | `creators` | each person (`family`, `given`) or `organisation`, with an ORCID iD (held to its form and check digit), an affiliation and its ROR identifier; one inline table a line |
 | | `contributors` | the same, each with a DataCite contributor type (`DataCurator`, `Supervisor`, ...); the rights holder of each third-party file the record holds is added by push as `RightsHolder` |
@@ -410,6 +410,23 @@ it and goes on, pulls each record by its number into a fresh folder and verifies
 and says whether each file linked into that version is stored once (its file id the published version's), which only the
 service can answer.
 
+## Studies
+
+`mime push <study folder | publishing folder> --to zenodo-sandbox` makes one record of the folder's studies: every
+study's `.mimestudy` (packed as `mime pack` packs it) and one `NOTICE.txt`, each study's NOTICE in turn. Its metadata
+are the folder's `[record]`, its keyword `mime-study`, its description the studies' card (`mime card <folder>`).
+`[study] licence` must be every saved experiment's of every study (`push.licence`, naming each). **No asset is uploaded**:
+each lock asset stays at its record's locations, which the containers name, or is had by request. A study container
+carries no staged lock, so once the draft's DOI is reserved only the card is written again, naming it; nothing is packed
+again, and on production no folder's lock is written. Push keeps the record under `studies:<folder>`, a name no
+experiment has; a child study's own `mime.toml` is not read. `mime pull --from <service> <record> --into <folder>` pulls
+it back, a folder each.
+
+**Rehearse on zenodo-sandbox first.** A record of studies is a new kind of Zenodo record: push and publish one on the
+sandbox, pull it back and verify it, before any push of studies to production. The sandbox lane does it with `--demo
+study` (a publishing folder of two toy studies); its runs on the sandbox are the maintainer's, and `--dry-run` runs it
+here against the offline fake behind the real transport, contacting nothing.
+
 ## Status
 
 Push's draft side is built, after terms and tiers: the record's metadata file and `--init`, the client, the
@@ -417,6 +434,7 @@ plan, drafts, `--status` and `--discard`, the offline fake and the sandbox lane.
 next: the quieter plan, `--publish` with its confirmation, the staged lock and the checks afterwards, versions, edits made on
 the site kept or written over, funding, conferences and `fields`, and `mime pull --from`. Metadata updates of a
 published record, communities, `--version-of` and asset records come later. In dev2 `mime.toml` replaced `sharing.yaml`
-(for saved and study folders, blocks' tables reserved), with `defaults.toml`, `mime defaults` and `mime check`.
+(for saved and study folders, blocks' tables reserved), with `defaults.toml`, `mime defaults` and `mime check`; a
+record of studies (one `.mimestudy` each, from a study folder or a publishing folder) came after it.
 
 Releases are explained in the [package manifest](../README.md#status).

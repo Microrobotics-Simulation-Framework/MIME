@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **One study per `.mimestudy`, publishing folders, and a record of several studies** (lane P, P2). The container
+  code is refactored into kinds (`mime.saved._container`: a suffix, a format id, a layout check), the bundle the first,
+  with no change in behaviour: every bundle packs to the same bytes and every earlier one unpacks as before. `mime pack
+  <study folder>` writes a **study container** (`mime.study/1`, its files under `study/`): the study is read and held to
+  its own records first (each group file's sha256, each figure's data, the base's input hash, every member run;
+  `study.incomplete`, `study.input-hash`), each saved folder in it is judged as a bundle's, and every file is scanned as
+  a bundle's are; unpacking checks the same records again on the folder it writes. A **publishing folder** (study
+  folders and the record's `mime.toml`) packs one `.mimestudy` per study (`mime.saved.pack_studies`), all or none,
+  listing what else it holds, which nothing carries. `mime pull` takes one kind per record, one bundle or one or more
+  studies, a record of several into a folder each with `--into` (refused before anything downloads without it), their
+  assets gated once; `mime verify`, `mime card` (and `--notice`) and `mime check` take a study or publishing folder;
+  `mime push` makes one record of a folder's studies (every `.mimestudy` and a `NOTICE.txt`, keyword `mime-study`, no
+  asset uploaded), to rehearse on zenodo-sandbox first (the sandbox lane's `--demo study`). A container named as
+  another kind, and a block (`mime.block/1`, reserved), is refused (`container.kind`). No saved form changes, and no
+  simulation output moves.
 - **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
   interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and
