@@ -22,7 +22,8 @@ declaration without the defect, which builds or plans:
   that mounts on something, a part on a frame no segment has, a provider whose part is no magnet;
 - **the dynamic rungs**: an arm whose moving body has geometry and no inertial (``chain.inertia-gap``), one whose
   moving joint moves a body with neither geometry nor inertial and so no mass at all (``chain.massless-joint``), a
-  dynamic arm mounted on another segment (``chain.fixed-base``), a servo on it, initial velocities on the kinematic
+  dynamic arm mounted on another segment (``chain.fixed-base``), a servo on it (``call.renamed``: the servo is a port's
+  response since saved form 15), initial velocities on the kinematic
   arm, a dynamic motor with no inertia or with a prescription, each refused with its message and what to do; the
   control: the same arms on their kinematic rung, and the dynamic arm first in its chain carrying the dynamic motor,
   build.
@@ -36,7 +37,7 @@ import pytest
 from chain_cases import AR4, AR4_HOME, DESCRIPTIONS, dynamic_rpm, fixed_magnet, kinematic_rpm, magnet_part, rpm
 from chain_cases import experiment as new_experiment
 
-from mime.build import BuildRefused, InteractionBuilder, ThingDeclaration
+from mime.build import ArgumentRefused, BuildRefused, InteractionBuilder, ThingDeclaration
 from mime.core.multibody import ClosureKind, DescriptionReading, LoopClosure
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import PointDipole
@@ -239,6 +240,26 @@ def dynamic_alone(description, joints: int, **settings) -> object:
     return exp
 
 
+@pytest.mark.parametrize(("rung", "alias", "port"), [("kinematic", Arm.Kinematic, "joint_positions"),
+                                                      ("dynamic", Arm.Dynamic, "joint_torques")])
+def test_servo_is_refused_by_name_whether_the_arm_is_built_by_its_alias_or_directly_naming_a_port_the_rung_has(
+        rung: str, alias, port: str):
+    """``Arm(rung=..., servo=...)`` gave a raw ``TypeError``; it gives the alias's refusal, and the port it names is one
+    its rung's arm has: a dynamic arm has no joint positions to command, its lag goes on a torque's port. The control:
+    the same arm without ``servo`` builds, both ways."""
+    description = asset(DESCRIPTIONS / "three_link_planar.urdf")
+    start = rad((0.0,) * 3)
+    for build in (lambda **kw: alias(description=description, initial_positions=start, **kw),
+                  lambda **kw: Arm(rung=rung, description=description, initial_positions=start, **kw)):
+        assert build().rung == rung, "the control: no servo, no refusal"
+        with pytest.raises(ArgumentRefused) as moved:
+            build(servo=ms(5))
+        (refusal,) = moved.value.refusals
+        assert refusal.code == "call.renamed" and "its port's response" in refusal.message
+        assert f"<segment>.{port}" in refusal.action and "FirstOrderLag" in refusal.action
+        assert ("<segment>.joint_positions" in refusal.action) is (rung == "kinematic")
+
+
 def test_a_dynamic_arm_with_a_massless_moving_body_is_refused_naming_it_and_the_kinematic_arm_takes_it():
     massless = DESCRIPTIONS / "massless_link.urdf"
     (refusal,) = [r for r in refused(dynamic_alone(massless, 2)) if r.code == "chain.inertia-gap"]
@@ -273,8 +294,9 @@ def only(experiment, code: str):
 
 def test_the_dynamic_rungs_refuse_what_they_cannot_take_and_build_what_they_can():
     planar = DESCRIPTIONS / "three_link_planar.urdf"
-    servo = only(dynamic_alone(planar, 3, servo=ms(5)), "setting.value")
-    assert "servo is the kinematic rung's: the dynamic arm follows the torques it is given" in servo.message
+    with pytest.raises(ArgumentRefused) as moved:
+        dynamic_alone(planar, 3, servo=ms(5))
+    assert moved.value.refusals[0].code == "call.renamed" and "its port's response" in str(moved.value)
     exp = new_experiment("kinematic_rates")
     exp.add_apparatus(Apparatus("rig", chain={"arm": Arm.Kinematic(description=asset(planar),
                                                                     initial_positions=rad((0.0,) * 3),

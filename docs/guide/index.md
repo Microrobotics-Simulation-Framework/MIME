@@ -14,6 +14,8 @@ the concept pages, which this guide links to where you meet each idea and does n
 - [Reading a build report](build_report.md): each part of the report, and what to do with it.
 - [Studies](studies.md): many runs of one experiment, its points batched by the compiled program each needs, and one run's
   overrides.
+- [Ports](ports.md): the links between a controller and what it drives, a command's rate, latency, bounds, slew and
+  response, and a measurement's.
 - [Showing an experiment](graph_and_tree.md): its topology as a tree and the graph it compiles to as Mermaid, from Python, the
   command line and a notebook.
 - [The command line](cli.md): every command and flag, generated from the parser.

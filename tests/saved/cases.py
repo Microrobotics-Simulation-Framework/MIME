@@ -476,11 +476,11 @@ def probed_shapes() -> Experiment:
     return experiment
 
 
-def coil_array(**settings: Any) -> Experiment:
+def coil_array(*, ports: dict[str, Any] | None = None, name: str = "coil_array", **settings: Any) -> Experiment:
     """A millimetre body in the Navion_2's field, the calibrated multipole placed off the world's origin and turned,
     with a background field (``settings`` written over these), its currents a constant drive, and dev1's magnetic pair
     (0.2.0) on the body, its magnet off its centre of mass: so that the walk moves the array's pose and background and
-    the pair reads it at the magnet's centroid. No gravity, no medium."""
+    the pair reads it at the magnet's centroid. No gravity, no medium. The apparatus's ``ports`` as given."""
     from mime.data import asset
     from mime.dynamics import RigidInertial
     from mime.fields import CalibratedMultipole
@@ -488,11 +488,11 @@ def coil_array(**settings: Any) -> Experiment:
     from mime.scene import Scene, Z
     from mime.units import A, A_m2, T, m_per_s2
 
-    experiment = Experiment("coil_array", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     placed = {"at": m((0.01, -0.02, 0.005)), "orientation": (0.96, 0.0, 0.0, 0.28), "background": T((2e-5, 0.0, -4e-5)),
               **settings}
     experiment.add_apparatus(Apparatus("coils", fields={"magnetic": CalibratedMultipole(
-        calibration=asset("navion_2"), **placed)}, commands={"currents": A((5.0, -3.0, 2.0))}))
+        calibration=asset("navion_2"), **placed)}, commands={"currents": A((5.0, -3.0, 2.0))}, ports=ports or {}))
     experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=mm((3.0, 2.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((1e-3, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
@@ -502,6 +502,29 @@ def coil_array(**settings: Any) -> Experiment:
     experiment.attach(Magnetic.Torque(), body="umr", field="coils.magnetic")
     experiment.attach(Magnetic.Force(), body="umr", field="coils.magnetic")
     return experiment
+
+
+def lagged_coil_array() -> Experiment:
+    """The coil array's currents through a port of every command rung, a first-order lag last (the stage computes it),
+    and the body's pose measured two steps late: response.first_order_lag's round trip, and a measurement port's."""
+    from mime import CommandPort, Measurement
+    from mime.responses import FirstOrderLag
+    from mime.units import A, s
+
+    return coil_array(name="lagged_coil_array", ports={
+        "currents": CommandPort(rate=ms(2), latency=ms(1), bounds=A(2.5), slew=A(1000.0) / s(1.0),
+                                response=FirstOrderLag(tau=ms(4)), reason="the coils' amplifier and L/R, a datasheet"),
+        "tracker": Measurement(of="umr.pose", latency=ms(2), reason="a tracker's datasheet")})
+
+
+def ideal_response_coil_array() -> Experiment:
+    """The coil array's currents one step late through a port whose response is declared ideal:
+    response.ideal's round trip."""
+    from mime import CommandPort
+    from mime.responses import Ideal
+
+    return coil_array(name="ideal_response_coil_array", ports={
+        "currents": CommandPort(latency=ms(1), response=Ideal(), reason="a link one step late, its response ideal")})
 
 
 def rigid_explicit() -> Experiment:
@@ -658,6 +681,10 @@ CASES = (
     Case("rft_kept", rft_kept),
     # A body in an electromagnet array's field, the calibrated multipole, placed, turned and with a background.
     Case("coil_array", coil_array),
+    # The coil array through its ports: a command port's every rung and a lag (response.first_order_lag), a measurement
+    # port; and a port whose response is declared ideal (response.ideal).
+    Case("lagged_coil_array", lagged_coil_array),
+    Case("ideal_response_coil_array", ideal_response_coil_array),
     # A point body coupled two-way to the tube's flow through the exchange law, drag 0.5.0's stokes rung: after the
     # cases that use the sphere first, so that its golden output stays probed_shapes'.
     Case("point_body_flow", point_body_flow),

@@ -1,0 +1,104 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Scope "carm"
+    {
+        custom string mime:name = "carm"
+        custom token mime:thing = "apparatus"
+
+        def Xform "arm"
+        {
+            custom string mime:segment = "arm 0.1.0 (rung kinematic)"
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+            def Xform "c"
+            {
+                custom string mime:frame = "c"
+                quatd xformOp:orient = (0.9900332889206209, 0.09933466539753062, 0.009966711079379187, 0.09933466539753062)
+                double3 xformOp:translate = (0.4343677711939621, 0.10343207233146888, 1.05)
+                uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate", "xformOp:orient"]
+
+                def "fallback"
+                {
+                    def Cylinder "bone_0"
+                    {
+                        uniform token axis = "Z"
+                        float3[] extent = [(-0.03407655, -0.03407655, -0.3354102), (0.03407655, 0.03407655, 0.3354102)]
+                        double height = 0.6708203932499369
+                        custom token mime:visual:role = "frames"
+                        color3f[] primvars:displayColor = [(0.55, 0.55, 0.6)]
+                        double radius = 0.03407655088896412
+                        quatd xformOp:orient = (0.85065080835204, -0, 0.5257311121191336, 0)
+                        double3 xformOp:translate = (0.3, 0, 0.15)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                    }
+                }
+            }
+
+            def Xform "column"
+            {
+                custom string mime:frame = "column"
+                quatd xformOp:orient = (0.9887710779360424, 0, 0, 0.14943813247359924)
+                double3 xformOp:translate = (0.1, 0, 0.6)
+                uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate", "xformOp:orient"]
+
+                def "fallback"
+                {
+                    def Cylinder "bone_0"
+                    {
+                        uniform token axis = "Z"
+                        float3[] extent = [(-0.03407655, -0.03407655, -0.28504387), (0.03407655, 0.03407655, 0.28504387)]
+                        double height = 0.570087712549569
+                        custom token mime:visual:role = "frames"
+                        color3f[] primvars:displayColor = [(0.55, 0.55, 0.6)]
+                        double radius = 0.03407655088896412
+                        quatd xformOp:orient = (0.9458731990537438, -0, 0.32453642524659204, 0)
+                        double3 xformOp:translate = (0.175, 0, 0.225)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                    }
+                }
+            }
+
+            def Xform "detector"
+            {
+                custom string mime:frame = "detector"
+                quatd xformOp:orient = (0.950094494041924, 0.1419157748647308, -0.1951400211872143, 0.19773906383620032)
+                double3 xformOp:translate = (1.034248568798274, 0.16422091946220807, 1.3440199733523726)
+                uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate", "xformOp:orient"]
+            }
+
+            def Xform "stand"
+            {
+                custom string mime:frame = "stand"
+                quatd xformOp:orient = (1, 0, 0, 0)
+                double3 xformOp:translate = (0, 0, 0)
+                uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate", "xformOp:orient"]
+
+                def "fallback"
+                {
+                    def Cylinder "bone_0"
+                    {
+                        uniform token axis = "Z"
+                        float3[] extent = [(-0.03407655, -0.03407655, -0.25495097), (0.03407655, 0.03407655, 0.25495097)]
+                        double height = 0.5099019513592785
+                        custom token mime:visual:role = "frames"
+                        color3f[] primvars:displayColor = [(0.55, 0.55, 0.6)]
+                        double radius = 0.03407655088896412
+                        quatd xformOp:orient = (0.9951333266680703, -0, 0.09853761796664216, 0)
+                        double3 xformOp:translate = (0.05, 0, 0.25)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                    }
+                }
+            }
+        }
+    }
+}
+

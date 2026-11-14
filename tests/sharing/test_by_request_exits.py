@@ -33,6 +33,7 @@ from mime.build import BuildRefused
 from mime.push import _plan
 from mime.saved import LOCK_FILE, ByRequestWarning, LoadRefused, card_text, notice, pack, place_referenced, unpack
 from mime.saved import _card
+from mime.saved._versions import CURRENT
 from mime.saved._bundle import FORMAT_3, MANIFEST_MEMBER, bundle_hash
 from mime.saved._terms import FolderTerms, LockAsset
 from mime.scene import asset
@@ -306,9 +307,10 @@ def test_a_lock_of_a_later_form_is_refused_before_its_records_are_read(folder: P
     copy = Path(shutil.copytree(folder, tmp_path / "later"))
     assert [ref.name for ref in assets.folder_assets(copy)] == ["vessel_scan.usda"], "the control: this form reads"
     lock = json.loads((copy / LOCK_FILE).read_text(encoding="utf-8"))
-    lock["schema"] = "mime.lock/15"
+    later = f"mime.lock/{CURRENT + 1}"
+    lock["schema"] = later
     lock["assets"][0]["a_later_key"] = True
     (copy / LOCK_FILE).write_text(json.dumps(lock), encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
         assets.folder_assets(copy)
-    assert refused.value.codes() == ["load.newer-form"] and "mime.lock/15" in str(refused.value)
+    assert refused.value.codes() == ["load.newer-form"] and later in str(refused.value)

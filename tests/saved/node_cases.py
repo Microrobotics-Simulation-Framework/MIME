@@ -264,6 +264,12 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "verified under its own case and by tests/energy"),
     ("observation", "phase_lag", "0.1.0"): NodeCase(),
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
+    ("response", "response.first_order_lag", "0.1.0"): NodeCase(
+        no_node="a response: it builds no node; the command stage computes it (ports:<apparatus>, verified against a "
+                "NumPy oracle by tests/ports/test_command_stage.py), or its receiver does (a kinematic arm's servo, "
+                "verified under arm's case)"),
+    ("response", "response.ideal", "0.1.0"): NodeCase(
+        no_node="a response: it builds no node, and delivers what the stage's slew drove, as it is"),
     ("drive", "drive.ramp", "0.1.0"): NodeCase(),
     ("dynamics", "arm", "0.1.0"): ARM,
     ("dynamics", "motor", "0.2.0"): MOTOR,

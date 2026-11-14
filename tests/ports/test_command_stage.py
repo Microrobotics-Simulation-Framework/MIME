@@ -1,8 +1,8 @@
 """The command stage (``mime.nodes.control.CommandStageNode``) against a NumPy oracle of the design's order of rungs:
 the writer sampled at the port's period and held, delayed by its latency (its rest before), bounded (clipped, or
-tripped to its rest for the rest of the run), then slew-limited from the value the amplifier drove last. Drawn over the
-port's numbers and a written sequence that leaves the bounds and comes back, at the scales a coil's amplifier has: tens
-of amperes, kiloamperes a second, milliseconds.
+tripped to its rest for the rest of the run), slew-limited from the value the amplifier drove last, then shaped by its
+response (a first-order lag). Drawn over the port's numbers and a written sequence that leaves the bounds and comes back,
+at the scales a coil's amplifier has: tens of amperes, kiloamperes a second, milliseconds.
 
 The tolerance is on the inputs' scale, the largest of the written values, the bounds and the rest: a float32 run's
 rounding over its steps, 64 units in the last place of that scale.
@@ -12,9 +12,16 @@ The bound's flag is compared too, step by step: whether the clip acted, or wheth
 **The controls** (``PORT_PLANT``, rated by ``.github/probe/detection_rate.py``): the stage with two rungs swapped, each
 a plausible ordering of an amplifier chain (``slew_before_bound``: the slew acts on what arrives, then the bound;
 ``bound_before_delay``: the bound acts on what was written, before the link samples and delays it, which differs only
-where a value beyond the bounds falls between samples), and a trip that does not latch (``trip_unlatched``):
+where a value beyond the bounds falls between samples; ``respond_before_slew``: the lag before the slew, as though the
+amplifier's output stage slewed what the coil let through), and a trip that does not latch (``trip_unlatched``):
 each must fail this test on every run, its rate measured, not assumed: a swap the drawn examples could not tell apart
-would be no evidence."""
+would be no evidence. The lag's swap was first missed on 10 runs of 200: a trip latched at the wave's first value,
+before the slew or the lag saw it move; a slew drawn up to 4 bounds a step moved past every jump the stage delivered;
+and on one run Hypothesis drew no example holding both a slew and a lag. The draws now hold each premise (the docstring
+of :func:`links`), and the explicit case below catches the swap on its own. Widening the slews' range (so that a slew
+that binds at no jump is drawn too) drew the lag with a binding slew in 8 examples of 100 at one seed, none telling the
+lag's swap from the design's (the fourth probe's one miss in 200, seed 49): the choices are now parameters of the test,
+each with its own 100 examples."""
 
 from __future__ import annotations
 
@@ -23,6 +30,7 @@ from contextlib import contextmanager
 
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from port_cases import Link, command_flags, command_oracle, planted, stage_of, stepped
@@ -34,28 +42,39 @@ DT = 1e-3
 STEPS = 24
 SHAPE = (3,)
 #: The orders the plants put the stage's rungs in.
-PLANTED_RUNGS = {"slew_before_bound": ("delay", "slew", "bound"), "bound_before_delay": ("bound", "delay", "slew")}
+PLANTED_RUNGS = {"slew_before_bound": ("delay", "slew", "bound", "respond"),
+                 "bound_before_delay": ("bound", "delay", "slew", "respond"),
+                 "respond_before_slew": ("delay", "bound", "respond", "slew")}
+
+
+#: A slew's size in bounds a step, by what it binds at. A wave's jump runs from 0.6 of a bound (a first level of at most
+#: 0.5, a second of at least 1.1) to 2.9 (-0.9 to 2.0), and a spike's up to 3.9: "binding" binds at every jump, "partial"
+#: at the larger ones only, "loose" at no wave's and at a spike's only when it is the largest.
+SLEW_BOUNDS = {"binding": (0.05, 0.4), "partial": (0.7, 1.5), "loose": (3.0, 6.0)}
 
 
 @st.composite
-def links(draw: st.DrawFn) -> tuple[Link, np.ndarray]:
-    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew moving 0.2 to 4 bounds' worth a
-    step or none, a period of 1 to 4 steps and a latency of 0 to 5, and a sequence of square waves reaching past the
-    bound and back, with a one-step spike past it at a drawn step (which falls between samples wherever the period is
-    above one and the step is not a multiple of it)."""
+def links(draw: st.DrawFn, slew: str, lagged: bool) -> tuple[Link, np.ndarray]:
+    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew of ``slew`` (``none``, or one of
+    the ``SLEW_BOUNDS``: 0.05 to 0.4 bounds a step, which binds at every jump of the waves, 0.7 to 1.5, which binds at the
+    larger ones, 3 to 6, which binds at almost none), a lag of 1 to 20 ms if ``lagged``, a period of 1 to 4 steps and a latency
+    of 0 to 5, and a sequence of square waves from inside the bound (-0.9 to 0.5 of it) to past it (1.1 to 2 times) and
+    back, with a one-step spike past it at a drawn step (which falls between samples wherever the period is above one
+    and the step is not a multiple of it); each wave starts inside, so a trip latches after the stage has delivered the
+    wave, not at its first value."""
     bound = draw(st.floats(1.0, 30.0))
     bounded = draw(st.sampled_from(["", "clip", "trip"]))
-    slewed = draw(st.booleans())
     link = Link(period=draw(st.integers(1, 4)), latency=draw(st.integers(0, 5)),
                 low=-bound if bounded else None, high=bound if bounded else None, trip=bounded == "trip",
                 rest=draw(st.floats(-0.5, 0.5)) * bound,
-                slew=draw(st.floats(0.2, 4.0)) * bound / DT if slewed else None)
+                slew=None if slew == "none" else draw(st.floats(*SLEW_BOUNDS[slew])) * bound / DT,
+                tau=draw(st.floats(1e-3, 2e-2)) if lagged else None)
     seed = draw(st.integers(0, 2**31 - 1))
     rng = np.random.default_rng(seed)
     written = np.empty((STEPS, *SHAPE))
     for j in range(SHAPE[0]):
         half = int(rng.integers(2, 6))
-        levels = (bound * rng.uniform(1.1, 2.0), bound * rng.uniform(-0.9, 0.9))
+        levels = (bound * rng.uniform(-0.9, 0.5), bound * rng.uniform(1.1, 2.0))
         written[:, j] = [levels[(n // half) % 2] for n in range(STEPS)]
     spike = int(rng.integers(1, STEPS))
     written[spike] = bound * rng.uniform(2.5, 3.0) * rng.choice([-1.0, 1.0], size=SHAPE)
@@ -91,10 +110,16 @@ def planted_stage() -> Iterator[None]:
         CommandStageNode.RUNGS, CommandStageNode._bound = held  # noqa: SLF001
 
 
+@pytest.mark.parametrize("lagged", [True, False], ids=["lagged", "unlagged"])
+@pytest.mark.parametrize("slew", ["none", *SLEW_BOUNDS])
 @settings(deadline=None)
-@given(links())
-def test_the_command_stage_delivers_the_design_order_of_its_rungs(drawn):
-    link, written = drawn
+@given(data=st.data())
+def test_the_command_stage_delivers_the_design_order_of_its_rungs(data, slew: str, lagged: bool):
+    """Each of the amplifier's and the receiver's choices (a slew none, binding, partial or loose; a lag or none) is its
+    own test with its own examples, not drawn: Hypothesis's generation does not mix independent choices evenly (at one
+    seed, 8 examples of 100 held a slew and a lag, and none told the lag's swap from the design's), and a control that
+    needs one of them must not depend on it."""
+    link, written = data.draw(links(slew, lagged))
     flag = None if link.low is None else ("tripped_currents" if link.trip else "clipped_currents")
     with planted_stage():
         held = stepped(stage_of(link, SHAPE, DT), written, DT, flag=flag)
@@ -134,3 +159,15 @@ def test_a_port_buffers_samples_not_steps():
     """A latency's buffer holds ``ceil(L / k) + 1`` samples: a 17-step period with 23 steps of latency holds 3."""
     node = stage_of(Link(period=17, latency=23), (2,), DT)
     assert node.initial_state()["buffer_currents"].shape == (3, 2)
+
+
+def test_the_lag_follows_the_slew():
+    """The case that tells the response before the slew from after it: a step of 10 A, slewed at 2 A a step, then
+    lagged at 5 ms. In the design's order the lag follows the slewed ramp; lagged first, the step's lag rises slower
+    than the slew and passes through it unslewed, another value at every step of the rise."""
+    link = Link(slew=2.0 / DT, tau=5e-3)
+    written = np.concatenate([np.full((8, 1), 10.0), np.zeros((8, 1))])
+    with planted_stage():
+        delivered = stepped(stage_of(link, (1,), DT), written, DT)
+    expected = command_oracle(written, link, DT)
+    assert float(np.max(np.abs(delivered - expected))) <= tolerance(10.0), (delivered[:, 0], expected[:, 0])

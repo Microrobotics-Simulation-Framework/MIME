@@ -1,0 +1,54 @@
+{
+  "written": "2026-11-14, committed before AP1b's fourth probe ran (the commit that adds this file is the timestamp)",
+  "phase": "apparatus lane, AP1b, the fourth probe: the command stage's drawn property after the slew range was widened (review round of #303, minor 3)",
+  "labels": "predictions by the builder (Sonnet); not measured locally on the plants before this file: the stage's file and the new draws pass clean in float32 once",
+  "seen_before": [
+    "the third probe (predictions_ap1b_round3.json): every plant 200/200 with slews of 0.05 to 0.4 bounds a step, below every wave's jump, so a slew bound at every jump and a non-binding slew was never drawn",
+    "the review's minor: widen the range so the property draws binding and non-binding slews"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float32 as the tests run by default"
+    ],
+    "platform": "CPU, GitHub runners, the probe workflow",
+    "sizes_and_parameters": "the links strategy as its docstring says: the slew none, binding (0.05 to 0.4 bounds a step), partial (0.7 to 1.5) or loose (3 to 6), each with and without a lag, drawn as one choice of eight; 24 steps, 100 examples a run, never shrunk",
+    "seeds_and_draws": "200 runs, planted and clean at the same seeds, --hypothesis-seed the run's seed"
+  },
+  "gate_1e_property_alone": {
+    "claim": "the drawn property alone catches the lag before the slew with the widened slews",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py::test_the_command_stage_delivers_the_design_order_of_its_rungs",
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged. A miss is possible: the swap needs a slew that binds with a lag, 2 of the 8 choices (binding, partial, each with the lag) and the loose one at a spike, so 25 to 37 of 100 examples, not the 6 of 100 the third probe's fix left it",
+      "basis": "counting the choices, not measured"
+    },
+    "control": {
+      "plant": "the lag before the slew",
+      "environment_variable": "PORT_PLANT=respond_before_slew",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "gate_1f_file_with_widened_slews": {
+    "claim": "the command stage's file catches each of its plants with the widened slews",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py",
+    "prediction": {
+      "value": "200/200 caught for each of respond_before_slew, slew_before_bound, bound_before_delay and trip_unlatched, 0/200 flagged",
+      "basis": "counting the choices; the explicit spike case and the explicit respond-before-slew case are unchanged"
+    },
+    "control": {
+      "plant": "each of the four",
+      "environment_variable": "PORT_PLANT",
+      "expected_rate": "200/200 each",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "outcomes": {
+    "measured_on": "GitHub runners, the probe workflow, CPU, float32, at 88ddad75's tests (probe branch probe/ap1b-rates4), run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43606965264",
+    "gate_1f_file_with_widened_slews": "as predicted: respond_before_slew, slew_before_bound, bound_before_delay and trip_unlatched 200/200 caught each through the file, clean 0/200 each",
+    "gate_1e_property_alone": "NOT as predicted: respond_before_slew 199/200 caught by the drawn property alone (clean 0/200); the miss is seed 49, reproduced locally. Cause, counted per example at that seed: of 100 examples 8 held a slew and a lag (not the 37 expected: Hypothesis's draw of one choice among eight is far from uniform; 33 held a lag and no slew), and none of the 8 told the lag's swap from the design's. The prediction's basis (counting the choices, as if drawn evenly) was wrong. Fix: each choice is a parameter of the test with its own 100 examples (predictions_ap1b_round5.json); at seed 49 locally the planted lag swap then fails 3 of the 8 cases (binding-lagged, partial-lagged, loose-lagged) and the explicit lag case, and the clean file passes all of them"
+  }
+}

@@ -1,0 +1,61 @@
+schema: mime.document/14
+mime: 0.3.0.dev1
+experiment: servo_arm
+profile: exploratory
+run:
+  dt:
+    value: 0.001
+    unit: s
+  seed: 0
+  duration:
+    value: 0.05
+    unit: s
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  carm:
+    kind: apparatus
+    prim: /World/carm
+    fields: {}
+    chain:
+    - segment: arm
+      name: arm
+      version: 0.1.0
+      settings:
+        rung: kinematic
+        description:
+          file: descriptions/5a99c19cd9e8821a-c_arm.urdf
+          sha256: 5a99c19cd9e8821a42ee25c1631b6eed71126c466742d1b888b090c42aa949b2
+        initial_positions:
+          value: [0.1, 0.0, 0.0]
+          unit: '1'
+        servo:
+          value: 0.02
+          unit: s
+    commands:
+      arm.joint_displacements:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: [0.6]
+            unit: m
+      arm.joint_positions:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: [2.5, -2.5]
+            unit: '1'
+interactions: []
+observations: []
+declared: {}
+materials: {}
+controller: null
+gravity:
+  value: 9.81
+  unit: m/s^2
