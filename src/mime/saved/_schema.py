@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/14"
-LOCK_SCHEMA = "mime.lock/14"
+DOCUMENT_SCHEMA = "mime.document/15"
+LOCK_SCHEMA = "mime.lock/15"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -138,6 +138,42 @@ class SegmentDoc(TypedDict, closed=True):
     settings: NotRequired[dict[str, SettingValue]]
 
 
+class BoundsDoc(TypedDict, closed=True):
+    """A command port's bounds, low and high, each a quantity of the command's dimension (one value, or one per
+    element)."""
+
+    low: ReadOnly[SettingValue]
+    high: ReadOnly[SettingValue]
+
+
+class NoiseDoc(TypedDict, closed=True):
+    """A measurement port's Gaussian noise: its standard deviation, in the units of what it measures."""
+
+    sigma: ReadOnly[SettingValue]
+
+
+class PortDoc(TypedDict, closed=True):
+    """An apparatus's port (``mime.things.CommandPort``, ``mime.things.Measurement``): ``port`` says which; each field
+    written only where the experiment gave it. A command port's ``response`` is a registered entry by name and version,
+    with its settings."""
+
+    port: ReadOnly[Literal["command", "measurement"]]
+    of: NotRequired[str]
+    unit: NotRequired[str]
+    shape: NotRequired[list[int]]
+    bounds: NotRequired[BoundsDoc]
+    on_bound: NotRequired[Literal["clip", "trip"]]
+    rest: NotRequired[SettingValue]
+    slew: NotRequired[SettingValue]
+    rate: NotRequired[SettingValue]
+    latency: NotRequired[SettingValue]
+    hold: NotRequired[Literal["zero_order"]]
+    response: NotRequired[EntryDoc]
+    noise: NotRequired[NoiseDoc]
+    quantum: NotRequired[SettingValue]
+    reason: NotRequired[str]
+
+
 class ThingDoc(TypedDict, closed=True):
     """A thing: its kind, its prim (a scene path, an experiment name like the thing's own) and dynamics; a body's
     initial state, its parts and their roles; a structure's geometry kind; the region a medium fills
@@ -156,6 +192,7 @@ class ThingDoc(TypedDict, closed=True):
     magnets: NotRequired[dict[str, MagnetDoc]]
     parts: NotRequired[dict[str, PartDoc]]
     chain: NotRequired[list[SegmentDoc]]
+    ports: NotRequired[dict[str, PortDoc]]
 
 
 class DeclaredDoc(TypedDict, closed=True):
@@ -319,6 +356,7 @@ class ControllerDoc(TypedDict, closed=True):
     writes: dict[str, str]
     rate: NotRequired[QuantityDoc]
     latency: NotRequired[QuantityDoc]
+    believed: NotRequired[dict[str, EntryDoc]]
 
 
 class CustomLicenceDoc(TypedDict, closed=True):
@@ -394,7 +432,7 @@ class ExperimentDocument(TypedDict, closed=True):
     13 names the FVM's setting ``solve_report_rows``, where earlier versions named it ``report_rows``. Version 14 adds
     ``blocks``, each block the experiment uses, by the use's name, absent where it uses none."""
 
-    schema: ReadOnly[Literal["mime.document/14"]]
+    schema: ReadOnly[Literal["mime.document/15"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -671,11 +709,11 @@ class DescriptionRecord(TypedDict, closed=True):
 
 
 class ControllerReadRecord(TypedDict, closed=True):
-    """A controller's read as the build resolved it: the path, its class (``state`` or ``observation``) and what
-    that class means, and the node field the run reads."""
+    """A controller's read as the build resolved it: the path, its class (``state``, ``observation`` or
+    ``measurement``) and what that class means, and the node field the run reads."""
 
     path: ReadOnly[str]
-    read_class: ReadOnly[Literal["state", "observation"]]
+    read_class: ReadOnly[Literal["state", "observation", "measurement"]]
     meaning: ReadOnly[str]
     node: ReadOnly[str]
     field: ReadOnly[str]
@@ -743,6 +781,28 @@ class ResolvedProfile(TypedDict, closed=True):
     changes: ReadOnly[dict[str, str]]
 
 
+class ResponseRecord(TypedDict, closed=True):
+    """A command port's response as the build resolved it: its entry's name and version, and its settings in SI."""
+
+    name: ReadOnly[str]
+    version: ReadOnly[str]
+    settings: ReadOnly[dict[str, SettingValue]]
+
+
+class ResolvedPort(TypedDict, closed=True):
+    """A command port as the build resolved it: its receiver's node and input, its period and latency in base steps,
+    its bound, whether it is staged, and its response (by name and version, its settings in SI) and whether its receiver
+    computes that response itself."""
+
+    receiver: ReadOnly[str]
+    period: ReadOnly[int]
+    latency: ReadOnly[int]
+    bounded: ReadOnly[str]
+    staged: ReadOnly[bool]
+    response: ReadOnly[ResponseRecord]
+    handed: ReadOnly[bool]
+
+
 class ResolvedRecord(TypedDict, closed=True):
     """What the build derived from the document: what a reader needs to see what ran without that version's code,
     and what a load compares item by item."""
@@ -764,6 +824,7 @@ class ResolvedRecord(TypedDict, closed=True):
     descriptions: ReadOnly[dict[str, DescriptionRecord]]
     controller: ReadOnly[ResolvedController | None]
     profile: ReadOnly[ResolvedProfile]
+    ports: ReadOnly[NotRequired[dict[str, ResolvedPort]]]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -859,7 +920,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/14"]]
+    schema: ReadOnly[Literal["mime.lock/15"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -1004,7 +1065,7 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 __all__ = [
     "BlockNamesDoc", "BlockUseDoc",
     "BasedOnDoc", "RangeDoc", "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
-    "ScopeDoc", "TermsDoc",
+    "ScopeDoc", "TermsDoc", "BoundsDoc", "NoiseDoc", "PortDoc", "ResolvedPort", "ResponseRecord",
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
     "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",

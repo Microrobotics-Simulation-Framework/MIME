@@ -276,8 +276,8 @@
  },
  "hashes": {
   "derived": "sha256:a5fe214b3dbd9851d5859c47c80c10610955ae5d6c2ac6f64c4292ad68824de2",
-  "document": "sha256:0f524e8c46617b190ccd2bf52a96811c08d0d47438b96092f7ae73ad317e2f1b",
-  "input": "sha256:3f6785719cecbed094b0035e689e85c326ebfb8e18a11c804aa1813b604f7465",
+  "document": "sha256:309039a760055024b12afbbea36ed5d15c9036fd44666d3e02345e40f8cdfd62",
+  "input": "sha256:9feaa913a4393ee3aeb28339a63f90153f7974e4b56f57551c85c66eb6cd8013",
   "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
   "recipe": "mime.hash/1"
  },
@@ -724,7 +724,7 @@
    "mime": "0.3.0.dev1"
   }
  },
- "schema": "mime.lock/14",
+ "schema": "mime.lock/15",
  "seeds": {},
  "stage": {
   "file": "scene/scene.usda",

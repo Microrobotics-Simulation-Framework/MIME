@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<!--
+  c_arm.urdf
+
+  A C-arm-like tree, for the mounted-mass oracles (tests/oracles/test_mounted_mass.py): a column sliding up its stand
+  (a prismatic joint along z, 0 to 0.4 m), an orbital joint turning the C about a horizontal axis, and the detector
+  turning about the C's own axis; round numbers of a mobile C-arm's order (inference, not a product's data). Each
+  link's frame is turned from its parent's, and each inertial sits off its link's origin, turned in its link's frame
+  with products of inertia, so that a payload grafted at the wrong offset or not turned into its link's frame moves
+  the mass matrix and the gravity terms.
+-->
+<robot name="c_arm">
+
+  <link name="stand"/>
+
+  <joint name="lift" type="prismatic">
+    <parent link="stand"/>
+    <child link="column"/>
+    <origin xyz="0.1 0 0.5" rpy="0 0 0.3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.4" effort="500" velocity="0.05"/>
+  </joint>
+
+  <link name="column">
+    <inertial>
+      <origin xyz="0.02 -0.01 0.2" rpy="0.1 0 0"/>
+      <mass value="20.0"/>
+      <inertia ixx="0.9" ixy="0.02" ixz="-0.01" iyy="0.8" iyz="0.03" izz="0.15"/>
+    </inertial>
+  </link>
+
+  <joint name="orbit" type="revolute">
+    <parent link="column"/>
+    <child link="c"/>
+    <origin xyz="0.35 0 0.45" rpy="0.2 0 -0.1"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" effort="200" velocity="0.3"/>
+  </joint>
+
+  <link name="c">
+    <inertial>
+      <origin xyz="0.25 0.01 -0.05" rpy="0 0.15 0"/>
+      <mass value="40.0"/>
+      <inertia ixx="3.2" ixy="0.1" ixz="0.4" iyy="2.5" iyz="-0.05" izz="1.8"/>
+    </inertial>
+  </link>
+
+  <joint name="rotate" type="revolute">
+    <parent link="c"/>
+    <child link="detector"/>
+    <origin xyz="0.6 0 0.3" rpy="0 -0.4 0.25"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-3.0" upper="3.0" effort="100" velocity="0.5"/>
+  </joint>
+
+  <link name="detector">
+    <inertial>
+      <origin xyz="0.05 0.04 0.12" rpy="0.3 0.2 0.1"/>
+      <mass value="15.0"/>
+      <inertia ixx="0.4" ixy="0.03" ixz="-0.02" iyy="0.35" iyz="0.04" izz="0.3"/>
+    </inertial>
+  </link>
+
+</robot>

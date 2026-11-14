@@ -49,7 +49,8 @@ Every node types its state and its inputs, statically, in the same way.
   twist's velocity and angular velocity, a resistance's blocks. A composite's units list its parts in order, separated
   by semicolons, its leading parts vectors of three. Nothing beside the units is declared for it. Every field a node
   saves declares units (`tests/saved/test_declared_units.py` builds each saved case and fails a field without them), so
-  a field no symbol row names declares its units in the typed state. One type changes how a field is judged: a
+  a field no symbol row names declares its units in the typed state, or, where a port names the field and so its units
+  belong to the instance (the port stages' buffers and carried state), in the node's own `state_units()`. One type changes how a field is judged: a
   constraint's held points and the force each took are `HeldPoints` and `HeldForces` (`mime.core`, read from the state's
   TypedDict by `field_kinds`), and the points are judged only on the rows whose force acts. The type is the field's,
   never the node's class: a new node that writes its held points as `HeldPoints` is judged so, with nothing declared

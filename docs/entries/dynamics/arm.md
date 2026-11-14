@@ -14,7 +14,8 @@ both ride on the arm.
 The `kinematic` rung prescribes the arm's motion. Its joint positions are a command, written by a drive or by the
 controller: `<segment>.joint_positions` for its revolute joints, in radians, and `<segment>.joint_displacements` for
 its sliding ones, in metres, each in the order of its kind's joints. Each is held within its joint's limits where the
-description gives them, and the joints follow it at once or, with a servo time constant, as a first-order lag. The
+description gives them, and the joints follow it at once or, with a servo (a first-order lag on the apparatus's port
+on each position command, `CommandPort(response=FirstOrderLag(tau=...))`), as that lag. The
 positions it starts at must lie within the limits. Forward kinematics gives every frame's pose, and the joints' rates
 over the step its angular velocity. It has no mass matrix and takes no load, and no mass mounted on it changes its
 motion: it takes every mounted mass, tilted, unbalanced or articulated, and carries none.
