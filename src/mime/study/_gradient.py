@@ -658,7 +658,7 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
     for point in plan.points:
         if point.key is not None and not point.refused:
             first.setdefault(point.key, point)
-    with keeping_pins(saved):
+    with keeping_pins(saved, settings):
         for group in plan.groups:
             built = group.built
             assert built is not None

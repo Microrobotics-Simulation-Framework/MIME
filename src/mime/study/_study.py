@@ -600,7 +600,7 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     first: dict[str, Point] = {}
     records: dict[str, Any] = {}
     points: list[Point] = []
-    with keeping_pins(saved):
+    with keeping_pins(saved, settings):
         for index, row in enumerate(given.rows):
             point = build_point(index, settings, declarations, dict(zip(axes, row, strict=True)), STUDY_REASON,
                                 first.get, reasons, protocol)

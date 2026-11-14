@@ -4,9 +4,10 @@
 ``[record]`` is metadata**, never in a container, so editing it is a metadata edit of the record and never a new version
 (Zenodo's metadata is editable and its files immutable). A bundle's definition is ``[bundle] licence``, at a saved folder's
 root; a study's is ``[study] licence``, at a study folder's root; each equals the licence its experiment declares, which
-the document already holds, so ``mime pack`` carries no ``mime.toml`` and neither carries nor refuses it. A block's tables
-(``[block]``, ``[requires]``, ``[sockets]``, ``[[assets]]``, ``[licences.*]``, ``[[permissions]]``, ``[[validity]]``,
-``[cases]``) are reserved: this MIME refuses them by name (``manifest.kind``).
+the document already holds, so ``mime pack`` carries no ``mime.toml`` and neither carries nor refuses it. A block's
+definition is its tables (``[block]``, ``[requires]``, ``[sockets]``, ``[[assets]]``, ``[licences.*]``,
+``[[permissions]]``, ``[[validity]]``, ``[cases]``), at a block folder's root (:mod:`mime.blocks._definition` reads
+them); in any other folder they are refused by name (``manifest.kind``).
 
 **``sharing.yaml`` is no longer read.** A folder holding only it is refused with the route (``manifest.missing``: ``mime
 push <folder> --setup`` writes ``mime.toml`` from it); one holding both is refused (``manifest.both``), naming the one to
@@ -37,14 +38,15 @@ MANIFEST_FORMAT = "mime.toml/1"
 MANIFEST_FAMILY = "toml"
 #: The record's metadata before ``mime.toml``, which this MIME no longer reads.
 OLD_FILE = "sharing.yaml"
-BUNDLE, STUDY = "bundle", "study"
+BUNDLE, STUDY, BLOCK = "bundle", "study", "block"
 KINDS = (BUNDLE, STUDY)
-#: A block's tables (P4's), reserved: refused by name until this MIME reads a block.
+#: A block's tables, which only a block folder's ``mime.toml`` holds.
 BLOCK_TABLES = ("block", "requires", "sockets", "assets", "licences", "permissions", "validity", "cases")
 _TOP = ("format", *KINDS, "record")
 #: What each kind's folder is, said where a kind table does not match its folder.
 _FOLDER_WORDS = {BUNDLE: "a saved folder (Experiment.save writes one)",
-                 STUDY: "a study folder (Study.run_to writes one), or a publishing folder of study folders"}
+                 STUDY: "a study folder (Study.run_to writes one), or a publishing folder of study folders",
+                 BLOCK: "a block folder (one holding block.mime.yaml)"}
 
 
 @dataclass(frozen=True)
@@ -62,11 +64,14 @@ def manifest_path(folder: str | os.PathLike[str]) -> Path:
 
 def folder_kind(root: Path) -> str | None:
     """``study`` for a study folder or a publishing folder (one that holds study folders), ``bundle`` for a saved folder,
-    ``None`` for another."""
+    ``block`` for a block folder, ``None`` for another."""
+    from mime.blocks._definition import is_block_folder
     from mime.results._study_folder import STUDY_FILE
     from mime.saved._folder import DOCUMENT_FILE
     from mime.saved._studies import is_publishing_folder
 
+    if is_block_folder(root):
+        return BLOCK
     if (root / STUDY_FILE).is_file():
         return STUDY
     if (root / DOCUMENT_FILE).is_file():
@@ -123,15 +128,19 @@ def read_toml(path: Path) -> tuple[str, dict[str, object]]:
 
 def kind_of(held: Mapping[str, object], path: Path, root: Path) -> str:
     """The kind ``mime.toml`` (``held``) names, the folder's own; refused (``manifest.kind``) where it names none, more
-    than one, a block, or one its folder is not."""
+    than one, or one its folder is not, and where a folder that is not a block's holds a block's tables."""
+    found = folder_kind(root)
+    if found == BLOCK:
+        return BLOCK
     named = [kind for kind in KINDS if kind in held]
     reserved = [table for table in BLOCK_TABLES if table in held]
     if reserved:
         raise _refuse("manifest.kind", RefusalClass.USER,
                       f"{path} holds a block's table{'s' if len(reserved) > 1 else ''} "
-                      f"({', '.join(f'[{each}]' for each in reserved)}), which this MIME does not read yet",
-                      f"remove those tables, then `mime check {quoted(str(root))}`; a block is checked by the MIME "
-                      f"release that reads blocks")
+                      f"({', '.join(f'[{each}]' for each in reserved)}), and {root.name} is "
+                      + (_FOLDER_WORDS[found] if found else "neither a saved, a study nor a block folder"),
+                      f"remove those tables, then `mime check {quoted(str(root))}`; a block's definition is the "
+                      f"mime.toml of its own folder, beside its block.mime.yaml")
     if len(named) != 1:
         raise _refuse("manifest.kind", RefusalClass.USER,
                       f"{path} names {'no kind' if not named else 'more than one kind, ' + ', '.join(named)}: it "
@@ -154,8 +163,16 @@ def manifest_problems(folder: str | os.PathLike[str], *,
     """``mime.toml`` of ``folder`` read, and every problem of its keys (each key's check), the manifest ``None`` where
     there is one. What makes it unreadable is refused at once: no ``mime.toml``, ``sharing.yaml`` alone or beside it
     (:func:`present`), TOML that does not read (``manifest.read``), a newer format (``load.newer-form``), a kind its folder
-    is not (``manifest.kind``). ``old_ignored`` as :func:`present`'s."""
+    is not (``manifest.kind``). ``old_ignored`` as :func:`present`'s. A block folder's is read as a block's definition
+    (:func:`mime.blocks.read_definition`), its ``[record]`` with it."""
     root = Path(os.path.abspath(folder))
+    if folder_kind(root) == BLOCK:
+        from mime.blocks._definition import read_definition
+
+        definition, problems = read_definition(root)
+        record = definition.record if definition is not None else None
+        return (Manifest(root / MANIFEST_FILE, BLOCK, record) if record is not None and not problems else None), \
+            problems
     path = present(root, old_ignored=old_ignored)
     _, held = read_toml(path)
     if (newer := newer_form_refusal(held.get("format"), MANIFEST_FAMILY, (MANIFEST_FORMAT,), path.name)) is not None:
@@ -333,6 +350,6 @@ def manifest_text(kind: str, name: str, licence: str | None, values: Mapping[str
     return "\n".join([*lines, ""])
 
 
-__all__ = ["BLOCK_TABLES", "BUNDLE", "KINDS", "MANIFEST_FILE", "MANIFEST_FORMAT", "OLD_FILE", "STUDY", "Manifest",
+__all__ = ["BLOCK", "BLOCK_TABLES", "BUNDLE", "KINDS", "MANIFEST_FILE", "MANIFEST_FORMAT", "OLD_FILE", "STUDY", "Manifest",
            "folder_kind", "kind_of", "manifest_path", "manifest_problems", "manifest_text", "old_values", "present",
            "read_manifest", "read_record", "read_toml", "toml_holdable", "toml_problems", "toml_shaped"]

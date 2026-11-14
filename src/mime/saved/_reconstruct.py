@@ -264,11 +264,20 @@ def scene_from(document: ExperimentDocument, folder: Path) -> Scene:
     return scene
 
 
-def referenced_block_refusals(document: ExperimentDocument) -> list[Refusal]:
+def referenced_block_refusals(document: ExperimentDocument, *, using: bool = False) -> list[Refusal]:
     """``load.referenced-block`` for each block ``document`` uses by reference: its declarations are in the block's
-    container, which this MIME does not yet read, not in the document."""
+    container, which this MIME does not yet read, not in the document. ``using``: refused as ``exp.use`` would use it
+    (its licence makes it referenced), before any document holds it."""
     from mime import __version__
 
+    if using:
+        return [Refusal("load.referenced-block", RefusalClass.ENVIRONMENT,
+                        f"the block {plain(use['id'])} {plain(use['version'])} is licensed {plain(use['licence'])}, "
+                        f"which lets no copy of its content into your saved document, so it is used by reference, and "
+                        f"this MIME ({__version__}) does not yet use or load a referenced block",
+                        "use it with a later MIME (`pip install -U mime-engine`), which reads its container; this one "
+                        "uses a block whose licence is open or conditional (copied into the document)")
+                for use in document.get("blocks", {}).values()]
     return [Refusal("load.referenced-block", RefusalClass.ENVIRONMENT,
                     f"the document uses the block {plain(name)!r} ({plain(use['id'])} {plain(use['version'])}) by "
                     f"reference: its declarations are in the block's container, not the document, and this MIME "
