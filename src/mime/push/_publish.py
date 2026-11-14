@@ -613,9 +613,10 @@ def finish(plan: Plan, state: DraftState, client: Client, say: Say, *, recorded:
             f"look at the record, {page}; run `mime push <folder> --to {service.name} --publish` again, which checks "
             f"it again and publishes nothing; if the folder changed since the draft, `mime push <folder> --to "
             f"{service.name}` makes its next version")])
-    say("checked against the record as published: its DOI, each file's size and md5, and the bundle's sha256" if words
-        else "checked against the record as published: its DOI, each file's size and md5, its metadata, and the "
-             "bundle's sha256")
+    container = "the first study container's" if plan.kind == "study" else "the bundle's"
+    say(f"checked against the record as published: its DOI, each file's size and md5, and {container} sha256" if words
+        else f"checked against the record as published: its DOI, each file's size and md5, its metadata, and "
+             f"{container} sha256")
     refusal: Refusal | None = None
     if service.production and plan.staged is not None:
         refusal = rewrite_lock(plan.folder, plan.lock, plan.staged)

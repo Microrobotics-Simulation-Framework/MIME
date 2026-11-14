@@ -184,13 +184,9 @@ def read_manifest(folder: str | os.PathLike[str]) -> Manifest:
 
 
 def read_record(folder: str | os.PathLike[str]) -> Sharing:
-    """``[record]`` of a saved folder's ``mime.toml``, with ``[bundle] licence``: what push reads."""
-    manifest = read_manifest(folder)
-    if manifest.kind != BUNDLE:
-        raise _refuse("manifest.kind", RefusalClass.USER,
-                      f"{manifest.path} is a {manifest.kind}'s, and push takes a saved folder",
-                      f"push a saved folder; `mime check {quoted(str(manifest.path.parent))}` checks this one")
-    return manifest.record
+    """``[record]`` of a saved, study or publishing folder's ``mime.toml``, with its kind table's licence: what push
+    reads."""
+    return read_manifest(folder).record
 
 
 def toml_shaped(value: object) -> object:
