@@ -18,7 +18,7 @@ from mime.units import Dimension, Length, Magnitude, Quantity
 from mime.vocabulary import FRAME_POSES, Capability, Definiteness, EnergyClass
 
 if TYPE_CHECKING:
-    from mime.scene import SceneryMesh
+    from mime.scene import SceneryGprim
     from mime.build import (
         DriveBuilder,
         DynamicsBuilder,
@@ -331,6 +331,9 @@ class RosterPart:
     #: The stage's display colour and opacity for the part, inherited as USD does, where the part is a prim of a
     #: referenced asset; ``None`` for a part written Python-first (the stage MIME writes for it has none of its own).
     display: tuple[tuple[float, float, float] | None, float | None] | None = None
+    #: A line for each display primvar of the part that was not constant and was reduced to one value (what it was, and
+    #: how it was reduced).
+    display_reduced: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -357,8 +360,9 @@ class Roster:
 
     bodies: Mapping[str, RosterBody] = field(default_factory=dict[str, RosterBody])
     structures: Mapping[str, RosterStructure] = field(default_factory=dict[str, RosterStructure])
-    #: The ``Mesh`` prims of the composed stage that no thing owns (``mime.scene.SceneryMesh``), by prim path.
-    scenery: Sequence[SceneryMesh] = ()
+    #: The imageable prims of the composed stage that no thing owns (``mime.scene.SceneryMesh`` for a mesh,
+    #: ``SceneryGprim`` for any other), by prim path.
+    scenery: Sequence[SceneryGprim] = ()
 
 
 @dataclass(frozen=True)

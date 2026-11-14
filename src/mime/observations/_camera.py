@@ -277,7 +277,7 @@ class Camera(Observation):
         found = self._found(ctx)
         for name in found.unknown_hidden:
             problems.append(Problem("camera.hide", f"hide names {name!r}, which is no body or structure of the experiment",
-                                    f"write `hide=(...)` with names the experiment declares, or a scenery mesh's prim "
+                                    f"write `hide=(...)` with names the experiment declares, or a scenery prim's prim "
                                     f"path: {', '.join(sorted({*ctx.roster.bodies, *ctx.roster.structures, *(m.path for m in ctx.roster.scenery)}))}"))
         unknown = sorted({n for n, _ in self.absorbers} - {s.name for s in found.subjects})
         for name in unknown:
@@ -286,7 +286,7 @@ class Camera(Observation):
                                     f"{', '.join(sorted(s.name for s in found.subjects))}"))
         for name, code, message in found.refused:
             if code == scene.MESH_UNTRACED:
-                problems.append(Problem("camera.mesh-untraced", f"the scenery mesh {name!r} cannot be imaged yet: {message}",
+                problems.append(Problem("camera.mesh-untraced", f"the scenery prim {name!r} cannot be imaged yet: {message}",
                                         f"hide it with hide=({name!r},), or wait for the mesh tracer"))
                 continue
             problems.append(Problem(code, f"{name!r} cannot be imaged: {message.split(': ', 1)[-1]}",
@@ -317,6 +317,7 @@ class Camera(Observation):
         defaulted = [s.name for s in found.subjects if s.name not in dict(self.absorbers) and s.name not in found.display]
         if staged:
             lines.append(f"appearance from the stage's display primvars for: {', '.join(staged)}")
+        lines += [f"appearance: {line} for: {', '.join(names)}" for line, names in found.reduced.items()]
         if defaulted:
             lines.append(f"appearance defaulted for: {', '.join(defaulted)}")
         lines.append("bodies are taken to move and structures to stand; apparatus parts are not imaged")

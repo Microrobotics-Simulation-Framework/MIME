@@ -24,7 +24,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from mime.scene._pxr import Gf, Sdf, UsdGeom, Vt
+from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
 
 #: The attributes the camera's prim carries beyond USD's camera schema.
 RESOLUTION, PITCH, DISTORTION, DISTORTION_SOURCE, MODEL = (
@@ -132,27 +132,105 @@ def read_camera(prim: Any, *, meters_per_unit: float) -> CameraPrim:
                       (position[0], position[1], position[2]), _quaternion(rotation))
 
 
-def display_authors(prim: Any) -> tuple[str | None, str | None]:
-    """The path of the prim whose ``displayColor`` and ``displayOpacity`` a prim takes (its own or the nearest
-    parent's, ``FindPrimvarWithInheritance``), each ``None`` where no prim on its path authors one."""
-    api = UsdGeom.PrimvarsAPI(prim)
-    found: list[str | None] = []
-    for name in ("displayColor", "displayOpacity"):
-        primvar = api.FindPrimvarWithInheritance(name)
-        authored = primvar and primvar.HasAuthoredValue() and len(primvar.Get()) > 0
-        found.append(str(primvar.GetAttr().GetPrim().GetPath()) if authored else None)
-    return found[0], found[1]
+#: What a non-constant primvar's interpolation is called in a note.
+_INTERPOLATIONS = {"uniform": "per-face (uniform)", "vertex": "per-vertex", "varying": "per-vertex (varying)",
+                   "faceVarying": "per-corner (faceVarying)"}
+#: The two display primvars, with the width of one value.
+_DISPLAY = (("displayColor", 3), ("displayOpacity", 1))
+
+
+class DisplayRead(NamedTuple):
+    """A prim's display primvars as USD composes them: the colour and opacity (``None`` where no prim on its path
+    authors one, or the nearest authors an empty array), and, for each primvar that is not constant, what reducing it to
+    one value did (``reduced``, one line each, naming the primvar, its interpolation, the prim that authors it and
+    whether the mean is weighted by area)."""
+
+    colour: tuple[float, float, float] | None
+    opacity: float | None
+    reduced: tuple[str, ...] = ()
+
+
+def _weights(prim: Any, interpolation: str, count: int) -> np.ndarray | None:
+    """The area each value of a mesh's primvar stands for (a face's, spread over its corners where the primvar is per
+    vertex or per corner), from the mesh's own points; ``None`` where the prim is no mesh, holds no faces or the counts
+    do not match."""
+    if not prim.IsA(UsdGeom.Mesh):
+        return None
+    mesh = UsdGeom.Mesh(prim)
+    time = Usd.TimeCode.EarliestTime()
+    counts, indices, points = (mesh.GetFaceVertexCountsAttr().Get(time), mesh.GetFaceVertexIndicesAttr().Get(time),
+                               mesh.GetPointsAttr().Get(time))
+    if counts is None or indices is None or points is None or len(counts) == 0:
+        return None
+    sizes, corners = np.asarray(counts, dtype=np.int64), np.asarray(indices, dtype=np.int64)
+    xyz = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if sizes.sum() != len(corners) or (len(corners) and corners.max() >= len(xyz)):
+        return None
+    areas = np.zeros(len(sizes))
+    start = 0
+    for face, size in enumerate(sizes):
+        p = xyz[corners[start:start + size]]
+        start += size
+        if size >= 3:
+            areas[face] = 0.5 * np.linalg.norm(np.cross(p[1:-1] - p[0], p[2:] - p[0]).sum(axis=0))
+    if interpolation == "uniform":
+        found = areas
+    else:
+        per_corner = np.repeat(areas / np.maximum(sizes, 1), sizes)
+        if interpolation == "faceVarying":
+            found = per_corner
+        else:
+            found = np.zeros(len(xyz))
+            np.add.at(found, corners, per_corner)
+    return found if len(found) == count and found.sum() > 0.0 else None
+
+
+def _read_primvar(prim: Any, name: str) -> tuple[np.ndarray, str | None] | None:
+    """The values of ``name`` as USD composes it on ``prim`` (its own or the nearest parent's constant one, indices
+    resolved by ``ComputeFlattened``, an array of one row a value), reduced to one row, with the line that says so where
+    it was not constant; ``None`` where none is authored or the array is empty."""
+    primvar = UsdGeom.PrimvarsAPI(prim).FindPrimvarWithInheritance(name)
+    if not primvar or not primvar.HasAuthoredValue():
+        return None
+    held = primvar.ComputeFlattened(Usd.TimeCode.EarliestTime())
+    if held is None or len(held) == 0:
+        return None
+    width = dict(_DISPLAY)[name]
+    values = np.asarray(held, dtype=np.float64).reshape(len(held), width)
+    interpolation = str(primvar.GetInterpolation())
+    if interpolation == "constant" or len(values) == 1:
+        return values[0:1], None
+    weights = _weights(prim, interpolation, len(values))
+    where = str(primvar.GetAttr().GetPrim().GetPath())
+    how = "area-weighted mean" if weights is not None else "mean"
+    reduced = np.average(values, axis=0, weights=weights)[None, :]
+    return reduced, (f"{name} {_INTERPOLATIONS.get(interpolation, interpolation)} on {where} reduced to its {how}")
+
+
+def read_display(prim: Any) -> DisplayRead:
+    """A prim's ``displayColor`` and ``displayOpacity`` as USD composes them (``FindPrimvarWithInheritance``: its own or
+    the nearest parent's constant one; indices resolved; a time-sampled one at its earliest sample), each as one value.
+    A primvar that is not constant (per face, per vertex, per corner) is reduced to the mean of its values, weighted by
+    area on a mesh, and ``reduced`` says so: never silently."""
+    found = {name: _read_primvar(prim, name) for name, _ in _DISPLAY}
+    colour, opacity = found["displayColor"], found["displayOpacity"]
+    return DisplayRead(None if colour is None else (float(colour[0][0, 0]), float(colour[0][0, 1]), float(colour[0][0, 2])),
+                   None if opacity is None else float(opacity[0][0, 0]),
+                   tuple(line for held in (colour, opacity) if held is not None and (line := held[1]) is not None))
 
 
 def display_primvars(prim: Any) -> tuple[tuple[float, float, float] | None, float | None]:
-    """A prim's ``displayColor`` and ``displayOpacity``, each its own or the nearest parent's that authors it
-    (``FindPrimvarWithInheritance``), as one colour and one opacity (a constant primvar's value, or the first of an
-    array's); ``None`` where no prim on its path authors one."""
-    api = UsdGeom.PrimvarsAPI(prim)
-    found: list[Any] = []
-    for name in ("displayColor", "displayOpacity"):
-        primvar = api.FindPrimvarWithInheritance(name)
-        value = primvar.Get() if primvar and primvar.HasAuthoredValue() else None
-        found.append(None if value is None or len(value) == 0 else value[0])
-    colour = None if found[0] is None else (float(found[0][0]), float(found[0][1]), float(found[0][2]))
-    return colour, None if found[1] is None else float(found[1])
+    """``read_display`` without the note of what it reduced: the colour and the opacity."""
+    held = read_display(prim)
+    return held.colour, held.opacity
+
+
+def display_authors(prim: Any) -> tuple[str | None, str | None]:
+    """The path of the prim whose ``displayColor`` and ``displayOpacity`` a prim takes (its own or the nearest
+    parent's, ``FindPrimvarWithInheritance``), each ``None`` where none is authored or the nearest's array is empty."""
+    found: list[str | None] = []
+    for name, _ in _DISPLAY:
+        primvar = UsdGeom.PrimvarsAPI(prim).FindPrimvarWithInheritance(name)
+        authored = primvar and primvar.HasAuthoredValue() and len(primvar.ComputeFlattened()) > 0
+        found.append(str(primvar.GetAttr().GetPrim().GetPath()) if authored else None)
+    return found[0], found[1]

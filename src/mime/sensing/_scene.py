@@ -18,6 +18,7 @@ import numpy as np
 
 from mime.build._refusals import ArgumentRefused
 from mime.registry import Roster
+from mime.scene import SceneryMesh
 from mime.sensing._subjects import Appearance, Display, Look, Subject, from_stage, route_of
 
 #: The first line of the camera's refusal of a subject without a closed form, and the code it carries.
@@ -38,6 +39,8 @@ class Found:
     unknown_hidden: tuple[str, ...]
     #: The stage's display primvars of the subjects that take any (by subject name), as the roster holds them.
     display: Mapping[str, Display] = field(default_factory=dict[str, Display])
+    #: What reducing a non-constant display primvar did, by the line that says so, to the subjects it was done for.
+    reduced: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
 
 
 def _list(value: Any) -> Any:
@@ -73,6 +76,7 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
     subjects: list[Subject] = []
     bodies: dict[str, tuple[str, ...]] = {}
     display: dict[str, Display] = {}
+    reduced: dict[str, list[str]] = {}
 
     def refuse(name: str, kind: str, error: ArgumentRefused) -> None:
         refused.append((name, error.refusals[0].code, error.refusals[0].message))
@@ -94,6 +98,8 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
             made.append(subject_name)
             if part.display is not None and part.display != (None, None) and subject_name not in absorbers:
                 display[subject_name] = Display(*part.display)
+                for line in part.display_reduced:
+                    reduced.setdefault(line, []).append(subject_name)
         bodies[name] = tuple(made)
     for name, structure in sorted(roster.structures.items()):
         if name in hide:
@@ -107,17 +113,21 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
         settings = {k: _list(v) for k, v in structure.settings.items()}
         region = "wall" if structure.kind == "tube" else "solid"
         subjects.append(Subject(name, structure.kind, settings, region, appearance=_appearance(name, absorbers)))
-    for mesh in roster.scenery:
-        if mesh.path in hide:
-            hidden.append(mesh.path)
+    for held in roster.scenery:
+        if held.path in hide:
+            hidden.append(held.path)
             continue
-        refused.append((mesh.path, MESH_UNTRACED,
-                        f"the stage holds this mesh ({len(mesh.triangles)} triangles) and the camera has no mesh tracer "
-                        f"yet: a scenery mesh is imaged by the BVH tracer of the camera's next piece (decimation distance not "
-                        f"recorded for: {mesh.path}; a layer holds none, so what the stage's decimation moved is unknown)"))
-    named = set(roster.bodies) | set(roster.structures) | {mesh.path for mesh in roster.scenery}
+        what = (f"the stage holds this mesh ({len(held.triangles)} triangles)" if isinstance(held, SceneryMesh)
+                else f"the stage holds this {held.type_name}")
+        refused.append((held.path, MESH_UNTRACED,
+                        f"{what} and the camera has no mesh tracer yet: scenery is imaged by the BVH tracer of the "
+                        f"camera's next piece (decimation distance not recorded for: {held.path}; a layer holds none, so "
+                        f"what the stage's decimation moved is unknown)"
+                        + "".join(f"; {line}" for line in held.reduced)))
+    named = set(roster.bodies) | set(roster.structures) | {held.path for held in roster.scenery}
     return Found(tuple(subjects), bodies, tuple(hidden), tuple(refused),
-                 tuple(n for n in hide if n not in named), display)
+                 tuple(n for n in hide if n not in named), display,
+                 {line: tuple(names) for line, names in reduced.items()})
 
 
 def subject_spec(subject: Subject, window: int | None, display: Display | None = None) -> dict[str, Any]:

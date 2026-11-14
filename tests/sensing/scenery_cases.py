@@ -55,6 +55,17 @@ def _display(prim: UsdGeom.Xform, display: tuple[tuple[float, float, float], flo
         Vt.FloatArray([display[1]]))
 
 
+def primvar(prim: Usd.Prim, name: str, interpolation: str, values: list, indices: list[int] | None = None) -> None:
+    """``name`` (``displayColor`` or ``displayOpacity``) authored on ``prim`` with ``interpolation``, its ``values`` and
+    optionally the indices into them."""
+    colour = name == "displayColor"
+    held = UsdGeom.PrimvarsAPI(prim).CreatePrimvar(
+        name, Sdf.ValueTypeNames.Color3fArray if colour else Sdf.ValueTypeNames.FloatArray, interpolation)
+    held.Set(Vt.Vec3fArray([Gf.Vec3f(*v) for v in values]) if colour else Vt.FloatArray([float(v) for v in values]))
+    if indices is not None:
+        held.SetIndices(Vt.IntArray(indices))
+
+
 def _root(stage: Usd.Stage, name: str) -> UsdGeom.Xform:
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
@@ -75,14 +86,57 @@ def write_vessel(path: Path, display: tuple[tuple[float, float, float], float] |
     return path
 
 
-def write_ball(path: Path, display: tuple[tuple[float, float, float], float] | None = BALL_DISPLAY) -> Path:
+def write_ball(path: Path, display: tuple[tuple[float, float, float], float] | None = BALL_DISPLAY,
+               shell: tuple[tuple[str, str, list, list[int] | None], ...] = ()) -> Path:
     """A ball: ``/Ball/Shell``, a sphere part below a root that authors ``display``, and ``/Ball/Skin``, a mesh of the
-    body's own."""
+    body's own. ``shell`` authors primvars on the part itself, each ``(name, interpolation, values, indices)``."""
     stage = Usd.Stage.CreateInMemory()
     root = _root(stage, "Ball")
     _display(root, display)
-    UsdGeom.Sphere.Define(stage, "/Ball/Shell").CreateRadiusAttr(20e-6)
+    sphere = UsdGeom.Sphere.Define(stage, "/Ball/Shell")
+    sphere.CreateRadiusAttr(20e-6)
+    for each in shell:
+        primvar(sphere.GetPrim(), *each)
     _mesh(stage, "/Ball/Skin", 2e-5)
+    path.write_text(stage.GetRootLayer().ExportToString(), encoding="utf-8")
+    return path
+
+
+def write_gprims(path: Path) -> Path:
+    """Unowned gprims that are not a mesh with a body's look: a cube, a capsule, a curve, and a mesh whose points are
+    time-sampled only (at 1 s and 2 s, no default)."""
+    stage = Usd.Stage.CreateInMemory()
+    _root(stage, "Extras")
+    UsdGeom.Cube.Define(stage, "/Extras/Cube").CreateSizeAttr(1e-3)
+    UsdGeom.Capsule.Define(stage, "/Extras/Capsule")
+    curves = UsdGeom.BasisCurves.Define(stage, "/Extras/Curves")
+    curves.CreateTypeAttr(UsdGeom.Tokens.linear)
+    curves.CreateCurveVertexCountsAttr([2])
+    curves.CreatePointsAttr([(0.0, 0.0, 0.0), (1e-3, 0.0, 0.0)])
+    animated = UsdGeom.Mesh.Define(stage, "/Extras/Animated")
+    animated.CreateFaceVertexCountsAttr([3])
+    animated.CreateFaceVertexIndicesAttr([0, 1, 2])
+    animated.CreatePointsAttr().Set(Vt.Vec3fArray([(0, 0, 0), (1e-3, 0, 0), (0, 1e-3, 0)]), 1.0)
+    animated.GetPointsAttr().Set(Vt.Vec3fArray([(0, 0, 0), (2e-3, 0, 0), (0, 2e-3, 0)]), 2.0)
+    path.write_text(stage.GetRootLayer().ExportToString(), encoding="utf-8")
+    return path
+
+
+def write_faces(path: Path, *, colours: list | None = None, opacities: list | None = None,
+                indices: list[int] | None = None, interpolation: str = "uniform") -> Path:
+    """``/Faces``: a mesh of two triangles of areas 1 and 3 (in square mm), with ``displayColor`` and ``displayOpacity``
+    authored on it with ``interpolation`` (and ``indices`` into them where given)."""
+    stage = Usd.Stage.CreateInMemory()
+    root = _root(stage, "Faces")
+    mesh = UsdGeom.Mesh.Define(stage, "/Faces/Mesh")
+    mesh.CreatePointsAttr([(0, 0, 0), (1e-3, 0, 0), (0, 2e-3, 0), (0, 0, 0), (3e-3, 0, 0), (0, 2e-3, 0)])
+    mesh.CreateFaceVertexCountsAttr([3, 3])
+    mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3, 4, 5])
+    if colours is not None:
+        primvar(mesh.GetPrim(), "displayColor", interpolation, colours, indices)
+    if opacities is not None:
+        primvar(mesh.GetPrim(), "displayOpacity", interpolation, opacities, indices)
+    assert root is not None
     path.write_text(stage.GetRootLayer().ExportToString(), encoding="utf-8")
     return path
 
@@ -103,14 +157,19 @@ def assets(vessel: tuple[tuple[float, float, float], float] | None = VESSEL_DISP
     return folder / "vessel.usda", folder / "ball.usda"
 
 
-def scenery_scene(*, vessel: bool = True, hide: tuple[str, ...] = (), absorbers: tuple[tuple[str, float], ...] = (),
+def scenery_scene(*, vessel: bool = True, extras: Path | None = None,
+                  shell: tuple[tuple[str, str, list, list[int] | None], ...] = (), hide: tuple[str, ...] = (), absorbers: tuple[tuple[str, float], ...] = (),
                   vessel_display: tuple[tuple[float, float, float], float] | None = VESSEL_DISPLAY,
                   ball_display: tuple[tuple[float, float, float], float] | None = BALL_DISPLAY) -> Experiment:
     """A ball moving along x in a scene that may reference a vessel, seen by a camera that sees the whole scene."""
     vessel_file, ball_file = assets(vessel_display, ball_display)
+    if shell:
+        ball_file = write_ball(ball_file.with_name(f"ball_{abs(hash(repr(shell)))}.usda"), ball_display, shell)
     scene = Scene.new(up=Z, units="m")
     if vessel:
         scene.reference(asset(vessel_file), at="/World/Vessel")
+    if extras is not None:
+        scene.reference(asset(extras), at="/World/Extras")
     scene.reference(asset(ball_file), at="/World/Ball")
     exp = Experiment("scenery", scene=scene, dt=ms(1))
     exp.add_body(Body("ball", prim=scene["/World/Ball"], dynamics=RigidInertial(), initial=State(

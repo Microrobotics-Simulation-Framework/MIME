@@ -12,7 +12,11 @@ patch with no draw, so a run either catches it or does not):
 - ``hide-names-only``: ``hide=`` taking names, not prim paths;
 - ``no-defaulted-note``: the note of the subjects whose appearance was defaulted left out;
 - ``display-over-declared``: the stage's display opacity overriding an appearance the user declared;
-- ``forget-hide``: the saved form losing ``hide=``."""
+- ``forget-hide``: the saved form losing ``hide=``.
+
+The fix round's tests (indexed and non-constant display primvars, every unowned gprim, a time-sampled mesh) were each run
+against the head before it (``7149f420``) and fail there: it read the first value of a primvar's array whatever its indices
+and interpolation, found only ``Mesh`` prims and read a time-sampled mesh at the default time, as no points."""
 
 from __future__ import annotations
 
@@ -23,7 +27,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 from in_loop_cases import planted
-from scenery_cases import (BALL_DISPLAY, VESSEL_DISPLAY, VESSEL_MESH, assets, scenery_scene)
+from scenery_cases import (BALL_DISPLAY, VESSEL_DISPLAY, VESSEL_MESH, assets, scenery_scene, write_faces,
+                           write_gprims)
 
 from mime import Experiment
 from mime.build import BuildRefused
@@ -39,14 +44,16 @@ PATH = re.compile(r"^/")
 if planted("own-primvar"):
     from pxr import UsdGeom
 
+    from mime.scene import DisplayRead
+
     def own_only(prim):
         values = [UsdGeom.PrimvarsAPI(prim).GetPrimvar(name) for name in ("displayColor", "displayOpacity")]
         found = [p.Get()[0] if p and p.HasAuthoredValue() else None for p in values]
         colour = None if found[0] is None else tuple(float(c) for c in found[0])
-        return colour, None if found[1] is None else float(found[1])
+        return DisplayRead(colour, None if found[1] is None else float(found[1]))
 
-    _scenery.display_primvars = own_only
-    _compose.display_primvars = own_only
+    _scenery.read_display = own_only
+    _compose.read_display = own_only
     _scenery.display_authors = lambda prim: (str(prim.GetPath()), str(prim.GetPath()))
 
 if planted("own-mesh-scenery"):
@@ -153,8 +160,8 @@ def test_the_scenery_is_the_meshes_no_thing_owns():
     (wall,) = meshes
     assert wall.points.shape == (8, 3) and wall.triangles.shape == (12, 3)
     assert np.allclose(np.abs(wall.points), 1e-3)
-    # a mesh nobody binds is scenery whatever its asset: the ball's skin once its body is not bound
-    assert sorted(m.path for m in composed().scenery([], 1.0)) == ["/World/Ball/Skin", VESSEL_MESH]
+    # a prim nobody binds is scenery whatever its asset: the ball's shell and skin once its body is not bound
+    assert sorted(m.path for m in composed().scenery([], 1.0)) == ["/World/Ball/Shell", "/World/Ball/Skin", VESSEL_MESH]
 
 
 def test_the_scenery_is_read_in_metres_in_the_world():
@@ -176,9 +183,9 @@ def test_a_mesh_whose_path_authors_no_display_has_none():
 
 
 def test_a_body_part_takes_its_stage_display_from_its_visual_prim():
-    colour, opacity = composed().display("/World/Ball/Shell")
-    assert colour == pytest.approx(BALL_DISPLAY[0], abs=1e-6) and opacity == pytest.approx(BALL_DISPLAY[1])
-    assert composed().display("/World/Nothing") == (None, None)
+    shown = composed().display("/World/Ball/Shell")
+    assert shown.colour == pytest.approx(BALL_DISPLAY[0], abs=1e-6) and shown.opacity == pytest.approx(BALL_DISPLAY[1])
+    assert shown.reduced == () and composed().display("/World/Nothing") == (None, None, ())
 
 
 # -- the camera: refusal, hide, notes -----------------------------------------------------------------------------
@@ -265,3 +272,91 @@ def test_hide_by_prim_path_is_saved_and_loaded_with_no_new_field(tmp_path: Path)
     assert f"hide: [{VESSEL_MESH}]" in text
     loaded = Experiment.load(tmp_path / "scenery")
     assert f"hidden: {VESSEL_MESH}" in loaded.build().report.text()
+
+
+# -- display primvars as USD composes them -------------------------------------------------------------------------
+
+def faces(tmp_path: Path, **options):
+    """The scenery of ``write_faces``'s mesh (two triangles, areas 1 and 3 mm^2), read from its own layer."""
+    file = write_faces(tmp_path / "faces.usda", **options)
+    (mesh,) = compose([Reference(asset(file), "/World/Faces")], 1.0).scenery([], 1.0)
+    return mesh
+
+
+def test_an_indexed_constant_primvar_is_read_through_its_indices(tmp_path: Path):
+    """A constant displayOpacity [0.9, 0.1] with indices [1] is 0.1; the first element of the array is 0.9."""
+    mesh = faces(tmp_path, opacities=[0.9, 0.1], indices=[1], interpolation="constant")
+    assert mesh.opacity == pytest.approx(0.1) and mesh.reduced == ()
+
+
+def test_an_indexed_uniform_primvar_is_read_through_its_indices(tmp_path: Path):
+    """A per-face opacity [0.9, 0.1, 0.5] with indices [1, 1] is 0.1 on both faces, so its mean is 0.1."""
+    mesh = faces(tmp_path, opacities=[0.9, 0.1, 0.5], indices=[1, 1])
+    assert mesh.opacity == pytest.approx(0.1)
+    assert mesh.reduced == (f"displayOpacity per-face (uniform) on /World/Faces/Mesh reduced to its area-weighted mean",)
+
+
+def test_a_per_face_primvar_is_reduced_to_its_area_weighted_mean_and_said(tmp_path: Path):
+    """Faces of areas 1 and 3 coloured red and blue: the mean is a quarter red and three quarters blue."""
+    mesh = faces(tmp_path, colours=[(1, 0, 0), (0, 0, 1)])
+    assert mesh.colour == pytest.approx((0.25, 0.0, 0.75))
+    assert mesh.reduced == ("displayColor per-face (uniform) on /World/Faces/Mesh reduced to its area-weighted mean",)
+
+
+def test_a_per_vertex_primvar_is_weighted_by_the_area_each_vertex_stands_for(tmp_path: Path):
+    """Each of the two triangles gives a third of its area to each of its corners; the vertices are not shared here, so
+    the mean is the same as the per-face one over the corners (a quarter of the first triangle's three, three quarters of
+    the second's)."""
+    first, second = (1.0, 0.0, 0.0), (0.0, 0.0, 1.0)
+    mesh = faces(tmp_path, colours=[first] * 3 + [second] * 3, interpolation="vertex")
+    assert mesh.colour == pytest.approx((0.25, 0.0, 0.75))
+    assert "per-vertex" in mesh.reduced[0]
+
+
+def test_a_reduced_primvar_is_in_the_build_note_naming_the_prim_and_the_interpolation():
+    shell = (("displayOpacity", "vertex", [0.2, 0.6], None),)
+    text = notes(scenery_scene(hide=(VESSEL_MESH,), shell=shell))
+    assert ("appearance: displayOpacity per-vertex on /World/Ball/Shell reduced to its mean for: ball") in text
+
+
+def test_an_indexed_opacity_on_a_bound_part_is_read_through_its_indices_in_the_frame(dtype):
+    """The same part, an opacity [0.9, 0.1] indexed to its second element and one authored 0.1: the same frame."""
+    indexed = (("displayOpacity", "constant", [0.9, 0.1], [1]),)
+    plain = (("displayOpacity", "constant", [0.1], None),)
+    assert np.array_equal(frame_of(scenery_scene(hide=(VESSEL_MESH,), shell=indexed)),
+                          frame_of(scenery_scene(hide=(VESSEL_MESH,), shell=plain)))
+
+
+# -- every unowned gprim is scenery that is read or refused by name ------------------------------------------------
+
+EXTRAS = "/World/Extras"
+
+
+def extras(tmp_path: Path):
+    file = write_gprims(tmp_path / "extras.usda")
+    return compose([Reference(asset(file), EXTRAS)], 1.0).scenery([], 1.0)
+
+
+def test_every_unowned_gprim_is_found_by_type(tmp_path: Path):
+    found = {held.path.rsplit("/", 1)[-1]: held.type_name for held in extras(tmp_path)}
+    assert found == {"Animated": "Mesh", "Capsule": "Capsule", "Cube": "Cube", "Curves": "BasisCurves"}
+
+
+@pytest.mark.parametrize("name,type_name", [("Cube", "Cube"), ("Capsule", "Capsule"), ("Curves", "BasisCurves")])
+def test_an_unowned_gprim_that_is_no_mesh_is_refused_by_name_and_hides_by_path(tmp_path: Path, name: str, type_name: str):
+    file = write_gprims(tmp_path / "extras.usda")
+    path = f"{EXTRAS}/{name}"
+    others = tuple(f"{EXTRAS}/{n}" for n in ("Cube", "Capsule", "Curves", "Animated") if n != name)
+    error = refusals(scenery_scene(vessel=False, extras=file, hide=others))
+    assert error.codes() == ["camera.mesh-untraced"]
+    (refusal,) = error.refusals
+    assert path in refusal.message and f"holds this {type_name}" in refusal.message
+    assert f"hide=({path!r},)" in refusal.action
+    notes(scenery_scene(vessel=False, extras=file, hide=(*others, path)))
+
+
+def test_a_mesh_with_only_time_sampled_points_is_read_at_its_earliest_sample(tmp_path: Path):
+    (animated,) = [held for held in extras(tmp_path) if held.path.endswith("Animated")]
+    assert animated.points.shape == (3, 3) and animated.triangles.shape == (1, 3) and animated.animated
+    assert np.allclose(animated.points[1], (1e-3, 0.0, 0.0))
+    assert not [held for held in composed().scenery(["/World/Ball"], 1.0) if getattr(held, "animated", False)]

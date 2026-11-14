@@ -80,12 +80,17 @@ Also:
   pixel's centre half a pixel in; the aperture offsets' signs) and read back. USD draws its pinhole, not its
   distortion. `display_primvars(prim)` reads a prim's `displayColor` and `displayOpacity`, its own or the nearest
   parent's.
-- **Scenery** (`Composition.scenery(owned, meters_per_unit)`, `SceneryMesh`): the `Mesh` prims of the composed references
-  that no thing owns, each read in metres in the world (its transforms applied, polygons fanned counter-clockwise from
-  outside) with its `displayColor` and `displayOpacity` inherited from the nearest prim that authors them
-  (`FindPrimvarWithInheritance`, `display_authors` names that prim). A mesh below a prim a thing is bound to, and a
-  kind's derived prim (`mime:derived_from`), are not scenery. `Composition.display(path)` is the same inherited read for one
-  prim: a bound body's part takes its display from there.
+- **Scenery** (`Composition.scenery(owned, meters_per_unit)`, `SceneryMesh`, `SceneryGprim`): the `Gprim` prims of the composed
+  references that no thing owns. A `Mesh` is read in metres in the world (its transforms applied, polygons fanned
+  counter-clockwise from outside, a time-sampled one at its earliest sample, `animated`); any other gprim (a cube, a capsule,
+  curves, points) is named by its type and not read. A prim below a prim a thing is bound to, and a kind's derived prim
+  (`mime:derived_from`), are not scenery; `visibility`, `purpose` and a point instancer's prototypes are not consulted, so an
+  invisible, guide or proxy prim and a prototype are scenery too.
+- **Display primvars as USD composes them** (`read_display(prim)` -> `DisplayRead`, `Composition.display(path)`,
+  `display_authors`): `displayColor` and `displayOpacity`, each the nearest constant primvar up the path with its indices
+  resolved (`ComputeFlattened`); a vertex, per-face or per-corner primvar on a parent does not inherit to its children (USD's
+  rule), and an empty constant array blocks inheritance. A primvar that is not constant on the prim that authors it is reduced
+  to one value, the mean weighted by area on a mesh (the plain mean elsewhere), and `reduced` names each such reduction.
 - **`check_stage(path)`** runs every validator usd-core registers (its `UsdValidation` framework, which `usdchecker`
   runs; the older Python `ComplianceChecker` is gone from usd-core 26) and returns their findings.
 - The world frame (`WorldFrame`, `world_frame`) moved here from the build.

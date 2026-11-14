@@ -77,13 +77,24 @@ falls), `window_overflow`, `behind` (its enclosing ball reaches the camera's pla
 narrower than two sub-pixels, `THIN_CAP_SUBPIXELS`: the sub-samples do not resolve it, and a pixel there may miss by
 about a sub-pixel's area).
 
-- **Scenery** (`mime.scene.SceneryMesh`, from `Composition.scenery`): a `Mesh` prim of a referenced asset that no thing
-  owns (below no prim a body or apparatus is bound to, not a kind's derived prim, `mime:derived_from`) is scenery, read
-  with its points in metres in the world, its triangles and its inherited display colour and opacity (and the prim each
-  came from). The camera finds it and **refuses it by name** (`camera.mesh-untraced`, naming `hide=("<prim path>",)`) until
-  the mesh tracer arrives: a scenery mesh is never dropped silently. `hide=` takes a scenery mesh's prim path beside a
-  body's or structure's name, and the build report lists what was hidden. A layer records no decimation, so the distance a
-  decimated mesh moved is unknown here, not zero, and is not reported as a number.
+- **Scenery** (`mime.scene.SceneryGprim`, `SceneryMesh`, from `Composition.scenery`): every `Gprim` (a mesh, an implicit
+  shape, curves, points) of a referenced asset that no thing owns (below no prim a body or apparatus is bound to, not a kind's
+  derived prim, `mime:derived_from`) is scenery. A `Mesh` is read, with its points in metres in the world, its triangles and
+  its display colour and opacity; any other gprim is found and named by its type, not read. The camera **refuses each by
+  name** (`camera.mesh-untraced`, naming `hide=("<prim path>",)`) until the mesh tracer arrives: scenery is never dropped
+  silently. `hide=` takes a scenery prim's path beside a body's or structure's name, and the build report lists what was
+  hidden. A time-sampled mesh is read at its earliest sample and flagged `animated`. A layer records no decimation, so the
+  distance a decimated mesh moved is unknown here, not zero, and is not reported as a number.
+  - **Classed scenery and refused, conservatively** (`hide=` works on each): a prim with `visibility = invisible` or
+    `purpose` `guide` or `proxy`, and a point instancer's prototype meshes.
+  - **Display primvars are read as USD composes them** (`mime.scene.read_display`): the nearest constant primvar up the
+    path, its indices resolved (`ComputeFlattened`), a time-sampled one at its earliest sample. A parent's primvar with
+    vertex, per-face or per-corner interpolation does not inherit to its children, as USD defines it, so a child of such a
+    parent has none. An empty constant array on a prim blocks inheritance from its parents: it reads as none. A primvar that
+    is not constant on the prim that authors it is reduced to the mean of its values, **weighted by area on a mesh** (a
+    face's area spread over its corners for a per-vertex or per-corner primvar), and the build report says so ("appearance:
+    displayColor per-face (uniform) on <prim> reduced to its area-weighted mean for: <subjects>"); on a prim that is no mesh
+    it is the plain mean, said the same way.
 
 ## What it does not do yet
 
