@@ -119,6 +119,7 @@ from mime.scene import (
     ComposedLayer,
     Composition,
     Scene,
+    SceneryGprim,
     WorldFrame,
     compose,
     meters_per_unit,
@@ -3419,8 +3420,8 @@ class _Planner:
         for name, thing in sorted(self.things.items()):
             if not isinstance(thing, Body):
                 continue
-            parts = tuple(RosterPart(line.name, line.registered.cls.name, dict(line.settings), line.centre, line.rotation)
-                          for line in self.parts.get(name, {}).values() if line.inside is None)
+            parts = tuple(self.roster_part(name, line) for line in self.parts.get(name, {}).values()
+                          if line.inside is None)
             held = self.dynamics.get(name)
             initial = held.initial if held is not None else {}
             pose: tuple[float, ...] | None = None
@@ -3430,7 +3431,24 @@ class _Planner:
             bodies[name] = RosterBody(parts, pose)
         structures = {name: RosterStructure(plan.registered.cls.name, dict(plan.settings))
                       for name, plan in sorted(self.geometries.items())}
-        return Roster(bodies, structures)
+        return Roster(bodies, structures, self.scenery())
+
+    def roster_part(self, body: str, line: PartLine) -> RosterPart:
+        """A body's part as the roster lists it: for a bound body's part, the stage's display colour and opacity (its
+        prim's, as USD composes them) and what reducing a non-constant one did; none for a part written Python-first,
+        whose prim MIME writes."""
+        shown = self.composition.display(f"{self.prims[body]}/{line.name}") \
+            if body in self.bound and self.composition is not None else None
+        return RosterPart(line.name, line.registered.cls.name, dict(line.settings), line.centre, line.rotation,
+                          None if shown is None else (shown.colour, shown.opacity),
+                          () if shown is None else shown.reduced)
+
+    def scenery(self) -> tuple[SceneryGprim, ...]:
+        """The imageable prims of the composed references that no thing owns: below no prim a thing is bound to."""
+        if self.composition is None:
+            return ()
+        owned = [path for path in self.prims.values() if self.composition.provided(path)]
+        return self.composition.scenery(owned, self.meters_per_unit)
 
     def mount_observation(self, plan: EntryPlan, spec: str, where: str) -> bool:
         """The frame ``<apparatus>.<segment>.<frame>`` an observation is mounted on, resolved into ``plan.mount``;

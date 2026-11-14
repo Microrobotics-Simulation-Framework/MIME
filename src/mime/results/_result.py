@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import zipfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from os import PathLike
@@ -18,6 +19,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mime._lineage import Origin
+from mime._npz import StoredNpz
+from mime._terminal import plain
 from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError, Refusal, RefusalClass
 from mime.errors import public
 from mime.registry import OutputKind, Reduction
@@ -146,20 +149,20 @@ class _Npz:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        with np.load(path, allow_pickle=False) as held:
+        with StoredNpz(path) as held:  # every entry checked once, here: a read below checks only the entry it reads
             self.files = list(held.files)
         self._held: dict[str, NDArray[Any]] = {}
 
     def __getitem__(self, key: str) -> NDArray[Any]:
         if key not in self._held:
-            with np.load(self.path, allow_pickle=False) as held:
+            with StoredNpz(self.path, check=False) as held:
                 self._held[key] = np.asarray(held[key])
         return self._held[key]
 
     def many(self, keys: Sequence[str]) -> dict[str, NDArray[Any]]:
         missing = [key for key in keys if key not in self._held]
         if missing:
-            with np.load(self.path, allow_pickle=False) as held:
+            with StoredNpz(self.path, check=False) as held:
                 self._held.update({key: np.asarray(held[key]) for key in missing})
         return {key: self._held[key] for key in keys}
 
@@ -746,20 +749,20 @@ class RunResult:
                     f"{source} is not a run folder: it holds no {RUN_MANIFEST} and outputs.npz",
                     "read a folder that built.run_to(...) or `mime run <folder> --out <dir>` wrote: "
                     "RunResult.read(<dir>)")])
-            manifest = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
-            npz = _Npz(npz_path)
+            manifest = manifest_of_text(_text_of(manifest_path), RUN_MANIFEST)
+            npz = _opened(npz_path)
             result = cls.from_manifest(manifest, npz)
             result.report, result.report_unreadable = read_report(source / RUN_REPORT)
             result.folder = source
             return result
         else:
-            npz = _Npz(source)
+            npz = _opened(source)
             if NPZ_MANIFEST not in npz.files:
                 raise ArgumentRefused([Refusal(
                     "result.not-a-run-folder", RefusalClass.USER,
                     f"{source} holds no manifest: it is not an NPZ RunResult.to_npz wrote",
                     "read an NPZ result.to_npz(path) wrote, or a run folder: RunResult.read(<dir>)")])
-            manifest = cast(dict[str, Any], json.loads(str(npz[NPZ_MANIFEST])))
+            manifest = manifest_of_text(str(npz[NPZ_MANIFEST]), f"the manifest in {source}")
         return cls.from_manifest(manifest, npz)
 
     @classmethod
@@ -771,6 +774,20 @@ class RunResult:
                 f"{MANIFEST_FORMAT!r} versions {', '.join(map(str, READ_VERSIONS))}",
                 "read it with the MIME that wrote it (`pip install mime-engine==<version>`), or run the experiment "
                 "again with this one: `mime run <folder> ...`")])
+        try:
+            return cls._shaped(manifest, npz)
+        except MimeError:
+            raise
+        except (KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError, RecursionError) as error:
+            raise ArgumentRefused([Refusal(
+                "result.format", RefusalClass.USER,
+                f"the manifest is not shaped as {MANIFEST_FORMAT!r} version {manifest.get('version')!r} is written, or "
+                f"names an array its NPZ does not hold ({type(error).__name__}: {plain(str(error))})",
+                "read the run with the MIME that wrote it (`pip install mime-engine==<version>`), or run the experiment "
+                "again with this one: `mime run <folder> --out <dir>`")]) from error
+
+    @classmethod
+    def _shaped(cls, manifest: Mapping[str, Any], npz: Archive) -> RunResult:
         layout = layout_of(manifest)
         final = _Nodes(npz, "final")
         _ = [npz.many([f"final/{node}/{field}" for field in fields]) for node, fields in final.items()]
@@ -805,6 +822,41 @@ def _nothing_observed(value: object) -> NDArray[Any]:
     return np.full(held.shape, np.nan, dtype=held.dtype if np.issubdtype(held.dtype, np.floating) else np.float64)
 
 
+def _text_of(path: Path) -> str:
+    """The text of a run folder's file, or ``result.not-a-run-folder`` for one that cannot be read as text."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, ValueError) as error:
+        raise _not_a_run(f"{path} cannot be read ({plain(str(error))})") from error
+
+
+def _not_a_run(why: str) -> ArgumentRefused:
+    return ArgumentRefused([Refusal(
+        "result.not-a-run-folder", RefusalClass.USER, f"not a run a MIME wrote: {why}",
+        "read a folder that built.run_to(...) or `mime run <folder> --out <dir>` wrote, whole: RunResult.read(<dir>)")])
+
+
+def _opened(path: Path) -> _Npz:
+    """The NPZ at ``path`` as a run's, every entry checked to be an array MIME writes (``mime._npz``), refused as
+    ``result.not-a-run-folder`` otherwise."""
+    try:
+        return _Npz(path)
+    except (OSError, ValueError, EOFError, zipfile.BadZipFile) as error:
+        raise _not_a_run(f"{path} cannot be read as the NPZ a run writes ({plain(str(error))})") from error
+
+
+def manifest_of_text(text: str, where: str) -> dict[str, Any]:
+    """The run manifest ``text`` (``where`` names it), a JSON object; ``result.not-a-run-folder`` for text that is not
+    one."""
+    try:
+        held = cast(object, json.loads(text))
+    except (ValueError, RecursionError) as error:
+        raise _not_a_run(f"{where} is not JSON ({plain(str(error))})") from error
+    if not isinstance(held, dict):
+        raise _not_a_run(f"{where} is not a JSON object")
+    return cast(dict[str, Any], held)
+
+
 def read_report(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     """A run folder's build report summary and what keeps it from being read: ``(None, None)`` when the folder holds
     none (one written before they did), ``(None, <the format it states>)`` for a report of a format this MIME does not
@@ -813,7 +865,15 @@ def read_report(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     if not path.is_file():
         return None, None
     try:
-        held = cast(object, json.loads(path.read_text(encoding="utf-8")))
+        return report_of_text(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, "not JSON"
+
+
+def report_of_text(text: str) -> tuple[dict[str, Any] | None, str | None]:
+    """:func:`read_report` of a report's text."""
+    try:
+        held = cast(object, json.loads(text))
     except (ValueError, RecursionError):
         return None, "not JSON"
     if not isinstance(held, dict):

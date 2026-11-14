@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The camera reads the composed stage: scenery and inherited display primvars** (`mime.scene.Composition.scenery`,
+  `SceneryMesh`, `SceneryGprim`, `read_display`, `Roster.scenery`; `mime.observations.Camera`, dev2, camera PR 4). Every
+  `Gprim` of a referenced asset that no thing owns (below no bound prim, not a kind's derived prim) is scenery: a `Mesh` is
+  read in metres in the world (a time-sampled one at its earliest sample), any other gprim (a cube, a capsule, curves) is
+  named by its type. The in-loop camera finds each and refuses it by name (`camera.mesh-untraced`, naming
+  `hide=("<prim path>",)`) until the mesh tracer: nothing is dropped silently. `visibility = invisible`, `purpose` `guide` or
+  `proxy`, and a point instancer's prototype meshes are classed scenery and refused too (conservative; `hide=` works on them).
+  `hide=` takes a scenery prim's path; the saved form gains no field (`hide` is the existing setting, a prim path one more
+  string). Display primvars are read as USD composes them: the nearest constant primvar, its indices resolved, so a parent's
+  vertex-interpolated `displayColor` stops a child inheriting it and an empty constant array blocks inheritance; one that is
+  not constant on its own prim is reduced to its mean (area-weighted on a mesh) and the build report says so. A body bound to
+  a prim whose part declares no `absorbers` appearance takes the stage's display primvars for that part (the build report says
+  which: "appearance from the stage's display primvars for: ..."), else the mid-grey default with its note; a declared
+  appearance is bit for bit unchanged. A layer records no decimation, so a decimated mesh's moved distance is reported as
+  unknown, not as a number (recording it is the tracer's, where it matters: it would change the bytes of every layer MIME
+  writes). There is no `viz` extra in 0.3 (`usd-core` is a core dependency), so nothing is refused for a missing extra. No
+  compiled program changes for a scene without scenery or stage display: the step and the forward run compile to the same
+  text before and after, in float32 and float64, with a one-ulp control that changes it.
+
 - **Ports as data on an apparatus, and the stages the build inserts for them** (the apparatus lane's AP1a, dev2).
   `Apparatus(ports={...})` declares an apparatus's links:
   - a `CommandPort` (`mime.CommandPort`) keyed by a command: its update `rate` and `latency` (whole base steps), its
@@ -1463,6 +1482,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SECURITY: a hostile folder could make MIME allocate gigabytes from an NPZ of a few kilobytes** (`mime verify`, any
+  load of a saved folder, `RunResult.read`). NumPy allocates the array an entry's header names before it reads a byte of
+  it, and `reference.npz` of a saved folder and `outputs.npz` of a run (or the NPZ `to_npz` writes) were opened with
+  `np.load`: a deflated entry of a few kilobytes naming gigabytes was taken whole (measured: a 2.5 MB container took
+  2.3 GB; the study container's group files had the same defect and were fixed before that container was released). Both are now read through `mime._npz`, which refuses an entry that is compressed, larger than the file, a
+  pickled object, or whose array header names other bytes than it holds, and a zip whose entries overlap, run past
+  its data or repeat a name (the standard library's own refusal of overlapped entries is only in Python 3.12.2 and later, and
+  `requires-python` allows 3.12.0), before anything is allocated (`load.reference`
+  for a saved folder, `result.not-a-run-folder` for a run). A saved folder's lock records its arrays' hash, not the
+  file's, so a hash cannot be checked first there: the bound is the defence. A reference file reached through a link
+  that leaves the saved folder is refused by name (`load.reference`; a name that climbs out or is absolute was already
+  `load.lock-shape`). MIME writes every NPZ with `np.savez`
+  (entries stored, never compressed; a test reads every writer's output and scans the package for `savez_compressed`), so
+  nothing MIME wrote is refused; every saved folder of every frozen form and every current case loads as before. A run
+  manifest of the wrong shapes (or an NPZ of a study's member that holds one) is refused as `result.format` where it was
+  an uncoded failure, and the manifest that is not JSON as `result.not-a-run-folder`. Folders handed to you from outside
+  were the exposure; one you wrote yourself was never affected.
 - **A lock of a later saved form read by `mime assets fetch <folder>` or `mime assets sources <folder>` was refused by
   its records' shape** (`asset.reference`, measured with MIME at 316937a8 on a form-14 folder), since they read the
   lock's records without its form. They now refuse it as `load.newer-form` first (`mime.assets.folder_assets`).
