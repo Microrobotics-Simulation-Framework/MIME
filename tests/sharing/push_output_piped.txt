@@ -135,7 +135,7 @@ next: name the creators in it, then `mime push <tmp>/mime_sandbox_toy --to zenod
 [exit 0]
 $ mime check <tmp>/mime_sandbox_toy
 <tmp>/mime_sandbox_toy/mime.toml, a bundle's manifest, checked under the exploratory profile (the experiment's): 0 findings.
-nothing to do: push would take it as it stands.
+nothing to do: push would take the manifest as it stands (the folder's own files are `mime pack`'s to check).
 [exit 0]
 $ mime push --defaults
 no defaults are saved; they would be in <config>/defaults.toml

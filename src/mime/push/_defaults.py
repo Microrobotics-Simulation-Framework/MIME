@@ -137,7 +137,7 @@ def _read(path: Path) -> Defaults:
 
 def _old(path: Path) -> Defaults:
     """The defaults ``sharing-defaults.yaml`` holds, checked as ``defaults.toml``'s are."""
-    from mime.push._manifest import toml_shaped
+    from mime.push._manifest import toml_problems, toml_shaped
 
     try:
         loaded: object = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -146,6 +146,12 @@ def _old(path: Path) -> Defaults:
                                     f"{path} is not YAML that reads ({type(error).__name__}), so your defaults cannot "
                                     f"be moved from it", "correct it by hand, or delete it and save them again from "
                                                          "`mime defaults edit`")]) from None
+    if (odd := toml_problems(cast(object, loaded)) if isinstance(loaded, dict) else []):
+        raise BuildRefused([Refusal("defaults.file", RefusalClass.USER,
+                                    f"{path.name} holds what {DEFAULTS_FILE} cannot carry over, so nothing is moved: "
+                                    + "; ".join(odd), f"correct it by hand (delete the key, quote the key, fill the "
+                                                      f"null), or delete the file and walk your defaults afresh, "
+                                                      f"`mime defaults edit`")])
     held = cast(dict[str, object], toml_shaped(cast(object, loaded))) if isinstance(loaded, dict) else {}
     unknown = [plain(str(key)) for key in held if key not in ("format", *DEFAULT_KEYS)]
     as_toml: dict[str, object] = {"format": DEFAULTS_FORMAT if held.get("format") == _OLD_FORMAT else held.get("format"),

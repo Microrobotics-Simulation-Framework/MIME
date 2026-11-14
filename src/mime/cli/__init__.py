@@ -8,6 +8,7 @@ import io
 import json
 import os
 import sys
+import warnings
 import zipfile
 from collections.abc import Callable, Generator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
@@ -771,7 +772,14 @@ def _pack(folder: Path, out: Path | None) -> int:
     from mime.saved._folder import named_files
     from mime.scene import LAYERS
 
-    path = saved.pack(folder, out=out)
+    with warnings.catch_warnings(record=True) as warned:
+        warnings.simplefilter("always", saved.ByRequestWarning)
+        path = saved.pack(folder, out=out)
+    for each in warned:
+        if issubclass(each.category, saved.ByRequestWarning):
+            print(for_terminal(f"mime: warning: {each.message}"), file=sys.stderr)
+        else:
+            warnings.showwarning(each.message, each.category, each.filename, each.lineno)
     with path.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     with zipfile.ZipFile(path) as archive:

@@ -100,12 +100,14 @@ and the keys it changed are said. It works on a study folder too (writing `[stud
 **Editing in place**, by `--setup` and by the write-back of a site edit (below): a key's lines are the fewest lines from
 its `key =` line that TOML reads as that one key, so a bracket or a `#` inside a string is never taken for its end. They
 are replaced, every other line kept byte for byte, comments and line endings included (CRLF stays CRLF); the comment
-that ends the key's first line is kept on its new first line, and a comment inside its old value goes with it. A value
+that ends the key's first line is kept on its new first line, and a comment inside its old value goes with it (those
+lines are the key's own). The new lines keep the key's indentation and take the file's line ending (CRLF where any line
+of the file is CRLF), and a file whose last line had no line feed has one once that line is replaced. A value
 is written on one line, but for an array of tables, one table a line; a text of several lines is written escaped
 (`"one\ntwo"`). The file is read again and must hold the edit and every other key as it was, or nothing is written. **What
 an edit cannot replace safely is refused, never guessed** (`manifest.write`, the file left byte for byte): a key of
 `[record]` written as dotted keys or as a table of its own (`fields.languages = ...`, `[record.fields]`), and `[record]`
-written as an inline table or as dotted keys at the top (`record = { ... }`); write it as one key a line, `fields = {
+written as an inline table, as dotted keys at the top (`record = { ... }`) or as an array of tables (`[[record]]`); write it as one key a line, `fields = {
 ... }`, and run again. A file that is a link is edited through its link, which stays a link, and a read-only one is
 refused before anything is asked (`manifest.write`): it is never replaced. With standard output and standard error both
 redirected to files, the questions go to the terminal (`/dev/tty`), never into the file. Defaults are offered for a new
@@ -118,9 +120,14 @@ rules do for a build (`mime.push._check.RULES`):
 
 | class | what | exploratory | research |
 |---|---|---|---|
-| a defect | a key missing, unknown or of another type, an ORCID iD's check digit, the kind table's licence unlike the experiment's | a finding | a finding |
-| what push still needs | no creator named, no title, an experiment that declares no licence | a to-do | a finding |
+| a defect | a key missing, unknown or of another type, an ORCID iD's check digit, the kind table's licence unlike the experiment's, a declared permission granted to another than the uploader, a path of this machine or a stored token in `[record]` | a finding | a finding |
+| what push still needs | no creator named, no title, an experiment that declares no licence, a declared permission with no `uploader` named | a to-do | a finding |
 | what a reviewer would ask | a person among the creators with no ORCID iD, no description, no keyword of the author's own | not shown | listed, never a finding |
+
+The check runs push's own refusals on `[record]` (`push.permission`, the metadata scan) beside each key's check. It builds
+and packs nothing, so what needs the bundle packed or a service chosen is not checked here: the folder's own files
+(`mime pack`'s refusals), the record's size and file count, a file whose bytes may not travel, a cached asset's bytes and
+a sandbox location pushed to production; a clean check says the manifest, not the folder, would pass.
 
 No profile relaxes an input error; research refuses what exploratory waives and lists what a reviewer would ask; `strict`
 is refused by name (`profile.reserved`), as a build is. The profile is the experiment's own (a study's base
@@ -226,8 +233,8 @@ time it wrote it (a hash of each field, custom fields and the record's access in
 upload keeps its earlier hash, so the next push finds it). The next push (and `--publish`) reads the draft
 first; each field that changed since, and that push would now write otherwise, is shown with its value on the site
 and the value from `[record]` (or MIME's), and settled field by field: **kept**, written back into `[record]`
-under its key (that key's lines replaced, every other line and comment kept, its line endings too, a comment inside the
-replaced lines going with them), the file read again and the payload made from it held to the site's value and every
+under its key (that key's lines replaced, every other line and comment outside them kept, its line endings too, a comment
+inside the replaced lines going with them), the file read again and the payload made from it held to the site's value and every
 other key as it was, or put back byte for byte and the push stopped (`manifest.write`, with the lines to copy in by
 hand); or **written over**. In a terminal push asks (`Write mime.toml's over the site's? [y/N]`, so the
 default keeps the site's); `--keep-site-edits` keeps every edit `[record]` can hold, `--overwrite-site-edits`

@@ -72,11 +72,11 @@ def _keys(data: object, name: str, path: str = "") -> list[str]:
 def test_version_thirteen_writes_solve_report_rows_and_reads_it_back(tmp_path: Path):
     from cases import CASES
 
-    assert CURRENT == ROWS_RENAMED == 13
-    assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/13" and LOCK_SCHEMAS[CURRENT] == "mime.lock/13"
+    assert ROWS_RENAMED == 13 < CURRENT
+    assert DOCUMENT_SCHEMAS[ROWS_RENAMED] == "mime.document/13" and LOCK_SCHEMAS[ROWS_RENAMED] == "mime.lock/13"
     experiment = next(case for case in CASES if case.name == "periodic_tube_flow").make()
     lock = experiment.save(tmp_path / "flow")
-    assert lock["schema"] == "mime.lock/13"
+    assert lock["schema"] == LOCK_SCHEMAS[CURRENT]
     held = json.loads((tmp_path / "flow" / LOCK_FILE).read_text(encoding="utf-8"))
     assert _keys(held, OLD_ROWS) == []
     assert sorted(_keys(held, NEW_ROWS)) == sorted([

@@ -353,7 +353,7 @@ def replaced(path: Path, text: str) -> None:
 
 def edit_in_place(path: Path, tables: Mapping[str, Mapping[str, object]], again: str) -> None:
     """``path``'s keys set table by table (:func:`mime.push._toml.edited`; :data:`~mime.push._toml.REMOVE` removes one),
-    every other line, comment and line ending kept, written whole (through a link, to its target); refused
+    every line outside the replaced key's own lines kept as it was, written whole (through a link, to its target); refused
     (``manifest.write``), the file left byte for byte, where an edit cannot be made safely. ``again`` is the command the
     refusal names to run once the file is put right."""
     text = path.read_bytes().decode("utf-8")

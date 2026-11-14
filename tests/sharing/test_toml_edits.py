@@ -273,6 +273,37 @@ def test_the_editors_read_back_refuses_a_splice_that_changed_a_neighbour(monkeyp
         _toml.edited(text, "record", {"title": "y"})
 
 
+@pytest.mark.parametrize("text", ['[[record]]\ntitle = "x"\n', '[bundle]\nlicence = "MIT"\n[[record]]\ntitle = "x"\n',
+                                  "record = 1\n"])
+def test_a_record_that_is_not_a_table_of_keys_is_refused_as_unedited_never_a_type_error(tmp_path: Path, text: str):
+    """``[[record]]`` (an array of tables) or ``record = 1`` was a raw ``TypeError``, which surfaced as exit 3 (a MIME
+    defect); it is ``Unedited``, and ``edit_in_place`` refuses it as ``manifest.write``, the file left byte for byte.
+    The control: ``[record]`` written as a table is edited."""
+    for updates in ({"title": "y"}, {"new": "y"}):
+        with pytest.raises(_toml.Unedited, match=r"\[record\] is written as .*write it as one table"):
+            _toml.edited(text, "record", updates)
+    path = tmp_path / "mime.toml"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(BuildRefused) as refused:
+        _setup.edit_in_place(path, {"record": {"title": "y"}}, "mime push <folder> --setup")
+    assert refused.value.codes() == ["manifest.write"] and path.read_text(encoding="utf-8") == text
+    assert 'title = "y"' in _toml.edited('[record]\ntitle = "x"\n', "record", {"title": "y"})
+
+
+def test_what_an_edit_does_to_the_replaced_keys_own_lines_is_as_documented():
+    """The wording of the changelog and the README, held to the editor: a replaced key keeps its indentation and the
+    comment that ends its first line, and loses a comment inside its old multi-line value; the new lines take CRLF where
+    any line of the file is CRLF; a last line with no line feed has one once it is replaced."""
+    indented = _toml.edited('[record]\n    title = "x" # mine\n  keep = 1\n', "record", {"title": "y"})
+    assert indented == '[record]\n    title = "y" # mine\n  keep = 1\n'
+    many = _toml.edited('[record]\nkw = [\n  "a", # inside\n  "b",\n]\nz = 1\n', "record",
+                        {"kw": ["c"]})
+    assert "# inside" not in many and many.endswith("z = 1\n")
+    crlf = _toml.edited('[record]\r\ntitle = "x"\nz = 1\r\n', "record", {"title": "y", "new": "n"})
+    assert crlf == '[record]\r\ntitle = "y"\r\nz = 1\r\nnew = "n"\r\n'
+    assert _toml.edited('[record]\ntitle = "x"', "record", {"title": "y"}) == '[record]\ntitle = "y"\n'
+
+
 @pytest.mark.parametrize("text", ["", "a = 1", "a = 1\r\n", '[record]\ntitle = "x"  # mine\n'])
 def test_a_value_is_written_as_text_toml_reads_back_as_the_value(text: str):
     """The control of the writer's escapes: a string of every control character, DEL and a non-ASCII letter reads back

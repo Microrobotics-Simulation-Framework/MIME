@@ -167,7 +167,7 @@
   person's defaults, or from `sharing.yaml` where the folder holds it, which push no longer reads and MIME never deletes;
   `--setup` makes or edits it a field at a time in a terminal (Enter skips a field, `use <value>? [Y/n]` keeps one it
   holds, or a default where the file is new, an invalid value is asked again; an existing file is edited key by key in
-  place, every other line, comment and line ending kept, through its link where it is one, and a read-only one, or a key
+  place, every line outside the replaced key's own lines kept as it was (a comment inside its old value goes), through its link where it is one, and a read-only one, or a key
   written as dotted keys or a table of its own, is refused, `manifest.write`; with both outputs redirected to files its
   questions go to the terminal), then asks whether to save the person's own values as their defaults, which live in
   MIME's config directory and never in a folder (`mime push --defaults`, an alias of `mime defaults`, shows them and
@@ -179,7 +179,7 @@
 - `mime check <folder> [--profile exploratory|research]`: the folder's `mime.toml` (a saved folder's or a study
   folder's) checked offline, nothing built, packed or sent, on the profile workflow a build follows: a defect (a key
   of another type, an ORCID iD's check digit, a licence unlike the experiment's) is a finding in every profile; what push
-  still needs (no creator, an experiment with no licence) is a to-do in exploratory and a finding in research; what a
+  still needs (no creator, an experiment with no licence, a declared permission and no uploader named) is a to-do in exploratory and a finding in research; what a
   reviewer would ask (a creator with no ORCID iD, no description, no keyword) is listed by research, never a finding.
   `strict` is refused by name. The profile is the experiment's own unless one is given. Each item comes with the line to
   write, set apart on a terminal as `mime pending`'s are. Exits zero with no finding, one with a finding, and two when

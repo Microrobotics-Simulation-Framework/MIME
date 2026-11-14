@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, saved_toy, write_manifest
+from push_cases import copy_of, saved_toy, with_token, write_manifest
 
 from mime import push
 from mime.build import BuildRefused
@@ -68,7 +68,9 @@ def test_a_complete_manifest_checks_clean_in_every_built_profile_and_says_so(toy
     write_manifest(folder, creators=COMPLETE[0], extra=COMPLETE[1])
     for profile in ("exploratory", "research"):
         checked = push.check(folder, profile)
-        assert checked.items == () and checked.text().endswith("nothing to do: push would take it as it stands.\n")
+        assert checked.items == () and checked.text().endswith(
+            "nothing to do: push would take the manifest as it stands (the folder's own files are `mime pack`'s to "
+            "check).\n")
 
 
 @pytest.mark.parametrize("profile", ["exploratory", "research"])
@@ -188,3 +190,71 @@ def test_control_what_push_needs_planted_a_to_do_in_research_is_caught_exiting_z
     push.init(folder)
     monkeypatch.setattr(_check, "RULES", {**_check.RULES, (Profile.RESEARCH, _check.NEEDED): _check.TO_DO})
     assert main(["check", str(folder), "--profile", "research"]) == 0, "the planted rule is not seen"
+
+
+# --- what push refuses on the folder and [record]: each has its counterpart in the check ---------------------------
+
+
+def permitted(tmp_path: Path) -> Path:
+    """A saved folder whose experiment declares a permission granted to ``Carberry, Josiah``, with ``--init``'s manifest
+    naming a creator and no uploader."""
+    from terms_cases import layered, same_reference_run, sha256_of, write_mesh
+
+    from mime.terms import CustomLicence, Evidence, Permission, Scope, Terms
+
+    shell = write_mesh(tmp_path / "made", "shell", 900)
+    own = CustomLicence("LicenseRef-Maker-1.0", "Maker Licence", "https://example.org/maker")
+    permission = Permission("Maker Ltd", "Carberry, Josiah", (sha256_of(shell),), Scope(True, True, True),
+                            "2026-11-01", Evidence("public_statement", "https://example.org/permission"))
+    with same_reference_run():
+        layered("granted", [(shell, Terms(own, "Maker Ltd", "presentation"))], licence="CC-BY-4.0",
+                permissions=[permission]).build().save(tmp_path / "granted")
+    write_manifest(tmp_path / "granted", creators=COMPLETE[0], extra=COMPLETE[1])
+    return tmp_path / "granted"
+
+
+def uploader_line(folder: Path, name: str) -> None:
+    path = folder / "mime.toml"
+    path.write_text(path.read_text(encoding="utf-8") + f'uploader = {{ name = "{name}" }}\n', encoding="utf-8")
+
+
+def test_a_declared_permission_with_no_uploader_named_is_what_push_still_needs(tmp_path: Path,
+                                                                                capsys: pytest.CaptureFixture[str]):
+    """Push refuses it (``push.permission``), so the check must not say push would take the folder as it stands."""
+    folder = permitted(tmp_path)
+    explored = push.check(folder)
+    (todo,) = explored.of(_check.TO_DO)
+    assert "declares 1 permission" in todo.what and "names no uploader" in todo.what
+    assert todo.line is not None and todo.line.startswith("uploader = {")
+    assert explored.findings == [] and main(["check", str(folder)]) == 0
+    capsys.readouterr()
+    assert [item.what for item in push.check(folder, "research").findings] == [todo.what]
+    assert main(["check", str(folder), "--profile", "research"]) == 1
+    assert "push.permission" not in capsys.readouterr().out, "the text is the item's, not a code"
+
+
+@pytest.mark.parametrize("profile", ["exploratory", "research"])
+def test_a_permission_granted_to_another_than_the_uploader_is_a_finding_in_every_profile(tmp_path: Path, profile: str):
+    folder = permitted(tmp_path)
+    uploader_line(folder, "Somebody, Else")
+    (finding,) = push.check(folder, profile).findings
+    assert "names the grantee Carberry, Josiah, who is neither the uploader (Somebody, Else)" in finding.what
+
+
+def test_a_permission_granted_to_the_uploader_checks_clean(tmp_path: Path):
+    folder = permitted(tmp_path)
+    uploader_line(folder, "Carberry, Josiah")
+    assert push.check(folder, "research").items == ()
+
+
+@pytest.mark.parametrize("secret", ["HOME", "TOKEN"])
+def test_a_path_of_this_machine_or_a_token_in_the_record_is_a_finding_in_every_profile(
+        toy: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, secret: str):
+    """Push's metadata scan refuses both (``bundle.machine-path``, ``bundle.credential``)."""
+    text = with_token(monkeypatch) if secret == "TOKEN" else str(Path.home() / "data" / "run.npz")
+    folder = copy_of(toy, tmp_path)
+    write_manifest(folder, creators=COMPLETE[0], extra=f'description = "see {text}"\nkeywords = ["helices"]\n')
+    for profile in ("exploratory", "research"):
+        (finding,) = push.check(folder, profile).findings
+        assert finding.what.startswith("the record's metadata holds ")
+        assert text not in finding.what, "the path or token is never quoted"

@@ -7,11 +7,13 @@ compared before anything is kept.
 **Editing in place** replaces, adds or removes a key of one table and leaves every other line as it was, byte for byte,
 comments and line endings included. ``tomllib`` is the oracle for where a statement ends: a key's lines are the fewest
 lines from its ``key =`` line that read as that one key, so a bracket inside a string or a comment is never taken for the
-value's end. The comment that ends the key's own first line is kept on its new first line; a comment inside its old
-value goes with it. The result is read again and must hold the edit and every other key as it was; otherwise nothing is
-written (:class:`Unedited`). What an edit cannot replace safely is refused, never guessed: a key written as dotted keys
-or as a table of its own (``fields.languages = ...``, ``[record.fields]``), and a table written as an inline table or as
-dotted keys at the top (``record = {...}``)."""
+value's end. The comment that ends the key's own first line is kept on its new first line, and the key's indentation on
+each new line; a comment inside its old value goes with it. The new lines take the file's line ending (CRLF where any
+line of it is CRLF), and a file whose last line had no line feed has one once that line is replaced. The result is read
+again and must hold the edit and every other key as it was; otherwise nothing is written (:class:`Unedited`). What an
+edit cannot replace safely is refused, never guessed: a key written as dotted keys or as a table of its own
+(``fields.languages = ...``, ``[record.fields]``), and a table written as an inline table, as dotted keys at the top
+(``record = {...}``) or as an array of tables (``[[record]]``)."""
 
 from __future__ import annotations
 
@@ -184,6 +186,10 @@ def edited(text: str, table: str, updates: Mapping[str, object]) -> str:
     before = reads(text)
     if before is None:
         raise Unedited("it is not TOML that reads")
+    if table in before and not isinstance(before[table], dict):
+        raise Unedited(f"[{table}] is written as " + ("an array of tables, [[" + table + "]]" if isinstance(
+            before[table], list) else f"a {type(before[table]).__name__}, not a table") + f", which an edit does not "
+                       f"replace; write it as one table, [{table}], with one key a line")
     ending = "\r\n" if "\r\n" in text else "\n"
     lines = lines_of(text)
     for key, value in updates.items():
@@ -219,6 +225,8 @@ def _edited_key(lines: list[str], table: str, key: str, value: object, ending: s
     if own:
         (held,) = own
         comment = _first_line_comment(lines, held)
+        indent = lines[held.start][:len(lines[held.start]) - len(lines[held.start].lstrip(" \t"))]
+        new = [indent + each for each in new]
         if new and comment:
             new[0] = new[0].removesuffix(ending) + comment + ending
         return [*lines[:held.start], *new, *lines[held.end:]]

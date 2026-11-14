@@ -6,7 +6,8 @@ the profile rules say what a build does with a finding (:data:`RULES`):
 
 - **a defect** (a key unknown or of another type, an ORCID iD's check digit, a licence unlike the experiment's) is a
   finding in every profile, since no profile relaxes an input error;
-- **what push still needs** (no creator named, no title, an experiment that declares no licence) is a to-do in
+- **what push still needs** (no creator named, no title, an experiment that declares no licence, a declared permission
+  with no uploader named to hold its grantee to) is a to-do in
   exploratory and a finding in research, which refuses what exploratory waives;
 - **what a reviewer would ask** (a person among the creators with no ORCID iD, no description, no keyword of the author's
   own) is listed by research and never a finding, as research lists a value with no source.
@@ -26,6 +27,7 @@ from typing import cast
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._manifest import BUNDLE, MANIFEST_FILE, folder_kind, manifest_problems, read_toml
+from mime.push._sharing import LINES
 from mime.validity import Profile, profile_of
 
 DEFECT, NEEDED, ASKED = "defect", "needed", "asked"
@@ -88,7 +90,8 @@ class Checked:
                 if item.line is not None:
                     lines += [f"   {item.place}:", f"       {item.line}"]
         if not self.items:
-            lines.append("nothing to do: push would take it as it stands.")
+            lines.append("nothing to do: push would take the manifest as it stands (the folder's own files are "
+                         "`mime pack`'s to check).")
         return "\n".join(lines) + "\n"
 
 
@@ -102,6 +105,49 @@ def _document(root: Path, kind: str) -> Mapping[str, object]:
 
     return cast(Mapping[str, object],
                 read_folder(root if kind == BUNDLE else root / BASE_DIR, absent_referenced=True).document)
+
+
+def _push_refusals(root: Path, kind: str, held: Mapping[str, object]) -> list[Item]:
+    """What push refuses on a saved folder and its ``[record]`` that no key's check finds, each by push's own refusal
+    (so the two cannot drift): the folder's own terms (a file the saved form does not list), a declared permission whose
+    grantee is not the uploader ``[record]`` names (``push.permission``: with no uploader named it is what push still
+    needs, with another grantee a defect), and a path of this machine or a token MIME holds in what ``[record]`` would
+    send (``bundle.machine-path``, ``bundle.credential``). **Not checked, since each needs the bundle packed (which loads
+    the experiment) or a service chosen** and a check builds, packs and sends nothing: the folder's own files (a file the
+    saved form does not name, a link, a path or token inside a file: ``mime pack``'s refusals), the record's size and file
+    count (``push.too-large``, ``push.too-many-files``), a file whose bytes may not travel (``push.referenced-copy``), a
+    cached asset's bytes (``push.checksum``), and a sandbox location in a lock pushed to production
+    (``push.sandbox-location``). That is why a clean check says the manifest, not the folder, would pass."""
+    import json
+
+    from mime.credentials import held_tokens
+    from mime.push._plan import grantee_problems
+    from mime.push._sharing import Reader, uploader_of
+    from mime.saved._bundle import scan_text
+    from mime.saved._card import judged_folder
+
+    found = [_refused_item(DEFECT, each)
+             for each in scan_text("the record's metadata", json.dumps(held.get("record", {}), sort_keys=True,
+                                                                       default=str).encode("utf-8"), held_tokens())]
+    if kind != BUNDLE:
+        return found
+    try:
+        judged, _, _ = judged_folder(root)
+    except BuildRefused as refused:
+        return [*(_refused_item(DEFECT, each) for each in refused.refusals), *found]
+    uploader = uploader_of(Reader(root / MANIFEST_FILE), _table(held.get("record")))
+    for each in grantee_problems(judged.permissions, uploader, root) if judged.permissions else ():
+        found.append(_refused_item(NEEDED, each, LINES["uploader"]) if uploader is None
+                     else _refused_item(DEFECT, each))
+    return found
+
+
+def _refused_item(cls: str, refusal: Refusal, line: str | None = None) -> Item:
+    """An item made from one of push's own refusals: its message, and its action as the place the fix goes where there
+    is no one line to write."""
+    if line is not None:
+        return Item(cls, refusal.message, line, f"in {MANIFEST_FILE}, under [record]")
+    return Item(cls, f"{refusal.message}: {refusal.action}", None, "")
 
 
 def _profile(value: object) -> Profile:
@@ -165,6 +211,7 @@ def check(folder: str | os.PathLike[str], profile: object | None = None) -> Chec
         items.append(Item(DEFECT, f"{path.name}, [{kind}] licence: is {plain(stated)}, and {whose} declares "
                                   f"{plain(str(declared))}, which its files carry",
                           f'licence = "{plain(str(declared))}"', f"in {MANIFEST_FILE}, under [{kind}]"))
+    items += _push_refusals(root, kind, held)
     items += _asked(path, held)
     shown = tuple((verdict, item) for item in items if (verdict := RULES.get((chosen, item.cls))) is not None)
     return Checked(path, kind, chosen, profile is not None, shown)

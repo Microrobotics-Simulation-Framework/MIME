@@ -1,0 +1,703 @@
+{
+ "assets": [
+  {
+   "citation": "A. Lab, a vessel scan, 2026",
+   "credit": "A Hospital's imaging lab",
+   "kind": "measured",
+   "licence": "LicenseRef-Imaging-Lab-Restricted",
+   "licences": {
+    "LicenseRef-Imaging-Lab-Restricted": {
+     "redistribution": "not_permitted",
+     "title": "The imaging lab's data licence 1.0",
+     "url": "https://example.org/imaging-lab/LICENSE.txt"
+    }
+   },
+   "locations": [
+    "https://example.org/scans/6a3ebb1/vessel_scan.usda"
+   ],
+   "name": "vessel_scan.usda",
+   "role": "results",
+   "sha256": "6905a2b17a4f82fd46002c15b6570f3d228d563dd995cd4170fe0d73f3ad9340",
+   "size": 600
+  }
+ ],
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "x",
+     "source_node": "probe",
+     "source_units": "m",
+     "target_field": "x",
+     "target_node": "toy.spring:probe",
+     "target_units": "m"
+    },
+    {
+     "additive": true,
+     "source_field": "load",
+     "source_node": "toy.spring:probe",
+     "source_units": "N",
+     "target_field": "load",
+     "target_node": "probe",
+     "target_units": "N"
+    },
+    {
+     "source_field": "value",
+     "source_node": "drive:hub.arm.joint_torques",
+     "source_units": "N m",
+     "target_field": "joint_torques",
+     "target_node": "hub.arm",
+     "target_units": "N m"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "toy.spring:probe",
+     "params": {
+      "k": 1.7,
+      "x0": [
+       0.05,
+       -0.02,
+       0.01
+      ]
+     },
+     "timestep": 0.02,
+     "type": "ToySpringNode"
+    },
+    {
+     "name": "probe",
+     "params": {
+      "initial_position": [
+       0.3,
+       -0.2,
+       0.1
+      ],
+      "initial_velocity": [
+       0.5,
+       0.1,
+       -0.3
+      ],
+      "mass": 1.3
+     },
+     "timestep": 0.02,
+     "type": "ToyBodyNode"
+    },
+    {
+     "name": "hub.arm",
+     "params": {
+      "armatures": [
+       0.0
+      ],
+      "axes": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "bounded": [],
+      "centres_of_mass": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "damping": [
+       0.0
+      ],
+      "dof_names": [
+       "turn"
+      ],
+      "frame_bodies": [
+       -1,
+       0
+      ],
+      "frame_names": [
+       "base_link",
+       "hub"
+      ],
+      "frame_rotations": [
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "frame_translations": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "friction": [],
+      "gravity": [
+       -0.0,
+       -0.0,
+       -9.80665
+      ],
+      "inertias": [
+       4e-06,
+       0.0,
+       0.0,
+       0.0,
+       4e-06,
+       0.0,
+       0.0,
+       0.0,
+       2.43e-06
+      ],
+      "initial_joint_positions": [
+       0.0
+      ],
+      "initial_joint_velocities": [
+       0.0
+      ],
+      "initial_mount_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "lower": [],
+      "masses": [
+       0.1
+      ],
+      "mount_count": 0,
+      "mount_index": -1,
+      "origin_rotations": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "origin_translations": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "parents": [
+       -1
+      ],
+      "placement": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "revolute": [
+       true
+      ],
+      "rubbing": [],
+      "upper": []
+     },
+     "timestep": 0.02,
+     "type": "DynamicArmNode"
+    },
+    {
+     "name": "drive:hub.arm.joint_torques",
+     "params": {
+      "value": [
+       0.0
+      ]
+     },
+     "timestep": 0.02,
+     "type": "ConstantNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "drive:hub.arm.joint_torques": {},
+    "hub.arm": {},
+    "probe": {},
+    "toy.spring:probe": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "drive",
+   "name": "drive.constant",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "arm",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "toy.body",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "toy.spring",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.12.15",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 4,
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:fb970821b3bd5b2130b9a67f34d0c4a329ea9ae941a51718403192992988e75e",
+  "document": "sha256:4c9119f5e1c7cefac530181899f6343ac1cfe0a40cdbdee4968cfdc58cd3f69e",
+  "input": "sha256:9151cb10841f4f9f6dbdb38faae0faa4ded2beac268a7528cdcda41ce7cb7fb0",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 0.0,
+  "file": "reference.npz",
+  "resolution": {
+   "drive:hub.arm.joint_torques.value": {
+    "the command's own": 0.0
+   },
+   "hub.arm.frame_angular_velocities": {
+    "rad/s": 0.0
+   },
+   "hub.arm.frame_poses": {
+    "1": 6.661338147750939e-16,
+    "m": 0.0
+   },
+   "hub.arm.joint_positions": {
+    "1": 0.0
+   },
+   "hub.arm.joint_velocities": {
+    "rad/s": 0.0
+   },
+   "probe.v": {
+    "m/s": 1.1102230246251565e-16
+   },
+   "probe.x": {
+    "m": 5.551115123125783e-17
+   },
+   "toy.spring:probe.load": {
+    "N": 2.220446049250313e-16
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 2e-14,
+  "sha256": "sha256:af23315973cfd114173d83ffe32c057571847abeb2c21a9bc24275744ac4e884",
+  "steps": 8
+ },
+ "referenced_files": {
+  "scene/layers/vessel_scan.usda": "vessel_scan.usda"
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {
+   "hub.arm": {
+    "acknowledged": {},
+    "file": "descriptions/c26b837a85da3a41-hub.urdf",
+    "massless": [],
+    "refused": {},
+    "sha256": "c26b837a85da3a41d0b45d0940234553f8e06988f74bee3509cbb4d4b01f8ef5",
+    "unused": {
+     "visual": [
+      "link[hub]/visual"
+     ]
+    },
+    "used": {
+     "axis": [
+      "joint[turn]/axis"
+     ],
+     "child": [
+      "joint[turn]/child"
+     ],
+     "inertia": [
+      "link[hub]/inertial/inertia"
+     ],
+     "inertial": [
+      "link[hub]/inertial"
+     ],
+     "joint": [
+      "joint[turn]"
+     ],
+     "link": [
+      "link[base_link]",
+      "link[hub]"
+     ],
+     "mass": [
+      "link[hub]/inertial/mass"
+     ],
+     "origin": [
+      "joint[turn]/origin",
+      "link[hub]/inertial/origin"
+     ],
+     "parent": [
+      "joint[turn]/parent"
+     ]
+    }
+   }
+  },
+  "entries": {
+   "drive:hub.arm.joint_torques": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:hub.arm.joint_torques"
+    ],
+    "settings": {
+     "value": {
+      "unit": "N m",
+      "value": [
+       0.0
+      ]
+     }
+    },
+    "version": "0.1.0"
+   },
+   "hub.arm": {
+    "binds": {},
+    "differentiability": "piecewise_kink",
+    "every": 1,
+    "initial": {},
+    "kind": "dynamics",
+    "name": "arm",
+    "nodes": [
+     "hub.arm"
+    ],
+    "settings": {
+     "acknowledged": [],
+     "actuators": [],
+     "armature": [],
+     "at": null,
+     "description": {
+      "file": "descriptions/c26b837a85da3a41-hub.urdf",
+      "sha256": "c26b837a85da3a41d0b45d0940234553f8e06988f74bee3509cbb4d4b01f8ef5"
+     },
+     "initial_positions": {
+      "unit": "1",
+      "value": [
+       0.0
+      ]
+     },
+     "initial_velocities": {
+      "unit": "Hz",
+      "value": [
+       0.0
+      ]
+     },
+     "mount": null,
+     "orientation": null,
+     "rate": null,
+     "rung": "dynamic",
+     "servo": null
+    },
+    "version": "0.1.0"
+   },
+   "probe": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "position": [
+      0.3,
+      -0.2,
+      0.1
+     ],
+     "velocity": [
+      0.5,
+      0.1,
+      -0.3
+     ]
+    },
+    "kind": "dynamics",
+    "name": "toy.body",
+    "nodes": [
+     "probe"
+    ],
+    "settings": {
+     "mass": {
+      "unit": "kg",
+      "value": 1.3
+     },
+     "rate": null
+    },
+    "version": "0.1.0"
+   },
+   "toy.spring:probe": {
+    "binds": {
+     "body": "probe"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "toy.spring",
+    "nodes": [
+     "toy.spring:probe"
+    ],
+    "settings": {
+     "k": {
+      "unit": "kg s^-2",
+      "value": 1.7
+     },
+     "x0": {
+      "unit": "m",
+      "value": [
+       0.05,
+       -0.02,
+       0.01
+      ]
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {},
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "toy.spring:probe",
+   "probe",
+   "hub.arm",
+   "drive:hub.arm.joint_torques"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "hub.arm.acknowledged": {
+     "entry": "arm 0.1.0",
+     "kind": "convention",
+     "value": []
+    },
+    "hub.arm.actuators": {
+     "entry": "arm 0.1.0",
+     "kind": "convention",
+     "value": []
+    },
+    "hub.arm.armature": {
+     "entry": "arm 0.1.0",
+     "kind": "convention",
+     "value": []
+    },
+    "probe.motion.mass": {
+     "entry": "toy.body 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "kg",
+      "value": 1.3
+     }
+    },
+    "toy.spring:probe.k": {
+     "entry": "toy.spring 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "kg s^-2",
+      "value": 1.7
+     }
+    },
+    "toy.spring:probe.x0": {
+     "entry": "toy.spring 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "m",
+      "value": [
+       0.05,
+       -0.02,
+       0.01
+      ]
+     }
+    }
+   },
+   "listed": [],
+   "pending": [
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "probe.motion.mass"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.k"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.x0"
+    }
+   ],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": [
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "probe.motion.mass"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.k"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.x0"
+    }
+   ]
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.02,
+   "experiment": "scanned",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.80665
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "hub": "/World/hub",
+    "probe": "/World/probe"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "hub": "apparatus",
+   "probe": "body"
+  },
+  "values": {},
+  "vocabulary": {
+   "mime": "0.3.0.dev1",
+   "toy": "0.1.0"
+  }
+ },
+ "schema": "mime.lock/13",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {
+   "scene/layers/vessel_scan.usda": "6905a2b17a4f82fd46002c15b6570f3d228d563dd995cd4170fe0d73f3ad9340"
+  },
+  "sha256": "409c78650a58d9b414b1901a7dcc053276e5afffd54e9e87924a2911c989c910",
+  "writer": 2
+ },
+ "visuals": {
+  "hub_meshes": {
+   "archives": [],
+   "assets": [
+    {
+     "credit": "A Maker",
+     "kind": "authored",
+     "licence": "CC-BY-4.0",
+     "locations": [
+      "https://example.org/maker/3c1f2a7/hub.stl"
+     ],
+     "name": "hub.stl",
+     "role": "presentation",
+     "sha256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+     "size": 684
+    }
+   ],
+   "credit": "A Maker",
+   "files": {
+    "meshes/hub.stl": {
+     "asset": "hub.stl"
+    }
+   },
+   "format": "mime.asset_manifest/1",
+   "name": "hub_meshes",
+   "notice": "The hub's mesh is the maker's design file.",
+   "title": "the hub's mesh"
+  }
+ }
+}

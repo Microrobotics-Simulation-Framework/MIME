@@ -14,7 +14,7 @@ from push_cases import copy_of, saved_toy, write_manifest
 from mime import push
 from mime.build import BuildRefused
 from mime.push._defaults import DEFAULTS_FORMAT, defaults_path, read_all
-from mime.saved._bundle import FORMAT, FORMAT_1, FORMAT_2, MANIFEST_MEMBER, unknown_format
+from mime.saved._bundle import FORMAT, FORMAT_1, FORMAT_2, FORMAT_3, MANIFEST_MEMBER, unknown_format
 
 NEWER = "load.newer-form"
 
@@ -26,15 +26,15 @@ def bundle_of(path: Path, format_: str) -> zipfile.ZipFile:
 
 
 def test_a_bundle_one_format_above_the_newest_is_refused_and_the_formats_it_reads_are_not(tmp_path: Path):
-    for known in (FORMAT, FORMAT_2, FORMAT_1):
+    for known in (FORMAT, FORMAT_3, FORMAT_2, FORMAT_1):
         assert unknown_format(bundle_of(tmp_path / "known.mimebundle", known)) is None
-    for other in ("other.bundle/4", "mime.bundle/0", "mime.bundle/x"):
+    for other in ("other.bundle/5", "mime.bundle/0", "mime.bundle/x"):
         assert unknown_format(bundle_of(tmp_path / "other.mimebundle", other)) is None
-    refused = unknown_format(bundle_of(tmp_path / "newer.mimebundle", "mime.bundle/4"))
+    refused = unknown_format(bundle_of(tmp_path / "newer.mimebundle", "mime.bundle/5"))
     assert refused is not None
     (refusal,) = refused.refusals
     assert refusal.code == NEWER and refusal.category.value == "user"
-    assert "mime.bundle/4" in refusal.message and f"{FORMAT}, {FORMAT_2}, {FORMAT_1}" in refusal.message
+    assert "mime.bundle/5" in refusal.message and f"{FORMAT}, {FORMAT_3}, {FORMAT_2}, {FORMAT_1}" in refusal.message
     assert "mime-engine" in refusal.action
 
 
