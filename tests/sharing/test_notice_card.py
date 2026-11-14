@@ -1,6 +1,6 @@
 """The NOTICE and the card (``mime card <folder> [--notice]``), offline, exactly as ``mime push`` will publish them:
 generated, byte for byte the same each time, every file the folder names in the NOTICE with its licence, credit,
-verdict and declared permission, and the card in its sections, saying what it shows of credit before ``sharing.yaml``
+verdict and declared permission, and the card in its sections, saying what it shows of credit before ``mime.toml``
 exists.
 
 **The 7n case** (design #199 question 9): a presentation mesh under a rights holder's own licence that forbids

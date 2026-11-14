@@ -88,8 +88,8 @@ lists each pin a source no longer agrees with, and never takes the other version
    `load.lock`), so reading runs no code, and holds the stage and every asset layer to the hash the lock records (a changed
    asset is refused as `load.asset-changed`, a stage edited by hand as `load.stage-changed`);
 2. refuses a form written by a newer MIME before judging it: a document or a lock whose schema is `mime.document/N` or
-   `mime.lock/N` above the newest this MIME reads, a bundle of a later `mime.bundle/N` format and a `sharing.yaml` of a
-   later `mime.sharing/N` are each one refusal, `load.newer-form`, naming the file, the version found and the versions
+   `mime.lock/N` above the newest this MIME reads, a bundle of a later `mime.bundle/N` format and a `mime.toml` of a
+   later `mime.toml/N` are each one refusal, `load.newer-form`, naming the file, the version found and the versions
    this MIME reads, with the advice to upgrade `mime-engine`. An id of another family, and a version this MIME reads,
    are not that refusal; the schema check judges them as it did. (A run folder's `outputs.json` of a later version is
    refused as `result.format`, with the same advice.)
@@ -223,10 +223,12 @@ saved the folder. The meshes the stage draws (the lock's `visuals`) count the sa
 (rehearsed on the sandbox first): every condition each file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
 says what `mime verify <folder>` would check (the card runs no check). Both are generated and the same bytes each
 time. **Credit** (the creators with their ORCIDs, the
-contributors and their roles) lives in `sharing.yaml` beside the saved form, which `mime push <folder> --to <service>
---init` writes (see [`mime.push`](../push/README.md)): the card names its creators and contributors, and where the folder
-holds none says so where the creators go; each third-party file's credit is under its licences either way. `pack`
-neither carries nor refuses `sharing.yaml`, the one file of a folder that is neither the saved form's nor a stray.
+contributors and their roles) lives in `mime.toml`'s `[record]` beside the saved form, which `mime push <folder> --to
+<service> --init` writes (see [`mime.push`](../push/README.md)): the card names its creators and contributors, and where
+the folder holds none says so where the creators go; each third-party file's credit is under its licences either way;
+the works `[record]` asks a user to cite as well end the card. `pack` neither carries nor refuses `mime.toml`, nor
+`sharing.yaml`, the file it replaced, which a person may keep until they delete it: the two files of a folder that are
+neither the saved form's nor strays, and the bundle's bytes are the same with them or without.
 
 ## The bundle
 

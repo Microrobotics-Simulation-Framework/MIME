@@ -1,4 +1,5 @@
-"""A bundle (``mime.bundle/N``) or a ``sharing.yaml`` (``mime.sharing/N``) written by a newer MIME is refused as
+"""A bundle (``mime.bundle/N``), a ``mime.toml`` (``mime.toml/N``) or a person's ``defaults.toml``
+(``mime.defaults/N``) written by a newer MIME is refused as
 ``load.newer-form``, with the file, the version found, the versions this MIME reads and the advice to upgrade. The
 controls: a format this MIME reads is not refused, and an id of another family stays the problem it was."""
 
@@ -8,11 +9,11 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, saved_toy, write_sharing
+from push_cases import copy_of, saved_toy, write_manifest
 
 from mime import push
 from mime.build import BuildRefused
-from mime.push._sharing import SHARING_FORMAT
+from mime.push._defaults import DEFAULTS_FORMAT, defaults_path, read_all
 from mime.saved._bundle import FORMAT, FORMAT_1, FORMAT_2, FORMAT_3, MANIFEST_MEMBER, unknown_format
 
 NEWER = "load.newer-form"
@@ -42,25 +43,40 @@ def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return saved_toy(tmp_path_factory.mktemp("toy"))
 
 
-def restate(folder: Path, format_: str) -> None:
-    path = folder / "sharing.yaml"
-    text = re.sub(r"^format: .*$", f"format: {format_}", path.read_text(encoding="utf-8"), count=1, flags=re.MULTILINE)
+def restate(path: Path, format_: str) -> None:
+    text = re.sub(r'^format = ".*"$', f'format = "{format_}"', path.read_text(encoding="utf-8"), count=1,
+                  flags=re.MULTILINE)
     path.write_text(text, encoding="utf-8")
 
 
-def test_a_sharing_file_one_format_above_the_newest_is_refused_and_the_one_it_reads_is_not(toy: Path, tmp_path: Path):
+def test_a_manifest_one_format_above_the_newest_is_refused_and_the_one_it_reads_is_not(toy: Path, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
-    write_sharing(folder)
-    assert push.read_sharing(folder).title
-    restate(folder, "mime.sharing/2")
+    path = write_manifest(folder)
+    assert push.read_manifest(folder).record.title
+    restate(path, "mime.toml/2")
     with pytest.raises(BuildRefused) as refused:
-        push.read_sharing(folder)
+        push.read_manifest(folder)
     (refusal,) = refused.value.refusals
     assert refusal.code == NEWER and refusal.category.value == "user"
-    assert "sharing.yaml" in refusal.message and "mime.sharing/2" in refusal.message
-    assert SHARING_FORMAT in refusal.message
+    assert "mime.toml" in refusal.message and "mime.toml/2" in refusal.message
+    assert push.MANIFEST_FORMAT in refusal.message
     assert "mime-engine" in refusal.action
-    restate(folder, "other.sharing/2")
+    restate(path, "other.toml/2")
     with pytest.raises(BuildRefused) as other:
-        push.read_sharing(folder)
-    assert other.value.codes() == ["push.sharing"]
+        push.read_manifest(folder)
+    assert other.value.codes() == ["manifest.key"]
+
+
+def test_defaults_one_format_above_the_newest_are_refused_and_the_one_it_reads_is_not():
+    path = defaults_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'format = "{DEFAULTS_FORMAT}"\n', encoding="utf-8")
+    assert read_all().empty()
+    restate(path, "mime.defaults/2")
+    with pytest.raises(BuildRefused) as refused:
+        read_all()
+    assert refused.value.codes() == [NEWER] and "mime.defaults/2" in refused.value.refusals[0].message
+    restate(path, "other.defaults/2")
+    with pytest.raises(BuildRefused) as other:
+        read_all()
+    assert other.value.codes() == ["defaults.file"]

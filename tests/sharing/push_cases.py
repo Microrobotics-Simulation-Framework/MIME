@@ -1,4 +1,4 @@
-"""Folders and fakes for the tests of ``mime push``: a saved toy under a licence with its ``sharing.yaml``, a token in
+"""Folders and fakes for the tests of ``mime push``: a saved toy under a licence with its ``mime.toml``, a token in
 the environment (the conftest's home holds no other), the offline fake, and a plan made once and kept outside push's
 staging directory, for the tests of the drafting engine that run push many times."""
 
@@ -17,8 +17,8 @@ from mime.push import Client, Plan, Service
 from mime.push._plan import RecordFile, file_hashes
 from mime.testing.toys import full_toy
 
-#: The creator every test folder names: ORCID's own documented test identity.
-CREATOR = "{family: Carberry, given: Josiah, orcid: 0000-0002-1825-0097, affiliation: Brown University}"
+#: The creator every test folder names: ORCID's own documented test identity, as an inline table of ``[record]``.
+CREATOR = '{ family = "Carberry", given = "Josiah", orcid = "0000-0002-1825-0097", affiliation = "Brown University" }'
 
 
 def a_token() -> str:
@@ -35,10 +35,13 @@ def with_token(monkeypatch: pytest.MonkeyPatch, service: str = "zenodo-sandbox")
     return token
 
 
-def write_sharing(folder: Path, *, creators: str = CREATOR, extra: str = "") -> Path:
-    """``--init``'s file with one creator named, and ``extra`` lines added."""
+def write_manifest(folder: Path, *, creators: str = CREATOR, extra: str = "") -> Path:
+    """``--init``'s ``mime.toml`` with one creator named, and ``extra`` lines added at its end, under ``[record]``, each
+    in place of the line ``--init`` wrote of its key."""
     path, _, _ = push.init(folder)
-    text = path.read_text(encoding="utf-8").replace("creators: []", f"creators: [{creators}]")
+    text = path.read_text(encoding="utf-8").replace("creators = []", f"creators = [{creators}]")
+    for key in [line.partition("=")[0].strip() for line in extra.splitlines()]:
+        text = "".join(line for line in text.splitlines(keepends=True) if not line.startswith(f"{key} = "))
     path.write_text(text + extra, encoding="utf-8")
     return path
 
@@ -53,14 +56,14 @@ def saved_toy(root: Path, name: str = "full_toy", *, licence: str | None = "CC-B
 
 
 def saved_named(root: Path, name: str) -> Path:
-    """A toy experiment named ``name``, saved under the licence CC-BY-4.0 with its sharing.yaml."""
+    """A toy experiment named ``name``, saved under the licence CC-BY-4.0 with its mime.toml."""
     from mime.testing.toys._experiments import declare_in_order, full_declarations, toy_experiment
 
     experiment = declare_in_order(lambda: toy_experiment(name), full_declarations(), None)
     experiment.licence("CC-BY-4.0")
     folder = root / name
     experiment.save(folder)
-    write_sharing(folder)
+    write_manifest(folder)
     return folder
 
 

@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, with_token, write_sharing
+from push_cases import copy_of, with_token, write_manifest
 from terms_cases import NO_REDISTRIBUTION, mesh_bytes, same_reference_run, write_mesh
 from zenodo_records import FakeRecords
 
@@ -152,9 +152,9 @@ def pack_carries_none_of_its_bytes(tmp_path: Path, derived: AssetRef) -> None:
 
 def push_never_uploads_it(tmp_path: Path, derived: AssetRef, monkeypatch: pytest.MonkeyPatch) -> None:
     folder = save_lists_it_as_a_reference(tmp_path, derived)
-    write_sharing(folder)
+    write_manifest(folder)
     fake = FakeRecords(with_token(monkeypatch))
-    plan = _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_sharing(folder),
+    plan = _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_manifest(folder).record,
                            tmp_path / "staged")
     choice = next(each for each in plan.assets if each.ref.name == "derived_scan.usda")
     assert not choice.upload and choice.verdict.tier == "referenced"
@@ -326,11 +326,11 @@ def test_push_never_uploads_an_asset_whose_bytes_an_installed_source_says_are_re
                         ("https://example.org/closed/6a3ebb1/closed_scan.usda",), credit="a maker", role="results")
     placed(cache, CLOSED, open_one)
     folder = saved(experiment(open_one), tmp_path / "open")
-    write_sharing(folder)
+    write_manifest(folder)
     fake = FakeRecords(with_token(monkeypatch))
     with installed(closed_record()):
         with pytest.raises(BuildRefused) as refused:
-            _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_sharing(folder),
+            _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_manifest(folder).record,
                             tmp_path / "staged")
         assert "bundle.referenced-copy" in refused.value.codes(), "the bundle would carry the scan"
         judged, _, lock = judged_folder(folder)

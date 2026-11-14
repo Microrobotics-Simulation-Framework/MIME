@@ -3,7 +3,7 @@
 # table, nor a name by one of its rules (a registered entry's, a vocabulary interface's, a file's or a module's),
 # nor listed here; and on a listed name the source no longer needs the list for (delete its line). One per line,
 # `name  # what it names`.
-access.embargo  # a path in sharing.yaml, said by a refusal of its shape
+access.embargo  # a path in mime.toml's [record], said by a refusal of its shape
 bath.density             # a typed path in a family's rig: the bath's density
 bulk.density             # an OpenMaterica record field a value is read from
 ca.key  # a test certificate authority's key file (mime.testing's loopback stores)
@@ -18,7 +18,6 @@ flow.exchange_partner    # the registration kind of a medium field's exchange pa
 flow.resolved_partner    # the registration kind of a body a medium's field resolves on its grid (mime.vocabulary)
 fluid.dynamic_viscosity  # an OpenMaterica record field a value is read from
 half_space.boundary  # the half-space's case in the shape conformance suite: the set its probes are placed about, which no switch owns
-locations.toml  # the user's or lab's locations file
 lubrication.epsilon      # a setting group's setting, as an entry reads it in SI
 magnetic.remanence       # an OpenMaterica record field a value is read from
 memory.limit_in_bytes  # a file name: cgroup v1's memory limit, read for the memory a CPU run can have
@@ -28,11 +27,9 @@ mime.asset_adapters  # the entry-point group an asset adapter is registered thro
 mime.entries             # the entry-point group a load finds namespaces by
 mime.gaussian_mac        # the exchange law's mapping kind, registered with MADDENING (mime.mappings)
 model-viewer.min.js  # the web viewer's script, inlined into a page from mime/viz/_viewer/ (mime.viz._web)
-no-locations-file.toml  # the empty locations file the adapter harness points MIME at
 plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
 plotly.offline  # a module name: plotly's bundled plotly.js, imported when a page inlines it
 plotly.subplots  # a module name: plotly's subplot helper, imported when a figure is drawn
-pyproject.toml           # the project's metadata, whose pins the number rule reads releases from
 pytest.xfail             # the type JUnit gives an expected failure's skip, which the evidence resolver reads
 sampling.contact_gap     # a setting group's setting, as an entry reads it in SI
 scipy.spatial            # SciPy's module, imported by its name (mime.viz._meshes)

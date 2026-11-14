@@ -152,8 +152,8 @@
   its tier and verdict and every field sent, with `--full-plan`), then makes or updates the private draft without a
   question, reserves its DOI and uploads each file that differs, its md5 checked against the service's; a push with
   nothing to send says so in one line. It writes to and deletes only the draft it made. A field edited on the site
-  since it last wrote it is shown against `sharing.yaml` and, in a terminal, asked about (kept, written into
-  `sharing.yaml`, or written over); `--keep-site-edits` and `--overwrite-site-edits` answer without a terminal.
+  since it last wrote it is shown against `mime.toml`'s `[record]` and, in a terminal, asked about (kept, written into
+  `[record]`, or written over); `--keep-site-edits` and `--overwrite-site-edits` answer without a terminal.
   `--publish` publishes the draft, the one step that cannot be undone: the confirmation in words, each declared
   permission asked on its own (`--yes` never answers one), then the record number typed, or `--confirm <DOI>` from a
   script, which publishes only what the draft holds (a terminal shows each change first); once a push has changed the
@@ -163,16 +163,32 @@
   holds what the confirmation's fingerprint was printed for, is not published. Afterwards the record is checked as
   published and, on production, the folder's lock names it, so `mime pack <folder>` makes the published bundle again. Once published, a push of a changed folder makes a new version
   under the same concept DOI, its unchanged files linked; of an unchanged one, says so in one line. `--init` writes
-  `sharing.yaml`, the record's credit, filled from the person's sharing defaults; `--setup` makes or edits it a field
-  at a time in a terminal (Enter skips a field, `use <value>? [Y/n]` keeps one it holds, or a default where the file is
-  new, an invalid value is asked again; an existing file is edited in its own line endings, through its link where it
-  is one, and a read-only one is refused; with both outputs redirected to files its questions go to the terminal),
-  then asks whether to save the person's own values as their defaults, which live in MIME's config directory
-  and never in a folder (`mime push --defaults` shows them and where); `--setup` and `--defaults` take no flag of a
-  push or a publish; `--status` reads the draft as the service holds
+  `mime.toml`, the record's manifest (`[bundle] licence` and `[record]`; `[study]` in a study folder), filled from the
+  person's defaults, or from `sharing.yaml` where the folder holds it, which push no longer reads and MIME never deletes;
+  `--setup` makes or edits it a field at a time in a terminal (Enter skips a field, `use <value>? [Y/n]` keeps one it
+  holds, or a default where the file is new, an invalid value is asked again; an existing file is edited key by key in
+  place, every line outside the replaced key's own lines kept as it was (a comment inside its old value goes), through its link where it is one, and a read-only one, or a key
+  written as dotted keys or a table of its own, is refused, `manifest.write`; with both outputs redirected to files its
+  questions go to the terminal), then asks whether to save the person's own values as their defaults, which live in
+  MIME's config directory and never in a folder (`mime push --defaults`, an alias of `mime defaults`, shows them and
+  where); `--setup` and `--defaults` take no flag of a push or a publish; `--status` reads the draft as the service holds
   it; `--discard` deletes it, after asking. Each ends with a link. `--to` is required, but for `--setup` and
   `--defaults`. A push stopped at any request is resumed by running it again. Exits zero, two when refused, three when
-  the service refuses a field MIME builds.
+  the service refuses a field MIME builds: that is a MIME defect (`push.rejected`, classed internal), the exit every
+  command gives one (below).
+- `mime check <folder> [--profile exploratory|research]`: the folder's `mime.toml` (a saved folder's or a study
+  folder's) checked offline, nothing built, packed or sent, on the profile workflow a build follows: a defect (a key
+  of another type, an ORCID iD's check digit, a licence unlike the experiment's) is a finding in every profile; what push
+  still needs (no creator, an experiment with no licence, a declared permission and no uploader named) is a to-do in exploratory and a finding in research; what a
+  reviewer would ask (a creator with no ORCID iD, no description, no keyword) is listed by research, never a finding.
+  `strict` is refused by name. The profile is the experiment's own unless one is given. Each item comes with the line to
+  write, set apart on a terminal as `mime pending`'s are. Exits zero with no finding, one with a finding, and two when
+  the folder cannot be checked (see [`mime.push`](../push/README.md#mimetoml)).
+- `mime defaults [show | edit]`: the person's defaults (`defaults.toml` in MIME's config directory: their creators,
+  keywords, uploader and funding, the licences new content and a scaffolded plugin's code take, a scaffold's namespace)
+  and where they live, plain; `edit` walks them a field at a time in a terminal and writes them whole or not at all.
+  Moved once, said in a line, from `sharing-defaults.yaml`, which is kept and no longer read. Exits zero, or two when
+  refused.
 - `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.
@@ -243,6 +259,10 @@
   Write it again after upgrading MIME, since the script is a copy of what the parser held when it was written. The
   generator is `mime/cli/_completion.py`; `tests/cli/test_completion.py` asks each script, in its shell, what it
   completes at every command and compares that with the parser. Exits zero.
+
+**Every command exits three when it meets a MIME defect or an error MIME does not recognise** (`mime.cli.FAILED`), each
+shown as a MIME error with its code, whatever the command's own codes are; push's three, when the service refuses a
+field MIME builds (`push.rejected`, classed internal), is one such defect, not an exit of push's own.
 
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
@@ -348,7 +368,7 @@ Nothing is fetched unless asked for, and a build never downloads.
 
 | command | network |
 |---|---|
-| `verify`, `registry`, `docs`, `pack`, `card`, `credentials`, `assets list`, `assets check`, `push --init` | never |
+| `verify`, `registry`, `docs`, `pack`, `card`, `check`, `defaults`, `credentials`, `assets list`, `assets check`, `push --init` | never |
 | `push` | to the service `--to` names and no other, with its token, after the plan is shown (`--publish` after its confirmation) |
 | `assets fetch` | to download an asset not already in the cache, on request |
 | `pull` | to download a bundle given as a DOI or an address (a file on this machine needs none), or with `--from` to the named service's records API, without a token; and to fetch its assets unless `--no-assets` |

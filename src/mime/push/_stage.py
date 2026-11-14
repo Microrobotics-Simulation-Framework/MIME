@@ -76,17 +76,17 @@ def _linked(source: str, target: str) -> None:
 
 def pack_staged(folder: Path, lock: bytes, staging: Path, out: Path, own: frozenset[str] = frozenset()) -> Path:
     """Pack ``folder`` with ``lock`` in place of its own into ``out``, through a copy of the folder in ``staging``
-    (the folder's own ``sharing.yaml`` left out, as ``pack`` leaves it out). ``own`` is where the record holds its files,
+    (the folder's own ``mime.toml`` and ``sharing.yaml`` left out, as ``pack`` leaves them out). ``own`` is where the record holds its files,
     as push wrote each into the lock. A refusal names the folder, never the copy. A read-only folder's copy is made
     writable, as its lock is replaced in it."""
-    from mime.push._sharing import SHARING_FILE
+    from mime.saved._bundle import SHARING_FILES
     from mime.saved import pack
     from mime.saved._folder import LOCK_FILE
 
     copy = staging / COPY
     remove_tree(copy)
     shutil.copytree(folder, copy, symlinks=True, copy_function=_linked,
-                    ignore=lambda directory, names: [SHARING_FILE] if Path(directory) == folder else [])
+                    ignore=lambda directory, names: list(SHARING_FILES) if Path(directory) == folder else [])
     writable_tree(copy)
     target = copy / LOCK_FILE
     target.unlink(missing_ok=True)  # a link to the folder's own lock: never written through

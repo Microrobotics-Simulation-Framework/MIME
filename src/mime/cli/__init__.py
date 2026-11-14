@@ -28,6 +28,7 @@ from mime.cli._durations import FORMS, seconds
 from mime.cli._shell import quoted
 from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
 from mime.experiment import Experiment
+from mime.validity import Profile
 
 if TYPE_CHECKING:
     from mime._transfers import Transfers
@@ -1066,12 +1067,12 @@ def _push_arguments(arguments: argparse.Namespace) -> None:
                                             (push.KEEP_FLAG, arguments.keep_site_edits),
                                             (push.OVERWRITE_FLAG, arguments.overwrite_site_edits)) if given]
         if ignored:
-            what = ("--defaults shows your own sharing defaults" if arguments.defaults else
-                    "--setup asks for sharing.yaml's fields")
+            what = ("--defaults shows your own defaults" if arguments.defaults else
+                    "--setup asks for mime.toml's fields")
             parser.error(f"{what}, and pushes and publishes nothing: it takes no {', '.join(ignored)}")
     if arguments.defaults:
         if arguments.folder is not None or arguments.to is not None:
-            parser.error("--defaults shows your own sharing defaults, and takes no folder and no --to")
+            parser.error("--defaults shows your own defaults, as `mime defaults` does, and takes no folder and no --to")
         return
     missing = [name for name, held in (("folder", arguments.folder), ("--to", arguments.to))
                if held is None and not (name == "--to" and arguments.setup)]
@@ -1079,15 +1080,56 @@ def _push_arguments(arguments: argparse.Namespace) -> None:
         parser.error(f"the following arguments are required: {', '.join(missing)}")
 
 
+def _defaults_show() -> int:
+    """``mime defaults`` (and ``mime push --defaults``, its alias): where the person's defaults live, and each."""
+    from mime import push
+
+    for line in push.defaults_lines(say=_say):
+        print(for_terminal(line))
+    return 0
+
+
+def _defaults(command: str | None) -> int:
+    if command == "edit":
+        from mime import push
+
+        voice = _Voice("uploading")
+        with _setup_questions(voice) as (typed, _):
+            try:
+                push.edit_defaults(typed=typed, say=voice.say)
+            finally:
+                voice.close()
+        return 0
+    return _defaults_show()
+
+
+def _check(folder: Path, profile: str | None) -> int:
+    """``mime check <folder>``: the folder's ``mime.toml`` checked offline under a profile, each item with its line to
+    write; 1 when an item is a finding, 0 when none is."""
+    from mime import push
+
+    checked = push.check(folder, profile)
+    text = for_terminal(checked.text())
+
+    def draw() -> None:
+        from mime.cli._display import show_pending
+
+        show_pending(text, sys.stdout)
+
+    if not _drawn(draw):
+        print(text, end="")
+    return 1 if checked.findings else 0
+
+
 def _push(arguments: argparse.Namespace) -> int:
     from mime import push
+    from mime.push._defaults import read_all
+    from mime.push._manifest import BUNDLE, OLD_FILE, folder_kind
     from mime.push._sharing import DEFAULT_LICENCE
 
     _push_arguments(arguments)
     if arguments.defaults:
-        for line in push.defaults_lines():
-            print(for_terminal(line))
-        return 0
+        return _defaults_show()
     folder: Path = arguments.folder
     if arguments.setup:
         voice = _Voice("uploading")
@@ -1105,18 +1147,23 @@ def _push(arguments: argparse.Namespace) -> int:
                                     "--confirm names the draft a publish publishes, and this is not a publish",
                                     f"`mime push {quoted(str(folder))} --to {service.name} --publish --confirm <DOI>`")])
     if arguments.init:
-        path, written, licence = push.init(folder)
+        migrating = (folder / OLD_FILE).is_file() and not (folder / push.MANIFEST_FILE).is_file()
+        path, written, licence = push.init(folder, say=_say)
         print(for_terminal(f"wrote {path}" if written else f"kept {path}, which exists: edit it, or delete it and "
                                                           f"run --init again"))
+        defaults = read_all()
+        stated = defaults.licences.get("content", DEFAULT_LICENCE)
         print(for_terminal(f"licence: {licence}, which the experiment declares" if licence else
-                           f"licence: {DEFAULT_LICENCE}, pre-filled: the experiment declares none, and push asks it to "
-                           f"declare the same, exp.licence(\"{DEFAULT_LICENCE}\"), then save"))
-        filled = list(push.read_defaults()) if written else []
+                           f"licence: {stated}, pre-filled: the experiment declares none, and push asks it to "
+                           f"declare the same, exp.licence(\"{stated}\"), then save"))
+        filled = list(defaults.values) if written and not migrating else []
         if filled:
-            print(for_terminal(f"filled from your sharing defaults ({push.defaults_path()}): {', '.join(filled)}"))
-        print(for_terminal(f"next: check what your defaults filled in it, then `mime push {quoted(str(folder))} --to "
-                           f"{service.name}`" if filled else
-                           f"next: name the creators in it, then `mime push {quoted(str(folder))} --to {service.name}`"))
+            print(for_terminal(f"filled from your defaults ({push.defaults_path()}): {', '.join(filled)}"))
+        then = (f"`mime push {quoted(str(folder))} --to {service.name}`" if folder_kind(folder.absolute()) == BUNDLE
+                else f"`mime check {quoted(str(folder))}`")
+        print(for_terminal(f"next: check what your defaults filled in it, then {then}" if filled else
+                           f"next: check what it holds, then {then}" if migrating else
+                           f"next: name the creators in it, then {then}"))
         return 0
     try:
         if arguments.status:
@@ -1441,15 +1488,15 @@ def build_parser() -> _guide.MimeParser:
                          help="the service: zenodo, or zenodo-sandbox to try it on Zenodo's test service (required, "
                               "but for --setup and --defaults)")
     pushing_mode = pushing.add_mutually_exclusive_group()
-    pushing_mode.add_argument("--init", action="store_true", help="write sharing.yaml, the record's credit and "
-                                                                  "description, from what the folder knows and your "
-                                                                  "sharing defaults")
+    pushing_mode.add_argument("--init", action="store_true", help="write mime.toml, the record's manifest, from what "
+                                                                  "the folder knows (or its sharing.yaml) and your "
+                                                                  "defaults")
     pushing_mode.add_argument("--setup", action="store_true",
-                              help="make or edit sharing.yaml a field at a time, in a terminal: each field explained, "
+                              help="make or edit mime.toml a field at a time, in a terminal: each field explained, "
                                    "Enter skips it or keeps the value shown; then save your defaults if you like")
     pushing_mode.add_argument("--defaults", action="store_true",
-                              help="show your sharing defaults (your name, ORCID iD, affiliation and the rest you "
-                                   "repeat from record to record) and where they live; takes no folder")
+                              help="an alias of `mime defaults`: show your defaults and where they live; takes no "
+                                   "folder")
     pushing_mode.add_argument("--status", action="store_true", help="the draft as the service holds it, against what "
                                                                     "push uploaded")
     pushing_mode.add_argument("--discard", action="store_true", help="delete the draft (only a draft can be deleted)")
@@ -1466,11 +1513,22 @@ def build_parser() -> _guide.MimeParser:
                          help="the full plan: every file inside the bundle with its tier and verdict, every field sent")
     site_edits = pushing.add_mutually_exclusive_group()
     site_edits.add_argument(push.KEEP_FLAG, dest="keep_site_edits", action="store_true",
-                         help="keep each edit made on the service's site that sharing.yaml can hold, written into it, "
-                              "without asking")
+                         help="keep each edit made on the service's site that mime.toml's [record] can hold, written "
+                              "into it, without asking")
     site_edits.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
-                         help="write the draft's metadata from sharing.yaml and the folder over what was edited on the "
+                         help="write the draft's metadata from mime.toml and the folder over what was edited on the "
                               "service's site since push last wrote it (without it, such an edit stops the push)")
+    checking = commands.add_parser("check", help="check a shared folder's mime.toml offline, under a profile: what "
+                                                 "must change, what push still needs, what a reviewer would ask")
+    checking.add_argument("folder", type=Path, help="a saved folder or a study folder that holds mime.toml")
+    checking.add_argument("--profile", choices=[each.value for each in Profile],
+                          help="the profile it is checked under (default: the experiment's own); exploratory lists what "
+                               "push still needs, research makes it a finding and lists what a reviewer would ask")
+    held_defaults = commands.add_parser("defaults", help="your own defaults (your name and ORCID iD, keywords, "
+                                                         "licences, a namespace) and where they live")
+    defaults_commands = held_defaults.add_subparsers(dest="defaults_command")
+    defaults_commands.add_parser("show", help="show them and where they live (the same as a bare `mime defaults`)")
+    defaults_commands.add_parser("edit", help="walk them a field at a time, in a terminal, and save them whole")
     held_credentials = commands.add_parser("credentials", help="the access token mime push will use, kept where a "
                                                                "commit cannot publish it")
     credential_commands = held_credentials.add_subparsers(dest="credentials_command", required=True)
@@ -1869,6 +1927,10 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
                      arguments.accept_licence)
     if arguments.command == "credentials":
         return _credentials(arguments.credentials_command, arguments.service)
+    if arguments.command == "check":
+        return _check(arguments.folder, arguments.profile)
+    if arguments.command == "defaults":
+        return _defaults(arguments.defaults_command)
     if arguments.command == "push":
         try:
             return _push(arguments)

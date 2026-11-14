@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, with_token, write_sharing
+from push_cases import copy_of, with_token, write_manifest
 from terms_cases import mesh_bytes, same_reference_run
 from zenodo_records import FakeRecords
 
@@ -231,11 +231,11 @@ def test_push_lists_it_never_uploads_it_and_warns(folder: Path, data: bytes, tmp
     open_record = AssetRef("lab_table", "ab" * 32, 179, "CC0-1.0", (), role="results", request=REQUEST)
     lock["assets"] = [*lock["assets"], open_record.to_record()]
     (copy / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    write_sharing(copy)
+    write_manifest(copy)
     fake = FakeRecords(with_token(monkeypatch))
     with own_cache(tmp_path) as cache:
         placed(cache, scan(data), data)
-        plan = _plan.make_plan(copy_of(copy, tmp_path / "push"), fake.service(), push.read_sharing(copy),
+        plan = _plan.make_plan(copy_of(copy, tmp_path / "push"), fake.service(), push.read_manifest(copy).record,
                                tmp_path / "staged")
     choices = {choice.ref.name: choice for choice in plan.assets}
     assert not choices["lab_table"].upload, "a record with no location is never uploaded, whatever its licence"
