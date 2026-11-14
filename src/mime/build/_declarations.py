@@ -21,8 +21,9 @@ class RunSettings:
     operating conditions every record is read at; ``profile`` the profile it is built under (``exploratory`` when
     not given); ``duration`` the length of a run of it, which a saved experiment carries (``None``: none stated);
     ``based_on`` the saved experiment it was made from, as its document records it (``None``: made from none);
-    ``blocks`` the blocks it uses, by the use's name, as its document records them (``None``: none). The build reads
-    nothing of ``based_on`` or ``blocks``; the saved form does."""
+    ``blocks`` the blocks it uses, by the use's name, as its document records them (``None``: none); ``assets`` the
+    asset records those blocks bring (``mime.assets.AssetRef``), which its builds pin and its lock then records where an
+    entry reads one. The build reads nothing of ``based_on`` or ``blocks``; the saved form does."""
 
     experiment: Any
     scene: Any
@@ -35,6 +36,7 @@ class RunSettings:
     duration: Any = None
     based_on: Any = None
     blocks: Any = None
+    assets: Any = ()
 
 
 @dataclass(frozen=True)

@@ -66,7 +66,7 @@ from mime.build._maddening import (
 from mime.errors import public
 from mime.errors._frames import warn_at_script
 from mime.experiment._mermaid import Mermaid, mermaid_of
-from mime.experiment._redeclared import add as add_declaration, known_as
+from mime.experiment._redeclared import Taken, add as add_declaration, known_as, taken_of
 from mime.experiment._removed import remove as remove_declaration
 from mime.experiment._tree import Tree, tree_of
 from mime._lineage import Change, Origin, remember_folder
@@ -133,6 +133,7 @@ from mime.validity import DEFAULT_PROFILE, Basis, Profile
 from mime.vocabulary import JOINT_VELOCITIES
 
 if TYPE_CHECKING:
+    from mime.blocks._use import BlockHandle
     from mime.cli._display import RunDisplay, Watch
     from mime.registry import Problem
     from mime.live import LiveSession
@@ -313,11 +314,10 @@ class Experiment:
         #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again):
         #: what a warnings filter cannot remove, shown by ``plan()`` and the build report. Not part of the saved form.
         self._replaced: list[str] = []
-        #: The declarations an experiment made by :meth:`based_on` took from the saved experiment it is based on (the
-        #: objects themselves), and that experiment's name: one of them declared again, changed, is replaced, in a
-        #: script as in a notebook.
-        self._inherited: tuple[Declaration, ...] = ()
-        self._parent: str | None = None
+        #: The declarations taken from elsewhere, by ``id`` with the declaration itself: from the saved experiment an
+        #: experiment made by :meth:`based_on` is based on, or from a block :meth:`use` uses. One of them declared
+        #: again, changed, is replaced, in a script as in a notebook.
+        self._taken: dict[int, tuple[Declaration, Taken]] = {}
         #: Likewise for each declaration removed (``remove``).
         self._removed: list[str] = []
         #: Every replacement and removal of this session, in order, which a build, a result and a view remember the
@@ -367,18 +367,25 @@ class Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
                          seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile,
                          duration=settings.duration)
-        experiment._settings = replace(experiment._settings, based_on=settings.based_on, blocks=settings.blocks)
+        experiment._settings = replace(experiment._settings, based_on=settings.based_on, blocks=settings.blocks,
+                                       assets=settings.assets)
         experiment._declarations = list(declarations)
+        if settings.blocks:
+            from mime.blocks._use import taken_from
+
+            experiment._taken = taken_from(settings.blocks, experiment._declarations)
         return experiment
 
     def _declare(self, declaration: Declaration) -> None:
         """``declaration`` added by the rule of a declaration made a second time (``_redeclared``), with the change it
         made (a replacement) recorded and the place it was declared at kept."""
         before = len(self._replaced)
-        add_declaration(self._declarations, declaration, self._replaced, self._inherited, self._parent)
+        add_declaration(self._declarations, declaration, self._replaced, self._taken)
         known = known_as(declaration)
         if len(self._replaced) > before and known is not None:
             self._changes.append(Change("replacement", known.noun, self._replaced[-1]))
+            if known.key is not None:
+                self._overridden([known.key])
         held = {id(other) for other in self._declarations}
         if id(declaration) in held:
             self._sites[id(declaration)] = where_called()
@@ -413,15 +420,34 @@ class Experiment:
             name = written.id
         else:
             name = None if written is None else str(written)
+        keys = self._keys()
         noun, note = remove_declaration(self._declarations, name, kind, self._place_of, self._removed)
         self._changes.append(Change("removal", noun, note))
+        self._overridden(sorted(keys - self._keys()))
         held = {id(other) for other in self._declarations}
         self._sites = {key: place for key, place in self._sites.items() if key in held}
 
     def _place_of(self, declaration: Declaration) -> str:
-        if any(declaration is each for each in self._inherited):
-            return f"taken from {self._parent!r}, the saved experiment this one is based on"
+        taken = taken_of(self._taken, declaration)
+        if taken is not None:
+            return taken.place
         return self._sites.get(id(declaration), "declared in the loaded document")
+
+    def _keys(self) -> set[tuple[str, str]]:
+        return {known.key for each in self._declarations
+                if (known := known_as(each)) is not None and known.key is not None}
+
+    def _overridden(self, keys: Sequence[tuple[str, str]]) -> None:
+        """Each of ``keys`` (a declaration's, replaced or removed) among the overrides of the block use that provides
+        it, where one does."""
+        if not self._settings.blocks:
+            return
+        from mime.blocks._use import with_override
+
+        for key in keys:
+            changed = with_override(self._settings.blocks, key)
+            if changed is not None:
+                self._settings = replace(self._settings, blocks=changed)
 
     def _add(self, thing: Any, cls: type) -> None:
         if not isinstance(thing, cls):
@@ -597,6 +623,45 @@ class Experiment:
         self._declare(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
 
     @public
+    def use(self, block: str | PathLike[str], /, *, name: str | None = None, **sockets: Handle | str) -> BlockHandle:
+        """Use a block: a published, versioned part of an experiment (things, laws, observations, values with their
+        reasons, at most one controller) that another lab made, with the sockets its user binds (``medium=water``,
+        ``subject=umr``: a handle ``add_*`` returned, or the thing's name). ``block`` is a block folder: one ``mime pull``
+        unpacked, or your own.
+
+        Every refusal at once: each of the block's ``[requires]`` held to what is installed (``block.requires``, with
+        the line that installs what is missing: MIME installs nothing); each socket bound to a thing this experiment
+        declares, of the socket's kind (``block.socket``); each of its entries resolved among installed packages, as a
+        load resolves them, and from a distribution its ``[requires]`` names (``block.entry``); and nothing it provides
+        already declared here (``block.name``). ``name=`` names the use, and names the block's things
+        ``<name>_<thing>``, which is how a block is used twice. A use made again the same (a notebook's cell run twice) is
+        kept once.
+
+        Its declarations join the experiment's. A declaration made after it on something the block provides
+        (``exp.declare("probe.mass", ...)``) replaces the block's, in a script as in a notebook, with a warning, and is
+        recorded among the use's ``overrides``. The saved document records each use under ``blocks``: the block's id,
+        version and content hash, its tier and licence, how its sockets were bound, what it provides and what was
+        declared over it. A block whose licence is open or conditional is **copied**: its declarations are in the
+        document, so a load never needs the block, and its licence joins the document's own (a non-commercial block
+        makes the document's own files non-commercial). Any other is used **by reference**, which a later release
+        reads (``load.referenced-block``).
+
+        Returns the use's handle: an attribute is a thing the block provides, by the block's name for it
+        (``probe.transducer``), and ``probe.handle(<id>)`` gives a law or an observation by its id in the block."""
+        from mime.blocks._use import used
+
+        held = used(block, name=name, sockets=sockets, held=self._declarations, blocks=self._settings.blocks or {})
+        if not held.again:
+            for declaration in held.declarations:
+                self._declare(declaration)
+                self._taken[id(declaration)] = (declaration, held.taken)
+            self._settings = replace(self._settings, blocks={**(self._settings.blocks or {}), held.key: held.doc},
+                                     assets=(*(self._settings.assets or ()), *held.assets))
+        things = {each.thing.name: _handle_of(each.thing) for each in self._declarations
+                  if isinstance(each, ThingDeclaration)}
+        return held.handle(things, self.handle)
+
+    @public
     def plan(self) -> PlanSet:
         """Phase 1 alone: resolve and check every declaration, with no graph. Raises ``BuildRefused``."""
         try:
@@ -632,7 +697,7 @@ class Experiment:
         ``LoadRefused`` when it does not reproduce it."""
         from mime.saved._pins import keeping_pins
 
-        with keeping_pins(self._saved) as pins:
+        with keeping_pins(self._saved, self._settings) as pins:
             plans = self.plan()
             judged_over_ranges(self._settings, self._declarations, plans)
             law, problems, models = law_and_models(plans)
@@ -655,7 +720,7 @@ class Experiment:
             writers = [held for held in stage_writers(self._saved.lock) if held in STAGE_WRITERS]
             if record.stage_hash == self._saved.lock["stage"]["sha256"] and STAGE_WRITER in writers:
                 writers = [STAGE_WRITER]  # the current writer's stage, as saved: no other is written
-            with keeping_pins(self._saved):
+            with keeping_pins(self._saved, self._settings):
                 stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
                           for writer in writers}
             load_report = check_load(self._saved, record, stages, edited_after_load=self._load_checked)
@@ -756,7 +821,9 @@ class Experiment:
             warn_at_script(note, UserWarning)
         settings = replace(parent._settings, experiment=name, based_on=record)
         experiment = cls._declared(settings, parent._declarations)
-        experiment._inherited, experiment._parent = tuple(experiment._declarations), parent.name
+        held = Taken(f"it replaces the one this experiment took from {parent.name!r}, which it is based on",
+                     f"taken from {parent.name!r}, the saved experiment this one is based on")
+        experiment._taken = {**{id(each): (each, held) for each in experiment._declarations}, **experiment._taken}
         return experiment
 
 

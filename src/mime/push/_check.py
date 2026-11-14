@@ -65,6 +65,8 @@ class Checked:
     profile: Profile
     given: bool
     items: tuple[tuple[str, Item], ...]
+    #: What the check says whatever the profile, after its head (a block's tier, and what that tier cannot hide).
+    notes: tuple[str, ...] = ()
 
     def of(self, verdict: str) -> list[Item]:
         return [item for held, item in self.items if held == verdict]
@@ -77,9 +79,10 @@ class Checked:
         """Each item in plain words with its line to write, as ``mime pending`` prints what is pending."""
         counts = ", ".join(_count(len(self.of(verdict)), verdict) for verdict in (FINDING, TO_DO, LISTED)
                            if self.of(verdict) or verdict == FINDING)
-        whose = "given" if self.given else "the experiment's" if self.kind == BUNDLE else "its base experiment's"
+        whose = ("given" if self.given else "the experiment's" if self.kind == BUNDLE else
+                 "the default: a block declares none" if self.kind == "block" else "its base experiment's")
         lines = [f"{self.path}, a {self.kind}'s manifest, checked under the {self.profile.value} profile ({whose}): "
-                 f"{counts}."]
+                 f"{counts}.", *self.notes]
         for verdict in (FINDING, TO_DO, LISTED):
             held = self.of(verdict)
             if not held:
@@ -154,7 +157,7 @@ def _push_refusals(root: Path, kind: str, held: Mapping[str, object]) -> list[It
     from mime.saved._bundle import scan_text
     from mime.saved._card import judged_folder
 
-    found = [_refused_item(DEFECT, each)
+    found = [refused_item(DEFECT, each)
              for each in scan_text("the record's metadata", json.dumps(held.get("record", {}), sort_keys=True,
                                                                        default=str).encode("utf-8"), held_tokens())]
     if kind != BUNDLE:
@@ -162,15 +165,15 @@ def _push_refusals(root: Path, kind: str, held: Mapping[str, object]) -> list[It
     try:
         judged, _, _ = judged_folder(root)
     except BuildRefused as refused:
-        return [*(_refused_item(DEFECT, each) for each in refused.refusals), *found]
+        return [*(refused_item(DEFECT, each) for each in refused.refusals), *found]
     uploader = uploader_of(Reader(root / MANIFEST_FILE), _table(held.get("record")))
     for each in grantee_problems(judged.permissions, uploader, root) if judged.permissions else ():
-        found.append(_refused_item(NEEDED, each, LINES["uploader"]) if uploader is None
-                     else _refused_item(DEFECT, each))
+        found.append(refused_item(NEEDED, each, LINES["uploader"]) if uploader is None
+                     else refused_item(DEFECT, each))
     return found
 
 
-def _refused_item(cls: str, refusal: Refusal, line: str | None = None) -> Item:
+def refused_item(cls: str, refusal: Refusal, line: str | None = None) -> Item:
     """An item made from one of push's own refusals: its message, and its action as the place the fix goes where there
     is no one line to write."""
     if line is not None:
@@ -178,7 +181,7 @@ def _refused_item(cls: str, refusal: Refusal, line: str | None = None) -> Item:
     return Item(cls, f"{refusal.message}: {refusal.action}", None, "")
 
 
-def _profile(value: object) -> Profile:
+def profile_named(value: object) -> Profile:
     found, refusal = profile_of(value)
     if refusal is not None:
         code, message, action = refusal
@@ -191,7 +194,7 @@ def _table(value: object) -> Mapping[str, object]:
     return cast(Mapping[str, object], value) if isinstance(value, dict) else {}
 
 
-def _asked(path: Path, held: Mapping[str, object]) -> list[Item]:
+def asked_items(path: Path, held: Mapping[str, object]) -> list[Item]:
     """What a reviewer would ask of ``[record]`` (``held``, as read): each person among the creators with no ORCID iD, no
     description, no keyword of the author's own."""
     table = _table(held.get("record"))
@@ -219,11 +222,15 @@ def check(folder: str | os.PathLike[str], profile: object | None = None) -> Chec
     no ``mime.toml`` to check, where it does not read, is of a newer form or names a kind its folder is not, and for a
     profile that is not one or is not built (``strict``)."""
     root = Path(os.path.abspath(folder))
+    if folder_kind(root) == "block":
+        from mime.blocks._check import check_block
+
+        return check_block(root, profile)
     _, problems = manifest_problems(root)
     kind = folder_kind(root) or BUNDLE
     path = root / MANIFEST_FILE
     documents = _documents(root, kind)
-    chosen = _profile(profile if profile is not None else _document(root, kind).get("profile", Profile.EXPLORATORY.value))
+    chosen = profile_named(profile if profile is not None else _document(root, kind).get("profile", Profile.EXPLORATORY.value))
     items = [Item(NEEDED if each.needed else DEFECT, each.refusal.message, each.line,
                   f"in {MANIFEST_FILE}" + (f", under [{each.table}]" if each.table else ""))
              for each in problems]
@@ -240,9 +247,10 @@ def check(folder: str | os.PathLike[str], profile: object | None = None) -> Chec
                                       f"{plain(str(declared))}, which its files carry",
                               f'licence = "{plain(str(declared))}"', f"in {MANIFEST_FILE}, under [{kind}]"))
     items += _push_refusals(root, kind, held)
-    items += _asked(path, held)
+    items += asked_items(path, held)
     shown = tuple((verdict, item) for item in items if (verdict := RULES.get((chosen, item.cls))) is not None)
     return Checked(path, kind, chosen, profile is not None, shown)
 
 
-__all__ = ["ASKED", "DEFECT", "FINDING", "LISTED", "NEEDED", "RULES", "TO_DO", "Checked", "Item", "check"]
+__all__ = ["ASKED", "DEFECT", "FINDING", "LISTED", "NEEDED", "RULES", "TO_DO", "Checked", "Item", "asked_items", "check",
+           "profile_named", "refused_item"]

@@ -46,6 +46,7 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import CustomLicenceDoc, ExperimentDocument, Lock, PermissionDoc, TermsDoc
 from mime.terms import (
     CUSTOM_PREFIX,
+    DIFFERING_CONDITIONS_BY,
     NO_ASSERTION,
     CustomLicence,
     Evidence,
@@ -54,6 +55,7 @@ from mime.terms import (
     Scope,
     Terms,
     Verdict,
+    derived_verdict,
     freest,
     ids_of,
     licence_problem,
@@ -387,14 +389,35 @@ def _record_licence(data: bytes) -> str:
     return values if isinstance(values, str) and licence_problem(values) is None else NO_ASSERTION
 
 
-def own_verdict(licence: str | None, custom: Mapping[str, CustomLicence]) -> Verdict:
+def copied_blocks(document: ExperimentDocument) -> list[tuple[str, str]]:
+    """Each block the document uses as copied (its declarations are in the document), as a verdict names it (``block
+    labx.demo_probe 1.2.0``), with its licence, each once however many uses of it there are."""
+    return list(dict.fromkeys((f"block {use['id']} {use['version']}", use["licence"])
+                              for use in document.get("blocks", {}).values() if use["tier"] == "copied"))
+
+
+def own_verdict(licence: str | None, custom: Mapping[str, CustomLicence],
+                blocks: Sequence[tuple[str, str]] = ()) -> Verdict:
     """The verdict of the author's own files, always carried: the experiment's licence's where it is on MIME's open or
     conditional list (with its conditions); otherwise its status (``unknown``, or ``not_permitted`` for a custom
     licence that says so) in the tier ``carried``; and ``unknown`` where the experiment declares no licence, since a
-    reuser is then granted none."""
+    reuser is then granted none.
+
+    Where the document copies blocks in (``blocks``: each as it is named, with its licence), its own files hold their
+    content too, so their verdict is the AND of the experiment's licence and each block's (:func:`derived_verdict`): a
+    non-commercial block makes them non-commercial. MIME judges no compatibility between two licences: two different
+    conditional licences make it ``unknown``, carried, saying why."""
     if licence is None:
         return Verdict("unknown", "carried", (), NO_LICENCE_BY)
     held = licence_verdict(licence, custom)
+    if blocks:
+        combined = derived_verdict([(licence, held), *((each, licence_verdict(each, custom)) for _, each in blocks)])
+        by = (f"the author's own, with {', '.join(f'{words} ({licence_of})' for words, licence_of in blocks)} "
+              f"copied in")
+        if combined.tier == "referenced":
+            why = f": {DIFFERING_CONDITIONS_BY}" if combined.by == DIFFERING_CONDITIONS_BY else ""
+            return Verdict(combined.status, "carried", (), by + why)
+        return Verdict("permitted", combined.tier, combined.conditions, by)
     if held.tier == "referenced":
         return Verdict(held.status, "carried", (), "the author's own")
     return Verdict("permitted", held.tier, held.conditions, "the author's own")
@@ -429,6 +452,7 @@ def file_verdicts(document: ExperimentDocument, files: Mapping[str, tuple[str, i
     licence = document.get("licence")
     terms = document.get("terms", {})
     permissions = document.get("permissions", [])
+    blocks = copied_blocks(document)
     by_inputs = derived or {}
     found: list[FileTerms] = []
     for path, (sha256, size) in sorted(files.items()):
@@ -441,7 +465,7 @@ def file_verdicts(document: ExperimentDocument, files: Mapping[str, tuple[str, i
             found.append(FileTerms(path, sha256, size, "record", records[path],
                                    _with_by(licence_verdict(records[path], custom), "its record's licence")))
         else:
-            found.append(FileTerms(path, sha256, size, "yours", licence, own_verdict(licence, custom)))
+            found.append(FileTerms(path, sha256, size, "yours", licence, own_verdict(licence, custom, blocks)))
     return found
 
 
@@ -769,5 +793,5 @@ def unplaced_refusals(folder: str | os.PathLike[str], placed: Placed) -> list[Re
 __all__ = ["CORRUPT", "INLINE_LIMIT_BYTES", "NOT_CACHED", "NO_ASSET", "NO_LICENCE_BY", "OTHER_FILE", "OUTSIDE",
            "Declared", "Encoded", "FileTerms", "FolderTerms", "Placed", "asset_name", "custom_licences",
            "declared_permissions", "declared_terms", "encode", "experiment_licence", "file_verdicts", "folder_terms",
-           "lock_records", "must_reference", "own_verdict", "place_referenced", "read_check", "referenced_assets",
+           "copied_blocks", "lock_records", "must_reference", "own_verdict", "place_referenced", "read_check", "referenced_assets",
            "sha256_and_size", "third_party_verdict", "unlisted_note", "unplaced_refusals", "write_into"]

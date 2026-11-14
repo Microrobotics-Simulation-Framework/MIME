@@ -1,0 +1,47 @@
+# The labx lab's probe, written in the saved document's own words. The medium is the user's: each law that couples to
+# it binds the socket `medium`, which `exp.use(..., medium=<a medium>)` binds.
+schema: mime.fragment/1
+things:
+  probe:
+    kind: body
+    prim: /World/probe
+    dynamics:
+      motion:
+        name: toy.body
+        version: 0.1.0
+    initial:
+      position:
+        value: [0.3, -0.2, 0.1]
+        unit: m
+      velocity:
+        value: [0.5, 0.1, -0.3]
+        unit: m/s
+interactions:
+- id: labx.nudge:probe
+  name: labx.nudge
+  version: 0.1.0
+  binds:
+    body: probe
+- id: toy.couple:probe
+  name: toy.couple
+  version: 0.1.0
+  binds:
+    body: probe
+    medium: {socket: medium}
+- id: toy.drag:probe
+  name: toy.drag
+  version: 0.2.0
+  binds:
+    body: probe
+  settings:
+    rung: quadratic
+- id: toy.spring:probe
+  name: toy.spring
+  version: 0.1.0
+  binds:
+    body: probe
+declared:
+  probe.mass:
+    value: 2.0
+    unit: kg
+    reason: the lab's probe, weighed
