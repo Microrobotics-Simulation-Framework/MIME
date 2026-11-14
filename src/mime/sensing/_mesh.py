@@ -52,6 +52,22 @@ KEYS = ("mesh_lo", "mesh_hi", "mesh_v0", "mesh_v1", "mesh_v2", "mesh_owner")
 EMPTY_BOX = 1.0e6
 
 
+@dataclass(frozen=True, eq=False)
+class Frozen:
+    """An array a node holds as a constant, which MADDENING does not take for one that can change in place. It keeps a
+    NumPy ``ndarray`` (the host's float64 triangles, the owners) as a registered pytree of one leaf, so that the graph's
+    check for written parameters, which compares an ndarray's bytes at every chunk of a run, does not read the megabytes
+    of a mesh's triangles (the derived graph still records the array's dtype, shape and sha256)."""
+
+    array: np.ndarray
+
+    def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
+        return np.asarray(self.array, dtype=dtype)
+
+
+jax.tree_util.register_dataclass(Frozen, data_fields=["array"], meta_fields=[])
+
+
 @dataclass(frozen=True)
 class Tree:
     """The tree's arrays by :data:`KEYS` (float64 on the host) and each leaf slot's triangle index (``-1`` empty)."""
@@ -403,5 +419,5 @@ def mesh_chords(meshes: Mapping[str, tuple[Any, Any]], detector: Pinhole, pose: 
     return MeshChords(names, chords, crossings)
 
 
-__all__ = ["EMPTY_BOX", "KEYS", "LEAF", "MESH_SAMPLES", "TILE", "Hits", "MeshChords", "Tree", "closed_problem", "inside",
+__all__ = ["EMPTY_BOX", "Frozen", "KEYS", "LEAF", "MESH_SAMPLES", "TILE", "Hits", "MeshChords", "Tree", "closed_problem", "inside",
            "mesh_chords", "mesh_part", "signed_volume", "traced", "tree", "triangles_of", "welded"]

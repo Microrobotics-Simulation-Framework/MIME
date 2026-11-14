@@ -52,6 +52,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found["controller/tracked_rpm_in_graph"] = partial(tracked_rpm, "tracked_rpm_in_graph", mode="graph",
                                                        controller=tracking(orientation_feedback=True, iterations=1))
     found["camera/capsule"] = capsule_camera
+    from mime.sensing import _scene as camera_scene
+
+    if hasattr(camera_scene, "TracedMesh"):  # a merge base before camera 6a traces no static mesh
+        found["camera/mesh"] = mesh_camera
     found["chain/friction_arm"] = friction_arm
     from mime.things import Apparatus
 
@@ -109,6 +113,31 @@ def capsule_camera() -> Experiment:
     experiment.observe(Camera(detector=Detector(width=160, height=120, fx=750.0, fy=750.0, cx=79.5, cy=59.5),
                               mount=World(position=m((0.0, -1e-3, 0.0)), orientation=(root, -root, 0.0, 0.0)),
                               frame_period=ms(3), absorbers=(("tube", 3000.0),)))
+    return experiment
+
+
+def mesh_camera() -> Experiment:
+    """The in-loop camera tracing a static mesh: a box structure, imaged by its drawing (the tree's traversal, its
+    crossing test and the reduction of the crossings, all under ``stop_gradient``), its raw sites scanned."""
+    import math
+
+    from mime import Body, State, Structure
+    from mime.dynamics import RigidInertial
+    from mime.observations import Camera, Detector, World
+    from mime.scene import Box, Scene, Sphere, Z
+    from mime.things import Part
+    from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
+
+    root = math.sqrt(0.5)
+    experiment = Experiment("mesh_camera", scene=Scene.new(up=Z, units="m"), dt=ms(1))
+    experiment.add_structure(Structure("block", geometry=Box(size=um((60.0, 60.0, 60.0)))))
+    experiment.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
+        position=um((0.0, 0.0, 100.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(10.0)))}))
+    experiment.declare("ball.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    experiment.observe(Camera(detector=Detector(width=32, height=24, fx=150.0, fy=150.0, cx=15.5, cy=11.5),
+                              mount=World(position=m((0.0, -1e-3, 0.0)), orientation=(root, -root, 0.0, 0.0)),
+                              frame_period=ms(3), absorbers=(("block", 3000.0),)))
     return experiment
 
 

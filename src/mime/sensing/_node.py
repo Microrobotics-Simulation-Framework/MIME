@@ -76,7 +76,7 @@ from mime.sensing import _scene as scene
 from mime.sensing._coverage import CORNER_SAMPLES
 from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays, ray_table
 from mime.sensing._mesh import KEYS as MESH_KEYS
-from mime.sensing._mesh import MESH_SAMPLES, Tree, mesh_part, tree
+from mime.sensing._mesh import MESH_SAMPLES, Frozen, Tree, mesh_part, tree
 from mime.sensing._render import Exposure, Response, exposed, frame_key, prepared, projected_reach, static_part
 from mime.sensing._subjects import Subject
 
@@ -296,16 +296,17 @@ class CameraNode(MountedNode):
                  period: int, sub_frames: int, seed: int, placement: Sequence[float], mount_index: int = -1,
                  mount_count: int = 0, initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
                  mesh_triangles: Any = None, mesh_owners: Any = None) -> None:
-        meshes = {} if mesh_triangles is None else {
+        held_meshes = {} if mesh_triangles is None else {
             "mesh_triangles": np.asarray(mesh_triangles, dtype=np.float64).reshape(-1, 3, 3),
             "mesh_owners": np.asarray(mesh_owners, dtype=np.int64).reshape(-1)}
+        meshes = {key: Frozen(value) for key, value in held_meshes.items()}
         super().__init__(name, timestep, spec=spec, scene_numbers=scene.numbers(json.loads(spec)), fx=float(fx), fy=float(fy), cx=float(cx), cy=float(cy), k1=float(k1),
                          k2=float(k2), p1=float(p1), p2=float(p2), k3=float(k3), bodies=tuple(bodies),
                          initial_poses=tuple(float(c) for c in initial_poses), period=int(period),
                          sub_frames=int(sub_frames), seed=int(seed), placement=tuple(float(c) for c in placement),
                          mount_index=int(mount_index), mount_count=int(mount_count),
                          initial_mount_pose=tuple(float(c) for c in initial_mount_pose), **meshes)
-        self._tree: Tree | None = tree(meshes["mesh_triangles"], meshes["mesh_owners"]) if meshes else None
+        self._tree: Tree | None = tree(held_meshes["mesh_triangles"], held_meshes["mesh_owners"]) if held_meshes else None
         self._held = self._made()
         self._structure = self._built_structure() if self.holds_cache() else None
 

@@ -24,7 +24,7 @@ from mime import Structure
 from mime.scene import Box, Ellipsoid
 from mime.sensing import CameraPose, mesh_chords, ray_table
 from mime.sensing import _scene as scene
-from mime.sensing._mesh import KEYS
+from mime.sensing._mesh import KEYS, Frozen
 from mime.units import ms, um
 
 if planted("no-medium"):
@@ -53,6 +53,19 @@ def test_the_build_notes_name_each_mesh_with_its_triangles_look_and_sub_rays():
            f"({len(faces)} triangles, attenuating)" in text
     assert f"decimation distance not recorded for: {VESSEL}" in text
     assert "made once a run, and again at each study point that varies the detector's numbers" in text
+
+
+def test_a_meshs_constants_are_not_arrays_the_graph_compares_byte_for_byte_at_every_chunk():
+    """MADDENING takes an ``ndarray`` among a node's constants for one that can change in place and compares its bytes
+    at each chunk of a run: a 100 000-triangle mesh's megabytes became 8 ms a chunk (forty times the steps' own time)
+    before the camera held its triangles as :class:`Frozen`, which the derived graph records all the same."""
+    points, faces = tube(60e-6, 70e-6, 480e-6, 32)
+    node = with_vessel(ballistic(hide=("tube",), absorbers=((VESSEL, 3000.0),)), points @ ALONG_X.T,
+                       faces).build().graph.get_node("camera:")
+    held = node.constants()
+    assert isinstance(held["mesh_triangles"], Frozen) and isinstance(held["mesh_owners"], Frozen)
+    assert not [key for key, value in node.params.items() if isinstance(value, np.ndarray)]
+    assert np.asarray(held["mesh_triangles"]).shape == (len(faces), 3, 3)
 
 
 def test_a_recorded_decimation_is_given_in_pixels_at_this_camera():
