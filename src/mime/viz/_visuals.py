@@ -85,7 +85,7 @@ def lock_manifests(folder: Path) -> list[Manifest]:
             listed: object = cast(dict[str, object], held).get(LOCK_VISUALS, {}) if isinstance(held, dict) else {}
             if not isinstance(listed, dict):
                 return []
-            return [read_manifest_data(value, f"{lock} ({LOCK_VISUALS}: {name})")
+            return [read_manifest_data(value, f"{lock} ({LOCK_VISUALS}: {name})", lock=True)
                     for name, value in sorted(cast(dict[str, object], listed).items())]
     return []
 

@@ -20,8 +20,9 @@ own, under the experiment's licence, and is always carried: ``permitted`` only w
 and otherwise ``unknown`` (or ``not_permitted``, for a custom licence that says so), in the tier ``carried``; with no
 licence declared, a reuser is granted none. **A file that may not be redistributed travels as a reference, whatever
 its size**: its bytes stay out of a bundle, and the lock names the asset that holds them (``referenced_files``, and
-the asset in ``assets``), built from its origin, one asset for one sha256. So does a file over the size a bundle
-carries that has an origin. ``mime pull``, ``unpack`` and ``mime assets fetch <folder>`` place a referenced file from
+the asset in ``assets``), built from its origin, one asset for one sha256; with no origin (saved form 14) the asset
+names no location, and the file is had by request alone (``pack`` warns, and never refuses it). So does a file over the
+size a bundle carries that has an origin. ``mime pull``, ``unpack`` and ``mime assets fetch <folder>`` place a referenced file from
 the asset cache (:func:`place_referenced`), in the folder's real path; a file it cannot place is reported, with why,
 and a folder still missing one is refused as ``asset.missing`` with the command.
 """
@@ -352,7 +353,7 @@ class FileTerms:
     """One file of a saved folder: its path, the sha256 and size of its bytes, whose it is, its licence (``None`` for
     the author's own where the experiment declares none), its verdict, and for a third party's its credit, role and
     origin, the permissions that name its bytes (by their index in the document), and the asset its bytes travel as
-    when they travel as a reference."""
+    when they travel as a reference, with the route that asset names to request the file by."""
 
     path: str
     sha256: str
@@ -365,6 +366,13 @@ class FileTerms:
     origin: tuple[str, ...] = ()
     permissions: tuple[int, ...] = ()
     referenced: str | None = None
+    request: str | None = None
+
+    @property
+    def by_request(self) -> bool:
+        """Whether the file's bytes never travel and nothing names where to fetch them: its terms give no origin, so
+        it is had by request alone."""
+        return (self.referenced is not None or not self.verdict.carried) and not self.origin
 
 
 def _record_licence(data: bytes) -> str:
@@ -457,8 +465,9 @@ def must_reference(file: FileTerms, limit: int) -> bool:
 def referenced_assets(document: ExperimentDocument, files: Mapping[str, tuple[str, int]],
                       taken: Sequence[str], derived: Mapping[str, Verdict] | None = None) -> list[tuple[str, AssetRef]]:
     """The files of ``files`` whose bytes travel as references, each with the asset that holds them, built from its
-    origin: what ``save`` writes into the lock (``referenced_files`` and ``assets``). A file that must travel as a
-    reference and gives no origin is left out here: ``pack`` refuses it, naming what to declare. Copies of one file's
+    origin: what ``save`` writes into the lock (``referenced_files`` and ``assets``). A file that may not be
+    redistributed and gives no origin travels so too, as an asset with no location (saved form 14): ``pack`` warns
+    of it and carries its record alone. Copies of one file's
     bytes (which ``save`` holds to one set of terms) travel as one asset. ``derived`` is as :func:`file_verdicts`
     takes it: a derived file over a referenced input travels as a reference, whatever licence its record declares."""
     names = set(taken)
@@ -466,7 +475,7 @@ def referenced_assets(document: ExperimentDocument, files: Mapping[str, tuple[st
     found: list[tuple[str, AssetRef]] = []
     for file in file_verdicts(document, {path: each for path, each in files.items() if path in
                                          document.get("terms", {})}, {}, derived):
-        if must_reference(file, INLINE_LIMIT_BYTES) and file.origin:
+        if must_reference(file, INLINE_LIMIT_BYTES):
             ref = held.get(file.sha256)
             if ref is None:
                 name = asset_name(file.path, names, file.sha256)
@@ -552,7 +561,7 @@ def lock_records(lock: Lock | Mapping[str, object]) -> list[AssetRef]:
     visuals = held.get("visuals")
     for value in cast(dict[str, object], visuals).values() if isinstance(visuals, dict) else ():
         try:
-            found += read_manifest_data(value, "the lock's visuals").assets
+            found += read_manifest_data(value, "the lock's visuals", lock=True).assets
         except Exception:  # noqa: BLE001 - as above
             continue
     return found
@@ -581,6 +590,11 @@ def _lock_assets(lock: Lock, derived: Mapping[str, Verdict]) -> tuple[LockAsset,
     return tuple(found.values())
 
 
+def _request_of(record: Mapping[str, object] | None) -> str | None:
+    request = record.get("request") if record is not None else None
+    return request if isinstance(request, str) else None
+
+
 def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: set[str], version: int) -> FolderTerms:
     """Each of the ``named`` files of a saved folder with its verdict. A file that is in the folder is hashed there; a
     file that travels as a reference and is not there yet is described by the asset the lock names for it. A file the
@@ -605,7 +619,7 @@ def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: 
             files[path] = (held["sha256"], held["size"])
     derived = derived_verdicts(lock_records(lock))
     judged = [FileTerms(f.path, f.sha256, f.size, f.owner, f.licence, f.verdict, f.credit, f.role, f.origin,
-                        f.permissions, referenced.get(f.path))
+                        f.permissions, referenced.get(f.path), _request_of(assets.get(referenced.get(f.path, ""))))
               for f in file_verdicts(document, files, records, derived)]
     return FolderTerms(tuple(judged), document.get("licence"), custom_licences(document),
                        tuple(document.get("permissions", [])), version, _lock_assets(lock, derived),

@@ -44,6 +44,7 @@ from mime.saved._versions import (
     CURRENT,
     DOCUMENT_SCHEMAS,
     DURATION_ADDED,
+    HASH_ONLY_ADDED,
     LOCK_SCHEMAS,
     NEW_RUNG,
     OLD_RUNG,
@@ -57,6 +58,7 @@ from mime.saved._versions import (
     physics_in_form,
     program_keys_held,
     resolved_in_form,
+    step_14_held,
     terms_keys_held,
     upgraded_document,
     upgraded_lock,
@@ -217,6 +219,10 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
     if based_on_held(data) and version < BASED_ON_ADDED:
         problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds based_on, which version {BASED_ON_ADDED} of the "
                     f"saved form added: a document of an earlier version was made from no other experiment", *problems]
+    step_14 = step_14_held(data, lock=False) if version < HASH_ONLY_ADDED else []
+    if step_14:
+        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds {', '.join(step_14)}, which version "
+                    f"{HASH_ONLY_ADDED} of the saved form added", *problems]
     return document, [_refuse("load.document-shape", RefusalClass.USER, f"{path}: {problem}",
                               "write the document as experiment.save() writes it")
                       for problem in problems], version, renamed
@@ -364,6 +370,11 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
                 problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version "
                             f"{PROGRAM_ADDED} of the saved form added: a lock of an earlier version names no program "
                             f"and records no count of CPUs", *problems]
+            added = step_14_held(data, lock=True) if lock_version < HASH_ONLY_ADDED else []
+            if added:
+                problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version "
+                            f"{HASH_ONLY_ADDED} of the saved form added: a lock of an earlier version names a location "
+                            f"for every asset and no route to request one", *problems]
             if lock is not None:
                 problems = lock_text_problems(lock)
                 lock = lock if not problems else None
@@ -407,12 +418,20 @@ def absent_referenced_files(folder: Path, lock: Lock) -> list[str]:
 
 def missing_referenced(folder: Path, lock: Lock, file: str) -> Refusal:
     """``asset.missing`` for a file that travels as a reference and is not in the folder: the command that fetches it
-    into the cache and places it."""
-    from mime.assets import size_text
+    into the cache and places it; ``asset.by-request`` where its asset is not in the cache and nothing names a location
+    to fetch it from (saved form 14): where to request it, and where to put it once held."""
+    from mime.assets import AssetRef, is_cached, size_text
+    from mime.assets._cache import by_request, no_location
     from mime.assets._commands import fetch_command
 
     name = lock.get("referenced_files", {})[file]
     held = next((each for each in lock.get("assets", []) if each["name"] == name), None)
+    try:
+        ref = AssetRef.from_record(cast("dict[str, object]", held)) if held is not None else None
+    except BuildRefused:  # a malformed record is the shape check's to refuse
+        ref = None
+    if ref is not None and ref.by_request and not is_cached(ref) and no_location(ref):
+        return by_request(ref, folder=folder).refusals[0]
     size = f" ({size_text(held['size'])})" if held is not None else ""
     return _refuse("asset.missing", RefusalClass.ENVIRONMENT,
                    f"the experiment needs {file}, the asset {name!r}{size}, which travels as a reference and is not "
@@ -619,7 +638,7 @@ class LoadReport:
     derived: str
     derived_differences: tuple[str, ...] = ()
     derived_prims_edited: tuple[str, ...] = ()
-    #: The saved form's version (``mime.document/13``), and the profile the experiment is read under.
+    #: The saved form's version (``mime.document/14``), and the profile the experiment is read under.
     schema: str = DOCUMENT_SCHEMA
     profile: str = PREVIOUS_PROFILE
     version: int = CURRENT

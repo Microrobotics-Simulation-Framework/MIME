@@ -496,7 +496,9 @@ def approve(refs: Iterable[AssetRef], *, accept_licences: Collection[str] = (), 
     cache, not offline, not copied in by hand; with ``downloading`` every one of ``refs``, for a caller that is about to
     store them whatever the cache holds, as the resolver is when it repairs a file); nothing to download is nothing to
     ask about the disk. The licences count every one of ``refs``, cached or not: the first use of a cached file is
-    gated too (:func:`require_accepted`). In this order: the **stop** (refused unless ``force``), the **licences** not
+    gated too (:func:`require_accepted`), except a record had by request with no file in place for it
+    (:func:`~mime.assets._fetch.awaits_a_copy`), which is refused as ``asset.by-request`` first, as ``locate`` and the
+    resolver refuse it, and asks nothing. In this order: the **stop** (refused unless ``force``), the **licences** not
     yet accepted (asked about, or accepted by name in ``accept_licences``, or refused), the one **line** saying what the
     download takes (to whoever can be asked), and the **question** when the download is over the size MIME asks about
     (answered by ``yes``, else asked; refused where nobody can be). ``confirm`` answers the size question in place of
@@ -506,7 +508,7 @@ def approve(refs: Iterable[AssetRef], *, accept_licences: Collection[str] = (), 
 
     Raises ``asset.disk-low``, ``asset.licence-not-accepted``, ``asset.licence-declined``, ``asset.download-large``
     or ``asset.download-declined``."""
-    from mime.assets._fetch import needs_download
+    from mime.assets._fetch import awaits_a_copy, needs_download
 
     wanted = list({ref.sha256: ref for ref in refs}.values())
     absent = [ref for ref in wanted if downloading or needs_download(ref)]
@@ -526,10 +528,13 @@ def approve(refs: Iterable[AssetRef], *, accept_licences: Collection[str] = (), 
                 f"the {bytes_text(STOP_BELOW_BYTES)} or {STOP_BELOW_FRACTION:.0%} of the drive MIME keeps free",
                 "free some space, or set MIME_ASSETS_DIR to a folder on a drive with room; `--force` (in Python, "
                 "force=True) downloads anyway")
-    needed = _unaccepted([licence for ref in wanted for licence in licences_of(ref)], accept_licences)
+    # A record had by request with nothing in place is not a download and nothing is read: its refusal
+    # (asset.by-request) comes from the resolver, and no licence is asked about for it.
+    asked = [ref for ref in wanted if not awaits_a_copy(ref)]
+    needed = _unaccepted([licence for ref in asked for licence in licences_of(ref)], accept_licences)
     shown = False
     if needed:
-        shown = _accept(needed, _what(wanted, needed, "the download"), asker, notice)
+        shown = _accept(needed, _what(asked, needed, "the download"), asker, notice)
     if plan is None:
         return Approval(None, tuple(needed), shown)
     if asker is not None:

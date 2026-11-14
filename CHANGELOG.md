@@ -34,6 +34,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that wrote it, for the experiment's own assets, as `ACCEPT_LICENCES`, and accepts them for its run; one not accepted
   there is refused in the container. No asset MIME ships is gated (the tube table is CC0), so no simulation output moves.
 
+- **A file had by request alone: an asset record with no location, saved form 14** (lane P's option 4; the
+  maintainer's answers 2, 3 and 12). A record may name no location (`AssetRef(..., locations=())`, written
+  `"locations": []`) and a route to request its file by (`request=`: one printable line of at most 200 characters, an
+  `https://` link, a `doi:` name, or a contact holding an e-mail address; no part of the file's identity, hash or
+  verdict). MIME does not recommend it and never refuses it. A build that needs the bytes and does not find them is
+  refused as `asset.by-request` (`locate`, `mime assets fetch`, and the load of a folder that lacks such a file), which
+  says where to request it and where to put it: a copy placed in the cache is taken only if its sha256 is the record's.
+  Beside the licence gate in `locate` (P0), a gated file had by request is refused by request while its bytes are not
+  under their sha256, with no licence asked (nothing is read), in `locate`, in `mime assets fetch` of a name and in its
+  batch of a folder alike; the fetch that takes a placed copy asks, and from then on `locate` asks as for any gated file,
+  never saying by request of a file that is here. Where no command can fetch the asset by name (its record is only in a
+  saved folder's lock or a description's manifest), the action names the commands for the folder or the description, not
+  `mime assets fetch <name>`, which would be refused as an unknown asset; `asset.missing` says the same.
+  `mime assets sources` says "no download location (by request)". `mime pack` carries the record, never the bytes, and
+  warns (`mime.saved.ByRequestWarning`); `mime push` never uploads it, whatever its licence, lists it in its plan with
+  its route, and warns; neither refuses it or asks `--yes`. The NOTICE, the availability statement and the card open
+  "Not reproducible from public sources" where results depend on such a file, with its route; one of role
+  `presentation` gets a softer line. The saved form is version 14: the lock's records, in its `assets` and in its
+  `visuals` manifests, may hold either addition, both outside every hash, so a folder of an earlier form loads as it
+  was and one whose lock holds either is refused (`load.lock-shape`); a reader of form 13 refuses form 14 as
+  `load.newer-form`. The bundle's format is `mime.bundle/4` and a manifest file's `mime.asset_manifest/3`, since a
+  reader of the format before each, given a record with no location, refused its shape (`bundle.manifest`,
+  `asset.manifest`), measured with MIME at 316937a8; it now refuses by the format, naming a later MIME.
+  The step is unconditional, so a bundle of an earlier form's folder packed by this MIME is refused by that reader too
+  (`load.newer-form`), and an older MIME's `mime assets fetch <folder>` of a folder of this form is refused by its
+  records' shape, as before (see Fixed). Development releases make no compatibility promise to an older reader.
+
+- **The document's `blocks` key, saved form 14** (the block design's §2.6; the maintainer's answer that it rides this
+  step). Each block an experiment uses, by the use's name: its id, version and content hash, its tier (`copied` or
+  `referenced`, computed from its licence), its licence, the DOI it was used by, its sockets' bindings, the names it
+  provides in each of the document's sections of declarations, and the paths declared over it; written only where a
+  block is used, inside the input hash. Nothing writes it yet: `exp.use` and the reading of a referenced block come
+  with the block itself. Until then a `copied` use, whose declarations the document holds, loads with its input hash
+  reproduced, and a `referenced` one is refused as `load.referenced-block` (this MIME does not yet read a referenced
+  block), never as a shape. A form-13 document that holds the key is refused (`load.document-shape`).
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
@@ -951,6 +987,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`bundle.no-location` is retired: `mime pack` no longer refuses a file that may not be redistributed whose terms
+  give no origin** (saved form 14). Save writes it into the lock as a reference with no location, the bundle carries
+  that record, and pack warns (`ByRequestWarning`). A lock of an earlier form that does not name such a file as a
+  reference is refused as `bundle.lock-terms` (save the experiment again).
+
 - **A study's reverse-mode derivative in float32 through a body resolved on the FVM's grid (`Drag.Penalty`) is
   refused outside the envelope where it was measured right** (`drag.penalty-float32-reverse`, before the derivative
   compiles), routed to float64 or to forward mode. The envelope, allowed: a sphere in the default 0.1h interior at up
@@ -1277,6 +1318,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **A lock of a later saved form read by `mime assets fetch <folder>` or `mime assets sources <folder>` was refused by
+  its records' shape** (`asset.reference`, measured with MIME at 316937a8 on a form-14 folder), since they read the
+  lock's records without its form. They now refuse it as `load.newer-form` first (`mime.assets.folder_assets`).
+- **Push's plan had a filter that dropped an asset with no location from its list without a word.** It was unreachable
+  until saved form 14, since every record had a location, so no release showed it; the plan now lists such an asset
+  with where to request it.
 
 - **A refusal of the user's or the environment's class raised by MIME's own API inside an entry is that refusal, not the
   entry's defect** (lane P). An entry's `plan()`, `build()`, a default's rule (`numerical_default(..., by=...)`), or a
