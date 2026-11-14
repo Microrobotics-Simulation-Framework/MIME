@@ -214,6 +214,17 @@
       "changes": {
         "rerun_controls": "the PR's control rates measured again on the fix's head, the renderer having changed: RSWAP (G18's capsule, CAMERA_PLANT=sampled-offset) and RWINDOW (G21, CAMERA_PLANT=small-window): 30/30 caught, clean 0/30, as on the PR's head (runs 43619756315 and 43616060342); RSIGN32 (G16's helix in float32, SIGN_PLANT=sign) and RSLOPE32 (the screw in float32, SIGN_PLANT=slope), Hypothesis seeds 0 to 29 at its default 100 examples: 30/30 and clean 0/30; RRIPPLE (gate_ripple, CAMERA_PLANT=lesser): 30/30, clean 0/30"
       }
+    },
+    {
+      "when": "2026-11-14, before the second probe (probe/cam-pr5a-fix-gates) was launched, after the merge of the release tip (bc96aa78)",
+      "seen_before_amendment": [
+        "no result of the second probe; the confirmation probe (probe/cam-pr5a-fix-corner) had not finished"
+      ],
+      "changes": {
+        "bits_base": "the bits comparison's base is origin/release/v0.3.0 at bc96aa78, the tip this head has merged (the 'ca96a132' above was the tip before the merge); the controls are scripts/camera_route2/bits_controls.py: each program compiled twice on the head (equal) and once with the mount one ulp of the program's dtype along y (differs), pinned to one CPU and one thread as bit_compare pins",
+        "arms": "DERIV (derivative.py), G20 (g20.py), G19-<width>-<dtype> (width 160, 320, 640; float32 and float64), BITS, DUR (pytest --durations=0 over the PR's test files), RRIPPLE (gate_ripple's control, 30 seeds), RSWAP, RWINDOW (30 seeds, as the PR), RSIGN32 (helix, SIGN_PLANT=sign, float32) and RSLOPE32 (screw, SIGN_PLANT=slope, float32), Hypothesis seeds 0 to 29",
+        "judgement": "every plant caught every run and every clean arm at 0; G20 within 1 % at every entry (the design's line) and N to 2N under 0.4 %; the ripple's fix within 0.003 of the central difference at every position and both poses; bits: every program equal and both controls discriminating; G19's rates inside gate_g19_cost's band"
+      }
     }
   ],
   "outcomes": null
