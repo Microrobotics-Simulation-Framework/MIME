@@ -21,6 +21,7 @@ from mime.assets import AssetRef, _cache, _fetch, _sources
 from mime.assets._reference import REQUEST_FORMS, request_problem
 from mime.assets._sources import Sourced
 from mime.build import BuildRefused
+from mime.terms import CustomLicence
 
 REQUEST = "mailto:imaging@hospital.example.org"
 
@@ -179,3 +180,72 @@ def test_sources_says_by_request_and_where_to_ask(tmp_path: Path):
         assert "request it from no route given" in assets.sources_text([record(b"a scan", request=None)])
 
     run_with_rig(scenario, tmp_path)
+
+
+# --- beside the licence gate in locate (P0) -----------------------------------------------------------------------------
+
+GATED = CustomLicence("LicenseRef-Imaging-Lab-NC", "The imaging lab's data licence 1.0",
+                      "https://example.org/imaging-lab/LICENSE.txt", "not_permitted", ("non-commercial research only",))
+
+
+def the_order(rig: Rig, root: Path) -> list[tuple[str, int]]:
+    """What a gated record with no location meets, step by step, as (the outcome, the licence questions asked so far):
+    not placed, placed under its name and not taken, taken with nobody to ask, then read with somebody to ask."""
+    from test_locate_gate import Yes
+
+    no_locations_file(rig, root)
+    os.environ["MIME_LICENCE_ACCEPTANCES"] = str(root / "licences.json")
+    payload = drawn(3)
+    ref = AssetRef("vessel_scan", hashlib.sha256(payload).hexdigest(), len(payload), GATED.id, (), role="results",
+                   licences=(GATED,), request=REQUEST)
+    asker, seen = Yes(), []
+
+    def outcome(action) -> None:
+        try:
+            got = action()
+            seen.append(("read" if got.read_bytes() == payload else "other bytes", asker.asked))
+        except BuildRefused as refused:
+            seen.append((refused.codes()[0], asker.asked))
+
+    with assets.asking(asker):
+        outcome(lambda: assets.locate(ref))
+        rig.cache.mkdir(parents=True, exist_ok=True)
+        (rig.cache / ref.name).write_bytes(payload)
+        outcome(lambda: assets.locate(ref))
+    with assets.asking(None):
+        outcome(lambda: assets.fetch(ref))
+        outcome(lambda: assets.locate(ref))
+    with assets.asking(asker):
+        outcome(lambda: assets.locate(ref))
+        outcome(lambda: assets.locate(ref))
+    return seen
+
+
+#: The order: by request while the bytes are not under their sha256, with no licence asked (nothing is read); the take
+#: of a placed copy asks (refused with nobody to ask, the copy kept as checked); then the gate, as for any file, never
+#: the by-request words; a yes asked once and remembered.
+ORDER = [("asset.by-request", 0), ("asset.by-request", 0), ("asset.licence-not-accepted", 0),
+         ("asset.licence-not-accepted", 0), ("read", 1), ("read", 1)]
+
+
+def test_a_gated_file_had_by_request_is_by_request_until_its_bytes_are_here_then_its_licence_is_asked(tmp_path: Path):
+    seen: list[tuple[str, int]] = []
+    run_with_rig(lambda rig: seen.extend(the_order(rig, tmp_path)), tmp_path)
+    assert seen == ORDER
+
+
+def test_control_the_gate_asked_first_is_seen_by_the_order_test(tmp_path: Path):
+    """The order test discriminates: with the licence asked before the cheap check, a file not here is asked about."""
+    from mime.assets._gates import require_accepted
+
+    found = _cache._found
+
+    def gate_first(ref, folder, checksum):
+        require_accepted([ref])
+        return found(ref, folder, checksum)
+
+    seen: list[tuple[str, int]] = []
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(_cache, "_found", gate_first)
+        run_with_rig(lambda rig: seen.extend(the_order(rig, tmp_path)), tmp_path)
+    assert seen != ORDER and seen[0] == ("asset.by-request", 1)

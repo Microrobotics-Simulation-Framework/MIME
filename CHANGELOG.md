@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The licence gate is closed in `locate`** (lane P, P0). `assets.locate` now asks for the first use of a gated file
+  as the resolver does (`require_accepted`): bytes a person placed in the cache, or that `mime assets check` or a refused
+  `resolve` recorded as checked, no longer reach a build with no acceptance on record. A licence with conditions that
+  nothing accepted is asked about once at a terminal, or refused (`asset.licence-not-accepted`) where nobody can be asked.
+  The gate applies wherever `locate` is read, not only in a build: `mime push` reads an uploaded asset through it, so a push of a
+  gated, placed file asks (or is refused) as a build does; `mime pull`'s read of the bundle it downloaded is not gated (a
+  bundle's own terms are judged when it is unpacked), unless its bytes are a gated record a shared source names.
+  A non-interactive build that reads a gated file needs the acceptance on record first: accept at a terminal
+  (`mime assets fetch <folder>`), point `MIME_LICENCE_ACCEPTANCES` at a file holding it, or in Python
+  `assets.approved([], accept_licences=...)`. The script `mime modal` writes carries the ids accepted on the machine
+  that wrote it, for the experiment's own assets, as `ACCEPT_LICENCES`, and accepts them for its run; one not accepted
+  there is refused in the container. No asset MIME ships is gated (the tube table is CC0), so no simulation output moves.
+
 - **A file had by request alone: an asset record with no location, saved form 14** (lane P's option 4; the
   maintainer's answers 2, 3 and 12). A record may name no location (`AssetRef(..., locations=())`, written
   `"locations": []`) and a route to request its file by (`request=`: one printable line of at most 200 characters, an
@@ -16,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verdict). MIME does not recommend it and never refuses it. A build that needs the bytes and does not find them is
   refused as `asset.by-request` (`locate`, `mime assets fetch`, and the load of a folder that lacks such a file), which
   says where to request it and where to put it: a copy placed in the cache is taken only if its sha256 is the record's.
+  Beside the licence gate in `locate` (P0), a gated file had by request is refused by request while its bytes are not
+  under their sha256, with no licence asked (nothing is read); the fetch that takes a placed copy asks, and from then on
+  `locate` asks as for any gated file, never saying by request of a file that is here.
   `mime assets sources` says "no download location (by request)". `mime pack` carries the record, never the bytes, and
   warns (`mime.saved.ByRequestWarning`); `mime push` never uploads it, whatever its licence, lists it in its plan with
   its route, and warns; neither refuses it or asks `--yes`. The NOTICE, the availability statement and the card open

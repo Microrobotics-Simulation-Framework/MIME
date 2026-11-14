@@ -28,10 +28,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from mime._terminal import plain
 from mime.assets._commands import fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
-from mime._terminal import plain
-from mime.assets._reference import AssetRef
+from mime.assets._reference import AssetRef, BundleContainer
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.terms import NO_ASSERTION
 
@@ -131,7 +131,7 @@ def remembered_checksum(checksum: str, name: str, location: str) -> AssetRef | N
         if held["checksum"] != checksum or not isinstance(held["sha256"], str) or isinstance(held["size"], bool) \
                 or not isinstance(held["size"], int):
             return None
-        return AssetRef(name, held["sha256"], held["size"], NO_ASSERTION, (location,))
+        return BundleContainer(name, held["sha256"], held["size"], NO_ASSERTION, (location,))
     except (OSError, ValueError, KeyError, TypeError, BuildRefused):
         return None
 
@@ -247,7 +247,7 @@ def cheap_problem(ref: AssetRef, checksum: str | None = None) -> str | None:
 
 
 def is_cached(ref: AssetRef) -> bool:
-    """Whether :func:`locate` would return the file."""
+    """Whether :func:`locate` would find the file (its licence's acceptance, which it also asks, aside)."""
     return cheap_problem(ref) is None
 
 
@@ -284,12 +284,10 @@ def by_request(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None) -
         f"record's")])
 
 
-def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
-    """The cached file of ``ref``, checked cheaply (size, and the record of the full verification made when it was
-    stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that
-    is not there, or that fails the check, is refused as ``asset.missing``, and one not there that no location names
-    as ``asset.by-request`` (:func:`by_request`). The action is the exact command that stores it: for everything the
-    experiment ``folder`` needs when the folder is known, else for this asset by name."""
+def _found(ref: AssetRef, folder: str | os.PathLike[str] | None, checksum: str | None) -> Path:
+    """The cached file of ``ref`` after the cheap check, or ``asset.missing``, or ``asset.by-request`` where it is not
+    there and no location names where to fetch it (:func:`by_request`); no licence is asked about. Private: the only ways
+    out of this module to a file's bytes are :func:`locate` and :func:`locate_bundle_container`."""
     problem = cheap_problem(ref, checksum)
     if problem is not None and not file_path(ref).is_file() and no_location(ref):
         raise by_request(ref, folder=folder)
@@ -299,6 +297,48 @@ def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, check
             f"the experiment needs {ref.name!r} ({size_text(ref.size)}), which {problem}",
             f"Run: {fetch_command(ref.name, folder=folder)}")])
     return file_path(ref)
+
+
+def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
+    """The cached file of ``ref``, checked cheaply (size, and the record of the full verification made when it was
+    stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that
+    is not there, or that fails the check, is refused as ``asset.missing``, and one not there that no location names as
+    ``asset.by-request`` (:func:`by_request`). The action is the exact command that stores it: for everything the
+    experiment ``folder`` needs when the folder is known, else for this asset by name.
+
+    **The first use of a gated file is gated here too** (:func:`~mime.assets.require_accepted`): bytes placed in the cache
+    by hand, or recorded as checked by ``mime assets check`` or a refused resolve, never pass with no acceptance on
+    record. A licence with conditions beyond credit that nothing accepted is asked about once, or refused where nobody
+    can be asked (``asset.licence-not-accepted``), naming the routes a build has (a build's command has no
+    ``--accept-licence``).
+
+    **A gated file had by request** meets the two in this order: while its bytes are not under their sha256 (none
+    placed, or a copy placed under its name and not yet taken), ``asset.by-request``, and no licence is asked about,
+    since nothing is read (``mime assets fetch``, which takes a placed copy by its sha256, asks then); once they are,
+    the gate, as for any file, and the by-request words never show for a file that is here."""
+    found = _found(ref, folder, checksum)
+    from mime.assets._gates import require_accepted
+
+    require_accepted([ref], accept_with=fetch_command(ref.name, folder=folder))
+    return found
+
+
+def locate_bundle_container(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None,
+                            checksum: str | None = None) -> Path:
+    """:func:`locate` for the container file of a bundle a pull has just downloaded
+    (:class:`~mime.assets._reference.BundleContainer`, which only that download makes), whose own terms are judged when
+    it is unpacked. **Any other reference is gated as :func:`locate` gates it**: a gated asset's record is refused here
+    as there, whatever it is named. So is a container whose bytes are those of a gated record the shared sources
+    (installed manifests, the locations file) name: the file is the record's first, and a pull's reading it as a
+    bundle does not make it any less so. A record declared only in an experiment's script is not known here."""
+    if not isinstance(ref, BundleContainer):
+        return locate(ref, folder=folder, checksum=checksum)
+    from mime.assets._gates import require_accepted
+    from mime.assets._sources import shared_records
+
+    require_accepted([known for known in shared_records().values() if known.sha256 == ref.sha256],
+                     accept_with=fetch_command(ref.name, folder=folder))
+    return _found(ref, folder, checksum)
 
 
 #: Where the cache keeps a file under its record's name, for a reader that needs a file name (a USD layer, a URDF):
