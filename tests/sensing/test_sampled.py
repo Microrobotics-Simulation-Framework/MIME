@@ -188,6 +188,35 @@ def two_branch_pixels(body: Subject, position, orientation, view=(LENS, POSE)) -
     return np.nonzero(np.asarray(near).reshape(-1))[0]
 
 
+def unbounded_descents(body: Subject, position, orientation, pixels: np.ndarray, view=(LENS, POSE)) -> int:
+    """How many of the pixels' corner sub-rays hold a branch whose least the scheme does not bound: its descent from
+    the pixel's held point ran its whole reach (``_sampled.LEAST_REACH``) still descending, away from the other
+    branch (towards it, the branch has merged into the other's basin, and its piece is the other's)."""
+    lens = view[0]
+    rays = render_module.ray_table(lens, view[1], u=jnp.asarray(pixels % lens.width, jnp.float64),
+                                   v=jnp.asarray(pixels // lens.width, jnp.float64))
+    rotation, origin = render_module._local(body, jnp.asarray(position), jnp.asarray(orientation), jnp.float64)
+    p = render_module._parameters(body, jnp.float64)
+    o = render_module._into(rotation, tuple(rays.origin[i] - origin[i] for i in range(3)))
+    d = render_module._into(rotation, rays.direction)
+    du, dv = render_module._into(rotation, rays.along_u), render_module._into(rotation, rays.along_v)
+    marched = body.placed.sampled
+    held = sampled_route.march(marched, p, o, d, du)
+    found = 0
+    for su, sv in coverage.sub_offsets(coverage.CORNER_SAMPLES):
+        moved = tuple(d[i] + su * du[i] + sv * dv[i] for i in range(3))
+        scale = 1.0 / jnp.sqrt(sum(c * c for c in moved))
+        ray = tuple(c * scale for c in moved)
+
+        def at(t, ray=ray):
+            return sampled_route.evaluate(marched, p, *(o[i] + t * ray[i] for i in range(3)))
+
+        for t, other in ((held.ta, held.tb), (held.tb, held.ta)):
+            *_, toward, ran = sampled_route._descended(at, t, held.dt)
+            found += int(np.sum(np.asarray(ran & ~(toward * (other - t) > 0.0) & held.has2)))
+    return found
+
+
 def single_edge(monkeypatch) -> None:
     """The plant: the second branch dropped, so no pixel is a corner and each takes one straight edge."""
     def pieces(sampled, held):
@@ -209,16 +238,19 @@ class enabled_x64:
         jax.config.update("jax_enable_x64", self.held)
 
 
-def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil",
-                  side: int = TRUTH_SIDE, signs: int = 512) -> tuple[np.ndarray, int]:
+def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil", side: int = TRUTH_SIDE,
+                  signs: int = 512, unbounded: list[int] | None = None) -> tuple[np.ndarray, int]:
     """Each two-branch pixel's error against the sign-only truth, at the pose drawn from ``seed``: the pixels and the
-    truth in float64, the frame in the run's dtype."""
+    truth in float64, the frame in the run's dtype; ``unbounded``, where given, takes the count of their sub-rays'
+    branches whose least the scheme does not bound (``unbounded_descents``)."""
     view = across(width, field=3e-3)
     position, orientation = drawn_pose(seed)
     with enabled_x64():
         body = subject("helix", COILS[coil])
         pixels = two_branch_pixels(body, position, orientation, view)
         truth = sampled_truth.truth(body, view[0], view[1], position, orientation, pixels, side=side, signs=signs)
+        if unbounded is not None:
+            unbounded.append(unbounded_descents(body, position, orientation, pixels, view))
     if planted("single-edge"):
         single_edge(monkeypatch)
     found = 1.0 - frame(subject("helix", COILS[coil]), position, orientation, view).reshape(-1)[pixels]
@@ -228,19 +260,22 @@ def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil",
 @pytest.mark.parametrize("coil", sorted(COILS))
 @pytest.mark.parametrize("width", [128, 256, 512])
 def test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth(width, coil, monkeypatch, dtype):
-    errors, count = corner_errors(SEED, monkeypatch, width, coil)
+    unbounded: list[int] = []
+    errors, count = corner_errors(SEED, monkeypatch, width, coil, unbounded=unbounded)
     line = corner_line(coil, width, dtype)
     largest = float(errors.max()) if count else float("nan")
     print(f"\n{coil}, width {width}, {dtype}, seed {SEED}: {count} two-branch pixels, largest error {largest:.4f} "
-          f"(line {line:.4f}), mean {float(errors.mean()) if count else float('nan'):.4f}")
+          f"(line {line:.4f}), mean {float(errors.mean()) if count else float('nan'):.4f}; "
+          f"{unbounded[0]} sub-ray branches unbounded")
     record = os.environ.get("CORNER_RECORD")
     if record:
         with open(record, "a") as handle:
             handle.write(json.dumps({"seed": SEED, "coil": coil, "width": width, "dtype": dtype,
                                      "plant": os.environ.get("CAMERA_PLANT", ""), "pixels": count,
-                                     "largest": largest, "line": line}) + "\n")
+                                     "largest": largest, "line": line, "unbounded": unbounded[0]}) + "\n")
     assert count > 0, "the drawn pose shows no crossing of the coil's turns: the gate is silent"
     assert largest <= line
+    assert unbounded[0] == 0, "a branch's least lies beyond the descent's reach: the line does not bound the pixel"
 
 
 # -- the motion's derivative across a pixel -----------------------------------------------------------------------------

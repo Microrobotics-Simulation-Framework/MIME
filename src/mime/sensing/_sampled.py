@@ -13,9 +13,12 @@ value's derivative is the live evaluation's at the held point, exact to the firs
 held point, its line in the pixel by ``jvp`` along the ray table), composed as a union (``lesser``). Where both lie
 within ``CORNER_REACH`` of the pixel's centre, two branches of the outline cross the pixel (a body occluding itself,
 seen as two separated minima along the ray: FL-9's lobes meet in concave notches of about 80 degrees, where one
-straight edge misses a quarter of the pixel), and route 1's corner sub-samples take it, each re-evaluating both
-pieces at its held points (exact to the second order in the offset). Where there is no second minimum, the second
-piece is the first moved out by the enclosing radius, which never reaches the pixel.
+straight edge misses a quarter of the pixel), and route 1's corner sub-samples take it, each the exact share of the
+union of the two branches' half-planes, each branch read at its sub-ray's own least: the descent from its pixel's
+held point at the march's spacing to a sample lower than both its neighbours (at a notch the least moves along the
+sub-ray several spacings, and between the basins the held values are not convex), then the quartic's least about it.
+Where there is no second minimum, the second piece is the first moved out by the enclosing radius, which never
+reaches the pixel.
 
 **The chord** (for an attenuating body) is the samples' sign changes, each refined by linear interpolation: a body
 thinner than the samples' spacing along a ray can be missed in its chord, never in its coverage. The interval is held
@@ -58,9 +61,14 @@ MARGIN_PX = 2.0
 TRANSCENDENTAL_WEIGHT = 20.0
 #: Newton's steps on the quartic through a ray's five held values, from the parabola's least to the quartic's.
 LEAST_STEPS = 2
-#: Evaluations a ray costs besides its samples: each of the two pieces' five held values (its least's search) and its
-#: value and its line's two derivatives.
-PIECE_EVALUATIONS = 16
+#: Moves of a march spacing a branch's least may take from its held point, by descent, before the quartic. At a notch
+#: of the outline a corner sub-ray's least lies up to several spacings from its pixel's held point: a branch's foot
+#: runs along the filament ``(rho + r) / rho`` times as fast as the sub-ray moves across the image (``r`` the
+#: filament's radius, ``rho`` its outline's), and between the two branches' basins the held values are not convex.
+LEAST_REACH = 6
+#: Evaluations a ray costs besides its samples: each of the two pieces' held values (the descent's three and its
+#: ``LEAST_REACH`` moves, and the quartic's two between) and its value and its line's two derivatives.
+PIECE_EVALUATIONS = 2 * (LEAST_REACH + 5) + 2 * 3
 #: Evaluations a ray costs on a frame whose corner sub-samples run: every pixel's sub-pixels (``CORNER_SAMPLES``
 #: squared, 16), each the two pieces' value and line.
 CORNER_EVALUATIONS = 16 * PIECE_EVALUATIONS
@@ -207,6 +215,54 @@ def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -
     return jnp.sum(within, axis=-1) * held.dt
 
 
+def _descended(at: Any, t: Any, spacing: Any) -> tuple[Any, ...]:
+    """The descent along a ray from ``t`` at the march's spacing towards its lower neighbour, at most
+    ``LEAST_REACH`` moves: the sample it stops at, lower than both its neighbours (or the last it reached), its value,
+    its neighbours' a spacing below and above it along the ray, the direction it went (-1 or 1), and whether it ran its
+    whole reach still descending. Where the five values about a held point are not convex (between two branches'
+    basins) a step of the quartic alone does not move; the descent does."""
+    before, middle, after = at(t - spacing), at(t), at(t + spacing)
+    toward = jnp.where(before < after, -1.0, 1.0)
+    path = [jnp.where(toward < 0.0, after, before), middle, jnp.where(toward < 0.0, before, after)]
+    path += [at(t + toward * k * spacing) for k in range(2, LEAST_REACH + 2)]
+    centre, value, behind, ahead = t, middle, path[0], path[2]
+    going = jnp.ones_like(middle, dtype=bool)
+    for k in range(1, LEAST_REACH + 1):
+        going = going & (path[k + 1] < path[k])
+        centre = jnp.where(going, t + toward * k * spacing, centre)
+        value, behind, ahead = (jnp.where(going, path[k + 1], value), jnp.where(going, path[k], behind),
+                                jnp.where(going, path[k + 2], ahead))
+    ran = going & (path[LEAST_REACH + 2] < path[LEAST_REACH + 1])
+    return (centre, value, jnp.where(toward < 0.0, ahead, behind), jnp.where(toward < 0.0, behind, ahead), toward,
+            ran)
+
+
+def _quartic_least(far_low: Any, low: Any, middle: Any, high: Any, far_high: Any) -> Any:
+    """Where the least of five values half a spacing apart lies, in half spacings from the middle one: the quartic's
+    least through them, by Newton's steps (``LEAST_STEPS``, each at most half a spacing) from the least of the
+    parabola through the outer three; or the least of the inner three, where it is lower than the quartic's own value
+    there (a profile the quartic does not fit: a kink in its curvature, where an arc's nearest point passes its end).
+    The quartic takes out the parabola's error from the profile's asymmetry, whose effect on the derivative a held
+    point leaves first order."""
+    curvature = far_low - 2.0 * middle + far_high
+    rising = curvature > 0.0
+    at_least = jnp.where(rising, jnp.clip((far_low - far_high) / jnp.where(rising, curvature, 1.0), -2.0, 2.0), 0.0)
+    c1 = (far_low - 8.0 * low + 8.0 * high - far_high) / 12.0
+    c2 = (-far_low + 16.0 * low - 30.0 * middle + 16.0 * high - far_high) / 24.0
+    c3 = (-far_low + 2.0 * low - 2.0 * high + far_high) / 12.0
+    c4 = (far_low - 4.0 * low + 6.0 * middle - 4.0 * high + far_high) / 24.0
+    for _ in range(LEAST_STEPS):
+        slope = c1 + at_least * (2.0 * c2 + at_least * (3.0 * c3 + at_least * 4.0 * c4))
+        turn = 2.0 * c2 + at_least * (6.0 * c3 + at_least * 12.0 * c4)
+        convex = turn > 0.0
+        at_least = jnp.clip(at_least + jnp.where(convex, jnp.clip(-slope / jnp.where(convex, turn, 1.0), -1.0, 1.0),
+                                                 0.0), -2.0, 2.0)
+    fitted = middle + at_least * (c1 + at_least * (c2 + at_least * (c3 + at_least * c4)))
+    inner = jnp.where(low < high, -1.0, 1.0)
+    return jnp.where(fitted <= jnp.minimum(middle, jnp.minimum(low, high)), at_least,
+                     jnp.where(middle <= jnp.minimum(low, high), 0.0, inner))
+
+
 def pieces(sampled: Sampled, held: March) -> Any:
     """The two branches' pieces on rays: each the first-order distance at its ray's own least near its held point
     (``least``); the second, where there is no second minimum, the first moved out by the enclosing radius."""
@@ -215,34 +271,30 @@ def pieces(sampled: Sampled, held: March) -> Any:
         def at(t: Any) -> Any:
             return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
 
-        def least(t: Any) -> Any:
-            """The held point moved to its ray's least nearby (a corner sub-sample's, whose least is not its pixel's):
-            the least of the quartic through the distance at five points half a march spacing apart about it, by
-            Newton's steps (``LEAST_STEPS``, each at most half a spacing) from the least of the parabola through the
-            outer three (at most a spacing away). The quartic takes out the parabola's error from the profile's
-            asymmetry, whose effect on the derivative a held point leaves first order. Held, as the march is: no
-            derivative passes through it, and at the least the distance does not move with it."""
-            values = [lax.stop_gradient(at(t + 0.5 * k * held.dt)) for k in (-2.0, -1.0, 0.0, 1.0, 2.0)]
-            far_low, low, middle, high, far_high = values
-            curvature = far_low - 2.0 * middle + far_high
-            rising = curvature > 0.0
-            # In half spacings from t: the parabola's least, then the quartic's coefficients and Newton's steps.
-            at_least = jnp.where(rising, jnp.clip((far_low - far_high) / jnp.where(rising, curvature, 1.0), -2.0, 2.0),
-                                 0.0)
-            c1 = (far_low - 8.0 * low + 8.0 * high - far_high) / 12.0
-            c2 = (-far_low + 16.0 * low - 30.0 * middle + 16.0 * high - far_high) / 24.0
-            c3 = (-far_low + 2.0 * low - 2.0 * high + far_high) / 12.0
-            c4 = (far_low - 4.0 * low + 6.0 * middle - 4.0 * high + far_high) / 24.0
-            for _ in range(LEAST_STEPS):
-                slope = c1 + at_least * (2.0 * c2 + at_least * (3.0 * c3 + at_least * 4.0 * c4))
-                turn = 2.0 * c2 + at_least * (6.0 * c3 + at_least * 12.0 * c4)
-                convex = turn > 0.0
-                at_least = jnp.clip(at_least + jnp.where(convex, jnp.clip(-slope / jnp.where(convex, turn, 1.0),
-                                                                          -1.0, 1.0), 0.0), -2.0, 2.0)
-            return lax.stop_gradient(t + 0.5 * at_least * held.dt)
+        def held_at(t: Any) -> Any:
+            return lax.stop_gradient(at(t))
 
-        first = at(least(held.ta))
-        return first, jnp.where(held.has2, at(least(held.tb)), first + sampled.enclosing)
+        def least(t: Any, other: Any) -> tuple[Any, Any]:
+            """The held point moved to its ray's least nearby (a corner sub-sample's, whose least is not its pixel's):
+            the descent at the march's spacing to the sample lower than both its neighbours (``_descended``), then
+            the least of the quartic through the distance at five points half a spacing apart about it
+            (``_quartic_least``); and whether the branch has merged into the other's basin (its descent ran its whole
+            reach towards the other branch's held point ``other``: past the fold where its own least vanishes, whose
+            edge lies the outline's radius of curvature away, beyond any of its sub-cells). Held, as the march is: no
+            derivative passes through it, and at the least the distance does not move with it."""
+            centre, value, below, above, toward, ran = _descended(held_at, t, held.dt)
+            low, high = held_at(centre - 0.5 * held.dt), held_at(centre + 0.5 * held.dt)
+            point = lax.stop_gradient(centre + 0.5 * _quartic_least(below, low, value, high, above) * held.dt)
+            return point, ran & (toward * (other - t) > 0.0)
+
+        at_first, first_merged = least(held.ta, held.tb)
+        at_second, second_merged = least(held.tb, held.ta)
+        first, second = at(at_first), at(at_second)
+        # A branch merged into the other's basin is the other's piece (the union of a line with itself is the line);
+        # with no second minimum, the second is the first moved out by the enclosing radius.
+        second = jnp.where(held.has2, jnp.where(second_merged, first, second), first + sampled.enclosing)
+        first = jnp.where(held.has2 & first_merged & ~second_merged, second, first)
+        return first, second
 
     return made
 

@@ -1,0 +1,68 @@
+{
+ "written": "2026-11-15, committed before the tail round's confirmation ran (the commit that adds this file is the timestamp): the corner tail's cause, the scheme's change, and its confirmation on fresh draws with the corner line unchanged",
+ "phase": "camera PR 5a (route 2), the tail round after the corner line's confirmation failed (run 43642088699, predictions_camera_pr5a_fix.json's outcomes)",
+ "labels": "predictions by the tail round's agent: the cause measured on the failed run's seeds (seen, used for diagnosis only); the scheme's change chosen on them; the line is predictions_camera_pr5a_fix.json's, derived before that run and not moved",
+ "seen_before": [
+  "run 43642088699's table (predictions_camera_pr5a_fix.json, outcomes): the rule failed in 5 of 12 groups; seeds 2052 and 2129 (coil, 128 px), 2049 (coil, 256 px), 2152 (coil2, 512 px) clean over 0.8 of the line or over it, in both dtypes; the single edge at seed 2022 (coil, 256 px) 0.017",
+  "local, float64, the PR's corner_errors: each tail is one pixel, every other two-branch pixel of the draw at most 0.001 (2052: 0.0452 at (40, 36); 2129: 0.0462 at (57, 68); 2049: 0.0386 at (96, 124); 2152: 0.0208 at (413, 193))",
+  "local: the cause at 2052, 2129 and 2049 (apex notches, the two feet 0.43 to 0.58 rad apart on one turn): on the one or two sub-rays carrying the error, branch b's own least lies 1.5 to 2.4 march spacings from the pixel's held point (itself 0.4 to 0.66 spacing from the centre ray's least), and the five held values there are not convex (between the two basins), so the parabola and the quartic do not move (0.00 spacing): b is read 0.10 to 0.17 px too far out and the union misses 0.3 to 0.7 of one or two sub-cells",
+  "local: the cause at 2152 (an apex notch at the coil's end, one foot 0.013 rad from the arc's end): branch a's least on the sub-rays lies past the end, on the cap, where the profile's second derivative jumps; the quartic through five values half a spacing apart stepped -0.21 spacing where the least is +0.36, 0.04 px off; branch b there has no least within 3 spacings (merged into a's basin)",
+  "local, the causal control: the least by a dense search (+-6 spacings at 1/16, then the quartic): 2052 0.0030, 2129 0.0024, 2049 0.0017, 2152 0.0016; seed 2000 (coil2, 512 px) 0.0091 -> 0.0020 (the clip costs accuracy there on typical draws, under the line)",
+  "local, candidates as patches (seeds 2052, 2129, 2049, 2152, 2000, 2001, 2002): a descent at the march's spacing, the quartic about its lowest sample and a guard by value: the apex tails 0.0007 to 0.0010 at a reach of 2 or more; 2152 0.0104 without the guard, 0.0019 with it (by the quartic's own value or an evaluated one alike); coil2 at 512 px seed 2000 0.0034 at a reach of 2 or 4, 0.0020 at 6 and 8 and with the dense search; seeds 2001 and 2002 unchanged",
+  "local, the scheme as committed (descent, guarded quartic, merge rule) at a reach of 4 and 6: 2052 0.0009, 2129 0.0010, 2001 0.0019, 2049 0.0007, 2152 0.0019 at both; 2000 (coil2, 512 px) 0.0034 at 4, 0.0020 at 6; the judged pixels rise (2000: 23 -> 38), the centre rays now reaching branch b's least",
+  "geometry (corner_line.py's refined_residual, the descent's lowest sample within half a spacing of the least on the straight filament): 4.7e-6 to 1.03e-5 px, the term 1.3e-5 to 2.9e-5, under the line's 1e-4; within a whole spacing it would be 1.6e-4 to 4.3e-4",
+  "the single edge at 2022 (coil, 256 px), local: 18 two-branch pixels, each keeping the branch whose half-plane holds nearly all of the union inside it (coverage 0.49 to 0.99): the dropped branch's own area at most 0.0166 of a pixel; notches of 25 and 90 degrees"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); every arm through probe_launch.sh; timings only from the G19 arms",
+  "sizes_and_parameters": "as predictions_camera_pr5a_fix.json's gate_corner: the coil (radius 0.4 mm, pitch 0.6 mm, 2.5 turns, filament 80 um, 48 samples) and coil2 (pitch 0.52 mm, 3 turns, 49 samples) from 0.1 m across a 3 mm field at 128, 256 and 512 px; corner sub-samples 4 x 4; the truth at 64 x 64 jittered samples a pixel and 512 signs, float64; route 2's least by descent (_sampled.LEAST_REACH = 6 moves of a march spacing), the guarded quartic and the merge rule",
+  "seeds_and_draws": "corner: test_sampled.drawn_pose at DETECTION_SEED 2200 to 2399 (never run: the PR's draws were 0 to 59, the review's 1000 to 1059, the failed confirmation's 2000 to 2199), 200 a width, coil and dtype, clean and planted, in two arms of 100 (bases 2200 and 2300); G19: the in-loop coil at 160, 320 and 640 px, both dtypes, on this head and on 5d4b2724's _sampled.py"
+ },
+ "gate_corner_tail": {
+  "claim": "on every pixel where two branches of a coil's outline cross, route 2 with its least reached by descent is within the corner line of the sign-only truth, at 128, 256 and 512 px, float64 and float32, on two coils; and on every such pixel's sub-rays no branch's least lies beyond the descent's reach away from the other branch",
+  "kind": "bounds",
+  "case": "tests/sensing/test_sampled.py::test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth[<dtype>-<width>-<coil>], through detection_rate.py (CAMERA_PLANT=single-edge, DETECTION_SEED 2200 to 2399 in two arms of 100 a case), CORNER_RECORD holding each draw's largest error and its count of unbounded sub-ray branches",
+  "prediction": {
+   "value": "the lines unchanged (predictions_camera_pr5a_fix.json: the coil 0.0469 / 0.0297 / 0.0211 in float64, 0.0505 / 0.0369 / 0.0355 in float32; coil2 0.0259 / 0.0192 / 0.0158 and 0.0295 / 0.0264 / 0.0302); the clean largest over 200 draws 0.002 to 0.006 at every case (at most 0.4 of its line), no draw with an unbounded branch",
+   "band": [
+    0.0,
+    0.8
+   ],
+   "unit": "the clean largest's share of its line",
+   "basis": "derived",
+   "why": "the descent reaches the least wherever it lies within its reach (the tails' lay 1.5 to 2.4 spacings out; 6 matched the dense search on every seen case); the guard takes out the quartic's wrong step at a kink; what is left is the line's own terms (cell curvature, the truth's floor) and, at a coil's end, the kink's residual, which the derivation does not bound (corner_line.py, 'Not covered'), measured at 0.0019 at the one seen case"
+  },
+  "required": "per case, as predictions_camera_pr5a_fix.json's gate_corner: clean 0/200 and planted 200/200, the clean largest at most 0.8 of the line and the planted least at least 1.25 of it; and no clean draw with an unbounded branch",
+  "control": {
+   "plant": "CAMERA_PLANT=single-edge, unchanged (the second branch dropped)",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "200/200 a case is the rule; predicted to fall short at about one draw in 200 at 256 px, as seed 2022 did",
+   "runs": 200,
+   "clean_expected": "0/200 a case",
+   "resolution": "the single edge's error at a two-branch pixel is the dropped branch's own area inside it, set by where the notch's vertex falls on the pixel grid and which branch the pixel keeps, not by a size: its least over 200 draws was 0.017 at 256 px (seed 2022), against 1.25 of the line, 0.037 to 0.046; it is not resized here (the tail round's report proposes a plant set by the defect it stands for)"
+  },
+  "if_wrong": "a clean draw over 0.8 of its line, or a draw with an unbounded branch, is a finding against the scheme or its derivation, reported with its pixel's cause; the line is not moved and the claim not loosened; a planted draw under 1.25 of the line is the plant's resolution, reported as such",
+  "cannot_discriminate_if": "a draw with no two-branch pixel (the test asserts some), or the truth's re-measurement at four times its samples moving the worst clean draw by more than the truth's floor"
+ },
+ "gate_tail_cost": {
+  "claim": "the descent raises route 2's frame by what the structural estimate counts: a ray's evaluations from 320 to 524 (48 samples; each of the two pieces' held values 3 + LEAST_REACH + 2 and value and line 3, at the pixel's centre and at 16 corner sub-rays), so the effective rate stays in the PR's band",
+  "kind": "estimates",
+  "case": "probe arms G19-<width>-<dtype> on this head and G19B-<width>-<dtype> with 5d4b2724's _sampled.py (scripts/camera_route2/g19.py, node_measure.py through the in-loop coil, width 160, 320 and 640)",
+  "prediction": {
+   "value": "the frame 1.4 to 1.8 times the base's at each size and dtype; the effective rate within the PR's band (float32 23 to 31, float64 12 to 14 G flops-equivalents a second) on both",
+   "band": [
+    1.2,
+    2.0
+   ],
+   "unit": "this head's frame over the base's",
+   "basis": "derived",
+   "why": "the corner sub-rays' evaluations dominate a ray (16 of 17 rays' pieces) and rise from 16 to 28 a sub-ray (1.64 times the ray's count); the march's samples and the union's arithmetic are unchanged"
+  },
+  "if_wrong": "a ratio outside the band, or rates outside the PR's, restate COST_LINE's note with the measured numbers"
+ },
+ "outcomes": null
+}
