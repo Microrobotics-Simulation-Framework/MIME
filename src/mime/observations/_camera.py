@@ -27,6 +27,7 @@ from mime.registry import (
 from mime.sensing import BrownConrady, Pinhole
 from mime.sensing import _scene as scene
 from mime.sensing._node import FLAG_FIELDS, CameraNode, period_steps
+from mime.sensing._switches import SWITCHES
 from mime.units import DIMENSIONLESS, Length, Quantity, Time, m
 from mime.vocabulary import POSE
 
@@ -154,8 +155,9 @@ class Camera(Observation):
 
     name = "camera"
     version = "0.1.0"
-    differentiability = GradientStatus.UNVERIFIED
+    differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(
+        switches=SWITCHES,
         where="expected, the frame's counts before noise and quantisation, in forward and reverse mode: the poses and the "
               "detector's nine numbers; image, frame_step, age and new_frame carry none (a rounding and counts). Reverse "
               "mode whose memory estimate would not fit the memory a run can have is refused by name "

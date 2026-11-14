@@ -34,7 +34,7 @@ import jax
 import numpy as np
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.core import quaternion
+from mime.core import quaternion, switch
 from mime.core._node import jnp
 from mime.sensing import _coverage as coverage
 from mime.sensing import _detector as detector
@@ -158,7 +158,15 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
     form = subject.placed.form
     crossing = sum((coverage.near(line).astype(single.dtype) for line in lines), start=jnp.zeros_like(single))
     turning = sum((coverage.near(lines[i]).astype(single.dtype) for i in form.turning), start=jnp.zeros_like(single))
-    corner = (crossing >= 2.0) | (turning >= 1.0)
+    def margin() -> Any:
+        """The pixel's margin of being a corner, in pixels: the second of its lines to come within the corner reach
+        (how far inside it that line lies), or a turning piece's line, the greater; positive for a corner pixel."""
+        inside = jnp.stack([coverage.CORNER_REACH - jnp.abs(line.distance) for line in lines])
+        second = jnp.sort(inside, axis=0)[-2]
+        return jnp.maximum(second, jnp.max(inside[jnp.asarray(form.turning)], axis=0)) if form.turning else second
+
+    corner = switch.predicate((crossing >= 2.0) | (turning >= 1.0), owner="camera.corner",
+                              resolution=lambda: switch.rounding(coverage.CORNER_REACH), indicator=margin)
 
     def one(total: Any, offset: Any) -> tuple[Any, None]:
         su, sv = offset[0], offset[1]
@@ -172,6 +180,19 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
         offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
         total, _ = lax.scan(_jax.checkpoint(one, prevent_cse=False), jnp.zeros_like(single), offsets)
         return total / corner_samples ** 2
+
+    if switch.collector_open():
+        # A switch collector keeps what a loop's or a cond's body traces beyond it, so while one is open the sub-samples
+        # are taken as they would be written without the scan, and the choice is a select of both: the same values,
+        # each switch of the corner pixel's sub-samples recorded on the values it reads. No program a run compiles
+        # takes this path.
+        offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
+        total = jnp.zeros_like(single)
+        for k in range(offsets.shape[0]):
+            total, _ = one(total, offsets[k])
+        return switch.where(jnp.any(corner), total / corner_samples ** 2, single, owner="camera.corner",
+                            resolution=lambda: switch.rounding(coverage.CORNER_REACH),
+                            indicator=lambda: jnp.max(margin()))
 
     # Sub-sampled where some pixel holds a corner (two pieces cross it) or a piece whose own outline turns within a
     # pixel (a cap seen near edge-on, its ellipse's ends a fraction of a pixel round): every pixel then takes its

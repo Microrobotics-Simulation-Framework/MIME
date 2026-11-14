@@ -67,6 +67,7 @@ from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
 from hull_cases import MARGIN as HULL_MARGIN, TUBE_RADIUS, hull_node, kind_points, rotation
 
+from camera_switch_rows import camera_rows, guard_points as camera_guard_points
 from switch_configurations import PACKAGE, tree_scan
 
 import mime.nodes.hydro._surrogate_drag as surrogate_drag
@@ -116,7 +117,8 @@ def declarations() -> dict[str, switch.Declaration]:
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
                                 ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
                                 ("wall kind", "tube", "0.1.0"), ("geometry", "cylinder", "0.1.0"),
-                                ("observation", "phase_lag", "0.1.0"), ("drive", "drive.ramp", "0.1.0")):
+                                ("observation", "phase_lag", "0.1.0"), ("drive", "drive.ramp", "0.1.0"),
+                                ("observation", "camera", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -887,7 +889,7 @@ def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
             *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared),
-            *hull_rows(declared), *lag_and_ramp_rows(declared)]
+            *hull_rows(declared), *lag_and_ramp_rows(declared), *camera_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
@@ -903,7 +905,14 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
                  "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
                  "tube.table", "tube.angle", "tube.axial", "tube.axis", "phase_lag.window", "phase_lag.mean",
-                 "ramp.start", "ramp.end"])
+                 "ramp.start", "ramp.end",
+                 "camera.edge.out_far", "camera.edge.out_near", "camera.edge.in_far", "camera.edge.in_near",
+                 "camera.edge.centre", "camera.pieces.least", "camera.pieces.greatest", "camera.corner",
+                 "camera.disc.series", "camera.disc.start", "camera.disc.end", "camera.disc.crossing",
+                 "camera.disc.enter.low", "camera.disc.enter.high", "camera.disc.exit.low", "camera.disc.exit.high",
+                 "camera.disc.full", "camera.disc.clear", "camera.disc.holds", "camera.ahead", "camera.cap_side",
+                 "camera.span.low", "camera.span.high", "camera.span.axial", "camera.interval.enter",
+                 "camera.interval.leave", "camera.interval.start", "camera.interval.stop", "camera.interval.chord"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -1270,6 +1279,7 @@ def guard_points(graph):
                                                 lambda: jax.jacfwd(logarithmic)(not_positive)),
         "the porous plug's depth along its axis": (lambda: plug(plug_axis), lambda: jax.jacfwd(plug)(plug_axis)),
         **tracking_points(),
+        **camera_guard_points(),
     }
 
 
@@ -1344,7 +1354,9 @@ def swim_at_twist(graph, twist):
                                    "the MRS samples on the screw",
                                    "A0's controller on its target's orientation",
                                    "A0's controller turning its end effector",
-                                   "A0's controller, the body's z along the home pose's x"])
+                                   "A0's controller, the body's z along the home pose's x",
+                                   "the camera's exact disc over pixels some of which the ball does not touch",
+                                   "the camera's crossing test on a side of no length"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []
