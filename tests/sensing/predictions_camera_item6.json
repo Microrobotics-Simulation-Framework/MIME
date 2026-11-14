@@ -1,0 +1,38 @@
+{
+ "written": "2026-11-14, committed before camera item 6's bits probe ran (the commit that adds this file is the timestamp): the renderer's switches routed through mime.core.switch and declared on the camera entry, the undistortion's derivative test added, no program changed",
+ "phase": "camera item 6 (dev2), stacked on the camera reverse PR (#297): the renderer's switches declared, the camera's gradient status derived",
+ "labels": "predictions by the builder (Sonnet) from a local run of the same comparison (below), the compiled programs' text read with their source-location tables stripped",
+ "seen_before": [
+  "a local comparison on the laptop, one CPU (taskset) and one thread, this branch's working tree against a worktree of #297's head (79c1276e), probe/hlo.py as improved here (the stack-frame and file-location tables a compiled module's text starts with, which move with the source's line numbers, are dropped as well as the metadata): the step, a 6-step run and its forward-mode derivative equal, float64 and float32; the control (one ulp on the camera's mount along y) differs in all three. Seen before this file: the prediction below is a repeat of it on the runners, not a blind one"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "GitHub runner, 4 vCPU; bit_compare.py pins one CPU and one thread",
+  "sizes_and_parameters": "script A's ballistic camera (tests/sensing/in_loop_cases.ballistic, 3 ms frame period, the camera's mount along y), a 6-step run, forward-mode derivative in fy; 160x120",
+  "seeds_and_draws": "deterministic programs; one compile an arm and dtype"
+ },
+ "gate_1_no_program_changed": {
+  "claim": "routing the renderer's raw operations through mime.core.switch (no context open) changes no program a step, a run or its forward-mode derivative compiles: the compiled text, source locations removed, is the same as #297's head's",
+  "kind": "equality",
+  "case": "probe/hlo.py through .github/probe/bit_compare.py, base 79c1276e627dae02d88144dbeaf57e1abfc87a20 against this head; programs hlo_f64 and hlo_f32, each writing three arrays (step, run, jvp) of the compiled text",
+  "prediction": {
+   "value": "every array np.array_equal, six of six",
+   "band": [null, null],
+   "unit": "arrays equal",
+   "basis": "measured-before",
+   "why": "a switch function with no context open traces exactly its operation (mime.core.switch), the lambdas that give an indicator and a resolution are evaluated only inside a collector, and the collector-only path of _box_coverage is not taken; the one place the traced order of operations could move, _edge_in_disc's chain and square_below's pieces, keeps its order"
+  },
+  "metric": "the compiled module's text, which predicts bit-for-bit equality of a run's arrays better than the arrays of one input (every program it can run is the same)",
+  "control": {
+   "plant": "the camera's mount moved one ulp along y on the base side (hloulp_f64): a constant of the program, so the text must differ",
+   "environment_variable": "none: the program name hloulp_f64 selects it in probe/hlo.py",
+   "expected_rate": "3/3 arrays differ, the comparison of the controls arm's base (HEAD's own worktree) with the head",
+   "runs": 1,
+   "clean_expected": "the same program against itself (hlo_f64 in the controls arm) equal, 3/3",
+   "resolution": "one ulp of a constant is the smallest change a program can carry"
+  },
+  "if_wrong": "an array differs: find the first differing instruction (the text with locations stripped, by diff) and the site that moved it; a difference that is only an order of operations the compiler schedules is still a changed program and is fixed in the source",
+  "cannot_discriminate_if": "both sides stripped to nothing (the text is checked non-empty: 1.6 to 2.3 million characters a program) or the base side ran the head's tree (the controls arm shows an ulp differs)"
+ },
+ "outcomes": null
+}

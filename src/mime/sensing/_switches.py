@@ -25,35 +25,36 @@ from mime.core import switch
 EDGE_SWITCHES = (
     switch.Declaration(
         owner="camera.edge.out_far",
-        indicator="the distance of the line from the far corner of the pixel's square on the side of the centre "
-                  "outside the body, less the share's start: minus the line's distance from the centre less the "
-                  "square's corner reach, in pixels (positive where no part of the square is covered)",
+        indicator="how far the line stands outside the pixel's square, beyond its corner nearest the body, for a "
+                  "pixel whose centre is outside the body, in pixels (positive where it does not touch the square and "
+                  "the share is zero)",
         orders={"expected": 1},
         route="none needed: the share starts as a triangle with the slope zero, so it is continuously differentiable "
               "across the corner (a second derivative jumps)"),
     switch.Declaration(
         owner="camera.edge.out_near",
-        indicator="the distance of the line from the pixel's near side on the side of the centre outside the body, "
-                  "in pixels (positive where the share is the triangle)",
+        indicator="how far the line stands beyond the pixel's second corner, for a pixel whose centre is outside the "
+                  "body, in pixels (positive where the share is the triangle at the first corner, negative where it "
+                  "is linear)",
         orders={"expected": 1},
         route="none needed: the triangle meets the linear share with the same value and slope (a second derivative "
               "jumps)"),
     switch.Declaration(
         owner="camera.edge.in_far",
-        indicator="as camera.edge.out_far, for the line mirrored through the centre (the centre inside the body), "
-                  "in pixels",
+        indicator="as camera.edge.out_far, for a pixel whose centre is inside the body, whose share is one less the "
+                  "mirrored line's (positive where the mirrored line does not touch the square), in pixels",
         orders={"expected": 1},
         route="none needed: as camera.edge.out_far"),
     switch.Declaration(
         owner="camera.edge.in_near",
-        indicator="as camera.edge.out_near, for the line mirrored through the centre (the centre inside the body), "
-                  "in pixels",
+        indicator="as camera.edge.out_near, for a pixel whose centre is inside the body, whose share is one less the "
+                  "mirrored line's, in pixels",
         orders={"expected": 1},
         route="none needed: as camera.edge.out_near"),
     switch.Declaration(
         owner="camera.edge.centre",
-        indicator="minus the line's signed distance from the pixel's centre, in pixels (positive where the centre is "
-                  "outside the body)",
+        indicator="the line's signed distance from the pixel's centre towards the outside of the body, in pixels "
+                  "(positive where the centre is outside the body, and the share below one half)",
         orders={"expected": 1},
         route="none needed: the share is symmetric about the centre and its slope is the same either side (a second "
               "derivative jumps where the normal is diagonal)"),
@@ -89,8 +90,9 @@ CORNER_SWITCHES = (
         route="none needed: the choice is continuous where it is made",
         unmeasured="at its threshold the lines that make a pixel a corner graze the pixel's corner and cut no area, "
                    "and the pixel's two estimates (one straight edge, the sub-samples' mean) are each the share the "
-                   "other lines cut: they differ only inside the reach, by 15 % of a pixel at a rod's corner, "
-                   "where the choice is the sub-samples, and a pixel with a straight edge has the same value either way"),
+                   "other lines cut: they differ only inside the reach, by about a seventh of a pixel at a rod's "
+                   "corner, where the choice is the sub-samples, and a pixel with a straight edge has the same value "
+                   "either way"),
 )
 
 #: The exact disc coverage: the area of a pixel's quadrilateral inside the unit disc, a closed chain of pieces on each
@@ -101,8 +103,8 @@ DISC_SWITCHES = (
         indicator="the bound of the angle's series less the absolute angle a chord subtends, in radians (positive "
                   "where the segment's area is taken from the series)",
         orders={"expected": -1},
-        route="a longer series: it stops at its ninth power, 6e-12 of a pixel's area short of the closed form at the "
-              "threshold (0.5 rad), and one more term brings that to 1e-14"),
+        route="a longer series: it stops at its ninth power, a few trillionths of a pixel's area short of the closed "
+              "form at the threshold, and one more term closes that to rounding"),
     switch.Declaration(
         owner="camera.disc.start",
         indicator="one minus the squared distance of a side's first end from the disc's centre, in the disc's units "
@@ -122,9 +124,10 @@ DISC_SWITCHES = (
                   "circle (minus the root of how far it misses it where it does not), the chord's end past the "
                   "segment's start, and the segment's end past the chord's start (positive where the segment "
                   "crosses the circle)",
-        orders={"expected": 0},
-        route="none: where a segment reaches the circle (tangent, or ending on it) the chain's pieces change and "
-              "their sum, the area, is continuous; its slope is not"),
+        orders={"expected": 1},
+        route="none needed: where a side reaches the circle (tangent, or ending on it) the chain's pieces change and "
+              "their sum, the area, is continuous with a continuous slope (the sliver a tangent side cuts is "
+              "of order the three halves of its depth)"),
     switch.Declaration(
         owner="camera.disc.enter.low",
         indicator="the fraction of a side at which its line enters the circle, in the segment's own fraction "
@@ -133,8 +136,8 @@ DISC_SWITCHES = (
         route="none: a side that starts inside the circle enters it at its start"),
     switch.Declaration(
         owner="camera.disc.enter.high",
-        indicator="the segment's end less the fraction at which its line enters the circle, in the segment's own "
-                  "fraction",
+        indicator="one less the fraction of a side at which its line enters the circle, in the segment's own fraction "
+                  "(positive before the segment's end)",
         orders={"expected": 0},
         route="none: a side that ends before it reaches the circle does not cross it, which camera.disc.crossing "
               "selects"),
@@ -147,8 +150,8 @@ DISC_SWITCHES = (
               "camera.disc.crossing selects"),
     switch.Declaration(
         owner="camera.disc.exit.high",
-        indicator="the segment's end less the fraction at which its line leaves the circle, in the segment's own "
-                  "fraction",
+        indicator="one less the fraction of a side at which its line leaves the circle, in the segment's own fraction "
+                  "(positive before the segment's end)",
         orders={"expected": 0},
         route="none: a side that ends inside the circle leaves it at its end"),
     switch.Declaration(
@@ -189,22 +192,21 @@ FORM_SWITCHES = (
               "and at the pinhole where it is behind: the two meet at the pinhole, with a different slope"),
     switch.Declaration(
         owner="camera.cap_side",
-        indicator="the cap plane's height above the pinhole, in metres (positive where the pinhole is above the "
-                  "plane: the side the cone faces)",
+        indicator="the pinhole's height above the cap's plane, in metres (positive where the pinhole is above it)",
         orders={"expected": -1},
         route="none: a pinhole in a cap's plane sees the cap edge-on, and the cone's side flips there, so its edge "
               "function changes by twice its facing term"),
     switch.Declaration(
         owner="camera.span.low",
-        indicator="the ray parameter of the farther plane of a cylinder's span less the nearer's, in metres "
-                  "(positive where the first is the least)",
+        indicator="the ray parameter at which the ray meets a cylinder's upper end plane, less that of its lower plane, "
+                  "in metres (positive where the ray runs up, meeting the lower first)",
         orders={"expected": 0},
         route="none: the planes' order is the order of the parameters the ray meets them at; the pair is the same "
               "whichever is first, and the interval's ends meet where the parameters do"),
     switch.Declaration(
         owner="camera.span.high",
-        indicator="the ray parameter of the first plane of a cylinder's span less the second's, in metres (positive "
-                  "where the first is the greatest)",
+        indicator="the ray parameter at which the ray meets a cylinder's lower end plane, less that of its upper plane, "
+                  "in metres (positive where the ray runs down, meeting the upper first)",
         orders={"expected": 0},
         route="none: as camera.span.low"),
     switch.Declaration(

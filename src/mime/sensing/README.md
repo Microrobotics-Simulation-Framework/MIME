@@ -76,7 +76,11 @@ about a sub-pixel's area).
 
 The tracker and the controller that reads the in-loop camera, the stage reader, the sampled route and its crease measures, meshes and the display view's lighting and colour, X-ray
 detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
-intersections) are raw `jnp` operations, written for a node that renders inside its own `lax.cond`.
+intersections) go through `mime.core.switch` where a switch has a branch a derivative can take, under the owners
+`camera.*` (`_switches.py`, declared on the `camera` entry, each a row of the switch harness); the sites that stay raw are
+listed with their reasons in `docs/ratchets/raw_switches.txt`. A switch collector keeps what a loop's or a cond's body
+traces beyond it, so while one is open `_box_coverage` takes the corner sub-samples unrolled and the choice as a select
+(`switch.collector_open()`); no program a run compiles changes.
 
 ## The in-loop camera (`mime.observations.Camera`, node `_node.py`)
 

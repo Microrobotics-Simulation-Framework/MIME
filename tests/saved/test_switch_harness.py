@@ -37,6 +37,13 @@ and the orders above are the theory's (the focus's are measured in ``test_shape_
 nothing, as its declaration says: its two branches take the root, polished to rounding, with the Newton step or
 without it, and differ in the derivative only.
 
+The camera's switches (``mime.sensing._switches``) have rows of their own (``camera_switch_rows.py``), each placed a quarter
+of a step from its switch on the renderer's own function that evaluates it, at one pixel or one ray, and measuring that
+function's value as the group ``expected``: the pixel's share of a straight edge, a chain's area inside the unit circle, a
+piece's edge function, an interval's end. Its corner choice alone is measured through ``render`` of one pixel of a rod's
+corner, placed by a secant on the margin; its row measures nothing, by its declaration's reason (the two estimates agree
+where it is made). The camera's domain guards have guard points of their own there.
+
 The kink limit is measured: fitted on ``drag.clamp`` (a kink) and ``drag.end`` (a jump), then checked on two
 independent planted rows, an analytic kink and an analytic jump, and on two mixed rows that state its resolution: a
 jump of 0.4 of the smooth part's growth over a quarter step reads as one, a jump of 0.04 of it reads continuous. The
