@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as two pieces of route 1's pixel integration. Where both cross a pixel (two parts of the outline meeting, as FL-9's lobes
   in concave notches and a coil's crossing turns), route 1's corner sub-samples take it: the first step located the 0.09 to
   0.25 per-pixel error off the screw's crease there (15 of 15 pixels, the truth at four times its samples moving by at most
-  0.0066), and the sub-samples took it to 0.010 to 0.020. The helix and the ellipsoid now appear in the in-loop camera (its
+  0.0066), and the sub-samples took it to 0.010 to 0.020 (on the coil, whose turns cross, the located pixels read within one sub-sample's share, 1/16, of the sign-only truth at 128 and 256 pixels, with the single edge over that line at every draw; the coil's derivative against the truth's central difference reads within 1 % at three of four pose and axis entries and 1.6 % in x at the straight pose, cause open). The helix and the ellipsoid now appear in the in-loop camera (its
   window sized at the build, as a disc's is) and in `render`; the sphere, capsule, cylinder, screw and helix declare sign
   functions (`mime.scene`). The route is chosen by capability: a creased kind (a solid whose body is the intersection of two
   or more regions: the cylinder, the box, the screw) takes route 2 only with its crease measure, so the box and the screw are
