@@ -278,10 +278,10 @@ CAMERA_LEAVES = ("observations/0/settings/detector/settings/fy", "observations/0
 def test_control_the_cameras_structure_made_at_build_fires_on_its_leaves(plant: str, monkeypatch: pytest.MonkeyPatch,
                                                                         tmp_path: Path):
     """The camera's static structure, a leaf beside the numbers it was made at: planted back as a constant of the step
-    (the build's structure given to every chunk), or compared with the numbers it was made at held as constants (the
-    guard e2e81c32 removed), each fires on the detector's leaves, while the step as written is quiet on them (the walk
-    above). So the camera's quiet leaves are the structure and its numbers being arguments, not a form that cannot see
-    them."""
+    (the build's structure given to every chunk), or its guard comparing the step's numbers with the build's held as
+    constants (as e2e81c32's cache guard did), each fires on the detector's leaves, while the step as written is quiet on
+    them (the walk above). So the camera's quiet leaves are the structure and its numbers being arguments, not a form
+    that cannot see them."""
     from mime.sensing._node import STRUCTURE, CameraNode
 
     if plant == "structure-as-built":

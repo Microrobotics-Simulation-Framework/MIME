@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The licence gate is closed in `locate`** (lane P, P0). `assets.locate` now asks for the first use of a gated file
+  as the resolver does (`require_accepted`): bytes a person placed in the cache, or that `mime assets check` or a refused
+  `resolve` recorded as checked, no longer reach a build with no acceptance on record. A licence with conditions that
+  nothing accepted is asked about once at a terminal, or refused (`asset.licence-not-accepted`) where nobody can be asked.
+  The gate applies wherever `locate` is read, not only in a build: `mime push` reads an uploaded asset through it, so a push of a
+  gated, placed file asks (or is refused) as a build does; `mime pull`'s read of the bundle it downloaded is not gated (a
+  bundle's own terms are judged when it is unpacked), unless its bytes are a gated record a shared source names.
+  A non-interactive build that reads a gated file needs the acceptance on record first: accept at a terminal
+  (`mime assets fetch <folder>`), point `MIME_LICENCE_ACCEPTANCES` at a file holding it, or in Python
+  `assets.approved([], accept_licences=...)`. The script `mime modal` writes carries the ids accepted on the machine
+  that wrote it, for the experiment's own assets, as `ACCEPT_LICENCES`, and accepts them for its run; one not accepted
+  there is refused in the container. No asset MIME ships is gated (the tube table is CC0), so no simulation output moves.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
@@ -1252,6 +1265,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **A bundle's NOTICE and availability statement ignored the lock's assets**. A folder
+  whose result reads an asset it holds no file of (a lab's licensed record, MIME's own tube table) said "Licences: None
+  named" and "Reproducible exactly from this bundle alone", and both were false: a bundle never carries such an asset's
+  bytes. `mime.saved.notice`, `mime card` and the record `mime push` writes now count the lock's `assets` that no file
+  stands for: the NOTICE lists each under "Assets the lock names" (sha256, size, licence, verdict, role, where it is
+  available from; for one MIME's own data holds, the MIME a reuser needs, at the version that saved the folder), names its
+  licence among the licences (a lab's own licence with its link, a conditional one with its conditions), and the
+  availability statement says "from this bundle alone" only where the bundle needs no file or asset more. The card's
+  table lists each asset. A folder whose lock names no such asset has the NOTICE and card it had, byte for byte; no bytes
+  travel that did not before, and nothing in a saved form changes. The meshes the stage draws (the lock's `visuals`
+  manifests) count the same way, fetched by `mime visuals fetch`; where every file is carried and every asset the bundle
+  lacks is declared of role presentation, the statement says the results reproduce from the bundle alone as far as the
+  records declare, and that showing the experiment needs those assets. An id nothing defines (no SPDX id the installed
+  packaging lists, no licence the folder or its lock declares) is named with no link and as unknown, where it was given an
+  invented `spdx.org` page; a pip line is given for a released MIME version only. Whether MIME's own data holds an asset is
+  read from the installed MIME where the NOTICE is written (the lock does not record it). A licence id the installed
+  packaging does not list on an asset is read as unknown, as before, and is not refused here.
 
 - **The open vessel's reverse-mode derivative under IMEX Euler was wrong** (since the open vessel's node, #246). Its
   projected CG's operator is self-adjoint under the open grid's half-weighted inner product, not the plain one reverse

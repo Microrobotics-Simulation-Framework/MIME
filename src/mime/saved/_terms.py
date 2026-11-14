@@ -484,15 +484,42 @@ def sha256_and_size(path: Path) -> tuple[str, int]:
 
 
 @dataclass(frozen=True)
+class LockAsset:
+    """An asset the lock names that the folder holds no file of: one the experiment's entries read (a wall's table, a
+    lab's record), whose bytes a bundle never carries, whatever its tier (a bundle carries this record, and
+    ``mime assets fetch <folder>`` fetches the bytes; a mesh the stage draws is named in the lock's ``visuals``
+    manifests instead, ``visual``, and ``mime visuals fetch <folder>`` fetches it). Its ``verdict`` is what every exit
+    judges the record by (``mime.assets.record_terms``). ``mime_own`` says MIME's own data holds the record: the lock
+    does not record that, so it is read where the NOTICE or the card is written, from the MIME installed then (one
+    folder can therefore read differently under another install; the lock's own record, its licence, locations and
+    role, never does)."""
+
+    ref: AssetRef
+    verdict: Verdict
+    mime_own: bool
+    visual: bool = False
+
+
+@dataclass(frozen=True)
 class FolderTerms:
     """Every file a saved folder names, each with its verdict, in path order; the experiment's own licence (``None``
-    where it declares none), the custom licences, the permissions, and the saved form's version."""
+    where it declares none), the custom licences, the permissions, and the saved form's version. ``assets`` are the
+    lock's own assets that no file of the folder stands for (a referenced file's asset is its file's: see
+    :attr:`FileTerms.referenced`), in the lock's order and each once; ``saved_by`` is the MIME version that wrote the
+    folder, which an asset MIME's own data holds needs."""
 
     files: tuple[FileTerms, ...]
     licence: str | None
     custom: Mapping[str, CustomLicence]
     permissions: tuple[PermissionDoc, ...]
     version: int
+    assets: tuple[LockAsset, ...] = ()
+    saved_by: str = ""
+
+    def licence_definitions(self) -> Mapping[str, CustomLicence]:
+        """The custom licences the NOTICE and the card give links for: the document's, then those the lock's assets
+        define (the document's own definition of an id stands)."""
+        return {**{each.id: each for held in self.assets for each in held.ref.licences}, **self.custom}
 
     def referenced(self) -> tuple[FileTerms, ...]:
         return tuple(file for file in self.files if file.referenced is not None)
@@ -531,6 +558,29 @@ def lock_records(lock: Lock | Mapping[str, object]) -> list[AssetRef]:
     return found
 
 
+def _lock_assets(lock: Lock, derived: Mapping[str, Verdict]) -> tuple[LockAsset, ...]:
+    """The lock's ``assets`` that no file of the folder stands for, then the assets of its ``visuals`` manifests (the
+    meshes the stage draws), each once by its bytes, in the lock's order."""
+    from mime.assets._adapters import MIME_SOURCE
+    from mime.assets._sources import shared
+
+    covered = set(lock.get("referenced_files", {}).values())
+    own = {each.ref.sha256 for sourced in shared().records.values() for each in sourced if each.source == MIME_SOURCE}
+    found: dict[str, LockAsset] = {}
+    manifests = cast(Mapping[str, Mapping[str, object]], lock.get("visuals", {})).values()
+    listed = [(record, False) for record in lock.get("assets", [])]
+    listed += [(record, True) for manifest in manifests for record in cast(list[object], manifest.get("assets", []))]
+    for record, visual in listed:
+        try:
+            ref = AssetRef.from_record(cast(Mapping[str, object], record))
+        except Exception:  # noqa: BLE001 - a malformed record is the load's to refuse, with its reason
+            continue
+        if ref.name not in covered:
+            found.setdefault(ref.sha256, LockAsset(ref, derived.get(ref.sha256, ref.verdict), ref.sha256 in own,
+                                                   visual))
+    return tuple(found.values())
+
+
 def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: set[str], version: int) -> FolderTerms:
     """Each of the ``named`` files of a saved folder with its verdict. A file that is in the folder is hashed there; a
     file that travels as a reference and is not there yet is described by the asset the lock names for it. A file the
@@ -558,7 +608,8 @@ def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: 
                         f.permissions, referenced.get(f.path))
               for f in file_verdicts(document, files, records, derived)]
     return FolderTerms(tuple(judged), document.get("licence"), custom_licences(document),
-                       tuple(document.get("permissions", [])), version)
+                       tuple(document.get("permissions", [])), version, _lock_assets(lock, derived),
+                       lock["environment"]["mime"])
 
 
 # --- placing a referenced file -------------------------------------------------------------------------------------

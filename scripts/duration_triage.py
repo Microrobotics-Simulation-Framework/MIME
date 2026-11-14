@@ -2,7 +2,9 @@
 """The weekly duration triage: a week of cold CI runs in, one pull request's changes out (CONTRIBUTING.md, "CI: the duration
 gate"). Standard library, and ``gh`` for the download; it loads ``scripts/report_test_durations.py`` for the report reader.
 
-It reads the JUnit reports that the push runs and the nightly run of ``ci.yml`` upload (``durations-default-python-*``),
+It reads the JUnit reports that the push runs and the nightly run of ``ci.yml`` upload (each default lane's
+``timings-default-python-*-attempt-*``, and for a run from before the lane job uploaded it, its shards'
+``durations-default-python-*``),
 keeps the cold ones (a push starts with an empty compilation cache, the nightly run too), and writes
 
 1. ``tests/duration_ceilings.json``, the file the gate reads: for each listed test seen in at least ``--min-runs``
@@ -21,7 +23,12 @@ listed tests whose median moved more than 2 times between the window's earlier r
 their ceiling, and the unlisted tests whose cold median is over 20 s (the real slow tests that the 30 s line passes).
 An addition is proposed only for a test pytest collects on this checkout, and never for ``tests/test_canary.py``
 (the planted tests of a manual run); run it on a checkout of ``release/v0.3.0``, because the branch is made from
-``HEAD``. The download is every duration artifact of the window (about 37 MB a run, so some 2 GB for a week of pushes).
+``HEAD``. What the download costs is its count of artifacts, about half a second each, more than its bytes. A run's two
+timings artifacts (Python 3.12 and 3.14) are about 1.2 MB zipped and 17 MB on disk at 30 shards; the per-shard artifacts
+of a run from before them are 60, about 14 MB zipped and 109 MB on disk (each holds the whole collection's shard record),
+about 40 s a run. A week of pushes was 89 runs (2026-11-06 to 13); at 30 shards that is about 180 artifacts, 105 MB
+zipped and 1.5 GB on disk, against 5,300 artifacts, 1.2 GB zipped, 9.7 GB on disk and about an hour. ``--reports`` reads
+a window already downloaded.
 
     python scripts/duration_triage.py --days 7 --branch triage/durations-2026-11-16 --body-file body.md
     git push -u origin triage/durations-2026-11-16
@@ -76,6 +83,10 @@ REMOVE_UNDER_S = 10.0
 FLAG_MEDIAN_S = 20.0
 
 ARTIFACT = re.compile(r"^durations-default-python-(?P<python>[\d.]+)-shard-(?P<shard>\d+)-attempt-(?P<attempt>\d+)$")
+#: The lane job's one artifact of a lane's timings (``ci.yml``, "Upload the lane's timings"): each kept shard's report and
+#: cache mode, ``test-results-shard<n>.xml`` and ``cache-mode-shard<n>.txt``. A run before it has only the shards' own.
+MERGED = re.compile(r"^timings-default-python-(?P<python>[\d.]+)-attempt-(?P<attempt>\d+)$")
+SHARD_REPORT = re.compile(r"^test-results-shard(?P<shard>\d+)\.xml$")
 LANES = ("3.12", "3.14")
 
 
@@ -235,24 +246,43 @@ def collect_ids(files: list[str]) -> set[str]:
 
 # -- reading what CI uploaded ---------------------------------------------------------------------------------------
 
+def _cold_passing(report: Path, modes: list[str], run: int, lane: str, gate,
+                  observed: dict[str, list[Observation]]) -> None:
+    if modes != ["cold"]:                           # warm, or a mode nobody wrote: not what a ceiling is made of
+        return
+    for t in gate.read_report(report):
+        if t.outcome == "passed" and not t.collection_error:
+            observed.setdefault(t.nodeid, []).append(Observation(run, lane, t.seconds))
+
+
 def read_run(directory: Path, run: int, gate, lanes: tuple[str, ...] = LANES) -> dict[str, list[Observation]]:
-    """The cold, passing observations of one downloaded run: ``directory/<artifact>/...``, each shard's newest attempt."""
+    """The cold, passing observations of one downloaded run: ``directory/<artifact>/...``. A lane's merged artifact
+    (:data:`MERGED`, its newest attempt) is read where the run has one, each shard's report with its own cache mode;
+    otherwise each shard's own artifact, at its newest attempt."""
     newest: dict[tuple[str, str], tuple[int, Path]] = {}
+    merged: dict[str, tuple[int, Path]] = {}
     for child in sorted(directory.iterdir()):
-        match = ARTIFACT.match(child.name) if child.is_dir() else None
-        if match and match["python"] in lanes:
+        if not child.is_dir():
+            continue
+        if (match := MERGED.match(child.name)) and match["python"] in lanes:
+            if match["python"] not in merged or int(match["attempt"]) > merged[match["python"]][0]:
+                merged[match["python"]] = (int(match["attempt"]), child)
+        elif (match := ARTIFACT.match(child.name)) and match["python"] in lanes:
             key = (match["python"], match["shard"])
             if key not in newest or int(match["attempt"]) > newest[key][0]:
                 newest[key] = (int(match["attempt"]), child)
     observed: dict[str, list[Observation]] = {}
+    for lane, (_attempt, artifact) in merged.items():
+        for report in sorted(artifact.iterdir()):
+            if match := SHARD_REPORT.match(report.name):
+                mode = artifact / f"cache-mode-shard{match['shard']}.txt"
+                _cold_passing(report, [mode.read_text().strip()] if mode.is_file() else [], run, lane, gate, observed)
     for (lane, _shard), (_attempt, artifact) in newest.items():
-        modes = [m.read_text().strip() for m in artifact.glob("cache-mode-shard*.txt")]
-        if modes != ["cold"]:                       # warm, or a mode nobody wrote: not what a ceiling is made of
+        if lane in merged:
             continue
+        modes = [m.read_text().strip() for m in artifact.glob("cache-mode-shard*.txt")]
         for report in artifact.glob("test-results-shard*.xml"):
-            for t in gate.read_report(report):
-                if t.outcome == "passed" and not t.collection_error:
-                    observed.setdefault(t.nodeid, []).append(Observation(run, lane, t.seconds))
+            _cold_passing(report, modes, run, lane, gate, observed)
     return observed
 
 
@@ -275,7 +305,8 @@ def _gh(*args: str) -> str:
 
 
 def fetch(repository: str, branch: str, since: datetime.date, into: Path) -> list[int]:
-    """Download the duration reports of the push and manual runs of ``ci.yml`` on ``branch`` since ``since``."""
+    """Download the duration reports of the push and manual runs of ``ci.yml`` on ``branch`` since ``since``: each lane's
+    merged artifact, and each shard's own for a lane whose run has none (a run from before the lane job uploaded it)."""
     runs: list[int] = []
     for event in ("push", "workflow_dispatch"):
         listing = json.loads(_gh("run", "list", "--repo", repository, "--workflow", "ci.yml", "--branch", branch,
@@ -285,12 +316,23 @@ def fetch(repository: str, branch: str, since: datetime.date, into: Path) -> lis
     for run in runs:
         target = into / str(run)
         if not target.exists():
-            args = ["run", "download", str(run), "--repo", repository, "--dir", str(target)]
-            for lane in LANES:
-                args += ["--pattern", f"durations-default-python-{lane}-shard-*"]
-            subprocess.run(["gh", *args], capture_output=True, text=True)    # an expired run has nothing: no reports
-            target.mkdir(exist_ok=True)
+            download_run(repository, run, target)
     return runs
+
+
+def download_run(repository: str, run: int, target: Path) -> None:
+    """One run's reports into ``target``: the lanes' merged artifacts, then the shards' own for a lane that has none."""
+    def download(patterns: list[str]) -> None:
+        args = ["run", "download", str(run), "--repo", repository, "--dir", str(target)]
+        for pattern in patterns:
+            args += ["--pattern", pattern]
+        subprocess.run(["gh", *args], capture_output=True, text=True)    # an expired run, or no match: nothing
+    download([f"timings-default-python-{lane}-attempt-*" for lane in LANES])
+    have = {m["python"] for child in (target.iterdir() if target.exists() else ()) if (m := MERGED.match(child.name))}
+    missing = [lane for lane in LANES if lane not in have]
+    if missing:
+        download([f"durations-default-python-{lane}-shard-*" for lane in missing])
+    target.mkdir(parents=True, exist_ok=True)
 
 
 # -- the pull request body ------------------------------------------------------------------------------------------

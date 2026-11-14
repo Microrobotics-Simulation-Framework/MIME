@@ -1,0 +1,181 @@
+{
+ "written": "2026-11-13, committed before any probe of the weekly duration triage of 2026-11-13 ran: where the longest tests' time goes, the switch scan's first payer alone at three commits, and (later gates, added in their own commits before they run) what each shortening changes",
+ "phase": "triage/shorten-2026-11-13: the weekly triage's shortening of the longest tests, without losing what they check",
+ "labels": "predictions by the triage agent from the cold JUnit reports of the newest 20 push runs (43075508190 to 43373533052) and of five 3.12 lanes between 9 and 11 November, and from the code; the Actions arms are the measurement",
+ "seen_before": [
+  "the 20 runs' cold reports: test_the_tree_passes_the_scan_with_its_list_and_its_owners (the scan's first payer in its shard), median 379.9 s over 40 reports; its compile was 1.6 to 12 s in the four runs before #263 (469304c, which pinned the scan's readers first on one worker) and 110 to 183 s in every run from #263 on, its tracing 50 to 227 s throughout, the 3.12 lane's tracing about twice the 3.14 lane's",
+  "the push at 3cb468c (run 43373533052, 3.12 shard 25): the payer took 9.4 min in the shard and 4.7 min on the gate's re-run alone, against a 4.5 min ceiling",
+  "#283's follow-up (tests/saved/predictions_scan_fixture_followup.json, outcomes): the scan's other first payer, test_every_guard, alone on one CPU took 352.5 and 351.2 s (EPYC 7763) and 261.2 and 259.0 s (EPYC 9V45) at da8d1679 and b1de6f7c: equal; its in-shard time 1.5 to 1.7 times that, from the early start beside the other workers' first compiles",
+  "the scan's configurations: 39 at fe7c73f (the last commit of the previous triage's window) and 64 at 3cb468c; round-trip cases not refused 30 and 52 (counted by importing tests/saved/switch_configurations.py at each commit)",
+  "the closed-loop case of the magnetic pair 0.2.0 (test_closed_loop's pair test and the family walk's two magnetic 0.2.0 cases): medians 352, 402 and 417 s, of which 333, 381 and 392 s are outside JAX's tracing, lowering and compiling; mime.testing._families.loop_works and pair_loop_works (the latter added by #205, 81d1427, 8 November) evaluate every node through jax.vmap without jax.jit, for each of the case's 200 draws"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64"
+  ],
+  "platform": "GitHub runner (probe workflow), 4 vCPU, Python 3.12, CPU; the CPU model of each arm is logged and comparisons are paired within an arm",
+  "sizes_and_parameters": "a test 'alone and cold' is one test node in a fresh pytest with an empty JAX compilation cache directory, as the duration gate's re-run runs it (scripts/report_test_durations.py, run_pytest_again), with MIME_TEST_JAX_TIMING=1 for the split; an older commit runs from a worktree of it with its src first on PYTHONPATH and the same locked environment (uv.lock and lab_fixture are unchanged from da8d1679 to 3cb468c4)",
+  "seeds_and_draws": "Hypothesis as each test sets it (unchanged); three alone arms, each running the three commits once in a rotated order"
+ },
+ "gate_1_payer_alone": {
+  "claim": "the switch scan's first payer, alone and cold, at da8d1679 (before #283 and #284), b1de6f7c (#283) and 3cb468c4 (#284): #283 leaves it as it was, and #284's run-constant traces add a little",
+  "kind": "estimates",
+  "case": "tests/saved/test_switch_scan.py::test_the_tree_passes_the_scan_with_its_list_and_its_owners, alone and cold, three arms, each the three commits once in a rotated order",
+  "prediction": {
+   "value": "b1de6f7c within 15 % of da8d1679 in each arm; 3cb468c4 between 1.0 and 1.3 times da8d1679 in each arm; 3cb468c4 alone 240 to 330 s",
+   "basis": "measured-before (gate 3 of #283's follow-up for b1de6f7c, the gate's own re-run at 3cb468c4 for the band) and guess (the size of #284's addition: one trace of each run-constant node's make per configuration, few nodes)",
+   "why": "#283 empties JAX's caches once before the traces, which a test run alone starts with anyway; #284 traces each run-constant node's run_constants once more per configuration"
+  },
+  "metric": "the junit time of the test, and its tracing, lowering and compiling seconds",
+  "control": {
+   "plant": "none: a comparison, paired by runner",
+   "expected_rate": "n/a"
+  },
+  "if_wrong": "3cb468c4 over 1.3 times da8d1679: #284's addition is larger than one trace per node (look at the phases arm's run-constant phase); b1de6f7c off da8d1679 by over 15 %: #283 changed the test's own work",
+  "cannot_discriminate_if": "the three commits' times in one arm differ among the arms by more than they differ from each other within an arm"
+ },
+ "gate_2_payer_phases": {
+  "claim": "where the payer's time goes at 3cb468c4: the configurations' builds, their steps' traces, the run-constants' traces, and the scan of the traces and the source",
+  "kind": "estimates",
+  "case": "probe/phases.py: the work of traced_steps() and tree_scan() replicated step for step (the same order, the caches emptied once after the first build) with a timer and JAX's tracing, lowering and compiling seconds per phase; then the same under cProfile for the functions",
+  "prediction": {
+   "value": "builds 25 to 50 % (most of the compile), the steps' traces 30 to 55 %, the run-constants' traces under 10 %, the scan (equations and source) 10 to 30 %",
+   "basis": "guess, from the reports' split (tracing 126 s and compiling 132 s of a 380 s median) and the code",
+   "why": "the builds compile what the nodes' parameters need; the traces are 64 configurations' steps; the scan walks each equation's frames and parses the source of every function in scope"
+  },
+  "if_wrong": "a phase outside these bands is where to look first for a change that keeps what the scan checks",
+  "cannot_discriminate_if": "the replication's scan differs from the fixture's (its counts of raw sites and functions in scope are printed beside the fixture's)"
+ },
+ "gate_3_closed_loop_profile": {
+  "claim": "where the magnetic pair 0.2.0's closed-loop case spends its time: the eager (un-jitted) vmapped evaluation of loop_works and pair_loop_works, not the rig's builds",
+  "kind": "estimates",
+  "case": "tests/oracles/test_closed_loop.py::test_the_pair_0_2_0_passes_the_closed_loop_case alone and cold (its junit split), then under cProfile",
+  "prediction": {
+   "value": "loop_works and pair_loop_works over 70 % of the cumulative time, the rig's builds under 15 %",
+   "basis": "derived: the reports' split puts 333 of 352 s outside JAX's compile phases; the code evaluates every node under jax.vmap without jax.jit, 200 draws",
+   "why": "un-jitted, every primitive of the batched evaluation is dispatched one by one"
+  },
+  "if_wrong": "the builds dominate: the change to look at is the rig, not the evaluation",
+  "cannot_discriminate_if": "cProfile's overhead on Python-heavy dispatch inflates one side: the arm's plain alone run gives the unprofiled total beside it"
+ },
+ "gate_4_other_profiles": {
+  "claim": "where three other long tests spend their time, alone and cold, then under cProfile: the shape suite's share of non-discriminating probes, the two-builds walk's trace form on hull_contact, and the family walk's magnetic.torque 0.2.0",
+  "kind": "estimates",
+  "case": "tests/saved/test_shape_suite.py::test_the_share_of_probes_whose_difference_cannot_discriminate_is_bounded_over_the_suites_draws; tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[hull_contact]; tests/families/test_family_walk.py::test_every_interaction_in_a_family_passes_its_suite[interaction magnetic.torque 0.2.0]",
+  "prediction": {
+   "value": "the shape suite: most of it compiling and tracing the tube tree's programs for its draws on that shape; the two-builds walk: tracing the case twice; the family walk's case: its closed-loop case over half",
+   "basis": "guess, from the reports' splits",
+   "why": "as stated"
+  },
+  "if_wrong": "the profile says where instead",
+  "cannot_discriminate_if": "n/a: a profile, not a comparison"
+ },
+ "gate_5_alone_two_commits": {
+  "claim": "for each listed test whose ceiling rose more than 1.5 times, the test alone and cold at the previous triage's last commit (fe7c73f8; uv.lock is the same from b0e017c onwards) and at 3cb468c4, paired on one runner: where the ratio alone matches the ratio in the shards, the test's own work grew; where it is near 1, the rise was who paid or the shard's contention",
+  "kind": "estimates",
+  "case": "each node alone and cold (probe/alone.sh), the two commits interleaved, three repeats (two for the battery's eight cases); the closed-loop pair test at 92a589b4 (before #205), 81d14272 (#205) and 3cb468c4",
+  "prediction": {
+   "value": {
+    "docs (build_wiring x2, none_declared, rendered_numbers)": "new/old 1.3 to 1.7 (entry pages 27 to 40)",
+    "examples notebooks settling balls": "guess: 1.0 to 2.0",
+    "examples screw_in_tube, live defaults, live session, round trip mrs_solids, sampling cylinder-2000 and ellipsoid-2000, near-wall integrated image": "1.0 to 1.3 each (no change to the test or its subject found)",
+    "near-wall reported at build, fallback harness's body-at-origin case": "0.8 to 1.2 (who pays, in the shard)",
+    "registry walk's sampling kinds harness": "1.3 to 1.8 (#226's graded sampling and more cases' kinds)",
+    "shape suite's share of probes": "over 10 (the tube tree joined the suite's shapes, #242)",
+    "guard harness's every_guard, the scan's owner pass, the scan's payer": "1.4 to 2.0 each (64 configurations against 39)",
+    "arm battery, eight cases in one process": "the sum new/old 1.1 to 1.4, params_gradient_finite's compile higher at 3cb468c4 by 60 to 120 s",
+    "closed-loop pair 0.2.0": "81d14272 over 92a589b4 3 to 6 (the pair's loops with the source's reactions); 3cb468c4 over 81d14272 0.8 to 1.3"
+   },
+   "basis": "derived from the counts and commits named, and guess where said",
+   "why": "a test alone pays all its own work and nothing of a neighbour's, at either commit"
+  },
+  "metric": "the junit time alone, its split, new over old per runner",
+  "control": {
+   "plant": "none: a comparison paired on one runner",
+   "expected_rate": "n/a"
+  },
+  "if_wrong": "a test whose alone ratio is near 1 while its shard ratio is over 1.5 rose by its place in the shard; one whose alone ratio is high with no new work named is a regression to bisect",
+  "cannot_discriminate_if": "the repeats of one commit on one runner differ by more than the two commits do"
+ },
+ "gate_6_pair_loops_batched": {
+  "claim": "pair_loop_works evaluating a draw's pair loops in one vmap (e2946da1) checks exactly what it did, faster: the same numbers on the same draws, the same examples, the case's controls still caught every run",
+  "kind": "equality",
+  "case": "bits: probe/loopworks_dump.py, the magnetic family's loop rig at 40 draws of its own strategy (Hypothesis derandomized in the probe script, never in a test), loop_works and pair_loop_works for the pair 0.2.0 and the kept pair 0.1.0, every LoopWork's work, coarse, summed and floor, base 3cb468c4 against head through .github/probe/bit_compare.py (one CPU, one thread); time: tests/oracles/test_closed_loop.py::test_the_pair_0_2_0_passes_the_closed_loop_case and the family walk's magnetic.force and magnetic.torque 0.2.0 cases alone and cold, base and head interleaved, 3 repeats; control: detection_rate.py on the pair 0.2.0 test with MIME_PLANT_PAIR_REACTION=1e-6 (a probe plugin scaling the source reaction's wrench by 1 + 1e-6), 10 runs at base and at head, clean arms beside",
+  "prediction": {
+   "value": {
+    "bits": "every array equal, both pairs",
+    "time": "the pair 0.2.0 test 0.3 to 0.6 of base; each family walk case 0.5 to 0.8 of base (its energy case is unchanged)",
+    "control": "10/10 caught at base and at head, 0/10 flagged clean",
+    "examples": "200 at base and at head (the case's VerificationResult)"
+   },
+   "basis": "derived: per element the eager kernels do the same arithmetic on a batch of 320 rows as on 64; the profile puts 246 of 318 s in the five batches; a reaction off by 1e-6 leaves work of that order of the source's share, far above the quadrature's estimate and the rounding floor",
+   "why": "eager vmap costs per primitive dispatched, not per row"
+  },
+  "control": {
+   "plant": "MIME_PLANT_PAIR_REACTION: the source reaction's link wrench times 1 + 1e-6",
+   "environment_variable": "MIME_PLANT_PAIR_REACTION",
+   "expected_rate": "10/10",
+   "runs": 10,
+   "clean_expected": "0/10"
+  },
+  "if_wrong": "bits differ: report the largest difference against the case's tolerance (quadrature estimate plus floor) and its cause; time not down: the eager cost is not per batch",
+  "cannot_discriminate_if": "the clean arm flags (the plant's run fails for another reason) or the planted runs are inconclusive"
+ },
+ "gate_7_owner_pass_shares_the_builds": {
+  "claim": "the switch scan's owner pass tracing the graphs traced_steps built (a2bb509f) checks what it did: the same owners recorded, the scan's answer unchanged, its plant still caught, without a second build of 64 configurations",
+  "kind": "equality",
+  "case": "tests/saved/test_switch_scan.py::test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_steps alone and cold, base and head interleaved, 3 repeats; probe/scan_dump.py: the scan's raw sites, functions in scope and owners passed, and the owner pass's recorded owners, base and head; control: detection_rate.py on the owner test with MIME_PLANT_DROP_OWNER (a probe plugin: the collector drops the rows of one owner, the first in sorted order), 10 runs at base and at head, clean arms beside",
+  "prediction": {
+   "value": {
+    "sets": "the scan's hits, scope and owners and the recorded owners equal, base and head",
+    "time": "the owner test alone: head 0.45 to 0.75 of base (base pays the fixture and a second build; head the fixture and the traces)",
+    "memory": "the owner test's process peak at head within 1.3 times base's",
+    "control": "10/10 caught at base and at head, 0/10 flagged clean"
+   },
+   "basis": "derived from the phases (builds 164 s, step traces 33 s, of a 237 s fixture) and the code; memory a guess",
+   "why": "the builds are the owner pass's largest part and a trace reads a built graph"
+  },
+  "control": {
+   "plant": "MIME_PLANT_DROP_OWNER: the collector drops one owner's rows",
+   "environment_variable": "MIME_PLANT_DROP_OWNER",
+   "expected_rate": "10/10",
+   "runs": 10,
+   "clean_expected": "0/10"
+  },
+  "if_wrong": "the recorded owners differ: a trace of a shared node skipped a switch (a cache keyed on the node), and the change is withdrawn",
+  "cannot_discriminate_if": "the clean arm flags, or the planted runs are inconclusive"
+ },
+ "gate_8_own_work_steps": {
+  "claim": "for the four risen tests whose own work grew alone between fe7c73f8 and 3cb468c4 with no cause named (gate 5), the commit at which it grew: each test alone and cold at each of the 66 commits from fe7c73f8 to 3cb468c4 (one lockfile throughout), one run a commit",
+  "kind": "estimates",
+  "case": "tests/examples/test_notebooks.py::test_the_settling_balls_experiment_builds; tests/examples/test_screw_in_tube.py::test_the_screw_swims_forward_in_step_with_the_field_at_a_turning_reynolds_number_inside_the_range; tests/saved/test_sampling_walk.py::test_every_kind_that_samples_spreads_its_samples_evenly[cylinder-2000]; tests/saved/test_switch_harness.py::test_replacing_every_fallback_changes_nothing_where_its_condition_is_false[the body at the origin, on the axis, free]; six arms of consecutive commits",
+  "prediction": {
+   "value": {
+    "settling balls (6 to 14 s alone)": "one step, at 1a819149 (the near-contact law, which changed the example) or 8df010c7 (lubrication's hand-over); guess",
+    "screw in tube (11 to 15 s)": "at beeae2e2 (drag 0.5.0's joint near-field node) or 1ea44eaa (graded sampling); guess",
+    "sampling cylinder-2000 (27 to 43 s)": "at 1ea44eaa (graded sampling); guess",
+    "fallback harness, body at the origin (13 to 42 s)": "at 8df010c7 or 1a819149 (the harness gained the lubricated configurations); guess"
+   },
+   "basis": "guess, from the commits that touched each test's subject in the range",
+   "why": "a step of 1.4 to 3 times alone is new work at one commit, or a regression there"
+  },
+  "control": {
+   "plant": "none: a scan over commits; a step must hold at the commits after it",
+   "expected_rate": "n/a"
+  },
+  "if_wrong": "no single step: the growth is spread over several commits, each named with its share",
+  "cannot_discriminate_if": "a commit's run fails or the test is not collected there (recorded per commit)"
+ },
+ "outcomes": {
+  "_note": "written after the probes; the predictions above are unchanged. Probe runs 43431298411 (probe/triage-profile: gates 1 to 4), 43432870702 (probe/triage-alone: gate 5), 43436728493 (probe/triage-after: gates 6 and 7, and the timings pull request's control), 43442613528 (probe/triage-steps: gate 8); every probe branch deleted after its download. Two arms failed only the memory check against the probe's own '*' estimate line, which modelled another test: 43432870702 'guard' (4.56 GiB peak, 4.38 bound) and 43436728493 'bits' (4.47 GiB, 4.25 bound); every run in them passed and their measurements stand; no calibration row was added, since the line did not declare the case the arm ran.",
+  "gate_1_payer_alone": "partly as predicted. Junit seconds alone, da8d1679 / b1de6f7c / 3cb468c4, by runner: EPYC 9V74 207.9 / 207.1 / 215.3, EPYC 9V74 205.4 / 203.7 / 208.9, EPYC 7763 264.7 / 272.4 / 277.3. b1de6f7c within 1 % of da8d1679 (as predicted); 3cb468c4 1.017 to 1.048 times da8d1679 (inside 1.0 to 1.3); the band 240 to 330 s for 3cb468c4 held on the 7763 only: the 9V74 runners took 209 to 215 s, below it (NOT as predicted).",
+  "gate_2_payer_phases": "NOT as predicted for two phases (EPYC 7763, 237.4 s): the builds 164.4 s (69 %, 88.8 s of it compiling, 37.0 tracing) against 25 to 50 %; the steps' traces 33.3 s (14 %) against 30 to 55 %; the run-constants' traces 7.2 s (3 %, as predicted); the scan 28.9 s (12 %, as predicted; the source 4.5 s of it). The replication's scan: 64 configurations, 329 steps, 36 run-constant traces, 726 raw sites, 823 functions in scope, 55 owners, no problem: the fixture's own numbers (gate 7's dump: 726 and 823 at both commits), so it discriminates.",
+  "gate_3_closed_loop_profile": "as predicted: under cProfile (318 s) the eager vmaps were 278 s (87 %), pair_loop_works 246 s of them (1000 calls of its batch, five a draw) and loop_works the rest; everything else, the rigs' builds among it, 40 s (13 %). Alone and cold, unprofiled: 218.4 s, 7.6 tracing, 2.8 compiling (EPYC 9V74).",
+  "gate_4_other_profiles": "as predicted: the shape suite's share test 300.2 s alone (EPYC 7763), 155.5 compiling over 131 programs, the tube tree's union (mime.scene._union) most of the tracing; the two-builds walk's hull_contact case 111.6 s alone (EPYC 9V45), 87.3 tracing, its graph traced twice (graph_program 178 of 188 s profiled); the family walk's magnetic.torque 0.2.0 432.3 s alone (EPYC 7763), its closed-loop case 409 and its energy case 188 of 631 s profiled.",
+  "gate_5_alone_two_commits": "medians of three alone, fe7c73f8 to 3cb468c4, new over old: the docs tests 1.31, 1.33, 1.26, 1.26 (two just under the band 1.3 to 1.7); the settling balls 2.47 (NOT in the guessed 1.0 to 2.0); the screw in the tube 1.42 and the sampling walk's cylinder-2000 and ellipsoid-2000 1.55 and 1.59 (NOT in 1.0 to 1.3); the live defaults 1.00, the live session 1.00, the mrs_solids round trip 1.03, the near-wall image 1.06 (as predicted); the near-wall build report 1.10 (as predicted); the fallback harness's body-at-origin case 3.11 (NOT in 0.8 to 1.2); the kinds harness 1.34 (as predicted); the shape suite's share test 6.08 (NOT over 10); every_guard 2.16, the owner pass 2.30, the payer 2.33 (NOT in 1.4 to 2.0: above); the arm battery's eight cases 1.02 in sum and params_gradient_finite unchanged alone, 108 to 111 s with 2 s compiling at both (NOT as predicted: its in-shard compile is not in its own work); the closed-loop pair 0.2.0 42 s at 92a589b4, 229 s at 81d14272 (5.4 times, as predicted) and 216 s at 3cb468c4 (0.95 of 81d14272, as predicted).",
+  "gate_6_pair_loops_batched": "as predicted. Bits: every array equal, base 3cb468c4 against head, on one CPU and one thread, for pair020-f64, pair010-f64 and pair020-f32: 40 draws each, 5 pair loops and 4 loops a draw, every LoopWork's work, coarse, summed and floor (200 by 4 and 160 by 4 arrays). Alone and cold, base to head, medians of three: the pair 0.2.0 test 219.3 to 81.5 s (0.37, EPYC 9V74); the family walk's magnetic.force 0.2.0 254.3 to 142.2 s (0.56, Intel) and magnetic.torque 0.2.0 382.6 to 212.0 s (0.55, EPYC 9V74), their tracing and compiling unchanged. The control: MIME_PLANT_PAIR_REACTION=1e-6 caught 10 of 10 at base and 10 of 10 at head, the clean arms 0 of 10 flagged (lower bound 0.741 each). Examples: see the pull request (counted from the case's own result at base and head).",
+  "gate_7_owner_pass_shares_the_builds": "measured, and the change HELD (reverted, 21c2af0e): a collector's trace takes fresh nodes (mime.core.switch.collector_open: a node's step caches its first trace), so the owner pass on the scan's own graphs could miss, silently, a site whose owner another site also passes. As measured: the scan's hits (726), scope (823), owners (55), recorded owners (55) and steps (365) equal base against head; the owner test alone 239.1 to 193.5 s (0.81, NOT in 0.45 to 0.75; EPYC 9V45); the arm's peak 3.95 GiB, the larger of its base and head runs (not separable, so the 1.3 times prediction is not judged); MIME_PLANT_DROP_OWNER caught 10 of 10 at base and 10 of 10 at head, the clean arms 0 of 10.",
+  "gate_8_own_work_steps": "each step found inside one arm on one CPU model: the settling balls at 8df010c7 (#234, +15 to 20 %) and 1a819149 (#245, 1.9 times), as guessed; the screw in the tube at 8df010c7 (#234, 1.42 times), NOT at the guessed beeae2e2 or 1ea44eaa; the sampling walk's cylinder-2000 at 1ea44eaa (#226, 1.35 times, as guessed) and 8df010c7 (+10 %); the fallback harness's body-at-origin case at 8df010c7 (2.5 times) and 1a819149 (1.34 times), as guessed. All four are new work: lubrication's hand-over, the near-contact law and graded sampling, which these tests now run.",
+  "timings_control": "for the timings pull request: MIME_PLANT_TIMINGS_MISMATCH caught 20 of 20 at 472342f3, the clean arm 0 of 20 (lower bound 0.861), run 43436728493."
+ }
+}

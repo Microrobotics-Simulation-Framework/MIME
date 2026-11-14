@@ -154,6 +154,8 @@ OLD_NAME_LINES = [
      "the test of the old alias's refusal"),
     (r"tests/duration_allowlist\.txt", r"^tests/saved/test_form_v2\.py::\S+\[b" + r"em_ball\] # kept: ",
      "the node id of a test over the version-2 folders, whose parameter is a folder's name from before the rename"),
+    (r"tests/duration_ceilings\.json", r'^ *"tests/saved/test_form_v2\.py::\S+\[b' + r'em_ball\]": ',
+     "the same node id, a key of the ceilings and medians the weekly triage writes for the listed test"),
 ]
 SKIPPED_DIRECTORIES = {".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build", "site"}
 

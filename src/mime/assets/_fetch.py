@@ -71,6 +71,7 @@ from mime.assets._reference import (
     BUILT_IN_SCHEMES,
     KEY_HIDDEN,
     AssetRef,
+    BundleContainer,
     carries_key,
     location_problem,
     redacted,
@@ -992,7 +993,7 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
             # address whole, is chained to nothing, as cause or as context.
             raise refused[0] from (None if keyed else refused[1])
         assert arrived is not None
-        ref = AssetRef(name, sha256_of_file(arrived), arrived.stat().st_size, NO_ASSERTION, (location,))
+        ref = BundleContainer(name, sha256_of_file(arrived), arrived.stat().st_size, NO_ASSERTION, (location,))
         with exclusive(lock_path(ref)):
             # The download passed the repository's checksum and is hashed here; the file the cache holds under that
             # sha256 passed the cheap check at most, which does not see a byte changed in place. So it is hashed in

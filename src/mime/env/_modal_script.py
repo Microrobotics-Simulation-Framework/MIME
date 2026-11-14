@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import cast
 
 from mime._lock_json import read_lock
-from mime.assets import folder_assets
+from mime.assets import folder_assets, licences_of, read_acceptances
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.env._check import (
     DISTRIBUTION,
@@ -191,6 +191,19 @@ def _study_spec(study: str | os.PathLike[str] | None, shards: int, max_container
     return path
 
 
+def _accepted_licences(folder: Path) -> list[str]:
+    """The ids of the licences with conditions that the experiment's assets are under and that were accepted on this
+    machine (by id and title, as the gate asks): what the script carries as ``accept_licences`` for its run. A
+    licence nobody accepted here is not carried, and the run's first read of that file is refused."""
+    held = {(each.licence.id, each.licence.title) for each in read_acceptances()}
+    found: dict[str, None] = {}
+    for ref in folder_assets(folder):
+        for licence in licences_of(ref):
+            if (licence.id, licence.title) in held:
+                found.setdefault(licence.id)
+    return sorted(found)
+
+
 def _constants(values: dict[str, object]) -> str:
     notes = {
         "EXPERIMENT": "the experiment's folder, from this script's",
@@ -207,6 +220,8 @@ def _constants(values: dict[str, object]) -> str:
         "STUDY": "the study's spec file beside this script (--study); None: the script runs no study",
         "SHARDS": "containers a study is split over (--shards), one shard of its groups each; 1: one container",
         "ASSETS": "whether the lock references assets, fetched onto the assets Volume first",
+        "ACCEPT_LICENCES": "the licences accepted where this was written, for this run only: a build reads a gated file "
+                           "only once its licence is accepted, and nobody can be asked in a container",
         "IMAGE_BUILDER_VERSION": f"Modal's image builder; the script was written against client {MODAL_CLIENT}",
     }
     lines = ["# Written by `mime modal` from the experiment's lock and MIME's pins: write it again, never edit it."]
@@ -296,6 +311,7 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         "XLA_FLAGS": with_deterministic("", True) if deterministic else "",
         "X64": x64,
         "ASSETS": has_assets,
+        "ACCEPT_LICENCES": _accepted_licences(where),
         "XLA_CACHE": xla_cache,
         "TIMEOUT": timeout,
         "MAX_CONTAINERS": max_containers,

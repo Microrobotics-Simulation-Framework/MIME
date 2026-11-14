@@ -13,6 +13,7 @@ The tube experiment reads the cached asset (``mime assets fetch unit_tube_R0.997
 
 import json
 import shutil
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,7 @@ from mime import assets
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE
-from mime.saved import LOCK_FILE, LoadRefused
+from mime.saved import LOCK_FILE, LoadRefused, card_text, notice, pack
 from mime.units import mm
 
 TABLE = assets.reference(UNIT_TUBE)
@@ -59,6 +60,26 @@ def test_the_saved_tube_experiment_loads_and_its_modal_script_fetches_its_assets
     monkeypatch.setattr(modal_generator, "installed_checkout", lambda: None)
     written = modal_generator.modal_script(saved, out=tmp_path / "modal", wheel_sha256=lambda version: "ab" * 32)
     assert "\nASSETS = True" in written.script.read_text(encoding="utf-8")
+
+
+def test_the_tube_experiments_bundle_says_what_a_reuser_needs_of_mimes_own_table(saved: Path, tmp_path: Path):
+    """The bundle's NOTICE and the card name the table (the folder holds no file of it, and a bundle never carries it):
+    its licence, where it is available from, and what a reuser needs, MIME at the version that saved the folder.
+    Before the fix both read only the folder's files, and said "None named" and "from this bundle alone"."""
+    bundle = pack(saved, out=tmp_path / "mrs_tube.mimebundle")
+    with zipfile.ZipFile(bundle) as archive:
+        held = archive.read("NOTICE").decode()
+    assert held == notice(saved)
+    version = lock_of(saved)["environment"]["mime"]  # type: ignore[index]
+    assert "unit_tube_R0.997\n  sha256 " + TABLE.sha256 in held and "MIME's own record; licence CC0-1.0" in held
+    assert f"needs: MIME {version}, the version that saved the folder" in held
+    assert "Licences\n--------\nCC0-1.0: https://spdx.org/licenses/CC0-1.0.html\n" in held
+    assert "None named." not in held and "from this bundle alone" not in held
+    assert f"given 1 asset the lock names that the bundle does not carry, which `mime assets fetch <folder>` fetches: " \
+           f"unit_tube_R0.997 (not carried in a bundle; licence CC0-1.0;" in held
+    card = card_text(saved)
+    assert "| `unit_tube_R0.997` | MIME's own record | CC0-1.0 | permitted | referenced |" in card
+    assert "from this bundle alone" not in card
 
 
 def test_an_experiment_reading_no_remote_asset_writes_no_key(tmp_path: Path):

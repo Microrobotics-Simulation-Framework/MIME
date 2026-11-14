@@ -371,6 +371,23 @@ jobs:
           name: junit-default-python-${{ matrix.python-version }}
           path: ${{ runner.temp }}/junit
           if-no-files-found: error
+      # What the weekly duration triage reads (scripts/duration_triage.py), one artifact a lane and attempt: each kept
+      # shard's JUnit report and cache mode, and no shard record. A run's download is then two artifacts, not one a shard
+      # and lane: its time is the count of artifacts, about half a second each. It runs after a red shard too, and an empty
+      # one only warns: whether the shards ran the lane is check_shards.py's to say.
+      - name: Gather the lane's timings for the weekly triage
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/timings"
+          find "$RUNNER_TEMP/shards" -mindepth 2 -maxdepth 2 -type f \
+            \( -name 'test-results-shard*.xml' -o -name 'cache-mode-shard*.txt' \) -exec cp -t "$RUNNER_TEMP/timings/" {} +
+      - name: Upload the lane's timings
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: timings-default-python-${{ matrix.python-version }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/timings
+          if-no-files-found: warn
       # Every check of the documentation's sources (src/mime/docs/README.md): the sources' forms, the docs walk and
       # its ledger, the number rule, the citation check over the built pages, then scripts/check_anomalies.py,
       # unchanged. Its summary, each list's length, the entries whose derivative is not exact and the word-numeral

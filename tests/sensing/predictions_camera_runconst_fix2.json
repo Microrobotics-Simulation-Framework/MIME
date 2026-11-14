@@ -1,0 +1,44 @@
+{
+ "written": "2026-11-13, committed before the fix round's second probe ran (the commit that adds this file is the timestamp): CI's run at 8ce3b3cd failed MADDENING's params_effective on the camera (its verification injects a tree with a moved intrinsic into update(), a step not given its run-constants, and the step read the build's structure as it was: a frame that was not a number, where a node built with that intrinsic draws a frame). A step not given its run-constants chooses per frame again (the tree's structure where its numbers hold, one made from the step's where any differs, each branch rendering the frame: 4ce71c6e's form); a step given them (a differentiated run, a chunk that tallies the run's flags) is unchanged, so the derivative programs, their costs and their memory are 8ce3b3cd's",
+ "phase": "camera lane: the fix round of #284, the step not given its run-constants",
+ "labels": "the fix round's second predictions; basis: tests/sensing/predictions_camera_runconst_fix.json's outcomes (run 43359790001), 4ce71c6e's bits (run 43331659720) and the local runs in seen_before",
+ "seen_before": [
+  "CI run 43362892219 at 8ce3b3cd: tests/saved/test_node_walk.py's camera case failed params_effective (update() does not apply the injected fx..k3 the way a constructed value is applied); the duration allowlist named the B1 test's ids before its route parameter",
+  "CI run 43362892219's junit reports (3.12 and 3.14, cold): the B1 test's twelve cases took 0.6 to 15.9 s, so none belongs on the allowlist by CONTRIBUTING's rule (over 30 s once, or over 25.5 s in a quarter of the cold runs); the four old rows are removed and no new ones added",
+  "local, the stopped agent's working tree before this commit: tests/sensing/test_in_loop_cache.py 22 passed (both dtypes); one run each of read-as-is (the leaf test's written and given cases, the served test, the stale test failed), remake-off (the leaf test's written cases and the served test's run-constants route), guard-off (the stale test), cache-every-frame (the served test and the inspection), made-branch (the inspection)",
+  "this commit's own changes over that tree: the stale test's structure is marked as well as its numbers moved, so the step not given run-constants is seen to draw over one made again (with the numbers alone moved, read and made gave the same frame and that half could not fail); the read branch of the per-frame choice reads through structure_of, so cache-every-frame reaches the recorded run's route of the served test too; the leaf test asserts that the run's remake made the structure again for the written and given routes and nothing for the override's (its tree is a point's, built at its own leaves)"
+ ],
+ "operating_point": {
+  "dtype": ["float64", "float32"],
+  "platform": "CPU, GitHub runners (4 vCPU); bits in one job on one CPU, one thread",
+  "sizes_and_parameters": "as tests/sensing/predictions_camera_runconst_fix.json: the in-loop cases at 160x120, fy moved to 800 against 750 for the leaf test; the bits' cases (camera_scene, camera_on_gantry, script A, the lab gantry)",
+  "seeds_and_draws": "none: deterministic programs; a control's runs repeat them in fresh processes"
+ },
+ "gate_1_bits_again": {
+  "claim": "with the per-frame choice back in the step not given its run-constants (a recorded run's history scan and the save's reference and resolution steps take it, the held branch taken), every array is unchanged against da8d1679: camera_scene and camera_on_gantry frames from step 0 and 12 steps later, the save's reference and resolution, script A and the lab gantry; and the programs of script A and the lab gantry (no camera) are unchanged",
+  "kind": "equality",
+  "case": "probe arm bits (.github/probe/bit_compare.py, base da8d1679, probe/dump.py's programs as in run 43359790001) and bits-controls",
+  "prediction": {"value": "every array np.array_equal but the removed cache_* fields; the programs' text and constants equal", "basis": "measured-before", "why": "4ce71c6e's step had the same choice (each branch rendering the frame) and matched da8d1679 bit for bit on a runner (run 43331659720); the programs without a camera do not reach the changed function"},
+  "metric": "np.array_equal of every array; the programs' text and constants",
+  "control": {"plant": "fy one ulp up on one side (the camulp program)", "environment_variable": "none", "expected_rate": "differs", "runs": 1, "clean_expected": "head against head equal", "resolution": "one ulp of fy"},
+  "if_wrong": "a moved bit in a recorded run's frame means the cond's held branch compiles the frame differently from 8ce3b3cd's read: name the arrays and by how much",
+  "cannot_discriminate_if": "the dump read no frame (it reads 12 steps of the history scan from step 0, a frame every 3)"
+ },
+ "gate_2_controls_again": {
+  "claim": "each plant fails its case on every run and nothing fails clean: read-as-is the leaf test's written (float64, ball and tube) and given (float32, tube only) cases and the served test; cache-every-frame the served test's recorded-run route and the inspection; remake-off the served test's run-constants route; guard-off the stale test; made-branch the inspection",
+  "kind": "acceptance",
+  "case": "tests/sensing/test_in_loop_cache.py, probe arms detect-*",
+  "prediction": {"value": "10/10 each, clean 0/10", "basis": "measured-before", "why": "one local run each (seen_before) and, for the two cases this commit sharpens (the stale test's marked structure, the recorded run's route under cache-every-frame), the mechanism: a frame read from a marked structure is 1000 times the marker everywhere, the clean frame is not"},
+  "metric": "detection_rate.py's caught/N",
+  "control": {"plant": "as named", "environment_variable": "CAMERA_PLANT", "expected_rate": "10/10", "runs": 10, "clean_expected": "0/10", "resolution": "exact (a marked or stale frame differs from the clean one by over 100 counts) or structural (any make in the program)"},
+  "if_wrong": "a clean failure: read the test's message before anything else; a plant missed: the route does not reach the planted function",
+  "cannot_discriminate_if": "n/a: each case asserts the leaf moved the frame, or reads a marked structure"
+ },
+ "unchanged": "the derivative's programs (MIME's differentiated run and chunk_function, steps given their run-constants), so tests/sensing/predictions_camera_runconst_fix.json's gates 1 (cost off the build point), 4 (two builds: the trace form is the chunk step, given its run-constants), 5 (reverse memory), 6 (vjp against jvp) and 7 (the chunked arm) stand as measured there",
+ "outcomes": {
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43369711657",
+  "gate_1_bits_again": "as predicted: every array equal, da8d1679 against this head's code (probe commit a3d0c1e5) on one CPU (Xeon Platinum 8370C), one thread: camera_scene and camera_on_gantry float64 and float32 (12 steps of the history scan from step 0, which takes the per-frame choice's held branch, and the state 12 steps later; the cache_* fields left out), camera_scene's save in both dtypes (reference and resolution), script A float64 and float32, the lab gantry float64; and the programs of script A (progA) and of the lab gantry (progG; float64, the chunk step's and a differentiated run's text and constants) equal. Controls (EPYC 9V45): head against head equal, fy one ulp up differs",
+  "gate_2_controls_again": "as predicted, 10/10 each, clean 0/10 each, none inconclusive: read-as-is on the leaf test's written case (float64, ball and tube) and given case (float32, tube only) and on the served test; remake-off on the served test's run-constants route; cache-every-frame on the served test's recorded-run route and on the inspection; guard-off on the stale test; made-branch on the inspection",
+  "memory": "every arm's peak under its bound (0.65 to 1.10 GiB against 1.47 to 1.52 GiB)"
+ }
+}

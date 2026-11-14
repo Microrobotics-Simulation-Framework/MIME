@@ -325,8 +325,10 @@ of those jobs (13 records), in 3 runs, one of them real (the other two are an ow
 cold-by-design run, which the re-run alone clears or does not). Both counts are upper bounds. What it lets through is slow
 tests between 20 s and 30 s, and the triage is the check on those.
 
-**The weekly triage** (`scripts/duration_triage.py`) reads a week of cold push and nightly reports (`durations-default-*`
-of `ci.yml` on `release/v0.3.0`, Python 3.12 and 3.14: about 50 push runs and 2 GB of artifacts a week) and writes one
+**The weekly triage** (`scripts/duration_triage.py`) reads a week of cold push and nightly reports (each default lane's
+one `timings-default-python-*` artifact of `ci.yml` on `release/v0.3.0`, Python 3.12 and 3.14, which the lane's own job
+uploads; the shards' `durations-default-*` for a run from before it: 89 push runs in the week to 2026-11-13, two artifacts and
+about 1.2 MB zipped a run, 17 MB on disk, where the shards' were 60 artifacts, 14 MB and 109 MB, and about 40 s to fetch) and writes one
 branch, made from the checkout's `HEAD`, so run it on a clean checkout of `release/v0.3.0`: the ceilings file,
 additions to `tests/duration_allowlist.txt` by the rule below (only a test pytest collects on that checkout, and never
 `tests/test_canary.py`, the planted tests), and removals (a listed test under 10 s in every report). Its pull request body

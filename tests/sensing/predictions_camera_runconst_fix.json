@@ -1,0 +1,321 @@
+{
+ "written": "2026-11-13, committed before the fix round's gates ran on a runner (the commit that adds this file is the timestamp; amended before any gate ran, after the coordinator asked that no forward run read a structure made at other numbers): #284's review fixed, the camera's static structure never made in a frame step, made once a run from the run's leaves where a derivative may be taken, and made again once a forward run on the host where the tree's was made at other leaves",
+ "phase": "camera lane: the fix round of #284 (the static structure made once per run)",
+ "labels": "the fix round's predictions; basis: #284's review (its measured costs and memory, laptop, one core), the PR's own outcomes (tests/sensing/predictions_camera_runconst.json) and the local runs in seen_before",
+ "seen_before": [
+  "#284's review, laptop i7-12850HX one pinned core, float64, 160x120, 20 steps a frame every step, ms per step: 4ce71c6e forward 0.69 at the build's leaves and 4.29 with fy 1 % off, jvp 1.39 and 9.92; da8d1679 0.91 / 0.92 and 1.41 / 1.42",
+  "#284's review: reverse temp memory of the continued objective (12 steps, 160x120, float64, checkpointed) 4888 MB at 4ce71c6e, 4884 MB at da8d1679; forward 10 to 12 MB",
+  "#284's outcomes: the make 57 ms (float32) and 134 ms (float64) at 640x480, a frame 14 / 28 ms (runner, one CPU)",
+  "local, this head, laptop: a study's point off the build point (fy 757.5 against 750) holds the structure made at its own leaves (static_structure_from equal to its intrinsics), so Study.gradient and Study.fit, which take their derivative at each point's own values, read the held structure at 4ce71c6e too; the per-frame remake is reached by a tree written leaf by leaf (the review's direct differentiated_run, a central difference's +-h, the study's _replaced away from theta0)",
+  "local, this head: tests/sensing/test_in_loop_cache.py 12 passed (both dtypes); one run each of CAMERA_PLANT numbers-not-compared (the served case failed, both routes), cache-every-frame (the served case and the inspection failed) and made-branch (the inspection failed, the served case passed, as designed: it cannot see an untaken branch)",
+  "local, this head: the B1 test over its three routes (override, written, given), the served test (made again once a run) and the guard test, both dtypes, passed once; the plants not yet run"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; gates and controls on GitHub runners (4 vCPU); costs in one job per size and dtype, pinned to one CPU with one thread, the three commits interleaved; compiled memory (XLA's analysis, compile only) on the laptop",
+  "sizes_and_parameters": "costs: in_loop_cases.cost_case at 160x120 and 640x480, a frame every base step; MIME's differentiated run of 20 steps from the build's state, one chunk, the tree the build's with fy, cy and k1 written leaf by leaf, at the build's values or 1 % off (k1 is zero, so fy and cy move); its primal (forward) and its jvp along a unit tangent; a one-step forward chunk; the per-run make. Memory: camera spike R1's continued case (160x120 and 320x240, 6 steps then 12, a frame every 3 steps, the wall rows), jax.grad checkpointed and jacfwd",
+  "seeds_and_draws": "none: every gate is a deterministic program; a control's runs repeat it in fresh processes"
+ },
+ "gate_1_off_the_build_point": {
+  "claim": "a differentiated run whose tree has the detector's leaves written leaf by leaf, 1 % off the build's, costs per steady step what one at the build's leaves costs, forward and jvp, at both sizes and dtypes",
+  "kind": "estimates",
+  "case": "probe/interleaved.py with probe/cost_runners.py dfwd_at, dfwd_off, djvp_at, djvp_off, through node_measure.py",
+  "prediction": {
+   "band": [
+    0.95,
+    1.05
+   ],
+   "unit": "head: ms per step 1 % off over ms per step at the build's leaves, each of forward and jvp, per size and dtype (medians over the rounds)",
+   "basis": "derived",
+   "why": "the head makes the structure once per run from the run's leaves whatever they are, outside the loop, and no frame step makes it; both points do the same work"
+  },
+  "comparisons": {
+   "4ce71c6e_off_over_at": "3 to 12 (the review's 6.3 forward and 7.1 jvp at 160x120 float64; larger where the make's share of a frame is larger)",
+   "da8d1679_off_over_at": "0.95 to 1.05 (its cache was made at the first step and carried)",
+   "head_at_over_4ce71c6e_at_forward": "1.0 to 1.4: one make per run more than 4ce71c6e's forward at the build's leaves, which read the held structure (about the make over 20 steps: 0.2 ms of 0.7 at 160x120 float64, 3 to 7 ms of 14 to 28 at 640x480)",
+   "head_at_over_4ce71c6e_at_jvp": "0.85 to 1.15: both make the structure's tangent once a run (4ce71c6e through its custom rule, the head by JAX's own)",
+   "head_over_da8d1679_at": "0.7 to 1.15, forward and jvp: both make it once a run; da8d1679 carried it in every step",
+   "head_chunk1_over_4ce71c6e_chunk1": "1.0 to 1.2: the host compare of the 49 numbers once a run (a few small transfers) on a one-step chunk"
+  },
+  "metric": "steady ms per step, the min of each process's repeats, the median over three rounds",
+  "control": {
+   "plant": "4ce71c6e's code, the side the probe runs beside the head: its off-build-point run remakes the structure in every frame",
+   "environment_variable": "none: a side of the interleaved probe",
+   "expected_rate": "its off/at ratio above 3 at every size and dtype",
+   "runs": 3,
+   "clean_expected": "da8d1679's off/at within 0.95 to 1.05",
+   "resolution": "a remake in every frame costs the make once per frame step: 3.6 ms on a 0.7 ms step at 160x120 float64 (the review), far above the rounds' spread (5 % at most in #284's probe)"
+  },
+  "if_wrong": "a head ratio above 1.05 would mean a remake survives somewhere off the build point: look for a make in the step's program (gate 2) before anything else",
+  "cannot_discriminate_if": "the moved leaves did not change the structure (k1 is zero and stays zero; fy and cy move by 1 %, enough to change every ray)"
+ },
+ "gate_2_no_frame_step_makes_it": {
+  "claim": "no frame step makes the structure: the camera's step as MADDENING's scan runs it, as a chunk runs it and inside a differentiated run's loop reaches none of the functions that make it, and a differentiated run makes it once, before its loop",
+  "kind": "acceptance",
+  "case": "tests/sensing/test_in_loop_cache.py::test_no_frame_step_makes_the_structure_and_a_differentiated_run_makes_it_once_outside_its_loop",
+  "prediction": {
+   "value": "pass in both dtypes",
+   "basis": "measured-before",
+   "why": "local run above; the test's own control (a camera on a moving mount renders the structure in every frame) shows the inspection sees the make's functions"
+  },
+  "metric": "the functions ray_table, _static (static_part) and the maker reached by equations of the camera's compiled step",
+  "control": {
+   "plant": "cache-every-frame: the step makes the structure from its numbers in every frame; made-branch: #284's first placement, a branch that makes it where the numbers differ, untaken at the build's leaves",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "10/10 each",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "structural: any make in the step's program, taken or not"
+  },
+  "if_wrong": "a clean failure means the inspection reads another node's step or a frame JAX cut differently on the runner: read its message first",
+  "cannot_discriminate_if": "JAX's source information were lost (no frames): the moving-mount control would then fail too"
+ },
+ "gate_3_never_read_at_other_numbers": {
+  "claim": "no forward run reads a structure made at other numbers than its leaves: a continued run given fy=800 by an override, by the graph's tree written leaf by leaf, or by a tree given to the run with fy written, equals a fresh build at 800 (tube only, ball and tube, both dtypes); a structure whose numbers hold is read and one whose numbers differ (any of the 49) is made again once a run, on both routes; a step outside MIME's runs (MADDENING's own scan) that meets one draws a frame that is not a number",
+  "kind": "acceptance",
+  "case": "tests/sensing/test_in_loop_cache.py: test_a_continued_run_with_another_leaf_draws_the_frame_at_it, test_the_structure_is_served_while_its_numbers_hold_and_made_again_once_a_run_when_any_differs, test_a_step_given_a_structure_made_at_other_numbers_draws_no_frame",
+  "prediction": {
+   "value": "pass in both dtypes, every route",
+   "basis": "measured-before",
+   "why": "local runs above; the remake is the build's own compiled maker, so equal bit for bit"
+  },
+  "metric": "the frame against a fresh build's (exact), the marked structure's frame, NaN",
+  "control": {
+   "plant": "read-as-is (the run's remake and the step's guard off: the tree read as it is); remake-off; guard-off; cache-every-frame",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "10/10 each on its test; read-as-is fails the written and given routes and not the override's, whose tree is its point's (built at its own leaves)",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "exact: a stale tube's edge moves the frame by over 100 counts"
+  },
+  "if_wrong": "a clean failure on the given route would mean ChunkedRun's params skip the remake",
+  "cannot_discriminate_if": "the moved leaf did not move the frame (asserted: over 100 counts)"
+ },
+ "gate_4_two_builds": {
+  "claim": "the two-builds walk stays quiet on the camera's detector leaves, and both plants (the build's structure given to every chunk as a constant; the guard's numbers held as constants) fire on fy and k1",
+  "kind": "acceptance",
+  "case": "tests/two_builds/test_two_builds_walk.py (camera_scene, and the control test of its two plants); probe/two_builds_plant.py",
+  "prediction": {
+   "value": "quiet; each plant 10/10",
+   "basis": "measured-before",
+   "why": "the PR's outcomes (10/10 each at 4ce71c6e); the step still reads the structure and its numbers as arguments, and the guard compares them"
+  },
+  "metric": "programs_differ of the two builds' chunk-step programs",
+  "control": {
+   "plant": "structure-as-built, numbers-as-built",
+   "environment_variable": "CAMERA_TWO_BUILDS_PLANT",
+   "expected_rate": "10/10 each",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "structural"
+  },
+  "if_wrong": "a quiet plant means the trace form no longer sees the camera's arguments: the walk would be blind on its leaves",
+  "cannot_discriminate_if": "the step read neither leaf (the guard reads the numbers; the frame reads the structure)"
+ },
+ "gate_5_reverse_memory": {
+  "claim": "with no make in the frame step, the reverse program of the continued objective holds the make's residuals once (it is made once, before the run's chunks) rather than in every recomputed step",
+  "kind": "estimates",
+  "case": "probe/mem.py (compile only, XLA's memory analysis): jax.grad checkpointed, jacfwd and the primal of camera spike R1's continued objective, at da8d1679, 4ce71c6e and the head",
+  "prediction": {
+   "band": [
+    300.0,
+    1500.0
+   ],
+   "unit": "MB, the head's reverse temp at 160x120 float64 (4884 / 4888 at da8d1679 / 4ce71c6e, the review)",
+   "basis": "guess",
+   "why": "R1 found the per-step tape about 6000 frames, the make's corner sub-samples kept by the frame cond at every step; the head keeps them once, about one step's tape (6000 x 154 kB = 0.9 GB), plus the frames' own (tens of frames a step); forward stays 10 to 30 MB"
+  },
+  "metric": "XLA's temp_size_in_bytes of the compiled program",
+  "control": {
+   "plant": "da8d1679 and 4ce71c6e, measured beside the head",
+   "environment_variable": "none",
+   "expected_rate": "their reverse temp at 4.8 to 5.0 GB, as the review measured",
+   "runs": 1,
+   "clean_expected": "n/a",
+   "resolution": "deterministic"
+  },
+  "if_wrong": "a head at 4.8 GB would mean the tape is not the make's: the frame's own render keeps it, and the stacked reverse PR's premise moves to the corner sub-sample checkpoint alone",
+  "cannot_discriminate_if": "the program were compiled at another size or step count from the review's"
+ },
+ "gate_6_vjp_against_jvp": {
+  "claim": "#284's review's check, from the continued state: the reverse derivative equals the forward one at the build's leaves and with fy 1 % off",
+  "kind": "equality",
+  "case": "probe/rev.py (the review's script), float64 and float32, at the head",
+  "prediction": {
+   "band": [
+    0.0,
+    1e-12
+   ],
+   "unit": "relative difference, float64 (float32 within 1e-5)",
+   "basis": "measured-before",
+   "why": "the review: 2e-16 (float64), 2.1e-7 (float32) at 4ce71c6e; the head's derivative is JAX's own rule on both sides"
+  },
+  "metric": "|vjp - jvp| / |jvp| per leaf",
+  "control": {
+   "plant": "da8d1679 (exactly [0, 0, 0] from the continued state, the review and the PR)",
+   "environment_variable": "none",
+   "expected_rate": "n/a: the continued-state forward gate's control (10/10 in the PR) covers the zero",
+   "runs": 1,
+   "clean_expected": "n/a",
+   "resolution": "relative 1e-12 in float64"
+  },
+  "if_wrong": "a reverse that differs would mean the make's transpose differs from its tangent: compare against central differences",
+  "cannot_discriminate_if": "both were zero (the jvp is checked nonzero against central differences by the forward gate)"
+ },
+ "gate_7_chunked_memory": {
+  "claim": "the chunked arm's control and clean runs (the continued-state forward gate's three chunks of 4) fit the estimate of their own program, so their memory check passes or fails on evidence (#284's review, m2)",
+  "kind": "bounds",
+  "case": "probe arm detect-old-chunked (probe/old_code.py, OLD_CODE_K=chunked), its estimate line probe/estimates.py:chunked_program (mem_estimate.py --raw)",
+  "prediction": {
+   "value": "the peak under the bound; the control 10/10 (da8d1679's code), clean 0/10",
+   "basis": "measured-before",
+   "why": "#284's chunked probe: 2.27 GiB peak against a bound read from another program; the raw estimate is of this one, multiplied by the raw program family's factor"
+  },
+  "metric": "the process's peak resident set against mem_check's bound",
+  "control": {
+   "plant": "da8d1679's code",
+   "environment_variable": "CAMERA_OLD_CODE",
+   "expected_rate": "10/10",
+   "runs": 10,
+   "clean_expected": "0/10",
+   "resolution": "as the continued arm's: a dropped share above about 2e-3 relative"
+  },
+  "if_wrong": "an UNDERESTIMATE again means the raw route misses what pytest's process holds beside the program (the build, the central differences' programs): record the row",
+  "cannot_discriminate_if": "n/a"
+ },
+ "bits": {
+  "cases": "bit_compare.py, da8d1679 against the head, one job, one CPU, one thread: script A (float64, float32) and the lab gantry (float64), no camera, the final state after 40 ms; camera_scene and camera_on_gantry (float64, float32): 12 steps of the history scan from step 0 and the state 12 steps later; the save of camera_scene (8 reference steps and the resolution its lock records), both dtypes; and the programs of two runs without a camera, script A's chunk step and its differentiated run, as text and constants",
+  "prediction": "every array np.array_equal but the removed cache_* fields; the programs' text and constants equal",
+  "controls": {
+   "repeat": "head against head: every array identical",
+   "one_ulp": "camera_scene with fy one ulp up on one side: the frames differ"
+  }
+ },
+ "outcomes": {
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001",
+  "gate_1_off_the_build_point": {
+   "result": "as predicted: the head's ms per step 1 % off over at the build's leaves 0.97, 0.95, 0.96, 0.99 forward and 1.03, 1.01, 1.00, 1.00 jvp (160x120 float32, float64; 640x480 float32, float64)",
+   "4ce71c6e_off_over_at": "forward 2.57, 2.91, 3.87, 3.76; jvp 3.92, 3.78, 4.72, 4.58: MISSED below the predicted 3 at 160x120 forward (2.6, 2.9): on the runner a 160x120 make is a smaller share of a frame than on the review's laptop core (6.3 there)",
+   "da8d1679_off_over_at": "0.99 to 1.01, as predicted",
+   "head_at_over_4ce71c6e_at_forward": "1.08, 1.13, 1.32, 1.30, as predicted (the make once a run: 58.6 / 123.8 ms over 20 steps at 640x480)",
+   "head_at_over_4ce71c6e_at_jvp": "1.00, 1.02, 1.02, 1.06, as predicted",
+   "head_over_da8d1679_at": "forward 1.02, 1.02, 1.05, 1.04; jvp 0.97, 0.97, 1.00, 1.02, as predicted",
+   "head_chunk1_over_4ce71c6e_chunk1": "1.08, 1.04, 0.97, 1.04 (one-step forward chunks; the host compare once a run), inside the predicted 1.0 to 1.2 but for 640x480 float32's 0.97, within the rounds' spread; against da8d1679 0.94, 0.86, 0.33, 0.23",
+   "ms_per_step_head": {
+    "dfwd_at": [
+     0.614,
+     1.309,
+     12.727,
+     28.509
+    ],
+    "dfwd_off": [
+     0.593,
+     1.246,
+     12.179,
+     28.222
+    ],
+    "djvp_at": [
+     0.758,
+     1.697,
+     17.875,
+     40.34
+    ],
+    "djvp_off": [
+     0.782,
+     1.722,
+     17.964,
+     40.2
+    ],
+    "chunk1": [
+     0.552,
+     0.554,
+     0.852,
+     1.085
+    ],
+    "make_ms": [
+     1.565,
+     2.971,
+     58.56,
+     123.813
+    ]
+   },
+   "ms_per_step_4ce71c6e": {
+    "dfwd_at": [
+     0.57,
+     1.162,
+     9.663,
+     21.899
+    ],
+    "dfwd_off": [
+     1.467,
+     3.383,
+     37.408,
+     82.424
+    ],
+    "djvp_at": [
+     0.756,
+     1.657,
+     17.452,
+     38.086
+    ],
+    "djvp_off": [
+     2.964,
+     6.261,
+     82.316,
+     174.433
+    ],
+    "chunk1": [
+     0.512,
+     0.531,
+     0.874,
+     1.042
+    ]
+   },
+   "ms_per_step_da8d1679": {
+    "dfwd_at": [
+     0.601,
+     1.282,
+     12.171,
+     27.327
+    ],
+    "dfwd_off": [
+     0.594,
+     1.241,
+     12.276,
+     27.142
+    ],
+    "djvp_at": [
+     0.783,
+     1.757,
+     17.897,
+     39.399
+    ],
+    "djvp_off": [
+     0.768,
+     1.739,
+     17.993,
+     39.117
+    ],
+    "chunk1": [
+     0.589,
+     0.641,
+     2.618,
+     4.704
+    ]
+   },
+   "how": "medians over three interleaved rounds of each process's min, one CPU, one thread; order 160x120 float32, float64, 640x480 float32, float64; cost160 on an AMD EPYC 9V45, the 640 arms on an EPYC 9V74 (each arm's three commits on one CPU)",
+   "memory": "the 640 arms failed the workflow's memory check: peaks 1.56 and 1.80 GiB against the raw program's estimates 0.80 and 0.99 GiB (bounds 1.49 and 1.50 from the * line): an underestimate of the raw route for node_measure processes; rows in the arms' mem_check.json, results unaffected"
+  },
+  "gate_2_no_frame_step_makes_it": "as predicted: cache-every-frame 10/10, made-branch 10/10, clean 0/10 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "gate_3_never_read_at_other_numbers": "as predicted: read-as-is 10/10 on the leaf test (its written and given routes; the override's route is not reached, its tree being its point's: measured locally) and 10/10 on the served test; remake-off 10/10 and cache-every-frame 10/10 on the served test; guard-off 10/10 on the guard test; clean 0/10 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "gate_4_two_builds": "as predicted: structure-as-built 10/10, numbers-as-built 10/10, clean 0/10 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "gate_5_reverse_memory": "as predicted (laptop, compile only, XLA's analysis): the head's reverse temp 968 MB at 160x120 float64 against 4884 (da8d1679) and 4888 (4ce71c6e), 490 against 2472 and 2474 in float32, 3849 against 19514 and 19530 at 320x240 float64; jacfwd 42 MB at 160x120 float64 at all three (169 MB at 320x240), the primal 12 MB",
+  "gate_6_vjp_against_jvp": "as predicted (laptop, the review's rev.py at the head): float64 jvp [-629.3125, 9508.968, -3858.744] (the review's), vjp equal to 1.9e-16 relative; float32 within 2.1e-7; 1 % off in fy equal likewise; the reverse program's temp 968 MB (float64), 490 MB (float32)",
+  "gate_7_chunked_memory": "the control as predicted (da8d1679's code 10/10, clean 0/10, https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001); the memory check FAILED again, now on evidence: the arm's peak 1.77 GiB against its own program's raw estimate 1.29 GiB (its factory ran the test's two cases in process, 1.26 GiB at its peak on the laptop; bound 1.42 by the raw-program family's factor of 1.10, 1.50 by the * line). The raw route misses what the arm's pytest process holds beside the program on the runner; the row is in its mem_check.json",
+  "bits": "as predicted: every array equal, da8d1679 against the head on one CPU (EPYC 9V74), one thread: script A float64 and float32, the lab gantry float64, camera_scene and camera_on_gantry float64 and float32 (12 steps of the history scan from step 0 and the state 12 steps later, the cache_* fields left out), camera_scene's save in both dtypes; and the programs of script A and of the lab gantry (float64: the chunk step's and a differentiated run's text and constants) equal. Script A's float32 programs were not compared: the trace form refuses float32 by design (two-builds.float32). Controls (EPYC 9V45): head against head equal, fy one ulp up differs (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43359790001)",
+  "m1_switch_scan": "the custom rule is removed (the derivative is JAX's own through the make), and the switch scan traces each node's run-constants as a derivative's run makes them (tests/saved/switch_configurations.py), so the make is in its scope: a raw jnp.maximum planted in structure_maker's made (which no step runs) failed test_the_tree_passes_the_scan_with_its_list_and_its_owners with that one site named, 1/1 (laptop; the scan is one deterministic trace), and the unplanted tree passed it"
+ }
+}

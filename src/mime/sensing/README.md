@@ -87,20 +87,28 @@ base steps (the node's own count; `rate=` is refused) over the last `sub_frames`
 build's: the disc windows are sized for them), so a study can fit them, and `expected` is the differentiable output.
 
 - **The static structure.** Where the camera is fixed in the world the structure's image and the ray table (with the
-  static flags) are one parameter of the node, `static_structure`, made once when the node's parameters are made, beside
-  every number it was made from (`static_structure_from`: the nine leaves, the scene's numbers, the camera's pose). So the
-  build's parameter tree, a study's point's and an override's each hold it at their own leaves, and the save's
-  resolution rerun is given it at its nudged ones (`made_again`). A frame step reads it where those numbers are the step's
-  and renders it again where any differs (a tree written number by number without it), so a stale image is never read;
-  it is read, never carried, so the state holds no cache and a step between frames costs what holding the image costs.
-  A chunk makes it a run-constant (`run_constants`) that is the parameter itself, carrying the make's derivative in the
-  leaves, so a derivative is right from a continued state (a run continued, a chunk of a longer run) as from the first
-  step. A camera mounted on a frame of a chain (`Mounted`) is taken to move: it holds none, and the structure is rendered
-  in every frame, which the build report states. What it costs, measured through the built graph on one CPU with
-  the commits interleaved (the outcomes of `tests/sensing/predictions_camera_runconst.json`): the build renders it once; a
-  chunk of a run renders it never, a CALLBACK controller's chunks included, and a one-step chunk costs what it did before
-  the cache was carried; a step between frames costs what it did then too; and a frame step whose tree's numbers differ
-  pays one render on top of the frame.
+  static flags) are one parameter of the node, `static_structure`, made when the node's parameters are made, beside every
+  number it was made from (`static_structure_from`: the nine leaves, the scene's numbers, the camera's pose). So the
+  build's parameter tree, a study's point's and an override's each hold it at their own leaves, and the save's resolution
+  rerun is given it at its nudged ones (`made_again`). A frame step of MIME's runs reads it, made at the run's leaves,
+  and never makes it: read, never carried, so the state holds no cache, a step between frames costs what holding the image costs and a frame step what drawing over
+  it costs, at the build's leaves or any other. A forward run whose tree holds one made at other numbers than its leaves
+  (a leaf written into the tree without it) makes it again once, on the host, before its steps (`refreshed_held`, a
+  compare of the numbers); a run a derivative is taken through makes it once from the run's own leaves, before its steps
+  (`run_constants`, for a derivative), by JAX's own rules, so the derivative is right from a continued state as from the
+  first step, wherever the leaves are. A step given its run-constants (a differentiated run, a chunk that tallies the
+  run's flags) holds no branch that makes it, and one that still meets a structure made at other numbers draws a frame
+  that is not a number (no flag names the cause: the runs make it again first, so only a tree given past them reaches
+  it). A step not given them (MADDENING's own scan, which MIME's recorded runs use, `graph.step`, MADDENING's
+  verification, which injects a moved leaf and asks for the frame a node built with it draws) takes whatever tree it is
+  given, so it chooses per frame: the tree's structure where its numbers are the step's, one made from them where any
+  differs, a branch no run of MIME's takes, having made it again first; a derivative taken through such a step carries no
+  part of the structure where they hold (MIME's derivatives go through its differentiated run). A camera mounted on a frame of a chain (`Mounted`) is taken to move: it
+  holds none, and the structure is rendered in every frame, which the build report states. What it costs is measured
+  through the built graph on one CPU with the commits interleaved (the outcomes of
+  `tests/sensing/predictions_camera_runconst.json` and `tests/sensing/predictions_camera_runconst_fix.json`): the build
+  renders it once; a forward run's chunks never, a CALLBACK controller's included; a forward run whose leaves differ
+  from its tree's structure, once; a differentiated run once, at the build's leaves or off them alike.
 - **Recording and re-rendering.** In-loop frames are not recorded (`record=` of `image` or `expected` is refused,
   `camera.recorded-frames`; `history=True`, the all-fields verification path, is not refused). The poses are, and a frame is
   reproduced by rendering them again with `render` and `frame_key(seed, frame_step)`. The re-render is a second compiled
