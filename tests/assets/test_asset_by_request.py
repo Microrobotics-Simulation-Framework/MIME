@@ -249,3 +249,135 @@ def test_control_the_gate_asked_first_is_seen_by_the_order_test(tmp_path: Path):
         patch.setattr(_cache, "_found", gate_first)
         run_with_rig(lambda rig: seen.extend(the_order(rig, tmp_path)), tmp_path)
     assert seen != ORDER and seen[0] == ("asset.by-request", 1)
+
+
+# --- the batch (`mime assets fetch <folder>`) meets by request before the licence, as locate does ---------------------
+
+
+def batch_outcomes(rig: Rig, root: Path) -> list[tuple[str, int]]:
+    """What `mime assets fetch` does for a gated record with no location, as (the outcome, the licence questions asked so
+    far): the batch (`approved`) then the fetch, first with nothing in place and nobody to ask, then with somebody to ask
+    and nothing in place, then with a copy placed (somebody to ask), then with a copy placed and nobody to ask."""
+    from test_locate_gate import Yes
+
+    no_locations_file(rig, root)
+    os.environ["MIME_LICENCE_ACCEPTANCES"] = str(root / "licences.json")
+    payload = drawn(4)
+    ref = AssetRef("vessel_scan", hashlib.sha256(payload).hexdigest(), len(payload), GATED.id, (), role="results",
+                   licences=(GATED,), request=REQUEST)
+    asker, seen = Yes(), []
+
+    def batch() -> None:
+        try:
+            with assets.approved([ref]):
+                assets.fetch(ref)
+            seen.append(("fetched", asker.asked))
+        except BuildRefused as refused:
+            seen.append((refused.codes()[0], asker.asked))
+
+    with assets.asking(None):
+        batch()
+    with assets.asking(asker):
+        batch()
+    rig.cache.mkdir(parents=True, exist_ok=True)
+    (rig.cache / ref.name).write_bytes(payload)
+    with assets.asking(None):
+        batch()
+    with assets.asking(asker):
+        batch()
+    return seen
+
+
+#: By request with nothing in place and no licence asked, with or without somebody to ask; once a copy is placed the gate
+#: asks as for any file (refused with nobody to ask: P0's gate stays whole), and with a yes the copy is taken.
+BATCH_ORDER = [("asset.by-request", 0), ("asset.by-request", 0), ("asset.licence-not-accepted", 0), ("fetched", 1)]
+
+
+def test_the_batch_says_by_request_before_it_asks_about_the_licence(tmp_path: Path):
+    seen: list[tuple[str, int]] = []
+    run_with_rig(lambda rig: seen.extend(batch_outcomes(rig, tmp_path)), tmp_path)
+    assert seen == BATCH_ORDER
+
+
+def test_control_the_batch_counting_the_unplaced_licence_is_seen(tmp_path: Path):
+    """The batch test discriminates: with the by-request record counted for acceptance (the earlier behaviour), the
+    licence is refused or asked first."""
+    seen: list[tuple[str, int]] = []
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(_fetch, "awaits_a_copy", lambda ref: False)
+        run_with_rig(lambda rig: seen.extend(batch_outcomes(rig, tmp_path)), tmp_path)
+    assert seen != BATCH_ORDER and seen[0] == ("asset.licence-not-accepted", 0)
+
+
+# --- the action never names a command that would be refused as an unknown asset -----------------------------------------
+
+
+def commands_in(action: str) -> list[str]:
+    """The arguments of every `mime assets fetch` the text names."""
+    import re
+    import shlex
+
+    return [shlex.split(each)[0] for each in re.findall(r"mime assets fetch ([^`:)]+)", action)]
+
+
+def would_be_unknown(argument: str) -> bool:
+    if argument.startswith("<"):  # the placeholder for a folder, which the reader fills in
+        return False
+    if Path(argument).is_dir() or argument.endswith("/"):
+        return False
+    try:
+        assets.reference(argument)
+    except BuildRefused as refused:
+        return refused.codes() == ["asset.unknown"]
+    return False
+
+
+def actions_of(ref: AssetRef, folder: Path | None) -> list[str]:
+    try:
+        assets.locate(ref, folder=folder)
+    except BuildRefused as refused:
+        return [each.action for each in refused.refusals]
+    raise AssertionError("not refused")
+
+
+def test_by_request_and_missing_never_name_a_command_that_is_an_unknown_asset(tmp_path: Path):
+    from test_sources import a_second_source
+
+    def scenario(rig: Rig) -> None:
+        no_locations_file(rig, tmp_path)
+        folder = tmp_path / "saved"
+        folder.mkdir()
+        by_request, located = record(drawn(5)), record(drawn(6), name="hub_scan")
+        (rig.cache).mkdir(parents=True, exist_ok=True)
+        # a located record whose file is not in the cache's records: refused as missing, not by request
+        stub_ref = AssetRef("stub_scan", "0" * 64, 4, "CC-BY-4.0", ("https://example.org/stub",))
+        (rig.cache / stub_ref.sha256).write_bytes(b"xxxx")
+        unlisted = [actions_of(by_request, None), actions_of(stub_ref, None)]
+        assert [codes_of(lambda: assets.locate(each)) for each in (by_request, stub_ref)] == [
+            ["asset.by-request"], ["asset.missing"]]
+        for action in (each for actions in unlisted for each in actions):
+            assert not any(would_be_unknown(argument) for argument in commands_in(action)), action
+            assert "mime assets fetch vessel_scan" not in action and "mime assets fetch stub_scan" not in action
+        # with a folder the command is the folder's, and it works
+        (action,) = actions_of(by_request, folder)
+        assert commands_in(action) == [f"{folder}/"] or commands_in(action) == [str(folder) + "/"], action
+        # a record the sources hold by name keeps the command by name, which does resolve
+        with a_second_source(located):
+            (action,) = actions_of(located, None)
+            assert commands_in(action) == ["hub_scan"] and not would_be_unknown("hub_scan"), action
+
+    run_with_rig(scenario, tmp_path)
+
+
+def test_control_naming_the_asset_by_name_where_nothing_holds_it_is_seen(tmp_path: Path):
+    """The test above discriminates: with the by-name command named whatever the sources hold (the earlier behaviour) it
+    names one that is refused as an unknown asset."""
+    def scenario(rig: Rig) -> None:
+        no_locations_file(rig, tmp_path)
+        ref = record(drawn(5))
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(_cache, "named_by_the_sources", lambda ref, folder=None: True)
+            (action,) = actions_of(ref, None)
+        assert any(would_be_unknown(argument) for argument in commands_in(action)), action
+
+    run_with_rig(scenario, tmp_path)

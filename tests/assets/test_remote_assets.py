@@ -205,7 +205,8 @@ def missing_line_is_exact(rig: Rig) -> None:
     (refusal,) = named.refusals
     assert refusal.code == "asset.missing"
     assert refusal.message == "the experiment needs 'wall_R2.500' (26 kB), which isn't downloaded"
-    assert refusal.action == "Run: mime assets fetch wall_R2.500"
+    assert refusal.action == ("run `mime assets fetch <folder>` for the saved folder, or `mime visuals fetch <description folder>` "
+                             "for the description, that references it"), "a name nothing holds is not named as a command"
     (scoped,) = caught(lambda: assets.locate(ref, folder="fl9_water")).refusals
     assert scoped.message == refusal.message
     assert scoped.action == "Run: mime assets fetch ./fl9_water/", scoped.action

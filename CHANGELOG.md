@@ -30,8 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refused as `asset.by-request` (`locate`, `mime assets fetch`, and the load of a folder that lacks such a file), which
   says where to request it and where to put it: a copy placed in the cache is taken only if its sha256 is the record's.
   Beside the licence gate in `locate` (P0), a gated file had by request is refused by request while its bytes are not
-  under their sha256, with no licence asked (nothing is read); the fetch that takes a placed copy asks, and from then on
-  `locate` asks as for any gated file, never saying by request of a file that is here.
+  under their sha256, with no licence asked (nothing is read), in `locate`, in `mime assets fetch` of a name and in its
+  batch of a folder alike; the fetch that takes a placed copy asks, and from then on `locate` asks as for any gated file,
+  never saying by request of a file that is here. Where no command can fetch the asset by name (its record is only in a
+  saved folder's lock or a description's manifest), the action names the commands for the folder or the description, not
+  `mime assets fetch <name>`, which would be refused as an unknown asset; `asset.missing` says the same.
   `mime assets sources` says "no download location (by request)". `mime pack` carries the record, never the bytes, and
   warns (`mime.saved.ByRequestWarning`); `mime push` never uploads it, whatever its licence, lists it in its plan with
   its route, and warns; neither refuses it or asks `--yes`. The NOTICE, the availability statement and the card open
@@ -42,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `load.newer-form`. The bundle's format is `mime.bundle/4` and a manifest file's `mime.asset_manifest/3`, since a
   reader of the format before each, given a record with no location, refused its shape (`bundle.manifest`,
   `asset.manifest`), measured with MIME at 316937a8; it now refuses by the format, naming a later MIME.
+  The step is unconditional, so a bundle of an earlier form's folder packed by this MIME is refused by that reader too
+  (`load.newer-form`), and an older MIME's `mime assets fetch <folder>` of a folder of this form is refused by its
+  records' shape, as before (see Fixed). Development releases make no compatibility promise to an older reader.
 
 - **The document's `blocks` key, saved form 14** (the block design's §2.6; the maintainer's answer that it rides this
   step). Each block an experiment uses, by the use's name: its id, version and content hash, its tier (`copied` or

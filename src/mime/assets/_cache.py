@@ -271,17 +271,35 @@ def no_location(ref: AssetRef) -> bool:
     return not tried_locations(ref)
 
 
+def named_by_the_sources(ref: AssetRef, folder: str | os.PathLike[str] | None = None) -> bool:
+    """Whether ``mime assets fetch`` can be told ``ref`` by its name, or by the experiment ``folder`` the caller has: the
+    folder's command always works; a name only where the sources (or the experiment's pins) hold this record. A record
+    that sits only in a saved folder's lock or a description's manifest is ``asset.unknown`` by name, so a message
+    never names that command for it."""
+    if folder is not None:
+        return True
+    from mime.assets._known import reference
+
+    try:
+        return reference(ref.name).sha256 == ref.sha256
+    except BuildRefused:
+        return False
+
+
 def by_request(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None) -> BuildRefused:
     """``asset.by-request``: ``ref``'s file is not on this machine and no location names where to fetch it, so it is had
     by request alone. Says where to ask for it, and where a copy goes once held: MIME takes it only if its sha256 is the
     record's."""
+    where = f"copy it to {cache_dir() / ref.name} (or into a mirror folder your locations file names)"
     return BuildRefused([Refusal(
         "asset.by-request", RefusalClass.ENVIRONMENT,
         f"MIME cannot fetch {ref.name!r} ({size_text(ref.size)}): its publisher gives no download location (licence "
         f"{plain(ref.licence)}). Request it from: {request_words(ref)}",
-        f"once you hold the file, copy it to {cache_dir() / ref.name} (or into a mirror folder your locations file "
-        f"names), then run `{fetch_command(ref.name, folder=folder)}`: MIME takes it only if its sha256 is the "
-        f"record's")])
+        f"once you hold the file, {where}, then run `{fetch_command(ref.name, folder=folder)}`: MIME takes it only if "
+        f"its sha256 is the record's" if named_by_the_sources(ref, folder) else
+        f"once you hold the file, {where}, then run the command that needed it again (`mime assets fetch <folder>` "
+        f"for a saved folder, `mime visuals fetch <description folder>` for a description): MIME takes it only if "
+        f"its sha256 is the record's")])
 
 
 def _found(ref: AssetRef, folder: str | os.PathLike[str] | None, checksum: str | None) -> Path:
@@ -295,7 +313,9 @@ def _found(ref: AssetRef, folder: str | os.PathLike[str] | None, checksum: str |
         raise BuildRefused([Refusal(
             "asset.missing", RefusalClass.ENVIRONMENT,
             f"the experiment needs {ref.name!r} ({size_text(ref.size)}), which {problem}",
-            f"Run: {fetch_command(ref.name, folder=folder)}")])
+            f"Run: {fetch_command(ref.name, folder=folder)}" if named_by_the_sources(ref, folder) else
+            "run `mime assets fetch <folder>` for the saved folder, or `mime visuals fetch <description folder>` for "
+            "the description, that references it")])
     return file_path(ref)
 
 
