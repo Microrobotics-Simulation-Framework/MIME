@@ -80,6 +80,12 @@ Also:
   pixel's centre half a pixel in; the aperture offsets' signs) and read back. USD draws its pinhole, not its
   distortion. `display_primvars(prim)` reads a prim's `displayColor` and `displayOpacity`, its own or the nearest
   parent's.
+- **Scenery** (`Composition.scenery(owned, meters_per_unit)`, `SceneryMesh`): the `Mesh` prims of the composed references
+  that no thing owns, each read in metres in the world (its transforms applied, polygons fanned counter-clockwise from
+  outside) with its `displayColor` and `displayOpacity` inherited from the nearest prim that authors them
+  (`FindPrimvarWithInheritance`, `display_authors` names that prim). A mesh below a prim a thing is bound to, and a
+  kind's derived prim (`mime:derived_from`), are not scenery. `Composition.display(path)` is the same inherited read for one
+  prim: a bound body's part takes its display from there.
 - **`check_stage(path)`** runs every validator usd-core registers (its `UsdValidation` framework, which `usdchecker`
   runs; the older Python `ComplianceChecker` is gone from usd-core 26) and returns their findings.
 - The world frame (`WorldFrame`, `world_frame`) moved here from the build.

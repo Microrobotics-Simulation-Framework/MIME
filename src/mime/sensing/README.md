@@ -40,7 +40,12 @@ stages:
 - **Appearance belongs to materials.** A subject's declared `Appearance` (opaque, or attenuating per metre) wins;
   where none is declared, the stage's `displayColor` and `displayOpacity` for it (`display`, read with inheritance);
   with neither, opaque and mid-grey, and the note "appearance defaulted for: ...". Each subject's source is reported
-  (`appearance_sources`). The backlit one-bin camera reads the stage's display opacity as a flat absorber (the share of
+  (`appearance_sources`); the in-loop camera reads the stage's display primvars for the parts of a body bound to a prim of
+  a referenced asset, inherited as USD does (`mime.scene.Composition.display`), and its build report says which subjects
+  took them ("appearance from the stage's display primvars for: ...") and which were defaulted. A part written
+  Python-first has none on the stage (MIME writes its colour), so it is defaulted unless `absorbers` declares it; a
+  declared appearance is never changed by the stage (the declared subjects' frames are bit for bit the same with or
+  without a display on the stage). The backlit one-bin camera reads the stage's display opacity as a flat absorber (the share of
   the backlight it blocks where it covers a pixel); a display colour is a surface's reflected colour, which backlit
   transmission does not see. USD materials and textures plug into the same seam later.
 - **The reduction**, backlit transmission in one bin over media on two levels: each subject multiplies the backlight by
@@ -72,9 +77,17 @@ falls), `window_overflow`, `behind` (its enclosing ball reaches the camera's pla
 narrower than two sub-pixels, `THIN_CAP_SUBPIXELS`: the sub-samples do not resolve it, and a pixel there may miss by
 about a sub-pixel's area).
 
+- **Scenery** (`mime.scene.SceneryMesh`, from `Composition.scenery`): a `Mesh` prim of a referenced asset that no thing
+  owns (below no prim a body or apparatus is bound to, not a kind's derived prim, `mime:derived_from`) is scenery, read
+  with its points in metres in the world, its triangles and its inherited display colour and opacity (and the prim each
+  came from). The camera finds it and **refuses it by name** (`camera.mesh-untraced`, naming `hide=("<prim path>",)`) until
+  the mesh tracer arrives: a scenery mesh is never dropped silently. `hide=` takes a scenery mesh's prim path beside a
+  body's or structure's name, and the build report lists what was hidden. A layer records no decimation, so the distance a
+  decimated mesh moved is unknown here, not zero, and is not reported as a number.
+
 ## What it does not do yet
 
-The tracker and the controller that reads the in-loop camera, the stage reader, the sampled route and its crease measures, meshes and the display view's lighting and colour, X-ray
+The tracker and the controller that reads the in-loop camera, the sampled route and its crease measures, meshes and the display view's lighting and colour, X-ray
 detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
 intersections) go through `mime.core.switch` where a switch has a branch a derivative can take, under the owners
 `camera.*` (`_switches.py`, declared on the `camera` entry, each a row of the switch harness); the sites that stay raw are

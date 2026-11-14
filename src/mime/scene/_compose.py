@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from mime._notebook import RAN_TWICE, RUN_AGAIN, in_notebook
+from mime.scene._camera import display_primvars
 from mime.scene._derived import GEOMETRY, GEOMETRY_API
 from mime.scene._frame import Problem
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom
 from mime.scene._scene import Reference, sha256_hex
+from mime.scene._scenery import SceneryMesh, scenery
 from mime.things import WORLD, did_you_mean
 
 #: The ``mime:`` applied schema for a magnet's design data, written as the ``apiSchemas`` token on a part prim plus
@@ -95,6 +97,18 @@ class Composition:
             if within(path, root):
                 found.append(path)
         return found
+
+    def scenery(self, owned: Sequence[str], meters_per_unit: float) -> tuple[SceneryMesh, ...]:
+        """The meshes of the composed stage that no thing owns (``owned``: the prims things are bound to), in the
+        world, in metres: ``mime.scene.scenery``."""
+        return () if self._stage is None else scenery(self._stage, owned, meters_per_unit)
+
+    def display(self, path: str) -> tuple[tuple[float, float, float] | None, float | None]:
+        """The display colour and opacity of the prim at ``path``, each its own or the nearest parent's that authors
+        it; ``(None, None)`` where there is no such prim or none authors one."""
+        if not self.has(path):
+            return None, None
+        return display_primvars(self._stage.GetPrimAtPath(path))
 
     def magnet(self, part: str, body: str) -> tuple[MagnetDesign | None, list[Problem]]:
         """The design data of the part at ``part``, read through the ``mime:`` schema: its direction, or ``None``

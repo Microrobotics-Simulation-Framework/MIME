@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The camera reads the composed stage: scenery meshes and inherited display primvars** (`mime.scene.Composition.scenery`,
+  `SceneryMesh`, `Roster.scenery`; `mime.observations.Camera`, dev2, camera PR 4). A `Mesh` prim of a referenced asset that no
+  thing owns (below no bound prim, not a kind's derived prim) is scenery, read in metres in the world with the display
+  colour and opacity it inherits from its visual prim. The in-loop camera finds it and refuses it by name
+  (`camera.mesh-untraced`, naming `hide=("<prim path>",)`) until the mesh tracer: it is never dropped silently. `hide=` takes a
+  scenery mesh's prim path; the saved form gains no field (`hide` is the existing setting, a prim path one more string).
+  A body bound to a prim whose part declares no `absorbers` appearance takes the stage's display primvars for that part
+  (the build report says which: "appearance from the stage's display primvars for: ..."), else the mid-grey default with its
+  note; a declared appearance is bit for bit unchanged. A layer records no decimation, so a decimated mesh's moved distance is
+  reported as unknown, not as a number (recording it is the tracer's, where it matters: it would change the bytes of every
+  layer MIME writes). There is no `viz` extra in 0.3 (`usd-core` is a core dependency), so nothing is refused for a
+  missing extra. No compiled program changes for a scene without scenery meshes or stage display: the step and the forward
+  run compile to the same text before and after, in float32 and float64, with a one-ulp control that changes it.
+
 - **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
   mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
   frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in

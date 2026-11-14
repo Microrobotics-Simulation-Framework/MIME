@@ -11,17 +11,19 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 import numpy as np
 
 from mime.build._refusals import ArgumentRefused
 from mime.registry import Roster
-from mime.sensing._subjects import Appearance, Look, Subject, route_of
+from mime.sensing._subjects import Appearance, Display, Look, Subject, from_stage, route_of
 
 #: The first line of the camera's refusal of a subject without a closed form, and the code it carries.
 NO_FORM = "camera.no-closed-form"
+#: The code of the refusal of a scenery mesh: the stage holds it, and the camera cannot yet trace it.
+MESH_UNTRACED = "camera.mesh-untraced"
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,8 @@ class Found:
     hidden: tuple[str, ...]
     refused: tuple[tuple[str, str, str], ...]
     unknown_hidden: tuple[str, ...]
+    #: The stage's display primvars of the subjects that take any (by subject name), as the roster holds them.
+    display: Mapping[str, Display] = field(default_factory=dict[str, Display])
 
 
 def _list(value: Any) -> Any:
@@ -68,6 +72,7 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
     refused: list[tuple[str, str, str]] = []
     subjects: list[Subject] = []
     bodies: dict[str, tuple[str, ...]] = {}
+    display: dict[str, Display] = {}
 
     def refuse(name: str, kind: str, error: ArgumentRefused) -> None:
         refused.append((name, error.refusals[0].code, error.refusals[0].message))
@@ -87,6 +92,8 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
             subjects.append(Subject(subject_name, part.kind, _in_body(part.settings, part.rotation, part.centre),
                                     appearance=_appearance(subject_name, absorbers), moving=True))
             made.append(subject_name)
+            if part.display is not None and part.display != (None, None) and subject_name not in absorbers:
+                display[subject_name] = Display(*part.display)
         bodies[name] = tuple(made)
     for name, structure in sorted(roster.structures.items()):
         if name in hide:
@@ -100,27 +107,43 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
         settings = {k: _list(v) for k, v in structure.settings.items()}
         region = "wall" if structure.kind == "tube" else "solid"
         subjects.append(Subject(name, structure.kind, settings, region, appearance=_appearance(name, absorbers)))
-    named = set(roster.bodies) | set(roster.structures)
+    for mesh in roster.scenery:
+        if mesh.path in hide:
+            hidden.append(mesh.path)
+            continue
+        refused.append((mesh.path, MESH_UNTRACED,
+                        f"the stage holds this mesh ({len(mesh.triangles)} triangles) and the camera has no mesh tracer "
+                        f"yet: a scenery mesh is imaged by the BVH tracer of the camera's next piece (decimation distance not "
+                        f"recorded for: {mesh.path}; a layer holds none, so what the stage's decimation moved is unknown)"))
+    named = set(roster.bodies) | set(roster.structures) | {mesh.path for mesh in roster.scenery}
     return Found(tuple(subjects), bodies, tuple(hidden), tuple(refused),
-                 tuple(n for n in hide if n not in named))
+                 tuple(n for n in hide if n not in named), display)
 
 
-def subject_spec(subject: Subject, window: int | None) -> dict[str, Any]:
-    """A subject as plain data for the camera node's JSON constant (the node rebuilds it)."""
+def subject_spec(subject: Subject, window: int | None, display: Display | None = None) -> dict[str, Any]:
+    """A subject as plain data for the camera node's JSON constant (the node rebuilds it). ``display`` is the stage's
+    display primvars for a subject with no declared appearance: written only where there is one, so a scene whose
+    stage holds none writes the same constant as before."""
     appearance = subject.appearance
     attenuation = float(appearance.attenuation) if appearance is not None and appearance.look is Look.ATTENUATING \
         else None
-    return {"name": subject.name, "kind": subject.kind, "settings": _list(subject.settings), "region": subject.region,
-            "moving": subject.moving, "pose": _list(subject.pose), "coverage": subject.coverage, "window": window,
-            "attenuation": attenuation}
+    spec: dict[str, Any] = {
+        "name": subject.name, "kind": subject.kind, "settings": _list(subject.settings), "region": subject.region,
+        "moving": subject.moving, "pose": _list(subject.pose), "coverage": subject.coverage, "window": window,
+        "attenuation": attenuation}
+    if display is not None and attenuation is None and (display.colour is not None or display.opacity is not None):
+        spec["display"] = {"colour": _list(display.colour), "opacity": display.opacity}
+    return spec
 
 
 def subject_of(spec: Mapping[str, Any]) -> Subject:
     """The subject :func:`subject_spec` wrote."""
     attenuation = spec["attenuation"]
     pose = spec["pose"]
-    return Subject(spec["name"], spec["kind"], spec["settings"], spec["region"],
-                   Appearance.attenuating(attenuation) if attenuation is not None else None, None, spec["moving"],
+    held = spec.get("display")
+    appearance = Appearance.attenuating(attenuation) if attenuation is not None else (
+        from_stage(Display(held["colour"], held["opacity"])) if held is not None else None)
+    return Subject(spec["name"], spec["kind"], spec["settings"], spec["region"], appearance, None, spec["moving"],
                    ((pose[0][0], pose[0][1], pose[0][2]), (pose[1][0], pose[1][1], pose[1][2], pose[1][3])),
                    spec["coverage"], spec["window"])
 

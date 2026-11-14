@@ -132,6 +132,18 @@ def read_camera(prim: Any, *, meters_per_unit: float) -> CameraPrim:
                       (position[0], position[1], position[2]), _quaternion(rotation))
 
 
+def display_authors(prim: Any) -> tuple[str | None, str | None]:
+    """The path of the prim whose ``displayColor`` and ``displayOpacity`` a prim takes (its own or the nearest
+    parent's, ``FindPrimvarWithInheritance``), each ``None`` where no prim on its path authors one."""
+    api = UsdGeom.PrimvarsAPI(prim)
+    found: list[str | None] = []
+    for name in ("displayColor", "displayOpacity"):
+        primvar = api.FindPrimvarWithInheritance(name)
+        authored = primvar and primvar.HasAuthoredValue() and len(primvar.Get()) > 0
+        found.append(str(primvar.GetAttr().GetPrim().GetPath()) if authored else None)
+    return found[0], found[1]
+
+
 def display_primvars(prim: Any) -> tuple[tuple[float, float, float] | None, float | None]:
     """A prim's ``displayColor`` and ``displayOpacity``, each its own or the nearest parent's that authors it
     (``FindPrimvarWithInheritance``), as one colour and one opacity (a constant primvar's value, or the first of an
