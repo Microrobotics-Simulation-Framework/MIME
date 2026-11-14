@@ -1,0 +1,2 @@
+# pytest processes of the law's test file, one at a time, bounded as the gates probe's were (probe/estimate_case.py)
+*: --case estimate_case:tube --path probe --arg cells_across=40 --arg length_cells=80 --steps 1
