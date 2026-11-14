@@ -362,7 +362,7 @@ def two_builds_of(experiment: Experiment, path: object, *, relative: float = 1e-
             f"the value at {path} is not a quantity or a float, so a relative move of it means nothing",
             f"give the other build's value: `two_builds_of(experiment, {str(path)!r}, to=...)`",
             why="a two-builds pair moves a number by a relative step; a direction, a count or a choice has none")])
-    with keeping_pins(saved):
+    with keeping_pins(saved, settings):
         held = declared(settings, declarations, {axis: value}, STUDY_REASON)
         other = Experiment.declared_from(held.settings, held.declarations).build()
         base = built if built is not None else experiment.build()

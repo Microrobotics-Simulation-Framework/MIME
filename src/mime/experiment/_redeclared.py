@@ -25,10 +25,11 @@ name, a law's or an observation's id, a value's or a source's path; the controll
     before anything is changed, so a filter that turns a warning into an error leaves the experiment as it was.
 - **Not the same, in a script**: added, and the build refuses the two (``thing.duplicate``, ``id.duplicate``,
   ``value.duplicate``, ``source.duplicate``, ``controller.more-than-one``, ``terms.licence``), as before.
-- **Not the same, of a declaration taken from a saved experiment** (``Experiment.based_on``), in a script or a
-  notebook: it is replaced as a notebook replaces one, with a note that names the experiment it was taken from, since
-  changing what it holds is what an experiment based on another is for. A declaration made after it follows the rules
-  above.
+- **Not the same, of a declaration taken from a saved experiment** (``Experiment.based_on``) **or provided by a block**
+  (``Experiment.use``), in a script or a notebook: it is replaced as a notebook replaces one, with a note that names
+  where it was taken from, since changing what it holds is what an experiment based on another is for, and a block's
+  value overridden is one the user states of their own unit (the use records it among its ``overrides``). A declaration
+  made after it follows the rules above.
 
 A permission has no key (an experiment holds one for each grant), so only the same one again is kept once, and another
 is another permission."""
@@ -36,7 +37,7 @@ is another permission."""
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -275,33 +276,59 @@ def _replace(held: list[Declaration], earlier: list[int], declaration: Declarati
     replaced.append(note)
 
 
-def add(held: list[Declaration], declaration: Declaration, replaced: list[str], taken: Sequence[Declaration] = (),
-        parent: str | None = None) -> None:
+@dataclass(frozen=True)
+class Taken:
+    """Where a declaration an experiment holds was taken from, as a note says it: ``why`` replacing it is allowed in a
+    script (``it replaces the one ...``), ``place`` where it was made, and ``use`` the block use that provides it, if
+    one does."""
+
+    why: str
+    place: str
+    use: str | None = None
+
+
+#: Each declaration taken from elsewhere (a saved experiment it is based on, a block it uses), by ``id``, with the
+#: declaration itself, so that the id is never another's while it is held.
+type TakenFrom = Mapping[int, tuple[Declaration, Taken]]
+
+
+def taken_of(taken: TakenFrom, declaration: Declaration) -> Taken | None:
+    held = taken.get(id(declaration))
+    return held[1] if held is not None and held[0] is declaration else None
+
+
+def add(held: list[Declaration], declaration: Declaration, replaced: list[str], taken: TakenFrom | None = None
+        ) -> Taken | None:
     """Add ``declaration`` to ``held`` by the rule of this module, warning with its note at the script's line, and
-    record in ``replaced`` each note of a declaration that replaced an earlier one. ``taken`` are the declarations an
-    experiment based on the saved experiment ``parent`` took from it, the objects themselves."""
+    record in ``replaced`` each note of a declaration that replaced an earlier one. ``taken`` are the declarations the
+    experiment took from elsewhere (a saved experiment it is based on, a block it uses): one of them declared again,
+    changed, is replaced in a script too. Returns where the declaration it replaced was taken from, where it replaced
+    one that was."""
     known = known_as(declaration)
     if known is None:
         held.append(declaration)
-        return
+        return None
     earlier = [index for index, other in enumerate(held)
                if type(other) is type(declaration) and (known.key is None or _key_of(other) == known.key)]
     if any(same_content(held[index], declaration) for index in earlier):
         warn_at_script(f"{known.call} declares {known.noun} again, the same as before: it is kept once", UserWarning)
-        return
-    inherited = bool(earlier) and all(any(held[index] is each for each in taken) for index in earlier)
+        return None
+    sources = [taken_of(taken or {}, held[index]) for index in earlier]
+    inherited = bool(earlier) and all(source is not None for source in sources)
     if known.key is None or not earlier or not (inherited or in_notebook()):
         held.append(declaration)
-        return
-    why = (f"it replaces the one this experiment took from {parent!r}, which it is based on" if inherited
-           else f"in {WHERE} the last one run wins, so it replaces the earlier one")
+        return None
+    source = sources[0] if inherited else None
+    why = source.why if source is not None else f"in {WHERE} the last one run wins, so it replaces the earlier one"
     if isinstance(declaration, ThingDeclaration):
         _replace_thing(held, earlier, declaration, known, known.key[1], replaced, why)
-        return
+        return source
     naming = _naming(held, earlier, known.key[1]) if known.named else []
     follows = f"; what holds its id now finds the new one: {', '.join(naming)}" if naming else ""
     _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: "
                                          f"{why}{follows}", replaced)
+    return source
 
 
-__all__ = ["Known", "add", "called", "holding_the_object_at", "known_as", "named_by", "names_in", "things_in"]
+__all__ = ["Known", "Taken", "TakenFrom", "add", "called", "holding_the_object_at", "known_as", "named_by", "names_in",
+           "taken_of", "things_in"]

@@ -69,14 +69,20 @@ class KeptPins:
 
 
 @contextmanager
-def keeping_pins(form: SavedForm | None) -> Generator[KeptPins]:
-    """Inside this block a build keeps the pins of the loaded ``form`` (none for a script's experiment), and what it
-    yields gives each line the build report says of a pin a source no longer agrees with."""
-    if form is None:
+def keeping_pins(form: SavedForm | None, settings: object = None) -> Generator[KeptPins]:
+    """Inside this block a build keeps the pins of the loaded ``form`` (none for a script's experiment) and the records
+    the blocks of ``settings`` bring (its ``assets``: under the lock's, which a load's are), and what it yields gives
+    each line the build report says of a pin a source no longer agrees with."""
+    brought = tuple(cast(tuple[AssetRef, ...], getattr(settings, "assets", None) or ()))
+    if form is None and not brought:
         yield KeptPins([], None)
         return
     with ExitStack() as stack:
-        notes = stack.enter_context(pinned(saved_asset_pins(form)))
+        notes = stack.enter_context(pinned(brought))
+        if form is None:
+            yield KeptPins(notes, None)
+            return
+        stack.enter_context(pinned(saved_asset_pins(form)))
         visuals = stack.enter_context(pinned_visuals(saved_visual_pins(form)))
         yield KeptPins(notes, visuals)
 
