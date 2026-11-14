@@ -183,8 +183,17 @@ SLOW = [((-0.34765625, -0.09375, 0.0008000246296658098, 0.0, 0.0), 0.875),
         ((-0.28697896535758216, -0.14833635426816824, 0.0004523831568567214, 0.0, 0.0), 0.8660469190672981)]
 
 
+#: Two float64 draws with a ``k3`` of 3e-24 beside a ``k2``: the validity radius's cubic had lost its smaller root to
+#: cancellation, so its turn stood at the cap and 4 rays solved on a branch past the first turn were not flagged (CI's
+#: run at release/v0.3.0 after #266, where hypothesis shrank to them; the first also one ray 0.037 rad off the oracle's).
+TINY_K3 = [((-0.375, 0.03125, 0.0, 0.001953125, 3.050539220120084e-24), 0.875),
+           ((-0.375, 0.0625, 0.0, 0.001953125, 3.050539220120084e-24), 0.875)]
+
+
 @settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(lens=lenses, field=st.floats(0.8, 1.6))
+@example(lens=TINY_K3[0][0], field=TINY_K3[0][1])
+@example(lens=TINY_K3[1][0], field=TINY_K3[1][1])
 @example(lens=REVIEWED[0][0], field=REVIEWED[0][1])
 @example(lens=REVIEWED[1][0], field=REVIEWED[1][1])
 @example(lens=REVIEWED[2][0], field=REVIEWED[2][1])
@@ -194,6 +203,22 @@ def test_each_ray_is_the_distortions_inverse(dtype, lens, field):
     worst, tolerance, flagged_well_conditioned, unflagged_unsolved = rays_against_oracle(lens, field * WIDTH)
     assert worst <= tolerance, f"{worst:.3g} rad against {tolerance:.3g}"
     assert flagged_well_conditioned == 0 and unflagged_unsolved == 0, (flagged_well_conditioned, unflagged_unsolved)
+
+
+@pytest.mark.parametrize("k3", [0.0, 3.05e-24, 1e-18, 1e-12, 1e-6])
+@pytest.mark.parametrize("lens", [(-0.375, 0.03125, 0.0, 0.0, 0.0), (-0.375, 0.0625, 0.0, 0.0, 0.0),
+                                  (-0.4, 0.0, 0.0, 0.0, 0.0)])
+def test_a_vanishing_k3_does_not_move_the_validity_radius(dtype, lens, k3):
+    """The validity radius is the radial map's first turn, whatever size the ``k3`` beside a ``k2`` is: a lens whose slope
+    cubic has a second root far out (``k2 > 0``) stands at its first turn with ``k3`` of 1e-24 as with none (the textbook
+    quadratic formula for the slope's derivative's roots loses the near root there and returned the cap: the regression
+    for the two draws ``TINY_K3``), against the scan-and-bisect ``first_turn`` above."""
+    cap = 15.0
+    lens = (*lens[:4], k3)
+    got = float(BrownConrady(*lens).first_turn(jnp.asarray(cap)))
+    want = first_turn(lens, cap)
+    assert want < cap
+    assert abs(got - want) <= (1e-9 if dtype == "float64" else 1e-4) * want, (got, want)
 
 
 @pytest.mark.parametrize("k1", [-0.9, 0.0])
