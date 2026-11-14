@@ -27,20 +27,16 @@ the folder, no link or special file can be made, and nothing but what the saved 
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import os
 import re
-import secrets
 import shutil
-import stat
-import unicodedata
 import zipfile
 import zlib
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal, cast
 
 from typing_extensions import ReadOnly, TypedDict
@@ -49,8 +45,33 @@ from mime._terminal import plain
 from mime.assets import folder_assets, known_bytes, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token, held_tokens
+from mime.saved._container import (
+    MANIFEST_MEMBER,
+    NOTICE_MEMBER,
+    BundleFile,
+    ContainerKind,
+    ReferencedFile,
+    collisions,
+    container_hash,
+    destination_problem,
+    files_of,
+    member_kind_problems,
+    member_problem,
+    members_listed,
+    notice_of,
+    sha256_of,
+    staging_of,
+    target,
+    unreadable,
+    verify_member,
+    write_container,
+    write_members,
+)
+from mime.saved._container import read_manifest as read_container_manifest
+from mime.saved._container import refuse as _refuse
+from mime.saved._container import unknown_format as unknown_container_format
 from mime.saved._folder import layout_problem, named_files, read_folder
-from mime.saved._schema import Lock, RemoteAssetRecord, conforms
+from mime.saved._schema import Lock, RemoteAssetRecord
 from mime.saved._terms import (
     INLINE_LIMIT_BYTES,
     FileTerms,
@@ -59,25 +80,25 @@ from mime.saved._terms import (
     lock_records,
     place_referenced,
 )
-from mime.saved._versions import newer_form_refusal
 
 BUNDLE_SUFFIX = ".mimebundle"
 FORMAT = "mime.bundle/3"
 FORMAT_2 = "mime.bundle/2"
 FORMAT_1 = "mime.bundle/1"
-MANIFEST_MEMBER = "manifest.json"
-NOTICE_MEMBER = "NOTICE"
 FOLDER_PREFIX = "experiment/"
+#: The bundle as a kind of container: a saved folder, held to the saved form's own layout. Its checks of a name and a
+#: file are this module's, read when called.
+BUNDLE = ContainerKind("bundle", BUNDLE_SUFFIX, "bundle", (FORMAT, FORMAT_2, FORMAT_1), FOLDER_PREFIX, "bundle_hash",
+                       lambda name: layout_problem(name), "a bundle", "the bundle",
+                       member_check=lambda name: member_problem(name), name_check=lambda name: name_problem(name),
+                       target_of=lambda root, name: _target(root, name),
+                       verify_of=lambda name, digest, size, expected: _verify_member(name, digest, size, expected))
 
 #: The record's manifest beside the saved form (``mime push --init`` writes ``mime.toml``), and the file it replaced,
 #: which a person may keep until they delete it: neither carried nor refused, the files of a folder that are not the
 #: saved form's and are not strays (design #199, section 8 item 7; sharing design v4, section 3.1).
 SHARING_FILES = ("mime.toml", "sharing.yaml")
-_MANIFEST_LIMIT_BYTES = 16_000_000
 _CHUNK = 1 << 20
-_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
-_MEMBER_MODE = 0o100644 << 16
-_REGULAR = 0o100000
 
 #: An absolute path of a machine, which no bundle may carry: the rule of the documentation generator's pages
 #: (``mime.docs._build``, which a test holds this to), as bytes since a file is searched as it is stored. A pack
@@ -100,30 +121,12 @@ _UNC_PATH = re.compile(rb"(?<![\\\w])(?:\\{4}[\w.-]+\\{2}[\w.$-]+|\\{2}[\w.-]+\\
 #: NUL): a binary array of a few megabytes would otherwise be refused for a path it does not hold.
 _MORE_PATHS = (_FILE_URL, _MOUNTED)
 _TEXT_PATHS = (_DRIVE_PATH, _UNC_PATH)
-_DRIVE = re.compile(r"[A-Za-z]:")
 _NAME_SAFE = re.compile(r"[^A-Za-z0-9._-]")
 
 #: The most a compressed file may expand to while a pack searches inside it: a file that expands further cannot be
 #: searched, and is refused rather than carried unsearched.
 EXPANSION_LIMIT_BYTES = 200_000_000
 _NESTING_LIMIT = 4
-#: Names Windows reserves for devices, with or without an extension.
-_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$",
-                           *(f"{base}{digit}" for base in ("COM", "LPT") for digit in "0123456789\u00b9\u00b2\u00b3")})
-_NAME_LIMIT_BYTES = 255
-
-
-class BundleFile(TypedDict, closed=True):
-    sha256: ReadOnly[str]
-    size: ReadOnly[int]
-
-
-class ReferencedFile(TypedDict, closed=True):
-    """A file that travels as a reference: the asset of the lock that holds its bytes, and their sha256 and size."""
-
-    name: ReadOnly[str]
-    sha256: ReadOnly[str]
-    size: ReadOnly[int]
 
 
 class Manifest(TypedDict, closed=True):
@@ -155,52 +158,9 @@ def referenced_of(manifest: Manifest | ManifestFormat1) -> dict[str, ReferencedF
     return dict(manifest["referenced"]) if manifest["format"] != FORMAT_1 else {}
 
 
-def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Refusal:
-    return Refusal(code, category, message, action)
-
-
-def sha256_of(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def bundle_hash(manifest: dict[str, object]) -> str:
     """The hash that names a bundle's content: the manifest without its own hash, in a canonical text."""
-    body = {key: value for key, value in manifest.items() if key != "bundle_hash"}
-    return sha256_of(json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8"))
-
-
-def _part_problem(part: str) -> str | None:
-    """Why one part of a path cannot be a name on every filesystem a bundle may unpack to (Linux, macOS, Windows)."""
-    if part.startswith("."):
-        return "has a part that starts with a dot (a hidden file, a .git directory)"
-    if plain(part) != part:
-        return "has a control, format or separator character"
-    if any(character in '<>:"|?*' for character in part):
-        return "has a character Windows does not allow in a name"
-    if part != part.rstrip(". "):
-        return "has a part that ends with a dot or a space"
-    if part.split(".", 1)[0].rstrip(" ").upper() in _DEVICE_NAMES:
-        return "has a part Windows reserves for a device"
-    if len(part.encode("utf-8")) > _NAME_LIMIT_BYTES:
-        return f"has a part longer than {_NAME_LIMIT_BYTES} bytes"
-    return None
-
-
-def member_problem(name: str) -> str | None:
-    """Why ``name`` cannot be a file inside the folder a bundle unpacks to, or ``None``: a name is a relative path of
-    plain parts, as ``/`` writes it, none hidden, none a name a filesystem treats specially."""
-    if not name or name != name.strip():
-        return "is empty or has spaces at its ends"
-    if any(ord(each) < 32 or each in "\\\x7f" for each in name):
-        return "has a backslash or a control character"
-    if name.startswith("/") or _DRIVE.match(name):
-        return "is an absolute path"
-    parts = name.split("/")
-    if any(part in ("", ".", "..") for part in parts):
-        return "has an empty, '.' or '..' part"
-    if PurePosixPath(name).as_posix() != name:
-        return "is not written in its plain form"
-    return next((problem for part in parts if (problem := _part_problem(part)) is not None), None)
+    return container_hash(manifest, "bundle_hash")
 
 
 def name_problem(name: str) -> str | None:
@@ -208,39 +168,14 @@ def name_problem(name: str) -> str | None:
     return member_problem(name) or layout_problem(name)
 
 
-def _collision_key(name: str) -> str:
-    """The name as a case-insensitive filesystem that normalises Unicode (macOS, Windows) would read it."""
-    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", name).casefold())
-
-
-def collisions(names: Sequence[str]) -> list[tuple[str, str]]:
-    """The pairs of names that are one name on a case-insensitive filesystem: a bundle unpacks to the same folder on
-    every platform, or is not a bundle."""
-    seen: dict[str, str] = {}
-    pairs: list[tuple[str, str]] = []
-    for name in sorted(set(names)):
-        key = _collision_key(name)
-        if key in seen:
-            pairs.append((seen[key], name))
-        seen[key] = seen.get(key, name)
-    return pairs
-
-
 def _target(root: Path, name: str) -> Path:
     """Where the member ``name`` is written under ``root``: its name checked, and the path it makes checked to stay
     inside ``root``."""
-    problem = name_problem(name)
-    if problem is not None:
-        raise BuildRefused([_refuse("bundle.unsafe", RefusalClass.USER, f"a member's name {name!r} {problem}",
-                                     "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack "
-                                     "the folder again with `mime pack <folder>`")])
-    target = root / name
-    if root.resolve() not in target.resolve().parents:
-        raise BuildRefused([_refuse(
-            "bundle.unsafe", RefusalClass.USER, f"the member {name!r} would be written outside the folder",
-            "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack the folder again with "
-            "`mime pack <folder>`")])
-    return target
+    return target(root, name, BUNDLE)
+
+
+def _verify_member(name: str, digest: str, size: int, expected: BundleFile) -> Refusal | None:
+    return verify_member(name, digest, size, expected, BUNDLE)
 
 
 class _Unscannable(Exception):
@@ -357,25 +292,6 @@ def scan_text(name: str, data: bytes, tokens: Sequence[Token]) -> list[Refusal]:
     """The scans a bundle's files are held to, for text that is not one of them: the NOTICE, the card and the metadata
     ``mime push`` sends, so a token pasted into a description is caught there too."""
     return _scan(name, data, tokens)
-
-
-def _files_of(folder: Path) -> list[tuple[str, Path]]:
-    """Every file below ``folder``, by its name as the bundle writes it, sorted. A link or a special file is refused."""
-    found: list[tuple[str, Path]] = []
-    refusals: list[Refusal] = []
-    for directory, subdirectories, names in os.walk(folder):
-        for entry in [*subdirectories, *names]:
-            path = Path(directory) / entry
-            if path.is_symlink() or not (path.is_dir() or path.is_file()):
-                refusals.append(_refuse(
-                    "bundle.special-file", RefusalClass.USER, f"{plain(path.relative_to(folder).as_posix())} is a link "
-                    f"or a special file", "a bundle holds plain files: copy the file's content in, then `mime pack "
-                                          "<folder>` again"))
-            elif path.is_file():
-                found.append((path.relative_to(folder).as_posix(), path))
-    if refusals:
-        raise BuildRefused(refusals)
-    return sorted(found)
 
 
 def _scanned(member: str, path: Path, tokens: Sequence[Token], refusals: list[Refusal]) -> bytes | None:
@@ -635,23 +551,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     refusals = _scan(MANIFEST_MEMBER, text, stored)
     if refusals:
         raise BuildRefused(refusals)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{secrets.token_hex(8)}")
-    try:
-        with zipfile.ZipFile(temporary, "w", zipfile.ZIP_STORED) as archive:
-            ordered = [(MANIFEST_MEMBER, text), (NOTICE_MEMBER, notice),
-                       *((FOLDER_PREFIX + m, d) for m, d in sorted(members.items()))]
-            for member, data in ordered:
-                info = zipfile.ZipInfo(member, _TIMESTAMP)
-                info.compress_type = zipfile.ZIP_STORED
-                info.create_system = 3
-                info.external_attr = _MEMBER_MODE
-                archive.writestr(info, data)
-        temporary.replace(target)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-    return target
+    return write_container(target, text, notice, members, BUNDLE)
 
 
 @dataclass(frozen=True)
@@ -668,38 +568,12 @@ class Unpacked:
     missing: tuple[str, ...] = ()
 
 
+def _files_of(folder: Path) -> list[tuple[str, Path]]:
+    return files_of(folder, BUNDLE)
+
+
 def _member_kind_problems(archive: zipfile.ZipFile) -> list[Refusal]:
-    found: list[Refusal] = []
-    seen: set[str] = set()
-    for info in archive.infolist():
-        problem = None
-        mode = info.external_attr >> 16
-        if info.filename in seen:
-            problem = "is listed twice"
-        elif info.is_dir() or (mode != 0 and stat.S_IFMT(mode) != _REGULAR):
-            problem = "is a directory, a link or a special file"
-        elif info.flag_bits & 0x1:
-            problem = "is encrypted"
-        elif info.compress_type != zipfile.ZIP_STORED:
-            problem = "is compressed (MIME packs nothing compressed)"
-        elif info.filename not in (MANIFEST_MEMBER, NOTICE_MEMBER) and not info.filename.startswith(FOLDER_PREFIX):
-            problem = f"is not {MANIFEST_MEMBER}, {NOTICE_MEMBER} or below {FOLDER_PREFIX}"
-        else:
-            problem = member_problem(info.filename) or (
-                None if info.filename in (MANIFEST_MEMBER, NOTICE_MEMBER)
-                else name_problem(info.filename.removeprefix(FOLDER_PREFIX)))
-        seen.add(info.filename)
-        if problem is not None:
-            found.append(_refuse("bundle.unsafe", RefusalClass.USER, f"the member {info.filename!r} {problem}",
-                                  "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack "
-                                  "the folder again with `mime pack <folder>`"))
-    found += [_refuse("bundle.unsafe", RefusalClass.USER,
-                      f"the members {one!r} and {other!r} are one name on a case-insensitive filesystem",
-                      "this is not a bundle `mime pack` wrote (it could not unpack the same on macOS and Windows): ask "
-                      "its "
-                      "sender to pack the folder again with `mime pack <folder>`")
-              for one, other in collisions([info.filename for info in archive.infolist()])]
-    return found
+    return member_kind_problems(archive, BUNDLE)
 
 
 def bundle_name(bundle: str | os.PathLike[str]) -> str:
@@ -713,13 +587,7 @@ def bundle_name(bundle: str | os.PathLike[str]) -> str:
 
 
 def _unreadable(error: Exception) -> BuildRefused:
-    return BuildRefused([_refuse(
-        "bundle.unreadable", RefusalClass.USER, f"the bundle cannot be read as a bundle ({plain(str(error))})",
-        "fetch it again, `mime pull <doi | url>`: a download that stopped early looks like this")])
-
-
-def _format_of(data: object) -> object:
-    return cast("dict[str, object]", data).get("format") if isinstance(data, dict) else None
+    return unreadable(error, BUNDLE)
 
 
 def unknown_format(archive: zipfile.ZipFile) -> BuildRefused | None:
@@ -727,124 +595,30 @@ def unknown_format(archive: zipfile.ZipFile) -> BuildRefused | None:
     names (a later format may add a member) are never judged as a hostile bundle's: the advice is to install the MIME
     that packed it. ``None`` for a known format, and for a manifest that cannot be read here, which the checks after
     refuse with their reasons."""
-    try:
-        info = archive.getinfo(MANIFEST_MEMBER)
-    except KeyError:
-        return None
-    if info.file_size > _MANIFEST_LIMIT_BYTES or info.compress_type != zipfile.ZIP_STORED or info.flag_bits & 0x1:
-        return None
-    try:
-        held = _format_of(json.loads(archive.read(info)))
-    except (ValueError, RecursionError, zipfile.BadZipFile, NotImplementedError, OSError):
-        return None
-    return BuildRefused([refusal]) if (refusal := newer_form_refusal(held, "bundle", (FORMAT, FORMAT_2, FORMAT_1),
-                                                                      "the bundle")) is not None else None
+    return unknown_container_format(archive, BUNDLE)
+
+
+def _shape(held: object) -> type[object]:
+    return ManifestFormat1 if held == FORMAT_1 else Manifest
 
 
 def read_manifest(archive: zipfile.ZipFile) -> Manifest | ManifestFormat1:
     """The manifest, checked for its format first (3 or 2, or 1 which every file carried: a later one is refused with the
     advice to install the MIME that packed it), then its shape and its own hash."""
-    later = unknown_format(archive)
-    if later is not None:
-        raise later
-    try:
-        info = archive.getinfo(MANIFEST_MEMBER)
-    except KeyError:
-        raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER, f"the bundle has no {MANIFEST_MEMBER}",
-                                     "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again "
-                                     "with `mime pack <folder>`")]) from None
-    if info.file_size > _MANIFEST_LIMIT_BYTES:
-        raise BuildRefused([_refuse(
-            "bundle.manifest", RefusalClass.USER, f"{MANIFEST_MEMBER} is {size_text(info.file_size)}",
-            "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again with `mime pack "
-            "<folder>`")])
-    try:
-        data: object = json.loads(archive.read(info))
-        older = _format_of(data) == FORMAT_1
-        manifest: Manifest | ManifestFormat1 | None
-        manifest, problems = conforms(data, ManifestFormat1) if older else conforms(data, Manifest)
-        if manifest is None:
-            raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER, f"{MANIFEST_MEMBER}: {plain(problem)}",
-                                         "this is not a bundle of a format this MIME reads: install the MIME that "
-                                         "packed it (`pip install mime-engine==<version>`)") for problem in problems])
-        changed = bundle_hash(cast("dict[str, object]", data)) != manifest["bundle_hash"]
-    except RecursionError:
-        raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER,
-                                     f"{MANIFEST_MEMBER} is nested too deeply to be a manifest",
-                                     "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again "
-                                     "with `mime pack <folder>`")]) from None
-    except (ValueError, zipfile.BadZipFile) as error:
-        raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER,
-                                     f"{MANIFEST_MEMBER} cannot be read ({plain(str(error))})",
-                                     "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again "
-                                     "with `mime pack <folder>`")]) from error
-    if changed:
-        raise BuildRefused([_refuse("bundle.changed", RefusalClass.USER, "the manifest does not match its own hash",
-                                     "the bundle was altered after it was packed: fetch it again from its source, "
-                                     "`mime pull <doi | url>`")])
-    return manifest
-
-
-def _verify_member(name: str, digest: str, size: int, expected: BundleFile) -> Refusal | None:
-    if size != expected["size"] or digest != expected["sha256"]:
-        return _refuse(
-            "bundle.changed", RefusalClass.USER,
-            f"{name} is not the file the manifest lists (its size or its hash differs)",
-            "the bundle was altered after it was packed: fetch it again from its source, `mime pull <doi | url>`")
-    return None
-
-
-def destination_problem(into: str | os.PathLike[str]) -> BuildRefused | None:
-    """Why a bundle cannot be unpacked to ``into`` (it must not exist, or be an empty folder), or ``None``: checked
-    before anything is downloaded, and again before anything is written."""
-    destination = Path(os.path.abspath(into))
-    if not destination.name:
-        return BuildRefused([_refuse("pull.destination", RefusalClass.USER, f"{destination} is not a folder to create",
-                                      "unpack into a new folder (--into)")])
-    if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
-        return BuildRefused([_refuse(
-            "pull.destination", RefusalClass.USER, f"{destination} exists and is not an empty folder",
-            "unpack into a new folder (--into)")])
-    return None
+    return cast("Manifest | ManifestFormat1", read_container_manifest(archive, BUNDLE, _shape))
 
 
 def _write_members(archive: zipfile.ZipFile, manifest: Manifest | ManifestFormat1, staging: Path) -> list[Refusal]:
     """Every file of the manifest written under ``staging`` while it is hashed; the refusals of those whose size or hash
     differs."""
-    problems: list[Refusal] = []
-    for name, expected in sorted(manifest["files"].items()):
-        info = archive.getinfo(FOLDER_PREFIX + name)
-        target = _target(staging, name)
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            digest, size = hashlib.sha256(), 0
-            with archive.open(info) as source, target.open("xb") as sink:
-                while chunk := source.read(_CHUNK):
-                    size += len(chunk)
-                    if size > expected["size"]:
-                        break
-                    digest.update(chunk)
-                    sink.write(chunk)
-        except (FileExistsError, NotADirectoryError, IsADirectoryError):
-            raise BuildRefused([_refuse(
-                "bundle.unsafe", RefusalClass.USER,
-                f"the member {name!r} would be written where another member, or a folder, already is",
-                "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack the folder again "
-                "with `mime pack <folder>`")]) from None
-        found = _verify_member(plain(name), digest.hexdigest(), size, expected)
-        if found is not None:
-            problems.append(found)
-    return problems
+    return write_members(archive, manifest["files"], staging, BUNDLE)
 
 
 def _notice_of(archive: zipfile.ZipFile, manifest: Manifest | ManifestFormat1) -> tuple[str, list[Refusal]]:
     """The ``NOTICE`` a bundle of format 2 or later carries, held to its hash in the manifest."""
     if manifest["format"] == FORMAT_1:
         return "", []
-    data = archive.read(NOTICE_MEMBER)
-    expected = manifest["notice"]
-    problem = _verify_member(NOTICE_MEMBER, sha256_of(data), len(data), expected)
-    return data.decode("utf-8", errors="replace"), [problem] if problem is not None else []
+    return notice_of(archive, manifest["notice"], BUNDLE)
 
 
 def _referenced_problems(manifest: Manifest | ManifestFormat1, form_lock: Lock) -> list[Refusal]:
@@ -908,7 +682,7 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
     if refused is not None:
         raise refused
     destination = Path(os.path.abspath(into))
-    staging = destination.with_name(f".{destination.name}.partial-{secrets.token_hex(8)}")
+    staging = staging_of(destination)
     try:
         with zipfile.ZipFile(bundle) as archive:
             later = unknown_format(archive)
@@ -918,16 +692,9 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
             if refusals:
                 raise BuildRefused(refusals)
             manifest = read_manifest(archive)
-            listed = {FOLDER_PREFIX + name for name in manifest["files"]}
-            listed |= {NOTICE_MEMBER} if manifest["format"] != FORMAT_1 else set()
-            held = {info.filename for info in archive.infolist()} - {MANIFEST_MEMBER}
-            if listed != held:
-                raise BuildRefused([_refuse(
-                    "bundle.changed", RefusalClass.USER,
-                    f"the bundle's files are not the manifest's: {len(held - listed)} unlisted, "
-                    f"{len(listed - held)} "
-                    "missing", "the bundle was altered after it was packed: fetch it again from its source, `mime pull "
-                               "<doi | url>`")])
+            unlisted = members_listed(archive, manifest["files"], BUNDLE, manifest["format"] != FORMAT_1)
+            if unlisted is not None:
+                raise unlisted
             notice, problems = _notice_of(archive, manifest)
             unsafe = _carried_reference_problems(manifest)
             if unsafe:

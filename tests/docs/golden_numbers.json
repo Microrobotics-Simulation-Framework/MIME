@@ -7,7 +7,7 @@
   },
   "refusal_scan": {
     "literal_codes": 592,
-    "files": 120,
+    "files": 121,
     "variable_calls": 75,
     "tuple_codes": 51
   },
