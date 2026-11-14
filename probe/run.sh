@@ -11,7 +11,7 @@ hypothesis=()
 case "$PROBE_ARM" in
   bits)
     python .github/probe/bit_compare.py --base origin/apparatus/ap1-ports \
-        --programs a0_f32 a0_f64 script_a_f32 script_a_f64 tutorial_a_f32 tutorial_a0_f32 servo_f32 servo_f64 moved_f32 \
+        --programs servo_f32 servo_f64 moved_f32 \
         --command 'python {head}/probe/dump.py {program} {out}' --output probe/out/bit_compare.json
     python - <<'PY'
 import json

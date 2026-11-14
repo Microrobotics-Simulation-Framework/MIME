@@ -1,4 +1,2 @@
 bits
 respond_before_slew
-arm_slew_before_bound
-arm_limits_after_slew

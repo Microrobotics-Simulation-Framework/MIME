@@ -20,6 +20,9 @@ jax.config.update("jax_enable_x64", dtype == "f64")
 # The tutorials import examples/script_a.py, the tests their own script_a: each program its own folder first.
 sys.path[:0] = [str(tree / "examples")] if name.startswith("tutorial") else [str(tree / "tests")]
 STEPS = 100
+#: Where the AR4 is commanded from its home, inside every limit (tests/oracles/test_chain.py's servo command), so that a
+#: lag moves it.
+AWAY = (0.3, 0.6, -0.4, 1.0, 1.3, 0.5)
 
 
 def tutorial_a0():
@@ -48,7 +51,7 @@ def made() -> list:
         from chain_cases import kinematic_rpm
         from mime.units import ms
 
-        return [kinematic_rpm("bits_servo", servo=ms(20))]
+        return [kinematic_rpm("bits_servo", servo=ms(20), joints=AWAY)]
     if name == "moved":
         from chain_cases import kinematic_rpm
 
@@ -57,10 +60,10 @@ def made() -> list:
             from mime.responses import FirstOrderLag
             from mime.units import ms
 
-            return [kinematic_rpm("bits_moved", ports={"arm.joint_positions": CommandPort(
+            return [kinematic_rpm("bits_moved", joints=AWAY, ports={"arm.joint_positions": CommandPort(
                 response=FirstOrderLag(tau=ms(20)), reason="the control")})]
         except ImportError:
-            return [kinematic_rpm("bits_moved")]
+            return [kinematic_rpm("bits_moved", joints=AWAY)]
     raise SystemExit(f"unknown program {program}")
 
 
