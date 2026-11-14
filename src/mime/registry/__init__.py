@@ -93,7 +93,6 @@ from mime.registry._entries import (
     WallKind,
     convention,
     declared_switches,
-    forward_only_of,
     determined,
     implements,
     numerical_default,
@@ -102,6 +101,7 @@ from mime.registry._entries import (
     rung_gradient,
     rung_gradient_problems,
     setting_value,
+    unbatched_of,
     uniform,
 )
 from mime.registry._ranges import ChoiceRule, RangeChoice, choose_over
@@ -234,7 +234,6 @@ __all__ = [
     "WallForm",
     "WallKind",
     "declared_switches",
-    "forward_only_of",
     "dimensioned_settings",
     "implements",
     "live_default",
@@ -256,6 +255,7 @@ __all__ = [
     "rung_gradient_problems",
     "setting_group_named",
     "setting_value",
+    "unbatched_of",
     "uniform",
     "versions_of",
     "wall_kinds_matching",

@@ -148,29 +148,35 @@ class Camera(Observation):
     steps ending at the frame step, and holds it between: its outputs are ``image`` (counts), ``frame_step`` (the step
     the held image was made at), ``age`` (steps since) and ``new_frame``. A frame's noise is drawn from the run's seed and the
     frame's step, so rendering its recorded poses again reproduces it exactly. Frames are not recorded by default, and
-    recording them in the loop is refused. Forward mode only: reverse mode (``camera.reverse``), a batched study and ``rate=`` are refused."""
+    recording them in the loop is refused. Its derivative passes in forward and reverse mode; reverse mode whose memory
+    estimate would not fit the memory a run can have (``camera.reverse-memory``), a batched study (``camera.batched``) and
+    ``rate=`` are refused."""
 
     name = "camera"
     version = "0.1.0"
     differentiability = GradientStatus.UNVERIFIED
     gradient = GradientRecord(
-        where="expected, the frame's counts before noise and quantisation, in forward mode: the poses and the detector's "
-              "nine numbers; image, frame_step, age and new_frame carry none (a rounding and counts). Reverse mode is "
-              "refused by name (camera.reverse)",
+        where="expected, the frame's counts before noise and quantisation, in forward and reverse mode: the poses and the "
+              "detector's nine numbers; image, frame_step, age and new_frame carry none (a rounding and counts). Reverse "
+              "mode whose memory estimate would not fit the memory a run can have is refused by name "
+              "(camera.reverse-memory)",
         reason="forward mode is checked through the built graph against central differences of the same run "
                "(tests/sensing/test_in_loop_forward.py): a ball's settling and the principal point across a silhouette "
                "(the box edge, whose central differences are piecewise, so judged with an allowance per unit of step) and "
-               "the focal length in the tube wall's interior (quadratic), in both dtypes, with a stop_gradient on the edge "
-               "measure planted as the control. The status stays unverified: the renderer's switches are listed raw "
-               "and not declared (mime.core.switch), so no exact or piecewise status follows from them, and the enum has "
-               "no direction: it cannot say forward verified and reverse refused",
+               "the focal length in the tube wall's interior (quadratic), from the run's start and from a continued state, "
+               "in both dtypes, with a stop_gradient on the edge measure planted as the control. Reverse mode "
+               "(tests/sensing/test_in_loop_reverse.py) is checked against forward mode, against central differences "
+               "(float32 against float64 where they cannot discriminate) and a held step's against its frame's, from the "
+               "run's start, from a continued state (the tree's structure, or a leaf written over it) and over a CALLBACK "
+               "controller's chunks, in both dtypes, with three planted controls (the edge measure, the structure the "
+               "run makes from its leaves, the held frame). The status stays unverified: the "
+               "renderer's switches are listed raw and not declared (mime.core.switch), so no exact or piecewise status "
+               "follows from them, and the undistortion's seven stop_gradients cap it there",
         route="declare the renderer's switches (a pixel corner is a kink, a tangent to a pixel's side a square-root "
-              "rise), which gives the status the check supports; reverse mode stays refused (the cond over frame steps "
-              "would keep every frame's render): differentiate mime.sensing.render offline")
-    forward_only: ClassVar[str] = ("the frame is rendered under a cond on frame steps (a select under vmap, so a batched "
-                                   "study would render at every step) and reverse mode would keep every frame step's "
-                                   "render: differentiate the offline renderer, mime.sensing.render, in the recorded "
-                                   "poses, or fit in forward mode")
+              "rise, the corner sub-samples' choice a jump) and clear the undistortion's stop_gradients by a standing "
+              "test of its derivative, which gives the piecewise status the gates support")
+    unbatched: ClassVar[str] = ("the frame is rendered under a cond on frame steps, a select under vmap, so a batched "
+                                "study would render every member's frame at every step, not once a frame period")
     references = ()
     builds = {"": (CameraNode,)}
     roles = {}
