@@ -1,6 +1,6 @@
 """The reader of the composed stage's scenery: the ``Mesh`` prims no thing owns, with the display primvars they inherit,
-refused by name until the camera has a mesh tracer, hidden by prim path; and the stage's display primvars read for the
-parts of a bound body that declares no appearance.
+traced by the camera (``test_mesh_*.py`` hold the tracer's gates), hidden by prim path; and the stage's display
+primvars read for the parts of a bound body that declares no appearance.
 
 **Controls** (``CAMERA_PLANT``, each a planted error in the target; a test fails under its own, and every one is a code
 patch with no draw, so a run either catches it or does not):
@@ -190,13 +190,11 @@ def test_a_body_part_takes_its_stage_display_from_its_visual_prim():
 
 # -- the camera: refusal, hide, notes -----------------------------------------------------------------------------
 
-def test_a_scenery_mesh_is_refused_by_name_never_left_unimaged():
-    error = refusals(scenery_scene())
-    assert error.codes() == ["camera.mesh-untraced"]
-    (refusal,) = error.refusals
-    assert VESSEL_MESH in refusal.message and "12 triangles" in refusal.message
-    assert f"decimation distance not recorded for: {VESSEL_MESH}" in refusal.message
-    assert f"hide=({VESSEL_MESH!r},)" in refusal.action
+def test_a_scenery_mesh_is_traced_never_left_unimaged(dtype):
+    text = notes(scenery_scene())
+    assert f"{VESSEL_MESH} (12 triangles, flat)" in text
+    assert f"decimation distance not recorded for: {VESSEL_MESH}" in text
+    assert not np.array_equal(frame_of(scenery_scene()), frame_of(scenery_scene(hide=(VESSEL_MESH,))))
 
 
 def test_a_scenery_mesh_is_hidden_by_prim_path_and_the_report_says_so():

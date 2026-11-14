@@ -165,6 +165,7 @@ FIELD_CHANGES = {
     (Subject, "window"): lambda s: dataclasses.replace(s, window=(s.window or 8) + 1),
     (Subject, "route"): lambda s: dataclasses.replace(s, route="closed form"),
     (Subject, "tolerance"): lambda s: dataclasses.replace(s, tolerance=s.tolerance * 4),
+    (Subject, "around"): lambda s: dataclasses.replace(s, around=(s.around or 0.0) + 500.0) if s.parent is None else None,
     (Appearance, "look"): None, (Appearance, "attenuation"): None, (Appearance, "blocks"): None,
     (Appearance, "colour"): None,
     (Pinhole, "width"): lambda c: dataclasses.replace(c, width=c.width + 2),

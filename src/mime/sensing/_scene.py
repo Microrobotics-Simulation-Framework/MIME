@@ -4,10 +4,13 @@ structures are static. ``hide`` names what the camera leaves out, and ``absorber
 not opaque; every other subject takes the stated default (opaque, with the build note ``appearance defaulted for:``).
 
 A subject without a closed form (route 1) is refused with its reason, as the offline renderer refuses it
-(:func:`mime.sensing.route_of`), until the sampled route lands; nothing is dropped silently."""
+(:func:`mime.sensing.route_of`), until the sampled route lands; nothing is dropped silently. The exceptions are static:
+a scenery mesh the stage holds and a structure of a kind the stage draws (an ellipsoid, a box, a helix, a screw) are
+traced as meshes (:class:`TracedMesh`, ``mime.sensing._mesh``), once a run, in the static structure."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -17,14 +20,94 @@ from typing import Any, cast
 import numpy as np
 
 from mime.build._refusals import ArgumentRefused
-from mime.registry import Roster
+from mime.registry import Roster, RosterDrawing
 from mime.scene import SceneryMesh
+from mime.sensing._mesh import closed_problem, inside, signed_volume, triangles_of
 from mime.sensing._subjects import Appearance, Display, Look, Subject, from_stage, route_of
 
 #: The first line of the camera's refusal of a subject without a closed form, and the code it carries.
 NO_FORM = "camera.no-closed-form"
-#: The code of the refusal of a scenery mesh: the stage holds it, and the camera cannot yet trace it.
+#: The code of the refusal of an unowned gprim that is not a mesh (a cube, a capsule, curves): the camera traces the
+#: stage's meshes, and reads no other gprim.
 MESH_UNTRACED = "camera.mesh-untraced"
+
+
+@dataclass(frozen=True, eq=False)
+class TracedMesh:
+    """A static mesh the camera traces: its ``name`` (a scenery prim's path, or a structure's name), its ``source``
+    (``"scenery"``, or the kind a structure's drawing is of), its triangles' corners in the world (``(T, 3, 3)``,
+    metres, counter-clockwise seen from outside), its declared ``appearance`` (``absorbers``; ``None`` where none is),
+    the stage's ``display`` primvars for it, whether the stage animates it, how far a decimation moved it (metres;
+    ``None``: not recorded), a drawing's facets a turn and sagitta (metres; zero for an exact drawing or a scenery
+    mesh), and why it is not a closed, consistently wound solid (``None``: it is; checked only where it attenuates, the
+    one look that needs it)."""
+
+    name: str
+    source: str
+    triangles: np.ndarray
+    appearance: Appearance | None = None
+    display: Display | None = None
+    animated: bool = False
+    decimation: float | None = None
+    segments: int = 0
+    sagitta: float = 0.0
+    open: str | None = None
+
+    def look(self) -> Appearance | None:
+        """Its appearance: declared, else from the stage's display primvars, else ``None`` (the stated default)."""
+        if self.appearance is not None:
+            return self.appearance
+        return from_stage(self.display) if self.display is not None else None
+
+
+def _rotated(q: Sequence[float], v: np.ndarray) -> np.ndarray:
+    """``v`` (``(..., 3)``) turned by the unit quaternion ``q`` ``(w, x, y, z)``."""
+    w, x, y, z = (float(c) for c in q)
+    matrix = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                       [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                       [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
+    return np.asarray(v, dtype=np.float64) @ matrix.T
+
+
+def _faces(counts: Sequence[int], indices: Sequence[int]) -> np.ndarray:
+    """Each polygon fanned from its first corner into triangles, ``(m, 3)`` indices."""
+    found: list[tuple[int, int, int]] = []
+    start = 0
+    for count in counts:
+        face = indices[start:start + count]
+        start += count
+        found += [(face[0], face[k], face[k + 1]) for k in range(1, count - 1)]
+    return np.asarray(found, dtype=np.int64).reshape(-1, 3)
+
+
+def drawn_mesh(name: str, kind: str, drawn: RosterDrawing, appearance: Appearance | None) -> TracedMesh:
+    """A structure's drawing as a traced mesh in the world, with its sagitta, about ``r (1 - cos(sqrt(2) pi / n))`` for
+    ``n`` facets a turn and ``r`` the drawing's largest distance from its own axis (a facet's corners span about
+    ``2 pi / n`` each way, so its diagonal's; an ellipsoid of equal semi-axes at 48 facets measured 0.17 um on 40 um
+    against this 0.17 um, ``tests/sensing/test_mesh_swap.py``); zero for an exact drawing."""
+    points = np.asarray(drawn.drawing.points, dtype=np.float64).reshape(-1, 3)
+    faces = _faces(drawn.drawing.face_vertex_counts, drawn.drawing.face_vertex_indices)
+    world = _rotated(drawn.orientation, points) + np.asarray(drawn.translation, dtype=np.float64)
+    radius = float(np.max(np.hypot(points[:, 0], points[:, 1]))) if len(points) else 0.0
+    sagitta = 0.0 if drawn.exact else radius * (1.0 - math.cos(math.sqrt(2.0) * math.pi / drawn.segments))
+    held = TracedMesh(name, kind, triangles_of(world, faces), appearance, segments=drawn.segments, sagitta=sagitta)
+    return _checked(held, world, faces)
+
+
+def scenery_mesh(held: SceneryMesh, appearance: Appearance | None) -> TracedMesh:
+    """A scenery mesh as a traced mesh: its triangles in the world, its display primvars, whether it is animated and
+    how far a decimation moved it."""
+    traced = TracedMesh(held.path, "scenery", triangles_of(held.points, held.triangles), appearance,
+                        Display(held.colour, held.opacity), held.animated, held.decimation)
+    return _checked(traced, held.points, held.triangles)
+
+
+def _checked(held: TracedMesh, points: np.ndarray, faces: np.ndarray) -> TracedMesh:
+    """``held`` with why it is not a closed solid, checked where it attenuates."""
+    look = held.look()
+    if look is None or look.look is not Look.ATTENUATING:
+        return held
+    return dataclasses.replace(held, open=closed_problem(points, faces))
 
 
 @dataclass(frozen=True)
@@ -41,6 +124,10 @@ class Found:
     display: Mapping[str, Display] = field(default_factory=dict[str, Display])
     #: What reducing a non-constant display primvar did, by the line that says so, to the subjects it was done for.
     reduced: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    #: The static meshes the camera traces: the stage's scenery meshes and the structures of drawn kinds.
+    meshes: tuple[TracedMesh, ...] = ()
+    #: The closed attenuating mesh each body's subject lies in at the start, by subject name: its parent medium.
+    inside: Mapping[str, str] = field(default_factory=dict[str, str])
 
 
 def _list(value: Any) -> Any:
@@ -101,6 +188,7 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
                 for line in part.display_reduced:
                     reduced.setdefault(line, []).append(subject_name)
         bodies[name] = tuple(made)
+    meshes: list[TracedMesh] = []
     for name, structure in sorted(roster.structures.items()):
         if name in hide:
             hidden.append(name)
@@ -108,7 +196,10 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
         try:
             route_of(structure.kind)
         except ArgumentRefused as error:
-            refuse(name, structure.kind, error)
+            if structure.drawn is not None:
+                meshes.append(drawn_mesh(name, structure.kind, structure.drawn, _appearance(name, absorbers)))
+            else:
+                refuse(name, structure.kind, error)
             continue
         settings = {k: _list(v) for k, v in structure.settings.items()}
         region = "wall" if structure.kind == "tube" else "solid"
@@ -117,17 +208,50 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
         if held.path in hide:
             hidden.append(held.path)
             continue
-        what = (f"the stage holds this mesh ({len(held.triangles)} triangles)" if isinstance(held, SceneryMesh)
-                else f"the stage holds this {held.type_name}")
+        if isinstance(held, SceneryMesh):
+            meshes.append(scenery_mesh(held, _appearance(held.path, absorbers)))
+            for line in held.reduced:
+                reduced.setdefault(line, []).append(held.path)
+            continue
         refused.append((held.path, MESH_UNTRACED,
-                        f"{what} and the camera has no mesh tracer yet: scenery is imaged by the BVH tracer of the "
-                        f"camera's next piece (decimation distance not recorded for: {held.path}; a layer holds none, so "
-                        f"what the stage's decimation moved is unknown)"
-                        + "".join(f"; {line}" for line in held.reduced)))
+                        f"the stage holds this {held.type_name}, and the camera traces the stage's meshes alone (a "
+                        f"{held.type_name} is not read)" + "".join(f"; {line}" for line in held.reduced)))
+    inside = _inside(roster, subjects, meshes)
+    subjects = [dataclasses.replace(s, around=_medium(meshes, inside[s.name])) if s.name in inside else s
+                for s in subjects]
     named = set(roster.bodies) | set(roster.structures) | {held.path for held in roster.scenery}
     return Found(tuple(subjects), bodies, tuple(hidden), tuple(refused),
                  tuple(n for n in hide if n not in named), display,
-                 {line: tuple(names) for line, names in reduced.items()})
+                 {line: tuple(names) for line, names in reduced.items()}, tuple(meshes), inside)
+
+
+def _medium(meshes: Sequence[TracedMesh], name: str) -> float:
+    look = next(each for each in meshes if each.name == name).look()
+    assert look is not None
+    return float(look.attenuation)
+
+
+def _inside(roster: Roster, subjects: Sequence[Subject], meshes: Sequence[TracedMesh]) -> dict[str, str]:
+    """The closed attenuating mesh each moving subject's centre lies in at its body's pose at the start (the smallest,
+    where several hold it), by subject name: what it displaces along its chord."""
+    solids = [each for each in meshes if each.open is None and (look := each.look()) is not None
+              and look.look is Look.ATTENUATING]
+    if not solids:
+        return {}
+    owner = {f"{body}.{part.name}" if len(held.parts) > 1 else body: (held, part)
+             for body, held in roster.bodies.items() for part in held.parts}
+    found: dict[str, str] = {}
+    for subject in subjects:
+        if not subject.moving or subject.name not in owner:
+            continue
+        held, part = owner[subject.name]
+        if held.pose is None:
+            continue
+        centre = np.asarray(held.pose[:3]) + _rotated(held.pose[3:], np.asarray(part.centre, dtype=np.float64))
+        holding = [each for each in solids if inside(each.triangles, centre)]
+        if holding:
+            found[subject.name] = min(holding, key=lambda each: signed_volume(each.triangles)).name
+    return found
 
 
 def subject_spec(subject: Subject, window: int | None, display: Display | None = None) -> dict[str, Any]:
@@ -143,7 +267,26 @@ def subject_spec(subject: Subject, window: int | None, display: Display | None =
         "attenuation": attenuation}
     if display is not None and attenuation is None and (display.colour is not None or display.opacity is not None):
         spec["display"] = {"colour": _list(display.colour), "opacity": display.opacity}
+    if subject.around is not None:
+        spec["around"] = float(subject.around)
     return spec
+
+
+def mesh_spec(held: TracedMesh) -> dict[str, Any]:
+    """A traced mesh's look as plain data for the camera node's JSON constant (its triangles are the node's arrays)."""
+    look = held.look() or Appearance.opaque()
+    return {"name": held.name, "look": look.look.value,
+            "attenuation": float(look.attenuation) if look.look is Look.ATTENUATING else None,
+            "blocks": float(look.blocks) if look.look is Look.FLAT else None}
+
+
+def mesh_look(spec: Mapping[str, Any]) -> Appearance:
+    """The appearance :func:`mesh_spec` wrote."""
+    if spec["look"] == Look.ATTENUATING.value:
+        return Appearance.attenuating(spec["attenuation"])
+    if spec["look"] == Look.FLAT.value:
+        return Appearance(Look.FLAT, blocks=spec["blocks"])
+    return Appearance.opaque()
 
 
 def subject_of(spec: Mapping[str, Any]) -> Subject:
@@ -155,7 +298,7 @@ def subject_of(spec: Mapping[str, Any]) -> Subject:
         from_stage(Display(held["colour"], held["opacity"])) if held is not None else None)
     return Subject(spec["name"], spec["kind"], spec["settings"], spec["region"], appearance, None, spec["moving"],
                    ((pose[0][0], pose[0][1], pose[0][2]), (pose[1][0], pose[1][1], pose[1][2], pose[1][3])),
-                   spec["coverage"], spec["window"])
+                   spec["coverage"], spec["window"], around=spec.get("around"))
 
 
 def dumps(spec: Mapping[str, Any]) -> str:

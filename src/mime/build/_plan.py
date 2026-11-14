@@ -98,6 +98,7 @@ from mime.registry import (
     RoleKind,
     Roster,
     RosterBody,
+    RosterDrawing,
     RosterPart,
     RosterStructure,
     Segment,
@@ -3511,9 +3512,24 @@ class _Planner:
                 pose = (*(float(c) for c in cast(tuple[float, ...], initial["position"])),
                         *(float(c) for c in cast(tuple[float, ...], initial["orientation"])))
             bodies[name] = RosterBody(parts, pose)
-        structures = {name: RosterStructure(plan.registered.cls.name, dict(plan.settings))
+        structures = {name: RosterStructure(plan.registered.cls.name, dict(plan.settings), self.roster_drawing(plan))
                       for name, plan in sorted(self.geometries.items())}
         return Roster(bodies, structures, self.scenery())
+
+    def roster_drawing(self, plan: GeometryPlan) -> RosterDrawing | None:
+        """A structure's drawing as the stage writer draws it (its facets, its budget), placed in the world, and whether
+        it is the same at half the facets; ``None`` for a kind drawn natively or not at all."""
+        from mime.build._stage import kind_prim
+
+        geometry = plan.geometry
+        if type(geometry).native is not None or not implements(geometry, "drawing"):
+            return None
+        held = kind_prim(geometry, plan.registered, plan.settings)
+        if held.drawing is None:
+            return None
+        coarser = geometry.drawing(plan.settings, max(4, held.segments // 2))
+        return RosterDrawing(held.drawing, held.translation, held.orientation, held.segments,
+                             coarser.points == held.drawing.points)
 
     def roster_part(self, body: str, line: PartLine) -> RosterPart:
         """A body's part as the roster lists it: for a bound body's part, the stage's display colour and opacity (its

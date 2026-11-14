@@ -34,8 +34,8 @@ from mime.results._fit import FitIterate, FitResult, LineMargin
 from mime.results._watch import read_watch
 from mime.saved._pins import keeping_pins
 from mime.study._axes import STUDY_REASON, Axis, range_of, resolve
-from mime.study._gradient import REPORT_LEAF, Written, built_refusals, final_state, magnitude, objective_nodes, \
-    path_nodes, path_statuses, prepare, stacked_members, written
+from mime.study._gradient import REPORT_LEAF, Written, built_refusals, final_state, leaf_refusals, magnitude, \
+    objective_nodes, path_nodes, path_statuses, prepare, stacked_members, written
 from mime.study._point import Point, build_point, precision
 from mime.study._study import stacked_state
 from mime.units import Quantity
@@ -164,6 +164,8 @@ class _Fit:
         with keeping_pins(self.saved, self.settings), precision(self.leader.declared.x64):
             self.writes = [written(axis, self.leader, self.settings, self.declarations, built, self.reference, None,
                                    None) for axis in self.axes]
+        if refused := leaf_refusals(built.graph, self.writes):
+            raise BuildRefused(refused)
         self.watches = tuple(plan_ for plan_ in built.plans.watches if isinstance(plan_, WatchPlan))
         graph = built.graph
         with state_put_back(graph):
