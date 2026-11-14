@@ -459,14 +459,15 @@ class Screw(Solid):
         turn = parameters["wavenumber"] * (x + length / 2.0) / radius
         cos, sin = jnp.cos(turn), jnp.sin(turn)
         u, v = cos * y + sin * z, cos * z - sin * y
-        r = signs.length(u, v)
+        r = signs.length(u, v, scale=radius)
         wr, wi = u / r, v / r
         real, imaginary = wr, wi
         for _ in range(self.starts - 1):
             real, imaginary = real * wr - imaginary * wi, real * wi + imaginary * wr
         slope = radius * parameters["modulation"] * self.starts * real
         value = r - radius * (1.0 + parameters["modulation"] * imaginary)
-        return SignValue(value, signs.length(jnp.ones_like(r), slope / r, slope * parameters["wavenumber"] / radius))
+        return SignValue(value, signs.length(jnp.ones_like(r), slope / r, slope * parameters["wavenumber"] / radius,
+                                             scale=1.0))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:

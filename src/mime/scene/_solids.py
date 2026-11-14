@@ -183,7 +183,7 @@ class Cylinder(Solid):
         """Its regions' signed distances: the ``side``'s from the axis, the ``span``'s from its mid-plane."""
         axis = signs.unit(parameters["axis"])
         if region == "side":
-            value = signs.across(point, axis, 0.0) - parameters["radius"]
+            value = signs.across(point, axis, signs.along(point, axis), parameters["radius"]) - parameters["radius"]
         else:
             value = signs.slab(point, axis, parameters["length"] / 2.0)
         return SignValue(value, jnp.ones_like(value))
@@ -356,8 +356,8 @@ class Ellipsoid(Solid):
         distance is exact on the surface and of the right sign everywhere."""
         a, b, c = (parameters["semi_axes"][i] for i in range(3))
         x, y, z = point
-        q = signs.length(x / a, y / b, z / c)
-        return SignValue(q - 1.0, signs.length(x / (a * a), y / (b * b), z / (c * c)) / q)
+        q = signs.length(x / a, y / b, z / c, scale=1.0)
+        return SignValue(q - 1.0, signs.length(x / (a * a), y / (b * b), z / (c * c), scale=1.0 / a) / q)
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
@@ -730,7 +730,7 @@ class Sphere(Solid):
     @override
     def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
         """Its signed distance, the distance from its centre less its radius."""
-        value = signs.length(*point) - parameters["radius"]
+        value = signs.length(*point, scale=parameters["radius"]) - parameters["radius"]
         return SignValue(value, jnp.ones_like(value))
 
     @override
@@ -930,7 +930,8 @@ class Capsule(Solid):
     @override
     def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
         """Its signed distance, the distance from its segment less its radius."""
-        value = signs.segment(point, signs.unit(parameters["axis"]), parameters["height"] / 2.0) - parameters["radius"]
+        radius = parameters["radius"]
+        value = signs.segment(point, signs.unit(parameters["axis"]), parameters["height"] / 2.0, radius) - radius
         return SignValue(value, jnp.ones_like(value))
 
     @override

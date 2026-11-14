@@ -108,8 +108,8 @@ def evaluate(sampled: Sampled, p: Mapping[str, Any], x: Any, y: Any, z: Any) -> 
 
 
 class March(NamedTuple):
-    """The march's held result on each ray: the two least minima's points (the second the first's where there is
-    none), whether there is a second, the samples' points and spacing, and the held interval the flags read."""
+    """The march's held result on each ray: the least sample's refined point and the least other local minimum's,
+    whether there is another, the samples' points and spacing, and the held interval the flags read."""
 
     ta: Any
     tb: Any
@@ -119,9 +119,21 @@ class March(NamedTuple):
     interval: tuple[Any, Any]
 
 
+def _margins(v: Any) -> Any:
+    """How far each interior sample lies below the lower of its neighbours (positive at a local minimum)."""
+    return jnp.minimum(v[..., :-2], v[..., 2:]) - v[..., 1:-1]
+
+
+def _gap(values: Any) -> Any:
+    """How far the least of each row lies below the next least (zero at a tie)."""
+    low = jnp.sort(values, axis=-1)
+    return low[..., 1] - low[..., 0]
+
+
 def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> March:
     """The held search along rays ``o + t d`` (``du`` the ray table's derivative along a pixel's row, for the
-    footprint): the samples across the widened enclosing ball, their local minima, the two least refined."""
+    footprint): the samples across the widened enclosing ball, the least sample (the first branch), the least of the
+    other local minima (the second), each refined by the parabola through its neighbours."""
     o, d, du = lax.stop_gradient((o, d, du))
     held_p = {name: value if isinstance(value, int) else lax.stop_gradient(value) for name, value in p.items()}
     n = sampled.samples
@@ -135,35 +147,32 @@ def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> Ma
     k = jnp.arange(n, dtype=t0.dtype)
     t = t0[..., None] + dt[..., None] * k
     v = evaluate(sampled, held_p, *(o[i] + t * d[i][..., None] for i in range(3)))
-    inner = (v[..., 1:-1] < v[..., :-2]) & (v[..., 1:-1] <= v[..., 2:])
-    far = jnp.full(v[..., :1].shape, jnp.inf, dtype=v.dtype)
-    masked = jnp.concatenate([far, jnp.where(inner, v[..., 1:-1], jnp.inf), far], axis=-1)
 
-    def margin(values: Any) -> Any:
-        """How far the least of each row lies below the next least (zero at a tie)."""
-        low = jnp.sort(values, axis=-1)
-        return low[..., 1] - low[..., 0]
+    def resolution() -> Any:
+        return switch.rounding(reach)
 
-    first = switch.argmin(masked, owner="camera.sampled.least", resolution=lambda: switch.rounding(reach),
-                          indicator=lambda: margin(masked))
-    picked = jnp.take_along_axis(masked, first[..., None], axis=-1)[..., 0]
-    rest = jnp.where(jnp.arange(n) == first[..., None], jnp.inf, masked)
-    second = switch.argmin(rest, owner="camera.sampled.second", resolution=lambda: switch.rounding(reach),
-                           indicator=lambda: margin(rest))
-    has1 = jnp.isfinite(picked)
-    has2 = jnp.isfinite(jnp.take_along_axis(rest, second[..., None], axis=-1)[..., 0])
+    first = switch.argmin(v, owner="camera.sampled.least", resolution=resolution, indicator=lambda: _gap(v))
+    margins = _margins(v)
+    others = jnp.where(jnp.arange(1, n - 1) == first[..., None], -jnp.inf, margins)
+    basins = switch.where(margins > 0.0, v[..., 1:-1], jnp.inf, owner="camera.sampled.basin", resolution=resolution,
+                          indicator=lambda: margins)
+    rest = jnp.where(jnp.arange(1, n - 1) == first[..., None], jnp.inf, basins)
+    second = switch.argmin(rest, owner="camera.sampled.second", resolution=resolution, indicator=lambda: _gap(rest)) + 1
+    has2 = switch.predicate(jnp.max(others, axis=-1) > 0.0, owner="camera.sampled.branch", resolution=resolution,
+                            indicator=lambda: jnp.max(others, axis=-1))
 
-    def refined(at: Any, valid: Any) -> Any:
+    def refined(at: Any) -> Any:
         def near(offset: int) -> Any:
             return jnp.take_along_axis(v, (at + offset)[..., None], axis=-1, mode="clip")[..., 0]
 
         before, least, after = near(-1), near(0), near(1)
         curvature = before - 2.0 * least + after
-        shift = 0.5 * (before - after) / switch.domain_guard(curvature > 0.0, curvature, 1.0)
-        return t0 + (at.astype(t0.dtype) + jnp.where(valid, shift, 0.0)) * dt
+        inner = (at > 0) & (at < n - 1) & (curvature > 0.0)
+        shift = 0.5 * (before - after) / switch.domain_guard(inner, curvature, 1.0)
+        return t0 + (at.astype(t0.dtype) + switch.domain_guard(inner, shift, 0.0)) * dt
 
-    ta = refined(first, has1)
-    tb = jnp.where(has2, refined(second, has2), ta)
+    ta = refined(first)
+    tb = refined(second)
     entering = (v[..., :-1] >= 0.0) & (v[..., 1:] < 0.0)
     leaving = (v[..., :-1] < 0.0) & (v[..., 1:] >= 0.0)
     across = t[..., :-1] + dt[..., None] * v[..., :-1] / jnp.where(entering | leaving, v[..., :-1] - v[..., 1:], 1.0)
@@ -200,10 +209,7 @@ def pieces(sampled: Sampled, held: March) -> Any:
             return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
 
         first = at(held.ta)
-        second = switch.where(held.has2, at(held.tb), first + sampled.enclosing, owner="camera.sampled.branch",
-                              resolution=lambda: switch.rounding(sampled.enclosing),
-                              indicator=lambda: held.tb - held.ta)
-        return first, second
+        return first, switch.domain_guard(held.has2, at(held.tb), first + sampled.enclosing)
 
     return made
 

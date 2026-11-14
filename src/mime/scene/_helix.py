@@ -423,7 +423,7 @@ class Helix(Solid):
         theta = switch.clip(theta, 0.0, turn.sweep, owner="helix.end", resolution=lambda: switch.rounding(turn.sweep),
                             indicator=lambda: jnp.maximum(-theta, theta - turn.sweep))
         value = signs.length(at[0] - turn.b * (theta - 0.5 * turn.sweep), at[1] - turn.radius * jnp.cos(theta),
-                             at[2] - turn.radius * jnp.sin(theta)) - turn.filament
+                             at[2] - turn.radius * jnp.sin(theta), scale=turn.filament) - turn.filament
         return SignValue(value, jnp.ones_like(value))
 
     @override
