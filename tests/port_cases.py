@@ -1,27 +1,31 @@
 """Shared pieces of the ports' tests: the planted errors their controls switch on (``PORT_PLANT``, read by
 ``.github/probe/detection_rate.py --plant-var PORT_PLANT``, the draw's seed in ``DETECTION_SEED``), NumPy oracles of the
 two stages' rungs written from the design's order, and the experiments they run: the coil-array sphere with a port on
-its currents, and its loop closed by a controller through a measurement port and a command port."""
+its currents, its loop closed by a controller through a measurement port and a command port, and a kinematic two-joint arm
+commanded by a square wave its controller writes through a port."""
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
+from chain_cases import C_ARM
 
 from mime import Apparatus, Body, Experiment, State
 from mime.data import asset as packaged
-from mime.dynamics import RigidInertial
+from mime.drives import Constant
+from mime.dynamics import Arm, RigidInertial
 from mime.fields import CalibratedMultipole
 from mime.interactions import Magnetic
 from mime.gradients import GradientStatus
 from mime.registry import ControlLaw, Controller, Signal, register_controller
-from mime.scene import Scene, Sphere, Z
+from mime.scene import Scene, Sphere, Z, asset
 from mime.things import Part
-from mime.units import A, A_m2, kg, kg_m2, m, m_per_s, m_per_s2, ms, rad_per_s
+from mime.units import A, A_m2, kg, kg_m2, m, m_per_s, m_per_s2, ms, rad, rad_per_s
 from mime.vocabulary import register_namespace
 
 register_namespace("oracle", "0.0.1")
@@ -47,6 +51,7 @@ class Link:
     trip: bool = False
     rest: float = 0.0
     slew: float | None = None
+    tau: float | None = None
 
 
 def sampled_and_delayed(written: np.ndarray, period: int, latency: int, rest: Any) -> np.ndarray:
@@ -60,9 +65,10 @@ def sampled_and_delayed(written: np.ndarray, period: int, latency: int, rest: An
 
 
 def command_oracle(written: np.ndarray, link: Link, dt: float, *, order: tuple[str, ...] = (
-        "sample", "delay", "bound", "slew")) -> np.ndarray:
+        "sample", "delay", "bound", "slew", "response")) -> np.ndarray:
     """What a command port delivers at each step of ``written`` (steps by elements), its rungs in ``order``: the
-    design's by default (sample, delay, bound, slew)."""
+    design's by default (sample, delay, bound, slew, response: a first-order lag of ``tau`` from the rest, exact for a
+    value held over the step)."""
     held = np.asarray(written, dtype=np.float64)
     rest = np.full(held.shape[1:], link.rest)
 
@@ -92,7 +98,16 @@ def command_oracle(written: np.ndarray, link: Link, dt: float, *, order: tuple[s
             out[n] = before
         return out
 
-    rungs = {"sample": sample, "delay": delay, "bound": bound, "slew": slew}
+    def response(x: np.ndarray) -> np.ndarray:
+        if link.tau is None:
+            return x
+        out, before = np.empty_like(x), rest
+        for n in range(len(x)):
+            before = x[n] + (before - x[n]) * math.exp(-dt / link.tau)
+            out[n] = before
+        return out
+
+    rungs = {"sample": sample, "delay": delay, "bound": bound, "slew": slew, "response": response}
     for rung in order:
         held = rungs[rung](held)
     return held
@@ -118,11 +133,16 @@ def stage_of(link: Link, shape: tuple[int, ...], dt: float) -> Any:
         leaves.update(low_currents=link.low, high_currents=link.high)
     if link.slew is not None:
         leaves["slew_currents"] = link.slew
+    if link.tau is not None:
+        leaves["response_currents_tau"] = link.tau
     return CommandStageNode(
         "ports:coils", dt, commands=["currents"], units={"currents": "A"}, shapes={"currents": shape},
         periods={"currents": link.period}, latencies={"currents": link.latency},
         bounded={"currents": "" if link.low is None else ("trip" if link.trip else "clip")},
-        slewed={"currents": link.slew is not None}, **leaves)
+        slewed={"currents": link.slew is not None},
+        responses={"currents": ("response.first_order_lag", "0.1.0") if link.tau is not None
+                   else ("response.ideal", "0.1.0")},
+        carries={"currents": ("lagged",) if link.tau is not None else ()}, **leaves)
 
 
 def stepped(node: Any, written: np.ndarray, dt: float, field: str = "currents", *,
@@ -137,6 +157,45 @@ def stepped(node: Any, written: np.ndarray, dt: float, field: str = "currents", 
         if flag is not None:
             flags.append(float(state[flag]))
     return (np.stack(out), np.asarray(flags)) if flag is not None else np.stack(out)
+
+
+def square_wave(draw: np.random.Generator, steps: int, size: int, *, beyond: float,
+                halves: tuple[int, int] = (3, 8), past: tuple[float, float] = (1.2, 2.0)) -> np.ndarray:
+    """A drawn square wave of ``steps`` rows: each element jumps between two levels, one ``past`` times ``beyond``
+    (outside the bounds) and one inside, on a drawn half period of ``halves`` steps (the upper excluded), so a bound and
+    a slew both act and the command comes back."""
+    out = np.empty((steps, size))
+    for j in range(size):
+        half = int(draw.integers(*halves))
+        high, low = beyond * draw.uniform(*past), beyond * draw.uniform(-0.5, 0.5)
+        out[:, j] = [high if (n // half) % 2 == 0 else low for n in range(steps)]
+    return out
+
+
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class Replayed(Controller):
+    """Writes the rows of ``table`` one a tick, its first at the first tick, then holds its last: a command whose
+    every value the test knows."""
+
+    name = "oracle.replayed"
+    version = "0.1.0"
+    differentiability = GradientStatus.EXACT
+    builds = {"": ()}
+    reads = {}
+    writes = {"joint_positions": Signal("1", (-1,))}
+    table: tuple[tuple[float, ...], ...]
+
+    def law(self, ctx: Any) -> ControlLaw:
+        rows = jnp.asarray(self.table)
+
+        def step(state: Any, reads: Any) -> tuple[Any, Any]:
+            count = state["count"]
+            row = rows[jnp.minimum(count, rows.shape[0] - 1)]
+            return {"count": count + 1}, {"joint_positions": row}
+
+        return ControlLaw(state={"count": jnp.asarray(0, dtype=jnp.int32)},
+                          held={"joint_positions": rows[0]}, step=step)
 
 
 @register_controller
@@ -169,6 +228,29 @@ def fed_back_sphere(ports: dict[str, Any], *, mode: str, name: str = "fed_back")
     exp = coil_sphere(ports, name=name, commands={})
     exp.set_controller(PoseFeedback(), reads={"pose": "coils.tracker", "age": "coils.tracker.age"},
                        writes={"currents": "coils.currents"}, mode=mode, rate=ms(1))
+    return exp
+
+
+#: The two-joint arm's revolute joints' limits (tests/descriptions/c_arm.urdf), rad, and its start (its slide, then its
+#: two revolute joints).
+C_ARM_LIMITS = ((-2.0, 2.0), (-3.0, 3.0))
+C_ARM_START = (0.1, 0.0, 0.0)
+
+
+def replayed_arm(table: np.ndarray, port: Any, *, name: str = "ported_arm", mode: str = "graph",
+                 slide: Any = None) -> Experiment:
+    """The two-joint arm, kinematic, its revolute joints written by :class:`Replayed` with ``table`` through ``port``
+    (``None``: no port), its slide held at 0.1 m through ``slide`` (its port, where the revolute one lags: the arm's node
+    lags every joint with one time constant)."""
+    ports = {"arm.joint_positions": port} if port is not None else {}
+    if slide is not None:
+        ports["arm.joint_displacements"] = slide
+    exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(1))
+    exp.add_apparatus(Apparatus(
+        "carm", chain={"arm": Arm.Kinematic(description=asset(C_ARM), initial_positions=rad(C_ARM_START))},
+        commands={"arm.joint_displacements": Constant(m((0.1,)))}, ports=ports))
+    exp.set_controller(Replayed(table=tuple(tuple(float(c) for c in row) for row in table)), reads={},
+                       writes={"joint_positions": "carm.arm.joint_positions"}, mode=mode, rate=ms(1))
     return exp
 
 

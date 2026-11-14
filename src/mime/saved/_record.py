@@ -221,9 +221,7 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "controller": resolved_controller(plans.controller),
         "profile": resolved_profile(plans),
     }
-    if plans.command_ports:
-        record["ports"] = resolved_ports(plans)
-    return record
+    return cast(ResolvedRecord, {**record, "ports": resolved_ports(plans)}) if plans.command_ports else record
 
 
 def resolved_ports(plans: PlanSet) -> dict[str, ResolvedPort]:

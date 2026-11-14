@@ -7,8 +7,16 @@
   and one built for an ideal measurement (``measure_for_ideal``), must each change both.
 - **No two ports hold one field**: a port named as another's age (``tr`` and ``tr_age``) is refused; the control
   (``clash_unchecked``, the check removed) builds, and the second overwrites the first's age in silence.
-- **A response is refused by name** until it is built, so none is ignored; a kinematic arm's port takes its joints'
-  stated limits as its bounds, before its slew.
+- **One lag, one place**: a ``FirstOrderLag`` on a kinematic arm's position commands is handed to the arm's node (its
+  servo, ``(computed by its receiver)``), and builds no stage; the stage computes the lag for a command whose receiver
+  does not (a coil array's currents). A lag on some of an arm's position commands and not others, or two lags, is
+  refused: its node lags every joint with one time constant. A kinematic arm's port takes its joints' stated limits as
+  its bounds, before its slew.
+- **The arm's order** (design section 4): a port with a latency, a slew and a lag on a kinematic arm, written by a
+  controller inside the compiled step with a drawn square wave that leaves the joints' limits and comes back, delivers
+  the design's order: sample, delay, the joints' stated limits as its bounds, slew, then the arm's lag. The controls
+  (``PORT_PLANT``): the stage slewing before it bounds (``slew_before_bound``), and the stage leaving the joints' limits
+  to the arm's own clip after its slew and lag (``limits_after_slew``), each caught on every run.
 - **Controllers through ports**: a controller called on the host and one inside the compiled step, each reading a
   measurement port and writing through a command port, run the same steps to the same numbers; their reads are
   classed ``measurement``, the age is read by its path.
@@ -19,13 +27,18 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from chain_cases import kinematic_rpm
-from port_cases import PoseFeedback, coil_sphere, fed_back_sphere, planted
+from port_cases import (C_ARM_LIMITS, SEED, Link, PoseFeedback, coil_sphere, command_oracle, fed_back_sphere, planted,
+                        replayed_arm, square_wave)
 
 from mime import CommandPort, Measurement
 from mime.build import BuildRefused, _ports
+from mime.nodes.control import CommandStageNode
+from mime.responses import FirstOrderLag
 from mime.testing._graph import graph_snapshot
 from mime.things import Gaussian
-from mime.units import A, m, mm, ms, s
+from mime.units import A, m, mm, ms, rad, s
+
+DT = 1e-3
 
 
 def sphere(port: object | None = None, *, ports: dict | None = None):
@@ -100,11 +113,70 @@ def test_a_measurement_ports_noise_seed_is_in_the_reports_seeds():
     assert set(seeds["measure:coils"]) == {"speed"} and seeds["measure:coils"]["speed"] > 0
 
 
-def test_a_response_is_refused_by_name_until_it_is_built():
+def lag(tau_ms: float = 20.0) -> CommandPort:
+    return CommandPort(response=FirstOrderLag(tau=ms(tau_ms)), reason="the arm's servo, its time constant")
+
+
+def test_a_lag_on_a_kinematic_arms_position_commands_is_handed_to_its_node():
+    built = replayed_arm(np.zeros((4, 2)), lag(), slide=lag()).build()
+    assert not [name for name in built.graph.node_names if name.startswith("ports:")]
+    assert all(line.endswith("(computed by its receiver)") for line in built.report.ports)
+    assert built.graph.get_node("carm.arm").constants()["servo_time_constant"] == pytest.approx(0.02)
+
+
+def test_a_lag_on_some_of_an_arms_commands_or_two_lags_are_refused():
     with pytest.raises(BuildRefused) as refused:
-        sphere(CommandPort(response=object(), reason="the coils' L/R, measured")).build()
-    assert codes(refused.value) == ["port.seam"] and "declares response=" in str(refused.value)
-    assert "MIME 0.3.0.dev2" in str(refused.value)
+        replayed_arm(np.zeros((4, 2)), lag()).build()
+    assert codes(refused.value) == ["port.declaration"] and "none on joint_displacements" in str(refused.value)
+    with pytest.raises(BuildRefused) as refused:
+        replayed_arm(np.zeros((4, 2)), lag(20.0), slide=lag(10.0)).build()
+    assert codes(refused.value) == ["port.declaration"] and "different responses" in str(refused.value)
+
+
+def test_a_lag_on_coil_currents_is_computed_by_the_stage():
+    built = sphere(CommandPort(response=FirstOrderLag(tau=ms(7.5)), reason="the coils' L/R, measured")).build()
+    node = built.graph.get_node("ports:coils")
+    assert isinstance(node, CommandStageNode)
+    assert node.constants()["responses"]["currents"] == ("response.first_order_lag", "0.1.0")
+    assert "response.first_order_lag 0.1.0" in "\n".join(built.report.ports)
+
+
+def drawn_arm_port() -> tuple[np.ndarray, Link, CommandPort, CommandPort]:
+    """A drawn square wave for the arm's two revolute joints, 2 to 3 times past their limits and back on half periods of
+    6 to 10 steps, and a port with a latency of 1 to 3 steps, a slew moving 30 % to 80 % of the smaller limit a step,
+    and a lag of 1 to 8 ms (the slide's port lags it alike): within each half period the slewed command passes the
+    limits, so bounding after the slew, or leaving the limits to the arm, delivers another value at every draw."""
+    rng = np.random.default_rng(SEED)
+    table = square_wave(rng, 40, 2, beyond=1.0, halves=(6, 11), past=(2.0, 3.0)) * \
+        np.array([limit[1] for limit in C_ARM_LIMITS])
+    latency, slew, tau = int(rng.integers(1, 4)), float(rng.uniform(0.3, 0.8)) * 2.0 / DT, \
+        float(rng.uniform(1e-3, 8e-3))
+    link = Link(latency=latency, slew=slew, tau=tau, rest=0.0)
+    port = CommandPort(latency=ms(latency), slew=rad(slew) / s(1.0), response=FirstOrderLag(tau=s(tau)),
+                       reason="a drawn link, slew and servo")
+    return table, link, port, CommandPort(response=FirstOrderLag(tau=s(tau)), reason="the slide's servo")
+
+
+def test_an_arm_port_applies_its_latency_bounds_slew_and_lag_in_the_designs_order(monkeypatch):
+    table, link, port, slide = drawn_arm_port()
+    if planted("slew_before_bound"):
+        monkeypatch.setattr(CommandStageNode, "RUNGS", ("delay", "slew", "bound", "respond"))
+    if planted("limits_after_slew"):
+        monkeypatch.setattr("mime.dynamics.apparatus._arm._stated_limits", lambda articulation, joints: None)
+    built = replayed_arm(table, port, slide=slide).build()
+    history = built.run(ms(len(table)), history=True).history
+    revolute = np.asarray(history["carm.arm"]["joint_positions"], dtype=np.float64)
+    low = np.array([limit[0] for limit in C_ARM_LIMITS])
+    high = np.array([limit[1] for limit in C_ARM_LIMITS])
+    # The controller's tick at a step reads the start of it and writes within it (mode 1): the row the arm takes at
+    # step n is the table's n-th. The rest is the arm's start, its revolute joints at zero.
+    delivered = command_oracle(table, Link(latency=link.latency), DT, order=("sample", "delay"))
+    expected = command_oracle(np.clip(delivered, low, high), Link(slew=link.slew, tau=link.tau), DT,
+                              order=("slew", "response"))
+    scale = float(np.max(np.abs(table)))
+    worst = float(np.max(np.abs(revolute[:, -2:] - expected)))
+    assert worst <= 64 * float(np.finfo(revolute.dtype if revolute.dtype != np.float64 else np.float32).eps) * \
+        scale * len(table), worst
 
 
 def test_a_staged_port_on_a_kinematic_arm_takes_its_joints_stated_limits_as_its_bounds():
@@ -219,14 +291,6 @@ def test_noise_on_a_pose_is_refused_naming_its_composite_units():
     assert codes(refused.value) == ["port.declaration"] and "composite" in str(refused.value)
 
 
-def test_a_declared_port_is_unsavable_until_its_saved_form(tmp_path):
-    built = sphere(CommandPort(latency=ms(1), reason="a link")).build()
-    with pytest.raises(BuildRefused) as refused:
-        built.save(tmp_path / "ported")
-    assert codes(refused.value) == ["save.unsavable"] and "declares ports" in str(refused.value)
-    sphere().build().save(tmp_path / "unported")
-
-
 def test_the_port_stage_is_on_a_derivatives_path_with_its_status():
     from mime.gradients import GradientStatus
 
@@ -235,3 +299,36 @@ def test_the_port_stage_is_on_a_derivatives_path_with_its_status():
     assert stage.status("ports:coils") is GradientStatus.PIECEWISE_KINK
     tripped = sphere(CommandPort(bounds=A(25.0), on_bound="trip", reason="an amplifier")).build()
     assert tripped.plans.stages[0].status("ports:coils") is GradientStatus.PIECEWISE_JUMP
+
+
+def test_a_ports_traffic_is_recorded_through_record_and_its_loop_chain_reported(ported_loops):
+    """A port's traffic is its stage's outputs: ``record=`` takes them as any per-step output (the written and the
+    delivered command, a measured value's age); the report's controller block gives the loop's latency chain through
+    the ports: a measurement two steps late, the controller's none (a tick reads the state as it stands and its writes
+    act from that step) and the command one step late, three steps from a state to the step its command acts in."""
+    built, history = ported_loops["graph"]
+    result = built.run(ms(6), record=["ports:coils.written_currents", "ports:coils.currents",
+                                      "measure:coils.tracker_age"])
+    stage = result["ports:coils"]
+    np.testing.assert_array_equal(stage["currents"].raw[1:], stage["written_currents"].raw[:-1])
+    assert list(result["measure:coils"]["tracker_age"].raw) == [2.0] * 6
+    (chain,) = [line.strip() for line in built.report.controller if line.strip().startswith("coils.tracker ->")]
+    assert chain.startswith("coils.tracker -> coils.currents: 3 base steps (0.003 to 0.003 s)"), chain
+
+
+def test_a_camera_ports_image_is_refused_in_record_naming_the_re_render():
+    """Design R4: a port's image is the camera's frames by a second path, refused in ``record=`` as the camera's own
+    image is (``camera.recorded-frames``); its age records."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).parents[1] / "sensing"))
+    from test_camera_port import camera_with
+
+    from mime.build import ArgumentRefused
+
+    built = camera_with(Measurement(of="camera:.image", rate=ms(6), reason="a test frame grabber")).build()
+    with pytest.raises(ArgumentRefused) as refused:
+        built.run(ms(6), record=["measure:imaging.frames"])
+    assert codes(refused.value) == ["camera.recorded-frames"] and "mime.sensing.render" in str(refused.value)
+    built.run(ms(6), record=["measure:imaging.frames_age"])
