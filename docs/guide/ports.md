@@ -35,8 +35,8 @@ is refused; on the camera's expected image it is allowed, and the report says th
 
 The build report's `ports` lines name each port and what it does; its controller block gives the loop's chain, the base
 steps from a state to the first step whose command was made from it. Each apparatus with staged ports gains at most two
-nodes, `ports:<apparatus>` and `measure:<apparatus>`, and their fixed cost a step (on a GitHub runner, A0's chunk 1.15
-times as long, a coil-array sphere's 1.68 times). A run records a port's traffic when asked: `record=` names the stage's
+nodes, `ports:<apparatus>` and `measure:<apparatus>`, and their fixed cost a step, measured in the build's notes. A run
+records a port's traffic when asked: `record=` names the stage's
 outputs (`ports:coils.currents`, `ports:coils.written_currents`, `measure:coils.tracker_age`).
 
 A saved experiment holds its ports (saved form 15). The details, and every refusal by its code, are in

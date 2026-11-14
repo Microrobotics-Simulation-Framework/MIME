@@ -210,7 +210,7 @@ class _Reader:
             self.refuse("load.document-shape", "the controller's believed models (controller.believed) are held by the "
                                                "saved form and read by no MIME yet: a controller's model of what it "
                                                "drives is not read from a document before it is built",
-                        "remove controller.believed from the document, or load it with the MIME that reads it")
+                        "remove controller.believed from the document and load it again: `Experiment.load(folder)`")
             return None
         built = self.entry("controller", doc, "the controller")
         if built is None:
