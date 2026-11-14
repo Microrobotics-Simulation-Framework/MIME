@@ -137,6 +137,9 @@ class BuildReport:
     #: Set on a built experiment's report once the experiment has had a replacement or a removal since the build: what
     #: changed, and what to do. Never part of the saved form or the report's summary for a client.
     stale: str | None = None
+    #: Each declared port's line: what it does to its command or its read (``mime.build._ports``), and where it is
+    #: computed. Empty where none is declared: every command and read is then ideal.
+    ports: tuple[str, ...] = ()
 
     def stale_lines(self) -> list[str]:
         return [f"STALE: {self.stale}"] if self.stale else []
@@ -240,6 +243,13 @@ class BuildReport:
             lines.append("  none")
         return lines
 
+    def port_lines(self) -> list[str]:
+        """The declared ports, one line each; none where none is declared."""
+        if not self.ports:
+            return []
+        return ["ports, each a link between a writer and its receiver or a source and its reader (every other command "
+                "and read is ideal):", *(f"  {line}" for line in self.ports)]
+
     def summary(self) -> list[str]:
         """The report's first lines: the experiment, its step and run, its profile's stamp with what is pending and
         listed, each entry, each value read with where it came from, each record read with OpenMaterica's verdict, the
@@ -270,6 +280,7 @@ class BuildReport:
                                                                   "accepted by the experiment" in r.use else "")
                       for r in held.reads]
         lines += list(self.controller[:1])
+        lines += self.port_lines()
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
@@ -332,6 +343,7 @@ class BuildReport:
         lines += self.asset_lines()
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
         lines += list(self.controller) or ["controller: none declared, so no latency to account for"]
+        lines += self.port_lines()
         lines += self.materials_text()
         if self.masses:
             lines.append("mounted masses, each with what carries it:")

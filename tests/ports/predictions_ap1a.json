@@ -1,0 +1,96 @@
+{
+  "written": "2026-11-14, committed before the controls' detection-rate probe, the cost probe and the bit comparison ran (the commit that adds this file is the timestamp): the apparatus lane's AP1a, ports as data on an apparatus and the two port stages the build inserts",
+  "phase": "apparatus lane, AP1a: CommandPort, Measurement, the command stage and the measure stage",
+  "labels": "predictions by the builder (Opus) from the code's structure; the property controls' rates from Hypothesis's 100 examples a run against plants that move the delivered value by a sizeable share of the bound wherever a draw holds the rung; the costs are guesses, labelled so",
+  "seen_before": [
+    "each plant run once locally before this file (laptop, CPU, float32 unless said; the branch's working tree): slew_before_bound, trip_unlatched, stage_for_ideal, latency_short, stale_age, project_undistorted, project_swapped_focal, project_inverse_rotation, latency_dropped, stage_after_receiver and ledger_blind each failed its target, and every clean run passed; the ports' tests also passed with JAX_ENABLE_X64=1",
+    "a scratch save of a candidate form-14 servo folder at c9f094df (5 files, 21.4 kB): no bearing on this file's gates",
+    "test_a_one_step_port_latency_on_a0_changes_its_program_and_moves_its_swim_speed took 21 s locally (two builds of A0 and two runs of 40 steps)"
+  ],
+  "operating_point": {
+    "dtype": ["float32 as the tests run by default", "float64 for the projection's tolerance where the run is float64"],
+    "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow), one pytest process a run",
+    "sizes_and_parameters": "the command stage: bounds of 1 to 30 A, slews of 0.2 to 4 bounds a step, periods of 1 to 4 steps, latencies of 0 to 5, 24 steps of square waves past the bound and back; the measure stage: periods of 1 to 5, latencies of 0 to 7, 20 steps; the projection: focal lengths 400 to 900 px, 5 % to 30 % apart, k1 0.05 to 0.2, 32 points 5 to 20 cm before a drawn camera; A0 at dt 0.5 ms, 40 steps; the coil sphere (Navion_2) at dt 1 ms",
+    "seeds_and_draws": "200 runs a control, planted and clean at the same seeds (DETECTION_SEED, and --hypothesis-seed for the properties); Hypothesis's default 100 examples a run, never shrunk"
+  },
+  "gate_1_no_port_no_change": {
+    "claim": "an apparatus with no port, with ports={} and with an all-default CommandPort() builds the same program, its derived hash and canonical text the same (design section 9, control 1), on the coil-array sphere and on A0's apparatus",
+    "kind": "equality",
+    "case": "tests/ports/test_ports_build.py::test_no_port_an_empty_one_and_an_all_default_one_build_the_program_of_none",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "a port is staged only where a rung is not ideal; planted, a stage is built for the ideal port and adds a node and two edges, which the hash and the text both hold"},
+    "metric": "caught/N of the planted arm, flagged/N of the clean arm",
+    "control": {"plant": "every command port staged, an ideal one included", "environment_variable": "PORT_PLANT=stage_for_ideal", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "a node more in the graph: the hash and the text are exact"},
+    "if_wrong": "a miss is an ideal port building a stage: the unused path is not free",
+    "cannot_discriminate_if": "the planted stage were built and its node left out of the derived graph; the canonical text lists every node"
+  },
+  "gate_2_a0_latency": {
+    "claim": "a command port of one base step's latency on A0's arm, which its controller writes inside the compiled step, changes the derived hash and moves the swim speed (design section 9, control 2)",
+    "kind": "acceptance",
+    "case": "tests/ports/test_a0_ports.py::test_a_one_step_port_latency_on_a0_changes_its_program_and_moves_its_swim_speed",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "with the latency dropped the port is ideal and builds no stage, so the two programs are one program and the swim speeds are bit for bit equal"},
+    "control": {"plant": "the port's latency left out of its plan", "environment_variable": "PORT_PLANT=latency_dropped", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "64 units in the last place of the swim speed's scale, above which the clean arm's difference must lie"},
+    "if_wrong": "a miss: one step of the arm's link does not reach the body in 40 steps, or the stage is built without delaying"
+  },
+  "gate_3_misplaced_stage": {
+    "claim": "a command stage the order puts after its receiver, inside the loop a controller closes through it, is refused by the lag accounting (lag.unplanned): the ported loop builds only with its stage between writer and receiver (design section 9, control 3)",
+    "kind": "acceptance",
+    "case": "tests/ports/test_a0_ports.py::test_the_ported_loop_builds_with_its_stage_between_writer_and_receiver",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "the stage's edge into the coils then reads the previous step and carries a command, which no start-of-step read plans"},
+    "control": {"plant": "the coils' command stage moved after the coils in the order the loop is built in", "environment_variable": "PORT_PLANT=stage_after_receiver", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the refusal's code"}
+  },
+  "gate_4_command_rungs": {
+    "claim": "the command stage delivers its rungs in the design's order (sample, delay, bound clipped or tripped, slew) against a NumPy oracle written from that order, within 64 units in the last place of the inputs' scale over 24 steps",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py::test_the_command_stage_delivers_the_design_order_of_its_rungs",
+    "prediction": {"value": "200/200 caught for each plant, 0/200 flagged", "basis": "derived", "why": "a drawn square wave leaves the bound and comes back; where a draw holds a bound and a slew that bites, slewing first then bounding delivers another value at the step the wave returns, by up to the slew's step; an unlatched trip delivers the command again once it is back within its bounds, by the command's own size. Of 100 examples a run, about a third hold a clip and a slew and about a third a trip"},
+    "control": {"plant": "the bound and the slew swapped (slew_before_bound); the trip unlatched (trip_unlatched)", "environment_variable": "PORT_PLANT=slew_before_bound | trip_unlatched", "expected_rate": "200/200 each", "runs": 200, "clean_expected": "0/200", "resolution": "the difference a plant makes is at least a tenth of the bound wherever it acts, against a tolerance of about 1e-4 of the scale in float32"},
+    "if_wrong": "a miss is a run whose 100 examples held no draw the plant changes: the strategy is too narrow",
+    "cannot_discriminate_if": "slew and delay are swapped: both are time-invariant from the rest, and commute; no plant is made of that swap"
+  },
+  "gate_5_measure_rungs": {
+    "claim": "the measure stage samples, delays and ages exactly as the design says: what it delivers at count n is the sample of count k floor((n - L) / k), the source's start before, and its age n less the count that sample was made at",
+    "kind": "equality",
+    "case": "tests/ports/test_measurement_ports.py::test_the_measure_stage_samples_and_delays_with_the_age_of_what_it_delivers",
+    "prediction": {"value": "200/200 caught for each plant, 0/200 flagged", "basis": "derived", "why": "the comparison is exact (array_equal); a clock one step short delivers another sample wherever the latency is not zero, about seven draws in eight; an age read as zero is wrong at every step"},
+    "control": {"plant": "the shared clock one step short of its latency (latency_short); the age counted from the delivery (stale_age)", "environment_variable": "PORT_PLANT=latency_short | stale_age", "expected_rate": "200/200 each", "runs": 200, "clean_expected": "0/200", "resolution": "exact"}
+  },
+  "gate_6_projection": {
+    "claim": "Camera.project is OpenCV's projectPoints with the camera's model: within 1e-3 px in float64 and 2e-2 px in float32 of the documented equations written in NumPy",
+    "kind": "equality",
+    "case": "tests/sensing/test_camera_port.py::test_the_cameras_projection_is_opencvs_project_points",
+    "prediction": {"value": "200/200 caught for each plant, 0/200 flagged", "basis": "derived", "why": "dropping k1 of 0.05 to 0.2 moves a corner point by k1 r^3 fx, about 0.1 px or more at the field's corners; swapping focal lengths 5 % apart moves a point 40 px off-centre by 2 px; the inverse rotation sends most points elsewhere"},
+    "control": {"plant": "no distortion; the focal lengths swapped; the inverse rotation", "environment_variable": "PORT_PLANT=project_undistorted | project_swapped_focal | project_inverse_rotation", "expected_rate": "200/200 each", "runs": 200, "clean_expected": "0/200", "resolution": "the float32 line, 2e-2 px"},
+    "cannot_discriminate_if": "every drawn point lay at the principal point, where neither distortion nor focal length acts; the points are drawn over the whole detector"
+  },
+  "gate_7_ledger_look_through": {
+    "claim": "the energy ledger books a command a metered receiver pairs, delivered through a port's stage, under the command's writer (the drive), as without the port",
+    "kind": "acceptance",
+    "case": "tests/ports/test_port_ledger.py::test_a_metered_receivers_command_is_booked_under_its_writer_through_a_port",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "without the look-through the torque is booked under the stage, which supplies nothing, and the line naming the drive's supply is absent"},
+    "control": {"plant": "the look-through removed", "environment_variable": "PORT_PLANT=ledger_blind", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the report's line"}
+  },
+  "bits": {
+    "cases": "A0 (tests/script_a0.py) in float32 and float64, script A in float32 and float64, the tutorials A and A0 in float32, 100 steps each with every field's history, base release/v0.3.0 against this head in one job, one CPU, one BLAS and XLA thread (.github/probe/bit_compare.py); no port declared in any",
+    "prediction": "every array np.array_equal: no port, no node, no edge, so the compiled program is the base's",
+    "controls": {
+      "moved": "A0 with a one-step port on its arm on the head and none on the base: arrays differ (the comparison can fail)"
+    }
+  },
+  "costs": {
+    "unused": "the derived hash and the canonical text unchanged (gate 1): no node, no edge, no step cost, measured structurally",
+    "used_prediction": "a guess: A0 with a command port (one step of latency and a slew on the arm's six joints) and a measurement port (one step of latency on the body's pose, read by its controller) has two nodes more and adds a few hundred compiled operations to a step of several thousand, and its chunk takes under 5 % longer; the coil sphere with a command port (latency, bounds, slew on three currents) and a measurement port on its pose has two nodes more and its chunk, whose step is small, takes 10 % to 40 % longer",
+    "measured_at": "A0 at 40 steps a run and the coil sphere at 200, 20 steady runs a build and 3 builds a feature, off and on alternated in one job on one runner, with node_measure.py's trace counter; the operations counted in the optimised HLO of one compiled step (chunk_step), instructions outside fusions"
+  },
+  "outcomes": {
+    "measured_on": "GitHub runners, the probe workflow, CPU, float32; controls at 72986cc's tests (run 43578397108) and the review round's at bf6fde7's (run 43581034767); bits run 43578480087; cost run 43578431512",
+    "gate_1_no_port_no_change": "as predicted: stage_for_ideal 200/200 caught, clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43578397108); at the review round, with an ideal Measurement added to the case, stage_for_ideal 200/200 and measure_for_ideal 200/200, clean 0/200 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43581034767)",
+    "gate_2_a0_latency": "as predicted: latency_dropped 200/200 caught (four arms of 50), clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43578397108)",
+    "gate_3_misplaced_stage": "as predicted: stage_after_receiver 200/200 caught, clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43578397108)",
+    "gate_4_command_rungs": "as predicted for the plants it named: slew_before_bound 200/200 and trip_unlatched 200/200, clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43578397108). Not as the file's coverage implied: a refuting review found bound_before_delay passing it on 0 of 16 seeds; the review round's draw (a spike between samples), its explicit case and the flag's comparison catch it 200/200, clean 0/200, the other two again 200/200 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43581034767; predictions_ap1a_review.json)",
+    "gate_5_measure_rungs": "as predicted: latency_short 200/200 and stale_age 200/200, clean 0/200 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43578397108)",
+    "gate_6_projection": "as predicted: project_undistorted, project_swapped_focal and project_inverse_rotation 200/200 each, clean 0/200 each (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43578397108)",
+    "gate_7_ledger_look_through": "as predicted: ledger_blind 200/200 caught (two arms of 100), clean 0/200 (https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43578397108)",
+    "bits": "as predicted: every array equal for A0 (float32, float64), script A (float32, float64) and the tutorials A and A0, base 82219938 against 7374f70; the control moved differs in 19 of 29 arrays (run 43578480087)",
+    "costs": "NOT as predicted: A0 with both ports 11 to 13 nodes, its chunk 1.15 times as long (23.3 to 26.9 ms, EPYC 7763), against under 1.05 predicted; the coil sphere 4 to 6 nodes, 1.68 times (5.68 to 9.55 ms, EPYC 9V45), against 1.1 to 1.4 predicted; a per-node overhead of the step, not the rungs' arithmetic (a laptop check, not a timing claim); unused: nothing built (run 43578431512)"
+  }
+}

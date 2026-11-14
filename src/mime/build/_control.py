@@ -60,16 +60,21 @@ def mode_of(value: object) -> Mode | None:
 
 
 class ReadClass(Enum):
-    """What a controller's read is: the physics state itself, or an observation's output. A controller that reads the
-    state reads what no instrument gives a real one."""
+    """What a controller's read is: the physics state itself, an observation's output, or a measurement port of an
+    apparatus (``<apparatus>.<port>``, its age ``<apparatus>.<port>.age``). A controller that reads the state reads
+    what no instrument gives a real one: an implicit ideal port, ground truth."""
 
     STATE = "state"
     OBSERVATION = "observation"
+    MEASUREMENT = "measurement"
 
     @property
     def meaning(self) -> str:
         if self is ReadClass.STATE:
             return "ground truth, not deployable"
+        if self is ReadClass.MEASUREMENT:
+            return ("a declared measurement port, as deployable as its declaration (its source, rate, latency and "
+                    "noise)")
         return "an observation's output, as deployable as the observation's own model of its instrument"
 
 

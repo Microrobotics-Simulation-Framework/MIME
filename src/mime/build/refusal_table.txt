@@ -420,6 +420,12 @@ plot.recipe-folder            user
 plot.shape                    user
 plot.time-base                user
 plot.uncertainty              user
+port.clock                    user
+port.command-unknown          user
+port.declaration              user
+port.modelled-noise           user
+port.seam                     user
+port.source-unknown           user
 post-build.additive           internal
 post-build.base-step          internal
 post-build.command-writers    internal

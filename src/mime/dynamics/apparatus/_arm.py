@@ -372,7 +372,12 @@ class Arm(ChainSegment):
         prismatic = dofs - revolute
         kinds = (("joint_torques", TORQUE, revolute), ("joint_forces", FORCE, prismatic)) if dynamic else \
             (("joint_positions", DIMENSIONLESS, revolute), ("joint_displacements", LENGTH, prismatic))
-        commands = {port: Command(port, dimension, (count,)) for port, dimension, count in kinds if count}
+        kinds_of = tuple(tuple(i for i, turns in enumerate(articulation.revolute) if turns == revolving)
+                         for revolving in (True, False))
+        rests = (None, None) if dynamic else tuple(tuple(initial[i] for i in held) for held in kinds_of)
+        limits = (None, None) if dynamic else tuple(_stated_limits(articulation, held) for held in kinds_of)
+        commands = {port: Command(port, dimension, (count,), rest, bounds) for (port, dimension, count), rest, bounds
+                    in zip(kinds, rests, limits, strict=True) if count}
         massive = any(body.inertial is not None and body.inertial.mass > 0.0 for body in tree.bodies)
         return Segment(tree.frame_names, commands, classification,
                        initial=tuple(tuple(float(c) for c in row) for row in frames),
@@ -454,6 +459,14 @@ class Arm(ChainSegment):
             b.mount(into=node["mount_poses"])
             if ctx.rates_read:
                 b.mount_rates(into=node["mount_rates"])
+
+
+def _stated_limits(articulation: Any, joints: Sequence[int]) -> tuple[tuple[float, ...], tuple[float, ...]] | None:
+    """The limits the description states for ``joints`` (indices of the articulation's moving joints), low and high,
+    where every one of them has both; ``None`` where any is unbounded, which the arm's own clip then holds alone."""
+    low = tuple(float(np.asarray(articulation.lower)[i]) for i in joints)
+    high = tuple(float(np.asarray(articulation.upper)[i]) for i in joints)
+    return (low, high) if joints and all(math.isfinite(c) for c in (*low, *high)) else None
 
 
 #: A joint's inertia about its axis no larger than this share of the arm's largest is rounding of none (64 units in the

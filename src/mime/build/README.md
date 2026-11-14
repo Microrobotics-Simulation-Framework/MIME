@@ -210,4 +210,47 @@ between its steps, and the pair's momentum drifts where no energy check sees it)
 no one step holds and no coupling group solves together is flagged by a line computed on the law (its sign holds to the
 coupling's order only). A coupling group's verdict at each run's end is the run's (`RunResult.groups`).
 
+**ports** (`_ports.py`, phase 1; `_stages.py`, phase 2), an apparatus's declared links
+(`Apparatus(ports=...)`, `mime.things.CommandPort` and `Measurement`):
+- **Phase 1** checks each command port against the command it carries: its restated unit and shape, its bounds, rest
+  and slew in the command's dimension, its rate and latency whole numbers of base steps (`port.clock`), a reason
+  wherever it gives a number (`port.declaration`), a command its apparatus takes (`port.command-unknown`), and no seam
+  (`port.seam`). A port is staged where anything of it is not ideal: a period above one step, a latency, declared
+  bounds or a slew. Where it declares no bounds its receiver's stated ones are its bounds (`Command.bounds`: a
+  kinematic arm's joint limits, where every joint of the command has them), applied before its slew wherever the port
+  is staged for something else, and staging nothing by themselves; its rest defaults to its receiver's (`Command.rest`:
+  the arm's initial positions), else zero. A staged command's drive, or the controller's write (an edge, or a callback's
+  external input), writes the stage's input in place of the receiver's. Each measurement port is resolved to its source
+  (`port.source-unknown`); on an output that already carries its source's own noise model (a camera's image) it may
+  declare no noise or quantum (`port.modelled-noise`), and on one before that model (the camera's expected image) the
+  report says the model is bypassed; on an observation with a clock of its own (`Observation.clock`, a camera's frame
+  period) its rate is a whole multiple of that period. A controller reads it as `<apparatus>.<port>`, and its age in
+  base steps as `<apparatus>.<port>.age`, classed `measurement`. An ideal measurement port (every value its source
+  makes, at once, with no noise or quantum) builds nothing: a controller reading it reads its source, unless it reads
+  its age, which only the stage counts. A rest is refused where nothing delivers it (no latency, slew or trip) and
+  outside its port's bounds. A rest is a leaf a study may change only on a tripping port, which delivers it inside
+  the step; elsewhere it is where the link and the amplifier start, an initial condition. Each port's noise is drawn from a seed of its own, the experiment's seed hashed with
+  `measure:<apparatus>` and the port's name (as an entry's streams are), listed under the stage in the report's seeds.
+  No two ports of a stage may hold one field (a port named as another's age, `tr_age` beside `tr`): refused.
+- **Phase 2** builds at most two nodes per apparatus, after every entry's in the canonical order:
+  `ports:<apparatus>` (`mime.nodes.control.CommandStageNode`), between each staged command's writer and its receiver,
+  and `measure:<apparatus>` (`MeasureStageNode`), after each source. The schedule follows their edges, so the command
+  stage runs after its writer and before its receiver, and a stage the order put after its receiver inside a loop
+  would read its command a step late: the lag accounting refuses that edge (`lag.unplanned`). No port, no node, no edge:
+  every program is the program it was, its derived hash too.
+- **What a port costs.** An undeclared port, or one at every default, costs nothing: nothing is built. A declared port
+  adds up to two nodes to its apparatus and their fixed cost every step, mostly a node's own overhead in the step rather
+  than its rungs' arithmetic. Measured on a GitHub runner in float32, with a command port and a measurement port on each:
+  A0's chunk 1.15 times as long (about 90 us a step more), the coil-array sphere's 1.68 times (about 19 us a step more);
+  the smaller a model's step, the larger the share.
+- **Naming the port.** The stage's switches have one owner for every port (`port.bound.low`, `port.bound.high`,
+  `port.slew.low`, `port.slew.high`, `port.trip`, declared by the port stage itself, `STAGE_SWITCHES`); what names the
+  port is the field: each port's fields carry its command's name, its dots as underscores (`clipped_arm_joint_positions`,
+  `tripped_currents`). A run's flags name the stage, the field and the port's path (`the port on coils.currents
+  tripped at its bounds`); a trip warns, a clip does not. The build report's `ports` lines name each port with what it
+  does, and a derivative's path through a stage takes its status from what its ports declare (`StagePlan.status`).
+- **The ledger** looks through a command stage: a command a metered receiver pairs is booked under the stage's writer
+  (a drive's id, the controller's), as without the port. The stage carries a signal, outside the ledger.
+- **Saving** an experiment with a declared port is refused (`save.unsavable`) until the saved form holds ports.
+
 Releases are explained in the [package manifest](../README.md#status).

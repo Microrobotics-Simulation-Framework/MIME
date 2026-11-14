@@ -66,7 +66,11 @@ from mime.core import MimeNode, shape_named, shape_names, shape_switches
 from mime.core.switch import SWITCH_FUNCTIONS, Declaration
 from mime.docs._lists import RatchetList
 from mime.gradients import GradientStatus
+from mime.nodes.control import STAGE_SWITCHES
 from mime.registry import Registered
+
+#: The declarer of the port stage's switches, which the build, not an entry, builds.
+PORT_STAGE = "the port stage"
 
 #: The switch module, where every switch function's own equations are emitted.
 SWITCH_MODULE = "mime.core.switch"
@@ -983,7 +987,8 @@ class Declarer:
 
 def declarations(records: Sequence[Registered]) -> list[tuple[Declarer, Declaration]]:
     """Every switch declared, with its declarer: each registered entry's own (a geometry kind's inherited ones are its
-    shapes'), then each registered shape's. A declaration an entry's versions share (a version kept registered, whose
+    shapes'), then each registered shape's, then the port stage's (``mime.nodes.control.STAGE_SWITCHES``), which the
+    build builds for an apparatus's declared ports. A declaration an entry's versions share (a version kept registered, whose
     rung the newer version took over unchanged) is one declaration, its declarer the newest version that holds it."""
     found: list[tuple[Declarer, Declaration]] = []
     versions: list[tuple[int, ...]] = []
@@ -1003,6 +1008,7 @@ def declarations(records: Sequence[Registered]) -> list[tuple[Declarer, Declarat
     for name in shape_names():
         package = type(shape_named(name)).__module__.split(".")[0]
         found += [(Declarer(f"shape {name}", package), declared) for declared in shape_switches(name)]
+    found += [(Declarer(PORT_STAGE, "mime"), declared) for declared in STAGE_SWITCHES]
     return found
 
 

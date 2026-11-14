@@ -54,6 +54,8 @@ from mime.build._refusals import (
 )
 from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
+from mime.build._stages import stage_nodes
+from mime.nodes.control import COMMAND_STAGE
 from mime.registry import (
     BuildContext,
     ControlLaw,
@@ -100,13 +102,16 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               unmetered: Mapping[str, str] | None = None, solving: tuple[str, ...] = ()) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
-                      owners[name].divider_of(name), plans.dt * owners[name].divider_of(name))
+                      owners[name].divider_of(name), plans.dt * owners[name].divider_of(name)) if name in owners else
+             NodeLine(position, name, name, "ports", stage_description(name), 1, plans.dt)
              for position, name in enumerate(order, 1)]
     return BuildReport(
         plans.settings.experiment, plans.dt, tuple(lines),
         tuple(GroupLine(g.nodes, g.tolerance, g.max_iterations, g.requested_by) for g in plans.groups),
         external_inputs,
-        {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
+        {**{p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
+         **{stage.node_names()[-1]: {m.port: m.seed for m in stage.measurements} for stage in plans.stages
+            if stage.measurements and any(m.sigma is not None for m in stage.measurements)}},
         {p.owner: attached_validity(p) for p in plans.entries if attached_validity(p)},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
@@ -116,7 +121,19 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
         checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
                                                  for owner, lines in (computed or {}).items()}}.items())),
-        energy=energy, unmetered=dict(unmetered or {}), solving=solving)
+        energy=energy, unmetered=dict(unmetered or {}), solving=solving, ports=port_lines(plans))
+
+
+def stage_description(name: str) -> str:
+    """A port stage's entry in the report's node lines."""
+    kind, _, apparatus = name.partition(":")
+    return f"apparatus {apparatus}'s {'command' if kind == COMMAND_STAGE else 'measure'} stage"
+
+
+def port_lines(plans: PlanSet) -> tuple[str, ...]:
+    """Each declared port's line, commands then measurements, by apparatus."""
+    return (*(plan.text(plans.dt) for plan in plans.command_ports),
+            *(plan.text(plans.dt) for plan in plans.measurement_ports))
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -381,6 +398,12 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     refusals = [_entry_defect(plan, problem) for plan in building for problem in declared_field_problems(plan, built)]
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
+    staged, stage_edges, refusals = stage_nodes(plans.stages, built, plans.dt)
+    if refusals:
+        raise BuildRefused(refusals, report_of(plans, order, refusals))
+    built.update({node.name: node for node in staged})
+    if not canonical:
+        order += [name for name in plans.stage_names() if name not in order]
     in_graph: list[SimulationNode] = []
     controller_edges: list[EdgeDecl] = []
     if plans.controller is not None and plans.controller.mode is Mode.GRAPH:
@@ -402,7 +425,7 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
                             "medium's flow, an apparatus's field, or a law bound to them")]
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
-    edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
+    edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges] + stage_edges
     refusals, flags = structural_flags(plans, edges)
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
@@ -437,6 +460,7 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     owners = {name: plan.owner for plan in plans.entries for name in plan.node_names()}
+    owners.update({name: name for name in plans.stage_names()})
 
     graph = GraphManager()
     for node in nodes:

@@ -248,3 +248,4 @@ docs/guide/studies.md  0 03 3 0  #1  # an index's one spelling (a whole number f
 src/mime/study/README.md  4 1  #1  # the flat index's example (vessel.points[4], point 1's y), a path's syntax, not a measurement
 src/mime/study/README.md  3 1  #1  # the flat index's example (vessel.radii[3], segment 1's end, a tree's radii two a segment), a path's syntax, not a measurement
 src/mime/study/README.md  0  #1  # an index's one spelling, a whole number from 0, a path's syntax, not a measurement
+src/mime/build/README.md  1.15 90 1.68 19  #1  # what a declared port costs, A0's and the coil sphere's chunk time with ports over without and the extra a step, measured by the cost probe of the PR that added ports (the coordinator asked for the numbers in the docs, 2026-11-14)

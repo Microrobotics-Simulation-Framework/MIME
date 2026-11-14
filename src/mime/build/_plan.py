@@ -19,6 +19,8 @@ from mime import materials, vocabulary
 from mime._notebook import RAN_TWICE, RUN_AGAIN, in_notebook
 from mime.build._control import DELAY, UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, \
     controller_nodes, mode_of, refused_reads
+from mime.build import _ports
+from mime.build._ports import CommandPortPlan, MeasurementPlan, StagePlan
 from mime.build._declarations import (
     CONVENTIONAL_GRAVITY,
     Attachment,
@@ -131,10 +133,12 @@ from mime.things import (
     WORLD,
     Apparatus,
     Body,
+    CommandPort,
     DirectionPath,
     FieldPath,
     GeometryPath,
     Handle,
+    Measurement,
     Medium,
     Part,
     PartMass,
@@ -574,6 +578,11 @@ class PlanSet:
     #: its price against the experiment's own value's (``mime.registry.choose_over``): the plan's price report.
     ranges: Mapping[str, PlannedRange] = field(default_factory=dict[str, PlannedRange])
     range_choices: tuple[RangeChoice, ...] = ()
+    #: Each apparatus's staged ports, which build its port stages (``mime.build._ports``), by apparatus; and every
+    #: command port, staged or not (a response handed to its receiver), for the build report.
+    stages: tuple[StagePlan, ...] = ()
+    command_ports: tuple[CommandPortPlan, ...] = ()
+    measurement_ports: tuple[MeasurementPlan, ...] = ()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -585,7 +594,13 @@ class PlanSet:
         for plan in self.entries:
             if node in plan.node_names():
                 return plan.owner
+        if any(node in stage.node_names() for stage in self.stages):
+            return node
         return None
+
+    def stage_names(self) -> list[str]:
+        """The node names of every port stage, in the order the build adds them."""
+        return [name for stage in self.stages for name in stage.node_names()]
 
 
 def _class_record(cls: type[Entry]) -> CapabilityRecord:
@@ -725,6 +740,9 @@ class _Planner:
         self.outcome = ProfileOutcome(DEFAULT_PROFILE)
         self.ranges: dict[str, PlannedRange] = {}
         self.range_choices: list[RangeChoice] = []
+        #: Each apparatus's command ports and measurement ports as resolved, by apparatus and key.
+        self.command_ports: dict[str, dict[str, CommandPortPlan]] = {}
+        self.measurements: dict[str, dict[str, MeasurementPlan]] = {}
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
@@ -784,6 +802,9 @@ class _Planner:
         for index, thing in things:
             if isinstance(thing, Apparatus) and self.things.get(thing.name) is thing:
                 self.plan_commands(thing, index)
+        for _, thing in things:
+            if isinstance(thing, Apparatus) and self.things.get(thing.name) is thing:
+                self.plan_measurements(thing)
         controller = self.plan_controller()
         self.settle_rates()
         self.join_near_fields()
@@ -801,7 +822,11 @@ class _Planner:
                                                           refusals=tuple(self.refusals), profile=self.outcome,
                                                           checked=dict(sorted(self.checked.items()))))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
+        stages = self.stage_plans()
+        # The port stages come after every entry's nodes; the schedule follows their edges, so each runs between its
+        # writer and its receiver, or after its source.
         order = gathered([name for plan in entries for name in plan.node_names()], [g.nodes for g in groups])
+        order += [name for stage in stages for name in stage.node_names()]
         if self.controller is not None and self.controller.nodes:
             # Inside the compiled step the controller runs first, so that it reads the state at the start of the step
             # and its writes act within it (mime.build._in_graph).
@@ -820,7 +845,11 @@ class _Planner:
                        controller, self.masses, dict(sorted(self.models.items())), self.outcome,
                        self.watch_plans(), checked=dict(sorted(self.checked.items())),
                        kicks=self.kicks, turning=tuple(self.turning_rates()), ranges=dict(sorted(self.ranges.items())),
-                       range_choices=tuple(self.range_choices))
+                       range_choices=tuple(self.range_choices), stages=stages,
+                       command_ports=tuple(plan for _, held in sorted(self.command_ports.items())
+                                           for _, plan in sorted(held.items())),
+                       measurement_ports=tuple(plan for _, held in sorted(self.measurements.items())
+                                               for _, plan in sorted(held.items())))
 
     def approaches(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, float]:
         """The closest approach of each body an entry binds to the wall of the region its medium fills, by role
@@ -2554,6 +2583,7 @@ class _Planner:
                                                      f"second that says neither turns nor radians: {SAY_THE_ANGLE}")
                     continue
                 taken[f"{plan.owner.partition('.')[2]}.{command}"] = (plan, spec)
+        ported = self.plan_command_ports(apparatus, taken, dropped)
         for command, drive in apparatus.commands.items():
             where = f"apparatus {apparatus.name!r}'s command {command!r}"
             if command not in taken:
@@ -2572,7 +2602,8 @@ class _Planner:
                              index, thing=apparatus.name, thing_kind=ThingKind.APPARATUS,
                              settings=self.settings_in_si(cast(Drive, drive), record, where,
                                                           commanded=spec.dimension, command=command),
-                             command=ResolvedCommand(provider.node_name(), spec.port, command,
+                             command=ResolvedCommand(*self.written_into(ported, command, provider.node_name(),
+                                                                        spec.port), command,
                                                      unit_symbol(spec.dimension)))
             self.setting_problems(cast(Drive, drive), plan.settings, where)
             self.drives.append(plan)
@@ -2597,8 +2628,9 @@ class _Planner:
             plan, spec = taken[command]
             if not self.held_constant(plan, apparatus.name, command, None, where):
                 continue
-            self.writes[label] = ResolvedWrite(label, path, plan.node_name(), spec.port, unit_symbol(spec.dimension),
-                                               spec.shape)
+            self.writes[label] = ResolvedWrite(label, path, *self.written_into(ported, command, plan.node_name(),
+                                                                                spec.port),
+                                               unit_symbol(spec.dimension), spec.shape)
             self.write_units[label] = rate_symbol(spec.dimension)
         for command in taken:
             if command not in apparatus.commands and command not in written:
@@ -2607,6 +2639,127 @@ class _Planner:
                             f"apparatus {apparatus.name!r}'s command {command!r} has no drive, and MIME assumes no "
                             f"command's value", f"give it one: commands={{{command!r}: <a {spec.dimension} quantity, "
                                                 f"or a drive>}}, or have the controller write it")
+
+    # -- ports ----------------------------------------------------------------------------------------------
+
+    def plan_command_ports(self, apparatus: Apparatus, taken: Mapping[str, tuple[EntryPlan, Command]],
+                           dropped: set[str]) -> dict[str, CommandPortPlan]:
+        """Each command port of ``apparatus`` resolved against the command it carries (``taken``, by command). A port on
+        a command of a field nothing reads (``dropped``) has no receiver, and builds nothing."""
+        found: dict[str, CommandPortPlan] = {}
+        for key, port in apparatus.ports.items():
+            if isinstance(port, Measurement):
+                continue
+            where = f"apparatus {apparatus.name!r}'s port {key!r}"
+            if not isinstance(cast(object, port), CommandPort):
+                self.refuse("port.declaration", RefusalClass.USER,
+                            f"{where} is {port!r}, neither a CommandPort nor a Measurement",
+                            "declare ports={\"<command>\": CommandPort(...), \"<name>\": Measurement(of=...)}")
+                continue
+            if key not in taken:
+                if key not in dropped:
+                    self.refuse("port.command-unknown", RefusalClass.USER,
+                                f"{where} is a CommandPort, and no field or segment of the apparatus takes a command "
+                                f"{key!r}",
+                                f"key it by a command the apparatus takes, ports={{\"<command>\": CommandPort(...)}}. "
+                                f"{did_you_mean(key, list(taken))}")
+                continue
+            receiver, spec = taken[key]
+            held = cast(Mapping[str, object], getattr(receiver.registered.cls, "constant_commands", {}))
+            if receiver.section is Section.PROVIDER and key in held:
+                self.refuse("port.declaration", RefusalClass.USER,
+                            f"{where}: {receiver.registered.cls.label()} takes {key!r} as constant over a run, and a "
+                            f"port would change it", f"remove {key!r} from Apparatus(ports=...): hold it constant")
+                continue
+            plan = _ports.command_port(self, apparatus.name, key, port, (receiver.node_name(), spec.port), spec)
+            if plan is not None:
+                found[key] = plan
+        keys = [plan.key for plan in found.values()]
+        for clash in sorted({key for key in keys if keys.count(key) > 1} | (set(keys) & _ports.RESERVED)):
+            self.refuse("port.declaration", RefusalClass.USER,
+                        f"apparatus {apparatus.name!r}'s command ports {sorted(p.command for p in found.values() if p.key == clash)} "
+                        f"take the same field {clash!r} in its stage, named from each command with its dots as "
+                        f"underscores", "declare a port on one of them alone, in Apparatus(ports=...)")
+        self.command_ports[apparatus.name] = found
+        return found
+
+    def written_into(self, ported: Mapping[str, CommandPortPlan], command: str, node: str,
+                     field_name: str) -> tuple[str, str]:
+        """The node and input a command's writer writes: its port's stage where it is staged, else its receiver."""
+        plan = ported.get(command)
+        return (plan.stage, plan.key) if plan is not None and plan.staged else (node, field_name)
+
+    def plan_measurements(self, apparatus: Apparatus) -> None:
+        """Each measurement port of ``apparatus`` resolved to its source, a state a dynamics publishes or an
+        observation's output, with its seed (its stream named by the port)."""
+        observations = {p.owner: p for p in self.readers if p.section is Section.OBSERVATION and "" in p.nodes}
+        states = self.state_paths()
+        commands = set(self.commands_of(apparatus)) | set(apparatus.commands)
+        segments = [plan.owner.partition(".")[2] for plan in self.segments.get(apparatus.name, [])]
+        found: dict[str, MeasurementPlan] = {}
+        for name, port in apparatus.ports.items():
+            if not isinstance(port, Measurement):
+                continue
+            if name in commands:
+                self.refuse("port.declaration", RefusalClass.USER,
+                            f"apparatus {apparatus.name!r}'s port {name!r} is a Measurement, and {name!r} is a command "
+                            f"of the apparatus", "name it apart from the apparatus's commands: Apparatus(ports={"
+                                                 "\"<name>\": Measurement(of=...)})")
+                continue
+            seed = derive_seed(self.settings.seed, _ports.stage_id("measure", apparatus.name), {}, name)
+            plan = _ports.measurement_port(self, apparatus, name, port, seed, observations, states, segments)
+            if plan is not None:
+                found[name] = plan
+        self.measurements[apparatus.name] = found
+
+    def aged_ports(self) -> set[tuple[str, str]]:
+        """The measurement ports, by apparatus and name, whose age the controller reads: the stage counts it, so such a
+        port is staged even where it is ideal."""
+        plan = self.controller
+        paths = [path for key, path in (plan.bindings.items() if plan is not None else ()) if key.startswith("read.")]
+        return {(apparatus, name) for path in paths if path.endswith(".age") and path.count(".") == 2
+                for apparatus, name, _ in (path.split("."),) if name in self.measurements.get(apparatus, {})}
+
+    def measurement_staged(self, plan: MeasurementPlan) -> bool:
+        """Whether a measurement port builds its stage: it is not ideal, or its age is read."""
+        return not plan.ideal or (plan.apparatus, plan.port) in self.aged_ports()
+
+    def stage_plans(self) -> tuple[StagePlan, ...]:
+        """Each apparatus's staged ports, by apparatus, those with none left out."""
+        found: list[StagePlan] = []
+        for apparatus in sorted(set(self.command_ports) | set(self.measurements)):
+            commands = tuple(plan for _, plan in sorted(self.command_ports.get(apparatus, {}).items()) if plan.staged)
+            measured = tuple(plan for _, plan in sorted(self.measurements.get(apparatus, {}).items())
+                             if self.measurement_staged(plan))
+            if commands or measured:
+                found.append(StagePlan(apparatus, commands, measured))
+        return tuple(found)
+
+    def measurement_read(self, label: str, units: str, shape: tuple[int, ...], path: str,
+                         where: str) -> ClassedRead | None:
+        """A read label's path that names a measurement port, ``<apparatus>.<port>`` (its value) or
+        ``<apparatus>.<port>.age`` (its age in base steps), classed a measurement; ``None`` where it names none."""
+        head, _, last = path.rpartition(".")
+        age = last == "age" and head.count(".") == 1
+        apparatus, _, name = (head if age else path).partition(".")
+        plan = self.measurements.get(apparatus, {}).get(name)
+        if plan is None:
+            return None
+        held_units, held_shape = ("1", ()) if age else (plan.units, plan.shape)
+        if units != held_units or held_shape is None or not _fits(shape, held_shape):
+            self.refuse("controller.signal", RefusalClass.USER,
+                        f"{where} reads {label!r} in {units!r} with shape {shape}, and {path} (a measurement port) is "
+                        f"in {held_units!r} with shape {held_shape}",
+                        f"bind {label!r} to a read in its units and shape, in set_controller(reads=...)")
+            return None
+        field_name = f"{plan.key}_age" if age else plan.key
+        what = f"the age of measurement port {apparatus}.{name}" if age else f"measurement port {apparatus}.{name}"
+        if not self.measurement_staged(plan):
+            # An ideal port delivers its source as it is: the read is its source's, and nothing is built for it.
+            return ClassedRead(label, path, plan.source[0], plan.source[1], ReadClass.MEASUREMENT,
+                               f"{what} of {plan.of}, ideal: read from its source", units, shape)
+        return ClassedRead(label, path, plan.stage, field_name, ReadClass.MEASUREMENT, f"{what} of {plan.of}", units,
+                           shape)
 
     def held_constant(self, provider: EntryPlan, apparatus: str, command: str, drive: object, where: str) -> bool:
         """Whether ``command`` may be written as it is: a field provider that reads it as constant over a run
@@ -2795,6 +2948,9 @@ class _Planner:
         observation, its field checked once its node is built."""
         observations = {p.owner: p for p in self.readers if p.section is Section.OBSERVATION}
         states = self.state_paths()
+        measured = self.measurement_read(label, units, shape, path, where) if ":" not in path else None
+        if measured is not None or (":" not in path and self.names_measurement(path)):
+            return measured
         if ":" in path:
             owner, _, output = path.rpartition(".")
             held = observations.get(owner)
@@ -2839,6 +2995,13 @@ class _Planner:
         of = dynamics.owner if dynamics.segment is not None else dynamics.thing
         return ClassedRead(label, path, dynamics.node_name(port.node), port.field, ReadClass.STATE,
                            f"{interface} of {of}", units, shape)
+
+    def names_measurement(self, path: str) -> bool:
+        """Whether ``path`` names a measurement port (its value or its age), resolved or refused."""
+        apparatus, _, rest = path.partition(".")
+        thing = self.things.get(apparatus)
+        name = rest.removesuffix(".age")
+        return isinstance(thing, Apparatus) and isinstance(thing.ports.get(name), Measurement)
 
     def state_paths(self) -> dict[str, tuple[EntryPlan, str]]:
         """Every state a controller may read, by its path: each interface a thing's dynamics publishes as

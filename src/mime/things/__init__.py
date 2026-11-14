@@ -26,6 +26,7 @@ from mime.things._parts import (
     derive,
     magnetisation,
 )
+from mime.things._ports import CommandPort, Gaussian, Measurement, Port
 from mime.things._prims import WORLD, PrimPath
 from mime.things._things import (
     Apparatus,
@@ -46,18 +47,22 @@ __all__ = [
     "Body",
     "BodyHandle",
     "CommandPath",
+    "CommandPort",
     "Derived",
     "DirectionPath",
     "FieldPath",
+    "Gaussian",
     "GeometryPath",
     "Handle",
     "InitialPath",
     "LawHandle",
+    "Measurement",
     "Medium",
     "Part",
     "PartMass",
     "MediumHandle",
     "PermanentMagnet",
+    "Port",
     "PrimPath",
     "RegionPath",
     "SettingPath",

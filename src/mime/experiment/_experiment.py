@@ -918,7 +918,28 @@ def run_layout(plans: PlanSet) -> Layout:
                              float(cast(float, plan.settings[output.after])) if output.after is not None else None,
                              output.recordable)
                 for output in cls.outputs)))
+    flags += port_flags(plans)
     return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp())
+
+
+def port_flags(plans: PlanSet) -> list[FlagLayout]:
+    """The flags each command port's stage raises: its bound clipping the command, and its trip, which latches the
+    command to its rest for the rest of the run and warns."""
+    from mime.nodes.control import CLIPPED, TRIPPED
+
+    found: list[FlagLayout] = []
+    for stage in plans.stages:
+        for plan in stage.commands:
+            path = f"{plan.apparatus}.{plan.command}"
+            if plan.bounded == CLIPPED:
+                found.append(FlagLayout(plan.stage, "the port stage", plan.stage, f"clipped_{plan.key}",
+                                        f"the port on {path} clipped the command to its bounds"))
+            elif plan.bounded == TRIPPED:
+                found.append(FlagLayout(plan.stage, "the port stage", plan.stage, f"tripped_{plan.key}",
+                                        f"the port on {path} tripped at its bounds: from that step on it delivers its "
+                                        f"rest, for the rest of the run (a modelled trip, no hardware's protection)",
+                                        warns=True))
+    return found
 
 
 #: The name of the flag a dynamic chain's joint velocities raise past its description's speed limits.
