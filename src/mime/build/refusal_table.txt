@@ -37,6 +37,14 @@ binding.opening-count         user
 binding.unknown               user
 binding.unknown-role          user
 binding.wrong-kind            user
+block.case-stale              user
+block.entry                   user
+block.format                  user
+block.fragment                user
+block.name                    user
+block.no-case                 user
+block.requires                environment
+block.socket                  user
 bundle.changed                user
 bundle.credential             user
 bundle.file-too-large         user

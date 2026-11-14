@@ -260,8 +260,11 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
     ``folder`` may be a document instead of a folder. ``--json`` is the tree as data. ``--out [FILE]`` writes the graph as
     one page to pan and zoom, instead of printing it, as ``mime visuals web --out`` writes the 3-D view (the default name
     is ``<experiment>.graph.html``, never the 3-D page's; never inside a saved or run folder, ``visuals.web-out``)."""
+    from mime.blocks import is_block_folder
     from mime.env import apply_lock_precision
 
+    if folder.is_dir() and is_block_folder(folder):
+        return _show_block(folder, as_json)
     if out is not None and out is not DEFAULT_PAGE:
         from mime.experiment._mermaid import written_outside
 
@@ -300,6 +303,25 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
                 webbrowser.open(written.resolve().as_uri())
         else:
             sys.stdout.write(for_terminal(diagram))
+    return 0
+
+
+def _show_block(folder: Path, as_json: bool) -> int:
+    """``mime show`` of a block folder: what the block is and needs, offline (:mod:`mime.blocks._show`)."""
+    from mime.blocks._show import data, shown
+
+    if as_json:
+        print(for_terminal(json.dumps(data(folder), indent=1, sort_keys=True)))
+        return 0
+    held = shown(folder)
+
+    def draw() -> None:
+        from mime.cli._display import show_block
+
+        show_block(held, sys.stdout)
+
+    if not _drawn(draw):
+        print(for_terminal("\n".join(held.lines())))
     return 0
 
 
@@ -1417,9 +1439,10 @@ def build_parser() -> _guide.MimeParser:
     pending.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
                                                    "(experiment.mime.yaml), edited, to check it as it is")
     show = commands.add_parser("show", help="what a saved experiment is made of: its topology as a tree, and the "
-                                             "graph it compiles to as Mermaid text, without running it")
+                                             "graph it compiles to as Mermaid text, without running it; or what a "
+                                             "block is and needs")
     show.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
-                                                "(experiment.mime.yaml)")
+                                                "(experiment.mime.yaml), or a block folder")
     show.add_argument("--tree", action="store_true", help="the topology as declared: structures, media, bodies and "
                                                           "their parts, apparatus, each law with what it binds, "
                                                           "observations and the controller (the default)")
@@ -1931,6 +1954,12 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "pending":
         return _pending(arguments.folder)
     if arguments.command == "show":
+        from mime.blocks import is_block_folder
+
+        if arguments.folder.is_dir() and is_block_folder(arguments.folder) and (
+                arguments.graph or arguments.tree or arguments.out is not None):
+            parser.error("a block folder shows what the block is and needs; --tree, --graph and --out are a saved "
+                         "experiment's (save one that uses the block, then show that)")
         if arguments.json and arguments.graph:
             parser.error("--json is the tree as data; the graph is Mermaid text, so --json and --graph do not go together")
         if arguments.out is not None and (arguments.json or arguments.tree):

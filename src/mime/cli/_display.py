@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from mime.live import ServeState
 
     from mime.assets import Acceptance, Licence, SourceView
+    from mime.blocks._show import Shown
     from mime.build import MimeError, Refusal
     from mime.cli._summary import RunSummary
     from mime.env import EnvReport
@@ -853,6 +854,36 @@ def show_tree(lines: Sequence[tuple[int, str]], stream: IO[str]) -> None:
         del held[depth:]
         held.append(held[-1].add(_text(text, "bold" if depth == 1 else "")))
     console.print(root, soft_wrap=True)
+
+
+def show_block(held: Shown, stream: IO[str]) -> None:
+    """``mime show`` of a block on a terminal: its head in bold, its requirements against what is installed as the pins
+    table (and the line that installs what is missing, unbroken), its sockets and its assets as tables, then its closing
+    lines, the last dim. The words are the plain output's (:class:`mime.blocks._show.Shown`)."""
+    console = _console_of(stream)
+    console.print(_text(held.head[0], "bold"), soft_wrap=True)
+    for line in held.head[1:]:
+        console.print(_text(line), soft_wrap=True)
+    table, pinners = _pins_table("requires", held.requires, console.width)
+    console.print(table)
+    if pinners is not None:
+        console.print(pinners, soft_wrap=True)
+    if held.install is not None:
+        console.print(_text("! its requirements are not all met here: its cases cannot run, and it cannot be used",
+                            "bold yellow"), soft_wrap=True)
+        console.print(_text(f"  {held.install}", "cyan"), soft_wrap=True, crop=False, overflow="ignore")
+    sockets = _table("sockets (you bind these)", ("socket", "kind"))
+    for name, kind in held.sockets:
+        sockets.add_row(_text(name), _text(kind))
+    console.print(sockets)
+    if held.assets:
+        assets = _table("assets", ("name", "size", "cached", "licence", "tier"))
+        for name, size, cached, licence, tier in held.assets:
+            assets.add_row(_text(name), _text(size), _text(cached, "green" if cached == "cached" else "yellow"),
+                           _text(licence), _text(tier))
+        console.print(assets)
+    for index, line in enumerate(held.tail):
+        console.print(_text(line, "dim" if index == len(held.tail) - 1 else ""), soft_wrap=True)
 
 
 def show_assets(rows: Sequence[tuple[str, str, str, str, str]], stream: IO[str]) -> None:
