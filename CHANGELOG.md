@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every entry kind declares the assets it reads** (lane P, P1). `Entry.assets`, a class variable on the base class
+  (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
+  geometry or interaction reads, as `Plan.assets` did only for an interaction's or an observation's plan; and
+  `Entry.assets_read()`, which returns it by default, is what an entry overrides to name only the file its settings
+  choose (a material that exists as an open file and a non-commercial one). A saved experiment's lock records what each
+  entry in the build reads as set, with what its plan adds, each record once by its bytes, so `mime assets fetch`, a run
+  on Modal, a bundle's NOTICE and its card name the files a run reads and no others; a lock that leaves one out is
+  refused on load (`load.assets`). A provider no law reads is not built, so it records nothing. No schema change, no
+  entry in MIME declares any yet, and no existing lock gains or loses an asset. The lab fixture gains
+  `labx.finished_gantry` (a dynamics reading one of two records by its `finish`), `labx.marked_rotating` (a field
+  provider) and a second record, `labx_finish_nc.usda`; the entry page prints a declared `assets` under "Assets it reads
+  (by default)".
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,

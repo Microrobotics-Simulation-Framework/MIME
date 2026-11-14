@@ -453,11 +453,16 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
 
 
 def remote_assets(plans: PlanSet) -> tuple[AssetRef, ...]:
-    """Every remote asset an entry of the experiment reads (its plan's ``assets``: a wall's table), each once, in the
-    order the entries name them, as the shipped references hold them."""
+    """Every remote asset an entry of the experiment reads, each once, in the order the entries name them, as the
+    shipped references hold them: what each entry reads as set (``Entry.assets_read``: a lab's material file, chosen by
+    a setting), then what its plan adds (``Plan.assets``: a wall's table), and each geometry kind's."""
     found: dict[str, AssetRef] = {}
     for plan in plans.entries:
-        for name in plan.plan.assets if plan.plan is not None else ():
+        for name in (*plan.entry.assets_read(), *(plan.plan.assets if plan.plan is not None else ())):
+            ref = reference(name)
+            found.setdefault(ref.sha256, ref)
+    for geometry in plans.geometries.values():
+        for name in geometry.geometry.assets_read():
             ref = reference(name)
             found.setdefault(ref.sha256, ref)
     return tuple(found.values())

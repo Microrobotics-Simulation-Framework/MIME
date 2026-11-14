@@ -307,6 +307,33 @@ def nudged_toy() -> Experiment:
     return experiment
 
 
+def entry_assets_rig(gantry: Any = None, field: Any = None) -> Experiment:
+    """A stage with a gantry (a chain segment, a dynamics) and a rotating field turning a body (a provider is built when a
+    law reads its field), by default the lab fixture's ``labx.finished_gantry`` and ``labx.marked_rotating``: entries
+    that declare the records they read (``Entry.assets``, ``assets_read``), which its lock names."""
+    from mime.dynamics import RigidInertial
+    from mime.interactions import Magnetic
+    from mime.scene import Scene, Z
+    from mime.units import A_m2, kg, m_per_s2, mT
+
+    lab = importlib.import_module("mime_lab_fixture")
+    gantry = gantry if gantry is not None else lab.FinishedGantry()
+    field = field if field is not None else lab.MarkedRotating(rotation_axis=(0.0, 0.0, 1.0),
+                                                              initial_direction=(1.0, 0.0, 0.0))
+    exp = Experiment("entry_assets_rig", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    exp.add_body(Body("probe", dynamics=RigidInertial(), initial=State(
+        position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    exp.declare("probe.mass", kg(1e-4), reason="a body of the order of a millimetre robot")
+    exp.declare("probe.inertia", kg_m2((1e-10, 1e-10, 1e-10)), reason="a body of the order of a millimetre robot")
+    exp.declare("probe.magnetic_moment", A_m2((1e-3, 0.0, 0.0)), reason="a body of the order of a millimetre robot")
+    exp.add_apparatus(Apparatus("stage", chain={"gantry": gantry}, commands={"gantry.position": m(0.0)}))
+    exp.add_apparatus(Apparatus("field", fields={"magnetic": field},
+                                commands={"frequency": Hz(1.0), "amplitude": mT(1.0)}))
+    exp.attach(Magnetic.Torque(), body="probe", field="field.magnetic")
+    return exp
+
+
 def lab_bead() -> Experiment:
     """The lab fixture's geometry kind as a body's hull under the drag's MRS rung, which samples it by the geometry
     protocol as it samples MIME's kinds, moving and turning from the start."""
@@ -587,6 +614,8 @@ CASES = (
     Case("kinematic_rpm", kinematic_rpm_kept),
     # The lab fixture's gantry, a chain segment with no URDF, carrying a magnet: mounts work on it unchanged.
     Case("gantry_magnet", gantry_magnet),
+    # The lab fixture's dynamics and field provider that declare the records they read: their lock names them.
+    Case("entry_assets_rig", entry_assets_rig, lab=True),
     # A0's apparatus closed by its controller, a callback every 2 ms, its writes 1 ms late: the arm's joint positions
     # are the graph's one external input, which the run feeds.
     Case("tracked_rpm", tracked_rpm),

@@ -227,21 +227,25 @@ def test_a_link_to_a_page_that_names_nothing_fails(tmp_path):
 
 def test_a_labs_entry_without_a_source_is_counted_and_fails_once_the_lab_opts_in(tmp_path):
     """The walk itself, over a copy of the docs root: by default the lab's entries, ``labx.gantry``, ``labx.nudge``
-    and ``labx.height``, are counted with their nodes; held to the walk, their entries and nodes are required, and
+    and ``labx.height`` among them, are counted with their nodes; held to the walk, their entries and nodes are required, and
     fail; ``toy`` is exempt by namespace throughout."""
     docs = copy_checkout(tmp_path) / "docs"
     load_namespaces()
     records = [record for record in registered() if record.namespace in ("mime", "toy", "labx")]
     walked = docs_walk(docs, records, node_classes(records))
     assert walked.problems == []
-    assert "outside MIME, without a hand-written source here, counted, not failed: labx 4 (dynamics labx.gantry " \
-           "0.1.0, geometry labx.bead 0.1.0, interaction labx.nudge 0.1.0, observation labx.height 0.1.0); nodes " \
+    assert "outside MIME, without a hand-written source here, counted, not failed: labx 6 (dynamics labx.finished_gantry " \
+           "0.1.0, dynamics labx.gantry 0.1.0, field provider labx.marked_rotating 0.1.0, geometry labx.bead 0.1.0, " \
+           "interaction labx.nudge 0.1.0, observation labx.height 0.1.0); nodes " \
            "without NodeMeta: 3 (GantryNode, HeightNode, NudgeNode)" in walked.summary
     assert "exempt from the hand-written half by namespace (toy): 12 entries" in walked.summary
     held = docs_walk(docs, records, node_classes(records), held=("mime", "labx"))
     assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem or "Gantry" in problem
             or "Height" in problem] == [
+        missing(docs.parent, "entry dynamics labx.finished_gantry", "entries/dynamics/labx.finished_gantry.md"),
         missing(docs.parent, "entry dynamics labx.gantry", "entries/dynamics/labx.gantry.md"),
+        missing(docs.parent, "entry field_provider labx.marked_rotating",
+                "entries/field_provider/labx.marked_rotating.md"),
         missing(docs.parent, "entry geometry labx.bead", "entries/geometry/labx.bead.md"),
         missing(docs.parent, "entry interaction labx.nudge", "entries/interaction/labx.nudge.md"),
         missing(docs.parent, "entry observation labx.height", "entries/observation/labx.height.md"),
