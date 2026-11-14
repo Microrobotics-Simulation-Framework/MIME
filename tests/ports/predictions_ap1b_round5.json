@@ -46,6 +46,11 @@
       "clean_expected": "0/200"
     }
   },
-  "outcomes": null,
+  "outcomes": {
+    "measured_on": "GitHub runners, the probe workflow, CPU, float32, at fb5f7a16's tests (probe branch probe/ap1b-rates5), run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43612851742",
+    "gate_1c_property_alone": "as predicted: respond_before_slew 200/200 caught through the binding-lagged case alone, clean 0/200 (the fourth probe's miss, seed 49, closed)",
+    "gate_1d_file_with_new_draws": "as predicted: respond_before_slew, slew_before_bound, bound_before_delay and trip_unlatched 200/200 caught each through the file's eight cases, clean 0/200 each, no inconclusive run",
+    "arm_wall_times": "the arms' job times: property alone 71 min, trip_unlatched 85, respond_before_slew 105, slew_before_bound 192, bound_before_delay 258 (for 400 runs each, planted and clean): the clean file is now about 24 s a run (eight cases of 100 examples), and a planted run fails 3 to 9 of them; the later arms took longer on the runner, the cause not measured here"
+  },
   "gate_1e_note": "the loose-lagged case is not claimed to catch the swap alone: its slew binds only at some spikes"
 }
