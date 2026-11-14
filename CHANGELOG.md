@@ -146,6 +146,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   taken's by construction, not by that row. No program changes: the step, a run and its forward-mode derivative compile to
   the same text, f64 and f32 (the control, one ulp, differs).
 
+- **The exact allocation** (AP2, the camera's PR 3a), `mime.control.exact_allocation(rows, wanted, *, lower, upper,
+  scales, owner, offset=None, reference=None, reference_scales=None)`: the commands within explicit bounds that minimise
+  an affine model's residual over caller-given scales (each row's unit; `scales` is required), with an optional
+  regularisation towards a reference; among several minimisers, the one nearest the reference (least effort for a
+  reference of zero). JAX, it runs inside a controller's compiled step and a derivative passes through it. Exact by its
+  active sets: each free subset's QR factor (`2^K`), every set's candidate (`3^K`) from its subset's, the feasible
+  candidate of least residual selected with no derivative, then the selected set solved once more, differentiably, so the
+  derivative is that set's (a jump, never NaN, where a command reaches or leaves a bound). Its guards: a rank test on
+  each free subset's triangle against `RCOND`, with a stand-in before the solve and the subset kept from the selection
+  after it; a command with no effect held at the reference within its bounds; the commands clipped into the bounds. Its
+  switch's owner is the caller's (`allocation_switch(owner, orders)` declares it); its solves are the registered sites
+  `allocation_exact` and `allocation_least_norm`. More than `EXACT_COMMANDS` (8) commands is refused,
+  `allocation.exact-size`, the iterative path its route. **The bound of 8 is a choice against the rule set before the
+  cost was measured** (the largest bound at which the allocation costs no more than three times its five-command cost,
+  which gives 6): every coil array MIME ships has at most 8 coils, and at 6 `allocate()` on CardioMag and OctoMag would
+  be refused or keep a second solver. The allocation's own cost per base step on GitHub's runners (one thread, float64,
+  CardioMag's rows, run 43569142070): 11, 22, 44, about 120, 320 to 350 and 810 to 1040 us at 3 to 8 commands; a slower
+  controller pays it every base step. Its share of a full base step (the law's step against the same step making the
+  same rows and allocating nothing; 200 steps, one thread, two runners' CPUs, run 43576671085): in the Navion_2
+  controller of the camera spike's STATE arm (3 coils, the force's 3 rows) 17 to 30 us of a 61 to 138 us step, 0.20 to
+  0.29 of it; in a CardioMag controller allocating its 8 coils to `allocate()`'s 8 rows 650 to 1250 us of a 690 to
+  1360 us step, 0.91 to 0.94. Float32 against float64 on the same rounded problem, over 3000 of the swap test's draws
+  an array: at most 4.2e-6 of the limit on Navion_2, 7.5e-6 on CardioMag and 4.8e-5 on OctoMag (2.1e-5 where the
+  minimiser is unique). That is the commands' difference as a share of the limit (the box's half-width, in amperes); the
+  coil array's float32 guard (1e-4) is a share of the field's size, a rounding of the field the provider computes, and
+  the two are not compared: the field the float32 commands make was not measured against float64's, and the law
+  declares no guard of its own (OctoMag stays refused in float32 by its provider). **A limit that is measured, not
+  refused:** where the commands outnumber the rows and there is no regularisation, one column whose norm exceeds the
+  others' by more than about `1 / RCOND` makes the law's rank test of the whole free set fail and its objective sit
+  above the optimum, silently: exact to rounding up to a ratio of 1e9 in float64 and 1e4 in float32 (0.4 of the
+  wanted values' squared size above one decade and a half past it; one column 1e-10.5 and another 1e10.5 times the
+  rest, 0.28 above), no limit found where the commands do not outnumber the rows or the problem is regularised (held to
+  1e12 and 1e6); the arrays MIME ships span about 1e2. Normalising the columns inside the law would remove it but
+  changes the least-effort tie-break (the least `|u|` becomes the least `|v|` of the rescaled commands), which is
+  defined in the commands' own units, so the limit is stated instead. Where two faces of an unregularised problem come within the
+  law's tie window in float32 it may take the one of less effort that float64 does not: the swap test found OctoMag's
+  force out of reach, its residual 1.7e-5 of it higher, its currents 3.2 A apart on a 5 A limit.
+  `docs/allocation.md` is its page.
+- **`allocate()` runs the exact allocation** on the host in float64 instead of SciPy's BVLS, and takes `field_scale=`
+  and `gradient_scale=` (both or neither; unweighted by default, as before). Against the release's `allocate()` on 3200
+  requests an array (a field, a gradient, both, and fields of 0.05 to 0.2 uT; run 43576671085), its currents move by at
+  most 1.7e-12 A within the swap line, at most half of it; past it on 8 of 2000 requests for a field and a gradient on
+  CardioMag (3) and OctoMag (5), by up to 13.8 and 19.3 A, each where SciPy's BVLS stopped at its iteration cap (as
+  many iterations as coils) above the optimum the law reaches, as BVLS does given more. Where several currents make
+  the wanted values (eight coils asked for a field alone) the law returns the least current, as BVLS did on those
+  requests to 1.5e-12 A; the law without that tie put five of CardioMag's coils at +-35 A for a field alone where
+  BVLS's currents were all inside. SciPy stays the swap test's oracle, its iterations capped at `3^K`.
 - **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
   interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and
