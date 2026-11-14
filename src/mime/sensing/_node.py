@@ -76,7 +76,7 @@ from mime.sensing import _scene as scene
 from mime.sensing._coverage import CORNER_SAMPLES
 from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays, ray_table
 from mime.sensing._mesh import KEYS as MESH_KEYS
-from mime.sensing._mesh import MESH_SAMPLES, Frozen, Tree, changed_mesh, mesh_part, signature, tree
+from mime.sensing._mesh import MESH_SAMPLES, Frozen, Tree, changed_mesh, mesh_part, signature, signature_compiled, tree
 from mime.sensing._render import Exposure, Response, exposed, frame_key, prepared, projected_reach, static_part
 from mime.sensing._subjects import Subject
 
@@ -511,8 +511,8 @@ class CameraNode(MountedNode):
                                   .reshape(-1).astype(made_from.dtype),
                                   np.asarray(self._fixed_pose(), dtype=np.float64).astype(made_from.dtype)])
         if self._tree is not None:
-            numbers = np.concatenate([numbers, np.asarray(signature(self._meshes(params, made_from.dtype),
-                                                                    made_from.dtype))])
+            numbers = np.concatenate([numbers, np.asarray(signature_compiled(self._meshes(params, made_from.dtype),
+                                                                             dtype=made_from.dtype))])
         return {} if np.array_equal(numbers, made_from) else dict(self._made_at(params))
 
     def reverse_estimate(self, steps: int, members: int = 1) -> float:

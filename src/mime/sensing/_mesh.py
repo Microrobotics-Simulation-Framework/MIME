@@ -219,6 +219,10 @@ def signature(arrays: Sequence[Any], dtype: Any) -> Any:
     return jnp.stack(parts)
 
 
+#: :func:`signature` compiled once, for the host's compare before a run (eagerly it is a dozen dispatches over megabytes).
+signature_compiled: Any = cast(Any, jax).jit(signature, static_argnames=("dtype",))
+
+
 class Hits(NamedTuple):
     """Every crossing of each ray, by mesh: the signed chord (``(R, M)``, metres) and the crossing count (``(R, M)``);
     and the nearest crossing's ``t`` and its leaf slot (``leaf * LEAF + k``; ``-1`` for none)."""
@@ -479,5 +483,5 @@ def mesh_chords(meshes: Mapping[str, tuple[Any, Any]], detector: Pinhole, pose: 
 
 
 __all__ = ["EMPTY_BOX", "Frozen", "KEYS", "LEAF", "MESH_SAMPLES", "TILE", "Hits", "MeshChords", "Tree", "changed_mesh", "closed_problem", "inside",
-           "mesh_chords", "mesh_part", "readonly", "signature", "signed_volume", "slab_pad", "traced", "tree", "triangles_of",
+           "mesh_chords", "mesh_part", "readonly", "signature", "signature_compiled", "signed_volume", "slab_pad", "traced", "tree", "triangles_of",
            "welded"]

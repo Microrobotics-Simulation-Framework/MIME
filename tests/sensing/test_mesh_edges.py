@@ -18,8 +18,8 @@ disagree. In the dtype of the run.
   values).
 - **A shared vertex**: four to eight triangles fanned round a vertex, a ray aimed at the vertex or within 32 roundings of
   it: exactly one.
-- **A closed mesh**: every ray aimed at a point of an edge or a vertex of the mesh, from outside it: an even number of
-  crossings. The slab test of the tree's boxes drops a crossing at an edge (a silhouette, where the box's entry and exit
+- **A closed mesh** (drawn from the three kinds, and a box alone, the kind whose edges the slab loses most often): every ray
+  aimed at a point of an edge or a vertex of the mesh, from outside it: an even number of crossings. The slab test of the tree's boxes drops a crossing at an edge (a silhouette, where the box's entry and exit
   are one distance) without the widening of :func:`mime.sensing._mesh.slab_pad`.
 - **An axis-aligned camera on an axis-aligned box** (``mesh_chords``, a 64 x 48 detector looking along +z): the box's
   corners are where the pixel-centre rays of two chosen pixels cross the box's front plane, so a column, a row and
@@ -115,7 +115,8 @@ def test_an_edge_two_triangles_share_is_claimed_by_exactly_one_of_them(dtype, si
     across = np.cross(normal, along)
     middle = rng.uniform(-2e-3, 2e-3, 3)
     b, c = middle - 0.5 * size * along, middle + 0.5 * size * along
-    (h1, h2), (s1, s2), (z1, z2) = (rng.uniform(lo, hi, 2) * size for lo, hi in ((0.2, 1.0), (-0.5, 0.5), (-0.3, 0.3)))
+    (h1, h2), (s1, s2) = (rng.uniform(lo, hi, 2) * size for lo, hi in ((0.2, 1.0), (-0.5, 0.5)))
+    z1, z2 = rng.uniform(-0.3, 0.3, 2) * (h1, h2)  # each triangle tilted 17 degrees at most from the surface's plane
     a = middle + h1 * across + s1 * along + z1 * normal
     d = middle - h2 * across + s2 * along + z2 * normal
     away = unit(rng, perpendicular_to=normal)
@@ -151,27 +152,31 @@ def test_a_vertex_the_triangles_of_a_fan_share_is_claimed_by_exactly_one_of_them
     assert np.all(counts == 1), f"{int(np.sum(counts != 1))} of {RAYS} rays claimed {sorted(set(counts.tolist()))} times"
 
 
-def closed_mesh(rng: np.random.Generator, kind: str, size: float) -> tuple[np.ndarray, np.ndarray]:
+def closed_mesh(rng: np.random.Generator, kind: str, size: float, aligned: bool) -> tuple[np.ndarray, np.ndarray]:
+    """A closed mesh of ``kind``, turned at random, or only about z where ``aligned`` (a box then has edges along the axes
+    its leaf boxes lie on: the case where a ray through an edge runs along the face of a box of the tree)."""
     if kind == "sphere":
         points, faces = uv_sphere(size, int(rng.choice([8, 16])))
     elif kind == "box":
         points, faces = box(tuple(size * rng.uniform(0.2, 1.0, 3)))  # type: ignore[arg-type]
     else:
         points, faces = tube(size * rng.uniform(0.5, 0.9), size, 2 * size * rng.uniform(0.5, 4.0), int(rng.choice([8, 16])))
-    q = rng.normal(size=4)
-    q /= np.linalg.norm(q)
-    return points @ rotation(tuple(q)).T + rng.uniform(-2e-3, 2e-3, 3), faces  # type: ignore[arg-type]
+    if aligned:
+        angle = rng.choice([0.0, rng.uniform(0.0, 2.0 * np.pi)])
+        q = (math.cos(angle / 2), 0.0, 0.0, math.sin(angle / 2))
+    else:
+        q = tuple(rng.normal(size=4) / 1.0)  # type: ignore[assignment]
+        q = tuple(np.asarray(q) / np.linalg.norm(q))  # type: ignore[assignment]
+    return points @ rotation(q).T + rng.uniform(-2e-3, 2e-3, 3), faces  # type: ignore[arg-type]
 
 
-@SETTINGS
-@given(kind=st.sampled_from(["sphere", "box", "tube"]), size=st.floats(25e-6, 1e-3), seed=st.integers(0, 2 ** 32 - 1))
-def test_a_ray_at_an_edge_of_a_closed_mesh_from_outside_crosses_it_an_even_number_of_times(dtype, kind, size, seed):
+def even_at_edges(dtype: str, kind: str, size: float, seed: int, aligned: bool) -> None:
     rng = np.random.default_rng(seed)
-    points, faces = closed_mesh(rng, kind, size)
+    points, faces = closed_mesh(rng, kind, size, aligned)
     reach = float(np.max(np.linalg.norm(points - points.mean(axis=0), axis=1)))
     origin = points.mean(axis=0) + unit(rng) * rng.uniform(1.5 * reach, 1.5 * reach + 3e-3)
     edges = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
-    n = 4 * RAYS
+    n = 16 * RAYS
     pick = edges[rng.integers(0, len(edges), n)]
     s = rng.random((n, 1))
     s[: n // 10] = 0.0
@@ -181,6 +186,22 @@ def test_a_ray_at_an_edge_of_a_closed_mesh_from_outside_crosses_it_an_even_numbe
     targets = targets + roundings(rng, dtype, float(np.linalg.norm(targets - origin, axis=1).mean()), n)[:, None] * away
     counts = crossings_of(triangles_of(points, faces), origin, aimed(origin, targets), dtype)
     assert np.all(counts % 2 == 0), f"{int(np.sum(counts % 2 == 1))} of {n} rays crossed the closed mesh an odd number of times"
+
+
+@SETTINGS
+@given(kind=st.sampled_from(["sphere", "box", "tube"]), size=st.floats(25e-6, 1e-3), aligned=st.booleans(),
+       seed=st.integers(0, 2 ** 32 - 1))
+def test_a_ray_at_an_edge_of_a_closed_mesh_from_outside_crosses_it_an_even_number_of_times(
+        dtype, kind, size, aligned, seed):
+    even_at_edges(dtype, kind, size, seed, aligned)
+
+
+@SETTINGS
+@given(size=st.floats(25e-6, 1e-3), seed=st.integers(0, 2 ** 32 - 1))
+def test_a_ray_at_an_edge_of_a_box_from_outside_crosses_it_an_even_number_of_times(dtype, size, seed):
+    """A box turned only about z, whose edges lie along the axes the tree's boxes are aligned to: where the slab test loses
+    a crossing most often (a ray through such an edge runs along the face of a leaf box)."""
+    even_at_edges(dtype, "box", size, seed, True)
 
 
 @SETTINGS

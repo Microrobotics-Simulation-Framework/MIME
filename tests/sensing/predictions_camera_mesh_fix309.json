@@ -9,7 +9,10 @@
     "laptop, float32, loaded: the tree's signature over a 99 328-triangle mesh's arrays (6.8 MB) 0.5 to 0.7 ms; float64 (13.6 MB) 3.2 to 3.7 ms"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "CPU; GitHub runner, 4 vCPU, one CPU and one thread for the bits",
     "sizes_and_parameters": "G26: 40 Hypothesis examples a dtype per test, 512 rays a pair or fan, 2048 rays a closed mesh, edges 25 um to 1 mm, closed meshes 25 um to 1 mm across turned at random, origins 3 edge lengths to 5 mm; the cost case a closed tube-wall mesh of 99 328 triangles filling 320x240 and 640x480 views, S = 4; the bits scene the in-loop camera's ballistic scene with a Tube structure and no mesh (64x48, three programs)"
   },
@@ -47,5 +50,10 @@
     "basis": "laptop microbenchmark of the signature (the new per-frame read of the tree's arrays) against the runner's frame cost of the first rounds (3.3 ms a frame float32, 5.4 ms float64 at 320x240)",
     "if_wrong": "over the band: the per-frame signature costs more than its microbenchmark (XLA's integer reductions on the runner's CPU); under: it fuses with the frame's other loops"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-14, after the first run (GitHub run 43638383933 on 2ecce321, branch deleted after the download); the predictions above are unchanged; the findings and the second round's predictions are in predictions_camera_mesh_fix309_r2.json",
+    "rates": "nb-camera 40/40 f32 and f64; nb-closed 40/40 each; nb-edge 40/40 each but its clean arm flagged 3/40 each (a premise of the test, fixed); nb-fan 0/40 each (predicted); np-camera 0/40 each (predicted); np-closed 40/40 f64 and 37/40 f32 (predicted 40/40: a miss)",
+    "bits": "all eight programs differed by 37 to 41 bytes (the path tables, absent from the script's normalisation): the prediction of equality is not tested by this run",
+    "cost": "mesh over none, second run of 30 steps: 1.22 (f32 320), 1.13 (f64 320), 1.07 (f32 640), 1.04 (f64 640); compile 1.07 to 1.15; executable +0.6 MB; the make 1.6 to 1.9 s (320) and 4.1 to 4.5 s (640): the predictions held except float64 320 under its band (1.13 against 1.2 to 2.2)"
+  }
 }

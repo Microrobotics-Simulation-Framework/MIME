@@ -59,7 +59,15 @@ state, params = full_state(graph), graph_params(graph)
 
 
 def text(compiled: object) -> np.ndarray:
-    return np.frombuffer(re.sub(r", metadata=\{[^}]*\}", "", compiled.as_text()).encode(), dtype=np.uint8)  # type: ignore[attr-defined]
+    """The program's text as bytes, with what only says where the code is dropped: each instruction's ``metadata`` and the
+    tables that open the text (``FileNames``, ``FunctionNames``, ``FileLocations``, ``StackFrames``: paths and line
+    numbers, which differ between two checkouts of equal programs)."""
+    lines = re.sub(r", metadata=\{[^}]*\}", "", compiled.as_text()).split("\n")  # type: ignore[attr-defined]
+    if "FileNames" in lines:
+        first = lines.index("FileNames")
+        last = lines.index("", lines.index("StackFrames", first))
+        lines = lines[:first] + lines[last + 1:]
+    return np.frombuffer("\n".join(lines).encode(), dtype=np.uint8)
 
 
 held = _held(graph)
