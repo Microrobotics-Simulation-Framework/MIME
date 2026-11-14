@@ -45,12 +45,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which gives 6): every coil array MIME ships has at most 8 coils, and at 6 `allocate()` on CardioMag and OctoMag would
   be refused or keep a second solver. The allocation's own cost per base step on GitHub's runners (one thread, float64,
   CardioMag's rows, run 43569142070): 11, 22, 44, about 120, 320 to 350 and 810 to 1040 us at 3 to 8 commands; a slower
-  controller pays it every base step. `docs/allocation.md` is its page.
+  controller pays it every base step. Its share of a full base step (the law's step against the same step making the
+  same rows and allocating nothing; 200 steps, one thread, two runners' CPUs, run 43576671085): in the Navion_2
+  controller of the camera spike's STATE arm (3 coils, the force's 3 rows) 17 to 30 us of a 61 to 138 us step, 0.20 to
+  0.29 of it; in a CardioMag controller allocating its 8 coils to `allocate()`'s 8 rows 650 to 1250 us of a 690 to
+  1360 us step, 0.91 to 0.94. Float32 against float64 on the same rounded problem, over 3000 of the swap test's draws
+  an array: at most 4.2e-6 of the limit on Navion_2, 7.5e-6 on CardioMag and 4.8e-5 on OctoMag (2.1e-5 where the
+  minimiser is unique), every draw within the coil array's float32 guard of 1e-4, so the law declares no guard of its
+  own (OctoMag stays refused in float32 by its provider). Where two faces of an unregularised problem come within the
+  law's tie window in float32 it may take the one of less effort that float64 does not: the swap test found OctoMag's
+  force out of reach, its residual 1.7e-5 of it higher, its currents 3.2 A apart on a 5 A limit.
+  `docs/allocation.md` is its page.
 - **`allocate()` runs the exact allocation** on the host in float64 instead of SciPy's BVLS, and takes `field_scale=`
-  and `gradient_scale=` (both or neither; unweighted by default, as before). BVLS's absolute tolerance stopped it short
-  on small rows (a wanted field near 0.1 uT; force rows in SI); the law's tests are relative. Its currents move on every
-  call at rounding level, within the swap line; where several currents make the wanted values (eight coils asked for a
-  field alone) it now returns the least current, which BVLS's answer was not. SciPy stays the swap test's oracle.
+  and `gradient_scale=` (both or neither; unweighted by default, as before). Against the release's `allocate()` on 3200
+  requests an array (a field, a gradient, both, and fields of 0.05 to 0.2 uT; run 43576671085), its currents move by at
+  most 1.7e-12 A within the swap line, at most half of it; past it on 8 of 2000 requests for a field and a gradient on
+  CardioMag (3) and OctoMag (5), by up to 13.8 and 19.3 A, each where SciPy's BVLS stopped at its iteration cap (as
+  many iterations as coils) above the optimum the law reaches, as BVLS does given more. Where several currents make
+  the wanted values (eight coils asked for a field alone) the law returns the least current, as BVLS did on those
+  requests to 1.5e-12 A; the law without that tie put five of CardioMag's coils at +-35 A for a field alone where
+  BVLS's currents were all inside. SciPy stays the swap test's oracle, its iterations capped at `3^K`.
 - **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
   interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and
