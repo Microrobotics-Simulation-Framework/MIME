@@ -1,0 +1,42 @@
+{
+  "written": "2026-11-14, committed before AP1b's second probe ran (the commit that adds this file is the timestamp)",
+  "phase": "apparatus lane, AP1b, the second probe: what the first could not show",
+  "labels": "predictions by the builder (Opus); the explicit case run once locally before this file (clean passed, respond_before_slew failed)",
+  "seen_before": [
+    "the first probe's outcomes (predictions_ap1b.json): respond_before_slew 190/200; the bits' control equal, the arm at its command"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64 for the servo's bits"
+    ],
+    "platform": "CPU, GitHub runners, the probe workflow",
+    "sizes_and_parameters": "the explicit case: a 10 A step, 2 A a step of slew, a 5 ms lag, 16 steps; the bits: the kinematic AR4 commanded to (0.3, 0.6, -0.4, 1.0, 1.3, 0.5) rad from its home, 100 steps",
+    "seeds_and_draws": "200 runs, planted and clean at the same seeds, Hypothesis seeds included"
+  },
+  "gate_1b_command_rungs_with_response": {
+    "claim": "the lag follows the slew",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py (the property and test_the_lag_follows_the_slew)",
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged",
+      "basis": "derived",
+      "why": "the explicit case is deterministic: lagging the step first delivers another value at every step of the rise"
+    },
+    "control": {
+      "plant": "the lag before the slew",
+      "environment_variable": "PORT_PLANT=respond_before_slew",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "bits_2": {
+    "cases": "the kinematic AR4 with a 20 ms servo commanded away from its home (servo= on AP1a's branch, its ports' lag here), float32 and float64, base AP1a's branch against this head, one CPU, one thread",
+    "prediction": "every array np.array_equal: the arm's node computes the lag from the same leaf",
+    "controls": {
+      "moved": "the same arm, commanded away, with a 20 ms lag on the head and none on the base: its joint positions differ"
+    }
+  },
+  "outcomes": null
+}

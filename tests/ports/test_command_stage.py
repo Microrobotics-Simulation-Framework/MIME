@@ -13,7 +13,8 @@ The bound's flag is compared too, step by step: whether the clip acted, or wheth
 a plausible ordering of an amplifier chain (``slew_before_bound``: the slew acts on what arrives, then the bound;
 ``bound_before_delay``: the bound acts on what was written, before the link samples and delays it, which differs only
 where a value beyond the bounds falls between samples; ``respond_before_slew``: the lag before the slew, as though the
-amplifier's output stage slewed what the coil let through), and a trip that does not latch (``trip_unlatched``):
+amplifier's output stage slewed what the coil let through, which the drawn examples missed on 10 runs of 200 and the
+explicit case below catches on every run), and a trip that does not latch (``trip_unlatched``):
 each must fail this test on every run, its rate measured, not assumed: a swap the drawn examples could not tell apart
 would be no evidence."""
 
@@ -140,3 +141,15 @@ def test_a_port_buffers_samples_not_steps():
     """A latency's buffer holds ``ceil(L / k) + 1`` samples: a 17-step period with 23 steps of latency holds 3."""
     node = stage_of(Link(period=17, latency=23), (2,), DT)
     assert node.initial_state()["buffer_currents"].shape == (3, 2)
+
+
+def test_the_lag_follows_the_slew():
+    """The case that tells the response before the slew from after it: a step of 10 A, slewed at 2 A a step, then
+    lagged at 5 ms. In the design's order the lag follows the slewed ramp; lagged first, the step's lag rises slower
+    than the slew and passes through it unslewed, another value at every step of the rise."""
+    link = Link(slew=2.0 / DT, tau=5e-3)
+    written = np.concatenate([np.full((8, 1), 10.0), np.zeros((8, 1))])
+    with planted_stage():
+        delivered = stepped(stage_of(link, (1,), DT), written, DT)
+    expected = command_oracle(written, link, DT)
+    assert float(np.max(np.abs(delivered - expected))) <= tolerance(10.0), (delivered[:, 0], expected[:, 0])
