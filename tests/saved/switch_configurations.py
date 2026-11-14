@@ -8,7 +8,8 @@ reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's s
 apparatus with its masses mounted and that friction arm, each with the energy ledger, whose metered steps (the arm's
 and the motor's step identities, and the impulses split by the friction's share) no other configuration takes; a
 sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
-no round-trip case's body is fine enough for (where the package has the hand-over); the point body with its fitted
+no round-trip case's body is fine enough for (where the package has the hand-over); the coil sphere with every rung of
+both port stages, its currents clipped and, in a second, tripped (``port_cases.staged_sphere``); the point body with its fitted
 self-history (``self_history="modes"``), which no round-trip case writes; and those steps, with each node's
 run-constants as a derivative's run makes them, traced and scanned, once per process, for the tests that read the scan.
 ``step_jaxprs.py`` also runs these configurations on a merge base, whose package has no switch scan, so the scan is
@@ -51,6 +52,13 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found["controller/tracked_rpm_in_graph"] = partial(tracked_rpm, "tracked_rpm_in_graph", mode="graph",
                                                        controller=tracking(orientation_feedback=True, iterations=1))
     found["chain/friction_arm"] = friction_arm
+    from mime.things import Apparatus
+
+    if "ports" in getattr(Apparatus, "__dataclass_fields__", {}):  # a merge base before ports has no stages
+        from port_cases import staged_sphere
+
+        found["ports/clipped"] = staged_sphere
+        found["ports/tripped"] = partial(staged_sphere, trip=True, name="tripped_sphere")
     found["contact/rod_hull"] = rod_contact
     found["ledger/massive_rpm"] = partial(metered, partial(massive_rpm, "massive_rpm_metered"))
     found["ledger/friction_arm"] = partial(metered, partial(friction_arm, "friction_arm_metered"))

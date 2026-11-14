@@ -96,9 +96,9 @@ class UnsavableError(ArgumentRefused):
     """A declaration the saved form cannot hold, named in the experiment's terms (``reason``): refused as
     ``save.unsavable``, and a ``ValueError``, as it was."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, action: str = UNSAVABLE_ACTION) -> None:
         self.reason = reason
-        super().__init__([Refusal("save.unsavable", RefusalClass.USER, reason, UNSAVABLE_ACTION)])
+        super().__init__([Refusal("save.unsavable", RefusalClass.USER, reason, action)])
 
 
 class TermsUnsavable(UnsavableError):
@@ -339,6 +339,10 @@ def _thing_doc(thing: Thing) -> ThingDoc:
             doc["parts"] = {key: _part_doc(cast(object, part), f"{where}'s part {key!r}")
                             for key, part in sorted(thing.parts.items())}
     if isinstance(thing, Apparatus):
+        if thing.ports:
+            raise UnsavableError(f"{where} declares ports ({', '.join(sorted(thing.ports))}), which this MIME's saved "
+                                 f"form does not hold yet: saving it would drop them, and the folder would build "
+                                 f"another program", "run it unsaved, or leave out Apparatus(ports=...) to save it")
         doc["fields"] = {name: _entry_doc(provider, f"{where}'s field {name!r}")
                          for name, provider in sorted(thing.fields.items())}
         if thing.chain:

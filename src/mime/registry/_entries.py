@@ -163,11 +163,17 @@ class Confinement:
 @dataclass(frozen=True)
 class Command:
     """A command a field provider (later an apparatus's chain) takes: the input ``port`` of its node, in
-    ``dimension``. A drive or the controller writes it; nothing else does."""
+    ``dimension``. A drive or the controller writes it; nothing else does. ``rest`` is what its receiver holds before
+    any write reaches it, in SI, where that is not zero (a kinematic arm's joints, at their initial positions): what a
+    port delivering it before its first write arrives delivers unless it declares its own. ``bounds`` are the low and
+    high its description states for it, in SI (a kinematic arm's joint limits, where every joint the command reaches
+    has them): a port's bounds where it declares none, which its stage applies before the slew."""
 
     port: str
     dimension: Dimension
     shape: tuple[int, ...] = ()
+    rest: Magnitude | None = None
+    bounds: tuple[Magnitude, Magnitude] | None = None
 
 
 @dataclass(frozen=True)
@@ -742,6 +748,12 @@ class Output:
     #: by ``record=``, naming the output. (``history=True`` keeps every output at every step and is not refused: with a
     #: camera it holds the image, the expected image and the static cache, about 8 MB a step at 320 x 240 in float64.)
     recordable: bool = True
+    #: The model of its source's own noise the output already carries (a camera's image: its sensor's), named: a
+    #: measurement port on it declares no noise or quantum of its own (``port.modelled-noise``). Empty for none.
+    noise_model: str = ""
+    #: For an output before its source's own noise (a camera's expected image), that model, named: a measurement port
+    #: that adds noise or a quantum to it stands in for that model, which the read bypasses, and the build says so.
+    before: str = ""
 
 
 @dataclass(frozen=True)
@@ -1250,6 +1262,12 @@ class Observation(Entry):
         """The shape of ``output`` as this observation, with its settings, keeps it in its node's state: the output's
         own for every output but one that declares ``shape_from_settings``, whose entry overrides this."""
         return output.shape
+
+    def clock(self, settings: Mapping[str, Magnitude], dt: float) -> int | None:
+        """The period of the observation's own clock in base steps, from its settings in SI, where it makes its
+        outputs on one (a camera's frame period) and gives their age as its output ``age``; ``None`` for one that
+        makes them every step. A measurement port on it samples at a whole multiple of the period."""
+        return None
 
     def net_of(self, node: Any, behind: int, why: str) -> Any:
         """``node`` (the one this observation built) made net of ``behind`` steps, the lag the build declares for the

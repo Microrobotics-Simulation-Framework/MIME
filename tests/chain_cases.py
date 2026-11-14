@@ -67,12 +67,12 @@ def add_body(exp: Experiment, *, position=mm((0.0, 0.0, -1.0)), magnet_centre=m(
 
 
 def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, magnet_at=None, description=AR4,
-        acknowledged=(), servo=None, prescribed="velocity", controlled=(), arm_at=AR4_BASE) -> Apparatus:
+        acknowledged=(), servo=None, prescribed="velocity", controlled=(), arm_at=AR4_BASE, ports=None) -> Apparatus:
     """The AR4 at its home pose carrying a motor on its flange (``link_6``), turning about the flange's z at ``speed``
     rad/s (``prescribed="angle"``: to ``speed`` rad), the magnet on the rotor, magnetised along the rotor's x. The
     motor is placed on the flange by ``motor_at`` and ``motor_orientation``, the magnet on the rotor by
     ``magnet_at``; ``servo`` is the arm's time constant; ``arm_at`` is where the arm's base is placed. The commands
-    named in ``controlled`` take no drive, for a controller to write."""
+    named in ``controlled`` take no drive, for a controller to write; ``ports`` are the apparatus's declared ports."""
     return Apparatus(
         "rpm",
         chain={"arm": Arm.Kinematic(description=asset(description), initial_positions=rad(AR4_HOME),
@@ -85,7 +85,8 @@ def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, ma
         commands={name: drive for name, drive in {
             "arm.joint_positions": Constant(rad(joints)),
             **({"motor.velocity": Constant(rad_per_s(speed))} if prescribed == "velocity"
-               else {"motor.angle": Constant(rad(speed))})}.items() if name not in controlled})
+               else {"motor.angle": Constant(rad(speed))})}.items() if name not in controlled},
+        ports=ports or {})
 
 
 def kinematic_rpm(name: str = "kinematic_rpm", *, magnetic=(Magnetic.Torque, Magnetic.Force),
@@ -260,13 +261,13 @@ TOP_SPEED = 2.0 * math.pi * 10.0
 
 def massive_rpm(name: str = "massive_rpm", *, arm: str = "dynamic", magnet_axis=(1.0, 0.0, 0.0), magnet_at=None,
                 density: float | None = MAGNET_DENSITY, top_speed: float | None = TOP_SPEED,
-                extra: bool = False, solid=None, motor: str = "dynamic", controlled=()) -> Experiment:
+                extra: bool = False, solid=None, motor: str = "dynamic", controlled=(), ports=None) -> Experiment:
     """A0's apparatus with its masses mounted: :func:`dynamic_rpm`'s arm (or its kinematic rung, ``arm="kinematic"``)
     and motor, the magnet on the rotor of ``density`` (``None``: no mass), its axis ``magnet_axis`` in the rotor's
     frame (A0's along x, across the spin axis z), at ``magnet_at``, or ``solid`` in its place; the motor's
     ``top_speed``; ``motor="kinematic"``, the motor on its kinematic rung at A0's speed. With ``extra``, a camera of
     120 g on link 3 and a stator part of 80 g on the motor's base besides. The commands named in ``controlled`` take no
-    drive, for a controller to write."""
+    drive, for a controller to write; ``ports`` are the apparatus's declared ports."""
     exp = experiment(name)
     segment = Arm.Dynamic if arm == "dynamic" else Arm.Kinematic
     chain = {"arm": segment(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
@@ -289,7 +290,8 @@ def massive_rpm(name: str = "massive_rpm", *, arm: str = "dynamic", magnet_axis=
                                at=mm((0.0, 0.0, -20.0)))
     exp.add_apparatus(Apparatus("rpm", chain=chain, parts=parts,
                                 magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
-                                fields={"magnetic": PointDipole(part="rotor_magnet")}, commands=commands))
+                                fields={"magnetic": PointDipole(part="rotor_magnet")}, commands=commands,
+                                ports=ports or {}))
     exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
     if density is not None:
         exp.declare("rpm.parts.rotor_magnet.density", kg_per_m3(density), reason="sintered NdFeB, its typical value")

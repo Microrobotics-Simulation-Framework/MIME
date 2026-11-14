@@ -26,8 +26,10 @@ from mime.registry import (
 )
 from mime.sensing import BrownConrady, Pinhole
 from mime.sensing import _scene as scene
+from mime.sensing._detector import CameraPose
+from mime.sensing._detector import project as projected
 from mime.sensing._node import FLAG_FIELDS, CameraNode, period_steps
-from mime.units import DIMENSIONLESS, Length, Quantity, Time, m
+from mime.units import DIMENSIONLESS, LENGTH, Length, Quantity, Time, m, si
 from mime.vocabulary import POSE
 
 if TYPE_CHECKING:
@@ -44,6 +46,10 @@ FLAG_MEANINGS = {
     "ghosting": "subjects that moved more than a pixel between the exposure's sub-frames",
     "thin_cap": "capped cylinders showing a cap nearly edge-on, where its outline is least resolved",
 }
+
+
+#: The camera's own model of its noise and quantisation, which its image carries and its expected image is before.
+SENSOR_RESPONSE = "the camera's sensor response (Sensor: shot and read noise, gain and quantisation to its bits)"
 
 
 @register_setting_group
@@ -186,9 +192,10 @@ class Camera(Observation):
     raises = tuple(Flag(name, FLAG_MEANINGS[name]) for name in FLAG_FIELDS)
     outputs = (
         Output("image", DIMENSIONLESS, "the held frame, in counts, rows by columns", shape_from_settings=True,
-               recordable=False),
+               recordable=False, noise_model=SENSOR_RESPONSE),
         Output("expected", DIMENSIONLESS, "the held frame's counts before noise and quantisation, rows by columns: the "
-                                          "differentiable output", shape_from_settings=True, recordable=False),
+                                          "differentiable output", shape_from_settings=True, recordable=False,
+               before=SENSOR_RESPONSE),
         Output("frame_step", DIMENSIONLESS, "the count of the step the held frame was made at (none before the first step)"),
         Output("age", DIMENSIONLESS, "the base steps since the held frame was made (zero on a frame step)"),
         Output("new_frame", DIMENSIONLESS, "one on a step a frame was made at, zero otherwise"),
@@ -208,10 +215,28 @@ class Camera(Observation):
     def _detector(self) -> Detector:
         return cast(Detector, self.detector)
 
+    def project(self, points: Any, *, pose: tuple[Any, Any] | None = None) -> tuple[Any, Any]:
+        """Where world points ``(..., 3)`` (metres) fall on this camera's detector, ``(..., 2)`` pixels ``(u, v)``,
+        and their depths along its optical axis (positive in front): a pure function, in ``jax.numpy``, of its
+        detector's nine numbers and its pose, OpenCV's ``projectPoints`` with its model. ``pose`` is its optical
+        frame's position in the world and its unit quaternion ``(w, x, y, z)``; a camera fixed in the world
+        (``World``) is at its own where none is given, and one ``Mounted`` on a frame, which moves, is given it.
+        What a controller's model of its camera computes; the camera's own step renders, and never calls it."""
+        if pose is None:
+            if not isinstance(self.mount, World):
+                raise TypeError("a camera mounted on a frame moves with it: give project(..., pose=(position, "
+                                "orientation)), its optical frame in the world")
+            pose = (si(self.mount.position, LENGTH, what="the camera's position"), self.mount.orientation)
+        return projected(self._detector().pinhole(), CameraPose(pose[0], pose[1]), points)
+
     @override
     def output_shape(self, output: Output) -> tuple[int, ...]:
         detector = self._detector()
         return (detector.height, detector.width) if output.shape_from_settings else output.shape
+
+    @override
+    def clock(self, settings: Mapping[str, Any], dt: float) -> int | None:
+        return period_steps(float(settings["frame_period"]), dt)
 
     @override
     def setting_problems(self, settings: Mapping[str, Any]) -> list[str]:

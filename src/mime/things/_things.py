@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from mime.registry import ChainSegment, Drive, Dynamics, FieldProvider, Geometry
     from mime.things._parts import Part
     from mime.things._handles import TypedPath
+    from mime.things._ports import Port
     from mime.units import Quantity
 
 
@@ -159,8 +160,13 @@ class Apparatus:
     fixed to a frame of a segment (``Part(..., mount="motor.rotor")``), or to the world without a ``mount``, placed by
     ``at`` in that frame and not turned in it, with a mass from its material's density or a declared density or mass;
     ``magnets`` gives parts a magnet's role by name, with the direction declared in the part's frame, since a part
-    declared in the experiment has no prim to carry it. Its driver and
-    calibration arrive with the first apparatus that has them."""
+    declared in the experiment has no prim to carry it.
+
+    ``ports`` declares the apparatus's links (``mime.things.CommandPort``, ``mime.things.Measurement``): a command's,
+    keyed by the command as ``commands`` keys it, and a measured signal's, keyed by a name of its own. A command or a
+    read with no port is ideal. An apparatus that holds only measurement ports is a sensing apparatus: it drives
+    nothing, and its ports are what a controller reads. Its calibration arrives with the first apparatus that has
+    one."""
 
     name: str
     fields: Mapping[str, FieldProvider] = field(default_factory=dict[str, "FieldProvider"])
@@ -168,6 +174,7 @@ class Apparatus:
     chain: Mapping[str, ChainSegment] = field(default_factory=dict[str, "ChainSegment"], kw_only=True)
     parts: Mapping[str, Part] = field(default_factory=dict[str, "Part"], kw_only=True)
     magnets: Mapping[str, PermanentMagnet] = field(default_factory=dict[str, PermanentMagnet], kw_only=True)
+    ports: Mapping[str, Port] = field(default_factory=dict[str, "Port"], kw_only=True)
     kind = ThingKind.APPARATUS
 
     def __post_init__(self) -> None:
@@ -179,6 +186,7 @@ class Apparatus:
         object.__setattr__(self, "chain", _frozen(self.chain))
         object.__setattr__(self, "parts", _frozen(self.parts))
         object.__setattr__(self, "magnets", _frozen(self.magnets))
+        object.__setattr__(self, "ports", _frozen(self.ports))
 
     @property
     def dynamics(self) -> None:
