@@ -51,7 +51,7 @@ class CommandPort:
     after a trip: the receiver's initial value where its entry states one (a kinematic arm's initial positions), else
     zero. ``slew`` is the most the delivered value moves per second (``A(4000.0) / s(1.0)``). ``rate`` is the link's
     update period (or frequency), ``latency`` its delay, each a whole number of base steps. ``response``, what shapes the
-    value delivered last (a coil's L/R lag, a servo), is refused until it is built (``port.seam``). ``reason`` says where
+    value delivered last (a coil's L/R lag, a servo), is a registered response (``mime.responses``). ``reason`` says where
     the numbers come from, and is required wherever one is given."""
 
     unit: Unit | None = None

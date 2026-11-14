@@ -1309,7 +1309,7 @@ class Response(Entry):
     """What a command port's last rung does to the value it delivers (``CommandPort(response=...)``): the shaper of
     the delivery stage, after its rate, latency, bounds and slew (``mime.responses``: ``Ideal``, ``FirstOrderLag``). Its
     settings are its numbers, leaves of the stage's node. ``carries`` names the state it holds between steps, each of
-    the command's shape, started at the port's ``rest``; :meth:`respond` is its step, a pure function in
+    the command's shape and in its units, started at the port's ``rest``; :meth:`respond` is its step, a pure function in
     ``jax.numpy``. A receiver whose own node computes a response itself (a kinematic arm's servo, which lags its joints
     as a first-order lag) names it in its segment's ``responds``: the stage then hands it the response's settings and
     shapes nothing, so one law is computed in one place. A response builds no node of its own: the port's stage holds

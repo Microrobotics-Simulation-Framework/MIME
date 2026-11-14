@@ -5,7 +5,8 @@ solved-field contract's SF-1; the FVM's declaration, F0's D2 F1a), form 12, the 
 (``exp.declare_range``; the maintainer's decision on design row #258's note, 2026-11-08: a declared range lives on the
 experiment, saved with it), form 13, the FVM's setting ``report_rows`` named ``solve_report_rows`` (design row
 #303), and form 14, an asset record with no location and a route to request its file (lane P's option 4; the
-maintainer's answers 2 and 3, record item 73). A branch takes at most one of them past the tip; a later step is not the sweep's to take,
+maintainer's answers 2 and 3, record item 73), and form 15, things' ports and the controller's ``believed`` slot (the
+apparatus design's AP1 row; the brief's A9: AP1's saved-form step is its own). A branch takes at most one of them past the tip; a later step is not the sweep's to take,
 and fails here until a design row allows it by name and this guard says so. The tip is read from
 ``origin/release/v0.3.0`` where the checkout holds it, or from the first
 parent of a pull request's merge commit, which is that tip, as CI checks a pull request out."""
@@ -22,8 +23,9 @@ ROOT = Path(__file__).resolve().parents[2]
 VERSIONS = "src/mime/saved/_versions.py"
 #: The saved-form steps a branch may take beside the sweep, each from the form before it: form 10 to 11 (a medium's
 #: fields by role), 11 to 12 (the declared ranges, row #258's note), 12 to 13 (the FVM's setting renamed, row #303) and
-#: 13 to 14 (an asset record by request, record item 73).
-ALLOWED_STEPS = ((10, 11), (11, 12), (12, 13), (13, 14))
+#: 13 to 14 (an asset record by request, record item 73) and 14 to 15 (things' ports and the controller's believed
+#: slot, the apparatus design's AP1 row).
+ALLOWED_STEPS = ((10, 11), (11, 12), (12, 13), (13, 14), (14, 15))
 
 
 def _git(*args: str) -> str | None:
@@ -66,7 +68,7 @@ def test_the_saved_form_is_the_tips_or_one_step_allowed_by_name():
         f"CURRENT is {CURRENT} here and {held} on {where}: the sweep takes no saved-form step, and the steps allowed "
         f"by name are {', '.join(f'{a} to {b}' for a, b in ALLOWED_STEPS)} (a medium's fields by role; the declared "
         f"ranges, row #258's note; the FVM's setting renamed solve_report_rows, row #303; an asset record by request, "
-        f"record item 73), one at a time")
+        f"record item 73; things' ports and the believed slot, the apparatus design's AP1 row), one at a time")
 
 
 def test_the_control_a_form_the_tip_does_not_hold_is_seen():
@@ -77,12 +79,13 @@ def test_the_control_a_form_the_tip_does_not_hold_is_seen():
 
 
 @pytest.mark.parametrize(("current", "held", "passes"), [
-    (14, 13, True), (13, 12, True), (12, 11, True), (11, 10, True), (14, 14, True), (13, 13, True), (12, 12, True),
-    (11, 11, True), (15, 14, False), (14, 12, False), (13, 11, False), (12, 10, False), (15, 13, False), (11, 9, False),
+    (15, 14, True), (14, 13, True), (13, 12, True), (12, 11, True), (11, 10, True), (15, 15, True), (14, 14, True),
+    (13, 13, True), (12, 12, True), (11, 11, True), (16, 15, False), (15, 13, False), (14, 12, False), (13, 11, False),
+    (12, 10, False), (11, 9, False),
     (13, 14, False), (12, 13, False), (11, 12, False), (10, 11, False)])
 def test_the_control_only_the_step_named_passes(current: int, held: int, passes: bool):
-    """A step to 15 fails, whatever the branch records beside it: a form 15 paragraph and an empty
-    ``tests/saved/test_form15.py`` are not read. Two steps at once fail, a branch behind the tip fails too, and so does
+    """A step to 16 fails, whatever the branch records beside it: a form 16 paragraph and an empty
+    ``tests/saved/test_form16.py`` are not read. Two steps at once fail, a branch behind the tip fails too, and so does
     the step before."""
     assert allowed(current, held) is passes
 

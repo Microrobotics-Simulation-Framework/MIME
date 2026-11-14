@@ -52,8 +52,21 @@ UNREACHED = {
        for head in (("controller",), ("observations", "[]"), ("things", "*", "chain", "[]"),
                     ("things", "*", "commands", "*"), ("things", "*", "dynamics", "motion"),
                     ("things", "*", "fields", "*"), ("things", "*", "geometry"),
-                    ("things", "*", "parts", "*", "solid"))},
+                    ("things", "*", "parts", "*", "solid"), ("things", "*", "ports", "*", "response"),
+                    ("controller", "believed", "*"))},
+    **{(*head, "settings", "*"): "a port's number is a quantity, never a group of settings"
+       for head in (*(("things", "*", "ports", "*", name) for name in ("rest", "slew", "rate", "latency", "quantum")),
+                    *(("things", "*", "ports", "*", "bounds", end) for end in ("low", "high")),
+                    ("things", "*", "ports", "*", "noise", "sigma"))},
+    ("controller", "believed", "*", "settings", "*"): "no script writes a controller's believed slot: the saved form "
+                                                      "holds it (form 15) and nothing yet fills it",
 }
+#: The slots a case reaches and no profile judges, each refused as ``source.no-site`` in every profile: a port's numbers
+#: (``reason=`` on a port's quantity), whose source is the port's own ``reason``, one text for the port, saved beside
+#: them (``CommandPort.reason``), and the numbers of its response, which are the port's too.
+NO_SITE = {("things", "*", "ports", "*", *tail) for tail in (
+    ("rest",), ("slew",), ("rate",), ("latency",), ("quantum",), ("bounds", "low"), ("bounds", "high"),
+    ("noise", "sigma"), ("response", "settings", "*"))}
 
 
 def slots(held: object, path: tuple[str, ...] = (), stack: frozenset[object] = frozenset()
@@ -143,13 +156,34 @@ def toy_field() -> Experiment:
     return exp
 
 
+def ported() -> Experiment:
+    """The coil sphere with a command port of every number (bounds as a pair, a rest, a slew, a rate, a latency, a
+    first-order lag for its response) and a measurement port with noise and a quantum: the slots of form 15's ports."""
+    from port_cases import coil_sphere
+
+    from mime.observations import SwimSpeed
+    from mime.responses import FirstOrderLag
+    from mime.scene import X
+    from mime.things import CommandPort, Gaussian, Measurement
+    from mime.units import A, m_per_s, s
+
+    ports = {"currents": CommandPort(rate=ms(2), latency=ms(3), bounds=(A(-3.0), A(3.0)), rest=A(0.5),
+                                     slew=A(2000.0) / s(1.0), response=FirstOrderLag(tau=ms(4)),
+                                     reason="a supply's datasheet"),
+             "speed": Measurement(of="swim_speed:sphere.speed", latency=ms(1), noise=Gaussian(sigma=m_per_s(1e-6)),
+                                  quantum=m_per_s(1e-7), reason="a tracker's datasheet")}
+    exp = coil_sphere(ports, name="ported")
+    exp.observe(SwimSpeed("sphere", along=X))
+    return exp
+
+
 @pytest.fixture(scope="module")
 def saved(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     """The cases, each built and saved once: the settling ball, script A's record arm, A0's tracked apparatus, the full
-    toy with its field's setting written."""
+    toy with its field's setting written, the coil sphere with its ports' numbers."""
     folders = {}
     for name, make in (("ball", ball), ("script_a_records", script_a_records), ("tracked_rpm", tracked_rpm),
-                       ("toy_field", toy_field)):
+                       ("toy_field", toy_field), ("ported", ported)):
         folder = tmp_path_factory.mktemp(name)
         make().build().save(folder / "saved", steps=1)
         folders[name] = folder / "saved"
@@ -180,12 +214,13 @@ def reached(saved: dict[str, Path]) -> dict[tuple[str, ...], tuple[str, tuple[ob
 def test_every_slot_the_schema_has_is_reached_or_listed_with_its_reason(saved):
     found = reached(saved)
     assert not set(found) & set(UNREACHED), f"a listed slot is reached by a case now: {set(found) & set(UNREACHED)}"
+    assert NO_SITE <= set(found) and not NO_SITE & set(UNREACHED), "a slot listed as having no site is not reached"
     missing = sorted(set(SLOTS) - set(found) - set(UNREACHED))
     assert missing == [], f"a place the schema holds a reason that no case reaches and no reason lists: {missing}"
     assert len(SLOTS) >= 30, "the walk found too few slots to judge"
 
 
-@pytest.mark.parametrize("pattern", sorted(set(SLOTS) - set(UNREACHED)), ids=".".join)
+@pytest.mark.parametrize("pattern", sorted(set(SLOTS) - set(UNREACHED) - NO_SITE), ids=".".join)
 def test_a_pending_reason_in_every_slot_is_refused_in_research_and_stamped_in_exploratory(saved, pattern, tmp_path):
     found = reached(saved)
     assert pattern in found, f"no case reaches {'.'.join(pattern)}"
@@ -203,6 +238,27 @@ def test_a_pending_reason_in_every_slot_is_refused_in_research_and_stamped_in_ex
     assert refused is None, (place, refused.codes() if refused else None)
     count = lambda plans: sum("basis_pending" in item.codes for item in plans.profile.pending)  # noqa: E731
     assert count(explored) == count(base_plan) + 1, place
+
+
+@pytest.mark.parametrize("pattern", sorted(NO_SITE), ids=".".join)
+@pytest.mark.parametrize("profile", ["exploratory", "research"])
+def test_a_reason_on_a_port_s_number_is_an_input_error_naming_the_slot_in_every_profile(saved, pattern, profile,
+                                                                                         tmp_path):
+    """The control: the document as saved builds, and the same reason written in the slot is refused, by where it was
+    written, whatever it says (pending or a text): a port's source is the port's own ``reason``."""
+    name, place = reached(saved)[pattern]
+    folder = saved[name]
+    document = yaml.safe_load((folder / DOCUMENT_FILE).read_text())
+    _, base = plan(document, folder, tmp_path / "base", profile)
+    assert base is None or "source.no-site" not in base.codes(), "the control: the saved document builds"
+    for index, reason in enumerate(({"pending": True}, "a datasheet")):
+        edited = copy.deepcopy(document)
+        held: Any = edited
+        for key in place[:-1]:
+            held = held[key]
+        held[place[-1]]["reason"] = reason
+        _, refused = plan(edited, folder, tmp_path / f"edited_{index}", profile)
+        assert refused is not None and "source.no-site" in refused.codes(), (place, reason)
 
 
 def test_a_nominal_and_an_acceptance_with_a_pending_reason_behave_alike():

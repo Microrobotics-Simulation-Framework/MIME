@@ -1951,8 +1951,9 @@ class BuiltExperiment:
 
     def declared_units(self) -> dict[tuple[str, str], str]:
         """The units MIME declares for each state field it declares them for, by ``(node, field)``: its node's symbol
-        table, else its node's typed state (``mime.core.typed_units``), the edges that read it, the stage's binding,
-        the observations' outputs, and a flag's one."""
+        table, else its node's typed state (``mime.core.typed_units``), else the node's own ``state_units()`` (a stage
+        whose fields are named by its ports, so their units are the instance's), the edges that read it, the stage's
+        binding, the observations' outputs, and a flag's one."""
         from mime.build._maddening import node_fields_of
         from mime.build._report import graph_config
         from mime.core import typed_units
@@ -1963,6 +1964,10 @@ class BuiltExperiment:
             for field, units in symbol_units(node, fields).items():
                 found[(name, field)] = units
             for field, units in typed_units(node, fields).items():
+                found.setdefault((name, field), units)
+            own = cast("Callable[[], Mapping[str, str]] | None", getattr(node, "state_units", None))
+            held: Mapping[str, str] = own() if own is not None else {}
+            for field, units in held.items():
                 found.setdefault((name, field), units)
         for edge in graph_config(self._graph)["edges"]:
             if edge.get("source_units"):

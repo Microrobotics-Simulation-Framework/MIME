@@ -216,6 +216,17 @@ class CommandStageNode(MimeNode):
                 fields[f"response_{key}_{carried}"] = rest
         return node_fields(fields)
 
+    def state_units(self) -> dict[str, str]:
+        """The units of each state field the stage holds for a port, which are the port's own (a field's name carries
+        the port's, so no class-level symbol row can name them): the value, what was written and amplified, the
+        buffer's samples and each response's carried state, in the command's units."""
+        units = cast(Mapping[str, str], self._held("units"))
+        found: dict[str, str] = {}
+        for key in self._keys():
+            for field in self.port_fields(key):
+                found[field] = units[key]
+        return found
+
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         units = cast(Mapping[str, str], self._held("units"))
@@ -377,6 +388,16 @@ class MeasureStageNode(MimeNode):
                 fields[f"buffer_{key}"] = jnp.stack([start] * held)
                 fields[f"stamps_{key}"] = jnp.full((held,), -self._initial_age(key), dtype=jnp.int32)
         return node_fields(fields)
+
+    def state_units(self) -> dict[str, str]:
+        """The units of each state field the stage holds for a port: the held value and its buffer's samples in the
+        source's units, the stamps and the age in base steps (``1``)."""
+        units = cast(Mapping[str, str], self._held("units"))
+        found: dict[str, str] = {}
+        for key in self._keys():
+            for field in self.port_fields(key):
+                found[field] = "1" if field.startswith(("stamps_", "age_")) or field.endswith("_age") else units[key]
+        return found
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:

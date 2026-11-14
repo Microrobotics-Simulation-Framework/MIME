@@ -40,4 +40,4 @@ records a port's traffic when asked: `record=` names the stage's
 outputs (`ports:coils.currents`, `ports:coils.written_currents`, `measure:coils.tracker_age`).
 
 A saved experiment holds its ports (saved form 15). The details, and every refusal by its code, are in
-[the build's notes](../../src/mime/build/README.md).
+the build's notes (`src/mime/build/README.md`).
