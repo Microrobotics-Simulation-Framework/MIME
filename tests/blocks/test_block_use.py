@@ -383,16 +383,20 @@ def test_a_name_the_experiment_already_declares_is_refused_naming_name(tmp_path:
     assert experiment.use(folder, name="lab", medium=water).probe.name == "lab_probe"
 
 
-def test_a_block_its_licence_makes_referenced_is_refused_until_its_container_is_read(tmp_path: Path):
+def test_a_referenced_block_naming_a_file_of_its_own_is_refused_before_a_save_writes_it_into_the_users_folder(
+        tmp_path: Path):
+    """A referenced block's own description would be written into its user's folder under the user's licence."""
+    from mime.blocks._fragment import Expanded
+
     folder = block_copy(tmp_path)
-    edited(folder, "mime.toml", 'licence = "CC-BY-4.0"', 'licence = "LicenseRef-labx-terms"\n\n'
-                                                          '[licences.LicenseRef-labx-terms]\ntitle = "Demo terms"\n'
-                                                          'url = "https://example.org/terms"')
-    experiment, water = host()
-    with pytest.raises(BuildRefused) as refused:
-        experiment.use(folder, medium=water)
-    assert codes(refused) == ["load.referenced-block"]
-    assert "lets no copy of its content into your saved document" in refused.value.refusals[0].message
+    definition = _definition.definition_of(folder)
+    sections = {"things": {"probe": {"dynamics": {"motion": {"settings": {
+        "description": {"file": "descriptions/abc-probe.urdf", "sha256": "0" * 64}}}}}}}
+    from mime.blocks._referenced import own_file_refusals
+
+    refusals = own_file_refusals(definition, Expanded((), sections, {}))
+    assert [each.code for each in refusals] == ["block.fragment"]
+    assert own_file_refusals(definition, Expanded((), {**sections, "terms": {"descriptions/abc-probe.urdf": {}}}, {})) == []
 
 
 def test_the_content_hash_names_the_definition_and_the_fragment_and_not_the_record_or_a_cases_bytes(tmp_path: Path):

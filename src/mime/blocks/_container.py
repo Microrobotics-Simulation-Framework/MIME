@@ -198,7 +198,7 @@ def pack_block(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
         raise BuildRefused([refuse("bundle.output-inside", RefusalClass.USER,
                                    "the block's container would be written inside the folder it packs",
                                    "write it beside the folder (--out)")])
-    refusals = [refusal for cls, refusal in case_refusals(definition, content) if cases or refusal.code != "block.no-case"]
+    refusals = [refusal for _, refusal in case_refusals(definition, content) if cases or refusal.code != "block.no-case"]
     held = [each for each in _cases(root) if cases]
     stored = held_tokens()
     files = [(member, path) for member, path in files_of(root, BLOCK)

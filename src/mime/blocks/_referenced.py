@@ -38,7 +38,7 @@ def kept_container(definition: Definition, source: Any, accept_licences: Collect
     came in (with its record's location where it was pulled by DOI), or the block folder packed with no case. Its first
     use is gated, as every load of it will be: a licence with conditions is asked about once, or accepted by name."""
     from mime.assets import require_accepted
-    from mime.blocks._container import container_record, pack_block, stored
+    from mime.blocks._container import BLOCK_SUFFIX, container_record, pack_block, stored
 
     container = cast(Path | None, source.container)
     if container is not None:
@@ -47,7 +47,7 @@ def kept_container(definition: Definition, source: Any, accept_licences: Collect
         stored(ref, container)
     else:
         with tempfile.TemporaryDirectory() as scratch:
-            packed = pack_block(definition.folder, out=Path(scratch) / "block.mimeblock", cases=False)
+            packed = pack_block(definition.folder, out=Path(scratch) / f"packed{BLOCK_SUFFIX}", cases=False)
             ref = container_record(definition, packed)
             stored(ref, packed)
     require_accepted([ref], accept_licences=accept_licences, accept_with="exp.use(<block>, ...)")
@@ -117,7 +117,7 @@ def _enclosing(folder: Path | None, use: BlockUseDoc) -> Path | None:
     return candidate
 
 
-def _record_folder(use: BlockUseDoc, records: Sequence[Mapping[str, object]]) -> Path:
+def _record_folder(key: str, use: BlockUseDoc, records: Sequence[Mapping[str, object]]) -> Path:
     from mime.assets import locate
     from mime.blocks._container import BLOCK_SUFFIX, cached_folder
 
@@ -126,17 +126,27 @@ def _record_folder(use: BlockUseDoc, records: Sequence[Mapping[str, object]]) ->
     if found is None:
         raise BuildRefused([Refusal(
             "block.changed", RefusalClass.USER,
-            f"the document uses the block {plain(use['id'])} {plain(use['version'])} by reference, and its lock holds "
-            f"no record of its container ({plain(name)})",
+            f"the document uses the block {plain(key)!r} ({plain(use['id'])} {plain(use['version'])}) by reference, "
+            f"and its lock holds no record of its container ({plain(name)})",
             "save the experiment again from its script, `exp.save(folder)`: the save records the container")])
     return cached_folder(locate(AssetRef.from_record(found)))
+
+
+def content_problem(definition: Definition, use: BlockUseDoc, words: str) -> Refusal | None:
+    """``block.changed`` where the block read is not the one the document was saved with: its id, version or content
+    hash."""
+    from mime.blocks._container import changed_refusal
+
+    content = definition.content_hash()
+    if content != use["content"] or (definition.id, definition.version) != (use["id"], use["version"]):
+        return changed_refusal(words, use["content"], content)
+    return None
 
 
 def referenced_declarations(document: ExperimentDocument, records: Sequence[Mapping[str, object]],
                             folder: Path | None) -> list[Declaration]:
     """The declarations of each block ``document`` uses by reference, read from its container (the module says
     where it is found), held to the document's content hash and names, less the keys declared over it."""
-    from mime.blocks._container import changed_refusal
     from mime.blocks._use import key_of
 
     found: list[Declaration] = []
@@ -144,12 +154,15 @@ def referenced_declarations(document: ExperimentDocument, records: Sequence[Mapp
     for key, use in sorted(document.get("blocks", {}).items()):
         if use["tier"] != "referenced":
             continue
-        root = _enclosing(folder, use) or _record_folder(use, records)
+        try:
+            root = _enclosing(folder, use) or _record_folder(key, use, records)
+        except BuildRefused as refused:
+            refusals += refused.refusals
+            continue
         definition = definition_of(root)
-        content = definition.content_hash()
         words = f"the block {plain(use['id'])} {plain(use['version'])} (the use {plain(key)!r})"
-        if content != use["content"] or (definition.id, definition.version) != (use["id"], use["version"]):
-            refusals.append(changed_refusal(words, use["content"], content))
+        if (changed := content_problem(definition, use, words)) is not None:
+            refusals.append(changed)
             continue
         fragment = read_fragment(root, definition.sockets)
         expanded = next((held for prefix in ("", f"{key}_")
@@ -176,5 +189,5 @@ def container_records(blocks: Mapping[str, BlockUseDoc] | None, assets: Sequence
     return [ref for ref in assets if ref.name in names]
 
 
-__all__ = ["LOCK_HOLDS_VALUES", "container_records", "kept_container", "left_out", "own_file_refusals",
+__all__ = ["LOCK_HOLDS_VALUES", "container_records", "content_problem", "kept_container", "left_out", "own_file_refusals",
            "referenced_declarations", "referenced_keys"]

@@ -41,12 +41,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   frame of the user's is refused (`block.socket`) until one apparatus can be mounted on another's (the apparatus lane's
   AP6). A document using no block is written, hashed and loaded as before, and no simulation output moves.
 
-  Three codes change meaning:
+  Codes whose meaning changes:
   - `manifest.kind` no longer reserves a block's tables: a block folder's `mime.toml` holds them, and any other folder's
     is refused naming what it is.
-  - `load.referenced-block` also refuses using a block its licence makes referenced: this release does not yet read a
-    block's container.
-  - `container.kind` still refuses a `.mimeblock`.
+  - `load.referenced-block` is retired (it refused saved form 14's referenced uses until a container was read).
+  - `container.kind` no longer refuses a `.mimeblock`.
+
+- **The referenced tier, and a block's container shared, pulled, verified and pushed** (lane P, P4b, dev2).
+  - **Referenced:** a block whose licence lets no copy of its content into its user's document is used by reference.
+    The document records the use and what was declared over it, never the block's own declarations. The lock's `assets`
+    records the block's container (`<id>-<version>.mimeblock`, with `doi:<DOI>/<file>` where it was used by DOI, and no
+    location where it was used from a folder, which the save packs into the asset cache).
+  - **Its load:** the container is read first, from the block that holds the saved folder as one of its cases (matched by
+    content hash), else through the asset gate by the lock's record. A container whose content is not the document's
+    is refused (`block.changed`). The NOTICE and the card say what the tier cannot hide: the lock and the reference
+    outputs hold values the block's fragment sets. A referenced block whose fragment names a description of its own is
+    refused (`block.fragment`), since a save would write it into its user's folder.
+  - **`mime pack <block folder>`** writes `mime.block/1`. It holds the definition written canonically (no `[record]`),
+    the fragment, records, descriptions, open and conditional asset files the block's `[[assets]]` names, and each case,
+    judged as a bundle's saved folder. It refuses a block with no case (`block.no-case`) or with a stale one
+    (`block.case-stale`). Unpacking checks every member and recomputes the content hash (`block.changed`).
+  - **`mime pull`** takes a block's file or its record's DOI, into `./<id>-<version>/`. The container is kept in the
+    asset cache and its licence is gated. The cases' assets are fetched, and what `[requires]` needs is listed with its
+    install line. Nothing is installed.
+  - **`exp.use`** takes a `.mimeblock` or a DOI (`accept_licences=`, `yes=`, `force=` as `Experiment.based_on` takes
+    them). The asset files a block carries are taken into the cache by their sha256.
+  - **`mime verify <block folder or .mimeblock>`** refuses a requirement not met before any case runs (exit 2), and a
+    stale case. It reruns each case: an acceptance, with MIME's words and then the author's.
+  - **`mime card` and `mime show`** take a block folder, and `mime show` a `.mimeblock`.
+  - **`mime push <block folder>`** makes one record of the `.mimeblock` and its `NOTICE.txt`, keywords `mime-block` and
+    `mime-block:<id>`. The sandbox lane gains `--demo block`, run as a dry run only.
+  - **One refusal code:** `block.changed`.
 
 - **Ports as data on an apparatus, and the stages the build inserts for them** (the apparatus lane's AP1a, dev2).
   `Apparatus(ports={...})` declares an apparatus's links:

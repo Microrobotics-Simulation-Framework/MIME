@@ -8,7 +8,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from mime._terminal import plain
 from mime.build import (
     CONVENTIONAL_GRAVITY,
     BuildRefused,

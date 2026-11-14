@@ -625,7 +625,8 @@ def pulled_block(source: str, *, accept_licences: Collection[str] = (), yes: boo
     if len(fetched) != 1 or container_kind(fetched[0].path, named=fetched[0].named) is not BLOCK:
         raise _refuse("container.kind", RefusalClass.USER,
                       f"{plain(source)} holds {'more than one container' if len(fetched) != 1 else 'another kind of container'}, "
-                      f"and exp.use takes a block", "use a block's folder, its .mimeblock, or the DOI of a block's record")
+                      f"and exp.use takes a block", "use a block's folder, its .mimeblock, or the DOI of a block's record: "
+                                                    "`exp.use(<block>, ...)`")
     return fetched[0].path, doi, fetched[0].named
 
 

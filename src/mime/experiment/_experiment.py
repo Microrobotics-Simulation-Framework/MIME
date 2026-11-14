@@ -846,7 +846,7 @@ def _lock_assets_beside(document: Path) -> list[Any]:
         held = json.loads(lock.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
-    found = held.get("assets", []) if isinstance(held, dict) else []
+    found: object = cast(dict[str, object], held).get("assets", []) if isinstance(held, dict) else []
     return list(cast(list[Any], found)) if isinstance(found, list) else []
 
 
