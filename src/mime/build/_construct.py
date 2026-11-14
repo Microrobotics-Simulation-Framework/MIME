@@ -48,6 +48,7 @@ from mime.build._refusals import (
     Explained,
     Refusal,
     RefusalClass,
+    described,
     entry_defect,
     passed_through,
 )
@@ -256,7 +257,7 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
         passed = passed_through(error, plan.registered.cls, "building", plan.owner)
         if passed is not None:  # the user's or the environment's refusal, raised by MIME's API inside the entry
             return builder, [*passed]
-        return builder, [Explained(f"build() raised {error!r}", where=raised_at(error))]
+        return builder, [Explained(f"build() raised {described(error)}", where=raised_at(error))]
     return builder, [*builder.finish()]
 
 

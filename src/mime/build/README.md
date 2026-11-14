@@ -133,10 +133,12 @@ does not give the code, raises `UncataloguedRefusal`; a code whose first word is
 that namespace's own, accepted and `uncatalogued`. A problem an entry's plan returns with a code it cannot be refused
 with is refused as that entry's defect (`entry.defect`), and so is any other exception an entry raises, so a lab's code never
 crashes a build. **The exception is a refusal of MIME's own API**: a MIME error whose refusals are all of the user's or the
-environment's class, raised inside an entry's `plan`, `build` or stage methods (the licence gate's
+environment's class, raised inside an entry's `plan`, `build`, default rule or stage methods (the licence gate's
 `asset.licence-not-accepted` from `mime.assets.locate`, an asset not in the cache, a value refused) is reported as that
 refusal, with its own code, class and words, and the CLI's refusal exit; the entry is named in its message as where it was met
-(`while building <entry>`), never as the culprit. A MIME error with an internal refusal in it stays the entry's defect.
+(`while building <entry>`, `while planning <entry>`, or `while drawing the stage of <entry>`), never as the culprit. A MIME error
+with any internal refusal in it, a mixed one included, stays the entry's defect, with its own refusals shown as plain lines under
+the headline, not as an escaped `repr`.
 
 **chains**: each segment planned in chain order (its rung, its settings, what they make it), each
 after the first mounted on a frame of the one before it by an edge the build derives (`b.mount`), the world poses

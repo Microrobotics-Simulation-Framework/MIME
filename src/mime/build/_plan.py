@@ -47,6 +47,7 @@ from mime.build._refusals import (
     Refusal,
     RefusalClass,
     catalogue_problem,
+    described,
     entry_defect,
     passed_through,
 )
@@ -736,6 +737,8 @@ class _Planner:
         if passed is not None:
             self.refusals.extend(passed)
             return
+        if error is not None:
+            message = message.replace(repr(error), described(error))
         self.refusals.append(entry_defect(cls, message, where=raised_at(error) if error is not None else None))
 
     def run(self) -> PlanSet:

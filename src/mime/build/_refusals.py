@@ -319,6 +319,15 @@ def entry_defect(cls: type, problem: str, *, label: str | None = None, context: 
                    f"MIME: {MIME_DEFECT}", where=where, owner=package)
 
 
+def described(error: BaseException) -> str:
+    """``error`` as an entry's defect shows it: its ``repr``, except a MIME error, whose refusals (code, words, docs
+    link) are shown as the plain lines they are, indented under the headline, never as an escaped ``repr``."""
+    if isinstance(error, MimeError) and error.refusals:
+        lines = "\n".join(str(r) for r in error.refusals).replace("\n", "\n    ")
+        return f"{type(error).__name__}, whose refusals are:\n    {lines}"
+    return repr(error)
+
+
 def passed_through(error: BaseException, cls: type, doing: str, label: str | None = None) -> list[Refusal] | None:
     """The refusals of ``error`` as an entry ``cls`` met them, where they are not the entry's defect: ``error`` is a
     MIME error whose every refusal is of the user's class or the environment's (a licence not accepted, a file not
