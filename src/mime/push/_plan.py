@@ -47,7 +47,8 @@ from mime._said import (
 )
 from mime._shell import quoted
 from mime._terminal import plain
-from mime.assets import NO_ROUTE, AssetRef, folder_assets, locate, size_text
+from mime.assets import AssetRef, folder_assets, locate, size_text
+from mime.assets._cache import NO_ROUTE
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._client import Json
 from mime.push._fields import access_entry, access_words

@@ -24,7 +24,6 @@ by: its licence, and for a derived record the strictest of that and its inputs',
 
 from mime.assets._cache import (
     ASSETS_DIR_VARIABLE,
-    NO_ROUTE,
     OFFLINE_VARIABLE,
     Cached,
     cache_dir,
@@ -35,7 +34,6 @@ from mime.assets._cache import (
     named_file,
     named_path,
     offline,
-    request_words,
     size_text,
 )
 from mime.assets._acceptances import (
@@ -181,7 +179,6 @@ __all__ = [
     "Manifest",
     "ManifestFile",
     "NotFound",
-    "NO_ROUTE",
     "OFFLINE_VARIABLE",
     "Opened",
     "PlainAsker",
@@ -260,7 +257,6 @@ __all__ = [
     "revoke",
     "shared_manifests",
     "shipped_derivations",
-    "request_words",
     "size_text",
     "sources_text",
     "sources_view",

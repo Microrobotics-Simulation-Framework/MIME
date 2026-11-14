@@ -47,7 +47,8 @@ from pathlib import Path
 
 from mime._shell import quoted
 from mime._terminal import plain
-from mime.assets import NO_ROUTE, size_text
+from mime.assets import size_text
+from mime.assets._cache import NO_ROUTE
 from mime.build import BuildRefused, BuildReport
 from mime.saved._based_on import based_on_words
 from mime.saved._folder import named_files, nondeterministic_gpu, read_folder
