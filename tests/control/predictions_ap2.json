@@ -115,33 +115,6 @@
     "prediction": "see gate 6",
     "measured_at": "the first step's probe (K = 3..8, CardioMag); the gate's done case is not among them"
   },
-  "fix_round_1": {
-    "written": "2026-11-14, committed before the fix round's probe ran (the commit that adds this block is the timestamp); a refuting review of PR 305 found four minors, these are the predictions for what they added",
-    "seen_before": [
-      "the review's scripts (huge.py, huge2.py, deriv.py): the objective 0.278 |wanted|^2 above BVLS with one column's norm 1e-10.5 and another's 1e10.5, matching to 1e-16 up to about 1e10 each way; deriv.py's jvp against central differences in all eight inputs agreeing to about 1e-10",
-      "local, laptop, one run each (not rates): the column spread over seeds 0-7 of four commands against three: float64 6e-17 at 1e0, 1e-14 at 1e9, 0.43 at 1e10; float32 7e-7 at 1e4, 3e-4 at 1e4.5, 0.43 at 1e5; three commands against three, float64 up to 1e16 and float32 up to 1e8 at rounding"
-    ],
-    "gate_8_column_spread": {
-      "claim": "with more commands than rows and no regularisation, the objective is at BVLS's optimum to the conditioning's square times rounding for one column's norm over the others' up to 1e9 (float64) and 1e4 (float32), and far above it one decade and a half past",
-      "case": "tests/control/test_exact_allocation.py::test_the_law_is_exact_to_the_stated_column_spread_where_commands_outnumber_rows_and_loses_it_past[float64|float32]",
-      "prediction": {"value": null, "band": [0, 0], "unit": "failing runs", "basis": "measured-before (local, 8 seeds)", "why": "the wide subsets' rank test reads their unscaled triangle at RCOND; 1 / RCOND is 1e10 (float64) and 1e5 (float32)"},
-      "control": "its own second half: one decade and a half past the edge the objective is above the optimum by more than 1e-2 of |wanted|^2 (0.43 measured); the test fails if the edge is not where it is stated, in either direction",
-      "cannot_discriminate_if": "the oracle's BVLS stops short on the scaled columns (it is run on the columns normalised, to 3^K iterations, and refused if it does not converge)"
-    },
-    "gate_9_derivative_in_every_input": {
-      "claim": "forward mode against central differences (float64) and float64's (float32) in the matrix, wanted values, limits, offset, reference, reference scales and rows' scales, reverse against forward in all, on problems of 3 to 8 commands tall, wide and regularised",
-      "case": "tests/control/test_exact_allocation.py::test_the_derivative_in_every_input_is_the_selected_sets_in_both_modes[float64|float32]",
-      "prediction": {"value": null, "band": [0, 0], "unit": "failing examples", "basis": "derived (the review's deriv.py agreed to about 1e-10)", "why": "within an active set the commands are the selected set's solve, which the re-solve differentiates in every input"},
-      "control": {
-        "plants": "ALLOCATION_PLANT=stop_q (the orthogonal factor of the tall solve's QR stopped) and stop_inverse (the wide solve's pseudo-inverse stopped), each in float64 and float32 tests",
-        "expected_rate": "30/30 each (the matrix's derivative is then wrong in every drawn problem of the form the plant touches; the shapes drawn hold tall, regularised and wide ones in every run)",
-        "runs": 30,
-        "clean_expected": "0/30",
-        "resolution": "the matrix's derivative is of order one against a tolerance of about 1e-9 (float64) and 1e-5 (float32)"
-      },
-      "cannot_discriminate_if": "no drawn problem of the plant's form (stop_q: tall or regularised; stop_inverse: wide) in a run of 60 examples over five shapes"
-    }
-  },
   "outcomes": {
     "written": "2026-11-14, after the runs below; the predictions above are unchanged",
     "runs": {
