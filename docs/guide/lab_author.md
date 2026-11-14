@@ -100,15 +100,17 @@ A lab's files are asset records, the same as MIME's ([assets in depth](assets.md
 - **Records ship in the package.** A `mime.assets` entry point names a package whose data holds JSON files of records or
   manifests, which MIME finds beside its own. An experiment that pins one keeps it when the package moves on, and two
   packages that disagree on a name are refused until an experiment pins one.
-- **An entry declares the records it reads, whatever its kind.** `assets = ("<record name>",)` on a dynamics, field provider,
-  drive, controller, observation, geometry or interaction, by the record's name, and the build writes each into a saved
+- **An entry declares the records it reads.** `assets = ("<record name>",)` on a dynamics, field provider, drive,
+  controller, observation, interaction or geometry kind (a body's part solid, an apparatus part's solid and a structure's
+  geometry alike), by the record's name, and the build writes each into a saved
   experiment's lock once, by its bytes (the same as an interaction plan's `Plan.assets`, which is still read). Declare it,
   and `mime assets fetch <folder>`, a run on Modal, a bundle's NOTICE and the card all know the file; leave it out, and a
   run that reads the file has no lock that says so.
 - **Override `assets_read` when a setting chooses the file.** `assets` is the default of `assets_read(self)`. An entry
   that reads one of several records by a setting (a material that exists as an open file and a non-commercial one)
   returns only the one it reads, as set: declaring both would put the other's licence in the lock and the NOTICE of a run
-  that never reads it, and ask for its acceptance. `mime registry --json` shows the class variable, not what an override
+  that never reads it, and ask for its acceptance. A wall kind is never an instance in a build, so it declares none:
+  registration refuses it, and the table a wall's correction reads is named by the drag's `Plan.assets`. `mime registry --json` shows the class variable, not what an override
   returns; the lock is where to see what a run reads.
 - **Small bytes go inside the package**, named `package:<package>/<path>`; large ones are hosted (an https server, a DOI)
   and named by their address. Either way the hash is the only trust.

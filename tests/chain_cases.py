@@ -39,9 +39,9 @@ MAGNET_MOMENT, MAGNET_RADIUS, MAGNET_LENGTH = 18.89, 17.5e-3, 20e-3
 BODY_MASS, BODY_INERTIA, BODY_MOMENT = 8.5e-5, (1.0e-10, 1.2e-10, 0.8e-10), (0.0, 1.7e-3, 0.4e-3)
 
 
-def magnet_part(mount: str | None, at=None) -> Part:
-    return Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=(1.0, 0.0, 0.0)), mount=mount,
-                at=at)
+def magnet_part(mount: str | None, at=None, solid=None) -> Part:
+    return Part(solid if solid is not None else Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH),
+                                                         axis=(1.0, 0.0, 0.0)), mount=mount, at=at)
 
 
 def experiment(name: str) -> Experiment:

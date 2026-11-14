@@ -9,14 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Every entry kind declares the assets it reads** (lane P, P1). `Entry.assets`, a class variable on the base class
+- **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
-  geometry or interaction reads, as `Plan.assets` did only for an interaction's or an observation's plan; and
+  interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and
   `Entry.assets_read()`, which returns it by default, is what an entry overrides to name only the file its settings
   choose (a material that exists as an open file and a non-commercial one). A saved experiment's lock records what each
   entry in the build reads as set, with what its plan adds, each record once by its bytes, so `mime assets fetch`, a run
   on Modal, a bundle's NOTICE and its card name the files a run reads and no others; a lock that leaves one out is
-  refused on load (`load.assets`). A provider no law reads is not built, so it records nothing. No schema change, no
+  refused on load (`load.assets`). A provider no law reads is not built, so it records nothing, and a wall kind, never an instance in a build, is refused at registration if it declares any (name a wall's table in the drag's `Plan.assets`). No schema change, no
   entry in MIME declares any yet, and no existing lock gains or loses an asset. The lab fixture gains
   `labx.finished_gantry` (a dynamics reading one of two records by its `finish`), `labx.marked_rotating` (a field
   provider) and a second record, `labx_finish_nc.usda`; the entry page prints a declared `assets` under "Assets it reads
