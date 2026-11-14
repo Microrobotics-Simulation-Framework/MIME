@@ -215,8 +215,12 @@ coupling's order only). A coupling group's verdict at each run's end is the run'
 - **Phase 1** checks each command port against the command it carries: its restated unit and shape, its bounds, rest
   and slew in the command's dimension, its rate and latency whole numbers of base steps (`port.clock`), a reason
   wherever it gives a number (`port.declaration`), a command its apparatus takes (`port.command-unknown`), and no seam
-  (`port.seam`). A port is staged where anything of it is not ideal: a period above one step, a latency, declared
-  bounds or a slew. Where it declares no bounds its receiver's stated ones are its bounds (`Command.bounds`: a
+  (`port.seam`). Its response (`mime.responses`: `response.ideal`, `response.first_order_lag`, a registered entry kind)
+  shapes the command last; a receiver that computes a response itself takes it (`Segment.responds`, read by its law
+  through `BuildContext.responses`): a first-order lag on a kinematic arm's position commands is its node's servo, on
+  every position command it has with one time constant, or refused (`port.declaration`). A port is staged where
+  anything of it is not ideal: a period above one step, a latency, declared bounds, a slew, or a response its receiver
+  does not compute. Where it declares no bounds its receiver's stated ones are its bounds (`Command.bounds`: a
   kinematic arm's joint limits, where every joint of the command has them), applied before its slew wherever the port
   is staged for something else, and staging nothing by themselves; its rest defaults to its receiver's (`Command.rest`:
   the arm's initial positions), else zero. A staged command's drive, or the controller's write (an edge, or a callback's
@@ -250,6 +254,19 @@ coupling's order only). A coupling group's verdict at each run's end is the run'
   does, and a derivative's path through a stage takes its status from what its ports declare (`StagePlan.status`).
 - **The ledger** looks through a command stage: a command a metered receiver pairs is booked under the stage's writer
   (a drive's id, the controller's), as without the port. The stage carries a signal, outside the ledger.
-- **Saving** an experiment with a declared port is refused (`save.unsavable`) until the saved form holds ports.
+- **Recording.** A stage's traffic is its outputs, laid out as a pseudo-observation named for its node: a command
+  port's written and delivered values and its bound's flag (`ports:coils.written_currents`, `ports:coils.currents`), a
+  measurement port's value and its age (`measure:coils.tracker_age`). `run(record=[...])` takes them as any per-step
+  output, nothing by default; a port's samples change only at its period, so `every=` its period keeps each once. The
+  value of a port on a composite (a pose) is not laid out, its parts having no one unit, and a port's camera image is
+  refused as the camera's own image is (`camera.recorded-frames`, naming the re-render).
+- **The loop's chain.** For a controller reading a measurement port and writing through a command port, the report's
+  controller block gives the base steps from the state at a time to the start of the first step whose command was made
+  from it: the measurement's latency, the controller's and the command's, and up to each sample's period less one.
+- **Saving.** Saved form 15 holds ports: the document's `things.<apparatus>.ports` (each field as given; a response by
+  its entry's name, version and settings) and the resolved record's `ports` (each command port as resolved: its
+  receiver, period, latency, bound, whether staged, its response and whether its receiver computes it). A form-14
+  arm's `servo` is read as a first-order lag on its position commands' ports, the program unchanged. The controller's
+  `believed` slot is held by the form and read by no MIME yet: a document holding it is refused by name.
 
 Releases are explained in the [package manifest](../README.md#status).
