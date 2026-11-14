@@ -92,7 +92,8 @@
       "largest_error_over_tolerance": "over the 30 clean drawn points the resolution arms measured (reset arm, both dtypes): T2 0.42 (float64) and 0.39 (float32), T1 0.018, H2 0.019, T3 0.001, H1 0.0; float32 T2 judged by T3 instead on one draw of 30 (v0x), as predicted (at most one parameter in ten)",
       "controls": "edge-stop 30/30, held-stop 30/30, structure-stop 30/30 over the four arms; clean 0/32; no inconclusive run",
       "resolution": "every draw caught down to a share of the plant's path of 8.4e-9 (edge), 3.2e-8 (structure) and under 1e-10, the scan's floor (held), over 10 draws each (seeds 2000, 2100, 2200, reset arm); the probe's scan (1e-4 to 1) caught every size, and the same measurements were scanned again from 1e-10 on the laptop (plant_range.py's oracle reads them; nothing rerun). The float64 central differences bound a derivative to 1e-9 to 2e-7 of it and H1 holds a held step to rounding, which is why: far finer than predicted (0.05 to 0.3)",
-      "within_prediction": "the band [0, 0.5]: yes"
+      "within_prediction": "the band [0, 0.5]: yes",
+      "fixed_point_per_arm": "on the laptop (supporting; the runners' arms passed): the largest error over its tolerance T2 0.17 to 0.42 (float64) and 0.29 to 0.32 (float32), T1 at most 0.008, H2 at most 0.012, T3 0.001, H1 0.0, in every arm; float32 central differences cannot discriminate v0x at the fixed point in the continued, overridden and chunked arms (judged by T3 there), against the prediction of nowhere at the fixed point"
     },
     "gate_4_costs": {
       "runs": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43556977579",
