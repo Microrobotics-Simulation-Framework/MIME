@@ -115,7 +115,7 @@ def planted(kind):
 
 
 @pytest.mark.parametrize("name", sorted(KINDS))
-@settings(max_examples=10, deadline=None)
+@settings(max_examples=30, deadline=None)
 @given(seed=st.integers(0, 2 ** 31 - 1))
 def test_each_kinds_sign_function_has_its_regions_sign_and_its_gradients_length(name, seed):
     kind = KINDS[name]
