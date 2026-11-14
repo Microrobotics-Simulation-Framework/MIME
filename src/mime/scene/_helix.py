@@ -53,15 +53,17 @@ TRACED_TURNS = 64
 #: than the filament's radius, and inside it the start lies on the turn whose point is nearest (the turns are apart by
 #: more than two radii, as the kind refuses otherwise), where the steps converge.
 SIGN_NEWTON_STEPS = 3
-#: The switch of the sign function's nearest angle clamped to the centreline's arc: past an end the nearest point is
-#: the end's, about which the cap is a hemisphere, so the distance is continuously differentiable across it.
-HELIX_END = Declaration(
-    owner="helix.end",
-    indicator="how far the nearest centreline angle of a point lies past the arc's end (the lower end below zero, the "
-              "upper beyond the sweep), in radians, positive past it",
+#: The switches of the sign function's nearest angle clamped to the centreline's arc, at its lower end (zero) and its
+#: upper (the sweep): past an end the nearest point is the end's, about which the cap is a hemisphere, so the distance is
+#: continuously differentiable across it.
+HELIX_END = tuple(Declaration(
+    owner=f"helix.end.{end}",
+    indicator=f"the distance inside the arc from its {side} end of a point's nearest angle on the helix carried past "
+              f"its ends, in radians, positive inside",
     orders={"sign_function": 1},
     route="none needed: a hemispherical cap meets the filament's tube tangentially, so the distance from the arc is "
-          "continuously differentiable across the plane through an end")
+          "continuously differentiable across the plane through an end") for end, side in (("low", "lower"),
+                                                                                           ("high", "upper")))
 
 
 def _gauss_legendre(count: int) -> tuple[np.ndarray, np.ndarray]:
@@ -213,7 +215,7 @@ class Helix(Solid):
     version = "0.1.0"
     setting_roles = dict.fromkeys(("radius", "pitch", "turns", "filament_radius"), PHYSICAL)
     differentiability = GradientStatus.EXACT
-    gradient = GradientRecord(switches=(HELIX_END,))
+    gradient = GradientRecord(switches=HELIX_END)
     references = ("Bishop1975",)
     builds = {"": ()}
     regions = ("solid",)
@@ -421,7 +423,7 @@ class Helix(Solid):
         held = jax.lax.stop_gradient((at, turn.radius, turn.b, turn.sweep))
         theta = _nearest_angle(*held)
         theta = switch.clip(theta, 0.0, turn.sweep, owner="helix.end", resolution=lambda: switch.rounding(turn.sweep),
-                            indicator=lambda: jnp.maximum(-theta, theta - turn.sweep))
+                            indicator=theta)
         value = signs.length(at[0] - turn.b * (theta - 0.5 * turn.sweep), at[1] - turn.radius * jnp.cos(theta),
                              at[2] - turn.radius * jnp.sin(theta), scale=turn.filament) - turn.filament
         return SignValue(value, jnp.ones_like(value))

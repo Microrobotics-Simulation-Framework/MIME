@@ -25,9 +25,11 @@ import numpy as np
 import mime.sensing._coverage as coverage
 import mime.sensing._forms as forms
 import mime.sensing._render as render_module
+import mime.sensing._sampled as sampled_route
 from mime.core import switch
 from mime.sensing import Appearance, CameraPose, Pinhole, Subject
 from mime.testing import SwitchRow
+from mime.units import um
 
 #: A normal's components, with ``a^2 + b^2 = 1``: the pixel square's corner reach is ``(a + b) / 2`` and its flat ``(a - b) / 2``.
 A, B = 0.8, 0.6
@@ -293,9 +295,91 @@ def guard_points() -> dict:
                                                                   lambda: jax.jacfwd(degenerate)(at))}
 
 
+# -- route 2, the sampled march -------------------------------------------------------------------------------------
+
+#: The helix the kinds' rows evaluate.
+COIL = {"radius": 0.4e-3, "pitch": 0.6e-3, "turns": 2.5, "filament_radius": 0.08e-3}
+
+
+class _Profile:
+    """A stand-in kind for the march's rows: along the ray ``y`` (from -1 to 1 across the enclosing ball of radius one,
+    looked at from far along +y), its first-order distance is a gentle slope with narrow dips centred on chosen
+    samples, so that each owner's indicator is placed exactly: ``dips`` maps a sample's index to how far below the
+    slope its dip reaches."""
+
+    SAMPLES, SLOPE, WIDTH = 41, 1e-2, 0.2
+
+    def __init__(self, dips: dict[int, float], slope: float = SLOPE):
+        self.dips, self.slope = dips, slope
+
+    def at(self, k: float) -> float:
+        return -1.0 + 2.0 * k / (self.SAMPLES - 1)
+
+    def sign_function(self, parameters, region, point):
+        from mime.registry import SignValue
+
+        y = point[1]
+        k = (y + 1.0) * (self.SAMPLES - 1) / 2.0
+        value = 1.0 + self.slope * k
+        for index, depth in self.dips.items():
+            value = value - depth * jnp.exp(-(((k - index) / self.WIDTH) ** 2))
+        return SignValue(value, jnp.ones_like(value))
+
+
+def _profile_marched(dips: dict[int, float], slope: float = _Profile.SLOPE):
+    """What the pixel reads of the march along the stand-in's ray: its two pieces' values."""
+    stand_in = _Profile(dips, slope)
+    sampled = sampled_route.Sampled(stand_in, "solid", 1.0, 1.0, _Profile.SAMPLES)  # type: ignore[arg-type]
+    o = (jnp.asarray(0.0), jnp.asarray(-1e3), jnp.asarray(0.0))
+    d = (jnp.asarray([0.0]), jnp.asarray([1.0]), jnp.asarray([0.0]))
+    held = sampled_route.march(sampled, {}, o, d, (jnp.asarray([0.0]),) * 3)
+    first, second = sampled_route.pieces(sampled, held)({}, o, d)
+    return shared(jnp.concatenate([first, second]))
+
+
+def sampled_rows(declared) -> list[SwitchRow]:
+    """The march's owners on the stand-in's profile, each indicator placed by a dip's depth: ``least`` two dips
+    the offset apart; ``basin`` a second dip the offset below the lower of its neighbours (a slope keeps every other
+    sample's margin at the slope's step; falling, so that every sample a basin, its branch forced, puts the second
+    piece at the far end, and none at the near); ``second`` three dips, the second and the third the offset apart;
+    ``branch`` the second dip of ``basin``, whose margin is the indicator."""
+    deep, step = 1.5, _Profile.SLOPE
+    return [
+        SwitchRow(declared["camera.sampled.least"], lambda o: _profile_marched({10: deep, 20: deep - o + 10 * step}),
+                  1e-3),
+        SwitchRow(declared["camera.sampled.basin"], lambda o: _profile_marched({10: deep, 20: step + o}, -step), 1e-3),
+        SwitchRow(declared["camera.sampled.second"],
+                  lambda o: _profile_marched({10: deep, 20: 0.5, 30: 0.5 + 10 * step - o}), 1e-3),
+        SwitchRow(declared["camera.sampled.branch"], lambda o: _profile_marched({10: deep, 20: step + o}), 1e-3),
+    ]
+
+
+def sign_rows(declared) -> list[SwitchRow]:
+    """The kinds' sign functions' own switches: ``helix.end.low`` and ``.high``, a point whose nearest angle on the
+    helix lies the offset inside the arc from an end (half the filament's radius from that angle's point, towards the
+    axis), its value."""
+    from mime.scene import Helix
+    from mime.scene._helix import HelixTurn
+
+    kind = Helix(radius=um(400.0), pitch=um(600.0), turns=2.5, filament_radius=um(80.0))
+    parameters = {name: jnp.asarray(value) for name, value in COIL.items()}
+    turn = HelixTurn({name: float(value) for name, value in COIL.items()})
+    centroid = np.asarray(turn.centroid(), dtype=np.float64)
+
+    def value(o, end):
+        theta = o if end == "low" else float(turn.sweep) - o
+        centre = np.array([float(turn.b) * (theta - 0.5 * float(turn.sweep)), float(turn.radius) * math.cos(theta),
+                           float(turn.radius) * math.sin(theta)])
+        point = centre + 0.5 * COIL["filament_radius"] * np.array([0.0, -math.cos(theta), -math.sin(theta)]) - centroid
+        found = kind.sign_function(parameters, "solid", tuple(jnp.asarray([c]) for c in point))
+        return {"sign_function": found.value}
+
+    return [SwitchRow(declared[f"helix.end.{end}"], lambda o, end=end: value(o, end), 1e-3) for end in ("low", "high")]
+
+
 def camera_rows(declared) -> list[SwitchRow]:
     return [*edge_rows(declared), *pieces_rows(declared), corner_row(declared), *disc_rows(declared),
-            *form_rows(declared)]
+            *form_rows(declared), *sampled_rows(declared)]
 
 
 __all__ = ["camera_rows"]

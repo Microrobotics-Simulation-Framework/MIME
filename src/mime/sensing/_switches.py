@@ -250,7 +250,7 @@ FORM_SWITCHES = (
 )
 
 #: Route 2, the sampled march (``mime.sensing._sampled``): which sample of a ray is its least, which its second
-#: least local minimum, whether a second branch is a piece, and a sign change's share of the chord.
+#: least local minimum, and whether a second branch is a piece.
 SAMPLED_SWITCHES = (
     switch.Declaration(
         owner="camera.sampled.least",
@@ -261,27 +261,28 @@ SAMPLED_SWITCHES = (
               "the least moves to the next sample the held point moves by the parabola's error, and the first-order "
               "distance read there by the second order of that (camera truth 1: within 1 % in motion at 32 samples)"),
     switch.Declaration(
+        owner="camera.sampled.basin",
+        indicator="how far a sample of a ray's first-order distance lies below the lower of its neighbours, in metres "
+                  "(positive at a local minimum among the samples)",
+        orders={"expected": -1},
+        route="none: the second branch is the least of the samples that are local minima; where one sample takes "
+              "over from its neighbour as a minimum's least, its held point moves by the parabola's error, as "
+              "camera.sampled.least's does"),
+    switch.Declaration(
         owner="camera.sampled.second",
-        indicator="how far the second least sampled local minimum lies below the next least after it, in metres "
+        indicator="how far the least of a ray's other local minima lies below the next least of them, in metres "
                   "(zero where two tie)",
         orders={"expected": -1},
-        route="none: as camera.sampled.least, for the second branch's held point"),
+        route="none: where two of the other minima tie, the second branch passes from one to the other, each a part of "
+              "the outline: a jump in the second piece, which a pixel reads only within the corner reach"),
     switch.Declaration(
         owner="camera.sampled.branch",
-        indicator="how far the second branch's held point lies from the first's along the ray, in metres (zero where "
-                  "the ray has no second minimum, its piece then the first's moved out by the enclosing radius)",
-        orders={"expected": 0},
-        route="none: a second minimum appears where the first-order distance's slope along the ray turns, its value "
-              "above the first's; it enters the pixel's union only within the corner reach, where the two minima are "
-              "apart, so a pixel's share changes continuously as it appears"),
-    switch.Declaration(
-        owner="camera.sampled.crossing",
-        indicator="a sample's first-order distance at the end of a spacing between samples, in metres (negative where "
-                  "the sample lies inside the body)",
-        orders={"expected": 0},
-        route="none: the chord sums each spacing's share inside, a whole spacing where both ends lie inside, a linear "
-              "interpolation's share where the sign changes, none where neither lies inside; the shares meet where a "
-              "sample crosses the surface, with a different slope"),
+        indicator="how far the most marked of a ray's other samples lies below the lower of its neighbours, in metres "
+                  "(positive where the ray has a second local minimum, its held point then the second piece)",
+        orders={"expected": -1},
+        route="none: without a second minimum the second piece is the first moved out by the enclosing radius, which "
+              "no pixel reads; with one it is the first-order distance at the minimum's held point, which a pixel reads "
+              "within the corner reach: where a minimum forms there, the pixel's share jumps"),
 )
 
 SWITCHES = (*EDGE_SWITCHES, *PIECES_SWITCHES, *CORNER_SWITCHES, *DISC_SWITCHES, *FORM_SWITCHES, *SAMPLED_SWITCHES)

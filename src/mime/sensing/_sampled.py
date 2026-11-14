@@ -109,13 +109,17 @@ def evaluate(sampled: Sampled, p: Mapping[str, Any], x: Any, y: Any, z: Any) -> 
 
 class March(NamedTuple):
     """The march's held result on each ray: the least sample's refined point and the least other local minimum's,
-    whether there is another, the samples' points and spacing, and the held interval the flags read."""
+    whether there is another, the samples' points and spacing, which spacings lie inside the body, which it is entered
+    or left in (each a held mask, one or zero), and the held interval the flags read."""
 
     ta: Any
     tb: Any
     has2: Any
     t: Any
     dt: Any
+    inside: Any
+    entering: Any
+    leaving: Any
     interval: tuple[Any, Any]
 
 
@@ -175,29 +179,25 @@ def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> Ma
     tb = refined(second)
     entering = (v[..., :-1] >= 0.0) & (v[..., 1:] < 0.0)
     leaving = (v[..., :-1] < 0.0) & (v[..., 1:] >= 0.0)
+    inside = (v[..., :-1] < 0.0) & (v[..., 1:] < 0.0)
     across = t[..., :-1] + dt[..., None] * v[..., :-1] / jnp.where(entering | leaving, v[..., :-1] - v[..., 1:], 1.0)
     interval = (jnp.min(jnp.where(entering, across, forms.FAR), axis=-1),
                 jnp.max(jnp.where(leaving, across, -forms.FAR), axis=-1))
-    return March(ta, tb, has2, t, dt, interval)
+    return March(ta, tb, has2, t, dt, inside.astype(v.dtype), entering.astype(v.dtype), leaving.astype(v.dtype),
+                 interval)
 
 
 def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -> Any:
-    """The length of each ray inside the body: each spacing between neighbouring samples inside, and a sign change's
-    share by linear interpolation of the live values at the held samples."""
+    """The length of each ray inside the body: each spacing between neighbouring samples that the march found inside,
+    and where it found the body entered or left, the share inside by linear interpolation of the live values at the
+    held samples. The masks are held: a sample crossing the surface moves the crossing from one spacing to its
+    neighbour, where the interpolation puts it at the same place, so the chord is continuous across it."""
     v = evaluate(sampled, p, *(o[i] + held.t * d[i][..., None] for i in range(3)))
     a, b = v[..., :-1], v[..., 1:]
-
-    def crossing(inside: Any, outside: Any) -> Any:
-        """The share of a spacing inside where ``inside`` is below zero and ``outside`` not."""
-        changes = (inside < 0.0) & (outside >= 0.0)
-        return inside / switch.domain_guard(changes, inside - outside, -1.0)
-
-    def where(condition: Any, x: Any, y: Any, indicator: Any) -> Any:
-        return switch.where(condition, x, y, owner="camera.sampled.crossing",
-                            resolution=lambda: switch.rounding(jnp.abs(a) + jnp.abs(b)), indicator=lambda: indicator)
-
-    share = where(a < 0.0, where(b < 0.0, 1.0, crossing(a, b), -b), where(b < 0.0, crossing(b, a), 0.0, -b), -a)
-    return jnp.sum(share, axis=-1) * held.dt
+    changes = (held.entering + held.leaving) > 0.0
+    share = a / switch.domain_guard(changes, a - b, 1.0)
+    within = held.inside + held.leaving * share + held.entering * (1.0 - share)
+    return jnp.sum(within, axis=-1) * held.dt
 
 
 def pieces(sampled: Sampled, held: March) -> Any:
