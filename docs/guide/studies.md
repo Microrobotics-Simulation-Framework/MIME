@@ -259,5 +259,5 @@ path of this machine, a token). Unpacking checks the same records again on the f
 by hand and re-hashed is refused. `mime verify` is an acceptance: the files are the run's and the experiments reproduce;
 it does not run the study again (`mime study run <folder>/study.mime.yaml --out <a new folder>` does) and bounds nothing
 about physics. `mime push ./paper/ --to zenodo-sandbox` makes one record of every `.mimestudy` and a `NOTICE.txt`;
-rehearse on the sandbox before production. The container and its checks: [the study
-container](../../src/mime/saved/README.md#the-study-container).
+rehearse on the sandbox before production. The container and its checks are in the saved
+README's "The study container" (`src/mime/saved/README.md`).
