@@ -115,5 +115,73 @@
     "prediction": "see gate 6",
     "measured_at": "the first step's probe (K = 3..8, CardioMag); the gate's done case is not among them"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-14, after the runs below; the predictions above are unchanged",
+    "runs": {
+      "gates": "43576671085 (probe/ap2-gates at 724cada4 = dd93afbb + probe/; src/ equals the PR head's)",
+      "scan_and_walk": "43577102080 (probe/ap2-scan at 1ade1a53 = 4dcd19f1 + probe/)",
+      "rates_final": "43585905757 (probe/ap2-rates at 7a69b780 = 169cf277 + probe/, the final test code)"
+    },
+    "gate_1_swap": {
+      "hit": true,
+      "first_run": "43576671085: limits 30/30 but clean 2/30 (seeds 8 and 10): seed 8 float32 OctoMag force, the law took another face within its declared tie window (its residual 2.4e-4 over BVLS's against a line of 1.1e-4; CLAUDE.md cause 5); seed 10 float32 OctoMag gradient, the effort line on the whole matrix's condition 1.9 where the free columns' is 12.8 (cause 2). Fixed in 169cf277; the oracle's BVLS also capped at 3^K iterations (SciPy's default cap of K stopped it short).",
+      "final": "43585905757: limits 60/60 caught (lower bound 0.951), clean 0/60, seeds 0-59",
+      "local_stress": "12000 NumPy draws (2000 an array and dtype): 0 failing, at most 0.54 of any line"
+    },
+    "gate_2_derivative": {
+      "hit": true,
+      "first_run": "43576671085 (after the directions fix 1d18809a): free_tangent 30/30, stop_branch 30/30, clean 0/30 each",
+      "final": "43585905757: free_tangent 30/30, stop_branch 30/30 (lower bound 0.905 each), clean 0/30 each",
+      "clean_float32_failure": "before the run: a cotangent component drawn at float32's least normal, reverse-mode products flushed to zero by XLA's CPU (cause 1); directions now 0.1 to 1 of either sign"
+    },
+    "gate_3_guards": {
+      "hit": true,
+      "value": 3,
+      "control": "single_where 30/30 (lower bound 0.905), clean 0/30 (43576671085)"
+    },
+    "gate_4_float32_per_array": {
+      "hit": true,
+      "navion_2": 4.164e-06,
+      "cardiomag": 7.491e-06,
+      "octomag": 4.7785e-05,
+      "octomag_unique": 2.1435e-05,
+      "past_1e-4": 0,
+      "swap_failures_float32": 0,
+      "guard": "none of the law's own: every draw within the coil array's float32 guard; OctoMag stays refused in float32 by its provider",
+      "note": "in float32 two faces within the tie window can go to the one of less effort (the swap test's seed 8: currents 3.2 A apart on a 5 A limit, residual 1.7e-5 higher)"
+    },
+    "gate_5_allocate_moves": {
+      "hit": "partly: within the line as predicted; past it only stop-shorts as predicted, but by BVLS's iteration cap on eight coils asked for a field and a gradient, not by its tolerance on small fields (the release's allocate() met a 0.1 uT field to 5e-23 T)",
+      "largest_movement_within_line_A": 1.68e-12,
+      "largest_share_of_line": 0.499,
+      "past_line": "8 of 2000 field+gradient requests on CardioMag (3, up to 13.8 A) and OctoMag (5, up to 19.3 A), each BVLS status 0 above the converged optimum the head reaches",
+      "not_unique": "movement at most 1.5e-12 A; effort equal to 4e-15"
+    },
+    "gate_6_step_share": {
+      "hit": "within every band but CardioMag float32 on EPYC 9V45 (647 us, under 700)",
+      "navion_2_K3": "17-30 us of a 61-138 us step: 0.20-0.29 (EPYC 9V45 and 7763, both dtypes)",
+      "cardiomag_K8": "650-1250 us of a 690-1360 us step: 0.91-0.94",
+      "loaded_flag": "node_measure's flag on every arm: the runner's 1-minute load (0.5-1.1, the probe's own runs; 15-minute 0.1) over the one pinned CPU"
+    },
+    "gate_7_scan": {
+      "hit": "configurations missed: 65 -> 67, not 66 (a second test-only configuration reaches allocation_least_norm); time within the band",
+      "seconds": {
+        "base": [
+          329.6,
+          329.1
+        ],
+        "head": [
+          331.0,
+          330.4
+        ]
+      },
+      "walk": "160 passed at the head; at dd93afbb (one configuration) the agreement and the least-norm size-bound control failed"
+    },
+    "bits": {
+      "hit": true,
+      "programs": "script_a, tracked_rpm, a0_graph, coil_array, gantry_magnet, sphere_settling; float64 and float32: all arrays equal",
+      "repeat": "equal",
+      "one_ulp": "differs (1/20, 2/13, 8/21 arrays equal)"
+    }
+  }
 }
