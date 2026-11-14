@@ -197,14 +197,15 @@ def _verified_studies(folder: Path) -> int:
 
 def _verified_block(folder: Path) -> int:
     """``mime verify`` of a block folder or its ``.mimeblock`` (unpacked, checked, into a folder of its own that is then
-    removed): a line per case, MIME's closing words and the author's; 0 when every case reproduces, 1 when one did not,
-    2 when the block cannot be checked (nothing ran)."""
+    removed): the block's own licence gated first (it runs the cases on the block's data), then a line per case, MIME's
+    closing words and the author's; 0 when every case reproduces, 1 when one did not, 2 when the block cannot be checked
+    (nothing ran, and a licence not accepted is such a case)."""
     import tempfile
 
     from mime.blocks._card import verify_block
     from mime.blocks._container import unpack_block
 
-    with tempfile.TemporaryDirectory() as scratch:
+    with tempfile.TemporaryDirectory() as scratch, _gate_questions():
         root = folder if folder.is_dir() else unpack_block(folder, Path(scratch) / "block").folder
         checked = verify_block(root)
         for line in checked.lines():
@@ -329,7 +330,10 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
 
 
 def _show_block(folder: Path, as_json: bool) -> int:
-    """``mime show`` of a block folder: what the block is and needs, offline (:mod:`mime.blocks._show`)."""
+    """``mime show`` of a block folder or its ``.mimeblock``: what the block is and needs, offline
+    (:mod:`mime.blocks._show`). **Not gated**, as ``verify`` and ``use`` are: it shows the licence and its conditions
+    a person needs in order to decide whether to accept them, and it expands nothing (it reads the definition and names
+    what the fragment adds, binds no socket, builds nothing and runs no case)."""
     import tempfile
 
     from mime.blocks._container import unpack_block

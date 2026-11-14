@@ -1,7 +1,8 @@
 """``pull``: get a bundle, or a record's studies, by DOI, URL or file, unpack it into a new folder, and say what is still
 needed.
 
-A record holds one kind of container: one bundle, or one or more studies (``.mimestudy``). One study unpacks into
+A record holds one kind of container: one bundle, or one or more studies (``.mimestudy``), or one block
+(``.mimeblock``, unpacked after the block's own licence is gated). One study unpacks into
 ``./<its name>/`` (or ``--into``); several need ``--into``, refused before anything is downloaded, and each is unpacked
 into a folder of its own below it. Their assets are gated once, over every study's locks.
 
@@ -565,10 +566,13 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
 def _pull_block(fetched: Fetched, doi: str | None, into: str | os.PathLike[str] | None, *, fetch_assets: bool,
                 yes: bool, confirm: Callable[[str], bool] | None, say: Callable[[str], None] | None,
                 accept_licences: Collection[str], force: bool) -> Path:
-    """``pull`` of a block's container: its licence gated where it has conditions (once, before it is unpacked), then
-    unpacked into ``into`` (by default ``./<id>-<version>/``) and kept in the asset cache by its sha256; its assets (the
-    block's and its cases' locks') fetched, gated once over all of them; each case's referenced files placed; and what
-    its ``[requires]`` needs that is not installed listed with the line that installs it. Installs nothing."""
+    """``pull`` of a block's container: unpacked and checked in a scratch folder first (the block's own licence is inside
+    the container, so it can only be read from there), its licence gated where it has conditions (once), and **only
+    after the gate does anything leave scratch**: the folder is then moved to ``into`` (by default ``./<id>-<version>/``,
+    or the empty folder ``into`` names, its contents going into it) and the container kept in the asset cache by its
+    sha256; its assets (the block's and its cases' locks') fetched, gated once over all of them; each case's referenced
+    files placed; and what its ``[requires]`` needs that is not installed listed with the line that installs it.
+    Installs nothing."""
     from mime.blocks._container import container_record, stored, unpack_block
     from mime.blocks._definition import definition_of
     from mime.blocks._use import requirement_rows, requires_install_line
@@ -585,6 +589,8 @@ def _pull_block(fetched: Fetched, doi: str | None, into: str | os.PathLike[str] 
         refused = destination_problem(destination)
         if refused is not None:
             raise refused
+        if destination.is_dir():  # an empty folder the caller made: the block's files go into it, not into a folder in it
+            destination.rmdir()
         shutil.move(str(held.folder), str(destination))
     stored(record, container)
     cases = sorted(each for each in (destination / "cases").iterdir() if each.is_dir()) \

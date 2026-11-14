@@ -54,25 +54,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     The document records the use and what was declared over it, never the block's own declarations. The lock's `assets`
     records the block's container (`<id>-<version>.mimeblock`, with `doi:<DOI>/<file>` where it was used by DOI, and no
     location where it was used from a folder, which the save packs into the asset cache).
-  - **Its load:** the container is read first, from the block that holds the saved folder as one of its cases (matched by
-    content hash), else through the asset gate by the lock's record. A container whose content is not the document's
-    is refused (`block.changed`). The NOTICE and the card say what the tier cannot hide: the lock and the reference
+  - **Its load:** one function finds the container, by either route: the block that holds the saved folder as one of its
+    cases (matched by content hash), else the lock's record. A container whose content is not the document's, or whose
+    own licence is not the one the lock records (a lock edited to say another), is refused (`block.changed`). **The gate
+    then runs on the block's own licence**, read from the container once its content hash is verified (never the lock's
+    word), before anything is read from it: a licence with conditions is asked about once, or refused where nobody can be
+    asked (`asset.licence-not-accepted`). The NOTICE and the card say what the tier cannot hide: the lock and the reference
     outputs hold values the block's fragment sets. A referenced block whose fragment names a description of its own is
     refused (`block.fragment`), since a save would write it into its user's folder.
   - **`mime pack <block folder>`** writes `mime.block/1`. It holds the definition written canonically (no `[record]`),
     the fragment, records, descriptions, open and conditional asset files the block's `[[assets]]` names, and each case,
     judged as a bundle's saved folder. It refuses a block with no case (`block.no-case`) or with a stale one
     (`block.case-stale`). Unpacking checks every member and recomputes the content hash (`block.changed`).
-  - **`mime pull`** takes a block's file or its record's DOI, into `./<id>-<version>/`. The container is kept in the
-    asset cache and its licence is gated. The cases' assets are fetched, and what `[requires]` needs is listed with its
+  - **`mime pull`** takes a block's file, its record's DOI or its record's number on a service (`--from`), into
+    `./<id>-<version>/`, or into an empty folder `--into` names, its files going into the folder itself. The container is
+    unpacked in scratch, its licence gated, and only then does anything leave scratch; it is kept in the asset cache. The cases' assets are fetched, and what `[requires]` needs is listed with its
     install line. Nothing is installed.
   - **`exp.use`** takes a `.mimeblock` or a DOI (`accept_licences=`, `yes=`, `force=` as `Experiment.based_on` takes
     them). The asset files a block carries are taken into the cache by their sha256.
-  - **`mime verify <block folder or .mimeblock>`** refuses a requirement not met before any case runs (exit 2), and a
-    stale case. It reruns each case: an acceptance, with MIME's words and then the author's.
-  - **`mime card` and `mime show`** take a block folder, and `mime show` a `.mimeblock`.
-  - **`mime push <block folder>`** makes one record of the `.mimeblock` and its `NOTICE.txt`, keywords `mime-block` and
-    `mime-block:<id>`. The sandbox lane gains `--demo block`, run as a dry run only.
+  - **`mime verify <block folder or .mimeblock>`** gates the block's own licence first (it runs the cases on the block's
+    data), refuses a requirement not met before any case runs (exit 2), and a stale case. It reruns each case: an
+    acceptance, with MIME's words and then the author's.
+  - **`mime card` and `mime show`** take a block folder, and `mime show` a `.mimeblock`. `mime show` is not gated: it says
+    the licence and its conditions, which a person needs in order to decide, and expands nothing.
+  - **`mime push <block folder>`** is real, as for a bundle (it has no `--dry-run`): one record of the `.mimeblock` and its
+    `NOTICE.txt`, keywords `mime-block` and `mime-block:<id>`; a record of a block pulls back by its number. Its test
+    drives draft, upload, publish and pull against the offline fake of the records API, never Zenodo. The sandbox lane
+    (`scripts/zenodo_sandbox_lane.py`) gains `--demo block`, which is the lane's own `--dry-run` where one is wanted.
+  - **A container's manifest** is checked for the paths it lists among the cases' files that travel as references, as
+    its members' names are (`bundle.unsafe`): nothing reads them to write a file, but a path of `..` parts is not a
+    manifest `mime pack` wrote.
   - **One refusal code:** `block.changed`.
 
 - **The camera reads the composed stage: scenery and inherited display primvars** (`mime.scene.Composition.scenery`,

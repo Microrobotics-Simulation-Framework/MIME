@@ -52,6 +52,7 @@ from mime.saved._container import (
     container_hash,
     destination_problem,
     files_of,
+    member_problem,
     member_kind_problems,
     members_listed,
     notice_of,
@@ -298,6 +299,24 @@ def changed_refusal(where: str, recorded: str, found: str) -> Refusal:
                                  "experiment was saved with")
 
 
+def reference_problems(manifest: BlockManifest) -> list[Refusal]:
+    """``bundle.unsafe`` for each path the manifest lists among the cases' files that travel as references that is not
+    a name a member may have, or is not a file of a case laid out as a case is, or is also a carried file. Nothing reads
+    the field to write a file, but a manifest that names ``cases/x/../../../evil`` is not one ``mime pack`` wrote."""
+    problems: list[Refusal] = []
+    for name in sorted(manifest["referenced"]):
+        problem = (member_problem(name) or (None if case_of(name) is not None else "is not a file of a case")
+                   or block_layout_problem(name) or ("is also a file the container carries"
+                                                    if name in manifest["files"] else None))
+        if problem is not None:
+            problems.append(refuse(
+                "bundle.unsafe", RefusalClass.USER,
+                f"the manifest lists {plain(name)!r} among the files that travel as references, and it {problem}",
+                "this is not a block container `mime pack` wrote; do not unpack it: ask its sender to pack the block "
+                "again with `mime pack <folder>`"))
+    return problems
+
+
 def unpack_block(container: str | os.PathLike[str], into: str | os.PathLike[str]) -> UnpackedBlock:
     """Check the block container and write its folder to ``into`` (new, or an empty folder): every member as a bundle's
     is checked, written by this code's own opens into a hidden folder beside ``into``; then the folder's content hash,
@@ -318,6 +337,9 @@ def unpack_block(container: str | os.PathLike[str], into: str | os.PathLike[str]
             if problems:
                 raise BuildRefused(problems)
             manifest = cast(BlockManifest, read_manifest(archive, BLOCK, lambda held: BlockManifest))
+            problems = reference_problems(manifest)
+            if problems:
+                raise BuildRefused(problems)
             unlisted = members_listed(archive, manifest["files"], BLOCK)
             if unlisted is not None:
                 raise unlisted
@@ -400,4 +422,4 @@ def container_record(definition: Definition, container: Path, locations: Sequenc
 
 __all__ = ["BLOCK", "BLOCK_CONTAINER", "BLOCK_PREFIX", "BLOCK_SUFFIX", "BlockManifest", "UnpackedBlock",
            "block_layout_problem", "block_notice", "cached_folder", "case_of", "changed_refusal", "container_record",
-           "definition_text", "pack_block", "stored", "unpack_block"]
+           "definition_text", "pack_block", "reference_problems", "stored", "unpack_block"]

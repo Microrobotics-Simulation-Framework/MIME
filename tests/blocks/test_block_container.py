@@ -202,7 +202,10 @@ def test_a_cases_referenced_block_is_read_from_the_block_that_holds_it(tmp_path:
         with_case(tmp_path, folder)
         container = pack_block(folder, out=tmp_path / "labx.nudged_probe-0.1.0.mimeblock")
     (tmp_path / "elsewhere").mkdir()
-    with own_cache(tmp_path / "elsewhere"):  # another cache: the case's container is not in it
+    with own_cache(tmp_path / "elsewhere"):  # another cache: the case's container is not in it, nor is an acceptance
+        from mime.assets import licences_named
+
+        remember(licences_named("NOASSERTION"))  # the block's own licence is gated, found by either route
         unpacked = unpack_block(container, tmp_path / "unpacked").folder
         assert verify_block(unpacked).reproduced
 

@@ -150,12 +150,16 @@ Two commands read a block folder offline, building, downloading and installing n
   member and recomputes the content hash. It keeps the container in the asset cache, fetches the cases' assets through
   the gates, and lists what `[requires]` needs that is not installed, with the line that installs it. It installs
   nothing.
+- **`mime show <block folder or .mimeblock>`** is the one command that is not gated: it says the licence and its
+  conditions, which a person needs in order to decide whether to accept them, and expands nothing.
 - **`exp.use`** takes the `.mimeblock` or the DOI too, pulled into the cache as `Experiment.based_on` pulls a parent.
-- **`mime verify <block folder or .mimeblock>`** holds `[requires]` to what is installed first: a requirement not met
+- **`mime verify <block folder or .mimeblock>`** first asks about the block's own licence where it has conditions
+  you have not accepted (it runs the cases on the block's data), then holds `[requires]` to what is installed: a requirement not met
   refuses the whole and runs no case, because a block that could not be checked has neither passed nor moved. Each case
   must be this block's (`block.case-stale`). Then each case reruns, as `mime verify` reruns a saved folder: an acceptance
   that bounds nothing about physics. The author's own words about the cases close it, as the author's.
 - **`mime push <block folder> --to <service>`** makes one record: the `.mimeblock` and its `NOTICE.txt`, with the
   keywords `mime-block` and `mime-block:<id>`, and the block's card (`mime card <block folder>`) as its description.
-  Rehearse it on the sandbox first (`scripts/zenodo_sandbox_lane.py --demo block`). A block pulled from a record holds no
+  `mime push` has no `--dry-run`, and is as real for a block as for a bundle. Rehearse it on the sandbox first
+  (`scripts/zenodo_sandbox_lane.py --demo block`; the lane's own `--dry-run` sends nothing off this machine). A block pulled from a record holds no
   `[record]`, so it cannot be pushed again as it is: you publish a block of your own from it, not someone else's.

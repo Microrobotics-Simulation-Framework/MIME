@@ -10,12 +10,17 @@ a requirement not met refuses the whole (``block.requires``, the environment's t
 not be checked has neither passed nor moved. Each case must be this block's (``block.case-stale``, ``block.no-case``:
 refused, nothing run). Then each case reruns as ``mime verify <folder>`` reruns a saved folder, a referenced block read
 from this folder (a case's enclosing block, matched by its content hash): bit for bit in the lock's environment, within
-tolerance in another. A line per case, then MIME's words, then the author's."""
+tolerance in another. A line per case, then MIME's words, then the author's.
+
+**The gate.** Verifying runs the block's cases on its data, so the block's own licence is gated first (a licence with
+conditions no acceptance is on record for is asked about once, or refused where nobody can be asked). ``mime show`` is
+the one command that takes a block's file or folder and is not: it reads the definition and says the licence and the
+conditions a person needs in order to decide, and expands nothing (no fragment is bound, no case run)."""
 
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -115,15 +120,21 @@ class BlockVerified:
         return lines
 
 
-def verify_block(folder: str | os.PathLike[str]) -> BlockVerified:
-    """Verify the block folder ``folder`` (the module says how); refused, nothing run, where it cannot be checked."""
+def verify_block(folder: str | os.PathLike[str], accept_licences: Collection[str] = ()) -> BlockVerified:
+    """Verify the block folder ``folder`` (the module says how); refused, nothing run, where it cannot be checked. The
+    block's own licence is gated first, as every first use of its content is (:func:`require_block_licence`): verifying
+    runs its cases on its data. ``mime show`` is not gated: it reads the definition and says the licence, which a person
+    needs in order to decide."""
     from mime.blocks._check import case_refusals
+    from mime.blocks._referenced import require_block_licence
     from mime.blocks._use import requires_refused
     from mime.env import apply_lock_precision
     from mime.experiment import Experiment
 
     root = Path(os.path.abspath(folder))
     definition = definition_of(root)
+    require_block_licence(definition, accept_licences=accept_licences,
+                          accept_with="mime verify <the block's folder or .mimeblock>")
     cases = _cases(root)
     refused = requires_refused(definition, f"none of its {len(cases)} case{'s' if len(cases) != 1 else ''} ran")
     if refused is not None:
