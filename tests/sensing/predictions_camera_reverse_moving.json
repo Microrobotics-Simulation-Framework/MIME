@@ -22,5 +22,32 @@
     "if_wrong": "an arm over the estimate times 1.1: REVERSE_POSE (or REVERSE_COMPILE) refitted to cover every arm of both probes, the margin restated as the largest miss rounded up",
     "cannot_discriminate_if": "every arm sits under the compile term, so the run's term is never tested (480 f64 and 640 are run-dominated by the estimate)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-14, after run 43558991782 (11 jobs, all succeeded; https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43558991782)",
+    "gate_1_estimate_holds_out": {
+      "measured_over_estimate": {
+        "ck-64-160-100-b2": 0.969,
+        "ck-64-160-100-s3": 1.098,
+        "ck-64-640-100-b2": 0.943,
+        "ck-64-640-100-s3": 1.037,
+        "ck-32-160-1000": 0.972,
+        "ck-64-480-300": 0.963,
+        "ck-32-480-300": 0.962,
+        "ck-64-320-100-b2-s3": 1.06
+      },
+      "measured_gib_past_build": {
+        "ck-64-160-100-b2": 1.483,
+        "ck-64-160-100-s3": 1.768,
+        "ck-64-640-100-b2": 2.044,
+        "ck-64-640-100-s3": 2.247,
+        "ck-32-160-1000": 1.409,
+        "ck-64-480-300": 1.635,
+        "ck-32-480-300": 1.395,
+        "ck-64-320-100-b2-s3": 1.96
+      },
+      "result": "within the band and within the estimate times its margin (1.1) at every arm, so no underestimate; but the largest, three sub-frames at 160x120, sat at 1.098, the margin all but spent: the poses' term (0.08 GiB, fitted at 320x240 alone) is about half the compile's growth at 160x120 (0.16 GiB a pose), and at 640x480 the run phase grows with the poses too (the program's code), which the first form did not count",
+      "compile_moving": "the reverse program's temp 452.9 to 453.1 frames at 160x120 and 640x480 for one ball, two balls and three sub-frames: the poses add compile and code, not tape (as predicted)",
+      "refit": "REVERSE_POSE 0.16 GiB a pose past one, added to both phases (the estimate P (m - 1) + max(REVERSE_COMPILE, REVERSE_HELD + tape)); over the 22 arms of both probes 0.85 to 1.00 of the estimate; the margin stays at its floor, 1.1. The refit has no held-out runs of its own: it was fitted on every run there is"
+    }
+  }
 }

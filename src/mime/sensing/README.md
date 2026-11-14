@@ -115,8 +115,22 @@ build's: the disc windows are sized for them), so a study can fit them, and `exp
   program, so it is not bit for bit: exact in float64 where it was measured exact, and in float32 within one count, the pixels
   whose value before rounding lies within the last bits of a rounding boundary rounding the other way; the line the gate holds
   it to is derived from that mechanism (`tests/sensing/test_in_loop_replay.py`).
-- **Forward mode only.** Reverse mode and a batched (vmapped) study are refused, naming the offline renderer
-  (`camera.reverse`, `camera.batched`): under `vmap` a `cond` is a `select`, and reverse mode would keep every frame step's render.
+- **Both modes; a batched study refused.** A derivative passes in forward and in reverse mode, through MIME's
+  differentiated run (what `Study.gradient` compiles: reverse mode in checkpointed chunks, forward mode in one). Reverse
+  mode keeps a `cond`'s residuals as large as its largest branch at every step, whichever branch runs, so two
+  checkpoints hold its tape down: each corner sub-sample's (the static structure's make and each frame keep one
+  sub-sample's residuals at a time) and each frame's render (a step keeps the render's inputs, and the backward pass draws
+  the frame again). With both, the reverse program's temporary memory is a few hundred frames (a frame: rows times
+  columns values of the run's dtype), the same at every detector size, dtype and number of steps measured, nearly all of
+  it the static structure's make, kept for its derivative in the leaves; without them it is thousands, growing with the
+  steps. The render's checkpoint costs no measurable time, and neither changes a forward program: the step, a run and
+  its forward-mode derivative compile to the same text, and every forward array and the reverse derivative are the same
+  bit for bit. What reverse mode costs against forward mode, in memory and in time a step, is measured through the built
+  graph on GitHub's runners (the outcomes of `tests/sensing/predictions_camera_reverse_merged.json`). A study's reverse
+  derivative whose estimate (`CameraNode.reverse_estimate`: the larger of the derivative's compile and its run with its
+  tape, fitted to those runs, times a margin) would not fit the memory a run can have is refused before it compiles
+  (`camera.reverse-memory`), naming the offline renderer. A batched (vmapped) study is refused (`camera.batched`): under
+  `vmap` a `cond` is a `select`, so every step would render.
 
 ## Accuracy and cost, measured
 

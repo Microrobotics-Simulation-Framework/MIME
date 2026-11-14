@@ -102,16 +102,16 @@ STRUCTURE_FROM = "static_structure_from"
 #: The image-sized planes of the packed structure: the ray table's ten and the transmission.
 PLANES = 11
 #: Reverse mode's peak through the camera past what the process holds once the experiment is built, for MIME's
-#: differentiated run of ``n`` steps in checkpointed chunks of ``L = ceil(sqrt(n))`` steps: the larger of its two phases.
-#: The derivative's compile, :data:`REVERSE_COMPILE` bytes and :data:`REVERSE_POSE` more for each pose a frame renders past
-#: one (``m``, the moving subjects times the exposure's sub-frames, each traced into the program). Its run,
-#: :data:`REVERSE_HELD` bytes (the compiled program and what the runtime keeps) and the tape, in frames of the run's dtype
-#: (rows x columns values), ``fixed + start (n // L)``: ``fixed`` the static structure's make (its residuals, kept for the
-#: derivative in the leaves) and one step's backward pass (each corner sub-sample and each frame's render are
-#: checkpointed, so a step keeps their inputs, not their residuals), ``start`` a chunk start's held image and counts.
-#: :data:`REVERSE_MEASURED` says how they were measured.
+#: differentiated run of ``n`` steps in checkpointed chunks of ``L = ceil(sqrt(n))`` steps: the larger of its two phases,
+#: and :data:`REVERSE_POSE` more for each pose a frame renders past one (``m``, the moving subjects times the exposure's
+#: sub-frames: each is traced into the program, which grows its compile and its code, not its tape). The derivative's
+#: compile, :data:`REVERSE_COMPILE` bytes. Its run, :data:`REVERSE_HELD` bytes (the compiled program and what the runtime
+#: keeps) and the tape, in frames of the run's dtype (rows x columns values), ``fixed + start (n // L)``: ``fixed`` the
+#: static structure's make (its residuals, kept for the derivative in the leaves) and one step's backward pass (each
+#: corner sub-sample and each frame's render are checkpointed, so a step keeps their inputs, not their residuals),
+#: ``start`` a chunk start's held image and counts. :data:`REVERSE_MEASURED` says how they were measured.
 REVERSE_COMPILE = 1.45 * 2 ** 30
-REVERSE_POSE = 0.08 * 2 ** 30
+REVERSE_POSE = 0.16 * 2 ** 30
 REVERSE_HELD = 1.06 * 2 ** 30
 REVERSE_FRAMES = {"fixed": 464.0, "start": 2.0}
 #: The refusal's margin on the estimate, the largest measured peak over its estimate rounded up, and never under 1.1 (the
@@ -121,9 +121,11 @@ REVERSE_MARGIN = 1.1
 REVERSE_HEADROOM = 0.1
 REVERSE_MEASURED = ("fitted to the reverse phases' peak resident memory, less the resident memory after the build, that "
                     "node_measure.py measured through the built graph on GitHub's runners (4 vCPU, AMD EPYC and Intel "
-                    "Xeon), at 160x120 to 640x480, 10 to 1000 steps, float64 and float32, one to three poses a frame: "
-                    "0.87 to 1.00 of the estimate. fixed is XLA's compiled memory analysis of the reverse program, "
-                    "464 frames at every size, dtype and step count measured; start is derived")
+                    "Xeon), at 160x120 to 640x480, 10 to 1000 steps, float64 and float32, one to six poses a frame, 22 "
+                    "runs: 0.85 to 1.00 of the estimate. A first fit (the poses' term at 0.08 GiB, from 320x240 alone) "
+                    "held the eight runs it left out within its margin, the largest at 1.098 of the estimate, and the "
+                    "term was refitted on all of them. fixed is XLA's compiled memory analysis of the reverse program, "
+                    "453 to 467 frames at every size, dtype, step count and pose count measured; start is derived")
 
 EQUATIONS = (r"n_{f} = P \, \mathrm{floor}(n / P), \quad a = n - n_{f}, \quad "
              r"I = \mathrm{render}\left(\mathbf{c}, s, n_{f}\right)")
@@ -445,13 +447,14 @@ class CameraNode(MountedNode):
     def reverse_estimate(self, steps: int, members: int = 1) -> float:
         """The bytes reverse mode through the camera holds at its peak over a run of ``steps`` steps of ``members``
         members, past what the process holds once the experiment is built, in the run's dtype: the larger of the
-        derivative's compile and its run (:data:`REVERSE_COMPILE`, :data:`REVERSE_HELD`, :data:`REVERSE_FRAMES`)."""
+        derivative's compile and its run (:data:`REVERSE_COMPILE`, :data:`REVERSE_HELD`, :data:`REVERSE_FRAMES`), and
+        :data:`REVERSE_POSE` for each pose a frame renders past one."""
         rows, columns = self.image_shape()
         length = max(1, math.ceil(math.sqrt(steps)))
         poses = max(1, sum(1 for each in self._held[1] if each.moving) * cast(int, self.constants()["sub_frames"]))
         frame = rows * columns * int(jnp.zeros((), dtype=run_dtype()).dtype.itemsize)
         tape = frame * (REVERSE_FRAMES["fixed"] + REVERSE_FRAMES["start"] * (steps // length))
-        return max(REVERSE_COMPILE + REVERSE_POSE * (poses - 1), REVERSE_HELD + members * tape)
+        return REVERSE_POSE * (poses - 1) + max(REVERSE_COMPILE, REVERSE_HELD + members * tape)
 
     def derivative_problem(self, mode: str, directions: int, members: int, steps: int) -> Problem | None:
         """A study's derivative in reverse mode through the camera over ``steps`` steps whose tape would not fit the

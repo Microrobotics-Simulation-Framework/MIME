@@ -66,5 +66,11 @@
     "prediction": "every forward array np.array_equal; the reverse program's gradient within T1's bound of the base's, not bit for bit",
     "controls": {"repeat": "head twice: identical", "one_ulp": "fy one ulp up: differs"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-14, by the round-2 builder: the first round's runs, on the placement these predictions were made for (camera/run-constant 4ce71c6e + the sub-sample and remake checkpoints), which #284's merge with another design replaced; its predictions were not run again as such (predictions_camera_reverse_merged.json holds the merged head's)",
+    "gate_1_checkpoints": "not run as predicted on runners (compile-only on the laptop: 0.116 GB at 160x120 x 10 steps f64)",
+    "gate_3_reverse_gates": "run 43351290717: every gate passed on a runner in four arms; controls edge 30/30, held 30/30, structure 30/30 (reset, continued, chunked), made 10/10 (overridden); clean 0/32; every arm failed the workflow's memory check alone (peaks 1.9 to 5.1 GiB against a 1.76 bound from an estimate line naming one 160x12 program)",
+    "gate_4_costs": "run 43351179927: reverse peak 2.8 to 6.6 GiB, 6.42 at 640x480 x 1000 f64; rev/fwd at 1000 steps 4.5 to 5.0 (f64), 6.5 to 6.6 (f32)",
+    "bits": "run 43351179927: every forward array and the vjp equal to that base; forward compiled text equal f64 and f32"
+  }
 }

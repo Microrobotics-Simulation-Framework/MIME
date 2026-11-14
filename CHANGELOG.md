@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
+  mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
+  frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in
+  both dtypes, over 10 steps as over 1000 (6300 to 7600 without them), for no measurable time; a step's reverse time is
+  4.5 to 4.7 times forward mode's at 1000 steps in float64 on GitHub's runners (5.1 to 6.1 in float32). Checked against
+  forward mode, central differences (float32 against float64 where they cannot discriminate) and a held step's against
+  its frame's, from the run's start, from a continued state (the tree's structure, or a leaf written over it) and over a
+  CALLBACK controller's chunks, in both dtypes. A study whose estimate would not fit the memory a run can have is
+  refused before it compiles (`camera.reverse-memory`), naming the offline renderer. A batched study stays refused
+  (`camera.batched`); `Observation.forward_only` becomes `Observation.unbatched` (`mime.registry.unbatched_of`), a
+  batched study's refusal alone, and a derivative an observation's node cannot take is its node's to refuse by name
+  through `derivative_problem`. The entry stays `unverified` (its renderer's switches are not yet declared). No forward
+  program changes: the step, a run and its forward-mode derivative compile to the same text, and every forward array is
+  the same bit for bit.
+
 - **The licence gate is closed in `locate`** (lane P, P0). `assets.locate` now asks for the first use of a gated file
   as the resolver does (`require_accepted`): bytes a person placed in the cache, or that `mime assets check` or a refused
   `resolve` recorded as checked, no longer reach a build with no acceptance on record. A licence with conditions that

@@ -66,5 +66,43 @@
     "prediction": "every forward array np.array_equal; the compiled text equal; the vjp equal or within T1's bound (the frame checkpoint recomputes the same operations, which XLA may fuse otherwise)",
     "controls": {"repeat": "head twice: identical", "one_ulp": "fy one ulp up in the tree: arrays differ; the mount one ulp along y: compiled text differs"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-14, after the cost probe (run 43556977579, 24 jobs) and the gates probe (run 43557031929, 33 jobs), all succeeded, every arm's peak under its memory bound",
+    "gate_1_checkpoints": {
+      "runs": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43556977579",
+      "measured_frames_of_reverse_temp": {
+        "base": "6313 / 6390 (160x120 x 10, f64 / f32), 7550 / 7639 (160 x 1000), 6266 / 6342 (640 x 10), 7246 / 7331 (640 x 1000)",
+        "s alone (the frame render's taken out)": "541 / 546 (160 x 10), 494 / 498 (640 x 10), 1778 / 1795 (160 x 1000), 1474 / 1487 (640 x 1000)",
+        "f alone (the sub-samples' taken out)": "6122 / 6197 (160 x 10), 6112 / 6187 (640 x 10)",
+        "s and f (the head)": "463.9 to 467.0 at every size, dtype and step count (71.3 MB at 160 f64, 1140 MB at 640 f64)",
+        "both taken out": "the base's bytes exactly, every case"
+      },
+      "forward_programs": "value and jvp temp bytes equal base and head at both sizes and dtypes (11.8 / 24.4 MB at 160 f64)",
+      "result": "as predicted, the runners' bytes equal the laptop's",
+      "pays_for_itself": "s: 6313 to 541 frames at 160x120 x 10 steps (11.7 fold) and, without it, the reverse program needs 15.4 GB at 640x480 x 10 steps f64, past a runner, so its time against its absence was not measured on this head; f: 1778 to 464 frames at 160 x 1000 (3.8 fold) and 1474 to 464 at 640 x 1000 (3.2 fold), its reverse over forward time 4.47 against 4.85 without it (320x240 x 1000 f64) and 4.81 against 5.36 (640x480 x 100 f64), on different runner CPUs, so no measurable cost: both kept by the rule; the structure's make checkpointed (laptop, 446 against 464 frames) was not kept"
+    },
+    "gate_2_refusal": {
+      "fit": "the estimate's first form (the larger of the compile, 1.45 GiB and 0.08 GiB a pose past one, and the run, 1.06 GiB and 464 + 2 (n // L) frames) held the first probe's 14 arms at 0.87 to 1.00 of it; the second cost probe (predictions_camera_reverse_moving.json, run 43558991782) held its eight held-out arms within the margin, the largest at 1.098; refitted: REVERSE_POSE 0.16 GiB a pose added to both phases, 0.85 to 1.00 over the 22 arms, margin 1.1 (the memory route's floor)",
+      "band_result": "inside [1.0, 1.6] as estimate times margin over measured: 1.10 to 1.29",
+      "controls": "tests/sensing/test_in_loop_refusals.py (refused past any machine, forward mode never; refused a byte under the line through Study.gradient with nothing compiled, admitted a few bytes over) and tests/gradients/test_path_and_refusals.py (a toy node's refusal through derivative_problem reported by name): CI"
+    },
+    "gate_3_reverse_gates": {
+      "runs": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43557031929",
+      "gates": "every check passed in the four arms at the fixed point, both dtypes in each (reset 85 s, continued 151 s, overridden 128 s, chunked 124 s)",
+      "largest_error_over_tolerance": "over the 30 clean drawn points the resolution arms measured (reset arm, both dtypes): T2 0.42 (float64) and 0.39 (float32), T1 0.018, H2 0.019, T3 0.001, H1 0.0; float32 T2 judged by T3 instead on one draw of 30 (v0x), as predicted (at most one parameter in ten)",
+      "controls": "edge-stop 30/30, held-stop 30/30, structure-stop 30/30 over the four arms; clean 0/32; no inconclusive run",
+      "resolution": "every draw caught down to a share of the plant's path of 8.4e-9 (edge), 3.2e-8 (structure) and under 1e-10, the scan's floor (held), over 10 draws each (seeds 2000, 2100, 2200, reset arm); the probe's scan (1e-4 to 1) caught every size, and the same measurements were scanned again from 1e-10 on the laptop (plant_range.py's oracle reads them; nothing rerun). The float64 central differences bound a derivative to 1e-9 to 2e-7 of it and H1 holds a held step to rounding, which is why: far finer than predicted (0.05 to 0.3)",
+      "within_prediction": "the band [0, 0.5]: yes"
+    },
+    "gate_4_costs": {
+      "runs": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43556977579",
+      "reverse_peak_gib": "1.85 to 2.65 of the process at 160x120 to 640x480, 10 to 1000 steps, both dtypes (old placement 2.8 to 6.6); past the build 1.26 to 2.02",
+      "reverse_over_forward_time_a_step": "at 1000 steps 4.47 to 4.67 (float64: 160, 320, 640) and 5.11 to 6.13 (float32); 4.6 to 5.9 at 100 steps; 7.2 to 16.7 at 10 steps, where a run's fixed costs dominate",
+      "result": "peaks inside the band; float64's 4.47 at 320 x 1000 just under the predicted 4.5 (the frame checkpoint cost less than predicted)"
+    },
+    "bits": {
+      "runs": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43556977579",
+      "result": "every forward array equal (script A f64 and f32, the gantry, camera_scene and camera_on_gantry from step 0 and continued, the save's reference and resolution, the jvp, both dtypes) and the vjp equal too; the forward programs' compiled text equal (step, run, jvp; f64 and f32); controls: fy one ulp up differs (the expected frames), the mount one ulp along y differs in all three programs' text"
+    }
+  }
 }
