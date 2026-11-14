@@ -201,7 +201,13 @@
   },
   "outcomes": {
     "written": "2026-11-14, after every probe run; each entry names the run, the arm, and what was seen. Measured on GitHub runners (4 vCPU, JAX_PLATFORMS=cpu, Intel Xeon 6973P-C); the runs: 43614234358 (first), 43616060342 (control rerun), 43619756315 (corner at two widths, swap, G20, bits: the first versions), 43621384942 (bits with locations stripped, durations), 43621534090 (G20 corrected). The findings against the predictions are in `amendments`.",
-    "gate_g16_sign_functions": "PENDING_G16",
+    "gate_g16_sign_functions": {
+      "run": "43616060342 RSIGN (helix, SIGN_PLANT=sign) and RSLOPE (screw, SIGN_PLANT=slope), the test at Hypothesis's default 100 examples a kind, --hypothesis-seed 0..29",
+      "clean": "0/30 in each",
+      "planted": "30/30 caught in each (sign flipped within a tenth of the smallest length; gradient's length 10 % long)",
+      "local": "the six kinds pass at 100 examples; the controls fail for every kind in every plant (test_control_a_flipped_sign_or_a_long_gradient_fails_the_check, 12 cases)",
+      "reading": "the conformance check catches both planted errors on the two kinds with the least regular geometry at every draw; the other four kinds are covered by the deterministic controls only, not by a rate run"
+    },
     "gate_g18_swap": {
       "run": "43619756315 RSWAP (capsule, float64; the plant is deterministic and the test is per dtype and kind)",
       "clean": "0/30",
