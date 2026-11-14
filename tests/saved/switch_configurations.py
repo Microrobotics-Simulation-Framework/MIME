@@ -78,23 +78,28 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
 
 
 def capsule_camera() -> Experiment:
-    """The in-loop camera seeing a capsule: the one closed form no case above images, its raw sites scanned."""
-    from in_loop_cases import DETECTOR, LOOK_ACROSS, scene_without_camera
+    """The in-loop camera seeing a capsule: the one closed form no case above images, its raw sites scanned. Written
+    here from ``mime``'s own names: this file's other cases are in ``tests/saved``, and the stress lane runs it without
+    ``tests/sensing`` on its path."""
+    import math
 
-    from mime import Body, State
+    from mime import Body, State, Structure
     from mime.dynamics import RigidInertial
-    from mime.observations import Camera, World
-    from mime.scene import Capsule
+    from mime.observations import Camera, Detector, World
+    from mime.scene import Capsule, Scene, Tube, X, Z
     from mime.things import Part
     from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
 
-    experiment = scene_without_camera(balls=0)
+    root = math.sqrt(0.5)
+    experiment = Experiment("capsule_camera", scene=Scene.new(up=Z, units="m"), dt=ms(1))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=um(60), wall=um(10), length=um(480))))
     experiment.add_body(Body("pill", dynamics=RigidInertial(), initial=State(
         position=um((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))),
         parts={"steel": Part(Capsule(radius=um(10.0), height=um(30.0), axis=(1.0, 0.0, 0.0)))}))
     experiment.declare("pill.parts.steel.density", kg_per_m3(7850.0), reason="steel")
-    experiment.observe(Camera(detector=DETECTOR, mount=World(position=m((0.0, -1e-3, 0.0)), orientation=LOOK_ACROSS),
+    experiment.observe(Camera(detector=Detector(width=160, height=120, fx=750.0, fy=750.0, cx=79.5, cy=59.5),
+                              mount=World(position=m((0.0, -1e-3, 0.0)), orientation=(root, -root, 0.0, 0.0)),
                               frame_period=ms(3), absorbers=(("tube", 3000.0),)))
     return experiment
 
