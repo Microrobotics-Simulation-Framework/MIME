@@ -1,12 +1,16 @@
 {
- "written": "2026-11-14, committed before camera item 6's bits probe ran (the commit that adds this file is the timestamp): the renderer's switches routed through mime.core.switch and declared on the camera entry, the undistortion's derivative test added, no program changed",
+ "written": "2026-11-14, committed before camera item 6's bits probe ran (the commit that adds this file is the timestamp): the renderer's switches routed through mime.core.switch and declared on the camera entry, the undistortion's derivative test added, no program changed; amended 2026-11-14 before the probe ran, after the review of #299 and the merge of the release at 82219938 (#297 squashed): the base is the release head 82219938, and gate_2 (durations on a runner) is added",
  "phase": "camera item 6 (dev2), stacked on the camera reverse PR (#297): the renderer's switches declared, the camera's gradient status derived",
  "labels": "predictions by the builder (Sonnet) from a local run of the same comparison (below), the compiled programs' text read with their source-location tables stripped",
  "seen_before": [
-  "a local comparison on the laptop, one CPU (taskset) and one thread, this branch's working tree against a worktree of #297's head (79c1276e, then c381b8d2), probe/hlo.py as improved here (the stack-frame and file-location tables a compiled module's text starts with, which move with the source's line numbers, are dropped as well as the metadata): the step, a 6-step run and its forward-mode derivative equal, float64 and float32; the control (one ulp on the camera's mount along y) differs in all three. Re-run on 2026-11-14 against #297's head after its fix round and release merge (c381b8d2, this branch's merge 24280ebc): the same, step, run and jvp equal in both dtypes, the control differs in all three, so the base below is c381b8d2, moved from 79c1276e before any probe ran. Seen before this file: the prediction below is a repeat of it on the runners, not a blind one"
+  "a local comparison on the laptop, one CPU (taskset) and one thread, this branch's working tree against a worktree of #297's head (79c1276e, then c381b8d2), probe/hlo.py as improved here (the stack-frame and file-location tables a compiled module's text starts with, which move with the source's line numbers, are dropped as well as the metadata): the step, a 6-step run and its forward-mode derivative equal, float64 and float32; the control (one ulp on the camera's mount along y) differs in all three. Re-run on 2026-11-14 against #297's head after its fix round and release merge (c381b8d2, this branch's merge 24280ebc): the same, step, run and jvp equal in both dtypes, the control differs in all three, so the base below is c381b8d2, moved from 79c1276e before any probe ran. Seen before this file: the prediction below is a repeat of it on the runners, not a blind one",
+  "the release head 82219938 carries #297's sensing sources unchanged from c381b8d2 (git diff c381b8d2 82219938 on src/mime/sensing and src/mime/observations is empty), and the local comparison against 82219938 was started but its result is not read here; the earlier local comparison against c381b8d2 was equal"
  ],
  "operating_point": {
-  "dtype": ["float64", "float32"],
+  "dtype": [
+   "float64",
+   "float32"
+  ],
   "platform": "GitHub runner, 4 vCPU; bit_compare.py pins one CPU and one thread",
   "sizes_and_parameters": "script A's ballistic camera (tests/sensing/in_loop_cases.ballistic, 3 ms frame period, the camera's mount along y), a 6-step run, forward-mode derivative in fy; 160x120",
   "seeds_and_draws": "deterministic programs; one compile an arm and dtype"
@@ -14,10 +18,13 @@
  "gate_1_no_program_changed": {
   "claim": "routing the renderer's raw operations through mime.core.switch (no context open) changes no program a step, a run or its forward-mode derivative compiles: the compiled text, source locations removed, is the same as #297's head's",
   "kind": "equality",
-  "case": "probe/hlo.py through .github/probe/bit_compare.py, base c381b8d2f529500e877263f9f2d05bb64433ac48 against this head; programs hlo_f64 and hlo_f32, each writing three arrays (step, run, jvp) of the compiled text",
+  "case": "probe/hlo.py through .github/probe/bit_compare.py, base 82219938bbb7016679c3f52268b44b69fd32212b against this head; programs hlo_f64 and hlo_f32, each writing three arrays (step, run, jvp) of the compiled text",
   "prediction": {
    "value": "every array np.array_equal, six of six",
-   "band": [null, null],
+   "band": [
+    null,
+    null
+   ],
    "unit": "arrays equal",
    "basis": "measured-before",
    "why": "a switch function with no context open traces exactly its operation (mime.core.switch), the lambdas that give an indicator and a resolution are evaluated only inside a collector, and the collector-only path of _box_coverage is not taken; the one place the traced order of operations could move, _edge_in_disc's chain and square_below's pieces, keeps its order"
@@ -34,5 +41,31 @@
   "if_wrong": "an array differs: find the first differing instruction (the text with locations stripped, by diff) and the site that moved it; a difference that is only an order of operations the compiler schedules is still a changed program and is fixed in the source",
   "cannot_discriminate_if": "both sides stripped to nothing (the text is checked non-empty: 1.6 to 2.3 million characters a program) or the base side ran the head's tree (the controls arm shows an ulp differs)"
  },
- "outcomes": null
+ "outcomes": null,
+ "gate_2_durations_on_a_runner": {
+  "claim": "the two tests the review of #299 named run, cold and alone on a 4-vCPU runner, within the times the allowlist row will quote: the camera.corner harness row, and the camera's two guard points (now their own test, without the graph the other points' test builds)",
+  "kind": "time bound",
+  "case": "arms corner and cameras-points: python -m pytest <node id> -p no:cacheprovider --durations=0 --junitxml, one process each, cold caches, one job per arm",
+  "prediction": {
+   "value": "corner: 20 to 40 s call (11 to 13 s locally on this laptop at nice 10 for the classification, 15.6 s inside a run, 24.5 s alone with its setup by the reviewer; runner tests have run about twice the laptop's time); cameras-points: each of the two tests under 10 s",
+   "band": [
+    20,
+    40
+   ],
+   "unit": "s (corner call)",
+   "basis": "measured-before-on-a-laptop, scaled by the runner/laptop ratio seen on the sensing tests (77 s against 35 to 44 s)",
+   "why": "the row's time is tracing: each forced branch at each offset a fresh trace of the pixel's integration with its corner sub-samples unrolled under the collector"
+  },
+  "metric": "the call duration of the node id in the junit file, and the setup duration reported separately",
+  "control": {
+   "plant": "none: a measurement, not a detection",
+   "environment_variable": "none",
+   "expected_rate": "n/a",
+   "runs": 1,
+   "clean_expected": "n/a",
+   "resolution": "the junit file's seconds to the millisecond"
+  },
+  "if_wrong": "a corner call over 60 s: make the row faster (fewer offsets or a coarser secant) before listing it; the allowlist row quotes the measured time either way",
+  "cannot_discriminate_if": "the arm fails before the test runs (the junit file is empty)"
+ }
 }
