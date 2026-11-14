@@ -1,0 +1,2 @@
+a0: --case probe_cases:a0_on --path probe --steps 40 --dtype float32
+sphere: --case probe_cases:sphere_on --path probe --steps 200 --dtype float32
