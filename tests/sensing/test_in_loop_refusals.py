@@ -120,6 +120,7 @@ def test_reverse_mode_past_the_memory_a_run_can_have_is_refused_naming_the_offli
                                           wrt=["ball.parts.steel.density"], mode="reverse",
                                           acknowledged={"camera:": "a test"}))
     assert "camera.reverse-memory" in text and "mime.sensing.render" in text and "a planted memory" in text
+    assert "an estimate" in text and "extrapolated" in text
     room["held"] = line + 2
     assert node.derivative_problem("reverse", 1, 1, 2) is None
 

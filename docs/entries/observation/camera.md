@@ -69,7 +69,9 @@ state (the structure the tree holds, or a leaf written over it), and reverse mod
 a derivative is taken through makes the structure once from the run's detector numbers, before its steps, and its derivative
 follows by JAX's own rules, never from the state. Reverse mode's tape is a few hundred frames whatever the run's steps (each
 corner sub-sample and each frame's render are checkpointed; what it costs is in `src/mime/sensing/README.md`), and a study
-whose estimate would not fit the memory a run can have is refused before it compiles (`camera.reverse-memory`). The entry
+whose estimate would not fit the memory a run can have is refused before it compiles (`camera.reverse-memory`); the estimate
+is fitted to runs on GitHub's four-core runners (160x120 to 640x480, both dtypes, up to six poses a frame) and is an
+extrapolation beyond those platforms and sizes. The entry
 stays declared unverified: the renderer's switches are listed raw and not declared, so no exact or piecewise status follows
 from them, and the undistortion's seven `stop_gradient`s cap it there. `expected` carries the derivative in the poses and the
 detector's nine numbers (which are its leaves, so a study can fit them); `image` and the counters carry none. The entry's
