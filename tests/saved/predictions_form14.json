@@ -4,7 +4,8 @@
   "labels": "predictions by the builder (Opus) from the code's structure: each control is a structural check (a sha256 comparison, a refusal branch, a form check), so a planted defect is caught on every draw or on none; a guess where it says so",
   "seen_before": [
     "each plant run locally on 2 to 4 seeds before this file, on the branch's working tree (laptop, CPU, float64 where the saved tests set it): every planted run failed its target and every clean run passed",
-    "the older reader's refusals, measured before this file with MIME at 316937a8 (a worktree, its src first on PYTHONPATH) on form-14 inputs this branch wrote: a folder load.newer-form; a bundle holding a request bundle.manifest (shape) and one with no request load.newer-form; a mime.asset_manifest/2 file with a hash-only record asset.manifest (its record's shape); after the bundle and manifest steps, the bundle load.newer-form and the manifest asset.manifest by its format (a later MIME named)"
+    "the older reader's refusals, measured before this file with MIME at 316937a8 (a worktree, its src first on PYTHONPATH) on form-14 inputs this branch wrote: a folder load.newer-form; a bundle holding a request bundle.manifest (shape) and one with no request load.newer-form; a mime.asset_manifest/2 file with a hash-only record asset.manifest (its record's shape); after the bundle and manifest steps, the bundle load.newer-form and the manifest asset.manifest by its format (a later MIME named)",
+    "the blocks slot's three plants (MIME_PLANT_BLOCKS dropped, unchecked, unstepped) run locally on seeds 1 to 3 before gates 7 to 9 were added here (laptop, CPU, float64): every planted run failed its target for its own reason (load.input-hash; did not raise; load.document-shape in place of load.newer-form) and every clean run passed"
   ],
   "operating_point": {
     "dtype": ["float64 (the saved tests' module fixture sets x64)", "float32 elsewhere, as each test runs"],
@@ -57,6 +58,30 @@
     "case": "tests/saved/test_form14.py::test_the_planted_controls_for_the_probe, the edit drawn from the seed",
     "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "with the step's check removed the edited lock is read as the current form"},
     "control": {"plant": "the step's check removed (STEP_14_LOCK_HELD emptied)", "environment_variable": "MIME_PLANT_FORM14=unchecked", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the refusal's code"}
+  },
+  "gate_7_copied_block_loads": {
+    "claim": "a block used as copied is written into the document's blocks key, inside the input hash, and the folder loads with its input hash reproduced and the uses carried back",
+    "kind": "acceptance",
+    "case": "tests/saved/test_form14_blocks.py::test_a_copied_block_is_written_into_the_document_and_loads_with_its_input_hash_reproduced (one or two uses drawn from the seed: id, version, content hash, licence, sockets, names, overrides, DOI or none)",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "with the uses dropped on the way back in, the rebuilt document holds no blocks and its input hash is not the lock's, whatever the draw: a sha256 has no tolerance"},
+    "metric": "caught/N of the planted arm, flagged/N of the clean arm",
+    "control": {"plant": "the load reads the document's uses back as none (declarations_from's settings given blocks=None)", "environment_variable": "MIME_PLANT_BLOCKS=dropped", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "one bit: the input hash compared exactly"},
+    "if_wrong": "a miss is a draw whose uses the input hash does not see: the key is outside the hash",
+    "cannot_discriminate_if": "the load refuses for another reason (counted caught): the clean arm's 0/200 shows the unplanted load reproduces"
+  },
+  "gate_8_referenced_block_refused": {
+    "claim": "a block used as referenced is refused at load and at from_document as load.referenced-block, once per referenced use, naming it, and never as a shape; reading the folder refuses nothing",
+    "kind": "acceptance",
+    "case": "tests/saved/test_form14_blocks.py::test_a_referenced_block_is_refused_by_its_own_code_naming_each_use_and_never_as_a_shape (one or two uses, at least one referenced, drawn from the seed)",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "the refusal is a branch on the tier; removed, the document holds every declaration the toy has and the use loads as if copied"},
+    "control": {"plant": "the refusal of a referenced use removed (referenced_block_refusals answers nothing)", "environment_variable": "MIME_PLANT_BLOCKS=unchecked", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the refusal's code, exactly, once per referenced use"}
+  },
+  "gate_9_blocks_newer_form": {
+    "claim": "a reader of form 13 refuses a folder whose document uses a block as load.newer-form, the document and the lock each once",
+    "kind": "acceptance",
+    "case": "tests/saved/test_form14_blocks.py::test_version_thirteens_reader_refuses_a_document_using_a_block_as_newer_each_file_once (the tier drawn from the seed)",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "the folder written as form 13 is refused by that reader as a shape (the key a later form added), never as newer"},
+    "control": {"plant": "the folder restated as form 13 (the step not taken)", "environment_variable": "MIME_PLANT_BLOCKS=unstepped", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the refusal's code"}
   },
   "bits": {
     "cases": "no node, law or build code changes: the frozen folders of every earlier form load and verify, and the golden outputs compare, on CI",
