@@ -76,7 +76,7 @@ from mime.sensing import _scene as scene
 from mime.sensing._coverage import CORNER_SAMPLES
 from mime.sensing._detector import BrownConrady, CameraPose, Pinhole, Rays, ray_table
 from mime.sensing._mesh import KEYS as MESH_KEYS
-from mime.sensing._mesh import MESH_SAMPLES, Frozen, Tree, mesh_part, tree
+from mime.sensing._mesh import MESH_SAMPLES, Frozen, Tree, changed_mesh, mesh_part, signature, tree
 from mime.sensing._render import Exposure, Response, exposed, frame_key, prepared, projected_reach, static_part
 from mime.sensing._subjects import Subject
 
@@ -255,7 +255,10 @@ STRUCTURE_HELD = ("the static structure, made when the node's parameters are mad
                   "of its own, made again once a run from the run's leaves where a derivative may be taken "
                   "(run_constants)")
 MESH_HELD = ("the static meshes' bounding volume hierarchy, built on the host from the meshes the node was built with: "
-             "no quantity of its own, read where the static structure is made; a new mesh takes a rebuild")
+             "no quantity of its own, read where the static structure is made, and compared (a checksum of it, among the "
+             "numbers the structure was made from) wherever the structure is read, so that a leaf written afterwards makes "
+             "the structure again from it, never reads the one made before; a changed mesh in the node's own record "
+             "(its constructor argument) is refused, camera.cache-stale: a new mesh takes a rebuild")
 
 
 class CameraNode(MountedNode):
@@ -300,15 +303,33 @@ class CameraNode(MountedNode):
             "mesh_triangles": np.asarray(mesh_triangles, dtype=np.float64).reshape(-1, 3, 3),
             "mesh_owners": np.asarray(mesh_owners, dtype=np.int64).reshape(-1)}
         meshes = {key: Frozen(value) for key, value in held_meshes.items()}
+        held_meshes = {key: each.array for key, each in meshes.items()}
         super().__init__(name, timestep, spec=spec, scene_numbers=scene.numbers(json.loads(spec)), fx=float(fx), fy=float(fy), cx=float(cx), cy=float(cy), k1=float(k1),
                          k2=float(k2), p1=float(p1), p2=float(p2), k3=float(k3), bodies=tuple(bodies),
                          initial_poses=tuple(float(c) for c in initial_poses), period=int(period),
                          sub_frames=int(sub_frames), seed=int(seed), placement=tuple(float(c) for c in placement),
                          mount_index=int(mount_index), mount_count=int(mount_count),
                          initial_mount_pose=tuple(float(c) for c in initial_mount_pose), **meshes)
+        own = cast(Mapping[str, Any], cast(Any, self).params)
+        self._built_meshes = {key: cast(Frozen, own[key]) for key in meshes}
         self._tree: Tree | None = tree(held_meshes["mesh_triangles"], held_meshes["mesh_owners"]) if held_meshes else None
         self._held = self._made()
         self._structure = self._built_structure() if self.holds_cache() else None
+
+    #: The meshes' arrays as the node was built with them, by constructor argument (none where it traces no mesh).
+    _built_meshes: Mapping[str, Frozen] = {}
+
+    @override
+    def constants(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """The node's constants (:meth:`MimeNode.constants`), the meshes held as built: a record whose mesh is not the one
+        the node's tree was built from is refused (``camera.cache-stale``), where a held structure would otherwise be
+        read as the new mesh's."""
+        held = super().constants(params)
+        for key, built in self._built_meshes.items():
+            now = held.get(key)
+            if now is not built:
+                changed_mesh(key, built, now)
+        return held
 
     # -- what the node holds, made once from its constants ----------------------------------------------------------
 
@@ -353,7 +374,7 @@ class CameraNode(MountedNode):
         """The static structure at the build's intrinsics in the run's dtype, and the numbers it was made at."""
         intrinsics = as_run_array(np.asarray(self.build_intrinsics()))
         return (self._maker()[0](intrinsics, *self._meshes(None, intrinsics.dtype)),
-                self._structure_numbers(intrinsics))
+                self._structure_numbers(intrinsics, None))
 
     def _meshes(self, p: Mapping[str, Any] | None, dtype: Any) -> tuple[Array, ...]:
         """The traced meshes' tree as the maker takes it: the leaves ``p`` holds, or the node's own where it holds none;
@@ -428,7 +449,8 @@ class CameraNode(MountedNode):
         inherited: Any = super()
         leaves = cast(dict[str, Any], inherited.params_pytree())
         if self._tree is not None:
-            leaves = {**leaves, **{key: as_run_array(self._tree.arrays[key]) for key in MESH_KEYS}}
+            leaves = {**{key: each for key, each in leaves.items() if key not in self._built_meshes},
+                      **{key: as_run_array(self._tree.arrays[key]) for key in MESH_KEYS}}
         if self._structure is None:
             return leaves
         structure, numbers = self._structure
@@ -438,15 +460,19 @@ class CameraNode(MountedNode):
 
     # -- the static structure: a leaf, made once a run ---------------------------------------------------------------
 
-    def _structure_numbers(self, intrinsics: Array) -> Array:
+    def _structure_numbers(self, intrinsics: Array, p: Mapping[str, Any] | None) -> Array:
         """Every number the static structure is made from, as the step has them: the nine ``intrinsics``, the scene's
-        numbers as built (constants of the program, so that a structure made by a build with other numbers differs) and
-        the camera's pose."""
+        numbers as built (constants of the program, so that a structure made by a build with other numbers differs), the
+        camera's pose and, where it traces meshes, the signature of the tree ``p`` holds (:func:`signature`: the node's
+        own where ``p`` is none), so that a structure made from another tree than the step's own is not the step's."""
         dtype = intrinsics.dtype
         placement = np.asarray(self._fixed_pose(), dtype=np.float64)
         scene_numbers = np.asarray(self.constants()["scene_numbers"], dtype=np.float64)
-        return jnp.concatenate([intrinsics, jnp.asarray(scene_numbers, dtype=dtype).reshape(-1),
-                                jnp.stack([jnp.asarray(c, dtype=dtype) for c in placement])])
+        numbers = jnp.concatenate([intrinsics, jnp.asarray(scene_numbers, dtype=dtype).reshape(-1),
+                                   jnp.stack([jnp.asarray(c, dtype=dtype) for c in placement])])
+        if self._tree is None:
+            return numbers
+        return jnp.concatenate([numbers, signature(self._meshes(p, dtype), dtype)])
 
     def _make(self, numbers: Array, p: Mapping[str, Any]) -> Array:
         """The static structure made at ``numbers`` (their first nine, the intrinsics), with the meshes ``p`` holds."""
@@ -460,7 +486,7 @@ class CameraNode(MountedNode):
         dtype = jnp.asarray(params[STRUCTURE]).dtype
         intrinsics = self._intrinsics(params, dtype)
         return {STRUCTURE: self._maker()[0](intrinsics, *self._meshes(params, dtype)).astype(dtype),
-                STRUCTURE_FROM: self._structure_numbers(intrinsics)}
+                STRUCTURE_FROM: self._structure_numbers(intrinsics, params)}
 
     @override
     def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
@@ -484,6 +510,9 @@ class CameraNode(MountedNode):
         numbers = np.concatenate([intrinsics, np.asarray(self.constants()["scene_numbers"], dtype=np.float64)
                                   .reshape(-1).astype(made_from.dtype),
                                   np.asarray(self._fixed_pose(), dtype=np.float64).astype(made_from.dtype)])
+        if self._tree is not None:
+            numbers = np.concatenate([numbers, np.asarray(signature(self._meshes(params, made_from.dtype),
+                                                                    made_from.dtype))])
         return {} if np.array_equal(numbers, made_from) else dict(self._made_at(params))
 
     def reverse_estimate(self, steps: int, members: int = 1) -> float:
@@ -618,7 +647,7 @@ class CameraNode(MountedNode):
             return framed(rays, static_part(subjects, rays, camera, pose, dtype, CORNER_SAMPLES, flags), flags)
         rows, columns = self.image_shape()
         names = self._maker()[1]
-        numbers = self._structure_numbers(intrinsics)
+        numbers = self._structure_numbers(intrinsics, p)
         if STRUCTURE not in p:
             return framed(*unpacked(self._make(numbers, p), rows, columns, names))
         held = self.holds_at(p, numbers)

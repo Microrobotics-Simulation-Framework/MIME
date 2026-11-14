@@ -52,14 +52,26 @@ KEYS = ("mesh_lo", "mesh_hi", "mesh_v0", "mesh_v1", "mesh_v2", "mesh_owner")
 EMPTY_BOX = 1.0e6
 
 
+def readonly(array: Any) -> np.ndarray:
+    """``array`` as a copy that cannot be written, and cannot be made writable: NumPy keeps an array over a ``bytes``
+    object read-only, whatever is done to its flags, so a write through it (``a[...] = x``) raises ``ValueError``."""
+    held = np.asarray(array)
+    return cast(np.ndarray, np.frombuffer(held.tobytes(), dtype=held.dtype).reshape(held.shape))
+
+
 @dataclass(frozen=True, eq=False)
 class Frozen:
     """An array a node holds as a constant, which MADDENING does not take for one that can change in place. It keeps a
     NumPy ``ndarray`` (the host's float64 triangles, the owners) as a registered pytree of one leaf, so that the graph's
     check for written parameters, which compares an ndarray's bytes at every chunk of a run, does not read the megabytes
-    of a mesh's triangles (the derived graph still records the array's dtype, shape and sha256)."""
+    of a mesh's triangles (the derived graph still records the array's dtype, shape and sha256). The array is a copy that
+    cannot be written (:func:`readonly`): a mesh is held as built, and a write to it would be an image that no longer
+    follows the mesh."""
 
     array: np.ndarray
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "array", readonly(self.array))
 
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
         return np.asarray(self.array, dtype=dtype)
@@ -70,7 +82,8 @@ jax.tree_util.register_dataclass(Frozen, data_fields=["array"], meta_fields=[])
 
 @dataclass(frozen=True)
 class Tree:
-    """The tree's arrays by :data:`KEYS` (float64 on the host) and each leaf slot's triangle index (``-1`` empty)."""
+    """The tree's arrays by :data:`KEYS` (float64 on the host, read-only) and each leaf slot's triangle index (``-1``
+    empty)."""
 
     arrays: Mapping[str, np.ndarray]
     slots: np.ndarray
@@ -118,7 +131,8 @@ def tree(triangles: np.ndarray, owners: np.ndarray, leaf: int = LEAF) -> Tree:
     node_high = np.where(held[:, None], np.concatenate([np.zeros((1, 3))] + levels_high), EMPTY_BOX)
     v0, v1, v2 = (np.where(valid[..., None], corners[:, :, k], 0.0) for k in range(3))
     owner = np.where(valid, np.asarray(owners, dtype=np.float64)[np.maximum(slots, 0)], -1.0)
-    return Tree(dict(zip(KEYS, (node_low, node_high, v0, v1, v2, owner), strict=True)), slots)
+    held_arrays = (node_low, node_high, v0, v1, v2, owner)
+    return Tree({key: readonly(each) for key, each in zip(KEYS, held_arrays, strict=True)}, readonly(slots))
 
 
 def triangles_of(points: np.ndarray, faces: np.ndarray) -> np.ndarray:
@@ -154,6 +168,20 @@ def closed_problem(points: np.ndarray, faces: np.ndarray) -> str | None:
     return None
 
 
+def changed_mesh(key: str, built: Any, now: Any) -> None:
+    """Refuse (``camera.cache-stale``) a camera whose record of a mesh (its constructor argument ``key``) is no longer the
+    one its tree and its held structure were made from: a different array in it. The same numbers in another object are
+    taken for the same mesh."""
+    if isinstance(now, Frozen) and np.array_equal(now.array, built.array):
+        return
+    raise ArgumentRefused([Refusal(
+        "camera.cache-stale", RefusalClass.USER,
+        f"the camera's record of its static meshes ({key}) was changed after it was built: its bounding volume hierarchy "
+        f"and the static structure it holds were made from the meshes it was built with, and would be read as the new ones",
+        "change the mesh in the scene and call `exp.build()` again: a mesh is held as built, and a study cannot vary it",
+        why="a static mesh is held as built: its tree and the image of it are made once, from the build's meshes")])
+
+
 def inside(triangles: np.ndarray, point: Sequence[float] | np.ndarray) -> bool:
     """Whether ``point`` lies inside a closed mesh: the parity of its crossings along a ray in a direction no edge of a
     regular mesh lies along."""
@@ -174,6 +202,23 @@ def inside(triangles: np.ndarray, point: Sequence[float] | np.ndarray) -> bool:
     return int(np.count_nonzero(crossed)) % 2 == 1
 
 
+def signature(arrays: Sequence[Any], dtype: Any) -> Any:
+    """What the tree's arrays are, as ``4 * len(KEYS)`` numbers in ``dtype``: for each array, the sum of its elements'
+    bits and the sum of them weighted by position (the golden-ratio multiplier, so a swap changes it), both modulo
+    ``2^32`` in unsigned integers, each split into two 16-bit halves that a float32 holds exactly. Integer sums do not
+    depend on the order they are summed in, so the host's call and the one inside a compiled step give the same numbers;
+    a write to any one element changes the first sum (and the second), and a change of several that cancels both would
+    have to be chosen to: a checksum, not a hash. It is what the held static structure is compared with (the camera's
+    ``holds_at``), so that a tree written after the structure was made never reads as the structure's own."""
+    parts: list[Any] = []
+    for each in arrays:
+        bits = jnp.reshape(lax.bitcast_convert_type(jnp.asarray(each), jnp.uint32), (-1,))
+        weights = jnp.arange(bits.shape[0], dtype=jnp.uint32) * jnp.uint32(2654435761) + jnp.uint32(1)
+        for total in (jnp.sum(bits, dtype=jnp.uint32), jnp.sum(bits * weights, dtype=jnp.uint32)):
+            parts += [(total & jnp.uint32(0xFFFF)).astype(dtype), (total >> jnp.uint32(16)).astype(dtype)]
+    return jnp.stack(parts)
+
+
 class Hits(NamedTuple):
     """Every crossing of each ray, by mesh: the signed chord (``(R, M)``, metres) and the crossing count (``(R, M)``);
     and the nearest crossing's ``t`` and its leaf slot (``leaf * LEAF + k``; ``-1`` for none)."""
@@ -184,10 +229,24 @@ class Hits(NamedTuple):
     slot: Any
 
 
+def slab_pad(dtype: Any) -> float:
+    """The factor the slab test's exit distance is widened by, ``1 + 2 gamma_3``, with ``gamma_n = n u / (1 - n u)`` and
+    ``u = eps / 2`` the unit roundoff of ``dtype`` (Ize, 2013, "Robust BVH ray traversal"): a plane's distance is
+    ``(plane - o) * (1 / d)``, three roundings (the reciprocal, the difference, the product), so each of the entry and
+    exit distances is within ``gamma_3`` of its exact value, and the nearest exit exceeds the farthest entry wherever the
+    ray crosses the box, by at most the two errors (``2 gamma_3``), which the widening takes up. Without it a ray through
+    an edge of a box (a silhouette, where the entry and the exit are one distance) is dropped at the root or a node by
+    the rounding of one side, and the crossing at the edge is lost; the node's boxes hold the triangles' corners rounded
+    to the run's dtype, so no other slack is needed."""
+    u = float(jnp.finfo(dtype).eps) / 2.0
+    gamma = 3.0 * u / (1.0 - 3.0 * u)
+    return 1.0 + 2.0 * gamma
+
+
 def _slab(o: Any, inverse: Any, low: Any, high: Any) -> tuple[Any, Any]:
     ta = (low - o) * inverse
     tb = (high - o) * inverse
-    return jnp.max(jnp.minimum(ta, tb), axis=-1), jnp.min(jnp.maximum(ta, tb), axis=-1)
+    return jnp.max(jnp.minimum(ta, tb), axis=-1), jnp.min(jnp.maximum(ta, tb), axis=-1) * slab_pad(ta.dtype)
 
 
 def _component(a: Any, k: Any) -> Any:
@@ -419,5 +478,6 @@ def mesh_chords(meshes: Mapping[str, tuple[Any, Any]], detector: Pinhole, pose: 
     return MeshChords(names, chords, crossings)
 
 
-__all__ = ["EMPTY_BOX", "Frozen", "KEYS", "LEAF", "MESH_SAMPLES", "TILE", "Hits", "MeshChords", "Tree", "closed_problem", "inside",
-           "mesh_chords", "mesh_part", "signed_volume", "traced", "tree", "triangles_of", "welded"]
+__all__ = ["EMPTY_BOX", "Frozen", "KEYS", "LEAF", "MESH_SAMPLES", "TILE", "Hits", "MeshChords", "Tree", "changed_mesh", "closed_problem", "inside",
+           "mesh_chords", "mesh_part", "readonly", "signature", "signed_volume", "slab_pad", "traced", "tree", "triangles_of",
+           "welded"]

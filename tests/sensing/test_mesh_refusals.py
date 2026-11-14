@@ -1,6 +1,6 @@
 """G24, the static mesh's refusals, each by name with its route, and the derivatives that pass with a mesh in view.
 
-- **A derivative in the detector's numbers** while the camera traces a mesh is refused (``camera.mesh-derivative``) by
+- **A derivative in any of the detector's nine numbers** while the camera traces a mesh is refused (``camera.mesh-derivative``) by
   ``Study.gradient`` in forward and in reverse mode and by ``Study.fit``, before anything is compiled, naming ``hide=``
   with the mesh's path: the mesh's part is traced under ``stop_gradient``, so the derivative would leave it out.
 - **A derivative through the poses** (the settling bead's density, which moves its silhouette through the dynamics) with
@@ -35,7 +35,7 @@ from mime.dynamics import RigidInertial
 from mime.interactions import Gravity
 from mime.observations import Camera, Mounted, World
 from mime.scene import Scene, Sphere, Tube, X, Z, asset
-from mime.sensing._node import CameraNode
+from mime.sensing._node import INTRINSICS, CameraNode
 from mime.study import Study, grid
 from mime.things import Part
 from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
@@ -50,8 +50,8 @@ WALL = (slice(5, 17), slice(None))
 ACKNOWLEDGED = {"camera:": "a derivative checked here"}
 
 
-def detector_scene(fy: float = 750.0) -> Experiment:
-    return tube_mesh_scene(detector=dataclasses.replace(DETECTOR, fy=fy))
+def detector_scene(fy: float = 750.0, around: int = 64) -> Experiment:
+    return tube_mesh_scene(around=around, detector=dataclasses.replace(DETECTOR, fy=fy))
 
 
 def wall_of(final) -> object:
@@ -60,10 +60,14 @@ def wall_of(final) -> object:
 
 @pytest.mark.parametrize("how", ["forward", "reverse", "fit"])
 def test_a_derivative_in_the_detector_with_a_mesh_in_view_is_refused_by_name(dtype, how):
-    study = Study(detector_scene()).sweep(grid({"camera:.detector.fy": [750.0]}), duration=ms(1))
+    """Every one of the detector's nine numbers, each alone: a leaf is refused whichever it is, not only ``fy``."""
+    names = {name: f"camera:.detector.{name}" for name in INTRINSICS}
+    # the refusal comes before anything is made from the mesh, so a coarse tube (8 around) serves, unless the control runs
+    study = Study(detector_scene(around=64 if planted("no-mesh-refusal") else 8)).sweep(
+        grid({leaf: [float(getattr(DETECTOR, name))] for name, leaf in names.items()}), duration=ms(1))
     if planted("no-mesh-refusal") and how == "forward":
-        found = study.gradient(wall_of, wrt=["camera:.detector.fy"], mode="forward", acknowledged=ACKNOWLEDGED)
-        derivative = float(np.asarray(found.members[0].gradient["camera:.detector.fy"]).reshape(-1)[0])
+        found = study.gradient(wall_of, wrt=[names["fy"]], mode="forward", acknowledged=ACKNOWLEDGED)
+        derivative = float(np.asarray(found.members[0].gradient[names["fy"]]).reshape(-1)[0])
         h = 1.0
         levels = []
         for fy in (750.0 + h, 750.0 - h):
@@ -73,19 +77,20 @@ def test_a_derivative_in_the_detector_with_a_mesh_in_view_is_refused_by_name(dty
         central = (levels[0] - levels[1]) / (2 * h)
         assert abs(derivative - central) <= 1e-2 * abs(central), (derivative, central)
         return
-    with pytest.raises(BuildRefused) as refused:
-        if how == "fit":
-            Study(detector_scene()).fit(lambda final: final["camera:"]["expected"].ravel(),
-                                        start={"camera:.detector.fy": 750.0}, noise=1.0, duration=ms(1), iterations=1,
-                                        acknowledged=ACKNOWLEDGED)
-        else:
-            study.gradient(wall_of, wrt=["camera:.detector.fy"], mode=how, acknowledged=ACKNOWLEDGED)
-    if planted("no-mesh-refusal"):
-        return
-    assert refused.value.codes() == ["camera.mesh-derivative"]
-    (refusal,) = refused.value.refusals
-    assert "fy" in refusal.message and VESSEL in refusal.message
-    assert f"hide=({VESSEL!r},)" in refusal.action
+    for name, leaf in names.items():
+        start = float(getattr(DETECTOR, name))
+        with pytest.raises(BuildRefused) as refused:
+            if how == "fit":
+                study.fit(lambda final: final["camera:"]["expected"].ravel(), start={leaf: start},
+                                            noise=1.0, duration=ms(1), iterations=1, acknowledged=ACKNOWLEDGED)
+            else:
+                study.gradient(wall_of, wrt=[leaf], mode=how, acknowledged=ACKNOWLEDGED)
+        if planted("no-mesh-refusal"):
+            continue
+        assert refused.value.codes() == ["camera.mesh-derivative"], name
+        (refusal,) = refused.value.refusals
+        assert f"detector's {name} while" in refusal.message and VESSEL in refusal.message, name
+        assert f"hide=({VESSEL!r},)" in refusal.action
 
 
 def settling(density: float = 1100.0) -> Experiment:

@@ -394,7 +394,8 @@ class Camera(Observation):
                          "rendered once, at the build, and held as a leaf beside the numbers it was made at; a run whose "
                          "detector numbers differ renders it once, before its steps"
                          + ("; with the traced meshes it is made once a run, and again at each study point that varies "
-                            "the detector's numbers, and a frame costs no more" if found.meshes else ""))
+                            "the detector's numbers, and each frame reads the tree's checksum (its cost, measured on runners, is on "
+                            "the camera's entry page)" if found.meshes else ""))
         else:
             statics = [s.name for s in found.subjects if not s.moving]
             lines.append(f"static cache: the camera is mounted on {mounted}, taken to move, so the static structure "
