@@ -219,12 +219,12 @@ class CommandStageNode(MimeNode):
     def state_units(self) -> dict[str, str]:
         """The units of each state field the stage holds for a port, which are the port's own (a field's name carries
         the port's, so no class-level symbol row can name them): the value, what was written and amplified, the
-        buffer's samples and each response's carried state, in the command's units."""
+        buffer's samples and each response's carried state, in the command's units; the bound's flag is ``1``."""
         units = cast(Mapping[str, str], self._held("units"))
         found: dict[str, str] = {}
         for key in self._keys():
             for field in self.port_fields(key):
-                found[field] = units[key]
+                found[field] = "1" if field.startswith(("clipped_", "tripped_")) else units[key]
         return found
 
     @override

@@ -43,23 +43,30 @@ PLANTED_RUNGS = {"slew_before_bound": ("delay", "slew", "bound", "respond"),
                  "respond_before_slew": ("delay", "bound", "respond", "slew")}
 
 
+#: A slew's size in bounds a step, by what it binds at. A wave's jump runs from 0.6 of a bound (a first level of at most
+#: 0.5, a second of at least 1.1) to 2.9 (-0.9 to 2.0), and a spike's up to 3.9: "binding" binds at every jump, "partial"
+#: at the larger ones only, "loose" at no wave's and at a spike's only when it is the largest.
+SLEW_BOUNDS = {"binding": (0.05, 0.4), "partial": (0.7, 1.5), "loose": (3.0, 6.0)}
+
+
 @st.composite
 def links(draw: st.DrawFn) -> tuple[Link, np.ndarray]:
-    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew moving 0.05 to 0.4 bounds' worth
-    a step or none, a lag of 1 to 20 ms or none, a period of 1 to 4 steps and a latency of 0 to 5, and a sequence of
-    square waves from inside the bound (-0.9 to 0.5 of it) to past it (1.1 to 2 times) and back, with a one-step spike
-    past it at a drawn step (which falls between samples wherever the period is above one and the step is not a
-    multiple of it). Each wave's jump is at least 0.6 bounds, beyond any slew drawn, so a slew binds at every jump; each
-    wave starts inside, so a trip latches after the stage has delivered the wave, not at its first value."""
+    """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew or none (one of the
+    ``SLEW_BOUNDS``: 0.05 to 0.4 bounds a step, which binds at every jump of the waves, 0.7 to 1.5, which binds at the
+    larger ones, 3 to 6, which binds at almost none), a lag of 1 to 20 ms or none, a period of 1 to 4 steps and a latency
+    of 0 to 5, and a sequence of square waves from inside the bound (-0.9 to 0.5 of it) to past it (1.1 to 2 times) and
+    back, with a one-step spike past it at a drawn step (which falls between samples wherever the period is above one
+    and the step is not a multiple of it); each wave starts inside, so a trip latches after the stage has delivered the
+    wave, not at its first value."""
     bound = draw(st.floats(1.0, 30.0))
     bounded = draw(st.sampled_from(["", "clip", "trip"]))
     # the amplifier's two rungs drawn together, so that Hypothesis's generation, which does not draw independent
-    # booleans independently, cannot leave a run with no example holding both
-    slewed, lagged = draw(st.sampled_from([(True, True), (True, False), (False, True), (False, False)]))
+    # choices independently, cannot leave a run with no example holding both
+    slew, lagged = draw(st.sampled_from([(mode, lag) for mode in ("none", *SLEW_BOUNDS) for lag in (True, False)]))
     link = Link(period=draw(st.integers(1, 4)), latency=draw(st.integers(0, 5)),
                 low=-bound if bounded else None, high=bound if bounded else None, trip=bounded == "trip",
                 rest=draw(st.floats(-0.5, 0.5)) * bound,
-                slew=draw(st.floats(0.05, 0.4)) * bound / DT if slewed else None,
+                slew=None if slew == "none" else draw(st.floats(*SLEW_BOUNDS[slew])) * bound / DT,
                 tau=draw(st.floats(1e-3, 2e-2)) if lagged else None)
     seed = draw(st.integers(0, 2**31 - 1))
     rng = np.random.default_rng(seed)

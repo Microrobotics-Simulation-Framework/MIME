@@ -82,3 +82,14 @@ def test_control_a_typed_state_that_disagrees_with_a_symbol_row_is_reported():
 
     found = disagreeing(built, planted)
     assert found and all("'m/s; rad/s' against 'm/s; deg/s'" in line for line in found), found
+
+
+def test_a_port_stage_declares_its_bound_flags_dimensionless_and_its_values_in_the_commands_units():
+    """A clipped or tripped flag is 0 or 1 whatever the command's unit (it was declared in amperes), the value and its
+    buffer are in the command's."""
+    from port_cases import staged_sphere
+
+    for trip, flag in ((False, "clipped_currents"), (True, "tripped_currents")):
+        units = staged_sphere(trip=trip).build().declared_units()
+        assert units[("ports:coils", flag)] == "1"
+        assert units[("ports:coils", "currents")] == units[("ports:coils", "buffer_currents")] == "A"

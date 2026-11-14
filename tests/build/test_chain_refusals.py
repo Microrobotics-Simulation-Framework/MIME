@@ -240,6 +240,26 @@ def dynamic_alone(description, joints: int, **settings) -> object:
     return exp
 
 
+@pytest.mark.parametrize(("rung", "alias", "port"), [("kinematic", Arm.Kinematic, "joint_positions"),
+                                                      ("dynamic", Arm.Dynamic, "joint_torques")])
+def test_servo_is_refused_by_name_whether_the_arm_is_built_by_its_alias_or_directly_naming_a_port_the_rung_has(
+        rung: str, alias, port: str):
+    """``Arm(rung=..., servo=...)`` gave a raw ``TypeError``; it gives the alias's refusal, and the port it names is one
+    its rung's arm has: a dynamic arm has no joint positions to command, its lag goes on a torque's port. The control:
+    the same arm without ``servo`` builds, both ways."""
+    description = asset(DESCRIPTIONS / "three_link_planar.urdf")
+    start = rad((0.0,) * 3)
+    for build in (lambda **kw: alias(description=description, initial_positions=start, **kw),
+                  lambda **kw: Arm(rung=rung, description=description, initial_positions=start, **kw)):
+        assert build().rung == rung, "the control: no servo, no refusal"
+        with pytest.raises(ArgumentRefused) as moved:
+            build(servo=ms(5))
+        (refusal,) = moved.value.refusals
+        assert refusal.code == "call.renamed" and "its port's response" in refusal.message
+        assert f"<segment>.{port}" in refusal.action and "FirstOrderLag" in refusal.action
+        assert ("<segment>.joint_positions" in refusal.action) is (rung == "kinematic")
+
+
 def test_a_dynamic_arm_with_a_massless_moving_body_is_refused_naming_it_and_the_kinematic_arm_takes_it():
     massless = DESCRIPTIONS / "massless_link.urdf"
     (refusal,) = [r for r in refused(dynamic_alone(massless, 2)) if r.code == "chain.inertia-gap"]

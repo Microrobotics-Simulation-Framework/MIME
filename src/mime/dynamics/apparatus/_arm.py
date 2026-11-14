@@ -6,7 +6,7 @@ import warnings
 from types import MappingProxyType
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, cast, override
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast, override
 
 import jax
 import numpy as np
@@ -226,14 +226,19 @@ class Arm(ChainSegment):
         """The actuators given, by name, as pairs in their names' order."""
         return cast(tuple[tuple[str, Quantity | str], ...], self.actuators)
 
+    def __new__(cls, *args: Any, **settings: Any) -> Arm:
+        """The arm as the dataclass builds it, but for ``servo=``: the arm's setting before saved form 15, refused by
+        name here, whether the arm is built by its rung's alias or directly with ``rung=``."""
+        if settings.get("servo") is not None:
+            _servo_moved(str(settings.get("rung", "kinematic")))
+        return super().__new__(cls)
+
     @classmethod
     def Kinematic(cls, **settings: Any) -> Arm:  # noqa: N802 - a rung's alias reads as a class
-        _servo_moved(settings)
         return cls(rung="kinematic", **settings)
 
     @classmethod
     def Dynamic(cls, **settings: Any) -> Arm:  # noqa: N802 - a rung's alias reads as a class
-        _servo_moved(settings)
         return cls(rung="dynamic", **settings)
 
     @override
@@ -457,19 +462,26 @@ class Arm(ChainSegment):
                 b.mount_rates(into=node["mount_rates"])
 
 
-def _servo_moved(settings: dict[str, Any]) -> None:
-    """Refuse ``servo=``, the arm's setting before saved form 15, naming where it is now: its port's response."""
-    if settings.pop("servo", None) is None:
-        return
+def _servo_moved(rung: str) -> NoReturn:
+    """Refuse ``servo=``, the arm's setting before saved form 15, naming where it is now: its port's response, on the
+    port of the command the rung has (the kinematic arm's joint positions; the dynamic arm has no servo of its own, its
+    commands are torques, so a lag is declared on a torque's port, which the port's stage computes)."""
     from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 
-    raise ArgumentRefused([Refusal(
-        "call.renamed", RefusalClass.USER,
-        "the arm's servo= is its port's response since saved form 15: the servo is the lag between the arm's command "
-        "and its joints, declared on its apparatus's port, and a kinematic arm's own node computes it as before",
-        "write Apparatus(..., ports={\"<segment>.joint_positions\": CommandPort(response=FirstOrderLag(tau=...), "
-        "reason=...)}) (mime.CommandPort, mime.responses.FirstOrderLag), and the same on <segment>.joint_displacements "
-        "for a sliding joint")])
+    if rung == "dynamic":
+        said = ("a dynamic arm has no servo: it follows the torques it is given; a lag between a torque command and the "
+                "arm is its port's response since saved form 15")
+        do = ("write Apparatus(..., ports={\"<segment>.joint_torques\": CommandPort(response=FirstOrderLag(tau=...), "
+              "reason=...)}) (mime.CommandPort, mime.responses.FirstOrderLag), and the same on <segment>.joint_forces "
+              "for a prismatic joint; the port's stage computes the lag")
+    else:
+        said = ("the arm's servo= is its port's response since saved form 15: the servo is the lag between the arm's "
+                "command and its joints, declared on its apparatus's port, and a kinematic arm's own node computes it "
+                "as before")
+        do = ("write Apparatus(..., ports={\"<segment>.joint_positions\": CommandPort(response=FirstOrderLag(tau=...), "
+              "reason=...)}) (mime.CommandPort, mime.responses.FirstOrderLag), and the same on "
+              "<segment>.joint_displacements for a sliding joint")
+    raise ArgumentRefused([Refusal("call.renamed", RefusalClass.USER, said, do)])
 
 
 #: The response a kinematic arm's node computes on its joints itself, its servo: a port on its commands declaring it
