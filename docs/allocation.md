@@ -125,12 +125,18 @@ def step(state, reads):
 - **The bounds** are the port's declared `bounds`, else the bounds its receiver states (an arm's joint limits). A command
   with neither is refused (`allocation.bounds`): the exact allocation chooses within bounds.
 - **The slew.** Where the port declares a `slew`, the bounds are narrowed to `last` plus or minus the slew times the
-  base step times the steps `mime.control.slew_steps` gives: what the stage delivers before the next write arrives. With
-  the port's period at the controller's or dividing it, every write is sampled and the next is at least the port's
-  period times the whole number of them in the controller's later; with the port slower, one sample can take several
-  writes' moves at once, with the port's period to make them. Both are the controller's period where one period divides
-  the other, and a latency on either side delays every write alike and changes neither. `last` is the commands the law
-  wrote last, the stage taken to stand there; a run from rest where the law holds other writes is not covered.
+  base step times `g` base steps: what the stage delivers before the next write arrives. For a port sampling every `R`
+  base steps and a controller writing every `P`, `g = R * floor(P / R)` where `R <= P`, else `R / ceil(R / P)`: with the
+  port's period at the controller's or dividing it, every write is sampled and the next is at least `R * floor(P / R)`
+  steps later; with the port slower, one sample can take several writes' moves at once, with `R` steps to make them.
+  Both give `P` where one period divides the other, and a latency on either side delays every write alike and changes
+  neither.
+  **The rule assumes the stage stood at `last`** (the commands the law wrote last), which holds by induction only if
+  every earlier command was deliverable. It does not hold on the first tick from rest where the law's initial `last` is
+  not the port's `rest`, nor after a `trip` latches the port to its `rest`: the stage is elsewhere, and the allocation
+  asks for more than it delivers. The build report says so beside each boxed command. A trip is flagged by the run
+  (`tripped_<command>`, a warning); a delivery the slew limited raises no flag, and is read from the port's recorded
+  traffic (`run(record=["ports:<apparatus>.written_<command>", "ports:<apparatus>.<command>"])`).
 - **`effort`** adds the regularisation towards zero or the last command (`toward="last"`); without it, ties among
   several minimisers go to the commands nearest that reference.
 - **`owner`** is the switch's owner, which the controller declares, as for `exact_allocation`.

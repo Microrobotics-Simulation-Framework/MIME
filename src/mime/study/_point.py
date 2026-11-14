@@ -21,7 +21,8 @@ from mime.build._key import structure_key
 from mime.build._maddening import initial_fields
 from mime.build._control import Mode
 from mime.build._plan import Section
-from mime.control import law_and_models, law_refusals
+from mime.control import law_and_models
+from mime.control._run import _law_refusals  # pyright: ignore[reportPrivateUsage]
 from mime.registry import ControlLaw, Controller
 from mime.drives import Ramp
 from mime.study._axes import Axis, Declared, built_values, declared
@@ -131,7 +132,7 @@ def build_point(index: int, settings: RunSettings, declarations: Sequence[Declar
         point.plans = plans
         law, problems, models = law_and_models(plans)
         if problems and plans.controller is not None:
-            point.refusals = tuple(law_refusals(cast(type[Controller], plans.controller.registered.cls), problems))
+            point.refusals = tuple(_law_refusals(cast(type[Controller], plans.controller.registered.cls), problems))
             return point
         point.law, point.models = law, models
         try:

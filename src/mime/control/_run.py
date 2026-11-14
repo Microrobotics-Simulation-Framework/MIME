@@ -175,11 +175,12 @@ def control_context(plans: PlanSet, given: Mapping[str, Any] | None = None) -> B
 
 
 @dataclass(frozen=True)
-class MadeLaw(ControlLaw):
+class _MadeLaw(ControlLaw):
     """A controller's law as :func:`law_and_models` made it, with the keys of the believed models it read while it
     was made (``ctx.believed``), whose numbers the build holds as leaves of the controller's node."""
 
     believed: tuple[str, ...] = ()
+    slewed: tuple[str, ...] = ()
 
 
 def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal]]:
@@ -193,7 +194,7 @@ def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusa
     """:func:`make_law`, and the segments whose built trees (``ctx.models``) the law read while it was made, in
     order. A refusal the law meets while it is made (``ctx.allocator``'s, ``ctx.believed``'s, or any MIME refusal it
     raises) is a problem with its own code; any other error it raises is the entry's defect. A law that read believed
-    models is a :class:`MadeLaw` naming them."""
+    models is a :class:`_MadeLaw` naming them."""
     plan = plans.controller
     if plan is None:
         return None, [], ()
@@ -210,11 +211,11 @@ def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusa
     problems: list[str | Refusal] = list(_write_problems(plan, law.held, "its held writes"))
     read = tuple(context.control.read)
     if read:
-        law = MadeLaw(law.state, law.held, law.step, believed=read)
+        law = _MadeLaw(law.state, law.held, law.step, believed=read, slewed=tuple(context.control.slewed))
     return (law if not problems else None), problems, tuple(sorted(models.read))
 
 
-def law_refusals(cls: type[Controller], problems: Sequence[str | Refusal]) -> list[Refusal]:
+def _law_refusals(cls: type[Controller], problems: Sequence[str | Refusal]) -> list[Refusal]:  # pyright: ignore[reportUnusedFunction] - used by the build and the study
     """The refusals of a law's problems (:func:`law_and_models`): each its own where it is a refusal, else the
     entry's defect."""
     return [problem if isinstance(problem, Refusal) else entry_defect(cls, problem) for problem in problems]
@@ -461,6 +462,5 @@ def _stacked(parts: list[History]) -> History:
 
 
 __all__ = ["HISTORY_BLOCK_BYTES", "MIN_CHUNK", "TARGET_CHUNKS", "Callback", "Chunk", "ChunkHook", "ChunkedRun",
-           "ControllerError", "MadeLaw", "Progress", "ReadModels", "StopRequest", "automatic_chunks", "control_context",
-           "law_and_models", "law_refusals",
-           "make_law", "numeric_settings"]
+           "ControllerError", "Progress", "ReadModels", "StopRequest", "automatic_chunks", "control_context",
+           "law_and_models", "make_law", "numeric_settings"]

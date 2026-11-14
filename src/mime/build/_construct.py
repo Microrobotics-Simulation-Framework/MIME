@@ -104,7 +104,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               models: tuple[str, ...] | None = None,
               computed: Mapping[str, tuple[str, ...]] | None = None, energy: tuple[str, ...] = (),
               unmetered: Mapping[str, str] | None = None, solving: tuple[str, ...] = (),
-              believed: tuple[str, ...] | None = None) -> BuildReport:
+              believed: tuple[str, ...] | None = None, slewed: tuple[str, ...] = ()) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name)) if name in owners else
@@ -122,7 +122,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=(*plans.controller.lines(plans.dt), *loop_lines(plans), *model_lines(plans, models),
-                    *believed_lines(plans, believed))
+                    *believed_lines(plans, believed), *slew_lines(slewed))
         if plans.controller is not None else (),
         calibrations=calibration_lines(plans),
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
@@ -193,6 +193,17 @@ def believed_lines(plans: PlanSet, read: tuple[str, ...] | None) -> tuple[str, .
     lines += [f"    {key}: a belief is declared ({belief.registered.cls.label()}), and the law read no model of it"
               for key, belief in sorted(declared.items()) if key not in held]
     return tuple(lines)
+
+
+def slew_lines(slewed: tuple[str, ...]) -> tuple[str, ...]:
+    """Each command whose allocation a port's slew boxes (``ctx.allocator``), and what the box takes the stage to be at:
+    the last command written, which the stage stood at only if every earlier command was delivered (not on the first
+    tick from a rest the law does not start from, nor after a trip)."""
+    if not slewed:
+        return ()
+    return ("  allocation boxed by a port's slew (ctx.allocator), the stage taken to stand at the last command: not so "
+            "on the first tick from a rest the law does not start from, nor after a trip (the run flags a trip, not "
+            "a delivery the slew limited):", *slewed)
 
 
 def calibration_lines(plans: PlanSet) -> tuple[str, ...]:
@@ -590,4 +601,4 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
                             merged(node_lines(graph, plans), held.flags), energy,
                             held.energy.unmetered if held.energy is not None else None, solving_lines(graph),
-                            tuple(getattr(law, "believed", ()))), derived
+                            tuple(getattr(law, "believed", ())), tuple(getattr(law, "slewed", ()))), derived

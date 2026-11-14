@@ -42,8 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the truth gives the run of none bit for bit, and with none declared the report says `believed = true`.
   - **`ctx.allocator(apparatus, commands=..., objective=..., owner=..., effort=None, toward="zero")`**: the exact
     allocation through the believed model, its bounds the ports' (else the receiver's stated ones), narrowed where a
-    port declares a slew to the box `mime.control.slew_steps` gives, what the stage delivers before the next write
-    arrives. One function inside the compiled step and as a callback. On camera spike R2's sphere it writes the currents
+    port declares a slew to `last` plus or minus the slew times the base step times `g` base steps, `g = R * floor(P / R)`
+    for a port period `R` at most the controller's `P`, else `R / ceil(R / P)`: what the stage delivers before the next
+    write arrives. **The box assumes the stage stood at `last`**, which holds only if every earlier command was
+    deliverable: not on the first tick from a rest the law does not start from, nor after a trip latches the port to its
+    rest. The build report says so beside each boxed command; the run flags a trip, and a delivery the slew limited is
+    read from the port's recorded traffic. One function inside the compiled step and as a callback. On camera spike R2's sphere it writes the currents
     the hand-written law writes, bit for bit in float64.
   - **Refusal codes**: `allocation.bounds`, `allocation.model`, `allocation.objective` and `controller.believed`; the
     allocator refuses more than `EXACT_COMMANDS` commands as `allocation.exact-size`, citing the constant.

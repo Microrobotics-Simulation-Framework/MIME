@@ -127,14 +127,21 @@ class AllocationReport(NamedTuple):
     made: Mapping[str, Any]
 
 
-def slew_steps(controller: int, port: int) -> float:
-    """The base steps of slew the allocation's box gives one write, for a controller writing every ``controller``
-    base steps through a port sampling every ``port``: the least time the stage is sure to have between two changes of
-    what it is driving towards, per write that change can hold. With the port at the controller's period or a
-    divisor of it, every write is sampled and the next arrives at least ``port * floor(controller / port)`` steps
-    later; with the port slower, a sample can take up to ``ceil(port / controller)`` writes' moves at once, with
-    ``port`` steps to make them. Either way it is the controller's period where one period divides the other. A
-    latency, the controller's or the port's, delays every write alike and changes neither."""
+def _slew_steps(controller: int, port: int) -> float:
+    """The base steps of slew ``g`` the allocation's box gives one write, for a controller writing every ``P =
+    controller`` base steps through a port sampling every ``R = port``: ``g = R * floor(P / R)`` for ``R <= P``, else
+    ``R / ceil(R / P)``. It is the least time the stage is sure to have between two changes of what it is driving
+    towards, per write that change can hold: with the port at the controller's period or a divisor of it, every write
+    is sampled and the next arrives at least ``R * floor(P / R)`` steps later; with the port slower, a sample can take
+    up to ``ceil(R / P)`` writes' moves at once, with ``R`` steps to make them. Either way it is ``P`` where one period
+    divides the other. A latency, the controller's or the port's, delays every write alike and changes neither.
+
+    **The assumption.** The box is ``last +/- slew * dt * g``: it takes the stage to have stood at ``last`` when the
+    write was made, which holds by induction only if every earlier command was deliverable, each reached before the next
+    arrived. It does not hold on the first tick from rest where the law's initial ``last`` is not the port's ``rest``,
+    nor after a trip latches the port to its ``rest``: there the stage is somewhere else, and the commands asked for are
+    more than it delivers. A trip is flagged by the run (``tripped_<command>``); a delivery limited by the slew is not,
+    and is read from the port's recorded traffic (``written_<command>`` against the command)."""
     if port <= controller:
         return float(port * (controller // port))
     return port / math.ceil(port / controller)
@@ -150,7 +157,7 @@ class Allocator:
     The rows are each quantity's independent entries over its scale (``scales``, SI, by quantity), the model's
     coefficients in the commands and its offset at zero command taken at ``at``. The bounds are the ports' (``low``,
     ``high``, SI, by command), intersected where a port declares a slew with ``last`` plus or minus ``slew`` times
-    ``dt`` times the steps :func:`slew_steps` gives (``box``, by command, the half-width in SI). ``effort`` is the
+    ``dt`` times the steps :func:`_slew_steps` gives (``box``, by command, the half-width in SI). ``effort`` is the
     regularisation's scale by command, towards zero or ``last`` (``toward``); without it the tie among several
     minimisers goes to the commands nearest that reference. ``owner`` is the switch's owner, which the controller
     declares (``allocation_switch(owner, orders)``)."""
@@ -219,6 +226,8 @@ class ControlModels:
         self._plans = plans
         self._given = dict(given or {})
         self.read: list[str] = []
+        #: One report line per command whose allocation is boxed by a port's slew (:func:`_slew_steps`).
+        self.slewed: list[str] = []
 
     def _parts(self) -> dict[str, EntryPlan]:
         from mime.build._plan import Section
@@ -397,7 +406,10 @@ class ControlModels:
                     continue
                 low[command], high[command] = np.asarray(stated[0]), np.asarray(stated[1])
             if port is not None and port.slew is not None:
-                box[command] = np.asarray(port.slew) * self._plans.dt * slew_steps(period, port.period)
+                steps = _slew_steps(period, port.period)
+                box[command] = np.asarray(port.slew) * self._plans.dt * steps
+                self.slewed.append(f"    {path}: last +/- {np.asarray(box[command]).tolist()} per write ({steps:g} base "
+                                   f"steps of the port's slew; the stage taken to stand at the last command)")
         if missing:
             raise _refuse("allocation.bounds", RefusalClass.USER,
                           f"{where}: {', '.join(missing)} has no bounds: its port declares none and its receiver "
@@ -440,4 +452,4 @@ class ControlModels:
 
 
 __all__ = ["BELIEVED", "TOWARDS", "AllocationReport", "Allocator", "CameraModel", "ControlModels", "camera_model",
-           "leaf_name", "slew_steps"]
+           "leaf_name"]

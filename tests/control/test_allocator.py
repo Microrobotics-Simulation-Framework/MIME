@@ -7,10 +7,13 @@
   agree to rounding, and the callback's report says no derivative passes through it.
 - **Bounds from the port**: a 3 A port holds every command within 3 A, the PD asking for more; with 25 A they pass 3 A
   (the bound is read, not a constant).
-- **The slew box** (:func:`mime.control.slew_steps`): through a port slewing at 2 kA/s, for controller and port
+- **The slew box** (:func:`mime.control._models._slew_steps`): through a port slewing at 2 kA/s, for controller and port
   periods that divide each other and that do not, with latencies on both sides, the stage reaches every target before
   the next arrives, from the run's own port traffic: the box never asks for more than the stage delivers. The
   control, the box as the controller's period alone, is caught on every configuration where the two differ.
+- **Where the box's assumption fails** (the stage not at ``last``): the first tick from a rest that is not the law's
+  initial ``last``, and after a trip. The allocation asks for more than the stage delivers; the recorded traffic shows
+  it, the build report says so beside the box, and the run flags a trip (a slew-limited delivery raises no flag).
 - **Refusals, each with its own code and its control**: a command with no bounds (``allocation.bounds``), commands no
   affine model takes (``allocation.model``: an arm's joint positions), an objective naming no quantity of the model or
   a scale of another unit (``allocation.objective``), more commands than ``EXACT_COMMANDS`` (``allocation.exact-size``,
@@ -21,6 +24,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import warnings
 from collections.abc import Iterator
 from typing import Any
 
@@ -29,11 +33,12 @@ import numpy as np
 import pytest
 
 from allocation_cases import allocating_sphere
-from believed_cases import LIMIT, REASON, AllocatingArmProbe, AllocatingProbe, believed_sphere
+from believed_cases import LIMIT, REASON, AllocatingArmProbe, AllocatingProbe, GlitchedPD, believed_sphere
 from chain_cases import TRACKING_READS, kinematic_rpm
 
 from mime.build import BuildRefused
-from mime.control import _models, slew_steps
+from mime.control import _models
+from mime.control._models import _slew_steps
 from mime.experiment import Experiment
 from mime.things import CommandPort
 from mime.units import A, N, T, ms, s
@@ -41,7 +46,8 @@ from mime.units import A, N, T, ms, s
 jnp: Any = jax.numpy
 SLEW = 2000.0
 #: The plant a control's detection rate is measured with (``AP3_PLANT``): ``slew``, the box as the controller's period
-#: alone; ``defect``, a refusal raised inside ``law(ctx)`` made its entry's defect, as before AP3a.
+#: alone; ``nobox``, the box not there (the slew's steps infinite), caught by the allocation from rest;
+#: ``defect``, a refusal raised inside ``law(ctx)`` made its entry's defect, as before AP3a.
 PLANT = os.environ.get("AP3_PLANT", "")
 
 
@@ -126,18 +132,80 @@ def misses(history_: dict[str, dict[str, np.ndarray]], port: int, port_latency: 
 def test_the_slew_box_never_asks_for_more_than_the_stage_delivers(configuration, planted, monkeypatch):
     controller, port, controller_latency, port_latency = configuration
     if planted or PLANT == "slew":
-        monkeypatch.setattr(_models, "slew_steps", lambda period, rate: float(period))
+        monkeypatch.setattr(_models, "_slew_steps", lambda period, rate: float(period))
     with in_dtype("float64"):
         found = misses(history(slewed(*configuration), 40), port, port_latency)
     rounding = 64 * float(np.finfo(np.float64).eps) * LIMIT
-    differs = slew_steps(controller, port) != controller
+    differs = _slew_steps(controller, port) != controller
     assert bool(found <= rounding) is not (planted and differs), (configuration, found)
+
+
+# -- where the box's assumption does not hold -------------------------------------------------------------------------
+#
+# The box is last +/- slew * dt * g, taken around where the stage stood at the write: it assumes the stage stood at
+# ``last``. Two places it did not: the first tick from a rest that is not the law's initial ``last``, and after a trip
+# latches the port to its rest. There the allocation asks for more than the stage delivers; what shows it is the
+# port's recorded traffic (what was written against what was delivered), the report's line beside each boxed command,
+# and, for a trip alone, the run's own flag. A slew-limited delivery raises no flag today.
+
+RECORD = ["ports:coils.written_currents", "ports:coils.currents"]
+REST = 10.0
+
+
+def asked_and_delivered(experiment: Experiment, steps: int = 40) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray]:
+    result = experiment.build().run(ms(steps), record=RECORD, history=True)
+    stage = {field: np.asarray(value) for field, value in result.history["ports:coils"].items()}
+    return result, stage["written_currents"], stage["currents"], stage["amplified_currents"]
+
+
+@pytest.mark.parametrize("rest", [0.0, REST], ids=["control_the_stage_stands_at_the_laws_last", "the_stage_at_a_rest_elsewhere"])
+def test_from_rest_the_box_asks_for_more_than_the_stage_delivers_where_the_stage_is_not_at_the_laws_last(rest, monkeypatch):
+    """The law's first ``last`` is zero. A port resting at 0 A is where the law takes it; one resting at 10 A is not,
+    and the commands asked for in the first writes are further from where the stage stands than it moves before the next:
+    the shortfall the recorded traffic shows, against zero (to rounding) where the assumption holds."""
+    if PLANT == "nobox":  # the control: no box at all, so the stage is asked for more than it delivers from its own rest
+        monkeypatch.setattr(_models, "_slew_steps", lambda period, rate: float("inf"))
+    held = CommandPort(bounds=A(LIMIT), slew=A(SLEW) / s(1.0), rate=ms(1), rest=A((rest, 0.0, 0.0)) if rest else None,
+                       reason=REASON)
+    experiment = believed_sphere(port=held, rate=ms(3), latency=ms(1))
+    with in_dtype("float64"):
+        result, written, delivered, amplified = asked_and_delivered(experiment)
+        found = misses({"ports:coils": {"written_currents": written, "amplified_currents": amplified}}, 1, 0)
+        report = "\n".join(experiment.build().report.controller)
+    assert "taken to stand at the last command" in report
+    assert PLANT == "nobox" or "currents: last +/- 6.0 per write" in report
+    assert not [read for read in result.flags if read.was_raised]  # nothing is raised where the slew limits the stage
+    rounding = 64 * float(np.finfo(np.float64).eps) * LIMIT
+    if rest:
+        assert found > 1.0, found  # asked and delivered, from the traffic: the stage is still on its way
+        assert float(np.max(np.abs(written[1:] - delivered[1:]))) > 1.0
+    else:
+        assert found <= rounding, found
+
+
+def test_after_a_trip_the_allocation_asks_for_more_than_the_stage_delivers_and_the_run_flags_the_trip():
+    """A glitch beyond the port's bounds trips it; the stage then drives to its rest and stays, while the law, taking
+    the box around the commands it allocated, goes on asking. The trip is flagged by the run (a warning); the
+    shortfall is in the traffic. The control, the same law with no glitch, is delivered and raises nothing."""
+    held = CommandPort(bounds=A(LIMIT), on_bound="trip", slew=A(SLEW) / s(1.0), rate=ms(1), reason=REASON)
+    shortfalls = {}
+    for glitch in (0.0, 30.0):
+        experiment = believed_sphere(port=held, controller=GlitchedPD(glitch=glitch, glitch_at=4.0), rate=ms(3),
+                                     latency=ms(1))
+        with in_dtype("float64"), warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result, written, delivered, _ = asked_and_delivered(experiment, 60)
+        tripped = [read.path for read in result.flags if read.was_raised and read.path.endswith("tripped_currents")]
+        shortfalls[glitch] = float(np.max(np.abs(np.clip(written[-1], -LIMIT, LIMIT) - delivered[-1])))
+        assert bool(tripped) is bool(glitch), (glitch, tripped)
+        assert any("tripped at its bounds" in str(warning.message) for warning in caught) is bool(glitch)
+    assert shortfalls[0.0] <= 1e-9 and shortfalls[30.0] > 1.0, shortfalls
 
 
 def test_the_slew_steps_are_the_controllers_period_where_one_period_divides_the_other():
     for controller in range(1, 9):
         for port in range(1, 9):
-            held = slew_steps(controller, port)
+            held = _slew_steps(controller, port)
             if controller % port == 0 or port % controller == 0:
                 assert held == controller
             else:

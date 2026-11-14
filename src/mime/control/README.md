@@ -40,8 +40,8 @@ provider's or segment's forward model (`mime.registry.ForwardModel`) or a camera
 camera's own `project`). Inside the compiled step each of its numbers the step reads is a leaf of the controller's node,
 `believed_<apparatus>__<part>__<parameter>`, so a derivative reaches the belief, and a fit moves the belief, never the
 truth; no node is built for a belief. `ctx.allocator(apparatus, commands=..., objective=..., owner=...)` is the exact
-allocation through the believed model, its bounds the ports', with the slew box of `slew_steps`
-([the allocation note](../../../docs/allocation.md)). A refusal either raises inside `law(ctx)` keeps its own code;
+allocation through the believed model, its bounds the ports', with the slew box around `last` where a port declares a
+slew, which takes the stage to have stood at `last` ([the allocation note](../../../docs/allocation.md)). A refusal either raises inside `law(ctx)` keeps its own code;
 any other error a law raises is its entry's defect.
 
 ## What exists

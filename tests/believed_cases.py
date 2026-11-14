@@ -77,6 +77,30 @@ class BelievedPD(Controller):
         return ControlLaw(state={"previous": start, "last": zero}, held={"currents": zero}, step=step)
 
 
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class GlitchedPD(BelievedPD):
+    """:class:`BelievedPD` whose write at its tick ``glitch_at`` is ``glitch`` amperes beyond what it allocated, in every
+    coil: a fault on the line the allocation cannot know of (what trips a port that trips at its bounds). Its ``last``
+    stays the allocation's, so the box goes on being taken around commands the stage no longer stands at."""
+
+    name = "oracle.glitched_pd"
+    glitch_at: float = 3.0
+    glitch: float = 30.0
+
+    def law(self, ctx: Any) -> ControlLaw:
+        inner = super().law(ctx)
+        at, extra = ctx.scalar("glitch_at"), ctx.scalar("glitch")
+
+        def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            after, written = inner.step({k: v for k, v in state.items() if k != "tick"}, reads)
+            beyond = jnp.where(state["tick"] == at, extra, 0.0).astype(written["currents"].dtype)
+            return {**after, "tick": state["tick"] + 1}, {"currents": written["currents"] + beyond}
+
+        return ControlLaw(state={**inner.state, "tick": jnp.asarray(0.0, dtype=jnp.zeros(()).dtype)}, held=inner.held,
+                          step=step)
+
+
 def model_of(experiment: Experiment, owner: str) -> Any:
     """The forward model of the entry ``owner`` of ``experiment``, as its plan makes it (``forward_model``)."""
     from mime.build._construct import entry_context
@@ -162,5 +186,5 @@ class AllocatingArmProbe(AllocatingProbe):
         raise AssertionError("the allocator refuses an arm's joint positions")
 
 
-__all__ = ["FORCE_SCALE", "LIMIT", "OWNER", "REASON", "AllocatingArmProbe", "AllocatingProbe", "BelievedPD", "believed_sphere", "coils",
+__all__ = ["FORCE_SCALE", "LIMIT", "OWNER", "REASON", "AllocatingArmProbe", "AllocatingProbe", "BelievedPD", "GlitchedPD", "believed_sphere", "coils",
            "model_of"]

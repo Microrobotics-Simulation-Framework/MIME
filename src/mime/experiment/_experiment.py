@@ -52,7 +52,8 @@ from mime.build._refusals import (
     RunFailed,
 )
 from mime.build import StageBinding, stage_binding
-from mime.control import Chunk, ChunkedRun, ChunkHook, Progress, StopRequest, law_and_models, law_refusals
+from mime.control import Chunk, ChunkedRun, ChunkHook, Progress, StopRequest, law_and_models
+from mime.control._run import _law_refusals  # pyright: ignore[reportPrivateUsage]
 from mime.build._maddening import (
     FlagTally,
     FlagTest,
@@ -715,7 +716,7 @@ class Experiment:
             judged_over_ranges(self._settings, self._declarations, plans)
             law, problems, models = law_and_models(plans)
             if problems and plans.controller is not None:
-                refusals = law_refusals(cast(type[Controller], plans.controller.registered.cls), problems)
+                refusals = _law_refusals(cast(type[Controller], plans.controller.registered.cls), problems)
                 raise BuildRefused(refusals, report_of(plans, plans.order, refusals))
             graph, report, derived = construct(plans, law, models)
             stage = stage_text(stage_spec(plans))
