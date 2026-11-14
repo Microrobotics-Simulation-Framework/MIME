@@ -349,26 +349,31 @@ def expected_angles(steps: int, latency: int, period: int, held: float = -1.0) -
 
 def spun_magnet(name: str = "spun_magnet", *, controller: Controller | None = None, reads=None, writes=None,
                 mode: Any = "callback", rate=ms(3), latency=None, observe: bool = False,
-                drive_angle: bool = False, torque: Any = None, along: Any = X) -> Experiment:
+                drive_angle: bool = False, torque: Any = None, along: Any = X, drive: Any = None,
+                magnet_solid: Any = None, uncontrolled: bool = False) -> Experiment:
     """A motor alone in the world, 10 cm above a body, its rotor carrying a magnet whose field turns the body; its
     angle prescribed, written by ``controller`` (a :class:`Ticker` by default) every ``rate``. ``observe`` adds the
-    body's swim speed along ``along`` (x); ``drive_angle`` gives the angle a drive as well."""
+    body's swim speed along ``along`` (x); ``drive_angle`` gives the angle a drive as well (``drive``, that drive);
+    ``magnet_solid`` is the rotor magnet's solid, a cylinder unless given; ``uncontrolled`` sets no controller, for a
+    drive to be the angle's one writer."""
     exp = experiment(name)
     exp.add_apparatus(Apparatus(
         "spin", chain={"motor": Motor.Kinematic(axis=Z, prescribed="angle", initial_angle=rad(0.0),
                                                 at=m((0.0, 0.0, 0.1)))},
-        parts={"magnet": magnet_part("motor.rotor")}, magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
-        fields={"magnetic": PointDipole(part="magnet")},
-        commands={"motor.angle": rad(0.25)} if drive_angle else {}))
+        parts={"magnet": magnet_part("motor.rotor", solid=magnet_solid)},
+        magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))}, fields={"magnetic": PointDipole(part="magnet")},
+        commands={"motor.angle": drive if drive is not None else rad(0.25)} if drive_angle or drive is not None
+        else {}))
     exp.declare("spin.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet")
     add_body(exp)
     exp.attach(Magnetic.Torque() if torque is None else torque, body="umr", field="spin.magnetic")
     if observe:
         exp.observe(SwimSpeed("umr", along=along))
-    exp.set_controller(controller if controller is not None else Ticker(),
-                       reads={"pose": "umr.pose"} if reads is None else reads,
-                       writes={"angle": "spin.motor.angle"} if writes is None else writes,
-                       mode=mode, rate=rate, latency=latency)
+    if not uncontrolled:
+        exp.set_controller(controller if controller is not None else Ticker(),
+                           reads={"pose": "umr.pose"} if reads is None else reads,
+                           writes={"angle": "spin.motor.angle"} if writes is None else writes,
+                           mode=mode, rate=rate, latency=latency)
     return exp
 
 

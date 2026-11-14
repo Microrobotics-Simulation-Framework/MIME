@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
+  (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
+  interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and
+  `Entry.assets_read()`, which returns it by default, is what an entry overrides to name only the file its settings
+  choose (a material that exists as an open file and a non-commercial one). A saved experiment's lock records what each
+  entry in the build reads as set, with what its plan adds, each record once by its bytes, so `mime assets fetch`, a run
+  on Modal, a bundle's NOTICE and its card name the files a run reads and no others; a lock that leaves one out is
+  refused on load (`load.assets`). A provider no law reads is not built, so it records nothing, and a wall kind, never an instance in a build, is refused at registration if it declares any (name a wall's table in the drag's `Plan.assets`). No schema change, no
+  entry in MIME declares any yet, and no existing lock gains or loses an asset. The lab fixture gains
+  `labx.finished_gantry` (a dynamics reading one of two records by its `finish`), `labx.marked_rotating` (a field
+  provider) and a second record, `labx_finish_nc.usda`; the entry page prints a declared `assets` under "Assets it reads
+  (by default)".
 - **The licence gate is closed in `locate`** (lane P, P0). `assets.locate` now asks for the first use of a gated file
   as the resolver does (`require_accepted`): bytes a person placed in the cache, or that `mime assets check` or a refused
   `resolve` recorded as checked, no longer reach a build with no acceptance on record. A licence with conditions that
@@ -1300,6 +1312,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **A refusal of the user's or the environment's class raised by MIME's own API inside an entry is that refusal, not the
+  entry's defect** (lane P). An entry's `plan()`, `build()`, a default's rule (`numerical_default(..., by=...)`), or a
+  geometry kind's drawing for the stage, which called `mime.assets.locate` on a gated file with no acceptance on record
+  (`asset.licence-not-accepted`), or any other call of MIME's that refuses in the user's or the environment's class, was
+  reported as `[internal] entry.defect`, the refusal blamed on the plugin, and the CLI gave exit 3. It now passes through
+  with its own code, class and words (the refusal exit, 2), the entry named after it as context, never as the culprit:
+  `(while building <entry>)`, `(while planning <entry>)` or `(while drawing the stage of <entry>)`. Everything else an
+  entry raises is still `entry.defect`, internal: a plain exception, and a MIME error with any internal refusal in it (a
+  mixed one too). Two changes in the same place: an entry's `plan()` or a default's rule that raised a `BuildRefused` of
+  internal or mixed refusals passed it through as MIME's own, and it is now `entry.defect` like the rest; and an internal
+  MIME error inside an entry is shown with its own code, words and docs link as plain lines under the headline, not as an
+  escaped `repr` inside it.
 
 - **A bundle's NOTICE and availability statement ignored the lock's assets**. A folder
   whose result reads an asset it holds no file of (a lab's licensed record, MIME's own tube table) said "Licences: None

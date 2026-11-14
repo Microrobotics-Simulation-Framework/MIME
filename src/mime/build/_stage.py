@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from mime.build._plan import PlanSet, composed
-from mime.build._refusals import BuildRefused, entry_defect
+from mime.build._refusals import BuildRefused, described, entry_defect, passed_through
 from mime.registry import (
     ChainSegment,
     Direction,
@@ -85,7 +85,10 @@ def _called[T](record: Registered, what: str, call: Callable[[], T]) -> T:
     try:
         return call()
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-        raise _defect(record, f"{what} raised {error!r}", error) from error
+        passed = passed_through(error, record.cls, "drawing the stage of")
+        if passed is not None:
+            raise BuildRefused(passed) from error
+        raise _defect(record, f"{what} raised {described(error)}", error) from error
 
 
 #: The most triangles a kind's drawn proxy holds in the stage: a drawing over it is drawn again at fewer facets a turn

@@ -57,11 +57,13 @@ from mime.registry import (
     Tensor,
     convention,
     register_dynamics,
+    register_field_provider,
     register_geometry,
     register_interaction,
     register_observation,
     uniform,
 )
+from mime.fields import UniformRotating
 from mime.scene import quasi_uniform
 from mime.testing.toys import LOAD, POSITION
 from mime.units import LENGTH, TIME, Force, Length, Magnitude, N, Quantity
@@ -191,6 +193,46 @@ class Gantry(ChainSegment):
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         b.add_node(GantryNode(ctx.node_name(), ctx.timestep, travel=self.travel, placement=self.placement(ctx.settings),
                               initial_position=0.0))
+
+
+#: The lab's two finish files, each a record of this package (``assets/records.json``): the one `labx.finished_gantry`
+#: reads is chosen by its ``finish`` setting, and the other is not read, so no lock or notice names it.
+FINISHES = {"marker": "labx_marker.usda", "nc": "labx_finish_nc.usda"}
+
+
+@register_dynamics
+@dataclass(frozen=True, kw_only=True)
+class FinishedGantry(Gantry):
+    """The gantry with a finish whose file is one of the lab's records, chosen by ``finish``: a lab's material that
+    exists as an open file and a non-commercial one. It declares the one it reads, as set (``assets_read``), so a run
+    on the open finish never records, names or fetches the other."""
+
+    name = "labx.finished_gantry"
+    version = "0.1.0"
+    setting_roles = {"finish": convention(DESIGN, "the open finish unless the experiment asks for the lab's "
+                                                  "non-commercial one")}
+    assets = (FINISHES["marker"],)
+    finish: str = "marker"
+
+    @override
+    def assets_read(self) -> tuple[str, ...]:
+        return (FINISHES[self.finish],)
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        return [] if self.finish in FINISHES else [f"finish is {self.finish!r}, not one of {sorted(FINISHES)}"]
+
+
+@register_field_provider
+@dataclass(frozen=True, kw_only=True)
+class MarkedRotating(UniformRotating):
+    """MIME's uniform rotating field, marked with the lab's marker file, which it declares it reads (``assets``): a
+    field provider whose lock names a record of this package."""
+
+    name = "labx.marked_rotating"
+    version = "0.1.0"
+    references = ()
+    assets = (FINISHES["marker"],)
 
 
 class HeightState(TypedDict, closed=True):
