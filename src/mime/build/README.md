@@ -225,7 +225,12 @@ coupling's order only). A coupling group's verdict at each run's end is the run'
   declare no noise or quantum (`port.modelled-noise`), and on one before that model (the camera's expected image) the
   report says the model is bypassed; on an observation with a clock of its own (`Observation.clock`, a camera's frame
   period) its rate is a whole multiple of that period. A controller reads it as `<apparatus>.<port>`, and its age in
-  base steps as `<apparatus>.<port>.age`, classed `measurement`.
+  base steps as `<apparatus>.<port>.age`, classed `measurement`. An ideal measurement port (every value its source
+  makes, at once, with no noise or quantum) builds nothing: a controller reading it reads its source, unless it reads
+  its age, which only the stage counts. A rest is refused where nothing delivers it (no latency, slew or trip) and
+  outside its port's bounds. Each port's noise is drawn from a seed of its own, the experiment's seed hashed with
+  `measure:<apparatus>` and the port's name (as an entry's streams are), listed under the stage in the report's seeds.
+  No two ports of a stage may hold one field (a port named as another's age, `tr_age` beside `tr`): refused.
 - **Phase 2** builds at most two nodes per apparatus, after every entry's in the canonical order:
   `ports:<apparatus>` (`mime.nodes.control.CommandStageNode`), between each staged command's writer and its receiver,
   and `measure:<apparatus>` (`MeasureStageNode`), after each source. The schedule follows their edges, so the command

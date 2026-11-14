@@ -12,7 +12,7 @@ import numpy as np
 from mime.build._builders import COMMAND, STATE, EdgeDecl
 from mime.build._ports import StagePlan, stage_id
 from mime.build._refusals import Refusal, RefusalClass
-from mime.nodes.control import COMMAND_STAGE, MEASURE_STAGE, CommandStageNode, MeasureStageNode
+from mime.nodes.control import COMMAND_STAGE, MEASURE_STAGE, CommandStageNode, MeasureStageNode, clashes
 
 if TYPE_CHECKING:
     from maddening.core.node import SimulationNode
@@ -32,6 +32,15 @@ def stage_nodes(stages: Sequence[StagePlan], built: Mapping[str, SimulationNode]
     nodes: list[SimulationNode] = []
     edges: list[EdgeDecl] = []
     refusals: list[Refusal] = []
+    def clashing(node: CommandStageNode | MeasureStageNode) -> None:
+        for field, held in sorted(clashes(node).items()):
+            refusals.append(Refusal(
+                "port.declaration", RefusalClass.USER,
+                f"apparatus {stage.apparatus!r}'s ports {', '.join(repr(h) for h in held)} would each hold the stage's "
+                f"field {field!r}, and the later would overwrite the earlier in silence",
+                "rename one of them in Apparatus(ports={...}), so that no port's name is one of another port's fields "
+                "(<port>_age, buffer_<port>, written_<port> and the like) or the stage's count, steps"))
+
     for stage in stages:
         if stage.commands:
             name = stage_id(COMMAND_STAGE, stage.apparatus)
@@ -64,6 +73,7 @@ def stage_nodes(stages: Sequence[StagePlan], built: Mapping[str, SimulationNode]
                 periods={p.key: p.period for p in ports}, latencies={p.key: p.latency for p in ports},
                 bounded={p.key: p.bounded for p in ports}, slewed={p.key: p.slew is not None for p in ports},
                 **leaves))
+            clashing(cast(CommandStageNode, nodes[-1]))
             edges += [EdgeDecl(name, (name, p.key), p.receiver, False, p.units, seq, COMMAND)
                       for seq, p in enumerate(ports)]
         if stage.measurements:
@@ -99,6 +109,7 @@ def stage_nodes(stages: Sequence[StagePlan], built: Mapping[str, SimulationNode]
                 aged={p.key: p.age is not None for p in ports_m}, seeds={p.key: p.seed for p in ports_m},
                 noisy={p.key: p.sigma is not None for p in ports_m},
                 quantised={p.key: p.quantum is not None for p in ports_m}, **leaves))
+            clashing(cast(MeasureStageNode, nodes[-1]))
             for seq, p in enumerate(ports_m):
                 edges.append(EdgeDecl(name, p.source, (name, p.key), False, p.units, 2 * seq, STATE))
                 if p.age is not None:

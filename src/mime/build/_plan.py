@@ -582,6 +582,7 @@ class PlanSet:
     #: command port, staged or not (a response handed to its receiver), for the build report.
     stages: tuple[StagePlan, ...] = ()
     command_ports: tuple[CommandPortPlan, ...] = ()
+    measurement_ports: tuple[MeasurementPlan, ...] = ()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -846,7 +847,9 @@ class _Planner:
                        kicks=self.kicks, turning=tuple(self.turning_rates()), ranges=dict(sorted(self.ranges.items())),
                        range_choices=tuple(self.range_choices), stages=stages,
                        command_ports=tuple(plan for _, held in sorted(self.command_ports.items())
-                                           for _, plan in sorted(held.items())))
+                                           for _, plan in sorted(held.items())),
+                       measurement_ports=tuple(plan for _, held in sorted(self.measurements.items())
+                                               for _, plan in sorted(held.items())))
 
     def approaches(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, float]:
         """The closest approach of each body an entry binds to the wall of the region its medium fills, by role
@@ -2709,12 +2712,25 @@ class _Planner:
                 found[name] = plan
         self.measurements[apparatus.name] = found
 
+    def aged_ports(self) -> set[tuple[str, str]]:
+        """The measurement ports, by apparatus and name, whose age the controller reads: the stage counts it, so such a
+        port is staged even where it is ideal."""
+        plan = self.controller
+        paths = [path for key, path in (plan.bindings.items() if plan is not None else ()) if key.startswith("read.")]
+        return {(apparatus, name) for path in paths if path.endswith(".age") and path.count(".") == 2
+                for apparatus, name, _ in (path.split("."),) if name in self.measurements.get(apparatus, {})}
+
+    def measurement_staged(self, plan: MeasurementPlan) -> bool:
+        """Whether a measurement port builds its stage: it is not ideal, or its age is read."""
+        return not plan.ideal or (plan.apparatus, plan.port) in self.aged_ports()
+
     def stage_plans(self) -> tuple[StagePlan, ...]:
         """Each apparatus's staged ports, by apparatus, those with none left out."""
         found: list[StagePlan] = []
         for apparatus in sorted(set(self.command_ports) | set(self.measurements)):
             commands = tuple(plan for _, plan in sorted(self.command_ports.get(apparatus, {}).items()) if plan.staged)
-            measured = tuple(plan for _, plan in sorted(self.measurements.get(apparatus, {}).items()))
+            measured = tuple(plan for _, plan in sorted(self.measurements.get(apparatus, {}).items())
+                             if self.measurement_staged(plan))
             if commands or measured:
                 found.append(StagePlan(apparatus, commands, measured))
         return tuple(found)
@@ -2738,6 +2754,10 @@ class _Planner:
             return None
         field_name = f"{plan.key}_age" if age else plan.key
         what = f"the age of measurement port {apparatus}.{name}" if age else f"measurement port {apparatus}.{name}"
+        if not self.measurement_staged(plan):
+            # An ideal port delivers its source as it is: the read is its source's, and nothing is built for it.
+            return ClassedRead(label, path, plan.source[0], plan.source[1], ReadClass.MEASUREMENT,
+                               f"{what} of {plan.of}, ideal: read from its source", units, shape)
         return ClassedRead(label, path, plan.stage, field_name, ReadClass.MEASUREMENT, f"{what} of {plan.of}", units,
                            shape)
 

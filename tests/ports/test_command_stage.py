@@ -7,9 +7,12 @@ of amperes, kiloamperes a second, milliseconds.
 The tolerance is on the inputs' scale, the largest of the written values, the bounds and the rest: a float32 run's
 rounding over its steps, 64 units in the last place of that scale.
 
-**The controls** (``PORT_PLANT``, rated by ``.github/probe/detection_rate.py``): the stage with its bound and slew
-swapped, a plausible ordering of an amplifier chain (``slew_before_bound``: the slew acts on what arrives, then the
-bound), and a trip that does not latch (``trip_unlatched``):
+The bound's flag is compared too, step by step: whether the clip acted, or whether the trip has latched.
+
+**The controls** (``PORT_PLANT``, rated by ``.github/probe/detection_rate.py``): the stage with two rungs swapped, each
+a plausible ordering of an amplifier chain (``slew_before_bound``: the slew acts on what arrives, then the bound;
+``bound_before_delay``: the bound acts on what was written, before the link samples and delays it, which differs only
+where a value beyond the bounds falls between samples), and a trip that does not latch (``trip_unlatched``):
 each must fail this test on every run, its rate measured, not assumed: a swap the drawn examples could not tell apart
 would be no evidence."""
 
@@ -22,7 +25,7 @@ import jax.numpy as jnp
 import numpy as np
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from port_cases import Link, command_oracle, planted, stage_of, stepped
+from port_cases import Link, command_flags, command_oracle, planted, stage_of, stepped
 
 from mime.core import run_dtype
 from mime.nodes.control import CommandStageNode
@@ -31,14 +34,15 @@ DT = 1e-3
 STEPS = 24
 SHAPE = (3,)
 #: The orders the plants put the stage's rungs in.
-PLANTED_RUNGS = {"slew_before_bound": ("delay", "slew", "bound")}
+PLANTED_RUNGS = {"slew_before_bound": ("delay", "slew", "bound"), "bound_before_delay": ("bound", "delay", "slew")}
 
 
 @st.composite
 def links(draw: st.DrawFn) -> tuple[Link, np.ndarray]:
     """A port's numbers and a written sequence: a bound of 1 to 30 A about zero, a slew moving 0.2 to 4 bounds' worth a
     step or none, a period of 1 to 4 steps and a latency of 0 to 5, and a sequence of square waves reaching past the
-    bound and back."""
+    bound and back, with a one-step spike past it at a drawn step (which falls between samples wherever the period is
+    above one and the step is not a multiple of it)."""
     bound = draw(st.floats(1.0, 30.0))
     bounded = draw(st.sampled_from(["", "clip", "trip"]))
     slewed = draw(st.booleans())
@@ -53,6 +57,8 @@ def links(draw: st.DrawFn) -> tuple[Link, np.ndarray]:
         half = int(rng.integers(2, 6))
         levels = (bound * rng.uniform(1.1, 2.0), bound * rng.uniform(-0.9, 0.9))
         written[:, j] = [levels[(n // half) % 2] for n in range(STEPS)]
+    spike = int(rng.integers(1, STEPS))
+    written[spike] = bound * rng.uniform(2.5, 3.0) * rng.choice([-1.0, 1.0], size=SHAPE)
     return link, written
 
 
@@ -89,11 +95,27 @@ def planted_stage() -> Iterator[None]:
 @given(links())
 def test_the_command_stage_delivers_the_design_order_of_its_rungs(drawn):
     link, written = drawn
+    flag = None if link.low is None else ("tripped_currents" if link.trip else "clipped_currents")
     with planted_stage():
-        delivered = stepped(stage_of(link, SHAPE, DT), written, DT)
+        held = stepped(stage_of(link, SHAPE, DT), written, DT, flag=flag)
+    delivered, flags = held if isinstance(held, tuple) else (held, np.zeros(STEPS))
     expected = command_oracle(written, link, DT)
     worst = float(np.max(np.abs(delivered - expected)))
     assert worst <= tolerance(scale_of(link, written)), (link, worst)
+    np.testing.assert_array_equal(flags, command_flags(written, link))
+
+
+def test_a_trip_acts_on_what_the_link_delivers_not_on_what_was_written():
+    """The case that tells the bound before the delay from after it: a one-step spike past a trip's bounds falling
+    between the samples of a port of period 4. The link never delivers it, so the port never trips: it delivers its
+    first sample throughout, and its flag stays down. Bounding first would trip at the spike's step."""
+    link = Link(period=4, low=-1.0, high=1.0, trip=True, rest=0.25)
+    written = np.full((8, 1), 0.5)
+    written[1] = 3.0
+    with planted_stage():
+        delivered, flags = stepped(stage_of(link, (1,), DT), written, DT, flag="tripped_currents")
+    np.testing.assert_array_equal(delivered[:, 0], np.full(8, 0.5))
+    np.testing.assert_array_equal(flags, np.zeros(8))
 
 
 def test_a_trip_latches_the_rest_and_flags_it():

@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ports as data on an apparatus, and the stages the build inserts for them** (the apparatus lane's AP1a, dev2).
+  `Apparatus(ports={...})` declares an apparatus's links:
+  - a `CommandPort` (`mime.CommandPort`) keyed by a command: its update `rate` and `latency` (whole base steps), its
+    `bounds` (clipped, or tripped to its `rest` for the rest of the run, flagged and warned), its `slew`, and the `reason`
+    its numbers come from;
+  - a `Measurement` (`mime.Measurement`) keyed by a name of its own: what it measures (`of=`: a thing's state or an
+    observation's output, `camera:.expected`), its `rate`, `latency`, seeded `noise` (`mime.things.Gaussian`) and
+    `quantum`. A controller reads it as `<apparatus>.<port>`, and its age in base steps as `<apparatus>.<port>.age`.
+
+  The build inserts at most two nodes per apparatus: `ports:<apparatus>` between a command's writer and its receiver
+  (sample, delay, bound, slew, in that order), and `measure:<apparatus>` after a measured source. **A command or a read
+  with no port, or with an ideal one, builds nothing:** every existing program, its derived hash and its bits are
+  unchanged. A declared port adds up to two nodes and their fixed cost a step (measured on a GitHub runner: A0's chunk
+  1.15 times as long, a coil-array sphere's 1.68 times). A staged port on a kinematic arm takes its joints' stated limits
+  as its bounds (`Command.bounds`) and their initial positions as its rest (`Command.rest`). Noise on a camera's image is
+  refused (`port.modelled-noise`: the image already carries its sensor's model); on its expected image it is allowed, and
+  the report says the sensor model is bypassed; a camera port's rate is a whole multiple of its frame period.
+  `Camera.project` is the camera's projection as a pure JAX function. The energy ledger books a command through a port
+  under its writer; a derivative through a stage takes its ports' status (a clip and a slew are kinks, a trip a jump, a
+  quantum cut). Six refusal codes: `port.clock`, `port.command-unknown`, `port.declaration`, `port.modelled-noise`,
+  `port.seam` (`drift`, `fault`, `bias`, `dropout` and, until it is built, a command port's `response`) and
+  `port.source-unknown`. Saving an experiment that declares a port is refused (`save.unsavable`) until the saved form
+  holds ports.
+
 - **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
   mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
   frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in

@@ -109,7 +109,9 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         plans.settings.experiment, plans.dt, tuple(lines),
         tuple(GroupLine(g.nodes, g.tolerance, g.max_iterations, g.requested_by) for g in plans.groups),
         external_inputs,
-        {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
+        {**{p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
+         **{stage.node_names()[-1]: {m.port: m.seed for m in stage.measurements} for stage in plans.stages
+            if stage.measurements and any(m.sigma is not None for m in stage.measurements)}},
         {p.owner: attached_validity(p) for p in plans.entries if attached_validity(p)},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
@@ -130,8 +132,8 @@ def stage_description(name: str) -> str:
 
 def port_lines(plans: PlanSet) -> tuple[str, ...]:
     """Each declared port's line, commands then measurements, by apparatus."""
-    measured = [plan for stage in plans.stages for plan in stage.measurements]
-    return (*(plan.text(plans.dt) for plan in plans.command_ports), *(plan.text(plans.dt) for plan in measured))
+    return (*(plan.text(plans.dt) for plan in plans.command_ports),
+            *(plan.text(plans.dt) for plan in plans.measurement_ports))
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
