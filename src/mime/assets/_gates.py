@@ -49,7 +49,7 @@ from typing import Protocol, TextIO, cast
 from mime._notebook import in_notebook
 from mime._said import QUESTION_CONFIRM, Said
 from mime._terminal import for_terminal, plain
-from mime.assets._acceptances import Licence, accepted, remember
+from mime.assets._acceptances import ACCEPTANCES_VARIABLE, Licence, accepted, remember
 from mime.assets._cache import cache_dir
 from mime.assets._reference import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -383,17 +383,24 @@ def _flags(licences: Sequence[Licence]) -> str:
     return " ".join(f"--accept-licence {each.id}" for each in licences)
 
 
-def _licence_refusal(licences: Sequence[Licence], needs: str, why: str) -> BuildRefused:
-    """The refusal of a download whose licences are not accepted and cannot be asked about."""
+def _licence_refusal(licences: Sequence[Licence], needs: str, why: str, *, accept_with: str | None = None) -> BuildRefused:
+    """The refusal of a download or a read whose licences are not accepted and cannot be asked about. A download's
+    action names the flag the command has (``--accept-licence``). A build's read (``accept_with``: the command that
+    asks, for this file) names the routes a build has, none of them a flag: the command, the acceptances file and the
+    script ``mime modal`` writes."""
     said = "; ".join(f"{plain(each.title)} ({plain(each.id)}): {'; '.join(plain(line) for line in each.conditions)}"
                      for each in licences)
     ids = ", ".join(repr(each.id) for each in licences)
+    action = (f"read the conditions, then accept them by name: add `{_flags(licences)}` to the command (in Python, "
+              f"accept_licences={{{ids}}}); no other flag accepts a licence") if accept_with is None else (
+        f"read the conditions, then accept {', '.join(repr(each.id) for each in licences)} once, where somebody can "
+        f"answer: `{accept_with}` asks and writes the yes to licences.json; or point {ACCEPTANCES_VARIABLE} at a file "
+        f"that holds the acceptance; a run on Modal carries the licences accepted where `mime modal` wrote its script "
+        f"(accept them, then write it again)")
     return _refuse(
         "asset.licence-not-accepted", RefusalClass.USER,
         f"{needs} is under {'a licence' if len(licences) == 1 else 'licences'} with conditions beyond credit, which "
-        f"need your acceptance, and {why}. {said}",
-        f"read the conditions, then accept them by name: add `{_flags(licences)}` to the command (in Python, "
-        f"accept_licences={{{ids}}}); no other flag accepts a licence")
+        f"need your acceptance, and {why}. {said}", action)
 
 
 @dataclass
@@ -430,14 +437,15 @@ def _unaccepted(licences: Sequence[Licence], accept_licences: Collection[str]) -
     return list(found.values())
 
 
-def _accept(needed: Sequence[Licence], names: str, asker: Asker | None, notice: str | None) -> bool:
+def _accept(needed: Sequence[Licence], names: str, asker: Asker | None, notice: str | None,
+            accept_with: str | None = None) -> bool:
     """Ask for ``needed`` to be accepted, or refuse; remember a yes. Whether the notice was shown with the question."""
     if asker is None:
-        raise _licence_refusal(needed, names, "there is no terminal to ask at")
+        raise _licence_refusal(needed, names, "there is no terminal to ask at", accept_with=accept_with)
     try:
         said_yes = asker.licences(needed, notice)
     except NoTerminal:
-        raise _licence_refusal(needed, names, "there is no terminal to ask at") from None
+        raise _licence_refusal(needed, names, "there is no terminal to ask at", accept_with=accept_with) from None
     if not said_yes:
         raise _refuse("asset.licence-declined", RefusalClass.USER,
                       f"the conditions of {', '.join(plain(each.title) for each in needed)} were not accepted, and "
@@ -453,7 +461,7 @@ def _what(refs: Sequence[AssetRef], needed: Sequence[Licence], fallback: str) ->
 
 
 def require_accepted(refs: Iterable[AssetRef], *, accept_licences: Collection[str] = (),
-                     notice: str | None = None) -> Approval:
+                     notice: str | None = None, accept_with: str | None = None) -> Approval:
     """The **first use** of files already in the cache: wherever their bytes are about to be read (the resolver finding
     them, a bake, a pull's unpack), a licence with conditions that has no recorded acceptance is asked about once, or
     refused where nobody can be asked (``asset.licence-not-accepted``, naming ``--accept-licence <id>``), or declined
@@ -464,7 +472,7 @@ def require_accepted(refs: Iterable[AssetRef], *, accept_licences: Collection[st
     if not needed:
         return Approval()
     shown = _accept(needed, _what(held, needed, "the file"), current_asker(),
-                    notice or next((ref.notice for ref in held if ref.notice), None))
+                    notice or next((ref.notice for ref in held if ref.notice), None), accept_with)
     return Approval(None, tuple(needed), shown)
 
 

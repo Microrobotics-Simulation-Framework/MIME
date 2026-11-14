@@ -33,6 +33,7 @@ from terms_cases import NO_REDISTRIBUTION, mesh_bytes, same_reference_run, write
 from zenodo_records import FakeRecords
 
 from mime import assets, push
+from mime.assets._acceptances import remember
 from mime.assets import AssetRef, DerivationInput, DerivationRecord, _derivation, _sources
 from mime.build import BuildRefused
 from mime.experiment import Experiment
@@ -76,6 +77,7 @@ def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     held.mkdir()
     monkeypatch.setenv("MIME_ASSETS_DIR", str(held))
     monkeypatch.setenv("MIME_OFFLINE", "1")
+    monkeypatch.setenv("MIME_LICENCE_ACCEPTANCES", str(tmp_path / "licences.json"))
     (tmp_path / "locations.toml").write_text("", encoding="utf-8")
     monkeypatch.setenv("MIME_ASSET_LOCATIONS", str(tmp_path / "locations.toml"))
     return held
@@ -87,6 +89,7 @@ def placed(cache: Path, data: bytes, record: AssetRef | None = None) -> None:
     (cache / sha(data)).write_bytes(data)
     if record is not None:
         assets.fetch(record, accept_licences={each.id for each in assets.licences_of(record)})
+        remember(assets.licences_of(record))  # the person who placed it accepted: a build's read of it is gated
 
 
 @pytest.fixture

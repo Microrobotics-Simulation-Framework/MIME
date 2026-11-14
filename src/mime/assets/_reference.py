@@ -347,6 +347,15 @@ class AssetRef:
                         licences, stated.get("version"), stated.get("citation"), adapters, unlisted=True)
 
 
+@dataclass(frozen=True)
+class BundleContainer(AssetRef):
+    """The reference to the file a pull has just downloaded to read a bundle from: a container, not an asset of an
+    experiment, so it states no licence (``NOASSERTION``) and its own terms are judged when it is unpacked. Only the
+    download of a bundle (:func:`~mime.assets._fetch.retrieve`) makes one; a record read from a lock, a manifest or a
+    locations file is always a plain :class:`AssetRef`, so no record can claim to be one. It is what
+    :func:`~mime.assets._cache.locate_bundle_container` accepts without asking about a licence."""
+
+
 def _licences_of(name: str, held: object) -> tuple[CustomLicence, ...]:
     shape = ("the record's licences are an object of LicenseRef- id to its title, url and redistribution, as texts, "
              "and its conditions, a list of texts, where it has them")
