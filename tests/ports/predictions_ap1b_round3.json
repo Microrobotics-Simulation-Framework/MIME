@@ -48,5 +48,9 @@
       "clean_expected": "0/200"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "measured_on": "GitHub runners, the probe workflow, CPU, float32, at 584290b5's tests merged with the release (probe branch probe/ap1b-rates3), run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43592430335",
+    "gate_1c_property_alone": "as predicted: respond_before_slew 200/200 caught by the drawn property alone, clean 0/200",
+    "gate_1d_file_with_new_draws": "as predicted: respond_before_slew, slew_before_bound, bound_before_delay and trip_unlatched 200/200 caught each through the file, clean 0/200 each"
+  }
 }

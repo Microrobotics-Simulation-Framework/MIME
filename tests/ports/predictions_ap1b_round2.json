@@ -38,5 +38,9 @@
       "moved": "the same arm, commanded away, with a 20 ms lag on the head and none on the base: its joint positions differ"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "measured_on": "GitHub runners, the probe workflow, CPU, at 3b99ae7f's tests (probe branch probe/ap1b-probes), base AP1a's branch at 8f451822, run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43590229824",
+    "gate_1b_command_rungs_with_response": "as predicted: respond_before_slew 200/200 caught through the file (the explicit case catching it on every run), clean 0/200; the drawn property alone is rated after its draws were fixed (predictions_ap1b_round3.json)",
+    "bits_2": "as predicted: the AR4 with a 20 ms servo commanded away from its home, every array equal (16 of 16) in float32 and in float64; the control moved differs in 13 of 16 arrays (the arm's joint positions and frame poses, the magnetic wrenches among them), so the comparison can fail"
+  }
 }
