@@ -42,7 +42,7 @@ from allocation_cases import (GUARD_POINTS, LIMIT, OWNER, allocating_field, allo
                               guard_point_value)
 from allocation_draws import (SLACK, General, Problem, bvls, column_oracle, generals, line, problems, reach_of,
                               residual_line, verdict)
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 import mime.control._allocation as law_module
@@ -293,19 +293,21 @@ class _PlantedJnp:
 
 
 @contextlib.contextmanager
-def planted_law() -> Iterator[None]:
-    """The matrix-path plant ``PLANT`` names, if it is one, for the context."""
+def planted_law(planted: bool = True) -> Iterator[None]:
+    """The matrix-path plant ``PLANT`` names, if it is one and ``planted``, for the context (the float32 test's float64
+    reference is never planted: planted alike, the two would agree)."""
     with pytest.MonkeyPatch.context() as patch:
-        if PLANT in ("stop_q", "stop_inverse"):
+        if planted and PLANT in ("stop_q", "stop_inverse"):
             patch.setattr(law_module, "jnp", _PlantedJnp(PLANT))
         yield
 
 
 @cache
-def law_of(names: tuple[str, ...], only: str = "commands") -> Any:
+def law_of(names: tuple[str, ...], only: str = "commands", planted: bool = True) -> Any:
     """The law's commands (or its ``only`` output) as a jitted function of the inputs ``names``, in the order given.
     Jitted and kept: the law's operations dispatched one by one, each shape and dtype of them, outgrow JAX's caches and
-    every example then compiles afresh (ten seconds in place of one); a plant is the process's, so the cache is right."""
+    every example then compiles afresh (ten seconds in place of one). ``planted`` only keys the cache: the plant is in
+    the trace, which the caller's context sets."""
     def run(*values: Any) -> Any:
         given = dict(zip(names, values, strict=True))
         found = exact_allocation(given["matrix"], given["wanted"], lower=given["lower"], upper=given["upper"],
@@ -333,17 +335,17 @@ class Derivatives(NamedTuple):
 
 
 def derivatives_at(names: tuple[str, ...], values: list[np.ndarray], tangents: list[np.ndarray],
-                   cotangent: np.ndarray, dtype: str) -> Derivatives:
-    with in_dtype(dtype), planted_law():
+                   cotangent: np.ndarray, dtype: str, planted: bool = True) -> Derivatives:
+    with in_dtype(dtype), planted_law(planted):
         x = [jnp.asarray(v, dtype=dtype) for v in values]
-        law = law_of(names)
+        law = law_of(names, planted=planted)
         products = []
         for i in range(len(names)):
             only = [jnp.asarray(t, dtype=dtype) if j == i else jnp.zeros_like(x[j]) for j, t in enumerate(tangents)]
             products.append(np.asarray(jax.jvp(law, x, only)[1], np.float64))
         _, pullback = jax.vjp(law, *x)
         return Derivatives(
-            np.asarray(law_of(names, "active")(*x)), products,
+            np.asarray(law_of(names, "active", planted)(*x)), products,
             [np.asarray(jax.jacfwd(law, argnums=j)(*x), np.float64).reshape(len(products[0]), -1)
              for j in range(len(names))],
             [np.asarray(c, np.float64) for c in pullback(jnp.asarray(cotangent, dtype=dtype))])
@@ -356,13 +358,15 @@ def derivative_in_every_input_problems(general: General, dtype: str) -> list[str
     Float64: the forward-mode product against the central difference over a step that holds the active set. The
     commands are smooth there, so the difference's error is its truncation, which the step and the double step give
     (an error of ``h^2`` and four times it, so ``|D(2h) - D(h)|`` is three times it, allowed twice over), plus its
-    rounding, ``SLACK`` times eps times the commands' largest size at its ends over the step (the scale a command's
-    rounding is of, not its own: a small one is a difference of large terms). Float32: the forward-mode product
-    against float64's at the same rounded inputs, where the active set is the same. Both dtypes: reverse against
-    forward mode, one cotangent's pullback dotted with the tangent against the cotangent dotted with the product.
-    Those two are within ``SLACK`` times eps times the Jacobian's absolute product, and the law's own sensitivity (its
-    largest derivative in any input, times the tangent): the scale an input's rounding is of where the derivative in
-    it is zero, which the result's own scale would call exact."""
+    rounding, ``SLACK`` times eps times the selected set's condition number times the commands' largest size at its
+    ends over the step (the scale a command's rounding is of, not its own: a small one is a difference of large
+    terms). Float32: the forward-mode product against float64's at the same rounded inputs, where the active set is
+    the same. Both dtypes: reverse against forward mode, one cotangent's pullback dotted with the tangent against the
+    cotangent dotted with the product. Those two are within ``SLACK`` times eps times the condition number times the
+    Jacobian's absolute product and the law's own sensitivity (its largest derivative in any input, times the
+    tangent): the scale an input's rounding is of where the derivative in it is zero, which the result's own scale
+    would call exact. The condition number is the selected set's: the derivative of a least squares or a
+    pseudo-inverse carries it, and its square in the matrix's."""
     found: list[str] = []
     rng = np.random.default_rng(general.seed + 1)
     names = tuple(general.inputs())
@@ -373,12 +377,20 @@ def derivative_in_every_input_problems(general: General, dtype: str) -> list[str
         size = float(np.sqrt(np.mean(value ** 2))) if name in ("matrix", "scales", "reference_scales") else 1.0
         tangents.append(rng.choice((-1.0, 1.0), value.shape) * rng.uniform(0.1, 1.0, value.shape) * size)
     cotangent = rng.choice((-1.0, 1.0), commands) * rng.uniform(0.1, 1.0, commands)
-    eps = float(np.finfo(dtype).eps)
     own = derivatives_at(names, values, tangents, cotangent, dtype)
+    # The conditioning of the selected set's solve (its free columns over the row scales, with the regularisation rows):
+    # the derivative of a least squares or a pseudo-inverse carries it (its square, in the matrix's), so that rounding
+    # in either mode is eps times it times the products' size, not eps times their size alone.
+    given = general.inputs()
+    rows = given["matrix"] / given["scales"][:, None]
+    if "reference_scales" in given:
+        rows = np.concatenate([rows, np.diag(1.0 / given["reference_scales"])])
+    free = own.active == 0
+    eps = float(np.finfo(dtype).eps) * (float(np.linalg.cond(rows[:, free])) if free.any() else 1.0)
     # The law's own sensitivity: its largest derivative in any input, which the products of an input the commands do
     # not depend on (a reference of a command at a bound) cancel from, so that their rounding is of this scale.
     sensitivity = sum(float(np.max(np.abs(jacobian))) for jacobian in own.jacobians)
-    wide = derivatives_at(names, values, tangents, cotangent, "float64") if dtype == "float32" else own
+    wide = derivatives_at(names, values, tangents, cotangent, "float64", planted=False) if dtype == "float32" else own
     differenced = 0
     for i, name in enumerate(names):
         product, tangent = own.products[i], tangents[i]
@@ -417,7 +429,11 @@ def derivative_in_every_input_problems(general: General, dtype: str) -> list[str
                                  f"{float(np.max(np.abs(one - product))):.3g} past {float(np.max(allowed)):.3g}")
                 differenced += 1
                 break
-    if differenced < DIFFERENCED and not found:
+    if dtype == "float32" and differenced == 0 and not found:
+        # float32 and float64 chose different active sets at the rounded inputs (a near tie): the premise of the
+        # comparison, one active set, does not hold, so the draw is no evidence either way.
+        assume(False)
+    if dtype == "float64" and differenced < DIFFERENCED and not found:
         found.append(f"only {differenced} of {len(names)} inputs were differenced (an active-set change within "
                      f"every step of the rest): the draw tests too little")
     return found
