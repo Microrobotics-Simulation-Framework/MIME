@@ -1,0 +1,98 @@
+{
+  "written": "2026-11-14, committed before the gates' runs on GitHub's runners (the commit that adds this file is the timestamp): camera 6a, static meshes traced once a run in the in-loop camera",
+  "phase": "camera 6a (static meshes in the in-loop camera: the tree, the all-hits reduction, S x S coverage, the refusals)",
+  "labels": "the 6a agent's predictions. Bases: camera spike 2's runner timings; the first step's probe (its own predictions committed before it ran, carried below with their outcomes); and the development runs listed under seen_before, which are not the gates' evidence: each gate's evidence is its run on a runner after this commit",
+  "seen_before": [
+    "first step, probe run 43606681595 (4-vCPU runners, a prototype maker with Moller-Trumbore): the step's compile time with a 99 328-triangle mesh 0.97 to 1.06 of none's; the structure's make 3.1 to 5.3 s at 320x240 and 13.0 to 15.7 s at 640x480 (S = 4); frames 0.95 to 1.03 of none's; a reverse derivative in the ball's twist compiles and is finite",
+    "development, laptop, float64: the tube's drawing (64 segments) against the closed-form tube through the node, max |traced - route 1| 0.0077, 0.0049, 0.0043, 0.0057 at S = 1, 2, 4, 8 (worst ratio to the design's line 0.05 to 0.08); the ellipsoid's drawing (48 facets) against the sphere's closed form, opaque: max 0.51, 0.18, 0.17, 0.11 and mean over edge pixels 0.169, 0.059, 0.043, 0.043 at S = 1, 2, 4, 8 (worst ratio 0.75, 0.42, 0.54, 0.44); attenuating: max 0.005 to 0.012",
+    "development, laptop: Moller-Trumbore in float32 at S = 8 left the sagitta's bracket by 0.012 at one silhouette pixel (a shared edge's ray claimed twice or not at all, moving the chord by a whole t); XLA's CPU backend fused a product into the edge function's difference, so the watertight test's empty slot (x y - y x) was not zero under jit until the products were kept apart (an optimisation barrier)",
+    "development, laptop: G22 passed in both dtypes after those two fixes; its controls dropped-leaf and flipped-winding failed on hypothesis seeds 1, 2, 3 each; G24 passed (12 tests, 192 s); the scene tests' controls no-medium and chords-unsigned each failed the tests they aim at"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runner, 4 vCPU, for the rates, the bits and the costs",
+    "sizes_and_parameters": "the in-loop camera's 160x120 detector (fx 750 px), 1 mm from the tube's axis, looking across it; the tube 60/70 um, 480 um long, attenuation 3000 per metre; the tube's drawing at 64 segments; a sphere of 40 um and an ellipsoid of equal semi-axes drawn at the stage's 48 facets; S = 4 unless a gate says; the cost case a closed tube-wall mesh of 99 328 triangles (256 around, 96 along, 72/80 um, 400 um) filling 320x240 and 640x480 views",
+    "seeds_and_draws": "G22: 40 Hypothesis examples a dtype, one to three closed meshes (UV sphere, box, tube wall) 50 um to 2 mm across within 2 mm, an origin within 5 mm, 192 rays (two in three aimed inside a triangle); every other gate deterministic"
+  },
+  "first_step": {
+    "claim": "the step's compile cost with and without a 100k-triangle mesh, the leaf and constant variants (V6-1.2)",
+    "kind": "estimates",
+    "case": "the first step's probe/compile_cost.py on probe/camera6a-compile, predictions committed in dfc1aac0 before any arm ran (branch deleted after the run)",
+    "prediction": {"value": null, "band": [1.0, 1.5], "unit": "step compile, leaf over none; const +12 to 30 MB a program (f64); the make 2 to 10 s at 320x240 and 8 to 40 s at 640x480; frames 0.8 to 1.25 of none's; reverse in a non-intrinsic quantity finite", "basis": "derived", "why": "the traversal is code in a cond branch the frame never takes; the arrays are arguments"},
+    "metric": "step_compile_s, step_serialized_bytes, maker_run_s, run_second_s",
+    "first_step_outcome": "held: compile 0.97 to 1.06 (leaf), const +6.5 MB (f32) and +12.8 MB (f64) a program, the make 3.1 to 5.3 s (320) and 13.0 to 15.7 s (640), frames 0.95 to 1.03, reverse finite in every arm (run 43606681595)"
+  },
+  "gate_22_tree_against_brute_force": {
+    "claim": "the tree finds every crossing brute force finds: each mesh's crossings exactly, its signed chord within rounding on each crossing's scale, the nearest t within rounding and its triangle, on every judged ray of every draw",
+    "kind": "equality",
+    "case": "tests/sensing/test_mesh_bvh.py::test_the_tree_finds_every_crossing_brute_force_finds[float32] and [float64]",
+    "prediction": {"value": "pass", "band": [null, null], "unit": "", "basis": "measured-before", "why": "the same crossing decisions on rays whose barycentric margin is above the dtype's rounding; the watertight test claims each crossing once"},
+    "metric": "crossings equal; chord error over 64 eps times the summed scale of the crossings",
+    "control": {
+      "plant": "dropped-leaf: the leaf of the triangle the judged rays cross most emptied; flipped-winding: that triangle's winding reversed (moves the chord by 2t on each ray through it)",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "30/30 each, in each dtype",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "one crossing on one ray: the plants are a whole crossing (or 2t on the chord), far above rounding"
+    },
+    "if_wrong": "a miss: a draw whose judged rays cross no planted triangle (the test asserts one does); a false alarm: the margin or the rounding scale is too tight for a grazing ray",
+    "cannot_discriminate_if": "no judged ray crosses a mesh (asserted against) or the margin leaves out most rays (test_the_judged_rays_are_most_of_the_draw holds over 90 % judged)"
+  },
+  "gate_23_mesh_swap": {
+    "claim": "a tube's and a sphere's drawings traced as meshes image as their closed forms do: within the sagitta's bracket on the same sub-rays at every pixel, and within the design's line (contrast times 1/(2S) + sqrt(2) s_px, plus the factor's spread over the pixel) against route 1; S = 4 is the default because past it the drawing's sagitta, not the sub-rays, sets a silhouette's error",
+    "kind": "bounds",
+    "case": "tests/sensing/test_mesh_swap.py (the tube at S = 2, 4, 8 against the closed-form tube through two builds; the ellipsoid's drawing against the sphere's route 1, opaque and attenuating)",
+    "prediction": {"value": "pass", "band": [null, null], "unit": "", "basis": "measured-before", "why": "the drawing's vertices lie on the surface and it is convex, so each sub-ray's chord lies between the inscribed and the true surfaces' chords"},
+    "metric": "per pixel: outside the bracket (must be at most zero); |traced - route 1| over the design's line (must be at most one)",
+    "s_choice": "predicted from the development runs: the opaque sphere's mean edge error at S = 4 within 1.1 of S = 8's, and its max within 1.6 of S = 8's; S = 4 kept",
+    "control": {
+      "plant": "shifted-mesh: the traced mesh moved half a pixel's footprint (0.67 um) across the line of sight",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "10/10 on the tube's float32 S = 4 case and on the sphere's float64 opaque case",
+      "runs": 10,
+      "clean_expected": "0/10",
+      "resolution": "the bracket is at most 5e-3 wide on any pixel (test_the_brackets_are_narrow_enough_to_see_half_a_pixel), against a half pixel's hundredths at a silhouette"
+    },
+    "if_wrong": "outside the bracket: the tree, the sub-rays or the drawing's placement; over the design's line only: route 1's own pixel integration or the line's derivation",
+    "cannot_discriminate_if": "the meshes are out of view (the frames' transmission would be one everywhere): they fill the view by construction"
+  },
+  "gate_24_refusals": {
+    "claim": "a derivative in the detector's numbers with a mesh in view is refused by name in forward mode, reverse mode and a fit; a derivative through the poses passes against central differences and reverse equals forward; a moving mesh, a moving camera with a mesh, an open mesh named in absorbers are refused by name with their routes",
+    "kind": "acceptance",
+    "case": "tests/sensing/test_mesh_refusals.py",
+    "prediction": {"value": "pass", "band": [null, null], "unit": "", "basis": "measured-before", "why": "the refusal is asked before compiling; the structure does not depend on the poses"},
+    "metric": "the refusals' codes and routes; the pose derivative's error within test_in_loop_forward's tolerance",
+    "control": {
+      "plant": "no-mesh-refusal: the camera's refusal removed; the forward derivative in fy over the mesh's top wall is then zero against central differences that see the wall move",
+      "environment_variable": "CAMERA_PLANT",
+      "expected_rate": "10/10",
+      "runs": 10,
+      "clean_expected": "0/10",
+      "resolution": "a derivative exactly zero against a nonzero central difference"
+    },
+    "if_wrong": "a passed control: the mesh's part carries a derivative after all (then the refusal could be narrowed)"
+  },
+  "gate_25_zero_cost_when_unused": {
+    "claim": "no compiled program changes for a scene with no static mesh and no drawn static kind: the graph's step, the forward run and its forward-mode derivative compile to the same text, source locations stripped, base against head",
+    "kind": "equality",
+    "case": "probe/hlo_dump.py through .github/probe/bit_compare.py: the in-loop camera's ballistic scene, float64 and float32",
+    "prediction": {"value": "every array equal", "band": [null, null], "unit": "", "basis": "derived", "why": "the spec, the leaves and the maker are unchanged where no mesh is traced; the medium default is the same constant"},
+    "controls": {
+      "one_ulp": "the tube's attenuation one ulp up on the head's side only (a constant of the maker): the text differs, 1/1 a dtype",
+      "repeat": "the head's text written twice is the same"
+    }
+  },
+  "costs": {
+    "claim": "the real node (watertight test) with the same 99 328-triangle mesh: the step's compile time 0.9 to 1.15 of none's, a frame's time 0.85 to 1.15 of none's, the make once a run 1.0 to 2.5 times the first step's prototype (3 to 13 s at 320x240, 13 to 40 s at 640x480)",
+    "kind": "estimates",
+    "case": "probe/mesh_cost.py through the built graph (a scenery mesh referenced from a layer write_mesh wrote), both dtypes, 320 and 640",
+    "basis": "measured-before (the first step) and derived (the watertight test's six products and a barrier against Moller-Trumbore's arithmetic, about 1.5 times)"
+  },
+  "scene_controls": {
+    "plants": "no-medium (the displaced-medium rule dropped), chords-unsigned (crossings summed without their sign)",
+    "expected_rate": "10/10 each on the test each aims at in tests/sensing/test_mesh_scene.py",
+    "clean_expected": "0/10"
+  },
+  "outcomes": null
+}
