@@ -23,6 +23,7 @@ from port_cases import PoseFeedback, coil_sphere, fed_back_sphere, planted
 
 from mime import CommandPort, Measurement
 from mime.build import BuildRefused, _ports
+from mime.nodes.control import CommandStageNode
 from mime.testing._graph import graph_snapshot
 from mime.things import Gaussian
 from mime.units import A, m, mm, ms, s
@@ -235,3 +236,40 @@ def test_the_port_stage_is_on_a_derivatives_path_with_its_status():
     assert stage.status("ports:coils") is GradientStatus.PIECEWISE_KINK
     tripped = sphere(CommandPort(bounds=A(25.0), on_bound="trip", reason="an amplifier")).build()
     assert tripped.plans.stages[0].status("ports:coils") is GradientStatus.PIECEWISE_JUMP
+
+
+def reached(ports: dict, *, name: str, currents: tuple[float, float, float] = (4.0, -2.5, 1.5)) -> list[str]:
+    from mime.observations import SwimSpeed
+    from mime.scene import X
+    from mime.testing._saved import param_reach_failures
+
+    exp = coil_sphere(ports, name=name, commands={"currents": A(currents)})
+    exp.observe(SwimSpeed("sphere", along=X))
+    return param_reach_failures(exp.build())
+
+
+def test_every_leaf_a_study_may_change_reaches_the_compiled_step(monkeypatch):
+    """Each trainable leaf of both stages changes the run when written: bounds that clip on both sides, a slew that
+    binds, a measurement's noise and quantum. A rest that only starts the link and the amplifier is an initial
+    condition, no trainable leaf; the control (``rest_trainable``: the stage's own specs removed) names it."""
+    from mime.units import m_per_s
+
+    if planted("rest_trainable"):
+        monkeypatch.setattr(CommandStageNode, "param_specs", lambda self: super(CommandStageNode, self).param_specs())
+
+    assert reached({"currents": CommandPort(rate=ms(2), latency=ms(1), bounds=A(2.0), rest=A(0.5),
+                                            slew=A(1000.0) / s(1.0), reason="a supply's datasheet"),
+                    "speed": Measurement(of="swim_speed:sphere.speed", latency=ms(1),
+                                         noise=Gaussian(sigma=m_per_s(1e-6)), quantum=m_per_s(1e-7),
+                                         reason="a tracker's datasheet")}, name="reached_clip") == []
+
+
+@pytest.mark.parametrize(("currents", "idle"), [((4.0, -1.0, 1.5), "low"), ((1.0, -4.0, 1.5), "high")])
+def test_a_tripped_ports_rest_and_the_bound_it_trips_at_reach_the_compiled_step(currents, idle):
+    """A trip's rest is what it delivers, a leaf the step reads; of its bounds, the one the command crosses decides
+    the trip, and the other, which no value approaches, is the one leaf that changes nothing (the premise: each side
+    is shown reached by the case that crosses it)."""
+    failures = reached({"currents": CommandPort(latency=ms(1), bounds=A(3.0), on_bound="trip", rest=A(0.5),
+                                                reason="a supply's datasheet")}, name=f"reached_trip_{idle}",
+                       currents=currents)
+    assert [failure.split("'")[5] for failure in failures] == [f"{idle}_currents"]
