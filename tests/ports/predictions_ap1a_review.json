@@ -1,0 +1,37 @@
+{
+  "written": "2026-11-14, committed before the review round's detection-rate probe ran (the commit that adds this file is the timestamp): #301's review fixes, the controls they add or change",
+  "phase": "apparatus lane, AP1a, #301's review round",
+  "labels": "predictions by the builder (Opus) from the code's structure; each plant was run once locally before this file",
+  "seen_before": [
+    "each plant run once locally (laptop, CPU, float32) at bf6fde7c: slew_before_bound, bound_before_delay, trip_unlatched, stage_for_ideal, measure_for_ideal and clash_unchecked each failed its target; every clean run passed",
+    "the review measured bound_before_delay passing the property test of e8e5849 on 0 of 16 seeds (not caught): the reason this round adds the trip-spike draw, the explicit case and the flag comparison"
+  ],
+  "operating_point": {
+    "dtype": ["float32 as the tests run by default"],
+    "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow), one pytest process a run",
+    "sizes_and_parameters": "as predictions_ap1a.json; the command stage's draws now hold a one-step spike of 2.5 to 3 bounds at a drawn step",
+    "seeds_and_draws": "200 runs a control, planted and clean at the same seeds; Hypothesis's 100 examples a run, never shrunk"
+  },
+  "gate_4b_command_rungs_review": {
+    "claim": "the command stage's rungs and its bound's flag in the design's order, the bound acting on what the link delivers",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py (the property and the explicit trip-spike case)",
+    "prediction": {"value": "200/200 caught for each plant, 0/200 flagged", "basis": "derived", "why": "the explicit case is deterministic: bounding before the delay trips at the spike's step and delivers the rest from then; the property's spikes fall between samples in about two thirds of the draws with a period above one"},
+    "control": {"plant": "slew_before_bound; bound_before_delay; trip_unlatched", "environment_variable": "PORT_PLANT", "expected_rate": "200/200 each", "runs": 200, "clean_expected": "0/200", "resolution": "the flag is exact; the value as predictions_ap1a.json"}
+  },
+  "gate_1b_no_port_no_change_review": {
+    "claim": "an ideal Measurement builds nothing, beside an all-default CommandPort: the derived hash and the canonical text of no port",
+    "kind": "equality",
+    "case": "tests/ports/test_ports_build.py::test_no_port_an_empty_one_and_an_all_default_one_build_the_program_of_none",
+    "prediction": {"value": "200/200 caught for each plant, 0/200 flagged", "basis": "derived", "why": "a stage built for an ideal port adds a node"},
+    "control": {"plant": "stage_for_ideal; measure_for_ideal", "environment_variable": "PORT_PLANT", "expected_rate": "200/200 each", "runs": 200, "clean_expected": "0/200", "resolution": "a node more: exact"}
+  },
+  "gate_8_field_clash": {
+    "claim": "a port named as another port's field (tr_age beside tr) is refused (port.declaration)",
+    "kind": "acceptance",
+    "case": "tests/ports/test_ports_build.py::test_a_port_named_as_another_ports_age_is_refused",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "with the check removed the two ports build and the refusal the test expects is absent"},
+    "control": {"plant": "the clash check removed", "environment_variable": "PORT_PLANT=clash_unchecked", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "the refusal's code"}
+  },
+  "outcomes": null
+}
