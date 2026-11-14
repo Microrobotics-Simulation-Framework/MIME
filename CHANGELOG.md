@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The licence gate is closed in `locate`** (lane P, P0). `assets.locate` now asks for the first use of a gated file
+  as the resolver does (`require_accepted`): bytes a person placed in the cache, or that `mime assets check` or a refused
+  `resolve` recorded as checked, no longer reach a build with no acceptance on record. A licence with conditions that
+  nothing accepted is asked about once at a terminal, or refused (`asset.licence-not-accepted`) where nobody can be asked.
+  The gate applies wherever `locate` is read, not only in a build: `mime push` reads an uploaded asset through it, so a push of a
+  gated, placed file asks (or is refused) as a build does; `mime pull`'s read of the bundle it downloaded is not gated (a
+  bundle's own terms are judged when it is unpacked), unless its bytes are a gated record a shared source names.
+  A non-interactive build that reads a gated file needs the acceptance on record first: accept at a terminal
+  (`mime assets fetch <folder>`), point `MIME_LICENCE_ACCEPTANCES` at a file holding it, or in Python
+  `assets.approved([], accept_licences=...)`. The script `mime modal` writes carries the ids accepted on the machine
+  that wrote it, for the experiment's own assets, as `ACCEPT_LICENCES`, and accepts them for its run; one not accepted
+  there is refused in the container. No asset MIME ships is gated (the tube table is CC0), so no simulation output moves.
+
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
   `length`; its region `solid`), its `permeability` declared (a structure's value, m^2, above zero; the units `m2`,
