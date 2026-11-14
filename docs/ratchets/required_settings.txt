@@ -100,3 +100,4 @@ interaction shared_distal 0.1.0 distal                   # physical: the shared 
 observation camera 0.1.0 detector                       # physical: the camera's declared model, which MIME assumes none of
 observation camera 0.1.0 mount                          # physical: where the camera is, in the world or on a frame of a chain
 observation camera 0.1.0 frame_period                   # design: the camera's clock, the experimenter's choice
+response response.first_order_lag 0.1.0 tau            # physical: the lag's time constant, a coil's L/R or a servo's, from the hardware
