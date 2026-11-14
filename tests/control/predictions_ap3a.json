@@ -191,5 +191,28 @@
     "used": "the sphere's allocation through ctx.allocator against the same allocation by hand through the same port: node count equal (6 and 6: no node is built for a belief or the allocator); the compiled step's operation count within 10 % (the same law; the belief's numbers leaves in place of constants); the median chunk time within 0.9 to 1.25 of the hand-written one, float32 on the runner",
     "measured_at": "nothing measured before; a guess from the law being the same"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-15, from the probe run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43647940444 (probe/ap3a at b7043a4, a GitHub runner, AMD EPYC 9V74); the probe branch is deleted after this commit",
+    "controls": {
+      "rate_truth": "20/20, clean 0/20",
+      "rate_leaf64": "20/20, clean 0/20",
+      "rate_leaf32": "20/20, clean 0/20",
+      "rate_slew": "20/20, clean 0/20 (on P3_R2_L1_0)",
+      "rate_defect": "20/20, clean 0/20",
+      "rate_affine": "30/30, clean 0/30",
+      "rate_gate": "20/20, clean 0/20",
+      "rate_nobox": "20/20, clean 0/20"
+    },
+    "bits": {
+      "base": "release/v0.3.0 at 61396864, head b7043a4 (the apparatus branch's d1fc3455/b2bc3a78 and the probe's files), one job, one CPU set, one thread",
+      "result": "a0_f32, a0_f64, script_a_f32, script_a_f64, tutorial_a_f32, tutorial_a0_f32, sphere_f32, sphere_f64: every array equal (31, 31, 23, 23, 46, 31, 14, 14 arrays, the derived hashes and canonical texts included)",
+      "controls": "ulp_f32 and ulp_f64 differ (14 and 13 of 31 arrays moved, the derived hash among them): the one-ulp nudge, taken in the dtype, survives float32's rounding on the runner"
+    },
+    "costs": {
+      "unused": "the derived hash and canonical text of A0, script A and the R2 sphere unchanged (bits arm)",
+      "used": "nodes 6 and 6 (float32 and float64); compiled step HLO instructions 1809 against 1663 by hand in float32 (+8.8 %, float64 1823 against 1677), outside fusions 382 against 369; median chunk 0.02311 s against 0.02158 s, allocator over hand 1.071 (3 builds x 20 chunks, float32, trace checks passed)"
+    },
+    "memory": "rate_affine failed the probe's memory check: peak 1.185 GiB against a bound of 1.069 GiB (estimate 0.428 GiB for a 2-step sphere, uncalibrated; the arm's target is a Hypothesis test over 30 runs, a larger case than its estimate line). An estimator underestimate, not a control miss: its rate (30/30, clean 0/30) is complete. Calibration row in the artifact probe-ap3a-rate_affine/mem_check.json",
+    "gates_not_rated_by_the_probe": "gates 1 to 8, 10 and 11 and 9b's two cases are in CI's default lanes; see the PR's checks"
+  }
 }
