@@ -13,7 +13,9 @@ last commit of form 13, its ``src`` first on the path, in float64 with four usab
     JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 OPENBLAS_NUM_THREADS=1 PYTHONPATH=<dir>/src taskset -c 0-3 \\
         python tests/saved/write_form13.py tests/saved/form13
 
-It writes ``<out>/scanned`` (refusing an existing one) and prints the sha256 of each file, the table the test pins."""
+It writes ``<out>/scanned`` (refusing an existing one) and prints the sha256 of each file, the table the test pins.
+Commit every file but the scene's layer (``scene/layers/vessel_scan.usda``): its record says it may not be
+redistributed, the repository's audit refuses it in the tree, and the tests write it from :func:`scan_bytes`."""
 
 from __future__ import annotations
 

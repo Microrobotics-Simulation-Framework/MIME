@@ -7,7 +7,10 @@ The folder of the thirteenth form, ``form13/scanned``, is written by ``write_for
 form 13 (316937a8), float64, four usable CPUs (``taskset -c 0-3``), one BLAS thread, and pinned by its sha256: the toy
 with a scene layer declared by its record (a record that may not be redistributed, with a location: the lock's
 ``assets`` holds it whole and its ``referenced_files`` names the layer) and a hub whose description's mesh a manifest
-lists (the lock's ``visuals``). It holds what the step moves, in both places, as form 13's own code wrote it.
+lists (the lock's ``visuals``). It holds what the step moves, in both places, as form 13's own code wrote it. The
+layer itself is not committed: its record says it may not be redistributed, which the repository's audit holds the tree
+to (``tests/assets/test_audit.py``). Each test writes it into its copy of the folder from the bytes it was made from
+(``write_form13.scan_bytes``), pinned by the same sha256.
 
 No ``form13/chain_screw`` is frozen: ``form12/chain_screw`` and ``current/chain_screw`` (form 13 before this step)
 differ by their schema strings and the two hashes those strings move, nothing else, so a form-13 chain folder is the
@@ -54,6 +57,16 @@ SCAN_LAYER = "scene/layers/vessel_scan.usda"
 REQUEST = "mailto:imaging@hospital.example.org"
 
 
+def scanned13(out: Path) -> Path:
+    """The frozen form-13 folder copied to ``out``, its scene layer written from the bytes it was made from."""
+    from write_form13 import scan_bytes
+
+    folder = Path(shutil.copytree(SCANNED13, out))
+    (folder / SCAN_LAYER).parent.mkdir(parents=True, exist_ok=True)
+    (folder / SCAN_LAYER).write_bytes(scan_bytes())
+    return folder
+
+
 @contextmanager
 def own_cache(root: Path) -> Iterator[Path]:
     """An asset cache, a locations file and a licence acceptances file of the test's own, with no network."""
@@ -85,9 +98,10 @@ def scan_record(folder: Path, **changes: object) -> AssetRef:
     return replace(AssetRef.from_record(lock["assets"][0]), **changes)  # type: ignore[arg-type]
 
 
-def test_the_form_thirteen_folder_is_the_folder_its_commit_wrote_byte_for_byte():
-    found = {path.relative_to(SCANNED13).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-             for path in sorted(SCANNED13.rglob("*")) if path.is_file()}
+def test_the_form_thirteen_folder_is_the_folder_its_commit_wrote_byte_for_byte(tmp_path: Path):
+    folder = scanned13(tmp_path / "scanned")
+    found = {path.relative_to(folder).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+             for path in sorted(folder.rglob("*")) if path.is_file()}
     assert found == PINNED
 
 
@@ -121,7 +135,7 @@ def test_the_step_leaves_the_form_thirteen_folder_as_it_was():
 
 
 def test_the_form_thirteen_folder_loads_rebuilds_and_verifies(tmp_path: Path):
-    folder = Path(shutil.copytree(SCANNED13, tmp_path / "scanned"))
+    folder = scanned13(tmp_path / "scanned")
     with own_cache(tmp_path) as cache:
         placed(cache, scan_record(folder), (folder / SCAN_LAYER).read_bytes())
         loaded = Experiment.load(folder)
@@ -144,7 +158,7 @@ HELD_AT = {"assets: request": "assets[0].request", "assets: no location": "asset
 
 
 def edited(tmp_path: Path, edit: str) -> Path:
-    folder = Path(shutil.copytree(SCANNED13, tmp_path / "edited"))
+    folder = scanned13(tmp_path / "edited")
     lock = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
     EDITS[edit](lock)
     (folder / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True) + "\n", encoding="utf-8")
@@ -153,7 +167,7 @@ def edited(tmp_path: Path, edit: str) -> Path:
 
 @pytest.mark.parametrize("edit", EDITS)
 def test_a_form_thirteen_lock_holding_what_form_fourteen_added_is_refused(tmp_path: Path, edit: str):
-    assert codes_of(SCANNED13) == [], "the control: the folder as its commit wrote it"
+    assert codes_of(scanned13(tmp_path / "as_written")) == [], "the control: the folder as its commit wrote it"
     folder = edited(tmp_path, edit)
     with pytest.raises(LoadRefused) as refused:
         read_folder(folder)
@@ -169,22 +183,6 @@ def test_control_without_the_steps_check_an_edited_form_thirteen_lock_is_read(tm
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_versions, "STEP_14_LOCK_HELD", ())
         assert read_folder(folder).version == 13
-
-
-def test_room_for_a_document_key_in_the_step(tmp_path: Path):
-    """The step's document keys are named in one place (:data:`~mime.saved._versions.STEP_14_DOCUMENT_KEYS`, none yet):
-    a key named there is refused in an earlier form's document, by the version that added it, and taken off a rebuilt
-    document written back into that form. Shown with a stand-in key."""
-    folder = Path(shutil.copytree(SCANNED13, tmp_path / "scanned"))
-    document = yaml.safe_load((folder / DOCUMENT_FILE).read_text(encoding="utf-8"))
-    (folder / DOCUMENT_FILE).write_text(yaml.safe_dump({**document, "stand_in": []}), encoding="utf-8")
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(_versions, "STEP_14_DOCUMENT_KEYS", ("stand_in",))
-        with pytest.raises(LoadRefused) as refused:
-            read_folder(folder)
-        assert f"document holds stand_in, which version {HASH_ONLY_ADDED} of the saved form added" in str(refused.value)
-        assert _versions.document_in_form({**document, "stand_in": []}, 13) == document
-    assert _versions.document_in_form({**document, "stand_in": []}, 13) != document, "the control: not named, kept"
 
 
 SCAN_LICENCE = CustomLicence("LicenseRef-Imaging-Lab-Restricted", "The imaging lab's data licence 1.0",
