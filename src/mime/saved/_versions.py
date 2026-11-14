@@ -113,10 +113,13 @@ for its lock's hashes. No key is added; the schemas move with the form.
 and in the records of its ``visuals`` manifests: a record may name no location (``locations: []``, the key kept), its
 file had by request alone, and may name a route to request its file by (``request``: a contact, or a link to a paper's
 data-availability statement). Both are outside every hash, as the lock's asset records always were, so a lock of an
-earlier version is read as it is and nothing is written back. One of an earlier version that holds either is refused,
-never read as declaring it. What the version added is named in one place (:data:`STEP_14_DOCUMENT_KEYS`,
-:data:`STEP_14_LOCK_HELD`), which the refusal of an earlier form and the write-back read: the document holds no new key,
-and its schema moves with the lock's."""
+earlier version is read as it is and nothing is written back. It adds one key to the document, ``blocks``, each block
+the experiment uses by the use's name, written only where one is used and inside the input hash. A block used as
+``copied`` holds its declarations in the document and loads; one used as ``referenced`` holds them in its container,
+which this MIME does not yet read, and is refused by its own code (``load.referenced-block``). A document or lock of an
+earlier version declares none of these, and one that holds any is refused, never read as declaring it. What the
+version added is named in one place (:data:`STEP_14_DOCUMENT_KEYS`, :data:`STEP_14_LOCK_HELD`), which the refusal of an
+earlier form and the write-back read."""
 
 from __future__ import annotations
 
@@ -165,6 +168,8 @@ OLD_ROWS, NEW_ROWS = "report_rows", "solve_report_rows"
 HASH_ONLY_ADDED = 14
 #: The record's key version 14 added, and the record's key it lets be empty.
 REQUEST_KEY, LOCATIONS_KEY = "request", "locations"
+#: The document's key version 14 added: each block the experiment uses, by the use's name.
+BLOCKS_KEY = "blocks"
 _FVM = "fvm"
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
@@ -460,10 +465,10 @@ def hash_only_held(data: object) -> list[str]:
     return found
 
 
-#: What version 14 added, in one place: the document's keys, each written only where something is declared (none
-#: yet), and a check for each thing it added to the lock. A form before it that holds any is refused; a rebuilt
-#: document written back into such a form has the keys taken off.
-STEP_14_DOCUMENT_KEYS: tuple[str, ...] = ()
+#: What version 14 added, in one place: the document's keys, each written only where something is declared, and a
+#: check for each thing it added to the lock. A form before it that holds any is refused; a rebuilt document written
+#: back into such a form has the keys taken off.
+STEP_14_DOCUMENT_KEYS: tuple[str, ...] = (BLOCKS_KEY,)
 STEP_14_LOCK_HELD: tuple[Callable[[object], list[str]], ...] = (hash_only_held,)
 
 
@@ -478,7 +483,7 @@ def step_14_held(data: object, *, lock: bool) -> list[str]:
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
     terms keys in one of an earlier version, version 5's duration, version 7's ``based_on``, version 11's media's
-    ``fields`` and version 12's ``ranges`` in one earlier than each."""
+    ``fields``, version 12's ``ranges`` and version 14's ``blocks`` in one earlier than each."""
     found = terms_keys_held(data) if version < TERMS_ADDED else []
     found += duration_held(data) if version < DURATION_ADDED else []
     found += medium_fields_held(data) if version < MEDIUM_FIELDS_ADDED else []
@@ -491,7 +496,7 @@ def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
     """``data`` as the current schema reads it, the version it was written in (the current one for a document that is
     not of an earlier version, which the schema check judges), and the ids of the drags that named the old rung. A
     document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's, 5's, 7's,
-    11's or 12's in any earlier) is left as it is, for the schema check to refuse. A medium's flow an earlier version
+    11's, 12's or 14's in any earlier) is left as it is, for the schema check to refuse. A medium's flow an earlier version
     wrote as ``dynamics.flow`` is read as ``fields.flow``."""
     if not isinstance(data, dict):
         return data, CURRENT, ()
@@ -716,8 +721,9 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
     return held
 
 
-__all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS",
-           "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "HASH_ONLY_ADDED", "INERTIA_TENSOR_ADDED",
+__all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "BLOCKS_KEY", "COUNT_KEYS", "CURRENT",
+           "DOCUMENT_SCHEMAS", "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "HASH_ONLY_ADDED",
+           "INERTIA_TENSOR_ADDED",
            "LOCATIONS_KEY", "LOCK_VISUALS_KEY", "REQUEST_KEY", "STEP_14_DOCUMENT_KEYS", "STEP_14_LOCK_HELD",
            "hash_only_held", "step_14_held",
            "MEDIUM_FIELDS_ADDED", "RECORDS_ADDED", "medium_fields_held",

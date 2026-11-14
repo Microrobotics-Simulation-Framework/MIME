@@ -501,8 +501,15 @@ again writes the tenth. A reader of the ninth refuses a folder of the tenth as `
 The saved form is in its fourteenth version since an asset record may name no location, its file had by request
 alone, and a route to request it by (`request`), in the lock's `assets` and in its `visuals` manifests; both are
 outside every hash, so a folder of the thirteenth form or earlier loads as it was, nothing written back, and one whose
-lock holds either is refused. The step is named in one place in `_versions.py` (`STEP_14_DOCUMENT_KEYS`, none yet,
-and `STEP_14_LOCK_HELD`), which the refusal of an earlier form and the write-back read. The bundle's format and a
+lock holds either is refused. The same step adds the document's `blocks`: each block the experiment uses, by the use's
+name (its id, version, content hash, tier, licence, the DOI it was used by, its sockets' bindings, the names it
+provides in each of the document's sections of declarations, and the paths declared over it), written only where one
+is used and inside the input hash. Its writer (`exp.use`) and the reading of a block used by reference are a later
+MIME's: until then a use of tier `copied`, whose declarations the document holds, loads, and one of tier `referenced`,
+whose declarations are in its container, is refused as `load.referenced-block` when the folder is loaded or built from
+its document (reading the folder, as `mime show`, `pack` and `card` do, refuses nothing). The step is named in one
+place in `_versions.py` (`STEP_14_DOCUMENT_KEYS`, which holds `blocks`, and `STEP_14_LOCK_HELD`), which the refusal of
+an earlier form and the write-back read. The bundle's format and a
 manifest file's step with it (`mime.saved.FORMAT`, `mime.assets.MANIFEST_FORMAT`): a reader before them refuses either
 by its format, where it would otherwise refuse a record's shape. A reader of the thirteenth refuses a folder of the fourteenth as `load.newer-form`.
 

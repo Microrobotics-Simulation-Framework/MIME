@@ -326,6 +326,7 @@ load.other-release            user
 load.record-changed           user
 load.reference                user
 load.reference-changed        user
+load.referenced-block         environment
 load.setting                  user
 load.setting-unknown          user
 load.stage-changed            user

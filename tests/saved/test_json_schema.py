@@ -108,8 +108,21 @@ GAP_PLANTS: dict[str, Callable[[], list[tuple[str, str]]]] = {
                                           '"distribution": "not a name!"'))],
 }
 
+#: A block's use in the document (form 14), its tier and its names given: well formed as written below.
+BLOCK_USE = ("blocks:\n  probe:\n    id: labx.demo_probe\n    version: 1.2.0\n    content: " + "ab" * 32 + "\n"
+             "    tier: {tier}\n    licence: CC-BY-4.0\n    sockets: {{base: world}}\n    names: {names}\n"
+             "    overrides: []\n")
+
+
+def using_a_block(tier: str = "copied", names: str = "{things: [probe], materials: [steel]}") -> str:
+    return replaced(golden("document"), "experiment: chain_screw\n",
+                    "experiment: chain_screw\n" + BLOCK_USE.format(tier=tier, names=names))
+
+
 #: Planted inputs on which the two readers must agree, both refusing: (name, file) -> text.
 AGREEMENT_PLANTS: dict[tuple[str, str], Callable[[], str]] = {
+    ("a block's tier outside its two", "document"): lambda: using_a_block(tier="borrowed"),
+    ("a block's names of a section the document lacks", "document"): lambda: using_a_block(names="{gravity: [g]}"),
     ("unknown key", "document"): lambda: golden("document") + "colour: red\n",
     ("missing key", "document"): lambda: replaced(golden("document"), "profile: exploratory\n", ""),
     ("another type", "document"): lambda: replaced(golden("document"), "seed: 0\n", "seed: zero\n"),
@@ -175,6 +188,13 @@ def test_the_schemas_are_valid_json_schemas_and_name_every_recorded_gap_of_their
         description = schema["description"]
         assert [gap.name for gap in GAPS if f"- {gap.name}: {gap.text}" in description] == \
             [gap.name for gap in GAPS if file in gap.files]
+
+
+def test_a_document_using_a_block_is_accepted_by_both_readers(tmp_path):
+    """The control of the block plants above: the use they are cut from is well formed, so each is refused for what
+    it plants."""
+    assert verdicts("document", using_a_block(), tmp_path) == ("accepts", "accepts")
+    assert verdicts("document", using_a_block("referenced", "{}"), tmp_path) == ("accepts", "accepts")
 
 
 @pytest.mark.parametrize("folder", [CURRENT, *PREVIOUS], ids=lambda p: p.name)

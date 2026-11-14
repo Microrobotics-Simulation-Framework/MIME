@@ -25,8 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was and one whose lock holds either is refused (`load.lock-shape`); a reader of form 13 refuses form 14 as
   `load.newer-form`. The bundle's format is `mime.bundle/4` and a manifest file's `mime.asset_manifest/3`, since a
   reader of the format before each, given a record with no location, refused its shape (`bundle.manifest`,
-  `asset.manifest`), measured with MIME at 316937a8; it now refuses by the format, naming a later MIME. The document's
-  `blocks` key waits for the block design.
+  `asset.manifest`), measured with MIME at 316937a8; it now refuses by the format, naming a later MIME.
+
+- **The document's `blocks` key, saved form 14** (the block design's §2.6; the maintainer's answer that it rides this
+  step). Each block an experiment uses, by the use's name: its id, version and content hash, its tier (`copied` or
+  `referenced`, computed from its licence), its licence, the DOI it was used by, its sockets' bindings, the names it
+  provides in each of the document's sections of declarations, and the paths declared over it; written only where a
+  block is used, inside the input hash. Nothing writes it yet: `exp.use` and the reading of a referenced block come
+  with the block itself. Until then a `copied` use, whose declarations the document holds, loads with its input hash
+  reproduced, and a `referenced` one is refused as `load.referenced-block` (this MIME does not yet read a referenced
+  block), never as a shape. A form-13 document that holds the key is refused (`load.document-shape`).
 
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
