@@ -388,7 +388,12 @@ def test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole(f
 
 
 #: ``mime serve`` with each chunk held until the file ``argv[1]`` exists (a long first compile, without the clock: the
-#: process is kept busy meanwhile, as tracing keeps it), the file ``<argv[1]>.held`` written when one is. ``argv[2]``
+#: process is kept busy meanwhile, as tracing keeps it), the file ``<argv[1]>.held`` written when one is. The wait looks
+#: at the file every 50 ms and runs Python between looks, as tracing does: a look at every turn of the loop is a system
+#: call that gives up the interpreter lock each time, and a thread waiting for the lock is woken by each give-up, its
+#: 5 ms wait for a forced hand-over starting again, so that the server's loop was starved for seconds at a time (on CI's
+#: runners a request waited 3 to 15 s, a handshake could pass its 10 s limit, and the test took 60 to 260 s where it takes
+#: 11 to 20 s with the look every 50 ms). ``argv[2]``
 #: is the mode: "threaded" as served, and for the controls "inline" (each chunk stepped on the loop's own thread, as
 #: before 7n-b), "fd" (a peer identified by a slot of its kind, which the next connection of the kind reuses, as it
 #: would a descriptor) and "single" (one slot for the step in hand, answered only when the loop finds no step in
@@ -403,7 +408,9 @@ gate, mode, chunk = pathlib.Path(sys.argv[1]), sys.argv[2], run.ChunkedRun.run
 def held(self, *args, **kwargs):
     pathlib.Path(str(gate) + ".held").touch()
     while not gate.exists():
-        sum(range(10_000))
+        until = time.monotonic() + 0.05  # the gate is looked at every 50 ms: see the note above
+        while time.monotonic() < until:
+            sum(range(10_000))
     return chunk(self, *args, **kwargs)
 
 class Inline(concurrent.futures.ThreadPoolExecutor):
