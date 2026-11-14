@@ -1,0 +1,59 @@
+{
+  "written": "2026-11-14, committed before the fix round's probe runs on GitHub's runners (the commit that adds this file is the timestamp): camera 6a's fix round for the review of PR 309",
+  "phase": "camera 6a fix round: G26 (the tree at the edges), G27 (a changed mesh never gives a stale image), the bits run and the cost run after the fixes",
+  "labels": "the fix round agent's predictions. Bases: laptop development runs (seen_before), which are not the evidence: each row's evidence is its run on a runner after this commit",
+  "seen_before": [
+    "laptop, both dtypes: with the optimisation barrier removed the pair test (two triangles sharing an edge, 512 rays aimed within 32 roundings of it) failed in 17 to 20 of 40 draws (0.13 to 0.28 percent of rays claimed 0 or 2 times); the closed-mesh test (2048 rays at edges and vertices) failed on its first draw; with the barrier every ray was claimed once (20 480 of 20 480 in each dtype)",
+    "laptop, both dtypes: with the slab widening removed the closed-mesh test failed (odd crossing counts on a box and a tube: 22 and 3 of 20 000 float32, 42 and 4 float64); with slab_pad = 1 + 2 gamma_3 (3.6e-7 float32, 6.7e-16 float64) none of 60 000 rays crossed a closed mesh an odd number of times, in either dtype",
+    "laptop: the axis-aligned camera on an axis-aligned box (G26's fourth test) failed with the barrier removed and did NOT fail with the widening removed (0 odd sub-rays of 1.66 million in 60 draws each dtype): a tangent ray at a silhouette edge is dropped or kept with both its crossings, so its parity holds",
+    "laptop, float32, loaded: the tree's signature over a 99 328-triangle mesh's arrays (6.8 MB) 0.5 to 0.7 ms; float64 (13.6 MB) 3.2 to 3.7 ms"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU; GitHub runner, 4 vCPU, one CPU and one thread for the bits",
+    "sizes_and_parameters": "G26: 40 Hypothesis examples a dtype per test, 512 rays a pair or fan, 2048 rays a closed mesh, edges 25 um to 1 mm, closed meshes 25 um to 1 mm across turned at random, origins 3 edge lengths to 5 mm; the cost case a closed tube-wall mesh of 99 328 triangles filling 320x240 and 640x480 views, S = 4; the bits scene the in-loop camera's ballistic scene with a Tube structure and no mesh (64x48, three programs)"
+  },
+  "gate_26_rates": {
+    "claim": "each planted change to the tree's code is caught by the tests that aim at it on every run of 40, in each dtype; the clean arms are never flagged",
+    "kind": "equality",
+    "arms": {
+      "nb-edge-f32 / nb-edge-f64": "no-barrier on test_an_edge_two_triangles_share_is_claimed_by_exactly_one_of_them: 40/40 each",
+      "nb-fan-f32 / nb-fan-f64": "no-barrier on test_a_vertex_the_triangles_of_a_fan_share_is_claimed_by_exactly_one_of_them: NOT predicted to be caught (the laptop's fan test passed under the plant in both dtypes): rate 0/40 reported as measured, the test is a property, not a control of the barrier",
+      "nb-closed-f32 / nb-closed-f64": "no-barrier on test_a_ray_at_an_edge_of_a_closed_mesh...: 40/40 each",
+      "nb-camera-f32 / nb-camera-f64": "no-barrier on test_an_axis_aligned_camera...: 40/40 each (the laptop failed it in both dtypes on its first plant run)",
+      "np-closed-f32 / np-closed-f64": "no-pad on test_a_ray_at_an_edge_of_a_closed_mesh...: 40/40 each (a box draw of 2048 rays holds about 4 to 10 odd crossings a draw)",
+      "np-camera-f32 / np-camera-f64": "no-pad on test_an_axis_aligned_camera...: 0/40 each, predicted (see seen_before)"
+    },
+    "basis": "measured-before on the laptop; a runner's CPU may contract products differently (the barrier plant needs the backend to fuse a multiply-add: EPYC cores have FMA)",
+    "if_wrong": "a no-barrier miss on a runner: the plant is invisible there, so the barrier's test is a laptop's evidence only, and the PR says so; a clean arm flagged: a false alarm, a test premise wrong",
+    "runs": 40,
+    "clean_expected": "0/40"
+  },
+  "gate_27_held": {
+    "claim": "each of the review's three routes refuses or makes the image again; none gives the unchanged image. Not drawn: deterministic tests, which fail on the head (10 of 14 fail there, the other four are the controls: the two images differ, the same mesh in another object is not refused)",
+    "kind": "equality",
+    "basis": "measured-before on the laptop (14 of 14 on the fix; 10 failing on the head)"
+  },
+  "gate_bits": {
+    "claim": "the compiled text, with the file-name, function-name and call-site tables dropped, is equal base to head for the graph's step, the forward run and its forward-mode derivative, float64 and float32, for the in-loop camera's ballistic scene with a Tube structure and no mesh; the control (the tube's attenuation one unit in the last place up in the run's own dtype, on the head's side only) differs, in both dtypes (2 of 2)",
+    "kind": "equality",
+    "base": "origin/release/v0.3.0 at the merge made before the run",
+    "basis": "derived: every change of this round is on the host or under a mesh condition (the signature joins the structure's numbers only where a tree is traced; the constants check and the params_pytree filter are host code)",
+    "if_wrong": "a difference in a no-mesh program: the structure's numbers changed for a scene with no tree"
+  },
+  "gate_cost": {
+    "claim": "through the real node, one process a variant, two rounds: the step's compile mesh over none 0.9 to 1.15; a run's second 30 steps (10 frames) mesh over none: float32 320x240 1.05 to 1.4, float64 320x240 1.2 to 2.2, float32 640x480 1.02 to 1.2, float64 640x480 1.05 to 1.5; the make once a run 3 to 10 s at 320x240 and 13 to 30 s at 640x480 (the first round's and the second's range)",
+    "kind": "estimates",
+    "basis": "laptop microbenchmark of the signature (the new per-frame read of the tree's arrays) against the runner's frame cost of the first rounds (3.3 ms a frame float32, 5.4 ms float64 at 320x240)",
+    "if_wrong": "over the band: the per-frame signature costs more than its microbenchmark (XLA's integer reductions on the runner's CPU); under: it fuses with the frame's other loops"
+  },
+  "outcomes": {
+    "written": "2026-11-14, after the first run (GitHub run 43638383933 on 2ecce321, branch deleted after the download); the predictions above are unchanged; the findings and the second round's predictions are in predictions_camera_mesh_fix309_r2.json",
+    "rates": "nb-camera 40/40 f32 and f64; nb-closed 40/40 each; nb-edge 40/40 each but its clean arm flagged 3/40 each (a premise of the test, fixed); nb-fan 0/40 each (predicted); np-camera 0/40 each (predicted); np-closed 40/40 f64 and 37/40 f32 (predicted 40/40: a miss)",
+    "bits": "all eight programs differed by 37 to 41 bytes (the path tables, absent from the script's normalisation): the prediction of equality is not tested by this run",
+    "cost": "mesh over none, second run of 30 steps: 1.22 (f32 320), 1.13 (f64 320), 1.07 (f32 640), 1.04 (f64 640); compile 1.07 to 1.15; executable +0.6 MB; the make 1.6 to 1.9 s (320) and 4.1 to 4.5 s (640): the predictions held except float64 320 under its band (1.13 against 1.2 to 2.2)"
+  }
+}

@@ -252,3 +252,12 @@ src/mime/build/README.md  1.15 90 1.68 19  #1  # what a declared port costs, A0'
 docs/guide/ports.md  15  #1  # the saved form's version that holds ports
 src/mime/build/README.md  15  #1  # the saved form's version that holds ports
 src/mime/build/README.md  14  #1  # the saved form before it, whose arm servo is read as a port
+docs/entries/observation/camera.md  1.02 1.05 4  #1  # the in-loop camera's frame cost with a mesh in view over the same scene's without, an estimate measured on 4-vCPU runners (tests/sensing/predictions_camera_mesh_fix309_r2.json)
+docs/entries/observation/camera.md  1.5 10  #1  # the static structure's make time once a run at quarter VGA, an estimate and its range over four runner rounds (tests/sensing/predictions_camera_mesh*.json)
+docs/entries/observation/camera.md  4 30 4  #1  # the static structure's make time once a run at VGA, an estimate and its range over four runner rounds, and the runners' core count
+src/mime/sensing/README.md  1.02 1.05 4 320 240 640 480 0.03 1  #1  # the camera's frame cost with a mesh in view, an estimate measured on 4-vCPU runners at 320 x 240 and 640 x 480, and the signature's share of it (tests/sensing/predictions_camera_mesh_fix309*.json)
+src/mime/sensing/README.md  1.5 10 4 30  #1  # the static structure's make time and the step's compile and frame ratios with a mesh in view, estimates and ranges over four runner rounds (tests/sensing/predictions_camera_mesh*.json)
+src/mime/sensing/README.md  1.07 1.15  #1  # the static structure's make time and the step's compile and frame ratios with a mesh in view, estimates and ranges over four runner rounds (tests/sensing/predictions_camera_mesh*.json)
+src/mime/sensing/README.md  1.02 1.05  #1  # the static structure's make time and the step's compile and frame ratios with a mesh in view, estimates and ranges over four runner rounds (tests/sensing/predictions_camera_mesh*.json)
+src/mime/sensing/README.md  1 2 1 2013  #1  # the slab widening 1 + 2 gamma_3 (gamma_n = n u / (1 - n u)) and its source, Ize 2013
+src/mime/sensing/README.md  0.1 0.2  #1  # the share of rays at a rotated box's edges the slab lost, a laptop's draws, in percent

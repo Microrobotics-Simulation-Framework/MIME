@@ -351,12 +351,27 @@ class RosterBody:
     pose: tuple[float, ...] | None
 
 
+@dataclass(frozen=True, eq=False)
+class RosterDrawing:
+    """A structure's drawing as the stage draws it: its kind's ``drawing`` at ``segments`` facets a turn, in the kind's
+    own frame, which ``translation`` (metres) and ``orientation`` (a unit quaternion ``(w, x, y, z)``) place in the
+    world; ``exact`` where the drawing is the same at half the facets (a box's faces), so it carries no sagitta."""
+
+    drawing: Drawing
+    translation: tuple[float, float, float]
+    orientation: tuple[float, float, float, float]
+    segments: int
+    exact: bool
+
+
 @dataclass(frozen=True)
 class RosterStructure:
-    """A structure's geometry kind name and its settings in SI, fixed in the world."""
+    """A structure's geometry kind name and its settings in SI, fixed in the world, and its drawing as the stage draws
+    it (``None`` for a kind drawn natively or not at all)."""
 
     kind: str
     settings: Mapping[str, Magnitude]
+    drawn: RosterDrawing | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)

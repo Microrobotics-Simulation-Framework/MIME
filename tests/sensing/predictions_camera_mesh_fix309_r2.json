@@ -1,0 +1,46 @@
+{
+  "written": "2026-11-14, committed before the fix round's second probe run (the commit that adds this file is the timestamp)",
+  "phase": "camera 6a fix round, second probe: after the first probe's findings (run 43638383933 on 2ecce321, branch deleted after the download)",
+  "labels": "the fix round agent's predictions. The first round's predictions are in predictions_camera_mesh_fix309.json (outcomes there)",
+  "first_round_findings": [
+    "plants: no-barrier caught 40/40 on the pair, closed-mesh and axis-aligned-camera tests in both dtypes (runners EPYC 7763, 9V45, 9V74); the fan test 0/40 as predicted; no-pad on the axis-aligned camera 0/40 as predicted; no-pad on the closed-mesh test caught 40/40 float64 and 37/40 float32 (a miss: not every run)",
+    "a clean arm flagged: the pair test failed 3 of 40 clean runs in each dtype (seeds 9, 21, 27, reproduced on the laptop): a draw whose two triangles lie on the same side of the edge in the ray's view (the tilt was a share of the edge's length, up to 56 degrees, not of the triangle's height, 17), so every ray is claimed 0 or 2 times: the test's premise, not the tree. Fixed in the test (the tilt a share of each triangle's height); 31 seeds a dtype clean on the laptop after",
+    "no-pad float32 misses: the slab loses a crossing only where a ray runs along the face of a leaf box (an edge along an axis of the tree's boxes): 3 of 40 draws held no such edge. A box turned only about z, rays 8192 a draw, as its own test: 12/12 float32 and 8/8 float64 on the laptop, 0/12 clean",
+    "bits: all eight programs differed by 37 to 41 bytes, the path tables that open the compiled text (paths of two checkouts differ in length): the script lacked the normalisation the first round's had; fixed (the FileNames to StackFrames tables dropped as well as the metadata)",
+    "cost: second run of 30 steps mesh over none 1.22 (float32 320x240), 1.13 (float64 320), 1.07 (float32 640x480), 1.04 (float64 640) against the predicted 1.05 to 1.4 and 1.2 to 2.2, 1.02 to 1.2, 1.05 to 1.5 (held, the float64 320 case under its band); the no-frame run mesh 0.013 s against none 0.006 s: the host's eager signature before each run() call (about 7 ms), so the per-frame share is about 0.03 ms and the per-run-call share is the cost. Fixed: the host's signature is compiled once"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU; GitHub runner, 4 vCPU, one CPU and one thread for the bits",
+    "sizes_and_parameters": "as the first round; the closed-mesh test draws 8192 rays; the pair test's tilt corrected"
+  },
+  "gate_26_rates": {
+    "claim": "no-barrier is caught on every run (40/40) by the pair, closed-mesh and camera tests in each dtype; no-pad on every run by the box test (rotated about z only) in each dtype and by the closed-mesh test (reported as measured, not required); the clean arms are never flagged (0/40), the pair test's included",
+    "kind": "equality",
+    "basis": "measured-before on the laptop (box test no-pad 12/12 float32, 8/8 float64; clean 0/12); first round on runners for the unchanged tests",
+    "if_wrong": "a no-pad miss on the box test: the draws hold no axis-aligned edge ray in a float32 run; a clean flag: another premise of the pair test",
+    "runs": 40,
+    "clean_expected": "0/40"
+  },
+  "gate_bits": {
+    "claim": "as the first round: the compiled text with the path tables and metadata dropped equal base to head in the step, value and forward derivative, both dtypes (6 of 6); the ulp control in the run's own dtype differs in both (2 of 2)",
+    "kind": "equality",
+    "basis": "derived, and the first round's sizes: 2 058 454 and 2 110 318 bytes (step), the head 37 bytes shorter only by its paths",
+    "if_wrong": "a difference after the tables are dropped: a no-mesh program changed"
+  },
+  "gate_cost": {
+    "claim": "after compiling the host's signature: the second run of 30 steps mesh over none at most 1.10 in every arm (float32 320x240 1.22 before); the no-frame run's mesh minus none at most 0.003 s at 320x240 and 0.002 s at 640x480 (0.007 and 0.0023 before); the step's compile mesh over none 0.9 to 1.15; the make once a run 1.5 to 10 s at 320x240 and 4 to 30 s at 640x480 (the runners' range of three rounds)",
+    "kind": "estimates",
+    "basis": "the first round's per-frame share of 0.03 ms and its host share, which a compiled call takes to about a tenth",
+    "if_wrong": "over: the host share is not the eager dispatch (the transfer of the leaves, which a compiled call does not remove)"
+  },
+  "outcomes": {
+    "written": "2026-11-14, after the second run (GitHub run 43642924103 on 68789748, branch deleted after the download); the predictions above are unchanged",
+    "rates": "40/40 in both dtypes: nb-edge, nb-closed, nb-camera (clean 0/40, the pair test's included), np-box, np-closed; 0/40: nb-fan and np-camera (predicted: not controls of those plants); no inconclusive run in any arm. Runners: EPYC 7763, 9V45, 9V74 and Xeon 8573C/6973P",
+    "bits": "held, base bc96aa78 (the release tip then) against head 68789748: step, value and forward-mode derivative equal in float32 and float64 (6 of 6, 1 014 020 to 2 021 890 bytes); the control in the run's own dtype differs in both (ulp_f32 and ulp_f64, step and value). The release tip has moved since (61396864, #311, which touches the camera's validity radius): a third, bits-only run on the final merge, predictions_camera_mesh_fix309_r3.json",
+    "cost": "held: second run of 30 steps mesh over none 1.04 and 1.05 (f32 320), 1.04 and 1.02 (f64 320), 1.08 and 0.90 (f32 640), 1.00 and 1.05 (f64 640), best-of ratios 1.04, 1.02, 1.02, 1.05; no-frame run mesh less none 0.0007 and 0.0009 s (320), -0.0006 and 0.0003 s (640) (predicted at most 0.003 and 0.002); step compile ratio 1.07 to 1.12; executable +0.6 MB; the make 1.5 to 1.6 s (320) and 5.4 to 6.3 s (640); build 6.3 to 10.3 s against 3.2 to 3.8 s without. The estimates quoted in the docs take the range over all four rounds (make 1.5 to 10 s and 4 to 30 s; frames 1.02 to 1.05 after the compiled signature)"
+  }
+}

@@ -1,6 +1,8 @@
 """The sensor core: a camera's detector, route 1 (the closed form) on spheres, capsules, cylinders and the straight
-tube, pixel integration by the camera's box filter, media on two levels, the exposure and the response. A declared
-camera model, a pure observer of the scene's state; see its README."""
+tube, static meshes traced once a run by a bounding volume hierarchy (the stage's scenery and the drawn kinds'
+structures, in the in-loop camera; their chords offline by ``mesh_chords``), pixel integration by the camera's box
+filter, media on two levels, the exposure and the response. A declared camera model, a pure observer of the scene's
+state; see its README."""
 
 from mime.sensing._detector import (
     PIXEL_PITCH,
@@ -14,6 +16,7 @@ from mime.sensing._detector import (
     ray_table,
     to_camera_prim,
 )
+from mime.sensing._mesh import MESH_SAMPLES, MeshChords, mesh_chords
 from mime.sensing._render import (
     SMALL_SILHOUETTE_PX,
     Capture,
@@ -43,6 +46,7 @@ from mime.sensing._subjects import (
 )
 
 __all__ = [
+    "MESH_SAMPLES",
     "MID_GREY",
     "NO_CLOSED_FORM",
     "PIXEL_PITCH",
@@ -56,6 +60,7 @@ __all__ = [
     "Display",
     "Exposure",
     "Look",
+    "MeshChords",
     "Pinhole",
     "Rays",
     "Response",
@@ -67,6 +72,7 @@ __all__ = [
     "for_display",
     "frame_key",
     "from_camera_prim",
+    "mesh_chords",
     "project",
     "ray_table",
     "register_closed_form",

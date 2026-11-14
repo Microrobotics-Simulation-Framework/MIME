@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
+  `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
+  6a). A scenery `Mesh` of the stage, and a structure of a kind the stage draws (an ellipsoid, a box, a helix, a screw: its
+  drawing at the stage writer's facets), are traced by a bounding volume hierarchy built on the host, once a run, inside
+  the static structure: a run's frames cost 1.02 to 1.05 times the same scene's without a mesh, and the step compiles in 1.07 to 1.15 times the time (estimates, measured on 4-vCPU runners; the tree's
+  arrays are the node's parameter leaves, not constants of the program; the triangles reach the node as arrays the derived
+  graph records by sha256). Every crossing of each sub-ray is taken, signed by its facing, so a closed mesh named in
+  `absorbers` attenuates along its chord, a display opacity is passed at each crossing, and any other mesh is opaque; a
+  pixel is the mean of `MESH_SAMPLES` x `MESH_SAMPLES` sub-rays, a declared default set by the mesh swap gate, not a
+  setting (no saved-form step: a saved experiment reproduces at its own MIME version, and a MIME that changed it builds
+  another derived graph, which `verify` reports). The crossing test is watertight (Woop, Benthin and Wald), its products
+  kept from fusing: Moller-Trumbore's test claimed a shared edge's ray twice or not at all in float32, which moves a signed
+  chord by a whole `t`. The slab test of the tree's boxes is widened by `1 + 2 gamma_3` of the run's roundoff (a ray through a box's edge was
+  dropped), and a mesh is held as built: the node's arrays are read-only, a replaced record is refused (`camera.cache-stale`),
+  a leaf written makes the structure again from it. The structure is made once a run and again at each study point that
+  varies the detector's numbers (1.5 to 10 seconds at quarter VGA and 4 to 30 at VGA for a mesh of about a hundred thousand
+  triangles filling the view: an estimate and its range on 4-vCPU runners). Refused, each
+  naming its route: a derivative in the detector's numbers while a mesh is traced, in both modes and in a fit
+  (`camera.mesh-derivative`, through a new optional node hook, `derivative_leaves_problem(leaves)`, which `Study.gradient`
+  and `Study.fit` ask before compiling: the mesh is traced under `stop_gradient`, so the derivative would leave it out; a
+  derivative in a pose passes); a moving mesh (`camera.mesh-moving`); a camera that may move with a mesh in view
+  (`camera.mesh-mounted`); an open or inconsistently wound mesh named in `absorbers` (`camera.mesh-open`).
+  `camera.mesh-untraced` now refuses only a gprim that is not a mesh, and `camera.no-closed-form` a moving drawn kind. A body
+  that starts inside a closed attenuating mesh takes it as its medium (`Subject.around`; the build report says
+  `outside_parent` is not checked against it). The build report names each mesh with its triangles and look, a drawing's
+  sagitta in pixels and, where a layer records it (`write_mesh(..., decimation_distance=)`, the prim's `customData`
+  `mime:decimation_distance_m`, written only where given, so no layer written without it changes bytes), the decimation's
+  distance in pixels at this camera. `mime.sensing.mesh_chords` gives each mesh's chords along each pixel's sub-rays
+  offline, the path lengths an X-ray reduction reads. No compiled program changes for a scene with no mesh and no drawn
+  structure.
+
 - **Blocks: a part of an experiment shared as data** (lane P, P4a, dev2). A block is a published, versioned part of an
   experiment another lab reuses: its things, laws, observations and values with their reasons, written in the saved
   document's own vocabulary, never code. Its folder holds `mime.toml`, `block.mime.yaml` (the fragment,
