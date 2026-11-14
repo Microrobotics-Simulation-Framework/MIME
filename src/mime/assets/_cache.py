@@ -242,15 +242,14 @@ def cheap_problem(ref: AssetRef, checksum: str | None = None) -> str | None:
 
 
 def is_cached(ref: AssetRef) -> bool:
-    """Whether :func:`locate` would return the file."""
+    """Whether :func:`locate` would find the file (its licence's acceptance, which it also asks, aside)."""
     return cheap_problem(ref) is None
 
 
-def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
-    """The cached file of ``ref``, checked cheaply (size, and the record of the full verification made when it was
-    stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that
-    is not there, or that fails the check, is refused as ``asset.missing``. The action is the exact command that stores
-    it: for everything the experiment ``folder`` needs when the folder is known, else for this asset by name."""
+def locate_ungated(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
+    """:func:`locate` without the licence gate, for a file that is not an asset of an experiment: the bundle a pull has
+    just downloaded (its reference states no licence: its own terms are judged when it is unpacked). Everything a build
+    reads goes through :func:`locate`."""
     problem = cheap_problem(ref, checksum)
     if problem is not None:
         raise BuildRefused([Refusal(
@@ -258,6 +257,23 @@ def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, check
             f"the experiment needs {ref.name!r} ({size_text(ref.size)}), which {problem}",
             f"Run: {fetch_command(ref.name, folder=folder)}")])
     return file_path(ref)
+
+
+def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
+    """The cached file of ``ref``, checked cheaply (size, and the record of the full verification made when it was
+    stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that
+    is not there, or that fails the check, is refused as ``asset.missing``. The action is the exact command that stores
+    it: for everything the experiment ``folder`` needs when the folder is known, else for this asset by name.
+
+    **The first use of a gated file is gated here too** (:func:`~mime.assets.require_accepted`): bytes placed in the cache
+    by hand, or recorded as checked by ``mime assets check`` or a refused resolve, never pass with no acceptance on
+    record. A licence with conditions beyond credit that nothing accepted is asked about once, or refused where nobody
+    can be asked (``asset.licence-not-accepted``)."""
+    found = locate_ungated(ref, folder=folder, checksum=checksum)
+    from mime.assets._gates import require_accepted
+
+    require_accepted([ref])
+    return found
 
 
 #: Where the cache keeps a file under its record's name, for a reader that needs a file name (a USD layer, a URDF):
