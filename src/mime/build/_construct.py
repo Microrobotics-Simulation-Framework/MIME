@@ -229,7 +229,7 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         entry=plan.entry, roster=plan.roster, exchanges=dict(plan.exchanges),
                         starts={role: dict(body.initial) for role, name in plan.bindings.items() if plan.exchanges
                                 for body in plans.entries if body.section is Section.DYNAMICS and body.owner == name},
-                        frequencies=_drive_frequencies(plan, plans))
+                        frequencies=_drive_frequencies(plan, plans), responses=dict(plan.responses))
 
 
 def _drive_frequencies(plan: EntryPlan, plans: PlanSet) -> dict[str, float]:

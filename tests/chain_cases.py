@@ -71,12 +71,13 @@ def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, ma
     """The AR4 at its home pose carrying a motor on its flange (``link_6``), turning about the flange's z at ``speed``
     rad/s (``prescribed="angle"``: to ``speed`` rad), the magnet on the rotor, magnetised along the rotor's x. The
     motor is placed on the flange by ``motor_at`` and ``motor_orientation``, the magnet on the rotor by
-    ``magnet_at``; ``servo`` is the arm's time constant; ``arm_at`` is where the arm's base is placed. The commands
+    ``magnet_at``; ``servo`` is the arm's time constant, its port's first-order lag; ``arm_at`` is where the arm's base
+    is placed. The commands
     named in ``controlled`` take no drive, for a controller to write; ``ports`` are the apparatus's declared ports."""
     return Apparatus(
         "rpm",
         chain={"arm": Arm.Kinematic(description=asset(description), initial_positions=rad(AR4_HOME),
-                                         at=m(arm_at), acknowledged=acknowledged, servo=servo),
+                                         at=m(arm_at), acknowledged=acknowledged),
                "motor": Motor.Kinematic(axis=Z, prescribed=prescribed, initial_angle=rad(0.0), mount="link_6",
                                         at=motor_at, orientation=motor_orientation)},
         parts={"rotor_magnet": magnet_part("motor.rotor", at=magnet_at)},
@@ -86,7 +87,15 @@ def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, ma
             "arm.joint_positions": Constant(rad(joints)),
             **({"motor.velocity": Constant(rad_per_s(speed))} if prescribed == "velocity"
                else {"motor.angle": Constant(rad(speed))})}.items() if name not in controlled},
-        ports=ports or {})
+        ports={**({"arm.joint_positions": servo_port(servo)} if servo is not None else {}), **(ports or {})})
+
+
+def servo_port(servo) -> object:
+    """A kinematic arm's servo, ``servo`` its time constant: its position command's port, a first-order lag."""
+    from mime import CommandPort
+    from mime.responses import FirstOrderLag
+
+    return CommandPort(response=FirstOrderLag(tau=servo), reason="the arm's servo, its time constant")
 
 
 def kinematic_rpm(name: str = "kinematic_rpm", *, magnetic=(Magnetic.Torque, Magnetic.Force),

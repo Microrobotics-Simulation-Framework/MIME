@@ -11,7 +11,8 @@ step, so an image port holds that many frames.
 **A command's rungs**, in order: sample (the rate), delay (the latency), bound (clipped to the bounds, flagged
 ``clipped_<command>``; or tripped, delivering the rest from that step on, flagged ``tripped_<command>``), then slew (the
 most the value moves in a step, ``slew dt``, from the last value the amplifier drove), whose output is what the
-receiver takes. What the writer wrote is kept as ``written_<command>``. Each port's fields carry its command's name (its
+receiver takes, through its response last (a registered kind, ``mime.responses``: a coil's L/R lag) where its receiver
+does not compute that response itself. What the writer wrote is kept as ``written_<command>``. Each port's fields carry its command's name (its
 dots as underscores, ``arm_joint_positions``), so a flag names the port it was raised on, whichever port's switch it is:
 the switches' owners (``port.bound.low``, ``port.trip``, ...) are the stage's, one for every port.
 
@@ -119,17 +120,19 @@ def held_sample(buffer: Array, value: Array, count: Array, period: int, latency:
 class CommandStageNode(MimeNode):
     """An apparatus's command ports between each command's writer and its receiver: per command (its field name,
     ``commands``), sampled at its period and delayed by its latency (``periods``, ``latencies``, base steps), bounded
-    (``bounded``: ``""``, ``"clip"`` or ``"trip"``, at ``low_<c>`` and ``high_<c>``), then slewed (``slewed``, at most
-    ``slew_<c>`` per second). ``rest_<c>`` is what it delivers before a write arrives and after a trip. Every number is a
-    leaf of its parameters."""
+    (``bounded``: ``""``, ``"clip"`` or ``"trip"``, at ``low_<c>`` and ``high_<c>``), slewed (``slewed``, at most
+    ``slew_<c>`` per second), then shaped by its response (``responses``, a registered response's name and version, its
+    settings ``response_<c>_<setting>``, its state ``carries``). ``rest_<c>`` is what it delivers before a write arrives
+    and after a trip. Every number is a leaf of its parameters."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-134",
-        description="An apparatus's command ports: each command sampled, delayed, bounded (clipped or tripped) and "
-                    "slew-limited between its writer and its receiver, on an integer clock.",
+        description="An apparatus's command ports: each command sampled, delayed, bounded (clipped or tripped), "
+                    "slew-limited and shaped by its response between its writer and its receiver, on an integer clock.",
         governing_equations=(r"h_{n} = u_{k \lfloor n / k \rfloor}, \quad d_{n} = h_{n - L} \ (n \ge L), \ r "
                              r"\ (n < L), \quad b_{n} = \mathrm{clip}(d_{n}, l, h), \quad a_{n} = a_{n-1} + "
-                             r"\mathrm{clip}(b_{n} - a_{n-1}, -s \, \mathrm{d}t, s \, \mathrm{d}t)"),
+                             r"\mathrm{clip}(b_{n} - a_{n-1}, -s \, \mathrm{d}t, s \, \mathrm{d}t), \quad y_{n} = "
+                             r"R(a_{n})"),
         assumptions=("The link's clock is the base step's: every period and latency is a whole number of base steps",
                      "A trip latches for the rest of the run: no reset is modelled",
                      "The stage carries a signal, outside the energy ledger: a command's work is booked under its "
@@ -138,12 +141,15 @@ class CommandStageNode(MimeNode):
 
     def __init__(self, name: str, timestep: float, *, commands: Sequence[str], units: Mapping[str, str],
                  shapes: Mapping[str, Sequence[int]], periods: Mapping[str, int], latencies: Mapping[str, int],
-                 bounded: Mapping[str, str], slewed: Mapping[str, bool], **leaves: Any) -> None:
+                 bounded: Mapping[str, str], slewed: Mapping[str, bool], responses: Mapping[str, Sequence[str]],
+                 carries: Mapping[str, Sequence[str]], **leaves: Any) -> None:
         keys = sorted(commands)
         super().__init__(name, timestep, commands=tuple(keys),
                          units={k: str(units[k]) for k in keys}, shapes={k: tuple(int(n) for n in shapes[k]) for k in keys},
                          periods={k: int(periods[k]) for k in keys}, latencies={k: int(latencies[k]) for k in keys},
                          bounded={k: str(bounded[k]) for k in keys}, slewed={k: bool(slewed[k]) for k in keys},
+                         responses={k: tuple(str(part) for part in responses[k]) for k in keys},
+                         carries={k: tuple(str(c) for c in carries[k]) for k in keys},
                          **{name_: _leaf(value) for name_, value in sorted(leaves.items())})
 
     def _held(self, key: str) -> Any:
@@ -181,6 +187,8 @@ class CommandStageNode(MimeNode):
                 fields[f"tripped_{key}"] = as_run_array(0.0)
             if cast(Mapping[str, bool], self._held("slewed"))[key]:
                 fields[f"amplified_{key}"] = rest
+            for carried in cast(Mapping[str, tuple[str, ...]], self._held("carries"))[key]:
+                fields[f"response_{key}_{carried}"] = rest
         return node_fields(fields)
 
     @override
@@ -188,10 +196,10 @@ class CommandStageNode(MimeNode):
         units = cast(Mapping[str, str], self._held("units"))
         return {key: node_input(units[key], self._shape(key)) for key in self._keys()}
 
-    #: The rungs a command takes, in order: the link's sample and delay, then the amplifier's bound and slew. The order
-    #: is the stage's law (an amplifier chain's physical order: the link carries what was sent, the amplifier bounds and
-    #: slews what arrives).
-    RUNGS: ClassVar[tuple[str, ...]] = ("delay", "bound", "slew")
+    #: The rungs a command takes, in order: the link's sample and delay, the amplifier's bound and slew, then the
+    #: receiver's response. The order is the stage's law (an amplifier chain's physical order: the link carries what was
+    #: sent, the amplifier bounds and slews what arrives, the coil lags behind what the amplifier drives).
+    RUNGS: ClassVar[tuple[str, ...]] = ("delay", "bound", "slew", "respond")
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -250,6 +258,29 @@ class CommandStageNode(MimeNode):
                                      resolution=lambda: switch.rounding(change))
         out[f"amplified_{key}"] = value
         return value
+
+
+    def _respond(self, key: str, value: Array, p: Mapping[str, Any], state: NodeFields, out: dict[str, Array],
+                 count: Array, dt: float) -> Array:
+        """The response: what the receiver gets from what the amplifier drives."""
+        carried = cast(Mapping[str, tuple[str, ...]], self._held("carries"))[key]
+        settings = {name[len(f"response_{key}_"):]: held for name, held in p.items()
+                    if name.startswith(f"response_{key}_")}
+        after, delivered = self.response_of(key).respond(settings, {c: state[f"response_{key}_{c}"] for c in carried},
+                                                         value, dt)
+        out.update({f"response_{key}_{c}": after[c] for c in carried})
+        return jnp.asarray(delivered)
+
+    def response_of(self, key: str) -> Any:
+        """The class of the registered response a command's port shapes it with (its settings are the stage's leaves,
+        read at each step)."""
+        from mime.registry import EntryKind, lookup
+
+        name, version = cast(Mapping[str, tuple[str, str]], self._held("responses"))[key]
+        record = lookup(EntryKind.RESPONSE, name, version)
+        if record is None:
+            raise KeyError(f"no response {name} {version} is registered")
+        return record.cls
 
 
 class MeasureStageNode(MimeNode):

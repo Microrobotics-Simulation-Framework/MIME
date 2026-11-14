@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 
 from mime.build._builders import COMMAND, STATE, EdgeDecl
-from mime.build._ports import StagePlan, stage_id
+from mime.build._ports import IDEAL, StagePlan, stage_id
 from mime.build._refusals import Refusal, RefusalClass
 from mime.nodes.control import COMMAND_STAGE, MEASURE_STAGE, CommandStageNode, MeasureStageNode
+from mime.registry import Response
 
 if TYPE_CHECKING:
     from maddening.core.node import SimulationNode
@@ -58,12 +59,18 @@ def stage_nodes(stages: Sequence[StagePlan], built: Mapping[str, SimulationNode]
                     leaves[f"low_{plan.key}"], leaves[f"high_{plan.key}"] = plan.low, plan.high
                 if plan.slew is not None:
                     leaves[f"slew_{plan.key}"] = plan.slew
+                if plan.shaped:
+                    leaves.update({f"response_{plan.key}_{k}": v for k, v in plan.response_settings.items()})
             ports = [plan for plan in stage.commands if plan.key in shapes]
+            responses = {p.key: (p.response.name, p.response.version) if p.shaped and p.response is not None
+                         else (IDEAL, "0.1.0") for p in ports}
             nodes.append(CommandStageNode(
                 name, dt, commands=[p.key for p in ports], units={p.key: p.units for p in ports}, shapes=shapes,
                 periods={p.key: p.period for p in ports}, latencies={p.key: p.latency for p in ports},
                 bounded={p.key: p.bounded for p in ports}, slewed={p.key: p.slew is not None for p in ports},
-                **leaves))
+                responses=responses,
+                carries={p.key: cast(type[Response], p.response.cls).carries if p.shaped and p.response is not None
+                         else () for p in ports}, **leaves))
             edges += [EdgeDecl(name, (name, p.key), p.receiver, False, p.units, seq, COMMAND)
                       for seq, p in enumerate(ports)]
         if stage.measurements:

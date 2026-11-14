@@ -22,7 +22,8 @@ declaration without the defect, which builds or plans:
   that mounts on something, a part on a frame no segment has, a provider whose part is no magnet;
 - **the dynamic rungs**: an arm whose moving body has geometry and no inertial (``chain.inertia-gap``), one whose
   moving joint moves a body with neither geometry nor inertial and so no mass at all (``chain.massless-joint``), a
-  dynamic arm mounted on another segment (``chain.fixed-base``), a servo on it, initial velocities on the kinematic
+  dynamic arm mounted on another segment (``chain.fixed-base``), a servo on it (``call.renamed``: the servo is a port's
+  response since saved form 15), initial velocities on the kinematic
   arm, a dynamic motor with no inertia or with a prescription, each refused with its message and what to do; the
   control: the same arms on their kinematic rung, and the dynamic arm first in its chain carrying the dynamic motor,
   build.
@@ -36,7 +37,7 @@ import pytest
 from chain_cases import AR4, AR4_HOME, DESCRIPTIONS, dynamic_rpm, fixed_magnet, kinematic_rpm, magnet_part, rpm
 from chain_cases import experiment as new_experiment
 
-from mime.build import BuildRefused, InteractionBuilder, ThingDeclaration
+from mime.build import ArgumentRefused, BuildRefused, InteractionBuilder, ThingDeclaration
 from mime.core.multibody import ClosureKind, DescriptionReading, LoopClosure
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import PointDipole
@@ -273,8 +274,9 @@ def only(experiment, code: str):
 
 def test_the_dynamic_rungs_refuse_what_they_cannot_take_and_build_what_they_can():
     planar = DESCRIPTIONS / "three_link_planar.urdf"
-    servo = only(dynamic_alone(planar, 3, servo=ms(5)), "setting.value")
-    assert "servo is the kinematic rung's: the dynamic arm follows the torques it is given" in servo.message
+    with pytest.raises(ArgumentRefused) as moved:
+        dynamic_alone(planar, 3, servo=ms(5))
+    assert moved.value.refusals[0].code == "call.renamed" and "its port's response" in str(moved.value)
     exp = new_experiment("kinematic_rates")
     exp.add_apparatus(Apparatus("rig", chain={"arm": Arm.Kinematic(description=asset(planar),
                                                                     initial_positions=rad((0.0,) * 3),

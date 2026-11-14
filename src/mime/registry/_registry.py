@@ -36,6 +36,7 @@ from mime.registry._entries import (
     Output,
     OutputKind,
     Reduction,
+    Response,
     ReynoldsRange,
     Role,
     RoleKind,
@@ -70,6 +71,7 @@ class EntryKind(Enum):
     DRIVE = "drive"
     GEOMETRY = "geometry"
     WALL_KIND = "wall kind"
+    RESPONSE = "response"
 
 
 _BASES: dict[EntryKind, type[Entry]] = {
@@ -81,6 +83,7 @@ _BASES: dict[EntryKind, type[Entry]] = {
     EntryKind.DRIVE: Drive,
     EntryKind.GEOMETRY: Geometry,
     EntryKind.WALL_KIND: WallKind,
+    EntryKind.RESPONSE: Response,
 }
 
 
@@ -783,6 +786,10 @@ def register_geometry[E: type[Entry]](cls: E) -> E:
 
 def register_wall_kind[E: type[Entry]](cls: E) -> E:
     return _register(EntryKind.WALL_KIND, cls)
+
+
+def register_response[E: type[Entry]](cls: E) -> E:
+    return _register(EntryKind.RESPONSE, cls)
 
 
 def wall_kinds_matching(shape: str | None) -> list[Registered]:

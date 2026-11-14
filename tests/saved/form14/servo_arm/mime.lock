@@ -1,0 +1,523 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "value",
+     "source_node": "drive:carm.arm.joint_displacements",
+     "source_units": "m",
+     "target_field": "joint_displacements",
+     "target_node": "carm.arm",
+     "target_units": "m"
+    },
+    {
+     "source_field": "value",
+     "source_node": "drive:carm.arm.joint_positions",
+     "source_units": "1",
+     "target_field": "joint_positions",
+     "target_node": "carm.arm",
+     "target_units": "1"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "carm.arm",
+     "params": {
+      "axes": [
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       1.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0
+      ],
+      "bounded": [
+       0,
+       1,
+       2
+      ],
+      "dof_names": [
+       "lift",
+       "orbit",
+       "rotate"
+      ],
+      "frame_bodies": [
+       -1,
+       0,
+       1,
+       2
+      ],
+      "frame_names": [
+       "stand",
+       "column",
+       "c",
+       "detector"
+      ],
+      "frame_rotations": [
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "frame_translations": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_joint_positions": [
+       0.1,
+       0.0,
+       0.0
+      ],
+      "initial_mount_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_mount_rate": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "lower": [
+       0.0,
+       -2.0,
+       -3.0
+      ],
+      "mount_count": 0,
+      "mount_index": -1,
+      "origin_rotations": [
+       0.9887710779360424,
+       0.0,
+       0.0,
+       0.14943813247359924,
+       0.9937606691655043,
+       0.09970865087213879,
+       -0.0049895912294619805,
+       -0.04972948160146045,
+       0.9724197722635116,
+       0.024769045848695867,
+       -0.19711924656487168,
+       0.12218953929212932
+      ],
+      "origin_translations": [
+       0.1,
+       0.0,
+       0.5,
+       0.35,
+       0.0,
+       0.45,
+       0.6,
+       0.0,
+       0.3
+      ],
+      "parents": [
+       -1,
+       0,
+       1
+      ],
+      "placement": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rates": false,
+      "revolute": [
+       false,
+       true,
+       true
+      ],
+      "servo_time_constant": 0.02,
+      "upper": [
+       0.4,
+       2.0,
+       3.0
+      ]
+     },
+     "timestep": 0.001,
+     "type": "KinematicArmNode"
+    },
+    {
+     "name": "drive:carm.arm.joint_displacements",
+     "params": {
+      "value": [
+       0.6
+      ]
+     },
+     "timestep": 0.001,
+     "type": "ConstantNode"
+    },
+    {
+     "name": "drive:carm.arm.joint_positions",
+     "params": {
+      "value": [
+       2.5,
+       -2.5
+      ]
+     },
+     "timestep": 0.001,
+     "type": "ConstantNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "carm.arm": {},
+    "drive:carm.arm.joint_displacements": {},
+    "drive:carm.arm.joint_positions": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "drive",
+   "name": "drive.constant",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "arm",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.12.15",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 4,
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:6c1799c23aeee8ef54c6e5b9ba8c0186c72fa169f74bbac5944399a0faa8b6c4",
+  "document": "sha256:52a646b44653ad3db29dc8aec931b90f0cb9617cb911a6bb6b23fd7dd96e9a5f",
+  "input": "sha256:d7e5ef3c3c16e5f4dde4aa9cd0679d77fb65870c93e92b63e4c13ababc8dd060",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 0.0,
+  "file": "reference.npz",
+  "resolution": {
+   "carm.arm.frame_poses": {
+    "1": 8.881784197001252e-16,
+    "m": 4.440892098500626e-16
+   },
+   "carm.arm.joint_positions": {
+    "1": 4.440892098500626e-16
+   },
+   "drive:carm.arm.joint_displacements.value": {
+    "the command's own": 1.1102230246251565e-16
+   },
+   "drive:carm.arm.joint_positions.value": {
+    "the command's own": 4.440892098500626e-16
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 2e-14,
+  "sha256": "sha256:234d40dbc8b3131c7053534e578c971e29cd5e389ba87fbe982060a4ceb20fc6",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {
+   "carm.arm": {
+    "acknowledged": {},
+    "file": "descriptions/5a99c19cd9e8821a-c_arm.urdf",
+    "massless": [],
+    "refused": {},
+    "sha256": "5a99c19cd9e8821a42ee25c1631b6eed71126c466742d1b888b090c42aa949b2",
+    "unused": {},
+    "used": {
+     "axis": [
+      "joint[lift]/axis",
+      "joint[orbit]/axis",
+      "joint[rotate]/axis"
+     ],
+     "child": [
+      "joint[lift]/child",
+      "joint[orbit]/child",
+      "joint[rotate]/child"
+     ],
+     "inertia": [
+      "link[column]/inertial/inertia",
+      "link[c]/inertial/inertia",
+      "link[detector]/inertial/inertia"
+     ],
+     "inertial": [
+      "link[column]/inertial",
+      "link[c]/inertial",
+      "link[detector]/inertial"
+     ],
+     "joint": [
+      "joint[lift]",
+      "joint[orbit]",
+      "joint[rotate]"
+     ],
+     "limit": [
+      "joint[lift]/limit",
+      "joint[orbit]/limit",
+      "joint[rotate]/limit"
+     ],
+     "link": [
+      "link[stand]",
+      "link[column]",
+      "link[c]",
+      "link[detector]"
+     ],
+     "mass": [
+      "link[column]/inertial/mass",
+      "link[c]/inertial/mass",
+      "link[detector]/inertial/mass"
+     ],
+     "origin": [
+      "joint[lift]/origin",
+      "link[column]/inertial/origin",
+      "joint[orbit]/origin",
+      "link[c]/inertial/origin",
+      "joint[rotate]/origin",
+      "link[detector]/inertial/origin"
+     ],
+     "parent": [
+      "joint[lift]/parent",
+      "joint[orbit]/parent",
+      "joint[rotate]/parent"
+     ]
+    }
+   }
+  },
+  "entries": {
+   "carm.arm": {
+    "binds": {},
+    "differentiability": "piecewise_kink",
+    "every": 1,
+    "initial": {},
+    "kind": "dynamics",
+    "name": "arm",
+    "nodes": [
+     "carm.arm"
+    ],
+    "settings": {
+     "acknowledged": [],
+     "actuators": [],
+     "armature": [],
+     "at": null,
+     "description": {
+      "file": "descriptions/5a99c19cd9e8821a-c_arm.urdf",
+      "sha256": "5a99c19cd9e8821a42ee25c1631b6eed71126c466742d1b888b090c42aa949b2"
+     },
+     "initial_positions": {
+      "unit": "1",
+      "value": [
+       0.1,
+       0.0,
+       0.0
+      ]
+     },
+     "initial_velocities": null,
+     "mount": null,
+     "orientation": null,
+     "rate": null,
+     "rung": "kinematic",
+     "servo": {
+      "unit": "s",
+      "value": 0.02
+     }
+    },
+    "version": "0.1.0"
+   },
+   "drive:carm.arm.joint_displacements": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:carm.arm.joint_displacements"
+    ],
+    "settings": {
+     "value": {
+      "unit": "m",
+      "value": [
+       0.6
+      ]
+     }
+    },
+    "version": "0.1.0"
+   },
+   "drive:carm.arm.joint_positions": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:carm.arm.joint_positions"
+    ],
+    "settings": {
+     "value": {
+      "unit": "1",
+      "value": [
+       2.5,
+       -2.5
+      ]
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {},
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "carm.arm",
+   "drive:carm.arm.joint_displacements",
+   "drive:carm.arm.joint_positions"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "carm.arm.acknowledged": {
+     "entry": "arm 0.1.0",
+     "kind": "convention",
+     "value": []
+    },
+    "carm.arm.actuators": {
+     "entry": "arm 0.1.0",
+     "kind": "convention",
+     "value": []
+    },
+    "carm.arm.armature": {
+     "entry": "arm 0.1.0",
+     "kind": "convention",
+     "value": []
+    }
+   },
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "servo_arm",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.81
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "carm": "/World/carm"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "carm": "apparatus"
+  },
+  "values": {},
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/14",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "c783351b7f6a77e88e68f67666be2525c81e239fe5aa2529ba6994e76cc4dbea",
+  "writer": 2
+ }
+}
