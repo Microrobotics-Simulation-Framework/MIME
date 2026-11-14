@@ -130,14 +130,15 @@ refusal table's (`mime/build/refusal_table.txt`).
   name: its id, version and content hash, its tier (`copied` or `referenced`), its licence, the DOI it was used by
   where it was, its sockets' bindings, the names it provides in each of the document's sections of declarations, and
   the paths declared over it; written only where one is used, and part of the hashed input, so a use edited after its
-  lock was written is refused as `load.input-hash`. A `copied` use, whose declarations the document holds, loads; a
-  `referenced` one is refused as `load.referenced-block`, naming it, before anything else is read, since this MIME
-  does not yet read a block's container; reading the folder refuses neither. A document of an earlier form that holds
+  lock was written is refused as `load.input-hash`. A `copied` use, whose declarations the document holds, loads with
+  no block; a `referenced` one is read from its container first, which the lock's `assets` records, and a container
+  whose content hash is not the document's, or one the lock holds no record of, is refused as `block.changed`; reading
+  the folder reads no container. A document of an earlier form that holds
   the key is refused as `load.document-shape`, never read as using a block. A reader of the thirteenth form refuses a
   folder of the fourteenth as `load.newer-form`.
   *Cases:* `tests/saved/test_form14_blocks.py::test_a_copied_block_is_written_into_the_document_and_loads_with_its_input_hash_reproduced`,
   `tests/saved/test_form14_blocks.py::test_a_use_edited_after_its_lock_was_written_is_refused_by_the_input_hash`,
-  `tests/saved/test_form14_blocks.py::test_a_referenced_block_is_refused_by_its_own_code_naming_each_use_and_never_as_a_shape`,
+  `tests/saved/test_form14_blocks.py::test_a_referenced_block_is_read_from_its_container_and_refused_without_one_never_as_a_shape`,
   `tests/saved/test_form14_blocks.py::test_a_form_thirteen_document_holding_blocks_is_refused_and_written_back_without_it`,
   `tests/saved/test_form14_blocks.py::test_version_thirteens_reader_refuses_a_document_using_a_block_as_newer_each_file_once`.
 - **[document.terms]** The document's licence, custom licences, terms and permissions are read in the form `save`

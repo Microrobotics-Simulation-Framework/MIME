@@ -4,6 +4,7 @@
 # nor listed here; and on a listed name the source no longer needs the list for (delete its line). One per line,
 # `name  # what it names`.
 access.embargo  # a path in mime.toml's [record], said by a refusal of its shape
+allocation.active_set  # the switch owner allocate() passes the exact allocation it runs on the host
 bath.density             # a typed path in a family's rig: the bath's density
 bulk.density             # an OpenMaterica record field a value is read from
 ca.key  # a test certificate authority's key file (mime.testing's loopback stores)

@@ -95,7 +95,7 @@ def test_every_page_the_build_wrote_is_an_entry_a_node_a_family_a_mechanism_or_a
     assert rest == {"index.md", "pages/nodes", "pages/families", "pages/mechanisms", "pages/vocabulary.md",
                     "pages/concepts.md", "pages/results.md", "pages/profiles.md", "pages/reading_errors.md",
                     "pages/errors", "pages/live.md", "pages/recordings.md", "pages/multibody.md", "pages/materials.md",
-                    "pages/scene.md", "pages/reference", "pages/guide"}
+                    "pages/scene.md", "pages/reference", "pages/guide", "pages/allocation.md"}
 
 
 def clashes(paths: set[str]) -> list[str]:

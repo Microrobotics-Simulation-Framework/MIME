@@ -382,6 +382,11 @@ def _licences_named(judged: FolderTerms) -> list[str]:
             *(held.ref.licence for held in judged.assets if held.ref.licence != NO_ASSERTION)]
 
 
+#: What a block used by reference cannot hide (design v4 section 2.8): said, never hashed.
+LOCK_HOLDS_VALUES = ("its files stay out of this folder and every bundle of it, but not its numbers: the lock's resolved "
+                     "record and the reference outputs hold values its fragment sets")
+
+
 def _block_words(name: str, use: BlockUseDoc) -> str:
     doi = f"DOI {plain(use['doi'])}" if "doi" in use else "used from a block folder, no DOI"
     return f"the use {plain(name)!r}: block {plain(use['id'])} {plain(use['version'])} ({doi}), licensed {plain(use['licence'])}"
@@ -417,8 +422,11 @@ def block_lines(document: ExperimentDocument) -> list[str]:
                          f"block's (a condition of either holds for them; see Files). Content "
                          f"{plain(use['content'])}.")
         else:
-            lines.append(f"- {_block_words(name, use)}, used by reference: its content is in its container, never in "
-                         f"this folder. Content {plain(use['content'])}.")
+            fetched = (f"`mime pull doi:{plain(use['doi'])}` fetches it under {plain(use['licence'])}" if "doi" in use
+                       else "no record of it is published: ask the experiment's author for the block")
+            lines.append(f"- {_block_words(name, use)}, used by reference: this folder needs it, and its content may not "
+                         f"be redistributed, so it is in its container, never here ({fetched}). Referenced, "
+                         f"{LOCK_HOLDS_VALUES}. Content {plain(use['content'])}.")
         if (said := no_derivatives_words(name, use, document)) is not None:
             lines.append(f"  {said}")
     return lines
@@ -432,7 +440,7 @@ def block_card_lines(document: ExperimentDocument) -> list[str]:
         lines.append(f"- **Uses block {plain(use['id'])} {plain(use['version'])}** ("
                      + (f"DOI {plain(use['doi'])}; " if "doi" in use else "")
                      + (f"copied in under {plain(use['licence'])}, which joins the experiment's own licence)"
-                        if use["tier"] == "copied" else f"used by reference, under {plain(use['licence'])})"))
+                        if use["tier"] == "copied" else f"used by reference, under {plain(use['licence'])}: {LOCK_HOLDS_VALUES})"))
         if (said := no_derivatives_words(name, use, document)) is not None:
             lines.append(f"  - {said}")
     return lines

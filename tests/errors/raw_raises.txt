@@ -12,6 +12,7 @@ assets/_adapters.py::register_adapter ValueError 1  # construction: a script reg
 assets/_derivation.py::DerivationRecord.from_json ValueError 3  # invariant: a shipped derivation record's own form, which its test reads
 assets/_derivation.py::derivation_of KeyError 1  # a derivation record looked up by an asset's name, from the asset tooling; outside a script's public call
 assets/_fetch.py::_download_held_to ValueError 1  # a location under the test prefix, which doi.org does not resolve: raised inside the download, which every caller turns into a coded refusal or the next location (asset.unreachable)
+blocks/_container.py::definition_text ValueError 1  # invariant: the canonical writer's read-back of a definition the reader took, which a test holds
 blocks/_use.py::BlockHandle.__getattr__ AttributeError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 build/_construct.py::assemble ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_derived.py::plain TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
@@ -192,6 +193,7 @@ scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no s
 scene/_union.py::ExactUnion.__post_init__ ValueError 2  # construction: a union's meeting pairs misnamed, raised where a script or a kind makes the union, outside every public call of an experiment
 observations/_camera.py::Camera.project TypeError 1  # a call: a script asking a camera mounted on a moving frame where points fall without the pose it is at, raised where the script calls it, outside every public call of an experiment (a JAX function, which a controller's model of its camera calls)
 sensing/_detector.py::Pinhole.__post_init__ ValueError 1  # construction: a script constructing a detector of no pixels, raised where the script calls it, outside every public call of an experiment
+sensing/_sampled.py::form.unmarched TypeError 1  # an internal contract: a sampled body's form before its march exists, whose pieces are made from the march (``form(sampled, held)``); the renderer always passes the held march, so no script's call reaches it, and a caller of the private function that omits it is a programming error
 sensing/_subjects.py::register_closed_form ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::Surrogate.resolve ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class

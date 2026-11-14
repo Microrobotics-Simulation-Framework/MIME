@@ -105,11 +105,14 @@ The licence decides what your saved document holds, and you never write it yours
   unknown and say why. Where you declare over a value of a block whose licence carries a no-derivatives condition, the
   NOTICE and the card name the block, its condition and what you overrode; MIME judges nothing of whether that makes your
   experiment a derivative.
-- **Referenced** (any other licence): the block's files stay out of every bundle you share, and your document records the
-  use alone. This release refuses such a use (`load.referenced-block`); a later one reads its container. Referenced keeps the
-  block's files out, but not its numbers: the values its fragment sets reach every user's saved lock and what their builds
-  compute. `mime check` tells such a block's author so: what must stay private belongs in an asset with no location (a file
-  had by request), never in the fragment.
+- **Referenced** (any other licence): the block's files stay out of every bundle you share. Your document records the use
+  and what you declared over it, never the block's own declarations, and your lock records the block's container
+  (`<id>-<version>.mimeblock`, its sha256, its licence, and `doi:<DOI>/<file>` where you used it by DOI). A load reads the
+  container first, through the asset gate (a licence with conditions is asked about once), and refuses one whose content
+  is not the one you saved with (`block.changed`). Referenced keeps the block's files out, but not its numbers: the values
+  its fragment sets reach your saved lock and what your builds compute, and the NOTICE and the card say so. `mime check`
+  tells such a block's author too: what must stay private belongs in an asset with no location (a file had by request),
+  never in the fragment.
 
 The last region of the example deletes the block's folder and loads the experiment it saved, which reproduces its input
 hash:
@@ -136,5 +139,27 @@ Two commands read a block folder offline, building, downloading and installing n
   `block.case-stale`: save it again. A block with no case is a to do (`block.no-case`), because packing it will refuse
   it. The profile is exploratory unless `--profile` names another; research makes the to-do list findings.
 
-A block's container (`.mimeblock`), pulling one by its DOI, verifying its cases and publishing it come in a later
-release.
+## Sharing one
+
+- **`mime pack <block folder>`** writes `<id>-<version>.mimeblock`. It holds the definition (without `[record]`, written
+  canonically), the fragment, records, descriptions, open and conditional asset files and the cases, with a manifest of
+  every file's hash and the content hash. The same folder makes the same bytes. Pack refuses a block with no case, a case
+  saved against other content, and an asset file no `[[assets]]` record names, and it judges each case as a bundle's saved
+  folder is judged.
+- **`mime pull <DOI or .mimeblock>`** unpacks it into `./<id>-<version>/`, or a folder `--into` names. It checks every
+  member and recomputes the content hash. It keeps the container in the asset cache, fetches the cases' assets through
+  the gates, and lists what `[requires]` needs that is not installed, with the line that installs it. It installs
+  nothing.
+- **`mime show <block folder or .mimeblock>`** is the one command that is not gated: it says the licence and its
+  conditions, which a person needs in order to decide whether to accept them, and expands nothing.
+- **`exp.use`** takes the `.mimeblock` or the DOI too, pulled into the cache as `Experiment.based_on` pulls a parent.
+- **`mime verify <block folder or .mimeblock>`** first asks about the block's own licence where it has conditions
+  you have not accepted (it runs the cases on the block's data), then holds `[requires]` to what is installed: a requirement not met
+  refuses the whole and runs no case, because a block that could not be checked has neither passed nor moved. Each case
+  must be this block's (`block.case-stale`). Then each case reruns, as `mime verify` reruns a saved folder: an acceptance
+  that bounds nothing about physics. The author's own words about the cases close it, as the author's.
+- **`mime push <block folder> --to <service>`** makes one record: the `.mimeblock` and its `NOTICE.txt`, with the
+  keywords `mime-block` and `mime-block:<id>`, and the block's card (`mime card <block folder>`) as its description.
+  `mime push` has no `--dry-run`, and is as real for a block as for a bundle. Rehearse it on the sandbox first
+  (`scripts/zenodo_sandbox_lane.py --demo block`; the lane's own `--dry-run` sends nothing off this machine). A block pulled from a record holds no
+  `[record]`, so it cannot be pushed again as it is: you publish a block of your own from it, not someone else's.
