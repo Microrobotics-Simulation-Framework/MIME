@@ -26,7 +26,7 @@ from typing import Literal
 
 from mime.assets._commands import fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
-from mime.assets._reference import AssetRef
+from mime.assets._reference import AssetRef, BundleContainer
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.terms import NO_ASSERTION
 
@@ -126,7 +126,7 @@ def remembered_checksum(checksum: str, name: str, location: str) -> AssetRef | N
         if held["checksum"] != checksum or not isinstance(held["sha256"], str) or isinstance(held["size"], bool) \
                 or not isinstance(held["size"], int):
             return None
-        return AssetRef(name, held["sha256"], held["size"], NO_ASSERTION, (location,))
+        return BundleContainer(name, held["sha256"], held["size"], NO_ASSERTION, (location,))
     except (OSError, ValueError, KeyError, TypeError, BuildRefused):
         return None
 
@@ -246,10 +246,9 @@ def is_cached(ref: AssetRef) -> bool:
     return cheap_problem(ref) is None
 
 
-def locate_ungated(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
-    """:func:`locate` without the licence gate, for a file that is not an asset of an experiment: the bundle a pull has
-    just downloaded (its reference states no licence: its own terms are judged when it is unpacked). Everything a build
-    reads goes through :func:`locate`."""
+def _found(ref: AssetRef, folder: str | os.PathLike[str] | None, checksum: str | None) -> Path:
+    """The cached file of ``ref`` after the cheap check, or ``asset.missing``; no licence is asked about. Private: the
+    only ways out of this module to a file's bytes are :func:`locate` and :func:`locate_bundle_container`."""
     problem = cheap_problem(ref, checksum)
     if problem is not None:
         raise BuildRefused([Refusal(
@@ -268,12 +267,24 @@ def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, check
     **The first use of a gated file is gated here too** (:func:`~mime.assets.require_accepted`): bytes placed in the cache
     by hand, or recorded as checked by ``mime assets check`` or a refused resolve, never pass with no acceptance on
     record. A licence with conditions beyond credit that nothing accepted is asked about once, or refused where nobody
-    can be asked (``asset.licence-not-accepted``)."""
-    found = locate_ungated(ref, folder=folder, checksum=checksum)
+    can be asked (``asset.licence-not-accepted``), naming the routes a build has (a build's command has no
+    ``--accept-licence``)."""
+    found = _found(ref, folder, checksum)
     from mime.assets._gates import require_accepted
 
-    require_accepted([ref])
+    require_accepted([ref], accept_with=fetch_command(ref.name, folder=folder))
     return found
+
+
+def locate_bundle_container(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None,
+                            checksum: str | None = None) -> Path:
+    """:func:`locate` for the container file of a bundle a pull has just downloaded
+    (:class:`~mime.assets._reference.BundleContainer`, which only that download makes), whose own terms are judged when
+    it is unpacked. **Any other reference is gated as :func:`locate` gates it**: a gated asset's record is refused here
+    as there, whatever it is named."""
+    if not isinstance(ref, BundleContainer):
+        return locate(ref, folder=folder, checksum=checksum)
+    return _found(ref, folder, checksum)
 
 
 #: Where the cache keeps a file under its record's name, for a reader that needs a file name (a USD layer, a URDF):

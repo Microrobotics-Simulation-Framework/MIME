@@ -282,7 +282,7 @@ use) asks once for all its files and the resolver then asks nothing more of them
   manifest's or a lock's text is a stranger's. The Python asker is plain text (`PlainAsker`); the command line sets its
   own (`asking(asker)`).
   **A build with nobody to ask** (CI, a cluster job, a container) that reads a gated file is refused
-  (`asset.licence-not-accepted`) until the acceptance is on record. Three remedies: accept once at a terminal
+  (`asset.licence-not-accepted`, whose action names these routes and no `--accept-licence`, which `mime run` does not have) until the acceptance is on record. Three remedies: accept once at a terminal
   (`mime assets fetch <folder>` asks, and the yes is written to `licences.json`); point `MIME_LICENCE_ACCEPTANCES` at a
   file holding the acceptance (a shared one, or one copied to the machine); or, in Python, wrap the build in
   `with assets.approved([], accept_licences={"<id>"}):`. The script `mime modal` writes carries the ids accepted on the

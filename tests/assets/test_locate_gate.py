@@ -16,6 +16,7 @@ which every build calls, once returned them with no acceptance on record. These 
 (the tests of a build with the acceptance on record fail).
 """
 import hashlib
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -25,8 +26,11 @@ from assets_rig import Rig
 from mime import assets
 from mime.assets import AssetRef
 from mime.assets._acceptances import remember
+from mime.assets._cache import locate_bundle_container
+from mime.assets._reference import BundleContainer
 from mime.build import BuildRefused
-from mime.terms import CustomLicence
+from mime.cli import build_parser
+from mime.terms import NO_ASSERTION, CustomLicence
 
 LICENCE = CustomLicence("LicenseRef-Maker-NC", "Maker Licence 1.1", "https://example.org/licence", "not_permitted",
                         ("non-commercial use only",))
@@ -138,3 +142,54 @@ def test_an_open_licence_asks_nothing_and_a_missing_file_is_still_missing_first(
         with pytest.raises(BuildRefused) as absent:
             assets.locate(gated(LICENCE, "absent.bin", b"nothing here"))
     assert asker.asked == 0 and absent.value.codes() == ["asset.missing"]
+
+
+def flags_in(text: str) -> set[str]:
+    return set(re.findall(r"(?<![\w-])--[a-z][a-z-]*", text))
+
+
+def flags_of(*command: str) -> set[str]:
+    """The options of ``mime <command...>``, read from the command line's own parser."""
+    parser = build_parser()
+    for word in command:
+        (choices,) = [each.choices for each in parser._actions if getattr(each, "choices", None) and word in each.choices]
+        parser = choices[word]
+    return {option for each in parser._actions for option in each.option_strings}
+
+
+def test_the_refusal_from_a_build_names_the_routes_a_build_has_and_no_flag_its_command_lacks(rig: Rig):
+    """``mime run`` has no ``--accept-licence``; the refusal ``locate`` raises is for a build, and says so in the
+    routes a build has: the command that asks, the acceptances file, and the Modal script. The refusal of a download
+    (``resolve``, which ``mime assets fetch`` calls) still names the flag, which that command has."""
+    ref = placed(rig, gated())
+    with assets.asking(None):
+        with pytest.raises(BuildRefused) as located:
+            assets.locate(ref)
+        with pytest.raises(BuildRefused) as downloaded:
+            assets.resolve(ref)
+    built = located.value.refusals[0]
+    said = built.message + " " + built.action
+    assert "--accept-licence" not in flags_of("run")  # the premise: the build's command lacks it
+    assert flags_in(said) <= flags_of("run"), flags_in(said) - flags_of("run")
+    assert "mime assets fetch" in built.action and "MIME_LICENCE_ACCEPTANCES" in built.action
+    assert "mime modal" in built.action and LICENCE.id in built.action
+    fetched = downloaded.value.refusals[0]
+    assert "--accept-licence" in fetched.action and "--accept-licence" in flags_of("assets", "fetch")
+
+
+def test_the_bundle_containers_function_gates_any_other_record(rig: Rig):
+    """``locate_bundle_container`` is for the file a pull has just downloaded to read a bundle from, which only that
+    download makes (``BundleContainer``); a gated asset's record is refused by it as by ``locate``, whatever it is
+    named, and a plain reference that states no licence (``NOASSERTION``, gated) named ``bundle`` too."""
+    forged = AssetRef("bundle", hashlib.sha256(DATA).hexdigest(), len(DATA), NO_ASSERTION, ("https://example.org/b",))
+    container = BundleContainer("bundle", forged.sha256, forged.size, NO_ASSERTION, forged.locations)
+    named = AssetRef("bundle", hashlib.sha256(DATA).hexdigest(), len(DATA), LICENCE.id, ("https://example.org/b",),
+                     licences=(LICENCE,))
+    placed(rig, gated())
+    placed(rig, forged)
+    with assets.asking(None):
+        for ref in (gated(), named, forged):
+            with pytest.raises(BuildRefused) as refused:
+                locate_bundle_container(ref)
+            assert refused.value.codes() == ["asset.licence-not-accepted"]
+        assert locate_bundle_container(container).is_file()
