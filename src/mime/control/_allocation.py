@@ -27,7 +27,21 @@ stand-in. A column of zero
 length (a command with no effect, and no regularisation) has its scale held at one, and the command is held at the
 reference clipped into its bounds, never driven to a limit by a tie. The returned commands are clipped into the box:
 the selected set's solve and the selection's product differ by rounding. More than :data:`EXACT_COMMANDS` commands is
-refused by name: ``3^K`` grows past what a step should pay, and the iterative path is the route."""
+refused by name: ``3^K`` grows past what a step should pay, and the iterative path is the route.
+
+**Its limit, measured and not refused.** Where the commands outnumber the rows and there is no regularisation, a subset
+with more free commands than rows is solved in the commands' own units (its least-norm solution is the least effort,
+which is a statement about ``u``, not about ``u`` scaled), and its rank test reads that triangle's diagonal at
+``RCOND``: one column whose norm exceeds the others' by more than about ``1 / RCOND`` makes the whole free set read
+rank deficient, it is rejected, and the objective returned is above the optimum, silently. Measured on Gaussian rows
+(four commands, three rows, limits one; ``tests/control/test_exact_allocation.py``): the objective is at BVLS's
+optimum to rounding for a column spread up to 1e9 in float64 and 1e4 in float32, and 0.43 of ``|wanted|^2`` above it
+at 1e10 and 1e5 (float32 is 3e-4 above at 3e4); a column 1e-10.5 and another 1e10.5 times the rest, 0.28 above. Where
+the commands do not outnumber the rows, or the problem is regularised (its rows then outnumber its commands), every
+subset is solved on columns of unit length and there is no such limit (held to a spread of 1e16 in float64). The
+arrays MIME ships span about 1e2. Caller-given ``scales`` act on the rows, so they do not remove it; a caller whose
+columns span more rescales its commands (``u = v / c``, the matrix's columns times ``c``, the bounds times ``c``) and
+loses the least-effort tie-break in ``u``, which becomes the least ``|v|``."""
 
 from __future__ import annotations
 

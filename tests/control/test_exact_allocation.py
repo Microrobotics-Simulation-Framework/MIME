@@ -12,6 +12,13 @@ forward and reverse mode agree to rounding; float32's is judged against float64'
 (the derivative of what the bound commands leave the free ones stopped). At an active-set change the derivative jumps
 and stays finite.
 
+**The derivative in every input** (``stop_q`` and ``stop_inverse`` plant a stopped gradient on the matrix's path): the
+first test above differentiates in the wanted values and the limit alone; this one differentiates in the matrix, the
+wanted values, both limits, the offset, the reference, its scales and the rows' scales, on nine shapes of 3 to 8
+commands, tall, wide and regularised, in both dtypes.
+
+**The column spread**: the one corner in which the law is not exact, stated on its page, held at its edge in each dtype.
+
 **The guards** are tested structurally: each ``domain_guard`` of the law is reached with its condition false by one of
 ``allocation_cases.GUARD_POINTS``, and replacing its fallback there changes no output and no derivative. Its plant
 (``single_where``): the stand-ins removed, which no point then reaches."""
@@ -24,15 +31,17 @@ import os
 import re
 import sys
 from collections.abc import Iterator
+from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import jax
 import numpy as np
 import pytest
 from allocation_cases import (GUARD_POINTS, LIMIT, OWNER, allocating_field, allocating_sphere, guard_point_derivative,
                               guard_point_value)
-from allocation_draws import SLACK, Problem, bvls, line, problems, reach_of, residual_line, verdict
+from allocation_draws import (SLACK, General, Problem, bvls, column_oracle, generals, line, problems, reach_of,
+                              residual_line, verdict)
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -250,6 +259,226 @@ def test_at_an_active_set_change_the_derivative_jumps_and_stays_finite():
         assert abs(after - before) > 1e-6 * max(abs(before), abs(after))
         gap = float(np.max(np.abs(np.asarray(at(scales[change]).commands) - np.asarray(at(scales[change - 1]).commands))))
         assert gap < 4 * (scales[1] - scales[0]) * max(abs(before), abs(after)) * len(actives[0])
+
+
+# -- the derivative in every input ---------------------------------------------------------------------------------
+
+class _PlantedLinalg:
+    """``jnp.linalg`` with one differentiable result of the solve stopped: the orthogonal factor of the tall solve's QR
+    (``stop_q``), or the wide solve's pseudo-inverse (``stop_inverse``)."""
+
+    def __init__(self, plant: str) -> None:
+        self.plant = plant
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(jnp.linalg, name)
+
+    def qr(self, a: Any) -> Any:
+        q, r = jnp.linalg.qr(a)
+        return (lax.stop_gradient(q) if self.plant == "stop_q" else q), r
+
+    def pinv(self, a: Any, **kwargs: Any) -> Any:
+        found = jnp.linalg.pinv(a, **kwargs)
+        return lax.stop_gradient(found) if self.plant == "stop_inverse" else found
+
+
+class _PlantedJnp:
+    """The law's ``jnp`` with the plant applied to its ``linalg``."""
+
+    def __init__(self, plant: str) -> None:
+        self.linalg = _PlantedLinalg(plant)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(jnp, name)
+
+
+@contextlib.contextmanager
+def planted_law() -> Iterator[None]:
+    """The matrix-path plant ``PLANT`` names, if it is one, for the context."""
+    with pytest.MonkeyPatch.context() as patch:
+        if PLANT in ("stop_q", "stop_inverse"):
+            patch.setattr(law_module, "jnp", _PlantedJnp(PLANT))
+        yield
+
+
+@cache
+def law_of(names: tuple[str, ...], only: str = "commands") -> Any:
+    """The law's commands (or its ``only`` output) as a jitted function of the inputs ``names``, in the order given.
+    Jitted and kept: the law's operations dispatched one by one, each shape and dtype of them, outgrow JAX's caches and
+    every example then compiles afresh (ten seconds in place of one); a plant is the process's, so the cache is right."""
+    def run(*values: Any) -> Any:
+        given = dict(zip(names, values, strict=True))
+        found = exact_allocation(given["matrix"], given["wanted"], lower=given["lower"], upper=given["upper"],
+                                 scales=given["scales"], owner=OWNER, offset=given["offset"],
+                                 reference=given["reference"], reference_scales=given.get("reference_scales"))
+        return found if only == "all" else getattr(found, only)
+    return jax.jit(run)
+
+
+#: Steps of the central difference, tried from the largest: the first at which both ends, and the double step's ends,
+#: hold the base's active set.
+STEPS = (1e-5, 1e-6, 1e-7)
+#: Of a draw's inputs at least this many must be differenced (the rest held an active-set change within every step).
+DIFFERENCED = 6
+
+
+class Derivatives(NamedTuple):
+    """The law at ``values`` in a dtype: its active set, its forward-mode product along each input's tangent, its
+    Jacobian in each input (``(K, size)``), and the pullback of the cotangent (each input's cotangent)."""
+
+    active: np.ndarray
+    products: list[np.ndarray]
+    jacobians: list[np.ndarray]
+    pulled: list[np.ndarray]
+
+
+def derivatives_at(names: tuple[str, ...], values: list[np.ndarray], tangents: list[np.ndarray],
+                   cotangent: np.ndarray, dtype: str) -> Derivatives:
+    with in_dtype(dtype), planted_law():
+        x = [jnp.asarray(v, dtype=dtype) for v in values]
+        law = law_of(names)
+        products = []
+        for i in range(len(names)):
+            only = [jnp.asarray(t, dtype=dtype) if j == i else jnp.zeros_like(x[j]) for j, t in enumerate(tangents)]
+            products.append(np.asarray(jax.jvp(law, x, only)[1], np.float64))
+        _, pullback = jax.vjp(law, *x)
+        return Derivatives(
+            np.asarray(law_of(names, "active")(*x)), products,
+            [np.asarray(jax.jacfwd(law, argnums=j)(*x), np.float64).reshape(len(products[0]), -1)
+             for j in range(len(names))],
+            [np.asarray(c, np.float64) for c in pullback(jnp.asarray(cotangent, dtype=dtype))])
+
+
+def derivative_in_every_input_problems(general: General, dtype: str) -> list[str]:
+    """What is wrong with the law's derivative in each of its inputs (matrix, wanted, lower, upper, offset, reference,
+    reference scales, scales) at ``general``, along one tangent in each.
+
+    Float64: the forward-mode product against the central difference over a step that holds the active set. The
+    commands are smooth there, so the difference's error is its truncation, which the step and the double step give
+    (an error of ``h^2`` and four times it, so ``|D(2h) - D(h)|`` is three times it, allowed twice over), plus its
+    rounding, ``SLACK`` times eps times the commands' largest size at its ends over the step (the scale a command's
+    rounding is of, not its own: a small one is a difference of large terms). Float32: the forward-mode product
+    against float64's at the same rounded inputs, where the active set is the same. Both dtypes: reverse against
+    forward mode, one cotangent's pullback dotted with the tangent against the cotangent dotted with the product.
+    Those two are within ``SLACK`` times eps times the Jacobian's absolute product, and the law's own sensitivity (its
+    largest derivative in any input, times the tangent): the scale an input's rounding is of where the derivative in
+    it is zero, which the result's own scale would call exact."""
+    found: list[str] = []
+    rng = np.random.default_rng(general.seed + 1)
+    names = tuple(general.inputs())
+    commands = general.matrix.shape[1]
+    values = [np.asarray(v, dtype=dtype).astype(np.float64) for v in general.inputs().values()]
+    tangents = []
+    for name, value in zip(names, values, strict=True):
+        size = float(np.sqrt(np.mean(value ** 2))) if name in ("matrix", "scales", "reference_scales") else 1.0
+        tangents.append(rng.choice((-1.0, 1.0), value.shape) * rng.uniform(0.1, 1.0, value.shape) * size)
+    cotangent = rng.choice((-1.0, 1.0), commands) * rng.uniform(0.1, 1.0, commands)
+    eps = float(np.finfo(dtype).eps)
+    own = derivatives_at(names, values, tangents, cotangent, dtype)
+    # The law's own sensitivity: its largest derivative in any input, which the products of an input the commands do
+    # not depend on (a reference of a command at a bound) cancel from, so that their rounding is of this scale.
+    sensitivity = sum(float(np.max(np.abs(jacobian))) for jacobian in own.jacobians)
+    wide = derivatives_at(names, values, tangents, cotangent, "float64") if dtype == "float32" else own
+    differenced = 0
+    for i, name in enumerate(names):
+        product, tangent = own.products[i], tangents[i]
+        if not np.all(np.isfinite(product)):
+            found.append(f"{name}: the forward-mode product is not finite: {product}")
+            continue
+        floor = float(np.max(np.abs(tangent))) * sensitivity
+        held_by = SLACK * eps * float(np.abs(cotangent) @ (np.abs(own.jacobians[i]) @ np.abs(tangent).ravel() + floor))
+        reverse = float(np.sum(own.pulled[i] * tangent))
+        if abs(reverse - float(cotangent @ product)) > held_by:
+            found.append(f"{name}: reverse mode {reverse:.6g} against forward {float(cotangent @ product):.6g}, "
+                         f"past {held_by:.3g}")
+        if dtype == "float32":
+            if np.array_equal(wide.active, own.active):
+                differenced += 1
+                allowed = SLACK * eps * (np.abs(wide.jacobians[i]) @ np.abs(tangent).ravel() + floor)
+                if np.any(np.abs(wide.products[i] - product) > allowed):
+                    found.append(f"{name}: float32's forward mode {product} against float64's {wide.products[i]}: "
+                                 f"{float(np.max(np.abs(wide.products[i] - product))):.3g} past "
+                                 f"{float(np.max(allowed)):.3g}")
+            continue
+        with in_dtype(dtype), planted_law():
+            x = [jnp.asarray(v, dtype=dtype) for v in values]
+            whole = law_of(names, "all")
+            for h in STEPS:
+                ends = {k: whole(*[v + k * h * jnp.asarray(tangent) if j == i else v for j, v in enumerate(x)])
+                        for k in (1, -1, 2, -2)}
+                if not all(np.array_equal(np.asarray(end.active), own.active) for end in ends.values()):
+                    continue
+                high, low = np.asarray(ends[1].commands), np.asarray(ends[-1].commands)
+                one = (high - low) / (2 * h)
+                two = (np.asarray(ends[2].commands) - np.asarray(ends[-2].commands)) / (4 * h)
+                allowed = 2 * np.abs(two - one) + SLACK * eps * float(np.max(np.abs(high) + np.abs(low))) / (2 * h)
+                if np.any(np.abs(one - product) > allowed):
+                    found.append(f"{name}: forward mode {product} against central differences {one} at h {h}: "
+                                 f"{float(np.max(np.abs(one - product))):.3g} past {float(np.max(allowed)):.3g}")
+                differenced += 1
+                break
+    if differenced < DIFFERENCED and not found:
+        found.append(f"only {differenced} of {len(names)} inputs were differenced (an active-set change within "
+                     f"every step of the rest): the draw tests too little")
+    return found
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@settings(max_examples=100, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+@given(general=generals())
+def test_the_derivative_in_every_input_is_the_selected_sets_in_both_modes(dtype, general):
+    """The law's derivative in the matrix, the wanted values, the limits, the offset, the reference, its scales and the
+    rows' scales (the first derivative test differentiates in the wanted values and the limit alone, so a wrong or
+    stopped dependence on the matrix was invisible to it), on problems of 3 to 8 commands, tall and wide, regularised
+    or not. Plants: ``stop_q`` (the orthogonal factor of the tall solve stopped) and ``stop_inverse`` (the wide
+    solve's pseudo-inverse stopped)."""
+    assert derivative_in_every_input_problems(general, dtype) == [], general.form
+
+
+# -- the limit on the columns' spread --------------------------------------------------------------------------------
+
+#: The ratio of one column's norm to the others' up to which the law is exact where its commands outnumber its rows,
+#: in each dtype (``1 / RCOND`` a decade lower: 1e10 in float64 and 1e5 in float32, where the rank test of the wide
+#: subsets reads the whole set as deficient), measured by ``test_the_law_is_exact_to_the_stated_column_spread...``
+COLUMN_SPREAD = {"float64": 1e9, "float32": 1e4}
+
+
+@cache
+def column_law(rows: int, dtype: str) -> Any:
+    """The law at limits of one and unit row scales, jitted for the matrices of ``rows`` rows in ``dtype``."""
+    return jax.jit(lambda a, b: exact_allocation(a, b, lower=-1.0, upper=1.0, scales=jnp.ones(rows, dtype=dtype),
+                                                 owner=OWNER).commands)
+
+
+def column_excess(dtype: str, spread: float, seed: int, commands: int = 4, rows: int = 3) -> float:
+    """What the law's commands leave above the optimum, over ``|wanted|^2``: three rows of Gaussian entries against
+    four commands (more commands than rows, so the wide subsets are solved), the last column scaled by ``spread``, the
+    limits one, the optimum SciPy's BVLS on the columns normalised, both on the matrix as ``dtype`` rounds it."""
+    rng = np.random.default_rng(seed)
+    scaling = np.ones(commands)
+    scaling[-1] = spread
+    with in_dtype(dtype):
+        matrix = jnp.asarray(rng.normal(size=(rows, commands)) * scaling, dtype=dtype)
+        wanted = jnp.asarray(rng.normal(size=rows) * 2.0, dtype=dtype)
+        commands_ = np.asarray(column_law(rows, dtype)(matrix, wanted), np.float64)
+    a, b = np.asarray(matrix, np.float64), np.asarray(wanted, np.float64)
+    return float(np.sum((a @ commands_ - b) ** 2) - column_oracle(a, b, 1.0)) / float(np.sum(b * b))
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_the_law_is_exact_to_the_stated_column_spread_where_commands_outnumber_rows_and_loses_it_past(dtype):
+    """The limit the law's page states: with more commands than rows and no regularisation, one column's norm over the
+    others' up to ``COLUMN_SPREAD`` leaves the objective at BVLS's optimum to the conditioning's square times rounding
+    (the objective is a square of the residual, whose error is the conditioning times eps), and one decade past it the
+    rank test of the whole free set reads it deficient and the objective is far above the optimum. The second half is
+    the control: it fails if the edge is not where it is stated (a law that normalised its columns would pass it too,
+    and the statement would then change). With commands no more than rows, the subsets are solved on unit columns and
+    there is no limit: held at 1e12 in float64 and 1e6 in float32."""
+    eps, edge = float(np.finfo(dtype).eps), COLUMN_SPREAD[dtype]
+    assert max(column_excess(dtype, edge, seed) for seed in range(8)) <= 16 * (eps * edge) ** 2 + 64 * eps
+    assert max(column_excess(dtype, edge * 10 ** 1.5, seed) for seed in range(8)) > 1e-2
+    unlimited = 1e12 if dtype == "float64" else 1e6
+    assert max(column_excess(dtype, unlimited, seed, commands=3) for seed in range(8)) <= 64 * eps
 
 
 # -- the guards ----------------------------------------------------------------------------------------------------

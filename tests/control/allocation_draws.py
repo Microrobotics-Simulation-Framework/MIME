@@ -205,3 +205,74 @@ def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
             found.append(f"not unique: the law's effort {np.sum(commands ** 2):.6g} over BVLS's "
                          f"{np.sum(reference ** 2):.6g} among tied minimisers")
     return found
+
+
+# -- draws over every input of the law -----------------------------------------------------------------------------
+
+INPUTS = ("matrix", "wanted", "lower", "upper", "offset", "reference", "reference_scales", "scales")
+
+
+@dataclass(frozen=True)
+class General:
+    """Every input of ``exact_allocation`` for the derivative test, in float64: ``matrix`` ``(R, K)`` with singular
+    values 0.5 to 2, ``wanted``, ``offset`` and ``scales`` ``(R,)``, ``lower``, ``upper``, ``reference`` and (where
+    regularised) ``reference_scales`` ``(K,)``, and the seed its tangents are drawn from."""
+
+    matrix: np.ndarray
+    wanted: np.ndarray
+    lower: np.ndarray
+    upper: np.ndarray
+    offset: np.ndarray
+    reference: np.ndarray
+    reference_scales: np.ndarray | None
+    scales: np.ndarray
+    seed: int
+
+    def inputs(self) -> dict[str, np.ndarray]:
+        held = {name: getattr(self, name) for name in INPUTS}
+        return {name: value for name, value in held.items() if value is not None}
+
+    @property
+    def form(self) -> str:
+        rows, commands = self.matrix.shape
+        regularised = self.reference_scales is not None
+        return f"K={commands} R={rows} {'regularised' if regularised else 'plain'} " \
+               f"{'wide' if commands > rows and not regularised else 'tall'}"
+
+
+#: The shapes drawn, (commands, rows, regularised): wide (more commands than rows, unregularised) at 3, 5 and 8
+#: commands, tall at 3, 6 and 8, regularised at 4, 6 and 8. Fixed, so that each compiles once.
+SHAPES = ((3, 2, False), (5, 3, False), (8, 3, False), (3, 5, False), (6, 6, False), (8, 8, False), (4, 2, True),
+          (6, 4, True), (8, 3, True))
+
+
+@st.composite
+def generals(draw: st.DrawFn) -> General:
+    """A problem of one of ``SHAPES``, 3 to 8 commands, tall or wide or regularised, the matrix of condition at most 4,
+    wanted values of 0.3 to 5 times the limits' size (some commands at a bound, some free), limits 0.5 to 2 either
+    side. Drawn from one seed: the shape is what Hypothesis varies, and no draw is near-singular or at a numerical
+    extreme."""
+    commands, rows, regularised = draw(st.sampled_from(SHAPES))
+    seed = draw(st.integers(0, 2 ** 32 - 1))
+    rng = np.random.default_rng(seed)
+    size = min(rows, commands)
+    left = np.linalg.qr(rng.normal(size=(rows, size)))[0]
+    right = np.linalg.qr(rng.normal(size=(commands, size)))[0]
+    matrix = (left * rng.uniform(0.5, 2.0, size)) @ right.T
+    return General(matrix=matrix, wanted=rng.normal(size=rows) * float(np.exp(rng.uniform(np.log(0.3), np.log(5.0)))),
+                   lower=-rng.uniform(0.5, 2.0, commands), upper=rng.uniform(0.5, 2.0, commands),
+                   offset=rng.normal(size=rows) * 0.1, reference=rng.uniform(-0.3, 0.3, commands),
+                   reference_scales=rng.uniform(1.0, 5.0, commands) if regularised else None,
+                   scales=rng.uniform(0.5, 2.0, rows), seed=seed)
+
+
+def column_oracle(matrix: np.ndarray, wanted: np.ndarray, limit: float) -> float:
+    """The least ``|matrix u - wanted|^2`` over ``|u| <= limit``, by SciPy's BVLS on the columns normalised to unit
+    length (``v = u * norm``, bounds ``limit * norm``), so its absolute tolerance judges every column alike, run to
+    ``3^K`` iterations and refused if it does not converge."""
+    norms = np.linalg.norm(matrix, axis=0)
+    solved = lsq_linear(matrix / norms, wanted, bounds=(-limit * norms, limit * norms), method="bvls", tol=1e-15,
+                        max_iter=3 ** matrix.shape[1])
+    if solved.status <= 0:
+        raise AssertionError(f"the oracle did not converge (BVLS status {solved.status})")
+    return float(np.sum((matrix @ (solved.x / norms) - wanted) ** 2))

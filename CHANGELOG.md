@@ -110,8 +110,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.29 of it; in a CardioMag controller allocating its 8 coils to `allocate()`'s 8 rows 650 to 1250 us of a 690 to
   1360 us step, 0.91 to 0.94. Float32 against float64 on the same rounded problem, over 3000 of the swap test's draws
   an array: at most 4.2e-6 of the limit on Navion_2, 7.5e-6 on CardioMag and 4.8e-5 on OctoMag (2.1e-5 where the
-  minimiser is unique), every draw within the coil array's float32 guard of 1e-4, so the law declares no guard of its
-  own (OctoMag stays refused in float32 by its provider). Where two faces of an unregularised problem come within the
+  minimiser is unique). That is the commands' difference as a share of the limit (the box's half-width, in amperes); the
+  coil array's float32 guard (1e-4) is a share of the field's size, a rounding of the field the provider computes, and
+  the two are not compared: the field the float32 commands make was not measured against float64's, and the law
+  declares no guard of its own (OctoMag stays refused in float32 by its provider). **A limit that is measured, not
+  refused:** where the commands outnumber the rows and there is no regularisation, one column whose norm exceeds the
+  others' by more than about `1 / RCOND` makes the law's rank test of the whole free set fail and its objective sit
+  above the optimum, silently: exact to rounding up to a ratio of 1e9 in float64 and 1e4 in float32 (0.4 of the
+  wanted values' squared size above one decade and a half past it; one column 1e-10.5 and another 1e10.5 times the
+  rest, 0.28 above), no limit found where the commands do not outnumber the rows or the problem is regularised (held to
+  1e12 and 1e6); the arrays MIME ships span about 1e2. Normalising the columns inside the law would remove it but
+  changes the least-effort tie-break (the least `|u|` becomes the least `|v|` of the rescaled commands), which is
+  defined in the commands' own units, so the limit is stated instead. Where two faces of an unregularised problem come within the
   law's tie window in float32 it may take the one of less effort that float64 does not: the swap test found OctoMag's
   force out of reach, its residual 1.7e-5 of it higher, its currents 3.2 A apart on a 5 A limit.
   `docs/allocation.md` is its page.

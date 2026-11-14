@@ -79,6 +79,25 @@ orders are a kink where the problem is regularised or its rows fix the commands,
 least-effort minimiser can move between faces). MIME's switch scan counts an owner as declared only when an entry that
 MIME ships declares it; `allocate()` passes its own, `allocation.active_set`.
 
+## Where it stops being exact
+
+The law is exact to rounding for the problems it is given, except in one corner it does not refuse. Where the commands
+outnumber the rows and there is no regularisation, a free subset with more commands than rows is solved in the commands'
+own units, because the least-effort solution it returns is a statement about the commands, not about the commands
+rescaled, and its rank test reads that solve's triangle at `RCOND`. One column whose norm exceeds the others' by more than
+about the reciprocal of `RCOND` makes that test call the whole free set rank deficient, the set is dropped, and the
+objective returned is above the optimum with nothing said. **Measured** on random rows of four commands against three
+(the test in `tests/control/test_exact_allocation.py`, against SciPy's BVLS on the columns normalised): the objective is
+the optimum to rounding up to a ratio of about a billion between one column's norm and the others' in float64, and ten
+thousand in float32, the edge one decade below the reciprocal of `RCOND` in each; a decade and a half past it the
+objective is far above, by a large share of the wanted values' squared size. The CHANGELOG's entry has the figures. Where
+commands do not outnumber the rows, or the problem is regularised (it then always has more rows than commands), every
+subset is solved on columns of unit length and no such limit was found (held to a ratio of a trillion in float64 and a
+million in float32). The arrays MIME ships span about two decades. Caller-given `scales` act on the rows and do not
+remove it; a caller whose columns span more than the limit changes its commands' unit (the matrix's columns times a
+column scale, the bounds times it, the commands divided by it afterwards) so that the columns are alike, at the price that
+the least-effort tie-break then reads the least rescaled command.
+
 ## Float32
 
 Each solve is a QR on columns of unit length, so float32 loses the scaled columns' condition times its rounding, not its
