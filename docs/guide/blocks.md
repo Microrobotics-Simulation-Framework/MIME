@@ -35,7 +35,9 @@ The fragment is the saved document's sections, `things`, `interactions`, `observ
 `sources`, `materials` and `terms`, each written as a saved experiment writes it, and nothing of the experiment that uses
 it (its run, scene, profile, conditions and licence). Where a binding or a placement names the user's thing, it names a
 socket: `medium: {socket: medium}`, or `{socket: tube, path: lumen}` for a region of it. Names are the block's own, so an id
-is written with the socket's name, `toy.couple:probe`.
+is written with the socket's name, `toy.couple:probe`. A socket is never a key: the keys of `declared`, `ranges` and
+`sources` name the block's own things, so one that begins with a socket's name is refused (`block.socket`), since the user's
+thing is the user's to declare, and a key that is not text is refused (`block.fragment`).
 
 The block's **content hash** names its definition (`mime.toml` less `[record]`, parsed, so comments and order do not
 count, its assets' locations left out) and the bytes of its fragment, records and descriptions. Its cases and its assets'
@@ -100,7 +102,9 @@ The licence decides what your saved document holds, and you never write it yours
   block, and a newer version of it changes nothing you saved. Your document's own files then hold the block's content, so
   their verdict is the AND of your licence and the block's (`mime card --notice` says so). A non-commercial block makes them
   non-commercial. MIME judges no compatibility between licences, so two different conditional licences leave the verdict
-  unknown and say why.
+  unknown and say why. Where you declare over a value of a block whose licence carries a no-derivatives condition, the
+  NOTICE and the card name the block, its condition and what you overrode; MIME judges nothing of whether that makes your
+  experiment a derivative.
 - **Referenced** (any other licence): the block's files stay out of every bundle you share. Your document records the use
   and what you declared over it, never the block's own declarations, and your lock records the block's container
   (`<id>-<version>.mimeblock`, its sha256, its licence, and `doi:<DOI>/<file>` where you used it by DOI). A load reads the

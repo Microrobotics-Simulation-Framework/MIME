@@ -30,7 +30,7 @@ from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets import AssetRef
 from mime.blocks._definition import Definition, definition_of, is_block_folder
-from mime.blocks._fragment import CONTROLLER, Expanded, Fragment, entries_of, expand, read_fragment
+from mime.blocks._fragment import CONTROLLER, Expanded, Fragment, entries_of, expand, read_fragment, renaming
 from mime.build import BuildRefused, Declaration, Refusal, RefusalClass, ThingDeclaration
 from mime.env._check import DistributionRow
 from mime.experiment._redeclared import Taken, known_as
@@ -238,9 +238,10 @@ def held_keys(declarations: Collection[Declaration]) -> set[tuple[str, str]]:
 
 
 def name_refusals(definition: Definition, expanded: Expanded, held: Collection[Declaration],
-                  key: str, named: bool) -> list[Refusal]:
+                  key: str, named: bool, socket_ids: Collection[str] = ()) -> list[Refusal]:
     """``block.name`` for each name the use provides that the experiment already declares, or a material or a file's
-    terms it holds otherwise."""
+    terms it holds otherwise. ``socket_ids`` are the ids of the laws and observations the use provides whose bindings
+    are all sockets: such an id comes from what the sockets are bound to, so ``name=`` cannot change it."""
     from mime.build import TermsDeclaration
     from mime.saved._document import material_doc, materials_of
 
@@ -253,10 +254,21 @@ def name_refusals(definition: Definition, expanded: Expanded, held: Collection[D
                       if isinstance(each, TermsDeclaration) and each.path in terms and terms[each.path] != each)
     action = ("name this use, exp.use(..., name=\"<name>\"), which names the block's things <name>_<thing>" if not named
               else "name it otherwise, exp.use(..., name=\"<another name>\")")
+    why = ", and its id comes from the socket it is bound through, never from the use's name"
+    fixed = ("`name=` cannot change that: bind the socket to another thing of yours, or leave the block's law out of "
+             "this use and declare the second law yourself")
     return [Refusal("block.name", RefusalClass.USER,
                     f"{definition.words} (the use {plain(key)!r}) provides {_WORDS[section]} {plain(name)!r}, which "
-                    f"the experiment already declares", action)
+                    f"the experiment already declares" + (why if name in socket_ids else ""),
+                    fixed if name in socket_ids else action)
             for section, name in clashes]
+
+
+def socket_only_ids(fragment: Fragment, bound: Mapping[str, str], prefix: str) -> set[str]:
+    """The ids, as this use names them, of the laws and observations whose id does not depend on the use's name: those
+    bound to no thing of the block's own, so that a prefix would leave them as they are."""
+    other = renaming(fragment, bound, f"{prefix}_other_")
+    return {new for old, new in renaming(fragment, bound, prefix).ids.items() if other.ids.get(old) == new}
 
 
 def use_doc(definition: Definition, content: str, bound: Mapping[str, str], names: BlockNamesDoc,
@@ -444,7 +456,8 @@ def used(block: str | os.PathLike[str], *, name: str | None, sockets: Mapping[st
         raise BlockRefused(refusals, tuple(unmet))
     expanded = expand(fragment, bound, prefix)
     refusals += entry_refusals(definition, expanded.sections)
-    refusals += name_refusals(definition, expanded, held, key, name is not None)
+    refusals += name_refusals(definition, expanded, held, key, name is not None,
+                              socket_only_ids(fragment, bound, prefix))
     if refusals:
         raise BlockRefused(refusals)
     doc = use_doc(definition, content, bound, expanded.names, source.doi)
@@ -480,5 +493,5 @@ def adopt_assets(definition: Definition) -> None:
 __all__ = ["MET", "NOT_INSTALLED", "OUTSIDE", "SECTIONS", "requires_install_line", "BlockHandle", "BlockRefused", "RequirementRow", "Used",
            "bound_sockets",
            "entry_refusals", "expanded_for_check", "held_keys", "key_of", "name_refusals", "provided_keys",
-           "requirement_rows", "requires_refusal", "requires_refused", "taken", "taken_from", "use_doc", "used",
+           "requirement_rows", "requires_refusal", "requires_refused", "socket_only_ids", "taken", "taken_from", "use_doc", "used",
            "with_override"]

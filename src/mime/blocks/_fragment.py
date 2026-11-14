@@ -11,7 +11,9 @@ the saved form gains a fragment holds with no change here. The host's settings (
 ``fills``, the controller's ``reads`` and ``writes``). It is read first: each socket is replaced by its own name, so that
 the fragment's names are local (an id is written as a document writes it, with the socket's name: ``labx.nudge:subject``)
 and a socket anywhere else is refused by the shape check with its path. A bare name equal to a socket's is refused, so a
-socket is always written as one.
+socket is always written as one. A socket is never a key: the keys of ``declared``, ``ranges`` and ``sources`` name the
+block's own things and laws, and the user's thing is the user's to declare, so a socket's name heading one is refused
+(``block.socket``), and a key that is not text (a list or a mapping) is refused (``block.fragment``).
 
 **Expanding** a fragment for a use renames it: each socket to the name of the thing it is bound to, each of the block's
 own things to ``<prefix><local>`` (no prefix unless the use is named), each id to the one its renamed bindings give,
@@ -164,6 +166,64 @@ def shape_refusals(path: Path, held: Mapping[str, object], written: Mapping[str,
     return refusals
 
 
+#: The sections whose keys name the block's own things and laws, where a socket is never written.
+KEYED_SECTIONS = ("declared", "ranges", "sources")
+
+
+def _key_refusals(path: Path, text: str) -> list[Refusal]:
+    """``block.fragment`` for each mapping key of ``text`` that is not text (a list or a mapping, which YAML allows and
+    a document never writes), at its path and line; ``block.socket`` where it is a socket written as a key of a section
+    that names the block's own things."""
+    found: list[Refusal] = []
+
+    def walk(node: yaml.Node, where: str) -> None:
+        if isinstance(node, yaml.MappingNode):
+            for key_node, value_node in cast(list[tuple[yaml.Node, yaml.Node]], node.value):
+                if not isinstance(key_node, yaml.ScalarNode):
+                    line = key_node.start_mark.line + 1
+                    shown = f"{where}[a key that is a {'mapping' if isinstance(key_node, yaml.MappingNode) else 'list'}]"
+                    socket = (isinstance(key_node, yaml.MappingNode) and where in KEYED_SECTIONS and any(
+                        isinstance(each, yaml.ScalarNode) and each.value == "socket"
+                        for each, _ in cast(list[tuple[yaml.Node, yaml.Node]], key_node.value)))
+                    found.append(_refusal(
+                        path, f"{shown} (line {line}) is a socket written as a key: a socket stands only where a "
+                              f"binding or a placement is written, and the user's thing is the user's to declare"
+                        if socket else f"{shown} (line {line}) is not text: a key is a name, as a document writes one",
+                        f"remove it from {where}, or write a name of the block's own as its key" if socket else
+                        "write each key as a name", "block.socket" if socket else "block.fragment"))
+                    continue
+                walk(value_node, f"{where}.{plain(key_node.value)}" if where else plain(key_node.value))
+        elif isinstance(node, yaml.SequenceNode):
+            for index, each in enumerate(cast(list[yaml.Node], node.value)):
+                walk(each, f"{where}[{index}]")
+
+    root = cast("yaml.Node | None", cast(Any, yaml).compose(text, Loader=yaml.SafeLoader))
+    if root is not None:
+        walk(root, "")
+    return found
+
+
+def socket_key_refusals(path: Path, held: Mapping[str, object], sockets: Mapping[str, str]) -> list[Refusal]:
+    """``block.socket`` for each key of ``declared``, ``ranges`` and ``sources`` whose first part is a socket's name
+    (not an id of the fragment's own, whose first part is only its law's name): sockets appear only where a binding
+    or a placement is written."""
+    listed = [held.get(section) for section in ("interactions", "observations")]
+    ids = [str(entry["id"]) for entries in listed if isinstance(entries, list)
+           for each in cast(list[object], entries) if (entry := _table(each)) is not None and "id" in entry]
+    refusals: list[Refusal] = []
+    for section in KEYED_SECTIONS:
+        for key in cast(Mapping[object, object], _table(held.get(section)) or {}):
+            head = str(key).split(".", 1)[0]
+            if head in sockets and not any(key == each or str(key).startswith(f"{each}.") for each in ids):
+                refusals.append(_refusal(
+                    path, f"{section}.{plain(str(key))} names the socket {plain(head)} in a key: a socket stands only where a "
+                          f"binding or a placement is written (`binds`, `fills`, the controller's `reads` and "
+                          f"`writes`), and the thing bound to it is the user's own",
+                    f"remove it: the user declares their own thing's values, and a block declares its own "
+                    f"things'", "block.socket"))
+    return refusals
+
+
 def read_fragment(folder: Path, sockets: Mapping[str, str]) -> Fragment:
     """The fragment of the block folder ``folder``, whose ``mime.toml`` declares ``sockets`` (each name and its kind),
     checked: refused with every reason at once (``block.fragment``, ``block.socket``, ``block.format``, or
@@ -176,6 +236,10 @@ def read_fragment(folder: Path, sockets: Mapping[str, str]) -> Fragment:
     except FileNotFoundError:
         raise BuildRefused([_refusal(path, f"is missing from {folder}", f"write the block's fragment at {path}",
                                      "block.format")]) from None
+    except TypeError:
+        text = path.read_bytes().decode("utf-8")
+        raise BuildRefused(_key_refusals(path, text) or [_refusal(
+            path, "does not read as YAML (a mapping key that is not text)", "write each key as a name")]) from None
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
         raise BuildRefused([_refusal(path, f"does not read as YAML ({plain(type(error).__name__)}: "
                                            f"{plain(str(error))[:200]})", "correct it by hand")]) from None
@@ -187,7 +251,7 @@ def read_fragment(folder: Path, sockets: Mapping[str, str]) -> Fragment:
         raise BuildRefused([refused])
     sockets_read = _Sockets(sockets, path)
     written = _with_sockets(held, sockets_read)
-    refusals = [*shape_refusals(path, held, written), *sockets_read.refusals,
+    refusals = [*shape_refusals(path, held, written), *sockets_read.refusals, *socket_key_refusals(path, held, sockets),
                 *sockets_read.unused_refusals(_table(written.get("things")) or {})]
     if refusals:
         raise BuildRefused(refusals)
@@ -206,7 +270,9 @@ class Renaming:
     own: Mapping[str, str]
 
     def path(self, written: str, *, sockets: bool = True) -> str:
-        """``written`` (a thing's name, an id, or a path below either) as the use names it."""
+        """``written`` (a thing's name, an id, or a path below either) as the use names it: a socket's name by the thing
+        bound to it only where ``sockets`` (a binding or a placement), never in a key of ``declared``, ``ranges`` or
+        ``sources``."""
         for old in sorted(self.ids, key=len, reverse=True):
             if written == old or written.startswith(f"{old}."):
                 return self.ids[old] + written[len(old):]
@@ -298,7 +364,7 @@ def renamed_doc(fragment: Fragment, renamed: Renaming) -> dict[str, Any]:
         "writes": {label: renamed.path(value) for label, value in controller["writes"].items()}}
     for section in ("declared", "ranges", "sources"):
         held: Mapping[str, Any] = cast(Mapping[str, Any], cast(Mapping[str, Any], doc).get(section, {}))
-        found[section] = {renamed.path(path): value for path, value in held.items()}
+        found[section] = {renamed.path(path, sockets=False): value for path, value in held.items()}
     found["materials"] = dict(cast(Mapping[str, Any], doc.get("materials", {})))
     found["terms"] = dict(cast(Mapping[str, Any], doc.get("terms", {})))
     return found

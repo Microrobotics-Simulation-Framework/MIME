@@ -13,7 +13,9 @@
 **Each refusal**, with the control that removes its check: ``block.requires`` (``unrequired``: every requirement read as
 met), ``block.entry`` (``unlisted``), ``block.socket`` at the binding (``unbound``), at the definition
 (``undeclared``) and in the fragment (``unwritten``), ``block.fragment`` (``unshaped``), ``block.format``
-(``unformatted``) and ``block.name`` (``unnamed``). Each draws the defect it plants from ``MIME_SEED`` where there is
+(``unformatted``) and ``block.name`` (``unnamed``). The review round's controls: a socket in a key of ``declared``,
+``ranges`` or ``sources`` (``socket_keyed``), the no-derivatives words (``unsaid``), a block listed once in a verdict
+(``listed_twice``) and the advice of a law bound only through sockets (``named``). Each draws the defect it plants from ``MIME_SEED`` where there is
 more than one."""
 
 from __future__ import annotations
@@ -133,6 +135,64 @@ def test_the_notice_and_the_card_name_each_block_and_its_licence(tmp_path: Path)
                                        f"CC-BY-NC-4.0, copied" in text and content in text
     assert "CC-BY-NC-4.0: https://spdx.org/licenses/CC-BY-NC-4.0.html" in text
     assert "- **Uses block labx.nudged_probe 0.1.0** (copied in under CC-BY-NC-4.0" in card_text(saved)
+
+
+def test_a_no_derivatives_block_whose_values_the_user_overrode_is_said_in_the_notice_and_the_card_not_judged(
+        tmp_path: Path):
+    """Design 2.7, question 7: MIME names the block, its condition and the overridden names, and judges nothing."""
+    import warnings
+
+    from mime.saved import card_text, notice
+    from mime.saved import _card
+
+    def saved(root: Path, licence: str, override: bool) -> Path:
+        folder = block_copy(root)
+        edited(folder, "mime.toml", 'licence = "CC-BY-4.0"', f'licence = "{licence}"')
+        experiment, water = host()
+        experiment.use(folder, medium=water)
+        if override:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                experiment.declare("probe.mass", kg(2.5), reason="ours")
+        experiment.licence("CC-BY-4.0")
+        out = root / "saved"
+        with own_cache(root):
+            experiment.save(out, steps=2)
+        return out
+
+    with pytest.MonkeyPatch.context() as patch:
+        if plant() == "unsaid":
+            patch.setattr(_card, "no_derivatives_words", lambda name, use, document: None)
+        overridden = saved(tmp_path / "overridden", "CC-BY-ND-4.0", True)
+        said = [notice(overridden), card_text(overridden)]
+    for text in said:
+        assert "labx.nudged_probe 0.1.0" in text and "no-derivatives condition" in text and "probe.mass" in text, text
+        assert "MIME does not judge whether that makes this experiment a derivative" in text
+    for root, licence, override in (("kept", "CC-BY-ND-4.0", False), ("other", "CC-BY-NC-4.0", True)):
+        folder = saved(tmp_path / root, licence, override)
+        assert "no-derivatives condition" not in notice(folder) + card_text(folder), (licence, override)
+
+
+def test_a_block_used_twice_is_listed_once_in_the_verdict_of_the_authors_files(tmp_path: Path):
+    from mime.saved import read_folder
+    from mime.saved._folder import named_files
+
+    folder = block_copy(tmp_path)
+    experiment, water = host()
+    experiment.use(folder, medium=water)
+    experiment.use(folder, name="second", medium=water)
+    experiment.licence("CC-BY-4.0")
+    out = tmp_path / "saved"
+    with pytest.MonkeyPatch.context() as patch, own_cache(tmp_path):
+        if plant() == "listed_twice":
+            patch.setattr(_terms, "copied_blocks", lambda document: [
+                (f"block {use['id']} {use['version']}", use["licence"]) for use in document["blocks"].values()])
+        experiment.save(out, steps=2)
+        form = read_folder(out)
+        judged = folder_terms(out, form.document, form.lock, named_files(form), form.version)
+    assert len(form.document["blocks"]) == 2
+    yours = [file for file in judged.files if file.owner == "yours"]
+    assert yours and all(file.verdict.by.count("block labx.nudged_probe 0.1.0") == 1 for file in yours), yours[0].verdict.by
 
 
 def test_a_document_using_no_block_holds_no_blocks_key_and_no_block_words(tmp_path: Path):
@@ -333,6 +393,63 @@ def test_a_socket_the_fragment_writes_wrongly_is_refused_as_block_socket(tmp_pat
     assert any(each.code == "block.socket" and words in each.message for each in refused.value.refusals), defect
 
 
+#: Each keyed section's entry for the socket's thing, as a fragment writes it: the user's thing's values are not the
+#: block's to declare, range or source.
+SOCKET_KEYED = {
+    "declared": "declared:\n  medium.viscosity:\n    value: 0.5\n    unit: kg\n    reason: the block's say\n",
+    "ranges": "ranges:\n  medium.viscosity:\n    low: 0.1\n    high: 0.9\n    unit: kg\n    reason: the block's say\n",
+    "sources": "sources:\n  medium.viscosity: the block's say\n"}
+
+
+@pytest.mark.parametrize("section", ("declared", "ranges", "sources"))
+def test_a_socket_named_in_a_key_of_declared_ranges_or_sources_is_refused_in_check_and_use(tmp_path: Path, section: str):
+    """The user's thing is the user's to declare: a socket stands only where a binding or a placement is written, so
+    a key whose first part is a socket's name would set a value on the user's own medium."""
+    from mime.push import check
+
+    folder = block_copy(tmp_path)
+    block = (folder / "block.mime.yaml").read_text(encoding="utf-8")
+    entry = SOCKET_KEYED[section]
+    (folder / "block.mime.yaml").write_text(
+        block.replace("declared:\n", entry + "declared:\n", 1) if section != "declared"
+        else block.replace("declared:\n", entry, 1), encoding="utf-8")
+    experiment, water = host()
+    with pytest.MonkeyPatch.context() as patch:
+        if plant() == "socket_keyed":
+            patch.setattr(_fragment, "socket_key_refusals", lambda path, held, sockets: [])
+        with pytest.raises(BuildRefused) as refused:
+            experiment.use(folder, medium=water)
+        found = check(folder).findings
+    words = f"{section}.medium.viscosity names the socket medium in a key"
+    assert [each.code for each in refused.value.refusals] == ["block.socket"], section
+    assert words in refused.value.refusals[0].message
+    assert any(words in item.what for item in found), section
+    assert experiment.document().get("blocks", {}) == {}, "nothing of the refused use reaches the experiment"
+
+
+def test_a_key_that_is_not_text_is_refused_as_block_fragment_with_its_path_and_a_socket_key_as_block_socket(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    from mime.cli import main
+
+    folder = block_copy(tmp_path)
+    plain = rng().choice(("? [a, b]\n  : {value: 1.0, unit: kg, reason: x}\n", "? {rung: 1}\n  : {value: 1.0, unit: kg, reason: x}\n"))
+    edited(folder, "block.mime.yaml", "declared:\n", f"declared:\n  {plain}")
+    experiment, water = host()
+    with pytest.raises(BuildRefused) as refused:
+        experiment.use(folder, medium=water)
+    (one,) = refused.value.refusals
+    assert one.code == "block.fragment" and "declared[a key that is a " in one.message and "(line " in one.message
+    from mime.push import check
+
+    assert any("declared[a key that is a " in item.what for item in check(folder).findings)
+    assert main(["show", str(folder)]) == 0 and "block.fragment" in capsys.readouterr().out
+    edited(folder, "block.mime.yaml", plain, "? {socket: medium, path: viscosity}\n  : {value: 1.0, unit: kg, reason: x}\n")
+    with pytest.raises(BuildRefused) as refused:
+        experiment.use(folder, medium=water)
+    assert [each.code for each in refused.value.refusals] == ["block.socket"]
+    assert "is a socket written as a key" in refused.value.refusals[0].message
+
+
 def test_a_fragment_unlike_the_documents_shapes_is_refused_by_path(tmp_path: Path):
     folder = block_copy(tmp_path)
     defect, old, new = rng().choice((
@@ -381,6 +498,27 @@ def test_a_name_the_experiment_already_declares_is_refused_naming_name(tmp_path:
     assert set(codes(refused)) == {"block.name"}
     assert 'exp.use(..., name="<name>")' in refused.value.refusals[0].action
     assert experiment.use(folder, name="lab", medium=water).probe.name == "lab_probe"
+
+
+def test_a_law_bound_only_through_sockets_names_what_can_fix_a_second_use_on_the_same_subject(tmp_path: Path):
+    """Its id comes from the socket's binding, so `name=` cannot rename it: the message says why and what works."""
+    folder = block_copy(tmp_path)
+    edited(folder, "mime.toml", 'medium = { kind = "medium" }', 'medium = { kind = "medium" }\nsubject = { kind = "body" }')
+    edited(folder, "block.mime.yaml", "  name: toy.spring\n  version: 0.1.0\n  binds:\n    body: probe",
+           "  name: toy.spring\n  version: 0.1.0\n  binds:\n    body: {socket: subject}")
+    experiment, water = host()
+    experiment.add_body(Body("user", dynamics=ToyBody(), initial=State(position=m((0.0, 0.0, 0.0)))))
+    experiment.use(folder, name="first", medium=water, subject="user")
+    with pytest.MonkeyPatch.context() as patch:
+        if plant() == "named":
+            patch.setattr(_use, "socket_only_ids", lambda fragment, bound, prefix: set())
+        with pytest.raises(BuildRefused) as refused:
+            experiment.use(folder, name="second", medium=water, subject="user")
+    (one,) = refused.value.refusals
+    assert one.code == "block.name" and "'toy.spring:user'" in one.message
+    assert "its id comes from the socket it is bound through, never from the use's name" in one.message
+    assert "bind the socket to another thing of yours" in one.action and "declare the second law yourself" in one.action
+    assert "name it otherwise" not in one.action
 
 
 def test_a_referenced_block_naming_a_file_of_its_own_is_refused_before_a_save_writes_it_into_the_users_folder(
