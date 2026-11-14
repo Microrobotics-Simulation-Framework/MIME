@@ -92,8 +92,8 @@ def earlier_forms() -> list[tuple[str, str]]:
 GAP_PLANTS: dict[str, Callable[[], list[tuple[str, str]]]] = {
     "duplicate-key": lambda: [("document", replaced(golden("document"), "experiment: chain_screw\n",
                                                     "experiment: chain_screw\nexperiment: chain_screw\n"))],
-    "duplicate-key-in-lock": lambda: [("lock", replaced(golden("lock"), '"schema": "mime.lock/14"',
-                                                        '"schema": "mime.lock/14",\n "schema": "mime.lock/14"'))],
+    "duplicate-key-in-lock": lambda: [("lock", replaced(golden("lock"), '"schema": "mime.lock/15"',
+                                                        '"schema": "mime.lock/15",\n "schema": "mime.lock/15"'))],
     "integral-float": lambda: [("document", replaced(golden("document"), "seed: 0\n", "seed: 0.0\n")),
                                ("lock", replaced(golden("lock"), '"steps": 8', '"steps": 8.0'))],
     "non-finite": lambda: [("document", replaced(golden("document"), "value: 0.001\n", "value: .nan\n")),
@@ -130,8 +130,8 @@ AGREEMENT_PLANTS: dict[tuple[str, str], Callable[[], str]] = {
     ("a boolean for an integer", "document"): lambda: replaced(golden("document"), "seed: 0\n", "seed: true\n"),
     ("a fraction for an integer", "document"): lambda: replaced(golden("document"), "seed: 0\n", "seed: 0.5\n"),
     ("a fraction for an integer", "lock"): lambda: replaced(golden("lock"), '"steps": 8', '"steps": 8.5'),
-    ("unknown key", "lock"): lambda: replaced(golden("lock"), '"schema": "mime.lock/14"',
-                                              '"colour": "red",\n "schema": "mime.lock/14"'),
+    ("unknown key", "lock"): lambda: replaced(golden("lock"), '"schema": "mime.lock/15"',
+                                              '"colour": "red",\n "schema": "mime.lock/15"'),
     ("a boolean for a number", "lock"): lambda: replaced(golden("lock"), '"rtol": 2e-14', '"rtol": true'),
 }
 

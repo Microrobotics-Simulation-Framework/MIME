@@ -6,7 +6,7 @@ import warnings
 from types import MappingProxyType
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, cast, override
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast, override
 
 import jax
 import numpy as np
@@ -23,7 +23,7 @@ from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command,
     RungGradient, Segment, SegmentVisual, register_dynamics
 from mime.scene import Asset
 from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, FORCE, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, \
-    Quantity, Time, unit_symbol
+    Quantity, unit_symbol
 from mime.validity import basis_text
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_INERTIA, \
     LINK_MOMENTUM, LINK_WRENCH, Capability
@@ -131,8 +131,9 @@ class Arm(ChainSegment):
 
     ``kinematic`` (``Arm.Kinematic(...)``): its joint positions are commanded (the command
     ``<segment>.joint_positions``, in radians, or metres on a prismatic joint), each held within its joint's limits
-    where it has them; with ``servo``, a time constant, the joints follow the held command as a first-order lag,
-    otherwise at once; every frame's world pose follows by forward kinematics. It has no mass matrix and takes no
+    where it has them, then followed at once, or as a first-order lag where its port declares one (its servo:
+    ``ports={"arm.joint_positions": CommandPort(response=FirstOrderLag(tau=...))}`` on the apparatus, which the arm's own
+    node computes, one time constant for every joint); every frame's world pose follows by forward kinematics. It has no mass matrix and takes no
     load: a law that would load it is refused, since a load cannot move a prescribed motion.
 
     ``dynamic`` (``Arm.Dynamic(...)``): its joints are driven by torques (the command ``<segment>.joint_torques``, N m,
@@ -181,8 +182,6 @@ class Arm(ChainSegment):
     setting_roles = {
         "rung": DESIGN, "description": PHYSICAL, "initial_positions": DESIGN,
         "initial_velocities": convention(DESIGN, "a dynamic arm's joints start at rest unless given their rates"),
-        "servo": convention(PHYSICAL, "the kinematic arm's joints take the held command at once unless a servo lag is "
-                                      "given"),
         "acknowledged": convention(DESIGN, "no element of the description is read past unless acknowledged with its "
                                            "reason"),
         "armature": convention(PHYSICAL, "a joint whose armature is not declared, and whose transmission's actuator is "
@@ -211,7 +210,6 @@ class Arm(ChainSegment):
     description: Asset
     initial_positions: Annotated[Quantity, DIMENSIONLESS]
     initial_velocities: Annotated[Quantity | None, ANGULAR_VELOCITY] = None
-    servo: Annotated[Quantity | None, Time] = None
     acknowledged: tuple[tuple[str, str], ...] = ()
     armature: Mapping[str, Quantity] | tuple[tuple[str, Quantity], ...] = ()
     actuators: Mapping[str, Quantity | str] | tuple[tuple[str, Quantity | str], ...] = ()
@@ -227,6 +225,13 @@ class Arm(ChainSegment):
     def given_actuators(self) -> tuple[tuple[str, Quantity | str], ...]:
         """The actuators given, by name, as pairs in their names' order."""
         return cast(tuple[tuple[str, Quantity | str], ...], self.actuators)
+
+    def __new__(cls, *args: Any, **settings: Any) -> Arm:
+        """The arm as the dataclass builds it, but for ``servo=``: the arm's setting before saved form 15, refused by
+        name here, whether the arm is built by its rung's alias or directly with ``rung=``."""
+        if settings.get("servo") is not None:
+            _servo_moved(str(settings.get("rung", "kinematic")))
+        return super().__new__(cls)
 
     @classmethod
     def Kinematic(cls, **settings: Any) -> Arm:  # noqa: N802 - a rung's alias reads as a class
@@ -251,12 +256,7 @@ class Arm(ChainSegment):
         if not isinstance(cast(object, self.description), Asset):
             found.append(f"description={self.description!r} is not a file asset: write description=asset(\"arm.urdf\")"
                          f" with asset from mime.scene")
-        servo = settings.get("servo")
-        if servo is not None and not (isinstance(servo, float) and math.isfinite(servo) and servo > 0.0):
-            found.append(f"servo is {servo!r} s, not a time constant above zero")
         if self.rung == "dynamic":
-            if servo is not None:
-                found.append("servo is the kinematic rung's: the dynamic arm follows the torques it is given")
             found += _keyed_problems(self.armature, "armature", rotor=False)
             found += _keyed_problems(self.actuators, "actuators", rotor=True)
         else:
@@ -384,7 +384,8 @@ class Arm(ChainSegment):
                        initial_rates=tuple((float(r[0]), float(r[1]), float(r[2])) for r in turning),
                        massive=massive and not dynamic, initial_joints=tuple(float(c) for c in initial),
                        notes=armed.lines if armed is not None else transmission_lines(tree),
-                       visuals=segment_visuals(reading, frames), description_file=self.description.path)
+                       visuals=segment_visuals(reading, frames), description_file=self.description.path,
+                       responds={} if dynamic else dict.fromkeys(commands, LAG))
 
     def armed(self, tree: MultibodyTree) -> MultibodyTree:
         """``tree`` with each joint's armature on it, as phase 1 resolved it (its problems refused there)."""
@@ -454,11 +455,46 @@ class Arm(ChainSegment):
             initial_mount_pose=mount.initial_pose if mount else _IDENTITY,
             initial_mount_rate=mount.initial_rate if mount else (0.0, 0.0, 0.0),
             initial_joint_positions=_components(ctx.settings["initial_positions"]),
-            servo_time_constant=ctx.scalar("servo") if "servo" in ctx.settings else None, rates=ctx.rates_read))
+            servo_time_constant=servo_of(ctx), rates=ctx.rates_read))
         if mount is not None:
             b.mount(into=node["mount_poses"])
             if ctx.rates_read:
                 b.mount_rates(into=node["mount_rates"])
+
+
+def _servo_moved(rung: str) -> NoReturn:
+    """Refuse ``servo=``, the arm's setting before saved form 15, naming where it is now: its port's response, on the
+    port of the command the rung has (the kinematic arm's joint positions; the dynamic arm has no servo of its own, its
+    commands are torques, so a lag is declared on a torque's port, which the port's stage computes)."""
+    from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+
+    if rung == "dynamic":
+        said = ("a dynamic arm has no servo: it follows the torques it is given; a lag between a torque command and the "
+                "arm is its port's response since saved form 15")
+        do = ("write Apparatus(..., ports={\"<segment>.joint_torques\": CommandPort(response=FirstOrderLag(tau=...), "
+              "reason=...)}) (mime.CommandPort, mime.responses.FirstOrderLag), and the same on <segment>.joint_forces "
+              "for a prismatic joint; the port's stage computes the lag")
+    else:
+        said = ("the arm's servo= is its port's response since saved form 15: the servo is the lag between the arm's "
+                "command and its joints, declared on its apparatus's port, and a kinematic arm's own node computes it "
+                "as before")
+        do = ("write Apparatus(..., ports={\"<segment>.joint_positions\": CommandPort(response=FirstOrderLag(tau=...), "
+              "reason=...)}) (mime.CommandPort, mime.responses.FirstOrderLag), and the same on "
+              "<segment>.joint_displacements for a sliding joint")
+    raise ArgumentRefused([Refusal("call.renamed", RefusalClass.USER, said, do)])
+
+
+#: The response a kinematic arm's node computes on its joints itself, its servo: a port on its commands declaring it
+#: hands the arm its time constant.
+LAG = "response.first_order_lag"
+
+
+def servo_of(ctx: BuildContext) -> float | None:
+    """The kinematic arm's servo time constant: the first-order lag its commands' ports hand it
+    (``BuildContext.responses``), which phase 1 holds to one time constant for every command of the arm; ``None`` for
+    none."""
+    handed = [tau for settings in ctx.responses.values() for tau in (settings.get("tau"),) if isinstance(tau, float)]
+    return handed[0] if handed else None
 
 
 def _stated_limits(articulation: Any, joints: Sequence[int]) -> tuple[tuple[float, ...], tuple[float, ...]] | None:

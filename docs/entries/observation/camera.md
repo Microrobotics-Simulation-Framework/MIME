@@ -14,12 +14,14 @@ sha256.
 
 **Static meshes.** A `Mesh` of a referenced asset that no thing owns (a vessel's STL as a layer) and a structure of a kind the
 stage draws (an ellipsoid, a box, a helix, a screw) are traced as static meshes, once a run, in the static structure, by a
-bounding volume hierarchy: a frame costs no more with one in view. Each sub-ray takes every crossing of each mesh, signed by
+bounding volume hierarchy: a run's frames cost 1.02 to 1.05 times the same scene's without (an estimate, measured on 4-vCPU
+runners). Each sub-ray takes every crossing of each mesh, signed by
 its facing, so a closed mesh named in `absorbers` attenuates along its chord, one with a display opacity on the stage passes
 that share at each crossing, and any other is opaque; a pixel is the mean of a few sub-rays each way
 (`mime.sensing.MESH_SAMPLES`, a declared default, not a setting). The structure is made once a run, and again at each study
-point that varies the detector's numbers: under ten seconds for a mesh of about a hundred thousand triangles filling a quarter-VGA
-view, under half a minute at VGA, on a four-core runner (the outcomes of `tests/sensing/predictions_camera_mesh.json`).
+point that varies the detector's numbers: for a mesh of about a hundred thousand triangles filling the view, 1.5 to 10 seconds at
+quarter VGA and 4 to 30 seconds at VGA, an estimate and its range over four rounds on 4-vCPU runners of different CPUs, not a
+bound (the outcomes of the `tests/sensing/predictions_camera_mesh*.json` files).
 The build report names each mesh with its triangles and look, a drawing's sagitta and a recorded decimation in pixels at this
 camera, and a body that starts inside a closed attenuating mesh, which it takes as its medium. Any other unowned gprim (a cube,
 curves) is refused by name (`camera.mesh-untraced`). The meshes' chords along each pixel's rays are had offline from

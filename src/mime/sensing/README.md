@@ -104,7 +104,7 @@ about a sub-pixel's area).
 ## Static meshes (`_mesh.py`)
 
 A static mesh (a scenery `Mesh` of the stage, or a structure's drawing) is traced in the in-loop camera **once a run, in
-the static structure**, by a bounding volume hierarchy, so a frame costs no more with a mesh in view (measured: a run's frames within a few per cent of the same scene's without).
+the static structure**, by a bounding volume hierarchy, so a run's frames cost 1.02 to 1.05 times the same scene's without a mesh (an estimate, measured on 4-vCPU runners at 320 x 240 and 640 x 480, float32 and float64; each frame also reads a checksum of the tree, about 0.03 ms of that, and each run() call compares it once, under 1 ms).
 
 - **The tree** is built on the host when the node is made: a complete binary tree in heap order, balanced splits along each
   group's longest centroid axis, leaves of a few triangles, its boxes fixed (the mesh stands). Its arrays are the node's
@@ -135,13 +135,24 @@ the static structure**, by a bounding volume hierarchy, so a frame costs no more
 - **Once a run**: made when the build makes the node's parameters, again once a run where a derivative may be taken or the
   tree's detector numbers differ from the run's (`refreshed_held`), and so again at each study point that varies the
   detector's numbers. Measured through the built graph on GitHub's four-core runners for a closed tube-wall mesh of about a
-  hundred thousand triangles filling the view: under ten seconds at quarter VGA and under half a minute at VGA, the
-  step's compile time unchanged and a frame's time unchanged (the outcomes of `tests/sensing/predictions_camera_mesh.json`).
+  hundred thousand triangles filling the view: 1.5 to 10 seconds at quarter VGA and 4 to 30 seconds at VGA (an estimate, and
+  its range over four rounds on runners of different CPUs, not a bound), the step's compile time 1.07 to 1.15 times and a
+  frame's 1.02 to 1.05 times what they are without (the outcomes of `tests/sensing/predictions_camera_mesh*.json`).
 - **Derivatives.** The rays and the tree are taken under `stop_gradient`: no derivative reaches the traversal's while loop
   (which has none in reverse mode), so a derivative in a pose, a gain or a limit passes with a mesh in view, and one in any
   of the detector's nine numbers, which would leave the mesh's part out, is refused by name in both modes and in a fit
   (`camera.mesh-derivative`, through the node hook `derivative_leaves_problem`, which `Study.gradient` and `Study.fit` ask
   before compiling): calibrate with the meshes hidden.
+- **The slab test is widened** by `1 + 2 gamma_3` (`slab_pad`: `gamma_n = n u / (1 - n u)`, `u` the run's unit roundoff, Ize 2013): a
+  plane's distance is three roundings, and without it a ray through an edge of a box of the tree was dropped (0.1 to 0.2 percent of
+  the rays aimed at a rotated box's edges in a laptop's draws, in both dtypes; a lost crossing moves the chord by its whole `t`).
+  `tests/sensing/test_mesh_edges.py` goes at the edges and vertices in both dtypes, with the barrier and the widening each
+  planted away.
+- **A mesh is held as built.** The node's arrays are read-only copies; a record replaced with another mesh is refused
+  (`camera.cache-stale`); a tree leaf written is not the one the held structure was made from (the signature of the leaves is
+  among the numbers it is compared with), so the structure is made again from it: no route gives the image of the mesh as
+  built (`tests/sensing/test_mesh_held.py`). `mesh_triangles` and `mesh_owners` stay constructor arguments (the saved form,
+  the derived graph's hash) and are no parameter leaf.
 - **Refused, each naming its route:** a moving (time-sampled) mesh, `camera.mesh-moving` (hide it); a camera that may move
   with a mesh in view, `camera.mesh-mounted` (a camera on a moving frame keeps no static structure; fix it in the world, or
   hide the meshes); an open or inconsistently wound mesh named in `absorbers`, `camera.mesh-open`.

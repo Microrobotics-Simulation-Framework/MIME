@@ -1,0 +1,50 @@
+{
+  "written": "2026-11-14, committed before AP1b's detection-rate probe and its bit comparison ran (the commit that adds this file is the timestamp): a command port's response, port traffic in record=, the loop's chain, saved form 15",
+  "phase": "apparatus lane, AP1b: responses, the arm's servo moved onto its ports, recording, the report's loop line, saved form 15",
+  "labels": "predictions by the builder (Opus) from the code's structure; each plant was run locally before this file",
+  "seen_before": [
+    "the command stage's plants with the lag drawn, run once locally (laptop, CPU, float32): slew_before_bound, bound_before_delay, respond_before_slew and trip_unlatched each failed the property; the clean run passed",
+    "the arm's order test at seeds 0 to 14 locally: clean 0/15, slew_before_bound 15/15, limits_after_slew 15/15, after its draw was widened (at the first draw, seed 2 was missed by both plants: the slew never passed the limits within a half period, so neither swap could act)",
+    "the form-14 servo folder loaded, rebuilt and verified locally with the lock's derived hash; with the servo dropped by the upgrade the load refused it (load.input-hash)"
+  ],
+  "operating_point": {
+    "dtype": ["float32 as the tests run by default"],
+    "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow), one pytest process a run",
+    "sizes_and_parameters": "the command stage as predictions_ap1a.json with a lag of 1 to 20 ms drawn half the time; the arm: tests/descriptions/c_arm.urdf kinematic at dt 1 ms, 40 steps of a square wave 2 to 3 times past its revolute joints' limits on half periods of 6 to 10 steps, a latency of 1 to 3 steps, a slew of 30 % to 80 % of the smaller limit a step, a lag of 1 to 8 ms",
+    "seeds_and_draws": "200 runs a control, planted and clean at the same seeds (DETECTION_SEED, and --hypothesis-seed for the property); Hypothesis's 100 examples a run, never shrunk"
+  },
+  "gate_1_command_rungs_with_response": {
+    "claim": "the command stage delivers sample, delay, bound, slew, then its response, against a NumPy oracle of that order",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py::test_the_command_stage_delivers_the_design_order_of_its_rungs",
+    "prediction": {"value": "200/200 caught, 0/200 flagged", "basis": "derived", "why": "lagging before the slew lets the slew act on a smoother signal, which differs wherever a draw holds both a slew that binds and a lag; about a quarter of 100 examples a run hold both"},
+    "control": {"plant": "the lag before the slew", "environment_variable": "PORT_PLANT=respond_before_slew", "expected_rate": "200/200", "runs": 200, "clean_expected": "0/200", "resolution": "64 units in the last place of the inputs' scale over 24 steps"}
+  },
+  "gate_2_arm_order": {
+    "claim": "a port with a latency, a slew and a lag on a kinematic arm, written by a controller inside the compiled step, delivers sample, delay, the joints' stated limits, slew, then the arm's lag",
+    "kind": "equality",
+    "case": "tests/ports/test_ports_build.py::test_an_arm_port_applies_its_latency_bounds_slew_and_lag_in_the_designs_order",
+    "prediction": {"value": "200/200 caught for each plant, 0/200 flagged", "basis": "measured locally at 15 seeds, derived beyond", "why": "the slewed command passes the limits within each half period at every draw, so slewing before the bound starts the way back from beyond the limit, and leaving the limits to the arm lags toward a target past them"},
+    "control": {"plant": "the stage slewing before it bounds; the stage leaving the joints' limits to the arm's own clip", "environment_variable": "PORT_PLANT=slew_before_bound | limits_after_slew", "expected_rate": "200/200 each", "runs": 200, "clean_expected": "0/200", "resolution": "64 units in the last place of float32 on the table's scale over 40 steps"}
+  },
+  "gate_3_servo_moved": {
+    "claim": "a form-14 folder's arm servo read as its ports' lag builds the program form 14 built: the lock's derived hash, verified (design section 9, control 4)",
+    "kind": "equality",
+    "case": "tests/saved/test_form15.py::test_the_form_fourteen_folder_loads_rebuilds_and_verifies_its_program_unchanged",
+    "prediction": {"value": "holds in every run; its control (the servo dropped by the upgrade) refused in every run", "basis": "derived", "why": "the lag is handed to the arm's node as its servo time constant, the leaf form 14's servo set; the control is a test of its own, deterministic"}
+  },
+  "bits": {
+    "cases": "A0, script A and the tutorials as AP1a's bits, and the kinematic AR4 with a 20 ms servo (servo= on the base, read by the head as its ports' lag), base AP1a's branch against this head in one job, one CPU, one BLAS and XLA thread, 100 steps, every field's history",
+    "prediction": "every array np.array_equal, the servo program's too: the arm's node computes the lag from the same leaf",
+    "controls": {"moved": "the kinematic AR4 with a 20 ms lag on its position command on the head and none on the base: arrays differ"}
+  },
+  "costs": {"unused": "the derived hash and the canonical text unchanged where no port is declared, and the servo's program unchanged (gate 3, bits)", "used": "a lag the stage computes adds one carried field and an exponential a step to a stage that exists; not measured separately"},
+  "outcomes": {
+    "measured_on": "a GitHub runner, the probe workflow, CPU, at a1e87834's tests (probe branch probe/ap1b-probes), run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43587074506",
+    "gate_1_command_rungs_with_response": "NOT as predicted: respond_before_slew caught on 190 of 200 runs (missed at seeds 2, 15, 31, 34, 62, 64, 115, 126, 173, 176), clean 0/200: some runs' 100 examples held no draw with both a binding slew and a lag. A control must fail every run, so an explicit case is added (test_the_lag_follows_the_slew) and rated again (predictions_ap1b_round2.json)",
+    "gate_2_arm_order": "as predicted: slew_before_bound 200/200 and limits_after_slew 200/200 caught, clean 0/200 each",
+    "gate_3_servo_moved": "holds in every CI run (a test, not a rated plant)",
+    "bits": "every array equal in every program, A0, script A, the tutorials and the servo's, in both dtypes; but the control moved was equal too (16 of 16 arrays): the kinematic AR4 sat at its commanded home pose, so no lag could move it. The servo's equality is therefore no evidence, and both programs are run again with the arm commanded away from its home (predictions_ap1b_round2.json)",
+    "costs": "not measured (a lag adds one carried field and an exponential a step to a stage that exists)"
+  }
+}

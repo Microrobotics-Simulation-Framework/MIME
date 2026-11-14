@@ -1,0 +1,56 @@
+{
+  "written": "2026-11-14, committed before AP1b's fifth probe ran (the commit that adds this file is the timestamp)",
+  "phase": "apparatus lane, AP1b, the fifth probe: the command stage's slew and lag choices as parameters of the test, one test of 100 examples each (the fourth probe's miss at seed 49)",
+  "labels": "predictions by the builder (Opus); measured locally before this file, on the oracles alone and through the stage",
+  "seen_before": [
+    "the fourth probe (predictions_ap1b_round4.json): the file catches every plant 200/200; the drawn property alone missed the lag's swap once in 200 (seed 49), because 8 of 100 examples held a slew and a lag and none was detectable",
+    "locally at seed 49 with the choices as parameters: the planted lag swap fails 3 of the 8 cases (binding-lagged, partial-lagged and loose-lagged) and the explicit lag case, the unplanted file passes all of them"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float32 as the tests run by default"
+    ],
+    "platform": "CPU, GitHub runners, the probe workflow",
+    "sizes_and_parameters": "the links strategy for each of eight cases (a slew none, binding, partial or loose; a lag or none), 100 examples each, 24 steps, never shrunk",
+    "seeds_and_draws": "200 runs, planted and clean at the same seeds, --hypothesis-seed the run's seed"
+  },
+  "gate_1c_property_alone": {
+    "claim": "each case's drawn property catches the lag before the slew where its premise holds: binding-lagged alone, and partial-lagged alone",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py::test_the_command_stage_delivers_the_design_order_of_its_rungs[binding-lagged]",
+    "prediction": {
+      "value": "200/200 caught, 0/200 flagged, through the binding-lagged case alone (every example of its 100 holds a slew that binds at every wave's jump and a lag)",
+      "basis": "by construction of the case; the explicit respond-before-slew case also catches it"
+    },
+    "control": {
+      "plant": "the lag before the slew",
+      "environment_variable": "PORT_PLANT=respond_before_slew",
+      "expected_rate": "200/200",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "gate_1d_file_with_new_draws": {
+    "claim": "the command stage's file, its eight cases, catches each of its plants",
+    "kind": "equality",
+    "case": "tests/ports/test_command_stage.py",
+    "prediction": {
+      "value": "200/200 caught for each of respond_before_slew, slew_before_bound, bound_before_delay and trip_unlatched, 0/200 flagged",
+      "basis": "the fourth probe's file rates, with more examples of each choice now"
+    },
+    "control": {
+      "plant": "each of the four",
+      "environment_variable": "PORT_PLANT",
+      "expected_rate": "200/200 each",
+      "runs": 200,
+      "clean_expected": "0/200"
+    }
+  },
+  "outcomes": {
+    "measured_on": "GitHub runners, the probe workflow, CPU, float32, at fb5f7a16's tests (probe branch probe/ap1b-rates5), run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43612851742",
+    "gate_1c_property_alone": "as predicted: respond_before_slew 200/200 caught through the binding-lagged case alone, clean 0/200 (the fourth probe's miss, seed 49, closed)",
+    "gate_1d_file_with_new_draws": "as predicted: respond_before_slew, slew_before_bound, bound_before_delay and trip_unlatched 200/200 caught each through the file's eight cases, clean 0/200 each, no inconclusive run",
+    "arm_wall_times": "the arms' job times: property alone 71 min, trip_unlatched 85, respond_before_slew 105, slew_before_bound 192, bound_before_delay 258 (for 400 runs each, planted and clean): the clean file is now about 24 s a run (eight cases of 100 examples), and a planted run fails 3 to 9 of them; the later arms took longer on the runner, the cause not measured here"
+  },
+  "gate_1e_note": "the loose-lagged case is not claimed to catch the swap alone: its slew binds only at some spikes"
+}

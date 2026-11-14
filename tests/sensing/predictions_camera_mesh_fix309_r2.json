@@ -10,7 +10,10 @@
     "cost: second run of 30 steps mesh over none 1.22 (float32 320x240), 1.13 (float64 320), 1.07 (float32 640x480), 1.04 (float64 640) against the predicted 1.05 to 1.4 and 1.2 to 2.2, 1.02 to 1.2, 1.05 to 1.5 (held, the float64 320 case under its band); the no-frame run mesh 0.013 s against none 0.006 s: the host's eager signature before each run() call (about 7 ms), so the per-frame share is about 0.03 ms and the per-run-call share is the cost. Fixed: the host's signature is compiled once"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "CPU; GitHub runner, 4 vCPU, one CPU and one thread for the bits",
     "sizes_and_parameters": "as the first round; the closed-mesh test draws 8192 rays; the pair test's tilt corrected"
   },
@@ -34,5 +37,10 @@
     "basis": "the first round's per-frame share of 0.03 ms and its host share, which a compiled call takes to about a tenth",
     "if_wrong": "over: the host share is not the eager dispatch (the transfer of the leaves, which a compiled call does not remove)"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-14, after the second run (GitHub run 43642924103 on 68789748, branch deleted after the download); the predictions above are unchanged",
+    "rates": "40/40 in both dtypes: nb-edge, nb-closed, nb-camera (clean 0/40, the pair test's included), np-box, np-closed; 0/40: nb-fan and np-camera (predicted: not controls of those plants); no inconclusive run in any arm. Runners: EPYC 7763, 9V45, 9V74 and Xeon 8573C/6973P",
+    "bits": "held, base bc96aa78 (the release tip then) against head 68789748: step, value and forward-mode derivative equal in float32 and float64 (6 of 6, 1 014 020 to 2 021 890 bytes); the control in the run's own dtype differs in both (ulp_f32 and ulp_f64, step and value). The release tip has moved since (61396864, #311, which touches the camera's validity radius): a third, bits-only run on the final merge, predictions_camera_mesh_fix309_r3.json",
+    "cost": "held: second run of 30 steps mesh over none 1.04 and 1.05 (f32 320), 1.04 and 1.02 (f64 320), 1.08 and 0.90 (f32 640), 1.00 and 1.05 (f64 640), best-of ratios 1.04, 1.02, 1.02, 1.05; no-frame run mesh less none 0.0007 and 0.0009 s (320), -0.0006 and 0.0003 s (640) (predicted at most 0.003 and 0.002); step compile ratio 1.07 to 1.12; executable +0.6 MB; the make 1.5 to 1.6 s (320) and 5.4 to 6.3 s (640); build 6.3 to 10.3 s against 3.2 to 3.8 s without. The estimates quoted in the docs take the range over all four rounds (make 1.5 to 10 s and 4 to 30 s; frames 1.02 to 1.05 after the compiled signature)"
+  }
 }

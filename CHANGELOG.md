@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
   6a). A scenery `Mesh` of the stage, and a structure of a kind the stage draws (an ellipsoid, a box, a helix, a screw: its
   drawing at the stage writer's facets), are traced by a bounding volume hierarchy built on the host, once a run, inside
-  the static structure: a frame costs no more with a mesh in view, and the step compiles in the time it did (the tree's
+  the static structure: a run's frames cost 1.02 to 1.05 times the same scene's without a mesh, and the step compiles in 1.07 to 1.15 times the time (estimates, measured on 4-vCPU runners; the tree's
   arrays are the node's parameter leaves, not constants of the program; the triangles reach the node as arrays the derived
   graph records by sha256). Every crossing of each sub-ray is taken, signed by its facing, so a closed mesh named in
   `absorbers` attenuates along its chord, a display opacity is passed at each crossing, and any other mesh is opaque; a
@@ -21,8 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   setting (no saved-form step: a saved experiment reproduces at its own MIME version, and a MIME that changed it builds
   another derived graph, which `verify` reports). The crossing test is watertight (Woop, Benthin and Wald), its products
   kept from fusing: Moller-Trumbore's test claimed a shared edge's ray twice or not at all in float32, which moves a signed
-  chord by a whole `t`. The structure is made once a run and again at each study point that varies the detector's numbers
-  (seconds for a mesh of about a hundred thousand triangles filling the view, measured on four-core runners). Refused, each
+  chord by a whole `t`. The slab test of the tree's boxes is widened by `1 + 2 gamma_3` of the run's roundoff (a ray through a box's edge was
+  dropped), and a mesh is held as built: the node's arrays are read-only, a replaced record is refused (`camera.cache-stale`),
+  a leaf written makes the structure again from it. The structure is made once a run and again at each study point that
+  varies the detector's numbers (1.5 to 10 seconds at quarter VGA and 4 to 30 at VGA for a mesh of about a hundred thousand
+  triangles filling the view: an estimate and its range on 4-vCPU runners). Refused, each
   naming its route: a derivative in the detector's numbers while a mesh is traced, in both modes and in a fit
   (`camera.mesh-derivative`, through a new optional node hook, `derivative_leaves_problem(leaves)`, which `Study.gradient`
   and `Study.fit` ask before compiling: the mesh is traced under `stop_gradient`, so the derivative would leave it out; a
@@ -153,9 +156,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Camera.project` is the camera's projection as a pure JAX function. The energy ledger books a command through a port
   under its writer; a derivative through a stage takes its ports' status (a clip and a slew are kinks, a trip a jump, a
   quantum cut). Six refusal codes: `port.clock`, `port.command-unknown`, `port.declaration`, `port.modelled-noise`,
-  `port.seam` (`drift`, `fault`, `bias`, `dropout` and, until it is built, a command port's `response`) and
-  `port.source-unknown`. Saving an experiment that declares a port is refused (`save.unsavable`) until the saved form
-  holds ports.
+  `port.seam` (`drift`, `fault`, `bias` and `dropout`) and `port.source-unknown`.
+
+- **A command port's response, port traffic in `record=`, the loop's chain, and saved form 15** (the apparatus lane's
+  AP1b, dev2).
+  - A registered entry kind, the response (`mime.responses`: `Ideal`, `FirstOrderLag(tau=...)`; `EntryKind.RESPONSE`,
+    `register_response`), shapes a command port's value last, after its slew: `CommandPort(response=...)`. A receiver
+    that computes a response itself takes it (`Segment.responds`, `BuildContext.responses`): a first-order lag on a
+    kinematic arm's position commands is its node's servo, and the build stages nothing for it; it must be declared on
+    every position command the arm has with one time constant (`port.declaration` otherwise). **`Arm(servo=...)` is
+    gone**: it is refused by name (`call.renamed`), naming the port that replaces it.
+  - A port stage's traffic is laid out as the outputs of a pseudo-observation named for its node
+    (`ports:coils.written_currents`, `ports:coils.currents`, its bound's flag, `measure:coils.tracker_age`), which
+    `run(record=[...])` takes as any per-step output; nothing is recorded by default. A port's camera image is refused
+    there as the camera's own is (`camera.recorded-frames`). The run-folder port log that replay reads waits for replay.
+  - The build report's controller block gives the loop's latency chain through its ports: the base steps from a state
+    to the first step whose command was made from it.
+  - **Saved form 15** (`mime.document/15`, `mime.lock/15`): an apparatus's `ports` in the document, the controller's
+    `believed` slot (held, read by no MIME yet: a document holding it is refused, `load.document-shape`), the resolved
+    record's `ports`, and a controller read's class `measurement`. A form-14 arm's `servo` is read as a first-order lag
+    on its position commands' ports, the derived graph unchanged, and written back for the lock's hashes; a form-14
+    folder holding what form 15 added is refused. The frozen `tests/saved/form14/servo_arm` (written by
+    `tests/saved/write_form14.py` at the last commit of form 14) loads, rebuilds and verifies.
 
 - **One study per `.mimestudy`, publishing folders, and a record of several studies** (lane P, P2). The container
   code is refactored into kinds (`mime.saved._container`: a suffix, a format id, a layout check), the bundle the first,

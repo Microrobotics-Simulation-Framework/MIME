@@ -142,7 +142,8 @@ def test_a_choice_of_a_computed_default_is_no_choice_and_research_refuses_it():
 def test_research_lists_a_physical_convention_taken_and_not_a_design_one():
     """K6: a convention on a physical setting (a tube centred on the origin, a segment at its frame's origin, no
     servo lag) is what anyone assumes untold and may not hold: research lists each one taken, with the line that states
-    its source. A screw's starts are required (the maintainer's decision), so script A writes them."""
+    its source. A screw's starts are required (the maintainer's decision), so script A writes them. (A servo lag is a
+    port's response since saved form 15, a declaration of the apparatus's, not a setting of the arm.)"""
     from script_a import script_a
 
     listed = {item.target: item for item in _research(script_a()).listed}
@@ -154,7 +155,7 @@ def test_research_lists_a_physical_convention_taken_and_not_a_design_one():
 
     arm = {item.target: item.kind for item in _research(kinematic_rpm()).listed}
     conventions = {target for target, kind in arm.items() if kind == "a convention, no source"}
-    assert {"rpm.arm.servo", "rpm.motor.at", "rpm.motor.orientation"} <= conventions, sorted(arm)
+    assert {"rpm.motor.at", "rpm.motor.orientation"} <= conventions, sorted(arm)
 
 
 def _research(experiment):

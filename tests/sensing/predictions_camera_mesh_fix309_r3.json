@@ -1,0 +1,17 @@
+{
+  "written": "2026-11-14, committed before the third probe run, bits only, on the final merge of the release branch (the commit that adds this file is the timestamp)",
+  "phase": "camera 6a fix round, third probe: the bits against the release tip at the final merge (61396864, #311 merged)",
+  "labels": "the fix round agent's prediction; the second round's outcomes are in predictions_camera_mesh_fix309_r2.json",
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runner, base and head in one job, one CPU, one thread",
+    "sizes_and_parameters": "the in-loop camera's ballistic scene with a Tube structure and no mesh, 64x48: the graph's step, the forward run's value and its forward-mode derivative in fy; the control the tube's attenuation one unit in the last place up in the run's own dtype on the head's side"
+  },
+  "gate_bits": {
+    "claim": "the compiled text, with the path tables and metadata dropped, is equal base to head in the step, the value and the forward derivative, both dtypes (6 of 6); the control differs in both dtypes (2 of 2)",
+    "kind": "equality",
+    "basis": "measured-before: the second round on the release tip before #311, equal 6 of 6 with 2 of 2 controls; #311 changes the validity radius in the ray table, in base and head alike",
+    "if_wrong": "a difference in a no-mesh program: the merge of #311 with this branch changed a program, which the second round could not see"
+  },
+  "outcomes": null
+}
