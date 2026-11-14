@@ -1326,6 +1326,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   until saved form 14, since every record had a location, so no release showed it; the plan now lists such an asset
   with where to request it.
 
+- **A refusal of the user's or the environment's class raised by MIME's own API inside an entry is that refusal, not the
+  entry's defect** (lane P). An entry's `plan()`, `build()`, a default's rule (`numerical_default(..., by=...)`), or a
+  geometry kind's drawing for the stage, which called `mime.assets.locate` on a gated file with no acceptance on record
+  (`asset.licence-not-accepted`), or any other call of MIME's that refuses in the user's or the environment's class, was
+  reported as `[internal] entry.defect`, the refusal blamed on the plugin, and the CLI gave exit 3. It now passes through
+  with its own code, class and words (the refusal exit, 2), the entry named after it as context, never as the culprit:
+  `(while building <entry>)`, `(while planning <entry>)` or `(while drawing the stage of <entry>)`. Everything else an
+  entry raises is still `entry.defect`, internal: a plain exception, and a MIME error with any internal refusal in it (a
+  mixed one too). Two changes in the same place: an entry's `plan()` or a default's rule that raised a `BuildRefused` of
+  internal or mixed refusals passed it through as MIME's own, and it is now `entry.defect` like the rest; and an internal
+  MIME error inside an entry is shown with its own code, words and docs link as plain lines under the headline, not as an
+  escaped `repr` inside it.
+
 - **A bundle's NOTICE and availability statement ignored the lock's assets**. A folder
   whose result reads an asset it holds no file of (a lab's licensed record, MIME's own tube table) said "Licences: None
   named" and "Reproducible exactly from this bundle alone", and both were false: a bundle never carries such an asset's
