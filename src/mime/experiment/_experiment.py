@@ -128,7 +128,7 @@ from mime.things import (
     TypedPath,
     did_you_mean,
 )
-from mime.units import TIME, Condition, Quantity, si
+from mime.units import DIMENSIONLESS, TIME, Condition, Quantity, si
 from mime.validity import DEFAULT_PROFILE, Basis, Profile
 from mime.vocabulary import JOINT_VELOCITIES
 
@@ -893,9 +893,10 @@ class RunWritten:
         return display(self.record_file.parent, offline=offline, caption=caption)  # the folder's origin is found there
 
 
-def run_layout(plans: PlanSet) -> Layout:
+def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:
     """Each observation's declared outputs and each flag an entry raises on the rung attached, placed on the graph's
-    nodes; an output's window starts at its setting's value in SI, as the build hands it to the node."""
+    nodes; an output's window starts at its setting's value in SI, as the build hands it to the node. With the built
+    ``graph``, each port stage's traffic too (:func:`port_traffic`), which ``record=`` takes as any per-step output."""
     observations: list[ObservationLayout] = []
     flags: list[FlagLayout] = []
     for plan in plans.entries:
@@ -919,7 +920,51 @@ def run_layout(plans: PlanSet) -> Layout:
                              output.recordable)
                 for output in cls.outputs)))
     flags += port_flags(plans)
+    if graph is not None:
+        observations += port_traffic(plans, graph, observations)
     return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp())
+
+
+def port_traffic(plans: PlanSet, graph: GraphManager, observations: Sequence[ObservationLayout]) -> \
+        list[ObservationLayout]:
+    """Each port stage's traffic as the outputs of a pseudo-observation named for its node (``ports:coils``,
+    ``measure:coils``): a command port's written and delivered values and its bound's flag, a measurement port's value
+    and its age. The value of a port of a composite (a pose) is left out, its parts having no one unit (its age is not),
+    and a camera's image is refused by name in ``record=`` as the camera's own image is (``camera.recorded-frames``)."""
+    from mime.core import MimeNode
+    from mime.nodes.control import CLIPPED
+
+    outputs = {output.path: output for held in observations for output in held.outputs}
+    found: list[ObservationLayout] = []
+    for stage in plans.stages:
+        for name in stage.node_names():
+            shapes = cast(Mapping[str, tuple[int, ...]], cast(MimeNode, graph.get_node(name)).constants()["shapes"])
+            held: list[OutputLayout] = []
+            for command in (stage.commands if name.startswith("ports:") else ()):
+                where = f"the port on {command.apparatus}.{command.command}"
+                held += [OutputLayout(name, field, name, field, OutputKind.PER_STEP, dimension, shapes[command.key],
+                                      text)
+                         for field, dimension, text in (
+                             (f"written_{command.key}", command.dimension, f"what its writer wrote into {where}"),
+                             (command.key, command.dimension, f"what {where} delivered to its receiver"))]
+                if command.bounded:
+                    flag = f"{'clipped' if command.bounded == CLIPPED else 'tripped'}_{command.key}"
+                    held.append(OutputLayout(name, flag, name, flag, OutputKind.PER_STEP, DIMENSIONLESS, (),
+                                             f"whether {where} {'clipped' if command.bounded == CLIPPED else 'had tripped'}"
+                                             f" at the step (0 or 1)"))
+            for measurement in (stage.measurements if name.startswith("measure:") else ()):
+                where = f"the measurement port {measurement.apparatus}.{measurement.port}"
+                source = outputs.get(measurement.of)
+                if measurement.dimension is not None:
+                    held.append(OutputLayout(name, measurement.port, name, measurement.port, OutputKind.PER_STEP,
+                                             measurement.dimension, shapes[measurement.port], f"what {where} delivered",
+                                             recordable=source is None or source.recordable))
+                held.append(OutputLayout(name, f"{measurement.port}_age", name, f"{measurement.port}_age",
+                                         OutputKind.PER_STEP, DIMENSIONLESS, (),
+                                         f"the age of what {where} delivered, in base steps"))
+            if held:
+                found.append(ObservationLayout(name, "the port stage", tuple(held)))
+    return found
 
 
 def port_flags(plans: PlanSet) -> list[FlagLayout]:
@@ -1111,7 +1156,7 @@ class BuiltExperiment:
         #: What the compiled step read when it was built, which a save holds the graph to before it takes the
         #: reference outputs from it (:meth:`_reference`).
         self._built_reads = step_reads(graph)
-        self.layout = run_layout(plans)
+        self.layout = run_layout(plans, graph)
         self._binding: StageBinding | None = None
         self._summary: dict[str, Any] | None = None
         #: Where a run of this built left its state not finite, for the runs after it.
@@ -1522,7 +1567,7 @@ class BuiltExperiment:
 
             plans = point.point.plans
             report = member_report(self, point.point)
-        layout = run_layout(plans) if plans is not None else self.layout
+        layout = run_layout(plans, self.graph) if plans is not None else self.layout
         watched = plans.watches if plans is not None else self._plans.watches
         tracks: dict[str, FlagTrack] = {}
         series: dict[str, Samples] = {}

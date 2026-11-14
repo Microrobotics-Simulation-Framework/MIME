@@ -507,6 +507,9 @@ class BuildContext:
     frequencies: Mapping[str, float] = field(default_factory=dict[str, float])
     #: The roster its plan saw (:class:`Roster`).
     roster: Roster = field(default_factory=Roster)
+    #: For a chain segment, the settings in SI of each response a port hands it to compute itself, by the command's
+    #: name (``Segment.responds``).
+    responses: Mapping[str, Mapping[str, Magnitude]] = field(default_factory=dict[str, Mapping[str, Magnitude]])
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -1000,6 +1003,10 @@ class Segment:
     visuals: tuple[SegmentVisual, ...] = ()
     #: The description file the visuals were read from, beside which the stage looks for the manifest of its meshes.
     description_file: Path | None = None
+    #: The responses its own node computes on a command, by the command's name (a kinematic arm lags its joints as a
+    #: first-order lag, its servo): a port on that command declaring that response hands it the response's settings
+    #: (``BuildContext.responses``) instead of shaping it in the port's stage.
+    responds: Mapping[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -1294,6 +1301,29 @@ class Drive(Entry):
     drives (``drive:<apparatus>.<command>``). A quantity written for a command is short for the constant drive."""
 
     def build(self, ctx: BuildContext, b: DriveBuilder) -> None:
+        raise NotImplementedError
+
+
+@dataclass(frozen=True, kw_only=True)
+class Response(Entry):
+    """What a command port's last rung does to the value it delivers (``CommandPort(response=...)``): the shaper of
+    the delivery stage, after its rate, latency, bounds and slew (``mime.responses``: ``Ideal``, ``FirstOrderLag``). Its
+    settings are its numbers, leaves of the stage's node. ``carries`` names the state it holds between steps, each of
+    the command's shape, started at the port's ``rest``; :meth:`respond` is its step, a pure function in
+    ``jax.numpy``. A receiver whose own node computes a response itself (a kinematic arm's servo, which lags its joints
+    as a first-order lag) names it in its segment's ``responds``: the stage then hands it the response's settings and
+    shapes nothing, so one law is computed in one place. A response builds no node of its own: the port's stage holds
+    it."""
+
+    carries: ClassVar[tuple[str, ...]] = ()
+
+    @classmethod
+    def respond(cls, settings: Mapping[str, Any], state: Mapping[str, Any], given: Any,
+                dt: float) -> tuple[dict[str, Any], Any]:
+        """The value delivered this step from ``given`` (what the amplifier drives, after the bound and the slew), and
+        the state after it, from ``state`` and the settings in SI (``settings``, by name, each a traced leaf of the
+        stage), over the base step ``dt``. It reads its numbers from ``settings`` alone, never from an instance: the
+        stage, rebuilt from its saved form, holds the numbers and calls it on the class."""
         raise NotImplementedError
 
 

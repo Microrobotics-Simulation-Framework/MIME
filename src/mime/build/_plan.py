@@ -470,6 +470,9 @@ class EntryPlan:
     joined: str = ""
     #: For a joint group's plan, its members' plans, in the order of their ids.
     members: tuple[EntryPlan, ...] = ()
+    #: For a chain segment, the settings in SI of each response a port hands it to compute itself, by the command's
+    #: name (``Segment.responds``, ``BuildContext.responses``).
+    responses: dict[str, dict[str, Magnitude]] = field(default_factory=dict[str, dict[str, Magnitude]])
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -2644,8 +2647,10 @@ class _Planner:
 
     def plan_command_ports(self, apparatus: Apparatus, taken: Mapping[str, tuple[EntryPlan, Command]],
                            dropped: set[str]) -> dict[str, CommandPortPlan]:
-        """Each command port of ``apparatus`` resolved against the command it carries (``taken``, by command). A port on
-        a command of a field nothing reads (``dropped``) has no receiver, and builds nothing."""
+        """Each command port of ``apparatus`` resolved against the command it carries (``taken``, by command), and
+        each response a port hands a segment's node to compute itself checked against the segment and given it
+        (``EntryPlan.responses``). A port on a command of a field nothing reads (``dropped``) has no receiver, and
+        builds nothing."""
         found: dict[str, CommandPortPlan] = {}
         for key, port in apparatus.ports.items():
             if isinstance(port, Measurement):
@@ -2665,15 +2670,23 @@ class _Planner:
                                 f"{did_you_mean(key, list(taken))}")
                 continue
             receiver, spec = taken[key]
+            segment = receiver if receiver.section is Section.DYNAMICS else None
             held = cast(Mapping[str, object], getattr(receiver.registered.cls, "constant_commands", {}))
             if receiver.section is Section.PROVIDER and key in held:
                 self.refuse("port.declaration", RefusalClass.USER,
                             f"{where}: {receiver.registered.cls.label()} takes {key!r} as constant over a run, and a "
                             f"port would change it", f"remove {key!r} from Apparatus(ports=...): hold it constant")
                 continue
-            plan = _ports.command_port(self, apparatus.name, key, port, (receiver.node_name(), spec.port), spec)
+            plan = _ports.command_port(self, apparatus.name, key, port, (receiver.node_name(), spec.port), spec,
+                                       segment)
             if plan is not None:
                 found[key] = plan
+        for segment in self.segments.get(apparatus.name, []):
+            local = segment.owner.partition(".")[2]
+            handed = [plan for key, plan in sorted(found.items()) if plan.handed and key.partition(".")[0] == local]
+            responds: Mapping[str, str] = segment.segment.responds if segment.segment is not None else {}
+            if handed and _ports.handed_problems(self, apparatus.name, local, handed, tuple(responds)):
+                segment.responses = {plan.command.partition(".")[2]: dict(plan.response_settings) for plan in handed}
         keys = [plan.key for plan in found.values()]
         for clash in sorted({key for key in keys if keys.count(key) > 1} | (set(keys) & _ports.RESERVED)):
             self.refuse("port.declaration", RefusalClass.USER,

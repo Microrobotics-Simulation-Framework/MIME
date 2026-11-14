@@ -2,11 +2,13 @@
 ``mime.things.Measurement``).
 
 **Phase 1.** Each command port is checked against the command it carries (its unit and shape restated, its bounds,
-rest and slew in the command's dimension, its rate and latency whole numbers of base steps, a reason wherever a number
-is given) and resolved to a :class:`CommandPortPlan`. A port is *staged* where anything of it is not ideal: a period
-above one step, a latency, declared bounds or a slew. Where it declares no bounds, its receiver's stated ones are its
-bounds (``Command.bounds``: a kinematic arm's joint limits), applied before the slew wherever the port is staged for
-something else; they stage nothing by themselves. The command's drive, or the controller's write, then writes the
+rest and slew in the command's dimension, its rate and latency whole numbers of base steps, its response registered, a
+reason wherever a number is given) and resolved to a :class:`CommandPortPlan`. A port is *staged* where anything of it
+is not ideal: a period above one step, a latency, declared bounds, a slew, or a response its receiver does not compute
+itself. A response the receiver computes (``Segment.responds``: a kinematic arm's servo) is handed to it, its settings
+the receiver's (``BuildContext.responses``), and builds no stage: one law, computed in one place. Where a port declares
+no bounds, its receiver's stated ones are its bounds (``Command.bounds``: a kinematic arm's joint limits), applied before
+the slew wherever the port is staged for something else; they stage nothing by themselves. The command's drive, or the controller's write, then writes the
 stage's input, and the stage writes the receiver's. Each measurement port
 is resolved to its source (a state a dynamics publishes, or an observation's output) and to a
 :class:`MeasurementPlan`; a controller reads it as ``<apparatus>.<port>`` and its age as ``<apparatus>.<port>.age``.
@@ -23,7 +25,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
@@ -31,14 +33,17 @@ import numpy as np
 from mime.build._refusals import RefusalClass
 from mime.gradients import GradientStatus, composed
 from mime.nodes.control import CLIPPED, COMMAND_STAGE, MEASURE_STAGE, TRIPPED, UNBOUNDED
+from mime.registry import EntryKind, Registered
 from mime.things import Apparatus, CommandPort, Gaussian, Measurement
-from mime.things._ports import CLIP, HOLDS, ON_BOUND, RESPONSE_BUILT_IN, SEAMS_BUILT_IN, TRIP
+from mime.things._ports import CLIP, HOLDS, ON_BOUND, SEAMS_BUILT_IN, TRIP
 from mime.units import FREQUENCY, TIME, Dimension, Magnitude, Quantity, Unit, UnitError, si, unit_symbol
 
 if TYPE_CHECKING:
     from mime.build._plan import EntryPlan
     from mime.registry import Command
 
+#: The response a port that declares none has.
+IDEAL = "response.ideal"
 #: A measurement port's name: lower-case words, as a controller's read label is.
 _PORT_NAME = re.compile(r"[a-z][a-z0-9_]*")
 #: The names a stage's own fields take, which no port may be named.
@@ -69,7 +74,8 @@ class CommandPortPlan:
     """A command port as phase 1 resolved it: the apparatus and the command it carries, its receiver's node and input,
     the command's units and dimension, and its shape (``-1`` where the binding decides it) and the shape it restates;
     its period and latency in base steps, its bound (``""``, ``"clip"`` or ``"trip"``) and bounds, rest and slew in SI;
-    its reason."""
+    its response's registration and settings in SI, and whether its receiver computes the response itself
+    (``handed``); its reason."""
 
     apparatus: str
     command: str
@@ -85,6 +91,9 @@ class CommandPortPlan:
     high: Magnitude | None = None
     rest: Magnitude = 0.0
     slew: Magnitude | None = None
+    response: Registered | None = None
+    response_settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    handed: bool = False
     reason: str | None = None
     #: Whether the port declares its bounds; otherwise they are its receiver's stated ones (``Command.bounds``), which
     #: its stage applies where it is staged for something else, and which stage nothing by themselves.
@@ -95,11 +104,16 @@ class CommandPortPlan:
         return field_of(self.command)
 
     @property
+    def shaped(self) -> bool:
+        """Whether its stage shapes it with a response: one that is not ideal, and not handed to its receiver."""
+        return self.response is not None and self.response.name != IDEAL and not self.handed
+
+    @property
     def staged(self) -> bool:
         """Whether anything of it is not ideal in the stage: it then writes into the stage, which writes its
         receiver."""
         return (self.period > 1 or self.latency > 0 or (self.bounded != UNBOUNDED and self.bounds_declared)
-                or self.slew is not None)
+                or self.slew is not None or self.shaped)
 
     @property
     def stage(self) -> str:
@@ -113,7 +127,9 @@ class CommandPortPlan:
                  f"{'clipped' if self.bounded == CLIPPED else 'tripped to rest'} at {numbers(self.low)} to "
                  f"{numbers(self.high)}{unit}" + ("" if self.bounds_declared else " (its receiver's stated bounds)")
                  if self.bounded and (self.bounds_declared or self.staged) else "",
-                 f"slew {numbers(self.slew)}{unit}/s" if self.slew is not None else ""]
+                 f"slew {numbers(self.slew)}{unit}/s" if self.slew is not None else "",
+                 f"{self.response.cls.label()}" + (" (computed by its receiver)" if self.handed else "")
+                 if self.response is not None and self.response.name != IDEAL else ""]
         held = "; ".join(part for part in parts if part) or "ideal"
         return f"{self.apparatus}.{self.command} -> {self.receiver[0]}.{self.receiver[1]}: {held}"
 
@@ -189,14 +205,15 @@ class StagePlan:
 
     def status(self, node: str) -> GradientStatus:
         """How a derivative passes through the stage ``node``: the command stage's bounds and slew are kinks, its trip
-        a jump; the measure stage's noise is exact with its keys held, its quantum cut (a rounding); the clock's samples
-        and delays exact."""
+        a jump, its response as the response declares; the measure stage's noise is exact with its keys held, its
+        quantum cut (a rounding); the clock's samples and delays exact."""
         found: list[GradientStatus] = []
         if node == stage_id(COMMAND_STAGE, self.apparatus):
             for plan in self.commands:
                 found += [GradientStatus.PIECEWISE_JUMP] if plan.bounded == TRIPPED else \
                     [GradientStatus.PIECEWISE_KINK] if plan.bounded == CLIPPED else []
                 found += [GradientStatus.PIECEWISE_KINK] if plan.slew is not None else []
+                found += [plan.response.cls.differentiability] if plan.shaped and plan.response is not None else []
         else:
             for measured in self.measurements:
                 found += [GradientStatus.CUT] if measured.quantum is not None else []
@@ -210,6 +227,13 @@ class Planning(Protocol):
     dt: float
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None: ...
+
+    def registered_as(self, entry: Any, kind: EntryKind, where: str) -> Registered | None: ...
+
+    def settings_in_si(self, entry: Any, record: Registered, where: str, *,
+                       commanded: Dimension | None = None, command: str | None = None) -> dict[str, Magnitude]: ...
+
+    def setting_problems(self, entry: Any, settings: Mapping[str, Magnitude], where: str) -> list[str]: ...
 
 
 
@@ -309,19 +333,12 @@ def _reasoned(planner: Planning, port: CommandPort | Measurement, given: Sequenc
 
 
 def command_port(planner: Planning, apparatus: str, command: str, port: CommandPort, receiver: tuple[str, str],
-                 spec: Command) -> CommandPortPlan | None:
-    """``port``, on ``apparatus``'s ``command`` (taken by ``receiver``, as ``spec`` declares it), resolved; ``None``
-    where it is refused."""
+                 spec: Command, segment: EntryPlan | None) -> CommandPortPlan | None:
+    """``port``, on ``apparatus``'s ``command`` (taken by ``receiver``, as ``spec`` declares it; ``segment`` the chain
+    segment that takes it, if one does), resolved; ``None`` where it is refused."""
     where = f"apparatus {apparatus!r}'s port on {command!r}"
     units = unit_symbol(spec.dimension)
     held = _seams(planner, port, where)
-    if port.response is not None:
-        planner.refuse("port.seam", RefusalClass.USER,
-                       f"{where} declares response=, the delivery's last rung (a coil's L/R lag, a servo), which is not "
-                       f"built yet: it lands in {RESPONSE_BUILT_IN}, and a response declared now would be ignored",
-                       "remove response= from the port; a kinematic arm's servo is its own setting meanwhile, "
-                       "Arm.Kinematic(servo=...)")
-        held = False
     held = _restated(planner, port, spec.dimension, spec.shape, units, where) and held
     if port.on_bound not in ON_BOUND or port.hold not in HOLDS:
         planner.refuse("port.declaration", RefusalClass.USER,
@@ -369,13 +386,23 @@ def command_port(planner: Planning, apparatus: str, command: str, port: CommandP
         held = False
     period = steps(planner, port.rate, f"the rate of {where}", period=True)
     latency = steps(planner, port.latency, f"the latency of {where}", period=False)
-    if rest is None or period is None or latency is None or not held or (port.slew is not None and slew is None):
+    response = port.response
+    record = planner.registered_as(response, EntryKind.RESPONSE, f"{where}'s response") if response is not None else \
+        _ideal()
+    settings: dict[str, Magnitude] = {}
+    if response is not None and record is not None:
+        settings = planner.settings_in_si(response, record, f"{where}'s response")
+        if planner.setting_problems(response, settings, f"{where}'s response"):
+            held = False
+    if record is None or rest is None or period is None or latency is None or not held or \
+            (port.slew is not None and slew is None):
         return None
-    if port.rest is not None and not (bounded == TRIPPED or latency > 0 or slew is not None):
+    if port.rest is not None and not (bounded == TRIPPED or latency > 0 or slew is not None or record.name != IDEAL):
         planner.refuse("port.declaration", RefusalClass.USER,
                        f"{where} declares rest={port.rest}, which nothing it declares delivers: a rest acts before a "
-                       f"delayed write arrives (latency=), where a slew starts from (slew=), and after a trip "
-                       f"(on_bound=\"trip\")", "leave rest= out, or declare what delivers it")
+                       f"delayed write arrives (latency=), where a slew or a response starts from (slew=, "
+                       f"response=), and after a trip (on_bound=\"trip\")", "leave rest= out, or declare what "
+                                                                             "delivers it")
         return None
     if port.rest is not None and low is not None and high is not None and any(
             not (a <= r <= b) for r, a, b in zip(*np.broadcast_arrays(
@@ -384,8 +411,45 @@ def command_port(planner: Planning, apparatus: str, command: str, port: CommandP
                        f"{where} declares rest={port.rest}, outside its bounds {numbers(low)} to {numbers(high)}: the "
                        f"port would deliver a value its bounds refuse", "give rest= a value within bounds=(low, high)")
         return None
+    responds: Mapping[str, str] = segment.segment.responds if segment is not None and segment.segment is not None \
+        else {}
+    local = command.partition(".")[2] if segment is not None else command
+    handed = record.name != IDEAL and responds.get(local) == record.name
     return CommandPortPlan(apparatus, command, receiver, units, spec.dimension, spec.shape, port.shape, period, latency,
-                           bounded, low, high, rest, slew, port.reason, port.bounds is not None)
+                           bounded, low, high, rest, slew, record, settings, handed, port.reason,
+                           port.bounds is not None)
+
+
+def _ideal() -> Registered:
+    from mime.registry import lookup
+
+    record = lookup(EntryKind.RESPONSE, IDEAL, "0.1.0")
+    assert record is not None
+    return record
+
+
+def handed_problems(planner: Planning, apparatus: str, segment: str, handed: Sequence[CommandPortPlan],
+                    responds: Sequence[str]) -> bool:
+    """Whether the responses ports hand one segment's node agree with it: the same settings on every command of the
+    segment that takes one (``responds``), since a kinematic arm's node lags every joint with one time constant, so a
+    lag on its revolute joints alone would lag its slide too."""
+    missing = sorted(set(responds) - {p.command.partition(".")[2] for p in handed})
+    if missing:
+        planner.refuse("port.declaration", RefusalClass.USER,
+                       f"apparatus {apparatus!r}'s segment {segment!r}: its ports hand it a response on "
+                       f"{', '.join(p.command for p in handed)} and none on {', '.join(missing)}, and its node lags "
+                       f"every joint with one",
+                       f"give each of its commands the same response: CommandPort(response=FirstOrderLag(tau=...)) on "
+                       f"{', '.join(f'{segment}.{c}' for c in missing)} too")
+        return False
+    if len({tuple(sorted(p.response_settings.items())) for p in handed}) > 1:
+        planner.refuse("port.declaration", RefusalClass.USER,
+                       f"apparatus {apparatus!r}'s segment {segment!r}: its ports declare different responses on "
+                       f"{', '.join(p.command for p in handed)}, and its node lags every joint with one",
+                       "give its ports one response, CommandPort(response=FirstOrderLag(tau=...)) on each with one "
+                       "tau")
+        return False
+    return True
 
 
 def measurement_port(planner: Planning, apparatus: Apparatus, name: str, port: Measurement, seed: int,
@@ -508,5 +572,5 @@ def measurement_port(planner: Planning, apparatus: Apparatus, name: str, port: M
                            stands_in_for if (sigma is not None or quantum is not None) else "", port.reason, clock)
 
 
-__all__ = ["RESERVED", "CommandPortPlan", "MeasurementPlan", "Planning", "StagePlan", "command_port", "field_of",
-           "measurement_port", "stage_id", "steps"]
+__all__ = ["IDEAL", "RESERVED", "CommandPortPlan", "MeasurementPlan", "Planning", "StagePlan", "command_port",
+           "field_of", "handed_problems", "measurement_port", "stage_id", "steps"]

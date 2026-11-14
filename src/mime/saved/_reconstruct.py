@@ -33,6 +33,7 @@ from mime.saved._document import conditions_from, decode_basis, decode_setting, 
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
 from mime.saved._terms import declared_permissions, declared_terms, experiment_licence
+from mime.saved._versions import SERVO_REASON
 from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, \
     SettingValue, ThingDoc
 from mime.scene import Scene, asset, up_axis_problem, within
@@ -185,6 +186,19 @@ class _Reader:
             if built is None:
                 return None
             entries[(name, f"segment:{segment['segment']}")] = built
+        ports = dict(doc.get("ports", {}))
+        for key, port in list(ports.items()):
+            if port.get("reason") == SERVO_REASON and not _takes(entries.get((name, f"segment:{key.partition('.')[0]}")),
+                                                               key.partition(".")[2]):
+                del ports[key]  # the upgrade's port of a form-14 servo, on a command this arm does not take
+                continue
+            if "response" in port:
+                built = self.entry("response", port["response"], f"{where}'s port {key!r}'s response")
+                if built is None:
+                    return None
+                entries[(name, f"port:{key}")] = built
+        if ports or "ports" in doc:
+            doc = cast(ThingDoc, {**doc, "ports": ports})
         try:
             return ThingDeclaration(thing_from(name, doc, entries, bound, self.materials))
         except ValueError as error:
@@ -192,6 +206,12 @@ class _Reader:
             return None
 
     def controller(self, doc: ControllerDoc) -> Declaration | None:
+        if "believed" in doc:
+            self.refuse("load.document-shape", "the controller's believed models (controller.believed) are held by the "
+                                               "saved form and read by no MIME yet: a controller's model of what it "
+                                               "drives is not read from a document before it is built",
+                        "remove controller.believed from the document and load it again: `Experiment.load(folder)`")
+            return None
         built = self.entry("controller", doc, "the controller")
         if built is None:
             return None
@@ -323,3 +343,19 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
     scene = scene_from(document, held)
     return RunSettings(document["experiment"], scene, gravity, dt, run["seed"], None, conditions or None,
                        document["profile"], duration, document.get("based_on"), document.get("blocks")), declarations
+
+
+def _takes(segment: object, command: str) -> bool:
+    """Whether a kinematic arm ``segment`` takes ``command``: its revolute joints' positions, its sliding joints'
+    displacements, each only where it has such joints."""
+    from mime.dynamics import Arm
+
+    if not isinstance(segment, Arm):
+        return False
+    reading = segment.quietly_read()
+    revolute = getattr(getattr(reading, "tree", None), "articulation", None)
+    if revolute is None:
+        return True  # unreadable: the build refuses it with its reason
+    kinds = tuple(revolute.revolute)
+    return any(kinds) if command == "joint_positions" else not all(kinds)
+

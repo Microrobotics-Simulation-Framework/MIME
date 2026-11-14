@@ -29,9 +29,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Camera.project` is the camera's projection as a pure JAX function. The energy ledger books a command through a port
   under its writer; a derivative through a stage takes its ports' status (a clip and a slew are kinks, a trip a jump, a
   quantum cut). Six refusal codes: `port.clock`, `port.command-unknown`, `port.declaration`, `port.modelled-noise`,
-  `port.seam` (`drift`, `fault`, `bias`, `dropout` and, until it is built, a command port's `response`) and
-  `port.source-unknown`. Saving an experiment that declares a port is refused (`save.unsavable`) until the saved form
-  holds ports.
+  `port.seam` (`drift`, `fault`, `bias` and `dropout`) and `port.source-unknown`.
+
+- **A command port's response, port traffic in `record=`, the loop's chain, and saved form 15** (the apparatus lane's
+  AP1b, dev2).
+  - A registered entry kind, the response (`mime.responses`: `Ideal`, `FirstOrderLag(tau=...)`; `EntryKind.RESPONSE`,
+    `register_response`), shapes a command port's value last, after its slew: `CommandPort(response=...)`. A receiver
+    that computes a response itself takes it (`Segment.responds`, `BuildContext.responses`): a first-order lag on a
+    kinematic arm's position commands is its node's servo, and the build stages nothing for it; it must be declared on
+    every position command the arm has with one time constant (`port.declaration` otherwise). **`Arm(servo=...)` is
+    gone**: it is refused by name (`call.renamed`), naming the port that replaces it.
+  - A port stage's traffic is laid out as the outputs of a pseudo-observation named for its node
+    (`ports:coils.written_currents`, `ports:coils.currents`, its bound's flag, `measure:coils.tracker_age`), which
+    `run(record=[...])` takes as any per-step output; nothing is recorded by default. A port's camera image is refused
+    there as the camera's own is (`camera.recorded-frames`). The run-folder port log that replay reads waits for replay.
+  - The build report's controller block gives the loop's latency chain through its ports: the base steps from a state
+    to the first step whose command was made from it.
+  - **Saved form 15** (`mime.document/15`, `mime.lock/15`): an apparatus's `ports` in the document, the controller's
+    `believed` slot (held, read by no MIME yet: a document holding it is refused, `load.document-shape`), the resolved
+    record's `ports`, and a controller read's class `measurement`. A form-14 arm's `servo` is read as a first-order lag
+    on its position commands' ports, the derived graph unchanged, and written back for the lock's hashes; a form-14
+    folder holding what form 15 added is refused. The frozen `tests/saved/form14/servo_arm` (written by
+    `tests/saved/write_form14.py` at the last commit of form 14) loads, rebuilds and verifies.
 
 - **One study per `.mimestudy`, publishing folders, and a record of several studies** (lane P, P2). The container
   code is refactored into kinds (`mime.saved._container`: a suffix, a format id, a layout check), the bundle the first,

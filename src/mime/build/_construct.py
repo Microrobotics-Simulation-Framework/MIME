@@ -116,7 +116,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
-        controller=(*plans.controller.lines(plans.dt), *model_lines(plans, models))
+        controller=(*plans.controller.lines(plans.dt), *loop_lines(plans), *model_lines(plans, models))
         if plans.controller is not None else (),
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
         checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
@@ -134,6 +134,34 @@ def port_lines(plans: PlanSet) -> tuple[str, ...]:
     """Each declared port's line, commands then measurements, by apparatus."""
     return (*(plan.text(plans.dt) for plan in plans.command_ports),
             *(plan.text(plans.dt) for plan in plans.measurement_ports))
+
+
+def loop_lines(plans: PlanSet) -> tuple[str, ...]:
+    """The loop's latency chain through the controller's ports: for each measurement port it reads and each command
+    port it writes through, the base steps from the state at a time to the start of the first step whose command was
+    made from it (the measurement's latency, the controller's and the command's), least and most (each sample's hold,
+    of its period less one, at most)."""
+    controller = plans.controller
+    if controller is None:
+        return ()
+    measured = {f"{m.apparatus}.{m.port}": m for m in plans.measurement_ports}
+    commanded = {f"{c.apparatus}.{c.command}": c for c in plans.command_ports}
+    reads = [measured[r.path] for r in controller.reads if r.path in measured]
+    writes = [commanded[w.path] for w in controller.writes if w.path in commanded]
+    if not reads or not writes:
+        return ()
+    lines = ["  the loop through its ports, from the state at a time to the start of the first step whose command was "
+             "made from it:"]
+    for read in reads:
+        for write in writes:
+            least = read.latency + controller.latency + write.latency
+            most = least + (read.period - 1) + (controller.period - 1) + (write.period - 1)
+            span = f"{least}" if most == least else f"{least} to {most}"
+            lines.append(f"    {read.apparatus}.{read.port} -> {write.apparatus}.{write.command}: {span} base steps "
+                         f"({least * plans.dt!r} to {most * plans.dt!r} s): measured {read.latency} late, the "
+                         f"controller's latency {controller.latency}, the command {write.latency} late, and each "
+                         f"sample held up to its period less one")
+    return tuple(lines)
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -231,7 +259,7 @@ def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
                         entry=plan.entry, roster=plan.roster, exchanges=dict(plan.exchanges),
                         starts={role: dict(body.initial) for role, name in plan.bindings.items() if plan.exchanges
                                 for body in plans.entries if body.section is Section.DYNAMICS and body.owner == name},
-                        frequencies=_drive_frequencies(plan, plans))
+                        frequencies=_drive_frequencies(plan, plans), responses=dict(plan.responses))
 
 
 def _drive_frequencies(plan: EntryPlan, plans: PlanSet) -> dict[str, float]:
